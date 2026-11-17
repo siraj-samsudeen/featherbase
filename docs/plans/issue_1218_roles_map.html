@@ -1,0 +1,306 @@
+<title>Who May Do What</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column of bands. Colour marks where a thing comes from (HR, a merchandise assignment, given by hand); the accent marks what to act on. */
+:root{
+  --bg:#f5f7f8; --panel:#ffffff; --fg:#162029; --muted:#5a6774; --line:#e1e6ea; --accent:#0f6e6a; --accent-soft:#e2f1ef;
+  --s-hr:#2563a8; --s-hr-bg:#e7effa; --s-merch:#7c4bc0; --s-merch-bg:#f1eafa; --s-hand:#b4531a; --s-hand-bg:#fbeee4; --s-ship:#475569; --s-ship-bg:#edf0f4;
+  --warn:#a3361f; --ok:#1d7a46;
+  --f-display:"Manrope",system-ui,sans-serif; --f-body:"Inter",system-ui,sans-serif; --f-mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#10161c; --panel:#17202a; --fg:#e5ebf0; --muted:#97a4b2; --line:#283441; --accent:#4cc2b9; --accent-soft:#15302e;
+  --s-hr:#7fb2ee; --s-hr-bg:#17283b; --s-merch:#c3a1f0; --s-merch-bg:#251d37; --s-hand:#f0a06c; --s-hand-bg:#34231a; --s-ship:#a9b6c7; --s-ship-bg:#202a36;
+  --warn:#f19a85; --ok:#6fd39a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10161c; --panel:#17202a; --fg:#e5ebf0; --muted:#97a4b2; --line:#283441; --accent:#4cc2b9; --accent-soft:#15302e;
+  --s-hr:#7fb2ee; --s-hr-bg:#17283b; --s-merch:#c3a1f0; --s-merch-bg:#251d37; --s-hand:#f0a06c; --s-hand-bg:#34231a; --s-ship:#a9b6c7; --s-ship-bg:#202a36;
+  --warn:#f19a85; --ok:#6fd39a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px;display:grid;gap:44px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0}
+h1{font-size:30px;font-weight:800;letter-spacing:-.01em}
+h2{font-size:21px;font-weight:700}
+h3{font-size:15px;font-weight:700}
+p{margin:0;max-width:70ch}
+.lede{color:var(--muted);font-size:16px}
+section{display:grid;gap:14px}
+.eyebrow{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.note{font-size:14px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;font-family:var(--f-mono);font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.c-hr{color:var(--s-hr);background:var(--s-hr-bg)} .c-merch{color:var(--s-merch);background:var(--s-merch-bg)}
+.c-hand{color:var(--s-hand);background:var(--s-hand-bg)} .c-ship{color:var(--s-ship);background:var(--s-ship-bg)}
+.c-acc{color:var(--accent);background:var(--accent-soft)}
+
+/* The four questions */
+.chain{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.q{background:var(--panel);border-radius:12px;padding:16px;display:grid;gap:8px;align-content:start;min-width:0}
+.q .n{font-family:var(--f-display);font-weight:800;font-size:13px;color:var(--accent)}
+.q .ask{font-family:var(--f-display);font-weight:700;font-size:16px}
+.q .eg{font-size:14px}
+.q .home{font-size:13px;color:var(--muted)}
+
+/* Levels */
+.levels{display:grid;gap:6px}
+.lvl{display:grid;grid-template-columns:190px 1fr;gap:16px;background:var(--panel);border-radius:10px;padding:14px 16px;align-items:start}
+.lvl .name{font-family:var(--f-display);font-weight:700}
+.lvl .eg{font-size:14px}
+.lvl .eg .tag{display:inline-block;margin:2px 4px 2px 0}
+.lvl .why{font-size:13px;color:var(--muted);margin-top:4px}
+.indent1{margin-left:22px} .indent2{margin-left:44px}
+
+/* Explain a person */
+.people{display:flex;flex-wrap:wrap;gap:8px}
+.people button{font:inherit;font-size:14px;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+.people button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.explain{background:var(--panel);border-radius:12px;padding:18px;display:grid;gap:16px}
+.who{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline}
+.who .nm{font-family:var(--f-display);font-weight:800;font-size:18px}
+.who .ttl{color:var(--muted);font-size:14px}
+.assign{display:grid;gap:10px}
+.arow{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.5fr);gap:12px;padding:12px;border-radius:10px;background:var(--bg)}
+.arow .lab{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.arow .v{font-weight:600}
+.arow .src{margin-top:4px}
+.arow ul{margin:0;padding-left:16px;font-size:14px}
+.because{font-size:14px;border-top:1px solid var(--line);padding-top:12px;display:grid;gap:4px}
+.because b{font-weight:600}
+
+/* Grid */
+.tablewrap{overflow-x:auto;border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:8px 10px;text-align:left;vertical-align:middle}
+thead th{font-family:var(--f-mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--bg)}
+td.c{text-align:center;width:58px}
+.y{color:var(--ok);font-weight:700}
+.dash{color:var(--line)}
+tr.app td{font-family:var(--f-display);font-weight:700;padding-top:14px}
+tr.use td{color:var(--accent);font-weight:600}
+td.verbs{font-size:13px}
+.verb{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);margin:2px 4px 2px 0;font-size:12.5px}
+.rolepick{display:flex;flex-wrap:wrap;gap:8px}
+.rolepick button{font:inherit;font-size:13px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+.rolepick button[aria-pressed="true"]{background:var(--fg);color:var(--panel);border-color:var(--fg)}
+.bundles{font-size:14px}
+
+/* Map */
+.map td,.map th{border-bottom:1px solid var(--line)}
+.map tbody tr:last-child td{border-bottom:0}
+.queue td{color:var(--warn)}
+
+/* Fixes */
+.fixes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.fix{background:var(--panel);border-radius:10px;padding:14px;display:grid;gap:8px;align-content:start;min-width:0}
+.fix .then{font-size:14px;color:var(--warn)} .fix .now{font-size:14px;color:var(--ok)}
+.split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.card{background:var(--panel);border-radius:10px;padding:14px;display:grid;gap:6px;align-content:start;min-width:0}
+.card ul{margin:0;padding-left:18px;font-size:14px}
+.open{background:var(--accent-soft);border-radius:12px;padding:18px;display:grid;gap:8px}
+.open ol{margin:0;padding-left:20px;display:grid;gap:6px}
+
+@media (max-width:760px){
+  .chain,.fixes,.split{grid-template-columns:1fr}
+  .lvl{grid-template-columns:1fr;gap:4px}
+  .arow{grid-template-columns:1fr}
+  .indent1,.indent2{margin-left:0}
+  h1{font-size:25px}
+}
+</style>
+
+<div class="wrap">
+
+<header style="display:grid;gap:10px">
+  <span class="eyebrow">Featherbase #1218 · design draft · nothing built yet</span>
+  <h1>Who may do what, and where</h1>
+  <p class="lede">Every question about access comes down to four answers. Each answer has one home, and every screen can say which home it came from.</p>
+</header>
+
+<section>
+  <div class="chain">
+    <div class="q"><span class="n">1</span><span class="ask">What does HR call them?</span><span class="eg">Assistant Manager – Operations</span><span class="home">Designation, from StyleHR. Never edited here.</span></div>
+    <div class="q"><span class="n">2</span><span class="ask">What does the business call them?</span><span class="eg">Store Manager</span><span class="home">Business role, from the title map, a merchandise assignment, or set by hand.</span></div>
+    <div class="q"><span class="n">3</span><span class="ask">What may that role do?</span><span class="eg">Use Dash, view reports, give reports to their team</span><span class="home">The bundles the business role includes.</span></div>
+    <div class="q"><span class="n">4</span><span class="ask">Where?</span><span class="eg">ATK, the whole store</span><span class="home">The place on that same assignment. A role never travels without its place.</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>Three levels, never deeper</h2>
+  <p class="note">Postgres lets a role contain roles without limit, and then nobody can say why a person can do something. Here there are exactly three levels, and each is a different kind of thing.</p>
+  <div class="levels">
+    <div class="lvl"><div><span class="chip c-acc">level 1</span><div class="name" style="margin-top:6px">Business role</div></div>
+      <div class="eg">Store Manager · Floor Manager · Team Leader · Staff · Cluster Manager · Buyer · Category Head · Head Office · Master Data Steward
+      <div class="why">What people are called at work. These are given to people, and nothing else is. One business role never contains another.</div></div></div>
+    <div class="lvl indent1"><div><span class="chip c-acc">level 2</span><div class="name" style="margin-top:6px">Bundle</div></div>
+      <div class="eg">Dash – Reader · Dash – Team sharing · Dash – Report admin · Tasker – User · Tasker – Manager · Master data – Editor
+      <div class="why">Named app plus level, as Odoo does it. A business role ticks the bundles it needs. "Use Tasker" lives here, so no "Tasker Member" role is needed.</div></div></div>
+    <div class="lvl indent2"><div><span class="chip c-acc">level 3</span><div class="name" style="margin-top:6px">Permission</div></div>
+      <div class="eg">Reports: View · Reports: Give to my team · Sections: Edit · Section changes: Approve
+      <div class="why">Ships with the app, because only the app's code can carry it out. Never names a place: "all stores" is a place, not a permission.</div></div></div>
+  </div>
+  <div class="split">
+    <div class="card"><h3>Above all three: the admins</h3><ul>
+      <li><b>Instance admin</b> (today "System Manager"): installs apps, manages people and sign-in.</li>
+      <li><b>App admin</b>, one per app: edits that app's bundles and settings, nothing else. Does not exist yet.</li>
+      <li>Both are given by hand, never from an HR title.</li></ul></div>
+    <div class="card"><h3>Where the starting set comes from</h3><ul>
+      <li><b>Shipped</b>: each app's permissions and suggested bundles, plus a retail starter set of business roles.</li>
+      <li><b>Jeyarama's own</b>: the starter set is copied in at setup, then edited here. Each role shows a tag: <span class="chip c-ship">from starter</span> <span class="chip c-hand">changed</span> <span class="chip c-acc">our own</span>.</li>
+      <li>A store or department gets no settings of its own. A store manager may be allowed to <i>give</i> existing roles to people in their store.</li></ul></div>
+  </div>
+</section>
+
+<section>
+  <h2>Explain a person</h2>
+  <p class="note">Pick someone. This is the screen that answers "why can she see this?". Each assignment keeps its role and its place together. <i>The people are made up; their titles are the kind StyleHR holds.</i></p>
+  <div class="people" id="people" role="group" aria-label="Example people"></div>
+  <div class="explain" id="explain" aria-live="polite"></div>
+</section>
+
+<section>
+  <h2>What a business role can do</h2>
+  <p class="note">One row per thing. View, Add, Edit and Delete are fixed columns; anything that isn't one of those is a plain verb on the same row. Pick a role.</p>
+  <div class="rolepick" id="rolepick" role="group" aria-label="Business roles"></div>
+  <p class="bundles" id="bundles"></p>
+  <div class="tablewrap"><table id="grid"></table></div>
+  <p class="note">Bundles and ticks are suggestions for discussion, not decisions.</p>
+</section>
+
+<section>
+  <h2>The title map</h2>
+  <p class="note">Jeyarama owns this list. Titles nobody has mapped yet sit on top, with how many people hold each, so no one gets a guessed role.</p>
+  <div class="tablewrap"><table class="map">
+    <thead><tr><th>HR title</th><th>People</th><th>Business role</th></tr></thead>
+    <tbody>
+      <tr class="queue"><td>Senior Executive – Visual Merchandising</td><td>4</td><td>Not mapped yet</td></tr>
+      <tr class="queue"><td>Assistant Manager – Operations</td><td>3</td><td>Not mapped yet</td></tr>
+      <tr><td>Store Manager</td><td>—</td><td>Store Manager</td></tr>
+      <tr><td>Team leader</td><td>—</td><td>Team Leader</td></tr>
+      <tr><td>Tailor · Customer service associate · other floor titles</td><td>—</td><td>Staff</td></tr>
+      <tr><td>AGM Operations</td><td>—</td><td>Cluster Manager</td></tr>
+      <tr><td>Buyer Head · Assistant Category Manager · Buyer</td><td>—</td><td>Buyer</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">The headcounts shown are placeholders until the real map is built from production.</p>
+</section>
+
+<section>
+  <h2>When the title is wrong: two different buttons</h2>
+  <div class="split">
+    <div class="card"><h3>Correct</h3><p class="note">Replaces the role the title gave. Use it when HR's title misleads: "treat this person as Store Manager at ATK".</p></div>
+    <div class="card"><h3>Also give</h3><p class="note">Adds a second role, with a reason and an end date. Use it for a real second hat: "also Master Data Steward until March".</p></div>
+  </div>
+  <p class="note">Nothing ever takes away. Access only adds up, so one screen can always list every reason.</p>
+</section>
+
+<section>
+  <h2>This week's three problems</h2>
+  <div class="fixes">
+    <div class="fix"><h3>A Team Leader saw a report through "Dash Reader"</h3>
+      <div class="then">Then: a report given to a role many people hold by hand.</div>
+      <div class="now">Now: "Dash – Reader" is a bundle, never given to a person. Reports are given to business roles.</div></div>
+    <div class="fix"><h3>A category head was locked out</h3>
+      <div class="then">Then: Dash's door checked a hand-ticked role, not their merchandise assignment.</div>
+      <div class="now">Now: the merchandise assignment makes them Category Head, and Category Head includes Dash – Reader.</div></div>
+    <div class="fix"><h3>One report given to 8 jobs</h3>
+      <div class="then">Then: one grant per job.</div>
+      <div class="now">Now: one grant that names several business roles at once, edited as one list.</div></div>
+  </div>
+</section>
+
+<section class="open">
+  <h2>Still to decide with Siraj</h2>
+  <ol>
+    <li>Three fixed levels (business role → bundle → permission), or Postgres-style roles inside roles?</li>
+    <li>Should a role given by hand have "Correct" and "Also give" as separate actions?</li>
+    <li>A starter set copied in, or live layers (app → retail → Jeyarama → store)?</li>
+    <li>Are reports given to business roles only, with single people as a rare exception?</li>
+    <li>Merge Data Quality Manager into Master Data Editor (one Master data – Editor bundle)?</li>
+  </ol>
+</section>
+
+</div>
+
+<script>
+const SRC={hr:['c-hr','From HR title'],merch:['c-merch','From merchandise assignment'],correct:['c-hand','Corrected by hand'],also:['c-hand','Also given by hand'],admin:['c-hand','Given by hand']};
+const PEOPLE=[
+ {id:'sm',label:'Store manager, operations title',name:'Arun K.',title:'Assistant Manager – Operations',
+  rows:[{role:'Store Manager',src:'correct',place:'ATK, the whole store',bundles:['Dash – Reader','Dash – Team sharing','Tasker – Manager']}],
+  because:[['View the Vendor Sales report for ATK','Vendor Sales is given to Store Manager, and he is Store Manager at ATK'],['Not for KNP','None of his assignments is at KNP']]},
+ {id:'cm',label:'AGM Operations',name:'Mohan R.',title:'AGM Operations',
+  rows:[{role:'Cluster Manager',src:'hr',place:'Cluster: Kerala South (6 stores)',bundles:['Dash – Reader','Dash – Team sharing','Tasker – Manager']}],
+  because:[['View sales for all six stores','Cluster Manager, at Kerala South, from the title AGM Operations']]},
+ {id:'two',label:'Two hats',name:'Priya S.',title:'Floor Manager',
+  rows:[{role:'Floor Manager',src:'hr',place:'PKD, first floor',bundles:['Dash – Reader','Tasker – Manager']},
+        {role:'Buyer',src:'also',place:'Kids Wear subcategories, Tamil Nadu stores',bundles:['Dash – Reader','Tasker – User'],until:'31-Mar-2027'}],
+  because:[['Kids Wear figures in Tamil Nadu stores','Buyer, from the second assignment'],['Not Kids Wear at PKD as a buyer','Her buyer place is Tamil Nadu; at PKD she is Floor Manager, first floor only']]},
+ {id:'ch',label:'Category head',name:'Deepa V.',title:'Category Manager',
+  rows:[{role:'Category Head',src:'merch',place:'Women Ethnic Wear, both regions',bundles:['Dash – Reader','Dash – Team sharing','Tasker – Manager']}],
+  because:[['Dash opens','Category Head includes Dash – Reader. No hand-ticked role is involved, so nothing can lock her out by accident.']]},
+ {id:'ho',label:'Head office analyst',name:'Faisal M.',title:'MIS Executive',
+  rows:[{role:'Head Office',src:'hr',place:'Whole company',bundles:['Dash – Reader','Tasker – User']},
+        {role:'Master Data Steward',src:'also',place:'Whole company',bundles:['Master data – Editor'],until:'none'}],
+  because:[['Sees every store in Dash','Head Office at "Whole company". Today this needs the role Dash All-Stores Reader; here it is a place.'],['Edits sections','Master Data Steward, given by hand']]},
+ {id:'adm',label:'App admin',name:'Lakshmi T.',title:'IT Executive',
+  rows:[{role:'App admin: Dash',src:'admin',place:'The Dash app',bundles:['Edit Dash bundles and settings']}],
+  because:[['Can change what Dash – Reader includes','App admin for Dash'],['Cannot touch Tasker','App admin is per app']]}
+];
+const BUNDLES={
+ 'Store Manager':['Dash – Reader','Dash – Team sharing','Tasker – Manager','Tickets – Raiser'],
+ 'Floor Manager':['Dash – Reader','Tasker – Manager','Tickets – Raiser'],
+ 'Team Leader':['Dash – Reader','Tasker – User','Tickets – Raiser'],
+ 'Staff':['Tasker – User','Tickets – Raiser'],
+ 'Cluster Manager':['Dash – Reader','Dash – Team sharing','Tasker – Manager','Tickets – Raiser'],
+ 'Buyer':['Dash – Reader','Tasker – User','Tickets – Raiser'],
+ 'Category Head':['Dash – Reader','Dash – Team sharing','Tasker – Manager','Tickets – Raiser'],
+ 'Head Office':['Dash – Reader','Tasker – User','Tickets – Raiser'],
+ 'Master Data Steward':['Master data – Editor','Tickets – Raiser']};
+// Each row: app, thing, which bundle gives View/Add/Edit/Delete, and verbs with their bundle.
+const ROWS=[
+ {app:'Dash',use:'Dash – Reader'},
+ {app:'Dash',thing:'Reports',crud:{View:'Dash – Reader'},verbs:[['Give to my team','Dash – Team sharing'],['Give to anyone','Dash – Report admin'],['Add a Dive','Dash – Report admin']]},
+ {app:'Dash',thing:'Sections (proposals)',crud:{View:'Dash – Reader',Add:'Dash – Reader'},verbs:[['Approve','Dash – Team sharing']]},
+ {app:'Tasker',use:'Tasker – User'},
+ {app:'Tasker',thing:'Tasks',crud:{View:'Tasker – User',Add:'Tasker – User',Edit:'Tasker – User'},verbs:[['Review team workload','Tasker – Manager']]},
+ {app:'Master data',use:'Master data – Editor'},
+ {app:'Master data',thing:'Stores, sections, subcategories',crud:{View:'Master data – Editor',Add:'Master data – Editor',Edit:'Master data – Editor'},verbs:[]},
+ {app:'Tickets',use:'Tickets – Raiser'},
+ {app:'Tickets',thing:'Tickets',crud:{View:'Tickets – Raiser',Add:'Tickets – Raiser'},verbs:[['Work tickets','Tickets – Support']]}
+];
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function chip(src){const [c,t]=SRC[src];return `<span class="chip ${c}">${t}</span>`}
+
+function show(id){
+  const p=PEOPLE.find(x=>x.id===id);
+  document.getElementById('people').innerHTML=PEOPLE.map(x=>`<button type="button" id="p-${x.id}" aria-pressed="${x.id===id}">${esc(x.label)}</button>`).join('');
+  PEOPLE.forEach(x=>document.getElementById('p-'+x.id).onclick=()=>show(x.id));
+  document.getElementById('explain').innerHTML=
+   `<div class="who"><span class="nm">${esc(p.name)}</span><span class="ttl">HR title: ${esc(p.title)}</span></div>`+
+   `<div class="assign">${p.rows.map(r=>`<div class="arow">
+      <div><div class="lab">Business role</div><div class="v">${esc(r.role)}</div><div class="src">${chip(r.src)}</div>${r.until?`<div class="note" style="margin-top:4px">Until ${esc(r.until)}</div>`:''}</div>
+      <div><div class="lab">Where</div><div class="v">${esc(r.place)}</div></div>
+      <div><div class="lab">Includes</div><ul>${r.bundles.map(b=>`<li>${esc(b)}</li>`).join('')}</ul></div></div>`).join('')}</div>`+
+   `<div class="because">${p.because.map(([a,b])=>`<div><b>${esc(a)}</b>, because ${esc(b)}.</div>`).join('')}</div>`;
+  try{localStorage.setItem('person',id)}catch(e){}
+}
+function grid(role){
+  document.getElementById('rolepick').innerHTML=Object.keys(BUNDLES).map(r=>`<button type="button" data-r="${esc(r)}" aria-pressed="${r===role}">${esc(r)}</button>`).join('');
+  document.querySelectorAll('#rolepick button').forEach(b=>b.onclick=()=>grid(b.dataset.r));
+  const has=new Set(BUNDLES[role]);
+  document.getElementById('bundles').innerHTML=`<b>${esc(role)}</b> includes: ${BUNDLES[role].map(b=>`<span class="verb">${esc(b)}</span>`).join('')}`;
+  const tick=b=>b?(has.has(b)?'<span class="y" aria-label="yes">✓</span>':'<span class="dash" aria-label="no">·</span>'):'';
+  let h='<thead><tr><th>Thing</th><th class="c">View</th><th class="c">Add</th><th class="c">Edit</th><th class="c">Delete</th><th>Other actions</th></tr></thead><tbody>';
+  let last='';
+  for(const r of ROWS){
+    if(r.app!==last){h+=`<tr class="app"><td colspan="6">${esc(r.app)}</td></tr>`;last=r.app}
+    if(r.use){h+=`<tr class="use"><td>Use ${esc(r.app)}</td><td class="c">${tick(r.use)}</td><td></td><td></td><td></td><td></td></tr>`;continue}
+    h+=`<tr><td>${esc(r.thing)}</td>${['View','Add','Edit','Delete'].map(v=>`<td class="c">${tick(r.crud[v])}</td>`).join('')}<td class="verbs">${r.verbs.filter(([,b])=>has.has(b)).map(([v])=>`<span class="verb">${esc(v)}</span>`).join('')||'<span class="dash">—</span>'}</td></tr>`;
+  }
+  document.getElementById('grid').innerHTML=h+'</tbody>';
+}
+let start='sm';try{start=localStorage.getItem('person')||'sm'}catch(e){}
+if(!PEOPLE.some(p=>p.id===start))start='sm';
+show(start);grid('Store Manager');
+</script>
