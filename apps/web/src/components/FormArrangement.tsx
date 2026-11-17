@@ -1,7 +1,7 @@
 // #795: a row's fields arranged by importance, data type, filled first, links
 // first or the Table's own order, in one or two columns, remembered for each
 // person and Table in their server-side settings (beside the list's).
-import { useId, useState, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { api } from '../lib/api'
@@ -14,7 +14,7 @@ import { useIsSystemManager } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 import { useNavigation } from '../lib/navigation'
 import {
-  buttonClasses, fmtDate, pillClasses,
+  buttonClasses, cardClasses, fmtDate, pillClasses,
   Braces, CalendarDays, ChevronDown, ChevronRight, Hash, Image, Link2, ToggleRight, Type, type LucideIcon,
 } from '@featherbase/shop-floor'
 
@@ -93,30 +93,66 @@ export function useFormArrangement(table: string, designed: boolean) {
   }
 }
 
-export function ArrangeBar({ mode, columns, onMode, onColumns }: {
+/** #1267: a record's View menu, at the tab row's right end: how its fields
+ *  are arranged and in how many columns. One button instead of a row of pills. */
+export function ViewMenu({ mode, columns, onMode, onColumns }: {
   mode: Arrangement; columns: Columns; onMode: (m: Arrangement) => void; onColumns: (c: Columns) => void
 }) {
-  const on = 'border-action bg-action-tint text-action'
+  const [open, setOpen] = useState(false)
+  const button = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const menuId = useId()
+  useEffect(() => {
+    if (!open) return
+    menu.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus()
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!menu.current?.contains(target) && !button.current?.contains(target)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', outside, true)
+    return () => document.removeEventListener('pointerdown', outside, true)
+  }, [open])
+  const close = () => { setOpen(false); button.current?.focus() }
+  const on = 'bg-action-tint text-action'
   return (
-    // In a narrow form (beside the pane) the controls wrap whole, never cut.
-    <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm" data-testid="arrange-bar">
-      <span role="group" aria-label="Arrange by" className="flex flex-wrap items-center gap-1.5">
-        <span aria-hidden className="mr-1 whitespace-nowrap text-xs text-ink-subtle">Arrange by</span>
-        {ARRANGEMENTS.map(([m, label]) => (
-          <button key={m} type="button" onClick={() => onMode(m)} aria-pressed={mode === m}
-            className={buttonClasses({ className: `whitespace-nowrap px-2.5 py-1 text-xs ${mode === m ? on : ''}` })}
-            data-testid={`arrange-${m}`}>{label}</button>
-        ))}
-      </span>
-      <span role="group" aria-label="Columns" className="flex shrink-0 items-center gap-1.5">
-        <span aria-hidden className="mr-1 whitespace-nowrap text-xs text-ink-subtle">Columns</span>
-        {([1, 2] as const).map((c) => (
-          <button key={c} type="button" onClick={() => onColumns(c)} aria-pressed={columns === c}
-            aria-label={c === 1 ? 'One column' : 'Two columns'}
-            className={buttonClasses({ className: `min-w-11 whitespace-nowrap px-2.5 py-1 text-xs ${columns === c ? on : ''}` })}
-            data-testid={`arrange-columns-${c}`}>{c}</button>
-        ))}
-      </span>
+    <div className="relative">
+      <button ref={button} type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen((was) => !was)} data-testid="view-menu-button"
+        className={buttonClasses({ className: 'whitespace-nowrap px-2.5 py-1 text-xs' })}>View ▾</button>
+      {open && (
+        <div ref={menu} id={menuId} role="menu" aria-label="View" data-testid="view-menu"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { e.preventDefault(); close(); return }
+            if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+            e.preventDefault()
+            const items = Array.from(menu.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])
+            const at = items.indexOf(document.activeElement as HTMLElement)
+            items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
+          }}
+          className={cardClasses('absolute right-0 top-full z-30 mt-1 w-60 p-1.5 shadow-lg')}>
+          <div role="group" aria-label="Arrange Fields">
+            <p aria-hidden className="px-2 pb-1 pt-1 text-xs text-ink-subtle">Arrange Fields</p>
+            {ARRANGEMENTS.map(([m, label]) => (
+              <button key={m} type="button" role="menuitemradio" aria-checked={mode === m} tabIndex={-1}
+                onClick={() => { onMode(m); close() }} data-testid={`arrange-${m}`}
+                className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none ${mode === m ? 'font-medium text-ink' : 'text-ink'}`}>
+                {label}{mode === m && <span aria-hidden>✓</span>}
+              </button>
+            ))}
+          </div>
+          <div role="group" aria-label="Columns" className="mt-1 flex items-center justify-between px-2 pb-1 pt-1.5">
+            <span aria-hidden className="text-xs text-ink-subtle">Columns</span>
+            <span className="inline-flex gap-0.5 rounded-md bg-subtle p-0.5">
+              {([1, 2] as const).map((c) => (
+                <button key={c} type="button" role="menuitemradio" aria-checked={columns === c} tabIndex={-1}
+                  aria-label={c === 1 ? 'One column' : 'Two columns'}
+                  onClick={() => { onColumns(c); close() }} data-testid={`arrange-columns-${c}`}
+                  className={`min-w-8 rounded px-2 py-0.5 text-xs ${columns === c ? `${on} font-medium` : 'text-ink-muted'}`}>{c}</button>
+              ))}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
