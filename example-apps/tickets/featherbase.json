@@ -103,7 +103,7 @@
       {"column_name": "required", "label": "Required", "column_type": "Check"},
       {"column_name": "field_order", "label": "Order", "column_type": "Int"}
     ]},
-    {"name": "tickets.member", "label": "Tickets member", "module": "Tickets", "title_column": "full_name", "columns": [
+    {"name": "tickets.member", "label": "Person in Tickets", "module": "Tickets", "title_column": "full_name", "columns": [
       {"column_name": "full_name", "label": "Name", "column_type": "Data", "reqd": true}
     ]},
     {"name": "tickets.progress", "label": "Public progress", "module": "Tickets", "id_pattern": "FTP-.########", "columns": [
@@ -150,7 +150,8 @@
     {"id": "report_feedback", "fromVersion": "0.2.15", "toVersion": "0.2.17", "operations": []},
     {"id": "switcher_summary", "fromVersion": "0.2.17", "toVersion": "0.2.18", "operations": []},
     {"id": "sidebar_icon_rail", "fromVersion": "0.2.18", "toVersion": "0.2.19", "operations": []},
-    {"id": "records_to_fix_words", "fromVersion": "0.2.19", "toVersion": "0.2.20", "operations": []}
+    {"id": "records_to_fix_words", "fromVersion": "0.2.19", "toVersion": "0.2.20", "operations": []},
+    {"id": "live_person_names", "fromVersion": "0.2.20", "toVersion": "0.2.21", "operations": [{"kind": "relabelTable", "table": "tickets.member", "from": "Tickets member", "to": "Person in Tickets"}]}
   ],
   "baseTables": {"read": {"Data Quality Row": ["ticket", "affected_table", "affected_row", "fixed_on", "note"]}},
   "permissions": [
