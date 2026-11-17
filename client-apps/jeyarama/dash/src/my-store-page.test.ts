@@ -77,6 +77,19 @@ describe('record links follow what the viewer may open (#1223, Codex)', () => {
     } finally { globalThis.fetch = real }
   })
 
+  // #1218 verifier: without the app's version the platform refuses a read of Dash's own Tables (409), so every
+  // link to a report, bundle or role was plain text on every Dash page.
+  it('names the app version when it asks about one of Dash\'s own Tables', async () => {
+    const { canOpenTable } = await import('./record-link')
+    const real = globalThis.fetch
+    let sent: HeadersInit | undefined
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => { sent = init?.headers; return new Response('{}', { status: 200 }) }) as typeof fetch
+    try {
+      expect(await canOpenTable('dash.business_role')).toBe(true)
+      expect(sent).toEqual({ 'X-Featherbase-App-Version': expect.stringMatching(/^dash@\d+\.\d+\.\d+$/) })
+    } finally { globalThis.fetch = real }
+  })
+
   it('draws a record as plain text until it is known the viewer may open it', async () => {
     const { renderToStaticMarkup } = await import('react-dom/server')
     const { createElement } = await import('react')

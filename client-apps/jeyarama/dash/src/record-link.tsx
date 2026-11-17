@@ -5,7 +5,7 @@
 // hold no grant on the Featherbase Tables behind it, so a link would only lead to a refusal.
 import { useEffect, useState, type ReactNode } from 'react'
 import { RecordLink as SharedRecordLink, useRecordHref } from '@featherbase/shop-floor'
-import { read } from './api'
+import { APP_VERSION_HEADERS, read } from './api'
 
 /** The Table names Dash links to, as Featherbase knows them. */
 export const RECORD = {
@@ -21,7 +21,8 @@ const opens = new Map<string, Promise<boolean>>()
 export function canOpenTable(table: string): Promise<boolean> {
   let answer = opens.get(table)
   if (!answer) {
-    answer = Promise.resolve().then(() => fetch(`/api/table/${encodeURIComponent(table)}:meta`, { credentials: 'same-origin' })).then(r => r.ok, () => false)
+    // The version header: without it the platform refuses a read of Dash's own Tables (409), and every link to a report, bundle or role went plain.
+    answer = Promise.resolve().then(() => fetch(`/api/table/${encodeURIComponent(table)}:meta`, { credentials: 'same-origin', headers: APP_VERSION_HEADERS })).then(r => r.ok, () => false)
     opens.set(table, answer)
   }
   return answer
