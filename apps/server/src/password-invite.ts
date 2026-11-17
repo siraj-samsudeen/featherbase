@@ -81,14 +81,15 @@ function view(row: Record<string, unknown>): InviteView {
  *  the caller's transaction (and its lock on the person) when one is given. */
 async function whyNot(person: string, db: TxSql | typeof sql = sql): Promise<string | null> {
   const [row] = await db`
-    select p.enabled, p.email, (p.password_hash is not null) as has_password, p.expects_google_sign_in,
+    select p.enabled, p.email, (p.password_hash is not null) as has_password, p.expects_google_sign_in, p.expects_microsoft_sign_in,
       exists (select 1 from sign_in_identity i where i.person_id = p.row_id and i.ended_at is null) as other_way
     from person p where p.row_id = ${person}`
   if (!row) throw new AppError('NotFoundError', `Person ${person} not found`)
   if (!row.enabled) return 'This person is disabled'
   if (row.has_password) return 'This person already has a password; they can use "Forgot password"'
-  // #137: a password invite never adds a way in beside another method.
-  if (row.other_way || row.expects_google_sign_in) return 'This person already signs in another way, so they are not given a password'
+  // #137: a password invite never adds a way in beside another method, an
+  // expected Google or Microsoft sign-in included.
+  if (row.other_way || row.expects_google_sign_in || row.expects_microsoft_sign_in) return 'This person already signs in another way, so they are not given a password'
   const email = typeof row.email === 'string' ? row.email.trim() : ''
   if (!email || isReservedEmail(email)) return 'This person has no email address to send the invite to'
   const method = await methodOfKind('password')
