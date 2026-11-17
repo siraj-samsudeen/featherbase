@@ -256,16 +256,16 @@ describe('areas on every route to a role', () => {
     expect(await areaOf(await richWorld(), 'all')).toEqual([['Category Head', 'Every subcategory · Every region']])
   })
 
-  it('says a role corrected to Buyer at a job has no merchandise yet', async () => {
+  it('says a role corrected to Buyer at a job has no area there, and why', async () => {
     const tables = await richWorld()
     await giveRole(context(tables, { payload: { person: 'fm', change: 'Correct', role: roleId(tables, 'Buyer') } }) as never)
-    expect(await areaOf(tables, 'fm')).toEqual([['Buyer', 'No merchandise assigned yet']])
+    expect(await areaOf(tables, 'fm')).toEqual([['Buyer', 'No area: Buyer reaches merchandise, and this person is named only in their job at Lakeside']])
   })
 
-  it('says a Vendor given at a job has no area yet', async () => {
+  it('says a Vendor given at a job, with no place named, has no area there, and why', async () => {
     const tables = await richWorld()
     await giveRole(context(tables, { payload: { person: 'fm', change: 'Also give', role: roleId(tables, 'Vendor') } }) as never)
-    expect((await areaOf(tables, 'fm'))[1]).toEqual(['Vendor', 'No area yet'])
+    expect((await areaOf(tables, 'fm'))[1]).toEqual(['Vendor', 'No area: Vendor reaches the place it is given at, and this person is named only in their job at Lakeside'])
   })
 
   it('leaves out the parts of a job that names no site or section', async () => {
@@ -658,5 +658,54 @@ describe('a role given by hand only, on the Title Map (Codex standard round 5)',
     tables['dash.title_map'].find(r => r.title === 'Staff')!.business_role = roleId(tables, 'Master Data Steward')
     const page = await businessRoles(context(tables) as never)
     expect(page.titles.find(t => t.title === 'Staff')).toMatchObject({ role: null, people: 1 })
+  })
+})
+
+describe('every source gives only the area its role\'s Reaches allows (Codex round 6)', () => {
+  it('leaves a named cluster head unresolved, on both pages, once Cluster Manager reaches one store', async () => {
+    const tables = await seeded()
+    tables.Employee.push({ row_id: 'E-X', name: 'Xavier', employee_code: 'E-X', status: 'Current', person: 'x' })
+    tables.Cluster[0].cluster_manager = 'E-X'
+    tables['dash.business_role'].find(r => r.role_name === 'Cluster Manager')!.reaches = 'Store'
+    const role = (await explainPerson(context(tables, { payload: { person: 'x' } }) as never)).roles[0]
+    const row = (await accessChanges(context(tables) as never)).groups.flatMap(g => g.people).find(p => p.person === 'x')!
+    expect([role.area.parts.map(p => p.name), role.area.stores, row.kinds.includes('stores'), row.stores_lost.map(s => s.name)])
+      .toEqual([['No area: Cluster Manager reaches one store, and this person is named only as head of the North cluster'], 0, true, ['Lakeside']])
+  })
+
+  it('takes Also give Category Head from their merchandise assignments, not their job', async () => {
+    const tables = await seeded()
+    tables['Merchandise Assignment'].push({ row_id: 'M-SM', employee: 'E-SM', responsibility: 'Unmapped desk', category: 'Sarees', operating_region: 'East', starts_on: '2026-01-01' })
+    await giveRole(context(tables, { payload: { person: 'sm', change: 'Also give', role: roleId(tables, 'Category Head') } }) as never)
+    const roles = (await explainPerson(context(tables, { payload: { person: 'sm' } }) as never)).roles
+    expect(roles.find(r => r.name === 'Category Head')!.area.parts.map(p => p.name)).toEqual(['Sarees', 'East'])
+  })
+
+  it('leaves Team Leader given at a store to someone with no job unresolved: a store is not a section', async () => {
+    const tables = await seeded()
+    await giveRole(context(tables, { payload: { person: 'outsider', change: 'Also give', role: roleId(tables, 'Team Leader'), site: 'LKS' } }) as never)
+    const role = (await explainPerson(context(tables, { payload: { person: 'outsider' } }) as never)).roles[0]
+    expect([role.area.parts.map(p => p.name), role.area.stores]).toEqual([['No area: Team Leader reaches one section, and this person is named only at Lakeside'], 0])
+  })
+
+  it('names a merchandise source and a Buyer Section source when their role reaches a store', async () => {
+    const tables = await seeded()
+    tables['dash.title_map'].find(r => r.title === 'Category head')!.business_role = roleId(tables, 'Store Manager')
+    tables['dash.title_map'].find(r => r.title === 'Buyer')!.business_role = roleId(tables, 'Store Manager')
+    tables.Employee.push({ row_id: 'E-BS', name: 'Usha', employee_code: 'E-BS', status: 'Current', person: 'bs' })
+    tables['Buyer Section'] = [{ row_id: 'BS-1', name: 'Silk desk', operating_region: 'East', buyer: 'E-BS', starts_on: '2026-01-01' }]
+    tables['Buyer Section Subcategory'] = [{ row_id: 'BL-1', buyer_section: 'BS-1', subcategory: '010101001', starts_on: '2026-01-01' }]
+    const words = async (person: string) => (await explainPerson(context(tables, { payload: { person } }) as never)).roles[0].area.parts[0].name
+    expect([await words('buy'), await words('bs')]).toEqual([
+      'No area: Store Manager reaches one store, and this person is named only in a merchandise assignment',
+      'No area: Store Manager reaches one store, and this person is named only as a buyer on a Buyer Section'])
+  })
+
+  it('says a role added without Reaches reaches nothing yet', async () => {
+    const tables = await seeded()
+    tables['dash.business_role'].push({ row_id: 'r-x', role_name: 'Auditor' })
+    await giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: 'r-x' } }) as never)
+    const role = (await explainPerson(context(tables, { payload: { person: 'st' } }) as never)).roles.find(r => r.name === 'Auditor')!
+    expect(role.area.parts[0].name).toBe('No area: Auditor reaches nothing yet: its Reaches is not set, and this person is named only in their job at Lakeside')
   })
 })

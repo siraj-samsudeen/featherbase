@@ -70,6 +70,18 @@ function onlyThese(docs: Base, rows: { jobs: Row[]; merchandise: Row[]; clusters
   }
 }
 
+/** How much one Reaches covers, for the sentence an unresolved area reads as. Unset reads as such. */
+const REACHES_ONE: Record<string, string> = { Section: 'one section', Floor: 'one floor', Department: 'one department', Store: 'one store', Cluster: 'one cluster',
+  Merchandise: 'merchandise', 'Given place': 'the place it is given at', '': 'nothing yet: its Reaches is not set' }
+/** Where a person sits by a source that gives their role no area. */
+const PLACED_ONLY: Record<string, (from: Spot, world: ShadowWorld, mine: Mine) => Promise<string>> = {
+  cluster: async (from, world) => `as head of the ${text((await world.names('Cluster')).get((from as { cluster: string }).cluster))} cluster`,
+  merchandise: async () => 'in a merchandise assignment',
+  buyer_sections: async () => 'as a buyer on a Buyer Section',
+  job: async (from, world, mine) => `in their job at ${text((await world.names('Site')).get(exact(mine.jobs.find(j => exact(j.row_id) === (from as { job: string }).job)!.site)))}`,
+  site: async (from, world) => `at ${text((await world.names('Site')).get((from as { site: string }).site))}`,
+}
+
 /** A role reaching a place on the location axis covers what a job of this kind there does: reachOf's rules. */
 const AS_JOB: Partial<Record<Reaches, string>> = { Section: 'Team Leader', Floor: 'Floor Manager', Department: 'Department Manager', Store: 'Store Manager', Cluster: 'Cluster Manager' }
 const LEVELS = ['subcategory', 'category', 'subdivision', 'division'] as const
@@ -214,17 +226,21 @@ async function areaOf(world: ShadowWorld, person: string, held: HeldRole, mine: 
   } else if (spot.kind === 'buyer_sections') {
     places = await reach({ buyerSections: true })
     parts = mine.buyerSections.filter(b => spot.sections.includes(exact(b.row_id))).map(b => ({ name: text(b.name), table: 'Buyer Section', id: exact(b.row_id) }))
-  } else if (spot.kind === 'job' && asJob) {
-    // A hand change naming a place puts the job there ("treat as Store Manager at Lakeside").
+  } else if (spot.kind === 'job') {
+    // A hand change naming a place puts the job there ("treat as Store Manager at Lakeside"). fit() lets only a location reach here.
     const job: Row = { ...mine.jobs.find(j => exact(j.row_id) === spot.job)!, ...(spot.site ? { site: spot.site } : {}) }
-    places = await reach({ jobs: [{ ...job, job: asJob, acting: false }] })
+    places = await reach({ jobs: [{ ...job, job: asJob!, acting: false }] })
     const site = await part('Site', job.site)
     const cluster = (await world.names('Site', 'cluster')).get(exact(job.site))
     parts = reaches === 'Store' ? [site] : reaches === 'Cluster' ? [await part('Cluster', cluster)]
       : reaches === 'Floor' ? [await part('Store Floor', job.floor), site] : reaches === 'Department' ? [{ name: 'Their department' }, site]
         : [await part('Section', job.section), site]
+  } else if (spot.kind === 'unresolved') {
+    // The role reaches a kind of place this source has none of: said plainly, reaching nothing.
+    const role = world.model.roles.find(r => r.id === held.role)!.name
+    parts = [{ name: `No area: ${role} reaches ${REACHES_ONE[reaches]}, and this person is named only ${await PLACED_ONLY[spot.from.kind](spot.from as never, world, mine)}` }]
   } else {
-    parts = [{ name: reaches === 'Merchandise' ? 'No merchandise assigned yet' : 'No area yet' }]
+    parts = [{ name: 'No area yet' }]
   }
   const byStore = placesByStore(places)
   const codes = Object.values(byStore).flatMap(c => c ?? [])

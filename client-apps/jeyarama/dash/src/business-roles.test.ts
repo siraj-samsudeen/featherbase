@@ -1,6 +1,6 @@
 // #1218: business roles in shadow (option A). Made-up roles, titles and people.
 import { describe, expect, it } from 'vitest'
-import { appsOf, areaPrefixes, decisionReports, differences, permissionSentence, rolesOf, shadowReceiver, newModelReports, titleList, opensDash, type BusinessRole, type Permission, type TitleRule } from './business-roles'
+import { fit, appsOf, areaPrefixes, decisionReports, differences, permissionSentence, rolesOf, shadowReceiver, newModelReports, titleList, opensDash, type BusinessRole, type Permission, type Spot, type TitleRule } from './business-roles'
 
 const ON = '2026-11-17'
 const ROLES: BusinessRole[] = [
@@ -323,4 +323,25 @@ describe('a merchandise area as code prefixes', () => {
   it('keeps a subcategory whose siblings are not held as itself', () => {
     expect(areaPrefixes(['010101001'], every)).toEqual(['010101001'])
   })
+})
+
+describe('every source × every Reaches (Codex round 6)', () => {
+  const C = { kind: 'company' }
+  const SPOTS: [string, Spot][] = [['none', { kind: 'none' }], ['job', { kind: 'job', job: 'J1' }], ['job at a store', { kind: 'job', job: 'J1', site: 'LKS' }],
+    ['store by hand', { kind: 'site', site: 'LKS' }], ['cluster', { kind: 'cluster', cluster: 'N' }], ['merchandise', { kind: 'merchandise', assignments: ['M1'] }],
+    ['Buyer Sections', { kind: 'buyer_sections', sections: ['B1'] }]]
+  const REACHES = ['Section', 'Floor', 'Department', 'Store', 'Cluster', 'Merchandise', 'Whole company', 'Given place', null] as const
+  // O: the source's own place. C: the company. S: the store named. U: unresolved.
+  const EXPECTED: Record<string, string> = {
+    'none': 'OOOOOOCOO', 'job': 'OOOOOUCUU', 'job at a store': 'OOOOOUCSU', 'store by hand': 'UUUOUUCOU',
+    'cluster': 'UUUUOUCUU', 'merchandise': 'UUUUUOCUU', 'Buyer Sections': 'UUUUUOCUU',
+  }
+  for (const [name, spot] of SPOTS)
+    it(`gives a ${name} source the area each Reaches allows`, () => {
+      const got = REACHES.map(reaches => {
+        const out = fit(spot, reaches)
+        return JSON.stringify(out) === JSON.stringify(spot) ? 'O' : JSON.stringify(out) === JSON.stringify(C) ? 'C' : out.kind === 'site' ? 'S' : out.kind === 'unresolved' ? 'U' : '?'
+      }).join('')
+      expect(got).toBe(EXPECTED[name])
+    })
 })

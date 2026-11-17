@@ -26,7 +26,7 @@ export const SOURCE_WORDS: Record<Source, string> = {
   hr_title: 'From HR title', merchandise: 'From merchandise assignment', buyer_section: 'Buyer on a Buyer Section', cluster_head: 'Named cluster head', corrected: 'Corrected by hand', also_given: 'Also given by hand',
 }
 /** Where a role applies, before it is turned into stores and subcategories. */
-export type Spot = { kind: 'job'; job: string; site?: string } | { kind: 'merchandise'; assignments: string[] } | { kind: 'cluster'; cluster: string } | { kind: 'buyer_sections'; sections: string[] } | { kind: 'site'; site: string } | { kind: 'company' } | { kind: 'none' }
+export type Spot = { kind: 'job'; job: string; site?: string } | { kind: 'merchandise'; assignments: string[] } | { kind: 'cluster'; cluster: string } | { kind: 'buyer_sections'; sections: string[] } | { kind: 'site'; site: string } | { kind: 'unresolved'; from: Spot } | { kind: 'company' } | { kind: 'none' }
 export interface HeldRole { role: string; source: Source; title: string | null; spot: Spot; hand?: string; until?: string | null; reason?: string | null }
 export interface Unmapped { title: string; job: string }
 
@@ -41,18 +41,31 @@ function mapping(model: Pick<Model, 'rules' | 'roles'>): Map<string, string> {
   return new Map(model.rules.filter(rule => model.roles.some(r => r.id === rule.role && !r.by_hand_only)).map(rule => [key(rule.title), rule.role!]))
 }
 
-/** A role reaches the whole company when its Reaches says so (D2), wherever its holder's assignment sits. */
-export function wholeCompany(role: string, model: Pick<Model, 'roles'>): boolean {
-  return model.roles.find(r => r.id === role)!.reaches === 'Whole company'
-}
 
 const inForce = (hand: HandChange, today: string) => !hand.removed && (!hand.ends_on || hand.ends_on >= today)
+
+/** The location reaches, each covering what a job of its kind covers where the assignment sits. */
+const LOCATION: readonly (Reaches | undefined | null)[] = ['Section', 'Floor', 'Department', 'Store', 'Cluster']
+
+/**
+ * The area a source gives, in a shape its role's Reaches allows (Codex rounds 5 and 6). Whole company is the
+ * company from any source. A job gives a location reach its place; a store named by hand gives Store, or the
+ * place a Given place role is given at; a cluster gives Cluster; merchandise rows and Buyer Sections give Merchandise. Any
+ * other pairing is left unresolved, naming where the person sits, and reaches nothing.
+ */
+export function fit(spot: Spot, reaches: Reaches | null | undefined): Spot {
+  if (reaches === 'Whole company') return { kind: 'company' }
+  if (spot.kind === 'job' && spot.site && reaches === 'Given place') return { kind: 'site', site: spot.site }
+  const fits = spot.kind === 'none' || (spot.kind === 'job' && LOCATION.includes(reaches)) || (spot.kind === 'site' && (reaches === 'Store' || reaches === 'Given place'))
+    || (spot.kind === 'cluster' && reaches === 'Cluster') || ((spot.kind === 'merchandise' || spot.kind === 'buyer_sections') && reaches === 'Merchandise')
+  return fits ? spot : { kind: 'unresolved', from: spot }
+}
 
 /** A person's business roles, each with its source and spot, and the titles nobody has mapped yet. */
 export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; unmapped: Unmapped[] } {
   const map = mapping(model)
-  const company = (role: string) => wholeCompany(role, model)
-  const at = (role: string, job: string, site?: string | null): Spot => (company(role) ? { kind: 'company' } : { kind: 'job', job, ...(site ? { site } : {}) })
+  const reachesOf = new Map(model.roles.map(r => [r.id, r.reaches]))
+  const at = (job: string, site?: string | null): Spot => ({ kind: 'job', job, ...(site ? { site } : {}) })
   const hand = facts.hand.filter(h => inForce(h, model.today) && model.roles.some(r => r.id === h.role))
   const corrections = hand.filter(h => h.change === 'Correct')
   const handFacts = (h: HandChange) => ({ hand: h.id, until: h.ends_on ?? null, reason: h.reason ?? null })
@@ -65,14 +78,14 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
     if (corrections.length) {
       // A Correct naming a place applies once, there; one naming none applies at each job.
       for (const c of corrections.filter(c => !c.site || job === facts.jobs[0]))
-        held.push({ role: c.role, source: 'corrected', title, spot: at(c.role, job.id, c.site), ...handFacts(c) })
+        held.push({ role: c.role, source: 'corrected', title, spot: at(job.id, c.site), ...handFacts(c) })
       continue
     }
     if (!role) { unmapped.push({ title: job.designation ?? job.job, job: job.job }); continue }
-    held.push({ role, source: 'hr_title', title, spot: at(role, job.id) })
+    held.push({ role, source: 'hr_title', title, spot: at(job.id) })
   }
   // With no job, a hand change applies at the store it names, as its own area; naming none, nowhere.
-  const placed = (h: HandChange): Spot => (company(h.role) ? { kind: 'company' } : h.site ? { kind: 'site', site: h.site } : { kind: 'none' })
+  const placed = (h: HandChange): Spot => (h.site ? { kind: 'site', site: h.site } : { kind: 'none' })
   if (!facts.jobs.length)
     for (const c of corrections) held.push({ role: c.role, source: 'corrected', title: null, spot: placed(c), ...handFacts(c) })
   // Merchandise assignments: one role per mapped responsibility, over all its assignments.
@@ -84,25 +97,28 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
     entry.assignments.push(m.id)
     byRole.set(role, entry)
   }
-  for (const [role, { title, assignments }] of byRole)
-    held.push({ role, source: 'merchandise', title, spot: company(role) ? { kind: 'company' } : { kind: 'merchandise', assignments } })
+  for (const [role, { title, assignments }] of byRole) held.push({ role, source: 'merchandise', title, spot: { kind: 'merchandise', assignments } })
   // A buyer named only on Buyer Sections holds the Buyer role there; with Buyer rows too, their merchandise run covers both.
   const buyerRole = map.get(key(BUYER_TITLE))
   if (facts.buyerSections?.length && buyerRole && !byRole.has(buyerRole))
-    held.push({ role: buyerRole, source: 'buyer_section', title: null, spot: company(buyerRole) ? { kind: 'company' } : { kind: 'buyer_sections', sections: facts.buyerSections } })
+    held.push({ role: buyerRole, source: 'buyer_section', title: null, spot: { kind: 'buyer_sections', sections: facts.buyerSections } })
   // A named cluster head holds whatever role the title Cluster Manager maps to; none while it maps to nothing.
   const clusterRole = map.get(key(CLUSTER_TITLE))
-  // Every source asks the role's Reaches first: a role reaching the whole company does so from any of them.
-  for (const cluster of clusterRole ? facts.clustersHeaded : [])
-    held.push({ role: clusterRole!, source: 'cluster_head', title: null, spot: company(clusterRole!) ? { kind: 'company' } : { kind: 'cluster', cluster } })
+  for (const cluster of clusterRole ? facts.clustersHeaded : []) held.push({ role: clusterRole!, source: 'cluster_head', title: null, spot: { kind: 'cluster', cluster } })
   for (const given of hand.filter(h => h.change === 'Also give')) {
     const jobs = given.site ? facts.jobs.slice(0, 1) : facts.jobs
-    const spots: Spot[] = company(given.role) || given.site && !jobs.length ? [placed(given)]
-      : jobs.length ? jobs.map(job => at(given.role, job.id, given.site))
+    // The source follows the role's Reaches: a merchandise role from their merchandise assignments, others from their jobs.
+    const merchandiseFirst = reachesOf.get(given.role) === 'Merchandise' && facts.merchandise.length > 0
+    const spots: Spot[] = merchandiseFirst ? [{ kind: 'merchandise', assignments: facts.merchandise.map(m => m.id) }]
+      : given.site && !jobs.length ? [placed(given)]
+      : jobs.length ? jobs.map(job => at(job.id, given.site))
         : facts.merchandise.length ? [{ kind: 'merchandise', assignments: facts.merchandise.map(m => m.id) }] : [{ kind: 'none' }]
     for (const spot of spots) held.push({ role: given.role, source: 'also_given', title: null, spot, ...handFacts(given) })
   }
-  return { held, unmapped }
+  // Every source's area in the shape its role's Reaches allows; a whole-company role held twice from one source is one.
+  const fitted = held.map(h => ({ ...h, spot: fit(h.spot, reachesOf.get(h.role)) }))
+  const seen = new Set<string>()
+  return { held: fitted.filter(h => { const k = JSON.stringify([h.role, h.source, h.hand, h.spot]); return !seen.has(k) && seen.add(k) }), unmapped }
 }
 
 const roleName = (id: string, roles: BusinessRole[]) => roles.find(r => r.id === id)!.name
