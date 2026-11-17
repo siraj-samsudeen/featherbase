@@ -170,6 +170,7 @@ describe('#1257 password invite', () => {
     const googleInvited = await makePerson({ email: 'g@store.test' })
     await inviteGoogleRaw(googleInvited, 'g@store.test')
     const expectsGoogle = await makePerson({ email: 'eg@store.test', expects_google_sign_in: true })
+    const expectsMicrosoft = await makePerson({ email: 'em@partner.test', expects_microsoft_sign_in: true })
     const noEmail = await makePerson({ full_name: 'Store staff' })
     const disabled = await makePerson({ email: 'off@partner.test', enabled: false })
 
@@ -178,6 +179,7 @@ describe('#1257 password invite', () => {
       [hr, 'signs in another way'],
       [googleInvited, 'signs in another way'],
       [expectsGoogle, 'signs in another way'],
+      [expectsMicrosoft, 'signs in another way'],
       [noEmail, 'no email address'],
       [disabled, 'disabled'],
     ]
@@ -191,7 +193,7 @@ describe('#1257 password invite', () => {
     const [{ n }] = await sql`select count(*)::int as n from email_sink where subject = 'Set your password'`
     expect(n).toBe(0)
     // #137: none of them was given a password.
-    const hashes = await sql`select row_id from person where row_id in ${sql([hr, googleInvited, expectsGoogle, noEmail, disabled])} and password_hash is not null`
+    const hashes = await sql`select row_id from person where row_id in ${sql([hr, googleInvited, expectsGoogle, expectsMicrosoft, noEmail, disabled])} and password_hash is not null`
     expect(hashes).toEqual([])
   })
 
