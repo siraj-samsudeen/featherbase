@@ -2,7 +2,7 @@ export { DEFAULT_ID_PATTERN, namingColumn, columnNamingPattern, idFromColumn, re
 export { tableSchemaToZod, zodFieldErrors, readingPresentationSchema, type ReadingPresentation, type ColumnDef } from './schema'
 export { choiceLabel } from './choice-label'
 export { DISPLAY_DEFAULTS } from './display-settings'
-export { NAVIGATION_SETTINGS } from './user-settings'
+export { LIST_LAYOUTS, NAVIGATION_SETTINGS, type ListLayout } from './user-settings'
 export { METADATA_OVERRIDE_PROPERTIES, METADATA_OVERRIDE_BOOLEAN_VALUES } from './metadata-overrides'
 export type { RowCapabilities } from './row-capabilities'
 export { canRetire } from './row-retirement'

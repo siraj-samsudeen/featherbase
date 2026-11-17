@@ -141,6 +141,8 @@ export interface TableMeta {
   // and whether a person with no Data Scope on them sees no rows at all.
   scope_on?: string[] | null
   scope_required?: boolean
+  /** #1259: a queue's lists open on cards (List And Record) until a person chooses. */
+  queue?: boolean
   // #905: archived: readable, never written, out of everyday menus.
   archived_at?: string | Date | null
   archived_by?: string | null
