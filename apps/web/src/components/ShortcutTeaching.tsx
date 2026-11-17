@@ -136,7 +136,7 @@ function ShortcutsPanel() {
         <kbd className={kbdClasses}>?</kbd>
         <span className="whitespace-nowrap text-right text-xs text-positive">You found it</span>
       </div>
-      <p className="text-xs text-ink-subtle">{inUse} of {shortcuts.length} in use by keyboard.</p>
+      {shortcuts.length > 0 && <p className="text-xs text-ink-subtle">{inUse} of {shortcuts.length} in use by keyboard.</p>}
       {quiet && <p className="text-xs text-ink-subtle">Tips are quiet until {quietUntilText(learning)}.</p>}
       <div className="flex flex-wrap gap-2">
         {quiet ? (
@@ -201,6 +201,8 @@ function KeyBadges({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
 }
 
 const INTERACTIVE = 'button, a[href], input, select, textarea, [role=tab], [role=button]'
+/** The widths a tip tries, widest first, to stay in the row under the top. */
+const TIP_WIDTHS = [760, 720, 680, 640, 600, 560, 520, 480]
 
 function Tip({ tip }: { tip: ShownTip }) {
   const { learning } = useShortcutState()
@@ -209,15 +211,30 @@ function Tip({ tip }: { tip: ShownTip }) {
   useLayoutEffect(() => {
     const el = ref.current! // rendered: the effect runs after the tip is in the page
     function place() {
-      const size = { width: el.offsetWidth, height: el.offsetHeight }
       const area = contentArea()
       const top = area.top + 16
-      const avoid: Box[] = [...document.querySelectorAll<HTMLElement>(INTERACTIVE)]
+      const controls = [...document.querySelectorAll<HTMLElement>(INTERACTIVE)]
         .filter((c) => !el.contains(c))
         .map((c) => c.getBoundingClientRect())
-        .filter((r) => r.width > 0 && r.bottom > top && r.top < top + 4 * (size.height + 8))
-      if (tip.near) avoid.push(tip.near)
-      setAt(placeTip(size, avoid, { left: area.left + 16, right: area.right - 16, top }))
+        .filter((r) => r.width > 0)
+      if (tip.near) controls.push(tip.near)
+      // Widest first; a narrower tip (more lines) that still fits in the top
+      // row beats a wide one pushed down onto the page (verifier round 3:
+      // the expanded sidebar leaves too little room beside the title).
+      let best: { at: { left: number; top: number }; width: number } | null = null
+      for (const width of TIP_WIDTHS) {
+        el.style.maxWidth = `${width}px`
+        const size = { width: el.offsetWidth, height: el.offsetHeight }
+        const avoid: Box[] = controls.filter((r) => r.bottom > top && r.top < top + 4 * (size.height + 8))
+        const spot = placeTip(size, avoid, { left: area.left + 16, right: area.right - 16, top })
+        best ??= { at: spot, width }
+        if (spot.top === top) {
+          best = { at: spot, width }
+          break
+        }
+      }
+      el.style.maxWidth = `${best!.width}px`
+      setAt(best!.at)
     }
     place()
     // A tip shown while the page is still moving (the sidebar animating to its
@@ -238,7 +255,7 @@ function Tip({ tip }: { tip: ShownTip }) {
       role="status"
       aria-label={tip.reminder ? 'Reminder' : 'Tip'}
       className={cx(
-        'fixed z-[45] flex max-w-[760px] items-center gap-2 rounded-control border bg-surface py-1.5 pl-2.5 pr-1.5 text-[13px] text-ink shadow-lg',
+        'fixed z-[45] flex items-center gap-2 rounded-control border bg-surface py-1.5 pl-2.5 pr-1.5 text-[13px] text-ink shadow-lg',
         tip.reminder ? 'border-caution' : 'border-action',
       )}
       style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: 'hidden' }}

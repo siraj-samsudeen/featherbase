@@ -54,3 +54,30 @@ test('the first tip covers no control and stays on screen', async ({ session, re
       }).toBeLessThanOrEqual(2)
     })
 })
+
+test('a reminder with the sidebar expanded still fits near the top, covering no control', async ({ session, request }) => {
+  // Used the key two days ago, then the mouse once: two more mouse uses bring
+  // the reminder, and leave the sidebar expanded (the narrower content area).
+  const headers = await adminAuth(request)
+  const seeded = await request.put('/api/user_settings/__shortcuts', {
+    headers,
+    data: { use: { sidebar: { keys: 1, mouse: 1, shown: 0, lastKey: Date.now() - 2 * 86_400_000 } }, quietUntil: 0, quiets: 0, lastTip: 0 },
+  })
+  expect(seeded.ok()).toBe(true)
+
+  await session
+    .visit('/featherbase/admin/table/Person')
+    .step('collapse and expand the sidebar with the mouse', async ({ page }) => {
+      const control = page.getByTestId('sidebar-collapse')
+      await control.click()
+      await control.click()
+    })
+    .step('the reminder sits near the top of the page, covering no control', async ({ page }) => {
+      const reminder = page.getByRole('status', { name: 'Reminder' })
+      await expect(reminder).toContainText(/You've done this by mouse 3 times since you last used (⌘B|Ctrl\+B)\./)
+      await expect.poll(() => coverage(page, 'shortcut-tip')).toEqual({ covered: [], inside: true })
+      const main = await page.locator('main').boundingBox()
+      const box = await reminder.boundingBox()
+      expect(box!.y - main!.y).toBeLessThan(80)
+    })
+})
