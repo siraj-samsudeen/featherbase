@@ -51,11 +51,12 @@ export function dataColumns(meta: TableMeta): ColumnDef[] {
 export function defaultColumnNames(meta: TableMeta): Set<string> {
   const data = dataColumns(meta)
   const flagged = data.filter((c) => c.in_list_view)
-  const names = new Set((flagged.length ? flagged : data.slice(0, 2)).map((c) => c.column_name))
-  // admin-lists 4: an id the list no longer leads with waits in Show Columns.
+  if (flagged.length) return new Set(flagged.map((c) => c.column_name))
+  // admin-lists 4: with no list columns chosen, an id the list no longer leads
+  // with waits in Show Columns. One someone made a list column stays one.
   const id = idTitle(meta)
-  if (id && listLeader(meta) !== id) names.delete(id.column_name)
-  return names
+  const pool = id && listLeader(meta) !== id ? data.filter((c) => c !== id) : data
+  return new Set(pool.slice(0, 2).map((c) => c.column_name))
 }
 
 /** Whether one data column shows in this person's view. */

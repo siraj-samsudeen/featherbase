@@ -238,7 +238,8 @@ export function TreeOfAll({ table, filters, expanded, onExpandedChange, onOpen }
 }) {
   const [pages, setPages] = useState(1)
   const meta = useQuery(metaQuery(table)).data
-  const fields = meta ? listFields(viewColumns(meta, {})) : []
+  // The row's own title too, whatever the list leads with (admin-lists 4): a line is named by it.
+  const fields = meta ? [...new Set([...listFields(viewColumns(meta, {})), ...(meta.title_column ? [meta.title_column] : [])])] : []
   // One read per page of 20, from its own offset: a single growing read
   // would stop at the server's cap of 500 rows.
   const reads = useQueries({

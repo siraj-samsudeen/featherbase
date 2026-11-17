@@ -25,14 +25,6 @@ const sentence = (words: string) => words.split(/\s+/).map((w, i) => (/^[A-Z0-9]
  *  reads "Ticket") and a view. Every other Table is named by its name. */
 const mayHaveLabel = (t: TableSummary) => t.row_id.includes('.') || t.kind === 'view'
 
-interface RowCount { rows: number; exact: boolean }
-
-/** "48", "1,280"; an estimate as "about 1,28,000" (3 significant figures,
- *  Indian grouping, never a lakh unit). */
-export function rowCountWords({ rows, exact }: RowCount): string {
-  return exact ? fmtCount(rows) : `about ${fmtCount(Number(rows.toPrecision(3)))}`
-}
-
 export function AllTablesPage() {
   const tables = useShellTables()
   const labelled = (tables ?? []).filter(mayHaveLabel)
@@ -44,7 +36,7 @@ export function AllTablesPage() {
   const manage = useCapabilities()?.manage === true
   const counts = useQuery({
     queryKey: ['table-counts'],
-    queryFn: () => api.get<{ counts: Record<string, RowCount> }>('/api/table_counts'),
+    queryFn: () => api.get<{ counts: Record<string, number> }>('/api/table_counts'),
     enabled: manage,
     staleTime: 60_000,
   }).data?.counts
@@ -118,7 +110,8 @@ export function AllTablesPage() {
       {/* admin-lists 11: what it holds and how many rows, muted, on the right. */}
       <span className="ml-auto flex min-w-0 shrink items-baseline gap-2 text-[13px] font-normal text-ink-muted">
         {dt.description && <span className="min-w-0 truncate">{dt.description}</span>}
-        {counts?.[dt.row_id] && <span className="shrink-0 tabular-nums" data-testid="all-tables-count">{rowCountWords(counts[dt.row_id])}</span>}
+        {/* Exact, in Indian grouping ("1,28,412"); a count that took too long is left out. */}
+        {counts?.[dt.row_id] !== undefined && <span className="shrink-0 tabular-nums" data-testid="all-tables-count">{fmtCount(counts[dt.row_id])}</span>}
       </span>
     </Link>
   )

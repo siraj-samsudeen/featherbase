@@ -73,3 +73,18 @@ test("a list's Delete permanently removes the selected rows and clears the selec
   await waitFor(() => expect(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')).toHaveLength(2), T)
   expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument()
 })
+
+// Codex review (admin-lists 4): a list may lead with a link, but Tree of all names each line by the row's own title.
+test("Tree of all names a line by its title even where the list leads with a link", async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Ltp Store', id_pattern: 'prompt', title_column: 'store_name', columns: [{ column_name: 'store_name', column_type: 'Data' }] })
+  await admin.post('/api/save_row', { table: 'Ltp Store', row: { row_id: 'st-1', store_name: 'Lakeside' } })
+  await admin.post('/api/table_def', {
+    name: 'Ltp Shelf', id_pattern: 'field:shelf_code', title_column: 'shelf_code',
+    columns: [{ column_name: 'shelf_code', column_type: 'Data' }, { column_name: 'store', column_type: 'Reference', reference_table: 'Ltp Store' }],
+  })
+  await admin.post('/api/save_row', { table: 'Ltp Shelf', row: { shelf_code: 'LKS-S1', store: 'st-1' } })
+  await renderApp(tableHref('Ltp Shelf'), admin)
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }, T))
+  const t = await tree()
+  await waitFor(() => expect(topLines(t)[0]).toHaveTextContent('LKS-S1'))
+})

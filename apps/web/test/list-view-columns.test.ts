@@ -182,10 +182,11 @@ describe("a colleague's choices on a changed default", () => {
 // admin-lists 4 (one-app-chrome, 17-Nov): a Table whose title is its own id
 // ("LKS-Bags & Silk-2026-11-16") leads its list with its first readable link.
 describe('a Table whose title is its id', () => {
+  // As the client's base Tables are: no column flagged for the list.
   const departmentSection = (columns = [
-    column('department_section_id', { in_list_view: true }),
-    column('store', { column_type: 'Reference', reference_table: 'Site', in_list_view: true }),
-    column('section', { column_type: 'Reference', reference_table: 'Section', in_list_view: true }),
+    column('department_section_id'),
+    column('store', { column_type: 'Reference', reference_table: 'Site' }),
+    column('section', { column_type: 'Reference', reference_table: 'Section' }),
   ]) => ({ name: 'Department Section', id_pattern: 'field:department_section_id', title_column: 'department_section_id', columns }) as unknown as TableMeta
 
   it('leads with its first readable link, and the id waits in Show Columns', () => {
@@ -194,8 +195,20 @@ describe('a Table whose title is its id', () => {
   })
 
   it('keeps the id where the Table has no readable link: never the only identifier hidden', () => {
-    const lone = departmentSection([column('department_section_id', { in_list_view: true }), column('note', { in_list_view: true })])
+    const lone = departmentSection([column('department_section_id'), column('note')])
     expect(names(viewColumns(lone, {}))).toEqual(['department_section_id', 'note'])
+  })
+
+  // Codex review: "Make this the default for everyone" keeps an id someone chose to show.
+  it('an id someone made a list column for everyone stays one', () => {
+    const meta = departmentSection([
+      column('department_section_id'),
+      column('store', { column_type: 'Reference', reference_table: 'Site' }),
+      column('section', { column_type: 'Reference', reference_table: 'Section' }),
+    ])
+    expect(names(viewColumns(meta, {}))).toEqual(['store', 'section'])
+    const saved = listFlagsFromView(meta, switchColumn(meta, {}, 'department_section_id', true))
+    expect(names(viewColumns(saved, {}))).toEqual(['store', 'department_section_id', 'section'])
   })
 
   it('a title that is not the id is unchanged', () => {
