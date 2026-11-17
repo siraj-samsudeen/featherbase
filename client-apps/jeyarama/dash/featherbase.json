@@ -3,6 +3,8 @@
   "platformVersion": "2026-10",
   "name": "dash",
   "title": "Dash",
+  "summary": "Sales and targets for the stores you look after",
+  "icon": "report",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "dash.report",
@@ -41,6 +43,10 @@
       "name": "department_setup",
       "title": "Set up my department: its sections and its name",
       "grantsAccess": false
+    },
+    {
+      "name": "buyer_section_move",
+      "title": "Move a subcategory to another Buyer Section"
     }
   ],
   "secrets": [
@@ -619,7 +625,9 @@
       "Subcategory",
       "Department",
       "Department Section",
-      "Cluster"
+      "Cluster",
+      "Buyer Section",
+      "Buyer Section Subcategory"
     ],
     "unmarkedTables": [
       "Employee",
@@ -632,7 +640,13 @@
       "Subcategory",
       "Department",
       "Department Section",
-      "Cluster"
+      "Cluster",
+      "Buyer Section",
+      "Buyer Section Subcategory"
+    ],
+    "optionalTables": [
+      "Buyer Section",
+      "Buyer Section Subcategory"
     ]
   },
   "permissions": [
@@ -831,6 +845,14 @@
           "kind": "generic"
         }
       },
+      "feedback_context": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
       "reach_problem": {
         "policy": {
           "kind": "table"
@@ -947,6 +969,78 @@
           "kind": "generic"
         },
         "outbound": true
+      },
+      "manages_area": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "my_store": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "coverage": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "section_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "find_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "coverage_people": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "dash_pages_open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "buyer_sections": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "buyer_section_approvals": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
       }
     }
   },
@@ -2092,11 +2186,61 @@
       "operations": []
     },
     {
-      "id": "view_as",
+      "id": "one_app_chrome",
       "fromVersion": "0.13.7",
       "toVersion": "0.13.8",
       "operations": []
-    }
+    },
+    {
+      "id": "ends_on_inclusive",
+      "fromVersion": "0.13.8",
+      "toVersion": "0.13.9",
+      "operations": []
+    },
+    {
+      "id": "manager_area",
+      "fromVersion": "0.13.9",
+      "toVersion": "0.13.10",
+      "operations": []
+    },
+    {
+      "id": "report_an_issue",
+      "fromVersion": "0.13.10",
+      "toVersion": "0.13.12",
+      "operations": []
+    },
+    {
+      "id": "report_access_redesign",
+      "fromVersion": "0.13.12",
+      "toVersion": "0.13.13",
+      "operations": []
+    },
+    {
+      "id": "more_list_closes",
+      "fromVersion": "0.13.13",
+      "toVersion": "0.13.14",
+      "operations": []
+    },
+    {
+      "id": "store_run_by",
+      "fromVersion": "0.13.14",
+      "toVersion": "0.13.15",
+      "operations": []
+    },
+    {
+      "id": "buyer_section_desks",
+      "fromVersion": "0.13.15",
+      "toVersion": "0.13.16",
+      "operations": []
+    },
+    {
+      "id": "buyer_section_moves",
+      "fromVersion": "0.13.16",
+      "toVersion": "0.13.17",
+      "operations": []
+    },
+    {"id": "switcher_summary", "fromVersion": "0.13.17", "toVersion": "0.13.19", "operations": []},
+    {"id": "view_as", "fromVersion": "0.13.19", "toVersion": "0.13.20", "operations": []}
   ],
   "baseTables": {
     "read": {
@@ -2125,6 +2269,23 @@
         "category",
         "subcategory",
         "operating_region",
+        "starts_on",
+        "ends_on"
+      ],
+      "Buyer Section": [
+        "buyer_section_id",
+        "name",
+        "operating_region",
+        "buyer",
+        "category_head",
+        "purchasing_group",
+        "starts_on",
+        "ends_on"
+      ],
+      "Buyer Section Subcategory": [
+        "buyer_section_subcategory_id",
+        "buyer_section",
+        "subcategory",
         "starts_on",
         "ends_on"
       ],
@@ -2255,6 +2416,18 @@
         ],
         "stamp": [
           "department_section_id",
+          "source_key"
+        ],
+        "startsOn": "starts_on",
+        "endsOn": "ends_on"
+      },
+      "Buyer Section Subcategory": {
+        "columns": [
+          "buyer_section",
+          "subcategory"
+        ],
+        "stamp": [
+          "buyer_section_subcategory_id",
           "source_key"
         ],
         "startsOn": "starts_on",
@@ -2392,6 +2565,46 @@
         }
       },
       "add_report": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "move_staff": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "manage_add": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "manage_remove": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "move_buyer_subcategory": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "decide_buyer_section": {
         "policy": {
           "kind": "table"
         },

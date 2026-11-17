@@ -10,7 +10,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { rowHref } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
-import { Eye, History, Search, Clock, UserRoundSearch, Segmented, buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
+import { Eye, History, Search, Clock, UserRoundSearch, RecordLink, Segmented, buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
 export interface ViewAsPerson {
   person: string
@@ -103,13 +103,6 @@ async function changeView(path: string, body: unknown, onError: (message: string
   } catch (error) {
     onError(error instanceof ApiError ? error.message : 'Could not change the view. Try again.')
   }
-}
-
-/** A person's record, as a link when the tester may open it, else plain text (every record shown is a link). */
-function PersonName({ person, linked, className }: { person: ViewAsPerson; linked: boolean; className?: string }) {
-  return linked
-    ? <a href={rowHref('Person', person.person)} className={`${className ?? ''} underline-offset-2 hover:underline`} data-testid="view-as-person-link">{person.name}</a>
-    : <span className={className}>{person.name}</span>
 }
 
 function PersonRow({ person, onPick, linked }: { person: ViewAsPerson; onPick: (person: ViewAsPerson) => void; linked: boolean }) {
@@ -264,7 +257,7 @@ export function ViewAsBanner() {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Eye aria-hidden size={16} className="shrink-0" />
         <p className="min-w-0 flex-1 text-sm">
-          Viewing as <strong data-testid="view-as-name"><PersonName person={viewing} linked={Boolean(data.person_link)} className="text-surface" /></strong>
+          Viewing as <strong data-testid="view-as-name"><RecordLink table="Person" rowId={viewing.person} name={viewing.name} canOpen={Boolean(data.person_link)} className="text-surface" /></strong>
           {line && <span className="opacity-80"> · {line}</span>}
           <span className="ml-2 inline-block rounded-full bg-caution px-2 py-0.5 align-middle text-[11px] font-semibold uppercase tracking-wide text-surface">For viewing only</span>
         </p>

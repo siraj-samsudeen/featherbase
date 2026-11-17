@@ -712,6 +712,8 @@ async function saveChildren(
   parentWriteTiers: ColumnSelection,
   action: 'write' | 'create',
   createdBy: string,
+  /** #1223: judge each child row as written against the writer's Data Scopes (not for a trusted or shared write). */
+  checkScope: boolean,
 ) {
   const childMeta = await getMeta(input.childTable)
   // Child columns are subject to the same atomic refusal as parent columns.
@@ -753,6 +755,13 @@ async function saveChildren(
       continue
     }
     await validateLinks(tx, childMeta, fieldValues, user, `${input.columnName}.${i}.`, isExisting ? stored.get(String(rowId)) : undefined)
+    // A new child's id is made first, so the scope judges the row exactly as it is inserted.
+    const newId = isExisting ? undefined : hashRowId()
+    if (checkScope) {
+      // An existing child is judged as stored and as it will be: neither can lie outside the scope.
+      if (isExisting) await assertUserPermissions(user, childMeta, stored.get(String(rowId))!)
+      await assertUserPermissions(user, childMeta, isExisting ? { ...stored.get(String(rowId)), ...fieldValues } : { ...fieldValues, row_id: newId, [childKey]: newId })
+    }
     const now = new Date()
     if (isExisting) {
       keep.add(String(rowId))
@@ -764,7 +773,7 @@ async function saveChildren(
       })} where ${tx(childKey)} = ${String(rowId)}`
     } else {
       await tx`insert into ${tx(table)} ${tx({
-        [childKey]: hashRowId(),
+        [childKey]: newId,
         created_by: user,
         updated_by: user,
         created_at: now,
@@ -783,6 +792,8 @@ async function saveChildren(
 
   // Rows omitted from the payload are deleted — the payload is authoritative.
   const remove = [...stored.keys()].filter((n) => !keep.has(n))
+  // A child left out is deleted: only one the writer could reach.
+  if (checkScope) for (const name of remove) await assertUserPermissions(user, childMeta, stored.get(name)!)
   if (remove.length)
     await tx`delete from ${tx(table)} where ${tx(childKey)} in ${tx(remove)}`
 }
@@ -1053,6 +1064,8 @@ async function writeDoc(
       await runHooks('before_save', ctx)
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
       await assertMandatoryAccess(user, meta, row)
+      // PERM-005 (#1223): the row as inserted, after defaults and hooks, sits inside the caller's Data Scopes.
+      if (!opts.skipPermissions) await assertUserPermissions(user, meta, { ...row, created_by: user })
       stripUnwritableFields(meta.columns.filter((column) => !column.read_only), writeTiers, row, fieldValues)
       await assertAttachedTarget(meta, row, null, user, Boolean(opts.skipPermissions))
       assertStoredFileUrl(meta, row, opts.uploadedFileUrl)
@@ -1082,7 +1095,7 @@ async function writeDoc(
       // #897: roles given at creation are a grant like any later one.
       const accessBefore = await accessChildSummaries(stx, meta, String(rowId), finalChildInputs)
       for (const input of finalChildInputs)
-        await saveChildren(stx, meta, rowId, input, user, writeTiers, 'create', user)
+        await saveChildren(stx, meta, rowId, input, user, writeTiers, 'create', user, !opts.skipPermissions)
       const accessChanges = await accessChildChanges(stx, meta, String(rowId), finalChildInputs, accessBefore)
       await recordVersion(stx, meta, String(rowId), inserted[0] as RowValues, inserted[0] as RowValues, user, accessChanges, true)
       ctx.row = { ...(inserted[0] as RowValues) }
@@ -1357,6 +1370,9 @@ async function updateDoc(
       stripUnwritableFields(meta.columns.filter((column) => !column.read_only && column.column_type !== 'Sub-table'), writeTiers, row, existing as RowValues)
       await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
       await assertMandatoryAccess(user, meta, row)
+      // PERM-005 (#1223): the row as written must sit inside the caller's Data Scopes too, as on
+      // the bound path; judging only the loaded row let a permitted row be edited out of scope.
+      if (!sharedWrite) await assertUserPermissions(user, meta, row)
       await assertAttachedTarget(meta, row, existing as RowValues, user, trusted)
       assertStoredFileUrl(meta, row, existing.file_url)
       const dbRow = {
@@ -1379,7 +1395,7 @@ async function updateDoc(
       const childInputs = pickChildInputs(meta, row)
       const accessBefore = await accessChildSummaries(stx, meta, name, childInputs)
       for (const input of childInputs)
-        await saveChildren(stx, meta, name, input, user, writeTiers, 'write', String(existing.created_by))
+        await saveChildren(stx, meta, name, input, user, writeTiers, 'write', String(existing.created_by), !sharedWrite)
       const accessChanges = await accessChildChanges(stx, meta, name, childInputs, accessBefore)
       await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user, accessChanges)
       ctx.row = { ...(updated as RowValues) }

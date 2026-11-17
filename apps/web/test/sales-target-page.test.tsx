@@ -169,6 +169,20 @@ test('a person with no viewer role is told plainly, with no API wording and no i
   expect(note).not.toHaveTextContent('session could not be created')
 })
 
+// #1173: someone whose request for Dash was declined is told so, never why.
+test('a person whose request was declined is told so, without the reason', async ({ admin, createUser }) => {
+  const outsider = await createUser({ email: 'declined.page@example.com' })
+  const { requestAccess } = await import('server/src/waiting-for-access')
+  await requestAccess(outsider.user!, 'dash')
+  const { sql } = await import('server/src/db')
+  const [row] = await sql`select row_id from access_request where person = ${outsider.user!} and app_name = 'dash'`
+  await admin.post(`/api/access_request/${row.row_id}/decline`, { reason: 'Secret reason' })
+  await renderApp('/featherbase/sales-target', outsider)
+  const note = await screen.findByTestId('embed-state')
+  await waitFor(() => expect(note).toHaveTextContent('An admin declined your request. Ask your manager if you need it.'))
+  expect(note).not.toHaveTextContent('Secret reason')
+})
+
 // #409: a person whose sections span two stores reads one store at a time and switches with a dropdown.
 // The page's own fetches are recorded (signal dropped — the jsdom AbortSignal is not Node fetch's, #417).
 async function twoStoreReader(admin: { fetch: (path: string, init?: RequestInit) => Promise<Response> }, createUser: (o: { email: string; roles: string[] }) => Promise<{ user?: string }>) {

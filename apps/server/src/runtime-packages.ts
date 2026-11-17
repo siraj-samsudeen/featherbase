@@ -117,6 +117,14 @@ const manifestSchema = z.object({
   platformVersion: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'platformVersion must be a month, like 2026-10'),
   name: z.string().regex(/^[a-z][a-z0-9_]{0,30}$/),
   title: z.string().min(1),
+  // #1236: what the app is for, in one line, and its icon (from the tab icon
+  // set), for the app switcher's menu.
+  summary: z.string().min(1).max(80).optional(),
+  icon: z.enum(APP_TAB_ICONS).optional(),
+  // #1237: the app's own page for a row of one of its Tables, as an address
+  // with {row} for the row's id ("/tickets/?ticket={row}"). The Featherbase
+  // record page of such a row offers "Open in <App>".
+  recordPages: z.record(z.string().min(1), z.string().regex(/^\/[^\s]*\{row\}[^\s]*$/, 'a record page is an address of the app with {row} in it')).optional(),
   tables: z.array(tableDefSchema).min(1),
   roles: z.array(z.string().min(1)).optional(),
   permissions: z.array(appPermissionSchema).default([]),
@@ -412,6 +420,11 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     // Table's mark is checked on every read.
     const notDeclared = provider.unmarkedTables?.find(table => !provider.tables.includes(table))
     if (notDeclared) throw new Error(`A scope provider's unmarked Table ${notDeclared} is not one of the Tables it reads`)
+    const notListed = provider.optionalTables?.find(table => !provider.tables.includes(table))
+    if (notListed) throw new Error(`A scope provider's optional Table ${notListed} is not one of the Tables it reads`)
+    // An app's own Table is installed with the app, so it is never optional.
+    const ownOptional = provider.optionalTables?.find(table => manifest.tables.some(t => t.name === table))
+    if (ownOptional) throw new Error(`A scope provider's own Table ${ownOptional} is installed with the app; it cannot be optional`)
     const ownUnmarked = provider.unmarkedTables?.find(table => manifest.tables.some(t => t.name === table))
     if (ownUnmarked) throw new Error(`A scope provider's own Table ${ownUnmarked} must be marked decides_scope`)
     for (const table of provider.tables) {
@@ -429,6 +442,13 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       throw new Error(`The bar's ${control.picker} picker is filled from ${control.options}, which is not one of the app's reads`)
     if (barKeys.has(control.sets)) throw new Error(`Two bar controls set ${control.sets}; each sets its own key`)
     barKeys.add(control.sets)
+  }
+  // #1237: an app opens only its own rows, on its own pages.
+  for (const [table, address] of Object.entries(manifest.recordPages ?? {})) {
+    if (!manifest.tables.some((declared) => declared.name === table))
+      throw new Error(`The app's record page for ${table} is for a Table that is not one of the app's`)
+    if (!address.startsWith(appHref(manifest.name)))
+      throw new Error(`The app's record page for ${table} is ${address}, which is not one of the app's own pages (${appHref(manifest.name)}…)`)
   }
   if (manifest.access?.gate && !Object.hasOwn(readOperations, manifest.access.gate))
     throw new Error(`The app's gate is its read ${manifest.access.gate}, which is not one of the app's reads`)
@@ -506,7 +526,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
     entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
+    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], optionalTables: provider.optionalTables ?? [], identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
     actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
     reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, baseTables: manifest.baseTables } : undefined }
@@ -949,6 +969,12 @@ export async function appCatalog(user: string) {
     if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read') && await passesGate(pkg, user))
       result.push({
         name: pkg.name, title: pkg.title, href: appHref(pkg.name),
+        // #1236: the switcher's menu draws each app's icon and one line, in its accent.
+        ...(pkg.manifest.summary && { summary: pkg.manifest.summary }),
+        ...(pkg.manifest.icon && { icon: pkg.manifest.icon }),
+        ...(pkg.manifest.accent && { accent: pkg.manifest.accent }),
+        // #1237: where the app shows one of its rows, for the record page's "Open in <App>".
+        ...(pkg.manifest.recordPages && { recordPages: pkg.manifest.recordPages }),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
       })
   }

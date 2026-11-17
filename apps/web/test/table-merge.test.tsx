@@ -18,6 +18,7 @@ import { describe, vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
+import { openListMenu } from './list-menus'
 
 const SRC = 'Tm Source Zones'
 const DST = 'Tm Target Zones'
@@ -182,7 +183,7 @@ test('the merge screen opens from the source Table\'s administration menu', asyn
   const user = userEvent.setup()
   await seed(admin)
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(SRC))}`, admin)
-  await user.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 8000 }))
+  await openListMenu('Table administration', screen, { timeout: 8000 })
   await user.click(screen.getByTestId('open-merge'))
   expect(await screen.findByTestId('table-merge', {}, { timeout: 8000 })).toBeInTheDocument()
 })

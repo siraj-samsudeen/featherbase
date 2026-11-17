@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { enabledPeople, namesForApp, ownDisplayName, tableMembers } from './people-directory'
+import { appActorNames } from './actor-names'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
@@ -57,6 +58,7 @@ export function linkedTables(settings: Readonly<Record<string, string>>): string
 function callerPeople(user: string, app: string, settings: Readonly<Record<string, string>>): RuntimeActionContext['people'] {
   return Object.freeze({
     names: (ids: string[]) => namesForApp(ids, user, settings),
+    actorNames: async (ids: string[]) => Object.freeze(await appActorNames(app, ids)),
     enabled: (ids: string[]) => enabledPeople(ids, user),
     // #1046: an app that gives things to roles says why someone has one.
     rolesOf: async (person: string) => {
@@ -357,7 +359,7 @@ function closedDocuments(): never {
   throw new AppError('ValidationError', 'This read is outbound and its transaction has closed: read documents in a read that is not outbound')
 }
 const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, count: closedDocuments, activity: closedDocuments, isReader: closedDocuments })
-const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments })
+const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments, available: closedDocuments })
 const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, routeFor: closedDocuments, modeOf: closedDocuments })
 
 interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance; prepared?: unknown }

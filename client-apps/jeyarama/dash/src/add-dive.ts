@@ -10,6 +10,14 @@ export interface DiveChoice {
   saved_on: string | null
   /** The name of the Dash report that opens it, or null. */
   in_dash: string | null
+  /** #1225 (prototype): the state keys its source reads; null when Dash could not read it. */
+  reads?: string[] | null
+  /** #1225 (prototype): the key of the Dash report that opens it, beside `in_dash`. */
+  in_dash_key?: string | null
+  /** #1225 (prototype): the owner's name when Dash knows who the MotherDuck account belongs to. */
+  owner_person?: string | null
+  /** #1225 (prototype): its current version in MotherDuck. */
+  version?: number | null
 }
 
 const DIVE_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
@@ -37,4 +45,13 @@ export function reportKeyFor(name: string, taken: readonly string[]): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'report'
   if (!taken.includes(base)) return base
   for (let n = 2; ; n++) if (!taken.includes(`${base}-${n}`)) return `${base}-${n}`
+}
+
+/**
+ * #1225 (prototype): the state keys a Dive's source reads, `useDiveState('<key>', …)`, in order
+ * and once each. Read from the source `MD_GET_DIVE` returns.
+ */
+export function stateKeysIn(source: string): string[] {
+  const keys = [...source.matchAll(/useDiveState\s*(?:<[^>]*>)?\s*\(\s*(['"`])([A-Za-z0-9_]+)\1/g)].map(match => match[2])
+  return [...new Set(keys)]
 }

@@ -251,7 +251,10 @@ describe('Your sections', () => {
     answers.my_sections = { state: 'ok', name: 'Asha', jobs: [], proposals: [], waiting_for_me: 1 }
     page = await render('YourSections')
     expect(page.q('approvals-link')?.textContent).toContain('Waiting for you (1)')
-    expect(page.q('approvals-notice')?.textContent).toBe('1 change is waiting for your approval')
+    // #1223 (UX standard §8): the count beside a Review button that opens Waiting for you.
+    expect(page.q('approvals-label')?.textContent).toBe('1 change is waiting for your approval')
+    expect(page.q('approvals-notice')?.textContent).toBe('Review')
+    expect(page.q('approvals-notice')?.getAttribute('href')).toBe('?view=approvals')
     await page.done()
   })
 })
@@ -396,7 +399,7 @@ describe("Dash's sidebar", () => {
     answers = { reports: REPORTS }
     const container = await sidebar('/dash/')
     const texts = [...container.querySelectorAll('featherbase-sidebar > *')].map(e => e.textContent)
-    expect(texts).toEqual(['Reports', 'Sales versus target', 'Store target month to date', 'Your sections'])
+    expect(texts).toEqual(['Reports', 'Sales versus target', 'Store target month to date', 'Your work', 'Your sections'])
   })
 
   it('marks the first report when the address names none, and the one it names otherwise', async () => {

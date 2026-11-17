@@ -17,6 +17,7 @@ import { discoverPackages } from 'server/src/runtime-packages'
 import { scenarioFor } from 'server/test/scenario'
 import { clearSession } from '../../src/lib/import-session'
 import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
+import { openListMenu } from '../list-menus'
 
 const scenario = scenarioFor(test, 'tables-and-fields')
 const WAIT = { timeout: 15_000 }
@@ -595,7 +596,7 @@ describe('tables-and-fields', () => {
     })
     await step('the System Manager renames the table to "Plant"', async () => {
       const app = await openList(admin, SAP_PLANT)
-      await onScreen().clickButton('Table administration')
+      await openListMenu('Table administration')
       await user.click(await screen.findByTestId('rename-table'))
       const dialog = await screen.findByTestId('rename-table-dialog')
       await user.clear(within(dialog).getByTestId('rename-table-input'))

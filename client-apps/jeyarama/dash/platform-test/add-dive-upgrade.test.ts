@@ -1,6 +1,6 @@
 // #1169: production runs Dash 0.13.1. Upgrading it gives Report Access Manager the right to create
 // reports, with nobody's approval, and logs it; a Report Access Manager then adds a Dive and gives
-// it at once. A reader can do neither. The 0.13.1 here is this version with #1222 (0.13.8), #4588 (0.13.7), #1209 (0.13.6), #1173 (0.13.5), #1169 (0.13.3) and #1216 (0.13.2) taken out.
+// it at once. A reader can do neither. The 0.13.1 here is this version with #1246 (0.13.16 and 0.13.17), #1245 (0.13.15), #1223 (0.13.14), #1240 (0.13.12), #1223 (0.13.10), #1243 (0.13.9), #1227 (0.13.8), #4588 (0.13.7), #1209 (0.13.6), #1173 (0.13.5), #1169 (0.13.3) and #1216 (0.13.2) taken out.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
@@ -9,7 +9,7 @@ import { test as pgTest } from '../pg-test'
 import { sql } from '../../src/db'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
-import { APP_DIR, TEAM_MANAGER, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity, revertTeamReportGiving, withoutTeamManager, VIEW_AS_TESTER, revertViewAs, withoutViewAsTester } from './helpers'
+import { APP_DIR, TEAM_MANAGER, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity, revertTeamReportGiving, withoutTeamManager, revertViewAs, VIEW_AS_TESTER, withoutViewAsTester } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -25,6 +25,16 @@ async function previousVersion(): Promise<string> {
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
   revertViewAs(manifest)
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'switcher_summary', fromVersion: '0.13.17', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'buyer_section_moves', fromVersion: '0.13.16', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'buyer_section_desks', fromVersion: '0.13.15', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'store_run_by', fromVersion: '0.13.14', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'more_list_closes', fromVersion: '0.13.13', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'report_access_redesign', fromVersion: '0.13.12', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'report_an_issue', fromVersion: '0.13.10', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'manager_area', fromVersion: '0.13.9', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'ends_on_inclusive', fromVersion: '0.13.8', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'one_app_chrome', fromVersion: '0.13.7', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'named_cluster_head', fromVersion: '0.13.6' })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'department_name_follows_sections', fromVersion: '0.13.5' })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'waiting_for_access_grant', fromVersion: '0.13.4' })
@@ -57,7 +67,7 @@ describe("upgrading production's Dash 0.13.1", () => {
       expect([withoutViewAsTester(withoutTeamManager(plan.permissions as never[])), plan.migrations.map(m => m.id)]).toEqual([[
         { withdraw: { table: 'dash.report', role: MANAGER, operations: { read: '@basic' } } },
         { grant: { table: 'dash.report', role: MANAGER, operations: { read: '@basic', create: '@basic' } } }],
-      ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'view_as']])
+      ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves', 'switcher_summary', 'view_as']])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()

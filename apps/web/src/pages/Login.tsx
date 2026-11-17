@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { markSetupOffer } from './FirstRunSetup'
@@ -93,6 +93,27 @@ export function takeLoginNext(): string | undefined {
   }
 }
 
+// #1226: the last ID that signed in with a connected service, per service, so
+// staff type only their password. Only the ID: a password never goes to storage.
+const delegatedIdKey = (service: string) => `fc-delegated-id:${service}`
+
+function rememberedDelegatedId(service: string): string {
+  try {
+    return localStorage.getItem(delegatedIdKey(service)) ?? ''
+  } catch {
+    return '' // Storage blocked: the form starts empty, as before.
+  }
+}
+
+function setRememberedDelegatedId(service: string, id: string | null): void {
+  try {
+    if (id) localStorage.setItem(delegatedIdKey(service), id)
+    else localStorage.removeItem(delegatedIdKey(service))
+  } catch {
+    // Storage blocked: nothing is remembered.
+  }
+}
+
 /** Go to a checked return path: a Featherbase page inside the SPA, anything
  *  else (a runtime app) by a full page load. */
 export function openReturnPath(
@@ -178,6 +199,9 @@ export function LoginPage() {
   const delegatedKey = chosenMode ? chosenKey : (delegatedMethods[0]?.key ?? null)
   const delegated = delegatedMethods.find((m) => m.key === delegatedKey) ?? null
   const delegatedLabel = delegated?.label ?? null
+  // Read on each render, so "Not you?" disappears once the ID is forgotten.
+  const [, refreshRemembered] = useReducer((n: number) => n + 1, 0)
+  const rememberedId = delegated ? rememberedDelegatedId(delegated.key) : ''
   // If the brand cannot be read, offer Google as before; the server decides.
   const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google')
   // Until the brand answers, and if it cannot, the password form stays.
@@ -256,8 +280,22 @@ export function LoginPage() {
       setError(blank)
       return
     }
-    await signIn(() => loginDelegated(id, password, delegated!.key), blank)
+    const service = delegated!.key
+    // Saved only once the sign-in succeeds; a failure keeps what was there.
+    await signIn(async () => {
+      const user = await loginDelegated(id, password, service)
+      setRememberedDelegatedId(service, id)
+      return user
+    }, blank)
   }
+
+  function forgetDelegatedId() {
+    if (delegated) setRememberedDelegatedId(delegated.key, null)
+    setError(null)
+    // The empty ID box mounts in its place and takes the cursor (autoFocus).
+    refreshRemembered()
+  }
+
 
   async function onSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -297,10 +335,18 @@ export function LoginPage() {
   const panelRefusal = refusalText(null)
   const panelShowing = Boolean(refusal) && !refusalAnswered
 
+  // #1235 item 6: a refusal is an alert at the top of the card's form, above
+  // the boxes, so it is read before the person retypes anything.
   const errorLine = error && (
-    <p className="text-sm text-negative" data-testid="login-error">
-      {error}
-    </p>
+    <div data-testid="login-error">
+      <Notice tone="negative">{error}</Notice>
+    </div>
+  )
+  // #1235 item 4: one quiet "or" between the form's own button and the other ways in.
+  const orDivider = (
+    <div className="my-4 flex items-center gap-3 text-[13px] text-ink-muted" aria-hidden data-testid="sign-in-divider">
+      <span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" />
+    </div>
   )
 
   return (
@@ -318,8 +364,9 @@ export function LoginPage() {
           )}
           <h1 className="text-lg font-semibold text-ink">{appName}</h1>
           {/* The refusal panel's own heading takes the subtitle's place. */}
-          {!panelShowing && <p className="text-sm text-ink-muted" data-testid="login-subtitle">
-            {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
+          {/* #1235 item 2: a connected service's form names itself on its button. */}
+          {!panelShowing && !(mode === 'delegated' && delegatedLabel) && <p className="text-sm text-ink-muted" data-testid="login-subtitle">
+            {mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
           </p>}
         </div>
         {sessionEnded && (
@@ -373,33 +420,60 @@ export function LoginPage() {
           ) : mode === 'delegated' && delegatedLabel ? (
             <>
               <form className="space-y-4" data-testid="delegated-login-form" onSubmit={onDelegatedSubmit}>
-                <p className="text-sm text-ink-muted">
-                  Use the same ID and password you use for {delegatedLabel}.
-                </p>
-                <div>
-                  <label className={labelClasses()} htmlFor="delegated-id">{`${delegatedLabel} ID`}</label>
-                  <input
-                    id="delegated-id"
-                    type="text"
-                    name="delegated_id"
-                    autoComplete="username"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    className={inputClasses()}
-                  />
-                </div>
+                {errorLine}
+                {rememberedId ? (
+                  // #1235 item 1: a remembered ID reads as who is signing in, not
+                  // as a box to edit. The hidden username box stays in the form so
+                  // the browser's password manager files the password under it.
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3" data-testid="delegated-signing-in-as">
+                    <p className="text-sm text-ink">
+                      Signing in as <strong className="font-semibold">{rememberedId}</strong>
+                    </p>
+                    <input key={rememberedId} type="text" name="delegated_id" autoComplete="username" defaultValue={rememberedId} readOnly hidden />
+                    <button
+                      type="button"
+                      data-testid="delegated-forget-id"
+                      className="inline-flex min-h-control items-center text-sm text-action hover:underline"
+                      onClick={forgetDelegatedId}
+                    >
+                      Not you?
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <label className={labelClasses()} htmlFor="delegated-id">{`${delegatedLabel} ID`}</label>
+                    {/* Keyed by service, so each service's box starts empty for its own ID. */}
+                    <input
+                      key={delegated?.key}
+                      id="delegated-id"
+                      type="text"
+                      name="delegated_id"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      autoFocus
+                      aria-describedby="delegated-id-help"
+                      className={inputClasses()}
+                    />
+                    {/* #1235 item 3: help text belongs to the box it explains. */}
+                    <p id="delegated-id-help" className="mt-1 text-[13px] text-ink-muted" data-testid="delegated-id-help">
+                      Use the same ID and password you use for {delegatedLabel}.
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className={labelClasses()} htmlFor="delegated-password">Password</label>
                   <input
+                    key={`${delegated?.key}:${rememberedId ? 'known' : 'typed'}`}
                     id="delegated-password"
                     type="password"
                     name="delegated_password"
                     autoComplete="current-password"
+                    autoFocus={Boolean(rememberedId)}
                     className={inputClasses()}
                   />
                 </div>
-                {errorLine}
                 <button
                   type="submit"
                   disabled={busy}
@@ -409,13 +483,14 @@ export function LoginPage() {
                   {busy ? 'Signing in…' : `Sign in with ${delegatedLabel}`}
                 </button>
               </form>
+              {(google || delegatedMethods.length > 1) && orDivider}
               {/* The other ways in, one tap away under the service's form. */}
               {google && (
                 <a
                   href="/api/oauth/google/login"
                   onClick={() => rememberLoginNext(next)}
                   data-testid="google-login"
-                  className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
+                  className={buttonClasses({ className: 'flex w-full justify-center py-2' })}
                 >
                   Sign in with {google.label}
                 </a>
@@ -425,26 +500,30 @@ export function LoginPage() {
                   key={m.key}
                   type="button"
                   data-testid={`delegated-login-toggle-${m.key}`}
-                  className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
+                  className={buttonClasses({ className: `${google ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
                   onClick={() => switchMode('delegated', m.key)}
                 >
                   Sign in with {m.label}
                 </button>
               ))}
+              {/* #1235 item 5: a quiet link, centred under the buttons. */}
               {passwordOn && (
-                <button
-                  type="button"
-                  data-testid="password-login-toggle"
-                  className="mt-4 inline-flex min-h-control items-center text-control text-action hover:underline"
-                  onClick={() => switchMode('password')}
-                >
-                  Use email and password instead
-                </button>
+                <div className="mt-4 flex justify-center">
+                  <button
+                    type="button"
+                    data-testid="password-login-toggle"
+                    className="inline-flex min-h-control items-center text-sm text-action hover:underline"
+                    onClick={() => switchMode('password')}
+                  >
+                    Use email and password instead
+                  </button>
+                </div>
               )}
             </>
           ) : mode === 'signup' && signUpOpen ? (
             <>
               <form className="space-y-4" data-testid="sign-up-form" onSubmit={onSignUpSubmit}>
+                {errorLine}
                 <Field label="Username">
                   <TextInput id="signup-username" name="username" autoComplete="username"
                     autoCapitalize="none" autoCorrect="off" spellCheck={false} />
@@ -452,7 +531,6 @@ export function LoginPage() {
                 <Field label="Password">
                   <TextInput id="signup-password" type="password" name="password" autoComplete="new-password" />
                 </Field>
-                {errorLine}
                 <Button type="submit" variant="primary" block loading={busy} data-testid="sign-up-submit">
                   Create account
                 </Button>
@@ -465,6 +543,7 @@ export function LoginPage() {
           <>
           {passwordOn && (
           <form className="space-y-4" data-testid="login-form" onSubmit={onSubmit}>
+            {errorLine}
             <div>
               <label className={labelClasses()} htmlFor="login-email">Email or username</label>
               <input
@@ -488,12 +567,12 @@ export function LoginPage() {
                 className={inputClasses()}
               />
             </div>
-            {errorLine}
             <button type="submit" disabled={busy} data-testid="login-submit" className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
           )}
+          {passwordOn && (google || delegatedMethods.length > 0) && orDivider}
           {/* PLAT-006: social login. A full-page navigation (not fetch) so the
               server's OAuth redirects drive the browser. Offered only when
               the Google sign-in method is on. */}
@@ -502,7 +581,7 @@ export function LoginPage() {
               href="/api/oauth/google/login"
               onClick={() => rememberLoginNext(next)}
               data-testid="google-login"
-              className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
+              className={buttonClasses({ className: 'flex w-full justify-center py-2' })}
             >
               Sign in with {google.label}
             </a>

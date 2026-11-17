@@ -122,12 +122,14 @@ describe('permissions-and-roles', () => {
       expect(screen.getByTestId('identity')).toBeInTheDocument()
     })
     await step('no administration menu appears', () => {
-      for (const id of ['new-table-link', 'import-data-link', 'past-imports-link', 'all-tables-link', 'admin-sidebar'])
+      for (const id of ['sidebar-new', 'new-table-link', 'import-data-link', 'past-imports-link', 'all-tables-link', 'admin-sidebar'])
         expect(screen.queryByTestId(id), id).not.toBeInTheDocument()
     })
     await step('no administration request is made', () => {
-      // /api/brand is the shared top bar asking what this address opens (#489).
-      const adminCalls = urls.filter((u) => !/^\/api\/(whoami|brand|runtime_app_versions|sales_target\/)/.test(u))
+      // /api/brand is the shared top bar asking what this address opens (#489);
+      // /api/app_catalog is its switcher listing the apps this person can open
+      // (#1227). The closed-app list stays a System Manager's.
+      const adminCalls = urls.filter((u) => !/^\/api\/(whoami|brand|runtime_app_versions|sales_target\/|app_catalog$)/.test(u))
       expect(adminCalls).toEqual([])
     })
   })
@@ -281,9 +283,10 @@ describe('permissions-and-roles', () => {
     await step("a System Manager opens the person's access page", async () => {
       await renderApp(`/featherbase/account/access/${encodeURIComponent(person.user!)}`, manager)
     })
-    await step('it says "everyone who signs in holds it (System Settings)"', async () => {
-      const role = await screen.findByTestId('access-role', {}, { timeout: 10_000 })
-      expect(role).toHaveTextContent('Tasker Member — everyone who signs in holds it (System Settings)')
+    await step('it says "everyone who signs in has it"', async () => {
+      // #1224: the page also explains what every account holds, so find this role's line.
+      await waitFor(() => expect(screen.getAllByTestId('access-role').map((r) => r.textContent))
+        .toContainEqual(expect.stringContaining('Tasker Member — everyone who signs in has it')), { timeout: 10_000 })
     })
     await step("a System Manager opens the person's Person form", async () => {
       cleanup()

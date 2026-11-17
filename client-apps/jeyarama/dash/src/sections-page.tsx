@@ -1,16 +1,19 @@
 // Your sections and Waiting for your approval (#975), in Shop Floor's components. Each page says
 // what to do next when it has nothing to show. The rules are the server's: my-sections.ts.
+import { BuyerSectionApprovals, type BuyerMoveToDecide } from './buyer-sections-page'
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Button, Card, EmptyState, Field, fmtDate, Notice, Select, Skeleton, StatusPill, TextInput, touchLinkClasses, type StatusTone } from '@featherbase/shop-floor'
+import { Button, Card, EmptyState, Field, fmtDate, Notice, Select, Skeleton, StatusPill, TextInput, touchLinkClasses, type StatusTone, buttonClasses } from '@featherbase/shop-floor'
 import { HierarchyGroups, HierarchyPath, HierarchyPicker, type HierarchyLeaf, type HierarchyNode } from '@featherbase/shop-floor/hierarchy'
 import { act, read } from './api'
 import { reportAddress } from './page'
 import { DepartmentApprovals, type WaitingSetup } from './department-page'
+import { AreaCards } from './my-store-page'
+import { RECORD, RecordLink } from './record-link'
 
-export type DashView = 'report' | 'sections' | 'approvals' | 'access' | 'unplaced' | 'department'
+export type DashView = 'report' | 'sections' | 'approvals' | 'access' | 'unplaced' | 'department' | 'store' | 'coverage'
 export function currentView(search = window.location.search): DashView {
   const view = new URLSearchParams(search).get('view')
-  return view === 'sections' || view === 'approvals' || view === 'access' || view === 'unplaced' || view === 'department' ? view : 'report'
+  return view === 'sections' || view === 'approvals' || view === 'access' || view === 'unplaced' || view === 'department' || view === 'store' || view === 'coverage' ? view : 'report'
 }
 /** The Report access page (#1046), for Report Access Managers and System Managers. */
 export const ACCESS_ADDRESS = '?view=access'
@@ -20,6 +23,10 @@ export const APPROVALS_ADDRESS = '?view=approvals'
 export const UNPLACED_ADDRESS = '?view=unplaced'
 /** A Department Manager's set-up page (#1195). */
 export const DEPARTMENT_ADDRESS = '?view=department'
+/** #1223: a manager's own store, floor or categories. */
+export const STORE_ADDRESS = '?view=store'
+/** #1223: what someone covers; with no one named, the reader's own. */
+export const COVERAGE_ADDRESS = '?view=coverage'
 
 interface Named { id: string; name: string }
 interface Leveled extends HierarchyNode { code: string; name: string }
@@ -36,6 +43,9 @@ interface Job {
   store: string
   is_store: boolean
   reports_to: string | null
+  /** #1223: ids for record links. */
+  store_id?: string
+  reports_to_code?: string | null
   waiting_for: string
   section: SectionChoice | null
   /** #1191: a section change made at once, until it is reviewed. */
@@ -46,6 +56,8 @@ interface Job {
 }
 interface Proposal {
   id: string
+  /** #1223: who a manager moved; absent when the person asked for their own job. */
+  moved?: string | null
   kind: 'removal' | 'move' | 'add' | 'section'
   what: string
   from: string
@@ -85,9 +97,10 @@ export function askedFor(proposal: Pick<Proposal, 'kind' | 'what' | 'from' | 'to
 }
 
 /** The same, as the approver reads it about someone else. */
-export function askedOfApprover(proposal: Pick<Proposal, 'kind' | 'what' | 'from' | 'to'>): string {
+export function askedOfApprover(proposal: Pick<Proposal, 'kind' | 'what' | 'from' | 'to' | 'moved'>): string {
   const { kind, from, to } = proposal
   if (kind !== 'section') return askedFor(proposal)
+  if (proposal.moved) return from === 'No section' ? `Put ${proposal.moved} in ${to}` : `Move ${proposal.moved} from ${from} to ${to}`
   return from === 'No section' ? `Set their section to ${to}` : `Change their section from ${from} to ${to}`
 }
 
@@ -136,6 +149,9 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
   // #1195: Your department, to whoever holds a Department Manager job.
   const [departmentJob, setDepartmentJob] = useState(false)
   useEffect(() => { let live = true; read<boolean>('holds_department_job').then(answer => { if (live) setDepartmentJob(answer === true) }, () => {}); return () => { live = false } }, [])
+  // #1223: Your store / floor / categories, to whoever manages one; the read names the page.
+  const [area, setArea] = useState<string | null>(null)
+  useEffect(() => { let live = true; read<unknown>('manages_area').then(answer => { if (live) setArea(typeof answer === 'string' && answer ? answer : null) }, () => {}); return () => { live = false } }, [])
   const here = (view: DashView) => (current === view ? { 'aria-current': 'page' as const } : {})
   return createElement('featherbase-sidebar', { 'aria-label': 'Dash navigation' },
     reports.length > 0 && <span className="fd-sidebar-group" data-testid="reports-group">Reports</span>,
@@ -145,6 +161,8 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
         <span>{report.name}</span>
       </a>
     )),
+    // UX standard §4: the pages about a person's own work sit in their own group, apart from Reports.
+    <span className="fd-sidebar-group" data-testid="your-work-group">Your work</span>,
     <a href={SECTIONS_ADDRESS} {...here('sections')}>
       <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
       <span>Your sections</span>
@@ -162,6 +180,18 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
         <span>Your department</span>
       </a>
     ),
+    (area || current === 'store') && (
+      <a href={STORE_ADDRESS} {...here('store')} data-testid="store-link">
+        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l1.5-5h15L21 9M4 9v11h16V9M3 9h18M9 20v-6h6v6" /></svg>
+        <span>{area ?? 'Your store'}</span>
+      </a>
+    ),
+    (area || masterData || current === 'coverage') && (
+      <a href={COVERAGE_ADDRESS} {...here('coverage')} data-testid="coverage-link">
+        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v18M3 12h18M5 5l14 14M19 5 5 19" /></svg>
+        <span>What they cover</span>
+      </a>
+    ),
     (masterData || current === 'unplaced') && (
       <a href={UNPLACED_ADDRESS} {...here('unplaced')} data-testid="unplaced-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0" /></svg>
@@ -176,7 +206,7 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
     ))
 }
 
-export function Shell({ current, count, title, testid, children }: { current: DashView; count?: number; title: string; testid: string; children: ReactNode }) {
+export function Shell({ current, count, title, testid, children }: { current: DashView; count?: number; title: ReactNode; testid: string; children: ReactNode }) {
   return (
     <div className="fd-shell">
       <DashSidebar current={current} count={count} />
@@ -230,14 +260,22 @@ export function YourSections() {
             ? 'If something here is wrong, change it. It changes at once, and your manager reviews it afterwards.'
             : 'If something here is wrong, say so. Nothing changes until it is approved.'}</p>
           {answer.waiting_for_me > 0 && (
-            <Notice tone="caution"><a href={APPROVALS_ADDRESS} className={touchLinkClasses('pointer-coarse:-my-3')} data-testid="approvals-notice">{approvalsLabel(answer.waiting_for_me)}</a></Notice>
+            <Notice tone="caution">
+              {/* UX standard §8: waiting work is a caution notice with a Review button, not a link sentence. */}
+              <span className="flex flex-wrap items-center justify-between gap-2">
+                <span data-testid="approvals-label">{approvalsLabel(answer.waiting_for_me)}</span>
+                <a href={APPROVALS_ADDRESS} className={buttonClasses({ variant: 'secondary' })} data-testid="approvals-notice">Review</a>
+              </span>
+            </Notice>
           )}
           {answer.jobs.length === 0 && (
             <Card data-testid="no-job"><EmptyState title="You have no current job on the staff list" body="Ask your manager to check it with HR." /></Card>
           )}
+          {/* #1223: a Team Leader's team in their sections, every record a link, with Move. */}
+          <AreaCards kinds={['section']} staffOnly />
           {/* Keyed by the job, not its row: a section change replaces the row, and the card keeps its note. */}
           {answer.jobs.map((job, index) => job.job === 'Department Manager' ? (
-            <Card key={job.id} data-testid="department-job" title={`${job.job} · ${job.store}`}>
+            <Card key={job.id} data-testid="department-job" title={<>{job.job} · <RecordLink table={RECORD.site} id={job.store_id}>{job.store}</RecordLink></>}>
               <div className="flex flex-col gap-2 p-4">
                 <p>A Department Manager's report shows their department's sections. See your department, or set it up, on Your department.</p>
                 <a className="fd-link font-semibold" href={DEPARTMENT_ADDRESS}>Open Your department</a>
@@ -270,9 +308,10 @@ function JobCard({ job, atOnce, onSent }: { job: Job; atOnce: AtOnce; onSent: ()
   const rows: ({ placed: Placed } | { added: Addition })[] = [...job.subcategories.map(placed => ({ placed })), ...job.additions.map(added => ({ added }))]
   const pathOf = (row: (typeof rows)[number]) => ('placed' in row ? row.placed : row.added)
   return (
-    <Card data-testid="job-card" title={`${job.job} · ${job.store}`}>
+    <Card data-testid="job-card" title={<>{job.job} · <RecordLink table={RECORD.site} id={job.store_id}>{job.store}</RecordLink></>}
+      actions={!job.section && job.other_sections.length > 0 ? <Button data-action variant="secondary" onClick={() => start('section')}>Say which section is yours</Button> : undefined}>
       <div className="flex flex-col gap-3 p-4">
-        <p className="fd-muted" data-testid="reports-to">{job.reports_to ? `You report to ${job.reports_to}` : 'No manager is set against this job'}</p>
+        <p className="fd-muted" data-testid="reports-to">{job.reports_to ? <>You report to <RecordLink table={RECORD.employee} id={job.reports_to_code}>{job.reports_to}</RecordLink></> : 'No manager is set against this job'}</p>
         {note && <Notice tone={note.tone}><span data-testid={note.tone === 'positive' ? 'sent-note' : 'refused-note'}>{note.text}</span></Notice>}
         {job.section ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -282,7 +321,6 @@ function JobCard({ job, atOnce, onSent }: { job: Job; atOnce: AtOnce; onSent: ()
         ) : job.other_sections.length > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-2" data-testid="no-section">
             <p>No section is set against your job.</p>
-            <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" onClick={() => start('section')}>Say which section is yours</Button>
           </div>
         ) : (
           <p data-testid="store-no-sections">
@@ -295,7 +333,7 @@ function JobCard({ job, atOnce, onSent }: { job: Job; atOnce: AtOnce; onSent: ()
             <span className="text-sm text-ink-muted">Changed from {job.section_change.from} · {job.section_change.waiting_for} will review it</span>
             <span className="flex flex-wrap items-center gap-2">
               <StatusPill tone="neutral" className="max-w-full whitespace-normal!">Changed · not yet reviewed</StatusPill>
-              <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === job.section_change.id} disabled={busy !== null}
+              <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === job.section_change.id} disabled={busy !== null}
                 onClick={() => run(job.section_change!.id, 'withdraw', { proposal: job.section_change!.id }, `Undone: your section is ${job.section_change!.from} again.`)}>Undo</Button>
             </span>
           </div>
@@ -398,7 +436,7 @@ function PickSection({ job, atOnce, action, label, payload, onCancel, onSent, on
         </Select>
       </Field>
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" loading={busy} onClick={send}>{atOnce ? 'Change it' : 'Send for approval'}</Button>
+        <Button data-action variant="primary" loading={busy} onClick={send}>{atOnce ? 'Change it' : 'Send for approval'}</Button>
         <Button onClick={onCancel} disabled={busy}>Cancel</Button>
       </div>
     </div>
@@ -448,7 +486,7 @@ function AddSubcategories({ job, atOnce, onCancel, onSent, onRefused }: { job: J
       {levels && <HierarchyPicker label="Subcategories to add" levels={levels.levels} start={levels.start} loadLeaves={loadLeaves}
         selected={chosen} onChange={setChosen} annotate={holderLine} />}
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" loading={busy} disabled={!chosen.length} onClick={send}>{atOnce ? (chosen.length ? `Add ${chosen.length}` : 'Add') : chosen.length ? `Ask to add ${chosen.length}` : 'Ask to add'}</Button>
+        <Button data-action variant="primary" loading={busy} disabled={!chosen.length} onClick={send}>{atOnce ? (chosen.length ? `Add ${chosen.length}` : 'Add') : chosen.length ? `Ask to add ${chosen.length}` : 'Ask to add'}</Button>
         <Button onClick={onCancel} disabled={busy}>Cancel</Button>
       </div>
     </div>
@@ -482,19 +520,23 @@ export function Approvals() {
   const { answer, failed, load } = useAnswer<Waiting>('approvals')
   // #1195: Department Managers' set-ups wait here too, one card each.
   const setups = useAnswer<WaitingSetup[]>('department_approvals')
-  const reload = () => Promise.all([load(), setups.load()])
+  // #1246: category heads' Buyer Section changes wait here too, for the master data team.
+  const buyerMoves = useAnswer<BuyerMoveToDecide[]>('buyer_section_approvals')
+  const reload = () => Promise.all([load(), setups.load(), buyerMoves.load()])
   const waitingSetups = setups.answer ?? []
+  const waitingMoves = Array.isArray(buyerMoves.answer) ? buyerMoves.answer : []
   // What just happened stays said after the card has gone from the list.
   const [note, setNote] = useState<{ tone: 'positive' | 'negative' | 'caution'; text: string } | null>(null)
   const after = (next: NonNullable<typeof note>) => { setNote(next); return reload() }
   return (
-    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length + waitingSetups.length : undefined} title="Waiting for you" testid="approvals">
+    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length + waitingSetups.length + waitingMoves.length : undefined} title="Waiting for you" testid="approvals">
       {note && <Notice tone={note.tone}><span data-testid="decision-note">{note.text}</span></Notice>}
       {!answer && !failed && <Loading />}
       {failed && <LoadFailed onRetry={load} />}
       {answer?.state === 'not_set_up' && <NotSetUp />}
       {answer?.state === 'ok' && <DepartmentApprovals setups={waitingSetups} onDecided={text => after({ tone: 'positive', text })} />}
-      {answer?.state === 'ok' && answer.proposals.length === 0 && waitingSetups.length === 0 && (
+      {answer?.state === 'ok' && <BuyerSectionApprovals moves={waitingMoves} onDecided={text => after({ tone: 'positive', text })} />}
+      {answer?.state === 'ok' && answer.proposals.length === 0 && waitingSetups.length === 0 && waitingMoves.length === 0 && (
         <Card data-testid="nothing-waiting">
           <EmptyState title="Nothing is waiting for you" body="When someone changes their sections, or asks to, or sets up their department, and it needs you, it shows here." />
         </Card>
@@ -530,11 +572,11 @@ function PlaceLine({ label, place }: { label: string; place: Place }) {
 }
 
 /** What the approver is asked, in one line. */
-export function approvalTitle(proposal: Pick<Approval, 'kind' | 'what' | 'from' | 'to'>): string {
+export function approvalTitle(proposal: Pick<Approval, 'kind' | 'what' | 'from' | 'to' | 'moved'>): string {
   if (proposal.kind === 'move') return `Move ${proposal.what}`
   if (proposal.kind === 'removal') return `Take ${proposal.what} out of ${proposal.from?.section}`
   if (proposal.kind === 'add') return `Add ${proposal.what} to ${proposal.to?.section}`
-  return askedOfApprover({ kind: 'section', what: proposal.what, from: proposal.from?.section ?? 'No section', to: proposal.to?.section ?? '' })
+  return askedOfApprover({ kind: 'section', what: proposal.what, from: proposal.from?.section ?? 'No section', to: proposal.to?.section ?? '', moved: proposal.moved })
 }
 
 function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note: { tone: 'positive' | 'negative' | 'caution'; text: string }) => Promise<unknown> }) {
@@ -598,7 +640,7 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
               <TextInput value={reason} onChange={event => setReason(event.target.value)} />
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="danger" loading={busy === 'reject'} onClick={() => decide('reject')}>{applied ? 'Undo it' : 'Reject'}</Button>
+              <Button data-action variant="danger" loading={busy === 'reject'} onClick={() => decide('reject')}>{applied ? 'Undo it' : 'Reject'}</Button>
               <Button disabled={busy !== null} onClick={cancel}>Cancel</Button>
             </div>
           </div>
@@ -612,7 +654,7 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
               </Select>
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" loading={busy === 'elsewhere'} onClick={() => decide('elsewhere')}>Move it there</Button>
+              <Button data-action variant="primary" loading={busy === 'elsewhere'} onClick={() => decide('elsewhere')}>Move it there</Button>
               <Button disabled={busy !== null} onClick={cancel}>Cancel</Button>
             </div>
           </div>

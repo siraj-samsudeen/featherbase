@@ -8,6 +8,7 @@ import { vi } from 'vitest'
 import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
+import { openListMenu } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const enc = encodeURIComponent
@@ -93,7 +94,7 @@ test('UPS-J1.1: Import from the list view opens the wizard with the Table presel
   await seedZones(admin)
   const user = userEvent.setup()
   const app = await renderApp(`/featherbase/admin/table/${enc(tableSlug(DT))}`, admin)
-  await user.click(await screen.findByRole('button', { name: 'List actions' }, { timeout: 8000 }))
+  await openListMenu('List actions', screen, { timeout: 8000 })
   await user.click(await screen.findByTestId('open-import'))
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/import'))
   await drop(ZONES_V2, 'zones-v2.csv')

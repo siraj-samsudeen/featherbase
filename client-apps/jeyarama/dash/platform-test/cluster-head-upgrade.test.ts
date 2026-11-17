@@ -12,7 +12,7 @@ import { test as pgTest } from '../pg-test'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
 import { runHealthChecks } from '../../src/instance-health'
-import { APP_DIR, VERSION, pinned, saveRow, VIEW_AS_TESTER, revertViewAs } from './helpers'
+import { APP_DIR, VERSION, pinned, saveRow, revertViewAs, VIEW_AS_TESTER } from './helpers'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
 import { BASE_TABLES, LINKED_TABLES } from './base-tables.mjs'
 
@@ -27,7 +27,26 @@ async function previousVersion(): Promise<{ directory: string; version: string }
   const directory = await mkdtemp(resolve(APP_DIR, '..', 'dash-before-cluster-head-'))
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
+  // #1227's 0.13.8 changes no Table: the version before named_cluster_head is 0.13.6 with both steps off.
+  // #1243's 0.13.9 changes no Table either; it comes off first.
+  // #1223's 0.13.10 changes no Table either; it comes off first.
+  // #1240's 0.13.12 changes no Table either; it comes off first.
+  // #1225's 0.13.13 changes no Table either; it comes off first.
+  // #1223's 0.13.14 changes no Table either; it comes off first.
+  // #1245's 0.13.15 changes no Table either; it comes off first.
+  // #1246's 0.13.16 and 0.13.17 change no Table either; they come off first.
+  // #1236's 0.13.19 changes no Table either; it comes off first.
   revertViewAs(manifest)
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'switcher_summary', toVersion: '0.13.19', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'buyer_section_moves', toVersion: '0.13.17', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'buyer_section_desks', toVersion: '0.13.16', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'store_run_by', toVersion: '0.13.15', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'more_list_closes', toVersion: '0.13.14', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'report_access_redesign', toVersion: '0.13.13', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'report_an_issue', toVersion: '0.13.12', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'manager_area', toVersion: '0.13.10', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'ends_on_inclusive', toVersion: '0.13.9', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'one_app_chrome', toVersion: '0.13.8', operations: [] })
   const step = manifest.migrations.pop()
   expect(step).toMatchObject({ id: 'named_cluster_head', toVersion: '0.13.7', operations: [] })
   const notCluster = (tables: string[]) => tables.filter(table => table !== 'Cluster')
@@ -81,7 +100,7 @@ describe("deploying the named cluster head to an instance shaped like production
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; roles: unknown[]; permissions: { grant?: { role: string } }[]; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head', 'view_as'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves', 'switcher_summary', 'view_as'])
       // #1222: the upgrade creates View As Tester with one grant, the read of the reports list.
       expect([plan.roles, plan.permissions.filter(p => p.grant?.role === VIEW_AS_TESTER)]).toEqual([[{ create: VIEW_AS_TESTER }],
         [{ grant: { table: 'dash.report', role: VIEW_AS_TESTER, operations: { read: '@basic' } } }]])

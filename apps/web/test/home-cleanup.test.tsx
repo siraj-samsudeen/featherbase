@@ -7,6 +7,7 @@ import { vi } from 'vitest'
 import { grantRole, makePerson } from 'server/test/fixtures'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
+import { currentApp } from './app-switcher'
 
 type Client = Parameters<typeof renderApp>[1]
 const MERCH = 'Home Merch Map'
@@ -157,7 +158,7 @@ test('a System Manager sees Data and People and access, each link with a grey ic
     expect(within(link).getByTestId('sidebar-item-icon')).toHaveClass('text-ink-subtle')
   // Past imports is a normal nav link now; Import data stays the plain button.
   expect(screen.getByTestId('past-imports-link')).not.toHaveClass('underline')
-  expect(screen.getByTestId('import-data-link').parentElement).not.toContainElement(screen.getByTestId('past-imports-link'))
+  expect(screen.getByTestId('sidebar-new')).not.toContainElement(screen.getByTestId('past-imports-link'))
 })
 
 test('a person with only a Table grant keeps today’s links, and no management ones', async ({ admin, createUser }) => {
@@ -208,14 +209,12 @@ test('the app selector reads Featherbase, on a phone as on a wide screen', async
     }) as MediaQueryList)
   phone(true)
   const first = await renderApp('/featherbase/admin', admin)
-  const select = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(select.selectedOptions[0].textContent).toBe('Featherbase')
+  expect(await currentApp(screen)).toBe('Featherbase')
   first.unmount()
   vi.restoreAllMocks()
   phone(false)
   await renderApp('/featherbase/admin', admin)
-  const wide = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(wide.selectedOptions[0].textContent).toBe('Featherbase')
+  expect(await currentApp(screen)).toBe('Featherbase')
   vi.restoreAllMocks()
 })
 
@@ -243,10 +242,11 @@ test('a row whose Table has no title column is headed by its readable values', a
 })
 
 test.for(['Person', 'Service Account'] as const)('a %s-valued row title names recents, sidebar, heading and breadcrumb', async (principalTable, { admin }) => {
-  const label = principalTable === 'Person' ? 'Maya Title Owner' : 'warehouse-title-importer'
+  // #1224: a service account reads as automation, never its slug.
+  const label = principalTable === 'Person' ? 'Maya Title Owner' : 'Automation (warehouse title importer)'
   const principal = principalTable === 'Person'
     ? await makePerson({ full_name: label })
-    : (await admin.post<{ row_id: string }>('/api/service_accounts', { label })).row_id
+    : (await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'warehouse-title-importer' })).row_id
   const table = `Home Title ${principalTable}`
   await admin.post('/api/table_def', { name: table, id_pattern: 'prompt', title_column: 'owner', columns: [
     { column_name: 'owner', column_type: 'Reference', reference_table: principalTable },

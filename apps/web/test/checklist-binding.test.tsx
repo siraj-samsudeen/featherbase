@@ -21,6 +21,7 @@ import { sql } from 'server/src/db'
 import { invalidateMeta } from 'server/src/meta'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
+import { openListMenu } from './list-menus'
 
 async function installChecklists() {
   const [have] = await sql`select 1 from table_def where name = 'Checklist Run'`
@@ -75,7 +76,7 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
 
   // The switcher offers it…
   await renderApp('/featherbase/admin/table/third-sub-parent', admin)
-  await userEvent.click(await screen.findByRole('button', { name: 'View: List' }))
+  await openListMenu('View')
   expect(await screen.findByTestId('open-checklist')).toBeInTheDocument()
 
   // …and the run pane binds `steps`, the one carrying `done` — not the
@@ -140,7 +141,7 @@ test('the shipped Checklist Template is a standard, not a runnable checklist', a
 
   const templateList = await renderApp('/featherbase/admin/table/checklist-template', admin)
   await screen.findByTestId('list-view')
-  await userEvent.click(await screen.findByRole('button', { name: 'View: List' }))
+  await openListMenu('View')
   await waitFor(() => expect(screen.queryByTestId('open-checklist')).not.toBeInTheDocument())
   templateList.unmount()
 
@@ -151,7 +152,7 @@ test('the shipped Checklist Template is a standard, not a runnable checklist', a
 
   // The run, by contrast, still qualifies.
   await renderApp('/featherbase/admin/table/checklist-run', admin)
-  await userEvent.click(await screen.findByRole('button', { name: 'View: List' }))
+  await openListMenu('View')
   expect(await screen.findByTestId('open-checklist')).toBeInTheDocument()
 })
 

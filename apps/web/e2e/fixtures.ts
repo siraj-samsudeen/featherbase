@@ -416,5 +416,5 @@ export function signIn<
     .fillIn('Email or username', ADMIN_USER)
     .fillIn('Password', ADMIN_PWD)
     .clickButton('Sign in')
-    .assertHas('[data-testid="import-data-link"]')
+    .assertHas('[data-testid="sidebar-new"]')
 }

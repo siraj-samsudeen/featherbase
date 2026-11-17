@@ -69,8 +69,8 @@ export function AccessRequestDrawer({ id, onClose, onDone }: {
     } finally { setBusy(false) }
   }
 
+  // Approve shows only once the request has loaded.
   async function approve() {
-    if (!data) return
     if (roles.includes(FULL_ADMIN) && !confirming) { setConfirming(true); return }
     const picked = grants.map((key) => { const [app, choice] = key.split('\u0000'); return { app, choice } })
     const answer = await run(() => api.post<Approved>(`/api/access_request/${encodeURIComponent(id)}/approve`, {

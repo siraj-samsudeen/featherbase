@@ -14,6 +14,7 @@ import taskerManifest from '../../../example-apps/tasker/featherbase.json'
 import { Apps } from '../src/pages/Apps'
 import { test, committedTest, expect, renderApp } from './pg-test'
 import { holdResponses } from './held-requests'
+import { appChoices } from './app-switcher'
 
 function renderApps(admin: { token?: string | null; user?: string | null }) {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
@@ -104,8 +105,7 @@ async function withSource(build: string, run: () => Promise<void>, manifestChang
 test('explicit preparation shows progress, installs only after building, and offers generic instance configuration', async ({ admin }) => {
   await withSource(`node -e "setTimeout(() => require('fs').copyFileSync('server.mjs', 'built.mjs'), 100)"`, async () => {
     await renderApp('/featherbase/admin/apps', admin)
-    const switcher = await screen.findByRole('combobox', { name: 'Switch application' })
-    expect(within(switcher).queryByRole('option', { name: 'Other tasks' })).not.toBeInTheDocument()
+    expect(await appChoices(screen)).not.toContain('Other tasks')
     const prepare = await screen.findByRole('button', { name: 'Prepare and install' })
     expect(screen.getByRole('region', { name: 'Other tasks details' })).toHaveTextContent('This app grants access to the All role.')
     await userEvent.click(prepare)
@@ -121,7 +121,7 @@ test('explicit preparation shows progress, installs only after building, and off
     expect(screen.getByRole('region', { name: 'Other tasks details' })).toHaveTextContent('Installed on this instance.')
     expect(screen.queryByRole('button', { name: 'Prepare and install' })).not.toBeInTheDocument()
     expect(await admin.get('/api/apps')).toMatchObject({ catalog: [expect.objectContaining({ name: 'other', installed: true })] })
-    expect(await within(switcher).findByRole('option', { name: 'Other tasks' })).toBeInTheDocument()
+    await waitFor(async () => expect(await appChoices(screen)).toContain('Other tasks'))
   })
 }, 30000)
 

@@ -6,6 +6,7 @@ export {
   ArrowUp,
   Bell,
   BookOpen,
+  Bookmark,
   Braces,
   Check,
   Cable,

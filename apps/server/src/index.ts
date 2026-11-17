@@ -73,7 +73,7 @@ import { logAccess } from './audit'
 import { recordAppAccessRefusal } from './app-access'
 import { eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { rowTitles, validateRowTitleRequest } from './row-titles'
-import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
+import { createSavedView, deleteSavedView, listSavedViews, listSidebarViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
@@ -919,6 +919,10 @@ app.get('/api/saved_views', async (c) => {
   if (!table) throw new AppError('ValidationError', 'Expected ?table=<Table name>')
   return c.json({ views: await listSavedViews(who(c), table) })
 })
+
+// #1229: the person's own views on every Table and the shared ones they
+// starred, on Tables they can read: the Admin sidebar's "Saved views".
+app.get('/api/saved_views/sidebar', async (c) => c.json({ views: await listSidebarViews(who(c)) }))
 
 app.post('/api/saved_views', async (c) => {
   const view = await createSavedView(who(c), await c.req.json().catch(() => null))
