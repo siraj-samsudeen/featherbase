@@ -58,7 +58,7 @@ describe('the managed scope (D2)', () => {
       ]],
       ['Sign In Method', 'rows', [
         'kind', 'label', 'enabled', 'new_person', 'allowed_email_domains', 'self_link', 'client_id',
-        'service_url', 'settings', 'identifier_system',
+        'service_url', 'settings', 'identifier_system', 'employees_only',
       ]],
       ['Scheduled Job', 'rows', ['cadence', 'enabled']],
       ['App Setting', 'rows', ['value']],

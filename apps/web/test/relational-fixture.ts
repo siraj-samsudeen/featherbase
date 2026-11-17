@@ -61,3 +61,23 @@ export async function seedSites(admin: Admin, opts: { profitCentres?: number } =
   for (let i = 1; i <= (opts.profitCentres ?? 2); i++)
     await admin.post('/api/save_row', { table: PROFIT, row: { centre_name: `EKL - Retail ${String(i).padStart(2, '0')}`, plant: '1503' } })
 }
+
+// #1218 slice 1: a posting links a site to a plant; the site's postings read
+// as plants. Its region is the site's own region, so it is passed over.
+export async function seedPostings(admin: Admin) {
+  await admin.post('/api/table_def', {
+    // A link table: its title is its own id.
+    name: 'Nv Posting', id_pattern: 'field:posting_id', title_column: 'posting_id',
+    columns: [
+      { column_name: 'posting_id', column_type: 'Data', label: 'Posting' },
+      { column_name: 'region', column_type: 'Reference', reference_table: REGION, label: 'Region' },
+      { column_name: 'site', column_type: 'Reference', reference_table: SITE, label: 'Site' },
+      { column_name: 'plant', column_type: 'Reference', reference_table: PLANT, label: 'Plant' },
+      { column_name: 'posted_on', column_type: 'Date', label: 'Posted on' },
+      { column_name: 'status', column_type: 'Choice', label: 'Status', choices: 'Active\nClosed' },
+      { column_name: 'ends_on', column_type: 'Date', label: 'Ends on' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Nv Posting', row: { posting_id: 'ENK-1503', region: 'KL', site: 'ENK', plant: '1503', posted_on: '2026-04-01', status: 'Active', ends_on: '2027-03-31' } })
+  await admin.post('/api/save_row', { table: 'Nv Posting', row: { posting_id: 'ENK-1504', region: 'KL', site: 'ENK', plant: '1504' } })
+}

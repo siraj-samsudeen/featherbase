@@ -120,4 +120,9 @@ describe('shownCode', () => {
   test('a code the name already says is not repeated', () => {
     expect(shownCode(PLANT, 'Kerala', 'Kerala')).toBeUndefined()
   })
+
+  test('a key composed from the name is not shown after it (#1218)', () => {
+    expect(shownCode(PLANT, 'LKS-Bags & Silk-2026-11-17', 'Bags & Silk')).toBeUndefined()
+    expect(shownCode(PLANT, '2001', 'Asha Leader')).toBe('2001')
+  })
 })

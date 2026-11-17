@@ -37,7 +37,7 @@ function AroundBin({ open = ['shelves', 's1'], loading = false }: { open?: strin
 /**
  * An expandable outline of related rows (an ARIA tree): what a row links to and what links to it, grouped with
  * counts, opened level by level. Captions (`heading`) are not lines; a line can show `loading` while its
- * children arrive, and a capped group says "first 20 · show all 40" (`more`). One line is in the tab order: Up
+ * children arrive, and a capped group says "Show all 40" (`more`). One line is in the tab order: Up
  * and Down move, Right opens, Left closes, Enter activates. The caller holds `expanded` and `selected`. Use it
  * for a tree view of a row; for one level of related rows use `GroupChip`s.
  */
@@ -59,7 +59,7 @@ export const AroundOneRow: Story = {
     await expect(tree.getByRole('treeitem', { name: 'Top shelf · S-1' })).toHaveAttribute('aria-expanded', 'true')
     await userEvent.click(tree.getByRole('treeitem', { name: 'Stock count 8' }).querySelector('div')!)
     await userEvent.keyboard('{ArrowRight}')
-    await userEvent.click(await tree.findByRole('button', { name: 'show all 8' }))
+    await userEvent.click(await tree.findByRole('button', { name: 'Show all 8' }))
     await expect(tree.getByText('Count 08-Nov-2026')).toBeVisible()
   },
 }

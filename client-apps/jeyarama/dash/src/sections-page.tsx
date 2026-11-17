@@ -11,10 +11,11 @@ import { AreaCards } from './my-store-page'
 import { RECORD, RecordLink } from './record-link'
 import { AlsoWith, ReviewerIdentity, ReviewerNames, type Reviewer } from './person-identity'
 
-export type DashView = 'report' | 'sections' | 'approvals' | 'access' | 'unplaced' | 'department' | 'store' | 'coverage'
+export type DashView = 'report' | 'sections' | 'approvals' | 'access' | 'unplaced' | 'department' | 'store' | 'coverage' | 'roles' | 'explain' | 'changes'
+const VIEWS: readonly string[] = ['sections', 'approvals', 'access', 'unplaced', 'department', 'store', 'coverage', 'roles', 'explain', 'changes']
 export function currentView(search = window.location.search): DashView {
   const view = new URLSearchParams(search).get('view')
-  return view === 'sections' || view === 'approvals' || view === 'access' || view === 'unplaced' || view === 'department' || view === 'store' || view === 'coverage' ? view : 'report'
+  return view && VIEWS.includes(view) ? view as DashView : 'report'
 }
 /** The Report access page (#1046), for Report Access Managers and System Managers. */
 export const ACCESS_ADDRESS = '?view=access'
@@ -154,6 +155,9 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
   // #1046: the Report access link shows only to someone who manages it.
   const [manages, setManages] = useState(false)
   useEffect(() => { let live = true; read<boolean>('manages_access').then(answer => { if (live) setManages(answer === true) }, () => {}); return () => { live = false } }, [])
+  // #1218: the business roles pages, in shadow, to whoever manages report access company-wide.
+  const [managesRoles, setManagesRoles] = useState(false)
+  useEffect(() => { let live = true; read<boolean>('manages_roles').then(answer => { if (live) setManagesRoles(answer === true) }, () => {}); return () => { live = false } }, [])
   // #1175: the master data team's list, to whoever holds Master Data Editor.
   const [masterData, setMasterData] = useState(false)
   useEffect(() => { let live = true; read<boolean>('holds_master_data').then(answer => { if (live) setMasterData(answer === true) }, () => {}); return () => { live = false } }, [])
@@ -215,16 +219,30 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m13 10v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></svg>
         <span>Report access</span>
       </a>
-    ))
+    ),
+    ...(managesRoles ? [
+      <a key="roles" href="?view=roles" {...here('roles')} data-testid="roles-link">
+        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /></svg>
+        <span>Business Roles</span>
+      </a>,
+      <a key="explain" href="?view=explain" {...here('explain')} data-testid="explain-link">
+        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8m-7 9a7 7 0 0 1 14 0" /></svg>
+        <span>Explain A Person</span>
+      </a>,
+      <a key="changes" href="?view=changes" {...here('changes')} data-testid="changes-link">
+        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M7 7h13l-4-4M17 17H4l4 4" /></svg>
+        <span>Who Would Gain Or Lose Access</span>
+      </a>] : []))
 }
 
 /** `refresh`: a page that changes what waits elsewhere bumps it, so the sidebar's count is read again (#1219). */
-export function Shell({ current, count, refresh, title, testid, children }: { current: DashView; count?: number | null; refresh?: number; title: ReactNode; testid: string; children: ReactNode }) {
+/** `wide`: the content fills the space after the sidebar (the owner's rule for new pages, #1218). */
+export function Shell({ current, count, refresh, title, testid, wide = false, children }: { current: DashView; count?: number | null; refresh?: number; title: ReactNode; testid: string; wide?: boolean; children: ReactNode }) {
   return (
     <div className="fd-shell">
       <DashSidebar current={current} count={count} refresh={refresh} />
       <main className="fd-page" data-testid={testid}>
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+        <div className={`flex w-full flex-col gap-4 ${wide ? '' : 'mx-auto max-w-3xl'}`}>
           <h1 className="fd-title">{title}</h1>
           {children}
         </div>

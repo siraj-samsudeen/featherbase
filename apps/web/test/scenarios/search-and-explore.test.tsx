@@ -252,11 +252,13 @@ async function exploreSuppliersAndOrders(admin: Client) {
 }
 
 /** Volunteers and the chores assigned to them. */
-async function seedChores(admin: Client) {
+async function seedChores(admin: Client, opts: { checkedBy?: boolean } = {}) {
   await table(admin, { name: 'Volunteer', id_pattern: 'prompt', title_column: 'title',
     columns: [data('title'), data('phone', 'Phone')] })
   await table(admin, { name: 'Chore', id_pattern: 'prompt', title_column: 'title',
-    columns: [data('title'), link('assigned_to', 'Assigned To', 'Volunteer')] })
+    columns: [data('title'), link('assigned_to', 'Assigned To', 'Volunteer'),
+      // #1218: a second link back, so the map names which one joins the chores.
+      ...(opts.checkedBy ? [link('checked_by', 'Checked By', 'Volunteer')] : [])] })
 }
 
 // The organisation masters of #910, as much as the map reads: Region ← Site Master ← Plant.
@@ -293,6 +295,12 @@ class RelationMap {
   }
   linkedRow = (name: string) => screen.findByTestId(`map-forward-${name}`)
   collection = (name: string) => screen.findByTestId(`map-group-${name}`)
+  /** The collection of `name` joined by the link `link`, where its Table links here more than once. */
+  collectionBy = (name: string, link: string) => waitFor(() => {
+    const box = screen.getAllByTestId(`map-group-${name}`).find((g) => g.textContent?.includes(link))
+    if (!box) throw new Error(`no ${name} collection by ${link}`)
+    return box
+  })
   /** A box's text, once `text` shows in it. */
   async boxText(box: Promise<HTMLElement>, text: string) {
     const el = await box
@@ -498,11 +506,11 @@ describe('search-and-explore', () => {
   scenario(`Asha's chores read by "Assigned To"`, async ({ admin }, step) => {
     const map = new RelationMap()
     await step('the user is a System Manager', () => {})
-    await step('a table of volunteers and a table of chores, each chore assigned to a volunteer', () => seedChores(admin))
+    await step('a table of volunteers and a table of chores, each chore assigned to a volunteer and checked by a volunteer', () => seedChores(admin, { checkedBy: true }))
     await step('the chore "Paint the fence" assigned to "Asha", whose phone is "555-0142"', () => addChore(admin))
     await step("the user opens Asha's relationship map", () => map.open(admin, 'Volunteer', 'vol-1'))
     await step(`the user sees Asha's chores related by "Assigned To"`, async () => {
-      const text = await map.boxText(map.collection('Chore'), 'Assigned To')
+      const text = await map.boxText(map.collectionBy('Chore', 'Assigned To'), 'Assigned To')
       expect(text).toContain('Chore')
       expect(text).toContain('Assigned To')
       expect(text).not.toContain('assigned_to')

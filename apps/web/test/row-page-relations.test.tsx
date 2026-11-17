@@ -34,7 +34,7 @@ test('opening the plants shows them in the drill pane', async ({ admin }) => {
   await renderApp(ENK, admin)
   fireEvent.click(await within(await connections()).findByRole('button', { name: `${PLANT} 3` }))
   const pane = await screen.findByRole('complementary', { name: 'Enchakkal · ENK' })
-  await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(4))
+  await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(3))
 })
 
 test('opening its region shows Kerala in the drill pane', async ({ admin }) => {
