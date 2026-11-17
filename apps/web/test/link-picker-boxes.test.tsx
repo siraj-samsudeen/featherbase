@@ -91,7 +91,11 @@ test('a form link with a value offers its way to the row, not a chevron', async 
 
 test('a link filter lists values by name, and the search box in the list narrows them', async ({ admin }) => {
   await seed(admin)
-  await renderApp(tableHref(SHOP), admin)
+  const app = await renderApp(tableHref(SHOP), admin)
+  // A fresh list first settles its address with the person's remembered filters
+  // (#1228, ?filters=[]), a second navigation. A box focused before that kept
+  // its ids on a slow CI runner (shard 1, 17-Nov), so open it once settled.
+  await waitFor(() => expect((app.router.state as { location: { href: string } }).location.href).toContain('filters='))
   const box = await screen.findByTestId('std-filter-region')
   expect(screen.getByTestId('link-chevron-region')).toBeInTheDocument()
   fireEvent.focus(box)

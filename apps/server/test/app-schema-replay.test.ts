@@ -233,6 +233,12 @@ describe('relabelTable', () => {
       .toMatch(/relabelTable shop\.supplier does not hold the label "Seller"/)
   })
 
+  test('a relabel must end at the label the version declares', () => {
+    expect(refusal(() => validateMigrations('shop', '0.2.0', [item(), { ...supplier, label: 'Seller' }],
+      [step([{ kind: 'relabelTable', table: 'shop.supplier', from: 'Supplier', to: 'Vendor' }])])))
+      .toMatch(/relabelTable shop\.supplier: the Table as declared after it does not hold the label "Vendor"/)
+  })
+
   test('relabelling a Table outside the app is refused', () => {
     expect(refusal(() => replayForward('shop', [supplier], [{ kind: 'relabelTable', table: 'other.supplier', from: 'Supplier', to: 'Vendor' }])))
       .toMatch(/only its own Tables/)
