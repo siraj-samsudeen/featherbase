@@ -82,17 +82,27 @@ Then a group of 8 cost centres by supplying plant shows
 And a group of 0 cost centres by billing plant shows, quieter than the other
 ```
 
-### Requirement: A group lists its rows like the table's own list
+### Requirement: A group lists its rows by what they point to
 
-A group in the drill pane SHALL list its rows with the columns of that table's list, and the user
-can switch it to the compact layout as on the list itself.
+A group in the drill pane and on the tree SHALL list its rows one per line, each by its far side:
+its first readable link that is neither the link back nor one holding a value of the row's own
+links; else by its own name. At most two of its dates and statuses show under it. The pane shows
+the first 10 rows, then "Show all N", which opens the group as its own list.
 
-#### Scenario: Enchakkal's plants with their columns
+#### Scenario: Enchakkal's plants by their names
 
 ```gherkin
 Given the user has Enchakkal open in the drill pane
 When the user opens its group of plants
-Then the 3 plants show with the columns of the list of plants
+Then the 3 plants show one per line, each by its name
+```
+
+#### Scenario: A section's job assignments read as its employees
+
+```gherkin
+Given a section has job assignments, each linking the section to an employee
+When the user opens the section's job assignments in the drill pane
+Then each line is the employee's name, a link to the employee
 ```
 
 ### Requirement: A group can be opened as its own list
@@ -276,15 +286,15 @@ And the region Kerala shows above Enchakkal
 
 ### Requirement: A large group on the tree shows its first rows
 
-A large group on the tree SHALL show its first rows and offer the rest, so unfolding it never
+A large group on the tree SHALL show its first 10 rows and offer the rest, so unfolding it never
 floods the view.
 
-#### Scenario: The first 20 of 40 profit centres
+#### Scenario: The first 10 of 40 profit centres
 
 ```gherkin
 Given Enchakkal Supermarket has 40 profit centres
 When the user unfolds them on the tree
-Then the first 20 profit centres show, with a way to show all 40
+Then the first 10 profit centres show, with a way to show all 40
 ```
 
 ### Requirement: Rows the user cannot read stay unnamed

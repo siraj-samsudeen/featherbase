@@ -94,19 +94,19 @@ async function openGroup(name: string, table: string) {
   await waitFor(async () => expect(await group(name, table)).toHaveAttribute('aria-pressed', 'true'))
 }
 
-/** The open group's rows (not its header). */
+/** The open group's rows, one line each (#1218). */
 async function groupRows(name: string) {
-  const table = await within(await pane(name)).findByRole('table')
+  const p = await pane(name)
   return waitFor(() => {
-    const rows = within(table).getAllByRole('row').filter((r) => within(r).queryAllByRole('cell').length > 0)
+    const rows = within(p).getAllByTestId('linked-row')
     expect(rows.length).toBeGreaterThan(0)
     return rows
   })
 }
 
 async function drillTo(name: string, rowName: string) {
-  const row = (await groupRows(name)).find((r) => r.textContent?.includes(rowName))!
-  fireEvent.click(within(row).getAllByRole('cell')[0]!)
+  const row = await waitFor(() => groupRows(name).then((rows) => rows.find((r) => r.textContent?.includes(rowName)) ?? Promise.reject(new Error(`no ${rowName}`))))
+  fireEvent.click(within(row).getByRole('link'))
 }
 
 async function drillToSupermarket() {
@@ -287,19 +287,48 @@ describe('relational-navigation', () => {
     })
   })
 
-  scenario("Enchakkal's plants with their columns", async ({ admin }, step) => {
+  scenario("Enchakkal's plants by their names", async ({ admin }, step) => {
     await step('the user has Enchakkal open in the drill pane', async () => {
       await seedOrganisation(admin)
       await selectInSites(admin, 'Enchakkal')
     })
     await step('the user opens its group of plants', () => openGroup('Enchakkal', 'Plant'))
-    await step('the 3 plants show with the columns of the list of plants', async () => {
+    await step('the 3 plants show one per line, each by its name', async () => {
       await waitFor(async () => expect(await groupRows('Enchakkal')).toHaveLength(3))
-      const rows = (await groupRows('Enchakkal')).map((r) => r.textContent ?? '')
-      for (const name of ENCHAKKAL_PLANTS) expect(rows.some((r) => r.includes(name)), `${name} is among the plants`).toBe(true)
-      const columns = within(within(await pane('Enchakkal')).getByRole('table')).getAllByRole('columnheader')
-        .map((h) => (h.textContent ?? '').replace(/[↑↓]/g, '').trim())
-      for (const label of listColumns('Plant')) expect(columns).toContain(label)
+      const rows = await groupRows('Enchakkal')
+      for (const name of ENCHAKKAL_PLANTS)
+        await waitFor(() => expect(rows.some((r) => within(r).queryByRole('link', { name: named(name) })), `${name} is a line`).toBe(true))
+      expect(within(await pane('Enchakkal')).queryByRole('table')).not.toBeInTheDocument()
+    })
+  })
+
+  scenario("A section's job assignments read as its employees", async ({ admin }, step) => {
+    await step('a section has job assignments, each linking the section to an employee', async () => {
+      await admin.post('/api/table_def', { name: 'Sc Section', id_pattern: 'prompt', title_column: 'section_name',
+        columns: [{ column_name: 'section_name', column_type: 'Data', label: 'Section', in_list_view: true },
+          { column_name: 'floor', column_type: 'Data', label: 'Floor', in_list_view: true }] })
+      await admin.post('/api/table_def', { name: 'Sc Employee', id_pattern: 'prompt', title_column: 'employee_name',
+        columns: [{ column_name: 'employee_name', column_type: 'Data', label: 'Name', in_list_view: true }] })
+      await admin.post('/api/table_def', { name: 'Sc Job Assignment', id_pattern: 'hash', columns: [
+        { column_name: 'section', column_type: 'Reference', reference_table: 'Sc Section', label: 'Section' },
+        { column_name: 'employee', column_type: 'Reference', reference_table: 'Sc Employee', label: 'Employee' },
+      ] })
+      await admin.post('/api/save_row', { table: 'Sc Section', row: { row_id: 'S13039', section_name: 'Ladies Wear', floor: 'First' } })
+      for (const [row_id, employee_name] of [['E1001', 'Anitha'], ['E1002', 'Bindu']]) {
+        await admin.post('/api/save_row', { table: 'Sc Employee', row: { row_id, employee_name } })
+        await admin.post('/api/save_row', { table: 'Sc Job Assignment', row: { section: 'S13039', employee: row_id } })
+      }
+    })
+    await step("the user opens the section's job assignments in the drill pane", async () => {
+      await renderApp(tableHref('Sc Section'), admin)
+      await select('Ladies Wear')
+      await openGroup('Ladies Wear', 'Sc Job Assignment')
+    })
+    await step("each line is the employee's name, a link to the employee", async () => {
+      await waitFor(async () => expect(await groupRows('Ladies Wear')).toHaveLength(2))
+      for (const [id, name] of [['E1001', 'Anitha'], ['E1002', 'Bindu']])
+        await waitFor(async () => expect(within(await pane('Ladies Wear')).getByRole('link', { name: named(name) }))
+          .toHaveAttribute('href', expect.stringContaining(`/row/${id}`)))
     })
   })
 
@@ -311,7 +340,7 @@ describe('relational-navigation', () => {
     })
     await step('the user opens its group of plants as a list', async () => {
       await openGroup('Enchakkal', 'Plant')
-      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Open as list' }))
+      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Show all 3' }))
     })
     await step('the list of plants opens, narrowed to the 3 plants of Enchakkal', async () => {
       await waitFor(() => expect(location(view).pathname).toBe(tableHref('Plant')))
@@ -327,7 +356,7 @@ describe('relational-navigation', () => {
       await seedOrganisation(admin)
       ;({ view } = await selectInSites(admin, 'Enchakkal'))
       await openGroup('Enchakkal', 'Plant')
-      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Open as list' }))
+      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Show all 3' }))
       await waitFor(() => expect(location(view).pathname).toBe(tableHref('Plant')))
     })
     await step('the user starts a new plant', async () => {
@@ -586,15 +615,15 @@ describe('relational-navigation', () => {
     })
   })
 
-  scenario('The first 20 of 40 profit centres', async ({ admin }, step) => {
+  scenario('The first 10 of 40 profit centres', async ({ admin }, step) => {
     let centres!: HTMLElement
     await step('Enchakkal Supermarket has 40 profit centres', () => seedOrganisation(admin))
     await step('the user unfolds them on the tree', async () => {
       await openTree(admin, 'Plant', '1503')
       centres = await unfoldGroup('Profit Centre')
     })
-    await step('the first 20 profit centres show, with a way to show all 40', async () => {
-      await waitFor(() => expect(within(within(centres).getAllByRole('group')[0]!).getAllByRole('treeitem')).toHaveLength(20))
+    await step('the first 10 profit centres show, with a way to show all 40', async () => {
+      await waitFor(() => expect(within(within(centres).getAllByRole('group')[0]!).getAllByRole('treeitem')).toHaveLength(10))
       expect(within(centres).getAllByRole('button', { name: /\b40\b/ })[0]).toBeVisible()
     })
   })
