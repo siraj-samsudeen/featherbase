@@ -134,6 +134,13 @@ describe('reach as data on the role (Codex standard review round 4)', () => {
   })
 })
 
+describe('a role given by hand only (Codex standard round 5)', () => {
+  it('is never assigned from an HR title mapped to it: the title reads as not mapped yet', () => {
+    const mapped = { ...model, rules: [{ title: 'Staff', role: 'r-mds' }] }
+    expect(rolesOf({ ...none, jobs: [{ id: 'J1', job: 'Staff', designation: null }] }, mapped)).toEqual({ held: [], unmapped: [{ title: 'Staff', job: 'Staff' }] })
+  })
+})
+
 describe('every source asks the role\'s Reaches (Codex adversarial round 5)', () => {
   it('gives a named cluster head the whole company when Cluster Manager maps to a whole-company role', () => {
     const mapped = { ...model, rules: [...RULES.filter(r => r.title !== 'Cluster Manager'), { title: 'Cluster Manager', role: 'r-lead' }] }

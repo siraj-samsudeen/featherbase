@@ -249,7 +249,7 @@ function UnmappedTitle({ title, roles, onSaved }: { title: RolesAnswer['titles']
       side={<>
         <Select aria-label={`Business role for ${title.title}`} value={role} onChange={e => setRole(e.target.value)} data-testid="map-role">
           <option value="">Map to…</option>
-          {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          {roles.filter(r => !r.by_hand_only).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
         </Select>
         <Button variant="secondary" disabled={!role} loading={busy} onClick={save} data-testid="map-save">Map</Button>
       </>}>

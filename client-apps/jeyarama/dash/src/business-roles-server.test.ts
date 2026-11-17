@@ -646,3 +646,17 @@ describe('every source asks the role\'s Reaches, with stores outside the first a
     expect([role.name, role.area.parts.map(p => p.name), role.area.stores]).toEqual(['Leadership', ['Whole company'], 2])
   })
 })
+
+describe('a role given by hand only, on the Title Map (Codex standard round 5)', () => {
+  it('refuses to map a title to it, saying why', async () => {
+    const tables = await seeded()
+    await expect(mapTitle(context(tables, { payload: { title: 'Staff', role: roleId(tables, 'Master Data Steward') } }) as never)).rejects.toThrow('Master Data Steward is given by hand only')
+  })
+
+  it('lists a title already mapped to it as not mapped yet', async () => {
+    const tables = await seeded()
+    tables['dash.title_map'].find(r => r.title === 'Staff')!.business_role = roleId(tables, 'Master Data Steward')
+    const page = await businessRoles(context(tables) as never)
+    expect(page.titles.find(t => t.title === 'Staff')).toMatchObject({ role: null, people: 1 })
+  })
+})

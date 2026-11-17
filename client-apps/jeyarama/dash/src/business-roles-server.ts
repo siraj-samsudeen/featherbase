@@ -419,6 +419,8 @@ export async function mapTitle(context: AccessContext) {
   const [title, role] = [text(ctx.payload.title), exact(ctx.payload.role)]
   if (!title) ctx.reject!('Name the title')
   if (!(await roleExists(ctx, role))) ctx.reject!('Choose a business role')
+  const [chosen] = await all(ctx.baseTables, ROLE, ['role_name', 'by_hand_only'], [['row_id', '=', role]])
+  if (checked(chosen.by_hand_only)) ctx.reject!(`${text(chosen.role_name)} is given by hand only`)
   const existing = (await all(ctx.baseTables, TITLE_MAP, ['title', 'updated_at'])).find(r => text(r.title).toLowerCase() === title.toLowerCase())
   if (existing) await ctx.documents!.update!(TITLE_MAP, { row_id: exact(existing.row_id), business_role: role, updated_at: exact(existing.updated_at) })
   else await ctx.documents!.create!(TITLE_MAP, { title, business_role: role })

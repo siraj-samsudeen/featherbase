@@ -36,9 +36,9 @@ export const CLUSTER_TITLE = 'Cluster Manager'
 export const BUYER_TITLE = 'Buyer'
 
 const key = (title: string) => title.trim().toLowerCase()
-/** Title to role id, for rows naming a role that still exists. */
+/** Title to role id, for rows naming a role that still exists and is not given by hand only: such a title reads as not mapped yet. */
 function mapping(model: Pick<Model, 'rules' | 'roles'>): Map<string, string> {
-  return new Map(model.rules.filter(rule => model.roles.some(r => r.id === rule.role)).map(rule => [key(rule.title), rule.role!]))
+  return new Map(model.rules.filter(rule => model.roles.some(r => r.id === rule.role && !r.by_hand_only)).map(rule => [key(rule.title), rule.role!]))
 }
 
 /** A role reaches the whole company when its Reaches says so (D2), wherever its holder's assignment sits. */
