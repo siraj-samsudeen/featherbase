@@ -82,6 +82,8 @@ export interface ChangeProposalsReader {
   list(filter?: ProposalFilter): Promise<ChangeProposal[]>
   /** Whether the caller may decide a proposal by this maker, with these approvers. */
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
+  /** #1254: mayDecide for many at once, in order; who can act is read for all of them together. */
+  mayDecideMany(asks: { maker: string; approvers: ApproverRequest }[]): Promise<boolean[]>
   /** Who these approvers come to now for this maker; null when nobody can act. */
   routeFor(maker: string, approvers: ApproverRequest): Promise<{ people: string[]; roles: string[] } | null>
   /** #1191: how one of the app's declared approval types works on this instance now. */

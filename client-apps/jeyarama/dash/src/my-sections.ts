@@ -25,6 +25,7 @@ interface BaseTablesHelper {
 interface ChangeProposalsReader {
   list(filter?: ProposalList): Promise<ChangeProposal[]>
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
+  mayDecideMany(asks: { maker: string; approvers: ApproverRequest }[]): Promise<boolean[]>
   routeFor(maker: string, approvers: ApproverRequest): Promise<{ people: string[]; roles: string[] } | null>
   modeOf(type: string): Promise<string>
 }
@@ -152,15 +153,14 @@ function approversFrom(manager: Row | undefined) {
 }
 
 /** Who decides each of many proposals, from a fixed few reads (#1254): every job's manager, and every
- *  from-section's Team Leaders and theirs, are read once, and the platform is asked once per distinct
- *  maker and approvers. Reading them per proposal cost about 14 queries each: 5 s on production. */
+ *  from-section's Team Leaders and theirs, are read once. Reading them per proposal cost about 14 queries
+ *  each: 5 s on production. The platform is then asked about all of them at once (mayDecideMany). */
 export async function approverLookup(ctx: ReadContext, jobs: (Row | undefined)[], fromSections: string[], today: string) {
-  const sections = unique(fromSections.filter(Boolean))
-  const holders = sections.length ? (await all(ctx, T.job, JOB_FIELDS, [['section', 'in', sections]])).filter(job => inForce(job, today) && text(job.job) === 'Team Leader') : []
+  // The same holders a decision reads under its locks.
+  const holders = await holdersOf(ctx, unique(fromSections.filter(Boolean)), today)
   const ids = unique([...jobs, ...holders].map(job => exact(job?.reports_to)).filter(Boolean))
   const managers = ids.length ? byId(await all(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['row_id', 'in', ids]])) : new Map<string, Row>()
   const of = (job: Row | undefined) => approversFrom(managers.get(exact(job?.reports_to))).approvers
-  const decided = new Map<string, boolean>()
   return {
     approversOf: of,
     /** As approversFor, from what was read. */
@@ -170,11 +170,6 @@ export async function approverLookup(ctx: ReadContext, jobs: (Row | undefined)[]
       const people = [...approvers.people]
       for (const holder of holders.filter(h => exact(h.section) === exact(a.from_section))) people.push(...of(holder).people)
       return { people: unique(people), fallbackRoles: approvers.fallbackRoles }
-    },
-    async mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean> {
-      const key = JSON.stringify([maker, approvers])
-      if (!decided.has(key)) decided.set(key, await ctx.changeProposals.mayDecide(maker, approvers))
-      return decided.get(key)!
     },
   }
 }
@@ -206,7 +201,8 @@ export function fewNames(names: (string | undefined)[]): string | null {
 
 async function holdersOf(ctx: BaseContext, sections: string[], today: string): Promise<Row[]> {
   if (!sections.length) return []
-  return (await list(ctx, T.job, JOB_FIELDS, [['section', 'in', sections]])).filter(job => inForce(job, today) && text(job.job) === 'Team Leader')
+  // Every page (#1254, Codex): a section's past and Staff jobs must never push its Team Leader past the first 500.
+  return (await all(ctx, T.job, JOB_FIELDS, [['section', 'in', sections]])).filter(job => inForce(job, today) && text(job.job) === 'Team Leader')
 }
 export async function employeeNames(ctx: BaseContext, ids: string[]): Promise<Map<string, string>> {
   const wanted = unique(ids)
@@ -265,11 +261,12 @@ export async function waitingForMe(ctx: ReadContext, setUps = false): Promise<Ch
       && (proposal.about as Record<string, unknown>).for_person !== ctx.user : !isSetUp(proposal)))
     const jobs = others.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(others.map(p => about(p).job_assignment))]])) : new Map<string, Row>()
     const lookup = await approverLookup(ctx, [...jobs.values()], setUps ? [] : others.map(p => exact(about(p).from_section)), today)
-    for (const proposal of others) {
+    const asks = others.map(proposal => {
       const a = about(proposal)
-      const approvers = setUps ? lookup.approversOf(jobs.get(a.job_assignment)) : lookup.approversFor(a, jobs.get(a.job_assignment))
-      if (await lookup.mayDecide(proposal.maker, approvers)) mine.push(proposal)
-    }
+      return { maker: proposal.maker, approvers: setUps ? lookup.approversOf(jobs.get(a.job_assignment)) : lookup.approversFor(a, jobs.get(a.job_assignment)) }
+    })
+    const may = asks.length ? await ctx.changeProposals.mayDecideMany(asks) : []
+    mine.push(...others.filter((_, index) => may[index]))
     if (pending.length < 500) return mine
   }
 }

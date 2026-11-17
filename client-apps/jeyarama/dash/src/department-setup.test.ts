@@ -116,6 +116,7 @@ function context(tables: Record<string, Row[]>, { user = 'deepa', payload, setti
         return rows.slice(start, start + (filter.limit ?? 200))
       },
       mayDecide: async () => decides,
+      mayDecideMany: async (asks: unknown[]) => asks.map(() => decides),
       modeOf: async () => MODE,
       routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: route === 'people' ? approvers.people : [], roles: [] }),
       lockRow: async () => {},
