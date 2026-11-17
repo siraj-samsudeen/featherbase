@@ -131,7 +131,7 @@ table.words tbody tr:last-child td{border-bottom:0}
     <div class="card q"><span class="n">1</span><span class="ask">What does HR call them?</span><span class="eg">Assistant Manager – Operations</span><span class="home">Designation, from StyleHR. Never edited here.</span></div>
     <div class="card q"><span class="n">2</span><span class="ask">What does the business call them?</span><span class="eg">Store Manager</span><span class="home">Business role: from the title map, a merchandise assignment, or by hand.</span></div>
     <div class="card q"><span class="n">3</span><span class="ask">What may they do?</span><span class="eg">Edit sections</span><span class="home">Basic, plus what the business role adds.</span></div>
-    <div class="card q"><span class="n">4</span><span class="ask">How far does it reach?</span><span class="eg">Area: ATK</span><span class="home">Own, Team, Area or All. The area comes from the assignment.</span></div>
+    <div class="card q"><span class="n">4</span><span class="ask">How far does it reach?</span><span class="eg">Area: Store A</span><span class="home">Own, Team, Area or All. The area comes from the assignment.</span></div>
   </div>
 </section>
 
@@ -190,7 +190,7 @@ table.words tbody tr:last-child td{border-bottom:0}
   <div class="tablewrap"><table class="words">
     <thead><tr><th>Word on screen</th><th>What it is</th><th>Also called</th><th>On the location axis?</th></tr></thead>
     <tbody>
-      <tr><td><b>Site</b></td><td>A physical place: ATK, the Corporate Office, a warehouse.</td><td>location, branch</td><td>Yes. Admin screens say Site.</td></tr>
+      <tr><td><b>Site</b></td><td>A physical place: Store A, the Corporate Office, a warehouse.</td><td>location, branch</td><td>Yes. Admin screens say Site.</td></tr>
       <tr><td><b>Store</b></td><td>A site that sells. A filter on Site, not a separate table.</td><td>showroom, outlet</td><td>Yes. Dash and staff screens say Store, because they only ever show sites that sell.</td></tr>
       <tr><td><b>Plant</b></td><td>SAP's booking unit under a site. A site can hold several (a store and a shop-in-shop).</td><td>SAP plant, plant code</td><td>No. Reaching a site reaches its plants; staff never see plant codes.</td></tr>
     </tbody>
@@ -204,7 +204,7 @@ table.words tbody tr:last-child td{border-bottom:0}
       <li><b>App admin</b>, one per app: changes that app's rows in this grid, and nothing else. Does not exist yet.</li>
       <li>Both are given by hand, never from an HR title.</li></ul></div>
     <div class="card"><h3>Changing a person by hand</h3><ul>
-      <li><b>Correct</b>: replace the role the title gave ("treat as Store Manager at ATK").</li>
+      <li><b>Correct</b>: replace the role the title gave ("treat as Store Manager at Store A").</li>
       <li><b>Also give</b>: add a role, or one app at Basic for a consultant, with a reason and an end date.</li>
       <li>Nothing ever takes away, so one screen can list every reason.</li></ul></div>
   </div>
@@ -309,21 +309,21 @@ function grid(role){
 const SRC={hr:['c-hr','From HR title'],merch:['c-merch','From merchandise assignment'],correct:['c-hand','Corrected by hand'],also:['c-hand','Also given by hand']};
 const PEOPLE=[
  {id:'sm',label:'Store manager, operations title',name:'Arun K.',title:'Assistant Manager – Operations',
-  rows:[{role:'Store Manager',src:'correct',loc:['Kerala','Kerala South','ATK'],mer:['All merchandise']}],
-  because:[['Can edit the sections at ATK','Store Manager can Edit sections at Area reach, and his area is ATK'],['Cannot edit sections at KNP','KNP is outside his area']]},
+  rows:[{role:'Store Manager',src:'correct',loc:['Kerala','Kerala South','Store A'],mer:['All merchandise']}],
+  because:[['Can edit the sections at Store A','Store Manager can Edit sections at Area reach, and his area is Store A'],['Cannot edit sections at Store B','Store B is outside his area']]},
  {id:'ch',label:'Category head',name:'Deepa V.',title:'Category Manager',
   rows:[{role:'Category Head',src:'merch',loc:['Whole company'],mer:['Fashion','Womenswear','Women Ethnic Wear']}],
   because:[['Can rename a Women Ethnic Wear subcategory','Category Head can Edit subcategories at Area reach, and her area is that category'],['Cannot touch Kids Wear','Outside her area'],['Dash opens','Basic includes Dash, and nothing hand-ticked can lock her out']]},
  {id:'two',label:'Two hats',name:'Priya S.',title:'Floor Manager',
-  rows:[{role:'Floor Manager',src:'hr',loc:['Kerala','Kerala North','PKD','First floor'],mer:['All merchandise']},
+  rows:[{role:'Floor Manager',src:'hr',loc:['Kerala','Kerala North','Store C','First floor'],mer:['All merchandise']},
         {role:'Buyer',src:'also',loc:['Tamil Nadu'],mer:['Kidswear','Kids Ethnic'],until:'31-Mar-2027'}],
-  because:[['Kids Ethnic figures in Tamil Nadu stores','Buyer, second assignment'],['Not Kids Ethnic at PKD as a buyer','Each role keeps its own area; at PKD she is Floor Manager, first floor']]},
+  because:[['Kids Ethnic figures in Tamil Nadu stores','Buyer, second assignment'],['Not Kids Ethnic at Store C as a buyer','Each role keeps its own area; at Store C she is Floor Manager, first floor']]},
  {id:'ho',label:'Head office analyst',name:'Faisal M.',title:'MIS Executive',
   rows:[{role:'Head Office',src:'hr',loc:['Whole company'],mer:['All merchandise']}],
   because:[['Sees every store in Dash','Basic gives View reports at Area reach, and his area is the whole company. No extra role.']]},
  {id:'tl',label:'Team leader',name:'Ravi P.',title:'Team leader',
-  rows:[{role:'Team Leader',src:'hr',loc:['Kerala','Kerala North','KNP','Ground floor','Sarees'],mer:['Sarees section\'s subcategories']}],
-  because:[['Sees his team\'s tasks','Team Leader widens Tasks to Team reach'],['Sees Sarees figures at KNP only','His area is his section']]}
+  rows:[{role:'Team Leader',src:'hr',loc:['Kerala','Kerala North','Store B','Ground floor','Sarees'],mer:['Sarees section\'s subcategories']}],
+  because:[['Sees his team\'s tasks','Team Leader widens Tasks to Team reach'],['Sees Sarees figures at Store B only','His area is his section']]}
 ];
 function show(id){
   pickRow(document.getElementById('people'),PEOPLE.map(p=>p.label),PEOPLE.find(p=>p.id===id).label,lab=>show(PEOPLE.find(p=>p.label===lab).id));

@@ -12,12 +12,12 @@ Two things decide what a person gets in Dash — their **job** (from StyleHR) an
 
 | # | Where | What the job decides | Example |
 |---|---|---|---|
-| J1 | Dash reach (`dash/src/provider.ts` `reachOf`) | Which stores and subcategories a person's figures cover | A Team Leader at KNP sees their section's subcategories at KNP; a Store Manager sees all of PKD; a Cluster Manager sees their cluster; Director / COO / MD see every store |
+| J1 | Dash reach (`dash/src/provider.ts` `reachOf`) | Which stores and subcategories a person's figures cover | A Team Leader at Store B sees their section's subcategories at Store B; a Store Manager sees all of Store C; a Cluster Manager sees their cluster; Director / COO / MD see every store |
 | J2 | Dash reach — no reach | Gives the reason shown when someone reaches nothing | "Head office staff" reaches no store, so the page says why |
 | J3 | Report access (`report-access-server.ts`) | A report can be given to a **job** | "Vendor Sales" given to Store Manager, Floor Manager, … one row per job |
 | J4 | Department Manager reach (#1195) | Which department's sections | A Department Manager reaches the sections of the department they manage at their store |
 | J5 | Team picker (#1217, shipping) | "My team" = people whose job assignment reports to me | A category head gives a report to their direct reports |
-| J6 | Person identity (#1216) | Shown beside a name so same-named people can be told apart | "Team Leader · KNP" |
+| J6 | Person identity (#1216) | Shown beside a name so same-named people can be told apart | "Team Leader · Store B" |
 
 Merchandise Assignment works like a second kind of job for buyers and heads:
 
