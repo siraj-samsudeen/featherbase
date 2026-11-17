@@ -371,6 +371,21 @@ describe('#1207 the token endpoint: a code for a key pair', () => {
     await expectOAuthError(await exchange(grant), 400, 'invalid_grant')
   })
 
+  // Codex round 2: a password change, ending connections and dropping codes
+  // are one write, so an exchange cannot slip a connection in between them.
+  test('a password change that cannot finish ending agent access changes nothing', async ({ createUser }) => {
+    const user = await createUser()
+    await connected(user)
+    const [before] = await sql`select password_hash from person where row_id = ${user.user!}`
+    await sql`create function pg_temp.refuse_1207() returns trigger language plpgsql as $$ begin raise exception 'refused for the test'; end $$`
+    await sql`create trigger refuse_1207 before delete on featherbase.agent_auth_code for each statement execute function pg_temp.refuse_1207()`
+    await expect(setUserPassword(user.user!, 'a-new-password-1207')).rejects.toThrow(/refused for the test/)
+    const [after] = await sql`select password_hash from person where row_id = ${user.user!}`
+    expect(after.password_hash).toBe(before.password_hash)
+    const [live] = await sql`select count(*)::int as n from agent_connection where person = ${user.user!} and ended_at is null`
+    expect(live.n).toBe(1)
+  })
+
   test('another grant type is refused', async () => {
     await expectOAuthError(await tokenPost({ grant_type: 'client_credentials' }), 400, 'unsupported_grant_type')
   })
