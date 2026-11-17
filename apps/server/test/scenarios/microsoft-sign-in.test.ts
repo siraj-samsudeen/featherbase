@@ -49,7 +49,7 @@ scenario('An address whose domain Microsoft has not confirmed is refused', async
   })
   await step(/someone signs in with a Microsoft account that shows Asha's address/, async () => {
     // Another organisation's account, given Asha's address by its own administrator.
-    res = await microsoftSignIn(api, `asha@${DOMAIN}`, { oid: '9a8b7c6d-5e4f-4321-8765-0fedcba98765', tid: '33333333-3333-4333-8333-333333333333', edov: false })
+    res = await microsoftSignIn(api, `asha@${DOMAIN}`, { oid: '9a8b7c6d-5e4f-4321-8765-0fedcba98765', tid: '33333333-3333-4333-8333-3333bbbb3333', edov: false })
   })
   await step('they are refused and told to contact IT', async () => {
     await expectStatus(res, 302)
@@ -110,7 +110,7 @@ scenario('The same address from another Microsoft account later', async ({ api }
     await expectStatus(await microsoftSignIn(api, `asha@${DOMAIN}`, ASHA), 302)
   })
   await step("a different Microsoft account with Asha's address signs in", async () => {
-    res = await microsoftSignIn(api, `asha@${DOMAIN}`, { oid: '11112222-3333-4444-8555-666677778888' })
+    res = await microsoftSignIn(api, `asha@${DOMAIN}`, { oid: '11112222-3333-4444-8555-6666cccc8888' })
   })
   await step("it is refused, and only Asha's own Microsoft account opens her account", async () => {
     expect(res.headers.get('location')).toBe('/featherbase/login?error=not_provisioned&via=microsoft')

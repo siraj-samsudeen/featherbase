@@ -1160,7 +1160,7 @@ export function ListView({
           </div>
           <div className="min-w-0 flex-1">
             {recordPanel ?? (
-              <div className="grid h-full min-h-48 place-items-center rounded-xl bg-canvas/40 text-sm text-ink-subtle" data-testid="record-panel-empty">
+              <div className="grid h-full min-h-24 place-items-center rounded-xl bg-canvas/40 text-sm text-ink-subtle" data-testid="record-panel-empty">
                 Choose a card to read it here.
               </div>
             )}
