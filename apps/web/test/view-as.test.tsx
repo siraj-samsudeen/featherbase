@@ -26,7 +26,8 @@ vi.mock('../src/lib/api', () => ({
 }))
 
 const { ViewAsBanner, ViewAsButton, ViewAsPicker, identityLine, VIEWING_AS_ATTRIBUTE } = await import('../src/components/ViewAs')
-const { historyPaused, pauseHistory } = await import('../src/lib/recents')
+const { setViewedPerson, viewedPerson } = await import('../src/lib/viewing-as')
+const viewingMarker = (row_id = 'P-1', full_name = 'Asha Leader') => setViewedPerson({ row_id, full_name })
 
 const asha: ViewAsPerson = { person: 'P-1', name: 'Asha Leader', code: '2001', jobs: ['Team Leader · Lakeside'] }
 const mohan: ViewAsPerson = { person: 'P-2', name: 'Mohan Manager', code: '3013', jobs: ['Store Manager · Lakeside', 'Team Leader · Lakeside'] }
@@ -109,7 +110,7 @@ describe('the View as button and window', () => {
   })
 
   test('while viewing, the banner takes the button’s place; the shortcut still opens the picker', async () => {
-    pauseHistory(true)
+    viewingMarker()
     state = viewingAsha()
     show(<ViewAsButton compact={false} />)
     await waitFor(() => {
@@ -143,7 +144,7 @@ describe('the picker', () => {
     await userEvent.type(screen.getByTestId('view-as-search'), '{Enter}')
     await waitFor(() => expect(reload).toHaveBeenCalled())
     expect(post).toHaveBeenCalledWith('/api/view_as/start', { person: 'P-2' })
-    expect(historyPaused()).toBe(true)
+    expect(viewedPerson()).toEqual({ row_id: 'P-2', full_name: 'Mohan Manager' })
     expect(window.localStorage.getItem('featherbase.view-as.changed')).toBeTruthy()
   })
 
@@ -178,7 +179,7 @@ describe('the banner', () => {
   })
 
   test('viewing: who, their line, for viewing only; the page is marked; Switch opens the picker', async () => {
-    pauseHistory(true)
+    viewingMarker()
     state = viewingAsha()
     show(<ViewAsBanner />)
     const banner = await screen.findByTestId('view-as-banner')
@@ -193,14 +194,14 @@ describe('the banner', () => {
   })
 
   test('a person with no staff line shows the fallback words', async () => {
-    pauseHistory(true)
+    viewingMarker('P-9', 'Guest')
     state = { may: true, viewing: { person: 'P-9', name: 'Guest', expires_at: new Date(Date.now() + 60_000).toISOString() } }
     show(<ViewAsBanner />)
     expect((await screen.findByTestId('view-as-banner')).textContent).toContain('Not on the staff list')
   })
 
   test('Exit ends View as, resumes history and reloads; a failure is shown', async () => {
-    pauseHistory(true)
+    viewingMarker()
     state = viewingAsha()
     show(<ViewAsBanner />)
     post.mockRejectedValueOnce(new FakeApiError('Try again later.', 500))
@@ -209,11 +210,11 @@ describe('the banner', () => {
     await userEvent.click(screen.getByTestId('view-as-exit'))
     await waitFor(() => expect(reload).toHaveBeenCalled())
     expect(post).toHaveBeenLastCalledWith('/api/view_as/exit', {})
-    expect(historyPaused()).toBe(false)
+    expect(viewedPerson()).toBeNull()
   })
 
   test('when its time is up the page reloads', async () => {
-    pauseHistory(true)
+    viewingMarker()
     state = viewingAsha({ viewing: { ...asha, expires_at: new Date(Date.now() - 5_000).toISOString() } })
     show(<ViewAsBanner />)
     await screen.findByTestId('view-as-banner')
@@ -236,18 +237,18 @@ describe('reloads that keep one page to one person', () => {
   })
 
   test('a stale history marker is fixed and the page redrawn', async () => {
-    pauseHistory(true)
+    viewingMarker()
     state = { may: true }
     show(<ViewAsBanner />)
     await waitFor(() => expect(reload).toHaveBeenCalled())
-    expect(historyPaused()).toBe(false)
+    expect(viewedPerson()).toBeNull()
   })
 
   test('a marker missing while viewing is set and the page redrawn', async () => {
     state = viewingAsha()
     show(<ViewAsBanner />)
     await waitFor(() => expect(reload).toHaveBeenCalled())
-    expect(historyPaused()).toBe(true)
+    expect(viewedPerson()).toEqual({ row_id: 'P-1', full_name: 'Asha Leader' })
   })
 
   test('someone who may not view as anyone is treated as not viewing', async () => {
@@ -259,7 +260,7 @@ describe('reloads that keep one page to one person', () => {
   })
 
   test('whom the page shows changing under it (another tab switched) reloads', async () => {
-    pauseHistory(true)
+    viewingMarker()
     state = viewingAsha()
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={client}><ViewAsBanner /></QueryClientProvider>)

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { api, getSessionUser } from './api'
+import { api, getSignedInUser } from './api'
 import { useWhoAmI, whoAmIQuery } from './session'
 
 // One owner for the whole session holds this hook (lib/theme-choice.tsx, at
@@ -21,7 +21,7 @@ export function useAppearancePreference<T extends string>(
   const version = useRef(0)
   const pending = useRef(0)
   const mounted = useRef(true)
-  const user = getSessionUser()?.row_id
+  const user = getSignedInUser()?.row_id
   const serverValue = who.data?.[key]
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export function useAppearancePreference<T extends string>(
     setValue(choice)
     apply(choice)
     pending.current++
-    const active = () => mounted.current && getSessionUser()?.row_id === user
+    const active = () => mounted.current && getSignedInUser()?.row_id === user
     queue.current = queue.current.then(async () => {
       try {
         if (!active()) return

@@ -792,7 +792,7 @@ function PersonLookup({ team }: { team?: TeamPicking } = {}) {
         {answer && answer.reports.length === 0 && <p data-testid="lookup-none">{answer.name} sees no report. Nothing has been given to them, their roles or their job.</p>}
         {answer && answer.reports.length > 0 && <p className="font-semibold" data-testid="lookup-count">{answer.name} can open {answer.reports.length} report{answer.reports.length === 1 ? '' : 's'}</p>}
         {answer && person && canViewAs && (
-          <div><Button variant="secondary" data-testid="lookup-view-as" onClick={() => void startViewAs(person.person).catch(failure => setError(messageOf(failure)))}>View as {answer.name}</Button></div>
+          <div><Button variant="secondary" data-testid="lookup-view-as" onClick={() => void startViewAs(person.person, answer.name).catch(failure => setError(messageOf(failure)))}>View as {answer.name}</Button></div>
         )}
         {answer && answer.reports.length > 0 && (
           <ul className="flex flex-col divide-y divide-border" data-testid="lookup-reports">
