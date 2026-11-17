@@ -219,3 +219,30 @@ Dash's reach now sends merchandise as **code prefixes**, and Dives match them wi
 D2's Area on the merchandise axis must produce exactly this shape, so one encoding serves both the permission check and the Dive filters. A Category Head's area is therefore one 4-digit prefix, not a list of 9-digit codes.
 
 (Store codes in this plan were replaced with "Store A/B/C" before pushing to the public repo.)
+
+## Relational navigation: the final structure (17-Nov-2026)
+
+The owner reviewed the options page (https://claude.ai/artifact/Sx27C7Z95q7Pq4wHcpzHaY, source `docs/plans/issue_1218_relational_navigation.html`):
+- Lens: good.
+- Map, showing both sides: very good.
+- Grid: good idea, but it looked ugly with rows stretched tall, and a long y-axis is hard to read. The page is now fixed with compact rows, a sticky first column and horizontal headers.
+- Columns and Sentences: good.
+- Explore: unusable today.
+
+Production was toured the same day. Its record panel, path bar, Map and Tree draw the same links in three places, and they show link rows by their codes.
+
+The structure: one walk in the path bar, and each place does one job.
+
+| Place | Job | What changes |
+|---|---|---|
+| List page | Find rows | "Add filter" gains Linked to… and Not linked to…, so Explore's chains are built from the list. |
+| Record panel (side) | A quick look | Its groups list one row per line, by the far side's name. |
+| Record page | Work on one record | Tabs: Form · Links · Map · Activity. Tree becomes Links, with Edit as ticks, source chips, Why? and Open as grid. |
+| Map | See and explain | Link tables collapse to their far side. Why mode where a path is declared. "Open in Explore" goes. |
+| Grid | Compare and tick many | Offered only for small pairs, about 40 × 40. Replaces the permission matrix. |
+| Path bar | Where I came from | Adds a sideways ▾ for siblings. |
+| Explore | — | Retired once the filter bar can follow links. |
+
+A view appears only where it makes sense. The app admin sets each table's default view, and each person's last choice is remembered.
+
+**Slice 1, being built overnight** on local branch `relational-nav-slice1-far-side` (worktree featherbase-wt-links): links read by what they point to, in the record panel, the Tree and the Map. Its spec is `docs/plans/relational_navigation_slice1.md`. Filing its GitHub issue was blocked by a permission check; the owner files it.
