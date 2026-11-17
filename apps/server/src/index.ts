@@ -77,6 +77,7 @@ import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { mcpHandler, mcpMethodNotAllowed } from './mcp'
+import { agentAuthPublicRoutes } from './agent-auth-routes'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
@@ -617,6 +618,9 @@ app.post('/deliver/app', async (c) => {
   if (Number(c.req.header('content-length') ?? 0) > 72 * 1024 * 1024) throw new AppError('ValidationError', 'A delivery is at most 50 MB')
   return c.json(await deliverApp(await c.req.json().catch(() => null)))
 })
+
+// #1207: how an agent signs in from the agent address alone (agent-auth-routes.ts).
+app.route('/', agentAuthPublicRoutes)
 
 // ---- API-004: everything below requires a valid session --------------------
 
