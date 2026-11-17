@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { config } from '../src/config'
 import { issueSession, setPasswordFromShell } from '../src/auth'
 import { _setPasswordInviteAcceptHooksForTests, _setPasswordInviteDeliveryForTests, sendPasswordInvite } from '../src/password-invite'
 import { test } from './pg-test'
@@ -293,5 +294,67 @@ describe('#1257 password invite', () => {
     expect(n).toBe(1)
     await expectStatus(await post(api, '/api/login', { usr: email, pwd: 'shell-pw-1' }), 200)
     await expectRefused(post(api, '/api/login', { usr: email, pwd: 'chosen-pw-1' }), 401)
+  })
+
+  test('the edges answer plainly: an unknown person, no address to link to, a send past its deadline, no key, a body that is not JSON', async ({ admin, api }) => {
+    await expectRefused(admin.post('/api/people/psn_nobody/password_invite', {}), 404, 'not found')
+
+    const person = await newcomer('edges@partner.test')
+    const environment = config.environment
+    config.environment = 'production'
+    try {
+      await expectRefused(admin.post(`/api/people/${person}/password_invite`, {}), 503, 'INSTANCE_ADDRESSES')
+    } finally {
+      config.environment = environment
+    }
+    expect(await invitesOf(person)).toEqual([])
+
+    _setPasswordInviteDeliveryForTests(() => new Promise(() => {}), 5)
+    try {
+      await expectRefused(admin.post(`/api/people/${person}/password_invite`, {}), 503, 'ETIMEDOUT')
+    } finally {
+      _setPasswordInviteDeliveryForTests(null)
+    }
+    expect((await panel(admin, person)).password_invite.latest).toMatchObject({ status: 'not_sent' })
+
+    await expectRefused(post(api, '/api/password_invite/accept', { new_password: 'chosen-pw-1' }), 417, INVALID)
+    for (const path of ['/api/password_invite/check', '/api/password_invite/accept'])
+      await expectRefused(api.fetch(path, { method: 'POST', body: 'not json' }), 417, INVALID)
+  })
+
+  test('an email change that slips past the trigger before the write is refused too', async ({ admin, api }) => {
+    const cases: [string, (person: string) => Promise<unknown>][] = [
+      // The email trigger is the first guard; the write checks the address itself as well.
+      ['email changed past the trigger', async (p) => {
+        await sql`alter table person disable trigger person_void_password_invites`
+        await sql`update person set email = 'slipped@partner.test' where row_id = ${p}`
+        await sql`alter table person enable trigger person_void_password_invites`
+      }],
+    ]
+    for (const [label, change] of cases) {
+      const email = `vanish-${label.split(' ')[0]}-${label.length}@partner.test`
+      const person = await newcomer(email)
+      await send(admin, person)
+      const { key } = await linkFromMail(email)
+      _setPasswordInviteAcceptHooksForTests({ afterBurn: async () => { await change(person) } })
+      try {
+        await expectRefused(post(api, '/api/password_invite/accept', { key, new_password: 'chosen-pw-1' }), 417, INVALID)
+      } finally {
+        _setPasswordInviteAcceptHooksForTests(null)
+      }
+    }
+  })
+
+  test('password sign-in removed between the write and the session leaves no session', async ({ admin, api }) => {
+    const email = 'method-gone@partner.test'
+    const person = await newcomer(email)
+    await send(admin, person)
+    const { key } = await linkFromMail(email)
+    _setPasswordInviteAcceptHooksForTests({ beforeSession: async () => { await sql`delete from sign_in_method where row_id = 'password'` } })
+    try {
+      await expectRefused(post(api, '/api/password_invite/accept', { key, new_password: 'chosen-pw-1' }), 417, INVALID)
+    } finally {
+      _setPasswordInviteAcceptHooksForTests(null)
+    }
   })
 })

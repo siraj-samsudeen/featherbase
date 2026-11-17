@@ -28,9 +28,11 @@ export const INVALID_INVITE = 'This invitation link is invalid or has expired'
 const fingerprint = (key: string) => createHash('sha256').update(key).digest('hex')
 
 let deliver: (msg: MailMessage) => Promise<void> = deliverEmail
-/** Test-only: replace the transport (null restores it). */
-export function _setPasswordInviteDeliveryForTests(fn: ((msg: MailMessage) => Promise<void>) | null): void {
+let deadlineMs = SEND_DEADLINE_MS
+/** Test-only: replace the transport and its deadline (null restores both). */
+export function _setPasswordInviteDeliveryForTests(fn: ((msg: MailMessage) => Promise<void>) | null, deadline?: number): void {
   deliver = fn ?? deliverEmail
+  deadlineMs = fn ? deadline ?? SEND_DEADLINE_MS : SEND_DEADLINE_MS
 }
 
 /** Test-only seams inside the two gaps of an acceptance: after the link is
@@ -168,7 +170,7 @@ export async function sendPasswordInvite(person: string, actor: string, requestO
   try {
     let timer: ReturnType<typeof setTimeout> | undefined
     const deadline = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(Object.assign(new Error('send deadline passed'), { code: 'ETIMEDOUT' })), SEND_DEADLINE_MS)
+      timer = setTimeout(() => reject(Object.assign(new Error('send deadline passed'), { code: 'ETIMEDOUT' })), deadlineMs)
     })
     try {
       await Promise.race([deliver(message), deadline])
@@ -243,11 +245,12 @@ async function acceptPasswordInvite(key: string, newPassword: string): Promise<A
   // link was made.
   const accepted = await sql.begin(async (tx) => {
     const t = tx as unknown as TxSql
+    // A person row is never deleted (foreign keys restrict it); were it gone,
+    // it would have no address, and the link is refused below like any other.
     const [p] = await t`select email, sessions_ended_at from person where row_id = ${used.person} for update`
-    if (!p) throw new AppError('ValidationError', INVALID_INVITE)
     const [invite] = await t`select email, voided_at from password_invite where id = ${used.id}`
     if (!invite || invite.voided_at) throw new AppError('ValidationError', INVALID_INVITE)
-    const current = typeof p.email === 'string' ? p.email.trim().toLowerCase() : ''
+    const current = typeof p?.email === 'string' ? p.email.trim().toLowerCase() : ''
     if (current !== String(invite.email).toLowerCase()) throw new AppError('ValidationError', INVALID_INVITE)
     if (p.sessions_ended_at && new Date(p.sessions_ended_at as string) > used.issuedAt)
       throw new AppError('ValidationError', INVALID_INVITE)
