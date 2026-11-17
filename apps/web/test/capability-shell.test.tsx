@@ -1,7 +1,7 @@
 // #410: the shell shows only what the person can use. Three layouts, driven
 // by `capabilities` from /api/whoami — computed on the server, never guessed
 // from role names in the browser.
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
@@ -91,7 +91,8 @@ test('a viewer-only person reaches their sign-in methods on the account page, st
   const urls = recordCalls()
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, tl)
   expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
-  expect(screen.getByTestId('top-bar')).toBeInTheDocument()
+  // #1253: the account page's chrome is the shared sidebar, with the switcher at its top.
+  expect(within(screen.getByTestId('account-sidebar')).getByTestId('top-bar-name')).toBeInTheDocument()
   for (const id of [...ADMIN_ONLY_TESTIDS, 'all-tables-link', 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
   // #1227: the shared switcher reads the open app catalog on every signed-in page
   // (only the apps this person can open); the closed-app list stays a System Manager's.

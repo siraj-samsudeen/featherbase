@@ -67,7 +67,7 @@ function FixtureFrame({ children }: { children: ReactNode }) {
 /** Dev composition seam: replace only content; keep the real shell, list and form. */
 export function createPrototypeRouter(content: ReactNode) {
   const root = createRootRoute({ component: Outlet })
-  const shell = createRoute({ getParentRoute: () => root, id: 'prototype-shell', component: () => <AdminLayout wide /> })
+  const shell = createRoute({ getParentRoute: () => root, id: 'prototype-shell', component: () => <AdminLayout fillHeight /> })
   const start = createRoute({ getParentRoute: () => shell, path: '/prototype.html', component: () => <FixtureFrame>{content}</FixtureFrame> })
   const list = createRoute({
     getParentRoute: () => shell, path: '/featherbase/admin/table/$table',

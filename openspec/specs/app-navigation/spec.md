@@ -53,9 +53,9 @@ Then Lakeside remains selected
 And Dash shows the report state for Lakeside
 ```
 
-### Requirement: Every page shares one top bar and sidebar
+### Requirement: Every page shares one sidebar chrome
 
-Featherbase Admin, the account pages and every installed app SHALL show the same top bar, with the application switcher on every signed-in page. Every sidebar SHALL collapse the same way, to a rail of its icons: by its own control or `Ctrl+B` / `Cmd+B`, never while the user is typing in a field. The choice SHALL be remembered for that person in that browser, across applications. At phone width the sidebar SHALL be a drawer opened from the top bar.
+Featherbase Admin, the account pages and every app SHALL share one chrome, the sidebar, with no top bar beside it on a wide window. Its top SHALL hold the application switcher and its foot the account. Every sidebar SHALL collapse to a rail of its icons by its own control or `Ctrl+B` / `Cmd+B`, never while the user types in a field, remembered per person in that browser across applications. At phone width it SHALL be a drawer opened from a slim header holding only its menu button.
 
 #### Scenario: The sidebar collapses the same way in every application
 

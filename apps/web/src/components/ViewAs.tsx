@@ -12,7 +12,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { setViewedPerson, viewedPerson } from '../lib/viewing-as'
-import { Card, EmptyState, Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
+import { Card, EmptyState, Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, iconButtonClasses, inputClasses } from '@featherbase/shop-floor'
 
 export interface ViewAsPerson {
   person: string
@@ -252,7 +252,12 @@ export function ViewAsBanner() {
  * C: a "View as" button on the bar opens the picker under it. B: Ctrl/⌘+Shift+K opens the same
  * picker as a window in the middle of the page. Only someone who may view as anyone sees either.
  */
-export function ViewAsButton({ compact }: { compact: boolean }) {
+export function ViewAsButton({ compact, place = 'bar' }: {
+  compact: boolean
+  /** #1253: beside the bell at the sidebar's top (an icon, its list opening
+   *  over the page), or in the rail; the top bar's form elsewhere. */
+  place?: 'bar' | 'sidebar' | 'rail'
+}) {
   const { data } = useViewAs()
   const [open, setOpen] = useState<'dropdown' | 'window' | null>(null)
   const panel = useRef<HTMLDivElement>(null)
@@ -271,11 +276,15 @@ export function ViewAsButton({ compact }: { compact: boolean }) {
     <div className="relative" ref={open === 'dropdown' ? panel : undefined}>
       {/* While viewing, the banner's Switch and Exit take its place; Ctrl+Shift+K still opens the picker. */}
       {!data.viewing && <button type="button" onClick={() => setOpen(open === 'dropdown' ? null : 'dropdown')} aria-expanded={open === 'dropdown'} data-testid="view-as-button"
-        title="View as someone (Ctrl+Shift+K)" className={buttonClasses({ variant: 'secondary', className: compact ? 'size-control px-0' : 'gap-1.5' })}>
-        <UserRoundSearch aria-hidden size={16} />{!compact && <span>View as</span>}
+        aria-label={place === 'bar' && !compact ? undefined : 'View as someone'}
+        title="View as someone (Ctrl+Shift+K)"
+        className={place === 'bar'
+          ? buttonClasses({ variant: 'secondary', className: compact ? 'size-control px-0' : 'gap-1.5' })
+          : iconButtonClasses(place === 'rail' ? 'size-10 text-ink-muted hover:bg-border/50 hover:text-ink' : 'size-8 text-ink-muted hover:bg-border/50 hover:text-ink')}>
+        <UserRoundSearch aria-hidden size={place === 'rail' ? 18 : 16} />{place === 'bar' && !compact && <span>View as</span>}
       </button>}
       {open === 'dropdown' && (
-        <div className={cardClasses('absolute right-0 top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2')} role="dialog" aria-label="View as" data-testid="view-as-dropdown">
+        <div className={cardClasses(`absolute ${place === 'bar' ? 'right-0' : 'left-0'} top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2`)} role="dialog" aria-label="View as" data-testid="view-as-dropdown">
           <ViewAsPicker state={data} autoFocus />
         </div>
       )}

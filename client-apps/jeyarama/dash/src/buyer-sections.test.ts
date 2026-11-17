@@ -50,6 +50,7 @@ function context(tables: Record<string, Row[]>, { user = 'hema', payload, propos
         return rows.slice(start, start + (filter.limit ?? 200))
       },
       mayDecide: async () => true,
+      mayDecideMany: async (asks: unknown[]) => asks.map(() => true),
       lockRow: async () => {},
       serialize: async () => onSerialize?.(),
       propose: answer('propose'), approve: answer('approve'), needsFreshReview: answer('needsFreshReview'),

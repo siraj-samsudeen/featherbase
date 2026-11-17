@@ -527,29 +527,42 @@ const usableWhere = (mock: boolean) =>
 /** How many working ways in a person has right now. Pending invites never
  *  count. `excluding` leaves one identity id (or 'password') out. */
 async function waysIn(user: string, db: Sql | TxSql, excluding?: string, proof: WayInProof = 'proven'): Promise<number> {
+  return (await waysInEach([user], db, excluding, proof)).get(user) ?? 0
+}
+
+/** waysIn for many people in one round trip (#1254), each counted exactly as waysIn counts them. */
+async function waysInEach(users: string[], db: Sql | TxSql, excluding?: string, proof: WayInProof = 'proven'): Promise<Map<string, number>> {
   await lockWaysIn(db)
   const mock = mockOAuthEnabled()
   const lists = await domainListsJson(db)
-  const [row] = await db`
-    with p as (
-      select (u.row_id = 'Administrator' or exists (
+  const rows = await db`
+    with wanted as (select distinct unnest(${users}::text[]) as id),
+    p as (
+      select u.row_id as id, (u.row_id = 'Administrator' or exists (
         select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator'))) as privileged
-      from person u where u.row_id = ${user}
+      from person u join wanted w on w.id = u.row_id
     )
-    select
+    select w.id,
       (select count(*) from person u join sign_in_method m on m.kind = 'password' and ${usableWhere(mock)}
-        where u.row_id = ${user} and u.password_hash is not null and ${excluding ?? ''}::text <> 'password')::int
+        where u.row_id = w.id and u.password_hash is not null and ${excluding ?? ''}::text <> 'password')::int
       + (select count(*) from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
-        where i.person_id = ${user} and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
-          and not (m.kind = 'delegated_password' and (select privileged from p))
+        where i.person_id = w.id and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
+          and not (m.kind = 'delegated_password' and (select privileged from p where p.id = w.id))
           and ${keepsDomain(lists, proof)}
-          and ${tenantKept(sql`m.settings->>'tenant'`)})::int as n`
-  return Number(row.n)
+          and ${tenantKept(sql`m.settings->>'tenant'`)})::int as n
+    from wanted w`
+  return new Map(rows.map((row) => [String(row.id), Number(row.n)]))
 }
 
 /** #975: whether this person has a working way to sign in now. */
 export async function canSignInNow(user: string): Promise<boolean> {
   return (await waysIn(user, sql)) > 0
+}
+
+/** #1254: of these people, those with a working way to sign in now, asked in one round trip. */
+export async function canSignInNowAmong(users: string[]): Promise<Set<string>> {
+  if (!users.length) return new Set()
+  return new Set([...(await waysInEach(users, sql))].filter(([, n]) => n > 0).map(([user]) => user))
 }
 
 /** An administrator who can sign in now must still be able to afterwards. */

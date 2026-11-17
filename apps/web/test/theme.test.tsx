@@ -56,19 +56,26 @@ async function mountAdmin(as: Client, theme = 'device') {
   await waitFor(() => expect(queryClient.getQueryData(['whoami'])).toMatchObject({ theme }))
 }
 
-/** Choose a theme in the account menu and wait for the server to own it. */
+/** #1253: the theme control sits at the sidebar's foot; its menu holds the three choices. */
+async function themeToggle() {
+  if (!screen.queryByTestId('theme-toggle')) (await screen.findByTestId('theme-button')).click()
+  return screen.findByTestId('theme-toggle')
+}
+
+/** Choose a theme from the sidebar's theme menu and wait for the server to own it. */
 async function choose(as: Client, theme: 'light' | 'dark' | 'device') {
-  // #489: the theme toggle sits in the top bar (in the Account menu on a phone).
+  await themeToggle()
   const option = await screen.findByTestId(`theme-${theme}`)
   option.click()
   await waitFor(() => expect(option).toHaveAttribute('aria-checked', 'true'))
   await waitFor(async () => expect(await serverTheme(as)).toBe(theme))
 }
 
-test("the top bar's theme toggle offers light, dark and same-as-device, with the current one checked", async ({ admin }) => {
+test("the sidebar's theme control offers light, dark and same-as-device, with the current one checked", async ({ admin }) => {
   await mountAdmin(admin)
-  const toggle = await screen.findByTestId('theme-toggle')
-  expect(within(toggle).getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual(['Light', 'Dark', 'Same as device'])
+  const toggle = await themeToggle()
+  // The menu's words: Light, Dark, and "Device", named Same as device.
+  expect(within(toggle).getAllByRole('radio').map((r) => r.getAttribute('aria-label') ?? r.textContent)).toEqual(['Light', 'Dark', 'Same as device'])
   expect(screen.getByTestId('theme-device')).toHaveAttribute('aria-checked', 'true')
 })
 
@@ -83,7 +90,7 @@ test('choosing dark marks the document root dark, then light again', async ({ ad
 test('without media-query support the Admin remains usable and device theme falls back to light', async ({ admin }) => {
   vi.stubGlobal('matchMedia', undefined)
   await mountAdmin(admin)
-  expect(screen.getByTestId('theme-toggle')).toBeInTheDocument()
+  expect(await themeToggle()).toBeInTheDocument()
   expect(document.documentElement.dataset.theme).toBe('light')
   await choose(admin, 'dark')
   expect(document.documentElement.dataset.theme).toBe('dark')

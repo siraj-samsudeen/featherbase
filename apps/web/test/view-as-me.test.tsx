@@ -3,9 +3,9 @@
 // What the server answers as the viewed person is proved in server/test/view-as.test.ts; here, the
 // pages' own idea of "me" follows whom the browser views as.
 import { screen, waitFor, within } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
-import { getSessionUser, getSignedInUser, setSession, clearSession } from '../src/lib/api'
+import { api, getSessionUser, getSignedInUser, setSession, clearSession } from '../src/lib/api'
 import { setViewedPerson, viewedPerson, VIEWING_AS_KEY } from '../src/lib/viewing-as'
 
 const WAIT = { timeout: 10_000 }
@@ -50,3 +50,15 @@ for (const [what, address] of [['Sign-in methods', '/featherbase/account/sign-in
     expect(await screen.findByTestId('not-while-viewing', {}, WAIT)).toHaveTextContent(`${what} are not shown while viewing as someone`)
   })
 }
+
+test('any answer saying View as has ended reloads the page, so it never shows two people at once', async () => {
+  const reload = vi.fn()
+  vi.stubGlobal('location', { ...window.location, reload })
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { type: 'ConflictError', message: 'View as has ended. Reload the page to see your own view.' } }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
+  try {
+    await expect(api.get('/api/anything')).rejects.toThrow('View as has ended')
+    expect(reload).toHaveBeenCalled()
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
