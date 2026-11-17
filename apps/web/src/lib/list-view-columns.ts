@@ -51,7 +51,12 @@ export function dataColumns(meta: TableMeta): ColumnDef[] {
 export function defaultColumnNames(meta: TableMeta): Set<string> {
   const data = dataColumns(meta)
   const flagged = data.filter((c) => c.in_list_view)
-  return new Set((flagged.length ? flagged : data.slice(0, 2)).map((c) => c.column_name))
+  if (flagged.length) return new Set(flagged.map((c) => c.column_name))
+  // admin-lists 4: with no list columns chosen, an id the list no longer leads
+  // with waits in Show Columns. One someone made a list column stays one.
+  const id = idTitle(meta)
+  const pool = id && listLeader(meta) !== id ? data.filter((c) => c !== id) : data
+  return new Set(pool.slice(0, 2).map((c) => c.column_name))
 }
 
 /** Whether one data column shows in this person's view. */
@@ -67,12 +72,44 @@ export function titleListColumn(meta: TableMeta): ColumnDef | undefined {
     : undefined
 }
 
+/** The title column when it is the Table's own id (`id_pattern` "field:<it>"):
+ *  "LKS-Bags & Silk-2026-11-16" names a row to no one. */
+function idTitle(meta: TableMeta): ColumnDef | undefined {
+  const title = titleListColumn(meta)
+  return title && meta.id_pattern === `field:${title.column_name}` ? title : undefined
+}
+
+/** A link table (Job Assignment, Section Subcategory): its title is its own id,
+ *  so its rows read by what they link to. A Table with a readable title
+ *  (Section, Department, Site) is not one. */
+export function isLinkTable(meta: TableMeta): boolean {
+  return Boolean(idTitle(meta))
+}
+
+/** admin-lists 4 (one-app-chrome, 17-Nov): what a list leads with. Its title
+ *  column; but where that is the Table's own id, its first readable link
+ *  (Section, Employee…), and the id moves to Show Columns. A Table with no
+ *  readable link keeps its id: never hide the only identifier. List only:
+ *  the row's name elsewhere is unchanged. */
+export function listLeader(meta: TableMeta): ColumnDef | undefined {
+  const title = titleListColumn(meta)
+  if (!title || !isLinkTable(meta)) return title
+  return readableLinks(meta).find((c) => c !== title) ?? title
+}
+
+/** A Table's readable links: the Reference columns this person may read that
+ *  point into one named Table, in column order. What a list leads with
+ *  (listLeader) and what a group's row is named by (far-side) are drawn from these. */
+export function readableLinks(meta: TableMeta): ColumnDef[] {
+  return dataColumns(meta).filter((c) => c.column_type === 'Reference' && Boolean(c.reference_table))
+}
+
 /** What this person's list shows: the title column first (the link to the
  *  row), or Row ID when the Table has none, then each shown data column. The
  *  leader is always on. */
 export function viewColumns(meta: TableMeta, arrangement: ColumnArrangement): ListColumn[] {
   const defaults = defaultColumnNames(meta)
-  const title = titleListColumn(meta)
+  const title = listLeader(meta)
   return [
     title ? toListColumn(title) : ROW_ID_COLUMN,
     ...dataColumns(meta)

@@ -15,7 +15,7 @@ import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
 import { Attachments } from './Attachments'
 import {
-  ArrangeBar,
+  ViewMenu,
   BookkeepingLine,
   FieldGroupView,
   ValueField,
@@ -26,7 +26,9 @@ import {
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
 import { Comments } from './Comments'
-import { PersonSignInMethods } from './PersonSignInMethods'
+import { PersonSignInMethods, managedBySignIn } from './PersonSignInMethods'
+import { SaveState } from './SaveState'
+import { PersonStanding, standingQuery } from './PersonStanding'
 import { PersonIdentifiers } from './PersonIdentifiers'
 import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
@@ -75,8 +77,8 @@ function parseTypedJson(columns: ColumnDef[], values: Row, typed: ReadonlySet<st
   return { values: out, errors }
 }
 
-const VIEW_TAB = { form: 'Form', map: 'Map', tree: 'Tree' } as const
-const TAB_VIEW: Record<string, 'form' | 'map' | 'tree' | undefined> = { Form: 'form', Map: 'map', Tree: 'tree' }
+const VIEW_TAB = { form: 'Form', map: 'Map', tree: 'Tree', collaboration: 'Collaboration', activity: 'Activity' } as const
+const TAB_VIEW: Record<string, keyof typeof VIEW_TAB | undefined> = { Form: 'form', Map: 'map', Tree: 'tree', Collaboration: 'collaboration', Activity: 'activity' }
 
 // UI-004/UI-005: ONE form component renders and saves every Table from
 // its metadata. Layout columns group into sections/columns (UI-008 refines).
@@ -147,6 +149,10 @@ export function FormView({
   const overrideTarget = useMeta(editingOverride ? String(values.table_name ?? '') : '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
+  // #1267: when this page last saved the record, for the save state's tooltip.
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  // #1267 step 3: a Person's External label is asked only while they are External.
+  const standing = useQuery({ ...standingQuery(name), enabled: table === 'Person' && !isNew })
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -265,6 +271,8 @@ export function FormView({
     return <p className="text-sm text-negative">Cannot load {table} {name}</p>
 
   const m = meta.data!
+  // #1267: a saved Person's page is laid out in two columns of its own.
+  const personPage = !isNew && table === 'Person'
 
   // Build the `frm` a client-script handler receives, over a given doc snapshot.
   function makeFrm(docSnapshot: Row): Frm {
@@ -460,6 +468,7 @@ export function FormView({
         })
       } else {
         setBanner('Saved')
+        setSavedAt(new Date())
       }
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields)
@@ -475,7 +484,9 @@ export function FormView({
   const sections: ColumnDef[][] = [[]]
   for (const f of m.columns) {
     if (f.column_type === 'Section Break') sections.push([])
-    else if (!f.hidden) sections[sections.length - 1].push(f)
+    // #1267: a saved Person's Sign-In lines own its "expects … sign-in" switches.
+    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name)) && !(personPage && f.column_name === 'external_label' && standing.data?.status !== 'none'))
+      sections[sections.length - 1].push(f)
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
@@ -504,10 +515,6 @@ export function FormView({
   const work = <div className="flex flex-col gap-6 lg:flex-row">
     {/* Its columns follow its own width (a form beside the pane is narrow). */}
     <div className="@container min-w-0 max-w-[50rem] flex-1">
-      {!isNew && (
-        <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
-          onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
-      )}
       {/* #1012: one column narrows the fields only, so the toolbar above stays put.
           The wrapper is wider than the fields because the toolbar needs 50rem on one line in a wide font. */}
       <div className={arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'} data-testid="form-fields">
@@ -547,19 +554,31 @@ export function FormView({
         </div>
       )}
       </div>
+      {/* #1267 layout A: under a Person's details, how they sign in, then their identifiers. */}
+      {personPage && (
+        <div className="mt-2 flex max-w-3xl flex-col gap-6" data-testid="person-left-column">
+          {/* person-identities: the one platform Table whose rows sign in. */}
+          <PersonSignInMethods user={name} rowUpdatedAt={baseline.updated_at} />
+          <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />
+          {/* #628: what this person can see, and why. */}
+          <RouterLink to="/featherbase/account/access/$person" params={{ person: name }} className="text-sm text-action hover:underline" data-testid="person-access-explanation">
+            What they can see
+          </RouterLink>
+        </div>
+      )}
     </div>
     {/* Only the Tables with panels of their own give the form a side column. */}
-    {!isNew && (table === 'Person' || table === 'Identifier System') && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
-      {/* person-identities: the one platform Table whose rows sign in. */}
-      {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
-      {table === 'Person' && <PersonSignInMethods user={name} />}
-      {/* #628: what this person can see, and why. */}
-      {table === 'Person' && (
-        <RouterLink to="/featherbase/account/access/$person" params={{ person: name }} className="text-sm text-action hover:underline" data-testid="person-access-explanation">
-          What they can see
-        </RouterLink>
-      )}
-      {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
+    {personPage && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-80" data-testid="person-right-column">
+      <RowConnections table={table} row={name} values={doc.data} layout="list" />
+      {/* #1267: a glance at the newest events; the Activity tab holds them all. */}
+      <div className="flex flex-col gap-2">
+        <ActivityTimeline table={table} name={name} bare latest={3} />
+        <button type="button" onClick={() => setArea('Activity')} data-testid="see-all-activity"
+          className={touchLinkClasses('self-start text-sm text-action hover:underline')}>See All Activity →</button>
+      </div>
+    </aside>}
+    {!isNew && table === 'Identifier System' && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
+      <IdentifierSystemDefaults systemKey={name} />
     </aside>}
   </div>
   const saveDisabled = saving || !dirty || (submittable && status !== 'draft') || (editingOverride && !overrideTarget.data)
@@ -593,9 +612,14 @@ export function FormView({
             {tableLabel(table, meta.data)}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
             <GlossaryHelp table={table} className="ml-1" />
           </h1>
-          <span className="text-xs text-ink-muted" data-testid="form-status">
-            {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}
-          </span>
+          {/* #1267 step 3: who the person is, their jobs and stores, and their email. */}
+          {personPage && <PersonStanding person={name} email={typeof values.email === 'string' ? values.email : null} />}
+          {/* #1267: a saved record says so once, at the tab row's right end; a new one here. */}
+          {isNew && (
+            <span className="text-xs text-ink-muted" data-testid="form-status">
+              {dirty ? 'Not saved' : 'New document'}
+            </span>
+          )}
           {boundSource && (
             <span
               className={pillClasses('ml-2 align-middle text-xs')}
@@ -785,7 +809,7 @@ export function FormView({
           )}
         </div>
       </div>
-      {!isNew && <RowConnections table={table} row={name} values={doc.data} />}
+      {!isNew && !personPage && <RowConnections table={table} row={name} values={doc.data} />}
       {storage && (
         <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
           <span className="font-medium">Storage</span>
@@ -919,7 +943,7 @@ export function FormView({
         />
       )}
       {!isNew && <RetiredNotice row={baseline} table={table} />}
-      {banner && (
+      {banner && (banner !== 'Saved' || isNew) && (
         <p
           className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-positive' : 'text-negative'}`}
           data-testid="form-banner"
@@ -1012,7 +1036,17 @@ export function FormView({
       {changeRecord && <ChangeRecord values={values} />}
       <RawDetails data-testid={reading || changeRecord ? 'raw-details' : undefined}>
       {(reading || changeRecord) && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t(changeRecord ? 'Raw JSON' : 'Raw details')}</summary>}
-      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea} tabs={[
+      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea}
+        actions={<>
+          {/* #1267: one save state for the record, with the time in its tooltip. */}
+          <SaveState dirty={dirty} savedHere={banner === 'Saved'} savedAt={savedAt}
+            updatedAt={baseline.updated_at} updatedBy={baseline.updated_by} />
+          {area === 'Form' && (
+            <ViewMenu mode={arrangement.mode} columns={arrangement.columns}
+              onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
+          )}
+        </>}
+        tabs={[
         { id: 'Form', label: 'Form', content: work },
         { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },
         { id: 'Tree', label: 'Tree', content: <RowTree table={table} name={name} /> },

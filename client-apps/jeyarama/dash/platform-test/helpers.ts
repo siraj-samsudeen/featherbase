@@ -55,14 +55,23 @@ type Grant = { grant?: { role: string }; withdraw?: { role: string } }
 export const withoutTeamManager = <T extends Grant | { create?: string }>(list: T[]) =>
   list.filter(entry => ('create' in entry ? entry.create : ((entry as Grant).grant ?? (entry as Grant).withdraw)?.role) !== TEAM_MANAGER)
 
-/** #1269's 0.13.27 taken out of a manifest: it changes no Table, role or read. */
+/** #1269's 0.13.28 taken out of a manifest: it changes no Table, role or read. */
 export function revertReachPrefixes(manifest: { migrations: { id: string }[] }) {
-  expect(manifest.migrations.pop()).toMatchObject({ id: 'reach_prefixes', fromVersion: '0.13.26', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'reach_prefixes', fromVersion: '0.13.27', operations: [] })
+}
+
+/** #1267's 0.13.27 taken out of a manifest: the platform does not ask who people are. Its read
+ *  stays declared, since the earlier version shares this build's server module. */
+export function revertPeopleDescribe(manifest: { migrations: { id: string }[]; people?: unknown }) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'people_describe', fromVersion: '0.13.26', operations: [] })
+  delete manifest.people
 }
 
 /** #1219's 0.13.26 taken out of a manifest. Its Put back action stays declared: the earlier version
- *  shares this build's server module, and the platform refuses handlers it doesn't declare. */
-export function revertMdeReview(manifest: { migrations: { id: string }[] }) {
+ *  shares this build's server module, and the platform refuses handlers it doesn't declare.
+ *  #1267's 0.13.27 sits on top of it; it comes off first. */
+export function revertMdeReview(manifest: { migrations: { id: string }[]; people?: unknown }) {
+  revertPeopleDescribe(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'mde_review', fromVersion: '0.13.25', operations: [] })
 }
 
@@ -84,7 +93,7 @@ export const withoutViewAsTester = <T extends Grant | { create?: string }>(list:
  */
 export function revertViewAs(manifest: { roles: string[]; permissions: { role: string }[]; migrations: { id: string }[]; viewAs?: unknown }) {
   // #1254's 0.13.23 to 0.13.25 change no Table, role or grant; they come off first.
-  // #1219's 0.13.26 sits on top of #1254's steps, and #1269's 0.13.27 on top of it; they come off first.
+  // #1219's 0.13.26 sits on top of #1254's steps, then #1267's 0.13.27 and #1269's 0.13.28; they come off first.
   revertReachPrefixes(manifest)
   revertMdeReview(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'deciders_read_together', fromVersion: '0.13.24', operations: [] })

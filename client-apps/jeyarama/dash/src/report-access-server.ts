@@ -203,11 +203,18 @@ export async function accessPage(ctx: AccessContext, on: string = istToday()) {
  * their employee code, each job they hold today with its site, and whether they are current
  * staff, have left, or are not on the staff list at all (a service account, an outsider).
  */
-export type Who = { code: string | null; jobs: string[]; staff: 'current' | 'left' | 'none' }
+export type Who = {
+  code: string | null
+  /** Each job held today as one line, "Job · Site", for the screens that print it. */
+  jobs: string[]
+  staff: 'current' | 'left' | 'none'
+  /** #1267: the same jobs, each with its site's id, for a page that links to the store. Only when asked for. */
+  held?: { job: string; site?: { id: string; name: string } }[]
+}
 
-export async function whoIs(base: Documents, persons: string[], on: string): Promise<Map<string, Who>> {
+export async function whoIs(base: Documents, persons: string[], on: string, opts: { sites?: boolean } = {}): Promise<Map<string, Who>> {
   const wanted = [...new Set(persons.filter(Boolean))]
-  const found = new Map<string, Who>(wanted.map(person => [person, { code: null, jobs: [], staff: 'none' }]))
+  const found = new Map<string, Who>(wanted.map(person => [person, opts.sites ? { code: null, jobs: [], staff: 'none', held: [] } : { code: null, jobs: [], staff: 'none' }]))
   if (!wanted.length) return found
   const employees = (await all(base, 'Employee', ['employee_code', 'person', EMPLOYEE_STATUS], [['person', 'in', wanted]]))
     .sort((a, b) => exact(a.employee_code).localeCompare(exact(b.employee_code)))
@@ -219,10 +226,16 @@ export async function whoIs(base: Documents, persons: string[], on: string): Pro
     const mine = current.filter(row => exact(row.person) === person)
     const left = employees.find(row => exact(row.person) === person && text(row[EMPLOYEE_STATUS]) === 'Left')
     if (mine.length) {
-      const held = jobs.filter(row => mine.some(employee => exact(employee.row_id) === exact(row.employee)))
-        .map(row => (sites.get(exact(row.site)) ? `${exact(row.job)} · ${sites.get(exact(row.site))}` : exact(row.job)))
-      found.set(person, { code: nullable(mine[0].employee_code), jobs: [...new Set(held)].sort(), staff: 'current' })
-    } else if (left) found.set(person, { code: nullable(left.employee_code), jobs: [], staff: 'left' })
+      const rows = jobs.filter(row => mine.some(employee => exact(employee.row_id) === exact(row.employee)))
+      const line = (row: Row) => (sites.get(exact(row.site)) ? `${exact(row.job)} · ${sites.get(exact(row.site))}` : exact(row.job))
+      const held = new Map<string, NonNullable<Who['held']>[number]>()
+      for (const row of rows) {
+        const site = sites.get(exact(row.site))
+        held.set(line(row), site ? { job: exact(row.job), site: { id: exact(row.site), name: site } } : { job: exact(row.job) })
+      }
+      const lines = [...held.keys()].sort()
+      found.set(person, { code: nullable(mine[0].employee_code), jobs: lines, staff: 'current', ...(opts.sites ? { held: lines.map(l => held.get(l)!) } : {}) })
+    } else if (left) found.set(person, { code: nullable(left.employee_code), jobs: [], staff: 'left', ...(opts.sites ? { held: [] } : {}) })
   }
   return found
 }

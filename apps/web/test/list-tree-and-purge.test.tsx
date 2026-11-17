@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { PLANT, PROFIT, SITE, seedSites } from './relational-fixture'
+import { createUserWithRole } from 'server/test/fixtures'
 
 const T = { timeout: 10_000 }
 const tree = () => screen.findByRole('tree', {}, T)
@@ -16,7 +17,7 @@ test('a line of Tree of all opens its row in the pane', async ({ admin }) => {
   fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }, T))
   const t = await tree()
   await waitFor(() => expect(topLines(t)).toHaveLength(3))
-  fireEvent.click(within(t).getByText('Madurai · MDU'))
+  fireEvent.click(within(t).getByText('Madurai'))
   expect(await screen.findByRole('complementary', { name: 'Madurai · MDU' }, T)).toHaveTextContent(SITE)
 })
 
@@ -28,7 +29,7 @@ test('a line of Tree of all opens its row beside the tree in the Table view too'
   fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }, T))
   const t = await tree()
   await waitFor(() => expect(topLines(t)).toHaveLength(3))
-  fireEvent.click(within(t).getByText('Madurai · MDU'))
+  fireEvent.click(within(t).getByText('Madurai'))
   expect(await screen.findByRole('complementary', { name: 'Madurai · MDU' }, T)).toHaveTextContent(SITE)
 })
 
@@ -41,7 +42,7 @@ test('show all in Tree of all lists every row of a big group', async ({ admin })
   fireEvent.keyDown(plant, { key: 'ArrowRight' })
   const group = await within(plant).findByRole('treeitem', { name: `${PROFIT} 25` }, T)
   fireEvent.keyDown(group, { key: 'ArrowRight' })
-  fireEvent.click(await within(group).findByRole('button', { name: 'show all 25' }, T))
+  fireEvent.click(await within(group).findByRole('button', { name: 'Show all 25' }, T))
   await waitFor(() => expect(within(group).getAllByRole('treeitem')).toHaveLength(25), T)
 })
 
@@ -72,4 +73,34 @@ test("a list's Delete permanently removes the selected rows and clears the selec
   await waitFor(() => expect(screen.queryByTestId('purge-dialog')).not.toBeInTheDocument(), T)
   await waitFor(() => expect(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')).toHaveLength(2), T)
   expect(screen.queryByTestId('bulk-bar')).not.toBeInTheDocument()
+})
+
+// Codex review (admin-lists 4): a list may lead with a link, but Tree of all names each line by the row's own title.
+test("Tree of all names a line by its title even where the list leads with a link", async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Ltp Store', id_pattern: 'prompt', title_column: 'store_name', columns: [{ column_name: 'store_name', column_type: 'Data' }] })
+  await admin.post('/api/save_row', { table: 'Ltp Store', row: { row_id: 'st-1', store_name: 'Lakeside' } })
+  await admin.post('/api/table_def', {
+    name: 'Ltp Shelf', id_pattern: 'field:shelf_code', title_column: 'shelf_code',
+    columns: [{ column_name: 'shelf_code', column_type: 'Data' }, { column_name: 'store', column_type: 'Reference', reference_table: 'Ltp Store' }],
+  })
+  await admin.post('/api/save_row', { table: 'Ltp Shelf', row: { shelf_code: 'LKS-S1', store: 'st-1' } })
+  await renderApp(tableHref('Ltp Shelf'), admin)
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }, T))
+  const t = await tree()
+  await waitFor(() => expect(topLines(t)[0]).toHaveTextContent('LKS-S1'))
+})
+
+// Codex review: the tree asks for a row's title only where the viewer may read that column.
+test('Tree of all opens for someone who may not read the title column', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', {
+    name: 'Ltp Secret', title_column: 'codename',
+    columns: [{ column_name: 'codename', column_type: 'Data', tier: 'restricted' }, { column_name: 'note', column_type: 'Data', in_list_view: true }],
+  })
+  await admin.post('/api/save_row', { table: 'Ltp Secret', row: { codename: 'Falcon', note: 'visible note' } })
+  const reader = await createUserWithRole(admin, createUser as never, { role: 'Ltp Basic', table: 'Ltp Secret', tier: 'basic', can_read: true })
+  await renderApp(tableHref('Ltp Secret'), reader)
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }, T))
+  const t = await tree()
+  await waitFor(() => expect(topLines(t)).toHaveLength(1))
+  expect(t).not.toHaveTextContent('Falcon')
 })

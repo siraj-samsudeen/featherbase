@@ -13,6 +13,7 @@ import { addIdentifier } from 'server/src/person-identifiers'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
+import { openIdentifierHistory } from './sign-in-lines'
 import { openListMenu } from './list-menus'
 
 afterEach(() => vi.restoreAllMocks())
@@ -25,7 +26,7 @@ test('a System Manager sees codes with their periods and the address; a roster v
   await addIdentifier(tl.user!, { system: 'stylehr-employee-code', assigner: '7', value: '30654', valid_from: '2024-06-01', valid_to: '2026-03-03' }, 'sync', ROSTER)
   await addIdentifier(tl.user!, { system: 'stylehr-employee-code', assigner: '12', value: 'RR-0102', valid_from: '2026-03-03' }, 'sync', ROSTER)
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
-  const panel = await screen.findByTestId('person-identifiers')
+  const panel = await openIdentifierHistory()
   const codes = await within(panel).findByTestId('identifier-group-stylehr-employee-code')
   expect(codes).toHaveTextContent('RR-0102')
   // #415: days read the Indian way, DD-Mon-YYYY, like the rest of the app.
@@ -40,7 +41,7 @@ test('a person adds their own phone and sees it is not yet verified', async ({ a
   const me = await createUser({ email: 'own.ids@example.com', roles: [VIEWER_ROLE] })
   // Their own page: Sign-in methods (account menu), not the Admin Person form.
   await renderApp('/featherbase/account/sign-in-methods', me)
-  const panel = await screen.findByTestId('person-identifiers')
+  const panel = await openIdentifierHistory()
   await userEvent.click(await within(panel).findByRole('button', { name: 'Add an identifier' }))
   const form = await within(panel).findByTestId('add-identifier-form')
   await userEvent.selectOptions(within(form).getByLabelText('Identifier'), 'phone')
@@ -61,7 +62,7 @@ test('a merged-away record names its survivor (never its id) and offers no chang
   const loser = await createUser({ email: 'loser.ids@example.com' })
   await sql`update person set enabled = false, replaced_by = ${survivor.user!} where row_id = ${loser.user!}`
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(loser.user!)}`, admin)
-  const panel = await screen.findByTestId('person-identifiers')
+  const panel = await openIdentifierHistory()
   const banner = await within(panel).findByTestId('replaced-banner')
   await waitFor(() => expect(banner).toHaveTextContent('merged into Survivor Sasi'))
   expect(banner.textContent).not.toContain(survivor.user!)
@@ -74,7 +75,7 @@ test('until the roster sync runs, a System Manager records a joiner’s code by 
   await sql`delete from person_identifier where source = 'stylehr-roster-sync'`
   const joiner = await createUser({ email: 'joiner.ids@example.com', fullName: 'Joiner Jaya' })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(joiner.user!)}`, admin)
-  const panel = await screen.findByTestId('person-identifiers')
+  const panel = await openIdentifierHistory()
   await userEvent.click(await within(panel).findByRole('button', { name: 'Add an identifier' }))
   const form = await within(panel).findByTestId('add-identifier-form')
   expect(within(form).queryByTestId('identifier-note')).toBeNull()

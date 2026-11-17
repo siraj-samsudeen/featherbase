@@ -9,7 +9,7 @@ import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, isView, tableLabel, useMeta } from '../lib/meta'
 import { SaveAsView, ViewBanner } from './TableViews'
-import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, listLeader, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
@@ -338,7 +338,7 @@ export function ListView({
   // the person may read; the column the list leads with (its title, else
   // Row ID, #792) is always on.
   const listDefaults = meta.data ? defaultColumnNames(meta.data) : new Set<string>()
-  const leadingTitle = meta.data ? titleListColumn(meta.data) : undefined
+  const leadingTitle = meta.data ? listLeader(meta.data) : undefined
   const readableColumns = (meta.data ? dataColumns(meta.data) : []).filter((c) => c !== leadingTitle)
   const inListChoices = readableColumns.filter((c) => listDefaults.has(c.column_name))
   const otherChoices = readableColumns.filter((c) => !listDefaults.has(c.column_name))

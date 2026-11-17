@@ -9,6 +9,7 @@ import { _setDelegatedFetch } from 'server/src/delegated-login'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
+import { openIdentifierHistory } from './sign-in-lines'
 
 const anonymous = { user: null, token: null } as never
 const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
@@ -128,7 +129,7 @@ test('9: removing the password is in a ⋯ menu, in red, and asks first naming t
 test('9: ending an identifier is in a ⋯ menu and asks first naming it', async ({ admin, createUser }) => {
   const me = await viewer(admin, createUser, 'polish.end@example.com')
   await renderApp('/featherbase/account/sign-in-methods', me)
-  const panel = await screen.findByTestId('person-identifiers')
+  const panel = await openIdentifierHistory()
   await userEvent.click(await within(panel).findByRole('button', { name: 'Add an identifier' }))
   const form = await within(panel).findByTestId('add-identifier-form')
   await userEvent.selectOptions(within(form).getByLabelText('Identifier'), 'phone')
@@ -164,7 +165,7 @@ test('9: the ⋯ menu closes on Escape and on a click outside', async ({ admin, 
 test('10: "Add" sits in the Identifiers card header and opens a one-line form; Cancel closes it', async ({ admin, createUser }) => {
   const me = await viewer(admin, createUser, 'polish.add@example.com')
   await renderApp('/featherbase/account/sign-in-methods', me)
-  const panel = await screen.findByTestId('person-identifiers')
+  const panel = await openIdentifierHistory()
   const heading = within(panel).getByRole('heading', { name: 'Identifiers' })
   const add = await within(panel).findByRole('button', { name: 'Add an identifier' })
   expect(add).toHaveTextContent('Add')

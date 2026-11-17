@@ -3,9 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { fmtDate } from '@featherbase/shop-floor'
 import { PrincipalLink } from '../lib/people'
-import { Button, Card, Notice, Select, TextInput } from '@featherbase/shop-floor'
+import { Button, Notice, Select, TextInput, cardClasses } from '@featherbase/shop-floor'
 import { Plus } from 'lucide-react'
 import { RowMenu } from './RowMenu'
+import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
 
 // person-resolution D3/D12: every identifier a person has had — employee
 // codes, record numbers, phone, addresses — each with its period, where it
@@ -103,15 +104,20 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   function onAdd(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
-    const body: Record<string, string> = { system: String(f.get('system')), value: String(f.get('value')).trim() }
+    const body: Record<string, string> = { system: String(f.get('system')), value: String(f.get('identifier_value')).trim() }
     const note = String(f.get('note') ?? '').trim()
     if (note) body.note = note
     add.mutate({ body, form: e.currentTarget })
   }
 
   return (
-    <Card className="p-4" data-testid="person-identifiers">
-      <div className="mb-2 flex items-center justify-between gap-2">
+    // #1267: the history behind the person's email and codes, folded so the
+    // page shows the email once; opening it shows every period.
+    <details className={cardClasses('group p-4')} data-testid="person-identifiers">
+      <summary className="cursor-pointer list-none rounded text-sm font-semibold text-ink focus-visible:outline-2 focus-visible:outline-focus" data-testid="identifier-history-toggle">
+        Identifier History <span aria-hidden className="inline-block transition-transform group-open:rotate-90 motion-reduce:transition-none">▸</span>
+      </summary>
+      <div className="mb-2 mt-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-ink">Identifiers</h3>
         {/* Stays while the form is open, so the header never changes height. */}
         {!replacedBy && addable.length > 0 && (
@@ -171,14 +177,14 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
         </div>
       ))}
       {!replacedBy && addable.length > 0 && adding && (
-        <form className="mt-2 space-y-2" onSubmit={onAdd} data-testid="add-identifier-form">
+        <form className="mt-2 space-y-2" onSubmit={onAdd} data-testid="add-identifier-form" {...NO_AUTOFILL_FORM}>
           <div className="flex flex-wrap items-center gap-2" data-testid="add-identifier-row">
             <Select name="system" aria-label="Identifier" value={system} onChange={(e) => setChosen(e.target.value)} wrapperClassName="w-48 shrink-0">
               {addable.map((s) => (
                 <option key={s.row_id} value={s.row_id}>{s.label}</option>
               ))}
             </Select>
-            <TextInput name="value" aria-label="Value" placeholder="Value" required autoFocus className="min-w-40 flex-1" />
+            <TextInput name="identifier_value" aria-label="Value" placeholder="Value" required autoFocus className="min-w-40 flex-1" {...NO_AUTOFILL_FIELD} />
             <Button type="submit" variant="primary" loading={add.isPending}>Add</Button>
             <Button variant="quiet" onClick={() => { setAdding(false); setError(null) }}>Cancel</Button>
           </div>
@@ -200,6 +206,6 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
           </Notice>
         </div>
       )}
-    </Card>
+    </details>
   )
 }

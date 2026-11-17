@@ -16,7 +16,7 @@ import { canSubscribe, eventVisibleTo } from '../src/realtime'
 import { getScopeMap } from '../src/permissions'
 import { invalidateSources } from '../src/sources/registry'
 import { sql } from '../src/db'
-import { expectRefused, grantRole } from './fixtures'
+import { expectRefused, grantRole, searchHits } from './fixtures'
 
 const STORE = 'Scope Store'
 const ROLE = 'Scope Reader'
@@ -75,7 +75,7 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
 
   test('search', async ({ admin }) => {
     const { svc } = await world(admin)
-    const { results } = await svc.get<{ results: { table: string; row_id: string }[] }>('/api/search?q=scopeprobe')
+    const results = await searchHits(svc, 'scopeprobe')
     expect(results.filter((h) => h.table === STORE).map((h) => h.row_id)).toEqual(['ATK'])
   })
 

@@ -231,8 +231,8 @@ export function ListCell({
         <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         // #1224: who made, changed or retired a row is named to anyone who may read the row.
-        // #1264: and links to them; the click opens their record, not this row's panel.
-        <span onClick={(e) => e.stopPropagation()}><PrincipalLink id={String(value)} actorOf={ACTOR_COLUMNS.has(col.column_name) ? table : undefined} /></span>
+        // #1264: and links to them (the row's own click already leaves links alone).
+        <PrincipalLink id={String(value)} actorOf={ACTOR_COLUMNS.has(col.column_name) ? table : undefined} />
       ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
         // #792: a link reads as the linked row's title and opens that row;
         // #910 D5: its code follows when people use one.

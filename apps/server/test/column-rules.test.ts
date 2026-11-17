@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { expectStatus, grantRole } from './fixtures'
+import { expectStatus, grantRole, searchHits } from './fixtures'
 import { sameStoredValue } from '../src/permissions'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
@@ -32,7 +32,7 @@ describe('creator-scoped Columns', () => {
 
   test("search neither shows nor matches another creator's restricted title", async ({ admin, createUser }) => {
     const { user } = await setup(admin, createUser)
-    const { results } = await user.get<{ results: unknown[] }>('/api/search?q=hidden')
+    const results = await searchHits(user, 'hidden')
     expect(JSON.stringify(results)).not.toContain('hidden-alpha')
   })
 

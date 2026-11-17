@@ -55,7 +55,9 @@ const openTree = (page: Page) =>
 /** Open a Table from All tables, as someone who doesn't know its address would. */
 async function openTable(page: Page, label: string): Promise<void> {
   await page.getByRole('link', { name: 'All Tables' }).first().click()
-  await page.getByRole('link', { name: label, exact: true }).first().click()
+  // admin-lists 11: each item's name runs on into its description and row count ("Assets 3,000").
+  const named = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`)
+  await page.getByRole('navigation', { name: 'All tables' }).getByRole('link', { name: named }).first().click()
   await expect(page.getByTestId('list-view')).toBeVisible()
 }
 
@@ -166,14 +168,15 @@ tour('Featherbase: from a spreadsheet to an app you can navigate', async ({ stor
     })
     await s.step('They open beside the store, without leaving it', async () => {
       await page().getByRole('button', { name: assetsChip }).first().click()
-      await expect(page().getByRole('complementary', { name: 'T Nagar' })).toContainText(`Assets · ${n(ROWS)} rows`)
+      await expect(page().getByRole('complementary', { name: 'T Nagar' })).toContainText(`Show all ${n(ROWS)}`)
     })
     let tag = ''
     await s.step('One more click drills into an asset; the path keeps the way back', async () => {
       const pane = page().getByRole('complementary', { name: 'T Nagar' })
-      const first = pane.getByRole('table').getByRole('row').filter({ hasText: /TN-\d{4}/ }).first()
+      // #1218: a group's rows are one line each, the name a link that opens the row beside.
+      const first = pane.getByTestId('linked-row').filter({ hasText: /TN-\d{4}/ }).first()
       tag = /TN-\d{4}/.exec((await first.textContent()) ?? '')![0]
-      await first.getByRole('cell').first().click()
+      await first.getByRole('link').first().click()
       const asset = page().getByRole('complementary', { name: tag })
       await expect(asset.getByRole('heading', { name: 'Points at' }).locator('xpath=..')).toContainText('T Nagar')
       await expect(page().getByRole('navigation', { name: 'Path' })).toContainText('T Nagar')

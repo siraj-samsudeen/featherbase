@@ -45,6 +45,8 @@ test("Ctrl-click on a read-only row's link is left to the browser, a new tab", a
 test('an arrangement the server could not save stays for this visit', async ({ admin }) => {
   await seed(admin)
   await renderApp(`${tableHref('Frl Parcel')}/row/P-1`, admin)
+  // #1267: the arrangement is in the tab row's View menu.
+  ;(await screen.findByTestId('view-menu-button', {}, T)).click()
   await screen.findByTestId('arrange-importance', {}, T)
   // The network drops as the choice is saved.
   const real = globalThis.fetch
@@ -54,7 +56,8 @@ test('an arrangement the server could not save stays for this visit', async ({ a
     return real(input, init)
   })
   await userEvent.click(screen.getByTestId('arrange-source'))
-  await waitFor(() => expect(screen.getByTestId('arrange-source')).toHaveAttribute('aria-pressed', 'true'))
+  ;(await screen.findByTestId('view-menu-button', {}, T)).click()
+  await waitFor(() => expect(screen.getByTestId('arrange-source')).toHaveAttribute('aria-checked', 'true'))
   const { settings } = await admin.get<{ settings: { form?: unknown } | null }>('/api/user_settings/Frl%20Parcel')
   expect(settings?.form).toBeUndefined()
 })

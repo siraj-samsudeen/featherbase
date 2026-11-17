@@ -40,3 +40,30 @@ test('Microsoft failing to answer reads as Microsoft\'s, not Google\'s', async (
   await renderApp('/featherbase/login?error=microsoft_failed&via=microsoft', anonymous)
   expect(await screen.findByTestId('sign-in-refused')).toHaveTextContent("Microsoft sign-in didn't finish")
 })
+
+test('choosing Microsoft remembers where the person was headed, on both sign-in forms', async () => {
+  const { default: userEvent } = await import('@testing-library/user-event')
+  const { configureDelegated, removeDelegated } = await import('server/test/identity-fixtures')
+  const NEXT = '/featherbase/admin/table/person'
+  await configureMicrosoft({ client_id: 'b1e2c3d4-0000-4000-8000-00000000c1d0' })
+
+  // The ordinary form (no connected service).
+  await removeDelegated()
+  sessionStorage.clear()
+  const plain = await renderApp(`/featherbase/login?next=${encodeURIComponent(NEXT)}`, anonymous)
+  const button = await screen.findByTestId('microsoft-login')
+  button.addEventListener('click', (e) => e.preventDefault())
+  await userEvent.click(button)
+  expect(sessionStorage.getItem('fc-login-next')).toBe(NEXT)
+  plain.unmount()
+
+  // A connected service's form, with Microsoft one tap away under it.
+  await configureDelegated()
+  sessionStorage.clear()
+  await renderApp(`/featherbase/login?next=${encodeURIComponent(NEXT)}`, anonymous)
+  await screen.findByTestId('delegated-login-submit')
+  const under = await screen.findByTestId('microsoft-login')
+  under.addEventListener('click', (e) => e.preventDefault())
+  await userEvent.click(under)
+  expect(sessionStorage.getItem('fc-login-next')).toBe(NEXT)
+})

@@ -22,7 +22,7 @@ const options = () => within(screen.getByTestId('awesomebar-results')).getAllByR
 const T = { timeout: 8000 }
 // The record hit for Person's own definition: its title, then its kind.
 const personDefinition = () => {
-  const found = screen.queryAllByTestId('awesomebar-doc').find((e) => /^Person\s*Table definition$/.test(e.textContent ?? ''))
+  const found = screen.queryAllByTestId('awesomebar-doc').find((e) => /Person\s*Table definition$/.test(e.textContent ?? ''))
   if (!found) throw new Error('no "Person Table definition" result')
   expect(found).toHaveAttribute('role', 'option')
   return found

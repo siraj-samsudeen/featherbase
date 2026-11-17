@@ -95,6 +95,9 @@
     "role": "View As Tester",
     "people": "view_as_people"
   },
+  "people": {
+    "describe": "describe_people"
+  },
   "datasets": [
     {
       "name": "sales_to_date",
@@ -914,6 +917,14 @@
         }
       },
       "view_as_people": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "describe_people": {
         "policy": {
           "kind": "table"
         },
@@ -2246,7 +2257,8 @@
     {"id": "holders_read_whole", "fromVersion": "0.13.23", "toVersion": "0.13.24", "operations": []},
     {"id": "deciders_read_together", "fromVersion": "0.13.24", "toVersion": "0.13.25", "operations": []},
     {"id": "mde_review", "fromVersion": "0.13.25", "toVersion": "0.13.26", "operations": []},
-    {"id": "reach_prefixes", "fromVersion": "0.13.26", "toVersion": "0.13.27", "operations": []}
+    {"id": "people_describe", "fromVersion": "0.13.26", "toVersion": "0.13.27", "operations": []},
+    {"id": "reach_prefixes", "fromVersion": "0.13.27", "toVersion": "0.13.28", "operations": []}
   ],
   "baseTables": {
     "read": {
