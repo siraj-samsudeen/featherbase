@@ -305,9 +305,9 @@ export class FeatherbaseSidebar extends HTMLElement {
 
   private openMenu(heading: HTMLElement) {
     this.menu?.close(false)
-    if (!this.layer) return
-    // The menu takes the tooltip's place beside the heading.
-    this.layer.querySelector('.featherbase-rail-tip')?.remove()
+    // Connected, the element always has its layer. The menu takes the tooltip's place beside the heading.
+    const layer = this.layer!
+    layer.querySelector('.featherbase-rail-tip')?.remove()
     const label = rowLabel(heading)
     const menu = document.createElement('div')
     menu.className = 'rail-menu'
@@ -355,7 +355,7 @@ export class FeatherbaseSidebar extends HTMLElement {
       else if (event.key === 'ArrowUp') { event.preventDefault(); items[(at - 1 + items.length) % items.length]?.focus() }
       else if (event.key === 'Tab') close(false)
     })
-    this.layer.append(menu)
+    layer.append(menu)
     const place = railMenuPlace(heading, menu.getBoundingClientRect().height)
     menu.style.left = `${place.left}px`
     menu.style.top = `${place.top}px`

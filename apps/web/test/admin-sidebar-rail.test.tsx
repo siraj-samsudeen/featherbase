@@ -75,3 +75,55 @@ test('Saved views fold into one icon in the rail, whose menu opens a view', asyn
   expect(chip).toHaveTextContent('Attakulangara')
   expect(screen.queryByRole('menu')).not.toBeInTheDocument()
 })
+
+test('a fold menu works by keyboard, and a click outside closes it', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: DEPT, id_pattern: 'prompt', title_column: 'dept_name',
+    columns: [{ column_name: 'dept_name', column_type: 'Data', label: 'Department', in_list_view: true },
+      { column_name: 'store', column_type: 'Data', label: 'Store', in_list_view: true }],
+  })
+  await admin.post('/api/saved_views', { table: DEPT, label: 'ATK Departments', filters: [['store', '=', 'Attakulangara']], shared: true })
+  await admin.post('/api/saved_views', { table: DEPT, label: 'Lakeside Departments', filters: [['store', '=', 'Lakeside']], shared: true })
+  await renderApp('/featherbase/admin/all-tables', admin)
+  await screen.findByTestId('sidebar-saved-views', {}, T)
+  await userEvent.click(screen.getByTestId('sidebar-collapse'))
+  const fold = within(aside()).getByRole('button', { name: 'Saved views' })
+
+  // The right arrow opens it on its first item; the arrows move; Escape returns to the icon.
+  fold.focus()
+  fireEvent.keyDown(fold, { key: 'ArrowRight' })
+  const menu = await screen.findByRole('menu', { name: 'Saved views' })
+  const [first, second] = within(menu).getAllByRole('menuitem')
+  await waitFor(() => expect(first).toHaveFocus())
+  fireEvent.keyDown(menu, { key: 'ArrowDown' })
+  expect(second).toHaveFocus()
+  fireEvent.keyDown(menu, { key: 'ArrowUp' })
+  expect(first).toHaveFocus()
+  fireEvent.keyDown(menu, { key: 'Escape' })
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  expect(fold).toHaveFocus()
+
+  await userEvent.click(fold)
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' })
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+  await userEvent.click(fold)
+  fireEvent.pointerDown(document.body)
+  await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+})
+
+test('Recently opened folds into one icon in the rail, and its menu opens the place again', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: DEPT, id_pattern: 'prompt', title_column: 'dept_name',
+    columns: [{ column_name: 'dept_name', column_type: 'Data', label: 'Department', in_list_view: true }],
+  })
+  const { router } = await renderApp(`/featherbase/admin/table/rail-department`, admin)
+  await screen.findByTestId('table-page', {}, T)
+  const nav = router as unknown as { navigate: (to: { href: string }) => Promise<void>; state: { location: { pathname: string } } }
+  await nav.navigate({ href: '/featherbase/admin/all-tables' })
+  await screen.findByTestId('sidebar-recents', {}, T)
+  await userEvent.click(screen.getByTestId('sidebar-collapse'))
+  await userEvent.click(within(aside()).getByRole('button', { name: 'Recently opened' }))
+  await userEvent.click(within(screen.getByRole('menu', { name: 'Recently opened' })).getByRole('menuitem', { name: new RegExp(DEPT) }))
+  await waitFor(() => expect(nav.state.location.pathname).toBe('/featherbase/admin/table/rail-department'), T)
+})

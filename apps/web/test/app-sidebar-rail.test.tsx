@@ -166,3 +166,53 @@ test('at phone width the sidebar is the drawer as before, and the bar keeps its 
   expect(sidebar.hasAttribute('data-open')).toBe(true)
   expect(collapsed(sidebar)).toBe(false)
 })
+
+test('rows the app draws while collapsed get their rail marks too', async ({ admin }) => {
+  const { bar, sidebar } = openAppPage(admin)
+  await bar.findByTestId('session-user')
+  await userEvent.click(shadow(sidebar).getByTestId('sidebar-collapse'))
+  const late = document.createElement('a')
+  late.href = '#late'
+  late.textContent = 'Pilot setup'
+  act(() => { sidebar.append(late) })
+  await waitFor(() => expect(late).toHaveAttribute('data-rail-mark', 'PS'))
+})
+
+test('the fold menu: arrows move, Tab and a click outside close it, and the heading toggles it', async ({ admin }) => {
+  const { bar, sidebar } = openAppPage(admin)
+  await bar.findByTestId('session-user')
+  // The current type is marked in the menu as it is in the list.
+  within(sidebar).getByRole('button', { name: /Backfill/ }).setAttribute('aria-current', 'page')
+  await userEvent.click(shadow(sidebar).getByTestId('sidebar-collapse'))
+  const heading = sidebar.querySelector<HTMLElement>('[data-rail-fold]')!
+  await userEvent.click(heading)
+  const menu = shadow(sidebar).getByRole('menu', { name: 'Types' })
+  const [first, second] = within(menu).getAllByRole('menuitem')
+  expect(second).toHaveAttribute('aria-current', 'page')
+  // Focus inside a shadow root shows on the root, not the document.
+  const focused = () => sidebar.shadowRoot!.activeElement
+  expect(focused()).toBe(first)
+  fireEvent.keyDown(menu, { key: 'ArrowDown' })
+  expect(focused()).toBe(second)
+  fireEvent.keyDown(menu, { key: 'ArrowUp' })
+  expect(focused()).toBe(first)
+  fireEvent.keyDown(menu, { key: 'Tab' })
+  expect(shadow(sidebar).queryByRole('menu')).not.toBeInTheDocument()
+
+  await userEvent.click(heading)
+  expect(shadow(sidebar).getByRole('menu')).toBeInTheDocument()
+  // The heading again: closed.
+  await userEvent.click(heading)
+  expect(shadow(sidebar).queryByRole('menu')).not.toBeInTheDocument()
+
+  await userEvent.click(heading)
+  fireEvent.pointerDown(document.body)
+  expect(shadow(sidebar).queryByRole('menu')).not.toBeInTheDocument()
+})
+
+test('a sidebar the app does not name is called Application navigation', async ({ admin }) => {
+  setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
+  const bare = document.createElement('featherbase-sidebar')
+  document.body.append(bare)
+  expect(bare).toHaveAttribute('aria-label', 'Application navigation')
+})

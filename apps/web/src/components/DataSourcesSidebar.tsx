@@ -1,16 +1,27 @@
 // #772 checklist 10–11: the sidebar's Data sources group, for System Managers
 // only — each source, and under a MotherDuck source the databases it reads, each
 // opening the browser there. Styled like SidebarGroup (AdminLayout).
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { RailFold, RailMenuItem, useSidebarRail } from './SidebarRail'
 import { useQuery } from '@tanstack/react-query'
-import { Cable, Database, Plus } from '@featherbase/shop-floor'
+import { Cable, Database, Plus, useRecordHref } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import { touchRowClasses } from '@featherbase/shop-floor'
 
 interface SourceRow { row_id: string; engine: string; databases: { name: string }[] | null }
 
 const FIELDS = encodeURIComponent(JSON.stringify(['row_id', 'engine', 'databases']))
+
+/** A data source in the rail's menu: its record, through the RecordLink family. */
+function SourceMenuItem({ source, close }: { source: string; close: () => void }) {
+  const href = useRecordHref('Data Source', source)
+  const router = useRouter()
+  return (
+    <RailMenuItem close={close} onSelect={() => router.history.push(href)}>
+      <span className="truncate">{source}</span>
+    </RailMenuItem>
+  )
+}
 
 export function DataSourcesSidebar() {
   const sources = useQuery({
@@ -26,9 +37,7 @@ export function DataSourcesSidebar() {
     <RailFold label="Data sources" icon={Database} testid="sidebar-group-sources">
       {(close) => [
         ...(sources.data?.data ?? []).flatMap((s) => [
-          <RailMenuItem key={s.row_id} close={close} onSelect={() => void navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table: 'data-source', name: s.row_id }, search: { prefill: undefined } })}>
-            <span className="truncate">{s.row_id}</span>
-          </RailMenuItem>,
+          <SourceMenuItem key={s.row_id} source={s.row_id} close={close} />,
           ...(s.engine === 'motherduck' ? (s.databases ?? []) : []).map((d) => (
             <RailMenuItem key={`${s.row_id}/${d.name}`} close={close} onSelect={() => void navigate({ to: '/featherbase/admin/source/$name', params: { name: s.row_id }, search: { database: d.name, schema: undefined } })}>
               <span className="truncate pl-3 font-mono text-xs">{d.name}</span>

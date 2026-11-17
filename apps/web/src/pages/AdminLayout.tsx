@@ -817,7 +817,7 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
                   {rail
                     ? (p.icon
                         ? <span aria-hidden className="text-base leading-none">{p.icon}</span>
-                        : <span aria-hidden data-testid="rail-mark" className="grid size-[26px] place-items-center rounded-[7px] border-[1.5px] border-current text-xs font-bold leading-none">{mark}</span>)
+                        : <span aria-hidden data-testid="rail-mark" className="grid h-[26px] w-[26px] place-items-center rounded-[7px] border-[1.5px] border-current text-xs font-bold leading-none">{mark}</span>)
                     : p.icon
                       ? <span aria-hidden data-testid="sidebar-item-icon" className="flex w-3.5 shrink-0 justify-center text-sm leading-none text-ink-subtle">{p.icon}</span>
                       : <LayoutDashboard aria-hidden size={14} className="shrink-0 text-ink-subtle" data-testid="sidebar-item-icon" />}

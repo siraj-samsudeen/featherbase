@@ -253,7 +253,14 @@ describe('app-navigation', () => {
   })
 
   // #1227: one top bar and sidebar on every page.
-  const hidden = () => sidebar().hasAttribute('data-collapsed') && sidebar().inert
+  // #1248: collapsed, the sidebar is a rail of icons: still there, still usable.
+  const rail = () => sidebar().hasAttribute('data-collapsed') && !sidebar().inert
+  /** The sidebar's own collapse control (its footer row, in its shadow). */
+  const sidebarControl = () => waitFor(() => {
+    const control = sidebar().shadowRoot?.querySelector<HTMLElement>('[data-testid=sidebar-collapse]')
+    expect(control).toBeTruthy()
+    return control!
+  }, WAIT)
   const appSidebar = () => waitFor(() => expect(sidebar()).not.toBeNull(), WAIT)
 
   scenario('The sidebar collapses the same way in every application', async ({ admin, createUser, seed }, step) => {
@@ -263,21 +270,23 @@ describe('app-navigation', () => {
     await step('the user presses Ctrl+B in Tasker', async () => {
       barView = await openAppPage(reader, 'tasker', '/tasker/')
       await appSidebar()
-      await barView.findByTestId('sidebar-collapse', {}, WAIT)
+      await sidebarControl()
+      await barView.findByTestId('session-user', {}, WAIT)
       // false: the page took the key, so the browser's own use of it does not happen.
       expect(fireEvent.keyDown(document.body, { key: 'b', ctrlKey: true })).toBe(false)
     })
-    await step("Tasker's navigation is hidden", () => expect(hidden()).toBe(true))
+    await step("Tasker's navigation shows only its icons", () => expect(rail()).toBe(true))
     await step('the user opens Dash', async () => {
       barView = await openAppPage(reader, 'dash', '/dash/')
       await appSidebar()
     })
-    await step("Dash's navigation is hidden too", () => expect(hidden()).toBe(true))
-    await step('the user expands the sidebar from the top bar', async () => {
-      const control = await barView.findByRole('button', { name: 'Expand sidebar' }, WAIT)
+    await step("Dash's navigation shows only its icons too", () => expect(rail()).toBe(true))
+    await step('the user expands the sidebar from the sidebar itself', async () => {
+      const control = await sidebarControl()
+      expect(control).toHaveAccessibleName('Expand sidebar')
       await userEvent.click(control)
     })
-    await step("Dash's navigation is shown", () => {
+    await step("Dash's navigation is shown in full", () => {
       expect(sidebar().hasAttribute('data-collapsed')).toBe(false)
       expect(sidebar().inert).toBe(false)
     })
@@ -289,7 +298,8 @@ describe('app-navigation', () => {
     await step("the user presses Ctrl+B while typing in Tasker's search", async () => {
       const barView = await openAppPage(reader, 'tasker', '/tasker/')
       await appSidebar()
-      await barView.findByTestId('sidebar-collapse', {}, WAIT)
+      await sidebarControl()
+      await barView.findByTestId('session-user', {}, WAIT)
       const search = await screen.findByPlaceholderText('Search tasks', {}, WAIT)
       await userEvent.type(search, 'shirts{Control>}b{/Control}')
       // true: nothing took the key from the field.
