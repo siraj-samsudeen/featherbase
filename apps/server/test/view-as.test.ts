@@ -85,7 +85,7 @@ describe('View as: what an app declares', () => {
 
 describe('View as: which requests run as the person viewed', () => {
   test.for([['GET', '/api/table/ToDo', 'read'], ['POST', '/api/app_reads/dash/reports', 'read'], ['POST', '/api/dashboard/count', 'read'], ['POST', '/api/row_titles', 'read'], ['POST', '/api/access_log', 'read'], ['POST', '/api/people/actor_names', 'read'], ['POST', '/api/sales_target/embed_session', 'read'],
-    ['POST', '/api/save_row', 'tester'], ['POST', '/api/app_actions/dash/give_report', 'tester'], ['DELETE', '/api/table/ToDo/x', 'tester'], ['POST', '/api/view_as/exit', 'tester'], ['GET', '/api/view_as', 'tester'], ['POST', '/api/events', 'drop']] as const)(
+    ['POST', '/api/save_row', 'tester'], ['POST', '/api/app_actions/dash/give_report', 'tester'], ['DELETE', '/api/table/ToDo/x', 'tester'], ['POST', '/api/view_as/exit', 'tester'], ['GET', '/api/me/sign_in_methods', 'tester'], ['DELETE', '/api/me/password', 'tester'], ['GET', '/api/view_as', 'tester'], ['POST', '/api/events', 'drop']] as const)(
     '%s %s is handled as %s', ([method, path, route]) => {
       expect(viewAsRoute(method, path)).toBe(route)
     })
@@ -241,12 +241,14 @@ describe('View as on the platform', () => {
     expect([code, body]).toEqual([200, JSON.stringify({ signed_url: '/private/files/f-1222.png' })])
   })
 
-  test("names link to a person's record only when the tester may open it, whoever is viewed", async ({ admin, createUser }) => {
+  test("names link to a person's record only when it would open for whoever a link opens as", async ({ admin, createUser }) => {
     const { tester, person } = await install(admin, createUser)
     expect((await tester.get<{ person_link: boolean }>('/api/view_as')).person_link).toBe(false)
     const manager = await createUser({ email: 'tester-links@example.test', roles: [TESTER, 'System Manager'] })
-    expect((await status(start(manager, person.user)))[0]).toBe(200)
     expect((await manager.get<{ person_link: boolean }>('/api/view_as')).person_link).toBe(true)
+    // While viewing, a link opens as the person viewed, who can't open Person records.
+    expect((await status(start(manager, person.user)))[0]).toBe(200)
+    expect((await manager.get<{ person_link: boolean }>('/api/view_as')).person_link).toBe(false)
   })
 
   test('an access token never views as anyone', async ({ admin, createUser }) => {

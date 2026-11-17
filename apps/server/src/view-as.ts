@@ -301,8 +301,8 @@ export async function viewAsState(user: SessionUser) {
     recent: await usable(recentIds, RECENT),
     frequent: await usable(frequentIds, FREQUENT),
     minutes: VIEW_AS_MINUTES,
-    // Whether the tester (not the person viewed) may open a person's record, for the picker's links.
-    person_link: await hasPermission(tester, 'Person', 'read'),
+    // Whether a person's record opens for whoever a link opens as: the person viewed while viewing, else the tester.
+    person_link: await hasPermission(row ? String(row.person) : tester, 'Person', 'read'),
   }
 }
 
@@ -317,6 +317,8 @@ const READ_POSTS = new Set(['/api/access_request', '/api/access_log', '/api/dash
  */
 export function viewAsRoute(method: string, path: string): 'read' | 'drop' | 'tester' {
   if (path === '/api/view_as' || path.startsWith('/api/view_as/')) return 'tester'
+  // The account pages are always the signed-in person's own: what they show is what their buttons change.
+  if (path === '/api/me' || path.startsWith('/api/me/')) return 'tester'
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return 'read'
   if (method === 'POST' && (/^\/api\/app_reads\/[^/]+\/[^/]+$/.test(path) || READ_POSTS.has(path))) return 'read'
   if (method === 'POST' && path === '/api/events') return 'drop'
