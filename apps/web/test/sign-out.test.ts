@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { clearSession, getSessionUser, setSession, signOut } from '../src/lib/api'
+import { clearSession, getSessionUser, getToken, rememberLogin, setSession, signOut } from '../src/lib/api'
 import { connectEventSink, flushPendingEvents, recentActions, recordAction, replaceServerEntries } from '../src/lib/recents'
 
 // #411: the server answers 503 when it could not end the session; the client
@@ -34,5 +34,20 @@ describe('signOut', () => {
     replaceServerEntries(owner, [])
     expect(recentActions(owner, 10)).toEqual([{ ...visit, visits: [1_800_000_000_000] }])
     clearSession()
+  })
+})
+
+// #1255: after a sign-in the page tells the switcher in the background; if
+// that cannot be sent, the sign-in still stands.
+describe('rememberLogin', () => {
+  afterEach(() => { vi.unstubAllGlobals(); clearSession() })
+
+  test('keeps the session when telling the switcher fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network down') }))
+    const user = rememberLogin({ token: 'new-token', user: { row_id: 'psn_1', email: null, full_name: 'Made-up' } })
+    await Promise.resolve()
+    expect(user.row_id).toBe('psn_1')
+    expect(getToken()).toBe('new-token')
+    expect(fetch).toHaveBeenCalledWith('/api/accounts', { method: 'POST', keepalive: true })
   })
 })

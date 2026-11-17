@@ -238,6 +238,13 @@ describe('#1255: switching', () => {
     expect(b.sid()).toBe(second)
   })
 
+  test('a switch with no readable body names no account and is refused', async ({ api }) => {
+    const { b, second } = await twoAccounts(api)
+    await b.list()
+    expect((await b.send('/api/accounts/switch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'not json' })).status).toBe(404)
+    expect(b.sid()).toBe(second)
+  })
+
   test('a switch ends any View as on the session it leaves', async ({ api }) => {
     const { b, rb, first, second } = await twoAccounts(api)
     await b.list()
