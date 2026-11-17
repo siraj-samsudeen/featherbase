@@ -273,3 +273,10 @@ test('a connected service can be marked only for employees', async ({ admin }) =
   expect(saved.status).toBe(200)
   expect((await sql`select employees_only from sign_in_method where row_id = 'stylehr'`)[0].employees_only).toBe(true)
 })
+
+test('asking about nobody asks the app nothing', async ({ admin }) => {
+  await installDescriber(admin)
+  const { describePeople } = await import('../src/person-standing')
+  expect((await describePeople(['', ''])).size).toBe(0)
+  expect(globalThis.__describedAs).toBeUndefined()
+})
