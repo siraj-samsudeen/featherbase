@@ -208,18 +208,6 @@ Then that path is listed by its names
 And choosing it brings back Enchakkal Supermarket in the drill pane
 ```
 
-### Requirement: The drill pane's place is the user's choice
-
-The user SHALL be able to fix where the drill pane sits, and that choice is remembered for them.
-
-#### Scenario: The pane stays where the user put it
-
-```gherkin
-Given the user fixed the drill pane below the list
-When the user signs in again and selects Enchakkal
-Then the drill pane opens below the list
-```
-
 ### Requirement: A row page shows its connections under its name
 
 A row's page SHALL show the rows it points at and the counted groups that point at it directly

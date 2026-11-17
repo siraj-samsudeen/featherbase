@@ -386,7 +386,8 @@ export function actionForLocation(
   // the slug as its label/key, nor interpret a fixed page as a Table.
   if (segs[0] !== 'table' || !segs[1] || !canonicalTable) return null
   const table = canonicalTable
-  const filtersJson = typeof search.filters === 'string' ? search.filters : undefined
+  // An empty filter list (#1228 settles a bare open to `filters=[]`) is the unfiltered list.
+  const filtersJson = typeof search.filters === 'string' && !noFilters(search.filters) ? search.filters : undefined
   const query = Object.entries(search)
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(typeof value === 'string' ? value : JSON.stringify(value))}`)
@@ -448,17 +449,36 @@ export function displayEntry(entry: {
   return { kind, label: entry.label, sub: entry.sub }
 }
 
+function noFilters(json: string): boolean {
+  try { const v: unknown = JSON.parse(json); return Array.isArray(v) && v.length === 0 } catch { return false }
+}
+
 /** One entry per destination as a person reads it: an old slug-keyed entry
- *  and a new page entry for the same page are one place. Order kept. */
+ *  and a new page entry for the same page are one place, and so are a list
+ *  remembered with no filters and with an empty filter list. Order kept. */
 export function uniqueByDisplay<T extends RecentEntry>(entries: T[]): T[] {
   const seen = new Set<string>()
   return entries.filter((e) => {
     const shown = displayEntry(e)
-    const id = shown.kind === 'page' && !shown.sub ? `page:${shown.label}` : e.key
+    const id = shown.kind === 'page' && !shown.sub ? `page:${shown.label}` : e.key.replace(/\?\[\]$/, '?')
     if (seen.has(id)) return false
     seen.add(id)
     return true
   })
+}
+
+/** The names more than one of these entries shows (a row's own name aside):
+ *  such an entry says what sets it apart, its filters or its view. */
+export function sharedNames(entries: Parameters<typeof displayEntry>[0][]): Set<string> {
+  const seen = new Set<string>()
+  const twice = new Set<string>()
+  for (const e of entries) {
+    const shown = displayEntry(e)
+    if (shown.row) continue
+    if (seen.has(shown.label)) twice.add(shown.label)
+    seen.add(shown.label)
+  }
+  return twice
 }
 
 /** Compact relative age for recents rows: "now", "5m", "3h", "2d". */

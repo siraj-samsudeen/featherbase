@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { adminPageTitle } from 'shared'
-import { useShellTables, type TableSummary } from '../lib/session'
+import { useCapabilities, useShellTables, type TableSummary } from '../lib/session'
 import { metaQuery, tableLabel } from '../lib/meta'
-import { SearchInput, touchRowClasses } from '@featherbase/shop-floor'
+import { api } from '../lib/api'
+import { SearchInput, fmtCount, touchRowClasses } from '@featherbase/shop-floor'
 
 /** #1253 (minimal lines): a module's card is a soft fill on the white page, no outline. */
 const MODULE_CARD = 'rounded-card bg-canvas/70 px-2 py-3'
@@ -31,6 +32,14 @@ export function AllTablesPage() {
   const labels = new Map(labelled.map((t, i) => [t.row_id, tableLabel(t.row_id, metas[i]?.data)]))
   /** A Table as people read it: its label, else its name. */
   const nameOf = (t: TableSummary) => labels.get(t.row_id) ?? t.row_id
+  // admin-lists 11: rows per Table, for whoever manages the instance.
+  const manage = useCapabilities()?.manage === true
+  const counts = useQuery({
+    queryKey: ['table-counts'],
+    queryFn: () => api.get<{ counts: Record<string, number> }>('/api/table_counts'),
+    enabled: manage,
+    staleTime: 60_000,
+  }).data?.counts
   const [find, setFind] = useState('')
   usePageTitle(adminPageTitle('all-tables'))
 
@@ -78,8 +87,8 @@ export function AllTablesPage() {
   // While searching, the System group opens to show what matched in it.
   const showSystem = systemOpen || Boolean(words)
 
-  const linkClass = touchRowClasses('flex min-w-0 flex-col rounded-md px-2 py-1.5 text-sm text-ink hover:bg-subtle')
-  const activeClass = touchRowClasses('flex min-w-0 flex-col rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint')
+  const linkClass = touchRowClasses('flex min-w-0 items-baseline gap-3 rounded-md px-2 py-1.5 text-sm text-ink hover:bg-subtle')
+  const activeClass = touchRowClasses('flex min-w-0 items-baseline gap-3 rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint')
   const heading = 'px-2 pb-1 text-[13px] font-medium text-ink-muted'
 
   const tableLink = (dt: TableSummary) => (
@@ -98,7 +107,12 @@ export function AllTablesPage() {
           <span className="ml-2 text-xs font-normal text-ink-subtle" data-testid="all-tables-view-of">view of {dt.view_of}</span>
         )}
       </span>
-      {dt.description && <span className="truncate text-[13px] text-ink-muted">{dt.description}</span>}
+      {/* admin-lists 11: what it holds and how many rows, muted, on the right. */}
+      <span className="ml-auto flex min-w-0 shrink items-baseline gap-2 text-[13px] font-normal text-ink-muted">
+        {dt.description && <span className="min-w-0 truncate">{dt.description}</span>}
+        {/* Exact, in Indian grouping ("1,28,412"); a count that took too long is left out. */}
+        {counts?.[dt.row_id] !== undefined && <span className="shrink-0 tabular-nums" data-testid="all-tables-count">{fmtCount(counts[dt.row_id])}</span>}
+      </span>
     </Link>
   )
 

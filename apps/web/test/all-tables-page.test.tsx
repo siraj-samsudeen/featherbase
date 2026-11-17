@@ -42,3 +42,12 @@ test('Find a table has the focus on open and narrows by what people read', async
   await userEvent.type(find, 'nothing like this')
   expect(await screen.findByTestId('all-tables-none')).toHaveTextContent('No table matches "nothing like this".')
 })
+
+// admin-lists 11: how many rows, muted on the right of each Table.
+test('each Table says how many rows it holds', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Atp Counted', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  for (const note of ['a', 'b', 'c']) await admin.post('/api/save_row', { table: 'Atp Counted', row: { note } })
+  await renderApp('/featherbase/admin/all-tables', admin)
+  const link = await screen.findByRole('link', { name: /Atp Counted/ }, { timeout: 10_000 })
+  await waitFor(() => expect(within(link).getByTestId('all-tables-count')).toHaveTextContent('3'), { timeout: 10_000 })
+})

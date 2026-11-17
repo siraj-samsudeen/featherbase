@@ -2,20 +2,20 @@ import { useFitToWindow } from '../lib/fit-to-window'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { rowDisplayTitle } from 'shared'
+import { rowDisplayTitle, type ListLayout } from 'shared'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { useNavigation } from '../lib/navigation'
 import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, isView, tableLabel, useMeta } from '../lib/meta'
 import { SaveAsView, ViewBanner } from './TableViews'
-import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, listLeader, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
-import { Button, EmptyState, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Button, EmptyState, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { ChevronDown } from '@featherbase/shop-floor'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
@@ -29,6 +29,8 @@ import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
 import { rememberListPlace } from './RecordNav'
 import { FilterBar, ListSearch, StandardFilters, type Filter } from './ListFilters'
 import { SavedViewsBar } from './SavedViewsBar'
+import { LayoutSwitch } from './LayoutSwitch'
+import { RecordCards } from './RecordCards'
 import { RecentStrip } from './RecentStrip'
 import { ExploreSplitButton } from './ExploreSplitButton'
 import { ListRow, NAME_CLIP, PhoneList, cell, isFigure } from './ListRows'
@@ -85,6 +87,10 @@ export function ListView({
   onRowOpen,
   openRow,
   extraColumns,
+  layout,
+  onLayoutChange,
+  onApplyView,
+  recordPanel,
 }: {
   table: string
   filters: Filter[]
@@ -106,6 +112,15 @@ export function ListView({
   openRow?: string
   /** #1173: columns this page shows on top of the person's own choice. */
   extraColumns?: string[]
+  /** #1259: the view this list shows (Table opens a row on its own page). */
+  layout?: ListLayout
+  /** #1259: the switch beside the title, where the page offers one. */
+  onLayoutChange?: (layout: ListLayout) => void
+  /** #1259: a saved view's filters and the view it was saved in. */
+  onApplyView?: (filters: Filter[], layout?: ListLayout) => void
+  /** #1259: the open record, placed by the view: beside the cards (List And
+   *  Record) or over the table's right side (Table With Panel). */
+  recordPanel?: ReactNode
 }) {
   const meta = useMeta(table)
   // #1237, #1242: the Table as people read it.
@@ -116,8 +131,11 @@ export function ListView({
   const navigation = useNavigation()
   const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
   const paneRow = onRowOpen ? openRow : nav?.step.pane?.table === table ? nav.step.pane.row : undefined
-  const openPane = onRowOpen ? (pane: { table: string; row: string }) => onRowOpen(pane.row)
+  // #1259: in the Table view a row opens on its own page, so a line opens no panel.
+  // Tree of all has no row pages to go to, so its lines open the record beside it in every view.
+  const openInPanel = onRowOpen ? (pane: { table: string; row: string }) => onRowOpen(pane.row)
     : nav ? (pane: { table: string; row: string }) => nav.push({ ...nav.step, pane }) : undefined
+  const openPane = layout === 'table' ? undefined : openInPanel
   // #910 checklist 19: every row as a folded tree line, kept in the path.
   const [localTree, setLocalTree] = useState<{ on: boolean; expanded: string[] }>({ on: false, expanded: [] })
   const treeOn = nav ? nav.step.view === 'tree' : localTree.on
@@ -320,7 +338,7 @@ export function ListView({
   // the person may read; the column the list leads with (its title, else
   // Row ID, #792) is always on.
   const listDefaults = meta.data ? defaultColumnNames(meta.data) : new Set<string>()
-  const leadingTitle = meta.data ? titleListColumn(meta.data) : undefined
+  const leadingTitle = meta.data ? listLeader(meta.data) : undefined
   const readableColumns = (meta.data ? dataColumns(meta.data) : []).filter((c) => c !== leadingTitle)
   const inListChoices = readableColumns.filter((c) => listDefaults.has(c.column_name))
   const otherChoices = readableColumns.filter((c) => !listDefaults.has(c.column_name))
@@ -372,6 +390,48 @@ export function ListView({
     if (knownTotal !== undefined && knownTotal > 0 && start >= knownTotal) setStart(Math.floor((knownTotal - 1) / PAGE) * PAGE)
   }, [knownTotal, start])
 
+  const rows = list.isError ? [] : list.data?.data ?? []
+
+  // #1259: with a record open beside or over the list, the arrow keys move to
+  // the next or previous row and the record follows (one step, not one per
+  // row); closing it puts the focus back on the same row.
+  const panelled = !treeOn && (layout === 'split' || layout === 'panel')
+  useEffect(() => {
+    if (!panelled || !paneRow) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.defaultPrevented) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input,textarea,select,[contenteditable="true"],[role="listbox"],[role="menu"],[role="dialog"]')) return
+      const at = rows.findIndex((r) => String(r.row_id) === paneRow)
+      const next = at < 0 ? undefined : rows[at + (e.key === 'ArrowDown' ? 1 : -1)]
+      if (!next) return
+      e.preventDefault()
+      // Only a page with the view switch has these views, and it walks the path (nav).
+      nav?.replace({ ...nav.step, pane: { table, row: String(next.row_id) } })
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [panelled, paneRow, rows, nav, table])
+  const lastPane = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const was = lastPane.current
+    lastPane.current = paneRow
+    if (!panelled || paneRow || !was) return
+    const line = document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(was)}"]`)
+    ;(line?.querySelector<HTMLElement>('button[aria-current], button') && layout === 'split'
+      ? line.querySelector<HTMLElement>('button')
+      : line)?.focus({ preventScroll: true })
+  }, [panelled, paneRow, layout])
+  // #1259 (one-app-chrome): the panel over the table starts under its column
+  // names, so they stay in sight.
+  const [headRow, setHeadRow] = useState(0)
+  const panelShown = Boolean(recordPanel) && layout !== 'split'
+  useLayoutEffect(() => {
+    if (!panelShown) return
+    setHeadRow(tableScroll?.querySelector('thead')?.getBoundingClientRect().height ?? 0)
+  }, [panelShown, tableScroll, rows.length])
+
   if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
   // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
   // … on …") — show its words, not a generic shrug.
@@ -385,7 +445,6 @@ export function ListView({
   const total = list.data?.total ?? 0
   // A refetch refusal must replace cached rows with the error, not silently
   // keep showing a successful list after its Table/access disappeared.
-  const rows = list.isError ? [] : list.data?.data ?? []
   const childFields = (meta.data?.columns ?? []).filter(
     (f) => f.column_type === 'Sub-table' && !f.hidden,
   )
@@ -606,6 +665,8 @@ export function ListView({
           {/* #1017: the count reads on the title's line, not one of its own. */}
           <div className="flex flex-wrap items-baseline gap-x-2">
           <h1 className="text-xl font-semibold text-ink">{title ?? <>{label}<GlossaryHelp table={table} className="ml-1" /></>}</h1>
+          {/* #1259: the three views, right after the title. */}
+          {layout && onLayoutChange && <span className="self-center"><LayoutSwitch value={layout} onChange={onLayoutChange} /></span>}
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>
@@ -832,7 +893,7 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
+      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? onFiltersChange} />}
       {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
       {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
       <div className="mb-2 flex flex-wrap items-end gap-2">
@@ -969,10 +1030,11 @@ export function ListView({
               </div>
             )}
           </div>
-          <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
-            setCompact(v === 'compact')
-            persist({ compact: v === 'compact' })
-          }} />
+          {/* #1259: density is one on/off button, so "Table" names only the view. */}
+          <Button aria-pressed={compact} data-testid="compact-rows" onClick={() => {
+            setCompact(!compact)
+            persist({ compact: !compact })
+          }} className={compact ? 'border-action bg-action-tint text-action' : undefined}>Compact Rows</Button>
           <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
             className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
         </div>
@@ -1050,10 +1112,13 @@ export function ListView({
         </div>
       )}
       {treeOn ? (
-        <div className={cardClasses('p-3')}>
-          <TreeOfAll table={table} filters={[...(baseFilters ?? []), ...filters]} expanded={treeExpanded}
-            onExpandedChange={(next) => setTree(true, [...next])}
-            onOpen={(pane) => openPane?.(pane)} />
+        <div className="flex min-h-0 items-start gap-3" data-testid="list-tree">
+          <div className={cardClasses('min-w-0 flex-1 p-3')}>
+            <TreeOfAll table={table} filters={[...(baseFilters ?? []), ...filters]} expanded={treeExpanded}
+              onExpandedChange={(next) => setTree(true, [...next])}
+              onOpen={(pane) => openInPanel?.(pane)} />
+          </div>
+          {recordPanel && <div className="w-[min(430px,45%)] shrink-0">{recordPanel}</div>}
         </div>
       ) : narrow ? (
         <PhoneList
@@ -1084,8 +1149,30 @@ export function ListView({
             </div>
           }
         />
+      ) : layout === 'split' ? (
+        // #1259: List And Record: the cards on the left, the open record beside them.
+        <div className="flex min-h-0 items-stretch gap-3" data-testid="list-split">
+          <div className="flex w-[330px] shrink-0 flex-col rounded-xl bg-surface p-1.5 shadow-sm" ref={setTableScroll}>
+            {rows.length ? (
+              <RecordCards table={table} titleColumn={meta.data?.title_column} rows={rows} columns={columns} settings={settings}
+                open={paneRow} onOpen={(row) => openPane?.({ table, row })} />
+            ) : <p className="px-3 py-6 text-center text-sm text-ink-subtle">{noRows}</p>}
+          </div>
+          <div className="min-w-0 flex-1">
+            {recordPanel ?? (
+              <div className="grid h-full min-h-24 place-items-center rounded-xl bg-canvas/40 text-sm text-ink-subtle" data-testid="record-panel-empty">
+                Choose a card to read it here.
+              </div>
+            )}
+          </div>
+        </div>
       ) : (
       <div className="relative">
+      {/* #1259: Table With Panel: the record slides over the table's right side, under its header. */}
+      {/* A record the address opens shows here in the Table view too (a pasted link). */}
+      {(layout === 'panel' || layout === 'table') && recordPanel && (
+        <div className="absolute bottom-0 right-0 z-[3] w-[min(430px,100%)]" style={{ top: headRow }} data-testid="record-panel-over">{recordPanel}</div>
+      )}
       <div className={cardClasses('featherbase-scroll overflow-auto')} ref={setTableScroll} data-testid="list-table-scroll">
         {/* Separate borders: a collapsed one stays behind when its sticky cell scrolls. */}
         <table className="w-full border-separate border-spacing-0 text-sm">

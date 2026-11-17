@@ -4,7 +4,7 @@
 // ways in and out of each state.
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
 import { DAY_MS, SHORTCUT_SETTINGS } from 'shared'
 import { flushShortcutLearning } from '../src/lib/shortcuts'
 import { test, expect, renderApp } from './pg-test'
@@ -14,6 +14,7 @@ const WAIT = { timeout: 8000 }
 
 // The page a test closes sends its learning a moment later; wait for that, so
 // it can never land on the next test's freshly seeded record.
+afterEach(() => vi.restoreAllMocks())
 beforeEach(async () => {
   cleanup()
   await flushShortcutLearning()
@@ -143,4 +144,27 @@ test('? opens the panel on a page without a sidebar too (Sales Target)', async (
   await screen.findByTestId('shortcut-teaching', {}, WAIT)
   fireEvent.keyDown(document.body, { key: '?', shiftKey: true })
   expect(panel()).toBeInTheDocument()
+})
+
+test('the tip is placed inside the page area, clear of its controls', async ({ admin }) => {
+  await openAdmin(admin)
+  // jsdom lays nothing out: give the page area a real size, as a browser would.
+  const main = document.querySelector('main')!
+  vi.spyOn(main, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ x: 240, y: 0, width: 1040, height: 800 }))
+  const control = await screen.findByTestId('sidebar-collapse', {}, WAIT)
+  for (let i = 0; i < 3; i++) await userEvent.click(control)
+  const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
+  await waitFor(() => expect(tip.style.visibility).not.toBe('hidden'))
+  expect(parseFloat(tip.style.left)).toBeGreaterThanOrEqual(256)
+  expect(parseFloat(tip.style.top)).toBe(8)
+})
+
+test('in a page area with no free spot the tip still shows, at its top', async ({ admin }) => {
+  // jsdom's page area measures nothing, so no spot is free: the tip falls back to the top.
+  await openAdmin(admin)
+  const control = await screen.findByTestId('sidebar-collapse', {}, WAIT)
+  for (let i = 0; i < 3; i++) await userEvent.click(control)
+  const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
+  await waitFor(() => expect(tip.style.visibility).not.toBe('hidden'))
+  expect(tip.style.top).toBe('8px')
 })

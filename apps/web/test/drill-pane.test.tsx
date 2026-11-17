@@ -36,18 +36,20 @@ test("selecting a row shows it in the pane, named with its table", async ({ admi
   expect(listed()).toBe(3)
 })
 
-test('the pane lists what the row points at, with Go there and Filter', async ({ admin }) => {
+test('the pane lists what the row points at: a link to its page, Show here and Filter', async ({ admin }) => {
   const { pane } = await openEnchakkal(admin)
   const pointsAt = (await within(pane).findByRole('heading', { name: 'Points at' })).parentElement!
-  await waitFor(() => expect(within(pointsAt).getByRole('button', { name: 'Kerala · KL' })).toBeInTheDocument())
-  expect(within(pointsAt).getByRole('button', { name: 'Go there' })).toBeInTheDocument()
+  // #1259: the name is a real link to the row's page; Show here keeps #910's drill.
+  await waitFor(() => expect(within(pointsAt).getByRole('link', { name: 'Kerala · KL' })).toHaveAttribute('href', expect.stringContaining('/row/KL')))
+  expect(within(pointsAt).getByRole('button', { name: 'Show Kerala · KL here' })).toBeInTheDocument()
   expect(within(pointsAt).getByRole('button', { name: 'Filter' })).toBeInTheDocument()
 })
 
-test('the pane counts each group that points at the row, beside Fields', async ({ admin }) => {
+test('the pane counts each group that points at the row, under its fields', async ({ admin }) => {
   const { pane } = await openEnchakkal(admin)
   expect(await within(pane).findByRole('button', { name: `${PLANT} 3` })).toBeInTheDocument()
-  expect(within(pane).getByRole('button', { name: 'Fields' })).toBeInTheDocument()
+  // #1259: the fields always show; the groups sit under them.
+  expect(within(pane).getByRole('heading', { name: 'Fields' })).toBeInTheDocument()
 })
 
 test("a chosen group lists its rows as a table with the list's columns", async ({ admin }) => {
@@ -78,9 +80,9 @@ test('clicking a row in the pane drills to it, growing the path and leaving the 
   expect(listed()).toBe(3)
 })
 
-test('Go there opens the linked row in the pane', async ({ admin }) => {
+test('Show here opens the linked row in the pane', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
-  fireEvent.click(await within(site).findByRole('button', { name: 'Go there' }))
+  fireEvent.click(await within(site).findByRole('button', { name: 'Show Kerala · KL here' }))
   expect(await pane('Kerala · KL')).toHaveTextContent(REGION)
 })
 
@@ -99,7 +101,7 @@ test("Filter is unavailable when the list underneath has no such column", async 
   await renderApp(tableHref(PLANT), admin)
   await select('Enchakkal Supermarket')
   const plant = await pane('Enchakkal Supermarket · 1503')
-  fireEvent.click(await within(plant).findByRole('button', { name: 'Go there' }))
+  fireEvent.click(await within(plant).findByRole('button', { name: /^Show Enchakkal · ENK here$/ }))
   const site = await pane('Enchakkal · ENK')
   // The plants list has no Region column to narrow.
   await waitFor(() => expect(within(site).getByRole('button', { name: 'Filter' })).toBeDisabled())
@@ -144,16 +146,15 @@ test('Open as list on a group linked through a sub-table shows only the related 
   expect(listed()).toBe(1)
 })
 
-test('Open row page and Edit are separate ways to the row', async ({ admin }) => {
+test('Edit is the one way to the row\'s page, its editable form', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
-  // The ways to the row show once the row is known to be readable.
-  expect(await within(site).findByRole('link', { name: 'Open row page' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
-  expect(within(site).getByRole('link', { name: 'Edit' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
+  // The way to the row shows once the row is known to be readable.
+  expect(await within(site).findByRole('link', { name: 'Edit' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
+  expect(within(site).queryByRole('link', { name: 'Open Full Page' })).not.toBeInTheDocument()
 })
 
 test('the fields read formatted: dates, rupees, links by name', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
-  fireEvent.click(await within(site).findByRole('button', { name: 'Fields' }))
   await waitFor(() => expect(site).toHaveTextContent('05-Feb-2019'))
   expect(site).toHaveTextContent('₹12,45,000.00')
   expect(within(site).getAllByRole('button', { name: 'Kerala · KL' }).length).toBeGreaterThan(0)
@@ -161,19 +162,8 @@ test('the fields read formatted: dates, rupees, links by name', async ({ admin }
 
 test('empty fields fold under a count and a long note offers Show more', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
-  fireEvent.click(await within(site).findByRole('button', { name: 'Fields' }))
   expect(await within(site).findByText('2 empty fields')).toBeInTheDocument()
   expect(within(site).getByRole('button', { name: 'Show more' })).toBeInTheDocument()
-})
-
-test("the pane's place is the person's choice, kept in their settings", async ({ admin }) => {
-  const { pane: site } = await openEnchakkal(admin)
-  fireEvent.click(within(screen.getByRole('group', { name: 'Pane place' })).getByRole('button', { name: 'Right' }))
-  await waitFor(() => expect(site).toHaveAttribute('data-place', 'right'))
-  await waitFor(async () => {
-    const { settings } = await admin.get<{ settings: { panePlace?: string } | null }>('/api/user_settings/__navigation')
-    expect(settings?.panePlace).toBe('right')
-  })
 })
 
 test('Escape closes the pane and the list stays', async ({ admin }) => {
@@ -209,7 +199,7 @@ test("a link to a row the viewer can't read shows no name, no id and no action",
   expect(await within(pointsAt).findByText('Not visible to you')).toBeInTheDocument()
   expect(pointsAt).not.toHaveTextContent('Kerala')
   expect(pointsAt).not.toHaveTextContent('KL')
-  expect(within(pointsAt).queryByRole('button', { name: 'Go there' })).not.toBeInTheDocument()
+  expect(within(pointsAt).queryByRole('button', { name: /^Show .* here$/ })).not.toBeInTheDocument()
 })
 
 test('two links from the same table stay separate groups, each with its own count', async ({ admin }) => {

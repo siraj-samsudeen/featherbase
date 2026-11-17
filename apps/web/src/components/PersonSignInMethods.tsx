@@ -5,7 +5,8 @@ import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { Button, Card, Select, TextInput } from '@featherbase/shop-floor'
-import { ShownName, principalLabel, usePrincipalNameState } from '../lib/people'
+import { PrincipalLink, principalLabel, usePrincipalNameState } from '../lib/people'
+import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
 
 // person-identities (#275, review B-M4): on a Person's form, a System Manager
 // sees how that person signs in — password, linked outside accounts, pending
@@ -44,7 +45,7 @@ function LinkedHow({ by, who }: { by: string; who: string }) {
   if (by === 'self') return <>by {who}</>
   return (
     <>
-      by <ShownName id={by} />
+      by <PrincipalLink id={by} />
     </>
   )
 }
@@ -192,6 +193,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
   // #837: a Google account reads as its address; its account number means
   // nothing to an administrator and waits under Details.
   // A Microsoft account reads the same way: its tenant/object ID is just as opaque.
+  // (Named for Google, where #837 began; it means "an account read by its address".)
   const isGoogle = (i: AdminIdentity) => ['google', 'microsoft'].includes(data?.methods.find((m) => m.key === i.method)?.kind ?? '')
   const shownAs = (i: AdminIdentity) =>
     isGoogle(i) && i.email ? i.email : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')
@@ -211,7 +213,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     add.mutate({
-      body: { method: String(f.get('method')), subject: String(f.get('subject')).trim(), sign_in_name: String(f.get('sign_in_name')).trim() },
+      body: { method: String(f.get('method')), subject: String(f.get('link_record_number')).trim(), sign_in_name: String(f.get('link_login_id')).trim() },
       form: e.currentTarget,
     })
   }
@@ -219,7 +221,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     add.mutate({
-      body: { method: google!.key, email: String(f.get('email')).trim(), send_invitation_email: f.get('send_invitation_email') === 'on' },
+      body: { method: google!.key, email: String(f.get('invite_address')).trim(), send_invitation_email: f.get('send_invitation_email') === 'on' },
       form: e.currentTarget,
     })
   }
@@ -255,7 +257,9 @@ export function PersonSignInMethods({ user }: { user: string }) {
               {i.subject != null && isGoogle(i) && i.email && (
                 <details className="text-sm text-ink-muted" data-testid="identity-details">
                   <summary className="cursor-pointer">Details</summary>
-                  <span className="block">Google account number: {i.subject}</span>
+                  <span className="block">
+                    {data?.methods.find((m) => m.key === i.method)?.kind === 'microsoft' ? 'Microsoft account ID' : 'Google account number'}: {i.subject}
+                  </span>
                 </details>
               )}
               {i.subject == null && i.invitation_sent_at && (
@@ -317,25 +321,27 @@ export function PersonSignInMethods({ user }: { user: string }) {
         )}
       </ul>
       {delegated.length > 0 && (
-        <form className="mt-3 space-y-2" onSubmit={onLink} data-testid="link-delegated-form">
+        <form className="mt-3 space-y-2" onSubmit={onLink} data-testid="link-delegated-form" {...NO_AUTOFILL_FORM}>
           <Select name="method" aria-label="Service" defaultValue={delegated[0].key}>
             {delegated.map((m) => (
               <option key={m.key} value={m.key}>{m.label}</option>
             ))}
           </Select>
-          <TextInput name="subject" aria-label="Record number at the service" placeholder="Record number at the service" required />
-          <TextInput name="sign_in_name" aria-label="Login ID at the service" placeholder="Login ID at the service" />
+          <TextInput name="link_record_number" aria-label="Record number at the service" placeholder="Record number at the service" required {...NO_AUTOFILL_FIELD} />
+          <TextInput name="link_login_id" aria-label="Login ID at the service" placeholder="Login ID at the service" {...NO_AUTOFILL_FIELD} />
           <Button type="submit" block>Link</Button>
         </form>
       )}
       {/* Shown once the Person is loaded, so the starting address never
           replaces what the administrator has begun to type. */}
       {google && data && (
-        <form className="mt-3 space-y-2" onSubmit={onInvite} data-testid="invite-google-form">
+        <form className="mt-3 space-y-2" onSubmit={onInvite} data-testid="invite-google-form" {...NO_AUTOFILL_FORM}>
           <TextInput
             key={ownAddress}
-            name="email"
-            type="email"
+            name="invite_address"
+            type="text"
+            inputMode="email"
+            {...NO_AUTOFILL_FIELD}
             aria-label="Google address to invite"
             placeholder="Google address to invite"
             defaultValue={ownAddress}

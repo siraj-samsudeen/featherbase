@@ -16,6 +16,7 @@ import {
   recentActions,
   recentSearches,
   uniqueByDisplay,
+  sharedNames,
   recordAction,
   type RecentEntry,
   type ServerRecentEntry,
@@ -24,11 +25,11 @@ import { useHomePages } from '../lib/home-pages'
 import { useCapabilities, useShellKind } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
-import { searchHitKind } from '../lib/search-hit'
+import { useStreamedSearch, type SearchHit } from '../lib/search-stream'
 import { ActionDisclosure } from '../components/ActionDisclosure'
 import { TopBar } from '../components/TopBar'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
-import { metaQuery, type TableMeta } from '../lib/meta'
+import { metaQuery, tableLabel, useMeta, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
@@ -43,13 +44,10 @@ import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsR
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
 
-interface SearchHit {
-  table: string
-  row_id: string
-  title: string
-  kind_label?: string
-}
 
+
+/** #1265: the most record rows the bar shows. */
+const RECORD_CAP = 15
 
 // #101 Phase 3: recorded actions also stream to the server's user_event log
 // (batched; a beacon carries the final batch through unload). The sink is
@@ -363,12 +361,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     const t = setTimeout(() => setDebounced(search.trim()), 150)
     return () => clearTimeout(t)
   }, [search])
-  const docHits = useQuery({
-    queryKey: ['awesomebar', debounced],
-    enabled: debounced.length > 0,
-    queryFn: () =>
-      api.get<{ results: SearchHit[] }>(`/api/search?q=${encodeURIComponent(debounced)}`),
-  })
+  // #1265: the record search streams group by group; a newer query aborts the older.
+  const streamed = useStreamedSearch(debounced)
 
   // #101: with the bar focused and empty, the dropdown shows Recent (pure
   // recency) and Frequent (frecency) groups; while typing it offers matching
@@ -376,7 +370,28 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   const trimmed = search.trim()
   // A resolved previous query remains cached during the typing debounce;
   // it is not a result of the text currently in the input.
-  const recordHits = trimmed === debounced ? docHits.data?.results ?? [] : []
+  const current = trimmed !== '' && trimmed === debounced && streamed.query === trimmed
+  // At most RECORD_CAP rows, taken in group order (ordinary Tables before
+  // registries), whatever order the groups answered in.
+  let room = RECORD_CAP
+  const recordGroups = (current ? streamed.groups : []).map((g) => {
+    if (!g.hits) return g
+    const hits = g.hits.slice(0, room)
+    room -= hits.length
+    return { ...g, hits }
+  })
+  const recordHits: (SearchHit & { label: string })[] = recordGroups.flatMap((g) => (g.hits ?? []).map((h) => ({ ...h, label: g.label })))
+  // Searching from the first keystroke until every group has answered.
+  const searching = trimmed !== '' && !(current && streamed.done)
+  const pendingGroups = recordGroups.filter((g) => g.hits === undefined)
+  // #1265: after 1.5s the wait is named, group by group.
+  const [slowFor, setSlowFor] = useState('')
+  useEffect(() => {
+    if (!searching) return
+    const timer = setTimeout(() => setSlowFor(trimmed), 1500)
+    return () => clearTimeout(timer)
+  }, [searching, trimmed])
+  const slow = searching && slowFor === trimmed
   const showRecents = Boolean(barFocused && trimmed === '' && historyReady)
   // #898: the command bar and the sidebar offer only rows that still exist.
   const remembered = historyReady && user ? [...recentActions(user.row_id, 20), ...frequentActions(user.row_id, 12)] : []
@@ -412,6 +427,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     ? uniqueByDisplay([...recentSlots, ...offered(frequentActions(user.row_id, 12))]).slice(recentSlots.length, recentSlots.length + 2)
     : []
   const sidebarRecent = sidebarFrequent.length ? recentSlots : sidebarCandidates
+  // Two rows of one name (a list under two filters) each say what sets them apart.
+  const sharedRecentNames = sharedNames([...sidebarRecent, ...sidebarFrequent])
 
   function recordSearch(q: string) {
     if (user && q) recordAction(user.row_id, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
@@ -512,6 +529,9 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     search.trim().length > 1
       ? commands.filter((c) => c.label.toLowerCase().includes(search.trim().toLowerCase()))
       : []
+  // #1265: once every group has answered and nothing anywhere matched, say so.
+  const noMatch = current && streamed.done && !streamed.failed && recordHits.length === 0 &&
+    pageHits.length === 0 && commandHits.length === 0 && suggestions.length === 0
 
   // #1253: the command bar, opened from the sidebar's field or ⌘K as a wide box
   // in the middle of the screen.
@@ -583,6 +603,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
             pageHits.length > 0 ||
             commandHits.length > 0 ||
             recordHits.length > 0 ||
+            searching || noMatch || (current && streamed.failed) ||
             (showRecents && pick.length > 0) ||
             searchChips.length > 0) && (
             <div
@@ -593,6 +614,30 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
               data-testid="awesomebar-results"
               onMouseDown={(e) => e.preventDefault()}
             >
+              {/* #1265: the search shows its work: a line that runs while it
+                  searches (a still label under reduced motion), and what it
+                  is waiting for once that takes a while. */}
+              {searching && (
+                <div className="px-3 pb-1 pt-0.5" data-testid="search-progress" role="status">
+                  <div aria-hidden className="relative mb-1 h-0.5 overflow-hidden rounded-full bg-border motion-reduce:hidden">
+                    <span className="search-progress-run absolute inset-y-0 left-0 w-1/3 rounded-full bg-action" />
+                  </div>
+                  <p className="text-xs text-ink-muted" data-testid="search-progress-text">
+                    {slow && pendingGroups.length
+                      ? `Still searching ${pendingGroups.slice(0, 3).map((g) => g.label).join(', ')}${pendingGroups.length > 3 ? ` and ${pendingGroups.length - 3} more` : ''}…`
+                      : 'Searching people, records and tables…'}
+                  </p>
+                </div>
+              )}
+              {noMatch && (
+                <div className="px-3 py-2 text-sm" data-testid="search-no-match">
+                  <p className="text-ink">No matches for “{trimmed}”</p>
+                  <p className="text-xs text-ink-muted">Try part of the name, or a code.</p>
+                </div>
+              )}
+              {current && streamed.failed && !noMatch && (
+                <p className="px-3 py-2 text-xs text-negative" data-testid="search-failed">The search stopped before it finished. Type again to retry.</p>
+              )}
               {/* #101: empty-bar recents — mousedown is swallowed so the
                   input keeps focus until the click lands. */}
               {showRecents && pick.length > 0 && (
@@ -707,26 +752,33 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                   <span className="text-action">+</span> New {d.label} row
                 </Link>
               ))}
-              {/* UI-014: row hits */}
-              {recordHits.length > 0 && (
+              {/* UI-014: row hits. #1265: by group as each Table answers; a group
+                  still on its way shows two quiet rows (the first three only),
+                  one with nothing found is gone. The name, then the Table. */}
+              {(recordHits.length > 0 || pendingGroups.length > 0) && (
                 <h2 data-testid="awesomebar-records-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Records</h2>
               )}
-              {recordHits.map((h) => (
-                <button
-                  key={`${h.table}/${h.row_id}`}
-                  {...resultProps(`record-${h.table}/${h.row_id}`)}
-                  type="button"
-                  onClick={() => openDoc(h)}
-                  data-testid="awesomebar-doc"
-                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
-                >
-                  {h.title}
-                  {h.title !== h.row_id && (
-                    <span className="ml-2 text-xs text-ink-subtle">{h.row_id}</span>
-                  )}
-                  <span className="ml-2 text-xs text-ink-muted">{searchHitKind(h)}</span>
-                </button>
-              ))}
+              {recordGroups.map((g) => g.hits === undefined
+                ? pendingGroups.indexOf(g) < 3 && (
+                  <div key={`pending-${g.table}`} aria-hidden data-testid="search-group-pending" className="space-y-1.5 px-3 py-1.5">
+                    <div className="h-3 w-2/3 rounded bg-border/70" />
+                    <div className="h-3 w-1/2 rounded bg-border/50" />
+                  </div>
+                )
+                : g.hits.map((h) => (
+                  <button
+                    key={`${h.table}/${h.row_id}`}
+                    {...resultProps(`record-${h.table}/${h.row_id}`)}
+                    type="button"
+                    onClick={() => openDoc(h)}
+                    data-testid="awesomebar-doc"
+                    className="flex min-h-control w-full items-center gap-2 px-3 text-left text-sm text-ink hover:bg-action-tint"
+                  >
+                    <TableTile name={g.label} />
+                    <span className="min-w-0 flex-1 truncate">{h.title}</span>
+                    <span className="shrink-0 text-xs text-ink-muted" data-testid="awesomebar-doc-table">{h.kind_label ?? g.label}</span>
+                  </button>
+                )))}
             </div>
           )}
         </form>
@@ -828,7 +880,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
             <RailFold label="Recently Opened" icon={Clock} testid="sidebar-recents" tone="slate">
               {(close) => [...sidebarRecent, ...sidebarFrequent].map((r) => (
                 <RailMenuItem key={r.key} close={close} onSelect={() => openRecent(r)}>
-                  <span className="truncate"><EntryLabel entry={r} /></span>
+                  <span className="truncate"><EntryLabel entry={r} /><RecentDiffers entry={r} shared={sharedRecentNames} /></span>
                 </RailMenuItem>
               ))}
             </RailFold>
@@ -838,7 +890,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
               {/* A heading, not a link: small, grey, regular weight (#1253). */}
               <h2 className={SIDEBAR_HEADING} data-testid="sidebar-recents-heading">Recently Opened</h2>
               {sidebarRecent.map((r) => (
-                <SidebarRecentRow key={r.key} entry={r} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
+                <SidebarRecentRow key={r.key} entry={r} shared={sharedRecentNames} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
               ))}
               {sidebarFrequent.length > 0 && (
                 <h2 className="px-2 pb-0.5 pt-2 text-xs text-ink-subtle">
@@ -846,7 +898,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                 </h2>
               )}
               {sidebarFrequent.map((r) => (
-                <SidebarRecentRow key={r.key} entry={r} frequent onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
+                <SidebarRecentRow key={r.key} entry={r} shared={sharedRecentNames} frequent onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
               ))}
             </div>
           )}
@@ -1155,6 +1207,8 @@ interface SidebarView {
   label: string
   filters: unknown
   mine: boolean
+  /** #1259: the view it was saved in. */
+  layout?: string
 }
 
 /** #1229: "Saved views" — the person's own views on every Table and the shared
@@ -1168,7 +1222,7 @@ function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
   const list = views.data?.views ?? []
   const rail = useSidebarRail()
   if (list.length === 0) return null
-  const hrefOf = (view: SidebarView) => `${tableHref(view.table)}?filters=${encodeURIComponent(JSON.stringify(view.filters))}`
+  const hrefOf = (view: SidebarView) => `${tableHref(view.table)}?filters=${encodeURIComponent(JSON.stringify(view.filters))}${view.layout ? `&layout=${view.layout}` : ''}`
   if (rail) return (
     <RailFold label="Saved Views" icon={Bookmark} testid="sidebar-saved-views" tone="amber">
       {(close) => list.map((view) => (
@@ -1207,12 +1261,27 @@ function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
   )
 }
 
+/** Whether this entry shares its name with another and has something of its own to say. */
+function differs(entry: RecentEntry, shared: Set<string>): boolean {
+  const shown = displayEntry(entry)
+  return !shown.row && Boolean(shown.sub) && shared.has(shown.label)
+}
+
+/** " · Site = Head Office" after a recent entry whose name another one shares
+ *  (the rail's menu, which has no tile to name the Table). */
+function RecentDiffers({ entry, shared }: { entry: RecentEntry; shared: Set<string> }) {
+  if (!differs(entry, shared)) return null
+  return <span className="text-ink-subtle" data-testid="recent-differs">{'\u00a0· '}{displayEntry(entry).sub}</span>
+}
+
 function SidebarRecentRow({
   entry,
+  shared,
   frequent,
   onOpen,
 }: {
   entry: RecentEntry
+  shared: Set<string>
   frequent?: boolean
   onOpen: (entry: RecentEntry) => void
 }) {
@@ -1220,9 +1289,12 @@ function SidebarRecentRow({
   // #1253 (Siraj's style A): one line. The table's tile and the row's name; the
   // time (Recently Opened) or the count (Frequent) on the right; the table in the tooltip.
   // A row's Table comes from its key (row:<Table>/<id>); a list or a page is its own name.
-  const table = shown.row?.table ?? (entry.key.startsWith('row:') ? entry.key.slice(4, entry.key.indexOf('/')) : shown.label)
+  const tableName = shown.row?.table ?? (entry.key.startsWith('row:') ? entry.key.slice(4, entry.key.indexOf('/')) : shown.label)
+  // #1241: a row's or a list's Table by its label (a page is its own title).
+  const ofTable = Boolean(shown.row) || entry.key.startsWith('row:') || shown.kind === 'list'
+  const table = tableLabel(tableName, useMeta(tableName, ofTable).data)
   // A filtered list says its filter in the tooltip (the second line it had before).
-  const what = !shown.row && shown.sub ? `${table} (${shown.sub})` : table
+  const what = !shown.row && shown.sub ? `${table} · ${shown.sub}` : table
   const last = entry.visits[entry.visits.length - 1] ?? 0
   const when = ago(last)
   const meta = frequent ? `${entry.visits.length}×` : when
@@ -1243,7 +1315,13 @@ function SidebarRecentRow({
       className={touchRowClasses(`${SIDEBAR_LINE} text-ink hover:bg-border/50`)}
     >
       <TableTile name={table} />
-      <span className="min-w-0 flex-1 truncate"><EntryLabel entry={entry} /></span>
+      {/* A row whose name another shares reads as what sets it apart (one-app-chrome, 17-Nov):
+          the tile names the Table, the tooltip says it all. */}
+      <span className="min-w-0 flex-1 truncate">
+        {differs(entry, shared)
+          ? <span data-testid="recent-differs">{shown.sub}</span>
+          : <EntryLabel entry={entry} />}
+      </span>
       {frequent && <span aria-hidden className={`text-xs ${GROUP_TONE.amber}`}>★</span>}
       <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{meta}</span>
     </a>

@@ -36,7 +36,10 @@ test('search shows only an allowed row ID and never its sensitive title', async 
   fireEvent.change(bar, { target: { value: ALICE_ID } })
   const hit = await screen.findByTestId('awesomebar-doc')
   expect(screen.getAllByTestId('awesomebar-doc')).toHaveLength(1)
-  expect(hit.textContent).toBe(`${ALICE_ID}row in ${TABLE}`)
+  // #1265: the row reads its name, then its Table's label; never "row in".
+  expect(hit).toHaveTextContent(ALICE_ID)
+  expect(within(hit).getByTestId('awesomebar-doc-table')).toHaveTextContent(TABLE)
+  expect(hit.textContent).not.toContain('row in')
   expect(within(hit).queryByText(new RegExp(ALICE_SECRET))).toBeNull()
   expect(hit.textContent).not.toContain(BOB_ID)
 })

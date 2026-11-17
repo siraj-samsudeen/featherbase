@@ -4,14 +4,16 @@
 // a System Manager's, the domain rule re-checked on a domain-ruled link, and
 // the tenant setting.
 import { afterEach, describe, expect, vi } from 'vitest'
+import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { createUserWithRole, expectStatus, makePerson } from './fixtures'
-import { mockOAuth, redeemSession } from './google-mock'
+import { beginMockApproval, mockApproveUrl, mockOAuth, redeemSession } from './google-mock'
+import { configureGoogle } from './identity-fixtures'
 import { TENANT, configureMicrosoft, microsoftLink, microsoftLinks, microsoftSignIn, withMicrosoftFetch } from './microsoft-mock'
 import { canSignInNow, linkIdentity } from '../src/identities'
 import { issueSession } from '../src/auth'
-import { microsoftNonce } from '../src/microsoft'
+import { exchangeMicrosoftCode, microsoftNonce, mockMicrosoftApproveRedirect, tenantProblem } from '../src/microsoft'
 
 const DOMAIN = 'bisquared.example'
 const CLIENT = 'b1e2c3d4-0000-4000-8000-00000000c1d0'
@@ -98,8 +100,9 @@ describe('real Microsoft', () => {
 describe('turned off', () => {
   test('a disabled method, or one without a client and without the stand-in, sends the browser back explained', async ({ api }) => {
     await configureMicrosoft({ enabled: false })
-    const res = await api.fetch('/api/oauth/microsoft/login', { headers: { accept: 'text/html' } })
-    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_off&via=microsoft')
+    const res = await api.fetch('/api/oauth/microsoft/login')
+    await expectStatus(res, 401)
+    expect(await res.text()).toContain('Microsoft sign-in is not configured')
     mockOAuth(false)
     await configureMicrosoft({ client_id: '' })
     const again = await api.fetch('/api/oauth/microsoft/login', { headers: { accept: 'text/html' } })
@@ -267,10 +270,157 @@ describe('a tenant narrowed while Microsoft is answering (Codex adversarial roun
 
 describe('the stand-in honours the tenant (Codex standard round 2)', () => {
   test('a method set to one tenant refuses the stand-in\'s account from another', async ({ api }) => {
-    await configureMicrosoft({ allowed_email_domains: DOMAIN, tenant: '66666666-6666-4666-8666-666666666666' })
+    await configureMicrosoft({ allowed_email_domains: DOMAIN, tenant: '66666666-6666-4666-8666-6666aaaa6666' })
     const person = await makePerson({ email: `asha@${DOMAIN}`, expects_microsoft_sign_in: true })
     const res = await microsoftSignIn(api, `asha@${DOMAIN}`, { oid: OID })
     expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_failed&via=microsoft')
     expect(await microsoftLinks(person)).toHaveLength(0)
+  })
+})
+
+describe('what Microsoft or the stand-in may hand back (coverage of the refusals)', () => {
+  const startReal = async (api: TestClient) => {
+    await configureMicrosoft({ client_id: CLIENT })
+    const start = await api.fetch('/api/oauth/microsoft/login')
+    const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!
+    return { cookie, state }
+  }
+
+  test.for([
+    ['no ID token at all', {}],
+    ['an ID token that is not three parts', { id_token: 'only.two' }],
+    ['an ID token whose claims are not JSON', { id_token: 'e30.%%%.sig' }],
+    ['an ID token whose claims are a list', { id_token: `e30.${Buffer.from('[1]').toString('base64url')}.sig` }],
+  ] as [string, Record<string, unknown>][])('%s is refused as Microsoft failing', async ([, body], { api }) => {
+    const { cookie, state } = await startReal(api)
+    const res = await withMicrosoftFetch(
+      async () => Response.json(body),
+      () => api.fetch(`/api/oauth/microsoft/callback?code=c&state=${enc(state)}`, { headers: { cookie, accept: 'text/html' } }),
+    )
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_failed&via=microsoft')
+  })
+
+  test('the stand-in\'s consent page carries the sign-in it belongs to, escaped', async ({ api }) => {
+    await configureMicrosoft({ client_id: '' })
+    const res = await api.fetch(`/api/oauth/mock/microsoft/consent?state=${enc('s"<x>')}&redirect_uri=/api/oauth/microsoft/callback`)
+    await expectStatus(res, 200)
+    const html = await res.text()
+    expect(html).toContain('Sign in with Microsoft')
+    expect(html).toContain('value="s&quot;&lt;x&gt;"')
+    expect(html).not.toContain('<x>')
+  })
+
+  test('a Microsoft stand-in code is not Google\'s to redeem', async ({ api }) => {
+    await configureGoogle({ enabled: true, client_id: '' })
+    const { start, cookie } = await beginMockApproval(api, `asha@${DOMAIN}`)
+    const state = new URLSearchParams((start.headers.get('location') as string).split('?')[1]).get('state') as string
+    const forged = mockMicrosoftApproveRedirect(state, '/api/oauth/microsoft/callback', { email: `asha@${DOMAIN}`, name: 'A', tid: TENANT, oid: OID, edov: true })
+    const code = new URLSearchParams(forged.split('?')[1]).get('code')!
+    const res = await api.fetch(`/api/oauth/google/callback?code=${enc(code)}&state=${enc(state)}`, { headers: { cookie } })
+    await expectStatus(res, 401)
+  })
+
+  test('linking Microsoft is refused while people may not link it themselves', async ({ api }) => {
+    await configureMicrosoft({ self_link: false })
+    const person = await makePerson({ email: `asha@${DOMAIN}` })
+    const { token } = await issueSession(person)
+    await expectStatus(await api.fetch('/api/oauth/microsoft/link', { headers: { cookie: `sid=${token}` } }), 403)
+  })
+})
+
+describe('the verify step\'s own guards (coverage)', () => {
+  const method = (over: Record<string, unknown> = {}) =>
+    ({ key: 'microsoft', kind: 'microsoft', label: 'Microsoft', enabled: true, new_person: 'refuse', allowed_email_domains: '', self_link: true, client_id: '', service_url: '', settings: null, ...over }) as Parameters<typeof exchangeMicrosoftCode>[2]
+
+  test('a blank tenant is no problem; anything else must be organizations or an ID', () => {
+    expect(tenantProblem(null)).toBeNull()
+    expect(tenantProblem('')).toBeNull()
+    expect(tenantProblem('common')).toMatch(/organizations or a tenant ID/)
+  })
+
+  test('a tenant stored outside the form that is not allowed turns Microsoft sign-in off', async ({ api }) => {
+    await configureMicrosoft({ client_id: CLIENT })
+    await sql`update sign_in_method set settings = ${JSON.stringify({ tenant: 'common' })}::text::jsonb where row_id = 'microsoft'`
+    const res = await api.fetch('/api/oauth/microsoft/login')
+    await expectStatus(res, 401)
+    expect(await res.text()).toContain('Microsoft sign-in is not configured')
+  })
+
+  test('no code, the stand-in switched off, or another stand-in\'s code: refused', async () => {
+    await expect(exchangeMicrosoftCode(undefined, '/cb', method(), 'v', 's')).rejects.toThrow('Missing authorization code')
+    const googleCode = new URLSearchParams(mockApproveUrl('s', 'a@b.example').split('?')[1])
+    const forged = mockMicrosoftApproveRedirect('s', '/api/oauth/microsoft/callback', { email: 'a@b.example', name: 'A', tid: TENANT, oid: OID, edov: true })
+    const msCode = new URLSearchParams(forged.split('?')[1]).get('code')!
+    mockOAuth(false)
+    await expect(exchangeMicrosoftCode(msCode, '/cb', method(), 'v', 's')).rejects.toThrow('Mock OAuth provider is disabled')
+    mockOAuth(true)
+    // A code Google's stand-in signed (no provider) is not Microsoft's.
+    const { mockApproveRedirect } = await import('../src/oauth')
+    const gForged = mockApproveRedirect(googleCode.get('state')!, '/api/oauth/google/callback', 'a@b.example', 'A')
+    const gCode = new URLSearchParams(gForged.split('?')[1]).get('code')!
+    await expect(exchangeMicrosoftCode(gCode, '/cb', method(), 'v', 's')).rejects.toThrow('Bad signature')
+  })
+
+  test('Microsoft answering with something that is not JSON is Microsoft failing', async () => {
+    await expect(
+      withMicrosoftFetch(async () => new Response('<html>oops</html>', { status: 200 }), () =>
+        exchangeMicrosoftCode('c', '/cb', method({ client_id: CLIENT }), 'v', 's')),
+    ).rejects.toThrow(/Microsoft sign-in failed/)
+  })
+})
+
+describe('the remaining edges (coverage)', () => {
+  test('the release requires the Microsoft secret while the method is on with a client id', async () => {
+    const { settingsRequirements } = await import('../src/release-preflight')
+    await configureMicrosoft({ enabled: false })
+    expect((await settingsRequirements()).conditions.has('microsoft-sign-in-enabled')).toBe(false)
+    await configureMicrosoft({ client_id: CLIENT })
+    expect((await settingsRequirements()).conditions.has('microsoft-sign-in-enabled')).toBe(true)
+  })
+
+  test('widening the tenant back to any organisation ends no one\'s session', async ({ admin }) => {
+    const patch = async (tenant: string) => {
+      const [m] = await sql`select updated_at from sign_in_method where row_id = 'microsoft'`
+      return admin.fetch('/api/table/Sign%20In%20Method/microsoft', { method: 'PATCH', body: JSON.stringify({ settings: { tenant }, updated_at: m.updated_at }) })
+    }
+    await configureMicrosoft({ allowed_email_domains: DOMAIN })
+    const person = await makePerson({ email: `asha@${DOMAIN}` })
+    await linkIdentity(person, { method: 'microsoft', subject: `${TENANT}/${OID}` }, 'Administrator')
+    await expectStatus(await patch(TENANT), 200)
+    await expectStatus(await patch('organizations'), 200)
+    const [row] = await sql`select sessions_ended_at from sign_in_identity where person_id = ${person} and method = 'microsoft'`
+    expect(row.sessions_ended_at).toBeNull()
+  })
+
+  test('Microsoft sign-in turned off while Microsoft answers refuses the sign-in', async ({ api }) => {
+    await configureMicrosoft({ client_id: CLIENT, allowed_email_domains: DOMAIN })
+    const start = await api.fetch('/api/oauth/microsoft/login')
+    const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!
+    const res = await withMicrosoftFetch(
+      async () => {
+        await sql`update sign_in_method set enabled = false where row_id = 'microsoft'`
+        return Response.json({
+          id_token: idToken({
+            iss: `https://login.microsoftonline.com/${TENANT}/v2.0`, aud: CLIENT, exp: Math.floor(Date.now() / 1000) + 600,
+            nonce: microsoftNonce(state), tid: TENANT, oid: OID, email: `asha@${DOMAIN}`, xms_edov: true,
+          }),
+        })
+      },
+      () => api.fetch(`/api/oauth/microsoft/callback?code=c&state=${enc(state)}`, { headers: { cookie, accept: 'text/html' } }),
+    )
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_off&via=microsoft')
+  })
+
+  test('a sign-in started for Google cannot finish at Microsoft\'s callback', async ({ api }) => {
+    await configureGoogle({ enabled: true, client_id: '' })
+    await configureMicrosoft({})
+    const start = await api.fetch('/api/oauth/google/login')
+    const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+    const state = new URLSearchParams((start.headers.get('location') as string).split('?')[1]).get('state') as string
+    const res = await api.fetch(`/api/oauth/microsoft/callback?code=c&state=${enc(state)}`, { headers: { cookie } })
+    await expectStatus(res, 401)
+    expect(await res.text()).toContain('another sign-in method')
   })
 })

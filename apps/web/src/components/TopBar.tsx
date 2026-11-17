@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabLink } from 'shared'
-import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
+import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, landingPath, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
+import { pageLoad } from '../lib/page-load'
+import { AccountSwitcherSection } from './AccountSwitcherSection'
 import { useBarAddress } from '../lib/bar-address'
 import { useIsPreview, useWhoAmI, type Capabilities, type OpenableApp } from '../lib/session'
 import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
@@ -482,8 +484,14 @@ function useSignOut() {
     // departing user and re-poisons the cache for the next account in this
     // tab (#101 review). #411: if the server could not end the session, say
     // so and stay signed in rather than pretend it ended.
-    if (!(await signOut())) {
+    const out = await signOut()
+    if (!out.ok) {
       window.alert(SIGN_OUT_INCOMPLETE)
+      return
+    }
+    // #1255 D6: another account is held on this browser; the page continues as it.
+    if (out.next) {
+      pageLoad.assign(out.next.handoff ?? landingPath(out.next))
       return
     }
     clearSession()
@@ -501,6 +509,17 @@ const MENU_ITEM = 'flex min-h-control w-full items-center px-3 text-left text-sm
 
 /** #72 / #489: the avatar is the Account menu — the person's name, Sign-in
  *  methods, Log out. On a phone it also carries Open Admin and the theme. */
+/** The roles everyone holds say nothing about who someone is. */
+const EVERYONE_ROLES = new Set(['All', 'Guest'])
+
+/** Under the name at the sidebar's foot: "System Manager" for whoever manages
+ *  the instance, else their first role and how many more. */
+export function roleLine(who: { roles: string[]; capabilities: { manage: boolean } }): string {
+  if (who.capabilities.manage) return 'System Manager'
+  const roles = who.roles.filter((role) => !EVERYONE_ROLES.has(role))
+  return [roles[0], roles.length > 1 ? `+${roles.length - 1} more` : null].filter(Boolean).join(' · ')
+}
+
 function AccountMenu({ inMenu, inSidebar }: {
   inMenu?: { offerAdmin: boolean }
   /** #1253: the avatar and name at the sidebar's foot (the avatar alone in the
@@ -511,7 +530,8 @@ function AccountMenu({ inMenu, inSidebar }: {
   const { t } = useI18n()
   const signOutNow = useSignOut()
   const navigate = useNavigate()
-  const caps = useWhoAmI().data?.capabilities
+  const whoami = useWhoAmI().data
+  const caps = whoami?.capabilities
   const [open, setOpen] = useState(false)
   const wrapper = useRef<HTMLDivElement>(null)
   const avatar = useRef<HTMLButtonElement>(null)
@@ -570,7 +590,13 @@ function AccountMenu({ inMenu, inSidebar }: {
         <span aria-hidden="true" className={`flex ${inSidebar ? 'size-7' : 'size-8'} shrink-0 items-center justify-center rounded-full bg-action text-xs font-semibold text-action-ink`}>
           {initials}
         </span>
-        {named && <span aria-hidden="true" className="min-w-0 flex-1 truncate">{shown}</span>}
+        {named && (
+          <span aria-hidden="true" className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate">{shown}</span>
+            {/* #1253 mockup: who they are here, small and muted under the name. */}
+            {whoami && roleLine(whoami) && <span className="truncate text-xs text-ink-muted" data-testid="session-user-role">{roleLine(whoami)}</span>}
+          </span>
+        )}
         <span className="sr-only">{t('Account')}: {shown}</span>
       </button>
       {open && (
@@ -591,6 +617,7 @@ function AccountMenu({ inMenu, inSidebar }: {
               />
             )}
           </div>
+          <AccountSwitcherSection onDone={() => setOpen(false)} />
           {extras && (
             <>
               {extras.offerAdmin && (

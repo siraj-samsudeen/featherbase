@@ -134,7 +134,7 @@ describe('JSON command validation at the HTTP boundary', () => {
   // not an internal parser error or a successful command with absent arguments.
   for (const [method, path, message] of [
     ['POST', '/api/events', 'Expected { events: [{ kind, key, … }] } (max 50)'],
-    ['POST', '/api/saved_views', 'Expected { table, label, filters: [[col, op, value], …] }'],
+    ['POST', '/api/saved_views', 'Expected { table, label, filters: [[col, op, value], …], layout?: table | split | panel }'],
     ['POST', '/api/saved_views/view-missing/share', 'Expected { shared: boolean }'],
     ['POST', '/api/row_titles', 'Expected { rows: [{ table, row_id }] } (max 100)'],
     ['POST', '/api/people/names', 'Expected { ids: [...] }'],

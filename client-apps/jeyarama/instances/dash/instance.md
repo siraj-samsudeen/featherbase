@@ -52,6 +52,15 @@ nothing until an Admin gives them one. Google must have verified the address and
 its Workspace domain. People can't link a Google account to themselves
 (`self_link: false`) until featherbase#693 checks the domain there.
 
+**Microsoft.** Bisquared's consultants sign in with their Microsoft work account. The app
+"Featherbase" is registered in Bisquared's Entra tenant (any organisation's work account may
+try; tenant `organizations`); its client id is in the `dev` and `prod` sections, and empty
+locally so the development stand-in serves. The client secret is never in the file; it is the
+`MICROSOFT_CLIENT_SECRET` deployment variable, and a deploy is refused while it is missing.
+Nobody is created by a Microsoft sign-in: a System Manager ticks **Expects Microsoft sign-in**
+on the person, whose address must be on `bisquared.com`. Setting it up again:
+docs/MICROSOFT-SIGN-IN.md.
+
 **StyleHR.** The method is in the file but switched off in every environment,
 because switching it on changes the sign-in page and sends staff passwords
 through that environment. To switch it on, add `{ "row_id": "stylehr", "enabled": true }`

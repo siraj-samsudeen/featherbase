@@ -15,7 +15,7 @@ import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
 import { Attachments } from './Attachments'
 import {
-  ArrangeBar,
+  ViewMenu,
   BookkeepingLine,
   FieldGroupView,
   ValueField,
@@ -46,7 +46,7 @@ import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
-import { ContentTabs, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { ContentTabs, buttonClasses, fmtClockTime, cardClasses, inputClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 import type { Row } from './form-row'
 import { FieldControl } from './FieldControl'
 import { usePageTitle } from '../lib/page-title'
@@ -75,8 +75,8 @@ function parseTypedJson(columns: ColumnDef[], values: Row, typed: ReadonlySet<st
   return { values: out, errors }
 }
 
-const VIEW_TAB = { form: 'Form', map: 'Map', tree: 'Tree' } as const
-const TAB_VIEW: Record<string, 'form' | 'map' | 'tree' | undefined> = { Form: 'form', Map: 'map', Tree: 'tree' }
+const VIEW_TAB = { form: 'Form', map: 'Map', tree: 'Tree', collaboration: 'Collaboration', activity: 'Activity' } as const
+const TAB_VIEW: Record<string, keyof typeof VIEW_TAB | undefined> = { Form: 'form', Map: 'map', Tree: 'tree', Collaboration: 'collaboration', Activity: 'activity' }
 
 // UI-004/UI-005: ONE form component renders and saves every Table from
 // its metadata. Layout columns group into sections/columns (UI-008 refines).
@@ -147,6 +147,8 @@ export function FormView({
   const overrideTarget = useMeta(editingOverride ? String(values.table_name ?? '') : '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
+  // #1267: when this page last saved the record, for the save state's tooltip.
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -460,6 +462,7 @@ export function FormView({
         })
       } else {
         setBanner('Saved')
+        setSavedAt(new Date())
       }
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields)
@@ -504,10 +507,6 @@ export function FormView({
   const work = <div className="flex flex-col gap-6 lg:flex-row">
     {/* Its columns follow its own width (a form beside the pane is narrow). */}
     <div className="@container min-w-0 max-w-[50rem] flex-1">
-      {!isNew && (
-        <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
-          onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
-      )}
       {/* #1012: one column narrows the fields only, so the toolbar above stays put.
           The wrapper is wider than the fields because the toolbar needs 50rem on one line in a wide font. */}
       <div className={arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'} data-testid="form-fields">
@@ -593,9 +592,12 @@ export function FormView({
             {tableLabel(table, meta.data)}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
             <GlossaryHelp table={table} className="ml-1" />
           </h1>
-          <span className="text-xs text-ink-muted" data-testid="form-status">
-            {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}
-          </span>
+          {/* #1267: a saved record says so once, at the tab row's right end; a new one here. */}
+          {isNew && (
+            <span className="text-xs text-ink-muted" data-testid="form-status">
+              {dirty ? 'Not saved' : 'New document'}
+            </span>
+          )}
           {boundSource && (
             <span
               className={pillClasses('ml-2 align-middle text-xs')}
@@ -919,7 +921,7 @@ export function FormView({
         />
       )}
       {!isNew && <RetiredNotice row={baseline} table={table} />}
-      {banner && (
+      {banner && (banner !== 'Saved' || isNew) && (
         <p
           className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-positive' : 'text-negative'}`}
           data-testid="form-banner"
@@ -1012,7 +1014,20 @@ export function FormView({
       {changeRecord && <ChangeRecord values={values} />}
       <RawDetails data-testid={reading || changeRecord ? 'raw-details' : undefined}>
       {(reading || changeRecord) && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t(changeRecord ? 'Raw JSON' : 'Raw details')}</summary>}
-      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea} tabs={[
+      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea}
+        actions={<>
+          {/* #1267: one save state for the record, with the time in its tooltip. */}
+          <span className={`inline-flex items-center gap-1 text-xs ${dirty ? 'text-ink-muted' : 'text-positive'}`}
+            title={!dirty && savedAt ? `Saved ${fmtClockTime(savedAt)}` : undefined}>
+            {!dirty && <span aria-hidden>✓</span>}
+            <span data-testid="form-status">{dirty ? 'Not saved' : banner === 'Saved' ? <span data-testid="form-banner">Saved</span> : 'Saved'}</span>
+          </span>
+          {area === 'Form' && (
+            <ViewMenu mode={arrangement.mode} columns={arrangement.columns}
+              onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
+          )}
+        </>}
+        tabs={[
         { id: 'Form', label: 'Form', content: work },
         { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },
         { id: 'Tree', label: 'Tree', content: <RowTree table={table} name={name} /> },

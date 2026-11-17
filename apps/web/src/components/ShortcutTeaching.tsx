@@ -201,8 +201,15 @@ function KeyBadges({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
 }
 
 const INTERACTIVE = 'button, a[href], input, select, textarea, [role=tab], [role=button]'
-/** The widths a tip tries, widest first, to stay in the row under the top. */
-const TIP_WIDTHS = [760, 720, 680, 640, 600, 560, 520, 480]
+/** The widths a tip tries, widest first. */
+const TIP_WIDTHS = [760, 720, 680, 640, 600, 560, 520, 480, 440, 400, 360]
+
+/** Sets a tip's width and shape: one row, or its buttons under the text. */
+function shape(el: HTMLElement, width: number, stacked: boolean) {
+  el.style.maxWidth = `${width}px`
+  el.style.flexDirection = stacked ? 'column' : 'row'
+  el.style.alignItems = stacked ? 'stretch' : 'center'
+}
 
 function Tip({ tip }: { tip: ShownTip }) {
   const { learning } = useShortcutState()
@@ -212,29 +219,29 @@ function Tip({ tip }: { tip: ShownTip }) {
     const el = ref.current! // rendered: the effect runs after the tip is in the page
     function place() {
       const area = contentArea()
-      const top = area.top + 16
-      const controls = [...document.querySelectorAll<HTMLElement>(INTERACTIVE)]
+      const bounds = { left: area.left + 16, right: area.right - 16, top: area.top + 8, bottom: window.innerHeight - 8 }
+      const controls: Box[] = [...document.querySelectorAll<HTMLElement>(INTERACTIVE)]
         .filter((c) => !el.contains(c))
         .map((c) => c.getBoundingClientRect())
         .filter((r) => r.width > 0)
       if (tip.near) controls.push(tip.near)
-      // Widest first; a narrower tip (more lines) that still fits in the top
-      // row beats a wide one pushed down onto the page (verifier round 3:
-      // the expanded sidebar leaves too little room beside the title).
-      let best: { at: { left: number; top: number }; width: number } | null = null
-      for (const width of TIP_WIDTHS) {
-        el.style.maxWidth = `${width}px`
-        const size = { width: el.offsetWidth, height: el.offsetHeight }
-        const avoid: Box[] = controls.filter((r) => r.bottom > top && r.top < top + 4 * (size.height + 8))
-        const spot = placeTip(size, avoid, { left: area.left + 16, right: area.right - 16, top })
-        best ??= { at: spot, width }
-        if (spot.top === top) {
-          best = { at: spot, width }
-          break
+      // Every width in both shapes (one row; buttons under the text), measured
+      // with the page's real fonts: the highest spot that covers no control
+      // wins, the shorter when two are as high (CI smoke: fonts and headers
+      // differ, so no single width or shape fits every page).
+      let best: { at: { left: number; top: number }; width: number; stacked: boolean; height: number } | null = null
+      for (const stacked of [false, true]) {
+        for (const width of TIP_WIDTHS) {
+          shape(el, width, stacked)
+          const height = el.offsetHeight
+          const spot = placeTip({ width: el.offsetWidth, height }, controls, bounds)
+          // Highest first; as high, the shorter (a five-line squeeze loses to a stacked tip).
+          if (spot && (!best || spot.top < best.at.top || (spot.top === best.at.top && height < best.height))) best = { at: spot, width, stacked, height }
         }
       }
-      el.style.maxWidth = `${best!.width}px`
-      setAt(best!.at)
+      best ??= { at: { left: bounds.left, top: bounds.top }, width: TIP_WIDTHS[0], stacked: false, height: 0 }
+      shape(el, best.width, best.stacked)
+      setAt(best.at)
     }
     place()
     // A tip shown while the page is still moving (the sidebar animating to its
@@ -255,18 +262,22 @@ function Tip({ tip }: { tip: ShownTip }) {
       role="status"
       aria-label={tip.reminder ? 'Reminder' : 'Tip'}
       className={cx(
-        'fixed z-[45] flex items-center gap-2 rounded-control border bg-surface py-1.5 pl-2.5 pr-1.5 text-[13px] text-ink shadow-lg',
+        'fixed z-[45] flex items-center gap-2 rounded-control border bg-surface py-1 pl-2.5 pr-1.5 text-[13px] leading-4 text-ink shadow-lg',
         tip.reminder ? 'border-caution' : 'border-action',
       )}
       style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: 'hidden' }}
       data-testid="shortcut-tip"
     >
-      <span className={cx('shrink-0 rounded-full px-2 text-xs font-semibold', tip.reminder ? 'bg-caution-tint text-caution' : 'bg-action-tint text-action')}>
-        {tip.reminder ? 'Reminder' : 'Tip'}
+      <span className="flex min-w-0 items-start gap-2">
+        <span className={cx('shrink-0 rounded-full px-2 text-xs font-semibold', tip.reminder ? 'bg-caution-tint text-caution' : 'bg-action-tint text-action')}>
+          {tip.reminder ? 'Reminder' : 'Tip'}
+        </span>
+        <span>{text}</span>
       </span>
-      <span>{text}</span>
-      <button type="button" onClick={dismissTip} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-1 text-[13px] text-ink' })}>Got It</button>
-      <button type="button" onClick={quietTips} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-1 text-[13px] text-ink' })}>Quiet Tips For {nextQuietStep(learning).label}</button>
+      <span className="flex shrink-0 justify-end gap-1">
+        <button type="button" onClick={dismissTip} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-0.5 text-[13px] text-ink' })}>Got It</button>
+        <button type="button" onClick={quietTips} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-0.5 text-[13px] text-ink' })}>Quiet Tips For {nextQuietStep(learning).label}</button>
+      </span>
     </div>
   )
 }

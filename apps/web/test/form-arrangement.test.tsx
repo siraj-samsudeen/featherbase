@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, beforeAll, describe } from 'vitest'
 import postgres, { type Sql } from 'postgres'
@@ -8,6 +8,12 @@ import { EXTERNAL_DATABASE_URL } from 'server/test/external-database'
 import { arrangeFields } from '../src/components/FormArrangement'
 import type { ColumnDef, TableMeta } from '../src/lib/meta'
 import { test, expect, renderApp } from './pg-test'
+
+/** #1267: the arrangement lives in the tab row's View menu; this opens it and returns one of its choices. */
+async function viewChoice(id: string) {
+  if (!screen.queryByTestId('view-menu')) (await screen.findByTestId('view-menu-button', undefined, { timeout: 8000 })).click()
+  return screen.findByTestId(id)
+}
 
 // #795: a row's fields arranged by importance, data type, filled first, links
 // first or the Table's own order, in one or two columns, remembered for each
@@ -82,12 +88,12 @@ test('an editable row opens by importance, with its controls, and the choice is 
   // Editable: the empty note is a control, not folded; bookkeeping stays a control at the foot.
   expect(screen.getByLabelText('Note').tagName).toBe('TEXTAREA')
   expect(screen.getByLabelText('Created On')).toHaveAttribute('type', 'date')
-  expect(screen.getByTestId('arrange-importance')).toHaveAttribute('aria-pressed', 'true')
+  expect(await viewChoice('arrange-importance')).toHaveAttribute('aria-checked', 'true')
 
-  await user.click(screen.getByTestId('arrange-source'))
+  await user.click(await viewChoice('arrange-source'))
   await waitFor(() => expect(screen.getByTestId('form-section-0')).toBeInTheDocument())
   expect(labels()).toEqual(['Created On', 'Weight', 'Note', 'Label', 'Sender'])
-  await user.click(screen.getByTestId('arrange-columns-1'))
+  await user.click(await viewChoice('arrange-columns-1'))
   await waitFor(async () =>
     expect((await admin.get<{ settings: { form?: unknown } }>('/api/user_settings/Arrange%20Desk')).settings.form).toEqual({ mode: 'source', columns: 1 }),
   )
@@ -110,14 +116,14 @@ test('a Table laid out in sections opens in its own order until the person picks
   await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
   const second = await screen.findByTestId('form-section-1', undefined, { timeout: 8000 })
   expect(within(second).getByLabelText('Sender')).toBeInTheDocument()
-  expect(screen.getByTestId('arrange-source')).toHaveAttribute('aria-pressed', 'true')
+  expect(await viewChoice('arrange-source')).toHaveAttribute('aria-checked', 'true')
 })
 
 test('a new row keeps the sectioned layout and no arrange switch', async ({ admin }) => {
   await parcelDesk(admin)
   await renderApp('/featherbase/admin/table/arrange-desk/new', admin)
   await screen.findByTestId('form-section-0', undefined, { timeout: 8000 })
-  expect(screen.queryByTestId('arrange-bar')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('view-menu-button')).not.toBeInTheDocument()
 })
 
 // #910: beside the drill pane the form is narrow whatever the window is, so
@@ -145,7 +151,7 @@ test('a row with no side panels gives its form the whole width, with no empty si
   await parcelDesk(admin)
   await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
   const form = await screen.findByTestId('form-view')
-  await screen.findByTestId('arrange-bar', undefined, { timeout: 8000 })
+  await screen.findByTestId('view-menu-button', undefined, { timeout: 8000 })
   expect(form.querySelectorAll('aside')).toHaveLength(0)
 })
 
@@ -163,13 +169,36 @@ test('by importance, when and by whom the row was created and updated is one foo
   expect(people[0].getAttribute('href')).toMatch(/\/person\/row\/Administrator$/)
 })
 
-test('in a narrow form Arrange by and Columns wrap as whole controls, every one in sight', async ({ admin }) => {
+// #1267: one row of controls: the tabs, one save state, and View at the end; Escape closes View back to its button.
+test('the tab row holds one save state and the View menu; Escape or a click outside closes the menu back to its button', async ({ admin }) => {
   await parcelDesk(admin)
   await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
-  const bar = await screen.findByTestId('arrange-bar', undefined, { timeout: 8000 })
-  expect(bar.className).toMatch(/\bflex-wrap\b/)
-  expect(bar.className).not.toMatch(/\boverflow-(x-)?(auto|hidden|scroll)\b/)
-  for (const control of bar.querySelectorAll('button')) expect(control.className).toMatch(/\bwhitespace-nowrap\b/)
+  const actions = await screen.findByTestId('content-tabs-actions', undefined, { timeout: 8000 })
+  expect(within(actions).getByTestId('form-status')).toHaveTextContent('Saved')
+  expect(actions).toHaveTextContent(/✓\s*Saved/)
+  expect(screen.getAllByText(/Saved$/)).toHaveLength(1)
+  const button = within(actions).getByTestId('view-menu-button')
+  button.click()
+  const menu = await screen.findByTestId('view-menu')
+  await waitFor(() => expect(within(menu).getByTestId('arrange-importance')).toHaveFocus())
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByTestId('view-menu')).not.toBeInTheDocument()
+  expect(button).toHaveFocus()
+  // A click on empty page closes it back to its button too; a click on a field keeps that field's focus.
+  button.click()
+  await screen.findByTestId('view-menu')
+  fireEvent.pointerDown(document.body)
+  expect(screen.queryByTestId('view-menu')).not.toBeInTheDocument()
+  await waitFor(() => expect(button).toHaveFocus())
+  button.click()
+  await screen.findByTestId('view-menu')
+  const tab = screen.getByRole('tab', { name: 'Map' })
+  fireEvent.pointerDown(tab)
+  expect(screen.queryByTestId('view-menu')).not.toBeInTheDocument()
+  expect(button).not.toHaveFocus()
+  // On the Map, the fields' View has nothing to arrange.
+  await userEvent.click(screen.getByRole('tab', { name: 'Map' }))
+  expect(within(actions).queryByTestId('view-menu-button')).not.toBeInTheDocument()
 })
 
 // ---- A read-only connected row ----

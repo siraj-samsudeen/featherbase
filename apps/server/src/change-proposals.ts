@@ -143,6 +143,24 @@ export function baseTablesReader(app: string, declaration: BaseTablesDeclaration
         throw error
       }
     }),
+    // #1219: who changed a column, from the row's own history, not who last saved the row: a later save
+    // of another column leaves it. Only a column the app reads, so it learns nothing it couldn't see.
+    changedBy: (table: string, args: { rows: string[]; column: string }) => guard.run(async () => {
+      const columns = declaration?.read[table]
+      const meta = await reachable(app, table, !!columns, linked)
+      const rows = args?.rows
+      if (!Array.isArray(rows) || rows.length > 500 || rows.some(row => typeof row !== 'string' || !row)) reject('Name up to 500 rows by their ids')
+      if (typeof args.column !== 'string' || !columns!.includes(args.column)) reject(`The app has not declared column ${String(args?.column)} of Table ${table}`)
+      if (!rows.length) return {}
+      // Only rows list() would show: the same read, so row privacy and retirement hide history as they hide the row.
+      const visible = ((await getList(table, { fields: ['row_id'], filters: [['row_id', 'in', [...new Set(rows)]]], limit_page_length: 500 })).data as ActionRow[]).map(row => String(row.row_id))
+      if (!visible.length) return {}
+      const found = await sql`select distinct on (ref_name) ref_name, created_by, created_at from ${sql(await tableRelation('Version'))}
+        where ref_table = ${meta.name} and ref_name in ${sql(visible)}
+          and exists (select 1 from jsonb_array_elements(data->'changed') change where change->>0 = ${args.column})
+        order by ref_name, created_at desc, row_id desc`
+      return Object.fromEntries(found.map(row => [String(row.ref_name), { by: String(row.created_by), at: new Date(row.created_at as string).toISOString() }]))
+    }),
   })
   return { helper, close: guard.close }
 }

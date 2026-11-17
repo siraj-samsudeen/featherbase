@@ -9,7 +9,7 @@ import { sql } from '../src/db'
 import { deleteStored } from '../src/storage'
 import { requestPasswordReset } from '../src/password-reset'
 import { _setInvitationHooksForTests } from '../src/invitation-email'
-import { expectApiError, expectRefused, expectStatus, makePerson } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, makePerson, searchLines } from './fixtures'
 import { configureDelegated, configureGoogle, linkDelegated, setPasswordMethod } from './identity-fixtures'
 
 afterEach(() => _setInvitationHooksForTests(null))
@@ -313,7 +313,7 @@ describe('email routes', () => {
 
 describe('the search box and the export record', () => {
   test('a search with no query finds nothing', async ({ admin }) => {
-    expect(await admin.get('/api/search')).toEqual({ results: [] })
+    expect(await searchLines(admin, '')).toEqual([{ groups: [] }, { done: true }])
   })
 
   test('an export recorded with no method is recorded as a CSV export', async ({ admin }) => {

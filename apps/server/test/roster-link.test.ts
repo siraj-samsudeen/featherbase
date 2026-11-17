@@ -451,3 +451,45 @@ describe('a link alone signs nobody in', () => {
     expect(((await res.json()) as { user: { row_id: string } }).user.row_id).toBe((await crew('TT-1001')).login)
   })
 })
+
+// #1270: a roster's sign-in ID that is an address another person has is theirs.
+describe('a roster address another person already has', () => {
+  const LOGINS = 'Crew Logins'
+  async function setUpLogins(admin: TestClient, login: string) {
+    await configureDelegated()
+    await makeTable(admin, {
+      name: LOGINS,
+      columns: [
+        { column_name: 'crew_name', column_type: 'Data', reqd: true },
+        { column_name: 'crew_login', column_type: 'Data' },
+        { column_name: 'hr_record', column_type: 'Data' },
+        { column_name: 'crew_state', column_type: 'Data' },
+        { column_name: 'login', column_type: 'Reference', reference_table: 'Person' },
+      ],
+    })
+    const roster = { ...ROSTER, table: LOGINS, sign_in_id_column: 'crew_login', identifiers: {} }
+    await sql`update sign_in_method set new_person = 'create_if_on_roster', settings = ${sql.json({ provider_record_key: 'employee_id', roster })} where row_id = 'stylehr'`
+    await saveDoc(LOGINS, { crew_name: 'Made Up Crew 1', crew_login: login, hr_record: '7101', crew_state: 'Working' }, 'Administrator', 'insert')
+  }
+
+  test("is held, naming who has it, and nothing is linked or made", async ({ admin }) => {
+    const boss = String((await saveDoc('Person', { full_name: 'Boss Person', email: 'boss.1270@example.test', enabled: true, roles: [] }, 'Administrator', 'insert')).row_id)
+    await setUpLogins(admin, 'Boss.1270@example.test')
+    const people = await count('person')
+    const links = await count('sign_in_identity')
+    const plan = await planRosterLink('stylehr')
+    expect(plan!.rows[0]).toMatchObject({ action: 'held', reason: 'address_held_elsewhere', person: boss })
+    const run = await runRosterLink('stylehr')
+    expect(run.held).toBe(1)
+    expect(await count('person')).toBe(people)
+    expect(await count('sign_in_identity')).toBe(links)
+    expect(await held()).toEqual([expect.stringMatching(/ address_held_elsewhere$/)])
+  })
+
+  test('an address no one has yet, or the person own address, links as before', async ({ admin }) => {
+    await setUpLogins(admin, 'new.1270@example.test')
+    const run = await runRosterLink('stylehr')
+    expect(run.created + run.linked).toBe(1)
+    expect(await held()).toEqual([])
+  })
+})

@@ -237,3 +237,29 @@ test('a link an administrator made names them, and an unused one says so', async
     expect(within(row).getByTestId('identity-linked')).toHaveTextContent('linked 03-Nov-2026 12:11 IST by Administrator · not signed in with it yet'),
   )
 })
+
+// #1266: a password manager filled the manager's own address into someone else's link field.
+test("a Person page's link fields give browsers and password managers nothing to fill, and another person's address is refused by name", async ({ admin, createUser }) => {
+  await configureDelegated()
+  await createUser({ email: 'boss.1266@example.com', fullName: 'Boss Person' } as never)
+  const tl = await createUser({ email: 'tl.1266@example.com' })
+  await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(tl.user!)}`, admin)
+  const panel = await screen.findByTestId('user-sign-in-methods')
+  const link = await within(panel).findByTestId('link-delegated-form')
+  const invite = within(panel).getByTestId('invite-google-form')
+  for (const form of [link, invite]) {
+    expect(form).toHaveAttribute('autocomplete', 'off')
+    for (const input of form.querySelectorAll('input:not([type=checkbox])')) {
+      expect(input).toHaveAttribute('autocomplete', 'off')
+      expect(input).toHaveAttribute('data-1p-ignore')
+      expect(input).toHaveAttribute('data-lpignore', 'true')
+      expect(input.getAttribute('name')).not.toMatch(/^(email|username|user|login)$/)
+      expect(input.getAttribute('type')).not.toBe('email')
+    }
+  }
+  await userEvent.type(within(link).getByLabelText('Record number at the service'), 'RR-1266')
+  await userEvent.type(within(link).getByLabelText('Login ID at the service'), 'boss.1266@example.com')
+  await userEvent.click(within(link).getByRole('button', { name: 'Link' }))
+  await waitFor(() => expect(within(panel).getByTestId('user-method-error')).toHaveTextContent('already belongs to'))
+  expect(within(panel).getByTestId('user-method-error')).not.toHaveTextContent('psn_')
+})

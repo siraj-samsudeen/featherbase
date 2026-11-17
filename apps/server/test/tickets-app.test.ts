@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect } from 'vitest'
 import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-postgres'
 import { test as pgTest } from './pg-test'
+import { searchHits } from './fixtures'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps, setAppEnabled, listInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
@@ -386,7 +387,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     expect(publicDetail.details).toBeUndefined()
     for (const client of [w.owner, w.other]) {
       const responses: unknown[] = [await detail(client, ticket), await client.get(`/api/activity/tickets.ticket/${ticket.row_id}`),
-        await client.get('/api/table/tickets.ticket?limit_page_length=500'), await client.get('/api/search?q=431')]
+        await client.get('/api/table/tickets.ticket?limit_page_length=500'), await searchHits(client, '431')]
       for (const value of responses) {
         expect(serialized(value)).not.toContain('PRIVATE diagnostic 431')
         expect(serialized(value)).not.toContain('Fictional HR confirmation')
