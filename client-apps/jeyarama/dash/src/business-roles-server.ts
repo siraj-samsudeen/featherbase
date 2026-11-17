@@ -190,8 +190,8 @@ async function areaOf(world: ShadowWorld, person: string, held: HeldRole, mine: 
   let places: Place[] = []
   let parts: Part[]
   if (spot.kind === 'company') {
-    // An every-store job reaches every store, whatever its site.
-    if (mine.employees.length) places = await reach({ jobs: [{ row_id: 'company', employee: mine.employees[0].row_id, job: 'Director', site: '', starts_on: world.today }] })
+    // An every-store job reaches every store, whatever its site, for anyone holding it, on the staff list or not.
+    places = await reach({ employees: [{ row_id: 'by-role', person, status: 'Current' }], jobs: [{ row_id: 'company', employee: 'by-role', job: 'Director', site: '', starts_on: world.today }] })
     parts = [{ name: 'Whole company' }]
   } else if (spot.kind === 'cluster') {
     places = await reach({ clusters: mine.clusters.filter(c => exact(c.row_id) === spot.cluster) })

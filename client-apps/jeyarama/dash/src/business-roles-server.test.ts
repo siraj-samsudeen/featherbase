@@ -283,8 +283,8 @@ describe('someone outside the staff list', () => {
     return explain(tables, 'ext')
   }
 
-  it('holds a whole-company role that reaches no store', async () => {
-    expect((await outsider()).roles.map(r => [r.name, r.area.parts[0].name, r.area.stores])).toEqual([['Master Data Steward', 'Whole company', 0]])
+  it('holds a whole-company role that reaches every store, though not on the staff list', async () => {
+    expect((await outsider()).roles.map(r => [r.name, r.area.parts[0].name, r.area.stores])).toEqual([['Master Data Steward', 'Whole company', 1]])
   })
 
   it('gets a report given to them through a bundle, saying so', async () => {
@@ -564,5 +564,25 @@ describe('Dash\'s own records open on Dash\'s own pages (verifier on 70c47d3c4)'
 
   it('leaves business roles and bundles plain words for anyone else, and a report they are not offered', async () => {
     expect(await ask('st', ['Dash Reader'])).toEqual([false, false, true, false, false])
+  })
+})
+
+describe('Codex adversarial round 4 on 1233e3d8c', () => {
+  async function leader() {
+    const tables = await seeded()
+    tables['dash.report_access'] = [{ row_id: 'g', report: 'vs', person: 'ext' }]
+    await giveRole(context(tables, { payload: { person: 'ext', change: 'Also give', role: roleId(tables, 'Leadership') } }) as never)
+    return tables
+  }
+
+  it('gives someone outside the staff list holding Leadership every store and a filtered report given to them, in Explain', async () => {
+    const explained = await explainPerson(context(await leader(), { payload: { person: 'ext' }, peopleRoles: { ext: [] } }) as never)
+    expect([explained.next, explained.reports.map(r => r.name), explained.change.stores_gained.map(s => s.name)])
+      .toEqual([{ opens: true, reports: 1, stores: 1 }, ['Vendor Sales'], ['Lakeside']])
+  })
+
+  it('lists the same person gaining Dash, every store and the report, on the comparison', async () => {
+    const row = (await accessChanges(context(await leader(), { peopleRoles: { ext: [] } }) as never)).groups.flatMap(g => g.people).find(p => p.person === 'ext')!
+    expect([row.kinds, row.stores_gained.map(s => s.name), row.gained.map(r => r.name)]).toEqual([['gains_dash', 'stores', 'reports'], ['Lakeside'], ['Vendor Sales']])
   })
 })
