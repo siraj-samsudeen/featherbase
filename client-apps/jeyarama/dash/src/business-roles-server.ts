@@ -28,6 +28,8 @@ const FIELDS: Record<string, string[]> = {
   Employee: [...PROVIDER_FIELDS.Employee, 'name', 'employee_code'],
   Cluster: [...PROVIDER_FIELDS.Cluster, 'name'],
   Department: [...PROVIDER_FIELDS.Department, 'name'],
+  // Explain's header names who they report to.
+  'Job Assignment': [...PROVIDER_FIELDS['Job Assignment'], 'reports_to'],
   'Store Floor': ['name', 'site'],
   Subcategory: [...PROVIDER_FIELDS.Subcategory, 'subcategory'],
 }
@@ -59,8 +61,8 @@ export function memoryDocuments(base: Base, designations: boolean): Base & { row
 }
 
 /** reachOf over only the rows that give one role: its job (as the role's job), merchandise rows, or cluster. */
-function onlyThese(docs: Base, rows: { jobs: Row[]; merchandise: Row[]; clusters: Row[]; buyerSections: boolean }): Base {
-  const given: Record<string, Row[]> = { 'Job Assignment': rows.jobs, 'Merchandise Assignment': rows.merchandise, Cluster: rows.clusters }
+function onlyThese(docs: Base, rows: { jobs: Row[]; merchandise: Row[]; clusters: Row[]; buyerSections: boolean; employees?: Row[] }): Base {
+  const given: Record<string, Row[]> = { 'Job Assignment': rows.jobs, 'Merchandise Assignment': rows.merchandise, Cluster: rows.clusters, ...(rows.employees ? { Employee: rows.employees } : {}) }
   return {
     // reachOf asks only about the Buyer Section Tables, which only a Buyer's own run reads.
     available: async table => rows.buyerSections && docs.available(table),
@@ -162,13 +164,14 @@ export async function personShadow(world: ShadowWorld, person: string, roles: re
   const { rows, members } = world.grants
   // Both sides by the live rules (report-eligibility.ts): a filtered report needs a place, a whole-stores one a whole store.
   const opensIn = (keys: string[], places: Place[]) => keys.filter(k => reportShapes.has(k) && offered(reportShapes.get(k)!, places)).sort()
-  // Today also needs the roles the platform enforces on the report reads (Codex adversarial round 2).
-  const todayReports = opensIn([...reportsReaching({ person, roles, jobs: jobNames }, rows, members).keys()], todayPlaces).filter(k => readableByRoles(reportShapes.get(k)!, roles))
+  // can_open counts every offered report; the reports themselves also need the read roles the platform enforces (Codex rounds 2 and 3).
+  const offeredToday = opensIn([...reportsReaching({ person, roles, jobs: jobNames }, rows, members).keys()], todayPlaces)
+  const todayReports = offeredToday.filter(k => readableByRoles(reportShapes.get(k)!, roles))
   const nextWhy = newModelReports(person, [...new Set(held.map(h => h.role))], rows, members, model)
   const nextReports = opensIn([...nextWhy.keys()], nextPlaces)
   return {
     employees, held: withPlaces, unmapped,
-    today: { opens: opensDashFor(roles, todayReports.length), places: placesByStore(todayPlaces), reports: todayReports },
+    today: { opens: opensDashFor(roles, offeredToday.length), places: placesByStore(todayPlaces), reports: todayReports },
     next: { opens: opensDash(held, model) || nextReports.length > 0, places: placesByStore(nextPlaces), reports: nextReports },
     decisions: decisionReports({ person, roles, jobs: jobNames }, rows, members),
     nextWhy,
@@ -203,6 +206,10 @@ async function areaOf(world: ShadowWorld, person: string, held: HeldRole, mine: 
       return [{ name: subcategoryNames.get(exact(m[level])) || text(m[level]) || 'Every subcategory', table: LEVEL_TABLE[level], id: exact(m[level]) },
         { name: text(m.operating_region) || 'Every region', table: 'Operating Region', id: exact(m.operating_region) }]
     })
+  } else if (spot.kind === 'site') {
+    // A store given by hand to someone with no job there: the whole store, as a Store Manager's, even for someone off the staff list.
+    places = await reach({ employees: [{ row_id: 'by-hand', person, status: 'Current' }], jobs: [{ row_id: 'by-hand', employee: 'by-hand', job: 'Store Manager', site: spot.site, starts_on: world.today }] })
+    parts = [await part('Site', spot.site)]
   } else if (spot.kind === 'buyer_sections') {
     places = await reach({ buyerSections: true })
     parts = mine.buyerSections.filter(b => spot.sections.includes(exact(b.row_id))).map(b => ({ name: text(b.name), table: 'Buyer Section', id: exact(b.row_id) }))

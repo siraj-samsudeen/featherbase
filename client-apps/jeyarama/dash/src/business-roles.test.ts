@@ -136,6 +136,15 @@ describe('Buyer Sections and places named by hand', () => {
     expect(held.map(r => r.spot)).toEqual([{ kind: 'job', job: 'J1', site: 'LKS' }])
   })
 
+  it('applies a Correct naming a store to someone with no job at that store', () => {
+    expect(rolesOf({ ...none, hand: [{ id: 'H1', change: 'Correct', role: 'r-sm', site: 'LKS' }] }, model).held.map(r => r.spot)).toEqual([{ kind: 'site', site: 'LKS' }])
+  })
+
+  it('applies an Also give naming a store to someone with no job at that store, before any merchandise place', () => {
+    expect(rolesOf({ ...none, merchandise: [{ id: 'M1', responsibility: 'Buyer' }], hand: [{ id: 'H1', change: 'Also give', role: 'r-sm', site: 'LKS' }] }, model).held.map(r => r.spot))
+      .toEqual([{ kind: 'merchandise', assignments: ['M1'] }, { kind: 'site', site: 'LKS' }])
+  })
+
   it('adds an Also give naming a place once, at that place', () => {
     const { held } = rolesOf({ ...none, jobs: [{ id: 'J1', job: 'Staff', designation: null }, { id: 'J2', job: 'Staff', designation: null }],
       hand: [{ id: 'H1', change: 'Also give', role: 'r-sm', site: 'HIL' }] }, model)

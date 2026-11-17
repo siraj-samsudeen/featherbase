@@ -45,10 +45,12 @@ function world(): Record<string, Row[]> {
 
 function context(tables: Record<string, Row[]>, { user = 'mgr', roles = ['Report Access Manager'], payload = {} as unknown, peopleRoles = {} as Record<string, string[]> } = {}) {
   let n = 0
-  const list = async (table: string, args: { filters?: [string, string, unknown][]; limit_start?: number; limit_page_length?: number }) => {
+  // As the platform does: only the fields asked for come back, so a column the code forgets to ask for is missing here too.
+  const list = async (table: string, args: { fields?: string[]; filters?: [string, string, unknown][]; limit_start?: number; limit_page_length?: number }) => {
     const rows = (tables[table] ?? []).filter(row => (args.filters ?? []).every(f => matches(row, f)))
     const start = args.limit_start ?? 0
-    return rows.slice(start, start + (args.limit_page_length ?? 500))
+    const picked = rows.slice(start, start + (args.limit_page_length ?? 500))
+    return args.fields?.length ? picked.map(row => Object.fromEntries(['row_id', ...args.fields!].filter(f => f in row).map(f => [f, row[f]]))) : picked
   }
   return {
     user, roles, payload, userName: 'Manju Manager',
@@ -515,5 +517,35 @@ describe('the places a hand change may name', () => {
     tables.Site.push({ row_id: 'HIL', name: 'Hillview', is_store: true })
     const explained = await explainPerson(context(tables, { payload: { person: 'nobody' } }) as never)
     expect(explained.places).toEqual({ stores: [{ id: 'HIL', name: 'Hillview' }, { id: 'LKS', name: 'Lakeside' }], default: null })
+  })
+})
+
+describe('Codex round 3 on 70c47d3c4', () => {
+  it('names who they report to in the header, read from their job', async () => {
+    const tables = await seeded()
+    tables['Job Assignment'].find(j => j.row_id === 'J-ST')!.reports_to = 'E-SM'
+    const explained = await explainPerson(context(tables, { payload: { person: 'st' } }) as never)
+    expect(explained.header.reports_to).toEqual([{ name: 'Selvi', table: 'Employee', id: 'E-SM', code: 'E-SM' }])
+  })
+
+  it('says Dash opens today for someone offered a filtered report without a reader role, as can_open does', async () => {
+    const tables = await seeded()
+    tables['dash.report_access'] = [{ row_id: 'g', report: 'vs', person: 'sm' }]
+    const answer = await accessChanges(context(tables, { peopleRoles: { sm: [] } }) as never)
+    expect(answer.groups.find(g => g.kind === 'gains_dash')!.people.map(p => p.person)).not.toContain('sm')
+  })
+
+  it('applies a store given by Also give to someone with no job there, as its own area', async () => {
+    const tables = await seeded()
+    await giveRole(context(tables, { payload: { person: 'outsider', change: 'Also give', role: roleId(tables, 'Store Manager'), site: 'LKS' } }) as never)
+    const role = (await explainPerson(context(tables, { payload: { person: 'outsider' } }) as never)).roles[0]
+    expect([role.area.parts.map(p => p.name), role.area.stores, role.area.subcategories]).toEqual([['Lakeside'], 1, null])
+  })
+
+  it('applies a store given by Correct to someone with no job there, as its own area', async () => {
+    const tables = await seeded()
+    await giveRole(context(tables, { payload: { person: 'buy', change: 'Correct', role: roleId(tables, 'Store Manager'), site: 'LKS' } }) as never)
+    const roles = (await explainPerson(context(tables, { payload: { person: 'buy' } }) as never)).roles
+    expect(roles.filter(r => r.source === 'Corrected by hand').map(r => [r.area.parts.map(p => p.name), r.area.stores])).toEqual([[['Lakeside'], 1]])
   })
 })

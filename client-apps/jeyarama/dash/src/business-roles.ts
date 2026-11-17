@@ -23,7 +23,7 @@ export const SOURCE_WORDS: Record<Source, string> = {
   hr_title: 'From HR title', merchandise: 'From merchandise assignment', buyer_section: 'Buyer on a Buyer Section', cluster_head: 'Named cluster head', corrected: 'Corrected by hand', also_given: 'Also given by hand',
 }
 /** Where a role applies, before it is turned into stores and subcategories. */
-export type Spot = { kind: 'job'; job: string; site?: string } | { kind: 'merchandise'; assignments: string[] } | { kind: 'cluster'; cluster: string } | { kind: 'buyer_sections'; sections: string[] } | { kind: 'company' } | { kind: 'none' }
+export type Spot = { kind: 'job'; job: string; site?: string } | { kind: 'merchandise'; assignments: string[] } | { kind: 'cluster'; cluster: string } | { kind: 'buyer_sections'; sections: string[] } | { kind: 'site'; site: string } | { kind: 'company' } | { kind: 'none' }
 export interface HeldRole { role: string; source: Source; title: string | null; spot: Spot; hand?: string; until?: string | null; reason?: string | null }
 export interface Unmapped { title: string; job: string }
 
@@ -72,8 +72,10 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
     if (!role) { unmapped.push({ title: job.designation ?? job.job, job: job.job }); continue }
     held.push({ role, source: 'hr_title', title, spot: at(role, job.id) })
   }
+  // With no job, a hand change applies at the store it names, as its own area; naming none, nowhere.
+  const placed = (h: HandChange): Spot => (company(h.role) ? { kind: 'company' } : h.site ? { kind: 'site', site: h.site } : { kind: 'none' })
   if (!facts.jobs.length)
-    for (const c of corrections) held.push({ role: c.role, source: 'corrected', title: null, spot: company(c.role) ? { kind: 'company' } : { kind: 'none' }, ...handFacts(c) })
+    for (const c of corrections) held.push({ role: c.role, source: 'corrected', title: null, spot: placed(c), ...handFacts(c) })
   // Merchandise assignments: one role per mapped responsibility, over all its assignments.
   const byRole = new Map<string, { title: string; assignments: string[] }>()
   for (const m of facts.merchandise) {
@@ -94,7 +96,7 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
   for (const cluster of clusterRole ? facts.clustersHeaded : []) held.push({ role: clusterRole!, source: 'cluster_head', title: null, spot: { kind: 'cluster', cluster } })
   for (const given of hand.filter(h => h.change === 'Also give')) {
     const jobs = given.site ? facts.jobs.slice(0, 1) : facts.jobs
-    const spots: Spot[] = company(given.role) ? [{ kind: 'company' }]
+    const spots: Spot[] = company(given.role) || given.site && !jobs.length ? [placed(given)]
       : jobs.length ? jobs.map(job => at(given.role, job.id, given.site))
         : facts.merchandise.length ? [{ kind: 'merchandise', assignments: facts.merchandise.map(m => m.id) }] : [{ kind: 'none' }]
     for (const spot of spots) held.push({ role: given.role, source: 'also_given', title: null, spot, ...handFacts(given) })
