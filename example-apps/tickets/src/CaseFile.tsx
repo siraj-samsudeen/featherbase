@@ -100,7 +100,8 @@ function History({
       ))}
     </div>
   ) : (
-    <p className="muted">No {privacy.toLowerCase()} activity yet.</p>
+    // #1252: the heading above already says whose history it is; "No everyone who can see this ticket activity" did not read.
+    <p className="muted">No activity yet.</p>
   )
 }
 type Mutate = (name: string, payload: RecordData) => Promise<boolean>
