@@ -11,6 +11,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
+import { historyPaused, pauseHistory } from '../lib/recents'
 import { Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
 export interface ViewAsPerson {
@@ -52,6 +53,8 @@ function useReloadOnChange(state: ViewAsState | undefined, error: unknown) {
     if (error instanceof ApiError && error.status === 409) { window.location.reload(); return }
     if (!state) return
     const now = state.may ? state.viewing?.person ?? null : null
+    // The history marker went stale (View as ended while this tab was away): fix it and redraw.
+    if (historyPaused() !== (now !== null)) { pauseHistory(now !== null); window.location.reload(); return }
     if (shown.current !== undefined && shown.current !== now) window.location.reload()
     shown.current = now
   }, [state, error])
@@ -72,6 +75,7 @@ if (typeof window !== 'undefined')
 async function changeView(path: string, body: unknown, onError: (message: string) => void) {
   try {
     await api.post(path, body)
+    pauseHistory(path.endsWith('/start'))
     try { window.localStorage.setItem(CHANGED_KEY, String(Date.now())) } catch { /* private window: this tab only */ }
     window.location.reload()
   } catch (error) {
@@ -210,7 +214,7 @@ export function ViewAsBanner() {
         <p className="min-w-0 flex-1 text-sm">
           Viewing as <strong data-testid="view-as-name"><RecordLink table="Person" rowId={viewing.person} name={viewing.name} canOpen={Boolean(data.person_link)} className="text-surface" /></strong>
           {line && <span className="opacity-80"> · {line}</span>}
-          <span className="ml-2 inline-block rounded-full bg-caution px-2 py-0.5 align-middle text-[11px] font-semibold uppercase tracking-wide text-surface">For viewing only</span>
+          <span className="ml-2 inline-block rounded-full bg-caution px-2 py-0.5 align-middle text-xs font-semibold uppercase tracking-wide text-surface">For viewing only</span>
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => setSwitching((s) => !s)} aria-expanded={switching} data-testid="view-as-switch"
@@ -250,10 +254,11 @@ export function ViewAsButton({ compact }: { compact: boolean }) {
   if (!may || !data) return null
   return (
     <div className="relative" ref={open === 'dropdown' ? panel : undefined}>
-      <button type="button" onClick={() => setOpen(open === 'dropdown' ? null : 'dropdown')} aria-expanded={open === 'dropdown'} data-testid="view-as-button"
+      {/* While viewing, the banner's Switch and Exit take its place; Ctrl+Shift+K still opens the picker. */}
+      {!data.viewing && <button type="button" onClick={() => setOpen(open === 'dropdown' ? null : 'dropdown')} aria-expanded={open === 'dropdown'} data-testid="view-as-button"
         title="View as someone (Ctrl+Shift+K)" className={buttonClasses({ variant: 'secondary', className: compact ? 'size-control px-0' : 'gap-1.5' })}>
         <UserRoundSearch aria-hidden size={16} />{!compact && <span>View as</span>}
-      </button>
+      </button>}
       {open === 'dropdown' && (
         <div className={cardClasses('absolute right-0 top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2')} role="dialog" aria-label="View as" data-testid="view-as-dropdown">
           <ViewAsPicker state={data} autoFocus />

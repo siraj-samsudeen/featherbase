@@ -11,6 +11,8 @@ import {
   flushPendingEvents,
   frecency,
   frequentActions,
+  historyPaused,
+  pauseHistory,
   replaceServerEntries,
   recentActions,
   recentSearches,
@@ -33,6 +35,31 @@ const row = (name: string) => ({
 })
 
 beforeEach(() => localStorage.clear())
+
+describe('while viewing as someone (#1222)', () => {
+  it('neither shows nor adds to the tester’s own history, and resumes after', () => {
+    // A user of its own: recordAction keeps an unconfirmed journal per user across tests.
+    const TESTER = 'View As Tester'
+    recordAction(TESTER, row('MINE'), NOW)
+    recordAction(TESTER, row('MINE'), NOW + 1)
+    pauseHistory(true)
+    expect(historyPaused()).toBe(true)
+    recordAction(TESTER, row('THEIRS'), NOW + 2)
+    expect(recentActions(TESTER, 10)).toEqual([])
+    expect(frequentActions(TESTER, 10, NOW + 3)).toEqual([])
+    expect(recentSearches(TESTER, '', 10)).toEqual([])
+    pauseHistory(false)
+    expect(recentActions(TESTER, 10).map((e) => e.label)).toEqual(['MINE'])
+  })
+
+  it('a browser that refuses storage keeps nothing and hides nothing', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
+    expect(() => pauseHistory(true)).not.toThrow()
+    expect(historyPaused()).toBe(false)
+    get.mockRestore(); set.mockRestore()
+  })
+})
 
 describe('recordAction / recentActions', () => {
   it('clears cached destinations when the server history is empty', () => {
