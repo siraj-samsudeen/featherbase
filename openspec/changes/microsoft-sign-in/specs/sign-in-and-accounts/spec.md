@@ -49,5 +49,5 @@ And the activity log records that the system linked her Microsoft sign-in
 ```gherkin
 Given Asha's first Microsoft sign-in has linked to her
 When a different Microsoft account with Asha's address signs in
-Then it is refused because the address is already in use
+Then it is refused, and only Asha's own Microsoft account opens her account
 ```
