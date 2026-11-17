@@ -133,3 +133,12 @@ Three fixed levels: business role → app access → permission. Normally a pers
 - Team, location and category are separate hierarchies that cut across each other, like a consulting n×n matrix. How do we present that simply?
 
 The answer drafted in the explainer: every permission is a thing, a verb and a **reach**: Own, Team, Area or All. The area comes from the assignment, as one point on each axis (location, merchandise). Its place in the people tree gives the team. To be asked as Q2.
+
+## Owner's steer, 17-Nov-2026: no "Guest"; leavers kept separate
+
+"Guest" would become a catch-all, since a consultant could be a guest too. Proposed, all worked out from the HR record, with nothing new stored:
+- **Employee**: has a current Employee row. Gets Basic plus their business role.
+- **Former employee**: has only Left rows. Gets nothing automatically.
+- **External**: has no Employee row. Gets only what someone gives by hand ("Also give", with an end date). "Consultant" is an optional label.
+
+The platform's built-in "Guest" role (anonymous visitors) is another reason to avoid the word. Sent to the Person page session (#1267).
