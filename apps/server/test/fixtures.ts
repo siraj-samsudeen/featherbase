@@ -274,3 +274,15 @@ export async function makePerson(values: Record<string, unknown> = {}, actor = '
   const doc = await saveDoc('Person', { enabled: true, ...values }, actor, 'insert')
   return String(doc.row_id)
 }
+
+/** #1265: the search's streamed lines (groups, each Table's hits, done or error). */
+export async function searchLines(client: TestClient, query: string): Promise<Record<string, unknown>[]> {
+  const res = await client.fetch(`/api/search?q=${encodeURIComponent(query)}`)
+  if (!res.ok) throw new Error(`search answered ${res.status}`)
+  return (await res.text()).split('\n').filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>)
+}
+
+/** Every hit the search streamed, in the order the Tables answered. */
+export async function searchHits<T = { table: string; row_id: string; title: string; kind_label?: string }>(client: TestClient, query: string): Promise<T[]> {
+  return (await searchLines(client, query)).flatMap((line) => (Array.isArray(line.hits) ? (line.hits as T[]) : []))
+}

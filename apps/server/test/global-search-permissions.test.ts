@@ -1,14 +1,14 @@
 import { describe, expect } from 'vitest'
 import { resolve } from 'node:path'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import { globalSearch, registryLabel, type SearchHit } from '../src/search'
+import { registryLabel, streamSearch, type SearchHit } from '../src/search'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { discoverPackages } from '../src/runtime-packages'
-import { createUserWithRole, expectStatus, grantRole, makePerson, makeTable, type TableRef } from './fixtures'
+import { createUserWithRole, expectStatus, grantRole, makePerson, makeTable, searchHits, searchLines, type TableRef } from './fixtures'
 
 const search = (client: TestClient, query: string) =>
-  client.get<{ results: SearchHit[] }>(`/api/search?q=${encodeURIComponent(query)}`)
+  searchHits<SearchHit>(client, query).then((results: SearchHit[]) => ({ results }))
 
 async function setupSensitiveTitle(
   admin: TestClient,
@@ -75,9 +75,10 @@ describe('global search permissions', () => {
     const table = await makeTable(admin, { name: 'Gs Broken Scope', columns: ['title'] })
     const reader = await createUserWithRole(admin, createUser, { role: 'Gs Broken Scope Reader', table: table.name, can_read: true })
     await sql`drop table data_scope`
-    const response = await reader.fetch('/api/search?q=anything')
-    await expectStatus(response, 500)
-    expect(await response.json()).toMatchObject({ error: { type: 'InternalError' } })
+    // #1265: the failure comes after the stream has started: it ends with an error line, never "done".
+    const lines = await searchLines(reader, 'anything')
+    expect(lines.at(-1)).toEqual({ error: 'The search stopped before it finished' })
+    expect(lines).not.toContainEqual({ done: true })
   })
 
   test('own-row limits protect both ID and title matches', async ({ admin, createUser }) => {
@@ -360,6 +361,8 @@ describe('global search while an app is unavailable', () => {
 
 describe('an empty search', () => {
   test('of only spaces finds nothing', async () => {
-    expect(await globalSearch('   ', 'Administrator')).toEqual([])
+    const lines = []
+    for await (const line of streamSearch('   ', 'Administrator')) lines.push(line)
+    expect(lines).toEqual([{ groups: [] }, { done: true }])
   })
 })

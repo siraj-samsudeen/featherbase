@@ -2,6 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { hasPermission } from './permissions'
 import { scopedWhere } from './query'
+import { tableLabel } from './access-explanation'
 
 // UI-014: awesomebar global search. Matches row names (and the
 // Table's title_column) across every regular Table the user can read.
@@ -33,10 +34,26 @@ export const registryLabel = (name: string): string | undefined =>
 
 const PER_TABLE = 3
 const TOTAL_CAP = 15
+/** How many Tables are searched at once (#1265). */
+const AT_ONCE = 6
+/** A person's or service account's opaque id names no one (#1265: no ids in results). */
+const OPAQUE = /^(psn|svc)_[a-z2-7]{20}$/
 
-export async function globalSearch(query: string, user: string): Promise<SearchHit[]> {
+/** #1265: what the search sends, one line at a time. First the groups it will
+ *  search, by label, in the order they show; then each group as its Table
+ *  answers (hits, or none); then done. */
+export type SearchEvent =
+  | { groups: { table: string; label: string }[] }
+  | { table: string; hits: SearchHit[] }
+  | { done: true }
+
+export async function* streamSearch(query: string, user: string): AsyncGenerator<SearchEvent> {
   const q = query.trim()
-  if (!q) return []
+  if (!q) {
+    yield { groups: [] }
+    yield { done: true }
+    return
+  }
   const like = '%' + q.replace(/[\\%_]/g, (c) => `\\${c}`) + '%'
 
   // Source-bound Tables are excluded: they have no physical table here (the
@@ -44,50 +61,81 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   // per-keystroke ilike out to every foreign store is not a typeahead's job.
   // #1041: an archived Table is out of everyday use, so out of search too.
   const tables = await sql`
-    select name, owner_app from table_def where kind = 'table' and data_source is null and archived_at is null
+    select name, owner_app, label from table_def where kind = 'table' and data_source is null and archived_at is null
     order by name`
   // Stable sort: ordinary Tables first, registries last (#431).
   const isRegistry = (n: unknown) => (registryLabel(String(n)) ? 1 : 0)
   tables.sort((a, b) => isRegistry(a.name) - isRegistry(b.name))
+  const readable = []
+  for (const t of tables) if (await hasPermission(user, t.name as string, 'read')) readable.push(t)
+  yield { groups: readable.map((t) => ({ table: String(t.name), label: registryLabel(String(t.name)) ?? tableLabel(String(t.name), t.label) })) }
 
-  const hits: SearchHit[] = []
-  for (const t of tables) {
-    if (hits.length >= TOTAL_CAP) break
-    if (!(await hasPermission(user, t.name as string, 'read'))) continue
-    // #648: an app's Tables answer only while it is available to this
-    // request: switched on, not awaiting activation, and the version the
-    // client last loaded. When one refuses, search skips that Table instead
-    // of failing for everyone; assertAppAvailable stays the one judge.
-    const scoped = await scopedWhere(t.name as string, user, []).catch((error: unknown) => {
-      if (t.owner_app != null && error instanceof AppError &&
-          (error.type === 'PermissionError' || error.type === 'ConflictError')) return null
-      throw error
-    })
-    if (!scoped) continue
-    const { meta, table, where, cols, readExpression } = scoped
-    const title = meta.title_column && cols.has(meta.title_column) ? meta.title_column : null
-    // The wire key is always `row_id`; `Table` alone stores it as `name`.
-    const key = sql(meta.row_key)
-    // #1041: an archived Table's own definition is out of search with its rows.
-    const live = meta.name === 'Table' ? sql`and archived_at is null` : sql``
-    const rows = title
-      ? await sql`
-          select ${key} as row_id, ${readExpression(title)} as title from ${sql(table)}
-          where ${where} ${live} and (${key} ilike ${like} or ${readExpression(title)} ilike ${like})
-          limit ${PER_TABLE}`
-      : await sql`
-          select ${key} as row_id, ${key} as title from ${sql(table)}
-          where ${where} ${live} and ${key} ilike ${like}
-          limit ${PER_TABLE}`
-    for (const row of rows) {
-      hits.push({
-        table: meta.name,
-        row_id: String(row.row_id),
-        title: String(row.title ?? row.row_id),
-        ...(registryLabel(meta.name) ? { kind_label: registryLabel(meta.name) } : {}),
-      })
-      if (hits.length >= TOTAL_CAP) break
+  // Each Table answers on its own, a few at a time, in the order they finish.
+  let found = 0
+  const queue = [...readable]
+  const finished: SearchEvent[] = []
+  let wake: (() => void) | null = null
+  let running = 0
+  let failure: unknown = null
+  const launch = () => {
+    while (running < AT_ONCE && queue.length) {
+      const t = queue.shift()!
+      running++
+      void searchOne(t, user, like)
+        .then((hits) => {
+          const room = Math.max(0, TOTAL_CAP - found)
+          const kept = hits.slice(0, room)
+          found += kept.length
+          finished.push({ table: String(t.name), hits: kept })
+        })
+        .catch((error: unknown) => { failure ??= error })
+        .finally(() => { running--; launch(); wake?.() })
     }
   }
-  return hits
+  launch()
+  while (running || finished.length) {
+    if (!finished.length) await new Promise<void>((resolve) => { wake = resolve })
+    wake = null
+    if (failure) throw failure
+    while (finished.length) yield finished.shift()!
+  }
+  if (failure) throw failure
+  yield { done: true }
+}
+
+async function searchOne(t: Record<string, unknown>, user: string, like: string): Promise<SearchHit[]> {
+  // #648: an app's Tables answer only while it is available to this
+  // request: switched on, not awaiting activation, and the version the
+  // client last loaded. When one refuses, search skips that Table instead
+  // of failing for everyone; assertAppAvailable stays the one judge.
+  const scoped = await scopedWhere(t.name as string, user, []).catch((error: unknown) => {
+    if (t.owner_app != null && error instanceof AppError &&
+        (error.type === 'PermissionError' || error.type === 'ConflictError')) return null
+    throw error
+  })
+  if (!scoped) return []
+  const { meta, table, where, cols, readExpression } = scoped
+  const title = meta.title_column && cols.has(meta.title_column) ? meta.title_column : null
+  // The wire key is always `row_id`; `Table` alone stores it as `name`.
+  const key = sql(meta.row_key)
+  // #1041: an archived Table's own definition is out of search with its rows.
+  const live = meta.name === 'Table' ? sql`and archived_at is null` : sql``
+  const rows = title
+    ? await sql`
+        select ${key} as row_id, ${readExpression(title)} as title from ${sql(table)}
+        where ${where} ${live} and (${key} ilike ${like} or ${readExpression(title)} ilike ${like})
+        limit ${PER_TABLE}`
+    : await sql`
+        select ${key} as row_id, ${key} as title from ${sql(table)}
+        where ${where} ${live} and ${key} ilike ${like}
+        limit ${PER_TABLE}`
+  return rows
+    .map((row) => ({
+      table: meta.name,
+      row_id: String(row.row_id),
+      title: String(row.title ?? row.row_id),
+      ...(registryLabel(meta.name) ? { kind_label: registryLabel(meta.name) } : {}),
+    }))
+    // #1265: a row whose only name is an opaque id is no result anyone can read.
+    .filter((hit) => !OPAQUE.test(hit.title))
 }

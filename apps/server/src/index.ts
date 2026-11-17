@@ -37,7 +37,7 @@ import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
 import { saveUpload, signFileUrl } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
-import { globalSearch } from './search'
+import { streamSearch } from './search'
 import { tableRowCounts } from './table-counts'
 import { commandDestinations } from './command-destinations'
 import {
@@ -1893,9 +1893,31 @@ function listArgsFromQuery(q: Record<string, string>) {
 }
 
 // UI-014: awesomebar global search across readable Tables.
+// #1265: the search answers group by group, one JSON line each (groups, then
+// each Table as it finishes, then done), so the bar can show what is still
+// coming. A failure after the first line ends the stream with an error line.
 app.get('/api/search', async (c) => {
   const q = c.req.query('q') ?? ''
-  return c.json({ results: await globalSearch(q, who(c)) })
+  const events = streamSearch(q, who(c))
+  // The first line is read here, so a refusal before anything is sent is an ordinary error.
+  const first = await events.next()
+  const encoder = new TextEncoder()
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (value: unknown) => controller.enqueue(encoder.encode(JSON.stringify(value) + '\n'))
+      try {
+        if (!first.done) send(first.value)
+        for await (const event of events) send(event)
+      } catch (error) {
+        console.error(JSON.stringify({ level: 'error', event: 'search_stream_error', message: String((error as Error)?.message ?? error) }))
+        send({ error: 'The search stopped before it finished' })
+      } finally {
+        controller.close()
+      }
+    },
+    async cancel() { await events.return(undefined) },
+  })
+  return c.body(body, 200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' })
 })
 
 // admin-lists 11: how many rows each Table holds, for All Tables.

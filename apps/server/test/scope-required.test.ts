@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { createUserWithRole, expectApiError, expectRefused, expectStatus, makeTable, type TableRef } from './fixtures'
+import { createUserWithRole, expectApiError, expectRefused, expectStatus, makeTable, type TableRef, searchHits } from './fixtures'
 import { sql } from '../src/db'
 import { eventVisibleTo } from '../src/realtime'
 import { invalidateMeta } from '../src/meta'
@@ -172,7 +172,7 @@ describe('#246 scope_required: no Data Scope means no rows', () => {
 
   test('search finds nothing on the Table for a person with no Data Scope', async ({ admin, createUser }) => {
     const { user } = await setup(admin, createUser, { ...required, title_column: 'title' })
-    const hits = await user.get<{ results: { table: string }[] }>('/api/search?q=n')
+    const hits = { results: await searchHits(user, 'n') }
     expect(hits.results.filter((h) => h.table === SECTION)).toEqual([])
   })
 

@@ -8,7 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, patchDoc } from './pg-test'
-import { expectApiError, expectRefused, expectStatus, grantRole } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole, searchHits } from './fixtures'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
@@ -614,9 +614,7 @@ describe('round 3: global search survives bound Tables', () => {
     await bindAccount(admin)
     // Before the fix this threw 42P01 (no physical table) and the whole
     // typeahead died the moment any Table was reflected.
-    const res = (await admin.get('/api/search?q=Alpha')) as {
-      results: { table: string }[]
-    }
+    const res = { results: await searchHits(admin, 'Alpha') }
     expect(Array.isArray(res.results)).toBe(true)
     expect(res.results.every((r) => r.table !== BOUND)).toBe(true)
   })

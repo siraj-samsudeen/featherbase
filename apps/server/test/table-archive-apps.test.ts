@@ -11,7 +11,7 @@ import { discoverPackages, repinToFolder } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
-import { expectApiError, expectRefused, makeTable } from './fixtures'
+import { expectApiError, expectRefused, makeTable, searchHits } from './fixtures'
 
 // Every request names the app versions its client loaded, as the web client does.
 const atVersions = (client: TestClient, versions: string) => makeClient({ request: (path, init) => client.fetch(String(path), {
@@ -33,7 +33,7 @@ const archive = (client: TestClient, table: string, note?: string) =>
 const unarchive = (client: TestClient, table: string) =>
   client.post<{ archived_at: string | null }>(`/api/table_def/${encodeURIComponent(table)}/unarchive`, {})
 const search = async (client: TestClient, query: string) =>
-  (await client.get<{ results: { table: string; row_id: string }[] }>(`/api/search?q=${encodeURIComponent(query)}`)).results
+  searchHits(client, query)
 const saveRow = (client: TestClient, table: string, row: Record<string, unknown>) =>
   client.post<{ row_id: string; updated_at: string }>('/api/save_row', { table, row })
 const archivedRow = async (table: string) =>
