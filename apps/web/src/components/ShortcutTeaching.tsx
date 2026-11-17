@@ -20,7 +20,7 @@ import { placeTip, type Box } from '../lib/tip-place'
 // the tip or reminder, and the "tips are quiet" notice. Everything is fixed to
 // the window, so it works the same inside the app bar's shadow root.
 
-const kbdClasses = 'rounded-[5px] border border-b-2 border-border bg-surface px-1.5 font-mono text-[11px] text-ink-muted whitespace-nowrap'
+const kbdClasses = 'rounded-[5px] border border-b-2 border-border bg-surface px-1.5 font-mono text-xs text-ink-muted whitespace-nowrap'
 
 /** Below the top bar this button sits in: where the panel, tip and notice start. */
 function barBottom(anchor: RefObject<HTMLElement | null>): number {
@@ -90,7 +90,7 @@ function ShortcutsPanel({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
       aria-modal="false"
       aria-label="Keyboard Shortcuts"
       className="fixed right-4 z-[46] grid w-[340px] max-w-[calc(100vw-2rem)] gap-2 rounded-card border border-border bg-surface p-3 text-[13px] shadow-lg"
-      style={{ top: barBottom(anchor) + 20 }}
+      style={{ top: barBottom(anchor) + 8 }}
       data-testid="shortcuts-panel"
     >
       <div className="flex items-center justify-between">
@@ -105,19 +105,19 @@ function ShortcutsPanel({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
         const [tone, text] =
           status.kind === 'not-tried' ? ['text-ink-subtle', 'Not Tried Yet']
           : status.kind === 'in-use' ? ['text-positive', `In Use · ${status.keys}×`]
-          : ['text-caution', `Slipping · Mouse ${status.mouse}× Since`]
+          : ['text-caution', `Slipping · mouse ${status.mouse}× since`]
         return (
-          <div key={s.id} data-shortcut-row={s.id} className="grid grid-cols-[1fr_auto_120px] items-center gap-2 border-b border-border py-1">
+          <div key={s.id} data-shortcut-row={s.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 border-b border-border py-1">
             <span className="text-ink">{s.label}</span>
             <kbd className={kbdClasses}>{s.keys}</kbd>
-            <span className={cx('text-right text-xs', tone)}>{text}</span>
+            <span className={cx('whitespace-nowrap text-right text-xs', tone)}>{text}</span>
           </div>
         )
       })}
-      <div data-shortcut-row="help" className="grid grid-cols-[1fr_auto_120px] items-center gap-2 border-b border-border py-1">
-        <span className="text-ink">Show This List</span>
+      <div data-shortcut-row="help" className="grid grid-cols-[1fr_auto_auto] items-center gap-2 border-b border-border py-1">
+        <span className="text-ink">Show this list</span>
         <kbd className={kbdClasses}>?</kbd>
-        <span className="text-right text-xs text-positive">You Found It</span>
+        <span className="whitespace-nowrap text-right text-xs text-positive">You found it</span>
       </div>
       <p className="text-xs text-ink-subtle">{inUse} of {shortcuts.length} in use by keyboard.</p>
       {quiet && <p className="text-xs text-ink-subtle">Tips are quiet until {quietUntilText(learning)}.</p>}
@@ -127,7 +127,7 @@ function ShortcutsPanel({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
         ) : (
           <button type="button" onClick={quietTips} className={buttonClasses({ className: 'px-2.5 py-1 text-[13px]' })}>Quiet Tips For {nextQuietStep(learning).label}</button>
         )}
-        <button type="button" onClick={resetTips} className={buttonClasses({ variant: 'quiet', className: 'px-2.5 py-1 text-[13px]' })}>Reset Tips</button>
+        <button type="button" onClick={resetTips} className={buttonClasses({ variant: 'quiet', className: 'px-2.5 py-1 text-[13px] text-ink' })}>Reset Tips</button>
       </div>
     </aside>
   )
@@ -151,11 +151,18 @@ function KeyBadges({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
     const again = () => redraw((n) => n + 1)
     window.addEventListener('resize', again)
     window.addEventListener('scroll', again, true)
+    // A control that moves without a scroll or resize: the sidebar animating
+    // to its rail (#1248), or a control changing size.
+    document.addEventListener('transitionend', again, true)
+    const sized = typeof ResizeObserver === 'function' ? new ResizeObserver(again) : null
+    for (const el of shortcutControls(anchor)) sized?.observe(el)
     return () => {
       window.removeEventListener('resize', again)
       window.removeEventListener('scroll', again, true)
+      document.removeEventListener('transitionend', again, true)
+      sized?.disconnect()
     }
-  }, [])
+  }, [anchor])
   return (
     <>
       {shortcutControls(anchor).map((el, i) => {
@@ -165,8 +172,8 @@ function KeyBadges({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
             key={`${el.dataset.shortcutId}-${i}`}
             aria-hidden
             data-testid={`shortcut-badge-${el.dataset.shortcutId}`}
-            className="pointer-events-none fixed z-[47] rounded bg-ink px-1 font-mono text-[10px] font-semibold leading-[14px] text-surface"
-            style={{ top: r.top - 7, left: r.right - 5, transform: 'translateX(-100%)' }}
+            className="pointer-events-none fixed z-[47] rounded bg-ink px-1 font-mono text-xs font-semibold leading-4 text-surface"
+            style={{ top: Math.max(2, r.top - 7), left: r.right - 5, transform: 'translateX(-100%)' }}
           >
             {el.dataset.shortcutKey}
           </span>
@@ -203,18 +210,18 @@ function Tip({ tip, anchor }: { tip: ShownTip; anchor: RefObject<HTMLElement | n
       role="status"
       aria-label={tip.reminder ? 'Reminder' : 'Tip'}
       className={cx(
-        'fixed z-[45] flex max-w-[560px] items-center gap-2 rounded-control border bg-surface py-1.5 pl-2.5 pr-1.5 text-[13px] text-ink shadow-lg',
+        'fixed z-[45] flex max-w-[760px] items-center gap-2 rounded-control border bg-surface py-1.5 pl-2.5 pr-1.5 text-[13px] text-ink shadow-lg',
         tip.reminder ? 'border-caution' : 'border-action',
       )}
       style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: 'hidden' }}
       data-testid="shortcut-tip"
     >
-      <span className={cx('shrink-0 rounded-full px-2 text-[11px] font-semibold', tip.reminder ? 'bg-caution-tint text-caution' : 'bg-action-tint text-action')}>
+      <span className={cx('shrink-0 rounded-full px-2 text-xs font-semibold', tip.reminder ? 'bg-caution-tint text-caution' : 'bg-action-tint text-action')}>
         {tip.reminder ? 'Reminder' : 'Tip'}
       </span>
       <span>{text}</span>
-      <button type="button" onClick={dismissTip} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-1 text-[13px]' })}>Got It</button>
-      <button type="button" onClick={quietTips} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-1 text-[13px]' })}>Quiet Tips For {nextQuietStep(learning).label}</button>
+      <button type="button" onClick={dismissTip} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-1 text-[13px] text-ink' })}>Got It</button>
+      <button type="button" onClick={quietTips} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-1 text-[13px] text-ink' })}>Quiet Tips For {nextQuietStep(learning).label}</button>
     </div>
   )
 }

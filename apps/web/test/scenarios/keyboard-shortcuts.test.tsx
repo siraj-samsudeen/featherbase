@@ -77,7 +77,7 @@ describe('keyboard-shortcuts', () => {
     })
     await step('the list of shortcuts shows collapsing the sidebar as slipping', async () => {
       const list = await openList()
-      expect(sidebarRow(list)).toHaveTextContent('Slipping · Mouse 3× Since')
+      expect(sidebarRow(list)).toHaveTextContent('Slipping · mouse 3× since')
     })
   })
 

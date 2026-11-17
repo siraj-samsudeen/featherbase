@@ -537,6 +537,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
             ref={searchRef}
             data-shortcut-id={COMMAND_SHORTCUT_DEF.id}
             data-shortcut-key={COMMAND_SHORTCUT_DEF.keys}
+            title={`${COMMAND_SHORTCUT_DEF.label} · ${COMMAND_SHORTCUT_DEF.keys}`}
             onMouseDown={(e) => document.activeElement !== e.currentTarget && noteShortcutUse('command', 'mouse', e.currentTarget)}
             value={search}
             onChange={(e) => {
