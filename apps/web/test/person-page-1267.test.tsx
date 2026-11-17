@@ -213,18 +213,17 @@ test('Escape closes the save state card', async ({ admin, createUser }) => {
   expect(screen.queryByTestId('save-state-detail')).not.toBeInTheDocument()
 })
 
-test("a group in a Person's linked records opens in the pane", async ({ admin, createUser }) => {
+test("a Person's linked records list each group's rows by name, and a row opens in the pane", async ({ admin, createUser }) => {
   const kim = await createUser({ email: 'kim.1267@example.com', fullName: 'Kim Old' })
   const lee = await createUser({ email: 'lee.1267@example.com', fullName: 'Lee New' })
   await sql`update person set replaced_by = ${lee.user!}, enabled = false where row_id = ${kim.user!}`
   await renderApp(rowHref('Person', lee.user!), admin)
   const list = await screen.findByTestId('connections-list')
-  const group = await within(list).findByRole('button', { name: /Person.*1/ })
-  expect(group).toHaveTextContent('1')
-  fireEvent.click(group)
-  // The group opens in the pane beside the page, and reads as the one chosen.
-  expect(await screen.findByRole('complementary', { name: /Lee New/ })).toBeInTheDocument()
-  await waitFor(() => expect(within(screen.getByTestId('connections-list')).getByRole('button', { pressed: true })).toHaveTextContent(group.textContent!))
+  // #1218 slice 1: the group with rows shows them, each named as a link (LinkedRowsGroup).
+  const group = await within(list).findByTestId('linked-rows-group')
+  expect(within(group).getByRole('heading')).toHaveTextContent(/1$/)
+  fireEvent.click(await within(group).findByRole('link', { name: 'Kim Old' }))
+  expect(await screen.findByRole('complementary', { name: /Kim Old/ })).toBeInTheDocument()
 })
 
 test("a Person's own links lead its linked records, with empty groups a click away", async ({ admin, createUser }) => {
@@ -237,9 +236,9 @@ test("a Person's own links lead its linked records, with empty groups a click aw
   expect(await within(kims).findByText('Replaced by')).toBeInTheDocument()
   const toggle = await within(kims).findByTestId('connections-show-empty')
   expect(within(kims).getByText('Nothing links here yet.')).toBeInTheDocument()
-  const before = within(kims).queryAllByTestId('connection-group').length
+  expect(within(kims).queryAllByTestId('linked-rows-group')).toHaveLength(0)
   fireEvent.click(toggle)
-  expect(within(kims).getAllByTestId('connection-group').length).toBeGreaterThan(before)
+  expect(within(kims).getAllByTestId('linked-rows-group').length).toBeGreaterThan(0)
   expect(within(kims).queryByText('Nothing links here yet.')).not.toBeInTheDocument()
 })
 
@@ -284,8 +283,8 @@ test("the record pane leaves out a Person's sign-in switches", async ({ admin, c
   await sql`update person set replaced_by = ${lee.user!}, enabled = false where row_id = ${kim.user!}`
   await renderApp(rowHref('Person', lee.user!), admin)
   const list = await screen.findByTestId('connections-list')
-  fireEvent.click(await within(list).findByRole('button', { name: /Person.*1/ }))
-  const pane = await screen.findByRole('complementary', { name: /Lee Pane/ })
+  fireEvent.click(await within(list).findByRole('link', { name: 'Kim Pane' }))
+  const pane = await screen.findByRole('complementary', { name: /Kim Pane/ })
   await waitFor(() => expect(pane).toHaveTextContent('Full Name'))
   expect(pane).not.toHaveTextContent('Expects Google sign-in')
   expect(pane).not.toHaveTextContent('Expects Microsoft sign-in')

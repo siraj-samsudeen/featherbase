@@ -393,9 +393,11 @@ export function RowConnections({ table, row, values, layout = 'chips' }: {
       {showEmpty ? 'Hide empty' : `Show ${fmtCount(empty.length)} empty`}
     </button>
   )
+  // #1267 on #1218 slice 1: a Person's right column draws each group with
+  // LinkedRowsGroup, its rows named by what they point to; rows open in the pane.
   if (layout === 'list')
     return (
-      <section aria-labelledby="connections-heading" data-testid="connections-list" className="flex min-w-0 flex-col gap-1">
+      <section aria-labelledby="connections-heading" data-testid="connections-list" className="flex min-w-0 flex-col gap-4">
         <h2 id="connections-heading" className="text-sm font-medium text-ink-muted">Linked Records</h2>
         {links.map((link) => (
           <span key={link.column} className="flex min-w-0 items-center justify-between gap-2 text-sm">
@@ -403,13 +405,7 @@ export function RowConnections({ table, row, values, layout = 'chips' }: {
             <PaneLink table={link.table} rowId={link.row_id} onOpen={open} />
           </span>
         ))}
-        {shown.map((g) => (
-          <button key={g.key} type="button" aria-pressed={isChosen(g)} onClick={() => choose(g)} data-testid="connection-group"
-            className={`flex min-h-control items-center justify-between gap-3 rounded-md px-2 text-left text-sm hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-action-tint ${g.count ? 'text-action' : 'text-ink-muted'}`}>
-            <span className="min-w-0">{g.label}</span>
-            <span className="tabular-nums text-ink-muted">{fmtCount(g.count)}</span>
-          </button>
-        ))}
+        {shown.map((g) => <LinkedRowsGroup key={g.key} table={table} record={row} group={g} onOpen={open} />)}
         {/* Said only once the counts are in, never while they load. */}
         {cnx.data && !full.length && !showEmpty && <p className="text-sm text-ink-subtle">Nothing links here yet.</p>}
         {emptyToggle && <span className="px-2">{emptyToggle}</span>}
