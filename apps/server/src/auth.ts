@@ -31,7 +31,11 @@ export function verifyPassword(password: string, stored: string): boolean {
 // refused service accounts, but password reset reaches this function directly,
 // so a reset link could still stamp a password_hash onto a principal
 // documented as having none. The guard is on the write itself.
-export async function setUserPassword(name: string, password: string, db: Sql | TxSql = sql) {
+export async function setUserPassword(name: string, password: string, db: Sql | TxSql = sql): Promise<void> {
+  // #1207 (Codex round 2): the password, the agent connections it ends and the
+  // codes it drops are one write, so a code exchange cannot slip a connection
+  // in between them. A caller's own transaction is kept.
+  if (db === sql) return sql.begin((tx) => setUserPassword(name, password, tx as unknown as TxSql)) as Promise<void>
   // person-rename: only a person has a password. A service account is not a
   // person, so it is refused here whichever route reached this write.
   const [row] = await db`select 1 from person where row_id = ${name}`
