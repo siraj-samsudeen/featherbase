@@ -9,6 +9,7 @@ import { sql } from 'server/src/db'
 import { applySeedPack } from 'server/src/seed-packs'
 import type { CreateUserFn } from 'feather-testing-postgres'
 import { test, expect, renderApp } from './pg-test'
+import { openIdentifierHistory } from './sign-in-lines'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -17,7 +18,7 @@ async function joinerWithHandCode(admin: Parameters<typeof renderApp>[1], create
   await sql`delete from person_identifier where source = 'stylehr-roster-sync'`
   const joiner = await createUser({ email: 'joiner.end@example.com', fullName: 'Joiner Jaya' })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(joiner.user!)}`, admin)
-  const panel = await screen.findByTestId('person-identifiers', {}, { timeout: 8000 })
+  const panel = await openIdentifierHistory()
   await userEvent.click(await within(panel).findByRole('button', { name: 'Add an identifier' }))
   const form = await within(panel).findByTestId('add-identifier-form')
   await userEvent.selectOptions(within(form).getByLabelText('Identifier'), 'stylehr-employee-code')

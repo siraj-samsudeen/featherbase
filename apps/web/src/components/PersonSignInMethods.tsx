@@ -17,8 +17,13 @@ import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
 // The button opens a small dialog asking only for that method's fields, so
 // no field on the page sits beside a button it does not belong to.
 
-/** The Person columns the Sign-In lines set, so the details leave them out. */
-export const SIGN_IN_OWNS = new Set(['expects_google_sign_in', 'expects_microsoft_sign_in'])
+/** The Person columns the Sign-In lines set, so a saved Person's fields leave
+ *  them out wherever they are drawn generically (the form, the record pane). */
+const SIGN_IN_OWNS = new Set(['expects_google_sign_in', 'expects_microsoft_sign_in'])
+
+export function managedBySignIn(table: string, column: string): boolean {
+  return table === 'Person' && SIGN_IN_OWNS.has(column)
+}
 
 interface AdminIdentity {
   id: string

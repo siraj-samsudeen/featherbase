@@ -265,3 +265,28 @@ test('after a link redraws its line, focus goes to the Sign-In heading, not the 
   await waitFor(() => expect(screen.queryByTestId('sign-in-dialog')).not.toBeInTheDocument())
   await waitFor(() => expect(within(panel).getByRole('heading', { name: 'Sign-In' })).toHaveFocus())
 })
+
+test('Identifiers wait, closed, under Identifier History; opening it shows their periods', async ({ admin, createUser }) => {
+  const xan = await createUser({ email: 'xan.1267@example.com' })
+  await renderApp(rowHref('Person', xan.user!), admin)
+  const history = await screen.findByTestId('person-identifiers')
+  expect(history.tagName).toBe('DETAILS')
+  expect(history).not.toHaveAttribute('open')
+  expect(within(history).getByTestId('identifier-history-toggle')).toHaveTextContent('Identifier History')
+  await userEvent.click(within(history).getByTestId('identifier-history-toggle'))
+  expect(history).toHaveAttribute('open')
+  await waitFor(() => expect(history).toHaveTextContent(/xan\.1267@example\.com.*since/))
+})
+
+test("the record pane leaves out a Person's sign-in switches", async ({ admin, createUser }) => {
+  const kim = await createUser({ email: 'kim3.1267@example.com', fullName: 'Kim Pane' })
+  const lee = await createUser({ email: 'lee3.1267@example.com', fullName: 'Lee Pane' })
+  await sql`update person set replaced_by = ${lee.user!}, enabled = false where row_id = ${kim.user!}`
+  await renderApp(rowHref('Person', lee.user!), admin)
+  const list = await screen.findByTestId('connections-list')
+  fireEvent.click(await within(list).findByRole('button', { name: /Person.*1/ }))
+  const pane = await screen.findByRole('complementary', { name: /Lee Pane/ })
+  await waitFor(() => expect(pane).toHaveTextContent('Full Name'))
+  expect(pane).not.toHaveTextContent('Expects Google sign-in')
+  expect(pane).not.toHaveTextContent('Expects Microsoft sign-in')
+})

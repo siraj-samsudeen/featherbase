@@ -19,6 +19,7 @@ import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './For
 import { useI18n } from '../lib/i18n'
 import { ActivityTimeline } from './ActivityTimeline'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
+import { managedBySignIn } from './PersonSignInMethods'
 
 // #910 checklist 4–10: the drill pane. One row of any Table, beside or below
 // the screen it was opened from: what it points at (each with Go there and,
@@ -321,7 +322,8 @@ function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; onOpen: 
   const arrangement = useFormArrangement(meta.name, meta.columns.some((c) => c.column_type === 'Section Break'))
   if (!arrangement.ready) return <p className="text-sm text-ink-subtle">Loading…</p>
   const readable = new Set(dataColumns(meta).map((c) => c.column_name))
-  const shown = (c: ColumnDef) => readable.has(c.column_name) && !NO_COLUMN_TYPES.has(c.column_type) && !isBookkeeping(c)
+  // #1267: a Person's sign-in switches are set on its Sign-In lines only.
+  const shown = (c: ColumnDef) => readable.has(c.column_name) && !NO_COLUMN_TYPES.has(c.column_type) && !isBookkeeping(c) && !managedBySignIn(meta.name, c.column_name)
   let sets: { title?: string; fields: ColumnDef[] }[]
   if (arrangement.mode === 'source') {
     sets = [{ fields: [] }]

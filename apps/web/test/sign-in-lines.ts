@@ -14,3 +14,11 @@ export async function showEnded(panel: HTMLElement) {
   const toggle = await within(panel).findByTestId('sign-in-show-ended')
   if (toggle.getAttribute('aria-expanded') !== 'true') await userEvent.click(toggle)
 }
+
+/** #1267: Identifiers sit in a closed "Identifier History" section; opens it as a person would. */
+export async function openIdentifierHistory(): Promise<HTMLElement> {
+  const { screen } = await import('@testing-library/react')
+  const panel = await screen.findByTestId('person-identifiers', {}, { timeout: 8000 })
+  if (!panel.hasAttribute('open')) await userEvent.click(within(panel).getByTestId('identifier-history-toggle'))
+  return panel
+}

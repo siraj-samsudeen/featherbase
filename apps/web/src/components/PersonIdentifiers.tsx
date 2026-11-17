@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { fmtDate } from '@featherbase/shop-floor'
 import { PrincipalLink } from '../lib/people'
-import { Button, Card, Notice, Select, TextInput } from '@featherbase/shop-floor'
+import { Button, Notice, Select, TextInput, cardClasses } from '@featherbase/shop-floor'
 import { Plus } from 'lucide-react'
 import { RowMenu } from './RowMenu'
 import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
@@ -111,8 +111,13 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   }
 
   return (
-    <Card className="p-4" data-testid="person-identifiers">
-      <div className="mb-2 flex items-center justify-between gap-2">
+    // #1267: the history behind the person's email and codes, folded so the
+    // page shows the email once; opening it shows every period.
+    <details className={cardClasses('group p-4')} data-testid="person-identifiers">
+      <summary className="cursor-pointer list-none rounded text-sm font-semibold text-ink focus-visible:outline-2 focus-visible:outline-focus" data-testid="identifier-history-toggle">
+        Identifier History <span aria-hidden className="inline-block transition-transform group-open:rotate-90 motion-reduce:transition-none">▸</span>
+      </summary>
+      <div className="mb-2 mt-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-ink">Identifiers</h3>
         {/* Stays while the form is open, so the header never changes height. */}
         {!replacedBy && addable.length > 0 && (
@@ -201,6 +206,6 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
           </Notice>
         </div>
       )}
-    </Card>
+    </details>
   )
 }

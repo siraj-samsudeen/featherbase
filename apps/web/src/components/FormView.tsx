@@ -26,7 +26,7 @@ import {
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
 import { Comments } from './Comments'
-import { PersonSignInMethods, SIGN_IN_OWNS } from './PersonSignInMethods'
+import { PersonSignInMethods, managedBySignIn } from './PersonSignInMethods'
 import { SaveState } from './SaveState'
 import { PersonIdentifiers } from './PersonIdentifiers'
 import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
@@ -482,7 +482,7 @@ export function FormView({
   for (const f of m.columns) {
     if (f.column_type === 'Section Break') sections.push([])
     // #1267: a saved Person's Sign-In lines own its "expects … sign-in" switches.
-    else if (!f.hidden && !(table === 'Person' && !isNew && SIGN_IN_OWNS.has(f.column_name))) sections[sections.length - 1].push(f)
+    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name))) sections[sections.length - 1].push(f)
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
