@@ -122,7 +122,7 @@ export function AccountChooser({ list, onList, onSignedIn, onSignInAgain, onUseA
                     <span className="shrink-0 whitespace-nowrap rounded-full bg-positive-tint px-2 text-xs font-semibold text-positive">Last used</span>
                   )}
                 </span>
-                {way && <span className="block break-all text-xs text-ink-muted" data-testid="account-way-in">{way}</span>}
+                {way && <span className="block break-words text-xs text-ink-muted" data-testid="account-way-in">{way}</span>}
                 <span className="block break-words text-xs text-ink-muted" data-testid="account-last-used">
                   {live ? `Used ${lastUsedText(account.last_used)}` : account.reason_text}
                 </span>
