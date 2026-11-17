@@ -6,7 +6,7 @@ The issue is not filed yet. Filing it was blocked by a permission check on 17-No
 
 Featherbase shows a record's links in several places: the chips under its title, the record panel's "Pointed At By", the Map and the Tree. Today each shows a link-table row by its own code:
 
-- A section's eight job assignments read as "KL-RR-11071-VLM-S13039", not as eight people.
+- A section's eight job assignments read as a code such as "KL-RR-0000-XYZ-S00000", not as eight people.
 - Its 312 "Section Subcategory" rows read as codes, not as subcategories.
 - In the record panel, an opened group is drawn as a squeezed table whose rows stretch tall.
 - The Map's "Open in Explore" button leads to a page the owner calls unusable.
