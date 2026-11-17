@@ -41,7 +41,7 @@ import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
-import { COMMAND_SHORTCUT_DEF, noteShortcutUse, useShortcut } from '../lib/shortcuts'
+import { COMMAND_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
 
 interface SearchHit {
   table: string
@@ -535,9 +535,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
           <div className="relative">
           <input
             ref={searchRef}
-            data-shortcut-id={COMMAND_SHORTCUT_DEF.id}
-            data-shortcut-key={COMMAND_SHORTCUT_DEF.keys}
-            title={`${COMMAND_SHORTCUT_DEF.label} · ${COMMAND_SHORTCUT_DEF.keys}`}
+            {...shortcutControl(COMMAND_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF.label)}
             onMouseDown={(e) => document.activeElement !== e.currentTarget && noteShortcutUse('command', 'mouse', e.currentTarget)}
             value={search}
             onChange={(e) => {

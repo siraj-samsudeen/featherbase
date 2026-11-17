@@ -46,9 +46,11 @@ test('the first tip covers no control and stays on screen', async ({ session, re
       expect((await coverage(page, 'shortcuts-panel')).inside).toBe(true)
       const badge = page.getByTestId('shortcut-badge-sidebar')
       await expect(badge).toBeVisible()
-      const [control, mark] = await Promise.all([page.locator('[data-shortcut-id="sidebar"]').boundingBox(), badge.boundingBox()])
-      // The badge sits on the top-right corner of the control that carries the key.
-      expect(Math.abs(mark!.x + mark!.width - (control!.x + control!.width - 5))).toBeLessThanOrEqual(2)
-      expect(Math.abs(mark!.y - (control!.y - 7))).toBeLessThanOrEqual(2)
+      // The badge settles on the top-right corner of the control that carries
+      // the key, once the sidebar has finished animating to its rail.
+      await expect.poll(async () => {
+        const [control, mark] = await Promise.all([page.locator('[data-shortcut-id="sidebar"]').boundingBox(), badge.boundingBox()])
+        return Math.max(Math.abs(mark!.x + mark!.width - (control!.x + control!.width - 5)), Math.abs(mark!.y - (control!.y - 7)))
+      }).toBeLessThanOrEqual(2)
     })
 })

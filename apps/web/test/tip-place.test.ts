@@ -28,6 +28,11 @@ describe('placeTip', () => {
     expect(overlaps(box(at.left, at.top, size.width, size.height), row[0])).toBe(false)
   })
 
+  test('when every row near the bar is taken it goes just below them, centred', () => {
+    const wall = [box(0, 50, 1440, 400)]
+    expect(placeTip(size, wall, area)).toEqual({ left: 520, top: 60 + 4 * 48 })
+  })
+
   test('a narrow window still gets the tip, at the left edge', () => {
     expect(placeTip({ width: 600, height: 40 }, [], { left: 16, right: 400, top: 60 })).toEqual({ left: 16, top: 60 })
   })
