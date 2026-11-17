@@ -127,7 +127,7 @@ describe('tickets-data-quality-rules: the rows a ticket covers', () => {
           ['Every buyer row with no person', null], ['North Grocery', null], ['South Fashion', '2026-11-07']])
       }
     })
-    await step('the list reads "3 rows · 1 fixed"', () => {
+    await step('the list reads "3 records · 1 fixed"', () => {
       for (const covered of Object.values(seen)) expect(covered).toMatchObject({ total: 3, fixed: 1 })
     })
   })

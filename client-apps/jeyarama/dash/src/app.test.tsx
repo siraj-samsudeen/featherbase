@@ -38,6 +38,8 @@ beforeAll(() => {
     Object.defineProperty(globalThis, key, { configurable: true, get: () => (key === 'window' ? dom.window : dom.window[key]) })
   ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
   ;(globalThis as Record<string, unknown>).fetch = (url: string, init: RequestInit) => {
+    // #1223: a record link asks whether its Table opens; here every Table does.
+    if (String(url).endsWith(':meta')) return Promise.resolve(new Response('{}', { status: 200 }))
     const name = decodeURIComponent(String(url).split('/').at(-1)!)
     const payload = JSON.parse(String(init.body)).payload ?? {}
     const store = payload.store
@@ -639,7 +641,10 @@ describe('a pre-filled department on the report page (#1205)', () => {
     setupAnswer = PREFILLED
     const { container, act, unmount } = await show()
     expect(container.querySelector('[data-testid=prefill-banner]')?.textContent).toContain('Your report shows Sarees: the sections your team works in. Is this right?')
-    expect(container.querySelector('[data-testid=prefill-banner] a')?.getAttribute('href')).toBe('?view=department')
+    // #1223: the section names are links too; Change it is the link to Your department.
+    expect([...container.querySelectorAll('[data-testid=prefill-banner] a')].find(a => a.textContent === 'Change it')?.getAttribute('href')).toBe('?view=department')
+    const sarees = container.querySelector('[data-testid=prefill-banner] [data-record-link]')
+    expect([sarees?.textContent, sarees?.getAttribute('data-table')]).toEqual(['Sarees', 'Section'])
     const yes = [...container.querySelectorAll('button')].find(b => b.textContent === "Yes, that's right")!
     await act(async () => { yes.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); await settle() })
     const sent = calls.find(c => c.name === 'set_up_department')!
@@ -654,7 +659,7 @@ describe('a pre-filled department on the report page (#1205)', () => {
     setupAnswer = PREFILLED
     window.localStorage.setItem('dash.prefill-banner', 'line')
     const { container, unmount } = await show()
-    expect(container.querySelector('[data-testid=prefill-line] a')?.getAttribute('href')).toBe('?view=department')
+    expect([...container.querySelectorAll('[data-testid=prefill-line] a')].find(a => a.textContent === 'Change it')?.getAttribute('href')).toBe('?view=department')
     window.localStorage.clear()
     await unmount()
   })

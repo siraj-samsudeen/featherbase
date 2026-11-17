@@ -3,8 +3,12 @@ import { buttonClasses, cardClasses, ChevronDown } from '@featherbase/shop-floor
 import { menuAlign, visibleSpan, type MenuAlign } from './menuPlacement'
 
 /** Ordinary links/buttons keep their native keyboard behavior inside the disclosure. */
-export function ActionDisclosure({ label, children, open: controlledOpen, onOpenChange }: {
+export function ActionDisclosure({ label, ariaLabel, compact = false, children, open: controlledOpen, onOpenChange }: {
   label: string
+  /** The button's name when its label is only a symbol (the sidebar rail's "+", #1248). */
+  ariaLabel?: string
+  /** No chevron: the button is a square (the sidebar rail, #1248). */
+  compact?: boolean
   children: ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -16,11 +20,29 @@ export function ActionDisclosure({ label, children, open: controlledOpen, onOpen
   const root = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const [align, setAlign] = useState<MenuAlign>('end')
+  // #1242 (verifier, round 3): the menu is placed fixed under its button, so a
+  // scrolling or clipping ancestor (the list's column) never cuts it off; a
+  // long menu scrolls inside the window instead.
+  const [place, setPlace] = useState<{ top: number; left?: number; right?: number; maxHeight: number }>()
   const id = useId()
   // #1185: measured before the browser paints, so the menu never shows on the clipped side first.
   useLayoutEffect(() => {
     if (!open) return
-    setAlign(menuAlign(root.current!.getBoundingClientRect(), menu.current!.getBoundingClientRect().width, visibleSpan(root.current!)))
+    const measure = () => {
+      // Both are there while it is open: the listeners leave with the menu.
+      const box = root.current!.getBoundingClientRect()
+      const side = menuAlign(box, menu.current!.getBoundingClientRect().width, visibleSpan(root.current!))
+      setAlign(side)
+      const top = box.bottom + 4
+      setPlace({ top, maxHeight: Math.max(160, window.innerHeight - top - 8), ...(side === 'end' ? { right: window.innerWidth - box.right } : { left: box.left }) })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
+    }
   }, [open])
   return (
     <div
@@ -45,19 +67,21 @@ export function ActionDisclosure({ label, children, open: controlledOpen, onOpen
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen(!open)}
+        aria-label={ariaLabel}
         className={buttonClasses()}
       >
         {label}
-        <ChevronDown aria-hidden data-chevron size={18} />
+        {!compact && <ChevronDown aria-hidden data-chevron size={18} />}
       </button>
       {open && (
         <div
           id={id}
           ref={menu}
           role="group"
-          aria-label={label}
+          aria-label={ariaLabel ?? label}
           data-align={align}
-          className={cardClasses(`absolute ${align === 'end' ? 'right-0' : 'left-0'} z-20 mt-1 flex w-full flex-col items-stretch gap-1 p-2 sm:w-64`)}
+          style={place ? { position: 'fixed', top: place.top, left: place.left, right: place.right, maxHeight: place.maxHeight } : undefined}
+          className={cardClasses(`${place ? '' : `absolute ${align === 'end' ? 'right-0' : 'left-0'} mt-1 `}z-40 flex w-64 max-w-[calc(100vw-1rem)] flex-col items-stretch gap-1 overflow-y-auto p-2`)}
         >
           {children}
         </div>

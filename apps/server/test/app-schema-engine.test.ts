@@ -348,6 +348,22 @@ describe('a description change is metadata-only', () => {
   })
 })
 
+// #1256: a new label is written to the definition and no row is touched.
+describe('relabelTable', () => {
+  shopTest('the Table records its new label and keeps its rows', async () => {
+    await registered()
+    const rows = await sql`select row_id, ctid::text as at from shop.supplier order by row_id`
+    await run({ kind: 'relabelTable', table: 'shop.supplier', from: 'Supplier', to: 'Vendor' })
+    expect(await sql`select label from table_def where name = 'shop.supplier'`).toEqual([{ label: 'Vendor' }])
+    expect(await sql`select row_id, ctid::text as at from shop.supplier order by row_id`).toEqual(rows)
+  })
+
+  shopTest('it counts no losses', async () => {
+    await registered()
+    expect(await countLosses('shop', [step([{ kind: 'relabelTable', table: 'shop.supplier', from: 'Supplier', to: 'Vendor' }])])).toEqual([])
+  })
+})
+
 // #663 review round 1: a required column can hold empty rows (written before
 // it became required, or straight into storage). A step that changes only
 // what people read leaves them as they are: no fill, no required-value check.

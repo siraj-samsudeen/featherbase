@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, type ComponentType } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type ComponentType } from 'react'
 import {
   Link,
   Outlet,
@@ -10,9 +10,10 @@ import {
   useParams,
   useRouter,
 } from '@tanstack/react-router'
-import { parseFilters, tableSlug } from 'shared'
+import { parseFilters, tableSlug, type ListLayout } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
+import { SetPasswordPage } from './pages/SetPassword'
 import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
@@ -21,6 +22,8 @@ import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
 import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
+import { isListLayout, useListLayout } from './lib/list-layout'
+import { rememberFilters, useRememberedFilters } from './lib/remembered-filters'
 import { useQuery } from '@tanstack/react-query'
 import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
@@ -39,6 +42,8 @@ import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { AccessExplanation } from './pages/AccessExplanation'
 import { AccountLayout } from './pages/AccountLayout'
+import { AgentConnectPage } from './pages/AgentConnect'
+import { ConnectedApps } from './pages/ConnectedApps'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { InstanceHealth } from './pages/InstanceHealth'
@@ -66,7 +71,7 @@ import type { BrowseContext } from './lib/warehouse'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { NavPathBar } from './components/NavPathBar'
-import { PaneSplit } from './components/RowPane'
+import { PaneSplit, RecordPanel } from './components/RowPane'
 import { NavigationProvider, useAddressNavigation, useLocalNavigation } from './lib/navigation'
 import type { NavStep } from './lib/nav-path'
 
@@ -189,6 +194,17 @@ const loginRoute = createRoute({
   component: LoginPage,
 })
 
+// mcp-oauth-connect (#1207): where an agent sends the person's browser to
+// connect it (the authorization endpoint). Signed out, the usual sign-in first,
+// with the agent's whole request as the way back. The page sends a signed-out
+// browser to sign in itself: the route's location has the query re-encoded,
+// which would change the agent's values (a long numeric state, say).
+const agentConnectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/connect',
+  component: AgentConnectPage,
+})
+
 // WEB-002: public web form (no session required).
 const webFormRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -259,6 +275,16 @@ const resetPasswordRoute = createRoute({
   component: ResetPasswordPage,
 })
 
+// #1257: public "Set your password" page (target of a password invite).
+const setPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/set-password',
+  validateSearch: (search: Record<string, unknown>) => ({
+    key: searchString(search.key),
+  }),
+  component: SetPasswordPage,
+})
+
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/admin',
@@ -271,12 +297,12 @@ const adminRoute = createRoute({
 })
 
 function AdminRouteLayout() {
-  const wide = useRouterState({ select: (state) => state.matches.some((match) =>
+  // #1253 (Siraj, 17-Nov): every page fills the panel's width; the shell sets it.
+  // Two pages also fill its height: the source browser and copy setup.
+  const fillHeight = useRouterState({ select: (state) => state.matches.some((match) =>
     match.routeId === sourceBrowserRoute.id || match.routeId === copySetupRoute.id,
   ) })
-  // #1018: a Table's list has no reading width to keep, so a wide one gets the whole page.
-  const fullWidth = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === tableRoute.id) })
-  return <AdminLayout wide={wide} fullWidth={fullWidth} />
+  return <AdminLayout fillHeight={fillHeight} />
 }
 
 /** An Admin path that is neither a known page nor an existing Table: said
@@ -358,7 +384,7 @@ function AdminIndexPage() {
     <p className="text-sm text-ink-muted" data-testid="admin-index-empty">
       No Home Pages are visible to you. Browse{' '}
       <Link to="/featherbase/admin/all-tables" className="text-action underline">
-        All tables
+        All Tables
       </Link>{' '}
       instead.
     </p>
@@ -437,6 +463,8 @@ const tableRoute = createRoute({
   // stays the way in from elsewhere (a saved view, a shared list link).
   validateSearch: (search: Record<string, unknown>) => withPath(search, {
     filters: searchString(search.filters),
+    // #1259: a saved view opened from the sidebar shows in the view it was saved in.
+    ...(isListLayout(search.layout) ? { layout: search.layout } : {}),
   }),
   component: tablePage(TableListPage),
 })
@@ -450,7 +478,7 @@ function withPath<T extends object>(search: Record<string, unknown>, rest: T): T
 
 function TableListPage() {
   const { table, tableMeta } = useTableAddress()
-  const { filters, path } = tableRoute.useSearch()
+  const { filters, path, layout } = tableRoute.useSearch()
   // SET-001: a Settings Table has no list — open its one row directly.
   if (tableMeta.kind === 'settings') {
     return (
@@ -459,22 +487,56 @@ function TableListPage() {
       </div>
     )
   }
-  return <NavigatedList key={table} table={table} filters={filters} path={path} />
+  return <NavigatedList key={table} table={table} filters={filters} path={path} layout={layout} />
 }
 
-function NavigatedList({ table, filters, path }: { table: string; filters?: string; path?: unknown }) {
+function NavigatedList({ table, filters, path, layout: asked }: { table: string; filters?: string; path?: unknown; layout?: ListLayout }) {
+  // #1259: the view this list shows: a saved view's, the person's own, or the
+  // Table's default. A saved view's view is part of the walk's step (from the
+  // address's ?layout=, or applied here), so it lasts while the person walks on
+  // from it, survives a reload and Back, and a bare open of the Table drops it.
   const here = useMemo<NavStep>(() => {
     const parsed = parseFilters(filters)
-    return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
-  }, [table, filters])
+    return { screen: 'list', table, ...(parsed.length ? { filters: parsed } : {}), ...(asked ? { layout: asked } : {}) }
+  }, [table, filters, asked])
   const nav = useAddressNavigation(here, path)
+  const router = useRouter()
+  const views = useListLayout(table, nav.step.layout)
+  /** A view chosen here is the person's from now on, so no saved view's view overrides it. */
+  function chooseLayout(next: ListLayout) {
+    views.choose(next)
+    if (!nav.step.layout) return
+    const { layout: _, ...step } = nav.step
+    nav.replace(step)
+  }
+  // #1228: a bare open (no filters, no walk in the address) brings back the
+  // person's last filters, replacing the address rather than adding a Back step.
+  // The list shows at once and takes them when they arrive, while the address is
+  // still bare: a slow answer never leaves an empty page, and never overrides what
+  // the person has chosen meanwhile (a Table's first open in a tab; later ones are
+  // known in the tab at once).
+  // Either way the address is settled: with nothing remembered it says so
+  // (`filters=[]`), so Back to this entry later shows it as it was, rather than
+  // restoring over it filters chosen since (Codex review, round 2).
+  const fresh = filters === undefined && path === undefined
+  const remembered = useRememberedFilters(table, fresh)
+  useEffect(() => {
+    if (!fresh || remembered === undefined) return
+    // Only the query changes, for the remembered filters as for none: the path
+    // stays spelled as it was opened (a Table's exact name is not always its
+    // slug, which for two legacy Tables of one spelling names neither).
+    const at = new URL(router.state.location.href, 'http://address.invalid')
+    at.searchParams.set('filters', JSON.stringify(remembered))
+    router.history.replace(`${at.pathname}${at.search}${at.hash}`, router.state.location.state)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fresh, remembered])
   return (
     <div data-testid="table-page">
       {/* #772: a table copied from a data source shows where from, and Copy again. */}
       <CopyBar key={`copy-${table}`} table={table} />
       <NavigationProvider value={nav}>
         <NavPathBar />
-        <PaneSplit>
+        {/* #1259: the open record is placed by the list's view, not beside the page. */}
           <ListView
             key={table}
             table={table}
@@ -482,9 +544,20 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
             onFiltersChange={(next) => {
               const { filters: _, ...step } = nav.step
               nav.push(next.length ? { ...step, filters: next } : step)
+              rememberFilters(table, next)
             }}
+            layout={views.layout}
+            onLayoutChange={views.phone ? undefined : chooseLayout}
+            onApplyView={(next, layout) => {
+              // A saved view shows in its own view, without changing the person's choice.
+              const { filters: _, layout: __, ...step } = nav.step
+              nav.push({ ...step, ...(next.length ? { filters: next } : {}), ...(layout ? { layout } : {}) })
+              rememberFilters(table, next)
+            }}
+            recordPanel={nav.step.pane
+              ? <RecordPanel key={`${nav.step.pane.table}\u0000${nav.step.pane.row}`} nav={nav} pane={nav.step.pane} framed />
+              : undefined}
           />
-        </PaneSplit>
       </NavigationProvider>
     </div>
   )
@@ -659,6 +732,13 @@ const signInMethodsRoute = createRoute({
   getParentRoute: () => accountRoute,
   path: 'sign-in-methods',
   component: SignInMethods,
+})
+
+// mcp-oauth-connect (#1207): the agents the signed-in person connected.
+const connectedAppsRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: 'connected-apps',
+  component: ConnectedApps,
 })
 
 // #628: what a person can see, and why. An account page, so a person without
@@ -1057,13 +1137,15 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   featherbaseIndexRoute,
   loginRoute,
+  agentConnectRoute,
   resetPasswordRoute,
+  setPasswordRoute,
   webFormRoute,
   oauthCallbackRoute,
   portalListRoute,
   portalDocRoute,
   salesTargetRoute,
-  accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
+  accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
   adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

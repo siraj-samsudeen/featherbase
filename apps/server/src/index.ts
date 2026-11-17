@@ -10,6 +10,8 @@ import { assertRowsWritable } from './system-written'
 import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
+import { VIEW_AS_ENDED, viewAsStillHolds, activeViewAs, endViewAs, endViewAsSession, searchViewAs, sweepExpiredViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
+import { runViewingAs } from './view-as-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { tableStorageIdentity } from './table-engine'
 import { deleteDoc, getDoc, revokeGrant, rowCapabilities, saveDoc } from './document'
@@ -18,23 +20,25 @@ import { countDocs, getList, groupCount } from './query'
 import { hasMandatoryRowAccess, mandatoryReferencesWhere } from './mandatory-access'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, resolveToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
-import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
+import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, MICROSOFT_OFF, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal, type VerifiedIdentity } from './sign-in'
+import { MICROSOFT_CALLBACK_PATH, assertTenantAdmits, exchangeMicrosoftCode, microsoftAuthorizeUrl, microsoftAvailable, mockMicrosoftApproveRedirect, mockMicrosoftConsentHtml } from './microsoft'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { personByEmail } from './people-directory'
-import { countWaitingForAccess, noAccessYetPage, requestAccess } from './waiting-for-access'
+import { countWaitingForAccess, noAccessYetPage, peekAccess, requestAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
 import { hold, rosterFirstSignIn } from './roster-first-sign-in'
-import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
+import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, OAUTH_CALLBACK_PATH, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
-import { USERNAME_RE, methodOfKind } from './identities'
+import { USERNAME_RE, methodOfKind, type SignInMethod } from './identities'
 import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
 import { getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
 import { saveUpload, signFileUrl } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
-import { globalSearch } from './search'
+import { streamSearch } from './search'
+import { tableRowCounts } from './table-counts'
 import { commandDestinations } from './command-destinations'
 import {
   getCollectionAction,
@@ -61,22 +65,25 @@ import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker, stopWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
+import { ACCOUNTS_PATH, accountRoutes } from './browser-accounts'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { MIN_PASSWORD_LENGTH, requestPasswordReset, resetPassword } from './password-reset'
+import { checkPasswordInvite, signInWithPasswordInvite } from './password-invite'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { recordAppAccessRefusal } from './app-access'
 import { eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { rowTitles, validateRowTitleRequest } from './row-titles'
-import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
+import { createSavedView, deleteSavedView, listSavedViews, listSidebarViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { mcpHandler, mcpMethodNotAllowed } from './mcp'
+import { agentAuthPublicRoutes, agentAuthRoutes } from './agent-auth-routes'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
@@ -86,7 +93,7 @@ import { discoverAppLibrary } from './app-library'
 import { appPathsFromEnvironment, deliverApp, deliveryKeyMatches } from './app-delivery'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
-import { appOperation, withAppClientVersion, withInstalledAppVersions } from './app-lifecycle'
+import { appOperation, appOperationApart, withAppClientVersion, withInstalledAppVersions } from './app-lifecycle'
 import { agentMark } from './agent-context'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -184,11 +191,13 @@ app.get('/api/brand', async (c) => {
   // person-identities: the login page renders the enabled sign-in methods.
   const delegated = await delegatedMethods()
   const google = await googleAvailable()
+  const microsoft = await microsoftAvailable()
   const password = await methodOfKind('password')
   const testMode = delegatedTestMode()
   const methods = [
     ...(password?.enabled ? [{ key: password.key, kind: password.kind, label: password.label || 'Password', test_mode: false }] : []),
     ...(google ? [{ key: google.key, kind: google.kind, label: google.label || 'Google', test_mode: false }] : []),
+    ...(microsoft ? [{ key: microsoft.key, kind: microsoft.kind, label: microsoft.label || 'Microsoft', test_mode: false }] : []),
     ...delegated.map((d) => ({ key: d.key, kind: 'delegated_password', label: d.label, test_mode: testMode })),
   ]
   // #488: on an address that opens an app, the sign-in page and the document
@@ -302,6 +311,10 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
   return c.json(await withLanding(c, session), 201)
 })
 
+// #1255: the browser's signed-in accounts (browser-accounts.ts). Public: the
+// routes read only the browser's own cookies.
+app.route(ACCOUNTS_PATH, accountRoutes(withLanding))
+
 // The SPA's sign-out. Public — it must clear the sid cookie even when the
 // bearer token is already gone or expired, otherwise the cookie survives as
 // a live credential and any token-less request after logout re-authenticates
@@ -327,6 +340,14 @@ app.post('/api/logout', async (c) => {
       console.error('sign-out: revoking a session failed', err)
       incomplete = true
     }
+    // #1222: signing out ends a View as too, on the record: after the revocation, so a
+    // start racing the sign-out finds the session ended and refuses.
+    try {
+      await endViewAsSession(session.jti, 'sign_out')
+    } catch (err) {
+      console.error('sign-out: ending View as failed', err)
+      incomplete = true
+    }
   }
   if (incomplete)
     return c.json({ error: { type: 'ServiceUnavailableError', message: 'Sign-out did not complete. Try again.' } }, 503)
@@ -349,6 +370,24 @@ app.post('/api/reset_password', async (c) => {
   }
   await resetPassword(key ?? '', new_password ?? '')
   return c.json({ ok: true })
+})
+
+// #1257: the "Set your password" page behind a password invite (public: the
+// person has no way in yet). The key travels in the body, never the URL.
+app.post('/api/password_invite/check', async (c) => {
+  const { key } = (await c.req.json().catch(() => ({}))) as { key?: unknown }
+  return c.json(await checkPasswordInvite(typeof key === 'string' ? key : ''))
+})
+
+// Setting the first password signs the person in, through the same tail as
+// every other sign-in (sign-in.ts); password-invite.ts says why it re-checks.
+app.post('/api/password_invite/accept', publicLimit('LOGIN'), async (c) => {
+  const { key, new_password } = (await c.req.json().catch(() => ({}))) as { key?: unknown; new_password?: unknown }
+  const issued = await signInWithPasswordInvite(
+    typeof key === 'string' ? key : '', typeof new_password === 'string' ? new_password : '', clientAddress(c))
+  const session = { token: issued.token, user: issued.user }
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
+  return c.json(await withLanding(c, session))
 })
 
 app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`, false))
@@ -389,11 +428,53 @@ function isPageNavigation(c: Context): boolean {
   return c.req.header('sec-fetch-mode') === 'navigate' || (c.req.header('accept') ?? '').includes('text/html')
 }
 
-function refusedToLoginPage(c: Context, err: unknown) {
+function refusedToLoginPage(c: Context, err: unknown, provider: RedirectProvider = GOOGLE) {
   // Unexpected faults are still worth a server-side line; refusals are not.
-  if (!(err instanceof AppError)) console.error('[sign-in] google callback failed', err)
-  return c.redirect(`/featherbase/login?error=${signInRefusal(err)}`)
+  if (!(err instanceof AppError)) console.error(`[sign-in] ${provider.kind} callback failed`, err)
+  // The sign-in page names the method that refused; Google's needs no mark.
+  const via = provider.mark ? `&via=${provider.mark}` : ''
+  return c.redirect(`/featherbase/login?error=${signInRefusal(err, provider.kind)}${via}`)
 }
+
+// The two redirect sign-ins, Google and Microsoft (microsoft-sign-in). Each
+// supplies only how it is found, where it sends the browser and how it turns
+// a code into a VerifiedIdentity; the routes below are shared.
+interface RedirectProvider {
+  kind: 'google' | 'microsoft'
+  /** After the exchange: may the method as it is NOW admit this identity?
+   *  (Codex round 2: the method may have changed while the provider answered.) */
+  stillAdmits?: (method: SignInMethod, v: VerifiedIdentity) => void
+  /** The state's `provider` mark: absent for Google, as before. */
+  mark?: 'microsoft'
+  callbackPath: string
+  off: string
+  available: () => Promise<SignInMethod | null>
+  authorizeUrl: (method: SignInMethod, state: string, redirectUri: string, challenge: string, c: Context) => string
+  exchange: (c: Context, method: SignInMethod, redirectUri: string, verifier: string | undefined, state: string) => Promise<VerifiedIdentity>
+}
+
+const GOOGLE: RedirectProvider = {
+  kind: 'google',
+  callbackPath: OAUTH_CALLBACK_PATH,
+  off: GOOGLE_OFF,
+  available: googleAvailable,
+  authorizeUrl: (m, state, redirectUri, challenge, c) =>
+    googleAuthorizeUrl(m.client_id, state, redirectUri, challenge, { email: c.req.query('email'), name: c.req.query('name'), subject: c.req.query('subject') }),
+  exchange: (c, m, redirectUri, verifier) => exchangeCode(c.req.query('code'), redirectUri, m.client_id, verifier),
+}
+
+const MICROSOFT: RedirectProvider = {
+  kind: 'microsoft',
+  mark: 'microsoft',
+  callbackPath: MICROSOFT_CALLBACK_PATH,
+  off: MICROSOFT_OFF,
+  available: microsoftAvailable,
+  authorizeUrl: (m, state, redirectUri, challenge) => microsoftAuthorizeUrl(m, state, redirectUri, challenge),
+  exchange: (c, m, redirectUri, verifier, state) => exchangeMicrosoftCode(c.req.query('code'), redirectUri, m, verifier, state),
+  stillAdmits: (m, v) => assertTenantAdmits(m, v.subject),
+}
+
+export const REDIRECT_PROVIDERS = { google: GOOGLE, microsoft: MICROSOFT } as const
 
 // #488: with a list set, a host it does not name gets the admin address's
 // redirect_uri, so the callback would land on another host than the state
@@ -406,20 +487,22 @@ function startGoogleOnAdmin(c: Context, next: () => Promise<void>) {
   return c.redirect(`${linkAddress(list, url.hostname.toLowerCase()).address}${url.pathname}${url.search}`)
 }
 
-app.get('/api/oauth/google/login', startGoogleOnAdmin, publicLimit('OAUTH_LOGIN'), async (c) => {
-  if (!(await googleAvailable())) {
-    const off = new AppError('AuthenticationError', GOOGLE_OFF)
-    if (isPageNavigation(c)) return refusedToLoginPage(c, off)
+async function startRedirectSignIn(c: Context, provider: RedirectProvider) {
+  const method = await provider.available()
+  if (!method) {
+    const off = new AppError('AuthenticationError', provider.off)
+    if (isPageNavigation(c)) return refusedToLoginPage(c, off, provider)
     throw off
   }
-  const clientId = await oauthClientId()
-  assertSignInAvailable(clientId)
-  const redirectUri = oauthRedirectUri(c, clientId)
-  const { state, verifier } = newLoginChallenge(requestHost(c.req.url))
+  assertSignInAvailable(method.client_id, provider.off)
+  const redirectUri = oauthRedirectUri(c, method.client_id, provider.callbackPath)
+  const { state, verifier } = newLoginChallenge(requestHost(c.req.url), provider.mark ? { provider: provider.mark } : {})
   setLoginChallengeCookies(c, state, verifier)
-  const hint = { email: c.req.query('email'), name: c.req.query('name') }
-  return c.redirect(googleAuthorizeUrl(clientId, state, redirectUri, codeChallengeFor(verifier), hint))
-})
+  return c.redirect(provider.authorizeUrl(method, state, redirectUri, codeChallengeFor(verifier), c))
+}
+
+app.get('/api/oauth/google/login', startGoogleOnAdmin, publicLimit('OAUTH_LOGIN'), (c) => startRedirectSignIn(c, GOOGLE))
+app.get('/api/oauth/microsoft/login', startGoogleOnAdmin, publicLimit('OAUTH_LOGIN'), (c) => startRedirectSignIn(c, MICROSOFT))
 
 app.get('/api/oauth/mock/consent', async (c) => {
   assertMockProviderAllowed(await oauthClientId())
@@ -440,59 +523,100 @@ app.get('/api/oauth/mock/approve', async (c) => {
   return c.redirect(mockApproveRedirect(state, redirectUri, email, name, c.req.query('subject') ?? '', c.req.query('hd')))
 })
 
-app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) => {
-  try {
-    return await googleCallback(c)
-  } catch (err) {
-    // A link attempt that fails before its state is verified (expired, another
-    // browser, Google turned off) still lands on a page that explains it,
-    // never raw JSON. A refused sign-in does the same for a browser, on the
-    // sign-in page; an API caller keeps the JSON error and its status.
-    if (claimedPurpose(c.req.query('state')) !== 'link') {
-      if (!isPageNavigation(c)) throw err
-      clearLoginChallengeCookies(c)
-      return refusedToLoginPage(c, err)
-    }
-    clearLoginChallengeCookies(c)
-    const code = err instanceof AppError && /state|token|expired|signature/i.test(err.message) ? 'expired' : 'google_failed'
-    return c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${code}`)
-  }
+// The stand-in for Microsoft (ALLOW_MOCK_OAUTH=1, and only while the method
+// has no client id): the same guard as Google's stand-in.
+const microsoftClientId = async () => (await methodOfKind('microsoft'))?.client_id ?? ''
+
+app.get('/api/oauth/mock/microsoft/consent', async (c) => {
+  assertMockProviderAllowed(await microsoftClientId())
+  return c.html(mockMicrosoftConsentHtml(c.req.query('state') ?? '', c.req.query('redirect_uri') ?? ''))
 })
 
-async function googleCallback(c: Context) {
-  const google = await googleAvailable()
-  if (!google) throw new AppError('AuthenticationError', GOOGLE_OFF)
-  const clientId = google.client_id
-  assertSignInAvailable(clientId)
+app.get('/api/oauth/mock/microsoft/approve', async (c) => {
+  assertMockProviderAllowed(await microsoftClientId())
+  const state = c.req.query('state') ?? ''
+  verifyState(state, getCookie(c, OAUTH_STATE_COOKIE), requestHost(c.req.url))
+  return c.redirect(mockMicrosoftApproveRedirect(state, c.req.query('redirect_uri') ?? '', {
+    email: c.req.query('email') ?? '',
+    name: c.req.query('name') ?? '',
+    tid: c.req.query('tid') ?? '',
+    oid: c.req.query('oid') ?? '',
+    edov: c.req.query('edov') === '1',
+  }))
+})
+
+function redirectCallbackRoute(provider: RedirectProvider) {
+  return async (c: Context) => {
+    try {
+      return await redirectCallback(c, provider)
+    } catch (err) {
+      // A link attempt that fails before its state is verified (expired, another
+      // browser, the method turned off) still lands on a page that explains it,
+      // never raw JSON. A refused sign-in does the same for a browser, on the
+      // sign-in page; an API caller keeps the JSON error and its status.
+      if (claimedPurpose(c.req.query('state')) !== 'link') {
+        if (!isPageNavigation(c)) throw err
+        clearLoginChallengeCookies(c)
+        return refusedToLoginPage(c, err, provider)
+      }
+      clearLoginChallengeCookies(c)
+      const code = err instanceof AppError && /state|token|expired|signature/i.test(err.message) ? 'expired' : `${provider.kind}_failed`
+      return c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${code}${provider.mark ? `&via=${provider.mark}` : ''}`)
+    }
+  }
+}
+
+app.get(OAUTH_CALLBACK_PATH, publicLimit('OAUTH_CALLBACK'), redirectCallbackRoute(GOOGLE))
+app.get(MICROSOFT_CALLBACK_PATH, publicLimit('OAUTH_CALLBACK'), redirectCallbackRoute(MICROSOFT))
+
+/** The method as it is after the exchange, which this sign-in is judged by. */
+async function currentMethod(provider: RedirectProvider, v: VerifiedIdentity): Promise<SignInMethod> {
+  const now = await provider.available()
+  if (!now) throw new AppError('AuthenticationError', provider.off)
+  provider.stillAdmits?.(now, v)
+  return now
+}
+
+async function redirectCallback(c: Context, provider: RedirectProvider) {
+  const method = await provider.available()
+  if (!method) throw new AppError('AuthenticationError', provider.off)
+  const clientId = method.client_id
+  assertSignInAvailable(clientId, provider.off)
   // The state must match the cookie this browser got at login. Without that
   // binding an attacker could complete consent with their own account and
   // hand the victim the callback URL, planting the attacker's session.
-  const state = verifyState(c.req.query('state'), getCookie(c, OAUTH_STATE_COOKIE), requestHost(c.req.url))
+  const rawState = c.req.query('state')
+  const state = verifyState(rawState, getCookie(c, OAUTH_STATE_COOKIE), requestHost(c.req.url))
   const verifier = getCookie(c, OAUTH_VERIFIER_COOKIE)
   // One challenge, one use — clear it whether or not the exchange succeeds.
   clearLoginChallengeCookies(c)
+  // A sign-in started for one provider finishes only at that provider's callback.
+  if (state.provider !== provider.mark) throw new AppError('AuthenticationError', 'OAuth state is for another sign-in method')
+  const redirectUri = oauthRedirectUri(c, clientId, provider.callbackPath)
   if (state.purpose === 'link') {
     // person-identities D6: the signed-in person who started this flow links
-    // the Google account they just proved. Every outcome, including a failed
+    // the account they just proved. Every outcome, including a failed
     // exchange, travels back to the methods page as a code it can explain.
-    const back = (result: string) => c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${encodeURIComponent(result)}`)
+    const back = (result: string) =>
+      c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${encodeURIComponent(result)}${provider.mark ? `&via=${provider.mark}` : ''}`)
     try {
-      const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
+      const verified = await provider.exchange(c, method, redirectUri, verifier, rawState!)
+      const current = await currentMethod(provider, verified)
       const me = await resolveToken(authCredential(c))
       if (me.row_id !== state.uid) return back('wrong_session')
       assertFreshForLinking(me)
-      if (!google.self_link) return back('not_allowed')
-      await linkVerifiedToSelf(google, me.row_id, verified)
+      if (!current.self_link) return back('not_allowed')
+      await linkVerifiedToSelf(current, me.row_id, verified)
       return back('linked')
     } catch (err) {
       if (!(err instanceof AppError)) return back('failed')
       if (err.type === 'ConflictError') return back(err.message.includes('reserved') ? 'reserved' : 'taken')
       if (err.type === 'PermissionError') return back(err.message === LINK_DOMAIN_NOT_ALLOWED ? 'domain_not_allowed' : 'not_allowed')
-      return back(err.message.startsWith('Sign in again') || err.message.includes('session') ? 'sign_in_again' : 'google_failed')
+      return back(err.message.startsWith('Sign in again') || err.message.includes('session') ? 'sign_in_again' : `${provider.kind}_failed`)
     }
   }
-  const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
-  const issued = await completeSignIn(google, verified, null, { ipAddress: clientAddress(c) })
+  const verified = await provider.exchange(c, method, redirectUri, verifier, rawState!)
+  const issued = await completeSignIn(await currentMethod(provider, verified), verified, null, { ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid
@@ -618,19 +742,70 @@ app.post('/deliver/app', async (c) => {
   return c.json(await deliverApp(await c.req.json().catch(() => null)))
 })
 
+/** #1222: an app the person being viewed can't open. Nothing is asked in their name. */
+function viewingNoAccessPage(name: string): string {
+  const who = name.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`)
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not open to ${who}</title></head>
+    <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
+    <h1>${who} can't open this application</h1><p>You are viewing as ${who}, for viewing only. They have no access to it, so there is nothing of theirs to see here.</p>
+    <form method="post" action="/api/view_as/exit"><button type="submit" style="font:inherit;padding:.5rem 1rem;border-radius:6px;border:0;background:#1c2126;color:white;cursor:pointer">Exit View as</button></form></main></body></html>`
+}
+
+// #1207: how an agent signs in from the agent address alone (agent-auth-routes.ts).
+app.route('/', agentAuthPublicRoutes)
+
 // ---- API-004: everything below requires a valid session --------------------
 
 app.use('/api/*', async (c, next) => {
   const user = await resolveToken(authCredential(c))
+  // #1222: a session viewing as someone reads as that person. Anything else
+  // (its own View as controls, any change) runs as the tester themself, never
+  // as the person viewed; the pages offer no change while viewing.
+  await sweepExpiredViewAs()
+  const viewing = await activeViewAs(user)
+  const route = viewing ? viewAsRoute(c.req.method, c.req.path, user.row_id) : 'tester'
+  if (viewing && route === 'drop') return c.body(null, 204)
+  if (viewing && route === 'read') {
+    c.set('user', viewing.user)
+    c.set('viewingAs', viewing.as)
+    await runInSession(user.sign_in, () => runViewingAs(viewing.as, () => next()))
+    // A slow read admitted while viewing is released only if that View as still holds,
+    // so an Exit or Switch made meanwhile never lets the person's data through after it.
+    if (!(await viewAsStillHolds(user, viewing.as.person)))
+      c.res = c.json({ error: { type: 'ConflictError', message: VIEW_AS_ENDED } }, 409)
+    return
+  }
   c.set('user', user)
   // #473: a test-mode or preview session cannot add a lasting way in, even
   // through the generic save path (document.ts).
   await runInSession(user.sign_in, () => next())
 })
 
+app.use('/api/*', rateLimit)
+
+// #1222: View as — the tester's own state, people search, start or switch, and exit.
+app.get('/api/view_as', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await viewAsState(c.get('user')))
+})
+app.get('/api/view_as/people', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await searchViewAs(c.get('user'), c.req.query('q')))
+})
+app.post('/api/view_as/start', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { person?: unknown } | null
+  await startViewAs(c.get('user'), body?.person)
+  return c.json(await viewAsState(c.get('user')))
+})
+app.post('/api/view_as/exit', async (c) => {
+  await endViewAs(c.get('user'))
+  // A plain form (the page shown when the person viewed can't open an app) goes home.
+  if (c.req.header('content-type')?.includes('application/x-www-form-urlencoded')) return c.redirect('/', 303)
+  return c.json(await viewAsState(c.get('user')))
+})
+
 // API-007: throttle authenticated requests per user (runs after auth so it can
 // key by the resolved user and read their budget).
-app.use('/api/*', rateLimit)
 
 /** A request that reaches only the copy actions, whichever way its path is
  *  encoded (a colon may arrive as %3A): any other suffix or verb takes the lock. */
@@ -719,17 +894,27 @@ app.get('*', async (c, next) => {
     }
     let resource
     let user: SessionUser | undefined
+    let viewing: Awaited<ReturnType<typeof activeViewAs>> = null
     try {
-      user = await resolveToken(authCredential(c))
-      resource = await appAsset(name, asset, user.row_id, c.req.header('accept')?.includes('text/html'))
+      const signedIn = await resolveToken(authCredential(c))
+      // #1222: while viewing as someone, an app's page opens as it does for them.
+      viewing = await activeViewAs(signedIn)
+      user = viewing?.user ?? signedIn
+      const open = (as: string) => appAsset(name, asset, as, c.req.header('accept')?.includes('text/html'))
+      const as = viewing
+      resource = as ? await runViewingAs(as.as, () => open(as.user.row_id)) : await open(signedIn.row_id)
     } catch (error) {
       if (!(error instanceof AppError)) throw error
+      // #1222: View as ended on this very request; the same address now opens as the tester.
+      if (error.message === VIEW_AS_ENDED) return c.redirect(`${url.pathname}${url.search}`, 302)
       const navigation = !asset || c.req.header('accept')?.includes('text/html')
       if (navigation && error.type === 'AuthenticationError')
         return c.redirect(
           `/featherbase/login?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`,
         )
       if (!navigation || path.extname(asset)) throw error
+      // #1222: while viewing, nothing is asked in the viewed person's name; just say they can't open it.
+      if (viewing) return c.html(viewingNoAccessPage(viewing.as.name), 403)
       // #955: a served app this person cannot open: opening it is the request.
       const asked = user && (await requestAccess(user.row_id, name))
       if (asked && asked.state !== 'open')
@@ -783,6 +968,8 @@ app.get('/api/whoami', async (c) => {
   const access = manage
     ? { readable: [] as string[], creatable: [] as string[], ownGrant: true, admin: true }
     : await tableAccessFor(user.row_id, roles)
+  // #1222: while viewing as someone, the shell offers no new rows.
+  if (c.get('viewingAs')) access.creatable = []
   // #905: archived Tables the person can read, so the shell lists them apart
   // and keeps them out of the pickers.
   const archived = (await sql`select name from table_def where archived_at is not null order by name`)
@@ -849,6 +1036,10 @@ app.get('/api/saved_views', async (c) => {
   if (!table) throw new AppError('ValidationError', 'Expected ?table=<Table name>')
   return c.json({ views: await listSavedViews(who(c), table) })
 })
+
+// #1229: the person's own views on every Table and the shared ones they
+// starred, on Tables they can read: the Admin sidebar's "Saved views".
+app.get('/api/saved_views/sidebar', async (c) => c.json({ views: await listSidebarViews(who(c)) }))
 
 app.post('/api/saved_views', async (c) => {
   const view = await createSavedView(who(c), await c.req.json().catch(() => null))
@@ -1162,6 +1353,12 @@ app.get('/api/people/waiting_for_access/count', async (c) => {
 // no-access page, Dash's) says so here; opening it is the request.
 app.post('/api/access_request', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { app?: unknown }
+  // #1222: while viewing as someone, only look; the page then shows its plain no-access message.
+  if (c.get('viewingAs')) {
+    const seen = typeof body.app === 'string' ? await peekAccess(who(c), body.app) : null
+    if (!seen) throw new AppError('PermissionError', 'They have no access to this, and nothing is asked while viewing as them')
+    return c.json(seen)
+  }
   const answer = typeof body.app === 'string' ? await requestAccess(who(c), body.app) : null
   if (!answer) throw new AppError('ValidationError', 'No such app to ask for')
   return c.json(answer)
@@ -1186,6 +1383,8 @@ app.post('/api/access_request/:id/:decision', async (c) => {
 })
 
 app.route('/', peopleRoutes)
+// #1207: the browser's part of an agent's sign-in, and Connected apps.
+app.route('/', agentAuthRoutes)
 
 app.route('/', tableDefRoutes)
 
@@ -1310,6 +1509,9 @@ app.get('/api/signed_url', async (c) => {
     if (row.ref_table && row.ref_name)
       await getDoc(row.ref_table as string, row.ref_name as string, user)
     else await getDoc('File', row.row_id as string, user)
+    // #1222: a signed link would outlive the View as that allowed it. While viewing, the plain
+    // address: the browser's session opens it, checked as the person viewed, file by file.
+    if (c.get('viewingAs')) return c.json({ signed_url: fileUrl })
     return c.json({ signed_url: signFileUrl(fileUrl) })
   }
   return c.json({ signed_url: fileUrl })
@@ -1691,9 +1893,56 @@ function listArgsFromQuery(q: Record<string, string>) {
 }
 
 // UI-014: awesomebar global search across readable Tables.
+// #1265: the search answers group by group, one JSON line each (groups, then
+// each Table as it finishes, then done), so the bar can show what is still
+// coming. A failure after the first line ends the stream with an error line.
 app.get('/api/search', async (c) => {
   const q = c.req.query('q') ?? ''
-  return c.json({ results: await globalSearch(q, who(c)) })
+  const headers = { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' }
+  const abort = new AbortController()
+  c.req.raw.signal?.addEventListener('abort', () => abort.abort())
+  const events = streamSearch(q, who(c), abort.signal)
+  // While viewing as someone the answer is gathered whole, inside the request,
+  // so the View as check made as it ends still decides whether it is sent.
+  if (c.get('viewingAs')) {
+    const lines: string[] = []
+    for await (const event of events) lines.push(JSON.stringify(event))
+    return c.body(lines.join('\n') + '\n', 200, headers)
+  }
+  // The first line is read here, so a refusal before anything is sent is an ordinary error.
+  const first = await events.next()
+  const encoder = new TextEncoder()
+  let closed = false
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (value: unknown) => { if (!closed) controller.enqueue(encoder.encode(JSON.stringify(value) + '\n')) }
+      // The rest outlives this handler, so it holds its own lifecycle lock:
+      // an app upgrade waits for it, as it waits for any read.
+      void appOperationApart(async () => {
+        try {
+          if (!first.done) send(first.value)
+          for await (const event of events) send(event)
+        } catch (error) {
+          console.error(JSON.stringify({ level: 'error', event: 'search_stream_error', message: String((error as Error)?.message ?? error) }))
+          send({ error: 'The search stopped before it finished' })
+        } finally {
+          if (!closed) { closed = true; controller.close() }
+        }
+      })
+    },
+    async cancel() {
+      closed = true
+      abort.abort()
+      await events.return(undefined)
+    },
+  })
+  return c.body(body, 200, headers)
+})
+
+// admin-lists 11: how many rows each Table holds, for All Tables.
+app.get('/api/table_counts', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json({ counts: await tableRowCounts(who(c)) })
 })
 
 app.get('/api/command_destinations', async (c) => {

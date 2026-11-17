@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
+import { REPORT_FEEDBACK, reportFeedbackDetails } from './report-feedback'
 
 // Structural public runtime API: this package has no platform dependency.
 type Row = Record<string, unknown>
@@ -15,7 +16,12 @@ interface ReadContext {
   userName: string
   /** #918: the caller's own roles. */
   roles?: readonly string[]
-  people: { names(ids: string[]): Promise<Record<string, string | null>>; enabled(ids: string[]): Promise<string[]> }
+  people: {
+    names(ids: string[]): Promise<Record<string, string | null>>
+    /** #1224: names of people who acted on Tickets' own rows, whatever the caller may read. */
+    actorNames(ids: string[]): Promise<Record<string, string | null>>
+    enabled(ids: string[]): Promise<string[]>
+  }
   payload: unknown
   settings: Readonly<Record<string, string>>
   reject(message: string, fields?: Record<string, string>): never
@@ -65,7 +71,7 @@ function validate(table: string, ctx: Validation) {
   // #963: change_raiser checks its caller is a System Manager before it writes.
   if (ctx.old && ctx.row.owner !== ctx.old.owner && !(table === 'ticket' && allowed?.operation === 'change_raiser')) ctx.reject('The requester is immutable')
 }
-const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill']
+const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill', REPORT_FEEDBACK]
 // Keys a configured field may never take: they carry the request or its gates.
 const protectedKeys = ['original', 'verification', 'approval', 'fulfillment', 'actor', 'by', 'at', 'owner', 'ticket_state', 'root_cause', 'title', 'kind', 'state']
 const fieldTypes = ['text', 'long text', 'choice', 'date', 'person', 'link']
@@ -345,7 +351,20 @@ function workflow(request: Row, events: Row[]) {
   const approval = decoded.filter(e => e.operation === 'decide' && e.approval_key === request.approval_key).at(-1)
   return { verification, approval }
 }
-// Names of the people who acted in Tickets, as each of them last appeared.
+// #1256: what a viewer is shown, as Person holds it now: anyone who acted on
+// Tickets' rows (whatever the viewer may read), then anyone the viewer may read
+// or the settings name. An id neither names is absent.
+async function liveNames(ctx: ReadContext, ids: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  const add = (named: Record<string, string | null>) => { for (const [id, name] of Object.entries(named)) if (name) out[id] = name }
+  for (let i = 0; i < ids.length; i += 500) add(await ctx.people.actorNames(ids.slice(i, i + 500)))
+  const rest = ids.filter(id => !out[id] && /^(psn|sa|svc)_/.test(id))
+  for (let i = 0; i < rest.length; i += 500) add(await ctx.people.names(rest.slice(i, i + 500)))
+  return out
+}
+// The caller's own stored name copy, as they appear now. Only their own: names
+// are read live (above), so a copy is shown only where Person can't be read,
+// and a copy of someone who never acts again keeps their last name (#1256).
 async function remember(ctx: Context) {
   const [row] = await ctx.documents.list('tickets.member', { fields: ['row_id', 'full_name', 'updated_at'], filters: [['row_id', '=', ctx.user]], limit_page_length: 1 })
   if (!row) await ctx.documents.create('tickets.member', { row_id: ctx.user, full_name: ctx.userName })
@@ -372,11 +391,12 @@ async function names(ctx: ReadContext, ...values: unknown[]): Promise<Record<str
   const ids = new Set<string>()
   for (const value of values) idsIn(value, ids)
   if (!ids.size) return {}
-  const rows = await all(ctx, 'tickets.member', ['row_id', 'full_name'], [['row_id', 'in', [...ids]]])
-  const known: Record<string, string> = Object.fromEntries(rows.map(row => [String(row.row_id), String(row.full_name)]))
-  // Anyone else (a "raised for" person who never used Tickets), as the viewer may see them.
-  const rest = [...ids].filter(id => !known[id] && /^(psn|sa|svc)_/.test(id))
-  if (rest.length) for (const [id, name] of Object.entries(await ctx.people.names(rest))) if (name) known[id] = name
+  // #1256: Person first, live; the stored copy only for whoever it can't name
+  // (a "raised for" person who never acted, seen by someone who can't read Person).
+  const known = await liveNames(ctx, [...ids])
+  const rest = [...ids].filter(id => !known[id])
+  if (rest.length) for (const row of await all(ctx, 'tickets.member', ['row_id', 'full_name'], [['row_id', 'in', rest]]))
+    known[String(row.row_id)] = String(row.full_name)
   return known
 }
 async function history(ctx: ReadContext, ticket: Row) {
@@ -518,7 +538,8 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const types = await configuredTypes(ctx)
     const category = kind(ctx, p.kind ?? 'generic', types)
     const type = types.get(category)
-    const structured = type ? await typedDetails(ctx, type, object(ctx, p.details ?? {})) : details(ctx, p.details ?? {})
+    const structured = type ? await typedDetails(ctx, type, object(ctx, p.details ?? {}))
+      : category === REPORT_FEEDBACK ? reportFeedbackDetails(p.details, ctx.reject) : details(ctx, p.details ?? {})
     const assignee = type ? await routed(ctx, type, structured) : null
     const ticket = await ctx.documents.create('tickets.ticket', { title, owner: raiser, kind: category,
       ticket_state: type ? type.states[0] : category === 'access' ? 'Needs verification' : 'New', ...(assignee ? { assigned_to: assignee } : {}) })
@@ -555,6 +576,8 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     }
     const intake = type ? Object.fromEntries(Object.entries(merged).filter(([key]) => !actionFieldNames(type).has(key))) : merged
     const next = type ? (p.details === undefined && category === ticket.kind ? structured : { ...await typedDetails(ctx, type, intake), ...recorded })
+      // #1240: feedback on a report keeps its checked shape whoever edits it, and whatever it was before.
+      : category === REPORT_FEEDBACK ? (p.details === undefined && category === ticket.kind ? structured : reportFeedbackDetails(merged, ctx.reject))
       : p.details === undefined ? structured : { ...structured, ...details(ctx, p.details) }
     // Only a configured type moves between states directly, and only among its own.
     if (p.state !== undefined && (!type || !type.states.includes(String(p.state)))) ctx.reject('Choose one of this type\'s states')
@@ -861,6 +884,25 @@ export const reads = {
     }
     return { answer: { tickets, count: tickets.length, hasMore: false,
       names: await names(ctx, tickets.map(ticket => ({ owner: ticket.owner, assigned_to: ticket.assigned_to }))) } }
+  },
+  // #1240: the caller's own open feedback on one report (Dash's "Report an issue"), newest first.
+  async about_report(ctx: ReadContext) {
+    const p = input(ctx, ['report_key'])
+    const key = text(ctx, p.report_key, 'Report key')
+    const types = await configuredTypes(ctx)
+    const mine = (await all(ctx, 'tickets.ticket', ticketFields, [['owner', '=', ctx.user], ['kind', '=', REPORT_FEEDBACK]]))
+      .filter(ticket => !isDone(ticket, types))
+    const requests = new Map<string, Row>()
+    for (let i = 0; i < mine.length; i += 500) {
+      const ids = mine.slice(i, i + 500).map(ticket => String(ticket.row_id))
+      for (const request of await ctx.documents.list(PRIVATE.request, { fields: ['row_id', 'details_json'], filters: [['row_id', 'in', ids]], limit_page_length: 500 }))
+        requests.set(String(request.row_id), parse(request.details_json))
+    }
+    const tickets = mine.filter(ticket => requests.get(String(ticket.row_id))?.report_key === key)
+      .sort((a, b) => String(b.row_id).localeCompare(String(a.row_id)))
+      .map(ticket => { const d = requests.get(String(ticket.row_id))!; return { row_id: ticket.row_id, title: ticket.title, ticket_state: ticket.ticket_state,
+        updated_at: ticket.updated_at, problem: d.problem ?? null, about: d.about ?? null } })
+    return { answer: { tickets, count: tickets.length } }
   },
   // #1196: how many rows a rule being written would match, as the caller.
   async rule_preview(ctx: ReadContext) {

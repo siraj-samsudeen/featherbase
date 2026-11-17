@@ -77,6 +77,21 @@ Then the missing Table is named as an operational fault, with the warning that n
 And once the Table and its declared columns exist, the check passes
 ```
 
+### Requirement: A scope provider's optional Table may be missing
+
+A Table the scope provider lists as optional, which it checks is installed
+before it reads it, SHALL be named while it is missing without failing the
+check.
+
+#### Scenario: An instance lacks a Table the scope provider lists as optional
+
+```gherkin
+Given the user has an instance whose scope provider lists Buyer Section as optional, and the instance does not have it
+When the user checks its health
+Then the check passes and says Buyer Section is not installed yet
+And a missing Table that is not optional still fails the check
+```
+
 ### Requirement: Health banner
 
 While an operational fault remains, every System Manager SHALL see a persistent

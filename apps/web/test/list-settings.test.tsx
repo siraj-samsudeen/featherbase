@@ -46,8 +46,9 @@ async function seedList(admin: Admin) {
 
 /** Mount the list and wait for its rows — settings load on mount, so every
  *  assertion below has to come after this resolves. */
-async function openList(admin: Admin) {
-  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`, admin)
+async function openList(admin: Admin, filters?: unknown[]) {
+  const named = filters ? `?filters=${encodeURIComponent(JSON.stringify(filters))}` : ''
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}${named}`, admin)
   await screen.findByTestId('list-view')
   await waitFor(() => expect(screen.getByTestId('col-title')).toBeInTheDocument())
   await waitFor(() =>
@@ -99,7 +100,9 @@ test('a click before saved settings arrive cannot overwrite the saved configurat
     return response
   })
   try {
-    await openList(admin)
+    // #1228: a bare open waits for the saved settings (they carry the remembered filters), so the
+    // race lives where the list opens at once: an address that names its filters.
+    await openList(admin, [['title', '!=', 'No such title']])
     screen.getByTestId('col-rank').click()
     await waitFor(() => expect(firstRowText()).toContain('bravo'))
     release()

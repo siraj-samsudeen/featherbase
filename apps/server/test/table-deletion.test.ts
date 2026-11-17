@@ -260,7 +260,8 @@ describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
       ['a person by their full name', FULL, 'Priya Raman'],
       ['a person with no name by their username', USERNAME, '@priya'],
       ['a person with no name or username by their email', EMAIL, 'priya@x.test'],
-      ['a service account by its label', SERVICE, 'Nightly loader'],
+      // #1224: a service account reads as automation, as everywhere else.
+      ['a service account as automation', SERVICE, 'Automation (Nightly loader)'],
       ['an id that names nobody as it is', NOBODY, NOBODY],
     ])('DEL-R9: names %s, on the day in India', async ([, user, shown], { admin }) => {
       await sql`insert into person (row_id, full_name) values (${FULL}, 'Priya Raman')`

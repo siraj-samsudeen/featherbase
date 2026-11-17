@@ -74,7 +74,8 @@ export function ResumeStrip() {
       <p className="mb-1.5 text-xs font-semibold text-ink-subtle">
         Continue where you left off
       </p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* #1253: cards fill the page's width, however many there are. */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
         {tiles.map((t) => {
           // Rendered from the entry at display time: an old slug-labelled
           // page reads as its catalog title, a row as its title over its Table.

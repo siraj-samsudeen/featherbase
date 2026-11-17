@@ -199,6 +199,8 @@ export const tableDefSchema = z.object({
   // those dimensions. Both are kept when an update leaves them out.
   scope_on: z.array(z.string()).nullish(),
   scope_required: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  // #1259: a queue's lists open on cards (List And Record). Kept when an update leaves it out.
+  queue: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
   // updateTable never touches these. A bound Table gets no DDL and no RLS
   // (BV1): its rows live on the source.
@@ -566,6 +568,7 @@ export async function updateTable(
   if (def.reading_presentation === undefined) def.reading_presentation = existing.reading_presentation
   if (def.scope_on === undefined) def.scope_on = existing.scope_on
   if (def.scope_required === undefined) def.scope_required = existing.scope_required
+  if (def.queue === undefined) def.queue = existing.queue
   validateDef(def)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
@@ -650,6 +653,7 @@ export async function updateTable(
       // Only once the definition has them: migrations before 0154 update Tables too.
       ...(def.scope_on !== undefined ? { scope_on: def.scope_on?.length ? def.scope_on : null } : {}),
       ...(def.scope_required !== undefined ? { scope_required: def.scope_required } : {}),
+      ...(def.queue !== undefined ? { queue: def.queue } : {}),
       ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
@@ -1039,6 +1043,7 @@ export async function createTable(
     if (def.decides_scope) tableRow.decides_scope = true
     if (def.scope_on?.length) tableRow.scope_on = def.scope_on
     if (def.scope_required) tableRow.scope_required = true
+    if (def.queue) tableRow.queue = true
     if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]

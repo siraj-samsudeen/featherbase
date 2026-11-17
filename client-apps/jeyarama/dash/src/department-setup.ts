@@ -5,7 +5,7 @@
 // still checks who may decide.
 import {
   APPLY_NOW, BASE_TABLES, JOB_FIELDS, MASTER_DATA_TEAM, PLACEMENT_FIELDS, SECTION_FIELDS, T,
-  all, approversOf, byId, employeeNames, freeId, inForce, isActive, istDay, list, myEmployees, myJobs, unique, waitingName,
+  all, approversOf, asDecider, byId, employeeNames, freeId, inForce, isActive, istDay, list, myEmployees, myJobs, pick, reviewersByPerson, reviewersOf, unique, waitingForMe, waitingName,
   type ActionContext, type ChangeProposal, type ReadContext, type Row, type ApproverRequest,
 } from './my-sections.ts'
 import { istToday } from './report.ts'
@@ -98,8 +98,12 @@ export async function storeOf(ctx: Ctx, site: string, today: string) {
 
 /** Who reviews a job's set-up, by name: their manager while they can sign in, else the master data team. */
 async function reviewerOf(ctx: Ctx, job: Row): Promise<string> {
-  const route = await ctx.changeProposals.routeFor(ctx.user, (await approversOf(ctx, job)).approvers)
-  return waitingName(ctx, route?.people ?? [])
+  return (await reviewingNow(ctx, job)).name
+}
+/** The same, with the people it names, for who they are (#1219). */
+async function reviewingNow(ctx: Ctx, job: Row): Promise<{ name: string; people: string[] }> {
+  const people = (await ctx.changeProposals.routeFor(ctx.user, (await approversOf(ctx, job)).approvers))?.people ?? []
+  return { name: await waitingName(ctx, people), people }
 }
 /** Whether the reviewer is the master data team rather than one person, which the page words differently. */
 const isTeam = (reviewer: string) => reviewer === MASTER_DATA_TEAM
@@ -151,9 +155,12 @@ export const departmentReads = {
     if (!job) return { state: 'no_job' as const }
     const site = exact(job.site)
     const shop = await storeOf(ctx, site, today)
-    const reviewer = await reviewerOf(ctx, job)
+    const reviewing = await reviewingNow(ctx, job)
+    const reviewer = reviewing.name
+    // #1219: the reviewer with who they are: many staff share a name.
+    const reviewers = await reviewersOf(ctx, reviewing.people)
     const jobView = { id: exact(job.row_id), store: shop.store }
-    if (!shop.sections.length) return { state: 'no_sections' as const, job: jobView, reviewer, reviewer_is_team: isTeam(reviewer) }
+    if (!shop.sections.length) return { state: 'no_sections' as const, job: jobView, reviewer, reviewer_is_team: isTeam(reviewer), reviewers }
 
     const me = new Set(employees.map(e => exact(e.row_id)))
     const { jobs, leaders } = await teamLeadersOf(ctx, site, today)
@@ -206,7 +213,7 @@ export const departmentReads = {
 
     // #1191: whether a set-up applies at once here, so the form says what will happen.
     const applies_at_once = (await ctx.changeProposals.modeOf(DEPARTMENT_TYPE)) === APPLY_NOW
-    return { state: 'ok' as const, name: text(employees[0].name), job: jobView, reviewer, reviewer_is_team: isTeam(reviewer), applies_at_once, floors, start_floors, sections, names,
+    return { state: 'ok' as const, name: text(employees[0].name), job: jobView, reviewer, reviewer_is_team: isTeam(reviewer), reviewers, applies_at_once, floors, start_floors, sections, names,
       current: await currentOf(ctx, job, shop, me) }
   },
 
@@ -219,22 +226,17 @@ export const departmentReads = {
   async department_approvals(ctx: ReadContext) {
     if (!isSetUp(ctx)) return []
     const today = istToday()
-    const heads: ChangeProposal[] = []
-    for (let start = 0; ; start += 500) {
-      const page = await ctx.changeProposals.list({ states: OPEN, limit: 500, start })
-      // #1205: a Department Manager never reviews a pre-fill of their own department.
-      heads.push(...page.filter(p => about(p).kind === 'department' && p.maker !== ctx.user && about(p).for_person !== ctx.user))
-      if (page.length < 500) break
-    }
-    const jobs = heads.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(heads.map(p => about(p).job_assignment))]])) : new Map<string, Row>()
-    const mine: ChangeProposal[] = []
-    for (const head of heads)
-      if (await ctx.changeProposals.mayDecide(head.maker, (await approversOf(ctx, jobs.get(about(head).job_assignment))).approvers)) mine.push(head)
+    // #1205: a Department Manager never reviews a pre-fill of their own department. #1254: who decides is read in a few queries, not per set-up.
+    const mine = await waitingForMe(ctx, true)
+    const leadersAt = new Map<string, Map<string, string[]>>()
+    for (const site of unique(mine.map(head => about(head).site))) leadersAt.set(site, (await teamLeadersOf(ctx, site, today)).leaders)
+    const named = await reviewersByPerson(ctx, mine.flatMap(head => head.others))
     const answers = []
     for (const head of mine.sort((a, b) => a.created_at.localeCompare(b.created_at))) {
       const a = about(head)
-      const { leaders } = await teamLeadersOf(ctx, a.site, today)
+      const leaders = leadersAt.get(a.site)!
       answers.push({ bundle: a.bundle, who: a.maker_name, job: JOB, store: a.store, name: a.name, asked_on: istDay(head.created_at), applied: head.state === APPLIED_UNREVIEWED,
+        also_with: pick(named, head.others),
         prefilled: a.prefilled === true, flagged: a.sections.filter(id => (a.flagged ?? []).includes(id)).map(id => a.section_names[a.sections.indexOf(id)]),
         sections: a.sections.map((id, i) => ({ id, name: a.section_names[i], team_leaders: leaders.get(id) ?? [] })) })
     }
@@ -253,19 +255,22 @@ async function currentOf(ctx: Ctx, job: Row, shop: Awaited<ReturnType<typeof sto
     const a = about(prefill)
     const named = a.sections.map((id, i) => ({ id, name: a.section_names[i] }))
     return { state: 'set_up' as const, name: text(own.name), sections: [...a.section_names].sort((x, y) => x.localeCompare(y)),
-      reviewing: { bundle: a.bundle, waiting_for: await waitingName(ctx, prefill.route.people.filter(p => p !== ctx.user)) },
+      section_refs: [...named].sort((x, y) => x.name.localeCompare(y.name)),
+      reviewing: { bundle: a.bundle, waiting_for: await waitingName(ctx, prefill.route.people.filter(p => p !== ctx.user)), reviewers: await reviewersOf(ctx, prefill.route.people.filter(p => p !== ctx.user)) },
       prefilled: { bundle: a.bundle, sections: named, flagged: named.filter(s => (a.flagged ?? []).includes(s.id)).map(s => s.name) } }
   }
   if (own) {
     const ids = new Set(shop.links.filter(l => exact(l.department) === exact(own.row_id)).map(l => exact(l.section)))
     // #1191: applied at once, the report is open while the reviewer has yet to look.
-    const reviewing = latest?.state === APPLIED_UNREVIEWED ? { bundle: about(latest).bundle, waiting_for: await waitingName(ctx, latest.route.people) } : null
-    return { state: 'set_up' as const, name: text(own.name), sections: shop.sections.filter(s => ids.has(exact(s.row_id))).map(s => text(s.name)).sort((a, b) => a.localeCompare(b)), reviewing }
+    const reviewing = latest?.state === APPLIED_UNREVIEWED ? { bundle: about(latest).bundle, waiting_for: await waitingName(ctx, latest.route.people), reviewers: await reviewersOf(ctx, latest.route.people) } : null
+    const held = shop.sections.filter(s => ids.has(exact(s.row_id))).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((a, b) => a.name.localeCompare(b.name))
+    // #1223: ids beside the names, so the page links each section.
+    return { state: 'set_up' as const, name: text(own.name), sections: held.map(s => s.name), section_refs: held, reviewing }
   }
   if (!latest) return null
   const a = about(latest)
   if (latest.state === 'Pending')
-    return { state: 'waiting' as const, bundle: a.bundle, name: a.name, sections: a.section_names, waiting_for: await waitingName(ctx, latest.route.people), asked_on: istDay(latest.created_at) }
+    return { state: 'waiting' as const, bundle: a.bundle, name: a.name, sections: a.section_names, waiting_for: await waitingName(ctx, latest.route.people), reviewers: await reviewersOf(ctx, latest.route.people), asked_on: istDay(latest.created_at) }
   // #1191: a reviewer's undo is a turn-down, with their reason; the maker's own undo is a take-back.
   const undoneByReviewer = latest.state === 'Undone' && latest.decided_by !== latest.maker && latest.decided_by !== ctx.user
   if (latest.state === 'Rejected' || latest.state === 'Needs fresh review' || undoneByReviewer)
@@ -349,7 +354,7 @@ export const departmentActions = {
     const shared = { bundle: `${exact(job!.row_id)}:${globalThis.crypto.randomUUID()}`, job_assignment: exact(job!.row_id), store: shop.store,
       name, maker_name: text(employee.name), manager_name: manager }
     const { head } = await proposeDepartment(ctx, { site, sections: ids.map((id, i) => ({ id, name: names[i] })), approvers, shared, manager: exact(employee.row_id), today })
-    return { state: head.state === APPLIED_UNREVIEWED ? 'set_up' as const : 'waiting' as const, bundle: shared.bundle, name, sections: names, waiting_for: await waitingName(ctx, head.route.people), asked_on: today }
+    return { state: head.state === APPLIED_UNREVIEWED ? 'set_up' as const : 'waiting' as const, bundle: shared.bundle, name, sections: names, waiting_for: await waitingName(ctx, head.route.people), reviewers: await reviewersOf(ctx, head.route.people), asked_on: today }
   },
 
   /** Takes back the caller's own set-up while it waits. */
@@ -373,7 +378,7 @@ export const departmentActions = {
     const today = istToday()
     await ctx.changeProposals.serialize(`department:${a.site}`)
     const [job] = await list(ctx, T.job, JOB_FIELDS, [['row_id', '=', a.job_assignment]])
-    const { approvers } = await approversOf(ctx, job)
+    const approvers = asDecider(ctx, (await approversOf(ctx, job)).approvers)
     const links = parts.filter(p => p !== head)
     if (payload.decision === 'reject') {
       const reason = typeof payload.reason === 'string' ? payload.reason.trim() : ''

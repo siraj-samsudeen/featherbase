@@ -9,6 +9,7 @@
 import { configure, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableSlug } from 'shared'
+import { openListMenu } from './list-menus'
 import { test, expect, renderApp } from './pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
@@ -82,6 +83,8 @@ test("the list's split button offers the dependents; two siblings ticked open on
   const user = userEvent.setup()
   await seed(admin)
   const r = await renderApp(`/featherbase/admin/table/${tableSlug(VEHICLE)}`, admin)
+  // #1242: Explore sits in the list's View menu.
+  await openListMenu('View')
   await user.click(await screen.findByTestId('explore-split-toggle'))
   const panel = await screen.findByTestId('explore-split-panel')
   for (const dependent of [`${ACCIDENT} · vehicle`, `${SERVICE} · vehicle`])

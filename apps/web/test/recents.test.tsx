@@ -11,12 +11,15 @@ import {
   flushPendingEvents,
   frecency,
   frequentActions,
+  historyPaused,
   replaceServerEntries,
   recentActions,
   recentSearches,
   recordAction,
   renameTableInRecents,
+  sharedNames,
 } from '../src/lib/recents'
+import { setViewedPerson } from '../src/lib/viewing-as'
 
 // #101 Phase 1: the client-side recents buffer behind the command bar.
 
@@ -33,6 +36,31 @@ const row = (name: string) => ({
 })
 
 beforeEach(() => localStorage.clear())
+
+describe('while viewing as someone (#1222)', () => {
+  it('neither shows nor adds to the tester’s own history, and resumes after', () => {
+    // A user of its own: recordAction keeps an unconfirmed journal per user across tests.
+    const TESTER = 'View As Tester'
+    recordAction(TESTER, row('MINE'), NOW)
+    recordAction(TESTER, row('MINE'), NOW + 1)
+    setViewedPerson({ row_id: 'P-1', full_name: 'Asha Leader' })
+    expect(historyPaused()).toBe(true)
+    recordAction(TESTER, row('THEIRS'), NOW + 2)
+    expect(recentActions(TESTER, 10)).toEqual([])
+    expect(frequentActions(TESTER, 10, NOW + 3)).toEqual([])
+    expect(recentSearches(TESTER, '', 10)).toEqual([])
+    setViewedPerson(null)
+    expect(recentActions(TESTER, 10).map((e) => e.label)).toEqual(['MINE'])
+  })
+
+  it('a browser that refuses storage keeps nothing and hides nothing', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
+    expect(() => setViewedPerson({ row_id: 'P-1', full_name: null })).not.toThrow()
+    expect(historyPaused()).toBe(false)
+    get.mockRestore(); set.mockRestore()
+  })
+})
 
 describe('recordAction / recentActions', () => {
   it('clears cached destinations when the server history is empty', () => {
@@ -452,5 +480,28 @@ describe('uniqueByDisplay', () => {
     const now = { kind: 'page' as const, key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore', visits: [2] }
     expect(uniqueByDisplay([now, old]).map((e) => e.key)).toEqual(['page:explore'])
     expect(uniqueByDisplay([{ ...row('A'), visits: [1] }, { ...row('B'), visits: [1] }])).toHaveLength(2)
+  })
+})
+
+// #1253 (one-app-chrome, 17-Nov): two Recently Opened rows of one name.
+describe('a list remembered unfiltered and with an empty filter list', () => {
+  const list = (filters?: string) => actionForLocation('/featherbase/admin/table/job-assignment', filters === undefined ? {} : { filters }, 'Job Assignment')!
+  it('is one destination', () => {
+    expect(list('[]').key).toBe(list().key)
+    expect(list('[]').sub).toBeUndefined()
+  })
+  it('an older entry kept with an empty filter list is the same place as the unfiltered one', () => {
+    const old = { ...list(), key: 'list:Job Assignment?[]', visits: [NOW] }
+    expect(uniqueByDisplay([{ ...list(), visits: [NOW] }, old])).toHaveLength(1)
+  })
+})
+
+describe('sharedNames', () => {
+  it('names the lists two entries share, never a row', () => {
+    const filtered = actionForLocation('/featherbase/admin/table/job-assignment', { filters: '[["site","=","Head Office"]]' }, 'Job Assignment')!
+    const plain = actionForLocation('/featherbase/admin/table/job-assignment', {}, 'Job Assignment')!
+    const other = actionForLocation('/featherbase/admin/table/store', {}, 'Store')!
+    expect([...sharedNames([filtered, plain, other])]).toEqual(['Job Assignment'])
+    expect([...sharedNames([row('A'), { ...row('A'), key: 'row:Customer/A2' }])]).toEqual([])
   })
 })

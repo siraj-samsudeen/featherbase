@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto'
+import { LIST_LAYOUTS, NAVIGATION_SETTINGS, type ListLayout } from 'shared'
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
-import { assertPermission } from './permissions'
+import { assertPermission, hasPermission } from './permissions'
 
 // #101 Phase 6: saved views — a filter habit with a name. Owned by
 // created_by; `shared` opens a view to every user (read-only for them).
@@ -14,6 +15,8 @@ const createSchema = z.object({
   label: z.string().min(1).max(100),
   filters: z.array(z.tuple([z.string(), z.string(), z.unknown()])).min(1).max(10),
   shared: z.boolean().optional(),
+  // #1259: the list's view when it was saved; reopening the view shows it.
+  layout: z.enum(LIST_LAYOUTS).optional(),
 })
 
 interface SavedView {
@@ -24,6 +27,7 @@ interface SavedView {
   shared: boolean
   owner: string
   mine: boolean
+  layout?: ListLayout
 }
 
 function toView(row: Record<string, unknown>, user: string): SavedView {
@@ -35,6 +39,7 @@ function toView(row: Record<string, unknown>, user: string): SavedView {
     shared: Boolean(row.shared),
     owner: row.created_by as string,
     mine: row.created_by === user,
+    ...(row.layout ? { layout: row.layout as ListLayout } : {}),
   }
 }
 
@@ -43,17 +48,41 @@ export async function listSavedViews(user: string, table: string): Promise<Saved
   // permission on that Table the caller must not see them, own or shared.
   await assertPermission(user, table, 'read')
   const rows = await sql`
-    select row_id, ref_table, label, filters, shared, created_by
+    select row_id, ref_table, label, filters, shared, created_by, layout
     from saved_view
     where ref_table = ${table} and (created_by = ${user} or shared = true)
     order by created_by = ${user} desc, label`
   return rows.map((r) => toView(r, user))
 }
 
+/** More than a sidebar group can usefully show. */
+const SIDEBAR_LIMIT = 50
+
+/** #1229: the Admin sidebar's "Saved views": the person's own views on every
+ *  Table, and others' shared views they starred. Only views on Tables they can
+ *  read now; a starred view since deleted or made private simply drops out. */
+export async function listSidebarViews(user: string): Promise<SavedView[]> {
+  const [settings] = await sql`
+    select settings from user_settings where "user" = ${user} and table_name = ${NAVIGATION_SETTINGS}`
+  const raw = (settings?.settings as { starredViews?: unknown } | undefined)?.starredViews
+  const starred = Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string').slice(0, SIDEBAR_LIMIT) : []
+  const rows = await sql`
+    select row_id, ref_table, label, filters, shared, created_by, layout
+    from saved_view
+    where created_by = ${user} or (shared = true and row_id in ${sql(starred.length ? starred : [''])})
+    order by lower(label), ref_table
+    limit ${SIDEBAR_LIMIT * 2}`
+  // One permission check per Table, not per view.
+  const readable = new Map<string, boolean>()
+  for (const table of new Set(rows.map((r) => r.ref_table as string)))
+    readable.set(table, await hasPermission(user, table, 'read'))
+  return rows.filter((r) => readable.get(r.ref_table as string)).slice(0, SIDEBAR_LIMIT).map((r) => toView(r, user))
+}
+
 export async function createSavedView(user: string, body: unknown): Promise<SavedView> {
   const parsed = createSchema.safeParse(body)
   if (!parsed.success)
-    throw new AppError('ValidationError', 'Expected { table, label, filters: [[col, op, value], …] }')
+    throw new AppError('ValidationError', 'Expected { table, label, filters: [[col, op, value], …], layout?: table | split | panel }')
   // No publishing view chips for Tables the author cannot read — a shared
   // chip lands in other users' list screens.
   await assertPermission(user, parsed.data.table, 'read')
@@ -71,6 +100,7 @@ export async function createSavedView(user: string, body: unknown): Promise<Save
     // land as a double-encoded jsonb string.
     filters: sql.json(parsed.data.filters as never),
     shared: parsed.data.shared ?? false,
+    layout: parsed.data.layout ?? null,
   }
   await sql`insert into saved_view ${sql(row as never)}`
   return toView({ ...row, filters: parsed.data.filters }, user)

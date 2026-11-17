@@ -160,9 +160,9 @@ describe('agent-access', () => {
       id = (await agent.ok<Row>('create_row', { table: 'Customer', values: { customer_name: 'Dhan Agencies' } })).row_id
     })
     let entry!: Version
-    await step('the customer\'s history shows "nightly-sync" added it', async () => {
+    await step('the customer\'s history shows "Automation (nightly sync)" added it', async () => {
       const { created, versions } = await activity(admin, id)
-      expect(created).toMatchObject({ created_by: account, author_name: 'nightly-sync' })
+      expect(created).toMatchObject({ created_by: account, author_name: 'Automation (nightly sync)' })
       ;[entry] = versions
       expect(entry).toMatchObject({ created_by: account, data: { created: true } })
     })

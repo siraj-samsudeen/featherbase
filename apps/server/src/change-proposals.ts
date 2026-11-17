@@ -12,8 +12,8 @@ import { sql } from './db'
 import { getDoc, retireDoc, saveDoc, saveSystemRow } from './document'
 import { AppError } from './errors'
 import { getMeta, type TableMeta } from './meta'
-import { canSignInNow } from './identities'
-import { getRoles, permissionScope } from './permissions'
+import { canSignInNowAmong } from './identities'
+import { getRoles, getRolesMany, permissionScopeHolding } from './permissions'
 import { getList } from './query'
 import { holdBeforeRowLock } from './row-lock-order'
 import { tableRelation } from './table-engine'
@@ -143,6 +143,24 @@ export function baseTablesReader(app: string, declaration: BaseTablesDeclaration
         throw error
       }
     }),
+    // #1219: who changed a column, from the row's own history, not who last saved the row: a later save
+    // of another column leaves it. Only a column the app reads, so it learns nothing it couldn't see.
+    changedBy: (table: string, args: { rows: string[]; column: string }) => guard.run(async () => {
+      const columns = declaration?.read[table]
+      const meta = await reachable(app, table, !!columns, linked)
+      const rows = args?.rows
+      if (!Array.isArray(rows) || rows.length > 500 || rows.some(row => typeof row !== 'string' || !row)) reject('Name up to 500 rows by their ids')
+      if (typeof args.column !== 'string' || !columns!.includes(args.column)) reject(`The app has not declared column ${String(args?.column)} of Table ${table}`)
+      if (!rows.length) return {}
+      // Only rows list() would show: the same read, so row privacy and retirement hide history as they hide the row.
+      const visible = ((await getList(table, { fields: ['row_id'], filters: [['row_id', 'in', [...new Set(rows)]]], limit_page_length: 500 })).data as ActionRow[]).map(row => String(row.row_id))
+      if (!visible.length) return {}
+      const found = await sql`select distinct on (ref_name) ref_name, created_by, created_at from ${sql(await tableRelation('Version'))}
+        where ref_table = ${meta.name} and ref_name in ${sql(visible)}
+          and exists (select 1 from jsonb_array_elements(data->'changed') change where change->>0 = ${args.column})
+        order by ref_name, created_at desc, row_id desc`
+      return Object.fromEntries(found.map(row => [String(row.ref_name), { by: String(row.created_by), at: new Date(row.created_at as string).toISOString() }]))
+    }),
   })
   return { helper, close: guard.close }
 }
@@ -168,21 +186,103 @@ function checkedApprovers(value: unknown): ApproverRequest {
 
 /** A person who can act on a proposal at all: a working way in, and the app opens for them. */
 async function canAct(person: string, entryTable: string): Promise<boolean> {
-  return await canSignInNow(person) && await permissionScope(person, entryTable, 'read') !== 'none'
+  return (await actingAmong([person], entryTable)).has(person)
+}
+
+/** #1254: canAct for many people in a fixed few queries: their ways in and their roles are each read in one
+ *  round trip, and what the app opens to is worked out once per distinct set of roles. */
+async function actingAmong(people: string[], entryTable: string): Promise<Set<string>> {
+  const signIn = await canSignInNowAmong(people)
+  const roles = await getRolesMany([...signIn])
+  const opens = new Map<string, Promise<boolean>>()
+  const acting = new Set<string>()
+  for (const person of signIn) {
+    const held = roles.get(person)!
+    // Whom the app opens to depends on their roles alone, and on being the Administrator.
+    const key = JSON.stringify([person === 'Administrator', held])
+    if (!opens.has(key)) opens.set(key, permissionScopeHolding(person, held, entryTable, 'read').then(scope => scope !== 'none'))
+    if (await opens.get(key)) acting.add(person)
+  }
+  return acting
+}
+
+/** What resolving a route reads: fresh each time, or remembered across one read's many questions (#1254). */
+interface RouteFacts {
+  enabled: (people: string[]) => Promise<string[]>
+  acting: (people: string[]) => Promise<Set<string>>
+  /** Whether any of them can act: fresh, it stops at the first. */
+  anyActs: (people: string[]) => Promise<boolean>
+  holders: (roles: string[]) => Promise<string[]>
+  rolesOf: (person: string) => Promise<string[]>
+}
+const enabledPeople = async (people: string[]) => people.length
+  ? (await sql`select row_id from person where enabled and row_id in ${sql(people)} order by row_id`).map(row => String(row.row_id)) : []
+const roleHolders = async (roles: string[]) => (await sql`select distinct p.row_id from has_role r join person p on p.row_id = r.parent
+    where r.parenttype = 'Person' and r.role in ${sql(roles)} and p.enabled order by p.row_id`).map(row => String(row.row_id))
+const freshFacts = (entryTable: string): RouteFacts => ({
+  enabled: enabledPeople,
+  acting: people => actingAmong(people, entryTable),
+  anyActs: async people => {
+    for (const person of people) if (await canAct(person, entryTable)) return true
+    return false
+  },
+  holders: roleHolders,
+  rolesOf: getRoles,
+})
+
+/** #1254: one read asks about many proposals, and who can sign in, who may read the entry Table and who holds
+ *  a role cannot change within it, so each is read once per read, not once per proposal (5 s on production).
+ *  `warm` reads them for every proposal of the read at once. Only reads use this: a decision resolves its
+ *  route fresh, under its locks. */
+function rememberedFacts(entryTable: string): RouteFacts & { warm: (requests: { maker: string; request: ApproverRequest }[]) => Promise<void> } {
+  const enabled = new Map<string, boolean>()
+  const acts = new Map<string, boolean>()
+  const holders = new Map<string, Promise<string[]>>()
+  const roles = new Map<string, Promise<string[]>>()
+  const once = <T>(memo: Map<string, Promise<T>>, key: string, work: () => Promise<T>) => {
+    if (!memo.has(key)) memo.set(key, work())
+    return memo.get(key)!
+  }
+  const facts = {
+    async enabled(people: string[]) {
+      const unknown = [...new Set(people.filter(person => !enabled.has(person)))]
+      if (unknown.length) {
+        const found = new Set(await enabledPeople(unknown))
+        for (const person of unknown) enabled.set(person, found.has(person))
+      }
+      return [...new Set(people.filter(person => enabled.get(person)))].sort()
+    },
+    async acting(people: string[]) {
+      const unknown = [...new Set(people.filter(person => !acts.has(person)))]
+      if (unknown.length) {
+        const found = await actingAmong(unknown, entryTable)
+        for (const person of unknown) acts.set(person, found.has(person))
+      }
+      return new Set(people.filter(person => acts.get(person)))
+    },
+    anyActs: async (people: string[]) => (await facts.acting(people)).size > 0,
+    holders: (wanted: string[]) => once(holders, JSON.stringify([...wanted].sort()), () => roleHolders(wanted)),
+    rolesOf: (person: string) => once(roles, person, () => getRoles(person)),
+    async warm(requests: { maker: string; request: ApproverRequest }[]) {
+      const named = await facts.enabled(requests.flatMap(({ maker, request }) => request.people.filter(person => person !== maker)))
+      const fallback = await Promise.all([...new Set(requests.filter(({ request }) => request.fallbackRoles.length)
+        .map(({ request }) => JSON.stringify([...request.fallbackRoles].sort())))].map(key => facts.holders(JSON.parse(key) as string[])))
+      await facts.acting([...named, ...fallback.flat()])
+    },
+  }
+  return facts
 }
 
 /** Who may approve now: the named people who can act, else the holders of the roles. Never the maker. */
-async function resolveRoute(request: ApproverRequest, maker: string, entryTable: string): Promise<{ people: string[]; roles: string[] } | null> {
-  const named = request.people.filter(person => person !== maker)
-  const enabled = named.length ? (await sql`select row_id from person where enabled and row_id in ${sql(named)} order by row_id`).map(row => String(row.row_id)) : []
-  const people: string[] = []
+async function resolveRoute(request: ApproverRequest, maker: string, entryTable: string, facts: RouteFacts = freshFacts(entryTable)): Promise<{ people: string[]; roles: string[] } | null> {
+  const enabled = await facts.enabled(request.people.filter(person => person !== maker))
   // A proposal must never wait for someone who could not reach it.
-  for (const person of enabled) if (await canAct(person, entryTable)) people.push(person)
+  const acting = await facts.acting(enabled)
+  const people = enabled.filter(person => acting.has(person))
   if (people.length) return { people, roles: [] }
   if (!request.fallbackRoles.length) return null
-  const holders = await sql`select distinct p.row_id from has_role r join person p on p.row_id = r.parent
-    where r.parenttype = 'Person' and r.role in ${sql(request.fallbackRoles)} and p.enabled and p.row_id <> ${maker} order by p.row_id`
-  for (const holder of holders) if (await canAct(String(holder.row_id), entryTable)) return { people: [], roles: [...request.fallbackRoles] }
+  const holders = (await facts.holders(request.fallbackRoles)).filter(holder => holder !== maker)
+  if (await facts.anyActs(holders)) return { people: [], roles: [...request.fallbackRoles] }
   return null
 }
 
@@ -222,24 +322,37 @@ async function writeRoute(id: string, route: { people: string[]; roles: string[]
 }
 
 /** The decision rule, on its own: not the maker, and among those who may approve now. */
-async function mayDecide(user: string, maker: string, approvers: unknown, entryTable: string): Promise<boolean> {
+async function mayDecide(user: string, maker: string, approvers: unknown, entryTable: string, facts: RouteFacts = freshFacts(entryTable)): Promise<boolean> {
   if (maker === user) return false
-  const route = await resolveRoute(checkedApprovers(approvers), maker, entryTable)
-  return !!route && inRoute(user, route)
+  const route = await resolveRoute(checkedApprovers(approvers), maker, entryTable, facts)
+  return !!route && inRoute(user, route, facts)
 }
 
-async function inRoute(user: string, route: { people: string[]; roles: string[] }): Promise<boolean> {
+/** #1254: mayDecide for many at once, in order. A read's remembered facts read who can act for all of them
+ *  together first; each answer is then exactly mayDecide's. */
+async function mayDecideMany(user: string, asks: unknown, entryTable: string, facts: RouteFacts & { warm?: (requests: { maker: string; request: ApproverRequest }[]) => Promise<void> }): Promise<boolean[]> {
+  if (!Array.isArray(asks) || asks.some(ask => !ask || typeof (ask as { maker?: unknown }).maker !== 'string')) reject('Expected a list of { maker, approvers }')
+  const requests = (asks as { maker: string; approvers: unknown }[]).map(ask => ({ maker: ask.maker, request: checkedApprovers(ask.approvers) }))
+  await facts.warm?.(requests)
+  const answers: boolean[] = []
+  for (const { maker, request } of requests) answers.push(await mayDecide(user, maker, request, entryTable, facts))
+  return answers
+}
+
+async function inRoute(user: string, route: { people: string[]; roles: string[] }, facts: Pick<RouteFacts, 'rolesOf'> = { rolesOf: getRoles }): Promise<boolean> {
   if (route.people.includes(user)) return true
-  const roles = route.roles.length ? await getRoles(user) : []
+  const roles = route.roles.length ? await facts.rolesOf(user) : []
   return route.roles.some(role => roles.includes(role))
 }
 
 export function proposalsReader(app: string, user: string, entryTable: string) {
   const guard = sequential()
+  const facts = rememberedFacts(entryTable)
   const helper: ChangeProposalsReader = Object.freeze({
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
-    mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable)),
-    routeFor: (maker: string, approvers: ApproverRequest) => guard.run(() => resolveRoute(checkedApprovers(approvers), maker, entryTable)),
+    mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable, facts)),
+    mayDecideMany: (asks: { maker: string; approvers: ApproverRequest }[]) => guard.run(() => mayDecideMany(user, asks, entryTable, facts)),
+    routeFor: (maker: string, approvers: ApproverRequest) => guard.run(() => resolveRoute(checkedApprovers(approvers), maker, entryTable, facts)),
     modeOf: (type: string) => guard.run(() => modeOf(app, type)),
   })
   return { helper, close: guard.close }
@@ -383,6 +496,7 @@ export function proposalsWriter(app: string, declaration: BaseTablesDeclaration 
   const helper: ChangeProposalsHelper = Object.freeze({
     list: (filter: ProposalFilter = {}) => guard.run(() => proposalsWhere(app, filter)),
     mayDecide: (maker: string, approvers: ApproverRequest) => guard.run(() => mayDecide(user, maker, approvers, entryTable)),
+    mayDecideMany: (asks: { maker: string; approvers: ApproverRequest }[]) => guard.run(() => mayDecideMany(user, asks, entryTable, freshFacts(entryTable))),
     routeFor: (maker: string, approvers: ApproverRequest) => guard.run(() => resolveRoute(checkedApprovers(approvers), maker, entryTable)),
     modeOf: (type: string) => guard.run(() => modeOf(app, type)),
 

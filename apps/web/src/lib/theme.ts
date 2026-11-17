@@ -1,4 +1,4 @@
-import { getSessionUser } from './api'
+import { getSignedInUser } from './api'
 import { useAppearancePreference } from './appearance-preference'
 import { THEMES, followDevice, paintTheme, paintedChoice, type Theme } from '@featherbase/shop-floor/theme'
 
@@ -19,7 +19,7 @@ function isTheme(value: unknown): value is Theme {
 }
 
 function storageKey(): string | null {
-  const user = getSessionUser()
+  const user = getSignedInUser()
   return user ? `${THEME_MIRROR_PREFIX}${user.row_id}` : null
 }
 

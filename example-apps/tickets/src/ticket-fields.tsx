@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { RecordData } from './api'
+import { REPORT_FEEDBACK } from './report-feedback'
 import { configuredTypes, fields, kinds, person, stateLabel, type ConfiguredField } from './ticket-words'
 
 export function Label({ children, title }: { children: ReactNode; title: string }) {
@@ -21,7 +22,8 @@ export function TypeSelect({
     <select value={value} onChange={(e) => onChange(e.target.value)}>
       {!kinds[value] && configuredTypes[value]?.enabled === false && <option value={value}>{configuredTypes[value].label}</option>}
       {!kinds[value] && !configuredTypes[value] && <option value={value}>{stateLabel(value)}</option>}
-      {Object.entries(kinds).map(([key, name]) => (
+      {/* #1240: feedback on a report is raised from the report, so it is offered only to a ticket that already is one. */}
+      {Object.entries(kinds).filter(([key]) => key !== REPORT_FEEDBACK || value === REPORT_FEEDBACK).map(([key, name]) => (
         <option key={key} value={key}>
           {name}
         </option>

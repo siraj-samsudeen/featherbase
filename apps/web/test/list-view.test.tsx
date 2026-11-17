@@ -568,3 +568,18 @@ test('a date-and-time cell reads the viewer\'s day and time on one line', async 
     process.env.TZ = before
   }
 })
+
+// Codex review, round 8 (#1242): emptying the last page goes back a page, never
+// to an empty list with no way back.
+test('deleting the only row of the last page shows the page before it, with its pager', async ({ admin }) => {
+  await seedTickets(admin, 'Lv Shrink', 21)
+  await openList(admin, 'Lv Shrink')
+  await waitFor(() => expect(cellTexts('title')).toHaveLength(20))
+  fireEvent.click(screen.getByTestId('next-page'))
+  await waitFor(() => expect(cellTexts('title')).toHaveLength(1))
+  fireEvent.click(screen.getAllByTestId('row-check')[0]!)
+  fireEvent.click(await screen.findByTestId('bulk-delete'))
+  fireEvent.click(await screen.findByTestId('bulk-delete-confirm'))
+  await waitFor(() => expect(screen.getByTestId('page-info')).toHaveTextContent('1–20 of 20'), { timeout: 8000 })
+  await waitFor(() => expect(cellTexts('title')).toHaveLength(20))
+})

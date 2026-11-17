@@ -93,7 +93,7 @@ test("Explore's drill pane offers no Filter, since no list sits under it", async
   await waitFor(() => expect(within(pane1).getAllByTestId('explore-row')).toHaveLength(3))
   fireEvent.click(within(pane1).getAllByTitle('Show in the pane')[0], { bubbles: true })
   const panel = await pane(/^po-/)
-  expect(await within(panel).findByRole('button', { name: 'Go there' })).toBeInTheDocument()
+  expect(await within(panel).findByRole('button', { name: /^Show .* here$/ })).toBeInTheDocument()
   expect(within(panel).queryByRole('button', { name: 'Filter' })).not.toBeInTheDocument()
 })
 

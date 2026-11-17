@@ -126,11 +126,11 @@ describe('tickets-data-quality-rules', () => {
 
 // #1230: the rows a ticket covers, as each viewer sees them on the Request tab.
 describe('tickets-data-quality-rules: the rows a ticket covers', () => {
-  const covered = () => screen.getByRole('region', { name: 'Rows this ticket covers' })
+  const covered = () => screen.getByRole('region', { name: 'Records this ticket covers' })
   async function openCovered(x: TicketCoveredRows, name: string) {
     const { session } = await openTickets(x.t.people[name]!)
     await ticketOpens(selectTicket(session, x.t.ticket.row_id))
-    await session.until('the covered rows show', () => screen.queryByRole('region', { name: 'Rows this ticket covers' }))
+    await session.until('the covered rows show', () => screen.queryByRole('region', { name: 'Records this ticket covers' }))
     return { session }
   }
 
@@ -139,10 +139,10 @@ describe('tickets-data-quality-rules: the rows a ticket covers', () => {
     await step('Anjali\'s Data Quality Issue covers the Section "North Grocery", which only Tickets support may read', () => x.world())
     await step('Bala opens the ticket', () => openCovered(x, 'Bala'))
     await step('"North Grocery" links to its Section record', () => {
-      expect(within(covered()).getByText('3 rows · 1 fixed')).toBeInTheDocument()
+      expect(within(covered()).getByText('3 records · 1 fixed')).toBeInTheDocument()
       const link = within(covered()).getByRole('link', { name: 'North Grocery' })
       expect(link.getAttribute('href')).toBe('/featherbase/admin/table/section/row/North%20Grocery')
-      expect(within(covered()).getByText('Fixed 07-Nov-2026')).toBeInTheDocument()
+      expect(within(covered()).getByText('07-Nov-2026')).toBeInTheDocument()
     })
     await step('when Anjali opens the ticket, "North Grocery" is plain text', async () => {
       await openCovered(x, 'Anjali')

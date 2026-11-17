@@ -39,6 +39,20 @@ describe("a reader's scope in one store", () => {
   })
 })
 
+// #1223: a place naming no store (a no-filter report's) and a section's place naming no subcategory are read as naming none.
+describe('places that name less', () => {
+  const noStore: Place = { label: 'Everything', filters: {} }
+  const bareSection: Place = { label: '9901 / Section: Sarees', filters: { store: ['9901'] } }
+  it('a place with no store adds no store, scope or heading', () => {
+    expect(storesOf([noStore, place('9901', '9901')])).toEqual(['9901'])
+    expect(scopeIn([noStore], '9901')).toMatchObject({ wholeStore: false, codes: [], sectionOf: {} })
+    expect(headingOf([noStore], '9901', 'Lakeside').sections).toEqual([])
+  })
+  it("a section's place with no subcategory is the whole store and maps no subcategory", () => {
+    expect(scopeIn([bareSection], '9901')).toMatchObject({ wholeStore: true, codes: [], sectionOf: {} })
+  })
+})
+
 describe('the period', () => {
   it('is the month to date', () => {
     expect(periodOf('2026-10-15')).toEqual({ period_start: '2026-10-01', period_end: '2026-10-15' })
@@ -276,5 +290,16 @@ describe("a store's heading", () => {
     expect([storeShortName({ short_code: 'LKS', store_name: 'Lakeside' }, null), storeShortName({ short_code: 'LKS', store_name: 'Lakeside' }, null, 'Lakeside Mall'),
       storeShortName({ short_code: null, store_name: null }, { store_name: 'Lakeside' }), storeShortName({ short_code: 'LKS', store_name: null }, null)])
       .toEqual(['Lakeside', 'Lakeside Mall', 'Lakeside', null])
+  })
+})
+
+// #1240: the server's own day format, so the server bundle carries no page code; the page writes days the same way.
+describe('a day as people read it', () => {
+  it('matches the page\'s DD-Mon-YYYY, across a month and a year boundary', async () => {
+    const { dayLabel } = await import('./report.ts')
+    const { shortDay } = await import('./page.ts')
+    for (const day of ['2026-04-01', '2026-01-31', '2026-02-01', '2025-12-31'])
+      expect(dayLabel(day)).toBe(shortDay(day))
+    expect(dayLabel('2026-04-01')).toBe('01-Apr-2026')
   })
 })

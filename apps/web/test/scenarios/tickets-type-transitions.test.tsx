@@ -22,7 +22,7 @@ describe('tickets-type-transitions', () => {
       ;({ session } = await openTickets(t.people.Bala))
       await ticketOpens(selectTicket(session, t.ticket.row_id))
         .clickButton('Workflow')
-        .assertText('Next step')
+        .assertText('Next Step')
     })
     await step('Bala is offered to confirm it, and Anjali is not', async () => {
       // A button, by role: the DSL has no verb for "this button is offered".
@@ -42,7 +42,7 @@ describe('tickets-type-transitions', () => {
         // A date input takes its value whole; typing it key by key is not how jsdom fills one.
         .step('set the target date', async () => { fireEvent.change(screen.getByLabelText('Target date *'), { target: { value: plan.target_date } }) })
         .within('#action-transition', (form) => form.clickButton('Confirm'))
-        .within('.ticket-kicker', (kicker) => kicker.assertText('Fix Planned'))
+        .within('.ticket-title-row', (kicker) => kicker.assertText('Fix Planned'))
       t.ticket = (await t.open('Bala')).ticket
     })
     await step('the ticket is in "Fix planned"', async () => expect((await t.open('Support')).ticket.ticket_state).toBe('Fix planned'))

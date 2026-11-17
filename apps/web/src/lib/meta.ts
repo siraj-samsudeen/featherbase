@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { viewColumns } from './list-view-columns'
 import type { ReadingPresentation } from 'shared'
@@ -40,6 +40,8 @@ export interface ColumnDef {
 
 export interface TableMeta {
   name: string
+  /** The Table as people read it ("Ticket"); `name` is internal ("tickets.ticket"). Use tableLabel. */
+  label?: string | null
   module: string
   kind: 'table' | 'sub_table' | 'settings' | 'view'
   /** #1021: a view's base Table and the filters choosing its rows. A view
@@ -57,6 +59,8 @@ export interface TableMeta {
   enable_tags?: boolean
   enable_files?: boolean
   enable_discussion?: boolean
+  /** #1259: a queue's lists open on cards (List And Record) until a person chooses. */
+  queue?: boolean
   description: string | null
   custom: boolean
   // #74: platform tables created by the migration chain — grouped under the
@@ -183,6 +187,33 @@ export function metaQuery(table: string) {
 
 export function useMeta(table: string, enabled = true) {
   return useQuery({ ...metaQuery(table), enabled: enabled && Boolean(table) })
+}
+
+/** #1237: a Table as people read it, its label ("Ticket"), never its internal
+ *  name ("tickets.ticket") unless it has no label. The name while the label loads. */
+export function tableLabel(table: string, meta: Pick<TableMeta, 'label'> | undefined): string {
+  return meta?.label?.trim() || unlabelledWords(table)
+}
+
+/** admin-lists 10: an app's Table stored with no label (installed before
+ *  labels were kept) reads as its own part in words, "tasker.discussion" as
+ *  "Discussion", never the internal name; any other Table is its name. */
+function unlabelledWords(table: string): string {
+  const dot = table.indexOf('.')
+  if (dot < 0) return table
+  const words = table.slice(dot + 1).replace(/_/g, ' ').trim()
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : table
+}
+
+export function useTableLabel(table: string): string {
+  return tableLabel(table, useMeta(table).data)
+}
+
+/** #1241: the labels of several Tables at once, each its name while it loads. */
+export function useTableLabels(tables: readonly string[]): (table: string) => string {
+  const unique = [...new Set(tables.filter(Boolean))]
+  const metas = useQueries({ queries: unique.map((t) => metaQuery(t)) })
+  return (table) => tableLabel(table, metas[unique.indexOf(table)]?.data)
 }
 
 // Columns for a list view: Row ID first, then the Table's list columns (or

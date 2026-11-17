@@ -5,6 +5,7 @@ export const actions = {
     if (payload.op === 'parallel') return Promise.all([changeProposals.list({}), changeProposals.list({})])
     if (payload.op === 'unawaited') { void changeProposals.list({}).catch(() => {}); return true }
     if (payload.op === 'unawaited_failing') { void baseTables.list('Placement', { fields: ['label'], filters: [['label', 'no such operator', 'x']] }).catch(() => {}); return true }
+    if (payload.op === 'authority_many') return both(changeProposals, payload.asks)
     if (payload.op === 'authority') return { may: await changeProposals.mayDecide(payload.maker, payload.approvers), route: await changeProposals.routeFor(payload.maker, payload.approvers) }
     if (payload.op === 'serialize') return changeProposals.serialize(payload.key) ?? null
     if (payload.op === 'list') return baseTables.list(payload.table, payload.args)
@@ -28,9 +29,17 @@ export const actions = {
     throw new Error('Unknown probe')
   },
 }
+/** #1254: the batched answers and the one-at-a-time answers, from the same helper. */
+async function both(changeProposals, asks) {
+  const many = await changeProposals.mayDecideMany(asks)
+  const each = []
+  for (const ask of Array.isArray(asks) ? asks : []) each.push(await changeProposals.mayDecide(ask.maker, ask.approvers))
+  return { many, each }
+}
 export const reads = {
   async look({ payload, baseTables, changeProposals }) {
     if (payload.modeOf) return changeProposals.modeOf(payload.modeOf)
+    if (payload.authorityMany) return both(changeProposals, payload.authorityMany)
     if (payload.authority) return { may: await changeProposals.mayDecide(payload.authority.maker, payload.authority.approvers), route: await changeProposals.routeFor(payload.authority.maker, payload.authority.approvers) }
     return { canPropose: typeof changeProposals.propose === 'function', canDecide: typeof changeProposals.approve === 'function',
       rows: await baseTables.list(payload.table, payload.args), proposals: await changeProposals.list({}) }

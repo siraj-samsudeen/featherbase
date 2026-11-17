@@ -1,10 +1,13 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { markSetupOffer } from './FirstRunSetup'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser, type SignedIn } from '../lib/api'
 import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { Logo } from '../components/Logo'
+import { AccountChooser, useBrowserAccounts } from '../components/AccountChooser'
+import { pageLoad } from '../lib/page-load'
+import type { BrowserAccount } from '../lib/api'
 
 export function safeLoginNext(
   next: string | undefined,
@@ -26,22 +29,27 @@ export function safeLoginNext(
   }
 }
 
-// A refused browser sign-in (the Google callback) comes back as
-// `?error=<code>`. Only these codes are explained; anything else reads as the
-// generic failure, and the query text itself is never shown.
-const REFUSALS: Record<string, (p: { appName: string; google: string; service: string | null }) => string> = {
-  not_provisioned: ({ appName, google, service }) =>
-    `This ${google} account isn't set up for ${appName}. Ask your manager or IT to invite you${service ? `, or sign in with ${service}.` : '.'}`,
-  not_allowed: ({ google }) => `This account can't sign in with ${google}. Ask your manager or IT for help.`,
-  address_in_use: ({ google }) => `Another account already uses this ${google} account's email address. Ask your manager or IT to link it for you.`,
-  google_off: ({ google }) => `${google} sign-in isn't available right now. Use another way to sign in.`,
+// A refused browser sign-in (the Google or Microsoft callback) comes back as
+// `?error=<code>`, with `&via=microsoft` when Microsoft's. Only these codes
+// are explained; anything else reads as the generic failure, and the query
+// text itself is never shown. `provider` is the refusing method's label.
+const REFUSALS: Record<string, (p: { appName: string; provider: string; service: string | null }) => string> = {
+  not_provisioned: ({ appName, provider, service }) =>
+    `This ${provider} account isn't set up for ${appName}. Ask your manager or IT to invite you${service ? `, or sign in with ${service}.` : '.'}`,
+  not_allowed: ({ provider }) => `This account can't sign in with ${provider}. Ask your manager or IT for help.`,
+  address_in_use: ({ provider }) => `Another account already uses this ${provider} account's email address. Ask your manager or IT to link it for you.`,
+  google_off: ({ provider }) => `${provider} sign-in isn't available right now. Use another way to sign in.`,
+  microsoft_off: ({ provider }) => `${provider} sign-in isn't available right now. Use another way to sign in.`,
   expired: () => 'The sign-in took too long or was started in another window. Please try again.',
-  google_failed: ({ google }) => `${google} sign-in didn't finish. Please try again.`,
+  google_failed: ({ provider }) => `${provider} sign-in didn't finish. Please try again.`,
+  microsoft_failed: ({ provider }) => `${provider} sign-in didn't finish. Please try again.`,
 }
 
 // #474: "Try another Google account" restarts Google sign-in with the account
-// picker forced, so the account just refused is never silently reused.
+// picker forced, so the account just refused is never silently reused. Each
+// redirect sign-in already asks Microsoft to show its account picker too.
 const GOOGLE_RETRY_HREF = '/api/oauth/google/login?prompt=select_account'
+const MICROSOFT_LOGIN_HREF = '/api/oauth/microsoft/login'
 
 const SIGN_IN_FAILED = 'Sign-in failed. Please try again.'
 // Server messages a person may read as they are: refusals the server already
@@ -202,9 +210,11 @@ export function LoginPage() {
   // Read on each render, so "Not you?" disappears once the ID is forgotten.
   const [, refreshRemembered] = useReducer((n: number) => n + 1, 0)
   const rememberedId = delegated ? rememberedDelegatedId(delegated.key) : ''
-  const delegatedIdBox = useRef<HTMLInputElement>(null)
   // If the brand cannot be read, offer Google as before; the server decides.
   const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google')
+  // Microsoft only when the brand names it: it is offered once it is set up.
+  const microsoft = methods?.find((m) => m.kind === 'microsoft')
+  const redirectMethods = Boolean(google || microsoft)
   // Until the brand answers, and if it cannot, the password form stays.
   const passwordOn = methods === null || methods.some((m) => m.kind === 'password')
   const [error, setError] = useState<string | null>(null)
@@ -214,6 +224,11 @@ export function LoginPage() {
   // and no inputs, until the person picks one.
   const [refusalAnswered, setRefusalAnswered] = useState(false)
   const [resetSent, setResetSent] = useState(false)
+  // #1255: the accounts signed in on this browser. "Add another account"
+  // (?add=1) and "Use another account" go straight to the form.
+  const [accountList, setAccountList] = useBrowserAccounts()
+  const [useAnother, setUseAnother] = useState(urlParams.get('add') === '1')
+  const [prefillId, setPrefillId] = useState('')
 
   async function onForgot(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -292,13 +307,11 @@ export function LoginPage() {
 
   function forgetDelegatedId() {
     if (delegated) setRememberedDelegatedId(delegated.key, null)
+    setError(null)
+    // The empty ID box mounts in its place and takes the cursor (autoFocus).
     refreshRemembered()
-    const box = delegatedIdBox.current
-    if (box) {
-      box.value = ''
-      box.focus()
-    }
   }
+
 
   async function onSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -320,15 +333,42 @@ export function LoginPage() {
     setRefusalAnswered(true)
   }
 
+  // #1255: continuing as a held account loads the page afresh, so nothing of
+  // another account's page survives; otherwise as any sign-in.
+  function continued(user: SignedIn) {
+    const returnTo = safeLoginNext(next)
+    takeLoginNext()
+    if (user.handoff) return pageLoad.assign(user.handoff)
+    if (returnTo) return openReturnPath(returnOrLanding(returnTo, user), pageLoad.assign, pageLoad.assign)
+    openLanding(user, pageLoad.assign, pageLoad.assign)
+  }
+
+  // #1255: an account whose session ended opens the form it signed in with,
+  // its ID filled in.
+  function signInAgain(account: BrowserAccount) {
+    setUseAnother(true)
+    if (account.method_kind === 'delegated_password' && account.method) {
+      setRememberedDelegatedId(account.method, account.sign_in_id)
+      refreshRemembered()
+      switchMode('delegated', account.method)
+    } else if (account.method_kind !== 'google' && account.method_kind !== 'microsoft') {
+      // Google and Microsoft sign in on their own page: the form shows their buttons.
+      setPrefillId(account.sign_in_id ?? '')
+      switchMode('password')
+    }
+  }
+
   // person-rename: after an upgrade every session ends once; say so plainly
   // instead of showing an unexplained sign-in page.
   const sessionEnded = new URLSearchParams(searchStr).get('ended') === '1'
   const refusalCode = useRouterState({ select: (s) => new URLSearchParams(s.location.searchStr).get('error') })
+  // Which redirect sign-in refused: Microsoft's says so; anything else is Google's, as before.
+  const refusedByMicrosoft = useRouterState({ select: (s) => new URLSearchParams(s.location.searchStr).get('via') === 'microsoft' })
   const refusalText = (service: string | null) =>
     refusalCode
-      ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS.google_failed)({
+      ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS[refusedByMicrosoft ? 'microsoft_failed' : 'google_failed'])({
           appName,
-          google: google?.label ?? 'Google',
+          provider: refusedByMicrosoft ? (microsoft?.label ?? 'Microsoft') : (google?.label ?? 'Google'),
           service,
         })
       : null
@@ -338,10 +378,18 @@ export function LoginPage() {
   const panelRefusal = refusalText(null)
   const panelShowing = Boolean(refusal) && !refusalAnswered
 
+  // #1235 item 6: a refusal is an alert at the top of the card's form, above
+  // the boxes, so it is read before the person retypes anything.
   const errorLine = error && (
-    <p className="text-sm text-negative" data-testid="login-error">
-      {error}
-    </p>
+    <div data-testid="login-error">
+      <Notice tone="negative">{error}</Notice>
+    </div>
+  )
+  // #1235 item 4: one quiet "or" between the form's own button and the other ways in.
+  const orDivider = (
+    <div className="my-4 flex items-center gap-3 text-[13px] text-ink-muted" aria-hidden data-testid="sign-in-divider">
+      <span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" />
+    </div>
   )
 
   return (
@@ -359,8 +407,9 @@ export function LoginPage() {
           )}
           <h1 className="text-lg font-semibold text-ink">{appName}</h1>
           {/* The refusal panel's own heading takes the subtitle's place. */}
-          {!panelShowing && <p className="text-sm text-ink-muted" data-testid="login-subtitle">
-            {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
+          {/* #1235 item 2: a connected service's form names itself on its button. */}
+          {!panelShowing && !(mode === 'delegated' && delegatedLabel) && <p className="text-sm text-ink-muted" data-testid="login-subtitle">
+            {mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
           </p>}
         </div>
         {sessionEnded && (
@@ -374,7 +423,19 @@ export function LoginPage() {
           </div>
         )}
         <div className={cardClasses('p-6')}>
-          {panelShowing ? (
+          {!panelShowing && !useAnother && accountList === null ? (
+            <p className="text-sm text-ink-muted" data-testid="accounts-loading">Loading…</p>
+          ) : !panelShowing && accountList?.accounts.length && (!useAnother || accountList.full) ? (
+            // #1255 D5: a full list is shown even to "add another", removing first.
+            <AccountChooser
+              startRemoving={useAnother && accountList.full}
+              list={accountList}
+              onList={setAccountList}
+              onSignedIn={continued}
+              onSignInAgain={signInAgain}
+              onUseAnother={() => setUseAnother(true)}
+            />
+          ) : panelShowing ? (
             <div className="space-y-5" data-testid="sign-in-refused-panel">
               <div className="space-y-2">
                 <h2 className="text-base font-semibold text-ink">We couldn't sign you in</h2>
@@ -392,7 +453,16 @@ export function LoginPage() {
                   </button>
                 )}
                 {/* A full-page navigation, as the ordinary Google button is. */}
-                {google && (
+                {refusedByMicrosoft && microsoft && (
+                  <a
+                    href={MICROSOFT_LOGIN_HREF}
+                    data-testid="refused-microsoft-retry"
+                    className={buttonClasses({ variant: delegatedMethods[0] ? 'secondary' : 'primary', className: 'w-full justify-center py-2' })}
+                  >
+                    Try another {microsoft.label} account
+                  </a>
+                )}
+                {!refusedByMicrosoft && google && (
                   <a
                     href={GOOGLE_RETRY_HREF}
                     data-testid="refused-google-retry"
@@ -414,41 +484,52 @@ export function LoginPage() {
           ) : mode === 'delegated' && delegatedLabel ? (
             <>
               <form className="space-y-4" data-testid="delegated-login-form" onSubmit={onDelegatedSubmit}>
-                <p className="text-sm text-ink-muted">
-                  Use the same ID and password you use for {delegatedLabel}.
-                </p>
-                <div>
-                  <label className={labelClasses()} htmlFor="delegated-id">{`${delegatedLabel} ID`}</label>
-                  {/* Keyed by service, so another service's form starts from its own remembered ID. */}
-                  <input
-                    key={delegated?.key}
-                    ref={delegatedIdBox}
-                    id="delegated-id"
-                    type="text"
-                    name="delegated_id"
-                    autoComplete="username"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    defaultValue={rememberedId}
-                    autoFocus={!rememberedId}
-                    className={inputClasses()}
-                  />
-                  {rememberedId && (
+                {errorLine}
+                {rememberedId ? (
+                  // #1235 item 1: a remembered ID reads as who is signing in, not
+                  // as a box to edit. The hidden username box stays in the form so
+                  // the browser's password manager files the password under it.
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3" data-testid="delegated-signing-in-as">
+                    <p className="text-sm text-ink">
+                      Signing in as <strong className="font-semibold">{rememberedId}</strong>
+                    </p>
+                    <input key={rememberedId} type="text" name="delegated_id" autoComplete="username" defaultValue={rememberedId} readOnly hidden />
                     <button
                       type="button"
                       data-testid="delegated-forget-id"
                       className="inline-flex min-h-control items-center text-sm text-action hover:underline"
                       onClick={forgetDelegatedId}
                     >
-                      Not you? Use another ID
+                      Not you?
                     </button>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className={labelClasses()} htmlFor="delegated-id">{`${delegatedLabel} ID`}</label>
+                    {/* Keyed by service, so each service's box starts empty for its own ID. */}
+                    <input
+                      key={delegated?.key}
+                      id="delegated-id"
+                      type="text"
+                      name="delegated_id"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      autoFocus
+                      aria-describedby="delegated-id-help"
+                      className={inputClasses()}
+                    />
+                    {/* #1235 item 3: help text belongs to the box it explains. */}
+                    <p id="delegated-id-help" className="mt-1 text-[13px] text-ink-muted" data-testid="delegated-id-help">
+                      Use the same ID and password you use for {delegatedLabel}.
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className={labelClasses()} htmlFor="delegated-password">Password</label>
                   <input
-                    key={delegated?.key}
+                    key={`${delegated?.key}:${rememberedId ? 'known' : 'typed'}`}
                     id="delegated-password"
                     type="password"
                     name="delegated_password"
@@ -457,7 +538,6 @@ export function LoginPage() {
                     className={inputClasses()}
                   />
                 </div>
-                {errorLine}
                 <button
                   type="submit"
                   disabled={busy}
@@ -467,15 +547,26 @@ export function LoginPage() {
                   {busy ? 'Signing in…' : `Sign in with ${delegatedLabel}`}
                 </button>
               </form>
+              {(redirectMethods || delegatedMethods.length > 1) && orDivider}
               {/* The other ways in, one tap away under the service's form. */}
               {google && (
                 <a
                   href="/api/oauth/google/login"
                   onClick={() => rememberLoginNext(next)}
                   data-testid="google-login"
-                  className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
+                  className={buttonClasses({ className: 'flex w-full justify-center py-2' })}
                 >
                   Sign in with {google.label}
+                </a>
+              )}
+              {microsoft && (
+                <a
+                  href={MICROSOFT_LOGIN_HREF}
+                  onClick={() => rememberLoginNext(next)}
+                  data-testid="microsoft-login"
+                  className={buttonClasses({ className: `${google ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
+                >
+                  Sign in with {microsoft.label}
                 </a>
               )}
               {delegatedMethods.filter((m) => m.key !== delegated?.key).map((m) => (
@@ -483,17 +574,18 @@ export function LoginPage() {
                   key={m.key}
                   type="button"
                   data-testid={`delegated-login-toggle-${m.key}`}
-                  className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
+                  className={buttonClasses({ className: `${redirectMethods ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
                   onClick={() => switchMode('delegated', m.key)}
                 >
                   Sign in with {m.label}
                 </button>
               ))}
+              {/* #1258: a full button like the other ways in, under them (was a quiet link, #1235 item 5). */}
               {passwordOn && (
                 <button
                   type="button"
                   data-testid="password-login-toggle"
-                  className="mt-4 inline-flex min-h-control items-center text-control text-action hover:underline"
+                  className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
                   onClick={() => switchMode('password')}
                 >
                   Use email and password instead
@@ -503,6 +595,7 @@ export function LoginPage() {
           ) : mode === 'signup' && signUpOpen ? (
             <>
               <form className="space-y-4" data-testid="sign-up-form" onSubmit={onSignUpSubmit}>
+                {errorLine}
                 <Field label="Username">
                   <TextInput id="signup-username" name="username" autoComplete="username"
                     autoCapitalize="none" autoCorrect="off" spellCheck={false} />
@@ -510,7 +603,6 @@ export function LoginPage() {
                 <Field label="Password">
                   <TextInput id="signup-password" type="password" name="password" autoComplete="new-password" />
                 </Field>
-                {errorLine}
                 <Button type="submit" variant="primary" block loading={busy} data-testid="sign-up-submit">
                   Create account
                 </Button>
@@ -523,10 +615,13 @@ export function LoginPage() {
           <>
           {passwordOn && (
           <form className="space-y-4" data-testid="login-form" onSubmit={onSubmit}>
+            {errorLine}
             <div>
               <label className={labelClasses()} htmlFor="login-email">Email or username</label>
               <input
                 id="login-email"
+                key={prefillId}
+                defaultValue={prefillId}
                 type="text"
                 name="email"
                 autoComplete="username"
@@ -546,12 +641,12 @@ export function LoginPage() {
                 className={inputClasses()}
               />
             </div>
-            {errorLine}
             <button type="submit" disabled={busy} data-testid="login-submit" className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
           )}
+          {passwordOn && (redirectMethods || delegatedMethods.length > 0) && orDivider}
           {/* PLAT-006: social login. A full-page navigation (not fetch) so the
               server's OAuth redirects drive the browser. Offered only when
               the Google sign-in method is on. */}
@@ -560,9 +655,20 @@ export function LoginPage() {
               href="/api/oauth/google/login"
               onClick={() => rememberLoginNext(next)}
               data-testid="google-login"
-              className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
+              className={buttonClasses({ className: 'flex w-full justify-center py-2' })}
             >
               Sign in with {google.label}
+            </a>
+          )}
+          {/* microsoft-sign-in: the same kind of button, offered once it is set up. */}
+          {microsoft && (
+            <a
+              href={MICROSOFT_LOGIN_HREF}
+              onClick={() => rememberLoginNext(next)}
+              data-testid="microsoft-login"
+              className={buttonClasses({ className: `${google ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
+            >
+              Sign in with {microsoft.label}
             </a>
           )}
           {/* Delegated sign-in: one button per connected service (a Sign In

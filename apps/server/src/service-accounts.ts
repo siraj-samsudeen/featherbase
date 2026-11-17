@@ -20,6 +20,8 @@ const NAME_RE = /^[a-z0-9][a-z0-9_-]{1,63}$/
 interface ServiceAccount {
   row_id: string
   label: string
+  /** #1224: what readers see; null reads as "Automation (<label>)". */
+  display_name: string | null
   enabled: boolean
   created_at: string
   roles: string[]
@@ -107,7 +109,7 @@ export async function getServiceAccount(id: string): Promise<ServiceAccount> {
 
 function serviceAccountQuery(id?: string) {
   return sql`
-    select s.row_id, s.label, s.enabled, s.created_at,
+    select s.row_id, s.label, nullif(trim(s.display_name), '') as display_name, s.enabled, s.created_at,
       coalesce(r.roles, '{}') as roles,
       -- #137: "active" must mean exactly what resolveAccessToken accepts: not
       -- revoked, not expired, AND the owner enabled.
@@ -143,6 +145,20 @@ export async function renameServiceAccount(id: string, label: string, actor: str
     throw err
   })
   await logActivity(actor, `service_account_renamed ${id}`)
+  return getServiceAccount(id)
+}
+
+/** #1224: the name readers see where this account did something. Empty
+ *  clears it. The label, which other code finds the account by, is untouched. */
+export async function setServiceAccountDisplayName(id: string, displayName: string, actor: string): Promise<ServiceAccount> {
+  const value = displayName.trim()
+  if (value.length > 80)
+    throw new AppError('ValidationError', 'A display name is at most 80 characters', { display_name: 'at most 80 characters' })
+  await withTransaction(async () => {
+    await lockAccount(id)
+    await sql`update service_account set display_name = ${value || null}, updated_at = now(), updated_by = ${actor} where row_id = ${id}`
+  })
+  await logActivity(actor, `service_account_display_name ${id}`)
   return getServiceAccount(id)
 }
 

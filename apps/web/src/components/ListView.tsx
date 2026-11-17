@@ -1,20 +1,21 @@
+import { useFitToWindow } from '../lib/fit-to-window'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { rowDisplayTitle } from 'shared'
+import { rowDisplayTitle, type ListLayout } from 'shared'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { useNavigation } from '../lib/navigation'
 import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
-import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, isView, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, isView, tableLabel, useMeta } from '../lib/meta'
 import { SaveAsView, ViewBanner } from './TableViews'
-import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, switchColumn, titleListColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, listLeader, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
-import { Button, NARROW_QUERY, ViewToggle, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Button, EmptyState, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { ChevronDown } from '@featherbase/shop-floor'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
@@ -26,11 +27,14 @@ import { ActionDisclosure } from './ActionDisclosure'
 import { RenameTable } from './RenameTable'
 import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
 import { rememberListPlace } from './RecordNav'
-import { FilterBar, StandardFilters, type Filter } from './ListFilters'
+import { FilterBar, ListSearch, StandardFilters, type Filter } from './ListFilters'
 import { SavedViewsBar } from './SavedViewsBar'
+import { LayoutSwitch } from './LayoutSwitch'
+import { RecordCards } from './RecordCards'
 import { RecentStrip } from './RecentStrip'
 import { ExploreSplitButton } from './ExploreSplitButton'
 import { ListRow, NAME_CLIP, PhoneList, cell, isFigure } from './ListRows'
+import { usePageTitle } from '../lib/page-title'
 
 const PAGE = 20
 // #738: a Show columns row is thumb-sized at phone width even under a mouse
@@ -65,6 +69,11 @@ function linkPrefill(meta: import('../lib/meta').TableMeta, filters: Filter[]): 
 }
 
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
+/** "New <thing>": the Table's label in sentence case, its acronyms kept ("New job assignment", "New SAP code"). */
+export function thingWords(label: string): string {
+  return label.split(/\s+/).map((word) => (/^[A-Z0-9]{2,}$/.test(word) ? word : word.toLowerCase())).join(' ')
+}
+
 export function ListView({
   table,
   filters,
@@ -78,6 +87,10 @@ export function ListView({
   onRowOpen,
   openRow,
   extraColumns,
+  layout,
+  onLayoutChange,
+  onApplyView,
+  recordPanel,
 }: {
   table: string
   filters: Filter[]
@@ -99,15 +112,30 @@ export function ListView({
   openRow?: string
   /** #1173: columns this page shows on top of the person's own choice. */
   extraColumns?: string[]
+  /** #1259: the view this list shows (Table opens a row on its own page). */
+  layout?: ListLayout
+  /** #1259: the switch beside the title, where the page offers one. */
+  onLayoutChange?: (layout: ListLayout) => void
+  /** #1259: a saved view's filters and the view it was saved in. */
+  onApplyView?: (filters: Filter[], layout?: ListLayout) => void
+  /** #1259: the open record, placed by the view: beside the cards (List And
+   *  Record) or over the table's right side (Table With Panel). */
+  recordPanel?: ReactNode
 }) {
   const meta = useMeta(table)
+  // #1237, #1242: the Table as people read it.
+  const label = tableLabel(table, meta.data)
+  usePageTitle(title ? undefined : label)
   const settings = useSettings()
   // #910: on a list page, selecting a row shows it in the drill pane.
   const navigation = useNavigation()
   const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
   const paneRow = onRowOpen ? openRow : nav?.step.pane?.table === table ? nav.step.pane.row : undefined
-  const openPane = onRowOpen ? (pane: { table: string; row: string }) => onRowOpen(pane.row)
+  // #1259: in the Table view a row opens on its own page, so a line opens no panel.
+  // Tree of all has no row pages to go to, so its lines open the record beside it in every view.
+  const openInPanel = onRowOpen ? (pane: { table: string; row: string }) => onRowOpen(pane.row)
     : nav ? (pane: { table: string; row: string }) => nav.push({ ...nav.step, pane }) : undefined
+  const openPane = layout === 'table' ? undefined : openInPanel
   // #910 checklist 19: every row as a folded tree line, kept in the path.
   const [localTree, setLocalTree] = useState<{ on: boolean; expanded: string[] }>({ on: false, expanded: [] })
   const treeOn = nav ? nav.step.view === 'tree' : localTree.on
@@ -137,6 +165,8 @@ export function ListView({
   const [compact, setCompact] = useState(false)
   const [tableScroll, setTableScroll] = useState<HTMLDivElement | null>(null)
   const moreToTheRight = useMoreToTheRight(tableScroll)
+  // #1249: the table fits the window, so its scroll bar and the pager stay in view.
+  useFitToWindow(tableScroll)
   // #1017: the Add filter row waits until it's asked for.
   const [addFilterOpen, setAddFilterOpen] = useState(false)
   const [colPickerOpen, setColPickerOpen] = useState(false)
@@ -308,7 +338,7 @@ export function ListView({
   // the person may read; the column the list leads with (its title, else
   // Row ID, #792) is always on.
   const listDefaults = meta.data ? defaultColumnNames(meta.data) : new Set<string>()
-  const leadingTitle = meta.data ? titleListColumn(meta.data) : undefined
+  const leadingTitle = meta.data ? listLeader(meta.data) : undefined
   const readableColumns = (meta.data ? dataColumns(meta.data) : []).filter((c) => c !== leadingTitle)
   const inListChoices = readableColumns.filter((c) => listDefaults.has(c.column_name))
   const otherChoices = readableColumns.filter((c) => !listDefaults.has(c.column_name))
@@ -352,6 +382,56 @@ export function ListView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list.data, list.isError, table])
 
+  // Codex review, round 8: rows deleted from the last page leave the offset past
+  // the end; the list goes back to its last page rather than show none. (Above
+  // the early returns: a hook runs on every render.)
+  const knownTotal = list.data?.total
+  useEffect(() => {
+    if (knownTotal !== undefined && knownTotal > 0 && start >= knownTotal) setStart(Math.floor((knownTotal - 1) / PAGE) * PAGE)
+  }, [knownTotal, start])
+
+  const rows = list.isError ? [] : list.data?.data ?? []
+
+  // #1259: with a record open beside or over the list, the arrow keys move to
+  // the next or previous row and the record follows (one step, not one per
+  // row); closing it puts the focus back on the same row.
+  const panelled = !treeOn && (layout === 'split' || layout === 'panel')
+  useEffect(() => {
+    if (!panelled || !paneRow) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.defaultPrevented) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input,textarea,select,[contenteditable="true"],[role="listbox"],[role="menu"],[role="dialog"]')) return
+      const at = rows.findIndex((r) => String(r.row_id) === paneRow)
+      const next = at < 0 ? undefined : rows[at + (e.key === 'ArrowDown' ? 1 : -1)]
+      if (!next) return
+      e.preventDefault()
+      // Only a page with the view switch has these views, and it walks the path (nav).
+      nav?.replace({ ...nav.step, pane: { table, row: String(next.row_id) } })
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [panelled, paneRow, rows, nav, table])
+  const lastPane = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const was = lastPane.current
+    lastPane.current = paneRow
+    if (!panelled || paneRow || !was) return
+    const line = document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(was)}"]`)
+    ;(line?.querySelector<HTMLElement>('button[aria-current], button') && layout === 'split'
+      ? line.querySelector<HTMLElement>('button')
+      : line)?.focus({ preventScroll: true })
+  }, [panelled, paneRow, layout])
+  // #1259 (one-app-chrome): the panel over the table starts under its column
+  // names, so they stay in sight.
+  const [headRow, setHeadRow] = useState(0)
+  const panelShown = Boolean(recordPanel) && layout !== 'split'
+  useLayoutEffect(() => {
+    if (!panelShown) return
+    setHeadRow(tableScroll?.querySelector('thead')?.getBoundingClientRect().height ?? 0)
+  }, [panelShown, tableScroll, rows.length])
+
   if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
   // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
   // … on …") — show its words, not a generic shrug.
@@ -365,7 +445,6 @@ export function ListView({
   const total = list.data?.total ?? 0
   // A refetch refusal must replace cached rows with the error, not silently
   // keep showing a successful list after its Table/access disappeared.
-  const rows = list.isError ? [] : list.data?.data ?? []
   const childFields = (meta.data?.columns ?? []).filter(
     (f) => f.column_type === 'Sub-table' && !f.hidden,
   )
@@ -394,29 +473,30 @@ export function ListView({
     // Table holds data (#871, a list reopened after its rename).
     'Loading…'
   ) : empty ?? (
-    <>
-      No rows
-      {/* TLC-J1.2: an empty table is the moment the user most
-          needs the way forward, so the empty state carries it
-          too — the toolbar action is not the only door. */}
-      {canAddRows &&
-        !isRowsReadOnly(meta.data) &&
-        meta.data?.kind !== 'settings' &&
-        meta.data?.kind !== 'sub_table' && (
-        <>
-          {' — '}
+    // #1242 (admin-lists 9): an empty Table shows the way forward (TLC-J1.2):
+    // New, and Import data for those who may import.
+    <EmptyState
+      title="No rows"
+      body={canAddRows && !isRowsReadOnly(meta.data) ? `Add the first ${thingWords(label)}, or bring them in from a file.` : undefined}
+      action={canAddRows && !isRowsReadOnly(meta.data) && meta.data?.kind !== 'settings' && meta.data?.kind !== 'sub_table' ? (
+        <span className="flex flex-wrap justify-center gap-2">
           <Link
             to="/featherbase/admin/table/$table/new"
             params={{ table }}
             search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
-            className="text-action underline"
+            className={buttonClasses({ variant: 'primary' })}
             data-testid="list-empty-new"
           >
-            add the first one
+            New {thingWords(label)}
           </Link>
-        </>
-      )}
-    </>
+          {caps?.manage && (
+            <Link to="/featherbase/admin/import" search={{ table }} className={buttonClasses()} data-testid="list-empty-import">
+              Import data
+            </Link>
+          )}
+        </span>
+      ) : undefined}
+    />
   )
 
   function toggleSort(field: string) {
@@ -563,40 +643,33 @@ export function ListView({
     }
   }
 
+  // #1242: what the header's ⋯ More holds, under the same conditions the two
+  // menus it replaces had.
+  const hasListActions = table === 'Person' || Boolean(!isRowsReadOnly(meta.data) && caps?.manage)
+    || Boolean(meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data))
+  const hasTableAdministration = Boolean(canShapeColumns || caps?.manage || isSystemManager)
   return (
     <div data-testid="list-view">
       {/* Top-aligned on desktop: however many rows the actions wrap to, the first
           row sits level with the title (listview.spec "share a vertical band"). */}
       <div className="mb-2 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
-          {breadcrumb ?? <div className="text-xs text-ink-subtle">
+          {/* #1242 (admin-lists 1): "<Module> / <Table>", by label. */}
+          {breadcrumb ?? <div className="text-xs text-ink-subtle" data-testid="list-breadcrumb">
             <Link to="/featherbase/admin" className="hover:text-ink">
-              Home
+              {meta.data?.module || 'Home'}
             </Link>
             {' / '}
-            {table}
+            {label}
           </div>}
           {/* #1017: the count reads on the title's line, not one of its own. */}
           <div className="flex flex-wrap items-baseline gap-x-2">
-          <h1 className="text-xl font-semibold text-ink">{title ?? <>{table}<GlossaryHelp table={table} className="ml-1" /></>}</h1>
+          <h1 className="text-xl font-semibold text-ink">{title ?? <>{label}<GlossaryHelp table={table} className="ml-1" /></>}</h1>
+          {/* #1259: the three views, right after the title. */}
+          {layout && onLayoutChange && <span className="self-center"><LayoutSwitch value={layout} onChange={onLayoutChange} /></span>}
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>
-          {/* #859: beside the total it changes; the toolbar stays as it was. */}
-          {retirable && (
-            <label className="ml-1 inline-flex cursor-pointer items-center gap-1 text-xs text-ink-muted" data-testid="list-show-retired">
-              <input
-                type="checkbox"
-                checked={showRetired}
-                onChange={(e) => {
-                  setShowRetired(e.target.checked)
-                  setStart(0)
-                }}
-                data-testid="list-show-retired-toggle"
-              />
-              Show retired
-            </label>
-          )}
           {meta.data?.data_source && (
             <span
               className={pillClasses('text-xs')}
@@ -613,141 +686,16 @@ export function ListView({
           className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:basis-64 sm:justify-end"
           data-testid="list-toolbar"
         >
-          <div className="relative">
-            <button
-              onClick={() => setColPickerOpen((o) => !o)}
-              className={buttonClasses()}
-              aria-expanded={colPickerOpen}
-              data-testid="list-columns"
-            >
-              Show columns
-              <ChevronDown aria-hidden data-chevron size={18} />
-            </button>
-            {colPickerOpen && (
-              <div
-                // #581: on a phone the button starts the wrapped toolbar,
-                // so the pop-up opens from its left edge; from sm up it
-                // lines up with the button's right edge as before.
-                ref={colPickerRef}
-                className={cardClasses('absolute left-0 z-10 mt-1 max-h-[calc(100dvh-12rem)] w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
-                style={colPickerMax ? { maxHeight: colPickerMax } : undefined}
-                data-testid="list-columns-popup"
-              >
-                {/* The leading column names each row, so it is always on. */}
-                <label className={touchRowClasses(`flex items-center gap-2 rounded px-2 py-1 text-sm text-ink-muted ${PHONE_ROW}`)}>
-                  <input type="checkbox" checked disabled data-testid={`list-col-toggle-${leadingTitle?.column_name ?? 'row_id'}`} />
-                  {leadingTitle ? (leadingTitle.label ?? leadingTitle.column_name) : 'Row ID'}
-                </label>
-                {inListChoices.map(columnChoice)}
-                {otherChoices.length > 0 && (
-                  <div
-                    className="mt-1 border-t border-border px-2 pb-1 pt-2 text-xs text-ink-subtle"
-                    data-testid="list-columns-divider"
-                  >
-                    Not in the list by default
-                  </div>
-                )}
-                {otherChoices.map(columnChoice)}
-                {canShapeColumns && (
-                  // Pinned to the menu's foot, so it shows even when the rows scroll.
-                  <div className="sticky -bottom-2 -mx-2 -mb-2 mt-1 border-t border-border bg-surface px-2 pb-2 pt-1">
-                    <button
-                      type="button"
-                      className={touchRowClasses(`flex w-full items-center rounded px-2 py-1 text-left text-sm text-action hover:bg-subtle disabled:opacity-50 ${PHONE_ROW}`)}
-                      disabled={makingDefault === 'saving'}
-                      onClick={() => void makeDefaultForEveryone()}
-                      data-testid="list-make-default"
-                    >
-                      Make this the default for everyone
-                    </button>
-                    {makingDefault === 'failed' && (
-                      <p className="px-2 pb-1 text-xs text-negative" data-testid="list-make-default-error">
-                        Couldn't make this the default. Everyone's list is as it was.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          {/* TLC-R1 (docs/specs/0007-table-lifecycle.md): the create
-              affordance is metadata-gated and lives HERE, in the toolbar of
-              the list the user is already looking at. It used to exist only
-              as an awesomebar suggestion, which meant a table you had just
-              built could not be filled unless you knew to search for its own
-              name (#247). Absent, not disabled, where rows cannot be made:
-              a read-only source owns its rows (EDS-13), a settings table
-              has one row and no list at all, and a sub-table's rows exist only
-              inside a parent — `saveDoc` refuses a direct child insert, so
-              offering New on a directly-reached child list could only ever
-              produce an error. */}
-          {canAddRows &&
-            !isRowsReadOnly(meta.data) &&
-            meta.data?.kind !== 'settings' &&
-            meta.data?.kind !== 'sub_table' && (
-            <Link
-              to="/featherbase/admin/table/$table/new"
-              params={{ table }}
-              search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
-              className={buttonClasses({ variant: 'primary' })}
-              data-testid="list-new"
-            >
-              New
-            </Link>
-          )}
-          <ActionDisclosure label="View: List">
-          <Link
-            to="/featherbase/admin/table/$table/view/report"
-            params={{ table }}
-            search={{ report: undefined }}
-            className={buttonClasses()}
-            data-testid="open-report"
-          >
-            Report
-          </Link>
-          {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
-            <Link
-              to="/featherbase/admin/table/$table/view/kanban"
-              params={{ table }}
-              search={{ group_by: undefined }}
-              className={buttonClasses()}
-              data-testid="open-kanban"
-            >
-              Kanban
-            </Link>
-          )}
-          {(meta.data?.columns ?? []).some((f) => f.column_type === 'Date') && (
-            <Link
-              to="/featherbase/admin/table/$table/view/calendar"
-              params={{ table }}
-              className={buttonClasses()}
-              data-testid="open-calendar"
-            >
-              Calendar
-            </Link>
-          )}
-          {/* UI-022: Gantt needs two Date columns (start + end). */}
-          {(meta.data?.columns ?? []).filter((f) => f.column_type === 'Date').length >= 2 && (
-            <Link
-              to="/featherbase/admin/table/$table/view/gantt"
-              params={{ table }}
-              className={buttonClasses()}
-              data-testid="open-gantt"
-            >
-              Gantt
-            </Link>
-          )}
-          {/* Checklist needs a Sub-table whose row table has a Check column —
-              the component renders nothing when the shape is absent. */}
-          <ChecklistSwitch table={table} meta={meta.data} />
-          </ActionDisclosure>
-          <ExploreSplitButton table={table} />
-          {(table === 'Person' || (!isRowsReadOnly(meta.data) && caps?.manage) || (meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data))) && <ActionDisclosure label="List actions">
+          {/* #1242 (admin-lists 2): one ⋯ More for what is not the page's own action. */}
+          {(hasListActions || hasTableAdministration) && <ActionDisclosure label="More">
+          {hasListActions && <div role="group" aria-label="List actions" className="flex flex-col items-stretch gap-1">
+          <p className="px-1 pt-1 text-xs font-medium text-ink-muted">List actions</p>
             {table === 'Person' && <Link to="/featherbase/admin/find-person" className={buttonClasses()} data-testid="open-find-person">Find by code</Link>}
             {!isRowsReadOnly(meta.data) && caps?.manage && <Link to="/featherbase/admin/import" search={{ table }} className={buttonClasses()} data-testid="open-import">Import</Link>}
             {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && <Button aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>Import conflicts</Button>}
-          </ActionDisclosure>}
-          {(canShapeColumns || caps?.manage || isSystemManager) && <ActionDisclosure label="Table administration">
+          </div>}
+          {hasTableAdministration && <div role="group" aria-label="Table administration" className="flex flex-col items-stretch gap-1 border-t border-border pt-1 first:border-t-0 first:pt-0">
+          <p className="px-1 pt-1 text-xs font-medium text-ink-muted">Table administration</p>
           {canShapeColumns && <Link to="/featherbase/admin/table/$table/columns" params={{ table }} className={buttonClasses()} data-testid="open-columns">Edit columns</Link>}
           {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && !isView(meta.data) && <Link to="/featherbase/admin/table/$table/merge" params={{ table }} className={buttonClasses()} data-testid="open-merge">Merge into…</Link>}
           {isSystemManager && (
@@ -797,7 +745,33 @@ export function ListView({
               )}
             </>
           )}
+          </div>}
           </ActionDisclosure>}
+          {/* TLC-R1 (docs/specs/0007-table-lifecycle.md): the create
+              affordance is metadata-gated and lives HERE, in the toolbar of
+              the list the user is already looking at. It used to exist only
+              as an awesomebar suggestion, which meant a table you had just
+              built could not be filled unless you knew to search for its own
+              name (#247). Absent, not disabled, where rows cannot be made:
+              a read-only source owns its rows (EDS-13), a settings table
+              has one row and no list at all, and a sub-table's rows exist only
+              inside a parent — `saveDoc` refuses a direct child insert, so
+              offering New on a directly-reached child list could only ever
+              produce an error. */}
+          {canAddRows &&
+            !isRowsReadOnly(meta.data) &&
+            meta.data?.kind !== 'settings' &&
+            meta.data?.kind !== 'sub_table' && (
+            <Link
+              to="/featherbase/admin/table/$table/new"
+              params={{ table }}
+              search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
+              className={buttonClasses({ variant: 'primary' })}
+              data-testid="list-new"
+            >
+              New {thingWords(label)}
+            </Link>
+          )}
         </div>
       </div>
       <ArchivedBanner table={table} meta={meta.data} canUnarchive={isSystemManager} />
@@ -919,12 +893,13 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
+      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? onFiltersChange} />}
       {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
       {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
       <div className="mb-2 flex flex-wrap items-end gap-2">
         {onFiltersChange && meta.data && (
           <>
+            <ListSearch meta={meta.data} filters={filters} onChange={onFiltersChange} label={label} />
             <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
             <Button aria-expanded={addFilterOpen} onClick={() => setAddFilterOpen((open) => !open)} data-testid="filter-toggle">
               Add filter
@@ -932,11 +907,134 @@ export function ListView({
             </Button>
           </>
         )}
-        <div className="ml-auto flex flex-wrap items-end gap-2">
-          <ViewToggle label="List layout" value={compact ? 'compact' : 'table'} onChange={(v) => {
-            setCompact(v === 'compact')
-            persist({ compact: v === 'compact' })
-          }} />
+        {/* #859, #1242 (admin-lists 3): retired rows, as a chip in the toolbar. */}
+        {retirable && (
+          // A real checkbox, drawn as a chip: what it is stays plain to everyone.
+          <label className={pillClasses(`min-h-control cursor-pointer gap-1.5 border px-3 text-sm has-focus-visible:outline-2 has-focus-visible:outline-focus ${showRetired ? 'border-action bg-action-tint text-action' : 'border-border-control bg-surface text-ink-muted hover:bg-subtle'}`)}>
+            <input
+              type="checkbox"
+              checked={showRetired}
+              onChange={(e) => {
+                setShowRetired(e.target.checked)
+                setStart(0)
+              }}
+              data-testid="list-show-retired-toggle"
+              className="size-3.5 accent-action"
+            />
+            Show retired
+          </label>
+        )}
+        <div className="ml-auto flex flex-wrap items-end gap-2" data-testid="list-view-tools">
+          {/* #1242 (admin-lists 2-3): the other ways to see this Table, Explore among them. */}
+          <ActionDisclosure label="View">
+          <Link
+            to="/featherbase/admin/table/$table/view/report"
+            params={{ table }}
+            search={{ report: undefined }}
+            className={buttonClasses()}
+            data-testid="open-report"
+          >
+            Report
+          </Link>
+          {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
+            <Link
+              to="/featherbase/admin/table/$table/view/kanban"
+              params={{ table }}
+              search={{ group_by: undefined }}
+              className={buttonClasses()}
+              data-testid="open-kanban"
+            >
+              Kanban
+            </Link>
+          )}
+          {(meta.data?.columns ?? []).some((f) => f.column_type === 'Date') && (
+            <Link
+              to="/featherbase/admin/table/$table/view/calendar"
+              params={{ table }}
+              className={buttonClasses()}
+              data-testid="open-calendar"
+            >
+              Calendar
+            </Link>
+          )}
+          {/* UI-022: Gantt needs two Date columns (start + end). */}
+          {(meta.data?.columns ?? []).filter((f) => f.column_type === 'Date').length >= 2 && (
+            <Link
+              to="/featherbase/admin/table/$table/view/gantt"
+              params={{ table }}
+              className={buttonClasses()}
+              data-testid="open-gantt"
+            >
+              Gantt
+            </Link>
+          )}
+          {/* Checklist needs a Sub-table whose row table has a Check column —
+              the component renders nothing when the shape is absent. */}
+          <ChecklistSwitch table={table} meta={meta.data} />
+          <ExploreSplitButton table={table} />
+          </ActionDisclosure>
+          <div className="relative">
+            <button
+              onClick={() => setColPickerOpen((o) => !o)}
+              className={buttonClasses()}
+              aria-expanded={colPickerOpen}
+              data-testid="list-columns"
+            >
+              Show columns
+              <ChevronDown aria-hidden data-chevron size={18} />
+            </button>
+            {colPickerOpen && (
+              <div
+                // #581: on a phone the button starts the wrapped toolbar,
+                // so the pop-up opens from its left edge; from sm up it
+                // lines up with the button's right edge as before.
+                ref={colPickerRef}
+                className={cardClasses('absolute left-0 z-10 mt-1 max-h-[calc(100dvh-12rem)] w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
+                style={colPickerMax ? { maxHeight: colPickerMax } : undefined}
+                data-testid="list-columns-popup"
+              >
+                {/* The leading column names each row, so it is always on. */}
+                <label className={touchRowClasses(`flex items-center gap-2 rounded px-2 py-1 text-sm text-ink-muted ${PHONE_ROW}`)}>
+                  <input type="checkbox" checked disabled data-testid={`list-col-toggle-${leadingTitle?.column_name ?? 'row_id'}`} />
+                  {leadingTitle ? (leadingTitle.label ?? leadingTitle.column_name) : 'Row ID'}
+                </label>
+                {inListChoices.map(columnChoice)}
+                {otherChoices.length > 0 && (
+                  <div
+                    className="mt-1 border-t border-border px-2 pb-1 pt-2 text-xs text-ink-subtle"
+                    data-testid="list-columns-divider"
+                  >
+                    Not in the list by default
+                  </div>
+                )}
+                {otherChoices.map(columnChoice)}
+                {canShapeColumns && (
+                  // Pinned to the menu's foot, so it shows even when the rows scroll.
+                  <div className="sticky -bottom-2 -mx-2 -mb-2 mt-1 border-t border-border bg-surface px-2 pb-2 pt-1">
+                    <button
+                      type="button"
+                      className={touchRowClasses(`flex w-full items-center rounded px-2 py-1 text-left text-sm text-action hover:bg-subtle disabled:opacity-50 ${PHONE_ROW}`)}
+                      disabled={makingDefault === 'saving'}
+                      onClick={() => void makeDefaultForEveryone()}
+                      data-testid="list-make-default"
+                    >
+                      Make this the default for everyone
+                    </button>
+                    {makingDefault === 'failed' && (
+                      <p className="px-2 pb-1 text-xs text-negative" data-testid="list-make-default-error">
+                        Couldn't make this the default. Everyone's list is as it was.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {/* #1259: density is one on/off button, so "Table" names only the view. */}
+          <Button aria-pressed={compact} data-testid="compact-rows" onClick={() => {
+            setCompact(!compact)
+            persist({ compact: !compact })
+          }} className={compact ? 'border-action bg-action-tint text-action' : undefined}>Compact Rows</Button>
           <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
             className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
         </div>
@@ -1014,10 +1112,13 @@ export function ListView({
         </div>
       )}
       {treeOn ? (
-        <div className={cardClasses('p-3')}>
-          <TreeOfAll table={table} filters={[...(baseFilters ?? []), ...filters]} expanded={treeExpanded}
-            onExpandedChange={(next) => setTree(true, [...next])}
-            onOpen={(pane) => openPane?.(pane)} />
+        <div className="flex min-h-0 items-start gap-3" data-testid="list-tree">
+          <div className={cardClasses('min-w-0 flex-1 p-3')}>
+            <TreeOfAll table={table} filters={[...(baseFilters ?? []), ...filters]} expanded={treeExpanded}
+              onExpandedChange={(next) => setTree(true, [...next])}
+              onOpen={(pane) => openInPanel?.(pane)} />
+          </div>
+          {recordPanel && <div className="w-[min(430px,45%)] shrink-0">{recordPanel}</div>}
         </div>
       ) : narrow ? (
         <PhoneList
@@ -1048,12 +1149,35 @@ export function ListView({
             </div>
           }
         />
+      ) : layout === 'split' ? (
+        // #1259: List And Record: the cards on the left, the open record beside them.
+        <div className="flex min-h-0 items-stretch gap-3" data-testid="list-split">
+          <div className="flex w-[330px] shrink-0 flex-col rounded-xl bg-surface p-1.5 shadow-sm" ref={setTableScroll}>
+            {rows.length ? (
+              <RecordCards table={table} titleColumn={meta.data?.title_column} rows={rows} columns={columns} settings={settings}
+                open={paneRow} onOpen={(row) => openPane?.({ table, row })} />
+            ) : <p className="px-3 py-6 text-center text-sm text-ink-subtle">{noRows}</p>}
+          </div>
+          <div className="min-w-0 flex-1">
+            {recordPanel ?? (
+              <div className="grid h-full min-h-24 place-items-center rounded-xl bg-canvas/40 text-sm text-ink-subtle" data-testid="record-panel-empty">
+                Choose a card to read it here.
+              </div>
+            )}
+          </div>
+        </div>
       ) : (
       <div className="relative">
-      <div className={cardClasses('overflow-x-auto')} ref={setTableScroll} data-testid="list-table-scroll">
+      {/* #1259: Table With Panel: the record slides over the table's right side, under its header. */}
+      {/* A record the address opens shows here in the Table view too (a pasted link). */}
+      {(layout === 'panel' || layout === 'table') && recordPanel && (
+        <div className="absolute bottom-0 right-0 z-[3] w-[min(430px,100%)]" style={{ top: headRow }} data-testid="record-panel-over">{recordPanel}</div>
+      )}
+      <div className={cardClasses('featherbase-scroll overflow-auto')} ref={setTableScroll} data-testid="list-table-scroll">
         {/* Separate borders: a collapsed one stays behind when its sticky cell scrolls. */}
         <table className="w-full border-separate border-spacing-0 text-sm">
-          <thead className="bg-subtle text-left">
+          {/* #1249: the header row stays in view while the rows scroll under it. */}
+          <thead className="sticky top-0 z-[2] bg-subtle text-left">
             <tr>
               {/* Selection exists only to feed the bulk bar — a read-only
                   source has neither (EDS-13: absent, not disabled). */}
@@ -1076,7 +1200,7 @@ export function ListView({
                 </th>
               )}
               {columns.map((col, i) => (
-                <th key={col.column_name} className={`border-b border-border ${i === 0 ? 'sticky left-0 z-[1] border-r bg-subtle' : ''}`}>
+                <th key={col.column_name} className={`border-b border-border bg-subtle ${i === 0 ? 'sticky left-0 z-[3] border-r' : ''}`}>
                   <button
                     className={`flex w-full px-3 py-2 font-medium text-ink-muted hover:text-ink ${isFigure(col) ? 'justify-end text-right' : 'text-left'}`}
                     data-testid={`col-${col.column_name}`}
@@ -1134,7 +1258,13 @@ export function ListView({
       {moreToTheRight && <MoreColumnsHint box={tableScroll} />}
       </div>
       )}
+      {/* #1242 (admin-lists 6): "1–4 of 4" on the left; Prev and Next only when there is
+          another page, or this one is not the first (Codex review, round 8). */}
       <div className="mt-3 flex items-center gap-3 text-sm">
+        <span className="text-xs text-ink-muted" data-testid="page-info">
+          {pageRange(start, PAGE, total)}
+        </span>
+        {(total > PAGE || start > 0) && <>
         <button
           disabled={start === 0}
           onClick={() => setStart((s) => Math.max(0, s - PAGE))}
@@ -1143,9 +1273,6 @@ export function ListView({
         >
           Prev
         </button>
-        <span className="text-xs text-ink-muted" data-testid="page-info">
-          {pageRange(start, PAGE, total)}
-        </span>
         <button
           disabled={start + PAGE >= total}
           onClick={() => setStart((s) => s + PAGE)}
@@ -1154,6 +1281,7 @@ export function ListView({
         >
           Next
         </button>
+        </>}
       </div>
     </div>
   )

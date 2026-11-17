@@ -3,6 +3,8 @@
   "platformVersion": "2026-10",
   "name": "tasker",
   "title": "Tasker",
+  "summary": "Tasks and store work, with what is due",
+  "icon": "checklist",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "tasker.task",
@@ -1074,9 +1076,23 @@
       "fromVersion": "3.3.1",
       "toVersion": "3.3.2",
       "operations": []
-    }
+    },
+    {
+      "id": "one_app_chrome",
+      "fromVersion": "3.3.2",
+      "toVersion": "3.3.3",
+      "operations": []
+    },
+    {"id": "switcher_summary", "fromVersion": "3.3.3", "toVersion": "3.3.4", "operations": []}
   ],
   "releaseNotes": [
+    {"version": "3.3.4", "changes": ["The app switcher shows what this app is for, with its icon"]},
+    {
+      "version": "3.3.3",
+      "changes": [
+        "The sidebar collapses with the top bar's control or Ctrl/Cmd+B, as in every app, and is a drawer on a phone"
+      ]
+    },
     {
       "version": "3.3.2",
       "changes": [

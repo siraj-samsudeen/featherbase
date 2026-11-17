@@ -2,18 +2,21 @@ import { useId, useRef, type ReactNode } from 'react'
 import { cx } from './cx'
 
 /** Content sections, not phone navigation. Hidden panels retain drafts and local search. */
-export function ContentTabs({ label, tabs, value, onChange, className }: {
+export function ContentTabs({ label, tabs, value, onChange, className, actions }: {
   label: string
   tabs: { id: string; label: string; content: ReactNode }[]
   value: string
   onChange: (id: string) => void
   className?: string
+  /** #1267: controls at the tab row's right end (a record's "✓ Saved" and View menu). Not tabs. */
+  actions?: ReactNode
 }) {
   const id = useId()
   const buttons = useRef<(HTMLButtonElement | null)[]>([])
   return (
     <div className={cx('flex min-h-0 min-w-0 flex-1 flex-col', className)}>
-      <div role="tablist" aria-label={label} className="flex shrink-0 gap-4 overflow-x-auto border-b border-border">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border">
+      <div role="tablist" aria-label={label} className="flex min-w-0 gap-4 overflow-x-auto">
         {tabs.map((tab, index) => (
           <button key={tab.id} ref={(el) => { buttons.current[index] = el }} type="button" role="tab"
             id={`${id}-tab-${tab.id}`} aria-controls={`${id}-panel-${tab.id}`} aria-selected={value === tab.id}
@@ -32,6 +35,8 @@ export function ContentTabs({ label, tabs, value, onChange, className }: {
               value === tab.id ? 'border-action text-action' : 'border-transparent text-ink-muted hover:text-ink')}
           >{tab.label}</button>
         ))}
+      </div>
+      {actions && <div className="ml-auto flex shrink-0 items-center gap-2" data-testid="content-tabs-actions">{actions}</div>}
       </div>
       {tabs.map((tab) => (
         <div key={tab.id} id={`${id}-panel-${tab.id}`} role="tabpanel" aria-labelledby={`${id}-tab-${tab.id}`}

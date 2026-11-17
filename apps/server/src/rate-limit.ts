@@ -45,7 +45,8 @@ export function resetRateLimit(user?: string) {
 }
 
 export async function rateLimit(c: Context, next: Next) {
-  const user = (c.get('user') as { row_id?: string } | undefined)?.row_id
+  // #1222: while viewing as someone, the budget spent is the tester's own.
+  const user = (c.get('viewingAs') as { tester?: string } | undefined)?.tester ?? (c.get('user') as { row_id?: string } | undefined)?.row_id
   if (!user) return next()
 
   const now = Date.now()

@@ -12,6 +12,7 @@ import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
+import { chooseApp } from './app-switcher'
 
 afterEach(() => {
   config.instanceAddresses = null
@@ -44,6 +45,30 @@ test("Open Admin on an app's address hands the person over to the Admin's addres
   expect(answers[0].handoff).toMatch(/^http:\/\/elsewhere\.example\.test\//)
 })
 
+// #1236: choosing Featherbase in the switcher on an app's address is the same
+// hand-over as Open Admin, not a plain navigation that would lose the session.
+test("choosing Featherbase in the switcher on an app's address hands the person over too", async ({ admin }) => {
+  config.instanceAddresses = parseInstanceAddresses(
+    JSON.stringify([
+      { address: 'http://localhost', opens: 'dash', emails: true },
+      { address: 'http://elsewhere.example.test', opens: 'admin' },
+    ]),
+    'test',
+  )
+  const real = globalThis.fetch
+  const answers: Array<{ handoff?: string }> = []
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const res = await real(input, init)
+    if (String(input).includes('/api/open_admin')) answers.push(await res.clone().json())
+    return res
+  })
+  vi.spyOn(console, 'error').mockImplementation(() => {}) // jsdom cannot follow a cross-address navigation
+  await renderApp('/featherbase/sales-target', admin)
+  await chooseApp(screen, 'Featherbase', { timeout: 8000 })
+  await waitFor(() => expect(answers).toHaveLength(1))
+  expect(answers[0].handoff).toMatch(/^http:\/\/elsewhere\.example\.test\//)
+})
+
 test('Open Admin refused because the grant went meanwhile stays on the page, ready to try again', async ({ admin, createUser }) => {
   await admin.post('/api/table_def', { name: 'Tba Note', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Tba Clerk' } })
@@ -58,7 +83,9 @@ test('Open Admin refused because the grant went meanwhile stays on the page, rea
     'test',
   )
   const r = await renderApp('/featherbase/account/sign-in-methods', clerk)
-  const button = await within(await screen.findByTestId('top-bar')).findByTestId('open-admin', {}, { timeout: 8000 })
+  // #1253: beside the sidebar, Open Admin is in the Account menu at the sidebar's foot.
+  await userEvent.click(await screen.findByTestId('session-user', {}, { timeout: 8000 }))
+  const button = await within(await screen.findByTestId('account-menu')).findByTestId('open-admin', {}, { timeout: 8000 })
   await admin.delete(`/api/table/Permission/${encodeURIComponent(grantId)}`)
   await userEvent.click(button)
   await waitFor(() => expect(button).toBeEnabled())
@@ -81,5 +108,14 @@ test('a sign-out the server could not complete says so and keeps the person sign
   await waitFor(() => expect(told).toHaveBeenCalledWith(SIGN_OUT_INCOMPLETE))
   expect(getToken()).toBe(admin.token)
   expect(pathOf(r)).toBe('/featherbase/admin/home/system')
-  expect(errors).toHaveBeenCalledWith('sign-out: revoking a session failed', expect.anything())
+  expect(errors).toHaveBeenCalledWith('account switcher: revoking a session failed', expect.anything())
+})
+
+test("the account menu's own name opens the person's record and closes the menu", async ({ admin }) => {
+  const r = await renderApp('/featherbase/admin', admin)
+  await userEvent.click(await screen.findByTestId('session-user', {}, { timeout: 8000 }))
+  const menu = await screen.findByTestId('account-menu')
+  await userEvent.click(within(menu).getAllByRole('link')[0])
+  await waitFor(() => expect(pathOf(r)).toMatch(/\/featherbase\/admin\/table\/person\//))
+  expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument()
 })

@@ -146,8 +146,14 @@ async function openParcel(as: Client) {
   await waitFor(() => expect(fieldLabels().length).toBeGreaterThan(0))
 }
 
+/** #1267: a choice in the record's View menu, opened from the tab row. */
+function viewChoice(id: string) {
+  if (!within(form()).queryByTestId('view-menu')) fireEvent.click(within(form()).getByTestId('view-menu-button'))
+  return within(form()).getByTestId(id)
+}
+
 async function arrangeBy(mode: string) {
-  fireEvent.click(within(form()).getByTestId(`arrange-${mode}`))
+  fireEvent.click(viewChoice(`arrange-${mode}`))
   await waitFor(() => expect(form().querySelector(`[data-arrangement="${mode}"]`)).not.toBeNull())
 }
 
@@ -404,7 +410,7 @@ describe('core-forms', () => {
     const user = await blueBoxReader(admin, createUser as CreateUser, step)
     await step('the user opens that parcel and shows its fields in one column', async () => {
       await openParcel(user)
-      fireEvent.click(within(form()).getByTestId('arrange-columns-1'))
+      fireEvent.click(viewChoice('arrange-columns-1'))
       await waitFor(async () =>
         expect((await user.get<{ settings: { form?: { columns?: number } } | null }>('/api/user_settings/Parcel')).settings?.form?.columns).toBe(1))
     })
@@ -416,7 +422,7 @@ describe('core-forms', () => {
     await step("the user arranged the parcel's fields by data type in one column", async () => {
       await openParcel(user)
       await arrangeBy('type')
-      fireEvent.click(within(form()).getByTestId('arrange-columns-1'))
+      fireEvent.click(viewChoice('arrange-columns-1'))
       // Done once the person's settings have taken the choice.
       await waitFor(async () =>
         expect((await user.get<{ settings: { form?: unknown } | null }>('/api/user_settings/Parcel')).settings?.form).toEqual({ mode: 'type', columns: 1 }))
@@ -437,7 +443,7 @@ describe('core-forms', () => {
     await step("the user arranged the parcel's fields by data type in one column", async () => {
       await openParcel(user)
       await arrangeBy('type')
-      fireEvent.click(within(form()).getByTestId('arrange-columns-1'))
+      fireEvent.click(viewChoice('arrange-columns-1'))
       await waitFor(async () =>
         expect((await user.get<{ settings: { form?: unknown } | null }>('/api/user_settings/Parcel')).settings?.form).toEqual({ mode: 'type', columns: 1 }))
     })

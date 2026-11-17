@@ -4,12 +4,16 @@
 import { checked } from './values.ts'
 import { ALL_STORES_ROLE, orgChartProvider, reachOf, type Documents, type Place } from './provider.ts'
 import { diveFilters, storesOfReport, storesReached, type ReportRecord } from './dive-filters.ts'
-import { MONTH_CHOICES, buildReport, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
+import { MONTH_CHOICES, buildReport, dayLabel, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 import { departmentActions, departmentReads } from './department-setup.ts'
+import { storeActions, storeReads } from './my-store.ts'
+import { buyerSectionActions, buyerSectionReads } from './buyer-sections.ts'
+import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
+import { VIEW_AS_TESTER, viewAsPeople } from './view-as-people.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -43,6 +47,8 @@ export const EMBED_API_TIMEOUT_MS = 10_000
 /** What the platform hands a read handler (the part this module uses). */
 interface ReadContext {
   user: string
+  /** The signed-in person's name, as the platform knows it. */
+  userName?: string
   roles?: readonly string[]
   people?: AccessContext['people']
   payload?: unknown
@@ -73,7 +79,7 @@ export function setEmbedFetch(f: typeof fetch | null) {
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
-export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager', TEAM_MANAGER])
+export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager', TEAM_MANAGER, VIEW_AS_TESTER])
 
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
 
@@ -237,6 +243,22 @@ async function storeNames(ctx: ScopedContext, stores: readonly string[]): Promis
   return names
 }
 
+/** #1240: the reader's jobs (why they see what they see) and each store they reach, by name, whole or by section and subcategory. */
+async function reachInWords(ctx: ScopedContext) {
+  const places = await placesHeld(ctx)
+  const stores = storesReached(places)
+  const names = await storeNames(ctx, stores).catch(() => new Map<string, string>())
+  const jobs = [...new Set(places.flatMap(place => (place.reasons ?? []).map(reason => reason.since ? `${reason.text}, since ${dayLabel(reason.since)}` : reason.text)))].sort()
+  const reach = stores.map(store => {
+    const here = places.filter(place => (place.filters.store ?? []).includes(store))
+    const whole = here.some(place => !place.filters.subcategory)
+    return { store, name: names.get(store) ?? null, whole, sections: whole ? [] : headingOf(places, store, null).sections,
+      // Not whole: every place here names its subcategories.
+      subcategories: whole ? [] : [...new Set(here.flatMap(place => place.filters.subcategory!))].sort() }
+  })
+  return { jobs, reach }
+}
+
 /** What a report's first answer says, for a report with no quick view: whether it can open, and its header. */
 type Plain = { state: 'ready'; no_quick_view: true; heading: Heading; period_start?: string; period_end?: string }
 
@@ -296,6 +318,8 @@ const withReach = (context: AccessContext): AccessContext => ({ ...context, reac
 export const actions = {
   ...sectionActions,
   ...departmentActions,
+  ...storeActions,
+  ...buyerSectionActions,
   ...prefillActions,
   give_report: (context: AccessContext) => giveReport(withReach(context)),
   remove_report_access: (context: AccessContext) => removeAccess(withReach(context)),
@@ -308,6 +332,9 @@ export const actions = {
 export const reads = {
   ...sectionReads,
   ...departmentReads,
+  ...storeReads,
+  ...buyerSectionReads,
+  ...coverageReads,
 
   /** The signed-in person, as the platform knows them. */
   me({ user }: ReadContext) {
@@ -343,6 +370,8 @@ export const reads = {
     (context as ScopedContext).prepared as Awaited<ReturnType<typeof diveChoicesPrepared>> | undefined), {
     prepare: (context: ReadContext) => diveChoicesPrepared(context as AccessContext),
   }),
+  /** #1222: View as's people, for the platform's picker; run as the tester. View As Testers only. */
+  view_as_people: (context: ReadContext) => viewAsPeople(context as AccessContext),
   person_lookup: (context: ReadContext) => personLookup(withReach(context as AccessContext), istToday(), reachFor(context as AccessContext)),
 
   /** The reports this person may open, for the sidebar. */
@@ -378,6 +407,19 @@ export const reads = {
     const today = istToday()
     return MONTH_CHOICES.map(choice => ({ value: choice,
       label: `${choice === 'this' ? 'This month' : 'Last month'} · ${monthLabel(periodOf(today, choice).period_start)}` }))
+  },
+
+  /**
+   * #1240: what "Report an issue" sends with the reader's words: the report, who they are, their
+   * jobs and what they reach, store by store. Read as the reader, for a report that is theirs; the
+   * ticket is raised in Tickets by the reader themselves, so nothing here writes.
+   */
+  async feedback_context(context: ReadContext) {
+    const ctx = context as ScopedContext
+    const report = await chosenReport(ctx)
+    if (!report) return { state: 'no_access' }
+    return { state: 'ok', report: { key: report.report_key, name: report.report_name }, person: ctx.userName ?? null,
+      ...await reachInWords(ctx) }
   },
 
   /** Whether the chosen report can open for this reader, its header, and its quick view's figures if it has one. */

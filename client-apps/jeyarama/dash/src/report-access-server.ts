@@ -43,7 +43,7 @@ export interface AccessContext {
 }
 
 const PAGE = 500
-async function all(documents: Documents, table: string, fields: string[], filters: [string, string, unknown][] = []): Promise<Row[]> {
+export async function all(documents: Documents, table: string, fields: string[], filters: [string, string, unknown][] = []): Promise<Row[]> {
   const rows: Row[] = []
   for (;;) {
     const page = await documents.list(table, { fields: ['row_id', ...fields], filters, order_by: 'row_id asc', limit_start: rows.length, limit_page_length: PAGE })
@@ -104,12 +104,14 @@ async function scopeOf(ctx: AccessContext, on: string): Promise<Scope> {
   if (managesAccess(ctx)) return { kind: 'company' }
   if (!managesTeamAccess(ctx)) ctx.reject!(NOT_A_MANAGER)
   const team = await teamOf(ctx.baseTables!, ctx.user, on)
+  // A Team Report Manager got here by holding that role, so their roles are known.
+  const roles = ctx.roles!
   // What they can open themselves: given to them, and not shut by their own reach, as Dash offers it to them.
   // Opening a report takes a Dash reader role too (the manifest's report and embed_session readRoles; Codex adversarial round 2).
-  const opensReports = (ctx.roles ?? []).some(role => role === 'Dash Reader' || role === ALL_STORES_ROLE)
+  const opensReports = roles.some(role => role === 'Dash Reader' || role === ALL_STORES_ROLE)
   const reports = (await names(ctx)).reports
-  const reach = ctx.reach ? await ctx.reach(ctx.user, ctx.roles ?? []) : { any: false, wholeStore: false }
-  const holds = new Set(!opensReports ? [] : [...(await reportsGivenTo(ctx.baseTables!, ctx.user, ctx.roles ?? [], on)).keys()]
+  const reach = ctx.reach ? await ctx.reach(ctx.user, roles) : { any: false, wholeStore: false }
+  const holds = new Set(!opensReports ? [] : [...(await reportsGivenTo(ctx.baseTables!, ctx.user, roles, on)).keys()]
     .filter(key => reports.has(key) && closedBecause(reports.get(key), reach) === null))
   return { kind: 'team', team, holds }
 }
@@ -127,7 +129,7 @@ async function names(ctx: AccessContext) {
 }
 
 /** A person's name as the caller may read it, falling back to their name on the staff list. */
-async function personNames(ctx: AccessContext, ids: string[]): Promise<Map<string, string>> {
+export async function personNames(ctx: AccessContext, ids: string[]): Promise<Map<string, string>> {
   const found = new Map<string, string>()
   const wanted = [...new Set(ids.filter(Boolean))]
   if (!wanted.length) return found

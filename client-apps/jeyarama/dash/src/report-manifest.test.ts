@@ -9,13 +9,14 @@ import { DASH_ROLES, EMBED_ORIGIN, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH
 import type { SalesRow } from './report.ts'
 import { PROVIDER_FIELDS, PROVIDER_TABLES } from './provider.ts'
 import { BASE_TABLES } from './my-sections.ts'
+import { BUYER_TABLES } from './buyers.ts'
 
 type Dataset = { name: string; source: string; query: string; columns: { name: string; type: string }[]; keys: string[]; filters: Record<string, string>
   guard?: { kind: string; column?: string; value?: number; within?: string }[] }
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean; needs?: string[] }>
-const ROLES = ['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager']
+const ROLES = ['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester']
 
 describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
@@ -76,7 +77,7 @@ describe('the report in the manifest', () => {
 
   it("scopes the report's reads by the reader's places", () => {
     expect(['stores', 'report', 'embed_session'].map(name => [name, operations[name].policy.kind, operations[name].policy.readRoles]))
-      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager' && role !== 'Team Report Manager')]))
+      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager' && role !== 'Team Report Manager' && role !== 'View As Tester')]))
   })
 
   it('declares only the two Dive openers and the Dive list for Add a Dive (#1169) as calling out', () => {
@@ -157,7 +158,7 @@ describe('what Dash owns and what it reads', () => {
 
   it("declares a read of every Table its scope provider and Your sections read, and of nothing else", () => {
     // #1046: and its own report access Tables, read as the app so a reader needs no grant on them.
-    expect(Object.keys(manifest.baseTables.read).sort()).toEqual([...new Set([...PROVIDER_TABLES, ...BASE_TABLES,
+    expect(Object.keys(manifest.baseTables.read).sort()).toEqual([...new Set([...PROVIDER_TABLES, ...BASE_TABLES, ...BUYER_TABLES,
       'dash.report_access', 'dash.report_bundle', 'dash.report_bundle_member'])].sort())
   })
 
@@ -203,7 +204,7 @@ describe('the read grants, declared before the first install', () => {
   // Siraj, 11-Nov-2026 ("Drop whatever is not implemented"): no section editor or reviewer role.
   // #1192 (same day): Dash All-Stores Reader reaches every store. #1217: Team Report Manager gives reports to their team.
   it('declares only the roles Dash uses', () => {
-    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager'])
+    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester'])
   })
 
   it('give the All-Stores Reader only the read of the entry Table, and every read the Reader has', () => {
@@ -235,21 +236,62 @@ describe('the read grants, declared before the first install', () => {
 
 // #1192: production runs 0.12.10; this version's ledger extends it with one step that changes no Table.
 describe('the version step for Dash All-Stores Reader', () => {
-  it('follows production\'s 0.12.10 history exactly, then adds the role, then Your sections (#1175, #1191), then Your department (#1195), then who a person is (#1216), then managers add Dives (#1169), then team report giving (#1217), then grant from Waiting for access (#1173), then the department name follows its sections (#1209), then a named cluster head (#4588), with no Table change', () => {
-    const tail = manifest.migrations.slice(-12, -7).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
-    expect(tail).toEqual([['pickers_in_dive', '0.12.5', '0.12.6', tail[0][3]], ['merchandise_reach', '0.12.6', '0.12.9', 0],
-      ['opens_for_dash_roles', '0.12.9', '0.12.10', 0], ['all_stores_reader', '0.12.10', '0.12.11', 0], ['sections_not_mine', '0.12.11', '0.13.0', 0]])
-    expect(manifest.migrations.at(-7)).toMatchObject({ id: 'department_self_setup', fromVersion: '0.13.0', toVersion: '0.13.1', operations: [] })
-    expect(manifest.migrations.at(-6)).toMatchObject({ id: 'person_identity', fromVersion: '0.13.1', toVersion: '0.13.2', operations: [] })
-    // #1169: after #1216's 0.13.2, one more step that changes no Table, only access and reads.
-    expect(manifest.migrations.at(-5)).toMatchObject({ id: 'report_access_managers_add_dives', fromVersion: '0.13.2', toVersion: '0.13.3', operations: [] })
-    expect(manifest.migrations.at(-4)).toMatchObject({ id: 'team_report_giving', fromVersion: '0.13.3', toVersion: '0.13.4', operations: [] })
-    // #1173: the Waiting for access drawer gives Dash reports; no Table change.
-    expect(manifest.migrations.at(-3)).toMatchObject({ id: 'waiting_for_access_grant', fromVersion: '0.13.4', toVersion: '0.13.5', operations: [] })
-    // #1209: the department name follows its sections; no Table change.
-    expect(manifest.migrations.at(-2)).toMatchObject({ id: 'department_name_follows_sections', fromVersion: '0.13.5', toVersion: '0.13.6', operations: [] })
-    // #4588: a Cluster row names its head; no Table change.
-    expect(manifest.migrations.at(-1)).toMatchObject({ id: 'named_cluster_head', fromVersion: '0.13.6', toVersion: '0.13.7', operations: [] })
-    expect(pkg.version).toBe('0.13.7')
+  it('follows production\'s 0.12.10 history exactly, then adds the role, then Your sections (#1175, #1191), then Your department (#1195), then who a person is (#1216), then managers add Dives (#1169), then team report giving (#1217), then grant from Waiting for access (#1173), then the department name follows its sections (#1209), then a named cluster head (#4588), then one top bar and sidebar (#1227), with no Table change', () => {
+    // From 0.12.5 on, every step in order, each with its versions: read by
+    // position from that step, so a step added at the end moves nothing here.
+    const from = manifest.migrations.findIndex(m => m.id === 'pickers_in_dive')
+    const steps = manifest.migrations.slice(from).map(m => [m.id, m.fromVersion, m.toVersion, m.operations.length])
+    expect(steps).toEqual([
+      ['pickers_in_dive', '0.12.5', '0.12.6', steps[0][3]],
+      ['merchandise_reach', '0.12.6', '0.12.9', 0],
+      ['opens_for_dash_roles', '0.12.9', '0.12.10', 0],
+      ['all_stores_reader', '0.12.10', '0.12.11', 0],
+      ['sections_not_mine', '0.12.11', '0.13.0', 0],
+      ['department_self_setup', '0.13.0', '0.13.1', 0],
+      ['person_identity', '0.13.1', '0.13.2', 0],
+      // #1169: after #1216's 0.13.2, one more step that changes no Table, only access and reads.
+      ['report_access_managers_add_dives', '0.13.2', '0.13.3', 0],
+      ['team_report_giving', '0.13.3', '0.13.4', 0],
+      // #1173: the Waiting for access drawer gives Dash reports
+      ['waiting_for_access_grant', '0.13.4', '0.13.5', 0],
+      // #1209: the department name follows its sections
+      ['department_name_follows_sections', '0.13.5', '0.13.6', 0],
+      // #4588: a Cluster row names its head
+      ['named_cluster_head', '0.13.6', '0.13.7', 0],
+      // #1227: one top bar and sidebar for every app
+      ['one_app_chrome', '0.13.7', '0.13.8', 0],
+      // #1243: ends_on is a row's last day
+      ['ends_on_inclusive', '0.13.8', '0.13.9', 0],
+      // #1223: Your store, floor, department and sections, and What they cover
+      ['manager_area', '0.13.9', '0.13.10', 0],
+      // #1240: "Report an issue" reads the report's context
+      ['report_an_issue', '0.13.10', '0.13.12', 0],
+      // #1225: the Report access redesign
+      ['report_access_redesign', '0.13.12', '0.13.13', 0],
+      // #1223: a "+N more" list closes on Escape and on a click outside it
+      ['more_list_closes', '0.13.13', '0.13.14', 0],
+      // #1245: who runs a store, under the area's title
+      ['store_run_by', '0.13.14', '0.13.15', 0],
+      // 0.13.16 shipped buyer_section_desks before the move was renamed: kept byte for byte so an instance on it can upgrade.
+      ['buyer_section_desks', '0.13.15', '0.13.16', 0],
+      ['buyer_section_moves', '0.13.16', '0.13.17', 0],
+      // #1236: the switcher says what Dash is for.
+      ['switcher_summary', '0.13.17', '0.13.19', 0],
+      // #1248: the sidebar's rail shows each report's initials.
+      ['sidebar_icon_rail', '0.13.19', '0.13.21', 0],
+      // #1222: View As Tester and its people read
+      ['view_as', '0.13.21', '0.13.22', 0],
+      // #1254: Waiting for you reads who decides in a few queries
+      ['waiting_reads_fast', '0.13.22', '0.13.23', 0],
+      // #1254: who holds a section is read whole, so a decision and Waiting for you agree
+      ['holders_read_whole', '0.13.23', '0.13.24', 0],
+      // #1254: who may decide is asked about every waiting change at once
+      ['deciders_read_together', '0.13.24', '0.13.25', 0],
+      // #1219: the master data team's Put back action; no Table change, and no new read.
+      ['mde_review', '0.13.25', '0.13.26', 0],
+    ])
+    expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
+    expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
+    expect(pkg.version).toBe('0.13.26')
   })
 })

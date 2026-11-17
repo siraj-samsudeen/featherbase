@@ -51,7 +51,12 @@ export function dataColumns(meta: TableMeta): ColumnDef[] {
 export function defaultColumnNames(meta: TableMeta): Set<string> {
   const data = dataColumns(meta)
   const flagged = data.filter((c) => c.in_list_view)
-  return new Set((flagged.length ? flagged : data.slice(0, 2)).map((c) => c.column_name))
+  if (flagged.length) return new Set(flagged.map((c) => c.column_name))
+  // admin-lists 4: with no list columns chosen, an id the list no longer leads
+  // with waits in Show Columns. One someone made a list column stays one.
+  const id = idTitle(meta)
+  const pool = id && listLeader(meta) !== id ? data.filter((c) => c !== id) : data
+  return new Set(pool.slice(0, 2).map((c) => c.column_name))
 }
 
 /** Whether one data column shows in this person's view. */
@@ -67,12 +72,30 @@ export function titleListColumn(meta: TableMeta): ColumnDef | undefined {
     : undefined
 }
 
+/** The title column when it is the Table's own id (`id_pattern` "field:<it>"):
+ *  "LKS-Bags & Silk-2026-11-16" names a row to no one. */
+function idTitle(meta: TableMeta): ColumnDef | undefined {
+  const title = titleListColumn(meta)
+  return title && meta.id_pattern === `field:${title.column_name}` ? title : undefined
+}
+
+/** admin-lists 4 (one-app-chrome, 17-Nov): what a list leads with. Its title
+ *  column; but where that is the Table's own id, its first readable link
+ *  (Section, Employee…), and the id moves to Show Columns. A Table with no
+ *  readable link keeps its id: never hide the only identifier. List only:
+ *  the row's name elsewhere is unchanged. */
+export function listLeader(meta: TableMeta): ColumnDef | undefined {
+  const title = titleListColumn(meta)
+  if (!title || !idTitle(meta)) return title
+  return dataColumns(meta).find((c) => c.column_type === 'Reference' && c.reference_table && c !== title) ?? title
+}
+
 /** What this person's list shows: the title column first (the link to the
  *  row), or Row ID when the Table has none, then each shown data column. The
  *  leader is always on. */
 export function viewColumns(meta: TableMeta, arrangement: ColumnArrangement): ListColumn[] {
   const defaults = defaultColumnNames(meta)
-  const title = titleListColumn(meta)
+  const title = listLeader(meta)
   return [
     title ? toListColumn(title) : ROW_ID_COLUMN,
     ...dataColumns(meta)

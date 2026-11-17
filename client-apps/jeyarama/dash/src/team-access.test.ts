@@ -67,3 +67,22 @@ describe('the bundles a Team Report Manager may give', () => {
     expect([...givableBundles(['b-held', 'b-mixed', 'b-empty'], members, new Set(['sales']))]).toEqual(['b-held'])
   })
 })
+
+// Main's CI after the 16-Nov train: the cases #1217 left untested.
+describe('a team, at its edges (#1217)', () => {
+  it('is no one for a manager nobody reports to', async () => {
+    const lone = tables({ Employee: [employee('E-LONE', 'lone')], 'Job Assignment': [job('JA-LONE', 'E-LONE', null)] })
+    expect((await teamOf(lone, 'lone', ON)).size).toBe(0)
+  })
+
+  it('lists a person once when two of their staff records report, and reads past a full page', async () => {
+    const reports = Array.from({ length: 501 }, (_, i) => employee(`E-${String(i).padStart(3, '0')}`, `p-${i}`))
+    const twice = [employee('E-TWIN-A', 'twin'), employee('E-TWIN-B', 'twin')]
+    const big = tables({
+      Employee: [employee('E-BOSS', 'boss'), ...reports, ...twice],
+      'Job Assignment': [...reports, ...twice].map(row => job(`JA-${row.row_id}`, row.row_id, 'E-BOSS')),
+    })
+    const team = await teamOf(big, 'boss', ON)
+    expect([team.size, team.get('twin')]).toEqual([502, 'Made-up E-TWIN-A'])
+  })
+})

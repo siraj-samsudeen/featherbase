@@ -7,6 +7,7 @@ import { vi } from 'vitest'
 import { grantRole, makePerson } from 'server/test/fixtures'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
+import { currentApp } from './app-switcher'
 
 type Client = Parameters<typeof renderApp>[1]
 const MERCH = 'Home Merch Map'
@@ -126,38 +127,39 @@ test('Home headings are sentence case, not capitals', async ({ admin }) => {
   expect(within(strip).getByText('Last view')).not.toHaveClass('uppercase')
 })
 
-test('the sidebar heads its list "Recently opened", and each item leads with a grey kind icon', async ({ admin }) => {
+test('the sidebar heads its list "Recently opened", and each item leads with its table\'s coloured tile', async ({ admin }) => {
   rememberOldExplore('Administrator', Date.now() - 1000)
   await renderApp('/featherbase/admin', admin)
   const recent = await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
   const heading = screen.getByTestId('sidebar-recents-heading')
   expect(heading.tagName).toBe('H2')
-  expect(heading).toHaveTextContent(/^Recently opened$/)
+  expect(heading).toHaveTextContent(/^Recently Opened$/)
   expect(heading.closest('a')).toBeNull()
-  const icon = within(recent).getByRole('img', { name: 'Page' })
-  expect(icon).toHaveClass('text-ink-subtle')
+  // #1253 (Siraj's style A): a tile with the initials, in the table's own colour; the table in the tooltip.
+  const tile = within(recent).getByTestId('table-tile')
+  expect(tile.className).toMatch(/\btext-group-(blue|teal|rose|amber|violet|green|indigo)\b/)
+  expect(recent.getAttribute('title')).toMatch(/ · opened /)
 })
 
 // The sidebar's lower half: two labelled groups, headed like "Recently opened".
 const groupLinks = (testid: string) =>
   within(screen.getByTestId(testid)).getAllByRole('link').map((a) => a.textContent?.trim())
 
-test('a System Manager sees Data and People and access, each link with a grey icon', async ({ admin }) => {
+test('a System Manager sees Data and People & Access in Title Case, each link with its group’s coloured icon', async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
   await screen.findByTestId('sidebar-group-data')
   const data = screen.getByTestId('sidebar-group-data')
   expect(within(data).getByTestId('sidebar-group-heading')).toHaveTextContent(/^Data$/)
   expect(within(data).getByTestId('sidebar-group-heading').tagName).toBe('H2')
-  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables', 'Glossary', 'Past imports'])
+  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All Tables', 'New Table', 'Import Data', 'Glossary', 'Past Imports'])
   const access = screen.getByTestId('sidebar-group-access')
-  expect(within(access).getByTestId('sidebar-group-heading')).toHaveTextContent(/^People and access$/)
+  expect(within(access).getByTestId('sidebar-group-heading')).toHaveTextContent(/^People & Access$/)
   // #489 item 6: Sign-in methods is in the Account menu only.
-  expect(groupLinks('sidebar-group-access')).toEqual(['Access tokens', 'Waiting for access'])
+  expect(groupLinks('sidebar-group-access')).toEqual(['Access Tokens', 'Waiting For Access'])
   for (const link of within(screen.getByTestId('admin-sidebar')).getAllByRole('link').filter((a) => a.closest('[data-testid^="sidebar-group-"]')))
-    expect(within(link).getByTestId('sidebar-item-icon')).toHaveClass('text-ink-subtle')
-  // Past imports is a normal nav link now; Import data stays the plain button.
+    expect(within(link).getByTestId('sidebar-item-icon').getAttribute('class')).toMatch(/\btext-group-[a-z]+\b/)
+  // Past imports is a normal nav link.
   expect(screen.getByTestId('past-imports-link')).not.toHaveClass('underline')
-  expect(screen.getByTestId('import-data-link').parentElement).not.toContainElement(screen.getByTestId('past-imports-link'))
 })
 
 test('a person with only a Table grant keeps today’s links, and no management ones', async ({ admin, createUser }) => {
@@ -167,8 +169,8 @@ test('a person with only a Table grant keeps today’s links, and no management 
   const clerk = await createUser({ email: 'home.clerk@example.com', roles: ['Home Shelf Clerk'] })
   await renderApp('/featherbase/admin', clerk)
   await screen.findByTestId('sidebar-group-data')
-  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables', 'Glossary'])
-  expect(groupLinks('sidebar-group-access')).toEqual(['Access tokens'])
+  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All Tables', 'Glossary'])
+  expect(groupLinks('sidebar-group-access')).toEqual(['Access Tokens'])
 })
 
 test('Team: a sign-in reads "<person> signed in", the verb styled like every other verb', async ({ admin }) => {
@@ -208,14 +210,12 @@ test('the app selector reads Featherbase, on a phone as on a wide screen', async
     }) as MediaQueryList)
   phone(true)
   const first = await renderApp('/featherbase/admin', admin)
-  const select = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(select.selectedOptions[0].textContent).toBe('Featherbase')
+  expect(await currentApp(screen)).toBe('Featherbase')
   first.unmount()
   vi.restoreAllMocks()
   phone(false)
   await renderApp('/featherbase/admin', admin)
-  const wide = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(wide.selectedOptions[0].textContent).toBe('Featherbase')
+  expect(await currentApp(screen)).toBe('Featherbase')
   vi.restoreAllMocks()
 })
 
@@ -243,10 +243,11 @@ test('a row whose Table has no title column is headed by its readable values', a
 })
 
 test.for(['Person', 'Service Account'] as const)('a %s-valued row title names recents, sidebar, heading and breadcrumb', async (principalTable, { admin }) => {
-  const label = principalTable === 'Person' ? 'Maya Title Owner' : 'warehouse-title-importer'
+  // #1224: a service account reads as automation, never its slug.
+  const label = principalTable === 'Person' ? 'Maya Title Owner' : 'Automation (warehouse title importer)'
   const principal = principalTable === 'Person'
     ? await makePerson({ full_name: label })
-    : (await admin.post<{ row_id: string }>('/api/service_accounts', { label })).row_id
+    : (await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'warehouse-title-importer' })).row_id
   const table = `Home Title ${principalTable}`
   await admin.post('/api/table_def', { name: table, id_pattern: 'prompt', title_column: 'owner', columns: [
     { column_name: 'owner', column_type: 'Reference', reference_table: principalTable },

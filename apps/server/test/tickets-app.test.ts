@@ -4,13 +4,14 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect } from 'vitest'
 import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-postgres'
 import { test as pgTest } from './pg-test'
+import { searchHits } from './fixtures'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps, setAppEnabled, listInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 
 const directory = resolve('../..', 'example-apps/tickets')
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
-  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.10' },
+  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'tickets@0.2.21' },
 }) }, client.token, client.user)
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -69,7 +70,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
     const pkg = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'))
     expect(manifest).toMatchObject({ name: 'tickets', entryTable: 'tickets.ticket' })
-    expect(pkg.version).toBe('0.2.10')
+    expect(pkg.version).toBe('0.2.21')
   })
 
   test('app-free discovery has no tickets; explicit install has no samples or fake integrations', async ({ admin, createUser }) => {
@@ -216,7 +217,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     try { await create(owner, 'generic', {}) } catch (error) { failure = error }
     expect(failure?.status).toBe(403)
     expect(failure.message).not.toContain('Application access refused')
-    expect(failure.message).toMatch(/tickets 0\.2\.10.*files changed.*same version/i)
+    expect(failure.message).toMatch(/tickets 0\.2\.21.*files changed.*same version/i)
     expect(failure.message).toMatch(/new version|install-app tickets/)
     const listed = (await listInstalledApps()).find(app => app.name === 'tickets')
     expect(listed).toMatchObject({ active: false })
@@ -243,6 +244,34 @@ describe('Tickets independently installed product contract (#810)', () => {
     expect((await read(w.owner, 'session')).people).toBeUndefined()
     // Names come only from the platform, for the person acting: no generic write can set one.
     await refused(w.other.post('/api/table/tickets.member', { row_id: w.other.user, full_name: 'bala' }))
+  })
+
+  test('a renamed person is shown by their current name at once; their stored copy catches up when they act (#1256)', async ({ admin, createUser }) => {
+    const w = await setup(admin, createUser)
+    let ticket = await create(w.owner)
+    ticket = (await act(w.support, 'edit', { ...revision(ticket), assigned_to: w.support.user, public_update: 'Checking' })).ticket
+    const owner = w.owner.user!, support = w.support.user!
+    await sql`update person set full_name = 'Anjali Renamed' where row_id = ${owner}`
+    await sql`update person set full_name = 'Triager Renamed' where row_id = ${support}`
+    // Every screen reads Person live, before either of them acts again,
+    // including for a viewer who may not read Person.
+    expect((await read(w.support, 'queue')).names).toMatchObject({ [owner]: 'Anjali Renamed', [support]: 'Triager Renamed' })
+    expect((await detail(w.other, ticket)).names).toMatchObject({ [owner]: 'Anjali Renamed', [support]: 'Triager Renamed' })
+    expect((await read(w.owner, 'session')).user).toEqual({ row_id: owner, full_name: 'Anjali Renamed' })
+    expect((await read(w.support, 'session')).people).toEqual(expect.arrayContaining([{ row_id: support, full_name: 'Triager Renamed' }]))
+    // Each stored copy (shown only where Person can't be read) catches up when
+    // its own person next acts; someone else's action leaves it as it was.
+    const copies = async () => Object.fromEntries((await sql`select row_id, full_name from tickets.member where row_id in ${sql([owner, support])}`)
+      .map(r => [r.row_id, r.full_name]))
+    await create(w.other, 'generic', {})
+    expect(await copies()).toEqual({ [owner]: 'anjali', [support]: 'triager' })
+    await create(w.owner, 'generic', {})
+    expect(await copies()).toEqual({ [owner]: 'Anjali Renamed', [support]: 'triager' })
+  })
+
+  test('the name copies read as people, not a role (#1256)', async () => {
+    const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
+    expect(manifest.tables.find((t: { name: string }) => t.name === 'tickets.member').label).toBe('Person in Tickets')
   })
 
   test('people listed as assignable are offered for assignment without support rights (#964)', async ({ admin, createUser }) => {
@@ -358,7 +387,7 @@ describe('Tickets independently installed product contract (#810)', () => {
     expect(publicDetail.details).toBeUndefined()
     for (const client of [w.owner, w.other]) {
       const responses: unknown[] = [await detail(client, ticket), await client.get(`/api/activity/tickets.ticket/${ticket.row_id}`),
-        await client.get('/api/table/tickets.ticket?limit_page_length=500'), await client.get('/api/search?q=431')]
+        await client.get('/api/table/tickets.ticket?limit_page_length=500'), await searchHits(client, '431')]
       for (const value of responses) {
         expect(serialized(value)).not.toContain('PRIVATE diagnostic 431')
         expect(serialized(value)).not.toContain('Fictional HR confirmation')

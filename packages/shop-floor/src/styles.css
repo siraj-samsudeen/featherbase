@@ -59,6 +59,18 @@
   --color-series-4: #000000;
   --color-series-5: #78350f;
 
+  /* Sidebar groups (owner's review, 17-Nov-2026): each group's icons in its own
+     hue, so groups read apart at a glance. Way-finding only, never a meaning:
+     the selected row stays in the action colour. */
+  --color-group-blue: #2563eb;
+  --color-group-teal: #0f766e;
+  --color-group-rose: #be185d;
+  --color-group-amber: #b45309;
+  --color-group-violet: #7c3aed;
+  --color-group-green: #15803d;
+  --color-group-indigo: #4338ca;
+  --color-group-slate: #64748b;
+
   /* Shape */
   --radius-card: 14px;
   --radius-control: 10px;
@@ -140,6 +152,15 @@
     --color-series-3: #f472b6;
     --color-series-4: #cbd5e1;
     --color-series-5: #e0a96d;
+
+    --color-group-blue: #60a5fa;
+    --color-group-teal: #2dd4bf;
+    --color-group-rose: #f472b6;
+    --color-group-amber: #fbbf24;
+    --color-group-violet: #a78bfa;
+    --color-group-green: #4ade80;
+    --color-group-indigo: #818cf8;
+    --color-group-slate: #94a3b8;
   }
 }
 

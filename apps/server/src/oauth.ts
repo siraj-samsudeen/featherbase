@@ -46,16 +46,17 @@ export function assertMockProviderAllowed(clientId: string): void {
 // Guards the real sign-in routes (login + callback). A configured client id
 // means real Google. Without one the mock would have to serve — so sign-in is
 // refused outright unless the mock was explicitly opted into.
-export function assertSignInAvailable(clientId: string): void {
+export function assertSignInAvailable(clientId: string, off: string = GOOGLE_OFF): void {
   if (!clientId && !mockOAuthEnabled())
-    throw new AppError('AuthenticationError', GOOGLE_OFF)
+    throw new AppError('AuthenticationError', off)
 }
 
 // --- signed, stateless tokens (state + mock code) ---------------------------
 function hmac(body: string): string {
   return createHmac('sha256', secret()).update(body).digest('base64url')
 }
-function pack(obj: Record<string, unknown>): string {
+/** A signed token that lives ten minutes (state, a stand-in's code). */
+export function packSigned(obj: Record<string, unknown>): string {
   const body = Buffer.from(JSON.stringify({ ...obj, exp: Math.floor(Date.now() / 1000) + 600 })).toString('base64url')
   return `${body}.${hmac(body)}`
 }
@@ -72,7 +73,7 @@ export function claimedPurpose(state: string | undefined): string | undefined {
   }
 }
 
-function unpack(token: string): Record<string, unknown> {
+export function unpackSigned(token: string): Record<string, unknown> {
   const [body, sig] = token.split('.')
   if (!body || !sig) throw new AppError('AuthenticationError', 'Malformed token')
   const expected = hmac(body)
@@ -101,12 +102,12 @@ function unpack(token: string): Record<string, unknown> {
 // #488: the state also signs the host the sign-in started on (lowercased, no
 // port). Each address has its own redirect_uri, and a callback arriving on any
 // other host is refused, so a sign-in can only finish where it began.
-export function newLoginChallenge(host: string, extra: { purpose?: 'link'; uid?: string } = {}): { state: string; verifier: string } {
+export function newLoginChallenge(host: string, extra: { purpose?: 'link'; uid?: string; provider?: 'microsoft' } = {}): { state: string; verifier: string } {
   return {
     // Math.random() is not a CSPRNG — its output is predictable enough to
     // forge. The nonce is security-bearing, so it comes from crypto. A link
     // flow also signs who started it (person-identities D6).
-    state: pack({ nonce: randomBytes(32).toString('base64url'), host, ...extra }),
+    state: packSigned({ nonce: randomBytes(32).toString('base64url'), host, ...extra }),
     verifier: randomBytes(32).toString('base64url'),
   }
 }
@@ -119,7 +120,7 @@ export function codeChallengeFor(verifier: string): string {
 // `cookieState` is the value of the state cookie set at login. Both must be
 // present and identical, and the state must still carry a valid signature and
 // name the host this request arrived on.
-export function verifyState(state: string | undefined, cookieState: string | undefined, host: string): { purpose?: string; uid?: string } {
+export function verifyState(state: string | undefined, cookieState: string | undefined, host: string): { purpose?: string; uid?: string; provider?: string } {
   if (!state) throw new AppError('AuthenticationError', 'Missing OAuth state')
   if (!cookieState)
     throw new AppError('AuthenticationError', 'Missing OAuth state cookie — start sign-in again')
@@ -127,10 +128,15 @@ export function verifyState(state: string | undefined, cookieState: string | und
   const b = Buffer.from(cookieState)
   if (a.length !== b.length || !timingSafeEqual(a, b))
     throw new AppError('AuthenticationError', 'OAuth state does not match this browser')
-  const obj = unpack(state) // throws if invalid/expired
+  const obj = unpackSigned(state) // throws if invalid/expired
   if (obj.host !== host)
     throw new AppError('AuthenticationError', 'This sign-in was started on another address — start it again here')
-  return { purpose: typeof obj.purpose === 'string' ? obj.purpose : undefined, uid: typeof obj.uid === 'string' ? obj.uid : undefined }
+  return {
+    purpose: typeof obj.purpose === 'string' ? obj.purpose : undefined,
+    uid: typeof obj.uid === 'string' ? obj.uid : undefined,
+    // Which provider started it (absent = Google): a callback refuses another's.
+    provider: typeof obj.provider === 'string' ? obj.provider : undefined,
+  }
 }
 
 // The authorization URL the browser is sent to. Real Google in prod; the local
@@ -207,7 +213,7 @@ export function mockApproveRedirect(state: string, redirectUri: string, email: s
       'BadRequestError',
       `Mock provider only redirects to ${OAUTH_CALLBACK_PATH}`,
     )
-  const code = pack({ email, name, subject, ...(hd === undefined ? {} : { hd }) })
+  const code = packSigned({ email, name, subject, ...(hd === undefined ? {} : { hd }) })
   const p = new URLSearchParams({ code, state })
   return `${redirectUri}?${p.toString()}`
 }
@@ -240,7 +246,9 @@ export async function exchangeCode(
     // identity is actually conjured.
     if (!mockOAuthEnabled())
       throw new AppError('AuthenticationError', 'Mock OAuth provider is disabled')
-    const obj = unpack(code)
+    const obj = unpackSigned(code)
+    // Another stand-in's code (Microsoft's) is not Google's to redeem.
+    if (obj.provider !== undefined) throw new AppError('AuthenticationError', 'Bad signature')
     const email = String(obj.email ?? '').trim().toLowerCase()
     // Only mockApproveRedirect signs a token with an email, and it always signs
     // the name and subject with it (each a string, possibly empty).

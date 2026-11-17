@@ -7,6 +7,7 @@ import { sql } from './db'
 import { AppError, orWhenRefused } from './errors'
 import { refusalSubject, tableWords } from './refusals'
 import { sessionMayAddWayIn } from './session-context'
+import { viewingAs } from './view-as-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { mayPurge } from './purge'
@@ -650,20 +651,21 @@ async function assertAccessColumnsUnchanged(
       throw new AppError('ValidationError', `Invalid values for ${meta.name}`, { enabled: 'must be true or false' })
     if (existing !== null && values.enabled !== stored) changed.push('enabled')
   }
-  if (meta.name === 'Person' && 'expects_google_sign_in' in values) {
-    // #473: lets the first Google sign-in with the person's own address link
-    // to them, so it is access like `enabled` — judged the same way, and on a
-    // new person too (switching it on there is the whole point).
-    const value = values.expects_google_sign_in
-    const stored = existing === null ? false : existing.expects_google_sign_in === true
+  // #473: lets the first Google (or Microsoft) sign-in with the person's own
+  // address link to them, so it is access like `enabled` — judged the same
+  // way, and on a new person too (switching it on there is the whole point).
+  for (const column of ['expects_google_sign_in', 'expects_microsoft_sign_in'] as const) {
+    if (meta.name !== 'Person' || !(column in values)) continue
+    const value = values[column]
+    const stored = existing === null ? false : existing[column] === true
     if (value != null && typeof value !== 'boolean')
-      throw new AppError('ValidationError', `Invalid values for ${meta.name}`, { expects_google_sign_in: 'must be true or false' })
+      throw new AppError('ValidationError', `Invalid values for ${meta.name}`, { [column]: 'must be true or false' })
     if ((value === true) !== stored) {
       // Turning it on adds a way in; so does turning it off and on again. A
       // test-mode or preview session may do neither, whoever it belongs to.
       if (!sessionMayAddWayIn())
         throw new AppError('PermissionError', 'Not allowed from this sign-in. Sign in again normally to change how this account signs in.')
-      changed.push('expects_google_sign_in')
+      changed.push(column)
     }
   }
   if (!changed.length) return
@@ -2068,11 +2070,18 @@ export function getDoc(...args: Parameters<typeof getDocImpl>) {
 // Read first through the normal path, including parent access, tiers and Data
 // Scopes. Never turn an unreadable/missing row into a capabilities response.
 export function rowCapabilities(table: string, name: string, user: string): Promise<RowCapabilities> {
+  // #1222: while viewing as someone, a row offers no change of any kind.
+  if (viewingAs())
+    return rowCapabilitiesFor(table, name, user).then((caps) => Object.fromEntries(Object.keys(caps).map((key) => [key, false])) as unknown as RowCapabilities)
+  return rowCapabilitiesFor(table, name, user)
+}
+
+function rowCapabilitiesFor(table: string, name: string, user: string): Promise<RowCapabilities> {
   return appOperation(async () => {
     const readable = await getDoc(table, name, user)
     const meta = await getMeta(table)
     // #1021: a view's row is its base's row; what may be done to it is too.
-    if (meta.kind === 'view') return rowCapabilities(meta.view_of!, name, user)
+    if (meta.kind === 'view') return rowCapabilitiesFor(meta.view_of!, name, user)
     // A read share can bypass Data Scopes, but (unlike a write share) cannot
     // authorize saving. Check mutations against the full row, not a read-tier
     // projection that may omit a restricted Reference used by a Data Scope.

@@ -257,9 +257,10 @@ async function namelessCustomer(admin: Client, rowId: string, item: string) {
 
 /** A list layout: "Table" and "Compact" in its group, and the list header's "Tree of all" (#910 checklist 19).
  *  Found by role and name, so its aria-pressed is read raw: the DSL's attribute verbs need a selector. */
-const layout = (name: string) => name === 'Tree'
+const layout = (name: 'Compact' | 'Tree') => name === 'Tree'
   ? screen.getByRole('button', { name: /^Tree( of all)?$/ })
-  : within(screen.getByRole('group', { name: 'List layout' })).getByRole('button', { name })
+  // #1259: density is one Compact Rows button; "Table" names a list's view.
+  : screen.getByRole('button', { name: 'Compact Rows' })
 const columnHeaders = () => within(screen.getByRole('main')).getAllByRole('columnheader').map((h) => (h.textContent ?? '').replace(/[↑↓]/g, '').trim())
 
 describe('list-view', () => {

@@ -31,7 +31,8 @@ test('Table collision describes four destinations without changing Enter precede
   expect(screen.getByTestId('awesomebar-cmd-new-table').textContent).toBe('› New Table')
   expect(screen.getAllByTestId('awesomebar-table').filter((e) => /^TableCore module/.test(e.textContent ?? ''))).toHaveLength(1)
   expect(screen.getAllByTestId('awesomebar-new').filter((e) => e.textContent?.includes('New Table row'))).toHaveLength(1)
-  expect(screen.getAllByTestId('awesomebar-doc').filter((e) => /Table definition/.test(e.textContent ?? '')).length).toBeGreaterThan(0)
+  // #1265: the Records heading shows while groups are still answering; their rows follow.
+  await waitFor(() => expect(screen.getAllByTestId('awesomebar-doc').filter((e) => /Table definition/.test(e.textContent ?? '')).length).toBeGreaterThan(0), { timeout: 8000 })
 
   fireEvent.submit(bar.closest('form') as HTMLFormElement)
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/table'))
@@ -73,7 +74,9 @@ test('multi-sheet warning names omissions next to the drop and disappears on rep
 test('a rejected latest theme choice returns the rendered choice to the confirmed one', async ({ admin }) => {
   const user = userEvent.setup()
   await renderApp('/featherbase/admin/new-table', admin)
-  await user.click(await screen.findByTestId('theme-dark', {}, { timeout: 8000 }))
+  // #1253: the theme's choices open from the sidebar's foot.
+  await user.click(await screen.findByTestId('theme-button', {}, { timeout: 8000 }))
+  await user.click(await screen.findByTestId('theme-dark'))
   await waitFor(async () => expect((await admin.get<{ theme: string }>('/api/whoami')).theme).toBe('dark'))
 
   // The next choice is refused with the server's error shape. Refused at the

@@ -1,6 +1,7 @@
 // Per-user warm history cache, reconciled with the server on app load.
 
 import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
+import { viewedPerson } from './viewing-as'
 import type { ColumnDef } from './meta'
 
 export type RecentKind = 'row' | 'list' | 'page' | 'search'
@@ -69,7 +70,16 @@ function remember(entries: RecentEntry[], action: RecentAction, now: number): vo
   }
 }
 
+/**
+ * #1222: while a tester views as someone, the page is the other person's, so the tester's own
+ * history (kept in this browser) is neither shown nor added to.
+ */
+export function historyPaused(): boolean {
+  return viewedPerson() !== null
+}
+
 export function recordAction(user: string, action: RecentAction, now = Date.now()): void {
+  if (historyPaused()) return
   const entries = loadAll(user)
   remember(entries, action, now)
   save(user, entries)
@@ -264,6 +274,7 @@ export function replaceServerEntries(user: string, remote: ServerRecentEntry[]):
 
 /** Newest-first, deduplicated by construction. */
 export function recentActions(user: string, limit: number): RecentEntry[] {
+  if (historyPaused()) return []
   return loadAll(user)
     .sort((a, b) => lastVisit(b) - lastVisit(a))
     .slice(0, limit)
@@ -285,6 +296,7 @@ export function frecency(entry: RecentEntry, now: number): number {
 
 /** Frecency-ranked repeat destinations (2+ visits; searches excluded). */
 export function frequentActions(user: string, limit: number, now = Date.now()): RecentEntry[] {
+  if (historyPaused()) return []
   return loadAll(user)
     .filter((e) => e.kind !== 'search' && e.visits.length >= 2)
     .sort((a, b) => frecency(b, now) - frecency(a, now))
@@ -293,6 +305,7 @@ export function frequentActions(user: string, limit: number, now = Date.now()): 
 
 /** Past searches matching a prefix (all of them when the bar is empty). */
 export function recentSearches(user: string, query: string, limit: number): RecentEntry[] {
+  if (historyPaused()) return []
   const needle = query.trim().toLowerCase()
   return loadAll(user)
     .filter(
@@ -373,7 +386,8 @@ export function actionForLocation(
   // the slug as its label/key, nor interpret a fixed page as a Table.
   if (segs[0] !== 'table' || !segs[1] || !canonicalTable) return null
   const table = canonicalTable
-  const filtersJson = typeof search.filters === 'string' ? search.filters : undefined
+  // An empty filter list (#1228 settles a bare open to `filters=[]`) is the unfiltered list.
+  const filtersJson = typeof search.filters === 'string' && !noFilters(search.filters) ? search.filters : undefined
   const query = Object.entries(search)
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(typeof value === 'string' ? value : JSON.stringify(value))}`)
@@ -435,17 +449,36 @@ export function displayEntry(entry: {
   return { kind, label: entry.label, sub: entry.sub }
 }
 
+function noFilters(json: string): boolean {
+  try { const v: unknown = JSON.parse(json); return Array.isArray(v) && v.length === 0 } catch { return false }
+}
+
 /** One entry per destination as a person reads it: an old slug-keyed entry
- *  and a new page entry for the same page are one place. Order kept. */
+ *  and a new page entry for the same page are one place, and so are a list
+ *  remembered with no filters and with an empty filter list. Order kept. */
 export function uniqueByDisplay<T extends RecentEntry>(entries: T[]): T[] {
   const seen = new Set<string>()
   return entries.filter((e) => {
     const shown = displayEntry(e)
-    const id = shown.kind === 'page' && !shown.sub ? `page:${shown.label}` : e.key
+    const id = shown.kind === 'page' && !shown.sub ? `page:${shown.label}` : e.key.replace(/\?\[\]$/, '?')
     if (seen.has(id)) return false
     seen.add(id)
     return true
   })
+}
+
+/** The names more than one of these entries shows (a row's own name aside):
+ *  such an entry says what sets it apart, its filters or its view. */
+export function sharedNames(entries: Parameters<typeof displayEntry>[0][]): Set<string> {
+  const seen = new Set<string>()
+  const twice = new Set<string>()
+  for (const e of entries) {
+    const shown = displayEntry(e)
+    if (shown.row) continue
+    if (seen.has(shown.label)) twice.add(shown.label)
+    seen.add(shown.label)
+  }
+  return twice
 }
 
 /** Compact relative age for recents rows: "now", "5m", "3h", "2d". */

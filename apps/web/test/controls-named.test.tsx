@@ -6,6 +6,7 @@
 import { screen, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
+import { openListMenu } from './list-menus'
 
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -59,11 +60,14 @@ test('Controls are clearly named: every control on a row\'s form has a name', as
   expect(unnamedControls(screen.getByTestId('form-view'))).toEqual([])
 })
 
-test('Controls are clearly named: every control in the top bar and the search bar has a name', async ({ admin }) => {
+test('Controls are clearly named: every control in the sidebar and the command bar has a name', async ({ admin }) => {
   await seed(admin)
   await renderApp('/featherbase/admin/table/named-thing', admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
-  expect(unnamedControls(screen.getByRole('banner'))).toEqual([])
+  // #1253: the top bar's controls moved into the sidebar; the command bar opens over the page.
+  await screen.findByTestId('session-user')
+  expect(unnamedControls(screen.getByTestId('admin-sidebar'))).toEqual([])
+  expect(unnamedControls(screen.getByTestId('command-palette'))).toEqual([])
 })
 
 test('Controls are clearly named: every control on a Table\'s list has a name, including the row checkboxes and filter pickers', async ({ admin }) => {
@@ -87,11 +91,13 @@ test('Controls are clearly named: no two controls in a Table\'s list toolbar sha
   await renderApp('/featherbase/admin/table/named-thing', admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
   const toolbar = screen.getByTestId('list-toolbar')
-  fireEvent.click(within(toolbar).getByRole('button', { name: 'Table administration' }))
+  await openListMenu('Table administration', within(toolbar))
   await within(toolbar).findByRole('link', { name: 'Edit columns' })
-  const names = Array.from(toolbar.querySelectorAll('button, a[href]'))
+  // #1242: the header's controls and the toolbar's view controls, together.
+  const tools = screen.getByTestId('list-view-tools')
+  const names = [toolbar, tools].flatMap((root) => Array.from(root.querySelectorAll('button, a[href]')))
     .map((el) => el.getAttribute('aria-label') ?? el.textContent?.trim() ?? '')
   expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([])
-  expect(within(toolbar).getByRole('button', { name: 'Show columns' })).toBeInTheDocument()
+  expect(within(tools).getByRole('button', { name: 'Show columns' })).toBeInTheDocument()
   expect(within(toolbar).getByRole('link', { name: 'Edit columns' })).toBeInTheDocument()
 })

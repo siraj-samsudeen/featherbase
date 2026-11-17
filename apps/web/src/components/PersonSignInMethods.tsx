@@ -1,11 +1,12 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { Button, Card, Select, TextInput } from '@featherbase/shop-floor'
-import { ShownName, principalLabel, usePrincipalNameState } from '../lib/people'
+import { PrincipalLink, principalLabel, usePrincipalNameState } from '../lib/people'
+import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
 
 // person-identities (#275, review B-M4): on a Person's form, a System Manager
 // sees how that person signs in — password, linked outside accounts, pending
@@ -44,9 +45,17 @@ function LinkedHow({ by, who }: { by: string; who: string }) {
   if (by === 'self') return <>by {who}</>
   return (
     <>
-      by <ShownName id={by} />
+      by <PrincipalLink id={by} />
     </>
   )
+}
+
+/** #1257: a password invite, as the Person's panel reads it. */
+interface PasswordInvite {
+  status: 'sending' | 'pending' | 'expired' | 'accepted' | 'voided' | 'not_sent'
+  sent_at: string | null
+  expires_at: string
+  accepted_at: string | null
 }
 
 interface MethodInfo {
@@ -74,7 +83,10 @@ export function PersonSignInMethods({ user }: { user: string }) {
          *  and where mail goes on this instance. */
         email: string | null
         expects_google_sign_in: boolean
+        expects_microsoft_sign_in: boolean
         mail_transport: 'smtp' | 'email_sink'
+        /** #1257: whether a password invite can be sent, why not, and the latest. */
+        password_invite: { offered: boolean; refusal: string | null; latest: PasswordInvite | null }
       }>(
         `/api/people/${encodeURIComponent(user)}/identities`,
       ),
@@ -86,6 +98,13 @@ export function PersonSignInMethods({ user }: { user: string }) {
   })
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<ReactNode>(null)
+  // #1257: a notice names an address; once the Person's email changes (their
+  // invites are then cancelled) it no longer describes anything live.
+  const shownEmail = data?.email
+  useEffect(() => {
+    setNotice(null)
+    setError(null)
+  }, [shownEmail])
   const done = () => {
     setError(null)
     setNotice(null)
@@ -134,6 +153,24 @@ export function PersonSignInMethods({ user }: { user: string }) {
     },
     onError: fail,
   })
+  // #1257: send, or send again (a new link voids the earlier one).
+  const passwordInvite = useMutation({
+    mutationFn: () => api.post(`/api/people/${encodeURIComponent(user)}/password_invite`, {}),
+    onSuccess: () => {
+      done()
+      const address = data?.email ?? ''
+      setNotice(
+        toSink ? (
+          <>
+            Password invite saved to the <EmailSinkLink /> for {address}; this instance does not send email.
+          </>
+        ) : (
+          `Password invite emailed to ${address}.`
+        ),
+      )
+    },
+    onError: fail,
+  })
   const unlink = useMutation({
     mutationFn: (id: string) => api.delete(`/api/identities/${encodeURIComponent(id)}`),
     onSuccess: done,
@@ -144,6 +181,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
   const all = methods.data?.methods ?? []
   const delegated = all.filter((m) => m.kind === 'delegated_password')
   const google = all.find((m) => m.kind === 'google')
+  const microsoft = all.find((m) => m.kind === 'microsoft')
   // Names come from every method row, so a link on a turned-off method is
   // still labelled (and says it is off). The identities and the method rows
   // arrive in one answer, and a link's method is a foreign key to a method
@@ -154,7 +192,9 @@ export function PersonSignInMethods({ user }: { user: string }) {
   }
   // #837: a Google account reads as its address; its account number means
   // nothing to an administrator and waits under Details.
-  const isGoogle = (i: AdminIdentity) => data?.methods.find((m) => m.key === i.method)?.kind === 'google'
+  // A Microsoft account reads the same way: its tenant/object ID is just as opaque.
+  // (Named for Google, where #837 began; it means "an account read by its address".)
+  const isGoogle = (i: AdminIdentity) => ['google', 'microsoft'].includes(data?.methods.find((m) => m.key === i.method)?.kind ?? '')
   const shownAs = (i: AdminIdentity) =>
     isGoogle(i) && i.email ? i.email : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')
 
@@ -162,6 +202,9 @@ export function PersonSignInMethods({ user }: { user: string }) {
   // Google link or invite takes its place.
   const holdsGoogle = Boolean(google && data?.identities.some((i) => !i.ended_at && i.method === google.key))
   const expectsGoogle = Boolean(google && data?.expects_google_sign_in && data.email && !holdsGoogle)
+  // microsoft-sign-in: the same for an expected Microsoft sign-in.
+  const holdsMicrosoft = Boolean(microsoft && data?.identities.some((i) => !i.ended_at && i.method === microsoft.key))
+  const expectsMicrosoft = Boolean(microsoft && data?.expects_microsoft_sign_in && data.email && !holdsMicrosoft)
   // #833: the Person's own address starts the invite, so it is typed once;
   // it can be changed for another Google address.
   const ownAddress = data?.email && !data.identities.some((i) => !i.ended_at && i.pending_email === data.email!.toLowerCase()) ? data.email : ''
@@ -170,7 +213,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     add.mutate({
-      body: { method: String(f.get('method')), subject: String(f.get('subject')).trim(), sign_in_name: String(f.get('sign_in_name')).trim() },
+      body: { method: String(f.get('method')), subject: String(f.get('link_record_number')).trim(), sign_in_name: String(f.get('link_login_id')).trim() },
       form: e.currentTarget,
     })
   }
@@ -178,7 +221,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     add.mutate({
-      body: { method: google!.key, email: String(f.get('email')).trim(), send_invitation_email: f.get('send_invitation_email') === 'on' },
+      body: { method: google!.key, email: String(f.get('invite_address')).trim(), send_invitation_email: f.get('send_invitation_email') === 'on' },
       form: e.currentTarget,
     })
   }
@@ -187,7 +230,16 @@ export function PersonSignInMethods({ user }: { user: string }) {
     <Card className="p-3" data-testid="user-sign-in-methods">
       <h3 className="mb-2 text-sm font-semibold text-ink">Sign-in methods</h3>
       <ul className="space-y-2 text-sm">
-        {data?.has_password && <li data-testid="user-method-password">Password</li>}
+        {data?.has_password && (
+          <li data-testid="user-method-password">
+            Password
+            {data.password_invite.latest?.status === 'accepted' && data.password_invite.latest.accepted_at && (
+              <span className="block text-sm text-ink-muted" data-testid="password-invite-accepted">
+                set from a password invite <span className="whitespace-nowrap">{fmtInstantIST(data.password_invite.latest.accepted_at)}</span>
+              </span>
+            )}
+          </li>
+        )}
         {data?.identities.filter((i) => !i.ended_at).map((i) => (
           <li key={i.id} className="flex items-start justify-between gap-2" data-testid={`user-method-${i.id}`}>
             <span className="min-w-0">
@@ -205,7 +257,9 @@ export function PersonSignInMethods({ user }: { user: string }) {
               {i.subject != null && isGoogle(i) && i.email && (
                 <details className="text-sm text-ink-muted" data-testid="identity-details">
                   <summary className="cursor-pointer">Details</summary>
-                  <span className="block">Google account number: {i.subject}</span>
+                  <span className="block">
+                    {data?.methods.find((m) => m.key === i.method)?.kind === 'microsoft' ? 'Microsoft account ID' : 'Google account number'}: {i.subject}
+                  </span>
                 </details>
               )}
               {i.subject == null && i.invitation_sent_at && (
@@ -247,30 +301,47 @@ export function PersonSignInMethods({ user }: { user: string }) {
             when its domain is allowed for Google sign-in. Invite the address to let it in from any domain.
           </li>
         )}
-        {data && !data.has_password && !expectsGoogle && data.identities.filter((i) => !i.ended_at).length === 0 && (
+        {expectsMicrosoft && (
+          <li className="text-sm text-ink-muted" data-testid="user-method-expected-microsoft">
+            <span className="font-medium text-ink">Expects Microsoft sign-in as {data!.email}.</span> That lets this address in only
+            when its domain is allowed for Microsoft sign-in and Microsoft confirms the organisation owns it.
+          </li>
+        )}
+        {data && !data.has_password && !expectsGoogle && !expectsMicrosoft && data.identities.filter((i) => !i.ended_at).length === 0 && (
           <li className="text-sm text-ink-muted">No way to sign in yet.</li>
+        )}
+        {data && !data.has_password && (data.password_invite.offered || data.password_invite.latest?.status === 'pending') && (
+          <PasswordInviteRow
+            invite={data.password_invite.latest}
+            email={data.email ?? ''}
+            toSink={toSink}
+            busy={passwordInvite.isPending}
+            onSend={() => passwordInvite.mutate()}
+          />
         )}
       </ul>
       {delegated.length > 0 && (
-        <form className="mt-3 space-y-2" onSubmit={onLink} data-testid="link-delegated-form">
+        <form className="mt-3 space-y-2" onSubmit={onLink} data-testid="link-delegated-form" {...NO_AUTOFILL_FORM}>
           <Select name="method" aria-label="Service" defaultValue={delegated[0].key}>
             {delegated.map((m) => (
               <option key={m.key} value={m.key}>{m.label}</option>
             ))}
           </Select>
-          <TextInput name="subject" aria-label="Record number at the service" placeholder="Record number at the service" required />
-          <TextInput name="sign_in_name" aria-label="Login ID at the service" placeholder="Login ID at the service" />
+          <TextInput name="link_record_number" aria-label="Record number at the service" placeholder="Record number at the service" required {...NO_AUTOFILL_FIELD} />
+          <TextInput name="link_login_id" aria-label="Login ID at the service" placeholder="Login ID at the service" {...NO_AUTOFILL_FIELD} />
           <Button type="submit" block>Link</Button>
         </form>
       )}
       {/* Shown once the Person is loaded, so the starting address never
           replaces what the administrator has begun to type. */}
       {google && data && (
-        <form className="mt-3 space-y-2" onSubmit={onInvite} data-testid="invite-google-form">
+        <form className="mt-3 space-y-2" onSubmit={onInvite} data-testid="invite-google-form" {...NO_AUTOFILL_FORM}>
           <TextInput
             key={ownAddress}
-            name="email"
-            type="email"
+            name="invite_address"
+            type="text"
+            inputMode="email"
+            {...NO_AUTOFILL_FIELD}
             aria-label="Google address to invite"
             placeholder="Google address to invite"
             defaultValue={ownAddress}
@@ -294,6 +365,44 @@ export function PersonSignInMethods({ user }: { user: string }) {
         </p>
       )}
     </Card>
+  )
+}
+
+/** #1257: the password invite in the panel: what was sent and when it
+ *  expires, with Resend; or what sending one does, with Send. */
+function PasswordInviteRow({ invite, email, toSink, busy, onSend }: {
+  invite: PasswordInvite | null
+  email: string
+  toSink: boolean
+  busy: boolean
+  onSend: () => void
+}) {
+  const live = invite?.status === 'pending'
+  const ended: Partial<Record<PasswordInvite['status'], string>> = {
+    expired: 'The last password invite expired',
+    voided: 'The last password invite was cancelled',
+    not_sent: 'The last password invite was not sent',
+  }
+  return (
+    <li className="space-y-2" data-testid="password-invite">
+      <span className="block">
+        <span className="font-medium">Password invite</span>
+        {live && invite.sent_at ? (
+          <span className="block text-sm text-ink-muted" data-testid="password-invite-status">
+            {toSink ? 'Saved to the Email Sink' : 'Emailed'} <span className="whitespace-nowrap">{fmtInstantIST(invite.sent_at)}</span> · expires{' '}
+            <span className="whitespace-nowrap">{fmtInstantIST(invite.expires_at)}</span>
+          </span>
+        ) : (
+          <span className="block text-sm text-ink-muted">
+            {invite && ended[invite.status] ? `${ended[invite.status]}. ` : ''}
+            Emails {email} a link to set a password. It works once, for 72 hours.
+          </span>
+        )}
+      </span>
+      <Button variant="secondary" block disabled={busy} onClick={onSend}>
+        {live ? 'Resend password invite' : 'Send password invite'}
+      </Button>
+    </li>
   )
 }
 

@@ -3,18 +3,20 @@
 // dismiss. Made-up people only.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { resolve } from 'node:path'
 import { sql } from 'server/src/db'
+import { discoverPackages } from 'server/src/runtime-packages'
 import { requestAccess } from 'server/src/waiting-for-access'
 import { test, expect, renderApp } from './pg-test'
 
-async function waitingPerson(name: string, email: string, roles: string[] = []) {
+async function waitingPerson(name: string, email: string, roles: string[] = [], app = 'featherbase') {
   const { saveDoc } = await import('server/src/document')
   for (const role of roles) {
     const [have] = await sql`select 1 from role where row_id = ${role}`
     if (!have) await saveDoc('Role', { row_id: role }, 'Administrator')
   }
   const id = String((await saveDoc('Person', { full_name: name, email, enabled: true, roles: roles.map((role) => ({ role })) }, 'Administrator', 'insert')).row_id)
-  await requestAccess(id, 'featherbase')
+  await requestAccess(id, app)
   return id
 }
 
@@ -128,4 +130,64 @@ test('someone declined is told so, without the reason', async ({ admin, createUs
   const page = await screen.findByTestId('no-access')
   await waitFor(() => expect(page).toHaveTextContent('An admin declined your request. Ask your manager if you need it.'))
   expect(page).not.toHaveTextContent('Secret reason')
+})
+
+// Main's CI after the 16-Nov train: an app's own section, how they sign in, and each action failing.
+test("an app's own section: what it says about them, its choices, one given and one refused", async ({ admin }) => {
+  expect(await discoverPackages([resolve('../..', 'test-apps/grant-proof')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'grantproof' })
+  const id = await waitingPerson('Gita Made-up', 'gita.made-up@staff.example.com', [], 'grantproof')
+  await sql`insert into sign_in_method (row_id, kind, label, enabled) values ('stylehr-made-up', 'delegated', 'StyleHR', true) on conflict do nothing`
+  await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by) values ('sid-gita', ${id}, 'stylehr-made-up', 'sub-gita', 'EMP0777', 'Administrator')`
+  await renderApp('/featherbase/admin/waiting-for-access', admin)
+  const drawer = await openDrawer('Gita Made-up')
+  const who = within(drawer).getByTestId('request-who')
+  await waitFor(() => expect(who).toHaveTextContent('StyleHR · EMP0777'))
+  expect(who).toHaveTextContent('JobTester')
+  const gifts = within(drawer).getByTestId('request-app-grantproof')
+  await userEvent.click(within(gifts).getByRole('checkbox', { name: /Books/ }))
+  await userEvent.click(within(gifts).getByRole('checkbox', { name: /Refused one/ }))
+  await userEvent.click(within(gifts).getByRole('checkbox', { name: /Apples/ }))
+  await userEvent.click(within(gifts).getByRole('checkbox', { name: /Apples/ }))
+  await userEvent.click(within(drawer).getByTestId('request-approve'))
+  expect(await within(drawer).findByTestId('request-partly')).toHaveTextContent(/Given: Gifts: Gift Books\. Gifts: Gift Refused one: Not this one\. Given, but this doesn't open/)
+  await waitFor(() => expect(within(gifts).getByRole('checkbox', { name: /Books/ })).toBeDisabled())
+})
+
+test('each action says so when the request has gone meanwhile, and Cancel backs out of decline and dismiss', async ({ admin }) => {
+  const id = await waitingPerson('Hari Made-up', 'hari.made-up@staff.example.com')
+  await sql`insert into role (row_id, created_by, updated_by) values ('Master Data Editor', 'Administrator', 'Administrator') on conflict do nothing`
+  await renderApp('/featherbase/admin/waiting-for-access', admin)
+  const drawer = await openDrawer('Hari Made-up')
+  await userEvent.click(within(drawer).getByTestId('request-decline'))
+  await userEvent.click(within(drawer).getByRole('button', { name: 'Cancel' }))
+  expect(within(drawer).queryByTestId('decline-form')).not.toBeInTheDocument()
+  await userEvent.click(within(drawer).getByTestId('request-dismiss'))
+  await userEvent.click(within(drawer).getByRole('button', { name: 'Cancel' }))
+  expect(within(drawer).queryByTestId('dismiss-confirm-row')).not.toBeInTheDocument()
+  await sql`delete from access_request where person = ${id}`
+  await userEvent.click(within(drawer).getByRole('checkbox', { name: /Master Data Editor/ }))
+  await userEvent.click(within(drawer).getByTestId('request-approve'))
+  expect(await within(drawer).findByTestId('request-problem')).toHaveTextContent('That request is no longer waiting')
+  await userEvent.click(within(drawer).getByTestId('request-decline'))
+  await userEvent.type(within(drawer).getByTestId('decline-reason'), 'Too late')
+  await userEvent.click(within(drawer).getByTestId('decline-confirm'))
+  await waitFor(() => expect(within(drawer).getByTestId('request-problem')).toHaveTextContent('That request is no longer waiting'))
+  await userEvent.click(within(drawer).getByRole('button', { name: 'Cancel' }))
+  await userEvent.click(within(drawer).getByTestId('request-dismiss'))
+  await userEvent.click(within(drawer).getByTestId('dismiss-confirm'))
+  await waitFor(() => expect(within(drawer).getByTestId('request-problem')).toHaveTextContent('That request is no longer waiting'))
+  expect(screen.queryByTestId('waiting-done')).not.toBeInTheDocument()
+})
+
+test('a click on the name with a modifier key leaves the drawer closed, for the browser to handle', async ({ admin }) => {
+  await waitingPerson('Isha Made-up', 'isha.made-up@staff.example.com')
+  await renderApp('/featherbase/admin/waiting-for-access', admin)
+  const page = await screen.findByTestId('waiting-for-access')
+  await waitFor(() => expect(page).toHaveTextContent('Isha Made-up'))
+  const user = userEvent.setup()
+  await user.keyboard('{Control>}')
+  await user.click(within(page).getByRole('link', { name: 'Isha Made-up' }))
+  await user.keyboard('{/Control}')
+  expect(screen.queryByTestId('access-request-drawer')).not.toBeInTheDocument()
 })

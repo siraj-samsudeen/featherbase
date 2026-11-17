@@ -1,7 +1,6 @@
-// #1230: everything that is a Featherbase record shows as a link to it, plain text only for a viewer
-// who can't open it. Until the shared RecordLink lands, this asks the platform as the viewer.
-import { useEffect, useState, type ReactNode } from 'react'
-import { rowHref } from '../../../packages/shared/src/app-routes'
+// #1230: everything that is a Featherbase record shows as a link to it (the shared RecordLink, #1234),
+// plain text only for a viewer who can't open it. Whether they can is asked of the platform, as them.
+import { useEffect, useState } from 'react'
 
 /** The ids of these rows the viewer may open: the platform's own list, read with their token. */
 export async function openable(table: string, ids: string[]): Promise<Set<string>> {
@@ -32,12 +31,4 @@ export function useOpenablePeople(ids: (string | null | undefined)[]) {
     return () => { live = false }
   }, [key])
   return open
-}
-
-/** A record as a link to its page in Featherbase, or as plain text. */
-export function RecordLink({ table, id, open, children, className, label }: {
-  table: string; id: string | null | undefined; open: boolean; children: ReactNode; className?: string; label?: string
-}) {
-  if (!id || !open) return <span className={className}>{children}</span>
-  return <a className={className} href={rowHref(table, id)} target="_blank" rel="noreferrer" aria-label={label}>{children}</a>
 }

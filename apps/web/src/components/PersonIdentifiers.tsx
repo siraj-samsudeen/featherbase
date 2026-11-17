@@ -2,8 +2,11 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { fmtDate } from '@featherbase/shop-floor'
-import { PrincipalName } from '../lib/people'
+import { PrincipalLink } from '../lib/people'
 import { Button, Card, Notice, Select, TextInput } from '@featherbase/shop-floor'
+import { Plus } from 'lucide-react'
+import { RowMenu } from './RowMenu'
+import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
 
 // person-resolution D3/D12: every identifier a person has had — employee
 // codes, record numbers, phone, addresses — each with its period, where it
@@ -48,6 +51,9 @@ const SOURCES: Record<string, string> = {
 function sourceLabel(source: string): string {
   return SOURCES[source] ?? source
 }
+/** #1235 item 11: an address copied from the person's own email needs no
+ *  source; its label ("Email address") already says it. */
+const SAID_BY_THE_LABEL = new Set(['person-email', 'self-email'])
 
 function period(i: Identifier): string {
   const from = i.valid_from ? fmtDate(i.valid_from) : 'before Featherbase'
@@ -67,6 +73,8 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   const system = chosen ?? (addable.some((s) => s.row_id === 'phone') ? 'phone' : addable[0]?.row_id)
   const needsNote = addable.find((s) => s.row_id === system)?.note_required === true
   const [error, setError] = useState<string | null>(null)
+  // #1235 item 10: the add form opens from the card header, on one line.
+  const [adding, setAdding] = useState(false)
   const done = () => {
     setError(null)
     void qc.invalidateQueries({ queryKey: key })
@@ -77,6 +85,7 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
       api.post(`/api/people/${encodeURIComponent(person)}/identifiers`, body),
     onSuccess: (_r, { form }) => {
       form.reset()
+      setAdding(false)
       done()
     },
     onError: fail,
@@ -95,19 +104,27 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   function onAdd(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
-    const body: Record<string, string> = { system: String(f.get('system')), value: String(f.get('value')).trim() }
+    const body: Record<string, string> = { system: String(f.get('system')), value: String(f.get('identifier_value')).trim() }
     const note = String(f.get('note') ?? '').trim()
     if (note) body.note = note
     add.mutate({ body, form: e.currentTarget })
   }
 
   return (
-    <Card className="p-3" data-testid="person-identifiers">
-      <h3 className="mb-2 text-sm font-semibold text-ink">Identifiers</h3>
+    <Card className="p-4" data-testid="person-identifiers">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-ink">Identifiers</h3>
+        {/* Stays while the form is open, so the header never changes height. */}
+        {!replacedBy && addable.length > 0 && (
+          <Button variant="quiet" icon={<Plus aria-hidden size={16} />} aria-label="Add an identifier" aria-expanded={adding} onClick={() => setAdding(true)}>
+            Add
+          </Button>
+        )}
+      </div>
       {replacedBy && (
         <div className="mb-2" data-testid="replaced-banner">
           <Notice>
-          This record was merged into <PrincipalName id={replacedBy} />. Open that record to make changes.
+          This record was merged into <PrincipalLink id={replacedBy} />. Open that record to make changes.
           </Notice>
         </div>
       )}
@@ -123,38 +140,49 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
                   <span className={i.current ? 'font-medium wrap-anywhere' : 'text-ink-muted line-through wrap-anywhere'}>{i.value}</span>
                   {i.assigner && <span className="text-sm text-ink-muted"> · {i.assigner}</span>}
                   <span className="block text-sm text-ink-muted">
-                    {period(i)} · {sourceLabel(i.source)}
+                    {period(i)}
+                    {SAID_BY_THE_LABEL.has(i.source) ? '' : ` · ${sourceLabel(i.source)}`}
                     {i.worker_type ? ` · ${i.worker_type}` : ''}
                     {i.verified ? '' : ' · not verified'}
                   </span>
                 </span>
                 {i.current && i.editable && !replacedBy && (
-                  <Button
-                    variant="danger"
-                    className="shrink-0"
-                    onClick={() => {
-                      if (!i.note_required) return end.mutate({ id: i.id })
-                      // By hand while the roster sync is frozen: say why.
-                      const note = window.prompt('Why are you ending this by hand? (kept with the record)')?.trim()
-                      if (note) end.mutate({ id: i.id, note })
-                    }}
-                  >
-                    End
-                  </Button>
+                  <RowMenu
+                    name={`${label} ${i.value}`}
+                    items={[{
+                      label: 'End',
+                      tone: 'negative',
+                      disabled: end.isPending,
+                      onSelect: () => {
+                        if (!i.note_required) {
+                          if (window.confirm(`End ${label} ${i.value}?`)) end.mutate({ id: i.id })
+                          return
+                        }
+                        // By hand while the roster sync is frozen: say why. The
+                        // question doubles as the confirm.
+                        const note = window.prompt('Why are you ending this by hand? (kept with the record)')?.trim()
+                        if (note) end.mutate({ id: i.id, note })
+                      },
+                    }]}
+                  />
                 )}
               </li>
             ))}
           </ul>
         </div>
       ))}
-      {!replacedBy && addable.length > 0 && (
-        <form className="mt-2 space-y-2" onSubmit={onAdd} data-testid="add-identifier-form">
-          <Select name="system" aria-label="Identifier" value={system} onChange={(e) => setChosen(e.target.value)}>
-            {addable.map((s) => (
-              <option key={s.row_id} value={s.row_id}>{s.label}</option>
-            ))}
-          </Select>
-          <TextInput name="value" aria-label="Value" placeholder="Value" required />
+      {!replacedBy && addable.length > 0 && adding && (
+        <form className="mt-2 space-y-2" onSubmit={onAdd} data-testid="add-identifier-form" {...NO_AUTOFILL_FORM}>
+          <div className="flex flex-wrap items-center gap-2" data-testid="add-identifier-row">
+            <Select name="system" aria-label="Identifier" value={system} onChange={(e) => setChosen(e.target.value)} wrapperClassName="w-48 shrink-0">
+              {addable.map((s) => (
+                <option key={s.row_id} value={s.row_id}>{s.label}</option>
+              ))}
+            </Select>
+            <TextInput name="identifier_value" aria-label="Value" placeholder="Value" required autoFocus className="min-w-40 flex-1" {...NO_AUTOFILL_FIELD} />
+            <Button type="submit" variant="primary" loading={add.isPending}>Add</Button>
+            <Button variant="quiet" onClick={() => { setAdding(false); setError(null) }}>Cancel</Button>
+          </div>
           {needsNote && (
             <TextInput
               name="note"
@@ -164,7 +192,6 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
               data-testid="identifier-note"
             />
           )}
-          <Button type="submit" block>Add</Button>
         </form>
       )}
       {error && (

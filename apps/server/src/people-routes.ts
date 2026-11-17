@@ -4,12 +4,15 @@ import { AppError } from './errors'
 import { getDoc } from './document'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, renameAccessToken, revokeAccessToken } from './auth'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
-import { createServiceAccount, listServiceAccounts, renameServiceAccount, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
+import { createServiceAccount, listServiceAccounts, renameServiceAccount, setServiceAccountDisplayName, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { principalReach } from './token-reach'
 import { explainAccess } from './access-explanation'
 import { pickPeople, principalNames, tableMembers } from './people-directory'
+import { actorNamesOn } from './actor-names'
 import { googleAuthorizeUrl, googleAvailable, newLoginChallenge, codeChallengeFor } from './oauth'
+import { MICROSOFT_CALLBACK_PATH, microsoftAuthorizeUrl, microsoftAvailable } from './microsoft'
 import { sendInvitation } from './invitation-email'
+import { passwordInviteState, sendPasswordInvite } from './password-invite'
 import { requestHost } from './instance-addresses'
 import { getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertSystemManager, getRoles } from './permissions'
@@ -24,7 +27,7 @@ export const peopleRoutes = new Hono<Env>()
 peopleRoutes.get('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   const user = c.req.param('id')
-  const [row] = await sql`select (password_hash is not null) as has_password, email, expects_google_sign_in from person where row_id = ${user}`
+  const [row] = await sql`select (password_hash is not null) as has_password, email, expects_google_sign_in, expects_microsoft_sign_in from person where row_id = ${user}`
   if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
   // Every method row, turned off or not, so an identity on a disabled method
   // still shows its name on the Person form.
@@ -37,8 +40,20 @@ peopleRoutes.get('/api/people/:id/identities', async (c) => {
     // an expected Google sign-in, and says where an invitation went.
     email: row.email ?? null,
     expects_google_sign_in: row.expects_google_sign_in === true,
+    expects_microsoft_sign_in: row.expects_microsoft_sign_in === true,
     mail_transport: mailTransport(),
+    // #1257: whether a password invite can be sent, why not, and the latest.
+    password_invite: await passwordInviteState(user),
   })
+})
+
+// #1257: send (or send again) a password invite to a person with no way in.
+// A new link voids the earlier ones; a failed send is the answer (503).
+peopleRoutes.post('/api/people/:id/password_invite', async (c) => {
+  await assertSystemManager(who(c))
+  assertCanChangeAccess(c.get('user'))
+  const invite = await sendPasswordInvite(c.req.param('id'), who(c), externalOrigin(c).origin)
+  return c.json({ password_invite: invite, invitation_email: { status: 'sent' } }, 201)
 })
 
 // #667: why a person sees nothing from an app's datasets: the provider's
@@ -55,6 +70,13 @@ peopleRoutes.get('/api/people/:id/scope', async (c) => {
 peopleRoutes.post('/api/people/names', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown }
   return c.json({ names: await principalNames(body.ids, who(c)) })
+})
+
+// #1224: who made, changed, retired or archived rows of a Table the caller
+// may read, by name, even without Person read; any other id names nobody.
+peopleRoutes.post('/api/people/actor_names', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { table?: unknown; ids?: unknown }
+  return c.json({ names: await actorNamesOn(who(c), body.table, body.ids) })
 })
 
 peopleRoutes.get('/api/table_members/:table', async (c) => c.json({ data: await tableMembers(c.req.param('table'), who(c)) }))
@@ -210,6 +232,18 @@ peopleRoutes.get('/api/oauth/google/link', async (c) => {
   return c.redirect(googleAuthorizeUrl(clientId, state, oauthRedirectUri(c, clientId), codeChallengeFor(verifier), hint))
 })
 
+// The same for Microsoft (microsoft-sign-in), marked as Microsoft's in the state.
+peopleRoutes.get('/api/oauth/microsoft/link', async (c) => {
+  const me = c.get('user')
+  assertFreshForLinking(me)
+  const microsoft = await microsoftAvailable()
+  if (!microsoft || !microsoft.self_link) throw new AppError('PermissionError', 'Linking Microsoft is not available')
+  const { state, verifier } = newLoginChallenge(requestHost(c.req.url), { purpose: 'link', uid: me.row_id, provider: 'microsoft' })
+  setLoginChallengeCookies(c, state, verifier)
+  const redirectUri = oauthRedirectUri(c, microsoft.client_id, MICROSOFT_CALLBACK_PATH)
+  return c.redirect(microsoftAuthorizeUrl(microsoft, state, redirectUri, codeChallengeFor(verifier)))
+})
+
 // #131: access tokens (replaces the API-005 key pair). Users manage their
 // own; System Managers can target any principal — and only they see or act
 // on tokens beyond their own.
@@ -284,12 +318,14 @@ peopleRoutes.get('/api/service_accounts', async (c) => {
 
 peopleRoutes.patch('/api/service_accounts/:id', async (c) => {
   await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { enabled?: unknown; label?: unknown }
+  const body = (await c.req.json().catch(() => ({}))) as { enabled?: unknown; label?: unknown; display_name?: unknown }
+  if (typeof body?.display_name === 'string' && body.label === undefined && body.enabled === undefined)
+    return c.json(await setServiceAccountDisplayName(c.req.param('id'), body.display_name, who(c)))
   if (typeof body?.label === 'string' && body.enabled === undefined)
     return c.json(await renameServiceAccount(c.req.param('id'), body.label, who(c)))
   if (typeof body?.enabled === 'boolean' && body.label === undefined)
     return c.json(await setServiceAccountEnabled(c.req.param('id'), body.enabled, who(c)))
-  throw new AppError('ValidationError', 'Expected either { label } or { enabled }')
+  throw new AppError('ValidationError', 'Expected one of { label }, { display_name } or { enabled }')
 })
 
 // person-rename R2: a service account's roles change only here, never

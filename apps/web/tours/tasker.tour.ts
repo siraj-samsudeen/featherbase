@@ -44,10 +44,11 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
       await details.getByRole('button', { name: /^(Prepare and install|Install app)$/ }).click()
       await expect(details).toContainText('Installed on this instance', { timeout: 45_000 })
     })
-    await s.step('Import Data still opens for her, with an app she cannot read yet installed', async () => {
+    await s.step('Import data still opens for her, with an app she cannot read yet installed', async () => {
       // #1007: the wizard failed outright for a System Manager without Tasker's role;
       // #1076: and, until the page was reloaded, for anyone who had just installed it.
-      await page().getByRole('link', { name: 'Import Data' }).first().click()
+      // The owner's review (17-Nov): Import Data is a link in the sidebar's Data group.
+      await page().getByRole('link', { name: 'Import Data' }).click()
       await expect(page().getByTestId('iw-dropzone')).toBeVisible()
       await page().getByTestId('iw-file-input').setInputFiles({ name: 'contacts.csv', mimeType: 'text/csv', buffer: Buffer.from('Name,City\nRavi,Chennai\n') })
       await expect(page().getByTestId('iw-new-grid-0').or(page().getByTestId('iw-overview')).first()).toBeVisible()

@@ -127,6 +127,10 @@ async function person(email: string, full_name: string, roles: string[] = [], re
   return id
 }
 await keep('Role', 'Master Data Editor', { row_id: 'Master Data Editor' })
+// #1223: as on production, the master data team reads the master Tables in Featherbase, so record links open for them.
+const [granted] = await sql`select 1 from featherbase.permission where role = 'Master Data Editor' limit 1`
+if (!granted) for (const table of BASE_TABLES as { name: string }[])
+  await save('Permission', { ref_table: table.name, role: 'Master Data Editor', operation: 'read', scope_mode: 'all', column_rule: 'every' })
 // #1046: Dash Reader goes to everyone who signs in, and the reports given to each person decide
 // whether Dash opens for them. Local only: on a real instance a System Manager sets this.
 await save('System Settings', { everyone_roles: 'Dash Reader' })
@@ -236,6 +240,10 @@ await seed('sales_last_month_meta', [...new Set(month.map(m => `${m.store_code} 
 
 // #1046: someone who gives reports, and nothing else: the Report access page (/dash/?view=access).
 await person('access-manager@example.test', 'Made-up Access Manager', ['Report Access Manager'], false)
+// #1222: someone who tests the app by viewing as anyone, read-only, and nothing else.
+await person('view-as-tester@example.test', 'Made-up Tester', ['View As Tester'], false)
+// #1222 (E): someone who manages report access and may view as anyone: "What a person sees" offers View as.
+await person('view-as-manager@example.test', 'Made-up Access Tester', ['Report Access Manager', 'View As Tester'], false)
 // #1216: same-named people on that page. Four current Kumars are among the readers above; here a
 // Kumar who has left and someone not on the staff list, each given a report directly with one current Kumar.
 const leftKumar = await person('reader-same-left@example.test', 'Kumar')
@@ -259,6 +267,11 @@ const [usha] = await sql`select row_id from person where lower(email) = 'section
 await save('dash.report_access', { report: 'vendor_sales', person: String(usha.row_id) }).catch(() => {})
 // Hema reaches Sarees across the East's stores, so she can give the reports filtered by subcategory, but not the whole-stores one.
 await keep('Merchandise Assignment', 'MA-2020-1', { assignment_id: 'MA-2020-1', employee: '2020', responsibility: 'Category head', category: 'Sarees', operating_region: 'East', starts_on: '2026-01-01', source_key: 'Made-up' })
+// #1246: Hema's two Buyer Sections in the East: Silk sarees (Usha buys it) and Everyday sarees (no buyer yet).
+await keep('Buyer Section', 'East-Silk sarees', { buyer_section_id: 'East-Silk sarees', name: 'Silk sarees', operating_region: 'East', buyer: '2021', category_head: '2020', starts_on: '2026-11-01', source_key: 'Made-up' })
+await keep('Buyer Section', 'East-Everyday sarees', { buyer_section_id: 'East-Everyday sarees', name: 'Everyday sarees', operating_region: 'East', category_head: '2020', starts_on: '2026-11-01', source_key: 'Made-up' })
+await keep('Buyer Section Subcategory', 'East-010101001-made-up', { buyer_section_subcategory_id: 'East-010101001-made-up', buyer_section: 'East-Silk sarees', subcategory: '010101001', starts_on: '2026-11-01', source_key: 'Made-up' })
+await keep('Buyer Section Subcategory', 'East-010101002-made-up', { buyer_section_subcategory_id: 'East-010101002-made-up', buyer_section: 'East-Everyday sarees', subcategory: '010101002', starts_on: '2026-11-01', source_key: 'Made-up' })
 
 // #1195: departments already set up, which the made-up Department Manager meets on Your department.
 for (const [department_id, store, name, manager, sections] of org.departments as [string, string, string, string, string[]][]) {
@@ -321,6 +334,9 @@ Your sections (/dash/?view=sections), same password:
 ${says(org.sectionPeople, 'sections')}
 Report access (/dash/?view=access), same password:
   access-manager@example.test          Report Access Manager: gives reports and bundles, and sees who has what
-  sections-categoryhead@example.test   Team Report Manager: gives reports to her own team only, two of them named Vinod Buyer-Two (#1217)`)
+  sections-categoryhead@example.test   Team Report Manager: gives reports to her own team only, two of them named Vinod Buyer-Two (#1217)
+View as (#1222), same password:
+  view-as-tester@example.test          View As Tester: sees Dash as any of the people above, for viewing only
+  view-as-manager@example.test         Report Access Manager and View As Tester: "What a person sees" offers View as`)
 await sql.end()
 process.exit(0)

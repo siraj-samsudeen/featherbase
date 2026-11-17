@@ -4,18 +4,18 @@ import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-rou
 import { idFromColumn, namingColumn, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
-import { isOpaqueId } from '../lib/people'
+import { isOpaqueId, invalidatePrincipalName } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { useRowCapabilities } from '../lib/row-capabilities'
 import { useWhoAmI } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
-import { isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef } from '../lib/meta'
+import { isRowsReadOnly, isSourceReadOnly, tableLabel, useMeta, type ColumnDef } from '../lib/meta'
 import { useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
 import { Attachments } from './Attachments'
 import {
-  ArrangeBar,
+  ViewMenu,
   BookkeepingLine,
   FieldGroupView,
   ValueField,
@@ -35,6 +35,7 @@ import { RetireDialog, RetiredBadge, RetiredNotice, reactivateRow } from './RowR
 import { PurgeDialog } from './PurgeDialog'
 import { WorkflowActions } from './WorkflowActions'
 import { RowConnections } from './RowPane'
+import { OpenInApp } from './OpenInApp'
 import { RecordNav } from './RecordNav'
 import { RowMap } from './RowMap'
 import { RowTree } from './RowTree'
@@ -45,9 +46,10 @@ import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
-import { ContentTabs, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { ContentTabs, buttonClasses, fmtClockTime, cardClasses, inputClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 import type { Row } from './form-row'
 import { FieldControl } from './FieldControl'
+import { usePageTitle } from '../lib/page-title'
 
 // #545: a JSON column's box holds text while the person types. On save, text
 // typed into it becomes the value it describes; text that isn't JSON is
@@ -73,8 +75,8 @@ function parseTypedJson(columns: ColumnDef[], values: Row, typed: ReadonlySet<st
   return { values: out, errors }
 }
 
-const VIEW_TAB = { form: 'Form', map: 'Map', tree: 'Tree' } as const
-const TAB_VIEW: Record<string, 'form' | 'map' | 'tree' | undefined> = { Form: 'form', Map: 'map', Tree: 'tree' }
+const VIEW_TAB = { form: 'Form', map: 'Map', tree: 'Tree', collaboration: 'Collaboration', activity: 'Activity' } as const
+const TAB_VIEW: Record<string, keyof typeof VIEW_TAB | undefined> = { Form: 'form', Map: 'map', Tree: 'tree', Collaboration: 'collaboration', Activity: 'activity' }
 
 // UI-004/UI-005: ONE form component renders and saves every Table from
 // its metadata. Layout columns group into sections/columns (UI-008 refines).
@@ -92,6 +94,7 @@ export function FormView({
   isNew?: boolean
 }) {
   const meta = useMeta(table)
+  usePageTitle(tableLabel(table, meta.data))
   const describedTable = useMeta(name, table === 'Table' && !isNew)
   const storage = table === 'Table' && !isNew ? describedTable.data?.storage_identity : null
   const [storageCopy, setStorageCopy] = useState('')
@@ -144,6 +147,8 @@ export function FormView({
   const overrideTarget = useMeta(editingOverride ? String(values.table_name ?? '') : '')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
+  // #1267: when this page last saved the record, for the save state's tooltip.
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -434,6 +439,9 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
+      // #1257: a Person's email change cancels their invites on the server; the
+      // Sign-in methods panel reads them again rather than show them as live.
+      if (table === 'Person') await queryClient.invalidateQueries({ queryKey: ['user-identities', name] })
       // A save can settle a health check, and the banners shouldn't lag behind it (#1003).
       void queryClient.invalidateQueries({ queryKey: INSTANCE_HEALTH_QUERY_KEY })
       if (editingOverride) {
@@ -444,7 +452,7 @@ export function FormView({
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb
       // and Recent; a save may have changed it.
-      if (!isNew && isOpaqueId(name)) await queryClient.invalidateQueries({ queryKey: ['principal-name', name] })
+      if (!isNew && isOpaqueId(name)) await invalidatePrincipalName(queryClient, name)
       if (!isNew) await queryClient.invalidateQueries({ queryKey: ['row-title', table, name] })
       if (isNew) {
         navigate({
@@ -454,6 +462,7 @@ export function FormView({
         })
       } else {
         setBanner('Saved')
+        setSavedAt(new Date())
       }
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields)
@@ -498,10 +507,6 @@ export function FormView({
   const work = <div className="flex flex-col gap-6 lg:flex-row">
     {/* Its columns follow its own width (a form beside the pane is narrow). */}
     <div className="@container min-w-0 max-w-[50rem] flex-1">
-      {!isNew && (
-        <ArrangeBar mode={arrangement.mode} columns={arrangement.columns}
-          onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
-      )}
       {/* #1012: one column narrows the fields only, so the toolbar above stays put.
           The wrapper is wider than the fields because the toolbar needs 50rem on one line in a wide font. */}
       <div className={arrangement.columns === 1 && !isNew ? 'max-w-2xl' : 'max-w-3xl'} data-testid="form-fields">
@@ -518,7 +523,7 @@ export function FormView({
             {!rowsReadOnly && (
               <FieldGroupView group={{ key: 'bookkeeping', fields: bookkeeping }} columns={arrangement.columns}>{control}</FieldGroupView>
             )}
-            <BookkeepingLine fields={rowsReadOnly ? bookkeeping : []} values={baseline as Row} settings={formSettings} />
+            <BookkeepingLine table={table} fields={rowsReadOnly ? bookkeeping : []} values={baseline as Row} settings={formSettings} />
           </div>
         )
       })() : (
@@ -573,7 +578,7 @@ export function FormView({
           search={{ filters: undefined }}
           className={touchLinkClasses('hover:underline')}
         >
-          {table}
+          {tableLabel(table, meta.data)}
         </RouterLink>
         <span aria-hidden="true">/</span>
         <span className="min-w-0 text-ink">{isNew ? 'New' : <RowTitle table={table} rowId={name} />}</span>
@@ -584,12 +589,15 @@ export function FormView({
           <h1 className="text-xl font-semibold text-ink">
             {/* The row's title (title column, or a readable stand-in from its
                 values) — the same one Home and the activity feed show. */}
-            {table}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
+            {tableLabel(table, meta.data)}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
             <GlossaryHelp table={table} className="ml-1" />
           </h1>
-          <span className="text-xs text-ink-muted" data-testid="form-status">
-            {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}
-          </span>
+          {/* #1267: a saved record says so once, at the tab row's right end; a new one here. */}
+          {isNew && (
+            <span className="text-xs text-ink-muted" data-testid="form-status">
+              {dirty ? 'Not saved' : 'New document'}
+            </span>
+          )}
           {boundSource && (
             <span
               className={pillClasses('ml-2 align-middle text-xs')}
@@ -602,6 +610,7 @@ export function FormView({
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-2">
           {!isNew && <RecordNav table={table} name={name} />}
+          {!isNew && <OpenInApp table={table} row={name} />}
           {table === 'Data Source' && !isNew && (
             <RouterLink
               to="/featherbase/admin/source/$name"
@@ -830,7 +839,7 @@ export function FormView({
               className="mb-2 text-base font-semibold text-ink"
             >
               {/* #959: the row as its heading names it. */}
-              Delete {table}: <RowTitle table={table} rowId={name} />?
+              Delete {tableLabel(table, meta.data)}: <RowTitle table={table} rowId={name} />?
             </h2>
             <p className="mb-3 text-sm text-ink-muted">
               This cannot be undone.
@@ -911,8 +920,8 @@ export function FormView({
           onClose={() => setRetiring(false)}
         />
       )}
-      {!isNew && <RetiredNotice row={baseline} />}
-      {banner && (
+      {!isNew && <RetiredNotice row={baseline} table={table} />}
+      {banner && (banner !== 'Saved' || isNew) && (
         <p
           className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-positive' : 'text-negative'}`}
           data-testid="form-banner"
@@ -1005,7 +1014,20 @@ export function FormView({
       {changeRecord && <ChangeRecord values={values} />}
       <RawDetails data-testid={reading || changeRecord ? 'raw-details' : undefined}>
       {(reading || changeRecord) && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t(changeRecord ? 'Raw JSON' : 'Raw details')}</summary>}
-      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea} tabs={[
+      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea}
+        actions={<>
+          {/* #1267: one save state for the record, with the time in its tooltip. */}
+          <span className={`inline-flex items-center gap-1 text-xs ${dirty ? 'text-ink-muted' : 'text-positive'}`}
+            title={!dirty && savedAt ? `Saved ${fmtClockTime(savedAt)}` : undefined}>
+            {!dirty && <span aria-hidden>✓</span>}
+            <span data-testid="form-status">{dirty ? 'Not saved' : banner === 'Saved' ? <span data-testid="form-banner">Saved</span> : 'Saved'}</span>
+          </span>
+          {area === 'Form' && (
+            <ViewMenu mode={arrangement.mode} columns={arrangement.columns}
+              onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
+          )}
+        </>}
+        tabs={[
         { id: 'Form', label: 'Form', content: work },
         { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },
         { id: 'Tree', label: 'Tree', content: <RowTree table={table} name={name} /> },

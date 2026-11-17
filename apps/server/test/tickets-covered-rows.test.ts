@@ -8,7 +8,7 @@ import { expectStatus } from './fixtures'
 import { sql } from '../src/db'
 import { loadInstalledApps } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
-import { pinning, TicketCoveredRows, Tickets, TICKETS_DIRECTORY, TICKETS_VERSION } from './tickets-world'
+import { pinning, tablesBefore, TicketCoveredRows, Tickets, TICKETS_DIRECTORY, TICKETS_VERSION } from './tickets-world'
 
 const test = pgTest.extend(pinning)
 const world = async (admin: ConstructorParameters<typeof Tickets>[0], createUser: ConstructorParameters<typeof Tickets>[1], link = true) => {
@@ -113,18 +113,20 @@ describe('Tickets declares Data Quality Row as a base Table (#1230)', () => {
     expect(manifest.baseTables).toEqual({ read: { 'Data Quality Row': ['ticket', 'affected_table', 'affected_row', 'fixed_on', 'note'] } })
   })
 
-  test("Tickets upgrades from production's 0.2.9 with no Table and no grant added", async ({ admin }) => {
+  test("Tickets upgrades from production's 0.2.9 to the version shipped now with no Table and no grant added", async ({ admin }) => {
     const manifest = JSON.parse(await readFile(resolve(TICKETS_DIRECTORY, 'featherbase.json'), 'utf8'))
-    const step = manifest.migrations.find((m: any) => m.toVersion === TICKETS_VERSION)
-    expect(step).toMatchObject({ id: 'covered_rows', operations: [] })
-    // Main's ledger is untouched: 0.2.9 is the step before this one.
-    expect(manifest.migrations.findIndex((m: any) => m === step)).toBe(manifest.migrations.length - 1)
+    // From production's 0.2.9 across this step and any later one (#1233's), to the version shipped now.
+    const step = manifest.migrations.find((m: any) => m.id === 'covered_rows')
+    expect(step).toMatchObject({ fromVersion: '0.2.9', toVersion: '0.2.10', operations: [] })
+    const later = manifest.migrations.slice(manifest.migrations.indexOf(step))
+    // Later steps add no Table and no grant: at most they relabel one (#1256).
+    expect(later.flatMap((m: any) => m.operations).map((op: any) => op.kind)).toEqual(['relabelTable'])
     const prior = await mkdtemp(resolve('test/.upgrade-tickets-1230-'))
     try {
       await cp(TICKETS_DIRECTORY, prior, { recursive: true, filter: source => !source.includes('node_modules') })
       // 0.2.9 as production runs it: no base Table read and no step past it.
       const { baseTables: _, ...rest } = manifest
-      await writeFile(resolve(prior, 'featherbase.json'), JSON.stringify({ ...rest, migrations: manifest.migrations.filter((m: any) => m !== step) }))
+      await writeFile(resolve(prior, 'featherbase.json'), JSON.stringify({ ...rest, tables: tablesBefore(rest.tables, later), migrations: manifest.migrations.filter((m: any) => !later.includes(m)) }))
       await writeFile(resolve(prior, 'package.json'), JSON.stringify({ ...JSON.parse(await readFile(resolve(TICKETS_DIRECTORY, 'package.json'), 'utf8')), version: step.fromVersion }))
       expect(step.fromVersion).toBe('0.2.9')
       await discoverPackages([prior])
@@ -133,7 +135,7 @@ describe('Tickets declares Data Quality Row as a base Table (#1230)', () => {
       await discoverPackages([prior, TICKETS_DIRECTORY])
       await loadInstalledApps()
       const plan = await admin.post<any>('/api/preview_app_upgrade', { name: 'tickets', version: TICKETS_VERSION })
-      expect(plan).toMatchObject({ currentVersion: '0.2.9', targetVersion: TICKETS_VERSION, destructive: false, tables: [], permissions: [] })
+      expect(plan).toMatchObject({ currentVersion: '0.2.9', targetVersion: TICKETS_VERSION, destructive: false, tables: ['tickets.member'], permissions: [] })
       await admin.post('/api/upgrade_app', { name: 'tickets', version: TICKETS_VERSION, planId: plan.planId })
       await admin.post('/api/activate_app_upgrade', { name: 'tickets', version: TICKETS_VERSION })
       const [installed] = await sql`select package_version, activation_pending, manifest->'baseTables' as base from installed_app where name = 'tickets'`
@@ -165,7 +167,7 @@ describe('the covered-row lookups read every page (#1230)', () => {
       isReader: async () => false,
     }
     const ctx = { user: 'psn_reader', userName: 'Reader', roles: ['All'], payload: { row_id: 'FT-1' }, reject: (m: string) => { throw new Error(m) },
-      settings: { linked_tables: JSON.stringify(['Data Quality Row', 'Section']) }, people: { names: async () => ({}), enabled: async () => [] }, documents,
+      settings: { linked_tables: JSON.stringify(['Data Quality Row', 'Section']) }, people: { names: async () => ({}), actorNames: async () => ({}), enabled: async () => [] }, documents,
       baseTables: { available: async () => true, list: async (table: string, args: any) => page(tables[table], args) } }
     const { answer } = await reads.detail(ctx)
     expect(answer.coveredRows.total).toBe(N)

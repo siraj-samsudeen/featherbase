@@ -13,11 +13,11 @@ input, select, textarea { padding: 7px 9px; border: 1px solid var(--color-border
 h1 { margin: 0; font-size: 24px; font-weight: 700; }
 h2 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
 
-.assets-shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
+.assets-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
 .assets-nav .assets-nav-admin { margin-top: auto; font-size: 13px; }
 .assets-main { min-width: 0; padding: 28px; }
 @media (max-width: 700px) {
-  .assets-shell { grid-template-columns: minmax(0, 1fr); }
+  .assets-shell { grid-template-columns: auto minmax(0, 1fr); }
   .assets-main { padding: 16px; }
 }
 .assets-heading { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; margin-bottom: 18px; }

@@ -1,23 +1,23 @@
-import { type ReactNode, useState } from 'react'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
-  DrillPane, FieldGrid, GroupChip, LinkChip, PanePlace, PaneSection, SplitWithPane, ViewToggle,
-  buttonClasses, fmtCount, resolvePanePlace, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
-  type FieldGridGroup, type PanePlaceValue, type ViewMode,
+  FieldGrid, GroupChip, LinkChip, PaneSection, PanelRight, Plus, RecordLink, SplitWithPane, ViewToggle, X,
+  buttonClasses, cx, fmtCount, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
+  type FieldGridGroup, type ViewMode,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
-import { NO_COLUMN_TYPES, linkRowsTable, metaQuery, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, linkRowsTable, tableLabel, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { dataColumns, listFields, viewColumns, type ListColumn } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { push, type NavGroup, type NavPane, type NavStep } from '../lib/nav-path'
 import { useNavigation, type Navigation } from '../lib/navigation'
-import { useNavigationSettings } from '../lib/nav-settings'
-import { backlinkGroups, forwardLinks, groupKey, groupOrder, rowNameText, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
+import { forwardLinks, groupKey, groupOrder, rowNameText, useBacklinkGroups, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
 import { useConnections } from '../lib/connections'
 import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './FormArrangement'
 import { useI18n } from '../lib/i18n'
+import { ActivityTimeline } from './ActivityTimeline'
 
 // #910 checklist 4–10: the drill pane. One row of any Table, beside or below
 // the screen it was opened from: what it points at (each with Go there and,
@@ -33,36 +33,41 @@ const PANE_ROWS = 20
 const WIDE = `(min-width: ${PANE_RIGHT_MIN_WIDTH}px)`
 
 /**
- * The screen's content with the drill pane of the current step beside or
- * below it. `focus` is offered on a row page (centre the page on the pane's row).
+ * The screen's content with the record panel of the current step beside it
+ * (#1259: the right/bottom choice gave way to the list's three views), or
+ * below it on a narrow window. `focus` is offered on a row page (centre the
+ * page on the pane's row).
  */
 export function PaneSplit({ children, onFocus }: { children: ReactNode; onFocus?: (pane: NavPane) => void }) {
   const nav = useNavigation()
-  const settings = useNavigationSettings()
   const wide = useMediaQuery(WIDE)
   const pane = nav?.step.pane
-  const chosen: PanePlaceValue = nav?.step.place ?? settings.panePlace
-  const place = resolvePanePlace(chosen, wide ? PANE_RIGHT_MIN_WIDTH : 0)
+  const place = resolvePanePlace('auto', wide ? PANE_RIGHT_MIN_WIDTH : 0)
   return (
     <SplitWithPane place={place} pane={nav && pane ? (
-      <RowPane key={`${pane.table}\u0000${pane.row}`} nav={nav} pane={pane} place={place}
-        placeChoice={<PanePlace value={chosen} resolved={resolvePanePlace('auto', wide ? PANE_RIGHT_MIN_WIDTH : 0)} onChange={(value) => {
-          settings.setPanePlace(value)
-          nav.replace({ ...nav.step, place: value })
-        }} />}
-        onFocus={onFocus} />
+      <RecordPanel key={`${pane.table}\u0000${pane.row}`} nav={nav} pane={pane} place={place} onFocus={onFocus} />
     ) : null}>
       {children}
     </SplitWithPane>
   )
 }
 
-function RowPane({ nav, pane, place, placeChoice, onFocus }: {
+/**
+ * #1259 (Siraj, 17-Nov; mockups "Option B" and "Option C"): one record panel,
+ * for a list's List And Record and Table With Panel views and beside a row
+ * page. The record's title and its Table at the top with its actions (Edit,
+ * Open Full Page, Close); its links as chips; its fields in two columns; the
+ * rows that point at it (#910), counted, drilling in place with Back; then its
+ * activity. Everything it reads is permission-scoped on the server (D3); a row
+ * the viewer cannot read is never named.
+ */
+export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = false }: {
   nav: Navigation
   pane: NavPane
-  place: 'right' | 'bottom'
-  placeChoice: ReactNode
+  place?: 'right' | 'bottom'
   onFocus?: (pane: NavPane) => void
+  /** Drawn as its own white panel, set off by a soft shadow (over a list). */
+  framed?: boolean
 }) {
   const { table, row } = pane
   const meta = useMeta(table)
@@ -86,49 +91,91 @@ function RowPane({ nav, pane, place, placeChoice, onFocus }: {
   const pageHref = nav.addressed ? nav.href(push(nav.path, { screen: 'row', table, row })) : href
   const title = name.state === 'loading' ? '…' : rowNameText(name)
   // Two links from one Table are told apart by the link column's label.
-  const holders = [...new Set((cnx.data?.connections ?? []).map((c) => c.via ?? c.table))]
-  const holderMetas = useQueries({ queries: holders.map((t) => metaQuery(t)) })
-  const groups = cnx.data ? backlinkGroups(cnx.data.connections, (c) => {
-    const col = holderMetas[holders.indexOf(c.via ?? c.table)]?.data?.columns.find((x) => x.column_name === c.column)
-    return col?.label ?? c.column
-  }) : []
+  const groups = useBacklinkGroups(cnx.data?.connections)
   const open = pane.group ? groups.find((g) => g.key === groupKey(pane.group!)) : undefined
 
   // A row the viewer cannot read offers no way to it (checklist 22), not even
   // while that is still being found out.
   const unreadable = name.state === 'unreadable' || doc.isError
   const readable = doc.isSuccess && !unreadable
+  const kind = tableLabel(table, meta.data)
+  const code = name.state === 'read' && name.code ? name.code : undefined
+  const status = readable && doc.data && !isEmpty(doc.data.status) ? String(doc.data.status) : undefined
 
   return (
-    <DrillPane kind={table} title={title} place={place} onClose={close}
+    <RecordFrame kind={code ? `${kind} · ${code}` : kind} title={title} place={place} framed={framed} onClose={close}
       actions={readable ? <>
         {onFocus && !(step.screen === 'row' && step.table === table && step.row === row) &&
           <button type="button" onClick={() => onFocus(pane)} className={buttonClasses({ variant: 'quiet' })}>Focus here</button>}
-        <HrefLink href={pageHref} className={buttonClasses({ variant: 'quiet' })}>Open row page</HrefLink>
-        <HrefLink href={pageHref} className={buttonClasses({ variant: 'quiet' })}>Edit</HrefLink>
+        {/* The row's page is its editable form: one way there (one-app-chrome, #1259). */}
+        <HrefLink href={pageHref} className={buttonClasses({ variant: 'secondary' })}>Edit</HrefLink>
       </> : null}>
-      <div className="flex flex-wrap items-center gap-2">{placeChoice}</div>
       {unreadable ? (
         <p className="text-sm text-ink-muted">You can't see this row.</p>
       ) : !meta.data || !doc.data ? (
         <p className="text-sm text-ink-subtle">Loading…</p>
       ) : <>
-        <PointsAt links={forwardLinks(meta.data, doc.data)} nav={nav} onOpen={drill} />
-        <PaneSection title="Pointed at by">
+        <PointsAt links={forwardLinks(meta.data, doc.data)} nav={nav} onOpen={drill} status={status} editHref={pageHref} />
+        <PaneSection title="Fields">
+          <PaneFields meta={meta.data} row={doc.data} onOpen={drill} />
+        </PaneSection>
+        <PaneSection title="Pointed At By">
           <div className="flex flex-wrap gap-2">
-            <GroupChip label="Fields" selected={!open} onSelect={() => choose(undefined)} />
             {groups.map((g) => (
               <GroupChip key={g.key} label={g.label} count={g.count} selected={open?.key === g.key}
-                onSelect={() => choose({ table: g.connection.table, column: g.connection.column, via: g.connection.via })} />
+                onSelect={() => choose(open?.key === g.key ? undefined : { table: g.connection.table, column: g.connection.column, via: g.connection.via })} />
             ))}
             {cnx.isPending && <span className="text-sm text-ink-subtle">Loading…</span>}
+            {!cnx.isPending && !groups.length && <span className="text-sm text-ink-muted">No rows point at it</span>}
           </div>
-          {open
-            ? <GroupRows key={open.key} group={open} nav={nav} onOpen={drill} />
-            : <PaneFields meta={meta.data} row={doc.data} onOpen={drill} />}
+          {open && <GroupRows key={open.key} group={open} nav={nav} onOpen={drill} />}
         </PaneSection>
+        {/* The timeline heads itself "Activity". */}
+        <ActivityTimeline table={table} name={row} bare />
       </>}
-    </DrillPane>
+    </RecordFrame>
+  )
+}
+
+/**
+ * The panel's frame (#1259): the record's title (20px) over its Table and code,
+ * the actions at the top beside Close. It takes focus when it opens; Escape
+ * anywhere inside closes it. No lines: a soft shadow sets it off when framed.
+ */
+function RecordFrame({ kind, title, onClose, actions, children, place, framed }: {
+  kind: string
+  title: string
+  onClose: () => void
+  actions?: ReactNode
+  children: ReactNode
+  place: 'right' | 'bottom'
+  framed: boolean
+}) {
+  // Opening (or drilling to) a row puts focus in the panel, so Escape closes it.
+  const frame = useRef<HTMLElement>(null)
+  useEffect(() => { frame.current?.focus({ preventScroll: true }) }, [])
+  return (
+    <aside ref={frame} aria-label={title} data-place={place} data-testid="record-panel" tabIndex={-1}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        event.stopPropagation()
+        onClose()
+      }}
+      className={cx('flex min-h-0 min-w-0 flex-col bg-surface focus:outline-none',
+        framed ? 'h-full rounded-xl shadow-lg' : place === 'right' ? 'h-full' : '')}
+    >
+      <header className="flex shrink-0 items-start gap-3 px-5 pb-2 pt-4">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <h2 className="break-words text-xl font-semibold text-ink">{title}</h2>
+          <span className="text-sm text-ink-muted">{kind}</span>
+        </div>
+        {actions && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
+        <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={iconButtonClasses('shrink-0 bg-canvas')}>
+          <X aria-hidden size={16} />
+        </button>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pb-5">{children}</div>
+    </aside>
   )
 }
 
@@ -153,42 +200,85 @@ function filterColumn(listMeta: TableMeta | undefined, link: ForwardLink): Colum
   return refs.find((c) => c.column_name === link.column) ?? (refs.length === 1 ? refs[0] : undefined)
 }
 
-function PointsAt({ links, nav, onOpen }: { links: ForwardLink[]; nav: Navigation; onOpen: (pane: NavPane) => void }) {
+function PointsAt({ links, nav, onOpen, status, editHref }: {
+  links: ForwardLink[]
+  nav: Navigation
+  onOpen: (pane: NavPane) => void
+  /** The row's status, drawn as a pill among the chips. */
+  status?: string
+  /** Where a field is added: the row's own page. */
+  editHref: string
+}) {
   const step = nav.step
   // Filter narrows the list the pane sits over; Explore's pane has none.
   const overList = step.screen === 'list' && nav.addressed
   const listMeta = useMeta(step.table, overList)
-  if (!links.length) return <PaneSection title="Points at"><p className="text-sm text-ink-muted">No links to other rows</p></PaneSection>
+  // #1259: the record's properties as chips under its title: each link by its
+  // label and the linked row, the status as a pill, and + to add a field.
+  // Soft fills, no lines.
   return (
-    <PaneSection title="Points at">
-      <dl className="grid grid-cols-[minmax(5rem,max-content)_minmax(0,1fr)] items-center gap-x-4 gap-y-2 text-sm">
-        {links.map((link) => {
-          const column = overList ? filterColumn(listMeta.data, link) : undefined
-          // The filter goes on the path before the row it was read from:
-          // "Sites › Region: Kerala › Enchakkal", as if narrowed first, so the
-          // row's step brings back the narrowed list (spec: "Back to the site
-          // from its supermarket").
-          const filter = column && (() => {
-            const kept = (step.filters ?? []).filter((f) => f[0] !== column.column_name)
-            const filtered: NavStep = { ...step, filters: [...kept, [column.column_name, '=', link.row_id]] }
-            const { pane: _, ...listOnly } = filtered
-            const before = { steps: nav.path.steps.slice(0, nav.path.at), at: nav.path.at - 1 }
-            nav.advanceTo(push(push(before, listOnly), filtered))
-          })
-          return (
-            <div key={link.column} className="contents">
-              <dt className="text-ink-muted">{link.label}</dt>
-              <dd className="min-w-0">
-                <PaneLink table={link.table} rowId={link.row_id} onOpen={onOpen} goThere
-                  onFilter={filter || undefined}
-                  filterDisabledReason={overList && !column ? `This list has no ${link.label} column` : undefined} />
-              </dd>
-            </div>
-          )
-        })}
-      </dl>
-    </PaneSection>
+    <section aria-label="Points at" data-testid="record-chips" className="flex min-w-0 flex-wrap items-center gap-2">
+      {/* Named for screen readers; the chips speak for themselves on screen. */}
+      <h3 className="sr-only">Points at</h3>
+      {!links.length && <span className="text-sm text-ink-muted">No links to other rows</span>}
+      {links.map((link) => {
+        const column = overList ? filterColumn(listMeta.data, link) : undefined
+        // The filter goes on the path before the row it was read from:
+        // "Sites › Region: Kerala › Enchakkal", as if narrowed first, so the
+        // row's step brings back the narrowed list (spec: "Back to the site
+        // from its supermarket").
+        const filter = column && (() => {
+          const kept = (step.filters ?? []).filter((f) => f[0] !== column.column_name)
+          const filtered: NavStep = { ...step, filters: [...kept, [column.column_name, '=', link.row_id]] }
+          const { pane: _, ...listOnly } = filtered
+          const before = { steps: nav.path.steps.slice(0, nav.path.at), at: nav.path.at - 1 }
+          nav.advanceTo(push(push(before, listOnly), filtered))
+        })
+        return (
+          // #1259 (one-app-chrome): the name is a link to the row's page; a small
+          // control shows it here instead (#910's drill); Filter shows on hover or focus.
+          <span key={link.column} data-testid="record-chip"
+            className="group inline-flex min-w-0 items-center gap-1.5 rounded-md bg-canvas px-2 py-1 text-sm [&_button:not(:first-of-type)]:hidden group-hover:[&_button:not(:first-of-type)]:inline-flex group-focus-within:[&_button:not(:first-of-type)]:inline-flex">
+            <span className="text-ink-muted">{link.label}</span>
+            <ChipLink table={link.table} rowId={link.row_id} onOpen={onOpen}
+              onFilter={filter || undefined}
+              filterDisabledReason={overList && !column ? `This list has no ${link.label} column` : undefined} />
+          </span>
+        )
+      })}
+      {status && <span className="rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action" data-testid="record-status">{status}</span>}
+      <HrefLink href={editHref} className={iconButtonClasses('size-7 bg-canvas text-ink-muted hover:text-ink')}>
+        <Plus aria-hidden size={14} />
+        <span className="sr-only">Add a field</span>
+      </HrefLink>
+    </section>
   )
+}
+
+/** #1259: a chip's linked row: its name a link to its page, a control to show it
+ *  here in the panel, and Filter (the list under the panel by this value). */
+function ChipLink({ table, rowId, onOpen, onFilter, filterDisabledReason }: {
+  table: string
+  rowId: string
+  onOpen: (pane: NavPane) => void
+  onFilter?: () => void
+  filterDisabledReason?: string
+}) {
+  const name = useRowName(table, rowId)
+  if (name.state === 'loading') return <span className="text-sm text-ink-subtle">…</span>
+  if (name.state === 'unreadable') return <LinkChip label="" unreadable />
+  const text = nameAndCode(name.title, name.code)
+  return <>
+    <RecordLink table={table} rowId={rowId} name={text} />
+    <button type="button" onClick={() => onOpen({ table, row: rowId })} aria-label={`Show ${text} here`} title="Show here"
+      className={iconButtonClasses('size-6 text-ink-muted hover:text-ink')}>
+      <PanelRight aria-hidden size={14} />
+    </button>
+    {(onFilter || filterDisabledReason) && (
+      <button type="button" onClick={onFilter} disabled={!!filterDisabledReason} title={filterDisabledReason}
+        className={smallActionClasses}>Filter</button>
+    )}
+  </>
 }
 
 /** A linked row by its name and code; opening it shows it in the pane. */
@@ -325,7 +415,8 @@ function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; onOpen: 
       value: <FieldValue col={c} value={row[c.column_name]} settings={settings} onOpen={onOpen} />,
     })),
   }))
-  return <FieldGrid groups={groups} />
+  // #1259: two columns, each label over its value, as the record panel is drawn.
+  return <FieldGrid groups={groups} stacked />
 }
 
 function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: unknown; settings: Settings; onOpen: (pane: NavPane) => void }) {
@@ -349,12 +440,9 @@ export function RowConnections({ table, row, values }: { table: string; row: str
   const nav = useNavigation()
   const meta = useMeta(table)
   const cnx = useConnections(table, row, Boolean(values))
-  const holders = [...new Set((cnx.data?.connections ?? []).map((c) => c.via ?? c.table))]
-  const holderMetas = useQueries({ queries: holders.map((t) => metaQuery(t)) })
+  const groups = useBacklinkGroups(cnx.data?.connections)
   if (!nav || !meta.data || !values) return null
   const links = forwardLinks(meta.data, values)
-  const groups = cnx.data ? backlinkGroups(cnx.data.connections, (c) =>
-    holderMetas[holders.indexOf(c.via ?? c.table)]?.data?.columns.find((x) => x.column_name === c.column)?.label ?? c.column) : []
   if (!links.length && !groups.length) return null
   const step = nav.step
   const open = (pane: NavPane) => nav.push({ ...step, pane })

@@ -2,20 +2,23 @@
 // department; their manager keeps it or turns it down. Three layouts of the same form, behind a
 // toggle, so the owner can compare them in the real app: Steps (the default), One list, Step by step.
 import { useEffect, useState } from 'react'
-import { Button, Card, EmptyState, Field, fmtDate, Notice, Segmented, StatusPill, TextInput } from '@featherbase/shop-floor'
+import { AreaCards } from './my-store-page'
+import { RECORD, RecordLink } from './record-link'
+import { Button, buttonClasses, Card, EmptyState, Field, fmtDate, Notice, Segmented, StatusPill, TextInput } from '@featherbase/shop-floor'
 import { act } from './api'
 import { andList, mentionsRemoved, sectionsName } from './department-name'
 import { LoadFailed, Loading, NotSetUp, Shell, useAnswer } from './sections-page'
+import { AlsoWith, ReviewerIdentity, type Reviewer } from './person-identity'
 
 interface Section { id: string; name: string; floor: string; sells: string[]; more: number; team_leaders: string[]; suggested: boolean; held_by: string | null }
 type Current =
-  | { state: 'set_up'; name: string; sections: string[]; reviewing?: { bundle: string; waiting_for: string } | null; prefilled?: Prefilled }
-  | { state: 'waiting'; bundle: string; name: string; sections: string[]; waiting_for: string; asked_on: string }
+  | { state: 'set_up'; name: string; sections: string[]; section_refs?: { id: string; name: string }[]; reviewing?: { bundle: string; waiting_for: string; reviewers?: Reviewer[] } | null; prefilled?: Prefilled }
+  | { state: 'waiting'; bundle: string; name: string; sections: string[]; waiting_for: string; reviewers?: Reviewer[]; asked_on: string }
   | { state: 'turned_down'; name: string; sections: string[]; reason: string }
 export type Setup =
   | { state: 'not_set_up' | 'unknown_person' | 'no_job' }
-  | { state: 'no_sections'; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean }
-  | { state: 'ok'; name: string; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean; applies_at_once?: boolean; floors: { id: string; name: string }[]; start_floors: string[]
+  | { state: 'no_sections'; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean; reviewers?: Reviewer[] }
+  | { state: 'ok'; name: string; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean; reviewers?: Reviewer[]; applies_at_once?: boolean; floors: { id: string; name: string }[]; start_floors: string[]
       sections: Section[]; names: string[]; current: Current | null }
 type Ok = Extract<Setup, { state: 'ok' }>
 
@@ -68,9 +71,12 @@ export function YourDepartment() {
         <Card data-testid="no-sections">
           <EmptyState title={`${answer.job.store}'s sections aren't set up yet`}
             body={`A department is a group of your store's sections, and Dash has none for ${answer.job.store} yet. The master data team sets them up; then you can choose yours here. ${capital(answer.reviewer)} will review it.`} />
+          <ReviewerIdentity reviewers={answer.reviewers} className="items-center px-4 pb-4" />
         </Card>
       )}
       {answer?.state === 'ok' && <Ready setup={answer} onChanged={load} />}
+      {/* #1223: once their department is in force, its sections and team, every record a link. */}
+      {answer?.state === 'ok' && <AreaCards kinds={['department']} />}
     </Shell>
   )
 }
@@ -119,23 +125,26 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
         {intro}
         {/* A pre-fill is always open for review, so it names its reviewer. */}
         {note && <Notice tone={note.tone}><span data-testid="note">{note.text}</span></Notice>}
-        {current.prefilled && <PrefillBanner jobId={setup.job.id} name={current.name} prefilled={current.prefilled} reviewer={current.reviewing!.waiting_for}
+        {current.prefilled && <PrefillBanner jobId={setup.job.id} name={current.name} prefilled={current.prefilled} reviewer={current.reviewing!.waiting_for} reviewers={current.reviewing!.reviewers}
           onAnswered={async () => { const reviewer = current.reviewing!.waiting_for; await onChanged(); setNote({ tone: 'positive', text: `Thank you. It is your department now; ${reviewer} reviews it.` }) }}
           onChange={startEditing} />}
         <Card title={`${current.name} · ${setup.job.store}`} data-testid="set-up"
-          actions={current.reviewing ? <StatusPill tone="caution">In use, {current.reviewing.waiting_for} to review</StatusPill> : <StatusPill tone="positive">Kept</StatusPill>}>
+          actions={<span className="flex flex-wrap items-center gap-2">
+            {current.reviewing ? <StatusPill tone="caution">In use, {current.reviewing.waiting_for} to review</StatusPill> : <StatusPill tone="positive">Kept</StatusPill>}
+            <a className={buttonClasses({ variant: 'secondary' })} href="?" data-testid="open-report">Open your report</a>
+          </span>}>
           <div className="flex flex-col gap-2 p-4">
-            <p>{listed(current.sections)}</p>
+            <p>{current.section_refs ? <SectionLinks sections={current.section_refs} /> : listed(current.sections)}</p>
             {current.reviewing
               ? <p className="fd-muted text-sm" data-testid="reviewing">Your report shows these sections now. {capital(current.reviewing.waiting_for)} will look at it, and can undo it.</p>
               : <p className="fd-muted text-sm">Your report shows these sections. To change them, ask {setup.reviewer}.</p>}
+            <ReviewerIdentity reviewers={current.reviewing ? current.reviewing.reviewers : setup.reviewers} />
             {current.reviewing && !current.prefilled && (
               <div className="flex flex-wrap gap-2 pt-1">
-                <Button variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
-                <Button variant="quiet" disabled={busy} onClick={() => undoInUse(current.reviewing!.bundle)}>Undo</Button>
+                <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
+                <Button data-action variant="quiet" disabled={busy} onClick={() => undoInUse(current.reviewing!.bundle)}>Undo</Button>
               </div>
             )}
-            <a className="fd-link font-semibold" href="?" data-testid="open-report">Open your report</a>
           </div>
         </Card>
       </>
@@ -150,10 +159,11 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
             <p className="font-semibold" data-testid="waiting-name">{current.name}</p>
             <p>{listed(current.sections)}</p>
             <p data-testid="sent-note">Sent to {current.waiting_for}. Your report opens as soon as it is kept.</p>
+            <ReviewerIdentity reviewers={current.reviewers} />
             <p className="fd-muted text-sm">Sent on {fmtDate(current.asked_on)}.{awayLine(current.waiting_for, setup.reviewer_is_team)}</p>
             <div className="flex flex-wrap gap-2 pt-1">
-              <Button variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
-              <Button variant="quiet" disabled={busy} onClick={() => withdraw(current.bundle)}>Withdraw</Button>
+              <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
+              <Button data-action variant="quiet" disabled={busy} onClick={() => withdraw(current.bundle)}>Withdraw</Button>
             </div>
           </div>
         </Card>
@@ -266,13 +276,18 @@ function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched
     <div className="flex flex-col gap-2">
       {error && <Notice tone="negative"><span data-testid="refused">{error}</span></Notice>}
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" disabled={busy || !chosen.length || !trimmed} onClick={send} data-testid="send">{atOnce ? 'Set it up' : `Send to ${setup.reviewer}`}</Button>
+        <Button data-action variant="primary" disabled={busy || !chosen.length || !trimmed} onClick={send} data-testid="send">{atOnce ? 'Set it up' : `Send to ${setup.reviewer}`}</Button>
         {cancel}
         <span className="fd-muted text-sm" data-testid="summary">{summary}</span>
       </div>
     </div>
   )
-  const lead = <p className="fd-muted" data-testid="lead">Say which sections are yours and give the department a name. {atOnce && !inUse ? `Your report opens on them at once; ${setup.reviewer} reviews it afterwards.` : <>{capital(setup.reviewer)} reviews it{inUse ? '. What you send replaces the one in use; your report keeps working meanwhile.' : `, and your report opens once it is kept.${replaces ? ' What you send replaces the one waiting.' : ''}`}</>}</p>
+  const lead = (
+    <div className="flex flex-col gap-1">
+      <p className="fd-muted" data-testid="lead">Say which sections are yours and give the department a name. {atOnce && !inUse ? `Your report opens on them at once; ${setup.reviewer} reviews it afterwards.` : <>{capital(setup.reviewer)} reviews it{inUse ? '. What you send replaces the one in use; your report keeps working meanwhile.' : `, and your report opens once it is kept.${replaces ? ' What you send replaces the one waiting.' : ''}`}</>}</p>
+      <ReviewerIdentity reviewers={setup.reviewers} />
+    </div>
+  )
   const toggleBar = <Segmented label="Layout" options={LAYOUTS} value={layout} onChange={value => { setLayout(value); setStep(1) }} className="self-end" />
 
   if (layout === 'list')
@@ -344,8 +359,25 @@ export function prefillStyle(search = window.location.search): BannerStyle {
  * Department Manager's own set-up, which their manager reviews. Change it is `onChange`, or a link
  * to Your department where there is no form on the page.
  */
-export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, onChange }:
-  { jobId: string; name: string; prefilled: Prefilled; reviewer: string; onAnswered: () => Promise<unknown>; onChange?: () => void }) {
+/** #1223 (UX standard): every section a link, in a sentence: "Bags, Silk and Kids Wear". */
+function SectionLinks({ sections }: { sections: { id: string; name: string }[] }) {
+  return <>{sections.map((s, i) => <span key={s.id}>{i ? (i === sections.length - 1 ? ' and ' : ', ') : ''}<RecordLink table={RECORD.section} id={s.id}>{s.name}</RecordLink></span>)}</>
+}
+
+/** UX standard §3: a layout choice lives in a View menu, not as a link beside the actions. */
+function ViewMenu({ label, onChoose }: { label: string; onChoose: () => void }) {
+  return (
+    <details className="relative self-center" data-testid="view-menu">
+      <summary className={buttonClasses({ variant: 'quiet' })}>View ▾</summary>
+      <div className="absolute right-0 z-10 mt-1 min-w-40 rounded-control border border-border bg-surface p-1 shadow-lg">
+        <button type="button" className="w-full rounded-control px-3 py-1.5 text-left text-sm hover:bg-subtle" onClick={onChoose}>{label}</button>
+      </div>
+    </details>
+  )
+}
+
+export function PrefillBanner({ jobId, name, prefilled, reviewer, reviewers, onAnswered, onChange }:
+  { jobId: string; name: string; prefilled: Prefilled; reviewer: string; reviewers?: Reviewer[]; onAnswered: () => Promise<unknown>; onChange?: () => void }) {
   const [style, setStyle] = useState<BannerStyle>(prefillStyle)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -359,16 +391,16 @@ export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, on
     finally { setBusy(false) }
   }
   const change = onChange
-    ? <Button variant={style === 'line' ? 'quiet' : 'secondary'} disabled={busy} onClick={onChange}>Change it</Button>
+    ? <Button data-action variant={style === 'line' ? 'quiet' : 'secondary'} disabled={busy} onClick={onChange}>Change it</Button>
     : <a className={style === 'line' ? 'fd-link font-semibold' : 'fd-link font-semibold self-center'} href="?view=department">Change it</a>
   const refused = error && <Notice tone="negative"><span data-testid="prefill-refused">{error}</span></Notice>
   if (style === 'line')
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-control border border-border bg-surface px-3 py-2 text-sm" data-testid="prefill-line">
-        <span>Set up from your team: {sections}. Is this right?</span>
-        <Button variant="quiet" disabled={busy} onClick={yes}>Yes</Button>
+        <span>Set up from your team: <SectionLinks sections={prefilled.sections} />. Is this right?</span>
+        <Button data-action variant="quiet" disabled={busy} onClick={yes}>Yes</Button>
         {change}
-        <button type="button" className="fd-link text-sm" onClick={() => choose('card')}>Show more</button>
+        <ViewMenu label="Show more" onChoose={() => choose('card')} />
         {refused}
       </div>
     )
@@ -376,13 +408,14 @@ export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, on
     <Notice tone="info">
       <div className="flex flex-col gap-2" data-testid="prefill-banner">
         <p className="font-semibold">Set up from your team</p>
-        <p>Your report shows {sections}: the sections your team works in. Is this right?</p>
+        <p>Your report shows <SectionLinks sections={prefilled.sections} />: the sections your team works in. Is this right?</p>
         {prefilled.flagged.length > 0 && <p className="text-sm" data-testid="prefill-flagged">{listed(prefilled.flagged)} {prefilled.flagged.length === 1 ? 'is' : 'are'} shared with another department's team.</p>}
         <p className="fd-muted text-sm" data-testid="prefill-reviewer">{capital(reviewer)} reviews it.</p>
+        <ReviewerIdentity reviewers={reviewers} />
         <div className="flex flex-wrap gap-2">
-          <Button variant="primary" disabled={busy} onClick={yes}>Yes, that's right</Button>
+          <Button data-action variant="primary" disabled={busy} onClick={yes}>Yes, that's right</Button>
           {change}
-          <button type="button" className="fd-link text-sm self-center" onClick={() => choose('line')}>Show as one line</button>
+          <ViewMenu label="Show as one line" onChoose={() => choose('line')} />
         </div>
         {refused}
       </div>
@@ -391,7 +424,9 @@ export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, on
 }
 
 /** Set-ups waiting for this reviewer, on Waiting for your approval. */
-export interface WaitingSetup { bundle: string; who: string; job: string; store: string; name: string; asked_on: string; applied?: boolean; prefilled?: boolean; flagged?: string[]; sections: { id: string; name: string; team_leaders: string[] }[] }
+export interface WaitingSetup { bundle: string; who: string; job: string; store: string; name: string; asked_on: string; applied?: boolean; prefilled?: boolean; flagged?: string[]; sections: { id: string; name: string; team_leaders: string[] }[]
+  /** #1219: whoever else may decide it, the viewer left out. */
+  also_with?: Reviewer[] }
 
 export function DepartmentApprovals({ setups, onDecided }: { setups: WaitingSetup[]; onDecided: (said: string) => Promise<unknown> }) {
   return <>{setups.map(setup => <SetupCard key={setup.bundle} setup={setup} onDecided={onDecided} />)}</>
@@ -419,7 +454,8 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
     <Card title={`${setup.who} · ${setup.job}`} data-testid="setup-card" actions={<StatusPill tone="caution">{setup.prefilled ? 'Set up from reporting lines' : 'New department'}</StatusPill>}>
       <div className="flex flex-col gap-3 p-4">
         <p className="font-semibold" data-testid="setup-ask">{setup.prefilled ? `“${setup.name}” at ${setup.store}, set up from the reporting lines to ${setup.who}` : `Set up “${setup.name}” at ${setup.store}`}</p>
-        {setup.applied && <p className="text-sm" data-testid="setup-applied">Already in use: {setup.who}'s report shows these sections. Keep it, or undo it.</p>}
+        <AlsoWith reviewers={setup.also_with} />
+        {setup.applied && <p className="text-sm" data-testid="setup-applied">Already in use: {setup.who}'s report shows these sections.<span data-action-hint> Keep it, or undo it.</span></p>}
         {mode === 'change' ? (
           <>
             {!setup.applied && <Field label="Department name"><TextInput value={name} maxLength={60} onChange={event => setName(event.target.value)} data-testid="change-name" /></Field>}
@@ -442,20 +478,20 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
           <Field label={setup.applied ? 'Reason' : 'Why not?'}><TextInput value={reason} onChange={event => setReason(event.target.value)} data-testid="reject-reason" /></Field>
         )}
         {/* The undo box says it once while it is open. */}
-        {!(setup.applied && mode === 'reject') && <p className="fd-muted text-sm">{setup.applied ? `Undoing it takes these sections off ${setup.who}'s report.` : `Asked on ${fmtDate(setup.asked_on)}. Keeping it opens ${setup.who}'s report for these sections.`}</p>}
+        {!(setup.applied && mode === 'reject') && <p className="fd-muted text-sm" data-action-hint>{setup.applied ? `Undoing it takes these sections off ${setup.who}'s report.` : `Asked on ${fmtDate(setup.asked_on)}. Keeping it opens ${setup.who}'s report for these sections.`}</p>}
         {error && <Notice tone="negative"><span data-testid="decide-refused">{error}</span></Notice>}
         <div className="flex flex-wrap gap-2">
           {mode === 'view' && <>
-            <Button variant="primary" disabled={busy} onClick={() => decide({ decision: 'approve' })} data-testid="keep">Keep it</Button>
-            <Button disabled={busy} onClick={() => setMode('change')}>Change, then keep</Button>
-            <Button variant="quiet" disabled={busy} onClick={() => setMode('reject')}>{setup.applied ? 'Undo it' : 'Turn down'}</Button>
+            <Button data-action variant="primary" disabled={busy} onClick={() => decide({ decision: 'approve' })} data-testid="keep">Keep it</Button>
+            <Button data-action disabled={busy} onClick={() => setMode('change')}>Change, then keep</Button>
+            <Button data-action variant="quiet" disabled={busy} onClick={() => setMode('reject')}>{setup.applied ? 'Undo it' : 'Turn down'}</Button>
           </>}
           {mode === 'change' && <>
-            <Button variant="primary" disabled={busy || !keep.length || !name.trim()} onClick={() => decide({ decision: 'approve', name: name.trim(), sections: keep })} data-testid="keep-changed">Keep with changes</Button>
+            <Button data-action variant="primary" disabled={busy || !keep.length || !name.trim()} onClick={() => decide({ decision: 'approve', name: name.trim(), sections: keep })} data-testid="keep-changed">Keep with changes</Button>
             <Button variant="quiet" disabled={busy} onClick={() => setMode('view')}>Cancel</Button>
           </>}
           {mode === 'reject' && <>
-            <Button variant="danger" disabled={busy || !reason.trim()} onClick={() => decide({ decision: 'reject', reason: reason.trim() })} data-testid="confirm-reject">{setup.applied ? 'Undo it' : 'Turn it down'}</Button>
+            <Button data-action variant="danger" disabled={busy || !reason.trim()} onClick={() => decide({ decision: 'reject', reason: reason.trim() })} data-testid="confirm-reject">{setup.applied ? 'Undo it' : 'Turn it down'}</Button>
             <Button variant="quiet" disabled={busy} onClick={() => setMode('view')}>Cancel</Button>
           </>}
         </div>
