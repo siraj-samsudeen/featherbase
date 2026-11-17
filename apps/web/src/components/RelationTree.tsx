@@ -131,11 +131,11 @@ function groupLine(w: Walker, id: string, g: BacklinkGroup, table: string, row: 
   }))
   if (!rows) return { ...node, loading: true, children: [] }
   const backLink = g.connection.via ? undefined : g.connection.column
-  const own = forwardLinks(ownerMeta, owner).map((l) => l.row_id)
+  const own = forwardLinks(ownerMeta, owner)
   const children = rows.data.map((r) => {
     const rowId = String(r.row_id)
     // Each row by what it points to (a job assignment by its employee), else by its own name.
-    const far = farSide(meta, r, { backLink, record: row, own })
+    const far = farSide(meta, r, { backLink, record: { table, row_id: row }, own })
     if (far) return linkedLine(w, lineId(id, `r:${rowId}`), far.table, far.row_id, ctx)
     const label = rowDisplayTitle(meta, r, rowId)
     return rowLine(w, lineId(id, `r:${rowId}`), { table: g.connection.table, row: rowId, label, code: shownCode(meta, rowId, label) }, ctx,

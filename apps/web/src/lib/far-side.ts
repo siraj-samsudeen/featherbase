@@ -22,20 +22,30 @@ const isBlank = (v: unknown) => v == null || String(v).trim() === ''
 /** How many of a group's rows show before "Show all N". */
 export const GROUP_ROWS = 10
 
+/** One record: its Table and its id. An id alone may repeat across Tables. */
+export interface RecordRef {
+  table: string
+  row_id: string
+}
+
+const key = (r: RecordRef) => `${r.table}\u0000${r.row_id}`
+
 /**
  * The far side of one row of a group pointing at `record`. `backLink` is the
  * row's column pointing back (unknown for a group linked through a sub-table);
- * any link holding the record's id is passed over as well. `own` are the values
- * of the record's own links.
+ * any link to the record itself is passed over as well. `own` are the records
+ * the record's own links point to. Records match by Table and id together.
  */
-export function farSide(meta: TableMeta, row: Row, opts: { backLink?: string; record: string; own: Iterable<string> }): FarSide | undefined {
+export function farSide(meta: TableMeta, row: Row, opts: { backLink?: string; record: RecordRef; own: Iterable<RecordRef> }): FarSide | undefined {
   // Only a link table reads through: a section keeps its name, never its floor.
   if (!isLinkTable(meta)) return undefined
-  const skip = new Set([opts.record, ...opts.own])
+  const skip = new Set([opts.record, ...opts.own].map(key))
   for (const c of readableLinks(meta)) {
     const value = row[c.column_name]
-    if (c.column_name === opts.backLink || isBlank(value) || skip.has(String(value))) continue
-    return { column: c.column_name, label: c.label ?? c.column_name, table: linkRowsTable(c)!, row_id: String(value) }
+    if (c.column_name === opts.backLink || isBlank(value)) continue
+    const target = { table: linkRowsTable(c)!, row_id: String(value) }
+    if (skip.has(key(target))) continue
+    return { column: c.column_name, label: c.label ?? c.column_name, ...target }
   }
   return undefined
 }

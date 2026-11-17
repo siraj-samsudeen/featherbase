@@ -45,7 +45,11 @@ const sectionSubcategory = {
 } as unknown as TableMeta
 
 // The section KL-RR-S13039 sits at site S13039 on floor F1.
-const section = { record: 'KL-RR-S13039', own: ['S13039', 'F1'] }
+// Identities are a Table and an id: an id alone may repeat across Tables.
+const section = {
+  record: { table: 'dash.section', row_id: 'KL-RR-S13039' },
+  own: [{ table: 'dash.site', row_id: 'S13039' }, { table: 'dash.store_floor', row_id: 'F1' }],
+}
 
 describe('farSide', () => {
   it("names a section's job assignment by its employee", () => {
@@ -65,6 +69,18 @@ describe('farSide', () => {
     expect(farSide(jobAssignment, row, { record: section.record, own: section.own })).toMatchObject({ column: 'employee' })
   })
 
+  // Codex round 1: the same id in two Tables is two different records.
+  it('keeps a far side whose id happens to equal the record\'s or one of its links\' ids in another Table', () => {
+    const row = { row_id: 'ja9', assignment_id: 'ja9', section: '1', employee: '1', designation: 'S13039' }
+    const one = { table: 'dash.section', row_id: '1' }
+    expect(farSide(jobAssignment, row, { backLink: 'section', record: one, own: [] }))
+      .toMatchObject({ column: 'employee', table: 'dash.employee', row_id: '1' })
+    // The section's site is S13039, but this designation S13039 is no site.
+    const noEmployee = { ...row, employee: null }
+    expect(farSide(jobAssignment, noEmployee, { backLink: 'section', record: one, own: section.own }))
+      .toMatchObject({ column: 'designation', row_id: 'S13039' })
+  })
+
   it('passes over an empty link to the next readable one', () => {
     const row = { row_id: 'ja2', section: 'KL-RR-S13039', employee: null, designation: 'D7' }
     expect(farSide(jobAssignment, row, { backLink: 'section', record: section.record, own: [] })).toMatchObject({ column: 'designation' })
@@ -73,7 +89,7 @@ describe('farSide', () => {
   it('leaves a link table with no other readable link to keep its own name', () => {
     const tag = { name: 'Tag', id_pattern: 'field:tag_id', title_column: 'tag_id',
       columns: [column('tag_id'), link('site', 'Site'), column('format')] } as unknown as TableMeta
-    expect(farSide(tag, { row_id: 'T1', tag_id: 'T1', site: 'ENK' }, { backLink: 'site', record: 'ENK', own: ['KL'] }))
+    expect(farSide(tag, { row_id: 'T1', tag_id: 'T1', site: 'ENK' }, { backLink: 'site', record: { table: 'Site', row_id: 'ENK' }, own: [{ table: 'Region', row_id: 'KL' }] }))
       .toBeUndefined()
   })
 
@@ -82,14 +98,14 @@ describe('farSide', () => {
   it("keeps a Site's sections by their own names, never their floors", () => {
     const sectionMeta = { name: 'Section', id_pattern: 'field:section_id', title_column: 'name',
       columns: [column('section_id'), column('name'), link('site', 'Site'), link('floor', 'Store Floor')] } as unknown as TableMeta
-    expect(farSide(sectionMeta, { row_id: 'LKS-S1', name: 'Sarees', site: 'LKS', floor: 'LKS-F1' }, { backLink: 'site', record: 'LKS', own: [] }))
+    expect(farSide(sectionMeta, { row_id: 'LKS-S1', name: 'Sarees', site: 'LKS', floor: 'LKS-F1' }, { backLink: 'site', record: { table: 'Site', row_id: 'LKS' }, own: [] }))
       .toBeUndefined()
   })
 
   it("keeps a Site's departments by their own names, never their managers", () => {
     const department = { name: 'Department', id_pattern: 'field:department_id', title_column: 'name',
       columns: [column('department_id'), link('store', 'Site'), column('name'), link('manager', 'Employee')] } as unknown as TableMeta
-    expect(farSide(department, { row_id: 'D1', department_id: 'D1', store: 'LKS', name: 'Ladies', manager: '2001' }, { backLink: 'store', record: 'LKS', own: [] }))
+    expect(farSide(department, { row_id: 'D1', department_id: 'D1', store: 'LKS', name: 'Ladies', manager: '2001' }, { backLink: 'store', record: { table: 'Site', row_id: 'LKS' }, own: [] }))
       .toBeUndefined()
   })
 

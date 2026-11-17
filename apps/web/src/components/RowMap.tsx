@@ -109,14 +109,14 @@ export function RowMap({ table, name }: { table: string; name: string }) {
         via: 'child rows',
         field: f,
       })
-  const own = forwardLinks(m, d).map((l) => l.row_id)
+  const own = forwardLinks(m, d)
   const linksPerTable = new Map<string, number>()
   for (const c of connections) linksPerTable.set(c.table, (linksPerTable.get(c.table) ?? 0) + 1)
   const farTables = connections.map((c, i) => {
     const gm = groupMetaOf(c.table)
     const rows = groupRows[i]?.data?.data
     if (!gm || !rows) return undefined
-    return farSideTable(rows.map((r) => farSide(gm, r, { backLink: c.via ? undefined : c.column, record: name, own })))
+    return farSideTable(rows.map((r) => farSide(gm, r, { backLink: c.via ? undefined : c.column, record: { table, row_id: name }, own })))
   })
   connections.forEach((c, i) =>
     groups.push({

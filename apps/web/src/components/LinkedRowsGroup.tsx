@@ -52,7 +52,7 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
     enabled: Boolean(meta.data),
     orderBy: meta.data ? groupOrder(meta.data) : undefined,
   })
-  const own = recordMeta.data && doc.data ? forwardLinks(recordMeta.data, doc.data).map((l) => l.row_id) : []
+  const own = recordMeta.data && doc.data ? forwardLinks(recordMeta.data, doc.data) : []
   const data = rows.data?.data ?? []
   const total = rows.data?.total ?? group.count
   const href = showAllHref ?? `${tableHref(connection.table)}?filters=${encodeURIComponent(JSON.stringify(connection.filters))}`
@@ -71,7 +71,7 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
           <ul className="flex min-w-0 flex-col gap-0.5">
             {data.map((r) => (
               <LinkedRowLine key={String(r.row_id)} meta={meta.data!} row={r} onOpen={onOpen}
-                far={farSide(meta.data!, r, { backLink, record, own })} />
+                far={farSide(meta.data!, r, { backLink, record: { table, row_id: record }, own })} />
             ))}
           </ul>
         )}
