@@ -15,6 +15,7 @@ import { saveDoc } from './document'
 import { endIdentityIdentifiers, reconcileIdentityEmail, writeThroughIdentity } from './person-identifiers'
 import { SIGN_IN_METHOD_KINDS, type NewPersonRule as SharedNewPersonRule, type SignInMethodKind } from 'shared'
 import { switchedOn } from './env'
+import { displayName } from './people-directory'
 
 // ---------------------------------------------------------------- folding
 
@@ -377,10 +378,38 @@ async function clash(method: SignInMethod, what: { subject?: string | null; sign
     if (hit && !held) held = { kind, hit }
   }
   const label = held?.kind === 'subject' ? `This ${method.label || method.key} ID` : held?.kind === 'sign_in_name' ? 'This sign-in name' : 'This invited address'
+  // #1266: the holder by name, never their id.
+  const [holder] = held ? await sql`select full_name, username from person where row_id = ${held.hit.person_id as string}` : []
   throw new AppError(
     'ConflictError',
-    held ? `${label} is already linked to ${held.hit.person_id as string}` : 'This sign-in is already linked to an account',
+    held ? `${label} is already linked to ${holder ? displayName(holder) : 'another person'}` : 'This sign-in is already linked to an account',
     held ? { clash: held.kind, identity: String(held.hit.id), person: String(held.hit.person_id) } : undefined,
+  )
+}
+
+/** #1266: an address another person already signs in with, or is known by,
+ *  is theirs. Linking it to this person would let one sign in as the other
+ *  (a password manager filled in the manager's own address on someone's page).
+ *  The refusal says whose it is, by name. Anything that is not an address
+ *  (a StyleHR login id) passes: that clash stays per method (clash()). */
+export async function assertAddressFree(user: string, method: string, value: string | null | undefined): Promise<void> {
+  if (!value || !looksLikeEmail(value)) return
+  const folded = foldName(value)
+  // A clash within the same method is clash()'s, with the identity it hits.
+  const [held] = await sql`
+    select p.row_id, p.full_name, p.username from person p
+    where p.row_id <> ${user} and (
+      lower(p.email) = ${folded}
+      or exists (
+        select 1 from sign_in_identity i
+        where i.person_id = p.row_id and i.ended_at is null and i.method <> ${method}
+          and (lower(i.sign_in_name) = ${folded} or lower(i.email) = ${folded} or i.pending_email = ${folded})))
+    limit 1`
+  if (!held) return
+  throw new AppError(
+    'ConflictError',
+    `${value.trim()} already belongs to ${displayName(held)}. Link it on their page, or use this person's own address.`,
+    { clash: 'address', person: String(held.row_id) },
   )
 }
 
@@ -410,6 +439,8 @@ export async function linkIdentity(
   if (!subject) throw new AppError('ValidationError', 'Expected { subject }', { subject: 'required' })
   const signInName = input.sign_in_name == null ? null : String(input.sign_in_name).trim() || null
   await assertHumanUser(user)
+  await assertAddressFree(user, method.key, signInName)
+  await assertAddressFree(user, method.key, input.email)
   const [same] = await sql`
     select ${identityFields()} from sign_in_identity where method = ${method.key} and subject = ${subject} and person_id = ${user} and ended_at is null`
   if (same && (same.sign_in_name ?? null) === signInName) return { ...(same as unknown as Identity), created: false }
@@ -445,6 +476,7 @@ export async function inviteGoogle(user: string, email: string, actor: string): 
   const address = normaliseEmail(email)
   if (!address || !looksLikeEmail(address)) throw new AppError('ValidationError', 'Expected { email }', { email: 'a real address' })
   await assertHumanUser(user)
+  await assertAddressFree(user, method.key, address)
   const pending = foldName(address)
   const [same] = await sql`
     select ${identityFields()} from sign_in_identity
