@@ -485,7 +485,7 @@ export function FormView({
   for (const f of m.columns) {
     if (f.column_type === 'Section Break') sections.push([])
     // #1267: a saved Person's Sign-In lines own its "expects … sign-in" switches.
-    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name)) && !(personPage && f.column_name === 'external_label' && standing.data?.status !== 'none'))
+    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name)) && !(table === 'Person' && f.column_name === 'external_label' && (isNew || standing.data?.status !== 'none')))
       sections[sections.length - 1].push(f)
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)

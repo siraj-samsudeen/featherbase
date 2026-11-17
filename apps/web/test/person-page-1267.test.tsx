@@ -368,3 +368,23 @@ test.for([['none', true], ['current', false], ['unknown', false]] as const)('the
     else expect(screen.getByTestId('form-fields')).not.toHaveTextContent('External label')
   } finally { spy.mockRestore() }
 })
+
+// one-app-chrome, after the step 3 verifier: a label set straight after creating the person, in
+// the same page session, is saved (a save must never be lost quietly).
+test('a label chosen straight after creating the person is saved', async ({ admin }) => {
+  await renderApp('/featherbase/admin/table/person/new', admin)
+  await userEvent.type(await screen.findByLabelText('Email'), 'fresh.1267@example.com')
+  expect(screen.queryByLabelText('External label')).not.toBeInTheDocument()
+  await userEvent.type(screen.getByLabelText('Full Name'), 'Fresh Outsider')
+  await userEvent.click(screen.getByTestId('form-save'))
+  // A new person has no standing yet, so the label isn't asked for until the page is theirs;
+  // with no people app here they then read as External.
+  await screen.findByTestId('person-standing', {}, { timeout: 10_000 })
+  const label = await screen.findByLabelText('External label', {}, { timeout: 10_000 })
+  await userEvent.selectOptions(label, 'Vendor')
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved')
+  await userEvent.click(screen.getByTestId('form-save'))
+  expect(await screen.findByTestId('form-banner')).toHaveTextContent('Saved')
+  const [row] = await sql`select external_label from person where email = 'fresh.1267@example.com'`
+  expect(row.external_label).toBe('Vendor')
+})
