@@ -416,11 +416,13 @@ and crashes. Each service needs:
 | Pre-deploy command | `pnpm --filter server pre-deploy` |
 | Healthcheck path, timeout | `/api/ping`, `300` |
 | Restart policy | `ON_FAILURE` (Railway's default), 5 retries |
+| Draining (SIGTERM to SIGKILL) | `30` s, longer than the server's 25 s drain (#1260) |
 | Volume | mounted at `/data` |
 
 `.railway/railway.ts` (Railway's Infrastructure as Code, which replaced
 `railway.json`) holds them for each environment, beside what differs between
-environments: the service's name, its volume and its watch paths. To bring an
+environments: the service's name, the branch it deploys (production deploys
+`release/jeyarama-dash-prod`), its volume and its watch paths. To bring an
 environment into line, or to check it, run from the repo root with the
 [Railway CLI](https://docs.railway.com/cli) (5.49.1 or newer) signed in:
 

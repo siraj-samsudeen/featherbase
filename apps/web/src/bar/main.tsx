@@ -2,6 +2,11 @@
 // an installed app's entry document (apps/server/src/runtime-shell.ts).
 import { mountBar } from './mount'
 import { FeatherbaseSidebar } from './sidebar'
+import { installDeployWait } from '../lib/deploy-wait'
+
+// #1260: every app page loads this bundle, so an app's own requests wait
+// out a deploy too, without the app changing.
+installDeployWait(window, document)
 
 class FeatherbaseBar extends HTMLElement {
   connectedCallback() {
