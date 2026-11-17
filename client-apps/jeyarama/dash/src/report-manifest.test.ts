@@ -12,6 +12,7 @@ import { BASE_TABLES } from './my-sections.ts'
 import { BUYER_TABLES } from './buyers.ts'
 import { DESIGNATION, SHADOW_TABLES } from './business-roles-server.ts'
 import { READ_ROLES } from './report-eligibility.ts'
+import { REACHES_CHOICES } from './business-roles.ts'
 
 type Dataset = { name: string; source: string; query: string; columns: { name: string; type: string }[]; keys: string[]; filters: Record<string, string>
   guard?: { kind: string; column?: string; value?: number; within?: string }[] }
@@ -209,6 +210,14 @@ describe('the read grants, declared before the first install', () => {
   // #1192 (same day): Dash All-Stores Reader reaches every store. #1217: Team Report Manager gives reports to their team.
   it('declares only the roles Dash uses', () => {
     expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester'])
+  })
+
+  // #1218: how far a business role reaches is a required choice on the role, in the step that adds the Table and in its declaration.
+  it('declares Reaches on the business role, the same in its step and its Table', () => {
+    const step = manifest.migrations.find(m => m.id === 'business_roles_shadow')!.operations as { table: { name: string; columns: { column_name: string }[] } }[]
+    const inStep = step.find(op => op.table.name === 'dash.business_role')!.table.columns.find(c => c.column_name === 'reaches')
+    const declared = manifest.tables.find(t => t.name === 'dash.business_role')!.columns.find(c => c.column_name === 'reaches')
+    expect([inStep, (declared as { choices?: string }).choices?.split('\n')]).toEqual([declared, [...REACHES_CHOICES]])
   })
 
   // #1218: the comparison judges today's reports by the same roles the platform enforces on these reads.

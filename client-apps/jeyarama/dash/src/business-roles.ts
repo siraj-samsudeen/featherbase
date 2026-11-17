@@ -7,7 +7,10 @@ import { reportsReaching, type AccessRow, type BundleMember } from './report-acc
 
 export const REACHES = ['Own', 'Team', 'Area', 'All'] as const
 export type Reach = (typeof REACHES)[number]
-export interface BusinessRole { id: string; name: string; description?: string | null; by_hand_only?: boolean }
+/** How far a role reaches, wherever its holder's assignment sits: data on the role, never read from its name. */
+export const REACHES_CHOICES = ['Section', 'Floor', 'Department', 'Store', 'Cluster', 'Merchandise', 'Whole company', 'Given place'] as const
+export type Reaches = (typeof REACHES_CHOICES)[number]
+export interface BusinessRole { id: string; name: string; description?: string | null; by_hand_only?: boolean; reaches?: Reaches | null }
 export interface Permission { role: string; app: string; level: string; verb: string; thing: string; reach: Reach }
 export interface TitleRule { title: string; role: string | null }
 /** `site`: the place the hand change names ("treat as Store Manager at Lakeside"); blank keeps the place of their job. */
@@ -27,8 +30,6 @@ export type Spot = { kind: 'job'; job: string; site?: string } | { kind: 'mercha
 export interface HeldRole { role: string; source: Source; title: string | null; spot: Spot; hand?: string; until?: string | null; reason?: string | null }
 export interface Unmapped { title: string; job: string }
 
-/** D2: these reach the whole company wherever their assignment sits. */
-const WHOLE_COMPANY = new Set(['head office', 'leadership'])
 /** The job whose title names a cluster head's role. */
 export const CLUSTER_TITLE = 'Cluster Manager'
 /** The merchandise responsibility whose role a Buyer Section's buyer holds. */
@@ -40,11 +41,9 @@ function mapping(model: Pick<Model, 'rules' | 'roles'>): Map<string, string> {
   return new Map(model.rules.filter(rule => model.roles.some(r => r.id === rule.role)).map(rule => [key(rule.title), rule.role!]))
 }
 
-/** A role reaches the whole company when its name says so (D2) or its every permission reaches All. */
-export function wholeCompany(role: string, model: Pick<Model, 'roles' | 'permissions'>): boolean {
-  const named = model.roles.find(r => r.id === role)!.name
-  const own = model.permissions.filter(p => p.role === role)
-  return WHOLE_COMPANY.has(key(named)) || (own.length > 0 && own.every(p => p.reach === 'All'))
+/** A role reaches the whole company when its Reaches says so (D2), wherever its holder's assignment sits. */
+export function wholeCompany(role: string, model: Pick<Model, 'roles'>): boolean {
+  return model.roles.find(r => r.id === role)!.reaches === 'Whole company'
 }
 
 const inForce = (hand: HandChange, today: string) => !hand.removed && (!hand.ends_on || hand.ends_on >= today)
@@ -86,7 +85,7 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
     byRole.set(role, entry)
   }
   for (const [role, { title, assignments }] of byRole)
-    held.push({ role, source: 'merchandise', title, spot: { kind: 'merchandise', assignments } })
+    held.push({ role, source: 'merchandise', title, spot: company(role) ? { kind: 'company' } : { kind: 'merchandise', assignments } })
   // A buyer named only on Buyer Sections holds the Buyer role there; with Buyer rows too, their merchandise run covers both.
   const buyerRole = map.get(key(BUYER_TITLE))
   if (facts.buyerSections?.length && buyerRole && !byRole.has(buyerRole))

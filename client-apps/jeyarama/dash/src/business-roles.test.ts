@@ -4,9 +4,10 @@ import { appsOf, areaPrefixes, decisionReports, differences, permissionSentence,
 
 const ON = '2026-11-17'
 const ROLES: BusinessRole[] = [
-  { id: 'r-staff', name: 'Staff' }, { id: 'r-tl', name: 'Team Leader' }, { id: 'r-sm', name: 'Store Manager' },
-  { id: 'r-cm', name: 'Cluster Manager' }, { id: 'r-buyer', name: 'Buyer' }, { id: 'r-head', name: 'Category Head' },
-  { id: 'r-ho', name: 'Head Office' }, { id: 'r-lead', name: 'Leadership' }, { id: 'r-mds', name: 'Master Data Steward', by_hand_only: true },
+  { id: 'r-staff', name: 'Staff', reaches: 'Section' }, { id: 'r-tl', name: 'Team Leader', reaches: 'Section' }, { id: 'r-sm', name: 'Store Manager', reaches: 'Store' },
+  { id: 'r-cm', name: 'Cluster Manager', reaches: 'Cluster' }, { id: 'r-buyer', name: 'Buyer', reaches: 'Merchandise' }, { id: 'r-head', name: 'Category Head', reaches: 'Merchandise' },
+  { id: 'r-ho', name: 'Head Office', reaches: 'Whole company' }, { id: 'r-lead', name: 'Leadership', reaches: 'Whole company' },
+  { id: 'r-mds', name: 'Master Data Steward', by_hand_only: true, reaches: 'Whole company' },
 ]
 const PERMISSIONS: Permission[] = [
   { role: 'r-staff', app: 'Tasker', level: 'User', verb: 'Edit', thing: 'Tasks', reach: 'Own' },
@@ -74,7 +75,7 @@ describe('a person\'s business roles', () => {
     expect(held.map(r => [r.role, r.source, r.spot])).toEqual([['r-tl', 'hr_title', { kind: 'job', job: 'J1' }], ['r-sm', 'also_given', { kind: 'job', job: 'J1' }]])
   })
 
-  it('gives a role whose every permission reaches All the whole company', () => {
+  it('gives the whole company to a role whose Reaches says so, whatever it is called', () => {
     const { held } = rolesOf({ ...none, hand: [{ id: 'H1', change: 'Also give', role: 'r-mds' }] }, model)
     expect(held[0].spot).toEqual({ kind: 'company' })
   })
@@ -118,6 +119,18 @@ describe('the less common routes to a role', () => {
 
   it('ignores a mapping to a role that no longer exists', () => {
     expect(rolesOf({ ...none, jobs: [{ id: 'J1', job: 'Store Manager', designation: null }] }, { ...model, rules: [{ title: 'Store Manager', role: 'gone' }] }).held).toEqual([])
+  })
+})
+
+describe('reach as data on the role (Codex standard review round 4)', () => {
+  it('keeps a renamed role\'s place', () => {
+    const renamed = { ...model, roles: ROLES.map(r => (r.id === 'r-ho' ? { ...r, name: 'Corporate' } : r)) }
+    expect(rolesOf({ ...none, jobs: [{ id: 'J1', job: 'Head office staff', designation: null }] }, renamed).held[0].spot).toEqual({ kind: 'company' })
+  })
+
+  it('gives a merchandise responsibility mapped to a whole-company role the whole company', () => {
+    const mapped = { ...model, rules: [...RULES.filter(r => r.title !== 'Category head'), { title: 'Category head', role: 'r-lead' }] }
+    expect(rolesOf({ ...none, merchandise: [{ id: 'M1', responsibility: 'Category head' }] }, mapped).held.map(r => [r.role, r.spot])).toEqual([['r-lead', { kind: 'company' }]])
   })
 })
 

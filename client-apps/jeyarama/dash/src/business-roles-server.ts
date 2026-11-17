@@ -3,7 +3,7 @@
 // Read as the app, for Report Access Managers and System Managers only. Nothing here is read by
 // reportsFor, can_open, the scope provider or reachOf: today's access is decided as before.
 import { appsOf, decisionReports, differences, newModelReports, opensDash, permissionSentence, rolesOf, titleList, SOURCE_WORDS, areaPrefixes,
-  type BusinessRole, type HandChange, type HeldRole, type Model, type Permission, type Reach, type Side, type Spot, type TitleInUse, type TitleRule } from './business-roles.ts'
+  type BusinessRole, type HandChange, type Reaches, type HeldRole, type Model, type Permission, type Reach, type Side, type Spot, type TitleInUse, type TitleRule } from './business-roles.ts'
 import { reportsReaching, type AccessRow, type BundleMember } from './report-access.ts'
 import { ACCESS, MEMBER, all, managesAccess, personNames, whoIs, type AccessContext } from './report-access-server.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
@@ -70,9 +70,8 @@ function onlyThese(docs: Base, rows: { jobs: Row[]; merchandise: Row[]; clusters
   }
 }
 
-/** The business roles whose area is the same as a job's of that name. */
-const LOCATION_ROLES = new Set(['staff', 'team leader', 'floor manager', 'department manager', 'store manager', 'cluster manager'])
-const BUYER = 'buyer'
+/** A role reaching a place on the location axis covers what a job of this kind there does: reachOf's rules. */
+const AS_JOB: Partial<Record<Reaches, string>> = { Section: 'Team Leader', Floor: 'Floor Manager', Department: 'Department Manager', Store: 'Store Manager', Cluster: 'Cluster Manager' }
 const LEVELS = ['subcategory', 'category', 'subdivision', 'division'] as const
 const LEVEL_TABLE: Record<string, string> = { subcategory: 'Subcategory', category: 'Category', subdivision: 'Subdivision', division: 'Division' }
 
@@ -94,8 +93,8 @@ const nullable = (v: unknown) => (exact(v) === '' ? null : exact(v))
 export async function shadowWorld(base: Base, today: string = istToday()): Promise<ShadowWorld> {
   const designations = await base.available('Job Assignment') && await base.available(DESIGNATION)
   const docs = memoryDocuments(base, designations)
-  const roles: BusinessRole[] = (await all(base, ROLE, ['role_name', 'description', 'by_hand_only']))
-    .map(r => ({ id: exact(r.row_id), name: text(r.role_name), description: text(r.description), by_hand_only: checked(r.by_hand_only) }))
+  const roles: BusinessRole[] = (await all(base, ROLE, ['role_name', 'description', 'by_hand_only', 'reaches']))
+    .map(r => ({ id: exact(r.row_id), name: text(r.role_name), description: text(r.description), by_hand_only: checked(r.by_hand_only), reaches: text(r.reaches) as Reaches }))
   const permissions: Permission[] = (await all(base, PERMISSION, ['business_role', 'app', 'level', 'verb', 'thing', 'reach']))
     .map(p => ({ role: exact(p.business_role), app: text(p.app), level: text(p.level), verb: text(p.verb), thing: text(p.thing), reach: text(p.reach) as Reach }))
   const rules: TitleRule[] = (await all(base, TITLE_MAP, ['title', 'business_role'])).map(r => ({ title: text(r.title), role: nullable(r.business_role) }))
@@ -182,7 +181,9 @@ type Mine = { employees: Row[]; jobs: Row[]; merchandise: Row[]; clusters: Row[]
 
 /** Where one held role applies: its places, by reachOf over only what gives it, and its area in words. */
 async function areaOf(world: ShadowWorld, person: string, held: HeldRole, mine: Mine): Promise<{ places: Place[]; area: Area }> {
-  const role = world.model.roles.find(r => r.id === held.role)!.name.toLowerCase()
+  // How far the role reaches is data on the role (Reaches); its name decides nothing.
+  const reaches = world.model.roles.find(r => r.id === held.role)!.reaches!
+  const asJob = AS_JOB[reaches]
   const reach = async (rows: Partial<Parameters<typeof onlyThese>[1]>) =>
     (await reachOf(onlyThese(world.docs, { jobs: [], merchandise: [], clusters: [], buyerSections: false, ...rows }), person, world.today, [])).places
   const part = async (table: string, id: unknown): Promise<Part> => ({ name: text((await world.names(table)).get(exact(id))), table, id: exact(id) })
@@ -198,7 +199,7 @@ async function areaOf(world: ShadowWorld, person: string, held: HeldRole, mine: 
     parts = [await part('Cluster', spot.cluster)]
   } else if (spot.kind === 'merchandise') {
     const assignments = mine.merchandise.filter(m => spot.assignments.includes(exact(m.row_id)))
-    places = await reach({ merchandise: assignments, buyerSections: role === BUYER })
+    places = await reach({ merchandise: assignments, buyerSections: reaches === 'Merchandise' })
     // A subcategory is named from its row; a category, subdivision or division is its own name.
     const subcategoryNames = await world.names('Subcategory', 'subcategory')
     parts = assignments.flatMap(m => {
@@ -213,17 +214,17 @@ async function areaOf(world: ShadowWorld, person: string, held: HeldRole, mine: 
   } else if (spot.kind === 'buyer_sections') {
     places = await reach({ buyerSections: true })
     parts = mine.buyerSections.filter(b => spot.sections.includes(exact(b.row_id))).map(b => ({ name: text(b.name), table: 'Buyer Section', id: exact(b.row_id) }))
-  } else if (spot.kind === 'job' && LOCATION_ROLES.has(role)) {
+  } else if (spot.kind === 'job' && asJob) {
     // A hand change naming a place puts the job there ("treat as Store Manager at Lakeside").
     const job: Row = { ...mine.jobs.find(j => exact(j.row_id) === spot.job)!, ...(spot.site ? { site: spot.site } : {}) }
-    places = await reach({ jobs: [{ ...job, job: role.replace(/\b\w/g, c => c.toUpperCase()), acting: false }] })
+    places = await reach({ jobs: [{ ...job, job: asJob, acting: false }] })
     const site = await part('Site', job.site)
     const cluster = (await world.names('Site', 'cluster')).get(exact(job.site))
-    parts = role === 'store manager' ? [site] : role === 'cluster manager' ? [await part('Cluster', cluster)]
-      : role === 'floor manager' ? [await part('Store Floor', job.floor), site] : role === 'department manager' ? [{ name: 'Their department' }, site]
+    parts = reaches === 'Store' ? [site] : reaches === 'Cluster' ? [await part('Cluster', cluster)]
+      : reaches === 'Floor' ? [await part('Store Floor', job.floor), site] : reaches === 'Department' ? [{ name: 'Their department' }, site]
         : [await part('Section', job.section), site]
   } else {
-    parts = [{ name: role === BUYER || role === 'category head' ? 'No merchandise assigned yet' : 'No area yet' }]
+    parts = [{ name: reaches === 'Merchandise' ? 'No merchandise assigned yet' : 'No area yet' }]
   }
   const byStore = placesByStore(places)
   const codes = Object.values(byStore).flatMap(c => c ?? [])
@@ -263,6 +264,9 @@ async function titlesInUse(world: ShadowWorld): Promise<TitleInUse[]> {
 }
 
 /** Starting roles first, in their order; any other after them, by name. */
+/** Reaches in plain words for the Business Roles page: "Reaches: their store". */
+const REACHES_WORDS: Record<string, string> = { Section: 'their section', Floor: 'their floor', Department: 'their department', Store: 'their store', Cluster: 'their cluster',
+  Merchandise: 'their merchandise', 'Whole company': 'the whole company', 'Given place': 'the place it is given at' }
 const STARTING_ORDER = STARTING_ROLES.map(r => r.name)
 const order = (name: string) => (STARTING_ORDER.includes(name) ? STARTING_ORDER.indexOf(name) : STARTING_ORDER.length)
 /** How many holders of a title the Title Map names, each a link; the rest are counted. */
@@ -281,7 +285,7 @@ export async function businessRoles(context: AccessContext) {
   const names = await personNames(ctx, shown)
   return {
     roles: roles.sort((a, b) => a.name.localeCompare(b.name)).sort((a, b) => order(a.name) - order(b.name)).map(role => ({
-      id: role.id, name: role.name, description: role.description, by_hand_only: role.by_hand_only,
+      id: role.id, name: role.name, description: role.description, by_hand_only: role.by_hand_only, reaches: REACHES_WORDS[role.reaches!] ?? 'Not set',
       permissions: permissions.filter(p => p.role === role.id).map(p => ({ app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach, sentence: permissionSentence(role.name, p) })),
     })),
     titles: titleList(inUse, world.model).map(t => ({ ...t, role_name: nameOf.get(t.role!) ?? null,
@@ -427,7 +431,7 @@ export async function addStartingRoles(context: AccessContext) {
   if ((await all(ctx.baseTables, ROLE, ['role_name'])).length) ctx.reject!('There are business roles already: edit them instead')
   const ids = new Map<string, string>()
   for (const role of STARTING_ROLES) {
-    const saved = await ctx.documents!.create!(ROLE, { role_name: role.name, description: role.description, by_hand_only: !!role.by_hand_only })
+    const saved = await ctx.documents!.create!(ROLE, { role_name: role.name, description: role.description, reaches: role.reaches, by_hand_only: !!role.by_hand_only })
     ids.set(role.name, exact(saved.row_id))
     for (const [app, level, verb, thing, reach] of role.grants)
       await ctx.documents!.create!(PERMISSION, { business_role: exact(saved.row_id), app, level, verb, thing, reach })

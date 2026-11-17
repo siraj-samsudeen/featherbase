@@ -586,3 +586,34 @@ describe('Codex adversarial round 4 on 1233e3d8c', () => {
     expect([row.kinds, row.stores_gained.map(s => s.name), row.gained.map(r => r.name)]).toEqual([['gains_dash', 'stores', 'reports'], ['Lakeside'], ['Vendor Sales']])
   })
 })
+
+describe('reach as data on the role (Codex standard review round 4 on 1233e3d8c)', () => {
+  it('keeps a store manager\'s area when their role is renamed, on Explain', async () => {
+    const tables = await seeded()
+    tables['dash.business_role'].find(r => r.role_name === 'Store Manager')!.role_name = 'Store Head'
+    const role = (await explainPerson(context(tables, { payload: { person: 'sm' } }) as never)).roles[0]
+    expect([role.name, role.area.parts.map(p => p.name), role.area.stores]).toEqual(['Store Head', ['Lakeside'], 1])
+  })
+
+  it('keeps a renamed store manager out of the comparison, as before the rename', async () => {
+    const tables = await seeded()
+    tables['dash.report_access'] = [{ row_id: 'a1', report: 'vs', job: 'Store Manager' }]
+    tables['dash.business_role'].find(r => r.role_name === 'Store Manager')!.role_name = 'Store Head'
+    expect((await accessChanges(context(tables) as never)).groups.flatMap(g => g.people).map(p => p.person)).not.toContain('sm')
+  })
+
+  it('gives a category head mapped to Leadership every store', async () => {
+    const tables = await seeded()
+    tables['dash.title_map'].find(r => r.title === 'Category head')!.business_role = roleId(tables, 'Leadership')
+    const role = (await explainPerson(context(tables, { payload: { person: 'buy' } }) as never)).roles[0]
+    expect([role.name, role.area.parts.map(p => p.name), role.area.stores, role.area.subcategories]).toEqual(['Leadership', ['Whole company'], 1, null])
+  })
+
+  it('says in plain words how far each role reaches, and that a role added without it has none set', async () => {
+    const tables = await seeded()
+    tables['dash.business_role'].push({ row_id: 'r-x', role_name: 'Auditor' })
+    const page = await businessRoles(context(tables) as never)
+    expect(['Store Manager', 'Category Head', 'Leadership', 'Vendor', 'Auditor'].map(n => page.roles.find(r => r.name === n)!.reaches))
+      .toEqual(['their store', 'their merchandise', 'the whole company', 'the place it is given at', 'Not set'])
+  })
+})
