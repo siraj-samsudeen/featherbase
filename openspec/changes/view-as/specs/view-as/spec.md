@@ -31,6 +31,14 @@ The tester SHALL be able to find a person by name, by employee code, or by a job
 - **WHEN** Priya looks for "Team Leader Lakeside"
 - **THEN** Meena is offered, with her code, her job and her store
 
+### Requirement: Starting from what a person sees
+Someone who may view as others and is looking up what a person sees SHALL be able to start viewing as that person from there.
+
+#### Scenario: Viewing as the person looked up
+
+- **WHEN** Priya looks up what Meena sees and chooses to view as her
+- **THEN** Priya sees Meena's view, with the banner naming Meena
+
 ### Requirement: Who cannot be viewed
 Nobody SHALL be able to view as themselves, as a System Manager or Administrator, or as someone whose account is turned off.
 

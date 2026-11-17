@@ -16,7 +16,7 @@
 
 ## 4. Web
 
-- [x] 4.1 The banner and the two picker styles behind a toggle; the verifier's screenshots
+- [x] 4.1 The banner, the View as button and its shortcut, and View as from "What a person sees"; the verifier's screenshots
 
 ## 5. Owner
 

@@ -9,7 +9,7 @@ To check what a store person sees in Dash, a trusted tester signs in with that p
 - View as belongs to one signed-in session and ends after 60 minutes, at Exit, at sign-out, or when the tester loses the role.
 - Nobody can view as themselves, a System Manager or Administrator, or someone turned off.
 - Each start, switch and end is logged under the tester; Recent and Frequently used come from that log.
-- The shared top bar shows who is being viewed on every page, says it is for viewing only, with Switch and Exit, and offers the picker in two styles behind a toggle while the owner chooses.
+- The shared top bar shows who is being viewed on every page, says it is for viewing only, with Switch and Exit. A View as button on the bar opens the picker, Ctrl/⌘+Shift+K opens it as a window, and Dash's "What a person sees" offers View as for the person looked up (owner, 17-Nov-2026: C, B and E).
 
 ## Capabilities
 
@@ -22,5 +22,5 @@ To check what a store person sees in Dash, a trusted tester signs in with that p
 ## Impact
 
 - Platform: the session check swaps the person for reads only; permission checks offer no change while viewing; the Access Log knows about View as; a new internal table for the state; the manifest's `viewAs` declaration.
-- Dash: the View As Tester role and its read of the reports list, the people read, change buttons hidden while viewing, a version step (no Table change).
-- Web: the banner and the two picker styles in the shared top bar.
+- Dash: the View As Tester role and its read of the reports list, the people read, View as from "What a person sees", change buttons hidden while viewing, a version step (no Table change).
+- Web: the banner and the View as button (with its keyboard shortcut) in the shared top bar.
