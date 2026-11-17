@@ -44,7 +44,8 @@ export async function viewAsPeople(ctx: AccessContext, on: string = istToday()):
   const names = new Map<string, string>()
   for (const row of employees.values()) if (!names.has(exact(row.person))) names.set(exact(row.person), text(row.name))
   const who = await whoIs(base, [...names.keys()], on)
-  return [...names].map(([person, name]) => ({ person, name, code: who.get(person)?.code ?? null, jobs: who.get(person)?.jobs ?? [] }))
+  // whoIs answers for every person asked.
+  return [...names].map(([person, name]) => ({ person, name, code: who.get(person)!.code, jobs: who.get(person)!.jobs }))
     // Every word must be found in the name, the code, and one job line: a job at one store and
     // another at a second never add up to "that job at that store".
     .filter(entry => (entry.jobs.length ? entry.jobs : ['']).some(job => {
@@ -59,5 +60,5 @@ async function describe(ctx: AccessContext, persons: string[], on: string): Prom
   const names = await personNames(ctx, persons)
   const who = await whoIs(ctx.baseTables!, persons, on)
   // A name the tester can't read here is left blank: the platform, which knows every name, fills it in.
-  return persons.map(person => ({ person, name: names.get(person) ?? '', code: who.get(person)?.code ?? null, jobs: who.get(person)?.jobs ?? [] }))
+  return persons.map(person => ({ person, name: names.get(person) ?? '', code: who.get(person)!.code, jobs: who.get(person)!.jobs }))
 }
