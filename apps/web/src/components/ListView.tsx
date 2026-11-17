@@ -406,13 +406,12 @@ export function ListView({
       const next = at < 0 ? undefined : rows[at + (e.key === 'ArrowDown' ? 1 : -1)]
       if (!next) return
       e.preventDefault()
-      const row = String(next.row_id)
-      if (onRowOpen) onRowOpen(row)
-      else nav?.replace({ ...nav.step, pane: { table, row } })
+      // Only a page with the view switch has these views, and it walks the path (nav).
+      nav?.replace({ ...nav.step, pane: { table, row: String(next.row_id) } })
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [panelled, paneRow, rows, onRowOpen, nav, table])
+  }, [panelled, paneRow, rows, nav, table])
   const lastPane = useRef<string | undefined>(undefined)
   useEffect(() => {
     const was = lastPane.current

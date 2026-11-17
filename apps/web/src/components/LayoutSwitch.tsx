@@ -11,10 +11,6 @@ const LAYOUT: Record<ListLayout, { label: string; Icon: LucideIcon }> = {
   panel: { label: 'Table With Panel', Icon: PanelRight },
 }
 
-export function layoutLabel(layout: ListLayout): string {
-  return LAYOUT[layout].label
-}
-
 export function LayoutSwitch({ value, onChange }: { value: ListLayout; onChange: (layout: ListLayout) => void }) {
   return (
     <div role="group" aria-label="Views" data-testid="layout-switch" className="inline-flex items-center gap-0.5 rounded-md bg-canvas p-0.5">

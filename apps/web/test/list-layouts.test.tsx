@@ -4,7 +4,8 @@
 // PUT to land (list-settings.test.tsx): a write that outlives the test's
 // transaction would commit for real.
 import { tableSlug } from 'shared'
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 
@@ -64,4 +65,41 @@ test('a saved view opened from its link shows in its own view, and a choice made
   await userEvent.click(view().getByRole('button', { name: 'Table With Panel' }))
   expect(pressed()).toEqual(['Table With Panel'])
   await waitFor(async () => expect(((await admin.get(`/api/user_settings/${encodeURIComponent(DT)}`)) as { settings: { layout?: string } }).settings?.layout).toBe('panel'))
+})
+
+test('the arrows move the open record through the rows; a modified arrow, an arrow in a field, or one past the end changes nothing', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: DT, row: { title: 'Bala' } })
+  await openList(admin)
+  const lines = () => [...document.querySelectorAll<HTMLElement>('[data-row-id]')]
+  const first = lines()[0]
+  first.focus()
+  fireEvent.keyDown(first, { key: 'Enter' })
+  const panelName = () => screen.getByTestId('record-panel').getAttribute('aria-label')
+  await waitFor(() => expect(panelName()).toBe(first.textContent?.match(/Anitha|Bala/)?.[0]))
+  const shown = panelName()
+  // Another key, Shift+arrow and an arrow typed in a field belong to someone else.
+  fireEvent.keyDown(document.body, { key: 'a' })
+  fireEvent.keyDown(document.body, { key: 'ArrowDown', shiftKey: true })
+  fireEvent.keyDown(screen.getAllByRole('searchbox')[0], { key: 'ArrowDown' })
+  expect(panelName()).toBe(shown)
+  // Up from the first row: nowhere to go.
+  fireEvent.keyDown(document.body, { key: 'ArrowUp' })
+  expect(panelName()).toBe(shown)
+  fireEvent.keyDown(document.body, { key: 'ArrowDown' })
+  await waitFor(() => expect(panelName()).not.toBe(shown))
+})
+
+test('a choice the server fails to keep still shows, for now', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(input).includes('/api/user_settings/') && init?.method === 'PUT'
+      ? Promise.resolve(Response.json({ error: { type: 'TestFailure', message: 'refused' } }, { status: 500 }))
+      : real(input, init))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await userEvent.click(view().getByRole('button', { name: 'Table' }))
+  expect(pressed()).toEqual(['Table'])
+  vi.restoreAllMocks()
 })
