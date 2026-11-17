@@ -318,7 +318,7 @@ const READ_POSTS = new Set(['/api/access_request', '/api/access_log', '/api/dash
 export function viewAsRoute(method: string, path: string, tester?: string): 'read' | 'drop' | 'tester' {
   if (path === '/api/view_as' || path.startsWith('/api/view_as/')) return 'tester'
   // The account pages are always the signed-in person's own: what they show is what their buttons change.
-  if (path === '/api/me' || path.startsWith('/api/me/')) return 'tester'
+  if (path === '/api/me' || path.startsWith('/api/me/') || path === '/api/oauth/google/link') return 'tester'
   // So are the parts of those pages about the tester's own person record.
   if (tester && path.startsWith(`/api/people/${encodeURIComponent(tester)}/`)) return 'tester'
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return 'read'
