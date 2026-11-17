@@ -903,4 +903,14 @@ describe('GroupChip with no rows', () => {
     render(<GroupChip label="Shelf" count={0} onSelect={() => {}} />)
     expect(screen.getByRole('button', { name: 'Shelf 0' })).toHaveAttribute('data-empty')
   })
+
+  // Verifier round 2: chosen, a group of 0 reads in the action-ink on solid blue,
+  // not quiet grey. jsdom draws no CSS, so this reads the classes the browser applies.
+  test('chosen, a group of 0 is no longer greyed', () => {
+    render(<GroupChip label="Shelf" count={0} selected onSelect={() => {}} />)
+    const classes = screen.getByRole('button', { name: 'Shelf 0' }).className.split(/\s+/)
+    expect(classes).toContain('aria-pressed:text-action-ink')
+    // The quieter grey applies to an empty chip only while it is not chosen.
+    expect(classes.filter((c) => c.endsWith(':text-ink-muted'))).toEqual(['[&[data-empty]:not([aria-pressed=true])]:text-ink-muted'])
+  })
 })
