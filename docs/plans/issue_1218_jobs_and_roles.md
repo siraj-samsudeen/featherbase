@@ -134,6 +134,15 @@ Basic, for everyone with a current HR record: Tasker and Tickets, working on the
 ### D3a — End dates (owner, 17-Nov-2026)
 An end date is **optional** on every role assignment, including "Also give" and External people. Without one, access lasts until someone removes it, or for employees until they leave.
 
+### D4 — Who reports go to (owner, 17-Nov-2026: "Yes, option A — but we have report bundle as well as reports")
+A grant gives **one report or one report bundle**, as today, to **one or more business roles** named in that one grant. Giving to a single person is an exception and needs a reason. Grants to a job or to an app role (Dash Reader) go away. Each receiver still sees only their own area (D2). Example: Vendor Sales becomes one grant to Store, Floor, Department and Cluster Manager, instead of 8.
+
+Follows from D2, so it is stated here rather than asked: who may give is the permission **Give reports**, with a reach.
+- **Team** goes to managers (today's Team Report Manager, #1217).
+- **All** goes to one hand-given role (today's Report Access Manager).
+
+Neither stays a separate role.
+
 ## Owner's steer, 17-Nov-2026: fine-grained by area, and fewer words
 
 - Master data needs fine-grained rights: a category manager manages their category, and a store manager manages the sections in their store.
