@@ -301,10 +301,12 @@ Then each purchase shows "Acme"
 
 ### Requirement: The relationship map says how each row is related
 
-Each linked row and related collection on the relationship map SHALL say
-which Table it comes from and, in full and in the words the user knows the
-link by, which link joins it to the row at the center, never a technical
-name.
+Each linked row on the relationship map SHALL say which Table it comes from
+and, in full and in the words the user knows the link by, which link joins it
+to the row at the center, never a technical name. A related collection SHALL
+name its link only when its Table links to the row at the center by more than
+one, and SHALL read as the one Table its rows all point to, through itself
+("Employee 8 · through Job Assignment"), when there is one.
 
 #### Scenario: A chore's assignee reads "Assigned To"
 
@@ -320,7 +322,7 @@ Then the user sees "Asha", a Volunteer, linked by "Assigned To"
 
 ```gherkin
 Given the user is a System Manager
-And a table of volunteers and a table of chores, each chore assigned to a volunteer
+And a table of volunteers and a table of chores, each chore assigned to a volunteer and checked by a volunteer
 And the chore "Paint the fence" assigned to "Asha", whose phone is "555-0142"
 When the user opens Asha's relationship map
 Then the user sees Asha's chores related by "Assigned To"

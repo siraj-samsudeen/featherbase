@@ -1,13 +1,12 @@
 import type { KeyboardEvent } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import { api } from '../lib/api'
 import { linkRowsTable, metaQuery, useMeta, useTableLabels, type ColumnDef } from '../lib/meta'
 import { useConnections, type Connection } from '../lib/connections'
-import { useStepOptions } from '../lib/explore-steps'
+import { farSide, farSideTable, groupBoxWords, groupRowFields } from '../lib/far-side'
 import { buttonClasses, cardClasses, fmtCount } from '@featherbase/shop-floor'
 import { useNavigation } from '../lib/navigation'
-import { groupKey, rowNameText, useRowName } from '../lib/relations'
+import { ALL_ROWS, forwardLinks, groupKey, groupOrder, groupRowsQuery, rowNameText, useRowName } from '../lib/relations'
 import { RowName } from '../lib/row-name'
 
 type Row = Record<string, unknown>
@@ -32,7 +31,8 @@ interface GroupNode {
   label: string
   table: string
   count: number
-  via: string // how it links back, in words: "via Assigned To"
+  /** The line under its name: "through Job Assignment", "via Assigned To". */
+  via?: string
   field?: ColumnDef // child: the Sub-table column on the center's meta
   cnx?: Connection
 }
@@ -57,14 +57,21 @@ export function RowMap({ table, name }: { table: string; name: string }) {
   const holders = [...new Set((cnx.data?.connections ?? []).map((c) => c.via ?? c.table))]
   const holderMetas = useQueries({ queries: holders.map((t) => metaQuery(t)) })
   const centre = useRowName(table, name)
-  // Option C of the Explore entry-point exploration: hand this row's
-  // neighbourhood to the cross-filter Explore (the shared explore-steps seam):
-  // two hops, with pane 1 narrowed to the row being viewed.
-  const hop1 = useStepOptions(table)
-  const hop2 = useStepOptions(hop1.options[0]?.step.table)
-  const exploreChain = hop1.options.length
-    ? [hop1.options[0].step, ...(hop2.options.length ? [hop2.options[0].step] : [])]
-    : []
+  // #1218 slice 1: a group reads as the one Table its rows point to, from the
+  // group's rows (each by the far-side rule).
+  const connections = cnx.data?.connections ?? []
+  const groupTables = [...new Set(connections.map((c) => c.table))]
+  const groupMetas = useQueries({ queries: groupTables.map((t) => metaQuery(t)) })
+  const groupMetaOf = (t: string) => groupMetas[groupTables.indexOf(t)]?.data
+  const groupRows = useQueries({
+    queries: connections.map((c) => {
+      const gm = groupMetaOf(c.table)
+      return {
+        ...groupRowsQuery(c, { fields: gm ? groupRowFields(gm) : [], limit: ALL_ROWS, orderBy: gm ? groupOrder(gm) : undefined }),
+        enabled: Boolean(gm) && c.count > 0,
+      }
+    }),
+  })
   const doc = useQuery({
     queryKey: ['doc', table, name],
     queryFn: () =>
@@ -102,25 +109,39 @@ export function RowMap({ table, name }: { table: string; name: string }) {
         via: 'child rows',
         field: f,
       })
-  for (const c of cnx.data?.connections ?? [])
+  const own = forwardLinks(m, d).map((l) => l.row_id)
+  const linksPerTable = new Map<string, number>()
+  for (const c of connections) linksPerTable.set(c.table, (linksPerTable.get(c.table) ?? 0) + 1)
+  const farTables = connections.map((c, i) => {
+    const gm = groupMetaOf(c.table)
+    const rows = groupRows[i]?.data?.data
+    if (!gm || !rows) return undefined
+    return farSideTable(rows.map((r) => farSide(gm, r, { backLink: c.via ? undefined : c.column, record: name, own })))
+  })
+  connections.forEach((c, i) =>
     groups.push({
-      // The Table it comes from; the link that joins it reads in words below.
       kind: 'cnx', label: c.table, table: c.table, count: c.count, cnx: c,
-      via: `via ${linkWords(
+      // The link that joins it, only where its Table points here by more than one.
+      via: linksPerTable.get(c.table)! > 1 ? linkWords(
         holderMetas[holders.indexOf(c.via ?? c.table)]?.data?.columns.find((col) => col.column_name === c.column)
           ?? { column_name: c.column },
-      )}`,
-    })
+      ) : undefined,
+    }))
 
   // #1241: every Table on the map by its label, never its internal name.
-  const labelOf = useTableLabels([table, ...forward.map((f) => f.table), ...groups.map((g) => g.table)])
+  const labelOf = useTableLabels([table, ...forward.map((f) => f.table), ...groups.map((g) => g.table), ...farTables.filter((t): t is string => Boolean(t))])
   for (const f of forward) f.tableLabel = labelOf(f.table)
-  for (const g of groups) if (g.kind === 'cnx') g.label = labelOf(g.table)
+  groups.filter((g) => g.kind === 'cnx').forEach((g, i) => {
+    const far = farTables[i]
+    const words = groupBoxWords({ group: labelOf(g.table), farSide: far ? labelOf(far) : undefined, via: g.via })
+    g.label = words.title
+    g.via = words.detail
+  })
   const tableWords = labelOf(table)
 
   const rows = Math.max(forward.length, groups.length, 1)
   const forwardLines = forward.map((f) => wrapText(linkAndTable(f), FORWARD_CHARS))
-  const groupLines = groups.map((g) => wrapText(g.via, GROUP_CHARS))
+  const groupLines = groups.map((g) => (g.via ? wrapText(g.via, GROUP_CHARS) : []))
   const nodeH = [...forwardLines, ...groupLines].some((l) => l.length > 1) ? NODE_H_TWO_LINES : NODE_H
   const H = rows * (nodeH + GAP) + 40
   const cy = H / 2 - nodeH / 2
@@ -142,20 +163,6 @@ export function RowMap({ table, name }: { table: string; name: string }) {
 
   return (
     <div data-testid="relation-map" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link
-          to="/featherbase/admin/explore"
-          search={{
-            root: table,
-            chain: exploreChain.length ? JSON.stringify(exploreChain) : undefined,
-            select: JSON.stringify([name]),
-          }}
-          data-testid="map-open-explore"
-          className={buttonClasses()}
-        >
-          Open in Explore
-        </Link>
-      </div>
       {/* A narrow window gets the map as a list. On a wide one the drawing
           keeps its full size (beside the pane too), scrolling sideways in a
           narrow frame rather than shrinking its text. */}
@@ -185,7 +192,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
                 >
                   <span className="min-w-0">
                     <span className="block">{g.label}</span>
-                    <span className="block text-xs text-ink-muted">{g.via}</span>
+                    {g.via && <span className="block text-xs text-ink-muted">{g.via}</span>}
                   </span>
                   <span className="shrink-0 text-action">{fmtCount(g.count)}</span>
                 </button>
@@ -254,11 +261,11 @@ export function RowMap({ table, name }: { table: string; name: string }) {
             <g
               key={`gn-${i}`}
               onClick={() => openGroup(g)}
-              {...activatable(`${g.label} ${g.count}, ${g.via}`, () => openGroup(g))}
+              {...activatable(g.via ? `${g.label} ${g.count}, ${g.via}` : `${g.label} ${g.count}`, () => openGroup(g))}
               className="cursor-pointer focus:outline-none [&:focus-visible>rect]:stroke-focus [&:focus-visible>rect]:stroke-2"
               data-testid={`map-group-${g.table}`}
             >
-              <title>{`${g.label}, ${g.via}`}</title>
+              <title>{g.via ? `${g.label}, ${g.via}` : g.label}</title>
               <rect
                 x={620}
                 y={nodeY(i)}

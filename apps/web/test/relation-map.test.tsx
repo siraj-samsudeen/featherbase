@@ -50,7 +50,48 @@ test('the map shows what a row points to and what points back, with a count', as
   await openMap(admin, 'Rm Customer', 'cust-1')
   const back = await screen.findByTestId('map-group-Rm Order')
   expect(back).toHaveTextContent('2')
-  await waitFor(() => expect(back).toHaveTextContent('via Customer'))
+  // #1218: an order points at a customer by one link only, so the link is not named.
+  await waitFor(() => expect(back).toHaveTextContent('Rm Order'))
+  expect(back).not.toHaveTextContent('via')
+})
+
+// #1218 slice 1: a group whose rows all point to one Table reads as that Table.
+async function seedVisits(admin: Parameters<typeof renderApp>[1]) {
+  await seed(admin)
+  await admin.post('/api/table_def', {
+    name: 'Rm Rep', id_pattern: 'prompt', title_column: 'title',
+    columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Rm Visit', id_pattern: 'hash',
+    columns: [
+      { column_name: 'customer', column_type: 'Reference', reference_table: 'Rm Customer', label: 'Customer' },
+      { column_name: 'rep', column_type: 'Reference', reference_table: 'Rm Rep', label: 'Rep' },
+      { column_name: 'billed_to', column_type: 'Reference', reference_table: 'Rm Customer', label: 'Billed to' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Rm Rep', row: { row_id: 'rep-1', title: 'Anu' } })
+  await admin.post('/api/save_row', { table: 'Rm Rep', row: { row_id: 'rep-2', title: 'Bala' } })
+  await admin.post('/api/save_row', { table: 'Rm Visit', row: { customer: 'cust-1', rep: 'rep-1' } })
+  await admin.post('/api/save_row', { table: 'Rm Visit', row: { customer: 'cust-1', rep: 'rep-2' } })
+}
+
+test('a group whose rows all point to one Table reads as that Table, through the group, naming the link when there are two', async ({ admin }) => {
+  await seedVisits(admin)
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  // Rm Visit points at a customer by Customer and Billed to: two groups, each naming its link.
+  const box = (link: string) => screen.getAllByTestId('map-group-Rm Visit').find((g) => g.textContent?.includes(`via ${link}`))
+  await waitFor(() => expect(box('Customer')).toHaveTextContent('through Rm Visit · via Customer'))
+  expect(box('Customer')).toHaveTextContent(/^Rm Rep/)
+  // No visit is billed to Asha Stores: the empty group stays, as its own Table.
+  expect(box('Billed to')).toHaveTextContent('Rm Visit')
+  expect(box('Billed to')).not.toHaveTextContent('through')
+})
+
+test('the map offers no Open in Explore', async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  expect(screen.queryByRole('link', { name: 'Open in Explore' })).not.toBeInTheDocument()
 })
 
 /** Someone who can read orders but not the customers they point at. */
@@ -91,7 +132,7 @@ test('clicking a collection shows its rows in the drill pane', async ({ admin })
   await openMap(admin, 'Rm Customer', 'cust-1')
   fireEvent.click(await screen.findByTestId('map-group-Rm Order'))
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
-  await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(3))
+  await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(2))
   expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores')
 })
 
@@ -238,7 +279,7 @@ test('a collection on the map is reached by Tab and shown in the pane by Space',
   expect(box).toHaveAttribute('tabindex', '0')
   fireEvent.keyDown(box, { key: ' ' })
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
-  await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(3))
+  await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(2))
 })
 
 test("a link to a row the viewer can't read is not in the tab order", async ({ admin, createUser }) => {
