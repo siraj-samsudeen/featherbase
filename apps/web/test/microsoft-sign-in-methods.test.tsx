@@ -25,6 +25,8 @@ const PAGE = '/featherbase/account/sign-in-methods'
 async function outcomeText(person: Client, query: string) {
   window.history.replaceState(null, '', `${PAGE}?${query}`)
   const view = await renderApp(`${PAGE}?${query}`, person)
+  // The methods have loaded: the text names the method by its own label.
+  await screen.findByTestId('link-microsoft')
   const text = (await screen.findByTestId('link-outcome')).textContent
   view.unmount()
   return text
@@ -88,11 +90,23 @@ test('the administrator\'s panel shows an expected Microsoft sign-in, and a link
   first.unmount()
 
   await linkIdentity(guest.user!, { method: 'microsoft', subject: '0b7c1f6e-3c1a-4f7e-9a63-2a6a3c1d9e11/aaaabbbb-cccc-4ddd-8eee-ffff00001111', email: 'expects.ms@bisquared.example' }, 'Administrator')
-  await renderApp(rowHref('Person', guest.user!), admin)
+  const second = await renderApp(rowHref('Person', guest.user!), admin)
   const after = await screen.findByTestId('user-sign-in-methods')
   // Linked: the mark is used up, and the account reads as its address; its
   // ID waits under Details, named as Microsoft's.
   await within(after).findByText(/expects\.ms@bisquared\.example/)
   expect(within(after).getByTestId('identity-details')).toHaveTextContent('Microsoft account ID: 0b7c1f6e-3c1a-4f7e-9a63-2a6a3c1d9e11/aaaabbbb')
   expect(within(after).queryByTestId('user-method-expected-microsoft')).not.toBeInTheDocument()
+  second.unmount()
+
+  // Even marked again, a person who already holds a Microsoft sign-in is not
+  // shown as expecting one.
+  await sql`update person set expects_microsoft_sign_in = true where row_id = ${guest.user!}`
+  await configureGoogle({ enabled: true, client_id: '' })
+  await renderApp(rowHref('Person', guest.user!), admin)
+  const again = await screen.findByTestId('user-sign-in-methods')
+  // The methods have loaded (the Google invite needs them), so the panel has
+  // judged the Microsoft link it holds.
+  await within(again).findByTestId('invite-google-form')
+  expect(within(again).queryByTestId('user-method-expected-microsoft')).not.toBeInTheDocument()
 })
