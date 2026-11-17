@@ -38,6 +38,7 @@ import { landingAfterSignIn, openAdminFor } from './landing'
 import { saveUpload, signFileUrl } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
+import { tableRowCounts } from './table-counts'
 import { commandDestinations } from './command-destinations'
 import {
   getCollectionAction,
@@ -1890,6 +1891,12 @@ function listArgsFromQuery(q: Record<string, string>) {
 app.get('/api/search', async (c) => {
   const q = c.req.query('q') ?? ''
   return c.json({ results: await globalSearch(q, who(c)) })
+})
+
+// admin-lists 11: how many rows each Table holds, for All Tables.
+app.get('/api/table_counts', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json({ counts: await tableRowCounts(who(c)) })
 })
 
 app.get('/api/command_destinations', async (c) => {
