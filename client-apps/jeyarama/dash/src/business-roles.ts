@@ -31,13 +31,14 @@ const WHOLE_COMPANY = new Set(['head office', 'leadership'])
 export const CLUSTER_TITLE = 'Cluster Manager'
 
 const key = (title: string) => title.trim().toLowerCase()
-function mapping(rules: TitleRule[]): Map<string, string> {
-  return new Map(rules.filter(rule => rule.role).map(rule => [key(rule.title), rule.role!]))
+/** Title to role id, for rows naming a role that still exists. */
+function mapping(model: Pick<Model, 'rules' | 'roles'>): Map<string, string> {
+  return new Map(model.rules.filter(rule => model.roles.some(r => r.id === rule.role)).map(rule => [key(rule.title), rule.role!]))
 }
 
 /** A role reaches the whole company when its name says so (D2) or its every permission reaches All. */
 export function wholeCompany(role: string, model: Pick<Model, 'roles' | 'permissions'>): boolean {
-  const named = model.roles.find(r => r.id === role)?.name ?? ''
+  const named = model.roles.find(r => r.id === role)!.name
   const own = model.permissions.filter(p => p.role === role)
   return WHOLE_COMPANY.has(key(named)) || (own.length > 0 && own.every(p => p.reach === 'All'))
 }
@@ -46,7 +47,7 @@ const inForce = (hand: HandChange, today: string) => !hand.removed && (!hand.end
 
 /** A person's business roles, each with its source and spot, and the titles nobody has mapped yet. */
 export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; unmapped: Unmapped[] } {
-  const map = mapping(model.rules)
+  const map = mapping(model)
   const company = (role: string) => wholeCompany(role, model)
   const at = (role: string, job: string): Spot => (company(role) ? { kind: 'company' } : { kind: 'job', job })
   const hand = facts.hand.filter(h => inForce(h, model.today) && model.roles.some(r => r.id === h.role))
@@ -57,9 +58,9 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
   for (const job of facts.jobs) {
     const byDesignation = job.designation ? map.get(key(job.designation)) : undefined
     const role = byDesignation ?? map.get(key(job.job))
-    const title = byDesignation ? job.designation : job.job
+    const title = byDesignation ? job.designation! : job.job
     if (corrections.length) {
-      for (const c of corrections) held.push({ role: c.role, source: 'corrected', title: title ?? job.job, spot: at(c.role, job.id), ...handFacts(c) })
+      for (const c of corrections) held.push({ role: c.role, source: 'corrected', title, spot: at(c.role, job.id), ...handFacts(c) })
       continue
     }
     if (!role) { unmapped.push({ title: job.designation ?? job.job, job: job.job }); continue }
@@ -77,9 +78,10 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
     byRole.set(role, entry)
   }
   for (const [role, { title, assignments }] of byRole)
-    held.push({ role, source: 'merchandise', title, spot: company(role) ? { kind: 'company' } : { kind: 'merchandise', assignments } })
+    held.push({ role, source: 'merchandise', title, spot: { kind: 'merchandise', assignments } })
+  // A named cluster head holds whatever role the title Cluster Manager maps to; none while it maps to nothing.
   const clusterRole = map.get(key(CLUSTER_TITLE))
-  if (clusterRole) for (const cluster of facts.clustersHeaded) held.push({ role: clusterRole, source: 'cluster_head', title: null, spot: { kind: 'cluster', cluster } })
+  for (const cluster of clusterRole ? facts.clustersHeaded : []) held.push({ role: clusterRole!, source: 'cluster_head', title: null, spot: { kind: 'cluster', cluster } })
   for (const given of hand.filter(h => h.change === 'Also give')) {
     const spots: Spot[] = company(given.role) ? [{ kind: 'company' }]
       : facts.jobs.length ? facts.jobs.map(job => ({ kind: 'job', job: job.id }) as Spot)
@@ -89,7 +91,7 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
   return { held, unmapped }
 }
 
-const roleName = (id: string, roles: BusinessRole[]) => roles.find(r => r.id === id)?.name ?? 'A role no longer listed'
+const roleName = (id: string, roles: BusinessRole[]) => roles.find(r => r.id === id)!.name
 
 /** The apps and levels the held roles give, each once, with the roles that give it. */
 export function appsOf(held: HeldRole[], model: Pick<Model, 'roles' | 'permissions'>): { app: string; level: string; via: string[] }[] {
@@ -115,19 +117,20 @@ const REACH_WORDS: Record<Reach, string> = { Own: 'they own', Team: 'for their T
 /** "Store Managers can Edit Sections in their Area". */
 export function permissionSentence(role: string, p: Pick<Permission, 'verb' | 'thing' | 'reach'>): string {
   const who = COLLECTIVE.has(key(role)) || role.endsWith('s') ? role : `${role}s`
-  return `${who} can ${p.verb} ${p.thing} ${REACH_WORDS[p.reach] ?? ''}`.trim()
+  return `${who} can ${p.verb} ${p.thing} ${REACH_WORDS[p.reach]}`
 }
 
 export interface TitleInUse { title: string; people: string[]; job?: string }
 export interface TitleRow { title: string; role: string | null; people: number; falls_back_to?: string }
 /** The Title Map as read: every title in use, those not mapped yet first, each with how many people hold it. */
 export function titleList(inUse: TitleInUse[], model: Pick<Model, 'rules' | 'roles'>): TitleRow[] {
-  const map = mapping(model.rules)
+  const map = mapping(model)
   const rows = new Map<string, TitleRow & { set: Set<string> }>()
-  for (const t of inUse) {
+  // A row no one holds today still shows, so it can be found and changed.
+  for (const t of [...model.rules.map((rule): TitleInUse => ({ title: rule.title, people: [] })), ...inUse]) {
     const row = rows.get(key(t.title)) ?? { title: t.title, role: map.get(key(t.title)) ?? null, people: 0, set: new Set<string>() }
     for (const p of t.people) row.set.add(p)
-    const fallback = !row.role && t.job ? map.get(key(t.job)) : undefined
+    const fallback = row.role ? undefined : map.get(key(t.job ?? ''))
     if (fallback) row.falls_back_to = roleName(fallback, model.roles)
     rows.set(key(t.title), row)
   }
@@ -137,10 +140,10 @@ export function titleList(inUse: TitleInUse[], model: Pick<Model, 'rules' | 'rol
 
 export type ShadowReceiver = { kind: 'person'; person: string } | { kind: 'role'; role: string } | { kind: 'decision'; name: string }
 /** D4 in shadow: a grant to a job goes to its business role; one to an app role (Dash Reader) needs a decision. */
-export function shadowReceiver(row: AccessRow, model: Pick<Model, 'rules'>): ShadowReceiver | null {
+export function shadowReceiver(row: AccessRow, model: Pick<Model, 'rules' | 'roles'>): ShadowReceiver | null {
   if (row.person) return { kind: 'person', person: row.person }
   if (row.job) {
-    const role = mapping(model.rules).get(key(row.job))
+    const role = mapping(model).get(key(row.job))
     return role ? { kind: 'role', role } : { kind: 'decision', name: row.job }
   }
   return row.role ? { kind: 'decision', name: row.role } : null
@@ -148,7 +151,7 @@ export function shadowReceiver(row: AccessRow, model: Pick<Model, 'rules'>): Sha
 
 export interface NewWhy { role?: string; person?: true; bundle: string | null }
 /** The reports the new model gives a person: grants to them, and grants to a business role they hold. */
-export function newModelReports(person: string, roles: string[], rows: readonly AccessRow[], members: readonly BundleMember[], model: Pick<Model, 'rules'>): Map<string, NewWhy[]> {
+export function newModelReports(person: string, roles: string[], rows: readonly AccessRow[], members: readonly BundleMember[], model: Pick<Model, 'rules' | 'roles'>): Map<string, NewWhy[]> {
   const got = new Map<string, NewWhy[]>()
   const add = (report: string, why: NewWhy) => got.set(report, [...(got.get(report) ?? []), why])
   for (const row of rows) {

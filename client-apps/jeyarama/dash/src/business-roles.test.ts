@@ -90,6 +90,37 @@ describe('a person\'s business roles', () => {
   })
 })
 
+describe('the less common routes to a role', () => {
+  it('lists a job with no designation and no mapping by the job', () => {
+    expect(rolesOf({ ...none, jobs: [{ id: 'J1', job: 'Floor Manager', designation: null }] }, model).unmapped).toEqual([{ title: 'Floor Manager', job: 'Floor Manager' }])
+  })
+
+  it('lists a merchandise responsibility nobody has mapped', () => {
+    expect(rolesOf({ ...none, merchandise: [{ id: 'M1', responsibility: 'Division head' }] }, model).unmapped).toEqual([{ title: 'Division head', job: 'Division head' }])
+  })
+
+  it('gives a Correct to someone with no job the whole company, for a role reaching it', () => {
+    expect(rolesOf({ ...none, hand: [{ id: 'H1', change: 'Correct', role: 'r-lead' }] }, model).held.map(r => r.spot)).toEqual([{ kind: 'company' }])
+  })
+
+  it('gives a Correct to someone with no job no place, for a role reaching only an area', () => {
+    expect(rolesOf({ ...none, hand: [{ id: 'H1', change: 'Correct', role: 'r-sm' }] }, model).held.map(r => r.spot)).toEqual([{ kind: 'none' }])
+  })
+
+  it('adds an Also give at a buyer\'s merchandise place when they hold no job', () => {
+    expect(rolesOf({ ...none, merchandise: [{ id: 'M1', responsibility: 'Buyer' }], hand: [{ id: 'H1', change: 'Also give', role: 'r-head' }] }, model).held.map(r => r.spot))
+      .toEqual([{ kind: 'merchandise', assignments: ['M1'] }, { kind: 'merchandise', assignments: ['M1'] }])
+  })
+
+  it('gives a named cluster head nothing while Cluster Manager maps to no role', () => {
+    expect(rolesOf({ ...none, clustersHeaded: ['NORTH'] }, { ...model, rules: [] }).held).toEqual([])
+  })
+
+  it('ignores a mapping to a role that no longer exists', () => {
+    expect(rolesOf({ ...none, jobs: [{ id: 'J1', job: 'Store Manager', designation: null }] }, { ...model, rules: [{ title: 'Store Manager', role: 'gone' }] }).held).toEqual([])
+  })
+})
+
 describe('apps and levels', () => {
   it('lists each app and level once, with the roles that give it', () => {
     const held = rolesOf({ ...none, jobs: [{ id: 'J1', job: 'Store Manager', designation: null }, { id: 'J2', job: 'Team Leader', designation: null }] }, model).held
@@ -118,7 +149,7 @@ describe('a permission as a sentence', () => {
 
 describe('the Title Map', () => {
   it('puts titles not mapped yet first, with how many people hold each', () => {
-    const list = titleList([{ title: 'Store Manager', people: ['p1', 'p2'] }, { title: 'Floor In-charge', people: ['p3'] }, { title: 'Operations Executive', people: ['p4', 'p5'], job: 'Store Manager' }], model)
+    const list = titleList([{ title: 'Store Manager', people: ['p1', 'p2'] }, { title: 'Floor In-charge', people: ['p3'] }, { title: 'Operations Executive', people: ['p4', 'p5'], job: 'Store Manager' }], { ...model, rules: [{ title: 'Store Manager', role: 'r-sm' }] })
     expect(list.map(row => [row.title, row.role, row.people, row.falls_back_to ?? null])).toEqual([
       ['Floor In-charge', null, 1, null], ['Operations Executive', null, 2, 'Store Manager'], ['Store Manager', 'r-sm', 2, null],
     ])
@@ -138,9 +169,23 @@ describe('report grants in the new shape', () => {
     expect(shadowReceiver({ report: 'vs', report_bundle: null, person: 'p1', role: null, job: null }, model)).toEqual({ kind: 'person', person: 'p1' })
   })
 
+  it('marks a grant to a job nobody has mapped as needing a decision', () => {
+    expect(shadowReceiver({ report: 'vs', report_bundle: null, person: null, role: null, job: 'Floor In-charge' }, model)).toEqual({ kind: 'decision', name: 'Floor In-charge' })
+  })
+
+  it('reads a row naming no receiver as giving nothing', () => {
+    expect(shadowReceiver({ report: 'vs', report_bundle: null, person: null, role: null, job: null }, model)).toBeNull()
+  })
+
+  it('gives nothing through a row that names both a report and a bundle, or another person', () => {
+    const rows = [{ report: 'vs', report_bundle: 'b1', person: 'p1', role: null, job: null }, { report: 'st', report_bundle: null, person: 'p2', role: null, job: null },
+      { report: 'mine', report_bundle: null, person: 'p1', role: null, job: null }]
+    expect([...newModelReports('p1', [], rows, [], model)]).toEqual([['mine', [{ person: true, bundle: null }]]])
+  })
+
   it('gives a report through a bundle to everyone holding the role, saying why', () => {
     const rows = [{ report: null, report_bundle: 'b1', person: null, role: null, job: 'Store Manager' }]
-    const got = newModelReports('p1', ['r-sm'], rows, [{ report_bundle: 'b1', report: 'vs' }], model)
+    const got = newModelReports('p1', ['r-sm'], rows, [{ report_bundle: 'b1', report: 'vs' }, { report_bundle: 'b2', report: 'other' }], model)
     expect([...got]).toEqual([['vs', [{ role: 'r-sm', bundle: 'b1' }]]])
   })
 })
@@ -164,6 +209,26 @@ describe('today against the new model', () => {
     expect(differences(side(), side({ opens: false, places: {}, reports: [] }), []).kind).toBe('loses_dash')
   })
 
+  it('says who would gain Dash', () => {
+    expect(differences(side({ opens: false, places: {}, reports: [] }), side(), []).kind).toBe('gains_dash')
+  })
+
+  it('finds a report gained with the same stores', () => {
+    expect(differences(side(), side({ reports: ['vs', 'st'] }), []).gained).toEqual(['st'])
+  })
+
+  it('finds a store lost', () => {
+    expect(differences(side({ places: { '9901': null, '9902': null } }), side(), []).kind).toBe('stores')
+  })
+
+  it('finds a report lost that no decision covers', () => {
+    expect(differences(side(), side({ reports: [] }), []).kind).toBe('reports')
+  })
+
+  it('finds a store gained', () => {
+    expect(differences(side(), side({ places: { '9901': null, '9902': null } }), []).storesGained).toEqual(['9902'])
+  })
+
   it('counts a report lost only through Dash Reader as needing a decision', () => {
     const found = differences(side(), side({ reports: [] }), ['vs'])
     expect([found.kind, found.decisions, found.lost]).toEqual(['decision', ['vs'], []])
@@ -178,6 +243,10 @@ describe('a merchandise area as code prefixes', () => {
   const every = ['010101001', '010101002', '010102001', '020101001']
   it('sends a category wholly held as its prefix', () => {
     expect(areaPrefixes(['010101001', '010101002', '010102001'], every)).toEqual(['01'])
+  })
+
+  it('keeps a code the hierarchy does not know as itself', () => {
+    expect(areaPrefixes(['99'], every)).toEqual(['99'])
   })
 
   it('keeps a subcategory whose siblings are not held as itself', () => {

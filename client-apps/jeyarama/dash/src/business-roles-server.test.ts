@@ -1,7 +1,7 @@
 // #1218: the business roles in shadow, over in-memory Tables. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
-import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole } from './business-roles-server'
-import { reads, reportsFor } from './server'
+import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle } from './business-roles-server'
+import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
 import { istToday } from './report'
 
@@ -30,7 +30,7 @@ function world(): Record<string, Row[]> {
     Plant: [{ row_id: '9901', site: 'LKS', plant_type: 'Store' }],
     Section: [{ row_id: 'S1', name: 'Sarees', site: 'LKS', floor: 'F1' }],
     'Section Subcategory': [{ row_id: 'P1', store: 'LKS', section: 'S1', subcategory: '010101001', starts_on: '2026-01-01' }],
-    Subcategory: [{ row_id: '010101001', category: 'Sarees', subcategory_type: 'Merchandise' }, { row_id: '010101002', category: 'Sarees', subcategory_type: 'Merchandise' },
+    Subcategory: [{ row_id: '010101001', subcategory: 'Silk sarees', category: 'Sarees', subcategory_type: 'Merchandise' }, { row_id: '010101002', category: 'Sarees', subcategory_type: 'Merchandise' },
       { row_id: '010102001', category: 'Kids', subcategory_type: 'Merchandise' }],
     Cluster: [{ row_id: 'NORTH', name: 'North', cluster_manager: null }],
     Department: [], 'Department Section': [], 'Store Floor': [],
@@ -189,5 +189,220 @@ describe('the shadow model decides nothing today', () => {
     await giveRole(context(tables, { payload: { person: 'st', change: 'Correct', role: roleId(tables, 'Staff') } }) as never)
     tables['dash.title_map'] = []
     expect(await todayFor(tables)).toEqual(before)
+  })
+})
+
+/** More people, one per route to a role: a floor, a department, a cluster by job and by name, two sections, a buyer, a head of everything, someone outside the staff list. */
+async function richWorld() {
+  const tables = await seeded()
+  const employee = (row_id: string, name: string, person?: string) => tables.Employee.push({ row_id, name, employee_code: row_id, status: 'Current', ...(person ? { person } : {}) })
+  const job = (row_id: string, emp: string, name: string, over: Row = {}) => tables['Job Assignment'].push({ row_id, employee: emp, job: name, site: 'LKS', starts_on: '2026-01-01', ...over })
+  employee('E-FM', 'Farah', 'fm'); job('J-FM', 'E-FM', 'Floor Manager', { floor: 'F1' })
+  employee('E-DM', 'Deepa', 'dm'); job('J-DM', 'E-DM', 'Department Manager')
+  employee('E-CM', 'Asha', 'cm'); job('J-CM', 'E-CM', 'Cluster Manager')
+  employee('E-CH', 'Kiran', 'ch'); tables.Cluster[0].cluster_manager = 'E-CH'
+  employee('E-TL', 'Tara', 'tl'); job('J-TL1', 'E-TL', 'Team Leader', { section: 'S1' }); job('J-TL2', 'E-TL', 'Team Leader', { section: 'S2' })
+  employee('E-MIX', 'Mohan', 'mix'); job('J-MIX1', 'E-MIX', 'Store Manager'); job('J-MIX2', 'E-MIX', 'Team Leader', { section: 'S1' })
+  employee('E-B', 'Bala', 'b'); tables['Merchandise Assignment'].push({ row_id: 'M-B', employee: 'E-B', responsibility: 'Buyer', subcategory: '010101001', starts_on: '2026-01-01' })
+  employee('E-ALL', 'Hari', 'all'); tables['Merchandise Assignment'].push({ row_id: 'M-ALL', employee: 'E-ALL', responsibility: 'Category head', starts_on: '2026-01-01' })
+  employee('E-NONAME', '', 'noname'); job('J-NONAME', 'E-NONAME', 'Staff', { section: 'S1' })
+  employee('E-NOSIGNIN', 'Lata'); job('J-NOSIGNIN', 'E-NOSIGNIN', 'Staff', { section: 'S1' })
+  tables.Section.push({ row_id: 'S2', name: 'Silk', site: 'LKS', floor: 'F1' })
+  tables['Section Subcategory'].push({ row_id: 'P2', store: 'LKS', section: 'S2', subcategory: '010101002', starts_on: '2026-01-01' })
+  tables['Store Floor'].push({ row_id: 'F1', name: 'First floor', site: 'LKS' })
+  tables['dash.report_bundle'].push({ row_id: 'b1', bundle_name: 'Store pack' })
+  tables['dash.report_bundle_member'].push({ row_id: 'bm1', report_bundle: 'b1', report: 'open' })
+  tables['dash.report_access'].push({ row_id: 'a3', report_bundle: 'b1', person: 'ext' }, { row_id: 'a4', report: 'vs', person: 'sm' })
+  return tables
+}
+const OPEN = { report_key: 'open', report_name: 'Company notices', filter_shape: 'No filter' }
+function richContext(tables: Record<string, Row[]>, options: Parameters<typeof context>[1] = {}) {
+  const ctx = context(tables, { peopleRoles: { ext: [], ...options.peopleRoles }, ...options })
+  const list = ctx.documents.list
+  ctx.documents.list = async (table, args) => (table === 'dash.report' ? [...await list(table, args), OPEN] : list(table, args))
+  return ctx
+}
+const explain = async (tables: Record<string, Row[]>, person: string) => explainPerson(richContext(tables, { payload: { person } }) as never)
+const areaOf = async (tables: Record<string, Row[]>, person: string) => (await explain(tables, person)).roles.map(r => [r.name, r.area.parts.map(p => p.name).join(' · ')])
+
+describe('areas on every route to a role', () => {
+  it('reads a floor manager\'s area as their floor at their store', async () => {
+    expect(await areaOf(await richWorld(), 'fm')).toEqual([['Floor Manager', 'First floor · Lakeside']])
+  })
+
+  it('reads a department manager\'s area as their department at their store', async () => {
+    expect(await areaOf(await richWorld(), 'dm')).toEqual([['Department Manager', 'Their department · Lakeside']])
+  })
+
+  it('reads a cluster manager\'s area as the cluster of their store', async () => {
+    expect(await areaOf(await richWorld(), 'cm')).toEqual([['Cluster Manager', 'North']])
+  })
+
+  it('reads a named cluster head\'s area as that cluster', async () => {
+    expect((await explain(await richWorld(), 'ch')).roles.map(r => [r.name, r.source, r.area.parts[0].name, r.area.stores])).toEqual([['Cluster Manager', 'Named cluster head', 'North', 1]])
+  })
+
+  it('reads a team leader\'s two sections, each at their store', async () => {
+    expect(await areaOf(await richWorld(), 'tl')).toEqual([['Team Leader', 'Sarees · Lakeside'], ['Team Leader', 'Silk · Lakeside']])
+  })
+
+  it('reads a buyer\'s subcategory with every region', async () => {
+    expect(await areaOf(await richWorld(), 'b')).toEqual([['Buyer', 'Silk sarees · Every region']])
+  })
+
+  it('reads a head with no level named as every subcategory', async () => {
+    expect(await areaOf(await richWorld(), 'all')).toEqual([['Category Head', 'Every subcategory · Every region']])
+  })
+
+  it('says a role corrected to Buyer at a job has no merchandise yet', async () => {
+    const tables = await richWorld()
+    await giveRole(context(tables, { payload: { person: 'fm', change: 'Correct', role: roleId(tables, 'Buyer') } }) as never)
+    expect(await areaOf(tables, 'fm')).toEqual([['Buyer', 'No merchandise assigned yet']])
+  })
+
+  it('says a Vendor given at a job has no area yet', async () => {
+    const tables = await richWorld()
+    await giveRole(context(tables, { payload: { person: 'fm', change: 'Also give', role: roleId(tables, 'Vendor') } }) as never)
+    expect((await areaOf(tables, 'fm'))[1]).toEqual(['Vendor', 'No area yet'])
+  })
+
+  it('leaves out the parts of a job that names no site or section', async () => {
+    const tables = await richWorld()
+    tables['Job Assignment'].push({ row_id: 'J-BARE', employee: 'E-NOSIGNIN', job: 'Cluster Manager', starts_on: '2026-01-01' })
+    tables.Employee.find(e => e.row_id === 'E-NOSIGNIN')!.person = 'bare'
+    expect(await areaOf(tables, 'bare')).toEqual([['Staff', 'Sarees · Lakeside'], ['Cluster Manager', '']])
+  })
+})
+
+describe('someone outside the staff list', () => {
+  async function outsider() {
+    const tables = await richWorld()
+    await giveRole(context(tables, { payload: { person: 'ext', change: 'Also give', role: roleId(tables, 'Master Data Steward') } }) as never)
+    return explain(tables, 'ext')
+  }
+
+  it('holds a whole-company role that reaches no store', async () => {
+    expect((await outsider()).roles.map(r => [r.name, r.area.parts[0].name, r.area.stores])).toEqual([['Master Data Steward', 'Whole company', 0]])
+  })
+
+  it('gets a report given to them through a bundle, saying so', async () => {
+    expect((await outsider()).reports).toEqual([{ key: 'open', name: 'Company notices', why: ['Given to them directly, through Store pack'] }])
+  })
+
+  it('opens Dash today by that report alone, and has no name or employee code', async () => {
+    const answer = await outsider()
+    expect([answer.today.opens, answer.next.opens, answer.name, answer.employee]).toEqual([true, true, 'This person', null])
+  })
+})
+
+describe('Who would gain or lose access, on every route', () => {
+  it('finds head office gaining every store', async () => {
+    const answer = await accessChanges(richContext(await richWorld()) as never)
+    const ho = answer.groups.flatMap(g => g.people).find(p => p.person === 'ho')!
+    expect([ho.kind, ho.stores_gained.map(s => s.name)]).toEqual(['stores', ['Lakeside']])
+  })
+
+  it('names someone without a name as Someone', async () => {
+    const answer = await accessChanges(richContext(await richWorld()) as never)
+    expect(answer.groups.flatMap(g => g.people).find(p => p.person === 'noname')!.name).toBe('Someone')
+  })
+
+  it('finds a store manager who also leads a section waiting only on a decision', async () => {
+    const answer = await accessChanges(richContext(await richWorld(), { peopleRoles: { mix: ['Dash Reader'] } }) as never)
+    expect(answer.groups.flatMap(g => g.people).find(p => p.person === 'mix')?.kind).toBe('decision')
+  })
+})
+
+describe('the Title Map on the Business Roles page', () => {
+  it('counts a job held by someone who cannot sign in', async () => {
+    const page = await businessRoles(richContext(await richWorld()) as never)
+    expect(page.titles.find(t => t.title === 'Staff')!.people).toBe(3)
+  })
+
+  it('lists a role an admin added after the starting roles', async () => {
+    const tables = await richWorld()
+    tables['dash.business_role'].push({ row_id: 'r-z', role_name: 'Auditor' }, { row_id: 'r-y', role_name: 'Analyst' })
+    const page = await businessRoles(richContext(tables) as never)
+    expect(page.roles.slice(-2).map(r => r.name)).toEqual(['Analyst', 'Auditor'])
+  })
+
+  it('maps a title nobody had mapped', async () => {
+    const tables = await richWorld()
+    await mapTitle(context(tables, { payload: { title: 'Operations Executive', role: roleId(tables, 'Store Manager') } }) as never)
+    const page = await businessRoles(richContext(tables) as never)
+    expect(page.titles.find(t => t.title === 'Operations Executive')!.role_name).toBe('Store Manager')
+  })
+
+  it('changes a title already mapped', async () => {
+    const tables = await richWorld()
+    await mapTitle(context(tables, { payload: { title: 'staff', role: roleId(tables, 'Team Leader') } }) as never)
+    expect(tables['dash.title_map'].find(r => r.title === 'Staff')!.business_role).toBe(roleId(tables, 'Team Leader'))
+  })
+
+  it.each([
+    [{ title: '', role: 'x' }, 'Name the title'],
+    [{ title: 'Tailor', role: 'gone' }, 'Choose a business role'],
+  ])('refuses a mapping %o', async (payload, message) => {
+    await expect(mapTitle(context(await richWorld(), { payload }) as never)).rejects.toThrow(message)
+  })
+
+  it('reads job titles alone where the instance has no designations', async () => {
+    const tables = await richWorld()
+    delete tables.Designation
+    const page = await businessRoles(richContext(tables) as never)
+    expect(page.titles.some(t => t.title === 'Operations Executive')).toBe(false)
+  })
+
+  it('keeps a title already mapped when the starting roles are added', async () => {
+    const tables = world()
+    tables['dash.title_map'].push({ row_id: 't0', title: 'staff', business_role: null })
+    await addStartingRoles(context(tables) as never)
+    expect(tables['dash.title_map'].filter(r => String(r.title).toLowerCase() === 'staff')).toHaveLength(1)
+  })
+})
+
+describe('hand changes refused or taken away', () => {
+  it.each([
+    [{ change: 'Also give', role: 'r' }, 'Choose a person'],
+    [{ person: 'st', change: 'Swap', role: 'r' }, 'Choose Correct or Also give'],
+    [{ person: 'st', change: 'Also give', role: 'gone' }, 'Choose a business role'],
+  ])('refuses %o', async (payload, message) => {
+    await expect(giveRole(context(await seeded(), { payload }) as never)).rejects.toThrow(message)
+  })
+
+  it('refuses an end date that is not a day', async () => {
+    const tables = await seeded()
+    await expect(giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Staff'), ends_on: '31/03/2027' } }) as never)).rejects.toThrow('The end date is a day')
+  })
+
+  it('refuses to explain no one', async () => {
+    await expect(explainPerson(context(await seeded(), { payload: {} }) as never)).rejects.toThrow('Choose a person')
+  })
+
+  it('takes a hand change away, through Dash\'s own action', async () => {
+    const tables = await seeded()
+    const { id } = await giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Team Leader') } }) as never)
+    await actions.remove_role(context(tables, { payload: { id, updated_at: '2026-11-17T00:00:00Z' } }) as never)
+    expect((await explain(tables, 'st')).roles.map(r => r.name)).toEqual(['Staff'])
+  })
+
+  it('refuses to take away a hand change it is not told of', async () => {
+    await expect(actions.remove_role(context(await seeded(), { payload: {} }) as never)).rejects.toThrow('Choose a hand change to remove')
+  })
+})
+
+describe('Dash\'s reads and actions for the shadow pages', () => {
+  it('shows the pages to a Report Access Manager only', async () => {
+    const tables = await seeded()
+    expect([reads.manages_roles(context(tables) as never), reads.manages_roles(context(tables, { roles: ['Team Report Manager'] }) as never)]).toEqual([true, false])
+  })
+
+  it('answers each read and action through the server module', async () => {
+    const tables = world()
+    await actions.add_starting_roles(context(tables) as never)
+    await actions.give_role(context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Team Leader') } }) as never)
+    await actions.map_title(context(tables, { payload: { title: 'Tailor', role: roleId(tables, 'Staff') } }) as never)
+    const answers = await Promise.all([reads.business_roles(context(tables) as never), reads.explain_person(context(tables, { payload: { person: 'st' } }) as never), reads.access_changes(context(tables) as never)])
+    expect(answers.map(a => typeof a)).toEqual(['object', 'object', 'object'])
   })
 })
