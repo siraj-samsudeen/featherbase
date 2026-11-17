@@ -20,6 +20,18 @@ test('a line of Tree of all opens its row in the pane', async ({ admin }) => {
   expect(await screen.findByRole('complementary', { name: 'Madurai · MDU' }, T)).toHaveTextContent(SITE)
 })
 
+// Codex review (#1259): the Table view opens rows on their own page, but a tree line still opens beside the tree.
+test('a line of Tree of all opens its row beside the tree in the Table view too', async ({ admin }) => {
+  await seedSites(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(SITE)}`, { layout: 'table' })
+  await renderApp(tableHref(SITE), admin)
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }, T))
+  const t = await tree()
+  await waitFor(() => expect(topLines(t)).toHaveLength(3))
+  fireEvent.click(within(t).getByText('Madurai · MDU'))
+  expect(await screen.findByRole('complementary', { name: 'Madurai · MDU' }, T)).toHaveTextContent(SITE)
+})
+
 test('show all in Tree of all lists every row of a big group', async ({ admin }) => {
   await seedSites(admin, { profitCentres: 25 })
   await renderApp(tableHref(PLANT), admin)

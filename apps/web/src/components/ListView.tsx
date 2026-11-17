@@ -132,9 +132,10 @@ export function ListView({
   const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
   const paneRow = onRowOpen ? openRow : nav?.step.pane?.table === table ? nav.step.pane.row : undefined
   // #1259: in the Table view a row opens on its own page, so a line opens no panel.
-  const openPane = layout === 'table' ? undefined
-    : onRowOpen ? (pane: { table: string; row: string }) => onRowOpen(pane.row)
+  // Tree of all has no row pages to go to, so its lines open the record beside it in every view.
+  const openInPanel = onRowOpen ? (pane: { table: string; row: string }) => onRowOpen(pane.row)
     : nav ? (pane: { table: string; row: string }) => nav.push({ ...nav.step, pane }) : undefined
+  const openPane = layout === 'table' ? undefined : openInPanel
   // #910 checklist 19: every row as a folded tree line, kept in the path.
   const [localTree, setLocalTree] = useState<{ on: boolean; expanded: string[] }>({ on: false, expanded: [] })
   const treeOn = nav ? nav.step.view === 'tree' : localTree.on
@@ -394,7 +395,7 @@ export function ListView({
   // #1259: with a record open beside or over the list, the arrow keys move to
   // the next or previous row and the record follows (one step, not one per
   // row); closing it puts the focus back on the same row.
-  const panelled = layout === 'split' || layout === 'panel'
+  const panelled = !treeOn && (layout === 'split' || layout === 'panel')
   useEffect(() => {
     if (!panelled || !paneRow) return
     const onKey = (e: KeyboardEvent) => {
@@ -1111,10 +1112,13 @@ export function ListView({
         </div>
       )}
       {treeOn ? (
-        <div className={cardClasses('p-3')}>
-          <TreeOfAll table={table} filters={[...(baseFilters ?? []), ...filters]} expanded={treeExpanded}
-            onExpandedChange={(next) => setTree(true, [...next])}
-            onOpen={(pane) => openPane?.(pane)} />
+        <div className="flex min-h-0 items-start gap-3" data-testid="list-tree">
+          <div className={cardClasses('min-w-0 flex-1 p-3')}>
+            <TreeOfAll table={table} filters={[...(baseFilters ?? []), ...filters]} expanded={treeExpanded}
+              onExpandedChange={(next) => setTree(true, [...next])}
+              onOpen={(pane) => openInPanel?.(pane)} />
+          </div>
+          {recordPanel && <div className="w-[min(430px,45%)] shrink-0">{recordPanel}</div>}
         </div>
       ) : narrow ? (
         <PhoneList

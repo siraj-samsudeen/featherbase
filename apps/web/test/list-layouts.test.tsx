@@ -135,3 +135,45 @@ test('a link that opens a record shows it over the table even for someone who re
   expect(await screen.findByTestId('record-panel')).toBeInTheDocument()
   expect(within(screen.getByTestId('record-panel-over')).getByTestId('record-panel')).toBeInTheDocument()
 })
+
+// Codex review (#1259): a saved view's view belongs to the walk's step, not to the mounted list.
+const settled = async (admin: Admin, layout: string) =>
+  waitFor(async () => expect(((await admin.get(`/api/user_settings/${encodeURIComponent(DT)}`)) as { settings: { layout?: string } }).settings?.layout).toBe(layout))
+
+test("a view saved without a view of its own shows in the person's view, even right after one that has one", async ({ admin }) => {
+  await seed(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(DT)}`, { layout: 'table' })
+  await admin.post('/api/saved_views', { table: DT, label: 'As Cards', filters: [['title', '=', 'Anitha']], layout: 'split' })
+  await admin.post('/api/saved_views', { table: DT, label: 'Older View', filters: [['title', '=', 'Anitha']] })
+  await openList(admin)
+  await waitFor(() => expect(pressed()).toEqual(['Table']))
+  await userEvent.click(await screen.findByRole('button', { name: 'As Cards' }))
+  await waitFor(() => expect(pressed()).toEqual(['List And Record']))
+  await userEvent.click(screen.getByRole('button', { name: 'Older View' }))
+  await waitFor(() => expect(pressed()).toEqual(['Table']))
+  await settled(admin, 'table')
+})
+
+test("a saved view's view survives a reload of the record opened from it", async ({ admin }) => {
+  await seed(admin)
+  const app = await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?layout=split`, admin)
+  await waitFor(() => expect(pressed()).toEqual(['List And Record']))
+  const card = (await screen.findAllByTestId('record-card'))[0]
+  await userEvent.click(within(card).getAllByRole('button')[0])
+  await screen.findByTestId('record-panel')
+  const href = (app.router as { state: { location: { href: string } } }).state.location.href
+  expect(href).not.toContain('layout=split')
+  cleanup()
+  await renderApp(href, admin)
+  await screen.findByTestId('record-panel')
+  expect(pressed()).toEqual(['List And Record'])
+})
+
+test("opening the Table itself after a saved view's link shows the person's view", async ({ admin }) => {
+  await seed(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(DT)}`, { layout: 'table' })
+  const app = await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?layout=split`, admin)
+  await waitFor(() => expect(pressed()).toEqual(['List And Record']))
+  await (app.router as { navigate: (o: { href: string }) => Promise<void> }).navigate({ href: `/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}` })
+  await waitFor(() => expect(pressed()).toEqual(['Table']))
+})

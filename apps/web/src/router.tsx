@@ -491,28 +491,24 @@ function TableListPage() {
 }
 
 function NavigatedList({ table, filters, path, layout: asked }: { table: string; filters?: string; path?: unknown; layout?: ListLayout }) {
-  // #1259: the view this list shows: a saved view's (from the address, or applied
-  // here), the person's own, or the Table's default.
-  // A saved view's view lasts while the person walks on from it (opening a card
-  // drops the address's ?layout=), until they choose one of their own.
-  const [viewLayout, setViewLayout] = useState<ListLayout | undefined>(asked)
-  useEffect(() => { if (asked) setViewLayout(asked) }, [asked])
-  const views = useListLayout(table, viewLayout ?? asked)
+  // #1259: the view this list shows: a saved view's, the person's own, or the
+  // Table's default. A saved view's view is part of the walk's step (from the
+  // address's ?layout=, or applied here), so it lasts while the person walks on
+  // from it, survives a reload and Back, and a bare open of the Table drops it.
+  const here = useMemo<NavStep>(() => {
+    const parsed = parseFilters(filters)
+    return { screen: 'list', table, ...(parsed.length ? { filters: parsed } : {}), ...(asked ? { layout: asked } : {}) }
+  }, [table, filters, asked])
+  const nav = useAddressNavigation(here, path)
+  const router = useRouter()
+  const views = useListLayout(table, nav.step.layout)
   /** A view chosen here is the person's from now on, so no saved view's view overrides it. */
   function chooseLayout(next: ListLayout) {
     views.choose(next)
-    setViewLayout(undefined)
-    if (!asked) return
-    const at = new URL(router.state.location.href, 'http://address.invalid')
-    at.searchParams.delete('layout')
-    router.history.replace(`${at.pathname}${at.search}${at.hash}`, router.state.location.state)
+    if (!nav.step.layout) return
+    const { layout: _, ...step } = nav.step
+    nav.replace(step)
   }
-  const here = useMemo<NavStep>(() => {
-    const parsed = parseFilters(filters)
-    return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
-  }, [table, filters])
-  const nav = useAddressNavigation(here, path)
-  const router = useRouter()
   // #1228: a bare open (no filters, no walk in the address) brings back the
   // person's last filters, replacing the address rather than adding a Back step.
   // The list shows at once and takes them when they arrive, while the address is
@@ -553,11 +549,10 @@ function NavigatedList({ table, filters, path, layout: asked }: { table: string;
             layout={views.layout}
             onLayoutChange={views.phone ? undefined : chooseLayout}
             onApplyView={(next, layout) => {
-              const { filters: _, ...step } = nav.step
-              nav.push(next.length ? { ...step, filters: next } : step)
-              rememberFilters(table, next)
               // A saved view shows in its own view, without changing the person's choice.
-              setViewLayout(layout)
+              const { filters: _, layout: __, ...step } = nav.step
+              nav.push({ ...step, ...(next.length ? { filters: next } : {}), ...(layout ? { layout } : {}) })
+              rememberFilters(table, next)
             }}
             recordPanel={nav.step.pane
               ? <RecordPanel key={`${nav.step.pane.table}\u0000${nav.step.pane.row}`} nav={nav} pane={nav.step.pane} framed />
