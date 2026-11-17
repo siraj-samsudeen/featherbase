@@ -68,11 +68,14 @@ test("on the app's address the bar draws the declared picker, named by its label
   onAddressThatOpens('barproof')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   const store = await picker()
-  // #1253: beside a sidebar there is no top bar; the app's pickers keep a slim strip.
-  expect(screen.getByTestId('page-header')).toContainElement(store)
+  // #1253 (Siraj, 17-Nov): beside a sidebar there is no top bar; the app's
+  // pickers sit inside the white page panel, at its top, right-aligned.
+  expect(screen.getByTestId('page-panel')).toContainElement(store)
+  expect(screen.getByTestId('page-pickers')).toContainElement(store)
+  expect(screen.getByTestId('page-header')).not.toContainElement(store)
 })
 
-test("the picker sits in its own strip above the page, apart from the sidebar's switcher and Account menu", async ({ admin, createUser }) => {
+test("the picker sits inside the page panel, apart from the sidebar's switcher and Account menu", async ({ admin, createUser }) => {
   const reader = await readerOf(admin, createUser, STORES)
   onAddressThatOpens('barproof')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
@@ -97,7 +100,7 @@ test('with exactly one option the bar shows it as plain text, with no picker', a
   const reader = await readerOf(admin, createUser, [['Riverside', 'S101']])
   onAddressThatOpens('barproof')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
-  const bar = await screen.findByTestId('page-header')
+  const bar = await screen.findByTestId('page-pickers')
   expect(await within(bar).findByText('Riverside')).toBeInTheDocument()
   expect(within(bar).queryByRole('combobox', { name: 'Store' })).not.toBeInTheDocument()
 })
@@ -111,9 +114,9 @@ test('with no options the control is not shown', async ({ admin, createUser }) =
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   await screen.findByTestId('session-user')
   await settle()
-  // With nothing to pick, a wide window draws no strip at all: only the phone's menu button is in it.
+  // With nothing to pick, nothing is drawn in the panel, and the phone's header holds only its menu button.
+  expect(screen.queryByTestId('page-pickers')).not.toBeInTheDocument()
   expect(screen.getByTestId('page-header').className).toMatch(/\bmd:hidden\b/)
-  expect(within(screen.getByTestId('page-header')).queryByText('Store')).not.toBeInTheDocument()
 })
 
 test("on the Admin address the bar draws no app's picker", async ({ admin, createUser }) => {
@@ -206,21 +209,15 @@ test('Escape closes the list and leaves focus on the picker', async ({ admin, cr
 })
 
 // The next three moved from e2e/top-bar-picker.spec.ts (#1080).
-test('the picker is the first stop on Tab, ahead of the sidebar', async ({ admin, createUser }) => {
+test('the picker is reached by Tab after the sidebar, at the top of the page', async ({ admin, createUser }) => {
   const reader = await readerOf(admin, createUser, STORES)
   onAddressThatOpens('barproof')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   const store = await picker()
-  // #1253: the strip above the page comes before the sidebar in reading order;
-  // only the phone's menu button (hidden on a wide window) is ahead of it.
-  ;(document.activeElement as HTMLElement | null)?.blur()
-  const passed: (string | null)[] = []
-  for (let step = 0; step < 3 && document.activeElement !== store; step++) {
-    await userEvent.tab()
-    if (document.activeElement !== store) passed.push((document.activeElement as HTMLElement).getAttribute('data-testid'))
-  }
+  // #1253: the picker is the page's first stop: from the sidebar's last control, Tab reaches it next.
+  screen.getByTestId('sidebar-collapse').focus()
+  await userEvent.tab()
   expect(store).toHaveFocus()
-  expect(passed.every((id) => id === 'sidebar-toggle')).toBe(true)
 })
 
 test('Home, End, PageUp, PageDown and the arrows move within the list, stopping at each end, and change no choice', async ({ admin, createUser }) => {

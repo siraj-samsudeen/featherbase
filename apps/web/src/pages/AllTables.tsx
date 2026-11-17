@@ -4,7 +4,10 @@ import { Link } from '@tanstack/react-router'
 import { adminPageTitle } from 'shared'
 import { useShellTables, type TableSummary } from '../lib/session'
 import { metaQuery, tableLabel } from '../lib/meta'
-import { SearchInput, cardClasses, touchRowClasses } from '@featherbase/shop-floor'
+import { SearchInput, touchRowClasses } from '@featherbase/shop-floor'
+
+/** #1253 (minimal lines): a module's card is a soft fill on the white page, no outline. */
+const MODULE_CARD = 'rounded-card bg-canvas/70 px-2 py-3'
 import { usePageTitle } from '../lib/page-title'
 
 // #80: with the sidebar flipped to Home Pages, this page keeps EVERY table
@@ -123,13 +126,13 @@ export function AllTablesPage() {
         )}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {appModules.map((mod) => (
-            <section key={mod} aria-label={mod} className={cardClasses('px-2 py-3')}>
+            <section key={mod} aria-label={mod} className={MODULE_CARD}>
               <h2 className={heading}>{sentence(mod)}</h2>
               {(byModule.get(mod) ?? []).map(tableLink)}
             </section>
           ))}
           {systemTables.length > 0 && (
-            <section aria-label="System" className={cardClasses('px-2 py-3')}>
+            <section aria-label="System" className={MODULE_CARD}>
               <button
                 type="button"
                 onClick={toggleSystemGroup}
@@ -147,7 +150,7 @@ export function AllTablesPage() {
             </section>
           )}
           {archivedTables.length > 0 && (
-            <section aria-label="Archived tables" data-testid="archived-group" className={cardClasses('px-2 py-3')}>
+            <section aria-label="Archived tables" data-testid="archived-group" className={MODULE_CARD}>
               <h2 className={heading}>Archived tables</h2>
               {archivedTables.map(tableLink)}
             </section>

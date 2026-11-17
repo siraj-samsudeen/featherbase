@@ -285,7 +285,9 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['waiting_reads_fast', '0.13.22', '0.13.23', 0],
       // #1254: who holds a section is read whole, so a decision and Waiting for you agree
       ['holders_read_whole', '0.13.23', '0.13.24', 0],
+      // #1254: who may decide is asked about every waiting change at once
+      ['deciders_read_together', '0.13.24', '0.13.25', 0],
     ])
-    expect(pkg.version).toBe('0.13.24')
+    expect(pkg.version).toBe('0.13.25')
   })
 })

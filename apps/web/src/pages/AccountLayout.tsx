@@ -1,5 +1,5 @@
 import { Outlet } from '@tanstack/react-router'
-import { TopBar, useOnAppAddress } from '../components/TopBar'
+import { PagePickerSlot, TopBar, useOnAppAddress } from '../components/TopBar'
 import { useShellKind } from '../lib/session'
 import { AccountSidebarGroup, AdminShell, PAGE_PANEL, SidebarAside } from './AdminLayout'
 import { getSessionUser } from '../lib/api'
@@ -36,6 +36,7 @@ function AccountFrame() {
           <AccountSidebarGroup />
         </SidebarAside>
         <main className={PAGE_PANEL} data-testid="page-panel">
+          <PagePickerSlot />
           <div className="max-w-[880px]" data-testid="account-content">
             {!deciding && <Outlet />}
           </div>

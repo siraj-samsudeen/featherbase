@@ -28,12 +28,12 @@ export const GROUP_TONE = {
 } as const
 export type GroupTone = keyof typeof GROUP_TONE
 
-/** A group's heading in the rail: a short rule, the heading kept for screen readers. */
+/** A group's heading in the rail: a gap, no line (#1253, minimal lines); the heading kept for screen readers. */
 export function RailRule({ heading }: { heading: string }) {
   return (
     <>
       <h2 className="sr-only">{heading}</h2>
-      <div aria-hidden className="mx-3 my-2 h-px bg-border/70" data-testid="sidebar-rail-rule" />
+      <div aria-hidden className="h-4" data-testid="sidebar-rail-rule" />
     </>
   )
 }
