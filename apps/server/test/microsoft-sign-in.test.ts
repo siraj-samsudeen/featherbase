@@ -7,12 +7,12 @@ import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { createUserWithRole, expectStatus, makePerson } from './fixtures'
-import { beginMockApproval, mockOAuth, redeemSession } from './google-mock'
+import { beginMockApproval, mockApproveUrl, mockOAuth, redeemSession } from './google-mock'
 import { configureGoogle } from './identity-fixtures'
 import { TENANT, configureMicrosoft, microsoftLink, microsoftLinks, microsoftSignIn, withMicrosoftFetch } from './microsoft-mock'
 import { canSignInNow, linkIdentity } from '../src/identities'
 import { issueSession } from '../src/auth'
-import { microsoftNonce, mockMicrosoftApproveRedirect } from '../src/microsoft'
+import { exchangeMicrosoftCode, microsoftNonce, mockMicrosoftApproveRedirect, tenantProblem } from '../src/microsoft'
 
 const DOMAIN = 'bisquared.example'
 const CLIENT = 'b1e2c3d4-0000-4000-8000-00000000c1d0'
@@ -99,8 +99,9 @@ describe('real Microsoft', () => {
 describe('turned off', () => {
   test('a disabled method, or one without a client and without the stand-in, sends the browser back explained', async ({ api }) => {
     await configureMicrosoft({ enabled: false })
-    const res = await api.fetch('/api/oauth/microsoft/login', { headers: { accept: 'text/html' } })
-    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_off&via=microsoft')
+    const res = await api.fetch('/api/oauth/microsoft/login')
+    await expectStatus(res, 401)
+    expect(await res.text()).toContain('Microsoft sign-in is not configured')
     mockOAuth(false)
     await configureMicrosoft({ client_id: '' })
     const again = await api.fetch('/api/oauth/microsoft/login', { headers: { accept: 'text/html' } })
@@ -324,5 +325,46 @@ describe('what Microsoft or the stand-in may hand back (coverage of the refusals
     const person = await makePerson({ email: `asha@${DOMAIN}` })
     const { token } = await issueSession(person)
     await expectStatus(await api.fetch('/api/oauth/microsoft/link', { headers: { cookie: `sid=${token}` } }), 403)
+  })
+})
+
+describe('the verify step\'s own guards (coverage)', () => {
+  const method = (over: Record<string, unknown> = {}) =>
+    ({ key: 'microsoft', kind: 'microsoft', label: 'Microsoft', enabled: true, new_person: 'refuse', allowed_email_domains: '', self_link: true, client_id: '', service_url: '', settings: null, ...over }) as Parameters<typeof exchangeMicrosoftCode>[2]
+
+  test('a blank tenant is no problem; anything else must be organizations or an ID', () => {
+    expect(tenantProblem(null)).toBeNull()
+    expect(tenantProblem('')).toBeNull()
+    expect(tenantProblem('common')).toMatch(/organizations or a tenant ID/)
+  })
+
+  test('a tenant stored outside the form that is not allowed turns Microsoft sign-in off', async ({ api }) => {
+    await configureMicrosoft({ client_id: CLIENT })
+    await sql`update sign_in_method set settings = ${JSON.stringify({ tenant: 'common' })}::text::jsonb where row_id = 'microsoft'`
+    const res = await api.fetch('/api/oauth/microsoft/login')
+    await expectStatus(res, 401)
+    expect(await res.text()).toContain('Microsoft sign-in is not configured')
+  })
+
+  test('no code, the stand-in switched off, or another stand-in\'s code: refused', async () => {
+    await expect(exchangeMicrosoftCode(undefined, '/cb', method(), 'v', 's')).rejects.toThrow('Missing authorization code')
+    const googleCode = new URLSearchParams(mockApproveUrl('s', 'a@b.example').split('?')[1])
+    const forged = mockMicrosoftApproveRedirect('s', '/api/oauth/microsoft/callback', { email: 'a@b.example', name: 'A', tid: TENANT, oid: OID, edov: true })
+    const msCode = new URLSearchParams(forged.split('?')[1]).get('code')!
+    mockOAuth(false)
+    await expect(exchangeMicrosoftCode(msCode, '/cb', method(), 'v', 's')).rejects.toThrow('Mock OAuth provider is disabled')
+    mockOAuth(true)
+    // A code Google's stand-in signed (no provider) is not Microsoft's.
+    const { mockApproveRedirect } = await import('../src/oauth')
+    const gForged = mockApproveRedirect(googleCode.get('state')!, '/api/oauth/google/callback', 'a@b.example', 'A')
+    const gCode = new URLSearchParams(gForged.split('?')[1]).get('code')!
+    await expect(exchangeMicrosoftCode(gCode, '/cb', method(), 'v', 's')).rejects.toThrow('Bad signature')
+  })
+
+  test('Microsoft answering with something that is not JSON is Microsoft failing', async () => {
+    await expect(
+      withMicrosoftFetch(async () => new Response('<html>oops</html>', { status: 200 }), () =>
+        exchangeMicrosoftCode('c', '/cb', method({ client_id: CLIENT }), 'v', 's')),
+    ).rejects.toThrow(/Microsoft sign-in failed/)
   })
 })
