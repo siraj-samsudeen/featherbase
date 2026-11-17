@@ -6,6 +6,7 @@ import { PrincipalLink } from '../lib/people'
 import { Button, Card, Notice, Select, TextInput } from '@featherbase/shop-floor'
 import { Plus } from 'lucide-react'
 import { RowMenu } from './RowMenu'
+import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
 
 // person-resolution D3/D12: every identifier a person has had — employee
 // codes, record numbers, phone, addresses — each with its period, where it
@@ -103,7 +104,7 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   function onAdd(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
-    const body: Record<string, string> = { system: String(f.get('system')), value: String(f.get('value')).trim() }
+    const body: Record<string, string> = { system: String(f.get('system')), value: String(f.get('identifier_value')).trim() }
     const note = String(f.get('note') ?? '').trim()
     if (note) body.note = note
     add.mutate({ body, form: e.currentTarget })
@@ -171,14 +172,14 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
         </div>
       ))}
       {!replacedBy && addable.length > 0 && adding && (
-        <form className="mt-2 space-y-2" onSubmit={onAdd} data-testid="add-identifier-form">
+        <form className="mt-2 space-y-2" onSubmit={onAdd} data-testid="add-identifier-form" {...NO_AUTOFILL_FORM}>
           <div className="flex flex-wrap items-center gap-2" data-testid="add-identifier-row">
             <Select name="system" aria-label="Identifier" value={system} onChange={(e) => setChosen(e.target.value)} wrapperClassName="w-48 shrink-0">
               {addable.map((s) => (
                 <option key={s.row_id} value={s.row_id}>{s.label}</option>
               ))}
             </Select>
-            <TextInput name="value" aria-label="Value" placeholder="Value" required autoFocus className="min-w-40 flex-1" />
+            <TextInput name="identifier_value" aria-label="Value" placeholder="Value" required autoFocus className="min-w-40 flex-1" {...NO_AUTOFILL_FIELD} />
             <Button type="submit" variant="primary" loading={add.isPending}>Add</Button>
             <Button variant="quiet" onClick={() => { setAdding(false); setError(null) }}>Cancel</Button>
           </div>

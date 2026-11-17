@@ -23,7 +23,7 @@ import { saveDoc } from './document'
 import { runAsSystemActor } from './system-actor'
 import { ROSTER_LINK_RUN } from './delegated-login'
 import { ROSTER_LINK_ACTOR } from './roster-link-actor'
-import { auditIdentity, getSignInMethod, newIdentityId, type SignInMethod } from './identities'
+import { addressHolders, auditIdentity, foldName, getSignInMethod, looksLikeEmail, newIdentityId, type SignInMethod } from './identities'
 import { addIdentifier, closeRow, endIdentityIdentifiers, writeThroughIdentity } from './person-identifiers'
 import { normaliseValue, type IdentifierKind, type NormaliseRule } from './identifiers'
 import { rowOf, usableRoster, type Roster, type RosterRow } from './roster-first-sign-in'
@@ -51,6 +51,8 @@ export type HeldReason =
   | 'link_ended'
   | 'person_unusable'
   | 'privileged'
+  // #1270: the sign-in ID is an address another person already has.
+  | 'address_held_elsewhere'
 
 type Action = 'create' | 'link' | 'complete'
 type Decision =
@@ -122,6 +124,8 @@ interface Facts {
   endedBySubject: Map<string, Link>
   holders: Map<string, string[]>
   people: Map<string, { usable: boolean; privileged: boolean }>
+  /** #1270: who has each roster address already: their email, or a live sign-in elsewhere. */
+  addressHolders: Map<string, string[]>
 }
 
 const key = (system: string, value: string) => `${system}\u0000${value}`
@@ -184,6 +188,7 @@ async function loadFacts(ctx: Ctx, rows: RosterRow[]): Promise<Facts> {
     endedBySubject: new Map(),
     holders: new Map(),
     people: new Map(),
+    addressHolders: new Map(),
   }
   for (const r of links) {
     const l: Link = { id: String(r.id), person: String(r.person_id), subject: String(r.subject), sign_in_name: String(r.sign_in_name), ended: Boolean(r.ended), ended_reason: r.ended_reason as string | null }
@@ -192,6 +197,8 @@ async function loadFacts(ctx: Ctx, rows: RosterRow[]): Promise<Facts> {
       facts.liveByName.set(l.sign_in_name.toLowerCase(), l)
     } else facts.endedBySubject.set(l.subject, l) // oldest first, so the latest end wins
   }
+  // #1270: who already has each roster address, by the one rule an Admin link uses.
+  facts.addressHolders = await addressHolders(rows.map((r) => r.sign_in_id), ctx.method.key, 'sign_in_name')
   const values = [...new Set(rows.flatMap((r) => (valuesOf(ctx, r) ?? []).map(([, v]) => v)))]
   const held = await sql`
     select distinct system, value, person_id from person_identifier
@@ -237,6 +244,10 @@ function decide(ctx: Ctx, facts: Facts, row: RosterRow): Decision {
     if (p?.privileged) return held('privileged', person)
     if (!p?.usable) return held('person_unusable', person)
   }
+  // #1270: an address that is another person's is not this person's to sign in with:
+  // held, naming who has it, instead of linked (fails closed, as an Admin link does).
+  const addressHolder = (facts.addressHolders.get(foldName(row.sign_in_id)) ?? []).find((h) => h !== person)
+  if (addressHolder) return held('address_held_elsewhere', addressHolder)
   const identifiers: [string, string][] = []
   for (const [system, value] of values.slice(1)) {
     const holders = facts.holders.get(key(system, value)) ?? []
@@ -308,6 +319,8 @@ async function linkRow(ctx: Ctx, rowId: string): Promise<Decision['action']> {
     const [row] = await currentRows(ctx, rowId)
     // No longer current: the leaver pass sees it on the next run.
     if (!row) return 'unchanged'
+    // #1270: the same lock an Admin link takes on the address, so the two never both claim it.
+    if (looksLikeEmail(row.sign_in_id)) await sql`select pg_advisory_xact_lock(hashtext(${`sign-in-address:${foldName(row.sign_in_id)}`}))`
     const d = decide(ctx, await loadFacts(ctx, [row]), row)
     if (d.action === 'held') await hold(ctx.method.key, row.row_id, d.reason)
     if (d.action === 'held' || d.action === 'unchanged') return d.action

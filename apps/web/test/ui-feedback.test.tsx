@@ -31,7 +31,8 @@ test('Table collision describes four destinations without changing Enter precede
   expect(screen.getByTestId('awesomebar-cmd-new-table').textContent).toBe('› New Table')
   expect(screen.getAllByTestId('awesomebar-table').filter((e) => /^TableCore module/.test(e.textContent ?? ''))).toHaveLength(1)
   expect(screen.getAllByTestId('awesomebar-new').filter((e) => e.textContent?.includes('New Table row'))).toHaveLength(1)
-  expect(screen.getAllByTestId('awesomebar-doc').filter((e) => /Table definition/.test(e.textContent ?? '')).length).toBeGreaterThan(0)
+  // #1265: the Records heading shows while groups are still answering; their rows follow.
+  await waitFor(() => expect(screen.getAllByTestId('awesomebar-doc').filter((e) => /Table definition/.test(e.textContent ?? '')).length).toBeGreaterThan(0), { timeout: 8000 })
 
   fireEvent.submit(bar.closest('form') as HTMLFormElement)
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/table/table'))

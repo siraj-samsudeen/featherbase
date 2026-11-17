@@ -15,6 +15,7 @@ import { saveDoc } from './document'
 import { endIdentityIdentifiers, reconcileIdentityEmail, writeThroughIdentity } from './person-identifiers'
 import { SIGN_IN_METHOD_KINDS, type NewPersonRule as SharedNewPersonRule, type SignInMethodKind } from 'shared'
 import { switchedOn } from './env'
+import { displayName } from './people-directory'
 
 // ---------------------------------------------------------------- folding
 
@@ -377,11 +378,82 @@ async function clash(method: SignInMethod, what: { subject?: string | null; sign
     if (hit && !held) held = { kind, hit }
   }
   const label = held?.kind === 'subject' ? `This ${method.label || method.key} ID` : held?.kind === 'sign_in_name' ? 'This sign-in name' : 'This invited address'
+  // #1266: the holder by name, never their id.
+  const [holder] = held ? await sql`select full_name, username from person where row_id = ${held.hit.person_id as string}` : []
   throw new AppError(
     'ConflictError',
-    held ? `${label} is already linked to ${held.hit.person_id as string}` : 'This sign-in is already linked to an account',
+    held ? `${label} is already linked to ${holder ? displayName(holder) : 'another person'}` : 'This sign-in is already linked to an account',
     held ? { clash: held.kind, identity: String(held.hit.id), person: String(held.hit.person_id) } : undefined,
   )
+}
+
+/** #1266, #1270: who holds each of these addresses: as their Person email, or
+ *  as any live sign-in's email, name or invite. The one home of that rule, for
+ *  an Admin link (assertAddressFree) and the roster sync alike. A hit on the
+ *  same column of the same method is left out: its unique index and clash()
+ *  answer it. Keys are the folded addresses. */
+export async function addressHolders(
+  addresses: string[],
+  method: string,
+  as: 'sign_in_name' | 'pending_email' | 'email',
+  edit: { identity?: string } = {},
+  db: Sql | TxSql = sql,
+): Promise<Map<string, string[]>> {
+  const folded = [...new Set(addresses.filter((a) => looksLikeEmail(a)).map(foldName))]
+  const out = new Map<string, string[]>()
+  if (!folded.length) return out
+  const rows = await db`
+    select lower(p.email) as address, p.row_id as person from person p where lower(p.email) = any(${folded})
+    union all
+    select a.address, i.person_id from sign_in_identity i
+      cross join lateral (values (lower(i.email), true), (lower(i.sign_in_name), not (i.method = ${method} and ${as} = 'sign_in_name')),
+        (i.pending_email, not (i.method = ${method} and ${as} = 'pending_email'))) as a(address, counts)
+      where i.ended_at is null and i.id <> ${edit.identity ?? ''} and a.counts and a.address = any(${folded})`
+  for (const r of rows) {
+    const k = String(r.address)
+    out.set(k, [...new Set([...(out.get(k) ?? []), String(r.person)])])
+  }
+  return out
+}
+
+/** #1266: an address another person already signs in with, or is known by,
+ *  is theirs. Linking it to this person would let one sign in as the other
+ *  (a password manager filled in the manager's own address on someone's page).
+ *  The refusal says whose it is, by name. Anything that is not an address
+ *  (a StyleHR login id) passes: that clash stays per method (clash()). */
+export async function assertAddressFree(
+  user: string,
+  method: string,
+  value: string | null | undefined,
+  // Which column the address goes into: a same-method hit on that same column
+  // is a unique-index clash, answered by clash() with the identity it hits.
+  as: 'sign_in_name' | 'pending_email' | 'email',
+  // An edit: the identity being edited, which is never its own clash.
+  edit: { identity?: string } = {},
+  db: Sql = sql,
+): Promise<void> {
+  if (!value || !looksLikeEmail(value)) return
+  const holders = (await addressHolders([value], method, as, edit, db)).get(foldName(value)) ?? []
+  const other = holders.find((h) => h !== user)
+  const [held] = other ? await db`select row_id, full_name, username from person where row_id = ${other}` : []
+  if (!held) return
+  throw new AppError(
+    'ConflictError',
+    `${value.trim()} already belongs to ${displayName(held)}. Link it on their page, or use this person's own address.`,
+    { clash: 'address', person: String(held.row_id) },
+  )
+}
+
+/** assertAddressFree under a lock on the address, held to the end of the
+ *  caller's transaction: two claims of one address (a link for one person, an
+ *  invite for another) can no longer both see it free (Codex review). */
+async function claimAddress(
+  db: Sql, user: string, method: string, value: string | null | undefined,
+  as: 'sign_in_name' | 'pending_email' | 'email', edit: { identity?: string } = {},
+): Promise<void> {
+  if (!value || !looksLikeEmail(value)) return
+  await db`select pg_advisory_xact_lock(hashtext(${`sign-in-address:${foldName(value)}`}))`
+  await assertAddressFree(user, method, value, as, edit, db)
 }
 
 /** Run one write in its own savepoint; a unique violation becomes `onClash`. */
@@ -416,6 +488,9 @@ export async function linkIdentity(
   if (same) return { ...(await updateIdentity(String(same.id), { sign_in_name: signInName }, actor)), created: false }
   const [row] = await guarded(
     async (t) => {
+      // #1266: an address another person has is not this person's to link.
+      await claimAddress(t, user, method.key, signInName, 'sign_in_name')
+      await claimAddress(t, user, method.key, input.email, 'email')
       const rows = await t`insert into sign_in_identity ${t({
         id: newIdentityId(),
         person_id: user,
@@ -451,14 +526,18 @@ export async function inviteGoogle(user: string, email: string, actor: string): 
     where method = ${method.key} and subject is null and pending_email = ${pending} and person_id = ${user} and ended_at is null`
   if (same) return { ...(same as unknown as Identity), created: false }
   const [row] = await guarded(
-    (t) => t`insert into sign_in_identity ${t({
-      id: newIdentityId(),
-      person_id: user,
-      method: method.key,
-      subject: null,
-      pending_email: pending,
-      linked_by: actor,
-    })} returning ${identityFields()}`,
+    async (t) => {
+      // #1266: an address another person has is not this person's to invite.
+      await claimAddress(t, user, method.key, address, 'pending_email')
+      return t`insert into sign_in_identity ${t({
+        id: newIdentityId(),
+        person_id: user,
+        method: method.key,
+        subject: null,
+        pending_email: pending,
+        linked_by: actor,
+      })} returning ${identityFields()}`
+    },
     () => clash(method, { pending_email: pending }),
   )
   await auditIdentity(actor, 'invited', user, method.key, String(row.id))
@@ -483,6 +562,15 @@ export async function updateIdentity(
       const signInName =
         change.sign_in_name !== undefined ? (change.sign_in_name == null ? null : String(change.sign_in_name).trim() || null) : (locked.sign_in_name as string | null)
       const moving = change.person_id !== undefined && change.person_id !== locked.person_id
+      // #1266: a rename or a move may not hand this person an address that is someone else's.
+      if (moving || signInName !== (locked.sign_in_name ?? null)) {
+        const holder = moving ? change.person_id! : String(locked.person_id)
+        const addresses: [string | null, 'sign_in_name' | 'email' | 'pending_email'][] = moving
+          ? [[signInName, 'sign_in_name'], [locked.email as string | null, 'email'], [locked.pending_email as string | null, 'pending_email']]
+          : [[signInName, 'sign_in_name']]
+        for (const [address, as] of addresses)
+          await claimAddress(t, holder, String(locked.method), address, as, { identity: id })
+      }
       if (moving) {
         // person-resolution D4/D5: a move keeps who held it until when — the
         // old link ends (`moved`) and a new one starts for the new holder;

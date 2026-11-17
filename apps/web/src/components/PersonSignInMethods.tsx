@@ -6,6 +6,7 @@ import { useIsSystemManager } from '../lib/session'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { Button, Card, Select, TextInput } from '@featherbase/shop-floor'
 import { PrincipalLink, principalLabel, usePrincipalNameState } from '../lib/people'
+import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
 
 // person-identities (#275, review B-M4): on a Person's form, a System Manager
 // sees how that person signs in — password, linked outside accounts, pending
@@ -212,7 +213,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     add.mutate({
-      body: { method: String(f.get('method')), subject: String(f.get('subject')).trim(), sign_in_name: String(f.get('sign_in_name')).trim() },
+      body: { method: String(f.get('method')), subject: String(f.get('link_record_number')).trim(), sign_in_name: String(f.get('link_login_id')).trim() },
       form: e.currentTarget,
     })
   }
@@ -220,7 +221,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     add.mutate({
-      body: { method: google!.key, email: String(f.get('email')).trim(), send_invitation_email: f.get('send_invitation_email') === 'on' },
+      body: { method: google!.key, email: String(f.get('invite_address')).trim(), send_invitation_email: f.get('send_invitation_email') === 'on' },
       form: e.currentTarget,
     })
   }
@@ -320,25 +321,27 @@ export function PersonSignInMethods({ user }: { user: string }) {
         )}
       </ul>
       {delegated.length > 0 && (
-        <form className="mt-3 space-y-2" onSubmit={onLink} data-testid="link-delegated-form">
+        <form className="mt-3 space-y-2" onSubmit={onLink} data-testid="link-delegated-form" {...NO_AUTOFILL_FORM}>
           <Select name="method" aria-label="Service" defaultValue={delegated[0].key}>
             {delegated.map((m) => (
               <option key={m.key} value={m.key}>{m.label}</option>
             ))}
           </Select>
-          <TextInput name="subject" aria-label="Record number at the service" placeholder="Record number at the service" required />
-          <TextInput name="sign_in_name" aria-label="Login ID at the service" placeholder="Login ID at the service" />
+          <TextInput name="link_record_number" aria-label="Record number at the service" placeholder="Record number at the service" required {...NO_AUTOFILL_FIELD} />
+          <TextInput name="link_login_id" aria-label="Login ID at the service" placeholder="Login ID at the service" {...NO_AUTOFILL_FIELD} />
           <Button type="submit" block>Link</Button>
         </form>
       )}
       {/* Shown once the Person is loaded, so the starting address never
           replaces what the administrator has begun to type. */}
       {google && data && (
-        <form className="mt-3 space-y-2" onSubmit={onInvite} data-testid="invite-google-form">
+        <form className="mt-3 space-y-2" onSubmit={onInvite} data-testid="invite-google-form" {...NO_AUTOFILL_FORM}>
           <TextInput
             key={ownAddress}
-            name="email"
-            type="email"
+            name="invite_address"
+            type="text"
+            inputMode="email"
+            {...NO_AUTOFILL_FIELD}
             aria-label="Google address to invite"
             placeholder="Google address to invite"
             defaultValue={ownAddress}

@@ -26,3 +26,11 @@
 @supports not selector(::-webkit-scrollbar) {
   .featherbase-scroll { scrollbar-width: auto; scrollbar-color: var(--color-border-control) var(--color-subtle); }
 }
+
+/* #1265: the command bar's progress line runs while the search does; under
+   reduced motion it is hidden and the "Searching…" words stay. */
+@keyframes search-progress-run {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+.search-progress-run { animation: search-progress-run 1.2s ease-in-out infinite; }

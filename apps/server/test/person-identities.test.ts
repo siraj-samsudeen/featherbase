@@ -344,7 +344,7 @@ describe('linked identity validation and lifecycle through the public APIs', () 
     await admin.post(`/api/people/${owner}/identities`, { method: 'google', subject: 'held-subject' })
     await sql`update sign_in_method set label = '' where row_id = 'google'`
     await expectApiError(admin.post(`/api/people/${other}/identities`, { method: 'google', subject: 'held-subject' }), {
-      status: 409, type: 'ConflictError', message: `409 ConflictError: This google ID is already linked to ${owner}`,
+      status: 409, type: 'ConflictError', message: `409 ConflictError: This google ID is already linked to Unnamed person`,
     })
   })
 
@@ -376,7 +376,7 @@ describe('linked identity validation and lifecycle through the public APIs', () 
     await expectApiError(admin.post(`/api/people/${other}/identities`, {
       method: 'google', email: 'STAFF@example.com', send_invitation_email: false,
     }), {
-      status: 409, type: 'ConflictError', message: `409 ConflictError: This invited address is already linked to ${owner}`,
+      status: 409, type: 'ConflictError', message: `409 ConflictError: This invited address is already linked to Unnamed person`,
       fields: { clash: 'invite', identity: first.id, person: owner },
     })
     expect(await getIdentity(first.id)).toEqual(original)
@@ -414,7 +414,7 @@ describe('linked identity validation and lifecycle through the public APIs', () 
     const originals = await Promise.all([getIdentity(first.id), getIdentity(second.id)])
     for (const change of [{ sign_in_name: 'HELD.NAME' }, { person_id: owner, sign_in_name: 'HELD.NAME' }]) {
       await expectApiError(patchDoc(admin, `/api/identities/${second.id}`, change), {
-        status: 409, type: 'ConflictError', message: `409 ConflictError: This sign-in name is already linked to ${owner}`,
+        status: 409, type: 'ConflictError', message: `409 ConflictError: This sign-in name is already linked to Unnamed person`,
         fields: { clash: 'sign_in_name', identity: first.id, person: owner },
       })
       expect(await listIdentities(owner, { includeEnded: true })).toEqual([originals[0]])

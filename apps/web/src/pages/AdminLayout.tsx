@@ -25,7 +25,7 @@ import { useHomePages } from '../lib/home-pages'
 import { useCapabilities, useShellKind } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
-import { searchHitKind } from '../lib/search-hit'
+import { useStreamedSearch, type SearchHit } from '../lib/search-stream'
 import { ActionDisclosure } from '../components/ActionDisclosure'
 import { TopBar } from '../components/TopBar'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
@@ -44,13 +44,10 @@ import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsR
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
 
-interface SearchHit {
-  table: string
-  row_id: string
-  title: string
-  kind_label?: string
-}
 
+
+/** #1265: the most record rows the bar shows. */
+const RECORD_CAP = 15
 
 // #101 Phase 3: recorded actions also stream to the server's user_event log
 // (batched; a beacon carries the final batch through unload). The sink is
@@ -364,12 +361,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     const t = setTimeout(() => setDebounced(search.trim()), 150)
     return () => clearTimeout(t)
   }, [search])
-  const docHits = useQuery({
-    queryKey: ['awesomebar', debounced],
-    enabled: debounced.length > 0,
-    queryFn: () =>
-      api.get<{ results: SearchHit[] }>(`/api/search?q=${encodeURIComponent(debounced)}`),
-  })
+  // #1265: the record search streams group by group; a newer query aborts the older.
+  const streamed = useStreamedSearch(debounced)
 
   // #101: with the bar focused and empty, the dropdown shows Recent (pure
   // recency) and Frequent (frecency) groups; while typing it offers matching
@@ -377,7 +370,28 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   const trimmed = search.trim()
   // A resolved previous query remains cached during the typing debounce;
   // it is not a result of the text currently in the input.
-  const recordHits = trimmed === debounced ? docHits.data?.results ?? [] : []
+  const current = trimmed !== '' && trimmed === debounced && streamed.query === trimmed
+  // At most RECORD_CAP rows, taken in group order (ordinary Tables before
+  // registries), whatever order the groups answered in.
+  let room = RECORD_CAP
+  const recordGroups = (current ? streamed.groups : []).map((g) => {
+    if (!g.hits) return g
+    const hits = g.hits.slice(0, room)
+    room -= hits.length
+    return { ...g, hits }
+  })
+  const recordHits: (SearchHit & { label: string })[] = recordGroups.flatMap((g) => (g.hits ?? []).map((h) => ({ ...h, label: g.label })))
+  // Searching from the first keystroke until every group has answered.
+  const searching = trimmed !== '' && !(current && streamed.done)
+  const pendingGroups = recordGroups.filter((g) => g.hits === undefined)
+  // #1265: after 1.5s the wait is named, group by group.
+  const [slowFor, setSlowFor] = useState('')
+  useEffect(() => {
+    if (!searching) return
+    const timer = setTimeout(() => setSlowFor(trimmed), 1500)
+    return () => clearTimeout(timer)
+  }, [searching, trimmed])
+  const slow = searching && slowFor === trimmed
   const showRecents = Boolean(barFocused && trimmed === '' && historyReady)
   // #898: the command bar and the sidebar offer only rows that still exist.
   const remembered = historyReady && user ? [...recentActions(user.row_id, 20), ...frequentActions(user.row_id, 12)] : []
@@ -515,6 +529,9 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     search.trim().length > 1
       ? commands.filter((c) => c.label.toLowerCase().includes(search.trim().toLowerCase()))
       : []
+  // #1265: once every group has answered and nothing anywhere matched, say so.
+  const noMatch = current && streamed.done && !streamed.failed && recordHits.length === 0 &&
+    pageHits.length === 0 && commandHits.length === 0 && suggestions.length === 0
 
   // #1253: the command bar, opened from the sidebar's field or ⌘K as a wide box
   // in the middle of the screen.
@@ -586,6 +603,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
             pageHits.length > 0 ||
             commandHits.length > 0 ||
             recordHits.length > 0 ||
+            searching || noMatch || (current && streamed.failed) ||
             (showRecents && pick.length > 0) ||
             searchChips.length > 0) && (
             <div
@@ -596,6 +614,30 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
               data-testid="awesomebar-results"
               onMouseDown={(e) => e.preventDefault()}
             >
+              {/* #1265: the search shows its work: a line that runs while it
+                  searches (a still label under reduced motion), and what it
+                  is waiting for once that takes a while. */}
+              {searching && (
+                <div className="px-3 pb-1 pt-0.5" data-testid="search-progress" role="status">
+                  <div aria-hidden className="relative mb-1 h-0.5 overflow-hidden rounded-full bg-border motion-reduce:hidden">
+                    <span className="search-progress-run absolute inset-y-0 left-0 w-1/3 rounded-full bg-action" />
+                  </div>
+                  <p className="text-xs text-ink-muted" data-testid="search-progress-text">
+                    {slow && pendingGroups.length
+                      ? `Still searching ${pendingGroups.slice(0, 3).map((g) => g.label).join(', ')}${pendingGroups.length > 3 ? ` and ${pendingGroups.length - 3} more` : ''}…`
+                      : 'Searching people, records and tables…'}
+                  </p>
+                </div>
+              )}
+              {noMatch && (
+                <div className="px-3 py-2 text-sm" data-testid="search-no-match">
+                  <p className="text-ink">No matches for “{trimmed}”</p>
+                  <p className="text-xs text-ink-muted">Try part of the name, or a code.</p>
+                </div>
+              )}
+              {current && streamed.failed && !noMatch && (
+                <p className="px-3 py-2 text-xs text-negative" data-testid="search-failed">The search stopped before it finished. Type again to retry.</p>
+              )}
               {/* #101: empty-bar recents — mousedown is swallowed so the
                   input keeps focus until the click lands. */}
               {showRecents && pick.length > 0 && (
@@ -710,26 +752,33 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                   <span className="text-action">+</span> New {d.label} row
                 </Link>
               ))}
-              {/* UI-014: row hits */}
-              {recordHits.length > 0 && (
+              {/* UI-014: row hits. #1265: by group as each Table answers; a group
+                  still on its way shows two quiet rows (the first three only),
+                  one with nothing found is gone. The name, then the Table. */}
+              {(recordHits.length > 0 || pendingGroups.length > 0) && (
                 <h2 data-testid="awesomebar-records-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Records</h2>
               )}
-              {recordHits.map((h) => (
-                <button
-                  key={`${h.table}/${h.row_id}`}
-                  {...resultProps(`record-${h.table}/${h.row_id}`)}
-                  type="button"
-                  onClick={() => openDoc(h)}
-                  data-testid="awesomebar-doc"
-                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
-                >
-                  {h.title}
-                  {h.title !== h.row_id && (
-                    <span className="ml-2 text-xs text-ink-subtle">{h.row_id}</span>
-                  )}
-                  <span className="ml-2 text-xs text-ink-muted">{searchHitKind(h)}</span>
-                </button>
-              ))}
+              {recordGroups.map((g) => g.hits === undefined
+                ? pendingGroups.indexOf(g) < 3 && (
+                  <div key={`pending-${g.table}`} aria-hidden data-testid="search-group-pending" className="space-y-1.5 px-3 py-1.5">
+                    <div className="h-3 w-2/3 rounded bg-border/70" />
+                    <div className="h-3 w-1/2 rounded bg-border/50" />
+                  </div>
+                )
+                : g.hits.map((h) => (
+                  <button
+                    key={`${h.table}/${h.row_id}`}
+                    {...resultProps(`record-${h.table}/${h.row_id}`)}
+                    type="button"
+                    onClick={() => openDoc(h)}
+                    data-testid="awesomebar-doc"
+                    className="flex min-h-control w-full items-center gap-2 px-3 text-left text-sm text-ink hover:bg-action-tint"
+                  >
+                    <TableTile name={g.label} />
+                    <span className="min-w-0 flex-1 truncate">{h.title}</span>
+                    <span className="shrink-0 text-xs text-ink-muted" data-testid="awesomebar-doc-table">{h.kind_label ?? g.label}</span>
+                  </button>
+                )))}
             </div>
           )}
         </form>

@@ -1,14 +1,14 @@
 import { describe, expect } from 'vitest'
 import { resolve } from 'node:path'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import { globalSearch, registryLabel, type SearchHit } from '../src/search'
+import { registryLabel, streamSearch, type SearchHit } from '../src/search'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { discoverPackages } from '../src/runtime-packages'
-import { createUserWithRole, expectStatus, grantRole, makePerson, makeTable, type TableRef } from './fixtures'
+import { createUserWithRole, expectStatus, grantRole, makePerson, makeTable, searchHits, searchLines, type TableRef } from './fixtures'
 
 const search = (client: TestClient, query: string) =>
-  client.get<{ results: SearchHit[] }>(`/api/search?q=${encodeURIComponent(query)}`)
+  searchHits<SearchHit>(client, query).then((results: SearchHit[]) => ({ results }))
 
 async function setupSensitiveTitle(
   admin: TestClient,
@@ -75,9 +75,10 @@ describe('global search permissions', () => {
     const table = await makeTable(admin, { name: 'Gs Broken Scope', columns: ['title'] })
     const reader = await createUserWithRole(admin, createUser, { role: 'Gs Broken Scope Reader', table: table.name, can_read: true })
     await sql`drop table data_scope`
-    const response = await reader.fetch('/api/search?q=anything')
-    await expectStatus(response, 500)
-    expect(await response.json()).toMatchObject({ error: { type: 'InternalError' } })
+    // #1265: the failure comes after the stream has started: it ends with an error line, never "done".
+    const lines = await searchLines(reader, 'anything')
+    expect(lines.at(-1)).toEqual({ error: 'The search stopped before it finished' })
+    expect(lines).not.toContainEqual({ done: true })
   })
 
   test('own-row limits protect both ID and title matches', async ({ admin, createUser }) => {
@@ -292,15 +293,17 @@ describe('a connected table is invisible to search', () => {
 })
 
 describe('search shows a handful of best matches, not everything', () => {
-  test('at most three rows per Table, and fifteen in all', async ({ admin }) => {
+  // #1265 (Codex review): the overall fifteen is the bar's to show, in group
+  // order (web test/search-progress.test.tsx); the server keeps three per Table.
+  test('at most three rows per Table, every matching Table answering', async ({ admin }) => {
     const names = ['Gs Cap A', 'Gs Cap B', 'Gs Cap C', 'Gs Cap D', 'Gs Cap E', 'Gs Cap F']
     for (const name of names) {
       const t = await makeTable(admin, { name, id_pattern: 'prompt', columns: ['city'] })
       for (let i = 1; i <= 5; i++) await admin.post(t.url, { row_id: `zq-cap-${name.slice(-1)}-${i}`, city: 'x' })
     }
     const hits = (await search(admin, 'zq-cap')).results
-    // Six Tables hold five matches each: three apiece would be eighteen, so the overall cap bites.
-    expect(hits).toHaveLength(15)
+    // Six Tables hold five matches each: three apiece is eighteen.
+    expect(hits).toHaveLength(18)
     const perTable = new Map<string, number>()
     for (const h of hits) perTable.set(h.table, (perTable.get(h.table) ?? 0) + 1)
     expect(Math.max(...perTable.values())).toBe(3)
@@ -360,6 +363,8 @@ describe('global search while an app is unavailable', () => {
 
 describe('an empty search', () => {
   test('of only spaces finds nothing', async () => {
-    expect(await globalSearch('   ', 'Administrator')).toEqual([])
+    const lines = []
+    for await (const line of streamSearch('   ', 'Administrator')) lines.push(line)
+    expect(lines).toEqual([{ groups: [] }, { done: true }])
   })
 })

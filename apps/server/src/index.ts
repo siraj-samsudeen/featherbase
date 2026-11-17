@@ -37,7 +37,7 @@ import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
 import { saveUpload, signFileUrl } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
-import { globalSearch } from './search'
+import { streamSearch } from './search'
 import { tableRowCounts } from './table-counts'
 import { commandDestinations } from './command-destinations'
 import {
@@ -65,6 +65,7 @@ import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker, stopWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
+import { ACCOUNTS_PATH, accountRoutes } from './browser-accounts'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
@@ -92,7 +93,7 @@ import { discoverAppLibrary } from './app-library'
 import { appPathsFromEnvironment, deliverApp, deliveryKeyMatches } from './app-delivery'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
-import { appOperation, withAppClientVersion, withInstalledAppVersions } from './app-lifecycle'
+import { appOperation, appOperationApart, withAppClientVersion, withInstalledAppVersions } from './app-lifecycle'
 import { agentMark } from './agent-context'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -309,6 +310,10 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.json(await withLanding(c, session), 201)
 })
+
+// #1255: the browser's signed-in accounts (browser-accounts.ts). Public: the
+// routes read only the browser's own cookies.
+app.route(ACCOUNTS_PATH, accountRoutes(withLanding))
 
 // The SPA's sign-out. Public — it must clear the sid cookie even when the
 // bearer token is already gone or expired, otherwise the cookie survives as
@@ -1888,9 +1893,50 @@ function listArgsFromQuery(q: Record<string, string>) {
 }
 
 // UI-014: awesomebar global search across readable Tables.
+// #1265: the search answers group by group, one JSON line each (groups, then
+// each Table as it finishes, then done), so the bar can show what is still
+// coming. A failure after the first line ends the stream with an error line.
 app.get('/api/search', async (c) => {
   const q = c.req.query('q') ?? ''
-  return c.json({ results: await globalSearch(q, who(c)) })
+  const headers = { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' }
+  const abort = new AbortController()
+  c.req.raw.signal?.addEventListener('abort', () => abort.abort())
+  const events = streamSearch(q, who(c), abort.signal)
+  // While viewing as someone the answer is gathered whole, inside the request,
+  // so the View as check made as it ends still decides whether it is sent.
+  if (c.get('viewingAs')) {
+    const lines: string[] = []
+    for await (const event of events) lines.push(JSON.stringify(event))
+    return c.body(lines.join('\n') + '\n', 200, headers)
+  }
+  // The first line is read here, so a refusal before anything is sent is an ordinary error.
+  const first = await events.next()
+  const encoder = new TextEncoder()
+  let closed = false
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (value: unknown) => { if (!closed) controller.enqueue(encoder.encode(JSON.stringify(value) + '\n')) }
+      // The rest outlives this handler, so it holds its own lifecycle lock:
+      // an app upgrade waits for it, as it waits for any read.
+      void appOperationApart(async () => {
+        try {
+          if (!first.done) send(first.value)
+          for await (const event of events) send(event)
+        } catch (error) {
+          console.error(JSON.stringify({ level: 'error', event: 'search_stream_error', message: String((error as Error)?.message ?? error) }))
+          send({ error: 'The search stopped before it finished' })
+        } finally {
+          if (!closed) { closed = true; controller.close() }
+        }
+      })
+    },
+    async cancel() {
+      closed = true
+      abort.abort()
+      await events.return(undefined)
+    },
+  })
+  return c.body(body, 200, headers)
 })
 
 // admin-lists 11: how many rows each Table holds, for All Tables.

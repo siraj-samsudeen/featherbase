@@ -5,12 +5,11 @@
 import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { expectApiError, expectRefused, expectStatus, grantRole, makeTable, patchDoc, tableRef } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole, makeTable, patchDoc, searchHits, tableRef } from './fixtures'
 import { createTable, storedRelation, updateTable } from '../src/table-engine'
 import { sql } from '../src/db'
 import { getBacklinks, invalidateMeta } from '../src/meta'
 import { isInstalled, uninstallApp } from '../src/apps'
-import { globalSearch } from '../src/search'
 
 const SITE = 'Vw Site'
 const STORE = 'Vw Store'
@@ -139,7 +138,7 @@ describe('#1021: a view reads as its base, never wider', () => {
     await expectApiError(outsider.get(store.rowUrl('S-1')), refused)
     await expectApiError(outsider.get(`${store.url}:summary`), refused)
     expect(await outsider.post('/api/row_titles', { rows: [{ table: STORE, row_id: 'S-1' }] })).toEqual({ titles: [] })
-    expect((await globalSearch('Nagar', outsider.user!)).filter((h) => (h as { table?: string }).table === STORE)).toEqual([])
+    expect((await searchHits(outsider, 'Nagar')).filter((h) => h.table === STORE)).toEqual([])
     // The picker reads the view's list, so it offers nothing either.
     await expectApiError(outsider.get(store.listUrl({ fields: ['row_id', 'site_name'], limit_page_length: 10 })), refused)
     const destinations = await outsider.get<{ tables: { row_id: string }[] }>('/api/command_destinations')
