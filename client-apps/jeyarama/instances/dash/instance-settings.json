@@ -168,7 +168,7 @@
           },
           {
             "row_id": "dash.linked_tables",
-            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\"]"
+            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\", \"Designation\"]"
           }
         ]
       }
@@ -194,7 +194,7 @@
           },
           {
             "row_id": "dash.linked_tables",
-            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\"]"
+            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\", \"Designation\"]"
           }
         ]
       }

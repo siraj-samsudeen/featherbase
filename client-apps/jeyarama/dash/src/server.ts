@@ -13,8 +13,10 @@ import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
-import { VIEW_AS_TESTER, viewAsPeople } from './view-as-people.ts'
+import { viewAsPeople } from './view-as-people.ts'
 import { describePeople } from './people-describe.ts'
+import { DASH_ROLES, offeredByPlaces, openableByReach, opensDashFor } from './report-eligibility.ts'
+import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, removeRole } from './business-roles-server.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -79,8 +81,11 @@ export function setEmbedFetch(f: typeof fetch | null) {
 
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
+/** #1218: the Dash Tables whose records open on a page only a company-wide manager may open. */
+const MANAGERS_PAGES = new Set(['dash.business_role', 'dash.report_bundle'])
+
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
-export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager', TEAM_MANAGER, VIEW_AS_TESTER])
+export { DASH_ROLES }
 
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
 
@@ -96,7 +101,8 @@ export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
   if (!given.size) return []
   const rows = await ctx.documents.list('dash.report', { fields: REPORT_FIELDS, order_by: 'report_name asc', limit_page_length: 200 })
   const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal), pickers_in_dive: checked(row.pickers_in_dive) }) as unknown as ReportRecord).filter(report => given.has(report.report_key))
-  return (await reachesSomething(ctx)) ? reports : reports.filter(report => report.filter_shape === 'No filter')
+  const reaches = await reachesSomething(ctx)
+  return reports.filter(report => openableByReach(report.filter_shape, reaches))
 }
 
 /**
@@ -107,8 +113,7 @@ export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
 async function offeredReports(ctx: ScopedContext): Promise<ReportRecord[]> {
   const reports = await reportsFor(ctx)
   const places = reports.some(report => report.filter_shape === 'Whole stores') ? await placesHeld(ctx) : []
-  const wholeStore = places.some(place => !place.filters.subcategory)
-  return reports.filter(report => report.filter_shape !== 'Whole stores' || wholeStore)
+  return reports.filter(report => offeredByPlaces(report.filter_shape, places))
 }
 
 /** The reader's places: a person_scope read's, else worked out from the core Tables. Unreadable means none. */
@@ -328,6 +333,11 @@ export const actions = {
   add_to_bundle: (context: AccessContext) => addToBundle(context),
   remove_from_bundle: (context: AccessContext) => removeFromBundle(context),
   add_report: (context: AccessContext) => addReport(context),
+  // #1218: business roles in shadow; they change no one's access.
+  give_role: (context: AccessContext) => giveRole(context),
+  remove_role: (context: AccessContext) => removeRole(context),
+  map_title: (context: AccessContext) => mapTitle(context),
+  add_starting_roles: (context: AccessContext) => addStartingRoles(context),
 }
 
 export const reads = {
@@ -336,6 +346,21 @@ export const reads = {
   ...storeReads,
   ...buyerSectionReads,
   ...coverageReads,
+
+  /**
+   * Which records this viewer may open on Dash's own pages (record-link.tsx): people, departments and sections by
+   * coverage.ts's rules; #1218: a report they are offered opens as itself, and a business role or a bundle on the
+   * pages that show them, which only a company-wide manager may open.
+   */
+  async dash_pages_open(context: ReadContext) {
+    const answers = await coverageReads.dash_pages_open(context as never) as boolean[]
+    const manager = managesAccess(context as AccessContext)
+    const offered = new Set((await offeredReports(context as ScopedContext)).map(report => report.report_key))
+    return answers.map((answer, i) => {
+      const { table, id } = (context.payload as { refs: { table: unknown; id: unknown }[] }).refs[i]
+      return table === 'dash.report' ? offered.has(String(id)) : MANAGERS_PAGES.has(String(table)) ? manager : answer
+    })
+  },
 
   /** The signed-in person, as the platform knows them. */
   me({ user }: ReadContext) {
@@ -349,13 +374,21 @@ export const reads = {
    */
   async can_open(context: ReadContext) {
     const ctx = context as ScopedContext
-    return managesAccess(ctx) || (ctx.roles ?? []).some(role => DASH_ROLES.has(role)) || (await offeredReports(ctx)).length > 0
+    // Asked first without reports: a Dash role opens it with no read of reach.
+    return opensDashFor(ctx.roles ?? [], 0) || opensDashFor(ctx.roles ?? [], (await offeredReports(ctx)).length)
   },
 
   /** Whether this person manages report access, company-wide or for their team (#1217), for the sidebar's link. */
   manages_access(context: ReadContext) {
     return managesAccess(context as AccessContext) || managesTeamAccess(context as AccessContext)
   },
+
+  /** #1218: whether this person sees the business roles pages (company-wide managers only), for the sidebar's links. */
+  manages_roles: (context: ReadContext) => managesAccess(context as AccessContext),
+  /** #1218, in shadow: the Business Roles page, Explain a person, and Who would gain or lose access. Company-wide managers only. */
+  business_roles: (context: ReadContext) => businessRoles(context as AccessContext),
+  explain_person: (context: ReadContext) => explainPerson(context as AccessContext),
+  access_changes: (context: ReadContext) => accessChanges(context as AccessContext),
 
   /** The Report access page (#1046). Managers only. */
   access_page: (context: ReadContext) => accessPage(withReach(context as AccessContext)),

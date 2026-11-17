@@ -9,7 +9,7 @@ import { test as pgTest } from '../pg-test'
 import { sql } from '../../src/db'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
-import { APP_DIR, TEAM_MANAGER, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity, revertTeamReportGiving, withoutTeamManager, revertViewAs, VIEW_AS_TESTER, withoutViewAsTester } from './helpers'
+import { APP_DIR, TEAM_MANAGER, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity, revertTeamReportGiving, withoutTeamManager, revertViewAs, VIEW_AS_TESTER, withoutViewAsTester, withoutBusinessRoles, SHADOW_TABLES } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -65,16 +65,18 @@ describe("upgrading production's Dash 0.13.1", () => {
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; permissions: unknown; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
       // #1217's role and grants come with this version too; team-report-upgrade.test.ts checks them.
-      expect([withoutViewAsTester(withoutTeamManager(plan.permissions as never[])), plan.migrations.map(m => m.id)]).toEqual([[
+      expect([withoutBusinessRoles(withoutViewAsTester(withoutTeamManager(plan.permissions as never[]))), plan.migrations.map(m => m.id)]).toEqual([[
         { withdraw: { table: 'dash.report', role: MANAGER, operations: { read: '@basic' } } },
         { grant: { table: 'dash.report', role: MANAGER, operations: { read: '@basic', create: '@basic' } } }],
-      ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves', 'switcher_summary', 'sidebar_icon_rail', 'view_as', 'waiting_reads_fast', 'holders_read_whole', 'deciders_read_together', 'mde_review', 'people_describe']])
+      ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves', 'switcher_summary', 'sidebar_icon_rail', 'view_as', 'waiting_reads_fast', 'holders_read_whole', 'deciders_read_together', 'mde_review', 'people_describe', 'business_roles_shadow']])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()
       await admin.post('/api/activate_app_upgrade', { name: 'dash', version: VERSION })
       expect((await sql`select operation from permission where role = ${MANAGER} and ref_table = 'dash.report' order by operation`).map(r => r.operation)).toEqual(['create', 'read'])
-      expect((await sql`select operation from activity_log where operation like 'app_grant_added dash%' and operation not like ${`%${TEAM_MANAGER}%`} and operation not like ${`%${VIEW_AS_TESTER}%`}`).map(r => r.operation))
+      expect((await sql`select operation from activity_log where operation like 'app_grant_added dash%' and operation not like ${`%${TEAM_MANAGER}%`} and operation not like ${`%${VIEW_AS_TESTER}%`}`).map(r => r.operation)
+        // #1218's grants on its four Tables come with this version too; business-roles.test.ts checks them.
+        .filter(operation => !SHADOW_TABLES.some(table => operation.endsWith(` on ${table}`))))
         .toEqual([`app_grant_added dash@${VERSION}: ${MANAGER} read, create on dash.report`])
 
       await createCoreTables(admin)
