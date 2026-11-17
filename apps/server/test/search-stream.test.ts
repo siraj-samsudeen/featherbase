@@ -66,3 +66,25 @@ test('rows of machine-made keys with an empty title neither show nor crowd out a
   const group = lines.find((l) => l.table === 'Ss Hash Titled') as { hits: { title: string }[] }
   expect(group.hits.map((h) => h.title)).toEqual(['Named qq row'])
 })
+
+test('a client that goes away while the search waits on its Tables ends it at once', async ({ admin }) => {
+  const { streamSearch } = await import('../src/search')
+  const abort = new AbortController()
+  const events = streamSearch('a', admin.user!, abort.signal)
+  await events.next()
+  // next() starts the Table searches and waits for one; the abort lands during that wait.
+  const waiting = events.next()
+  abort.abort()
+  expect(await waiting).toEqual({ done: true, value: undefined })
+})
+
+test('a client that reads the first line and leaves stops the stream', async ({ admin }) => {
+  const abort = new AbortController()
+  const res = await admin.fetch('/api/search?q=a', { signal: abort.signal })
+  const reader = res.body!.getReader()
+  const first = await reader.read()
+  expect(new TextDecoder().decode(first.value)).toContain('"groups"')
+  abort.abort()
+  await reader.cancel()
+  await new Promise((done) => setTimeout(done, 100))
+})

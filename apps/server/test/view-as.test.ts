@@ -119,6 +119,18 @@ describe('View as on the platform', () => {
     expect(await sql`select count(*)::int as n from user_event`).toEqual(events)
   })
 
+  // #1265: a search made while viewing as someone is gathered whole inside the request,
+  // so the View as check made as the request ends still decides whether it is sent.
+  test('a search while viewing as someone comes whole, not streamed', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await status(start(tester, person.user)))[0]).toBe(200)
+    const res = await tester.fetch('/api/search?q=a')
+    expect(res.status).toBe(200)
+    const lines = (await res.text()).split('\n').filter(Boolean).map((l) => JSON.parse(l))
+    expect(lines[0]).toHaveProperty('groups')
+    expect(lines.at(-1)).toEqual({ done: true })
+  })
+
   test('the picker shows what the app says about each person, never an email, and never yourself or a System Manager', async ({ admin, createUser }) => {
     const { tester, person, manager } = await install(admin, createUser)
     ;(globalThis as { __viewAsPeople?: string[] }).__viewAsPeople = [person.user!, tester.user!, manager.user!]

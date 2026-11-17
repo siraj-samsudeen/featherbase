@@ -106,15 +106,13 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   try {
     launch()
     while (running || finished.length) {
-      if (failure) throw failure
-      if (signal?.aborted || stopped) return
+      // Every search started, failed or done, wakes this; so does an abort.
       if (!finished.length) await new Promise<void>((resolve) => { wake = resolve })
       wake = null
       if (failure) throw failure
       if (signal?.aborted) return
       while (finished.length) yield finished.shift()!
     }
-    if (failure) throw failure
     if (!signal?.aborted) yield { done: true }
   } finally {
     stopped = true
