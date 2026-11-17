@@ -281,8 +281,9 @@ test("a form link's list opened before its Table's details arrive lists names on
   await details.asked
   fireEvent.focus(document.querySelector<HTMLInputElement>('[data-field=region]')!)
   const list = await screen.findByTestId('link-options-region')
-  // Until then the rows can only be listed by their ids.
-  await waitFor(() => expect(options(list)).toEqual(expect.arrayContaining(['r-k'])))
+  // Until then it says it is loading, and never lists the rows by their ids.
+  expect(within(list).getByTestId('link-options-loading')).toBeInTheDocument()
+  expect(within(list).queryAllByTestId('link-option')).toHaveLength(0)
   await act(async () => { details.release() })
   await waitFor(() => expect(options(screen.getByTestId('link-options-region'))).toEqual(['Andhra', 'Kerala', 'Tamil Nadu']))
 })
