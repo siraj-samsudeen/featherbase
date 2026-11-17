@@ -9,6 +9,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, vi } from 'vitest'
 import { DAY_MS, SHORTCUT_SETTINGS } from 'shared'
+import { fmtDay } from '@featherbase/shop-floor'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect, renderApp } from '../pg-test'
 
@@ -80,9 +81,11 @@ describe('keyboard-shortcuts', () => {
     })
   })
 
+  // The spec's dates are an example: the test quiets tips today and expects
+  // them back 30 days on. The server checks the session against the real
+  // clock, so only the page's clock is moved forward, after the quiet.
   scenario('Quieting tips twice', async ({ admin }, step) => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date(2026, 10, 17, 10, 0))
+    const today = Date.now()
     await step('the user quieted tips once before', async () => {
       await seed(admin, { quiets: 1 })
       await openAdmin(admin)
@@ -93,8 +96,10 @@ describe('keyboard-shortcuts', () => {
       await userEvent.click(within(tip).getByRole('button', { name: 'Quiet Tips For A Month' }))
     })
     await step('no tip appears until 17-Dec-2026', async () => {
-      expect(await screen.findByText('Tips are quiet until 17-Dec-2026. They come back after that.')).toBeInTheDocument()
-      vi.setSystemTime(new Date(2026, 11, 16, 10, 0))
+      const until = fmtDay(new Date(today + 30 * DAY_MS))
+      expect(await screen.findByText(`Tips are quiet until ${until}. They come back after that.`)).toBeInTheDocument()
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(today + 29 * DAY_MS)
       await clickSidebar(12)
       expect(screen.queryByRole('status', { name: 'Tip' })).toBeNull()
     })

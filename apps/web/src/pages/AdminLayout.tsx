@@ -41,6 +41,7 @@ import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
+import { COMMAND_SHORTCUT_DEF, noteShortcutUse, useShortcut } from '../lib/shortcuts'
 
 interface SearchHit {
   table: string
@@ -236,6 +237,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
+  useShortcut(COMMAND_SHORTCUT_DEF) // #1251
   const commandFormRef = useRef<HTMLFormElement>(null)
   // #1253: the command bar is a box in the middle of the screen, drawn while
   // open; its input takes the focus once it is drawn.
@@ -288,6 +290,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
         setSelection(null)
         searchRef.current?.focus()
         searchRef.current?.select()
+        noteShortcutUse('command', 'key')
         return
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
@@ -532,6 +535,9 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
           <div className="relative">
           <input
             ref={searchRef}
+            data-shortcut-id={COMMAND_SHORTCUT_DEF.id}
+            data-shortcut-key={COMMAND_SHORTCUT_DEF.keys}
+            onMouseDown={(e) => document.activeElement !== e.currentTarget && noteShortcutUse('command', 'mouse', e.currentTarget)}
             value={search}
             onChange={(e) => {
               setSelection(null)

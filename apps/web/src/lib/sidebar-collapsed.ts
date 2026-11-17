@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { noteShortcutUse } from './shortcuts'
 
 // #1227: one sidebar state for every page that has a sidebar — the Admin's own
 // and the shared app sidebar (<featherbase-sidebar>) under any installed app.
@@ -200,7 +201,10 @@ export function listenForSidebarKeys(user: () => string | undefined, target: Doc
     if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'b') return
     if (isEditingText(e.composedPath()[0] ?? e.target) || isDrawerWidth()) return
     e.preventDefault()
-    if (!e.repeat) toggleSidebarCollapsed(user())
+    if (!e.repeat) {
+      toggleSidebarCollapsed(user())
+      noteShortcutUse('sidebar', 'key') // #1251: taught and remembered
+    }
   }
   target.addEventListener('keydown', onKey)
   return () => target.removeEventListener('keydown', onKey)
