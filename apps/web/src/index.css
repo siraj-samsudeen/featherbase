@@ -1,3 +1,28 @@
 @import '@featherbase/shop-floor/styles.css';
 @source '../../../packages/shop-floor/src';
 @source not '../../../packages/shop-floor/src/**/*.stories.tsx';
+
+/* #1248: a sidebar rail's tooltip (lib/sidebar-rail.ts): the row's name, beside it, at once. */
+.featherbase-rail-tip {
+  background: var(--color-ink);
+  color: var(--color-surface);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-scrim) 15%, transparent);
+}
+
+/* #1249: a scroll bar that is always drawn, so a wide table never looks cut
+   off. Styling the WebKit parts turns off macOS's hide-until-you-scroll bars in
+   Chromium and Safari; Firefox takes the standard properties. */
+.featherbase-scroll::-webkit-scrollbar { width: 12px; height: 12px; }
+.featherbase-scroll::-webkit-scrollbar-track { background: var(--color-subtle); }
+.featherbase-scroll::-webkit-scrollbar-thumb { background: var(--color-border-control); border: 3px solid var(--color-subtle); border-radius: 999px; }
+.featherbase-scroll::-webkit-scrollbar-thumb:hover { background: var(--color-ink-muted); }
+.featherbase-scroll::-webkit-scrollbar-corner { background: var(--color-subtle); }
+@supports not selector(::-webkit-scrollbar) {
+  .featherbase-scroll { scrollbar-width: auto; scrollbar-color: var(--color-border-control) var(--color-subtle); }
+}

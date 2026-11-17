@@ -26,9 +26,8 @@ export async function hasListMenu(menu: ListMenu, scope: Scope = screen): Promis
   return scope.queryByRole('group', { name: menu }) !== null
 }
 
-/** #1242 (admin-lists 7): the sidebar's "+ New" menu (New table, Import data), opened. */
+/** The owner's review (17-Nov-2026): New Table and Import Data are two links in
+ *  the sidebar's Data group (no "+ New" menu any more). Waits until they show. */
 export async function openSidebarNew(wait?: Wait) {
-  const holder = await screen.findByTestId('sidebar-new', {}, wait)
-  const button = within(holder).getByRole('button', { name: /New/ })
-  if (button.getAttribute('aria-expanded') !== 'true') await userEvent.click(button)
+  await screen.findByTestId('import-data-link', {}, wait)
 }

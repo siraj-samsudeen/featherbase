@@ -24,7 +24,19 @@ import { CreateTicket } from './CreateTicket'
 import { CaseFile, SETTINGS_HREF } from './CaseFile'
 
 /** #1233: a sidebar count; none reads quieter than some. */
-const Count = ({ n }: { n: number }) => <span className={n ? 'count' : 'count zero'}>{n}</span>
+// #1248: a count the shared sidebar shows as a badge on its icon when it is a rail.
+const Count = ({ n }: { n: number }) => <span className={n ? 'count' : 'count zero'} data-sidebar-count>{n}</span>
+
+/** The sidebar's icons (#1248): collapsed to a rail, each view is its icon. */
+const VIEW_ICON: Record<string, string> = {
+  all: 'M3 13h5l1.5 3h5L16 13h5M5 5h14l2 8v6H3v-6z',
+  mine: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 20a8 8 0 0 1 16 0',
+  assigned: 'M10 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M3 20a7 7 0 0 1 12-4.9M16 18l2 2 4-4',
+  types: 'M2 11V3h8l9 9-8 8zM14 3l8 8-6 6M6.5 7h.01',
+}
+const SidebarIcon = ({ name }: { name: string }) => (
+  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={VIEW_ICON[name]} /></svg>
+)
 /** #1233: what an empty view says, to the person it belongs to. "Assigned to me" lists open work only
  *  (its count and its default filter agree), so its empty state speaks of what is still to do. */
 const EMPTY: Record<string, [string, string]> = {
@@ -254,13 +266,16 @@ function App() {
               aria-current={view === key ? 'page' : undefined}
               onClick={() => setView(key)}
             >
+              <SidebarIcon name={key} />
               <span>{name}</span>
               <Count n={everything.filter((ticket) => inView(ticket, key)).length} />
             </button>
           ))}
           {typeKeys.length > 0 && (
-            <div className="sidebar-heading" id="ticket-types-heading">
-              Types
+            // #1248: in the rail, Types folds into one icon whose menu lists them.
+            <div className="sidebar-heading" id="ticket-types-heading" data-rail-fold>
+              <SidebarIcon name="types" />
+              <span>Types</span>
             </div>
           )}
           {typeKeys.map((key) => (

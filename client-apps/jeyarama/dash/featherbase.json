@@ -2221,7 +2221,8 @@
       "toVersion": "0.13.17",
       "operations": []
     },
-    {"id": "switcher_summary", "fromVersion": "0.13.17", "toVersion": "0.13.19", "operations": []}
+    {"id": "switcher_summary", "fromVersion": "0.13.17", "toVersion": "0.13.19", "operations": []},
+    {"id": "sidebar_icon_rail", "fromVersion": "0.13.19", "toVersion": "0.13.21", "operations": []}
   ],
   "baseTables": {
     "read": {

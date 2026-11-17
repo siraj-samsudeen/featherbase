@@ -57,7 +57,7 @@ test('someone with a Table but no Home Page is pointed at All tables', async ({ 
   await renderApp('/featherbase/admin', clerk)
   const empty = await screen.findByTestId('admin-index-empty', {}, { timeout: 8000 })
   expect(empty).toHaveTextContent('No Home Pages are visible to you.')
-  expect(within(empty).getByRole('link', { name: 'All tables' })).toHaveAttribute('href', '/featherbase/admin/all-tables')
+  expect(within(empty).getByRole('link', { name: 'All Tables' })).toHaveAttribute('href', '/featherbase/admin/all-tables')
 })
 
 async function noteTable(admin: Parameters<typeof renderApp>[1]) {

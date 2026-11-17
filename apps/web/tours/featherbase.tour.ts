@@ -21,9 +21,8 @@ const n = (x: number) => x.toLocaleString('en-US')
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 async function dropFile(page: Page, name: string, buffer: Buffer): Promise<void> {
-  // #1242 (admin-lists 7): Import data is in the sidebar's "+ New" menu.
-  await page.getByTestId('sidebar-new').getByRole('button', { name: /New/ }).click()
-  await page.getByRole('link', { name: 'Import data' }).click()
+  // The owner's review (17-Nov): Import Data is a link in the sidebar's Data group.
+  await page.getByRole('link', { name: 'Import Data' }).click()
   await expect(page).toHaveURL(/\/admin\/import$/)
   await expect(page.getByTestId('iw-dropzone')).toBeVisible()
   await page.getByTestId('iw-file-input').setInputFiles({ name, mimeType: XLSX_TYPE, buffer })
@@ -55,7 +54,7 @@ const openTree = (page: Page) =>
 
 /** Open a Table from All tables, as someone who doesn't know its address would. */
 async function openTable(page: Page, label: string): Promise<void> {
-  await page.getByRole('link', { name: 'All tables' }).first().click()
+  await page.getByRole('link', { name: 'All Tables' }).first().click()
   await page.getByRole('link', { name: label, exact: true }).first().click()
   await expect(page.getByTestId('list-view')).toBeVisible()
 }

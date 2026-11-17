@@ -692,11 +692,13 @@ test('someone who belongs to no app sees the switcher on the neutral Featherbase
 })
 
 // #1235 item 7 (UI standard §4): the account pages have the shared sidebar, with
-// its Account group, so the bar offers its controls, as on every page with one.
-test('the account pages have the shared sidebar, and the bar its controls', async ({ admin }) => {
+// its Account group; since #1248 its collapse control is its own, as on every page.
+test('the account pages have the shared sidebar, with its own collapse control', async ({ admin }) => {
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   const bar = await settledBar()
-  expect(await within(bar).findByTestId('sidebar-collapse')).toBeInTheDocument()
+  // #1248: the sidebar's own footer carries its collapse control, not the bar.
+  expect(within(screen.getByTestId('account-sidebar')).getByTestId('sidebar-collapse')).toBeInTheDocument()
+  expect(within(bar).queryByTestId('sidebar-collapse')).not.toBeInTheDocument()
   expect(screen.getByTestId('sidebar-group-account')).toBeInTheDocument()
 })

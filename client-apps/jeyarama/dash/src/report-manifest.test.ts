@@ -277,7 +277,9 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['buyer_section_moves', '0.13.16', '0.13.17', 0],
       // #1236: the switcher says what Dash is for.
       ['switcher_summary', '0.13.17', '0.13.19', 0],
+      // #1248: the sidebar's rail shows each report's initials.
+      ['sidebar_icon_rail', '0.13.19', '0.13.21', 0],
     ])
-    expect(pkg.version).toBe('0.13.19')
+    expect(pkg.version).toBe('0.13.21')
   })
 })
