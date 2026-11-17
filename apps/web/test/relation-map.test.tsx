@@ -10,6 +10,7 @@ import { tableHref } from 'shared'
 import { invalidateMeta } from 'server/src/meta'
 import { createUserWithRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
+import { REGION, seedPostings, seedSites } from './relational-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -50,7 +51,90 @@ test('the map shows what a row points to and what points back, with a count', as
   await openMap(admin, 'Rm Customer', 'cust-1')
   const back = await screen.findByTestId('map-group-Rm Order')
   expect(back).toHaveTextContent('2')
-  await waitFor(() => expect(back).toHaveTextContent('via Customer'))
+  // #1218: an order points at a customer by one link only, so the link is not named.
+  await waitFor(() => expect(back).toHaveTextContent('Rm Order'))
+  expect(back).not.toHaveTextContent('via')
+  // An order has a title of its own: it is no link table, so it never reads through.
+  expect(back).not.toHaveTextContent('through')
+})
+
+// #1218 slice 1: a group whose rows all point to one Table reads as that Table.
+async function seedVisits(admin: Parameters<typeof renderApp>[1]) {
+  await seed(admin)
+  await admin.post('/api/table_def', {
+    name: 'Rm Rep', id_pattern: 'prompt', title_column: 'title',
+    columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Rm Visit', id_pattern: 'field:visit_id', title_column: 'visit_id',
+    columns: [
+      { column_name: 'visit_id', column_type: 'Data', label: 'Visit' },
+      { column_name: 'customer', column_type: 'Reference', reference_table: 'Rm Customer', label: 'Customer' },
+      { column_name: 'rep', column_type: 'Reference', reference_table: 'Rm Rep', label: 'Rep' },
+      { column_name: 'billed_to', column_type: 'Reference', reference_table: 'Rm Customer', label: 'Billed to' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Rm Rep', row: { row_id: 'rep-1', title: 'Anu' } })
+  await admin.post('/api/save_row', { table: 'Rm Rep', row: { row_id: 'rep-2', title: 'Bala' } })
+  await admin.post('/api/save_row', { table: 'Rm Visit', row: { visit_id: 'V1', customer: 'cust-1', rep: 'rep-1' } })
+  await admin.post('/api/save_row', { table: 'Rm Visit', row: { visit_id: 'V2', customer: 'cust-1', rep: 'rep-2' } })
+}
+
+test('a group whose rows all point to one Table reads as that Table, through the group, naming the link when there are two', async ({ admin }) => {
+  await seedVisits(admin)
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  // Rm Visit points at a customer by Customer and Billed to: two groups, each naming its link.
+  const box = (link: string) => screen.getAllByTestId('map-group-Rm Visit').find((g) => g.textContent?.includes(`via ${link}`))
+  await waitFor(() => expect(box('Customer')).toHaveTextContent('through Rm Visit · via Customer'))
+  expect(box('Customer')).toHaveTextContent(/^Rm Rep/)
+  // No visit is billed to Asha Stores: the empty group stays, as its own Table.
+  expect(box('Billed to')).toHaveTextContent('Rm Visit')
+  expect(box('Billed to')).not.toHaveTextContent('through')
+})
+
+// Codex round 1: only a link table's rows are read, to find its far side;
+// any other group needs only its count.
+test("the map reads a group's rows only for a link table", async ({ admin }) => {
+  await seedVisits(admin)
+  const fetches = vi.spyOn(globalThis, 'fetch')
+  const listed = (table: string) => fetches.mock.calls.map(([input]) => decodeURIComponent(String(input instanceof Request ? input.url : input)))
+    .filter((url) => url.includes(`/api/table/${table}?`) && url.includes('limit_page_length=500'))
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  // The positive control: the visits (a link table) are read and read through.
+  await waitFor(() => expect(screen.getAllByTestId('map-group-Rm Visit').some((g) => g.textContent?.includes('through'))).toBe(true))
+  expect(listed('Rm Visit').length).toBeGreaterThan(0)
+  await screen.findByTestId('map-group-Rm Order')
+  expect(listed('Rm Order')).toEqual([])
+  fetches.mockRestore()
+})
+
+// Verifier round 2: rows with two far sides keep the group's own name.
+test('a group whose rows have two far sides keeps its own name on the map', async ({ admin }) => {
+  await seedSites(admin)
+  await seedPostings(admin)
+  const fetches = vi.spyOn(globalThis, 'fetch')
+  const rowsRead = () => fetches.mock.calls.findIndex(([input]) => decodeURIComponent(String(input instanceof Request ? input.url : input)).includes('/api/table/Nv Posting?'))
+  await openMap(admin, REGION, 'KL')
+  // Once the postings are read, the box still names its own Table.
+  await waitFor(() => expect(rowsRead()).toBeGreaterThanOrEqual(0))
+  await fetches.mock.results[rowsRead()]!.value
+  const box = await screen.findByTestId('map-group-Nv Posting')
+  await waitFor(() => expect(box).toHaveTextContent('Nv Posting'))
+  expect(box).not.toHaveTextContent('through')
+  fetches.mockRestore()
+})
+
+test('the same postings, seen from their site, read as their one far side, the plant', async ({ admin }) => {
+  await seedSites(admin)
+  await seedPostings(admin)
+  await openMap(admin, 'Nv Site', 'ENK')
+  await waitFor(async () => expect(await screen.findByTestId('map-group-Nv Posting')).toHaveTextContent('through Nv Posting'))
+})
+
+test('the map offers no Open in Explore', async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  expect(screen.queryByRole('link', { name: 'Open in Explore' })).not.toBeInTheDocument()
 })
 
 /** Someone who can read orders but not the customers they point at. */
@@ -91,7 +175,7 @@ test('clicking a collection shows its rows in the drill pane', async ({ admin })
   await openMap(admin, 'Rm Customer', 'cust-1')
   fireEvent.click(await screen.findByTestId('map-group-Rm Order'))
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
-  await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(3))
+  await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(2))
   expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores')
 })
 
@@ -238,7 +322,7 @@ test('a collection on the map is reached by Tab and shown in the pane by Space',
   expect(box).toHaveAttribute('tabindex', '0')
   fireEvent.keyDown(box, { key: ' ' })
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
-  await waitFor(() => expect(within(within(pane).getByRole('table')).getAllByRole('row')).toHaveLength(3))
+  await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(2))
 })
 
 test("a link to a row the viewer can't read is not in the tab order", async ({ admin, createUser }) => {

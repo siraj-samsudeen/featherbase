@@ -16,11 +16,14 @@ export interface TreeNode {
   heading?: boolean
   /** A group of related rows: bold, with its count. */
   group?: boolean
+  /** A record the viewer may open (activating the line opens it): drawn as a
+   *  link, its code following muted. A line without it is plain words. */
+  record?: boolean
   children?: TreeNode[]
   /** Opens even before its children are loaded. */
   hasChildren?: boolean
   loading?: boolean
-  /** A capped group: "first 20 · show all 40". */
+  /** A capped group: "Show all 40". */
   more?: { shown: number; total: number; onShowAll: () => void }
 }
 
@@ -118,8 +121,10 @@ export function TreeOutline({ nodes, expanded, onToggle, selected, onActivate, r
                 <ChevronRight size={14} className={cx('transition-transform motion-reduce:transition-none', open && 'rotate-90')} />
               </button>}
             </span>
-            <span id={labelId} className={cx('min-w-0 text-sm wrap-anywhere', node.group ? 'font-semibold text-ink' : isSelected ? 'font-semibold text-action' : 'text-ink')}>
-              {nameAndCode(node.label, node.code)}
+            <span id={labelId} className={cx('min-w-0 text-sm wrap-anywhere', node.group ? 'font-semibold text-ink' : isSelected ? 'font-semibold text-action' : node.record ? 'font-medium text-action' : 'text-ink')}>
+              {node.record
+                ? <>{node.label}{node.code && <>{' '}<span className="font-normal text-ink-muted">· {node.code}</span></>}</>
+                : nameAndCode(node.label, node.code)}
               {node.count != null && <>{' '}<span className="font-normal text-ink-muted">{fmtCount(node.count)}</span></>}
             </span>
             {node.kind && <KindTag>{node.kind}</KindTag>}
@@ -134,10 +139,9 @@ export function TreeOutline({ nodes, expanded, onToggle, selected, onActivate, r
               {node.children && render(node.children, level + 1, node.id)}
               {node.more && node.more.shown < node.more.total && (
                 <li role="none" style={{ paddingInlineStart: `${level * 1.25 + 2}rem` }} className="flex min-h-control items-center gap-1 text-sm text-ink-muted">
-                  first {fmtCount(node.more.shown)} ·
                   <button type="button" onClick={node.more.onShowAll}
                     className="font-medium text-action hover:underline focus-visible:outline-2 focus-visible:outline-focus">
-                    show all {fmtCount(node.more.total)}
+                    Show all {fmtCount(node.more.total)}
                   </button>
                 </li>
               )}

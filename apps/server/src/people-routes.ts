@@ -15,6 +15,7 @@ import { sendInvitation } from './invitation-email'
 import { passwordInviteState, sendPasswordInvite } from './password-invite'
 import { requestHost } from './instance-addresses'
 import { getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
+import { standingFor } from './person-standing'
 import { assertSystemManager, getRoles } from './permissions'
 import { mailTransport } from './email'
 import { who, type Env } from './route-context'
@@ -31,7 +32,7 @@ peopleRoutes.get('/api/people/:id/identities', async (c) => {
   if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
   // Every method row, turned off or not, so an identity on a disabled method
   // still shows its name on the Person form.
-  const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
+  const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled, employees_only: m.employees_only }))
   return c.json({
     identities: await listIdentities(user, { includeEnded: true }),
     has_password: row.has_password === true,
@@ -45,6 +46,13 @@ peopleRoutes.get('/api/people/:id/identities', async (c) => {
     // #1257: whether a password invite can be sent, why not, and the latest.
     password_invite: await passwordInviteState(user),
   })
+})
+
+// #1267: who a person is to the organisation (Employee, Former Employee,
+// External), as the people app says it. Only for a viewer who may read the
+// Person row; each job's store only where the viewer may open it.
+peopleRoutes.get('/api/people/:id/standing', async (c) => {
+  return c.json(await standingFor(c.req.param('id'), who(c)))
 })
 
 // #1257: send (or send again) a password invite to a person with no way in.

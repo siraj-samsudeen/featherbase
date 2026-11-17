@@ -11,6 +11,7 @@ import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { getSessionUser } from '../src/lib/api'
 import { test, expect, renderApp } from './pg-test'
+import { openLine } from './sign-in-lines'
 import { rowHref } from 'shared'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -50,19 +51,22 @@ async function mailedKey(email: string): Promise<string> {
 test('#1257: a person with no way in is sent a password invite, and the panel shows it', async ({ admin, createUser }) => {
   const ravi = await createUser({ email: 'ravi@partner.test', fullName: 'Ravi Partner' })
   const panel = await openPerson(admin, ravi.user!)
-  const invite = await within(panel).findByTestId('password-invite')
-  expect(invite).toHaveTextContent('Emails ravi@partner.test a link to set a password. It works once, for 72 hours.')
-  await userEvent.click(within(invite).getByRole('button', { name: 'Send password invite' }))
+  expect(await within(panel).findByTestId('password-invite')).toHaveTextContent('Not set')
+  const dialog = await openLine(panel, 'password-invite')
+  expect(dialog).toHaveTextContent('Emails ravi@partner.test a link to set a password. It works once, for 72 hours.')
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Send Invite' }))
 
   // This instance has no SMTP server: the panel never says "emailed".
   const notice = await within(panel).findByTestId('user-method-notice')
   expect(notice).toHaveTextContent('Password invite saved to the Email Sink for ravi@partner.test; this instance does not send email.')
   const status = await within(panel).findByTestId('password-invite-status')
-  expect(status).toHaveTextContent(/^Saved to the Email Sink .+ · expires .+$/)
+  expect(status).toHaveTextContent(/^Invite saved to the Email Sink .+ · expires .+$/)
   expect(panel).not.toHaveTextContent(/emailed/i)
 
   const first = await mailedKey('ravi@partner.test')
-  await userEvent.click(within(panel).getByRole('button', { name: 'Resend password invite' }))
+  const again = await openLine(panel, 'password-invite')
+  expect(again).toHaveTextContent('The earlier link stops working.')
+  await userEvent.click(within(again).getByRole('button', { name: 'Resend' }))
   await waitFor(async () => {
     const [{ n }] = await sql`select count(*)::int as n from email_sink where mail_to = 'ravi@partner.test'`
     expect(n).toBe(2)
@@ -75,8 +79,8 @@ test('#1257: someone who already has a password is not offered an invite', async
   const asha = await createUser({ email: 'asha@partner.test' })
   await setUserPassword(asha.user!, 'origpw123')
   const panel = await openPerson(admin, asha.user!)
-  await within(panel).findByTestId('user-method-password')
-  expect(within(panel).queryByRole('button', { name: /password invite/i })).not.toBeInTheDocument()
+  const password = await within(panel).findByTestId('user-method-password')
+  expect(within(password).queryByTestId('sign-in-line-action')).not.toBeInTheDocument()
 })
 
 test('#1257: the link sets the first password, signs the person in, and works once', async ({ admin, createUser }) => {
@@ -118,14 +122,14 @@ test('#1257: saving a new email on the Person shows the invite as cancelled with
   await userEvent.clear(email)
   await userEvent.type(email, 'nina.changed@partner.test')
   await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-  await waitFor(() => expect(within(panel).getByTestId('password-invite')).toHaveTextContent('The last password invite was cancelled. Emails nina.changed@partner.test'), { timeout: 8000 })
-  expect(within(panel).getByRole('button', { name: 'Send password invite' })).toBeInTheDocument()
+  await waitFor(() => expect(within(panel).getByTestId('password-invite')).toHaveTextContent('The last password invite was cancelled.'), { timeout: 8000 })
+  expect(await openLine(panel, 'password-invite')).toHaveTextContent('Emails nina.changed@partner.test')
 })
 
 test('#1257: the notice from a send does not outlive the address it names', async ({ admin, createUser }) => {
   const lena = await createUser({ email: 'lena@partner.test', fullName: 'Lena Fourth' })
   const panel = await openPerson(admin, lena.user!)
-  await userEvent.click(await within(panel).findByRole('button', { name: 'Send password invite' }))
+  await userEvent.click(within(await openLine(panel, 'password-invite')).getByRole('button', { name: 'Send Invite' }))
   expect(await within(panel).findByTestId('user-method-notice')).toHaveTextContent('for lena@partner.test')
   const email = await screen.findByLabelText('Email')
   await userEvent.clear(email)

@@ -13,11 +13,13 @@ type Entry =
 // UI-019: activity timeline interleaving comments and versions (edits with
 // their column diff) chronologically. Workflow actions join here once WF
 // lands — they are recorded as versions/comments too.
-export function ActivityTimeline({ table, name, bare = false }: {
+export function ActivityTimeline({ table, name, bare = false, latest }: {
   table: string
   name: string
   /** #1259: inside the record panel, no frame of its own (minimal lines). */
   bare?: boolean
+  /** #1267: a glance: only the newest this many events, newest first. */
+  latest?: number
 }) {
   const activity = useQuery(activityQuery(table, name))
 
@@ -51,29 +53,37 @@ export function ActivityTimeline({ table, name, bare = false }: {
   const columnType = format.type
   const fmt = format.value
   const createdVia = activity.data?.versions.find(isBareCreation)?.data?.agent?.token_label
+  const shown = latest ? entries.slice(-latest).reverse() : entries
+  // The creation line is the oldest event: a glance shows it only while there is room.
+  const showCreated = Boolean(activity.data?.created?.created_at) && (!latest || entries.length < latest)
+
+  const createdLine = showCreated && activity.data?.created?.created_at ? (
+    <li className="flex gap-2 text-sm" data-testid="activity-created">
+      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ink-subtle" />
+      <div className="min-w-0 flex-1 text-xs text-ink-muted">
+        <span className="font-medium text-ink"><ActorName id={String(activity.data.created.created_by)} name={activity.data.created.author_name} /></span>{' '}
+        created this<AgentMark label={createdVia} /> ·{' '}
+        <span className="whitespace-nowrap" data-testid="activity-created-time">{fmtInstant(activity.data.created.created_at)}</span>
+      </div>
+    </li>
+  ) : null
 
   return (
-    <div className={bare ? '' : cardClasses('p-4')} data-testid="activity-timeline">
-      <div className="mb-3 text-xs font-semibold text-ink-subtle">
-        Activity
-      </div>
+    <div className={bare ? '' : cardClasses('p-4')} data-testid={latest ? 'activity-glance' : 'activity-timeline'}>
+      {latest ? (
+        <h2 className="mb-2 text-sm font-medium text-ink-muted">Activity</h2>
+      ) : (
+        <div className="mb-3 text-xs font-semibold text-ink-subtle">
+          Activity
+        </div>
+      )}
       {activity.isError && <p role="alert" className="text-sm text-negative">Activity could not be read.</p>}
       {activity.isSuccess && entries.length === 0 && !activity.data?.created?.created_at && (
         <p className="text-xs text-ink-subtle">No activity yet</p>
       )}
       <ol className="space-y-3">
-        {/* #829: who made the row opens its activity, e.g. "Google sign-in created this". */}
-        {activity.data?.created?.created_at && (
-          <li className="flex gap-2 text-sm" data-testid="activity-created">
-            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ink-subtle" />
-            <div className="min-w-0 flex-1 text-xs text-ink-muted">
-              <span className="font-medium text-ink"><ActorName id={String(activity.data.created.created_by)} name={activity.data.created.author_name} /></span>{' '}
-              created this<AgentMark label={createdVia} /> ·{' '}
-              <span className="whitespace-nowrap" data-testid="activity-created-time">{fmtInstant(activity.data.created.created_at)}</span>
-            </div>
-          </li>
-        )}
-        {entries.map((e, i) => (
+        {!latest && createdLine}
+        {shown.map((e, i) => (
           <li key={i} className="flex gap-2 text-sm" data-testid={`activity-${e.kind}`}>
             {e.kind === 'comment' ? <AuthorInitials id={e.who} name={e.whoName} /> : <span
               className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ink-subtle"
@@ -109,6 +119,7 @@ export function ActivityTimeline({ table, name, bare = false }: {
             </div>
           </li>
         ))}
+        {latest ? createdLine : null}
       </ol>
     </div>
   )

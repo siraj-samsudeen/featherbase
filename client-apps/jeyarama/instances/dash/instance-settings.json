@@ -43,6 +43,7 @@
         "kind": "delegated_password",
         "label": "StyleHR",
         "enabled": true,
+        "employees_only": true,
         "service_url": "https://stylehr.in/api/login/",
         "new_person": "create_if_on_roster",
         "self_link": false,

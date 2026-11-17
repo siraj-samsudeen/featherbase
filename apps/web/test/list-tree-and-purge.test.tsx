@@ -17,7 +17,7 @@ test('a line of Tree of all opens its row in the pane', async ({ admin }) => {
   fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }, T))
   const t = await tree()
   await waitFor(() => expect(topLines(t)).toHaveLength(3))
-  fireEvent.click(within(t).getByText('Madurai · MDU'))
+  fireEvent.click(within(t).getByText('Madurai'))
   expect(await screen.findByRole('complementary', { name: 'Madurai · MDU' }, T)).toHaveTextContent(SITE)
 })
 
@@ -29,7 +29,7 @@ test('a line of Tree of all opens its row beside the tree in the Table view too'
   fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }, T))
   const t = await tree()
   await waitFor(() => expect(topLines(t)).toHaveLength(3))
-  fireEvent.click(within(t).getByText('Madurai · MDU'))
+  fireEvent.click(within(t).getByText('Madurai'))
   expect(await screen.findByRole('complementary', { name: 'Madurai · MDU' }, T)).toHaveTextContent(SITE)
 })
 
@@ -42,7 +42,7 @@ test('show all in Tree of all lists every row of a big group', async ({ admin })
   fireEvent.keyDown(plant, { key: 'ArrowRight' })
   const group = await within(plant).findByRole('treeitem', { name: `${PROFIT} 25` }, T)
   fireEvent.keyDown(group, { key: 'ArrowRight' })
-  fireEvent.click(await within(group).findByRole('button', { name: 'show all 25' }, T))
+  fireEvent.click(await within(group).findByRole('button', { name: 'Show all 25' }, T))
   await waitFor(() => expect(within(group).getAllByRole('treeitem')).toHaveLength(25), T)
 })
 

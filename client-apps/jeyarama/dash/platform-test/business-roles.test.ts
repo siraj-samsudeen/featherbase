@@ -1,4 +1,4 @@
-// #1218 (option A): business roles in shadow. Upgrading from 0.13.26 adds the four Tables and the
+// #1218 (option A): business roles in shadow. Upgrading from main's 0.13.27 adds the four Tables and the
 // Report Access Manager's grants on them, with nobody's approval; a manager writes the starting
 // roles and gives a role by hand, and a reader's reports and front door stay as they were.
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -19,13 +19,13 @@ process.env.MOTHERDUCK_TOKEN = 'made-up-token'
 const MANAGER = 'Report Access Manager'
 
 async function previousVersion(): Promise<string> {
-  const directory = await mkdtemp(resolve(APP_DIR, '..', 'dash-0.13.26-'))
+  const directory = await mkdtemp(resolve(APP_DIR, '..', 'dash-0.13.27-'))
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
   revertBusinessRoles(manifest)
   const pkg = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'))
   await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(manifest, null, 2))
-  await writeFile(resolve(directory, 'package.json'), JSON.stringify({ ...pkg, version: '0.13.26' }))
+  await writeFile(resolve(directory, 'package.json'), JSON.stringify({ ...pkg, version: '0.13.27' }))
   return directory
 }
 
@@ -34,7 +34,7 @@ describe('business roles in shadow', () => {
     const previous = await previousVersion()
     try {
       expect(await discoverPackages([previous])).toEqual([])
-      await admin.fetch('/api/install_app', { method: 'POST', headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': 'dash@0.13.26' }, body: JSON.stringify({ name: 'dash' }) })
+      await admin.fetch('/api/install_app', { method: 'POST', headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': 'dash@0.13.27' }, body: JSON.stringify({ name: 'dash' }) })
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })

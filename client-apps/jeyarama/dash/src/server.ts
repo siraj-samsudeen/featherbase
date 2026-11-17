@@ -14,6 +14,7 @@ import { prefillActions } from './department-prefill.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
 import { viewAsPeople } from './view-as-people.ts'
+import { describePeople } from './people-describe.ts'
 import { DASH_ROLES, offeredByPlaces, openableByReach, opensDashFor } from './report-eligibility.ts'
 import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, removeRole } from './business-roles-server.ts'
 
@@ -387,6 +388,8 @@ export const reads = {
   }),
   /** #1222: View as's people, for the platform's picker; run as the tester. View As Testers only. */
   view_as_people: (context: ReadContext) => viewAsPeople(context as AccessContext),
+  /** #1267: who people are (Employee, Former Employee, External), for the Person page; the platform's actor only. */
+  describe_people: (context: ReadContext) => describePeople(context as AccessContext),
   person_lookup: (context: ReadContext) => personLookup(withReach(context as AccessContext), istToday(), reachFor(context as AccessContext)),
 
   /** The reports this person may open, for the sidebar. */
