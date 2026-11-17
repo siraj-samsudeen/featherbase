@@ -128,6 +128,13 @@ describe('on an address that opens an app', () => {
       expect([page, (await get(api, `${DASH}${page}`)).status]).not.toEqual([page, 302])
   })
 
+  // #1207, Codex round 1 (P1): an agent connecting by this address signs in
+  // and allows it here, so the connect page and its sign-in are served.
+  test('the agent connect page is served', async ({ api }) => {
+    for (const page of ['/featherbase/connect', '/featherbase/connect?response_type=code&client_id=cli_x'])
+      expect([page, (await get(api, `${DASH}${page}`)).status]).not.toEqual([page, 302])
+  })
+
   test("another app's root redirects to the app root", async ({ api }) => {
     const res = await get(api, `${DASH}/tasker/`)
     await expectStatus(res, 302)
@@ -142,6 +149,11 @@ describe('on an address that opens an app', () => {
   // #501: the password-reset page was already served on every address.
   test('the password-reset page is served', async ({ api }) => {
     expect((await get(api, `${DASH}/featherbase/reset-password?key=k`)).status).not.toBe(302)
+  })
+
+  // #1257: so is the page a password invite links to (Codex round 2).
+  test('the set-password page is served', async ({ api }) => {
+    expect((await get(api, `${DASH}/featherbase/set-password?key=k`)).status).not.toBe(302)
   })
 
   // #501 item 4: a public web form link opens on an app's address too.

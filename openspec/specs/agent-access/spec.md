@@ -3,7 +3,8 @@
 ## Purpose
 
 An agent is an AI assistant the user runs in an app of their own, such as Claude Code or Codex.
-The user connects it to Featherbase with one of their access tokens, and from then on the agent
+The user connects it to Featherbase with one of their access tokens, or by signing in (Agent
+Sign-In), and from then on the agent
 works with Tables the way the user could: it finds and reads the rows the user can see, and adds,
 changes and deletes rows the user may change, under the same rules and in the user's name. Where
 the user may, it also shapes a Table and imports a file of rows into it, and can undo that import.
@@ -18,8 +19,8 @@ Traders" and "Bala Stores" in Chennai and "Coral Mart" in Madurai.
 ### Requirement: Connect an agent with an access token
 
 The user SHALL be able to connect an agent to Featherbase at the instance's own address with one
-of their access tokens. The agent SHALL then act as the token's owner, with exactly the owner's
-access. Nothing else, such as a signed-in browser, SHALL open this connection.
+of their access tokens, or by signing in (Agent Sign-In). The agent SHALL then act as the token's
+owner, with exactly the owner's access. A signed-in browser alone SHALL not open this connection.
 
 #### Scenario: The agent works as the user
 

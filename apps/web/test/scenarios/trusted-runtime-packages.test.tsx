@@ -303,7 +303,10 @@ describe('trusted-runtime-packages', () => {
       expect(green.light()).not.toBe(blue.light())
     })
     await step('the user switches to the dark theme in the shared bar', async () => {
-      await userEvent.click(await bar.findByTestId('theme-dark'))
+      // #1253: beside the sidebar, the theme's choices open from the sidebar's foot.
+      const chrome = within(document.querySelector('featherbase-sidebar')!.shadowRoot as unknown as HTMLElement)
+      await userEvent.click(await chrome.findByTestId('theme-button'))
+      await userEvent.click(await chrome.findByTestId('theme-dark'))
     })
     await step("they are the dark theme's green", async () => {
       const root = bar.getByTestId('bar-theme-root')

@@ -60,7 +60,8 @@ export function attachRailTips({ root, layer, active, rowOf }: {
   let shownFor: HTMLElement | null = null
   const hide = () => { tip?.remove(); tip = null; shownFor = null }
   const show = (row: HTMLElement) => {
-    if (!active()) return hide()
+    // A row whose own menu is open (the avatar's Account menu) needs no tooltip over it.
+    if (!active() || row.getAttribute('aria-expanded') === 'true') return hide()
     const words = railTip(row)
     if (!words) return hide()
     tip ??= Object.assign(document.createElement('div'), { role: 'tooltip' })
@@ -83,6 +84,8 @@ export function attachRailTips({ root, layer, active, rowOf }: {
   root.addEventListener('pointerout', out)
   root.addEventListener('focusin', over)
   root.addEventListener('focusout', out)
+  // A click opens what the row opens (a menu): its tooltip goes with it.
+  root.addEventListener('click', hide)
   window.addEventListener('scroll', hide, true)
   return () => {
     hide()
@@ -90,6 +93,7 @@ export function attachRailTips({ root, layer, active, rowOf }: {
     root.removeEventListener('pointerout', out)
     root.removeEventListener('focusin', over)
     root.removeEventListener('focusout', out)
+    root.removeEventListener('click', hide)
     window.removeEventListener('scroll', hide, true)
   }
 }

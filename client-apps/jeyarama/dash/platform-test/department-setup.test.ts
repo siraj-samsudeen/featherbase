@@ -212,3 +212,40 @@ describe('pre-filled from reporting lines (#1205)', () => {
     expect(await live('Department')).toEqual([])
   })
 })
+
+// #1219: a Master Data Editor keeps or turns down any set-up, as the Department Manager's own manager can.
+describe('the master data team acts like the manager on set-ups (#1219)', () => {
+  test('they see it, keep it, and the review records them; the reviewer is named with who they are', async ({ admin, createUser }) => {
+    const { deepa, mani } = await world(admin, createUser)
+    const editor = await createUser({ email: `editor-${randomUUID()}@example.test`, roles: ['Dash Reader'] })
+    const outsider = await createUser({ email: `outsider-${randomUUID()}@example.test`, roles: ['Dash Reader'] })
+    await sql`update person set password_hash = 'made-up' where row_id in ${sql([editor.user!, outsider.user!])}`
+    await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values (${randomUUID()}, ${editor.user!}, 'Person', 'roles', 'Master Data Editor')`
+    const pinnedEditor = pinned(editor)
+    const pinnedOutsider = pinned(outsider)
+    const MANI = { name: 'Mani', id: '1002', code: '1002', jobs: ['Store Manager · Lakeside'], staff: 'current' }
+    expect((await read(deepa, 'department_setup')).reviewers).toEqual([MANI])
+    const sent = await act(deepa, 'set_up_department', { job: 'JA-1', name: 'Ladies Ethnic', sections: ['LKS-S1'] })
+    expect(sent.reviewers).toEqual([MANI])
+    expect(await read(pinnedEditor, 'department_approvals')).toMatchObject([{ bundle: sent.bundle, also_with: [MANI] }])
+    expect(await read(mani, 'department_approvals')).toMatchObject([{ bundle: sent.bundle, also_with: [] }])
+    expect(await read(pinnedOutsider, 'department_approvals')).toEqual([])
+    await expect(act(pinnedOutsider, 'decide_department', { bundle: sent.bundle, decision: 'approve' })).rejects.toThrow()
+    expect(await act(pinnedEditor, 'decide_department', { bundle: sent.bundle, decision: 'approve' })).toMatchObject({ state: 'Applied' })
+    const [decided] = await sql`select decided_by from change_proposal where about->>'kind' = 'department'`
+    expect(decided.decided_by).toBe(editor.user)
+    expect(await read(mani, 'department_approvals')).toEqual([])
+  })
+
+  test('applied at once, they undo it with the manager\'s own reason form', async ({ admin, createUser }) => {
+    const { deepa } = await world(admin, createUser)
+    await admin.post('/api/save_row', { table: 'Approval Type', row: { row_id: 'dash.department_setup', mode: 'Apply now, review after' } })
+    const editor = pinned(await createUser({ email: `editor-${randomUUID()}@example.test`, roles: ['Dash Reader'] }))
+    await sql`update person set password_hash = 'made-up' where row_id = ${editor.user!}`
+    await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values (${randomUUID()}, ${editor.user!}, 'Person', 'roles', 'Master Data Editor')`
+    const sent = await act(deepa, 'set_up_department', { job: 'JA-1', name: 'Ladies', sections: ['LKS-S1'] })
+    expect(await act(editor, 'decide_department', { bundle: sent.bundle, decision: 'reject', reason: 'Sarees belong to Ladies Ethnic' })).toMatchObject({ state: 'Undone' })
+    expect((await rows('Department')).filter(r => !r.retired_at)).toEqual([])
+    expect(await read(deepa, 'department_setup')).toMatchObject({ current: { state: 'turned_down', reason: 'Sarees belong to Ladies Ethnic' } })
+  })
+})

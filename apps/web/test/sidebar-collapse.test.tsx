@@ -24,12 +24,12 @@ test('the control collapses and reopens the sidebar, and says what it will do', 
   const control = await openAdmin(admin)
   expect(collapsed()).toBe(false)
   expect(control).toHaveAccessibleName('Collapse sidebar')
-  expect(control.title).toMatch(/^Collapse sidebar \((⌘B|Ctrl\+B)\)$/)
+  expect(control.title).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
 
   await userEvent.click(control)
   expect(collapsed()).toBe(true)
   expect(control).toHaveAccessibleName('Expand sidebar')
-  expect(control.title).toMatch(/^Expand sidebar \((⌘B|Ctrl\+B)\)$/)
+  expect(control.title).toMatch(/^Expand Sidebar · (⌘B|Ctrl\+B)$/)
 
   await userEvent.click(control)
   expect(collapsed()).toBe(false)

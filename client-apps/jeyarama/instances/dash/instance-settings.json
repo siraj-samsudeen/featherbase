@@ -27,6 +27,18 @@
         "self_link": false
       },
       {
+        "row_id": "microsoft",
+        "kind": "microsoft",
+        "label": "Microsoft",
+        "enabled": true,
+        "new_person": "refuse",
+        "allowed_email_domains": "bisquared.com",
+        "self_link": true,
+        "settings": {
+          "tenant": "organizations"
+        }
+      },
+      {
         "row_id": "stylehr",
         "kind": "delegated_password",
         "label": "StyleHR",
@@ -119,6 +131,10 @@
           {
             "row_id": "google",
             "client_id": ""
+          },
+          {
+            "row_id": "microsoft",
+            "client_id": ""
           }
         ],
         "Scheduled Job": [
@@ -136,6 +152,10 @@
             "row_id": "google",
             "client_id": "526042382398-1bqqe2ejsbsi3elihqrkv9k1diorc93l.apps.googleusercontent.com",
             "self_link": true
+          },
+          {
+            "row_id": "microsoft",
+            "client_id": "0497d1b4-e9b3-4556-88f5-d4c8f97bcc63"
           }
         ],
         "App Setting": [
@@ -158,6 +178,10 @@
           {
             "row_id": "google",
             "client_id": "526042382398-1bqqe2ejsbsi3elihqrkv9k1diorc93l.apps.googleusercontent.com"
+          },
+          {
+            "row_id": "microsoft",
+            "client_id": "0497d1b4-e9b3-4556-88f5-d4c8f97bcc63"
           }
         ],
         "App Setting": [

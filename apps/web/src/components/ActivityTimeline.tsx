@@ -13,7 +13,12 @@ type Entry =
 // UI-019: activity timeline interleaving comments and versions (edits with
 // their column diff) chronologically. Workflow actions join here once WF
 // lands — they are recorded as versions/comments too.
-export function ActivityTimeline({ table, name }: { table: string; name: string }) {
+export function ActivityTimeline({ table, name, bare = false }: {
+  table: string
+  name: string
+  /** #1259: inside the record panel, no frame of its own (minimal lines). */
+  bare?: boolean
+}) {
   const activity = useQuery(activityQuery(table, name))
 
   const entries = useMemo<Entry[]>(() => {
@@ -48,7 +53,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
   const createdVia = activity.data?.versions.find(isBareCreation)?.data?.agent?.token_label
 
   return (
-    <div className={cardClasses('p-4')} data-testid="activity-timeline">
+    <div className={bare ? '' : cardClasses('p-4')} data-testid="activity-timeline">
       <div className="mb-3 text-xs font-semibold text-ink-subtle">
         Activity
       </div>

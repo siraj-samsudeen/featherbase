@@ -74,8 +74,9 @@ test('only a System Manager names a service account', async ({ admin, createUser
 })
 
 test('system steps read as plain phrases; an unknown opaque id names nobody', async () => {
-  const names = await actorNames(['roster-link', 'google-sign-in', 'delegated-password-sign-in', 'Administrator', 'psn_aaaaaaaaaaaaaaaaaaaa'])
+  const names = await actorNames(['roster-link', 'instance-settings', 'google-sign-in', 'delegated-password-sign-in', 'Administrator', 'psn_aaaaaaaaaaaaaaaaaaaa'])
   expect(names.get('roster-link')).toBe('Staff roster sync')
+  expect(names.get('instance-settings')).toBe('Instance settings')
   expect(names.get('google-sign-in')).toBe('Google sign-in')
   expect(names.get('delegated-password-sign-in')).toBe('Connected service sign-in')
   expect(names.get('Administrator')).toBe('Administrator')

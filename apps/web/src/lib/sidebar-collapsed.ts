@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { SIDEBAR_SHORTCUT_DEF, addShortcut, noteShortcutUse } from './shortcuts'
 
 // #1227: one sidebar state for every page that has a sidebar — the Admin's own
 // and the shared app sidebar (<featherbase-sidebar>) under any installed app.
@@ -69,10 +70,13 @@ export function readSidebar(user: string | undefined): SidebarState {
   return stateFor(user)
 }
 
-export function toggleSidebarCollapsed(user: string | undefined): void {
+/** #1251: every toggle but the key's is a mouse or touch control (the bar's
+ *  icon, the rail's footer and edge); each use is noted for the shortcut tips. */
+export function toggleSidebarCollapsed(user: string | undefined, via: 'key' | 'mouse' = 'mouse'): void {
   const collapsed = !stateFor(user).collapsed
   save(user, collapsed)
   set({ collapsed })
+  noteShortcutUse(SIDEBAR_SHORTCUT_DEF.id, via)
 }
 
 export function setSidebarDrawerOpen(open: boolean): void {
@@ -87,9 +91,12 @@ export function registerSidebar(user: string | undefined): () => void {
     set({ present: 1, collapsed: load(user), drawerOpen: false })
   } else set({ present: state.present + 1 })
   let left = false
+  // #1251: while a sidebar is on the page, its key is on the shortcut list.
+  const removeShortcut = addShortcut(SIDEBAR_SHORTCUT_DEF)
   return () => {
     if (left) return
     left = true
+    removeShortcut()
     set({ present: Math.max(0, state.present - 1), ...(state.present <= 1 ? { drawerOpen: false } : {}) })
   }
 }
@@ -103,13 +110,74 @@ export function useSidebar(user: string | undefined) {
   return { ...current, toggleCollapsed: toggle, setDrawerOpen: setSidebarDrawerOpen }
 }
 
+/** #1253: where the page's sidebar holds the platform's chrome: the switcher,
+ *  the bell and the command field at its top, the account, help and theme at
+ *  its foot. The Admin's sidebar and an app's <featherbase-sidebar> offer them;
+ *  the top bar draws into them, so there is no bar of its own above the page. */
+export interface SidebarSlots {
+  top: HTMLElement
+  foot: HTMLElement
+}
+
+let slots: SidebarSlots | undefined
+const slotListeners = new Set<() => void>()
+
+/** A sidebar offers its slots; the returned function takes them back. */
+export function offerSidebarSlots(next: SidebarSlots): () => void {
+  slots = next
+  for (const listener of slotListeners) listener()
+  return () => {
+    if (slots !== next) return
+    slots = undefined
+    for (const listener of slotListeners) listener()
+  }
+}
+
+/** The page's sidebar slots, while a sidebar offers them. */
+export function useSidebarSlots(): SidebarSlots | undefined {
+  const subscribe = (listener: () => void) => {
+    slotListeners.add(listener)
+    return () => slotListeners.delete(listener)
+  }
+  const snapshot = () => slots
+  return useSyncExternalStore(subscribe, snapshot, snapshot)
+}
+
+/** #1253 (Siraj, 17-Nov): an app's declared pickers (Dash's Store and Month)
+ *  sit inside the white page panel, at its top and right-aligned, never on the
+ *  canvas above it. The panel offers this slot; the shared bar draws into it. */
+let pickerSlot: HTMLElement | undefined
+const pickerListeners = new Set<() => void>()
+
+export function offerPickerSlot(next: HTMLElement): () => void {
+  pickerSlot = next
+  for (const listener of pickerListeners) listener()
+  return () => {
+    if (pickerSlot !== next) return
+    pickerSlot = undefined
+    for (const listener of pickerListeners) listener()
+  }
+}
+
+export function usePickerSlot(): HTMLElement | undefined {
+  const subscribe = (listener: () => void) => {
+    pickerListeners.add(listener)
+    return () => pickerListeners.delete(listener)
+  }
+  const snapshot = () => pickerSlot
+  return useSyncExternalStore(subscribe, snapshot, snapshot)
+}
+
 /** The page has a sidebar for as long as the calling component is mounted. */
 export function useRegisterSidebar(user: string | undefined): void {
   useEffect(() => registerSidebar(user), [user])
 }
 
 /** The shortcut as this person's keyboard names it, for the control's hover text. */
-export const SIDEBAR_SHORTCUT = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘B' : 'Ctrl+B'
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform)
+export const SIDEBAR_SHORTCUT = MAC ? '⌘B' : 'Ctrl+B'
+/** #1253: the command bar's shortcut, as the field beside it shows it. */
+export const COMMAND_SHORTCUT = MAC ? '⌘K' : 'Ctrl+K'
 
 const NOT_TEXT_INPUTS = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit'])
 
@@ -139,7 +207,7 @@ export function listenForSidebarKeys(user: () => string | undefined, target: Doc
     if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'b') return
     if (isEditingText(e.composedPath()[0] ?? e.target) || isDrawerWidth()) return
     e.preventDefault()
-    if (!e.repeat) toggleSidebarCollapsed(user())
+    if (!e.repeat) toggleSidebarCollapsed(user(), 'key')
   }
   target.addEventListener('keydown', onKey)
   return () => target.removeEventListener('keydown', onKey)

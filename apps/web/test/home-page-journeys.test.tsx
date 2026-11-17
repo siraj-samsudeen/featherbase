@@ -43,8 +43,8 @@ test('the sidebar shows a Home Page with its icon, and one stored with no label 
   expect(within(iconed).getByTestId('sidebar-item-icon')).toHaveTextContent('🏬')
   const unnamed = screen.getByTestId('home-page-link-hpj-unnamed')
   expect(unnamed).toHaveAccessibleName('hpj-unnamed')
-  // With no emoji of its own, the row still has the icon every row has.
-  expect(within(unnamed).getByTestId('sidebar-item-icon').tagName.toLowerCase()).toBe('svg')
+  // #1253: with no emoji of its own, the row shows its initials, tinted in the group's colour.
+  expect(within(unnamed).getByTestId('sidebar-item-icon')).toHaveTextContent(/^Hp$/)
 })
 
 // #1242 (admin-lists 8): the modules are a sidebar group like the others.
@@ -77,10 +77,10 @@ test('UI-027: the sidebar opens a Home Page, with its title and shortcuts', asyn
   const r = await renderApp('/featherbase/admin', admin)
   await userEvent.click(await screen.findByTestId('home-page-link-hpj-sales', {}, WAIT))
   await waitFor(() => expect(pathOf(r)).toBe('/featherbase/admin/home/hpj-sales'))
-  // Verifier, round 5: the open module reads selected (action colour), not muted.
+  // #1253 (Quiet Canvas): the open module is a white tile with a soft shadow, not muted.
   const opened = screen.getByTestId('home-page-link-hpj-sales')
   await waitFor(() => expect(opened).toHaveAttribute('aria-current', 'page'))
-  expect(opened.className).toMatch(/\btext-action\b/)
+  expect(opened.className).toMatch(/\bbg-surface\b.*\bshadow-sm\b/)
   expect(opened.className).not.toMatch(/\btext-ink-muted\b/)
   expect(await screen.findByTestId('home-page-title', {}, WAIT)).toHaveTextContent(/^Sales$/)
   expect(await screen.findByTestId('shortcut-Tasks')).toBeInTheDocument()

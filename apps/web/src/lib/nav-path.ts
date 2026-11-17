@@ -1,4 +1,4 @@
-import { MAX_RELATED_DEPTH, RELATED_OPS, type ListFilter } from 'shared'
+import { LIST_LAYOUTS, MAX_RELATED_DEPTH, RELATED_OPS, type ListFilter, type ListLayout } from 'shared'
 
 // #910 D1/D2: the navigation path. Every drill and every filter is a step;
 // each step is the whole screen state at that moment, as identities only
@@ -47,6 +47,8 @@ export interface NavStep {
   expanded?: string[]
   place?: 'auto' | 'right' | 'bottom'
   compact?: boolean
+  // #1259: a saved view's own view, kept while the walk goes on from it
+  layout?: ListLayout
 }
 
 export interface NavPath {
@@ -140,7 +142,7 @@ function readPane(v: unknown): NavPane | null {
   return pane
 }
 
-const STEP_KEYS = ['screen', 'table', 'row', 'filters', 'pane', 'view', 'expanded', 'place', 'compact'] as const
+const STEP_KEYS = ['screen', 'table', 'row', 'filters', 'pane', 'view', 'expanded', 'place', 'compact', 'layout'] as const
 
 // A valid step, rebuilt in a fixed key order (so equal steps encode the
 // same), or null.
@@ -177,6 +179,10 @@ function readStep(v: unknown): NavStep | null {
   if (v.compact !== undefined) {
     if (typeof v.compact !== 'boolean') return null
     step.compact = v.compact
+  }
+  if (v.layout !== undefined) {
+    if (!oneOf(v.layout, LIST_LAYOUTS)) return null
+    step.layout = v.layout
   }
   return step
 }

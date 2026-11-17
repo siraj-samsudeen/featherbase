@@ -16,6 +16,12 @@ import { grantRole, makeTable } from './fixtures'
 export const TICKETS_DIRECTORY = resolve('../..', 'example-apps/tickets')
 export const TICKETS_VERSION = (JSON.parse(readFileSync(resolve(TICKETS_DIRECTORY, 'package.json'), 'utf8')) as { version: string }).version
 
+/** Today's Tables as they stood before `later` migrations: each relabel undone (#1256). */
+export function tablesBefore<T extends { name: string; label: string }>(tables: T[], later: { operations: { kind: string; table?: string; from?: string }[] }[]): T[] {
+  const relabels = later.flatMap(m => m.operations).filter(op => op.kind === 'relabelTable').reverse()
+  return tables.map(t => relabels.reduce((table, op) => op.table === table.name ? { ...table, label: op.from! } : table, t))
+}
+
 /** A client that names the installed Tickets version, as Tickets' own page does. */
 export const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
   ...init, headers: { ...(init?.headers as Record<string, string>), 'X-Featherbase-App-Version': `tickets@${TICKETS_VERSION}` },

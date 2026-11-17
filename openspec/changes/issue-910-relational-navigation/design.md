@@ -132,3 +132,10 @@ recent paths).
 ## Open Questions
 
 None.
+
+## Later: the pane's place (#1259, 17-Nov-2026)
+
+Siraj chose three list views with a per-person switch (#1259): Table, List And Record and Table
+With Panel. They replace the drill pane's right/bottom choice, so that requirement and its
+scenario ("The pane stays where the user put it") are gone. The drill pane is now the record
+panel those views share; beside a row page it sits right on a wide window and below on a narrow one.

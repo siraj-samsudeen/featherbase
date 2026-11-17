@@ -17,6 +17,7 @@ import {
   recentSearches,
   recordAction,
   renameTableInRecents,
+  sharedNames,
 } from '../src/lib/recents'
 import { setViewedPerson } from '../src/lib/viewing-as'
 
@@ -479,5 +480,28 @@ describe('uniqueByDisplay', () => {
     const now = { kind: 'page' as const, key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore', visits: [2] }
     expect(uniqueByDisplay([now, old]).map((e) => e.key)).toEqual(['page:explore'])
     expect(uniqueByDisplay([{ ...row('A'), visits: [1] }, { ...row('B'), visits: [1] }])).toHaveLength(2)
+  })
+})
+
+// #1253 (one-app-chrome, 17-Nov): two Recently Opened rows of one name.
+describe('a list remembered unfiltered and with an empty filter list', () => {
+  const list = (filters?: string) => actionForLocation('/featherbase/admin/table/job-assignment', filters === undefined ? {} : { filters }, 'Job Assignment')!
+  it('is one destination', () => {
+    expect(list('[]').key).toBe(list().key)
+    expect(list('[]').sub).toBeUndefined()
+  })
+  it('an older entry kept with an empty filter list is the same place as the unfiltered one', () => {
+    const old = { ...list(), key: 'list:Job Assignment?[]', visits: [NOW] }
+    expect(uniqueByDisplay([{ ...list(), visits: [NOW] }, old])).toHaveLength(1)
+  })
+})
+
+describe('sharedNames', () => {
+  it('names the lists two entries share, never a row', () => {
+    const filtered = actionForLocation('/featherbase/admin/table/job-assignment', { filters: '[["site","=","Head Office"]]' }, 'Job Assignment')!
+    const plain = actionForLocation('/featherbase/admin/table/job-assignment', {}, 'Job Assignment')!
+    const other = actionForLocation('/featherbase/admin/table/store', {}, 'Store')!
+    expect([...sharedNames([filtered, plain, other])]).toEqual(['Job Assignment'])
+    expect([...sharedNames([row('A'), { ...row('A'), key: 'row:Customer/A2' }])]).toEqual([])
   })
 })

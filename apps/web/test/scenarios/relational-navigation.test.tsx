@@ -254,7 +254,7 @@ describe('relational-navigation', () => {
       await drillTo('Enchakkal', 'Enchakkal Supermarket')
     })
     await step('the drill pane shows Enchakkal Supermarket and what points at it', async () => {
-      await part('Enchakkal Supermarket', 'Pointed at by')
+      await part('Enchakkal Supermarket', 'Pointed At By')
       expect(countOf(await group('Enchakkal Supermarket', 'Profit Centre'))).toBe(40)
     })
     await step('the list of sites stays as it was', async () => expect(await snapshot(walk.view)).toEqual(walk.before))
@@ -362,8 +362,8 @@ describe('relational-navigation', () => {
     await step('the site Enchakkal has a long note and two empty fields', () => seedOrganisation(admin))
     await step("the user reads Enchakkal's fields in the drill pane", async () => {
       ;({ view } = await selectInSites(admin, 'Enchakkal'))
-      const fields = await within(await pane('Enchakkal')).findByRole('button', { name: 'Fields' })
-      if (fields.getAttribute('aria-pressed') !== 'true') fireEvent.click(fields)
+      // #1259: the record panel always shows its fields.
+      await within(await pane('Enchakkal')).findByRole('heading', { name: 'Fields' })
     })
     await step('the note is shortened with a way to read all of it', async () => {
       const more = await within(await pane('Enchakkal')).findByRole('button', { name: 'Show more' })
@@ -373,7 +373,7 @@ describe('relational-navigation', () => {
     await step('the two empty fields are folded away under a count', async () =>
       expect(await within(await pane('Enchakkal')).findByText(/^\d+ empty fields?$/)).toHaveTextContent('2 empty fields'))
     await step("the user can open Enchakkal's form to edit it", async () => {
-      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Open row page' }))
+      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Edit' }))
       await waitFor(() => expect(location(view).pathname.startsWith(`${tableHref(SITE)}/row/`)).toBe(true))
       await screen.findByTestId('form-view')
       await onScreen().within(byTestId('form-view'), (form) => form.assertValue('Name', 'Enchakkal'))
@@ -475,29 +475,6 @@ describe('relational-navigation', () => {
     })
   })
 
-  scenario('The pane stays where the user put it', async ({ admin, createUser }, step) => {
-    let user!: Client
-    await step('the user fixed the drill pane below the list', async () => {
-      await seedOrganisation(admin)
-      user = await (createUser as CreateUser)({ email: 'placer@example.com', roles: await readerRoles(admin) })
-      await selectInSites(user, 'Enchakkal')
-      fireEvent.click(within(await screen.findByRole('group', { name: 'Pane place' })).getByRole('button', { name: 'Bottom' }))
-      await waitFor(async () => {
-        const { settings } = await user.get<{ settings: { panePlace?: string } | null }>('/api/user_settings/__navigation')
-        expect(settings?.panePlace).toBe('bottom')
-      })
-    })
-    await step('the user signs in again and selects Enchakkal', async () => {
-      signInAfresh()
-      await openList(user, SITE)
-      await select('Enchakkal')
-    })
-    await step('the drill pane opens below the list', async () => {
-      const site = await pane('Enchakkal')
-      expect(site).toHaveAttribute('data-place', 'bottom')
-      expect(follows(listRows().at(-1)!, site)).toBe(true)
-    })
-  })
 
   scenario("Enchakkal's page leads with its plants", async ({ admin }, step) => {
     let org!: OrgIds

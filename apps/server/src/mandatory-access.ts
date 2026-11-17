@@ -51,8 +51,13 @@ export async function hasMandatoryRowAccess(table: string, rowId: string, depth 
 export async function admittedToTable(user: string, table: string): Promise<boolean> {
   const policy = await tableAccessPolicy(table)
   if (!policy) return true
-  const roles = await getRoles(user)
-  return policy.roles.some(role => roles.includes(role))
+  return admittedHolding(await getRoles(user), table)
+}
+
+/** admittedToTable for someone holding `roles` (#1254: roles read once for many people). */
+export async function admittedHolding(roles: string[], table: string): Promise<boolean> {
+  const policy = await tableAccessPolicy(table)
+  return !policy || policy.roles.some(role => roles.includes(role))
 }
 
 export async function assertMandatoryAccess(user: string, meta: TableMeta, row: Record<string, unknown>, depth = 0): Promise<void> {

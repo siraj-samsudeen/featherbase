@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabLink } from 'shared'
+import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabLink } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
 import { useBarAddress } from '../lib/bar-address'
@@ -12,10 +13,11 @@ import { useI18n } from '../lib/i18n'
 import { BarControls, useBarControls } from './BarControls'
 import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
+import { KeyboardShortcutsItem, ShortcutTeachingHost } from './ShortcutTeaching'
 import { ViewAsBanner, ViewAsButton } from './ViewAs'
-import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
-import { listenForSidebarKeys, useSidebar } from '../lib/sidebar-collapsed'
+import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
+import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
 
@@ -159,7 +161,7 @@ export function TopBar({
   left,
   children,
   beforeRight,
-  below,
+  command,
 }: {
   /** #650: the bar over an installed app's own page (the bar bundle): the app
    *  the page belongs to, on whatever address it is opened. The app's page
@@ -175,8 +177,8 @@ export function TopBar({
   children?: ReactNode
   /** Admin-only indicators that lead the right side (the notification bell). */
   beforeRight?: ReactNode
-  /** A second row under the bar's own (the Admin command bar on a phone). */
-  below?: ReactNode
+  /** #1253: the Admin's "Search or Command" field, under the switcher in the sidebar. */
+  command?: ReactNode
 }) {
   const address = useBarContext(app ? app.name : home)
   const { brand } = address
@@ -228,6 +230,73 @@ export function TopBar({
   const barAddress = useBarAddress()
   const routerPath = useRouterState({ select: (state) => state.location.pathname })
   const open = currentTab(tabs, app && barAddress?.pathname ? barAddress.pathname : routerPath)
+  // #1253: a page with a sidebar has no top bar. The sidebar holds the switcher,
+  // the bell and the command field at its top, and the account, help and theme
+  // at its foot; on a phone a slim header keeps only the menu button.
+  const slots = useSidebarSlots()
+  const pickerSlot = usePickerSlot()
+  const drawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
+  const rail = sidebar.collapsed && !drawer
+  const switcher = left ?? (caps && context && name
+    ? <AppSwitcher app={switcherApp} place={rail ? 'rail' : 'sidebar'} />
+    : context && name && <BarName href={homeHref(context, installed)} name={name} />)
+  const phoneTabs = isPhone && caps && name && tabs.length > 0 && (
+    <TabBar
+      label={name}
+      tabs={tabs.map((tab) => ({ label: tab.label, icon: APP_ICON[tab.icon] ?? List, href: tab.href, current: tab.href === open }))}
+    />
+  )
+
+  if (slots) {
+    // An app's declared pickers (#642) sit inside the white panel, at its top
+    // and right-aligned (Siraj, 17-Nov); with no slot, in the strip above it.
+    const pickers = Boolean(caps && controlsOf && hasControls)
+    const inPanel = pickers && pickerSlot
+    return (
+      <>
+        <PreviewBanner />
+        {/* #1222: who is being viewed, on every page, while a tester views as someone. */}
+        <ViewAsBanner />
+        {/* The menu button is for the phone drawer only (md:hidden); with no
+            pickers the whole strip is gone from a wide window. */}
+        <header
+          className={`${pickers && !inPanel ? 'relative ' : 'md:hidden '}flex shrink-0 items-center gap-x-1 px-2 py-1 sm:gap-4 md:px-3`}
+          data-testid="page-header"
+        >
+          <SidebarControls sidebar={sidebar} />
+          {pickers && !inPanel && <BarControls app={controlsOf!} />}
+        </header>
+        {inPanel && createPortal(
+          <div className="relative flex justify-end" data-testid="page-pickers"><BarControls app={controlsOf!} /></div>,
+          pickerSlot,
+        )}
+        {createPortal(
+          <div className={rail ? 'flex flex-col items-center gap-1 px-2 pb-2 pt-3' : 'flex flex-col gap-2 px-2 pb-2 pt-3'} data-testid="sidebar-top">
+            <div className={rail ? 'contents' : 'flex min-w-0 items-center gap-1'}>
+              <div className={rail ? 'contents' : 'min-w-0 flex-1'}>{switcher}</div>
+              {/* #1222: View as, an action, at the top beside the bell (Ctrl+Shift+K everywhere). */}
+              {caps && <ViewAsButton compact place={rail ? 'rail' : 'sidebar'} />}
+              {!rail && caps && beforeRight}
+            </div>
+            {caps && command}
+          </div>,
+          slots.top,
+        )}
+        {caps && createPortal(
+          // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen.
+          <div className={rail ? 'relative flex flex-col items-center gap-1' : 'relative flex min-w-0 items-center gap-0.5'} data-testid="sidebar-account">
+            <AccountMenu inSidebar={{ rail, offerAdmin }} />
+            {!rail && <HelpMenu />}
+            {!rail && <ThemeMenu />}
+          </div>,
+          slots.foot,
+        )}
+        {/* #1251: the shortcut teaching, once per page (Admin and apps alike). */}
+        {caps && <ShortcutTeachingHost />}
+        {phoneTabs}
+      </>
+    )
+  }
 
   return (
     <>
@@ -265,13 +334,9 @@ export function TopBar({
           )}
         </div>
       </header>
-      {below}
-      {isPhone && caps && name && tabs.length > 0 && (
-        <TabBar
-          label={name}
-          tabs={tabs.map((tab) => ({ label: tab.label, icon: APP_ICON[tab.icon] ?? List, href: tab.href, current: tab.href === open }))}
-        />
-      )}
+      {/* #1251: ? and the shortcut teaching on pages without a sidebar too. */}
+      {caps && <ShortcutTeachingHost />}
+      {phoneTabs}
     </>
   )
 }
@@ -436,12 +501,29 @@ const MENU_ITEM = 'flex min-h-control w-full items-center px-3 text-left text-sm
 
 /** #72 / #489: the avatar is the Account menu — the person's name, Sign-in
  *  methods, Log out. On a phone it also carries Open Admin and the theme. */
-function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
+/** The roles everyone holds say nothing about who someone is. */
+const EVERYONE_ROLES = new Set(['All', 'Guest'])
+
+/** Under the name at the sidebar's foot: "System Manager" for whoever manages
+ *  the instance, else their first role and how many more. */
+export function roleLine(who: { roles: string[]; capabilities: { manage: boolean } }): string {
+  if (who.capabilities.manage) return 'System Manager'
+  const roles = who.roles.filter((role) => !EVERYONE_ROLES.has(role))
+  return [roles[0], roles.length > 1 ? `+${roles.length - 1} more` : null].filter(Boolean).join(' · ')
+}
+
+function AccountMenu({ inMenu, inSidebar }: {
+  inMenu?: { offerAdmin: boolean }
+  /** #1253: the avatar and name at the sidebar's foot (the avatar alone in the
+   *  rail); the menu opens above it, or beside the rail. */
+  inSidebar?: { rail: boolean; offerAdmin: boolean }
+}) {
   const user = getSessionUser()
   const { t } = useI18n()
   const signOutNow = useSignOut()
   const navigate = useNavigate()
-  const caps = useWhoAmI().data?.capabilities
+  const whoami = useWhoAmI().data
+  const caps = whoami?.capabilities
   const [open, setOpen] = useState(false)
   const wrapper = useRef<HTMLDivElement>(null)
   const avatar = useRef<HTMLButtonElement>(null)
@@ -476,8 +558,14 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
     .map((s) => s[0]?.toUpperCase())
     .join('')
 
+  const named = Boolean(inSidebar && !inSidebar.rail)
+  // In the rail the theme has no control of its own beside the avatar, so its menu carries it.
+  const extras = inMenu ?? (inSidebar ? { offerAdmin: inSidebar.offerAdmin, theme: inSidebar.rail } : undefined)
+  const place = !inSidebar
+    ? 'right-0 top-full mt-1'
+    : inSidebar.rail ? 'bottom-0 left-full ml-2' : 'bottom-full left-0 mb-1'
   return (
-    <div className="relative" ref={wrapper}>
+    <div className={named ? 'relative min-w-0 flex-1' : 'relative'} ref={wrapper}>
       <button
         ref={avatar}
         type="button"
@@ -487,15 +575,24 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        className={iconButtonClasses('rounded-full hover:bg-transparent')}
+        className={named
+          ? touchRowClasses('flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm text-ink hover:bg-border/50')
+          : iconButtonClasses('rounded-full hover:bg-transparent')}
       >
-        <span aria-hidden="true" className="flex size-8 items-center justify-center rounded-full bg-action text-xs font-semibold text-action-ink">
+        <span aria-hidden="true" className={`flex ${inSidebar ? 'size-7' : 'size-8'} shrink-0 items-center justify-center rounded-full bg-action text-xs font-semibold text-action-ink`}>
           {initials}
         </span>
+        {named && (
+          <span aria-hidden="true" className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate">{shown}</span>
+            {/* #1253 mockup: who they are here, small and muted under the name. */}
+            {whoami && roleLine(whoami) && <span className="truncate text-xs text-ink-muted" data-testid="session-user-role">{roleLine(whoami)}</span>}
+          </span>
+        )}
         <span className="sr-only">{t('Account')}: {shown}</span>
       </button>
       {open && (
-        <div id={menuId} className={cardClasses('absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden py-1')} data-testid="account-menu" role="menu" aria-label={t('Account')}>
+        <div id={menuId} className={cardClasses(`absolute ${place} z-40 w-64 overflow-hidden py-1`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
           <div className="border-b border-border px-3 py-2 text-sm" data-testid="account-identity">
             {/* #1227: a record shown is a RecordLink — the person's own Person record, for
                 someone who may open it (a System Manager, or a reader of Person). */}
@@ -512,14 +609,14 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
               />
             )}
           </div>
-          {inMenu && (
+          {extras && (
             <>
-              {inMenu.offerAdmin && (
+              {extras.offerAdmin && (
                 <div className="border-b border-border py-1">
                   <OpenAdminButton role="menuitem" />
                 </div>
               )}
-              <ThemeToggle labelled />
+              {(!('theme' in extras) || extras.theme) && <ThemeToggle labelled />}
             </>
           )}
           <Link
@@ -530,6 +627,15 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
             className={MENU_ITEM}
           >
             {t('Sign-in methods')}
+          </Link>
+          <Link
+            role="menuitem"
+            to={ACCOUNT_CONNECTED_APPS_PATH}
+            onClick={() => setOpen(false)}
+            data-testid="account-connected-apps"
+            className={MENU_ITEM}
+          >
+            {t('Connected apps')}
           </Link>
           {user && (
             <Link
@@ -551,4 +657,88 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
       )}
     </div>
   )
+}
+
+/** #1253: a small menu at the sidebar's foot, opening above its button. */
+function FootMenu({ label, icon: Icon, testid, children }: {
+  label: string
+  icon: LucideIcon
+  testid: string
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapper = useRef<HTMLDivElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const menuId = useId()
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      // The event's path: over an app's page the sidebar is a shadow root (#650).
+      if (wrapper.current && !e.composedPath().includes(wrapper.current)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      button.current?.focus()
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+  return (
+    // Not positioned itself: the card anchors to the foot row (sidebar-account), from its left edge.
+    <div className="shrink-0" ref={wrapper}>
+      <button
+        ref={button}
+        type="button"
+        onClick={() => setOpen((was) => !was)}
+        aria-label={label}
+        title={label}
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        data-testid={testid}
+        className={iconButtonClasses('size-8 text-ink-muted hover:bg-border/50 hover:text-ink')}
+      >
+        <Icon aria-hidden size={16} />
+      </button>
+      {open && (
+        <div id={menuId} className={cardClasses('absolute bottom-full left-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The theme control at the sidebar's foot: its icon is the theme chosen now. */
+function ThemeMenu() {
+  const { theme } = useThemeChoice()
+  const { t } = useI18n()
+  return (
+    <FootMenu label={`${t('Theme')}: ${t(THEME_LABEL[theme])}`} icon={THEME_ICON[theme]} testid="theme-button">
+      <ThemeToggle labelled />
+    </FootMenu>
+  )
+}
+
+/** Help at the sidebar's foot. #1251: its first item opens the Keyboard
+ *  Shortcuts panel, which lists the shortcuts on this page and which ones the
+ *  person uses; `?` opens it from anywhere. */
+function HelpMenu() {
+  return (
+    <FootMenu label="Help" icon={CircleHelp} testid="help-button">
+      <KeyboardShortcutsItem className={MENU_ITEM} />
+    </FootMenu>
+  )
+}
+
+/** #1253: the top of a platform page's white panel, where an app's declared
+ *  pickers sit (an account page on an app's address). Empty, it takes no room. */
+export function PagePickerSlot() {
+  const slot = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => offerPickerSlot(slot.current!), [])
+  return <div ref={slot} className="empty:hidden mb-3" data-testid="page-picker-slot" />
 }

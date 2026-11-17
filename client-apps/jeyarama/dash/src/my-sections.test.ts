@@ -2,7 +2,7 @@
 // paths run on the real platform in platform-test/my-sections.test.ts; these are what that
 // suite has no cheap way to reach. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
-import { actions, BASE_TABLES, fewNames, reads, type ActionContext, type ReadContext } from './my-sections.ts'
+import { actions, asDecider, BASE_TABLES, fewNames, reads, type ActionContext, type ReadContext } from './my-sections.ts'
 import { istToday } from './report.ts'
 
 type Row = Record<string, unknown>
@@ -62,6 +62,7 @@ function context(tables: Record<string, Row[]>, { user = 'asha', payload, settin
         return rows.slice(start, start + (filter.limit ?? 200))
       },
       mayDecide: async () => true,
+      mayDecideMany: async (asks: unknown[]) => asks.map(() => true),
       modeOf: async () => 'Approve first',
       routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: route === 'ghost' ? ['nobody-on-staff'] : approvers.people, roles: [] }),
       lockRow: async () => {},
@@ -83,6 +84,21 @@ describe('whether it is set up', () => {
     expect(await reads.subcategory_levels(context(world(), { settings, payload: { job: 'J1' } }).ctx)).toEqual({ start: null, levels: [] })
     expect(await reads.category_subcategories(context(world(), { settings, payload: { job: 'J1' } }).ctx)).toEqual([])
     expect(await reads.unplaced(context(world(), { settings }).ctx)).toEqual({ state: 'not_set_up' })
+  })
+})
+
+describe('who decides a subcategory taken from another section (#1254, Codex)', () => {
+  it("reaches that section's Team Leader's manager however many past jobs the section has", async () => {
+    const past = Array.from({ length: 500 }, (_, n) => ({ row_id: `H${String(n).padStart(3, '0')}`, employee: 'E2', job: 'Staff', site: 'LKS', section: 'S2', reports_to: 'E2', starts_on: '2020-01-01', ends_on: '2020-12-31' }))
+    const base = world()
+    const tables = world({
+      Employee: [...base.Employee, { row_id: 'E3', name: 'Tara', status: 'Current', person: 'tara' }, { row_id: 'E4', name: 'Nila', status: 'Current', person: 'nila' }],
+      'Job Assignment': [...base['Job Assignment'], ...past, { row_id: 'J9', employee: 'E3', job: 'Team Leader', site: 'LKS', section: 'S2', reports_to: 'E4', starts_on: '2026-01-01', ends_on: null }],
+      'Section Subcategory': [...base['Section Subcategory'], { row_id: 'P2', section_subcategory_id: 'P2', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2026-01-01', ends_on: null }],
+    })
+    const { ctx, sent } = context(tables, { payload: { job: 'J1', subcategories: ['C2'] } })
+    await actions.propose_adds(ctx)
+    expect(sent.find(s => s.call === 'propose')?.request).toMatchObject({ approvers: { people: ['mani', 'nila'] } })
   })
 })
 
@@ -339,3 +355,166 @@ describe("a Department Manager's own pre-fill (#1205)", () => {
   })
 })
 
+
+// #1219: a Master Data Editor decides any open review as the manager would; nobody else gains anything.
+describe('who may decide', () => {
+  const approvers = { people: ['manager'], fallbackRoles: ['Master Data Editor'] }
+  const as = (user: string, roles: string[]) => ({ user, roles }) as unknown as ReadContext
+  it('asks a Master Data Editor as the role, which the platform checks when it decides', () => {
+    expect(asDecider(as('editor', ['Dash Reader', 'Master Data Editor']), approvers)).toEqual({ people: [], fallbackRoles: ['Master Data Editor'] })
+  })
+  it('leaves anyone else, and the manager, exactly as before', () => {
+    expect(asDecider(as('someone', ['Dash Reader']), approvers)).toBe(approvers)
+    expect(asDecider(as('manager', ['Dash Reader']), approvers)).toBe(approvers)
+    expect(asDecider({ user: 'nobody' } as unknown as ReadContext, approvers)).toBe(approvers)
+  })
+  it('leaves an editor who is also the manager deciding as the manager', () => {
+    expect(asDecider(as('manager', ['Master Data Editor']), approvers)).toBe(approvers)
+  })
+})
+
+describe('Put back (#1219)', () => {
+  const refused = (message: string): never => { throw new Error(message) }
+  it('is refused to anyone without Master Data Editor, before anything is read', async () => {
+    const ctx = { user: 'manager', roles: ['Dash Reader'], payload: { proposal: 'P1' }, settings: {}, reject: refused,
+      baseTables: { list: () => { throw new Error('read') } }, changeProposals: { list: () => { throw new Error('read') } } } as unknown as ActionContext
+    await expect(actions.put_back(ctx)).rejects.toThrow('Only the master data team can put a subcategory back')
+  })
+})
+
+// #1219 (Codex): an add queues on its store and subcategory before it reads where that subcategory is,
+// as an undo or Put back does, so one waiting behind a Put back reads what the Put back restored.
+describe('adding queues before it reads', () => {
+  it.each([['from no section', world()], ['from another section', world({ 'Section Subcategory': [
+    { row_id: 'P1', section_subcategory_id: 'P1', store: 'LKS', subcategory: 'C1', section: 'S1', starts_on: '2026-01-01', ends_on: null },
+    { row_id: 'P2', section_subcategory_id: 'P2', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2026-01-01', ends_on: null }] })]])('%s', async (_case, tables) => {
+    const { ctx } = context(tables, { payload: { job: 'J1', subcategories: ['C2'] } })
+    const events: string[] = []
+    const list = ctx.baseTables.list.bind(ctx.baseTables)
+    ;(ctx.baseTables as { list: typeof list }).list = async (table, args) => { if (table === 'Section Subcategory') events.push('read placements'); return list(table, args) }
+    ;(ctx.changeProposals as unknown as { serialize: (key: string) => Promise<void> }).serialize = async key => { events.push(`queue ${key}`) }
+    await actions.propose_adds(ctx)
+    expect(events[0]).toBe('queue LKS:C2')
+    expect(events.filter(e => e.startsWith('queue'))).toEqual(['queue LKS:C2'])
+  })
+})
+
+// #1219 (Codex): a department set-up is decided only on its own card, whole and never by its own Department Manager.
+describe('decide leaves department set-ups to their own card', () => {
+  it.each(['department', 'department_section'])('refuses a %s proposal', async kind => {
+    const setUp = proposal({ kind, bundle: 'B1', job_assignment: 'J1', site: 'LKS', for_person: 'mani' }, { maker: 'loader', state: 'Not yet reviewed' })
+    const { ctx, sent } = context(world(), { user: 'mani', roles: ['Master Data Editor'], proposals: [setUp], payload: { proposal: 'PR', decision: 'confirm' } })
+    await expect(actions.decide(ctx)).rejects.toThrow('A department set-up is decided on its own card')
+    expect(sent).toEqual([])
+  })
+})
+
+// #1219: who took each out, and the master data team's refusals, in their less common branches.
+describe('who took it out, and Put back refusals (#1219)', () => {
+  const editor = { roles: ['Master Data Editor'], user: 'eli' }
+  const ended = (row_id: string, subcategory: string) => ({ row_id, store: 'LKS', subcategory, section: 'S1', starts_on: '2020-01-01', ends_on: '2026-03-01' })
+  const tables = () => world({
+    Subcategory: [{ row_id: 'C1', subcategory: 'Sarees', subcategory_type: 'Merchandise' }, { row_id: 'C2', subcategory: 'Belts', subcategory_type: 'Merchandise' },
+      { row_id: 'C3', subcategory: 'Bags', subcategory_type: 'Merchandise' }, { row_id: 'C4', subcategory: 'Socks', subcategory_type: 'Merchandise' }],
+    'Section Subcategory': [ended('E1', 'C1'), ended('E2', 'C2'), ended('E3', 'C3'), ended('E4', 'C4')],
+  })
+  const removal = (row_id: string, maker: string, target: string, created_at: string, state = 'Confirmed') =>
+    ({ row_id, maker, state, target_row: target, about: { kind: 'removal', what: 'Sarees', from: 'Ladies', site: 'LKS', job_assignment: 'J1', subcategory: 'C1', from_section: 'S1' },
+      decision_reason: null, changes: [], created_at, decided_at: null, route: { people: [], roles: [] } })
+  async function unplacedWith(names: unknown, changedBy: Record<string, { by: string; at: string }>) {
+    // Two settled removals of a row with no history: still nobody, never a guess from an old proposal.
+    const { ctx } = context(tables(), { ...editor, proposals: [removal('R1', 'mani', 'E1', '2026-02-01T00:00:00Z'), removal('R2', 'asha', 'E1', '2026-02-20T00:00:00Z')] })
+    ;(ctx.baseTables as unknown as { changedBy: unknown }).changedBy = async () => changedBy
+    ;(ctx as unknown as { people: unknown }).people = names
+    const { rows } = await reads.unplaced(ctx) as { rows: { name: string; removed_by: { name: string } | null }[] }
+    return Object.fromEntries(rows.map(r => [r.name, r.removed_by?.name ?? null]))
+  }
+  const history = { E2: { by: 'psn_gone', at: '' }, E3: { by: 'cli', at: '' } }
+
+  it('names a person the platform cannot name, and a step of its own; no history names nobody, whatever was proposed', async () => {
+    expect(await unplacedWith({ names: async () => ({ psn_gone: null, cli: null }) }, history))
+      .toEqual({ Sarees: null, Belts: 'Someone not on the staff list', Bags: 'an automatic step', Socks: null })
+  })
+  it('the same when the platform has no names to give, or fails to', async () => {
+    const expected = { Sarees: null, Belts: 'Someone not on the staff list', Bags: 'an automatic step', Socks: null }
+    expect(await unplacedWith(undefined, history)).toEqual(expected)
+    expect(await unplacedWith({ names: async () => { throw new Error('down') } }, history)).toEqual(expected)
+  })
+
+  it('a removal still waiting for approval has not been taken out: nothing to put back', async () => {
+    const { ctx } = context(world(), { ...editor, payload: { proposal: 'R1' }, proposals: [removal('R1', 'asha', 'P1', `${today}T00:00:00Z`, 'Pending')] })
+    await expect(actions.put_back(ctx)).rejects.toThrow('Sarees has not been taken out yet')
+  })
+
+  it.each([['Undone', 'This has already been reviewed'], ['Rejected', 'This has already been decided']])('deciding one %s says it is done', async (state, said) => {
+    const { ctx } = context(world(), { ...editor, payload: { proposal: 'R1', decision: 'confirm' }, proposals: [removal('R1', 'asha', 'P1', `${today}T00:00:00Z`, state)] })
+    await expect(actions.decide(ctx)).rejects.toThrow(said)
+  })
+
+  it('Waiting for you, when the route reaches nobody, names no one else', async () => {
+    const { ctx } = context(world(), { ...editor, route: 'none', proposals: [proposal(add)] })
+    const answer = await reads.approvals(ctx) as { proposals: { also_with: unknown[] }[] }
+    expect(answer.proposals.map(p => p.also_with)).toEqual([[]])
+  })
+})
+
+// #1219 (Codex): an editor's asks name the role only; the managers behind them go to the platform in the same
+// one call, so it reads every route's people together and naming who else each is with asks nothing new.
+describe('what Waiting for you asks the platform', () => {
+  it('one call for everything waiting, the managers in it beside the role; a role-only route is not asked about', async () => {
+    const holder = { ...proposal(move), row_id: 'PR2', maker: 'bala', about: { ...move, job_assignment: 'J2' } }
+    const tables = world({
+      Employee: [{ row_id: 'E1', name: 'Asha', status: 'Current', person: 'asha' }, { row_id: 'E2', name: 'Mani', status: 'Current', person: 'mani' },
+        { row_id: 'E3', name: 'Bala', status: 'Current', person: 'bala' }, { row_id: 'E4', name: 'Nila', status: 'Current', person: 'nila' }],
+      'Job Assignment': [{ row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'LKS', section: 'S1', reports_to: 'E2', starts_on: '2026-01-01', ends_on: null },
+        { row_id: 'J2', employee: 'E3', job: 'Team Leader', site: 'LKS', section: 'S2', reports_to: 'E4', starts_on: '2026-01-01', ends_on: null },
+        { row_id: 'J3', employee: 'E9', job: 'Staff', site: 'LKS', section: null, reports_to: null, starts_on: '2026-01-01', ends_on: null }],
+    })
+    const noManager = { ...proposal({ ...move, kind: 'section', job_assignment: 'J3' }), row_id: 'PR3', maker: 'staff9' }
+    const { ctx } = context(tables, { user: 'eli', roles: ['Master Data Editor'], proposals: [proposal(move), holder, noManager] })
+    const calls: { many: { maker: string; approvers: { people: string[]; fallbackRoles: string[] } }[][]; routes: string[][] } = { many: [], routes: [] }
+    const cp = ctx.changeProposals as unknown as Record<string, unknown>
+    cp.mayDecideMany = async (asks: { maker: string; approvers: { people: string[] } }[]) => { calls.many.push(asks as never); return asks.map(() => true) }
+    cp.mayDecide = async () => { throw new Error('asked one by one') }
+    cp.routeFor = async (_maker: string, approvers: { people: string[] }) => { calls.routes.push(approvers.people); return { people: approvers.people, roles: [] } }
+    const answer = await reads.approvals(ctx) as { proposals: { id: string; also_with: { name: string }[] }[] }
+    expect(calls.many).toHaveLength(1)
+    // The editor's own asks, then the managers' own, together.
+    expect(calls.many[0].map(ask => ask.approvers.people)).toEqual([[], [], [], ['mani'], ['nila'], []])
+    expect(calls.routes).toEqual([['mani'], ['nila']])
+    expect(Object.fromEntries(answer.proposals.map(p => [p.id, p.also_with.map(r => r.name)]))).toEqual({ PR: ['Mani'], PR2: ['Nila'], PR3: [] })
+  })
+})
+
+// #1219 (Codex): Not in any section never reads the app's whole history.
+describe('what Not in any section reads', () => {
+  const editor = { roles: ['Master Data Editor'], user: 'eli' }
+  const spy = (tables: Record<string, Row[]>, history: Record<string, { by: string; at: string }>) => {
+    const { ctx } = context(tables, editor)
+    const asked: unknown[] = []
+    const cp = ctx.changeProposals as unknown as Record<string, unknown>
+    const list = cp.list as (filter: unknown) => Promise<unknown[]>
+    cp.list = async (filter: unknown) => { asked.push(filter); return list(filter) }
+    ;(ctx.baseTables as unknown as { changedBy: unknown }).changedBy = async () => history
+    return { ctx, asked }
+  }
+  it('every ended row placed again: nothing out of a section, and no proposal is read', async () => {
+    const tables = world({ 'Section Subcategory': [{ row_id: 'P1', section_subcategory_id: 'P1', store: 'LKS', subcategory: 'C1', section: 'S1', starts_on: '2026-03-02', ends_on: null },
+      { row_id: 'E1', store: 'LKS', subcategory: 'C1', section: 'S2', starts_on: '2020-01-01', ends_on: '2026-03-01' }] })
+    const { ctx, asked } = spy(tables, {})
+    expect(await reads.unplaced(ctx)).toEqual({ state: 'ok', rows: [] })
+    expect(asked).toEqual([])
+  })
+  it('history names every remover: only open reviews are read', async () => {
+    const tables = world({ 'Section Subcategory': [{ row_id: 'E1', store: 'LKS', subcategory: 'C1', section: 'S1', starts_on: '2020-01-01', ends_on: '2026-03-01' }] })
+    const { ctx, asked } = spy(tables, { E1: { by: 'asha', at: '' } })
+    expect((await reads.unplaced(ctx) as { rows: unknown[] }).rows).toHaveLength(1)
+    expect(asked).toEqual([{ states: ['Not yet reviewed'], limit: 500, start: 0 }])
+  })
+  it('a row with no history still reads only open reviews', async () => {
+    const tables = world({ 'Section Subcategory': [{ row_id: 'E1', store: 'LKS', subcategory: 'C1', section: 'S1', starts_on: '2020-01-01', ends_on: '2026-03-01' }] })
+    const { ctx, asked } = spy(tables, {})
+    expect((await reads.unplaced(ctx) as { rows: { removed_by: unknown }[] }).rows.map(r => r.removed_by)).toEqual([null])
+    expect(asked).toEqual([{ states: ['Not yet reviewed'], limit: 500, start: 0 }])
+  })
+})

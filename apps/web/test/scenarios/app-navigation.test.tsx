@@ -136,7 +136,10 @@ async function openAppPage(as: TestClient, app: 'tasker' | 'dash', path: string)
       : <Dash />)
   })
   reopen = async (href) => { await openAppPage(as, app, href) }
-  return within(host.shadowRoot as unknown as HTMLElement)
+  // #1253: beside the app's sidebar there is no top bar: the switcher and the
+  // account are drawn at the sidebar's top and foot, in its shadow.
+  await waitFor(() => expect(document.querySelector('featherbase-sidebar')?.shadowRoot).toBeTruthy(), WAIT)
+  return within(document.querySelector('featherbase-sidebar')!.shadowRoot as unknown as HTMLElement)
 }
 const sidebar = () => document.querySelector('featherbase-sidebar') as HTMLElement
 /** The app's own page, driven through the Session DSL. The bar's checks stay raw
@@ -224,7 +227,11 @@ describe('app-navigation', () => {
   scenario('Dash keeps the selected store', async ({ admin, createUser, seed }, step) => {
     let reader: TestClient
     let barView: ReturnType<typeof within>
-    const storePicker = () => barView.findByRole('combobox', { name: 'Store' }, WAIT)
+    // #1253: the app's pickers sit inside its white page panel, in the platform's own host there.
+    const storePicker = async () => {
+      await waitFor(() => expect(document.querySelector('[data-featherbase-pickers]')?.shadowRoot).toBeTruthy(), WAIT)
+      return within(document.querySelector('[data-featherbase-pickers]')!.shadowRoot as unknown as HTMLElement).findByRole('combobox', { name: 'Store' }, WAIT)
+    }
     await step('the user can open Tasker and Dash but cannot open Featherbase', async () => { reader = await tlWithoutFeatherbase(admin, seed, createUser) })
     await step('the user has selected Lakeside in Dash', async () => {
       barView = await openAppPage(reader, 'dash', '/dash/?store=9902')

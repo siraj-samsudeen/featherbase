@@ -2,7 +2,7 @@ import type { KeyboardEvent } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { api } from '../lib/api'
-import { linkRowsTable, metaQuery, useMeta, type ColumnDef } from '../lib/meta'
+import { linkRowsTable, metaQuery, useMeta, useTableLabels, type ColumnDef } from '../lib/meta'
 import { useConnections, type Connection } from '../lib/connections'
 import { useStepOptions } from '../lib/explore-steps'
 import { buttonClasses, cardClasses, fmtCount } from '@featherbase/shop-floor'
@@ -24,6 +24,8 @@ interface ForwardNode {
   label: string
   table: string
   row_id: string
+  /** #1241: the Table as people read it. */
+  tableLabel?: string
 }
 interface GroupNode {
   kind: 'child' | 'cnx'
@@ -110,6 +112,12 @@ export function RowMap({ table, name }: { table: string; name: string }) {
       )}`,
     })
 
+  // #1241: every Table on the map by its label, never its internal name.
+  const labelOf = useTableLabels([table, ...forward.map((f) => f.table), ...groups.map((g) => g.table)])
+  for (const f of forward) f.tableLabel = labelOf(f.table)
+  for (const g of groups) if (g.kind === 'cnx') g.label = labelOf(g.table)
+  const tableWords = labelOf(table)
+
   const rows = Math.max(forward.length, groups.length, 1)
   const forwardLines = forward.map((f) => wrapText(linkAndTable(f), FORWARD_CHARS))
   const groupLines = groups.map((g) => wrapText(g.via, GROUP_CHARS))
@@ -155,7 +163,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
         <div className="space-y-3 xl:hidden" data-testid="map-narrow">
           <div className="break-words rounded-control border border-action bg-action-tint px-3 py-2 text-sm">
             <div className="font-semibold text-ink">{centreTitle}</div>
-            <div className="text-xs text-ink-muted">{table}</div>
+            <div className="text-xs text-ink-muted">{tableWords}</div>
           </div>
           {forward.length > 0 && (
             <section aria-label="Links from this row" className="space-y-2">
@@ -234,7 +242,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
               {truncate(centreTitle, 28)}
             </text>
             <text x={352} y={cy + 35} fontSize={12} fill="var(--color-ink-muted)">
-              {truncate(table, 30)}
+              {truncate(tableWords, 30)}
             </text>
           </g>
           {/* forward reference nodes */}
@@ -308,7 +316,8 @@ function linkWords(c: { column_name: string; label?: string | null }): string {
 
 /** What a linked row's box says beneath its title: "<link> · <Table>", or the Table alone when they match. */
 function linkAndTable(f: ForwardNode): string {
-  return f.label === f.table ? f.table : `${f.label} · ${f.table}`
+  const words = f.tableLabel ?? f.table
+  return f.label === f.table || f.label === words ? words : `${f.label} · ${words}`
 }
 
 /** Words split into at most `max` lines of about `n` characters; the last line ends in … if more is left. */

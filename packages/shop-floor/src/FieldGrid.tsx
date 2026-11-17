@@ -40,7 +40,16 @@ function LongValue({ children }: { children: ReactNode }) {
   )
 }
 
-function Rows({ fields }: { fields: FieldGridField[] }) {
+/** Two columns, each label over its value; a long value takes the row (a record panel, #1259). */
+const STACKED = 'grid grid-cols-2 gap-x-6 gap-y-3 text-sm'
+
+function Rows({ fields, stacked = false }: { fields: FieldGridField[]; stacked?: boolean }) {
+  if (stacked) return <dl className={STACKED}>
+    {fields.map((field, index) => <div key={`${index}-${field.label}`} className={cx('flex min-w-0 flex-col gap-0.5', field.long && 'col-span-2')}>
+      <dt className={cx(LABEL, 'text-xs')}>{field.label}</dt>
+      <dd className={VALUE}>{field.long ? <LongValue>{field.value}</LongValue> : field.value}</dd>
+    </div>)}
+  </dl>
   return <dl className={GRID}>
     {fields.map((field, index) => <div key={`${index}-${field.label}`} className="contents">
       <dt className={LABEL}>{field.label}</dt>
@@ -53,7 +62,11 @@ function Rows({ fields }: { fields: FieldGridField[] }) {
  * A row's fields, read only: label / value in two columns, grouped into
  * sections. Every empty field gathers under one closed "n empty fields".
  */
-export function FieldGrid({ groups }: { groups: FieldGridGroup[] }) {
+export function FieldGrid({ groups, stacked = false }: {
+  groups: FieldGridGroup[]
+  /** Each label over its value, in two columns (a record panel); else label beside value. */
+  stacked?: boolean
+}) {
   const empty = groups.flatMap((group) => group.fields.filter((field) => field.empty))
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -62,14 +75,14 @@ export function FieldGrid({ groups }: { groups: FieldGridGroup[] }) {
         if (!filled.length) return null
         return <section key={`${index}-${group.title ?? ''}`} className="flex flex-col gap-2">
           {group.title && <h3 className="text-sm font-semibold text-ink">{group.title}</h3>}
-          <Rows fields={filled} />
+          <Rows fields={filled} stacked={stacked} />
         </section>
       })}
       {empty.length > 0 && <details className="group">
         <summary className="cursor-pointer text-sm text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-focus">
           {fmtCount(empty.length)} empty {empty.length === 1 ? 'field' : 'fields'}
         </summary>
-        <div className="pt-2"><Rows fields={empty.map((field) => ({ ...field, value: '—' }))} /></div>
+        <div className="pt-2"><Rows fields={empty.map((field) => ({ ...field, value: '—' }))} stacked={stacked} /></div>
       </details>}
     </div>
   )

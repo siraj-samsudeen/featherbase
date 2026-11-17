@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { api } from '../lib/api'
 import { ROW_STAMPS, linkRowsTable, type ColumnDef, type TableMeta } from '../lib/meta'
-import { ShownName } from '../lib/people'
+import { PrincipalLink } from '../lib/people'
 import { formatValue, type Settings } from '../lib/settings'
 import { RowTitle } from '../lib/row-titles'
 import { RowLink } from '../lib/row-name'
@@ -321,10 +321,14 @@ function RowStamps({ values, table }: { values: Record<string, unknown>; table?:
     <span key={p.at}>
       {i > 0 && ', '}
       {i > 0 ? ROW_STAMPS[p.at].label.toLowerCase() : ROW_STAMPS[p.at].label} {p.day}
-      {p.by && <> by <ShownName id={p.by} actorOf={table} /></>}
+      {p.by && <> by <PrincipalLink id={p.by} actorOf={table} /></>}
     </span>
   ))}</>
 }
+
+/** Who stamped a row. A person is a record, so a link to their Person row for
+ *  a viewer who may open it (#1253: every record is a link); a service account
+ *  or a system step is read as its name. */
 
 /** When the row was created and changed, and by whom, on one quiet line:
  *  the platform's stamps, then any bookkeeping columns a source keeps. */

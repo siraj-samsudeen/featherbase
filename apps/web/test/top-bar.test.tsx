@@ -9,7 +9,7 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { resolve } from 'node:path'
 import { afterEach, vi } from 'vitest'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, rowHref } from 'shared'
+import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, rowHref } from 'shared'
 import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { discoverPackages } from 'server/src/runtime-packages'
@@ -49,7 +49,11 @@ async function viewerOnly(admin: Client, createUser: (o: { email?: string; roles
   return createUser({ email, roles: [VIEWER_ROLE] })
 }
 
-const bar = () => screen.findByTestId('top-bar')
+/** #1253: the platform's chrome. A page with a sidebar has no top bar: the
+ *  switcher is at the sidebar's top and the account at its foot. A page
+ *  without one (the Sales Target page, the Portal, no access) keeps the bar. */
+const bar = () => waitFor(() =>
+  document.querySelector<HTMLElement>('[data-testid="admin-sidebar"], [data-testid="account-sidebar"]') ?? screen.getByTestId('top-bar'))
 const nameElement = async () => within(await bar()).findByTestId('top-bar-name')
 /** The bar's name as shown: the switcher's button (#1227, #1236) or the plain name. */
 const barName = nameElement
@@ -343,17 +347,27 @@ test('the right side reads Open Admin, the theme toggle, then the Account menu',
 
 // ---- 5. the Account menu --------------------------------------------------------
 
-test('the Account menu holds the name, Sign-in methods, What you can see (#628), then Log out', async ({ admin }) => {
+test('the Account menu holds the name, Sign-in methods, Connected apps (#1207), What you can see (#628), then Log out', async ({ admin }) => {
   await renderApp('/featherbase/sales-target', admin)
   const menu = await openAccountMenu()
   const order = [...menu.querySelectorAll('[data-testid="account-identity"], [role="menuitem"]')].map((el) => el.getAttribute('data-testid'))
-  expect(order).toEqual(['account-identity', 'account-sign-in-methods', 'account-access-explanation', 'logout'])
+  expect(order).toEqual(['account-identity', 'account-sign-in-methods', 'account-connected-apps', 'account-access-explanation', 'logout'])
 })
 
 test("the Account menu's Sign-in methods opens the account page", async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
   await openAccountMenu()
   expect(screen.getByTestId('account-sign-in-methods')).toHaveAttribute('href', ACCOUNT_SIGN_IN_METHODS_PATH)
+})
+
+test("the Account menu's Connected apps opens the account page and closes the menu", async ({ admin }) => {
+  await renderApp('/featherbase/admin', admin)
+  await openAccountMenu()
+  const link = screen.getByTestId('account-connected-apps')
+  expect(link).toHaveAttribute('href', ACCOUNT_CONNECTED_APPS_PATH)
+  await userEvent.click(link)
+  expect(await screen.findByRole('heading', { name: 'Connected apps' })).toBeInTheDocument()
+  expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument()
 })
 
 // #1227: was "the person's name in the Account menu is not a control" (#489). The
@@ -686,9 +700,9 @@ test('someone who belongs to no app sees the switcher on the neutral Featherbase
 test('the account pages have the shared sidebar, with its own collapse control', async ({ admin }) => {
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  const bar = await settledBar()
-  // #1248: the sidebar's own footer carries its collapse control, not the bar.
+  await settledBar()
+  // #1248: the sidebar's own footer carries its collapse control; #1253: no top bar.
   expect(within(screen.getByTestId('account-sidebar')).getByTestId('sidebar-collapse')).toBeInTheDocument()
-  expect(within(bar).queryByTestId('sidebar-collapse')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('top-bar')).not.toBeInTheDocument()
   expect(screen.getByTestId('sidebar-group-account')).toBeInTheDocument()
 })
