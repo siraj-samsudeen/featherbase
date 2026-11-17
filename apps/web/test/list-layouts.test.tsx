@@ -8,6 +8,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
+import { api } from '../src/lib/api'
 
 const DT = 'Lv Desk'
 const QUEUE = 'Lv Requests'
@@ -174,6 +175,45 @@ test("opening the Table itself after a saved view's link shows the person's view
   await admin.put(`/api/user_settings/${encodeURIComponent(DT)}`, { layout: 'table' })
   const app = await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?layout=split`, admin)
   await waitFor(() => expect(pressed()).toEqual(['List And Record']))
-  await (app.router as { navigate: (o: { href: string }) => Promise<void> }).navigate({ href: `/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}` })
+  // The sidebar's link to the Table: a new entry, the list still mounted.
+  ;(app.router as unknown as { history: { push: (href: string) => void } }).history.push(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`)
   await waitFor(() => expect(pressed()).toEqual(['Table']))
+})
+
+test('three quick choices are saved in the order they were made', async ({ admin }) => {
+  await seed(admin)
+  await openList(admin)
+  // Each choice as soon as the last one shows, before its save has landed.
+  for (const name of ['Table', 'List And Record', 'Table With Panel']) {
+    fireEvent.click(view().getByRole('button', { name }))
+    await waitFor(() => expect(pressed()).toEqual([name]))
+  }
+  await settled(admin, 'panel')
+  await new Promise((done) => setTimeout(done, 300))
+  await settled(admin, 'panel')
+  expect(pressed()).toEqual(['Table With Panel'])
+})
+
+test("a choice made while the person's settings are still on their way is not undone by them", async ({ admin }) => {
+  await seed(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(DT)}`, { layout: 'split' })
+  // The settings read is answered before the person chooses, and the answer held until after.
+  let release!: () => void
+  const held = new Promise<void>((done) => { release = done })
+  const get = api.get.bind(api)
+  const spy = vi.spyOn(api, 'get').mockImplementation(async (path: string) => {
+    const answer = get(path)
+    if (path.startsWith('/api/user_settings/')) await held
+    return answer
+  })
+  try {
+    await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`, admin)
+    fireEvent.click(await screen.findByRole('button', { name: 'Table' }))
+    release()
+    await settled(admin, 'table')
+    await new Promise((done) => setTimeout(done, 300))
+    expect(pressed()).toEqual(['Table'])
+  } finally {
+    spy.mockRestore()
+  }
 })
