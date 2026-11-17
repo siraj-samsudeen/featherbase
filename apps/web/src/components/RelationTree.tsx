@@ -9,6 +9,7 @@ import { metaQuery, tableLabel, type TableMeta } from '../lib/meta'
 import type { NavPane } from '../lib/nav-path'
 import { ALL_ROWS, TREE_PAGE, backlinkGroups, groupOrder, forwardLinks, groupRowsQuery, shownCode, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
 import { rowTitleQuery } from '../lib/row-titles'
+import { GROUP_ROWS, farSide, groupRowFields } from '../lib/far-side'
 
 // #910 checklist 18–19: a tree of related rows. Each row line unfolds in
 // place into what it links to and the counted groups that link to it; a
@@ -119,17 +120,26 @@ function groupLine(w: Walker, id: string, g: BacklinkGroup, table: string, row: 
   const node: TreeNode = { id, label: g.label, group: true, count: g.count, hasChildren: g.count > 0 }
   if (!ctx.expanded.has(id) || !g.count) return node
   const meta = w.get<TableMeta>(metaQuery(g.connection.table))
-  if (!meta) return { ...node, loading: true, children: [] }
+  // #1218 slice 1: the row the group points at, whose own links a far side skips.
+  const ownerMeta = w.get<TableMeta>(metaQuery(table))
+  const owner = w.get<Row>(docQuery(table, row))
+  if (!meta || !ownerMeta || !owner) return { ...node, loading: true, children: [] }
   const all = ctx.showAll.has(id)
   const rows = w.get<{ data: Row[]; total: number }>(groupRowsQuery(g.connection, {
-    fields: listFields(viewColumns(meta, {})), limit: all ? ALL_ROWS : TREE_PAGE, orderBy: groupOrder(meta),
+    fields: [...new Set([...listFields(viewColumns(meta, {})), ...groupRowFields(meta)])],
+    limit: all ? ALL_ROWS : GROUP_ROWS, orderBy: groupOrder(meta),
   }))
   if (!rows) return { ...node, loading: true, children: [] }
+  const backLink = g.connection.via ? undefined : g.connection.column
+  const own = forwardLinks(ownerMeta, owner).map((l) => l.row_id)
   const children = rows.data.map((r) => {
     const rowId = String(r.row_id)
+    // Each row by what it points to (a job assignment by its employee), else by its own name.
+    const far = farSide(meta, r, { backLink, record: row, own })
+    if (far) return linkedLine(w, lineId(id, `r:${rowId}`), far.table, far.row_id, ctx)
     const label = rowDisplayTitle(meta, r, rowId)
     return rowLine(w, lineId(id, `r:${rowId}`), { table: g.connection.table, row: rowId, label, code: shownCode(meta, rowId, label) }, ctx,
-      { forward: true, backLink: g.connection.via ? undefined : g.connection.column })
+      { forward: true, backLink })
   })
   return { ...node, children, more: { shown: rows.data.length, total: rows.total, onShowAll: () => ctx.onShowAll(id) } }
 }

@@ -8,7 +8,7 @@ import { sql } from 'server/src/db'
 import { tableName } from 'server/src/platform-schema'
 import { createUserWithRole, grantRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
-import { PLANT, PROFIT, REGION, SITE, seedSites, type Admin } from './relational-fixture'
+import { PLANT, PROFIT, REGION, SITE, seedPostings, seedSites, type Admin } from './relational-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -42,6 +42,17 @@ test('the tree shows what the row links to above it and its groups below, unfold
   expect(t).toHaveTextContent('Linked from')
 })
 
+// #1218 slice 1: a group's rows read by what they point to, as in the record panel.
+test("a group's rows on the tree read by what they point to", async ({ admin }) => {
+  await seedSites(admin)
+  await seedPostings(admin)
+  await openTree(admin, SITE, 'ENK')
+  const postings = await line('Nv Posting 2')
+  await waitFor(() => expect(within(postings).getAllByRole('treeitem').map((i) => i.textContent))
+    .toEqual(expect.arrayContaining([expect.stringContaining('Enchakkal Supermarket'), expect.stringContaining('Enchakkal Textiles')])))
+  expect(postings).not.toHaveTextContent('Kerala')
+})
+
 test('lines unfold in place several levels deep', async ({ admin }) => {
   await seedSites(admin)
   await openTree(admin, SITE, 'ENK')
@@ -52,11 +63,11 @@ test('lines unfold in place several levels deep', async ({ admin }) => {
   expect(centres).toHaveTextContent('EKL - Retail 01')
 })
 
-test('a group of 40 shows its first 20, with a way to show all 40', async ({ admin }) => {
+test('a group of 40 shows its first 10, with a way to show all 40', async ({ admin }) => {
   await seedSites(admin, { profitCentres: 40 })
   await openTree(admin, PLANT, '1503')
   const centres = await line(`${PROFIT} 40`)
-  await waitFor(() => expect(within(centres).getAllByRole('treeitem')).toHaveLength(20))
+  await waitFor(() => expect(within(centres).getAllByRole('treeitem')).toHaveLength(10))
   fireEvent.click(within(centres).getByRole('button', { name: 'show all 40' }))
   await waitFor(() => expect(within(centres).getAllByRole('treeitem')).toHaveLength(40))
 })
