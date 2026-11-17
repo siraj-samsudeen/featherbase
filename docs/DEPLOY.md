@@ -100,6 +100,8 @@ only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 | `PREAUTH_FORM_MAX` | no | no | `30` | public web-form POSTs per source and window |
 | `PREAUTH_SIGNUP_MAX` | no | no | `10` | sign-ups per source and window |
 | `PREAUTH_HANDOFF_MAX` | no | no | `200` | steps of the hand-off between instance addresses per source and window; each hand-off takes two, apart from the Google buckets |
+| `PREAUTH_AGENT_REGISTER_MAX` | no | no | `30` | agent registrations (connecting an agent) per source and window |
+| `PREAUTH_AGENT_TOKEN_MAX` | no | no | `300` | agent sign-in codes exchanged and short keys renewed per source and window |
 | `TRUSTED_PROXY_IPS` | no | no |  | comma-separated exact socket IPs trusted to append `X-Forwarded-For` |
 | `CLIENT_ADDRESS_HEADER` | no | no |  | one request header the edge overwrites with the client's address (Railway's edge sets `X-Real-IP` and `X-Forwarded-For`), recorded on each sign-in and used for the pre-auth budgets. Set it only when the edge replaces the caller's copy; see [Behind a proxy](#behind-a-proxy) |
 | `RATE_LIMIT_WINDOW_MS` | no | no | `60000` | per-user API rate-limit window |
