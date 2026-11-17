@@ -131,6 +131,8 @@ export function shownCode(meta: Pick<TableMeta, 'title_column' | 'id_pattern' | 
   if (!meta.title_column || meta.title_column === 'row_id') return undefined
   if (!meta.data_source && generatedIds(meta.id_pattern)) return undefined
   if (OPAQUE_ID.test(rowId) || rowId === title) return undefined
+  // #1218: a key composed from the name ("LKS-Bags & Silk-2026-11-17" for "Bags & Silk") adds nothing a person reads.
+  if (title.trim() && rowId.toLowerCase().includes(title.trim().toLowerCase())) return undefined
   return rowId
 }
 

@@ -1,6 +1,6 @@
 // Moved from e2e/explore.spec.ts (#1080): the ways into Explore — a
 // root+chain+select address (#100 pattern 4), the list's Explore split button
-// (option B), and the row Map tab's "Open in Explore" (option C).
+// (option B), and (#1218) the row Map tab, which no longer offers one.
 //
 // Fixture graph (backlinks sort by Table name, so 'Xe Accident' is always the
 // first dependent of 'Xe Vehicle'):
@@ -98,19 +98,13 @@ test("the list's split button offers the dependents; two siblings ticked open on
   expect(screen.queryByTestId('explore-pane3')).not.toBeInTheDocument()
 })
 
-test("the row page's Map tab opens Explore narrowed to that row", async ({ admin }) => {
+// #1218 slice 1: the Map no longer leads to Explore.
+test("the row page's Map tab has no Open in Explore", async ({ admin }) => {
   const user = userEvent.setup()
   const { v1 } = await seed(admin)
-  const r = await renderApp(`/featherbase/admin/table/${tableSlug(VEHICLE)}/row/${enc(v1)}`, admin)
+  await renderApp(`/featherbase/admin/table/${tableSlug(VEHICLE)}/row/${enc(v1)}`, admin)
   await user.click(await screen.findByRole('tab', { name: 'Map' }))
-  // The link carries both hops once the map has read the row's dependents.
-  const open = await screen.findByTestId('map-open-explore')
-  const chainOf = () => new URL(open.getAttribute('href') ?? '', 'http://x').searchParams.get('chain') ?? ''
-  await waitFor(() => expect(chainOf()).toContain(CLAIM))
-  await user.click(open)
-
-  await waitFor(() => expect(pathOf(r).pathname).toBe('/featherbase/admin/explore'))
-  await waitFor(() => expect(screen.getByTestId('explore-chip')).toHaveTextContent(`${VEHICLE}: ${v1}`))
-  await waitFor(() => expect(countOf('pane2')).toBe('2'))
-  await waitFor(() => expect(countOf('pane3')).toBe('1'))
+  await screen.findByTestId('relation-map')
+  expect(screen.queryByTestId('map-open-explore')).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'Open in Explore' })).not.toBeInTheDocument()
 })

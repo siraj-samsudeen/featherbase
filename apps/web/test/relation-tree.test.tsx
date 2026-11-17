@@ -8,7 +8,7 @@ import { sql } from 'server/src/db'
 import { tableName } from 'server/src/platform-schema'
 import { createUserWithRole, grantRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
-import { PLANT, PROFIT, REGION, SITE, seedSites, type Admin } from './relational-fixture'
+import { PLANT, PROFIT, REGION, SITE, seedPostings, seedSites, type Admin } from './relational-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -42,6 +42,27 @@ test('the tree shows what the row links to above it and its groups below, unfold
   expect(t).toHaveTextContent('Linked from')
 })
 
+// #1218 slice 1: a group's rows read by what they point to, as in the record panel.
+test("a group's rows on the tree read by what they point to", async ({ admin }) => {
+  await seedSites(admin)
+  await seedPostings(admin)
+  await openTree(admin, SITE, 'ENK')
+  const postings = await line('Nv Posting 2')
+  await waitFor(() => expect(within(postings).getAllByRole('treeitem').map((i) => i.textContent))
+    .toEqual(expect.arrayContaining([expect.stringContaining('Enchakkal Supermarket'), expect.stringContaining('Enchakkal Textiles')])))
+  expect(postings).not.toHaveTextContent('Kerala')
+})
+
+test('a row with two far sides reads by both on the tree', async ({ admin }) => {
+  await seedSites(admin)
+  await seedPostings(admin)
+  await openTree(admin, REGION, 'KL')
+  const postings = await line('Nv Posting 2')
+  await waitFor(() => expect(within(postings).getAllByRole('treeitem').map((i) => i.textContent))
+    .toEqual(expect.arrayContaining([expect.stringContaining('Enchakkal › Enchakkal Supermarket')])))
+  expect(postings).not.toHaveTextContent('ENK-1503')
+})
+
 test('lines unfold in place several levels deep', async ({ admin }) => {
   await seedSites(admin)
   await openTree(admin, SITE, 'ENK')
@@ -52,19 +73,19 @@ test('lines unfold in place several levels deep', async ({ admin }) => {
   expect(centres).toHaveTextContent('EKL - Retail 01')
 })
 
-test('a group of 40 shows its first 20, with a way to show all 40', async ({ admin }) => {
+test('a group of 40 shows its first 10, with a way to show all 40', async ({ admin }) => {
   await seedSites(admin, { profitCentres: 40 })
   await openTree(admin, PLANT, '1503')
   const centres = await line(`${PROFIT} 40`)
-  await waitFor(() => expect(within(centres).getAllByRole('treeitem')).toHaveLength(20))
-  fireEvent.click(within(centres).getByRole('button', { name: 'show all 40' }))
+  await waitFor(() => expect(within(centres).getAllByRole('treeitem')).toHaveLength(10))
+  fireEvent.click(within(centres).getByRole('button', { name: 'Show all 40' }))
   await waitFor(() => expect(within(centres).getAllByRole('treeitem')).toHaveLength(40))
 })
 
 test('clicking a line shows it in the drill pane; the tree stays centred', async ({ admin }) => {
   await seedSites(admin)
   await openTree(admin, SITE, 'ENK')
-  fireEvent.click(within(await line('Enchakkal Supermarket · 1503')).getByText('Enchakkal Supermarket · 1503'))
+  fireEvent.click(within(await line('Enchakkal Supermarket · 1503')).getByText('Enchakkal Supermarket'))
   expect(await screen.findByRole('complementary', { name: 'Enchakkal Supermarket · 1503' })).toHaveTextContent(PLANT)
   expect(await line('Enchakkal · ENK')).toBeInTheDocument()
 })
@@ -73,7 +94,7 @@ test('Focus here centres the tree on the chosen line', async ({ admin }) => {
   await seedSites(admin)
   await openTree(admin, SITE, 'ENK')
   const item = await line('Enchakkal Supermarket · 1503')
-  fireEvent.click(within(item).getByText('Enchakkal Supermarket · 1503'))
+  fireEvent.click(within(item).getByText('Enchakkal Supermarket'))
   await screen.findByRole('complementary', { name: 'Enchakkal Supermarket · 1503' })
   const focus = await within(await tree()).findByRole('button', { name: 'Focus here' })
   fireEvent.click(focus)
@@ -180,11 +201,11 @@ test('choosing an earlier step brings back what was unfolded at that step', asyn
   await openTree(admin, SITE, 'ENK')
   unfold(await line('Enchakkal Supermarket · 1503'))
   await line(`${PROFIT} 2`)
-  fireEvent.click(within(await line('Enchakkal Textiles · 1504')).getByText('Enchakkal Textiles · 1504'))
+  fireEvent.click(within(await line('Enchakkal Textiles · 1504')).getByText('Enchakkal Textiles'))
   await screen.findByRole('complementary', { name: 'Enchakkal Textiles · 1504' })
   fireEvent.keyDown(await line('Enchakkal Supermarket · 1503'), { key: 'ArrowLeft' })
   await waitFor(async () => expect(await line('Enchakkal Supermarket · 1503')).toHaveAttribute('aria-expanded', 'false'))
-  fireEvent.click(within(await line('Enchakkal Jewellery · 1505')).getByText('Enchakkal Jewellery · 1505'))
+  fireEvent.click(within(await line('Enchakkal Jewellery · 1505')).getByText('Enchakkal Jewellery'))
   await screen.findByRole('complementary', { name: 'Enchakkal Jewellery · 1505' })
   const path = screen.getByRole('navigation', { name: 'Path' })
   fireEvent.click(within(path).getByRole('button', { name: 'Enchakkal Textiles · 1504' }))

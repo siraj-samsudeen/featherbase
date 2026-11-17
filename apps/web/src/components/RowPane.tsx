@@ -1,23 +1,24 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
-  FieldGrid, GroupChip, LinkChip, PaneSection, PanelRight, Plus, RecordLink, SplitWithPane, ViewToggle, X,
-  buttonClasses, cx, fmtCount, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
-  type FieldGridGroup, type ViewMode,
+  FieldGrid, GroupChip, LinkChip, PaneSection, PanelRight, Plus, RecordLink, SplitWithPane, X,
+  buttonClasses, cx, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
+  type FieldGridGroup,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import { NO_COLUMN_TYPES, linkRowsTable, tableLabel, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
-import { dataColumns, listFields, viewColumns, type ListColumn } from '../lib/list-view-columns'
+import { dataColumns } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { push, type NavGroup, type NavPane, type NavStep } from '../lib/nav-path'
 import { useNavigation, type Navigation } from '../lib/navigation'
-import { forwardLinks, groupKey, groupOrder, rowNameText, useBacklinkGroups, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
+import { forwardLinks, groupKey, rowNameText, useBacklinkGroups, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
 import { useConnections } from '../lib/connections'
 import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './FormArrangement'
 import { useI18n } from '../lib/i18n'
 import { ActivityTimeline } from './ActivityTimeline'
+import { LinkedRowsGroup } from './LinkedRowsGroup'
 
 // #910 checklist 4–10: the drill pane. One row of any Table, beside or below
 // the screen it was opened from: what it points at (each with Go there and,
@@ -28,8 +29,6 @@ import { ActivityTimeline } from './ActivityTimeline'
 
 type Row = Record<string, unknown>
 
-/** How many of a group's rows the pane lists before "Open as list". */
-const PANE_ROWS = 20
 const WIDE = `(min-width: ${PANE_RIGHT_MIN_WIDTH}px)`
 
 /**
@@ -128,7 +127,7 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
             {cnx.isPending && <span className="text-sm text-ink-subtle">Loading…</span>}
             {!cnx.isPending && !groups.length && <span className="text-sm text-ink-muted">No rows point at it</span>}
           </div>
-          {open && <GroupRows key={open.key} group={open} nav={nav} onOpen={drill} />}
+          {open && <PanelGroup key={open.key} table={table} row={row} group={open} nav={nav} onOpen={drill} />}
         </PaneSection>
         {/* The timeline heads itself "Activity". */}
         <ActivityTimeline table={table} name={row} bare />
@@ -300,87 +299,15 @@ function PaneLink({ table, rowId, onOpen, goThere = false, onFilter, filterDisab
 
 // ---------- a group's rows ----------
 
-function GroupRows({ group, nav, onOpen }: { group: BacklinkGroup; nav: Navigation; onOpen: (pane: NavPane) => void }) {
+/** #1218 slice 1: an opened group, its rows by what they point to (LinkedRowsGroup). */
+function PanelGroup({ table, row, group, nav, onOpen }: { table: string; row: string; group: BacklinkGroup; nav: Navigation; onOpen: (pane: NavPane) => void }) {
   const { connection } = group
-  const meta = useMeta(connection.table)
-  const settings = useSettings()
-  const [view, setView] = useState<ViewMode>('table')
-  const columns = meta.data ? viewColumns(meta.data, {}) : []
-  const rows = useGroupRows(connection, { fields: listFields(columns), limit: PANE_ROWS, enabled: columns.length > 0, orderBy: meta.data ? groupOrder(meta.data) : undefined })
   const listStep: NavStep = { screen: 'list', table: connection.table, filters: connection.filters as ListFilter[] }
-  const listHref = nav.addressed
+  const showAllHref = nav.addressed
     ? nav.href(push(nav.path, listStep))
     : `${tableHref(connection.table)}?filters=${encodeURIComponent(JSON.stringify(connection.filters))}`
-  const data = rows.data?.data ?? []
-  const total = rows.data?.total ?? group.count
-  const openRow = (r: Row) => onOpen({ table: connection.table, row: String(r.row_id) })
-  return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-sm font-semibold text-ink">{group.label} · {fmtCount(total)} {total === 1 ? 'row' : 'rows'}</h4>
-        <div className="flex flex-wrap items-center gap-2">
-          <ViewToggle value={view} onChange={setView} />
-          <HrefLink href={listHref} className={buttonClasses({ variant: 'quiet' })}>Open as list</HrefLink>
-        </div>
-      </div>
-      {rows.isPending ? <p className="text-sm text-ink-subtle">Loading…</p>
-        : !data.length ? <p className="text-sm text-ink-muted">No rows</p>
-        : view === 'compact' ? (
-          <ul className="flex flex-col divide-y divide-border rounded-card border border-border text-sm">
-            {data.map((r) => (
-              <li key={String(r.row_id)}>
-                <button type="button" onClick={() => openRow(r)}
-                  className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus">
-                  <span className="font-medium text-action"><CellValue col={columns[0]} row={r} settings={settings} lead /></span>
-                  <span className="text-ink-muted">
-                    {columns.slice(1, 3).map((c, i) => <span key={c.column_name}>{i > 0 && ' · '}<CellValue col={c} row={r} settings={settings} /></span>)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="overflow-x-auto rounded-card border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-subtle text-left">
-                <tr>{columns.map((c) => <th key={c.column_name} className="px-3 py-2 font-semibold text-ink-muted">{c.label}</th>)}</tr>
-              </thead>
-              <tbody>
-                {data.map((r) => (
-                  <tr key={String(r.row_id)} onClick={() => openRow(r)} tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === 'Enter') openRow(r) }}
-                    className="cursor-pointer border-t border-border hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus">
-                    {columns.map((c, i) => (
-                      <td key={c.column_name} className={`px-3 py-2 ${i === 0 ? 'font-medium text-action' : 'text-ink'}`}>
-                        <CellValue col={c} row={r} settings={settings} lead={i === 0} />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      {total > data.length && <p className="text-xs text-ink-muted">Showing {fmtCount(data.length)} of {fmtCount(total)}</p>}
-    </div>
-  )
-}
-
-/** One value of a group's row: a link by its name and code, else formatted. */
-function CellValue({ col, row, settings, lead = false }: { col: ListColumn; row: Row; settings: Settings; lead?: boolean }) {
-  const { t } = useI18n()
-  const value = row[col.column_name]
-  if (col.column_name === 'row_id') return <>{String(row.row_id)}</>
-  if (isEmpty(value)) return lead ? <>{String(row.row_id)}</> : <span className="text-ink-subtle">—</span>
-  if (col.column_type === 'Reference' && col.reference_table) return <LinkName table={linkRowsTable(col)!} rowId={String(value)} />
-  if (col.column_type === 'Choice') return <>{choiceLabel(String(value), col.choice_labels, t)}</>
-  // formatValue gives '' only for an empty value, handled above.
-  return <>{formatValue(col.column_type, value, settings)}</>
-}
-
-function LinkName({ table, rowId }: { table: string; rowId: string }) {
-  const name = useRowName(table, rowId)
-  return <>{name.state === 'unreadable' ? 'Not visible to you' : rowNameText(name)}</>
+  // Opened from its chip, right above: the chip already names it (verifier, 17-Nov).
+  return <LinkedRowsGroup table={table} record={row} group={group} showAllHref={showAllHref} onOpen={onOpen} heading={false} />
 }
 
 // ---------- fields ----------
