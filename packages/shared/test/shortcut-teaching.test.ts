@@ -119,6 +119,7 @@ test('a status per shortcut: not tried, in use, or slipping back to the mouse', 
 test('stored learning is read back safely, whatever the record holds', () => {
   expect(readLearning(null)).toEqual(EMPTY_LEARNING)
   expect(readLearning('junk')).toEqual(EMPTY_LEARNING)
+  expect(readLearning({ use: 'every shortcut', quiets: 1 })).toEqual({ ...EMPTY_LEARNING, quiets: 1 })
   expect(readLearning({ use: { s: { keys: 2, mouse: 'x', shown: -1 }, bad: 5 }, quietUntil: 'soon', quiets: 2 })).toEqual({
     ...EMPTY_LEARNING,
     use: { s: { keys: 2, mouse: 0, shown: 0, lastKey: 0 } },
