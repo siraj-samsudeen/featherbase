@@ -87,7 +87,14 @@ function idTitle(meta: TableMeta): ColumnDef | undefined {
 export function listLeader(meta: TableMeta): ColumnDef | undefined {
   const title = titleListColumn(meta)
   if (!title || !idTitle(meta)) return title
-  return dataColumns(meta).find((c) => c.column_type === 'Reference' && c.reference_table && c !== title) ?? title
+  return readableLinks(meta).find((c) => c !== title) ?? title
+}
+
+/** A Table's readable links: the Reference columns this person may read that
+ *  point into one named Table, in column order. What a list leads with
+ *  (listLeader) and what a group's row is named by (far-side) are drawn from these. */
+export function readableLinks(meta: TableMeta): ColumnDef[] {
+  return dataColumns(meta).filter((c) => c.column_type === 'Reference' && Boolean(c.reference_table))
 }
 
 /** What this person's list shows: the title column first (the link to the
