@@ -93,7 +93,7 @@ import { discoverAppLibrary } from './app-library'
 import { appPathsFromEnvironment, deliverApp, deliveryKeyMatches } from './app-delivery'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
-import { appOperation, withAppClientVersion, withInstalledAppVersions } from './app-lifecycle'
+import { appOperation, appOperationApart, withAppClientVersion, withInstalledAppVersions } from './app-lifecycle'
 import { agentMark } from './agent-context'
 import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -1898,32 +1898,45 @@ function listArgsFromQuery(q: Record<string, string>) {
 // coming. A failure after the first line ends the stream with an error line.
 app.get('/api/search', async (c) => {
   const q = c.req.query('q') ?? ''
-  const events = streamSearch(q, who(c))
+  const headers = { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' }
+  const abort = new AbortController()
+  c.req.raw.signal?.addEventListener('abort', () => abort.abort())
+  const events = streamSearch(q, who(c), abort.signal)
+  // While viewing as someone the answer is gathered whole, inside the request,
+  // so the View as check made as it ends still decides whether it is sent.
+  if (c.get('viewingAs')) {
+    const lines: string[] = []
+    for await (const event of events) lines.push(JSON.stringify(event))
+    return c.body(lines.join('\n') + '\n', 200, headers)
+  }
   // The first line is read here, so a refusal before anything is sent is an ordinary error.
   const first = await events.next()
   const encoder = new TextEncoder()
+  let closed = false
   const body = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (value: unknown) => controller.enqueue(encoder.encode(JSON.stringify(value) + '\n'))
-      try {
-        if (!first.done) send(first.value)
-        for await (const event of events) send(event)
-      } catch (error) {
-        console.error(JSON.stringify({ level: 'error', event: 'search_stream_error', message: String((error as Error)?.message ?? error) }))
-        send({ error: 'The search stopped before it finished' })
-      } finally {
-        controller.close()
-      }
+    start(controller) {
+      const send = (value: unknown) => { if (!closed) controller.enqueue(encoder.encode(JSON.stringify(value) + '\n')) }
+      // The rest outlives this handler, so it holds its own lifecycle lock:
+      // an app upgrade waits for it, as it waits for any read.
+      void appOperationApart(async () => {
+        try {
+          if (!first.done) send(first.value)
+          for await (const event of events) send(event)
+        } catch (error) {
+          console.error(JSON.stringify({ level: 'error', event: 'search_stream_error', message: String((error as Error)?.message ?? error) }))
+          send({ error: 'The search stopped before it finished' })
+        } finally {
+          if (!closed) { closed = true; controller.close() }
+        }
+      })
     },
-    async cancel() { await events.return(undefined) },
+    async cancel() {
+      closed = true
+      abort.abort()
+      await events.return(undefined)
+    },
   })
-  return c.body(body, 200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' })
-})
-
-// admin-lists 11: how many rows each Table holds, for All Tables.
-app.get('/api/table_counts', async (c) => {
-  c.header('Cache-Control', 'no-store')
-  return c.json({ counts: await tableRowCounts(who(c)) })
+  return c.body(body, 200, headers)
 })
 
 app.get('/api/command_destinations', async (c) => {

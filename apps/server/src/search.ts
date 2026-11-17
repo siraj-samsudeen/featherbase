@@ -33,7 +33,6 @@ export const registryLabel = (name: string): string | undefined =>
   Object.hasOwn(REGISTRY_LABELS, name) ? REGISTRY_LABELS[name] : undefined
 
 const PER_TABLE = 3
-const TOTAL_CAP = 15
 /** How many Tables are searched at once (#1265). */
 const AT_ONCE = 6
 /** A person's or service account's opaque id names no one (#1265: no ids in results). */
@@ -47,7 +46,7 @@ export type SearchEvent =
   | { table: string; hits: SearchHit[] }
   | { done: true }
 
-export async function* streamSearch(query: string, user: string): AsyncGenerator<SearchEvent> {
+export async function* streamSearch(query: string, user: string, signal?: AbortSignal): AsyncGenerator<SearchEvent> {
   const q = query.trim()
   if (!q) {
     yield { groups: [] }
@@ -71,36 +70,45 @@ export async function* streamSearch(query: string, user: string): AsyncGenerator
   yield { groups: readable.map((t) => ({ table: String(t.name), label: registryLabel(String(t.name)) ?? tableLabel(String(t.name), t.label) })) }
 
   // Each Table answers on its own, a few at a time, in the order they finish.
-  let found = 0
+  // Each keeps at most PER_TABLE hits; the bar shows the first ones in group
+  // order, so a slow Table is never crowded out by faster ones (Codex review).
   const queue = [...readable]
   const finished: SearchEvent[] = []
   let wake: (() => void) | null = null
   let running = 0
   let failure: unknown = null
+  // A client that went away, or a Table that failed, launches nothing more.
+  let stopped = false
+  const halted = () => stopped || failure !== null || Boolean(signal?.aborted)
+  const onAbort = () => wake?.()
+  signal?.addEventListener('abort', onAbort)
   const launch = () => {
-    while (running < AT_ONCE && queue.length) {
+    while (!halted() && running < AT_ONCE && queue.length) {
       const t = queue.shift()!
       running++
       void searchOne(t, user, like)
-        .then((hits) => {
-          const room = Math.max(0, TOTAL_CAP - found)
-          const kept = hits.slice(0, room)
-          found += kept.length
-          finished.push({ table: String(t.name), hits: kept })
-        })
+        .then((hits) => { finished.push({ table: String(t.name), hits }) })
         .catch((error: unknown) => { failure ??= error })
         .finally(() => { running--; launch(); wake?.() })
     }
   }
-  launch()
-  while (running || finished.length) {
-    if (!finished.length) await new Promise<void>((resolve) => { wake = resolve })
-    wake = null
+  try {
+    launch()
+    while (running || finished.length) {
+      if (failure) throw failure
+      if (signal?.aborted || stopped) return
+      if (!finished.length) await new Promise<void>((resolve) => { wake = resolve })
+      wake = null
+      if (failure) throw failure
+      if (signal?.aborted) return
+      while (finished.length) yield finished.shift()!
+    }
     if (failure) throw failure
-    while (finished.length) yield finished.shift()!
+    if (!signal?.aborted) yield { done: true }
+  } finally {
+    stopped = true
+    signal?.removeEventListener('abort', onAbort)
   }
-  if (failure) throw failure
-  yield { done: true }
 }
 
 async function searchOne(t: Record<string, unknown>, user: string, like: string): Promise<SearchHit[]> {

@@ -46,6 +46,9 @@ import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, no
 
 
 
+/** #1265: the most record rows the bar shows. */
+const RECORD_CAP = 15
+
 // #101 Phase 3: recorded actions also stream to the server's user_event log
 // (batched; a beacon carries the final batch through unload). The sink is
 // injected here so lib/recents stays network-free for unit tests. Auth rides
@@ -368,7 +371,15 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   // A resolved previous query remains cached during the typing debounce;
   // it is not a result of the text currently in the input.
   const current = trimmed !== '' && trimmed === debounced && streamed.query === trimmed
-  const recordGroups = current ? streamed.groups : []
+  // At most RECORD_CAP rows, taken in group order (ordinary Tables before
+  // registries), whatever order the groups answered in.
+  let room = RECORD_CAP
+  const recordGroups = (current ? streamed.groups : []).map((g) => {
+    if (!g.hits) return g
+    const hits = g.hits.slice(0, room)
+    room -= hits.length
+    return { ...g, hits }
+  })
   const recordHits: (SearchHit & { label: string })[] = recordGroups.flatMap((g) => (g.hits ?? []).map((h) => ({ ...h, label: g.label })))
   // Searching from the first keystroke until every group has answered.
   const searching = trimmed !== '' && !(current && streamed.done)

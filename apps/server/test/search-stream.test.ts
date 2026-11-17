@@ -26,3 +26,14 @@ test('a row whose only name is an opaque id is no result', async ({ admin }) => 
   const keyed = (await searchLines(admin, 'psn')).find((l) => l.table === 'Ss Keyed') as { hits: { title: string }[] }
   expect(keyed.hits.map((h) => h.title)).toEqual(['psn-readable-code'])
 })
+
+// Codex review: a search the client has abandoned launches no more Tables and ends.
+test('a search whose client went away stops and yields nothing more', async ({ admin }) => {
+  const { streamSearch } = await import('../src/search')
+  const abort = new AbortController()
+  const events = streamSearch('a', admin.user!, abort.signal)
+  const first = await events.next()
+  expect((first.value as { groups: unknown[] }).groups.length).toBeGreaterThan(0)
+  abort.abort()
+  expect(await events.next()).toEqual({ done: true, value: undefined })
+})

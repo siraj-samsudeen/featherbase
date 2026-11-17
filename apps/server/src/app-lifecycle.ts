@@ -60,6 +60,13 @@ export async function activeRuntimeVersions(): Promise<string[]> {
   return rows.filter(row => activeApps.has(row.name)).map(row => `${row.name}@${row.package_version}`)
 }
 
+/** #1265: an operation that outlives the request it started in (a streamed
+ *  answer): it takes its own shared lock rather than leaning on the request's,
+ *  which ends when the handler returns. */
+export function appOperationApart<T>(fn: () => Promise<T>): Promise<T> {
+  return scope.exit(() => appOperation(fn))
+}
+
 export async function appOperation<T>(fn: () => Promise<T>, exclusive = false): Promise<T> {
   const current = scope.getStore()
   if (current) {

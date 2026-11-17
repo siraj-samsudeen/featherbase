@@ -110,3 +110,24 @@ test('an older answer that arrives late never replaces the newer one', async ({ 
     search.restore()
   }
 })
+
+// Codex review: the bar shows at most 15 rows, earlier groups first, whichever answered first.
+test('a group that answers late still comes before later groups, within fifteen rows', async ({ admin }) => {
+  const search = fakeSearch()
+  const rows = (table: string, n: number) => Array.from({ length: n }, (_, i) => ({ table, row_id: `${table}-${i}`, title: `${table} match ${i}` }))
+  try {
+    await openBar(admin, 'match')
+    await search.asked('match')
+    await search.send('match', { groups: GROUPS })
+    await search.send('match', { table: 'tickets.ticket', hits: rows('tickets.ticket', 15) })
+    await search.send('match', { table: 'Person', hits: rows('Person', 3) })
+    await search.send('match', { table: 'Job Assignment', hits: [] })
+    await search.send('match', { done: true })
+    await waitFor(() => expect(screen.getAllByTestId('awesomebar-doc')).toHaveLength(15))
+    const shown = screen.getAllByTestId('awesomebar-doc').map((r) => within(r).getByTestId('awesomebar-doc-table').textContent)
+    expect(shown.slice(0, 3)).toEqual(['Person', 'Person', 'Person'])
+    expect(shown.filter((t) => t === 'Ticket')).toHaveLength(12)
+  } finally {
+    search.restore()
+  }
+})
