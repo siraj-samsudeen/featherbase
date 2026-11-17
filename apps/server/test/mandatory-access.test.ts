@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import { expectRefused, expectStatus, grantRole, makeTable } from './fixtures'
 import { eventVisibleTo } from '../src/realtime'
 import { deleteStored } from '../src/storage'
-import { assertMandatoryAccess, hasMandatoryRowAccess, needsMandatoryRowRead } from '../src/mandatory-access'
+import { admittedToTable, assertMandatoryAccess, hasMandatoryRowAccess, needsMandatoryRowRead } from '../src/mandatory-access'
 import { getMeta } from '../src/meta'
 
 test('creator privacy hides a row from administrators, other members and their lists', async ({ admin, createUser }) => {
@@ -178,4 +178,17 @@ test('a Share or a dependent row naming a protected row that does not exist is r
   const member = await createUser({ roles: ['Gone Member'] })
   await expect(assertMandatoryAccess(member.user!, await getMeta(child.name), { row_id: 'n1', dossier: 'no-such-dossier' }))
     .rejects.toMatchObject({ type: 'PermissionError' })
+})
+
+// #1254: permissionScope reads roles once and asks admittedHolding; admittedToTable keeps its own callers
+// (mandatory row reads, app jobs), so its policy path is proved on its own.
+test('a Table with an access policy admits only its roles; a Table without one admits everyone', async ({ admin, createUser }) => {
+  const table = await makeTable(admin, { name: 'Private Ledger', access_policy: { version: 1, roles: ['Ledger Member'], shared_column: 'shared' }, columns: ['title', 'shared:Check'] })
+  const open = await makeTable(admin, { name: 'Open Ledger', columns: ['title'] })
+  await grantRole(admin, { table: [table.name, open.name], role: 'Ledger Member', can_read: true })
+  const member = await createUser({ roles: ['Ledger Member'] })
+  const other = await createUser({ roles: [] })
+  expect(await admittedToTable(member.user!, table.name)).toBe(true)
+  expect(await admittedToTable(other.user!, table.name)).toBe(false)
+  expect(await admittedToTable(other.user!, open.name)).toBe(true)
 })
