@@ -1143,6 +1143,8 @@ interface SidebarView {
   label: string
   filters: unknown
   mine: boolean
+  /** #1259: the view it was saved in. */
+  layout?: string
 }
 
 /** #1229: "Saved views" — the person's own views on every Table and the shared
@@ -1156,7 +1158,7 @@ function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
   const list = views.data?.views ?? []
   const rail = useSidebarRail()
   if (list.length === 0) return null
-  const hrefOf = (view: SidebarView) => `${tableHref(view.table)}?filters=${encodeURIComponent(JSON.stringify(view.filters))}`
+  const hrefOf = (view: SidebarView) => `${tableHref(view.table)}?filters=${encodeURIComponent(JSON.stringify(view.filters))}${view.layout ? `&layout=${view.layout}` : ''}`
   if (rail) return (
     <RailFold label="Saved Views" icon={Bookmark} testid="sidebar-saved-views" tone="amber">
       {(close) => list.map((view) => (

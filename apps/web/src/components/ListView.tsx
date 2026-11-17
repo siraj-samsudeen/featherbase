@@ -2,7 +2,7 @@ import { useFitToWindow } from '../lib/fit-to-window'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { rowDisplayTitle } from 'shared'
+import { rowDisplayTitle, type ListLayout } from 'shared'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { useNavigation } from '../lib/navigation'
 import { TreeOfAll } from './RelationTree'
@@ -29,6 +29,7 @@ import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
 import { rememberListPlace } from './RecordNav'
 import { FilterBar, ListSearch, StandardFilters, type Filter } from './ListFilters'
 import { SavedViewsBar } from './SavedViewsBar'
+import { LayoutSwitch } from './LayoutSwitch'
 import { RecentStrip } from './RecentStrip'
 import { ExploreSplitButton } from './ExploreSplitButton'
 import { ListRow, NAME_CLIP, PhoneList, cell, isFigure } from './ListRows'
@@ -85,6 +86,9 @@ export function ListView({
   onRowOpen,
   openRow,
   extraColumns,
+  layout,
+  onLayoutChange,
+  onApplyView,
 }: {
   table: string
   filters: Filter[]
@@ -106,6 +110,12 @@ export function ListView({
   openRow?: string
   /** #1173: columns this page shows on top of the person's own choice. */
   extraColumns?: string[]
+  /** #1259: the view this list shows (Table opens a row on its own page). */
+  layout?: ListLayout
+  /** #1259: the switch beside the title, where the page offers one. */
+  onLayoutChange?: (layout: ListLayout) => void
+  /** #1259: a saved view's filters and the view it was saved in. */
+  onApplyView?: (filters: Filter[], layout?: ListLayout) => void
 }) {
   const meta = useMeta(table)
   // #1237, #1242: the Table as people read it.
@@ -116,7 +126,9 @@ export function ListView({
   const navigation = useNavigation()
   const nav = navigation?.step.screen === 'list' && navigation.step.table === table ? navigation : null
   const paneRow = onRowOpen ? openRow : nav?.step.pane?.table === table ? nav.step.pane.row : undefined
-  const openPane = onRowOpen ? (pane: { table: string; row: string }) => onRowOpen(pane.row)
+  // #1259: in the Table view a row opens on its own page, so a line opens no panel.
+  const openPane = layout === 'table' ? undefined
+    : onRowOpen ? (pane: { table: string; row: string }) => onRowOpen(pane.row)
     : nav ? (pane: { table: string; row: string }) => nav.push({ ...nav.step, pane }) : undefined
   // #910 checklist 19: every row as a folded tree line, kept in the path.
   const [localTree, setLocalTree] = useState<{ on: boolean; expanded: string[] }>({ on: false, expanded: [] })
@@ -606,6 +618,8 @@ export function ListView({
           {/* #1017: the count reads on the title's line, not one of its own. */}
           <div className="flex flex-wrap items-baseline gap-x-2">
           <h1 className="text-xl font-semibold text-ink">{title ?? <>{label}<GlossaryHelp table={table} className="ml-1" /></>}</h1>
+          {/* #1259: the three views, right after the title. */}
+          {layout && onLayoutChange && <span className="self-center"><LayoutSwitch value={layout} onChange={onLayoutChange} /></span>}
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>
@@ -832,7 +846,7 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
+      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? onFiltersChange} />}
       {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
       {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
       <div className="mb-2 flex flex-wrap items-end gap-2">

@@ -59,6 +59,8 @@ export interface TableMeta {
   enable_tags?: boolean
   enable_files?: boolean
   enable_discussion?: boolean
+  /** #1259: a queue's lists open on cards (List And Record) until a person chooses. */
+  queue?: boolean
   description: string | null
   custom: boolean
   // #74: platform tables created by the migration chain — grouped under the

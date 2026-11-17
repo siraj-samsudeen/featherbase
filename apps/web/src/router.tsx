@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, type ComponentType } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type ComponentType } from 'react'
 import {
   Link,
   Outlet,
@@ -10,7 +10,7 @@ import {
   useParams,
   useRouter,
 } from '@tanstack/react-router'
-import { parseFilters, tableSlug } from 'shared'
+import { parseFilters, tableSlug, type ListLayout } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { WebFormPage } from './pages/WebForm'
@@ -21,6 +21,7 @@ import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
 import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
+import { isListLayout, useListLayout } from './lib/list-layout'
 import { rememberFilters, useRememberedFilters } from './lib/remembered-filters'
 import { useQuery } from '@tanstack/react-query'
 import { crossesFramePolicy } from './lib/document-path'
@@ -451,6 +452,8 @@ const tableRoute = createRoute({
   // stays the way in from elsewhere (a saved view, a shared list link).
   validateSearch: (search: Record<string, unknown>) => withPath(search, {
     filters: searchString(search.filters),
+    // #1259: a saved view opened from the sidebar shows in the view it was saved in.
+    ...(isListLayout(search.layout) ? { layout: search.layout } : {}),
   }),
   component: tablePage(TableListPage),
 })
@@ -464,7 +467,7 @@ function withPath<T extends object>(search: Record<string, unknown>, rest: T): T
 
 function TableListPage() {
   const { table, tableMeta } = useTableAddress()
-  const { filters, path } = tableRoute.useSearch()
+  const { filters, path, layout } = tableRoute.useSearch()
   // SET-001: a Settings Table has no list — open its one row directly.
   if (tableMeta.kind === 'settings') {
     return (
@@ -473,10 +476,23 @@ function TableListPage() {
       </div>
     )
   }
-  return <NavigatedList key={table} table={table} filters={filters} path={path} />
+  return <NavigatedList key={table} table={table} filters={filters} path={path} layout={layout} />
 }
 
-function NavigatedList({ table, filters, path }: { table: string; filters?: string; path?: unknown }) {
+function NavigatedList({ table, filters, path, layout: asked }: { table: string; filters?: string; path?: unknown; layout?: ListLayout }) {
+  // #1259: the view this list shows: a saved view's (from the address, or applied
+  // here), the person's own, or the Table's default.
+  const [viewLayout, setViewLayout] = useState<ListLayout>()
+  const views = useListLayout(table, viewLayout ?? asked)
+  /** A view chosen here is the person's from now on, so no saved view's view overrides it. */
+  function chooseLayout(next: ListLayout) {
+    views.choose(next)
+    setViewLayout(undefined)
+    if (!asked) return
+    const at = new URL(router.state.location.href, 'http://address.invalid')
+    at.searchParams.delete('layout')
+    router.history.replace(`${at.pathname}${at.search}${at.hash}`, router.state.location.state)
+  }
   const here = useMemo<NavStep>(() => {
     const parsed = parseFilters(filters)
     return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
@@ -519,6 +535,15 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
               const { filters: _, ...step } = nav.step
               nav.push(next.length ? { ...step, filters: next } : step)
               rememberFilters(table, next)
+            }}
+            layout={views.layout}
+            onLayoutChange={views.phone ? undefined : chooseLayout}
+            onApplyView={(next, layout) => {
+              const { filters: _, ...step } = nav.step
+              nav.push(next.length ? { ...step, filters: next } : step)
+              rememberFilters(table, next)
+              // A saved view shows in its own view, without changing the person's choice.
+              setViewLayout(layout)
             }}
           />
         </PaneSplit>

@@ -1,3 +1,4 @@
+import type { ListLayout } from 'shared'
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getSessionUser } from '../lib/api'
@@ -18,16 +19,21 @@ interface SavedViewRow {
   filters: Filter[]
   shared: boolean
   mine: boolean
+  layout?: ListLayout
 }
 
 export function SavedViewsBar({
   table,
   filters,
+  layout,
   onApply,
 }: {
   table: string
   filters: Filter[]
-  onApply: (filters: Filter[]) => void
+  /** #1259: the list's view now, kept with a view saved from here. */
+  layout?: ListLayout
+  /** The view's filters, and the view it was saved in (#1259). */
+  onApply: (filters: Filter[], layout?: ListLayout) => void
 }) {
   const user = getSessionUser()
   const queryClient = useQueryClient()
@@ -108,7 +114,7 @@ export function SavedViewsBar({
     setSaving(true)
     setSaveError('')
     try {
-      await api.post('/api/saved_views', { table, label, filters })
+      await api.post('/api/saved_views', { table, label, filters, ...(layout ? { layout } : {}) })
       try {
         const store = JSON.parse(localStorage.getItem(countKey) ?? '{}') as Record<string, unknown>
         delete store[`${table}|${sig}`]
@@ -164,7 +170,7 @@ export function SavedViewsBar({
                 <button
                   type="button"
                   aria-pressed={active}
-                  onClick={() => onApply(v.filters)}
+                  onClick={() => onApply(v.filters, v.layout)}
                   data-testid="saved-view-chip"
                   title={v.mine ? undefined : `shared by its owner`}
                 >
