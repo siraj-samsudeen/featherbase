@@ -22,7 +22,7 @@ Each HR title in use SHALL map to at most one business role. A person's role com
 - **THEN** the Title Map lists it first as not mapped yet, held by 3 people
 
 ### Requirement: A person's roles come with their area and source
-A person's business roles SHALL be worked out from their HR title, their merchandise assignments, a cluster that names them as its head, and hand changes. Each role shows the area it applies to and where it came from. Head Office and Leadership reach the whole company.
+A person's business roles SHALL be worked out from their HR title, their merchandise assignments, a cluster that names them as its head, and hand changes. Each role shows the area it applies to and where it came from. A role reaching the whole company reaches it from any source; any other role gets an area only where its source has that kind of place, and otherwise shows no area, saying why.
 
 #### Scenario: A buyer's area
 
