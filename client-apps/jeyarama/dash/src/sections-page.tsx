@@ -9,6 +9,7 @@ import { reportAddress } from './page'
 import { DepartmentApprovals, type WaitingSetup } from './department-page'
 import { AreaCards } from './my-store-page'
 import { RECORD, RecordLink } from './record-link'
+import { AlsoWith, ReviewerIdentity, ReviewerNames, type Reviewer } from './person-identity'
 
 export type DashView = 'report' | 'sections' | 'approvals' | 'access' | 'unplaced' | 'department' | 'store' | 'coverage'
 export function currentView(search = window.location.search): DashView {
@@ -47,6 +48,8 @@ interface Job {
   store_id?: string
   reports_to_code?: string | null
   waiting_for: string
+  /** #1219: who reviews this job's changes, with who they are; none for the master data team. */
+  reviewers?: Reviewer[]
   section: SectionChoice | null
   /** #1191: a section change made at once, until it is reviewed. */
   section_change?: { id: string; from: string; waiting_for: string } | null
@@ -72,17 +75,21 @@ interface Proposal {
   asked_on: string
   decided_on: string
   who?: string
+  /** #1219: an open one's reviewers, with who they are. */
+  reviewers?: Reviewer[]
 }
 /** Where a subcategory is and who holds it there, as the approver reads it. */
 interface Place { section: string; holder: string | null }
-interface Approval extends Omit<Proposal, 'from' | 'to'> { who: string; from: Place | null; to: Place | null; path: HierarchyNode | null; sections: SectionChoice[] }
+interface Approval extends Omit<Proposal, 'from' | 'to'> { who: string; from: Place | null; to: Place | null; path: HierarchyNode | null; sections: SectionChoice[]; also_with?: Reviewer[] }
 type Mine = { state: 'not_set_up' | 'unknown_person' } | { state: 'ok'; name: string; jobs: Job[]; proposals: Proposal[]; waiting_for_me: number; applies_at_once?: AtOnce }
 const NOT_AT_ONCE: AtOnce = { add: false, removal: false, section: false }
 type Waiting = { state: 'not_set_up' } | { state: 'ok'; proposals: Approval[] }
 type Holder = { kind: 'mine' } | { kind: 'none' } | { kind: 'other'; section: string; team_leader: string | null }
 interface Choice extends HierarchyLeaf { holder: Holder; asked: boolean; taken_out?: boolean }
 interface Levels { start: HierarchyNode | null; levels: HierarchyNode[] }
-type Unplaced = { state: 'not_set_up' | 'not_allowed' } | { state: 'ok'; rows: (Leveled & { store: string; was_in: string; since: string })[] }
+/** #1219: `put_back` while its removal is open for review: the master data team puts it back. */
+type UnplacedRow = Leveled & { store: string; was_in: string; since: string; put_back?: { proposal: string } | null; removed_by?: Reviewer | null }
+type Unplaced = { state: 'not_set_up' | 'not_allowed' } | { state: 'ok'; rows: UnplacedRow[] }
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'That did not go through. Try again.')
 const sectionLabel = (section: SectionChoice) => (section.floor ? `${section.name} · ${section.floor}` : section.name)
@@ -127,8 +134,9 @@ export interface ReportLink { key: string; name: string; takes_store: boolean; t
 export const readReports = () => read<ReportLink[]>('reports')
 
 /** `count` is the page's own count of what waits for this person; null while the page is still counting it
- *  (#1254: the sidebar then reads nothing, or the page's reads would run twice); undefined: the sidebar counts. */
-export function DashSidebar({ current, count }: { current: DashView; count?: number | null }) {
+ *  (#1254: the sidebar then reads nothing, or the page's reads would run twice); undefined: the sidebar counts.
+ *  `refresh` (#1219): bumped by a page that settled something waiting elsewhere, so the count is read again. */
+export function DashSidebar({ current, count, refresh = 0 }: { current: DashView; count?: number | null; refresh?: number }) {
   const [reports, setReports] = useState<ReportLink[]>([])
   useEffect(() => { let live = true; readReports().then(list => { if (live) setReports(list) }, () => {}); return () => { live = false } }, [])
   const named = new URLSearchParams(window.location.search).get('report')
@@ -142,7 +150,7 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
     Promise.all([read<Waiting>('approvals'), read<WaitingSetup[]>('department_approvals').catch(() => []), read<BuyerMoveToDecide[]>('buyer_section_approvals').catch(() => [])])
       .then(([answer, setups, moves]) => { if (live && answer.state === 'ok') setWaiting(answer.proposals.length + setups.length + (Array.isArray(moves) ? moves.length : 0)) }, () => {})
     return () => { live = false }
-  }, [count])
+  }, [count, refresh])
   // #1046: the Report access link shows only to someone who manages it.
   const [manages, setManages] = useState(false)
   useEffect(() => { let live = true; read<boolean>('manages_access').then(answer => { if (live) setManages(answer === true) }, () => {}); return () => { live = false } }, [])
@@ -210,10 +218,11 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
     ))
 }
 
-export function Shell({ current, count, title, testid, children }: { current: DashView; count?: number | null; title: ReactNode; testid: string; children: ReactNode }) {
+/** `refresh`: a page that changes what waits elsewhere bumps it, so the sidebar's count is read again (#1219). */
+export function Shell({ current, count, refresh, title, testid, children }: { current: DashView; count?: number | null; refresh?: number; title: ReactNode; testid: string; children: ReactNode }) {
   return (
     <div className="fd-shell">
-      <DashSidebar current={current} count={count} />
+      <DashSidebar current={current} count={count} refresh={refresh} />
       <main className="fd-page" data-testid={testid}>
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
           <h1 className="fd-title">{title}</h1>
@@ -316,6 +325,10 @@ function JobCard({ job, atOnce, onSent }: { job: Job; atOnce: AtOnce; onSent: ()
       actions={!job.section && job.other_sections.length > 0 ? <Button data-action variant="secondary" onClick={() => start('section')}>Say which section is yours</Button> : undefined}>
       <div className="flex flex-col gap-3 p-4">
         <p className="fd-muted" data-testid="reports-to">{job.reports_to ? <>You report to <RecordLink table={RECORD.employee} id={job.reports_to_code}>{job.reports_to}</RecordLink></> : 'No manager is set against this job'}</p>
+        <div data-testid="reviewer">
+          <p className="fd-muted">{job.reviewers?.length ? <><ReviewerNames reviewers={job.reviewers} /> {job.reviewers.length > 1 ? 'review' : 'reviews'} your changes</> : 'The master data team reviews your changes'}</p>
+          <ReviewerIdentity reviewers={job.reviewers} named={false} />
+        </div>
         {note && <Notice tone={note.tone}><span data-testid={note.tone === 'positive' ? 'sent-note' : 'refused-note'}>{note.text}</span></Notice>}
         {job.section ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -509,6 +522,7 @@ function YourProposals({ proposals }: { proposals: Proposal[] }) {
                 <span className="min-w-0 break-words">{askedFor(proposal)}</span>
                 <StatusPill tone={tone} className="max-w-full whitespace-normal!">{label}</StatusPill>
               </div>
+              {(proposal.state === 'Pending' || proposal.state === 'Not yet reviewed') && <ReviewerIdentity reviewers={proposal.reviewers} testid="proposal-reviewer" className="sm:text-right" />}
               <p className="text-sm text-ink-muted">Asked on {fmtDate(proposal.asked_on)}{proposal.decided_on ? ` · ${proposal.state === 'Withdrawn' ? 'Withdrawn' : proposal.taken_back ? 'Taken back' : proposal.state === 'Confirmed' || proposal.state === 'Undone' ? 'Reviewed' : 'Decided'} on ${fmtDate(proposal.decided_on)}` : ''}</p>
               {proposal.reason && <p className="text-sm" data-testid="proposal-reason">{proposal.reason}</p>}
               {proposal.state === 'Needs fresh review' && <p className="text-sm text-ink-muted">Things changed after you asked, so nothing was done. If it is still wrong, ask again.</p>}
@@ -627,6 +641,7 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
           {proposal.path && <HierarchyPath path={proposal.path} />}
           <p className="text-sm text-ink-muted">{applied ? `Done on ${fmtDate(proposal.asked_on)} · not yet reviewed` : `Asked on ${fmtDate(proposal.asked_on)}`}</p>
         </div>
+        <AlsoWith reviewers={proposal.also_with} />
         {isMove && proposal.from && proposal.to && (
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-control border border-border bg-subtle p-3" data-testid="approval-move">
             <PlaceLine label="From" place={proposal.from} />
@@ -684,8 +699,22 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
 /** The master data team's list: subcategories taken out of a section and in none there now (#1175). */
 export function Unplaced() {
   const { answer, failed, load } = useAnswer<Unplaced>('unplaced')
+  const [note, setNote] = useState<{ tone: 'positive' | 'negative'; text: string } | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [settled, setSettled] = useState(0)
+  /** #1219: back in the section it left; its review is settled, so the manager isn't asked about it. */
+  async function putBack(row: UnplacedRow) {
+    setBusy(row.put_back!.proposal)
+    setNote(null)
+    try {
+      await act('put_back', { proposal: row.put_back!.proposal })
+      setNote({ tone: 'positive', text: `Put back: ${row.name} is in ${row.was_in} at ${row.store} again. Its review is settled.` })
+    } catch (failure) { setNote({ tone: 'negative', text: `${row.name}: ${messageOf(failure).replace(/\.?$/, '.')}` }) }
+    finally { setBusy(null); setSettled(n => n + 1); await load() }
+  }
   return (
-    <Shell current="unplaced" title="Not in any section" testid="unplaced">
+    <Shell current="unplaced" refresh={settled} title="Not in any section" testid="unplaced">
+      {note && <Notice tone={note.tone}><span data-testid="put-back-note">{note.text}</span></Notice>}
       {!answer && !failed && <Loading />}
       {failed && <LoadFailed onRetry={load} />}
       {answer?.state === 'not_set_up' && <NotSetUp />}
@@ -693,11 +722,11 @@ export function Unplaced() {
         <Card data-testid="not-allowed"><EmptyState title="This list is for the master data team" body="Ask an administrator if you need it." /></Card>
       )}
       {answer?.state === 'ok' && answer.rows.length === 0 && (
-        <Card data-testid="nothing-unplaced"><EmptyState title="Every subcategory is in a section" body="When a removal is approved, the subcategory shows here until someone adds it to a section." /></Card>
+        <Card data-testid="nothing-unplaced"><EmptyState title="Every subcategory is in a section" body="When a subcategory is taken out of a section, it shows here until someone adds it to a section or puts it back." /></Card>
       )}
       {answer?.state === 'ok' && answer.rows.length > 0 && (
         <>
-          <p className="fd-muted">Each of these was taken out of a section and is in none at that store now. It leaves this list once someone adds it to a section.</p>
+          <p className="fd-muted">Each of these was taken out of a section and is in none at that store now. It leaves this list once someone adds it to a section, or you put it back while its removal is not yet reviewed.</p>
           {[...new Set(answer.rows.map(row => row.store))].map(store => (
             <Card key={store} title={store} data-testid="unplaced-store">
               <div className="p-4">
@@ -706,8 +735,14 @@ export function Unplaced() {
                     <ul className="flex flex-col divide-y divide-border">
                       {rows.map(row => (
                         <li key={row.code} className="flex flex-wrap items-center justify-between gap-2 py-2" data-testid="unplaced-row">
-                          <span className="min-w-0 break-words">{row.name}</span>
-                          <span className="text-sm text-ink-muted">Out of {row.was_in} since {fmtDate(row.since)}</span>
+                          <span className="min-w-0 break-words">
+                            <span className="block">{row.name}</span>
+                            <span className="block text-sm text-ink-muted" data-testid="unplaced-since">Out of {row.was_in} since {fmtDate(row.since)}{row.removed_by && <> · by <ReviewerNames reviewers={[row.removed_by]} /></>}{row.put_back ? ' · not yet reviewed' : ' · reviewed'}</span>
+                            <ReviewerIdentity reviewers={row.removed_by ? [row.removed_by] : []} named={false} testid="removed-by" />
+                          </span>
+                          {row.put_back
+                            ? <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === row.put_back.proposal} disabled={busy !== null} onClick={() => putBack(row)} data-testid="put-back">Put back in {row.was_in}</Button>
+                            : <span className="text-sm text-ink-muted" data-testid="put-back-closed">Its removal is reviewed. A Team Leader adds it back.</span>}
                         </li>
                       ))}
                     </ul>

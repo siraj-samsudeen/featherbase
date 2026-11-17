@@ -95,3 +95,40 @@ export function PersonName({ name, who, strong = false, id }: { name: string; wh
     </span>
   )
 }
+
+/** #1219: a reviewer the page names, with who they are, as my-sections.ts's `reviewersOf` answers it. */
+export type Reviewer = { name: string; id?: string | null } & Who
+
+/** A reviewer's name as a link to their Employee record; plain text for someone not on the staff list. */
+export function ReviewerLink({ reviewer }: { reviewer: Reviewer }) {
+  return <RecordLink table={RECORD.employee} id={reviewer.staff === 'none' ? null : reviewer.id}>{reviewer.name}</RecordLink>
+}
+
+/** Who the reviewer is, under the sentence that names them: one line each. `named`: the sentence names them
+ *  only in words, so each line starts with the name as a link; with two or more it always does. */
+export function ReviewerIdentity({ reviewers, named = true, testid = 'reviewer-identity', className = '' }:
+  { reviewers: Reviewer[] | undefined; named?: boolean; testid?: string; className?: string }) {
+  if (!reviewers?.length) return null
+  const withName = named || reviewers.length > 1
+  return (
+    <span className={`flex flex-col text-sm text-ink-muted ${className}`} data-testid={testid}>
+      {reviewers.map((reviewer, index) => <span key={`${reviewer.code ?? reviewer.name}-${index}`}>{withName && <><ReviewerLink reviewer={reviewer} /> · </>}{personDetail(reviewer)}</span>)}
+    </span>
+  )
+}
+
+/** Names as links in a sentence: "A", "A or B". */
+export function ReviewerNames({ reviewers }: { reviewers: Reviewer[] }) {
+  return <>{reviewers.map((reviewer, index) => <span key={`${reviewer.code ?? reviewer.name}-${index}`}>{index ? ' or ' : ''}<ReviewerLink reviewer={reviewer} /></span>)}</>
+}
+
+/** #1219: on a review card, whoever else may decide it, the viewer left out: a Master Data Editor sees the manager. */
+export function AlsoWith({ reviewers }: { reviewers: Reviewer[] | undefined }) {
+  if (!reviewers?.length) return null
+  return (
+    <div className="flex flex-col gap-1 text-sm" data-testid="also-with">
+      <span className="text-ink-muted">Also with</span>
+      {reviewers.map((reviewer, index) => <PersonName key={`${reviewer.code ?? reviewer.name}-${index}`} name={reviewer.name} who={reviewer} id={reviewer.id} />)}
+    </div>
+  )
+}

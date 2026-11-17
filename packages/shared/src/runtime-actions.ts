@@ -77,6 +77,9 @@ export interface BaseTablesHelper {
   /** #1230: whether `list` can read this Table now: declared, reachable, and every declared column there.
    *  False, never a failure, for a Table not linked, deleted, reshaped or unsupported. */
   available(table: string): Promise<boolean>
+  /** featherbase #1219: who last changed a column the app reads, per row, from the row's own history.
+   *  Rows with no recorded change of it are left out. At most 500 rows. */
+  changedBy(table: string, args: { rows: string[]; column: string }): Promise<Record<string, { by: string; at: string }>>
 }
 export interface ChangeProposalsReader {
   list(filter?: ProposalFilter): Promise<ChangeProposal[]>

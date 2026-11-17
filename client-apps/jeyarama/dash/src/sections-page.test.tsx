@@ -362,7 +362,7 @@ describe('Not in any section', () => {
     answers.unplaced = { state: 'ok', rows: [{ store: 'Lakeside', code: '010101001', name: 'Sarees', ...ETHNIC, was_in: 'Ladies Wear', since: '2026-11-10' }] }
     const page = await render('Unplaced')
     expect(page.q('unplaced-store')?.textContent).toContain('Lakeside')
-    expect(page.q('unplaced-row')?.textContent).toBe('SareesOut of Ladies Wear since 10-Nov-2026')
+    expect(page.q('unplaced-row')?.textContent).toBe('SareesOut of Ladies Wear since 10-Nov-2026 · reviewedIts removal is reviewed. A Team Leader adds it back.')
     expect(page.q('unplaced-link')).toBeTruthy()
     await page.done()
   })
@@ -618,6 +618,91 @@ describe('apply now, review after (#1191)', () => {
     expect(own.textContent).toContain('Taken back on 06-Nov-2026')
     expect(own.textContent).not.toContain('Reviewed')
     expect(theirs.textContent).toContain('Reviewed on 06-Nov-2026')
+    await page.done()
+  })
+})
+
+// #1219: the master data team acts like the manager; reviewers are named with who they are.
+const MANI = { name: 'Narayanan', code: 'KL-RR-7831', jobs: ['Assistant department manager · ATK'], staff: 'current' }
+const OTHER = { name: 'Narayanan', code: 'KL-RR-6761', jobs: ['Floor manager · ATK'], staff: 'current' }
+describe('who reviews, and the master data team (#1219)', () => {
+  it('the job card names its reviewer with code, job and site; the master data team with none', async () => {
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [{ ...job, waiting_for: 'Narayanan', reviewers: [MANI] }], proposals: [], waiting_for_me: 0 }
+    let page = await render('YourSections')
+    expect(page.q('reviewer')?.textContent).toBe('Narayanan reviews your changesKL-RR-7831 · Assistant department manager · ATK')
+    await page.done()
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [{ ...job, reports_to: null, waiting_for: 'the master data team', reviewers: [] }], proposals: [], waiting_for_me: 0 }
+    page = await render('YourSections')
+    expect(page.q('reviewer')?.textContent).toBe('The master data team reviews your changes')
+    expect(page.q('reviewer-identity')).toBeNull()
+    await page.done()
+  })
+
+  it('an open request shows who will review it; a closed one does not; two reviewers each by name', async () => {
+    const open = { ...pending, kind: 'removal', state: 'Not yet reviewed', applied: true, waiting_for: 'Narayanan or Narayanan', reviewers: [MANI, OTHER] }
+    const closed = { ...pending, id: 'p2', state: 'Confirmed', decided_on: '2026-11-06', reviewers: [] }
+    answers.my_sections = { state: 'ok', name: 'Asha Maker', jobs: [job], proposals: [open, closed], waiting_for_me: 0 }
+    const page = await render('YourSections')
+    const [first, second] = page.container.querySelectorAll('[data-testid="your-proposal"]')
+    expect(first.querySelector('[data-testid="proposal-reviewer"]')?.textContent)
+      .toBe('Narayanan · KL-RR-7831 · Assistant department manager · ATKNarayanan · KL-RR-6761 · Floor manager · ATK')
+    expect(second.querySelector('[data-testid="proposal-reviewer"]')).toBeNull()
+    await page.done()
+  })
+
+  it('a review card names whoever else has it, with who they are; none when it is only the viewer', async () => {
+    answers.approvals = { state: 'ok', proposals: [{ ...move, also_with: [MANI] }, { ...move, id: 'p9', also_with: [] }] }
+    const page = await render('Approvals')
+    const [withManager, alone] = page.container.querySelectorAll('[data-testid="approval"]')
+    expect(withManager.querySelector('[data-testid="also-with"]')?.textContent).toBe('Also withNarayananKL-RR-7831 · Assistant department manager · ATK')
+    expect(alone.querySelector('[data-testid="also-with"]')).toBeNull()
+    await page.done()
+  })
+
+  it('Put back puts an open removal back, says so, and reloads the list', async () => {
+    const row = { store: 'Lakeside', code: '010101001', name: 'Girls Panties', ...ETHNIC, was_in: 'Girls Bottoms', since: '2026-11-13', put_back: { proposal: 'p7' } }
+    answers.unplaced = { state: 'ok', rows: [row] }
+    answers.put_back = { id: 'p7', state: 'Undone' }
+    const page = await render('Unplaced')
+    expect(page.q('unplaced-row')?.textContent).toContain('Out of Girls Bottoms since 13-Nov-2026 · not yet reviewed')
+    expect(page.q('put-back-closed')).toBeNull()
+    answers.unplaced = { state: 'ok', rows: [] }
+    await page.click('Put back in Girls Bottoms')
+    expect(calls.filter(c => c.kind === 'actions')).toEqual([{ kind: 'actions', name: 'put_back', payload: { proposal: 'p7' } }])
+    expect(page.q('put-back-note')?.textContent).toBe('Put back: Girls Panties is in Girls Bottoms at Lakeside again. Its review is settled.')
+    expect(page.q('nothing-unplaced')?.textContent).toContain('until someone adds it to a section or puts it back')
+    expect(calls.filter(c => c.name === 'unplaced')).toHaveLength(2)
+    // The sidebar's Waiting for you count is read again: the review it settled leaves it.
+    expect(calls.filter(c => c.name === 'approvals')).toHaveLength(2)
+    await page.done()
+  })
+
+  it('a refused Put back says why, and the list is read again', async () => {
+    const row = { store: 'Lakeside', code: '010101001', name: 'Girls Panties', ...ETHNIC, was_in: 'Girls Bottoms', since: '2026-11-13', put_back: { proposal: 'p7' } }
+    answers.unplaced = { state: 'ok', rows: [row] }
+    answers.put_back = new Error('Girls Panties has since been put in Silk, so it can\'t be undone')
+    const page = await render('Unplaced')
+    await page.click('Put back in Girls Bottoms')
+    expect(page.q('put-back-note')?.textContent).toBe("Girls Panties: Girls Panties has since been put in Silk, so it can't be undone.")
+    expect(calls.filter(c => c.name === 'unplaced')).toHaveLength(2)
+    await page.done()
+  })
+})
+
+describe('Not in any section says who took it out (#1219)', () => {
+  it('names them, with code, job and site under', async () => {
+    const ANISHA = { name: 'Anisha', code: 'KL-RR-6761', jobs: ['Team Leader · ATK'], staff: 'current' }
+    answers.unplaced = { state: 'ok', rows: [{ store: 'Lakeside', code: '010101001', name: 'Girls Panties', ...ETHNIC, was_in: 'Girls Bottoms', since: '2026-11-13', put_back: { proposal: 'p7' }, removed_by: ANISHA }] }
+    const page = await render('Unplaced')
+    expect(page.q('unplaced-since')?.textContent).toBe('Out of Girls Bottoms since 13-Nov-2026 · by Anisha · not yet reviewed')
+    expect(page.q('removed-by')?.textContent).toBe('KL-RR-6761 · Team Leader · ATK')
+    await page.done()
+  })
+  it('says nothing about who when no one is known', async () => {
+    answers.unplaced = { state: 'ok', rows: [{ store: 'Lakeside', code: '010101001', name: 'Sarees', ...ETHNIC, was_in: 'Ladies Wear', since: '2026-11-10', put_back: null, removed_by: null }] }
+    const page = await render('Unplaced')
+    expect(page.q('unplaced-since')?.textContent).toBe('Out of Ladies Wear since 10-Nov-2026 · reviewed')
+    expect(page.q('removed-by')).toBeNull()
     await page.done()
   })
 })
