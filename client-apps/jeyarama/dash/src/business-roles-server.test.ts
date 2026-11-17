@@ -406,3 +406,36 @@ describe('Dash\'s reads and actions for the shadow pages', () => {
     expect(answers.map(a => typeof a)).toEqual(['object', 'object', 'object'])
   })
 })
+
+describe('both sides judged by the live rules (Codex adversarial round 1)', () => {
+  const WHOLE = { report_key: 'whole', report_name: 'Store target', filter_shape: 'Whole stores' }
+  async function withWholeReport(grant: Row) {
+    const tables = await seeded()
+    tables.Employee.push({ row_id: 'E-TL', name: 'Tara', employee_code: 'E-TL', status: 'Current', person: 'tl' })
+    tables['Job Assignment'].push({ row_id: 'J-TL', employee: 'E-TL', job: 'Team Leader', site: 'LKS', section: 'S1', starts_on: '2026-01-01' })
+    tables['dash.report_access'] = [grant]
+    const ctx = context(tables, { peopleRoles: { tl: [], sm: [], st: [], ho: [], buy: [] } })
+    const list = ctx.documents.list
+    ctx.documents.list = async (table, args) => (table === 'dash.report' ? [...await list(table, args), WHOLE] : list(table, args))
+    return { tables, ctx }
+  }
+  const kindOf = async (ctx: unknown, person: string) => (await accessChanges(ctx as never)).groups.flatMap(g => g.people).find(p => p.person === person)?.kind ?? null
+
+  it('finds a section-only Team Leader given a whole-stores report, closed today, gaining Dash by their role', async () => {
+    const { ctx } = await withWholeReport({ row_id: 'g', report: 'whole', person: 'tl' })
+    expect(await kindOf(ctx, 'tl')).toBe('gains_dash')
+  })
+
+  it('leaves out a store manager given a whole-stores report through their job, the same in both', async () => {
+    const { ctx } = await withWholeReport({ row_id: 'g', report: 'whole', job: 'Store Manager' })
+    expect(await kindOf(ctx, 'sm')).toBeNull()
+  })
+
+  it('agrees with can_open: the Team Leader\'s front door stays shut today', async () => {
+    const { tables } = await withWholeReport({ row_id: 'g', report: 'whole', person: 'tl' })
+    const reader = { ...context(tables, { user: 'tl', roles: [] }), authorization: { places: [] } }
+    const list = reader.documents.list
+    reader.documents.list = async (table, args) => (table === 'dash.report' ? [WHOLE] : list(table, args))
+    expect(await reads.can_open(reader as never)).toBe(false)
+  })
+})

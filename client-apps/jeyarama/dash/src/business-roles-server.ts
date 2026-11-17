@@ -10,6 +10,7 @@ import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider
 import { EMPLOYEE_STATUS, checked, day, exact, holdsOn, text } from './values.ts'
 import { istToday } from './report.ts'
 import { STARTING_ROLES, STARTING_TITLES } from './starting-roles.ts'
+import { offered, opensDashFor } from './report-eligibility.ts'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -133,8 +134,6 @@ export function placesByStore(places: Place[]): Record<string, string[] | null> 
   return out
 }
 
-/** Today's roles that open Dash (server.ts DASH_ROLES, and a System Manager), named here so this module reads nothing of today's gate. */
-const OPENS_DASH_TODAY = new Set(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester', 'System Manager'])
 
 /** One person, today and in the new model. `roles`: the roles the platform enforces for them today. */
 export async function personShadow(world: ShadowWorld, person: string, roles: readonly string[], reportShapes: Map<string, string>): Promise<PersonShadow> {
@@ -157,14 +156,14 @@ export async function personShadow(world: ShadowWorld, person: string, roles: re
   const nextPlaces = withPlaces.filter(r => model.permissions.some(p => p.role === r.role && p.app === 'Dash')).flatMap(r => r.places)
   const jobNames = [...new Set(jobs.map(j => text(j.job)))]
   const { rows, members } = world.grants
-  // As reportsFor: a report taking a filter needs a place to open in.
-  const opensIn = (keys: string[], places: Place[]) => keys.filter(k => reportShapes.has(k) && (places.length > 0 || reportShapes.get(k) === 'No filter')).sort()
+  // Both sides by the live rules (report-eligibility.ts): a filtered report needs a place, a whole-stores one a whole store.
+  const opensIn = (keys: string[], places: Place[]) => keys.filter(k => reportShapes.has(k) && offered(reportShapes.get(k)!, places)).sort()
   const todayReports = opensIn([...reportsReaching({ person, roles, jobs: jobNames }, rows, members).keys()], todayPlaces)
   const nextWhy = newModelReports(person, [...new Set(held.map(h => h.role))], rows, members, model)
   const nextReports = opensIn([...nextWhy.keys()], nextPlaces)
   return {
     employees, held: withPlaces, unmapped,
-    today: { opens: roles.some(r => OPENS_DASH_TODAY.has(r)) || todayReports.length > 0, places: placesByStore(todayPlaces), reports: todayReports },
+    today: { opens: opensDashFor(roles, todayReports.length), places: placesByStore(todayPlaces), reports: todayReports },
     next: { opens: opensDash(held, model) || nextReports.length > 0, places: placesByStore(nextPlaces), reports: nextReports },
     decisions: decisionReports({ person, roles, jobs: jobNames }, rows, members),
     nextWhy,
