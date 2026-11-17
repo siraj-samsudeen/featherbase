@@ -289,9 +289,13 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['deciders_read_together', '0.13.24', '0.13.25', 0],
       // #1219: the master data team's Put back action; no Table change, and no new read.
       ['mde_review', '0.13.25', '0.13.26', 0],
+      // #1267: the platform asks Dash who people are (describe_people); no Table change.
+      ['people_describe', '0.13.26', '0.13.27', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
-    expect(pkg.version).toBe('0.13.26')
+    expect(manifest.people).toEqual({ describe: 'describe_people' })
+    expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
+    expect(pkg.version).toBe('0.13.27')
   })
 })

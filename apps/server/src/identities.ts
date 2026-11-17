@@ -72,6 +72,8 @@ export interface SignInMethod {
   service_url: string
   /** Kind-specific configuration (a delegated provider's wire format). */
   settings: Record<string, unknown> | null
+  /** #1267: only current employees may sign in this way. */
+  employees_only: boolean
 }
 
 /** What each kind's adapter can vouch for, and how the shared pipeline treats
@@ -144,11 +146,23 @@ function toMethod(r: Record<string, unknown>): SignInMethod {
     client_id: String(r.client_id ?? '').trim(),
     service_url: String(r.service_url ?? '').trim(),
     settings: settings && typeof settings === 'object' && !Array.isArray(settings) ? (settings as Record<string, unknown>) : null,
+    employees_only: r.employees_only === true,
   }
 }
 
+/** #1267: an employees-only method is never linked to someone the people app
+ *  says is a former employee or external. An unknown answer (the app failed or
+ *  was slow) refuses nothing: a failed lookup must not lock an employee out. */
+export async function assertMethodOpenTo(method: Pick<SignInMethod, 'label' | 'employees_only'>, person: string): Promise<void> {
+  if (!method.employees_only) return
+  const { describePeople } = await import('./person-standing')
+  const status = (await describePeople([person])).get(person)!.status
+  if (status === 'left' || status === 'none')
+    throw new AppError('ValidationError', `${method.label} sign-in is only for current employees, and this person is ${status === 'left' ? 'a former employee' : 'not an employee'}.`)
+}
+
 const methodFields = () =>
-  sql`row_id, kind, label, enabled, new_person, allowed_email_domains, self_link, client_id, service_url, settings`
+  sql`row_id, kind, label, enabled, new_person, allowed_email_domains, self_link, client_id, service_url, settings, employees_only`
 
 export async function listSignInMethods(db: Sql | TxSql = sql): Promise<SignInMethod[]> {
   const rows = await db`select ${methodFields()} from sign_in_method order by row_id`
@@ -477,6 +491,7 @@ export async function linkIdentity(
   const method = await getSignInMethod(input.method)
   if (!method || method.kind === 'password')
     throw new AppError('ValidationError', `Unknown outside sign-in method "${input.method}"`)
+  await assertMethodOpenTo(method, user)
   // Its one caller, the people route, sends '' for a missing subject.
   const subject = String(input.subject).trim()
   if (!subject) throw new AppError('ValidationError', 'Expected { subject }', { subject: 'required' })
@@ -554,6 +569,8 @@ export async function updateIdentity(
 ): Promise<Identity> {
   const current = await getIdentity(id)
   const method = (await getSignInMethod(current.method))!
+  // #1267: moving an employees-only link to someone else asks the same question.
+  if (change.person_id !== undefined && change.person_id !== current.person_id) await assertMethodOpenTo(method, change.person_id)
   return guarded(
     async (t) => {
       if (change.person_id !== undefined) await lockWaysIn(t)

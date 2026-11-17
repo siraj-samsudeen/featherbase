@@ -55,9 +55,18 @@ type Grant = { grant?: { role: string }; withdraw?: { role: string } }
 export const withoutTeamManager = <T extends Grant | { create?: string }>(list: T[]) =>
   list.filter(entry => ('create' in entry ? entry.create : ((entry as Grant).grant ?? (entry as Grant).withdraw)?.role) !== TEAM_MANAGER)
 
+/** #1267's 0.13.27 taken out of a manifest: the platform does not ask who people are. Its read
+ *  stays declared, since the earlier version shares this build's server module. */
+export function revertPeopleDescribe(manifest: { migrations: { id: string }[]; people?: unknown }) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'people_describe', fromVersion: '0.13.26', operations: [] })
+  delete manifest.people
+}
+
 /** #1219's 0.13.26 taken out of a manifest. Its Put back action stays declared: the earlier version
- *  shares this build's server module, and the platform refuses handlers it doesn't declare. */
-export function revertMdeReview(manifest: { migrations: { id: string }[] }) {
+ *  shares this build's server module, and the platform refuses handlers it doesn't declare.
+ *  #1267's 0.13.27 sits on top of it; it comes off first. */
+export function revertMdeReview(manifest: { migrations: { id: string }[]; people?: unknown }) {
+  revertPeopleDescribe(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'mde_review', fromVersion: '0.13.25', operations: [] })
 }
 
