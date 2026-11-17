@@ -426,6 +426,18 @@ export async function assertAddressFree(
   )
 }
 
+/** assertAddressFree under a lock on the address, held to the end of the
+ *  caller's transaction: two claims of one address (a link for one person, an
+ *  invite for another) can no longer both see it free (Codex review). */
+async function claimAddress(
+  db: Sql, user: string, method: string, value: string | null | undefined,
+  as: 'sign_in_name' | 'pending_email' | 'email', edit: { identity?: string } = {},
+): Promise<void> {
+  if (!value || !looksLikeEmail(value)) return
+  await db`select pg_advisory_xact_lock(hashtext(${`sign-in-address:${foldName(value)}`}))`
+  await assertAddressFree(user, method, value, as, edit, db)
+}
+
 /** Run one write in its own savepoint; a unique violation becomes `onClash`. */
 async function guarded<T>(write: (t: Sql) => Promise<T>, onClash: () => Promise<never>): Promise<T> {
   try {
@@ -452,14 +464,15 @@ export async function linkIdentity(
   if (!subject) throw new AppError('ValidationError', 'Expected { subject }', { subject: 'required' })
   const signInName = input.sign_in_name == null ? null : String(input.sign_in_name).trim() || null
   await assertHumanUser(user)
-  await assertAddressFree(user, method.key, signInName, 'sign_in_name')
-  await assertAddressFree(user, method.key, input.email, 'email')
   const [same] = await sql`
     select ${identityFields()} from sign_in_identity where method = ${method.key} and subject = ${subject} and person_id = ${user} and ended_at is null`
   if (same && (same.sign_in_name ?? null) === signInName) return { ...(same as unknown as Identity), created: false }
   if (same) return { ...(await updateIdentity(String(same.id), { sign_in_name: signInName }, actor)), created: false }
   const [row] = await guarded(
     async (t) => {
+      // #1266: an address another person has is not this person's to link.
+      await claimAddress(t, user, method.key, signInName, 'sign_in_name')
+      await claimAddress(t, user, method.key, input.email, 'email')
       const rows = await t`insert into sign_in_identity ${t({
         id: newIdentityId(),
         person_id: user,
@@ -489,21 +502,24 @@ export async function inviteGoogle(user: string, email: string, actor: string): 
   const address = normaliseEmail(email)
   if (!address || !looksLikeEmail(address)) throw new AppError('ValidationError', 'Expected { email }', { email: 'a real address' })
   await assertHumanUser(user)
-  await assertAddressFree(user, method.key, address, 'pending_email')
   const pending = foldName(address)
   const [same] = await sql`
     select ${identityFields()} from sign_in_identity
     where method = ${method.key} and subject is null and pending_email = ${pending} and person_id = ${user} and ended_at is null`
   if (same) return { ...(same as unknown as Identity), created: false }
   const [row] = await guarded(
-    (t) => t`insert into sign_in_identity ${t({
-      id: newIdentityId(),
-      person_id: user,
-      method: method.key,
-      subject: null,
-      pending_email: pending,
-      linked_by: actor,
-    })} returning ${identityFields()}`,
+    async (t) => {
+      // #1266: an address another person has is not this person's to invite.
+      await claimAddress(t, user, method.key, address, 'pending_email')
+      return t`insert into sign_in_identity ${t({
+        id: newIdentityId(),
+        person_id: user,
+        method: method.key,
+        subject: null,
+        pending_email: pending,
+        linked_by: actor,
+      })} returning ${identityFields()}`
+    },
     () => clash(method, { pending_email: pending }),
   )
   await auditIdentity(actor, 'invited', user, method.key, String(row.id))
@@ -535,7 +551,7 @@ export async function updateIdentity(
           ? [[signInName, 'sign_in_name'], [locked.email as string | null, 'email'], [locked.pending_email as string | null, 'pending_email']]
           : [[signInName, 'sign_in_name']]
         for (const [address, as] of addresses)
-          await assertAddressFree(holder, String(locked.method), address, as, { identity: id }, t)
+          await claimAddress(t, holder, String(locked.method), address, as, { identity: id })
       }
       if (moving) {
         // person-resolution D4/D5: a move keeps who held it until when — the
