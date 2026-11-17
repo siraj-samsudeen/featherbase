@@ -170,6 +170,13 @@
    "Active"
   ],
   [
+   "LKS-S11",
+   "Girls Tops",
+   "LKS",
+   "LKS-F2",
+   "Active"
+  ],
+  [
    "HIL-S1",
    "Accessories",
    "HIL",
@@ -1251,7 +1258,8 @@
    "Kids",
    "2012",
    [
-    "LKS-S3"
+    "LKS-S3",
+    "LKS-S11"
    ]
   ],
   [
@@ -1282,5 +1290,17 @@
     "Silk"
    ]
   }
- ]
+ ],
+ "heads": {
+  "_about": "Made-up cluster heads a Cluster row names in cluster_manager, by Employee id (rama_dw #4588): each reaches every store in the cluster, whole.",
+  "people": [
+   {
+    "key": "clusterhead",
+    "name": "Kiran Cluster-Head",
+    "code": "3911",
+    "cluster": "NORTH",
+    "says": "named head of cluster North: Lakeside and Hillview, whole"
+   }
+  ]
+ }
 }

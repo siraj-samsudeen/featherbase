@@ -7,6 +7,7 @@ import { test, expect, renderApp } from './pg-test'
 import { holdResponses } from './held-requests'
 import { canArchive } from '../src/components/ArchiveTable'
 import type { TableMeta } from '../src/lib/meta'
+import { openListMenu } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const OLD = 'Twa SAP Plant'
@@ -21,7 +22,7 @@ test('archiving from the list shows the banner, takes away New, and un-archive b
   await seed(admin)
   await renderApp('/featherbase/admin/table/twa-sap-plant', admin)
   expect(await screen.findByTestId('list-new', undefined, { timeout: 10_000 })).toBeInTheDocument()
-  await user.click(await screen.findByRole('button', { name: 'Table administration' }))
+  await openListMenu('Table administration')
   await user.click(await screen.findByTestId('archive-table'))
   const dialog = await screen.findByTestId('archive-table-dialog')
   expect(dialog).toHaveTextContent(`Archive ${OLD}?`)
@@ -83,7 +84,7 @@ test('#1041: a refusal shows in the dialog, and clicking inside the dialog leave
   const user = userEvent.setup()
   await admin.post('/api/table_def', { name: 'Twa Roster', decides_scope: true, columns: [{ column_name: 'city', column_type: 'Data' }] })
   await renderApp('/featherbase/admin/table/twa-roster', admin)
-  await user.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 10_000 }))
+  await openListMenu('Table administration', screen, { timeout: 10_000 })
   await user.click(await screen.findByTestId('archive-table'))
   const dialog = await screen.findByTestId('archive-table-dialog')
   await user.type(within(dialog).getByTestId('archive-table-note'), 'Not in use')
@@ -109,7 +110,7 @@ test("#1041: an app's table offers Archive; the platform's, a settings table and
 async function openArchive(admin: Admin) {
   await seed(admin)
   await renderApp('/featherbase/admin/table/twa-sap-plant', admin)
-  await userEvent.click(await screen.findByRole('button', { name: 'Table administration' }, { timeout: 10_000 }))
+  await openListMenu('Table administration', screen, { timeout: 10_000 })
   await userEvent.click(await screen.findByTestId('archive-table'))
   return screen.findByTestId('archive-table-dialog')
 }

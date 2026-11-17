@@ -130,6 +130,19 @@ export function baseTablesReader(app: string, declaration: BaseTablesDeclaration
       if (hidden !== undefined) reject(`The app has not declared column ${String(hidden)} of Table ${table}`)
       return (await getList(table, args)).data as ActionRow[]
     }),
+    // #1230: an instance Table an app reads optionally may be unlinked, deleted or reshaped since the
+    // app was installed. Asking first lets the app leave that part out instead of failing the whole read.
+    available: (table: string) => guard.run(async () => {
+      const columns = declaration?.read[table]
+      if (!columns) return false
+      try {
+        const meta = await reachable(app, table, true, linked)
+        return columns.every(column => meta.columns.some(c => c.column_name === column))
+      } catch (error) {
+        if (error instanceof AppError && ['ValidationError', 'NotFoundError'].includes(error.type)) return false
+        throw error
+      }
+    }),
   })
   return { helper, close: guard.close }
 }

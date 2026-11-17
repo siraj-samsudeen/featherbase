@@ -6,12 +6,7 @@ import { tableRelation } from './table-engine'
 import { AppError } from './errors'
 import { PLATFORM_SCHEMA } from './platform-schema'
 import { anyTableLinkCount } from './any-table-link'
-import { displayName } from './people-directory'
-import { SYSTEM_ACTOR_LABELS } from 'shared'
-import { ROSTER_LINK_ACTOR } from './roster-link-actor'
-
-/** The shared labels, plus the server-only roster link (#1157). */
-const ACTOR_LABELS: Readonly<Record<string, string>> = { ...SYSTEM_ACTOR_LABELS, [ROSTER_LINK_ACTOR]: 'Staff roster' }
+import { actorNames } from './actor-names'
 
 // Platform records that name one row by its id in plain text, beside a column
 // naming its Table: its timeline, attachments, shares, assignments, tags,
@@ -129,13 +124,11 @@ export async function documentActivity(table: string, name: string, user: string
   // This does not grant the caller access to the Person directory or emails.
   // #829: the row's own creator is resolved too. A source-bound row has none.
   const ids = [...new Set([...comments, ...versions, visibleDoc].map(entry => entry.created_by).filter(id => id != null).map(String))]
-  const actors = await sql`
-    select row_id, full_name, username from person where row_id = any(${ids})
-    union all select row_id, label as full_name, null as username from service_account where row_id = any(${ids})`
-  const names = new Map(actors.map(actor => [String(actor.row_id), displayName(actor)]))
+  // #1224: one helper names people, service accounts and system steps alike.
+  const names = await actorNames(ids)
   const withAuthor = (entry: Record<string, unknown>) => ({
     ...entry,
-    author_name: names.get(String(entry.created_by)) ?? ACTOR_LABELS[String(entry.created_by)] ?? 'Unknown person',
+    author_name: names.get(String(entry.created_by)) ?? 'Unknown person',
   })
   const visibleVersions = versions.map((version) => {
     const data = version.data as { changed?: [string, unknown, unknown][]; created?: boolean; import_run?: string; resolution?: { field: string; decision: string; incoming: unknown }; retirement?: { action: string; reason?: string }; agent?: { token_id: string; token_label: string } } | null

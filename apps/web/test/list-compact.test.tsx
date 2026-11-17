@@ -59,7 +59,10 @@ test("Compact clicked before the person's saved list settings arrive cannot over
     return real(input, init)
   })
   try {
-    await renderApp(tableHref(SITE), admin)
+    // #1228: a bare open waits for the saved settings (they carry the remembered filters), so the
+    // race lives where the list opens at once: an address that names its filters.
+    const everySite = encodeURIComponent(JSON.stringify([['site_name', '!=', 'No such site']]))
+    await renderApp(`${tableHref(SITE)}?filters=${everySite}`, admin)
     fireEvent.click(within(await layout()).getByRole('button', { name: 'Compact' }))
     release()
     await waitFor(async () => expect(within(await layout()).getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true'))

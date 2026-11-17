@@ -16,6 +16,7 @@ import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
+import { chooseApp } from './app-switcher'
 
 const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { pathname: string } } }).state.location.pathname
 
@@ -123,8 +124,6 @@ test('choosing another application in the switcher goes to its address', async (
   await admitTasker(admin)
   const reports = navigationReports()
   await renderApp('/featherbase/admin', admin)
-  const switcher = (await screen.findByRole('combobox', { name: 'Switch application' }, { timeout: 8000 })) as HTMLSelectElement
-  const tasker = await within(switcher).findByRole('option', { name: /task/i })
-  fireEvent.change(switcher, { target: { value: tasker.getAttribute('value') } })
+  await chooseApp(screen, 'Tasker', { timeout: 8000 })
   expect(reports()).toHaveLength(1)
 })

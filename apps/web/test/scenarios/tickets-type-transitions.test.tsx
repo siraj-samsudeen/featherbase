@@ -42,7 +42,7 @@ describe('tickets-type-transitions', () => {
         // A date input takes its value whole; typing it key by key is not how jsdom fills one.
         .step('set the target date', async () => { fireEvent.change(screen.getByLabelText('Target date *'), { target: { value: plan.target_date } }) })
         .within('#action-transition', (form) => form.clickButton('Confirm'))
-        .within('.ticket-kicker', (kicker) => kicker.assertText('Fix Planned'))
+        .within('.ticket-title-row', (kicker) => kicker.assertText('Fix Planned'))
       t.ticket = (await t.open('Bala')).ticket
     })
     await step('the ticket is in "Fix planned"', async () => expect((await t.open('Support')).ticket.ticket_state).toBe('Fix planned'))

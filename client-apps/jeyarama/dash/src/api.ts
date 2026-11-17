@@ -48,3 +48,44 @@ export async function accessFacts(): Promise<{ manages: boolean; missing?: strin
   const check = health?.checks.find(c => c.key === 'app-setup:dash')
   return { manages: true, missing: check?.missing, fix: check?.fix ?? null }
 }
+
+/**
+ * #1240: another app's declared action or read, as the signed-in person. The platform asks a
+ * browser to name the version of the app it calls, which Dash learns from the versions the
+ * instance runs now. Null when that app isn't running here.
+ */
+async function runningVersion(app: string): Promise<string | null> {
+  const response = await fetch('/api/runtime_app_versions', { credentials: 'same-origin' }).catch(() => null)
+  if (!response?.ok) return null
+  const versions = await response.json().catch(() => []) as unknown
+  return Array.isArray(versions) ? (versions.find((v): v is string => typeof v === 'string' && v.startsWith(`${app}@`)) ?? null) : null
+}
+
+async function otherApp<T>(app: string, path: string, body: Record<string, unknown>): Promise<T> {
+  const identity = await runningVersion(app)
+  if (!identity) throw new ApiError(`${app} isn't running on this instance`, 404)
+  const response = await fetch(path, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': identity },
+    body: JSON.stringify(body),
+  })
+  const answer = await response.json().catch(() => ({}))
+  if (!response.ok) throw new ApiError(answer.error?.message ?? 'That did not go through. Try again.', response.status)
+  return answer.result as T
+}
+
+/** Whether Tickets runs here, so the page offers "Report an issue" only where a ticket can be raised. */
+export const ticketsRunning = async () => (await runningVersion('tickets')) !== null
+
+/**
+ * Raises a ticket in Tickets as the signed-in person. A retry of the same submission sends the same
+ * key and payload, so a ticket whose answer was lost is answered again, never raised twice.
+ */
+export const raiseTicket = (submission: { key: string; payload: Record<string, unknown> }) =>
+  otherApp<{ ticket: { row_id: string; title: string; ticket_state: string } }>('tickets', '/api/app_actions/tickets/create', { idempotencyKey: submission.key, payload: submission.payload })
+
+export interface OpenFeedback { row_id: string; title: string; ticket_state: string; problem: string | null; about: string | null }
+
+/** The signed-in person's own open feedback on one report, newest first. */
+export const openFeedback = async (reportKey: string) =>
+  (await otherApp<{ answer: { tickets: OpenFeedback[]; count: number } }>('tickets', '/api/app_reads/tickets/about_report', { payload: { report_key: reportKey } })).answer

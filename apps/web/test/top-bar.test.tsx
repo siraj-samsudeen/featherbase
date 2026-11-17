@@ -5,11 +5,11 @@
 // and the Account menu. What jsdom cannot see (pixels: the bar's height and
 // frame on both addresses, sideways scroll, wrapping, and a real browser
 // following the hand-off across hosts) is not claimed here.
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { resolve } from 'node:path'
 import { afterEach, vi } from 'vitest'
-import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, rowHref } from 'shared'
 import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { discoverPackages } from 'server/src/runtime-packages'
@@ -19,6 +19,7 @@ import { recordAction } from '../src/lib/recents'
 import { followDevice } from '../src/lib/theme'
 import { getToken } from '../src/lib/api'
 import { test, expect, renderApp } from './pg-test'
+import { appChoices, currentApp } from './app-switcher'
 
 type Client = Parameters<typeof renderApp>[1]
 
@@ -49,7 +50,14 @@ async function viewerOnly(admin: Client, createUser: (o: { email?: string; roles
 }
 
 const bar = () => screen.findByTestId('top-bar')
-const barName = async () => within(await bar()).findByTestId('top-bar-name')
+const nameElement = async () => within(await bar()).findByTestId('top-bar-name')
+/** The bar's name as shown: the switcher's button (#1227, #1236) or the plain name. */
+const barName = nameElement
+/** Where the bar's name leads: the switcher's logo (#1227), or the plain name's link. */
+const barHome = async () => {
+  const name = await nameElement()
+  return name.tagName === 'BUTTON' ? within(await bar()).getByTestId('top-bar-home') : name
+}
 /** The bar once whoami has answered: the Account menu's avatar is drawn. */
 const settledBar = async () => {
   await screen.findByTestId('session-user')
@@ -92,7 +100,7 @@ test("on an app's address the account page's tab title is the app's name", async
   document.title = 'Featherbase'
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await waitFor(() => expect(document.title).toBe('Dash'))
+  await waitFor(() => expect(document.title).toBe('Sign-in methods · Dash'))
 })
 
 test('the Sales Target page on the Admin address is named Dash in its bar', async ({ admin }) => {
@@ -129,7 +137,7 @@ test('on the Admin address the account page tab title is Featherbase for someone
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Featherbase'))
+  await waitFor(() => expect(document.title).toBe('Sign-in methods · Featherbase'))
 })
 
 // #501 item 3: on the Admin address the account page is named for where the
@@ -148,7 +156,7 @@ test("on the Admin address the account page's tab title names the app a person w
   const viewer = await viewerOnly(admin, createUser, 'viewer.account.tab@example.com')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Dash'))
+  await waitFor(() => expect(document.title).toBe('Sign-in methods · Dash'))
 })
 
 test('on the Admin address the account page is named Featherbase for someone who can open nothing', async ({ createUser }) => {
@@ -165,7 +173,7 @@ test("on the Admin address the account page's tab title is Featherbase for someo
   const nobody = await createUser({ email: 'nobody.account.tab@example.com' })
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, nobody)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Featherbase'))
+  await waitFor(() => expect(document.title).toBe('Sign-in methods · Featherbase'))
 })
 
 test("on an app's address the account page stays named for the app for someone who cannot use Admin", async ({ createUser }) => {
@@ -194,7 +202,7 @@ test("on an app's address whose app is installed, the bar's name leads to the ap
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
-  await waitFor(async () => expect(await barName()).toHaveAttribute('href', '/dash/'))
+  await waitFor(async () => expect(await barHome()).toHaveAttribute('href', '/dash/'))
 })
 
 // Codex round 1 on #672: the link follows the installation, not whether the
@@ -231,14 +239,14 @@ test("on an app's address whose installed app is disabled, the bar's name still 
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledName('Dash stand-in')
-  expect(await barName()).toHaveAttribute('href', '/dash/')
+  expect(await barHome()).toHaveAttribute('href', '/dash/')
 })
 
 test("on an app's address whose app is not installed, the bar's name leads to the interim page", async ({ admin }) => {
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledName('Dash')
-  expect(await barName()).toHaveAttribute('href', '/featherbase/sales-target')
+  expect(await barHome()).toHaveAttribute('href', '/featherbase/sales-target')
 })
 
 test('on the Admin address the account page is named for the installed app a person who cannot use Admin can open', async ({ admin, createUser }) => {
@@ -257,8 +265,10 @@ test("on an app's address the account page has the bar and no Admin menus, even 
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
   expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
-  for (const id of ['awesomebar', 'admin-sidebar', 'notif-bell', 'sidebar-toggle'])
+  for (const id of ['awesomebar', 'admin-sidebar', 'notif-bell'])
     expect(screen.queryByTestId(id)).not.toBeInTheDocument()
+  // #1235 item 7: the shared sidebar is not the Admin's: only the Account group.
+  expect(screen.getByTestId('account-sidebar')).toBeInTheDocument()
 })
 
 test('the Sales Target page has no Admin menus in its bar', async ({ admin }) => {
@@ -333,7 +343,7 @@ test('the right side reads Open Admin, the theme toggle, then the Account menu',
 
 // ---- 5. the Account menu --------------------------------------------------------
 
-test('the Account menu holds the name, Sign-in methods, What can I see? (#628), then Log out', async ({ admin }) => {
+test('the Account menu holds the name, Sign-in methods, What you can see (#628), then Log out', async ({ admin }) => {
   await renderApp('/featherbase/sales-target', admin)
   const menu = await openAccountMenu()
   const order = [...menu.querySelectorAll('[data-testid="account-identity"], [role="menuitem"]')].map((el) => el.getAttribute('data-testid'))
@@ -346,12 +356,28 @@ test("the Account menu's Sign-in methods opens the account page", async ({ admin
   expect(screen.getByTestId('account-sign-in-methods')).toHaveAttribute('href', ACCOUNT_SIGN_IN_METHODS_PATH)
 })
 
-test("the person's name in the Account menu is not a control", async ({ admin }) => {
+// #1227: was "the person's name in the Account menu is not a control" (#489). The
+// owner's navigation rule (16-Nov-2026) supersedes it: a record shown is a link,
+// plain text only where the viewer may not open it.
+test("the person's name in the Account menu links to their Person record for someone who may open it", async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
   await openAccountMenu()
   const identity = screen.getByTestId('account-identity')
   expect(identity).toHaveTextContent('Administrator')
   expect(within(identity).queryByRole('button')).toBeNull()
+  await waitFor(() => expect(within(identity).getByRole('link')).toHaveAttribute("href", rowHref("Person", admin.user!)))
+})
+
+test("for someone who may not open Person records, the name in the Account menu is plain text", async ({ createUser }) => {
+  const reader = await createUser({ email: 'menu.reader@example.com', roles: [] })
+  onAddressThatOpens('dash')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  await openAccountMenu()
+  const identity = screen.getByTestId('account-identity')
+  // Plain text, the same words, once the server has said what they can open.
+  await screen.findByTestId('session-user')
+  await new Promise((r) => setTimeout(r, 100))
+  expect(identity.querySelector('[data-record-link]')).toHaveAttribute('data-record-link', 'text')
   expect(within(identity).queryByRole('link')).toBeNull()
 })
 
@@ -587,7 +613,7 @@ test('the Admin bar stays named and its Account menu usable when the brand endpo
   // A picker when apps are installed: what the person sees is the selected option.
   await waitFor(async () => {
     const name = await barName()
-    expect(name instanceof HTMLSelectElement ? name.selectedOptions[0]?.textContent : name.textContent).toBe('Featherbase')
+    expect(name.textContent).toBe('Featherbase')
   })
   expect(within(await openAccountMenu()).getByTestId('logout')).toBeInTheDocument()
 })
@@ -596,7 +622,7 @@ test("Tab walks the bar on an app's address: Open Admin, the three theme choices
   onAddressThatOpens('dash')
   await renderApp('/featherbase/sales-target', admin)
   await within(await settledBar()).findByTestId('open-admin')
-  ;(await barName()).focus()
+  ;(await nameElement()).focus()
   const reached: string[] = []
   for (let i = 0; i < 5; i++) {
     await userEvent.tab()
@@ -620,4 +646,47 @@ test('at phone width the account page on the Admin address has no Open Admin in 
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledName('Featherbase')
   expect(within(await openAccountMenu()).queryByTestId('open-admin')).not.toBeInTheDocument()
+})
+
+// ---- #1227: the switcher on the account pages ----------------------------------
+// The account pages wear the same bar as every app page: the "<App> ▾"
+// switcher, not a plain name.
+
+const barScope = async () => within(await settledBar())
+
+test("on an app's address the account pages show the app switcher, on that app", async ({ admin }) => {
+  onAddressThatOpens('dash')
+  for (const page of [ACCOUNT_SIGN_IN_METHODS_PATH, `/featherbase/account/access/${admin.user}`]) {
+    await renderApp(page, admin)
+    await waitFor(async () => expect(await currentApp(await barScope())).toBe('Dash'))
+    // Featherbase is one of the choices for someone who can use it.
+    await waitFor(async () => expect(await appChoices(await barScope())).toContain('Featherbase'))
+    cleanup()
+  }
+})
+
+test('on the Admin address a person who cannot use Admin sees the switcher on the app they belong to', async ({ admin, createUser }) => {
+  onAddressThatOpens('admin')
+  const viewer = await viewerOnly(admin, createUser, 'viewer.switcher@example.com')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
+  await waitFor(async () => expect(await currentApp(await barScope())).toBe('Dash'))
+  expect(await appChoices(await barScope())).not.toContain('Featherbase')
+})
+
+test('someone who belongs to no app sees the switcher on the neutral Featherbase', async ({ createUser }) => {
+  onAddressThatOpens('admin')
+  const nobody = await createUser({ email: 'nobody.switcher@example.com' })
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, nobody)
+  await waitFor(async () => expect(await currentApp(await barScope())).toBe('Featherbase'))
+  expect(within(await settledBar()).getByTestId('top-bar-home')).toHaveAttribute('href', '/')
+})
+
+// #1235 item 7 (UI standard §4): the account pages have the shared sidebar, with
+// its Account group, so the bar offers its controls, as on every page with one.
+test('the account pages have the shared sidebar, and the bar its controls', async ({ admin }) => {
+  onAddressThatOpens('dash')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
+  const bar = await settledBar()
+  expect(await within(bar).findByTestId('sidebar-collapse')).toBeInTheDocument()
+  expect(screen.getByTestId('sidebar-group-account')).toBeInTheDocument()
 })

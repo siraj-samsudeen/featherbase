@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
+import { REPORT_FEEDBACK, reportFeedbackDetails } from './report-feedback'
 
 // Structural public runtime API: this package has no platform dependency.
 type Row = Record<string, unknown>
@@ -26,6 +27,8 @@ interface ReadContext {
     count(table: string, filters?: ListArgs['filters']): Promise<number | null>
     isReader(table: string, id: string): Promise<boolean>
   }
+  /** #1230: instance Tables the manifest declares under baseTables.read, read as the app, only those columns. */
+  baseTables?: { list(table: string, args: ListArgs & { fields: string[] }): Promise<Row[]>; available?(table: string): Promise<boolean> }
 }
 interface Context extends ReadContext {
   mail: {
@@ -63,7 +66,7 @@ function validate(table: string, ctx: Validation) {
   // #963: change_raiser checks its caller is a System Manager before it writes.
   if (ctx.old && ctx.row.owner !== ctx.old.owner && !(table === 'ticket' && allowed?.operation === 'change_raiser')) ctx.reject('The requester is immutable')
 }
-const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill']
+const kinds = ['generic', 'access', 'freshness', 'quality', 'report', 'source', 'schema', 'pipeline', 'backfill', REPORT_FEEDBACK]
 // Keys a configured field may never take: they carry the request or its gates.
 const protectedKeys = ['original', 'verification', 'approval', 'fulfillment', 'actor', 'by', 'at', 'owner', 'ticket_state', 'root_cause', 'title', 'kind', 'state']
 const fieldTypes = ['text', 'long text', 'choice', 'date', 'person', 'link']
@@ -432,6 +435,52 @@ const conditionsText = (filters: Filter[]) => filters.map(([column, op, value]) 
   `${column} ${OPERATOR_WORDS[op] ?? op}${op.includes('blank') ? '' : ` "${Array.isArray(value) ? value.join(', ') : String(value)}"`}`).join(' and ')
 // Only add_rule writes a rule (every other write is refused), always as checked JSON.
 const storedFilters = (value: unknown) => JSON.parse(String(value)) as Filter[]
+// #1230: the instance's Data Quality Row Table names the rows a ticket covers. Tickets reads it as a
+// declared base Table (featherbase.json baseTables.read), only once an administrator lists it in
+// linked_tables, and only after the caller has read the ticket itself: no row of a ticket they can't see.
+const COVERED_TABLE = 'Data Quality Row'
+const COVERED_FIELDS = ['ticket', 'affected_table', 'affected_row', 'fixed_on', 'note']
+const COVERED_SETUP = `An administrator lists ${COVERED_TABLE} in Tickets' linked_tables to show the rows a ticket covers here.`
+const day = (value: unknown) => typeof value === 'string' && value ? value.slice(0, 10) : null
+/** Every row a read returns, page by page: the platform caps a page at 500. */
+async function pages(read: (args: ListArgs) => Promise<Row[]>) {
+  const rows: Row[] = []
+  for (let offset = 0; ; offset += 500) {
+    const page = await read({ order_by: 'row_id asc', limit_start: offset, limit_page_length: 500 })
+    rows.push(...page)
+    if (page.length < 500) return rows
+  }
+}
+/** The ids of the matching rows the caller may read themself; none for a linked Table that is gone or
+ *  unreadable. count first: it answers null for those rather than failing the page. */
+async function readableIds(ctx: ReadContext, table: string, filters: ListArgs['filters']) {
+  if (!await ctx.documents.count(table, filters)) return new Set<string>()
+  return new Set((await pages(args => ctx.documents.list(table, { ...args, fields: ['row_id'], filters }))).map(row => String(row.row_id)))
+}
+/** The rows a ticket covers, open first, then fixed; each linked only when the caller may read that row.
+ *  null while Data Quality Row is not a linked Table; undefined when the ticket covers none. */
+async function coveredRows(ctx: ReadContext, ticketId: string) {
+  // Unlinked, deleted or reshaped since: leave the list out rather than fail the page (Codex adversarial, round 1).
+  if (!ctx.baseTables?.available || !linked(ctx, COVERED_TABLE) || !await ctx.baseTables.available(COVERED_TABLE)) return null
+  const base = ctx.baseTables
+  const found = await pages(args => base.list(COVERED_TABLE, { ...args, fields: ['row_id', ...COVERED_FIELDS], filters: [['ticket', '=', ticketId]] }))
+  if (!found.length) return undefined
+  // A row links only where the caller may open it: a linked Table they read, and a row that is there.
+  // count first: it reads a Table that was removed, or can't be read, as nothing rather than failing the page.
+  const readable = new Map<string, Set<string>>()
+  for (const table of [...new Set(found.map(row => String(row.affected_table)))].filter(table => linked(ctx, table))) {
+    const keys = [...new Set(found.filter(row => row.affected_table === table).map(row => String(row.affected_row)))]
+    readable.set(table, await readableIds(ctx, table, [['row_id', 'in', keys]]))
+  }
+  // Each Data Quality Row's own record (where it is marked fixed), for a caller who may open it.
+  const own = await readableIds(ctx, COVERED_TABLE, [['ticket', '=', ticketId]])
+  const rows = found.map(row => ({ table: String(row.affected_table), row: String(row.affected_row),
+    note: typeof row.note === 'string' && row.note.trim() ? row.note : null, fixed_on: day(row.fixed_on),
+    link: readable.get(String(row.affected_table))?.has(String(row.affected_row)) ?? false,
+    record: own.has(String(row.row_id)) ? String(row.row_id) : null }))
+    .sort((a, b) => Number(!!a.fixed_on) - Number(!!b.fixed_on) || a.table.localeCompare(b.table) || a.row.localeCompare(b.row))
+  return { rows, total: rows.length, fixed: rows.filter(row => row.fixed_on).length }
+}
 /** Its raiser, its assignee or Tickets support: those a ticket's "any" action lets act. */
 function involved(ctx: ReadContext, ticket: Row) {
   return ticket.owner === ctx.user || (!!ticket.assigned_to && ticket.assigned_to === ctx.user) || capabilities(ctx).support
@@ -470,7 +519,8 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     const types = await configuredTypes(ctx)
     const category = kind(ctx, p.kind ?? 'generic', types)
     const type = types.get(category)
-    const structured = type ? await typedDetails(ctx, type, object(ctx, p.details ?? {})) : details(ctx, p.details ?? {})
+    const structured = type ? await typedDetails(ctx, type, object(ctx, p.details ?? {}))
+      : category === REPORT_FEEDBACK ? reportFeedbackDetails(p.details, ctx.reject) : details(ctx, p.details ?? {})
     const assignee = type ? await routed(ctx, type, structured) : null
     const ticket = await ctx.documents.create('tickets.ticket', { title, owner: raiser, kind: category,
       ticket_state: type ? type.states[0] : category === 'access' ? 'Needs verification' : 'New', ...(assignee ? { assigned_to: assignee } : {}) })
@@ -507,6 +557,8 @@ const handlers: Record<string, (ctx: Context) => Promise<unknown> | unknown> = {
     }
     const intake = type ? Object.fromEntries(Object.entries(merged).filter(([key]) => !actionFieldNames(type).has(key))) : merged
     const next = type ? (p.details === undefined && category === ticket.kind ? structured : { ...await typedDetails(ctx, type, intake), ...recorded })
+      // #1240: feedback on a report keeps its checked shape whoever edits it, and whatever it was before.
+      : category === REPORT_FEEDBACK ? (p.details === undefined && category === ticket.kind ? structured : reportFeedbackDetails(merged, ctx.reject))
       : p.details === undefined ? structured : { ...structured, ...details(ctx, p.details) }
     // Only a configured type moves between states directly, and only among its own.
     if (p.state !== undefined && (!type || !type.states.includes(String(p.state)))) ctx.reject('Choose one of this type\'s states')
@@ -814,6 +866,25 @@ export const reads = {
     return { answer: { tickets, count: tickets.length, hasMore: false,
       names: await names(ctx, tickets.map(ticket => ({ owner: ticket.owner, assigned_to: ticket.assigned_to }))) } }
   },
+  // #1240: the caller's own open feedback on one report (Dash's "Report an issue"), newest first.
+  async about_report(ctx: ReadContext) {
+    const p = input(ctx, ['report_key'])
+    const key = text(ctx, p.report_key, 'Report key')
+    const types = await configuredTypes(ctx)
+    const mine = (await all(ctx, 'tickets.ticket', ticketFields, [['owner', '=', ctx.user], ['kind', '=', REPORT_FEEDBACK]]))
+      .filter(ticket => !isDone(ticket, types))
+    const requests = new Map<string, Row>()
+    for (let i = 0; i < mine.length; i += 500) {
+      const ids = mine.slice(i, i + 500).map(ticket => String(ticket.row_id))
+      for (const request of await ctx.documents.list(PRIVATE.request, { fields: ['row_id', 'details_json'], filters: [['row_id', 'in', ids]], limit_page_length: 500 }))
+        requests.set(String(request.row_id), parse(request.details_json))
+    }
+    const tickets = mine.filter(ticket => requests.get(String(ticket.row_id))?.report_key === key)
+      .sort((a, b) => String(b.row_id).localeCompare(String(a.row_id)))
+      .map(ticket => { const d = requests.get(String(ticket.row_id))!; return { row_id: ticket.row_id, title: ticket.title, ticket_state: ticket.ticket_state,
+        updated_at: ticket.updated_at, problem: d.problem ?? null, about: d.about ?? null } })
+    return { answer: { tickets, count: tickets.length } }
+  },
   // #1196: how many rows a rule being written would match, as the caller.
   async rule_preview(ctx: ReadContext) {
     const p = input(ctx, ['table', 'filters'])
@@ -870,6 +941,10 @@ export const reads = {
       answer.actions = actions
     }
     answer.rules = await rulesOf(ctx, id)
+    // #1230: everyone who reads the ticket reads the rows it covers; support is told how to switch them on.
+    const covered = await coveredRows(ctx, id)
+    if (covered) answer.coveredRows = covered
+    if (covered === null && support && type) answer.coveredRowsSetup = COVERED_SETUP
     // #1196: who may add a rule here, and the Tables a rule may check.
     if (involved(ctx, ticket)) answer.ruleTables = members(configured(ctx, 'linked_tables'))
     answer.names = await names(ctx, { owner: ticket.owner, assigned_to: ticket.assigned_to }, answer.events, answer.privateEvents ?? [], answer.rules,

@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 import { pickerFor } from '../src/lib/pickers'
-import { isOpaqueId, principalLabel, PrincipalName, usePrincipalLabels } from '../src/lib/people'
+import { invalidatePrincipalName, isOpaqueId, principalLabel, PrincipalName, usePrincipalLabels } from '../src/lib/people'
 import { RowTitle } from '../src/lib/row-titles'
 import { api, getToken, setSession } from '../src/lib/api'
 import { recordAction } from '../src/lib/recents'
@@ -123,7 +123,9 @@ test('the Person list shows each person’s name in its first column', async ({ 
   expect(within(table).queryByText(ravi.user!)).toBeNull()
 })
 
-test('a name the viewer may not read is "Unnamed person", never a stuck "…" or the id', async ({ admin, createUser }) => {
+// #1224: who wrote a comment is not hidden from someone who may read the row
+// it is on — only their display name travels, never their address or id.
+test('a comment\'s author is named even to a viewer who may not read Person, never the id', async ({ admin, createUser }) => {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Hidden Row Reader' } })
   // The author may open the row (commenting needs that, #507); the reader may
   // open it too, but may not read the author's Person row.
@@ -138,8 +140,9 @@ test('a name the viewer may not read is "Unnamed person", never a stuck "…" or
   await renderApp(`/featherbase/admin/table/hidden-row/row/${doc.row_id}`, reader)
   await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const name = await screen.findByTestId('comment-author')
-  await waitFor(() => expect(name).toHaveTextContent('Unnamed person'))
+  await waitFor(() => expect(name).toHaveTextContent('Hidden Author'))
   expect(name.textContent).not.toContain(author.user!)
+  expect(screen.getByTestId('activity-timeline')).not.toHaveTextContent('hidden.author@example.com')
 })
 
 // #414: the Person form, its breadcrumb and the sidebar's Recent list name the
@@ -191,4 +194,27 @@ test('a Recent row for a person with no caption shows the name and no id tooltip
   await waitFor(() => expect(row).toHaveTextContent('Nosub Person'))
   expect(row.textContent).not.toContain(p.user!)
   expect(row.getAttribute('title') ?? '').not.toContain(p.user!)
+})
+
+// #1224: who made a row is named to anyone who may read the row, even without
+// Person read; the same id without that context stays unnamed.
+test('who made a row reads by name to a reader without Person read; outside the Table it stays unnamed', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Actor Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await grantRole(admin, { table: 'Actor Row', role: 'Actor Row Writer', can_read: true, can_create: true })
+  await grantRole(admin, { table: 'Actor Row', role: 'Actor Row Reader', can_read: true })
+  const writer = await createUser({ email: 'actor.writer@example.com', fullName: 'Actor Writer', roles: ['Actor Row Writer'] })
+  await writer.post('/api/save_row', { table: 'Actor Row', row: { title: 'x' } })
+  const reader = await createUser({ email: 'actor.reader@example.com', roles: ['Actor Row Reader'] })
+  const { queryClient } = await renderApp('/featherbase/account/sign-in-methods', reader)
+  render(<QueryClientProvider client={queryClient}>
+    <span data-testid="as-actor"><PrincipalName id={writer.user!} actorOf="Actor Row" /></span>
+    <span data-testid="as-link"><PrincipalName id={writer.user!} /></span>
+  </QueryClientProvider>)
+  await waitFor(() => expect(screen.getByTestId('as-actor')).toHaveTextContent('Actor Writer'))
+  await waitFor(() => expect(screen.getByTestId('as-link')).toHaveTextContent('Unnamed person'))
+  // A rename reaches the actor name too, not only the plain lookup (Codex round 12).
+  const doc = await admin.get<{ updated_at: string }>(`/api/table/Person/${writer.user}`)
+  await admin.post('/api/save_row', { table: 'Person', row: { row_id: writer.user, full_name: 'Actor Renamed', updated_at: doc.updated_at } })
+  await invalidatePrincipalName(queryClient, writer.user!)
+  await waitFor(() => expect(screen.getByTestId('as-actor')).toHaveTextContent('Actor Renamed'))
 })

@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event'
 import { act } from 'react'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
+import { openSidebarNew } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const DT = 'Resp Item'
@@ -94,13 +95,14 @@ test('UI-025: navigating from the open phone drawer closes it, and the list and 
   await user.click(await screen.findByRole('link', { name: DT }))
   expect(await screen.findByTestId('list-view')).toBeInTheDocument()
   expect((app.router as { state: { location: { pathname: string } } }).state.location.pathname).toBe(`/featherbase/admin/table/${tableSlug(DT)}`)
-  await user.click(await screen.findByRole('link', { name: 'New' }))
+  await user.click(await screen.findByTestId('list-new'))
   expect(await screen.findByTestId('form-view')).toBeInTheDocument()
 })
 
 test('UI-025: at desktop width the sidebar is never inert', async ({ admin }) => {
   viewport(1280)
   await renderApp('/featherbase/admin', admin)
+  await openSidebarNew({ timeout: 8000 })
   await screen.findByTestId('new-table-link', {}, { timeout: 8000 })
   expect(sidebar()).not.toHaveAttribute('inert')
   expect(sidebar()).not.toHaveAttribute('aria-hidden')
@@ -109,7 +111,8 @@ test('UI-025: at desktop width the sidebar is never inert', async ({ admin }) =>
 test('UI-025: a mounted layout crossing 768 pixels switches between the drawer and the static sidebar', async ({ admin }) => {
   const screenSize = viewport(767)
   await renderApp('/featherbase/admin', admin)
-  await screen.findByTestId('new-table-link', {}, { timeout: 8000 })
+  // The Admin shell is up (its "+ New" menu is a System Manager's).
+  await screen.findByTestId('sidebar-new', {}, { timeout: 8000 })
   expect(sidebar()).toHaveAttribute('inert')
 
   screenSize.resize(768)

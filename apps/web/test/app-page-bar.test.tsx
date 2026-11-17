@@ -21,6 +21,7 @@ import { mountBar } from '../src/bar/mount'
 import { APP_THEME_ATTRIBUTE, THEME_CHANGE_EVENT } from '@featherbase/shop-floor/theme'
 import { PHONE_QUERY } from '../src/components/TopBar'
 import { test, expect } from './pg-test'
+import { appChoices, chooseApp, currentApp } from './app-switcher'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const ROSTER = resolve('../..', 'test-apps/fixtures/place-roster')
@@ -119,9 +120,8 @@ test("the app-name dropdown offers Featherbase to a person who can open it", asy
   expect(await discoverPackages([BAR_PROOF, ROSTER])).toEqual([])
   await admin.post('/api/install_app', { name: 'barproof' })
   const bar = openAppPage(admin)
-  const choices = await bar.findByRole('combobox', { name: 'Switch application' })
-  expect(await within(choices).findByRole('option', { name: FEATHERBASE_ADMIN_DESTINATION.label })).toHaveValue(FEATHERBASE_ADMIN_DESTINATION.href)
-  expect(choices).toHaveValue('/barproof/')
+  await waitFor(async () => expect(await appChoices(bar)).toContain(FEATHERBASE_ADMIN_DESTINATION.label))
+  expect(await currentApp(bar)).toBe('Bar proof')
   expect(bar.queryByTestId('open-admin')).toBeNull()
 })
 
@@ -131,9 +131,8 @@ test("choosing Featherbase in the app-name dropdown leaves the app for the Admin
   await admin.post('/api/install_app', { name: 'barproof' })
   const left: string[] = []
   const bar = openAppPage(admin, '/barproof/', (href) => left.push(href))
-  const choices = await bar.findByRole('combobox', { name: 'Switch application' })
-  await within(choices).findByRole('option', { name: FEATHERBASE_ADMIN_DESTINATION.label })
-  await userEvent.selectOptions(choices, FEATHERBASE_ADMIN_DESTINATION.href)
+  await waitFor(async () => expect(await appChoices(bar)).toContain(FEATHERBASE_ADMIN_DESTINATION.label))
+  await chooseApp(bar, FEATHERBASE_ADMIN_DESTINATION.label)
   await waitFor(() => expect(left).toEqual([FEATHERBASE_ADMIN_DESTINATION.href]))
 })
 
@@ -142,9 +141,7 @@ test("choosing Featherbase in the app-name dropdown leaves the app for the Admin
 test("the app-name dropdown excludes Featherbase for an app-only reader", async ({ admin, createUser }) => {
   const bar = openAppPage(await readerOf(admin, createUser))
   await bar.findByTestId('session-user')
-  const choices = await bar.findByRole('combobox', { name: 'Switch application' })
-  await waitFor(() => expect(within(choices).getAllByRole('option')).toHaveLength(1))
-  expect(within(choices).queryByRole('option', { name: FEATHERBASE_ADMIN_DESTINATION.label })).toBeNull()
+  await waitFor(async () => expect(await appChoices(bar)).toEqual(['Bar proof']))
   expect(bar.queryByTestId('open-admin')).toBeNull()
 })
 

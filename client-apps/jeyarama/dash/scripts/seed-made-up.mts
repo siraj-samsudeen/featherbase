@@ -127,6 +127,10 @@ async function person(email: string, full_name: string, roles: string[] = [], re
   return id
 }
 await keep('Role', 'Master Data Editor', { row_id: 'Master Data Editor' })
+// #1223: as on production, the master data team reads the master Tables in Featherbase, so record links open for them.
+const [granted] = await sql`select 1 from featherbase.permission where role = 'Master Data Editor' limit 1`
+if (!granted) for (const table of BASE_TABLES as { name: string }[])
+  await save('Permission', { ref_table: table.name, role: 'Master Data Editor', operation: 'read', scope_mode: 'all', column_rule: 'every' })
 // #1046: Dash Reader goes to everyone who signs in, and the reports given to each person decide
 // whether Dash opens for them. Local only: on a real instance a System Manager sets this.
 await save('System Settings', { everyone_roles: 'Dash Reader' })
@@ -151,6 +155,18 @@ for (const buyer of tree.buyers as { key: string; name: string; code: string; as
     const assignment_id = `MA-${buyer.code}-${i + 1}`
     await keep('Merchandise Assignment', assignment_id, { assignment_id, employee: buyer.code, responsibility, category, operating_region, starts_on: '2026-01-01', source_key: 'Made-up' })
   }
+}
+
+// rama_dw #4588: a Cluster row names its head in cluster_manager, a text column holding the head's Employee id.
+// A rerun sets the head on a row seeded before.
+async function setHead(table: string, id: string, column: string, employee: string) {
+  const row = await call<Record<string, unknown>>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(id)}`)
+  if (row[column] !== employee) await save(table, { row_id: id, updated_at: row.updated_at, [column]: employee })
+}
+for (const head of org.heads.people as { key: string; name: string; code: string; cluster: string }[]) {
+  const id = await person(`reader-${head.key}@example.test`, head.name)
+  await keep('Employee', head.code, { employee_code: head.code, name: head.name, person: id, status: 'Current' })
+  await setHead('Cluster', head.cluster, 'cluster_manager', head.code)
 }
 
 // Both copies describe the same made-up month to date, including today. Hillview
@@ -247,6 +263,11 @@ const [usha] = await sql`select row_id from person where lower(email) = 'section
 await save('dash.report_access', { report: 'vendor_sales', person: String(usha.row_id) }).catch(() => {})
 // Hema reaches Sarees across the East's stores, so she can give the reports filtered by subcategory, but not the whole-stores one.
 await keep('Merchandise Assignment', 'MA-2020-1', { assignment_id: 'MA-2020-1', employee: '2020', responsibility: 'Category head', category: 'Sarees', operating_region: 'East', starts_on: '2026-01-01', source_key: 'Made-up' })
+// #1246: Hema's two Buyer Sections in the East: Silk sarees (Usha buys it) and Everyday sarees (no buyer yet).
+await keep('Buyer Section', 'East-Silk sarees', { buyer_section_id: 'East-Silk sarees', name: 'Silk sarees', operating_region: 'East', buyer: '2021', category_head: '2020', starts_on: '2026-11-01', source_key: 'Made-up' })
+await keep('Buyer Section', 'East-Everyday sarees', { buyer_section_id: 'East-Everyday sarees', name: 'Everyday sarees', operating_region: 'East', category_head: '2020', starts_on: '2026-11-01', source_key: 'Made-up' })
+await keep('Buyer Section Subcategory', 'East-010101001-made-up', { buyer_section_subcategory_id: 'East-010101001-made-up', buyer_section: 'East-Silk sarees', subcategory: '010101001', starts_on: '2026-11-01', source_key: 'Made-up' })
+await keep('Buyer Section Subcategory', 'East-010101002-made-up', { buyer_section_subcategory_id: 'East-010101002-made-up', buyer_section: 'East-Everyday sarees', subcategory: '010101002', starts_on: '2026-11-01', source_key: 'Made-up' })
 
 // #1195: departments already set up, which the made-up Department Manager meets on Your department.
 for (const [department_id, store, name, manager, sections] of org.departments as [string, string, string, string, string[]][]) {
@@ -304,6 +325,7 @@ console.log(`To see figures, sign in at /featherbase/login with:
   password: ${PASSWORD}
 Other made-up people, same password. Each shows one state of the page:
 ${says(org.readers, 'reader')}
+${says([...tree.buyers, ...org.heads.people], 'reader')}
 Your sections (/dash/?view=sections), same password:
 ${says(org.sectionPeople, 'sections')}
 Report access (/dash/?view=access), same password:

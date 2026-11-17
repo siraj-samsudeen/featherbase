@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report an issue options</title>
+<style>
+  :root {
+    --canvas: #f3f4f6; --surface: #ffffff; --subtle: #f8fafc; --border: #e5e7eb; --border-control: #6b7280;
+    --ink: #111827; --ink-muted: #4b5563; --ink-subtle: #5b6472;
+    --action: #1d4ed8; --action-tint: #eff6ff; --action-ink: #ffffff;
+    --positive: #15803d; --positive-tint: #f0fdf4; --caution: #a35200; --caution-tint: #fff7ed;
+    --negative: #b91c1c; --negative-tint: #fef2f2; --scrim: rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/20px ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+  .doc { max-width: 1480px; margin: 0 auto; padding: 32px 20px 64px; }
+  .doc h1 { font-size: 24px; line-height: 32px; margin: 0 0 8px; }
+  .doc h2 { font-size: 20px; margin: 48px 0 6px; }
+  .doc p.lead { color: var(--ink-muted); margin: 0 0 8px; max-width: 880px; }
+  .verdict { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; max-width: 880px; margin: 16px 0; }
+  .verdict strong { color: var(--positive); }
+  table.cmp { border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; max-width: 1200px; width: 100%; }
+  table.cmp th, table.cmp td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.cmp th { font-size: 13px; color: var(--ink-muted); font-weight: 500; background: var(--subtle); }
+
+  /* A desktop frame at 1440 x 900: the report page as Dash draws it. */
+  .frame { width: 1440px; height: 900px; position: relative; overflow: hidden; background: var(--canvas); border: 1px solid var(--border); border-radius: 8px; margin-top: 12px; }
+  .topbar { height: 52px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+  .logo { width: 28px; height: 28px; border-radius: 8px; background: var(--action); }
+  .app { font-weight: 600; }
+  .ctx { margin-left: 24px; display: flex; gap: 8px; }
+  .pick { border: 1px solid var(--border-control); border-radius: 10px; height: 34px; padding: 0 12px; display: flex; align-items: center; gap: 6px; background: var(--surface); }
+  .avatar { margin-left: auto; width: 32px; height: 32px; border-radius: 999px; background: #c7d2fe; display: grid; place-items: center; font-weight: 600; font-size: 12px; }
+  .body { display: flex; height: calc(100% - 52px); }
+  .side { width: 240px; background: var(--surface); border-right: 1px solid var(--border); padding: 16px 12px; }
+  .side .grp { font-size: 12px; color: var(--ink-muted); margin: 12px 8px 6px; font-weight: 500; }
+  .side .item { padding: 8px 10px; border-radius: 10px; }
+  .side .item.sel { background: var(--action-tint); color: var(--action); font-weight: 500; }
+  .content { flex: 1; padding: 24px 32px; position: relative; }
+  .head { display: flex; align-items: flex-start; gap: 16px; }
+  .head h3 { font-size: 24px; line-height: 32px; margin: 0; }
+  .head .meta { color: var(--ink-muted); font-size: 13px; }
+  .head .actions { margin-left: auto; display: flex; gap: 8px; }
+  .btn { height: 36px; border-radius: 10px; padding: 0 14px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-control); background: var(--surface); color: var(--ink); font: inherit; font-weight: 500; }
+  .btn.primary { background: var(--action); border-color: var(--action); color: var(--action-ink); }
+  .btn.quiet { border-color: transparent; color: var(--ink-muted); }
+  .dive { margin-top: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; height: 690px; padding: 20px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi { border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+  .kpi b { display: block; font-size: 22px; line-height: 30px; font-variant-numeric: tabular-nums; }
+  .kpi span { font-size: 13px; color: var(--ink-muted); }
+  .rows { margin-top: 18px; border-collapse: collapse; width: 100%; }
+  .rows th, .rows td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+  .rows th { font-size: 13px; color: var(--ink-muted); font-weight: 500; background: var(--subtle); }
+  .rows td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .neg { color: var(--negative); }
+
+  /* Option A: side panel */
+  .panel { position: absolute; top: 0; right: 0; bottom: 0; width: 420px; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,.08); padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .panel h4 { font-size: 16px; margin: 0; display: flex; align-items: center; }
+  .panel h4 .x { margin-left: auto; color: var(--ink-muted); font-weight: 400; }
+  .panel .sub { font-size: 13px; color: var(--ink-muted); margin-top: -8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--border-control); border-radius: 999px; padding: 6px 12px; font-size: 13px; background: var(--surface); }
+  .chip.on { background: var(--action-tint); border-color: var(--action); color: var(--action); font-weight: 500; }
+  label.l { font-weight: 500; display: block; margin-bottom: 4px; }
+  .input { border: 1px solid var(--border-control); border-radius: 10px; min-height: 36px; padding: 8px 10px; color: var(--ink-subtle); }
+  .input.area { min-height: 84px; }
+  .help { font-size: 13px; color: var(--ink-muted); margin-top: 4px; }
+  .context { border: 1px solid var(--border); border-radius: 12px; background: var(--subtle); padding: 10px 12px; font-size: 13px; }
+  .context dt { color: var(--ink-muted); float: left; width: 110px; clear: left; }
+  .context dd { margin: 0 0 4px 110px; }
+  .foot { margin-top: auto; display: flex; justify-content: flex-end; gap: 8px; }
+  .ok { border: 1px solid var(--positive); background: var(--positive-tint); border-radius: 12px; padding: 12px; }
+  .ok b { color: var(--positive); }
+  a.rec { color: var(--action); font-weight: 500; text-decoration: none; }
+  .mine { border-top: 1px solid var(--border); padding-top: 12px; }
+  .mine h5 { font-size: 14px; margin: 0 0 8px; }
+  .mine li { list-style: none; display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .mine ul { margin: 0; padding: 0; }
+  .pill { border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 500; background: var(--caution-tint); color: var(--caution); margin-left: auto; }
+
+  /* Option B: corner button + popover */
+  .fab { position: absolute; right: 28px; bottom: 28px; height: 44px; border-radius: 999px; padding: 0 18px; background: var(--ink); color: #fff; display: flex; align-items: center; gap: 8px; font-weight: 500; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
+  .pop { position: absolute; right: 28px; bottom: 84px; width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 12px 32px rgba(0,0,0,.18); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .pop h4 { margin: 0; font-size: 16px; }
+
+  /* Option C: link out to Tickets */
+  .tk { position: absolute; inset: 0; background: var(--canvas); }
+  .tk .card { position: absolute; left: 304px; top: 100px; width: 820px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 14px; }
+  .tk .crumb { position: absolute; left: 304px; top: 72px; font-size: 13px; color: var(--ink-muted); }
+  .tk .app2 { color: #15803d; }
+  .note { font-size: 13px; color: var(--ink-muted); margin: 6px 0 0; max-width: 1200px; }
+  figure { margin: 16px 0 0; }
+  figure img { width: 100%; max-width: 1440px; border: 1px solid var(--border); border-radius: 8px; display: block; }
+  figcaption { font-size: 13px; color: var(--ink-muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>Report an issue from a Dash report</h1>
+  <p class="lead">Issue #1240. A reader who sees something wrong on a report says so in a few taps; the ticket already carries the report, the view, their stores and sections, the Dive's filters, who they are and when. Three ways to draw it, each at 1440×900.</p>
+
+  <div class="verdict">
+    <strong>Chosen: A, a "Report an issue" button in the report header that opens a side panel inside Dash.</strong>
+    The report stays in view beside the form, so the reader can point at the number they mean while they write. The button sits in the header like every page action in the UI standard, and never covers the Dive. The confirmation and the reader's open reports on this report fit in the same panel. B covers part of the Dive and adds a floating control nothing else in Featherbase uses. C takes the reader away from the number and into Tickets' general form, and the view travels in the address.
+  </div>
+
+  <table class="cmp">
+    <tr><th></th><th>A · Side panel (chosen)</th><th>B · Corner button and popover</th><th>C · Open Tickets, filled in</th></tr>
+    <tr><td>Report stays visible</td><td>Yes, beside the panel</td><td>Mostly; the popover covers the bottom right</td><td>No; the reader leaves the report</td></tr>
+    <tr><td>Fits the UI standard</td><td>Header action, one primary in the panel's footer</td><td>A floating button is new to Featherbase</td><td>Uses Tickets' own form</td></tr>
+    <tr><td>Room for the confirmation and open reports</td><td>Yes</td><td>Tight</td><td>Tickets' own page</td></tr>
+    <tr><td>Context the reader never types</td><td>Shown, read-only, under "Sent with your report"</td><td>Hidden behind a line</td><td>Prefilled in Tickets' fields, all editable</td></tr>
+    <tr><td>Work</td><td>Dash panel, one Dash read, one Tickets read</td><td>Same as A</td><td>Least: Tickets reads the address</td></tr>
+  </table>
+
+  <h2>Option A · Header button and side panel (chosen)</h2>
+  <p class="lead">The button sits on the report header's line. The panel slides in from the right, over the right edge of the Dive only.</p>
+  <div class="frame" id="option-a">
+    <div class="topbar"><div class="logo"></div><span class="app">Dash</span><div class="ctx"><span class="pick">Store · T Nagar ▾</span><span class="pick">This month · Nov'26 ▾</span></div><div class="avatar">AL</div></div>
+    <div class="body">
+      <div class="side"><div class="grp">Reports</div><div class="item sel">Sales · Target vs Actual</div><div class="item">Stock on hand</div><div class="grp">Your work</div><div class="item">Your sections</div></div>
+      <div class="content">
+        <div class="head"><div><h3>T Nagar · Sarees, Silk</h3><div class="meta">01-Nov-2026 to 16-Nov-2026 · Sales before tax, net of returns</div></div>
+          <div class="actions"><span class="btn">⚑ Report an issue</span></div></div>
+        <div class="dive">
+          <div class="kpis"><div class="kpi"><span>Target</span><b>₹48.20 L</b></div><div class="kpi"><span>Sales</span><b>₹31.75 L</b></div><div class="kpi"><span>Gap</span><b class="neg">−₹16.45 L</b></div><div class="kpi"><span>Achieved</span><b>65.9%</b></div></div>
+          <table class="rows"><tr><th>Subcategory</th><th>Target</th><th>Sales</th><th>Gap</th><th>Achieved</th></tr>
+            <tr><td>Kanchipuram silk</td><td class="n">₹18.00 L</td><td class="n">₹9.12 L</td><td class="n neg">−₹8.88 L</td><td class="n">50.7%</td></tr>
+            <tr><td>Soft silk</td><td class="n">₹12.40 L</td><td class="n">₹10.06 L</td><td class="n neg">−₹2.34 L</td><td class="n">81.1%</td></tr>
+            <tr><td>Cotton sarees</td><td class="n">₹9.80 L</td><td class="n">₹8.11 L</td><td class="n neg">−₹1.69 L</td><td class="n">82.8%</td></tr>
+          </table>
+        </div>
+        <div class="panel">
+          <h4>Report an issue <span class="x">✕</span></h4>
+          <div class="sub">About Sales · Target vs Actual. Support sees it in Tickets.</div>
+          <div><label class="l">What's wrong?</label>
+            <div class="chips"><span class="chip">Data looks wrong</span><span class="chip">Stock missing</span><span class="chip">Item ran out</span><span class="chip on">Target too high or too low</span><span class="chip">Something else</span></div></div>
+          <div><label class="l">Which item, store or number? <span style="color:var(--ink-muted);font-weight:400">optional</span></label><div class="input">Kanchipuram silk target</div></div>
+          <div><label class="l">Tell us more</label><div class="input area">₹18 L is double last November; we lost two counters to the renovation.</div></div>
+          <div class="context"><b style="display:block;margin-bottom:6px">Sent with your report</b>
+            <dl><dt>Report</dt><dd>Sales · Target vs Actual (link to this view)</dd><dt>Store on show</dt><dd>T Nagar · This month</dd><dt>Your reach</dt><dd>T Nagar: Sarees, Silk (14 subcategories)</dd><dt>You</dt><dd>Asha Leader · Team Leader job</dd><dt>Time</dt><dd>16-Nov-2026 20:13 IST</dd></dl></div>
+          <div class="foot"><span class="btn quiet">Cancel</span><span class="btn primary">Send</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame" id="option-a-sent">
+    <div class="topbar"><div class="logo"></div><span class="app">Dash</span><div class="ctx"><span class="pick">Store · T Nagar ▾</span><span class="pick">This month · Nov'26 ▾</span></div><div class="avatar">AL</div></div>
+    <div class="body">
+      <div class="side"><div class="grp">Reports</div><div class="item sel">Sales · Target vs Actual</div><div class="item">Stock on hand</div><div class="grp">Your work</div><div class="item">Your sections</div></div>
+      <div class="content">
+        <div class="head"><div><h3>T Nagar · Sarees, Silk</h3><div class="meta">01-Nov-2026 to 16-Nov-2026 · Sales before tax, net of returns</div></div>
+          <div class="actions"><span class="btn">⚑ Report an issue · 2 open</span></div></div>
+        <div class="dive"><div class="kpis"><div class="kpi"><span>Target</span><b>₹48.20 L</b></div><div class="kpi"><span>Sales</span><b>₹31.75 L</b></div><div class="kpi"><span>Gap</span><b class="neg">−₹16.45 L</b></div><div class="kpi"><span>Achieved</span><b>65.9%</b></div></div></div>
+        <div class="panel">
+          <h4>Report an issue <span class="x">✕</span></h4>
+          <div class="ok"><b>Sent.</b> Your ticket is <a class="rec" href="#">FT-00042</a>. Support will reply there; you'll find it in Tickets under your requests.</div>
+          <div class="foot" style="margin-top:0;justify-content:flex-start"><span class="btn">Report another</span></div>
+          <div class="mine"><h5>Your open reports on this report · 2</h5>
+            <ul><li><a class="rec" href="#">FT-00042</a> Target too high or too low · Kanchipuram silk target <span class="pill">New</span></li>
+            <li><a class="rec" href="#">FT-00031</a> Stock missing · Soft silk 6 yards <span class="pill">In progress</span></li></ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Option B · Corner button and popover</h2>
+  <p class="lead">A "Feedback" button floats in the bottom-right corner of every report; it opens a compact popover. Quick to reach, but it covers the Dive and is new to Featherbase.</p>
+  <div class="frame" id="option-b">
+    <div class="topbar"><div class="logo"></div><span class="app">Dash</span><div class="ctx"><span class="pick">Store · T Nagar ▾</span><span class="pick">This month · Nov'26 ▾</span></div><div class="avatar">AL</div></div>
+    <div class="body">
+      <div class="side"><div class="grp">Reports</div><div class="item sel">Sales · Target vs Actual</div><div class="item">Stock on hand</div><div class="grp">Your work</div><div class="item">Your sections</div></div>
+      <div class="content">
+        <div class="head"><div><h3>T Nagar · Sarees, Silk</h3><div class="meta">01-Nov-2026 to 16-Nov-2026 · Sales before tax, net of returns</div></div></div>
+        <div class="dive">
+          <div class="kpis"><div class="kpi"><span>Target</span><b>₹48.20 L</b></div><div class="kpi"><span>Sales</span><b>₹31.75 L</b></div><div class="kpi"><span>Gap</span><b class="neg">−₹16.45 L</b></div><div class="kpi"><span>Achieved</span><b>65.9%</b></div></div>
+          <table class="rows"><tr><th>Subcategory</th><th>Target</th><th>Sales</th><th>Gap</th><th>Achieved</th></tr>
+            <tr><td>Kanchipuram silk</td><td class="n">₹18.00 L</td><td class="n">₹9.12 L</td><td class="n neg">−₹8.88 L</td><td class="n">50.7%</td></tr>
+            <tr><td>Soft silk</td><td class="n">₹12.40 L</td><td class="n">₹10.06 L</td><td class="n neg">−₹2.34 L</td><td class="n">81.1%</td></tr>
+          </table>
+        </div>
+        <div class="pop">
+          <h4>What's wrong?</h4>
+          <div class="chips"><span class="chip">Data looks wrong</span><span class="chip on">Stock missing</span><span class="chip">Item ran out</span><span class="chip">Target too high or too low</span><span class="chip">Something else</span></div>
+          <div class="input">Which item, store or number? (optional)</div>
+          <div class="input area" style="min-height:64px">Tell us more</div>
+          <div class="help">Sends the report, this view, your stores and who you are.</div>
+          <div class="foot"><span class="btn primary">Send</span></div>
+        </div>
+        <div class="fab">💬 Feedback</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Option C · Open Tickets with the form filled in</h2>
+  <p class="lead">"Report an issue" opens Tickets' New ticket page in Tickets, its type and context filled in from the address. Least Dash work, but the reader leaves the number they are talking about.</p>
+  <div class="frame" id="option-c">
+    <div class="topbar"><div class="logo" style="background:#15803d"></div><span class="app">Tickets</span><div class="avatar">AL</div></div>
+    <div class="body">
+      <div class="side"><div class="grp">Tickets</div><div class="item sel" style="background:#f0fdf4;color:#15803d">New ticket</div><div class="item">Your requests</div></div>
+      <div class="content" style="padding:0">
+        <div class="tk">
+          <div class="crumb">Tickets / New ticket · from <a class="rec app2" href="#">Sales · Target vs Actual</a></div>
+          <div class="card">
+            <div><label class="l">Type</label><div class="input" style="color:var(--ink)">Feedback on a report</div></div>
+            <div><label class="l">What's wrong?</label><div class="input" style="color:var(--ink)">Target too high or too low ▾</div></div>
+            <div><label class="l">Report</label><div class="input" style="color:var(--ink)">Sales · Target vs Actual</div></div>
+            <div><label class="l">Store, month</label><div class="input" style="color:var(--ink)">T Nagar · This month</div></div>
+            <div><label class="l">Your reach</label><div class="input" style="color:var(--ink)">T Nagar: Sarees, Silk (14 subcategories)</div></div>
+            <div><label class="l">Tell us more</label><div class="input area"></div></div>
+            <div class="foot"><span class="btn quiet">Cancel</span><span class="btn primary" style="background:#15803d;border-color:#15803d">Raise ticket</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Screenshots</h2>
+  <p class="note">Rendered headless with Playwright at 1440×900 from the frames above.</p>
+  <figure><img src="report-an-issue/option-a.png" alt="Option A, the side panel"><figcaption>A · the side panel, filled in</figcaption></figure>
+  <figure><img src="report-an-issue/option-a-sent.png" alt="Option A, sent"><figcaption>A · sent: the ticket link and the reader's open reports on this report</figcaption></figure>
+  <figure><img src="report-an-issue/option-b.png" alt="Option B, the corner popover"><figcaption>B · the corner button and popover</figcaption></figure>
+  <figure><img src="report-an-issue/option-c.png" alt="Option C, Tickets filled in"><figcaption>C · Tickets' form, filled in from the address</figcaption></figure>
+</div>
+</body>
+</html>

@@ -8,7 +8,9 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { expectStatus } from './fixtures'
 import { saveDoc } from '../src/document'
-import { _setAlertSender, requestAccess } from '../src/waiting-for-access'
+import { _setAlertSender, DECLINED_LINE, noAccessYetPage, requestAccess } from '../src/waiting-for-access'
+import { resolve } from 'node:path'
+import { discoverPackages, runGrant } from '../src/runtime-packages'
 
 afterEach(() => _setAlertSender(null))
 
@@ -212,5 +214,85 @@ describe('dismiss', () => {
     const id = await waiting(asha.user!)
     expect((await decide(clerk, id, 'dismiss')).status).toBe(403)
     expect(await sql`select 1 from access_request where row_id = ${id}`).toHaveLength(1)
+  })
+})
+
+// Main's CI after the 16-Nov train: the drawer with an app that gives its own access, on the platform
+// alone (test-apps/grant-proof), not only through Dash's platform tests.
+describe("an app's own access in the drawer (#1173)", () => {
+  const PIN = { 'X-Featherbase-App-Version': 'grantproof@1.0.0' }
+  async function setup(admin: TestClient, createUser: (o: { email: string; roles?: string[] }) => Promise<TestClient>) {
+    quiet()
+    expect(await discoverPackages([resolve('../..', 'test-apps/grant-proof')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'grantproof' })
+    const asha = await createUser({ email: 'grant-asha@example.test', roles: [] })
+    const seed = (gift: string, person = asha.user) => admin.fetch('/api/save_row', { method: 'POST', headers: PIN, body: JSON.stringify({ table: 'grantproof.gift', row: { person, gift } }) })
+    return { asha, seed, id: await waiting(asha.user!, 'grantproof') }
+  }
+  const refused = async (response: Promise<Response>, text: string) => {
+    const answer = await response
+    expect([answer.status, await answer.text()]).toEqual([417, expect.stringContaining(text)])
+  }
+  type Details = { role_hints: Record<string, number>; apps: { app: string; title: string; about: unknown[]; choices: { id: string; given: boolean }[]; problem?: string }[] }
+
+  test("shows the app's section: what it says about them and each choice, marking what they have, and hints from their peers' roles", async ({ admin, createUser }) => {
+    const { seed, id } = await setup(admin, createUser)
+    await seed('a')
+    await role('Gift Reader')
+    const peer = await createUser({ email: 'grant-peer@example.test', roles: ['Gift Reader'] })
+    await seed('peer', peer.user)
+    const shown = await (await details(admin, id)).json() as Details
+    expect(shown.apps).toEqual([{ app: 'grantproof', title: 'Gifts', about: [{ label: 'Job', value: 'Tester' }],
+      choices: [expect.objectContaining({ id: 'gift:a', given: true }), expect.objectContaining({ id: 'gift:b', given: false }), expect.objectContaining({ id: 'gift:fail', given: false })] }])
+    expect(shown.role_hints).toMatchObject({ 'Gift Reader': 1 })
+  })
+
+  test("says plainly when the app's options fail, or come back in a shape it can't use", async ({ admin, createUser }) => {
+    const { seed, id } = await setup(admin, createUser)
+    await seed('boom')
+    expect(((await (await details(admin, id)).json()) as Details).apps).toEqual([expect.objectContaining({ choices: [], problem: "Couldn't load what Gifts can give" })])
+    const other = await createUser({ email: 'grant-odd@example.test', roles: [] })
+    await seed('odd', other.user)
+    const oddId = await waiting(other.user!, 'grantproof')
+    expect(((await (await details(admin, oddId)).json()) as Details).apps).toEqual([expect.objectContaining({ choices: [], problem: "Couldn't load what Gifts can give" })])
+  })
+
+  test('gives each picked choice through the app once, reports a refused one, and records what was given', async ({ admin, createUser }) => {
+    const { asha, id } = await setup(admin, createUser)
+    const response = await decide(admin, id, 'approve', { grants: [{ app: 'grantproof', choice: 'gift:b' }, { app: 'grantproof', choice: 'gift:b' }, { app: 'grantproof', choice: 'gift:fail' }] })
+    expect(await response.json()).toEqual({ given: ['Gifts: Gift Books'], failed: [{ label: 'Gifts: Gift Refused one', problem: 'Not this one' }], open: false })
+    expect((await activity(asha.user!)).map((r) => String(r.operation)).filter(o => o.startsWith('access_granted'))).toEqual([`access_granted for ${asha.user} in grantproof: Gifts: Gift Books`])
+  })
+
+  test('refuses a choice the app does not offer, an app that gives nothing from here, and only what they already have', async ({ admin, createUser }) => {
+    const { seed, id } = await setup(admin, createUser)
+    await seed('a')
+    await refused(decide(admin, id, 'approve', { grants: [{ app: 'grantproof', choice: 'gift:zzz' }] }), 'Gifts offers no such choice')
+    await refused(decide(admin, id, 'approve', { grants: [{ app: 'nothing-here', choice: 'x' }] }), 'nothing-here gives no access from here')
+    await refused(decide(admin, id, 'approve', { grants: [{ app: 'grantproof', choice: 'gift:a' }] }), 'Pick a role or something else')
+  })
+
+  test('a decision sent with a body that is not JSON is read as an empty one', async ({ admin, createUser }) => {
+    const { id } = await setup(admin, createUser)
+    const response = await admin.fetch(`/api/access_request/${id}/dismiss`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'not json' })
+    expect(await response.json()).toEqual({ dismissed: id })
+  })
+
+  test("an app's grant read or action is refused when the app isn't loaded here", async () => {
+    await expect(runGrant('no-such-app', 'read', 'anything', {}, 'Administrator')).rejects.toMatchObject({ type: 'NotFoundError', message: 'App is unavailable' })
+  })
+
+  test('an unknown decision is not found', async ({ admin, createUser }) => {
+    const { id } = await setup(admin, createUser)
+    expect((await decide(admin, id, 'bogus' as 'approve')).status).toBe(404)
+  })
+})
+
+describe('the page a declined person sees (#1173)', () => {
+  test('says it was declined, never why, with the app name escaped', () => {
+    const page = noAccessYetPage('R&D <Reports>', true)
+    expect(page).toContain(DECLINED_LINE)
+    expect(page).toContain('R&amp;D &lt;Reports&gt;')
+    expect(page).toContain('data-testid="access-declined"')
   })
 })

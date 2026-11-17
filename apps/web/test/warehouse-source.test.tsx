@@ -9,6 +9,7 @@ import { invalidateSources } from 'server/src/sources/registry'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from 'server/test/motherduck-standin'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
+import { openListMenu } from './list-menus'
 
 type Client = Parameters<typeof renderApp>[1]
 const WAIT = { timeout: 15_000 }
@@ -329,7 +330,7 @@ test('Copy again refreshes corrected native rows through source changes', async 
   expect(await admin.get(rowPath)).toMatchObject({ name: 'Hill Street renamed', state_code: 'Owner correction' })
   expect(await admin.get('/api/table/Copybar%20Store/S003')).toMatchObject({ deleted_at_source: true })
 
-  await user.click(screen.getByRole('button', { name: 'List actions' }))
+  await openListMenu('List actions')
   await user.click(await screen.findByRole('button', { name: 'Import conflicts' }))
   const panel = await screen.findByRole('region', { name: 'Import conflicts' })
   expect(await within(panel).findByText('Owner correction')).toBeInTheDocument()

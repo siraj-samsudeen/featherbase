@@ -177,6 +177,28 @@ This watcher-specific reporting route overrides the task-session route in the
 testing and a PR; merge and deployment still require explicit approval. Existing
 backlog is excluded unless the owner opts it in.
 
+### UI rules
+
+- **Every Featherbase record shown on any screen is a RecordLink. A plain-text
+  record name is a bug.** The owner's navigation rule (16-Nov-2026, #1227):
+  "everything that is a record in FB has to be presented as a link". Use
+  `RecordLink` from `@featherbase/shop-floor`, in the Admin, the account pages
+  and every app. It takes the record's name, its identity line (#1216) and
+  whether the viewer may open it. Plain text is drawn only when the viewer may
+  not open the record. An app maps its own Tables to its own pages with
+  `RecordPagesProvider`. The component's story documents its forms.
+- **Every UI verifier checklist carries this line:** "Every record shown (person,
+  store, section, department, ticket, and so on) is a link that opens it, or
+  plain text only where the viewer may not open it."
+- **A record link built by hand is a bug, not a variant.**
+  `apps/web/test/record-links-guard.test.ts` (part of the web suite, beside the
+  design guards) counts, per file, the record links still built by hand: the
+  row route and `rowHref(`. Each count may only go down, and a new file must use
+  RecordLink. When you convert a file, lower its count in the same commit.
+- **One chrome** (#1227): the top bar (`TopBar`) and the sidebar (Admin's own,
+  or `<featherbase-sidebar>` in an app) are the platform's. An app supplies
+  only its nav items and page content, and gives the sidebar an `auto` column.
+
 ### Hard rules
 
 - **Nothing is done on an agent's word.** It is done when a command someone

@@ -17,6 +17,7 @@ import {
   type DataColumn,
 } from '@featherbase/shop-floor'
 import { fmtInstantIST } from '@featherbase/shop-floor'
+import { invalidatePrincipalName } from '../lib/people'
 
 interface Token {
   id: string
@@ -181,7 +182,7 @@ export function AccessTokens() {
       }),
     onSuccess: async () => {
       if (renaming?.kind === 'account')
-        await qc.invalidateQueries({ queryKey: ['principal-name', renaming.id] })
+        await invalidatePrincipalName(qc, renaming.id)
       await refresh()
       setRenaming(null)
     },

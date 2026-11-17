@@ -388,6 +388,9 @@ async function parentScopeCond(
     select distinct parent as holder from column_def
     where column_type = 'Sub-table' and row_table = ${childTable}`
   const branches: ReturnType<typeof sql>[] = []
+  // #1244: the parent's Data Scope too, exactly as a list of the parent applies it (scopedWhere below),
+  // so a child row is never listed under a parent the caller may not read.
+  const scopes = (await isPrivileged(user)) ? null : await getScopeMap(user)
   for (const h of holders) {
     const holder = h.holder as string
     // The holder is the Table whose column names this child, so it exists,
@@ -395,12 +398,21 @@ async function parentScopeCond(
     const holderMeta = await getMeta(holder)
     const scope = await permissionScope(user, holder, 'read')
     if (scope === 'none') continue
+    const dataScope = scopes ? tableScope(holderMeta, scopes) : null
+    if (dataScope?.none) continue
+    const narrowed: ReturnType<typeof sql>[] = []
+    if (dataScope?.own) narrowed.push(sql`${sql(physicalRowKey(holder))} in ${sql([...dataScope.own])}`)
+    for (const ref of dataScope?.refs ?? [])
+      narrowed.push(ref.unsetPasses
+        ? sql`(${sql(ref.column)} is null or ${sql(ref.column)} in ${sql([...ref.allowed])})`
+        : sql`${sql(ref.column)} in ${sql([...ref.allowed])}`)
+    const scoped = narrowed.reduce((acc, c) => sql`${acc} and ${c}`, sql`true`)
     branches.push(
-      scope === 'all' && !holderMeta.access_policy
+      scope === 'all' && !holderMeta.access_policy && !narrowed.length
         ? sql`parenttype = ${holder}`
         : sql`(parenttype = ${holder} and parent in (
              select ${sql(physicalRowKey(holder))} from ${sql(await tableRelation(holder))}
-             where ${(await mandatoryWhere(holderMeta, user)).frag} and ${scope === 'own_rows' ? sql`created_by = ${user}` : sql`true`}))`,
+             where ${(await mandatoryWhere(holderMeta, user)).frag} and ${scope === 'own_rows' ? sql`created_by = ${user}` : sql`true`} and ${scoped}))`,
     )
   }
   if (!branches.length) return { frag: sql`false` }

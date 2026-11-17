@@ -127,7 +127,7 @@ describe('who has what, and who is waiting (#1216)', () => {
     expect(to).toEqual(['KumarE1001 · Team Leader · Lakeside', 'Kumar OldE0900 · Left', 'Report robotNot on the staff list', null])
     expect(page.all('waiting-person')[0].textContent).toBe('KumarE1002 · Head office staff · Head officeasked on 07-Nov-2026')
     await page.click(page.all('remove')[0])
-    expect(page.all('remove-confirm')[0].textContent).toContain('Remove Sales versus target from Kumar (E1001)?')
+    expect(page.all('remove-confirm')[0].textContent).toContain('Take Sales versus target away from Kumar (E1001)?')
     expect(page.container.textContent).not.toContain('@')
     await page.done()
   })
