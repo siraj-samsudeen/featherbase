@@ -13,9 +13,10 @@ import { sandboxRequest } from './pg-test-shared'
 import { sql } from '../src/db'
 import { issueSession, setUserPassword } from '../src/auth'
 import { createServiceAccount } from '../src/service-accounts'
+import * as agentAuth from '../src/agent-auth'
 
 const ORIGIN = 'http://localhost'
-afterEach(() => vi.unstubAllEnvs())
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks() })
 
 describe('#1207 the metadata documents', () => {
   test.each(['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp'])(
@@ -102,6 +103,19 @@ describe('#1207 an agent registers itself (RFC 7591, D6)', () => {
   ])('refused: %s', async (_why, body, error) => {
     const res = await expectStatus(await register(body), 400)
     expect(await res.json()).toMatchObject({ error, error_description: expect.any(String) })
+  })
+
+  test('a body that is not JSON is refused as client metadata', async () => {
+    const res = await expectStatus(await sandboxRequest(`${ORIGIN}/api/agent-auth/register`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{not json',
+    }), 400)
+    expect(await res.json()).toMatchObject({ error: 'invalid_client_metadata' })
+  })
+
+  test('an unexpected failure answers in the platform\'s own shape, never dressed as OAuth', async () => {
+    vi.spyOn(agentAuth, 'registerClient').mockRejectedValueOnce(new Error('the database went away'))
+    const res = await expectStatus(await register({ client_name: 'Agent', redirect_uris: ['https://claude.example/cb'] }), 500)
+    expect(await res.json()).toEqual({ error: { type: 'InternalError', message: 'Internal server error' } })
   })
 
   test('registration is rate-limited per source', async () => {
@@ -281,6 +295,14 @@ describe('#1207 the person\'s decision', () => {
     const user = await createUser()
     const clientId = await registerAgent()
     await expectStatus(await decideOn(authorizeQuery(clientId, pkce().challenge), browser(user), { allow: 'yes' }), 400)
+  })
+
+  test('a body that is not JSON is refused', async ({ createUser }) => {
+    const user = await createUser()
+    const clientId = await registerAgent()
+    await expectStatus(await sandboxRequest(`${ORIGIN}/api/agent-auth/decision?${authorizeQuery(clientId, pkce().challenge)}`, {
+      method: 'POST', headers: { ...browser(user), 'content-type': 'application/json' }, body: 'allow',
+    }), 400)
   })
 
   test('a test-mode session cannot Allow', async ({ createUser }) => {
