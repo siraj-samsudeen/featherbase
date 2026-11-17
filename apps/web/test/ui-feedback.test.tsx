@@ -73,7 +73,9 @@ test('multi-sheet warning names omissions next to the drop and disappears on rep
 test('a rejected latest theme choice returns the rendered choice to the confirmed one', async ({ admin }) => {
   const user = userEvent.setup()
   await renderApp('/featherbase/admin/new-table', admin)
-  await user.click(await screen.findByTestId('theme-dark', {}, { timeout: 8000 }))
+  // #1253: the theme's choices open from the sidebar's foot.
+  await user.click(await screen.findByTestId('theme-button', {}, { timeout: 8000 }))
+  await user.click(await screen.findByTestId('theme-dark'))
   await waitFor(async () => expect((await admin.get<{ theme: string }>('/api/whoami')).theme).toBe('dark'))
 
   // The next choice is refused with the server's error shape. Refused at the

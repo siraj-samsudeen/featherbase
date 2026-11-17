@@ -86,6 +86,21 @@ describe('whether it is set up', () => {
   })
 })
 
+describe('who decides a subcategory taken from another section (#1254, Codex)', () => {
+  it("reaches that section's Team Leader's manager however many past jobs the section has", async () => {
+    const past = Array.from({ length: 500 }, (_, n) => ({ row_id: `H${String(n).padStart(3, '0')}`, employee: 'E2', job: 'Staff', site: 'LKS', section: 'S2', reports_to: 'E2', starts_on: '2020-01-01', ends_on: '2020-12-31' }))
+    const base = world()
+    const tables = world({
+      Employee: [...base.Employee, { row_id: 'E3', name: 'Tara', status: 'Current', person: 'tara' }, { row_id: 'E4', name: 'Nila', status: 'Current', person: 'nila' }],
+      'Job Assignment': [...base['Job Assignment'], ...past, { row_id: 'J9', employee: 'E3', job: 'Team Leader', site: 'LKS', section: 'S2', reports_to: 'E4', starts_on: '2026-01-01', ends_on: null }],
+      'Section Subcategory': [...base['Section Subcategory'], { row_id: 'P2', section_subcategory_id: 'P2', store: 'LKS', subcategory: 'C2', section: 'S2', starts_on: '2026-01-01', ends_on: null }],
+    })
+    const { ctx, sent } = context(tables, { payload: { job: 'J1', subcategories: ['C2'] } })
+    await actions.propose_adds(ctx)
+    expect(sent.find(s => s.call === 'propose')?.request).toMatchObject({ approvers: { people: ['mani', 'nila'] } })
+  })
+})
+
 describe('Your sections', () => {
   it('a person on the staff list with no job has nothing to read', async () => {
     expect(await reads.my_sections(context(world({ 'Job Assignment': [] })).ctx)).toMatchObject({ state: 'ok', jobs: [], proposals: [] })

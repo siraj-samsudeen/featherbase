@@ -72,6 +72,9 @@ export const withoutViewAsTester = <T extends Grant | { create?: string }>(list:
  * stays declared, since the earlier version shares this build's server module.
  */
 export function revertViewAs(manifest: { roles: string[]; permissions: { role: string }[]; migrations: { id: string }[]; viewAs?: unknown }) {
+  // #1254's 0.13.23 and 0.13.24 change no Table, role or grant; they come off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'holders_read_whole', fromVersion: '0.13.23', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'waiting_reads_fast', fromVersion: '0.13.22', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'view_as', fromVersion: '0.13.21' })
   manifest.roles = manifest.roles.filter(role => role !== VIEW_AS_TESTER)
   manifest.permissions = manifest.permissions.filter(p => p.role !== VIEW_AS_TESTER)

@@ -166,6 +166,13 @@ export function fmtTimelineDay(d: Date, now: Date = new Date()): string {
   return `${WEEKDAYS[d.getDay()]}, ${fmtDate(day)}`
 }
 
+/** How long ago an instant was: "just now", "1 minute ago", "3 hours ago", "2 days ago". */
+export function fmtAgo(value: string | Date, now: Date = new Date()): string {
+  const minutes = Math.floor((now.getTime() - new Date(value).getTime()) / 60_000)
+  const [n, unit] = minutes < 60 ? [minutes, 'minute'] : minutes < 1440 ? [Math.floor(minutes / 60), 'hour'] : [Math.floor(minutes / 1440), 'day']
+  return n < 1 ? 'just now' : `${n} ${unit}${n === 1 ? '' : 's'} ago`
+}
+
 /** The day an instant falls on, as a grouping key (reader's calendar). */
 export function timelineDayKey(d: Date): string {
   return localIsoDay(d)

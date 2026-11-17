@@ -2241,7 +2241,9 @@
     },
     {"id": "switcher_summary", "fromVersion": "0.13.17", "toVersion": "0.13.19", "operations": []},
     {"id": "sidebar_icon_rail", "fromVersion": "0.13.19", "toVersion": "0.13.21", "operations": []},
-    {"id": "view_as", "fromVersion": "0.13.21", "toVersion": "0.13.22", "operations": []}
+    {"id": "view_as", "fromVersion": "0.13.21", "toVersion": "0.13.22", "operations": []},
+    {"id": "waiting_reads_fast", "fromVersion": "0.13.22", "toVersion": "0.13.23", "operations": []},
+    {"id": "holders_read_whole", "fromVersion": "0.13.23", "toVersion": "0.13.24", "operations": []}
   ],
   "baseTables": {
     "read": {

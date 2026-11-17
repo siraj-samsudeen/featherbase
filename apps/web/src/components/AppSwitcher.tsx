@@ -60,7 +60,13 @@ function AppMark({ icon, accent, admin = false }: { icon?: AppTabIcon; accent?: 
  * `compact`: on a phone, beside an app's pickers, the button shows only the
  * chevron (#983); the menu still opens and switches.
  */
-export function AppSwitcher({ app, compact = false }: { app?: { name: string; title: string; href?: string }; compact?: boolean }) {
+export function AppSwitcher({ app, compact = false, place = 'bar' }: {
+  app?: { name: string; title: string; href?: string }
+  compact?: boolean
+  /** #1253: in the sidebar the switcher is a plain row on the canvas; in the
+   *  rail it is the logo alone, which still opens the list. */
+  place?: 'bar' | 'sidebar' | 'rail'
+}) {
   const whoami = useWhoAmI().data
   const catalog = useQuery({
     queryKey: ['app-catalog'],
@@ -123,10 +129,12 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
 
   const row = 'flex w-full items-center gap-3 rounded-control px-2 py-2 text-left hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none'
   return (
-    <div className="relative flex min-w-0 items-center gap-1" ref={wrapper}>
-      <a href={current} aria-label={name} title={name} data-testid="top-bar-home" className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
-        <Logo className="h-7 w-7" />
-      </a>
+    <div className={cx('relative flex min-w-0 items-center', place === 'bar' ? 'gap-1' : 'gap-0.5')} ref={wrapper}>
+      {place !== 'rail' && (
+        <a href={current} aria-label={name} title={name} data-testid="top-bar-home" className={iconButtonClasses(cx('shrink-0 max-sm:min-h-11 max-sm:min-w-11', place === 'sidebar' && 'size-8 hover:bg-border/50'))}>
+          <Logo className={place === 'sidebar' ? 'h-6 w-6' : 'h-7 w-7'} />
+        </a>
+      )}
       <button
         ref={button}
         type="button"
@@ -140,13 +148,19 @@ export function AppSwitcher({ app, compact = false }: { app?: { name: string; ti
           if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true) }
         }}
         data-testid="top-bar-name"
-        className={cx(
-          'flex min-h-control min-w-0 items-center gap-1.5 rounded-control border border-border-control bg-surface px-2.5 text-sm font-semibold text-ink hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus max-sm:min-h-11',
-          compact ? 'max-sm:px-2' : '',
-        )}
+        className={place === 'bar'
+          ? cx(
+              'flex min-h-control min-w-0 items-center gap-1.5 rounded-control border border-border-control bg-surface px-2.5 text-sm font-semibold text-ink hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus max-sm:min-h-11',
+              compact ? 'max-sm:px-2' : '',
+            )
+          : place === 'sidebar'
+            ? 'flex min-h-8 min-w-0 items-center gap-1 rounded-md px-1.5 text-sm font-semibold text-ink hover:bg-border/50 focus-visible:outline-2 focus-visible:outline-focus'
+            : 'flex size-10 items-center justify-center rounded-md hover:bg-border/50 focus-visible:outline-2 focus-visible:outline-focus'}
       >
-        <span className={cx('truncate', compact && 'max-sm:sr-only')}>{name}</span>
-        <ChevronDown aria-hidden size={16} className="shrink-0 text-ink-muted" />
+        {place === 'rail'
+          ? <Logo className="h-7 w-7" />
+          : <span className={cx('truncate', compact && 'max-sm:sr-only')}>{name}</span>}
+        {place !== 'rail' && <ChevronDown aria-hidden size={place === 'sidebar' ? 14 : 16} className="shrink-0 text-ink-muted" />}
       </button>
       {open && (
         <div

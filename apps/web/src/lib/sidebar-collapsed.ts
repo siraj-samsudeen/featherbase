@@ -103,13 +103,49 @@ export function useSidebar(user: string | undefined) {
   return { ...current, toggleCollapsed: toggle, setDrawerOpen: setSidebarDrawerOpen }
 }
 
+/** #1253: where the page's sidebar holds the platform's chrome: the switcher,
+ *  the bell and the command field at its top, the account, help and theme at
+ *  its foot. The Admin's sidebar and an app's <featherbase-sidebar> offer them;
+ *  the top bar draws into them, so there is no bar of its own above the page. */
+export interface SidebarSlots {
+  top: HTMLElement
+  foot: HTMLElement
+}
+
+let slots: SidebarSlots | undefined
+const slotListeners = new Set<() => void>()
+
+/** A sidebar offers its slots; the returned function takes them back. */
+export function offerSidebarSlots(next: SidebarSlots): () => void {
+  slots = next
+  for (const listener of slotListeners) listener()
+  return () => {
+    if (slots !== next) return
+    slots = undefined
+    for (const listener of slotListeners) listener()
+  }
+}
+
+/** The page's sidebar slots, while a sidebar offers them. */
+export function useSidebarSlots(): SidebarSlots | undefined {
+  const subscribe = (listener: () => void) => {
+    slotListeners.add(listener)
+    return () => slotListeners.delete(listener)
+  }
+  const snapshot = () => slots
+  return useSyncExternalStore(subscribe, snapshot, snapshot)
+}
+
 /** The page has a sidebar for as long as the calling component is mounted. */
 export function useRegisterSidebar(user: string | undefined): void {
   useEffect(() => registerSidebar(user), [user])
 }
 
 /** The shortcut as this person's keyboard names it, for the control's hover text. */
-export const SIDEBAR_SHORTCUT = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘B' : 'Ctrl+B'
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform)
+export const SIDEBAR_SHORTCUT = MAC ? '⌘B' : 'Ctrl+B'
+/** #1253: the command bar's shortcut, as the field beside it shows it. */
+export const COMMAND_SHORTCUT = MAC ? '⌘K' : 'Ctrl+K'
 
 const NOT_TEXT_INPUTS = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit'])
 

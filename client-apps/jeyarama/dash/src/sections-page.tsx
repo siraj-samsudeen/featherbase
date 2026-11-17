@@ -126,7 +126,9 @@ export interface ReportLink { key: string; name: string; takes_store: boolean; t
   pickers_in_dive?: boolean }
 export const readReports = () => read<ReportLink[]>('reports')
 
-export function DashSidebar({ current, count }: { current: DashView; count?: number }) {
+/** `count` is the page's own count of what waits for this person; null while the page is still counting it
+ *  (#1254: the sidebar then reads nothing, or the page's reads would run twice); undefined: the sidebar counts. */
+export function DashSidebar({ current, count }: { current: DashView; count?: number | null }) {
   const [reports, setReports] = useState<ReportLink[]>([])
   useEffect(() => { let live = true; readReports().then(list => { if (live) setReports(list) }, () => {}); return () => { live = false } }, [])
   const named = new URLSearchParams(window.location.search).get('report')
@@ -136,8 +138,9 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
   useEffect(() => {
     if (count !== undefined) return
     let live = true
-    Promise.all([read<Waiting>('approvals'), read<WaitingSetup[]>('department_approvals').catch(() => [])])
-      .then(([answer, setups]) => { if (live && answer.state === 'ok') setWaiting(answer.proposals.length + setups.length) }, () => {})
+    // The same three lists Waiting for you shows, so the count matches it (#1254: Buyer Section moves too).
+    Promise.all([read<Waiting>('approvals'), read<WaitingSetup[]>('department_approvals').catch(() => []), read<BuyerMoveToDecide[]>('buyer_section_approvals').catch(() => [])])
+      .then(([answer, setups, moves]) => { if (live && answer.state === 'ok') setWaiting(answer.proposals.length + setups.length + (Array.isArray(moves) ? moves.length : 0)) }, () => {})
     return () => { live = false }
   }, [count])
   // #1046: the Report access link shows only to someone who manages it.
@@ -207,7 +210,7 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
     ))
 }
 
-export function Shell({ current, count, title, testid, children }: { current: DashView; count?: number; title: ReactNode; testid: string; children: ReactNode }) {
+export function Shell({ current, count, title, testid, children }: { current: DashView; count?: number | null; title: ReactNode; testid: string; children: ReactNode }) {
   return (
     <div className="fd-shell">
       <DashSidebar current={current} count={count} />
@@ -530,7 +533,7 @@ export function Approvals() {
   const [note, setNote] = useState<{ tone: 'positive' | 'negative' | 'caution'; text: string } | null>(null)
   const after = (next: NonNullable<typeof note>) => { setNote(next); return reload() }
   return (
-    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length + waitingSetups.length + waitingMoves.length : undefined} title="Waiting for you" testid="approvals">
+    <Shell current="approvals" count={answer?.state === 'ok' ? answer.proposals.length + waitingSetups.length + waitingMoves.length : failed ? undefined : null} title="Waiting for you" testid="approvals">
       {note && <Notice tone={note.tone}><span data-testid="decision-note">{note.text}</span></Notice>}
       {!answer && !failed && <Loading />}
       {failed && <LoadFailed onRetry={load} />}
