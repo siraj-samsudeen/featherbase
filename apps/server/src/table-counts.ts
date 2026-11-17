@@ -1,15 +1,15 @@
 // admin-lists 11 (17-Nov-2026): All Tables shows how many rows each Table
-// holds. Exact where that is cheap (a small Table, or one Postgres has never
-// analysed), Postgres's estimate where a count would scan a big Table. Only
-// for whoever manages the instance: they read every row, so an unscoped
-// estimate tells them nothing they may not see. Outside sources, views,
-// sub-tables and settings have no count here.
+// holds, for whoever manages the instance. Every count goes through the
+// viewer's own scopedWhere, never an unscoped estimate: managers do not
+// bypass creator privacy (mandatory-access.ts), so a Table's population is
+// not theirs to see (Codex review). A big count reads rounded ("about
+// 1,28,000"). Outside sources, views, sub-tables and settings have no count.
 import { sql } from './db'
 import { AppError } from './errors'
 import { getRoles } from './permissions'
 import { scopedWhere } from './query'
 
-/** Below this estimate a Table is counted exactly. */
+/** Below this a count reads exactly; from here on it is rounded. */
 export const EXACT_BELOW = 10_000
 /** How many Tables are counted at once. */
 const AT_ONCE = 6
@@ -39,16 +39,16 @@ export async function tableRowCounts(user: string): Promise<Record<string, RowCo
 }
 
 async function countOne(name: string, user: string, ofApp: boolean): Promise<RowCount | null> {
-  // An app that is off or awaiting activation answers nothing, as in search (#648).
+  // A Table this viewer may not read (an access policy they are not admitted
+  // to) has no count; an app that is off or awaiting activation answers
+  // nothing, as in search (#648). Anything else is a real failure.
   const scoped = await scopedWhere(name, user, []).catch((error: unknown) => {
-    if (ofApp && error instanceof AppError && (error.type === 'PermissionError' || error.type === 'ConflictError')) return null
+    if (error instanceof AppError && (error.type === 'PermissionError' || (ofApp && error.type === 'ConflictError'))) return null
     throw error
   })
   if (!scoped) return null
   const { table, where } = scoped
-  const [estimate] = await sql`select reltuples::bigint as rows from pg_class where oid = to_regclass(${table})`
-  const guess = estimate ? Number(estimate.rows) : -1
-  if (guess >= EXACT_BELOW) return { rows: guess, exact: false }
-  const [exact] = await sql`select count(*)::bigint as rows from ${sql(table)} where ${where}`
-  return { rows: Number(exact.rows), exact: true }
+  const [counted] = await sql`select count(*)::bigint as rows from ${sql(table)} where ${where}`
+  const rows = Number(counted.rows)
+  return { rows, exact: rows < EXACT_BELOW }
 }
