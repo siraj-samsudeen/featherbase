@@ -4,6 +4,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { issueSession, revokeSession } from '../src/auth'
 import { expectStatus, makePerson } from './fixtures'
+import { withTimeFromNow } from './clock'
 
 // #1255: one browser holds several signed-in accounts (design D1–D9). The
 // browser's list rides the httpOnly `sid_accounts` cookie, read only by
@@ -161,12 +162,15 @@ describe('#1255: a held account ends as any session does, and says why', () => {
   test('expired: a held session past its time', async ({ api }) => {
     const id = await makePerson({ full_name: 'Siraj StyleHR' })
     const now = Math.floor(Date.now() / 1000)
-    const old = await sign({ sub: id, iat: now - 100, at: now - 100, jti: 'old-one', exp: now - 10 }, 'dev-secret-change-me', 'HS256')
+    // Joins the list while live, with a minute left.
+    const short = await sign({ sub: id, iat: now, at: now, jti: 'short-one', exp: now + 60 }, 'dev-secret-change-me', 'HS256')
     const b = browser(api)
-    b.signIn(old)
+    b.signIn(short)
     await b.list()
     b.signIn((await issueSession(await makePerson({ full_name: 'RB' }))).token)
-    expect((await b.list()).accounts.find((a) => a.person === id)).toMatchObject({ state: 'ended', reason: 'expired' })
+    await b.list()
+    const later = await withTimeFromNow(120_000, () => b.list())
+    expect(later.accounts.find((a) => a.person === id)).toMatchObject({ state: 'ended', reason: 'expired' })
   })
 })
 
