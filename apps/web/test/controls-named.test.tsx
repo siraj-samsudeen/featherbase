@@ -60,11 +60,14 @@ test('Controls are clearly named: every control on a row\'s form has a name', as
   expect(unnamedControls(screen.getByTestId('form-view'))).toEqual([])
 })
 
-test('Controls are clearly named: every control in the top bar and the search bar has a name', async ({ admin }) => {
+test('Controls are clearly named: every control in the sidebar and the command bar has a name', async ({ admin }) => {
   await seed(admin)
   await renderApp('/featherbase/admin/table/named-thing', admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
-  expect(unnamedControls(screen.getByRole('banner'))).toEqual([])
+  // #1253: the top bar's controls moved into the sidebar; the command bar opens over the page.
+  await screen.findByTestId('session-user')
+  expect(unnamedControls(screen.getByTestId('admin-sidebar'))).toEqual([])
+  expect(unnamedControls(screen.getByTestId('command-palette'))).toEqual([])
 })
 
 test('Controls are clearly named: every control on a Table\'s list has a name, including the row checkboxes and filter pickers', async ({ admin }) => {

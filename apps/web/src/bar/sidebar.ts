@@ -2,7 +2,7 @@ import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
 import { getSessionUser } from '../lib/api'
-import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
+import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
 import { attachRailTips, railMark, railMenuPlace, rowCount, rowLabel } from '../lib/sidebar-rail'
 
 /** Admin's sidebar widths (AdminLayout: md:w-60, the rail md:w-14, a w-64 drawer), for every app (#1227, #1248). */
@@ -25,7 +25,7 @@ featherbase-sidebar[data-collapsed] > [data-rail-fold] > :not(svg) {
 featherbase-sidebar[data-collapsed] > :is(button, a)[data-rail-mark] > svg { display:none !important; }
 featherbase-sidebar[data-collapsed] > :is(button, a)[data-rail-mark]::before {
   content:attr(data-rail-mark); display:grid; place-items:center; width:26px; height:26px; box-sizing:border-box;
-  border:1.5px solid currentColor; border-radius:7px; font-size:12px; font-weight:700; letter-spacing:.02em; line-height:1; }
+  background:color-mix(in srgb, currentColor 15%, transparent); border-radius:7px; font-size:12px; font-weight:700; letter-spacing:.02em; line-height:1; }
 featherbase-sidebar[data-collapsed] > :is(button, a) [data-sidebar-count] {
   position:absolute !important; top:-2px !important; right:-4px !important; min-width:18px; height:18px; padding:0 4px !important; box-sizing:border-box;
   border-radius:8px !important; background:var(--color-action) !important; color:var(--color-action-ink) !important;
@@ -34,14 +34,21 @@ featherbase-sidebar[data-collapsed] > :is(button, a) [data-sidebar-count][data-r
 featherbase-sidebar[data-collapsed] > [data-depth="1"] { display:none !important; }
 featherbase-sidebar[data-collapsed] > :not(button):not(a):not([data-rail-fold]) {
   font-size:0 !important; line-height:0 !important; height:1px !important; min-height:0 !important; padding:0 !important;
-  margin:8px 12px !important; background:var(--color-border) !important; overflow:hidden !important; border:0 !important; }
+  margin:8px 12px !important; background:color-mix(in srgb, var(--color-border) 70%, transparent) !important; overflow:hidden !important; border:0 !important; }
 featherbase-sidebar[data-collapsed] > [data-rail-fold] {
   display:flex !important; align-items:center; justify-content:center; width:40px; height:40px; margin:4px auto !important; padding:0 !important;
   border-radius:var(--radius-control, 10px); color:var(--color-ink-muted); cursor:pointer; position:relative; }
 featherbase-sidebar[data-collapsed] > [data-rail-fold]:hover, featherbase-sidebar[data-collapsed] > [data-rail-fold][aria-expanded="true"] {
-  background:var(--color-subtle); color:var(--color-ink); }
+  background:color-mix(in srgb, var(--color-border) 50%, transparent); color:var(--color-ink); }
 featherbase-sidebar[data-collapsed] > [data-rail-fold]:focus-visible { outline:2px solid var(--color-focus); outline-offset:1px; }
 featherbase-sidebar:not([data-collapsed]) > [data-rail-fold] > svg { display:none; }
+/* #1253 (Quiet Canvas): beside the sidebar, the app's page is one white panel on
+   the grey canvas, set off by a soft shadow, 8px from the window's edges. The
+   gap wins over an app's own margin on its page (Dash centres it with auto). */
+@media (width >= 48rem) {
+  featherbase-sidebar + * { background:var(--color-surface); border-radius:12px; margin:8px 8px 8px 0 !important; width:auto !important; min-width:0;
+    box-shadow:0 1px 3px color-mix(in srgb, var(--color-scrim) 10%, transparent), 0 1px 2px -1px color-mix(in srgb, var(--color-scrim) 10%, transparent); }
+}
 `
 
 function ensureRailRowsCss() {
@@ -69,6 +76,7 @@ export class FeatherbaseSidebar extends HTMLElement {
   private leave?: () => void
   private unsubscribe?: () => void
   private untips?: () => void
+  private unslot?: () => void
   private drawerWidth?: MediaQueryList
   private control?: HTMLButtonElement
   private layer?: HTMLElement
@@ -96,15 +104,19 @@ export class FeatherbaseSidebar extends HTMLElement {
     const shadow = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
     const style = document.createElement('style')
     style.textContent = `${shadowCss(platformCss)}
+      /* #1253: no fill of its own, and nothing clips the menus its top and foot open. */
       :host { display:block; position:static; z-index:auto; box-sizing:border-box; width:${WIDTH}px; min-width:0; height:100%;
-        transition:width 200ms linear; }
+        transition:width 200ms linear; background:transparent !important; overflow:visible !important; }
       /* #1248: collapsed (md+), an icon rail; at phone width the frame is the drawer. */
       :host([data-collapsed]) { width:${RAIL}px; }
       .sidebar-backdrop { display:none; }
-      .sidebar-frame { position:relative; display:flex; flex-direction:column; min-height:calc(100vh - var(--featherbase-bar-height, 48px)); height:100%; padding:12px;
-        box-sizing:border-box; border-right:1px solid var(--color-border); background:var(--color-surface);
+      /* #1253 (Quiet Canvas): no fill and no border; it sits on the grey canvas, as
+         tall as the window, its links scrolling between the top and the foot. */
+      .sidebar-frame { position:sticky; top:var(--featherbase-bar-height, 0px); display:flex; flex-direction:column;
+        height:calc(100dvh - var(--featherbase-bar-height, 0px)); box-sizing:border-box;
         color:var(--color-ink); font:14px/1.45 var(--font-sans); }
-      :host([data-collapsed]) .sidebar-frame { padding:12px 8px; }
+      .sidebar-links { flex:1; min-height:0; overflow-y:auto; padding:4px 8px; display:flex; flex-direction:column; }
+      :host([data-collapsed]) .sidebar-links { overflow-x:hidden; }
       /* A row keeps its height; one with margin-top:auto sits at the foot. */
       ::slotted(*) { flex-shrink:0; }
       ::slotted(button), ::slotted(a) {
@@ -112,22 +124,26 @@ export class FeatherbaseSidebar extends HTMLElement {
         box-sizing:border-box !important; width:100% !important; min-height:40px !important;
         margin:0 0 4px !important; padding:8px 12px !important; border:0 !important;
         border-radius:var(--radius-control) !important; background:transparent !important;
-        color:var(--color-ink-muted) !important; font:inherit !important;
+        color:var(--color-ink) !important; font:inherit !important;
         text-align:left !important; text-decoration:none !important; cursor:pointer;
       }
+      /* A group's title (#1253): small, grey, regular weight. */
+      ::slotted(:not(button):not(a):not([data-rail-fold])), :host(:not([data-collapsed])) ::slotted([data-rail-fold]) { font-size:12px !important; font-weight:400 !important;
+        color:var(--color-ink-muted) !important; text-transform:none !important; letter-spacing:normal !important; }
       :host([data-collapsed]) ::slotted(button), :host([data-collapsed]) ::slotted(a) {
         position:relative !important; justify-content:center !important; width:40px !important; height:40px !important;
         padding:0 !important; margin:0 auto 4px !important; gap:0 !important; }
       ::slotted([data-depth="1"]) { padding-left:40px !important; font-size:13px !important; }
-      ::slotted(:hover) { background:var(--color-subtle) !important; color:var(--color-ink) !important; }
-      ::slotted([aria-current="page"]) { background:var(--color-action-tint) !important;
-        color:var(--color-action) !important; font-weight:600 !important; }
+      ::slotted(:is(button, a):hover) { background:color-mix(in srgb, var(--color-border) 50%, transparent) !important; color:var(--color-ink) !important; }
+      /* #1253: the open page is a white tile with a soft shadow, in the app's accent. */
+      ::slotted([aria-current="page"]) { background:var(--color-surface) !important; color:var(--color-action) !important; font-weight:500 !important;
+        box-shadow:0 1px 3px color-mix(in srgb, var(--color-scrim) 10%, transparent), 0 1px 2px -1px color-mix(in srgb, var(--color-scrim) 10%, transparent) !important; }
       ::slotted(:focus-visible) { outline:2px solid var(--color-focus) !important; outline-offset:1px !important; }
       /* #1248: the control is the sidebar's own: a footer row and its edge. */
-      .sidebar-foot { margin-top:auto; padding-top:8px; border-top:1px solid var(--color-border); }
-      .sidebar-collapse { display:flex; align-items:center; gap:10px; width:100%; min-height:40px; padding:8px 12px; box-sizing:border-box;
+      .sidebar-foot { padding:8px; }
+      .sidebar-collapse { display:flex; align-items:center; gap:10px; width:100%; min-height:36px; padding:6px 8px; box-sizing:border-box;
         border:0; border-radius:var(--radius-control); background:transparent; color:var(--color-ink-muted); font:inherit; cursor:pointer; text-align:left; }
-      .sidebar-collapse:hover { background:var(--color-subtle); color:var(--color-ink); }
+      .sidebar-collapse:hover { background:color-mix(in srgb, var(--color-border) 50%, transparent); color:var(--color-ink); }
       .sidebar-collapse:focus-visible { outline:2px solid var(--color-focus); outline-offset:1px; }
       .sidebar-collapse kbd { margin-left:auto; font:12px var(--font-mono, ui-monospace, monospace); color:var(--color-ink-subtle); }
       :host([data-collapsed]) .sidebar-collapse { width:40px; justify-content:center; padding:0; margin:0 auto; }
@@ -144,27 +160,36 @@ export class FeatherbaseSidebar extends HTMLElement {
       .rail-menu button { display:flex; justify-content:space-between; gap:12px; padding:7px 8px; border:0; border-radius:7px;
         background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; white-space:nowrap; }
       .rail-menu button:hover, .rail-menu button:focus-visible { background:var(--color-subtle); outline:none; }
-      .rail-menu button[aria-current="page"] { color:var(--color-action); font-weight:600; }
+      .rail-menu button[aria-current="page"] { font-weight:600; }
       .rail-menu .count { color:var(--color-ink-subtle); font-variant-numeric:tabular-nums; }
       @media (prefers-reduced-motion: reduce) { :host { transition:none; } }
       @media ${SIDEBAR_DRAWER_QUERY} {
         :host { width:0; }
         .sidebar-frame { position:fixed; z-index:40; top:var(--featherbase-bar-height, 48px); bottom:0; left:0;
-          box-sizing:border-box; width:${DRAWER_WIDTH}px; min-height:0; overflow-y:auto;
+          box-sizing:border-box; width:${DRAWER_WIDTH}px; height:auto; background:var(--color-canvas);
           transform:translateX(-100%); transition:transform 150ms ease-out; }
         :host([data-open]) .sidebar-frame { transform:none; }
         :host([data-open]) .sidebar-backdrop { display:block; position:fixed; z-index:39; inset:var(--featherbase-bar-height, 48px) 0 0 0;
           background:var(--color-scrim); opacity:.3; }
         ::slotted(button), ::slotted(a) { min-height:44px !important; }
-        .sidebar-foot, .sidebar-edge { display:none; }
+        .sidebar-collapse, .sidebar-edge { display:none; }
       }`
     this.setAttribute('role', 'navigation')
     if (!this.hasAttribute('aria-label')) this.setAttribute('aria-label', 'Application navigation')
     const nav = document.createElement('div')
     nav.className = 'sidebar-frame'
-    nav.append(document.createElement('slot'))
+    // #1253: the shared bar draws the switcher at the top and the account at the foot.
+    const top = document.createElement('div')
+    top.dataset.testid = 'sidebar-slot-top'
+    const links = document.createElement('div')
+    links.className = 'sidebar-links'
+    links.append(document.createElement('slot'))
+    const account = document.createElement('div')
+    account.dataset.testid = 'sidebar-slot-foot'
+    nav.append(top, links)
     const foot = document.createElement('div')
     foot.className = 'sidebar-foot'
+    foot.append(account)
     const control = document.createElement('button')
     control.type = 'button'
     control.className = 'sidebar-collapse'
@@ -194,6 +219,8 @@ export class FeatherbaseSidebar extends HTMLElement {
 
     this.leave?.()
     this.unsubscribe?.()
+    this.unslot?.()
+    this.unslot = offerSidebarSlots({ top, foot: account })
     this.leave = registerSidebar(getSessionUser()?.row_id)
     this.unsubscribe = subscribeSidebar(this.onWidth)
     this.drawerWidth = typeof window.matchMedia === 'function' ? window.matchMedia(SIDEBAR_DRAWER_QUERY) : undefined
@@ -374,6 +401,8 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.rowsObserver?.disconnect()
     this.untips?.()
     this.untips = undefined
+    this.unslot?.()
+    this.unslot = undefined
     this.drawerWidth?.removeEventListener?.('change', this.onWidth)
     this.removeEventListener('click', this.onClick)
     this.removeEventListener('keydown', this.onKey)

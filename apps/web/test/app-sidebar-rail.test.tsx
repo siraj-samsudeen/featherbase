@@ -52,7 +52,8 @@ const collapsed = (el: HTMLElement) => el.hasAttribute('data-collapsed')
 
 test('the control is on the sidebar, not in the bar, and collapses it to a rail that stays usable', async ({ admin }) => {
   const { bar, sidebar } = openAppPage(admin)
-  await bar.findByTestId('session-user')
+  // #1253: the account sits at the sidebar's foot, in its shadow.
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
   expect(bar.queryByTestId('sidebar-collapse')).not.toBeInTheDocument()
 
   const control = shadow(sidebar).getByTestId('sidebar-collapse')
@@ -76,7 +77,8 @@ test('the control is on the sidebar, not in the bar, and collapses it to a rail 
 
 test("the sidebar's edge toggles it too", async ({ admin }) => {
   const { bar, sidebar } = openAppPage(admin)
-  await bar.findByTestId('session-user')
+  // #1253: the account sits at the sidebar's foot, in its shadow.
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
   const edge = shadow(sidebar).getByTestId('sidebar-edge')
   await userEvent.click(edge)
   expect(collapsed(sidebar)).toBe(true)
@@ -86,7 +88,8 @@ test("the sidebar's edge toggles it too", async ({ admin }) => {
 
 test('in the rail a row without an icon, or one that asks for initials, shows its initials', async ({ admin }) => {
   const { bar, sidebar } = openAppPage(admin)
-  await bar.findByTestId('session-user')
+  // #1253: the account sits at the sidebar's foot, in its shadow.
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
   await userEvent.click(shadow(sidebar).getByTestId('sidebar-collapse'))
   expect(within(sidebar).getByRole('link', { name: 'Repair jobs' })).toHaveAttribute('data-rail-mark', 'RJ')
   expect(within(sidebar).getByRole('link', { name: 'Sales versus target' })).toHaveAttribute('data-rail-mark', 'SV')
@@ -96,7 +99,8 @@ test('in the rail a row without an icon, or one that asks for initials, shows it
 
 test("hovering or focusing a rail icon names it at once, with its count; open, nothing is shown", async ({ admin }) => {
   const { bar, sidebar } = openAppPage(admin)
-  await bar.findByTestId('session-user')
+  // #1253: the account sits at the sidebar's foot, in its shadow.
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
   const row = within(sidebar).getByRole('button', { name: /All tickets/ })
   fireEvent.pointerOver(row)
   expect(shadow(sidebar).queryByRole('tooltip')).not.toBeInTheDocument()
@@ -113,7 +117,8 @@ test("hovering or focusing a rail icon names it at once, with its count; open, n
 
 test('a folding heading becomes one icon whose menu lists its rows, and choosing one chooses the row', async ({ admin }) => {
   const { bar, sidebar } = openAppPage(admin)
-  await bar.findByTestId('session-user')
+  // #1253: the account sits at the sidebar's foot, in its shadow.
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
   const heading = sidebar.querySelector<HTMLElement>('[data-rail-fold]')!
   // Open, the heading is only a heading, and its rows are rows.
   expect(heading).not.toHaveAttribute('role')
@@ -151,7 +156,8 @@ test('a folding heading becomes one icon whose menu lists its rows, and choosing
 
 test('Ctrl/Cmd+B still toggles from the page, and the choice is kept for this person', async ({ admin }) => {
   const { bar, sidebar } = openAppPage(admin)
-  await bar.findByTestId('session-user')
+  // #1253: the account sits at the sidebar's foot, in its shadow.
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
   expect(fireEvent.keyDown(document.body, { key: 'b', metaKey: true })).toBe(false)
   expect(collapsed(sidebar)).toBe(true)
   expect(localStorage.getItem(`fc-sidebar-collapsed:${admin.user}`)).toBe('1')
@@ -172,7 +178,8 @@ test('at phone width the sidebar is the drawer as before, and the bar keeps its 
 
 test('rows the app draws while collapsed get their rail marks too', async ({ admin }) => {
   const { bar, sidebar } = openAppPage(admin)
-  await bar.findByTestId('session-user')
+  // #1253: the account sits at the sidebar's foot, in its shadow.
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
   await userEvent.click(shadow(sidebar).getByTestId('sidebar-collapse'))
   const late = document.createElement('a')
   late.href = '#late'
@@ -183,7 +190,8 @@ test('rows the app draws while collapsed get their rail marks too', async ({ adm
 
 test('the fold menu: arrows move, Tab and a click outside close it, and the heading toggles it', async ({ admin }) => {
   const { bar, sidebar } = openAppPage(admin)
-  await bar.findByTestId('session-user')
+  // #1253: the account sits at the sidebar's foot, in its shadow.
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
   // The current type is marked in the menu as it is in the list.
   within(sidebar).getByRole('button', { name: /Backfill/ }).setAttribute('aria-current', 'page')
   await userEvent.click(shadow(sidebar).getByTestId('sidebar-collapse'))

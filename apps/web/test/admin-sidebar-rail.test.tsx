@@ -13,11 +13,12 @@ beforeEach(() => localStorage.clear())
 const aside = () => screen.getByTestId('admin-sidebar')
 const collapsed = () => aside().hasAttribute('data-collapsed')
 
-test('the control is the sidebar footer, not the top bar, and collapsing leaves a rail', async ({ admin }) => {
+test('the control is the sidebar footer, there is no top bar, and collapsing leaves a rail', async ({ admin }) => {
   await renderApp('/featherbase/admin/all-tables', admin)
   const control = await screen.findByTestId('sidebar-collapse', {}, T)
   expect(aside()).toContainElement(control)
-  expect(screen.getByTestId('top-bar')).not.toContainElement(control)
+  // #1253: no top bar on a wide window; its pieces are the sidebar's top and foot.
+  expect(screen.queryByTestId('top-bar')).not.toBeInTheDocument()
   expect(control).toHaveAccessibleName('Collapse sidebar')
   // #1251's keyboard-shortcut list finds it by these.
   expect(control).toHaveAttribute('data-shortcut-id', 'sidebar')
@@ -33,6 +34,42 @@ test('the control is the sidebar footer, not the top bar, and collapsing leaves 
 
   await userEvent.click(screen.getByTestId('sidebar-edge'))
   expect(collapsed()).toBe(false)
+})
+
+// #1253 (the frame Siraj agreed on 17-Nov-2026): the switcher and the bell lead
+// the sidebar, then the "Search or Command" field; the account, help and theme
+// sit at its foot, above the Collapse row. In the rail: the logo, a magnifier
+// named by its tooltip, and the avatar alone.
+test("the sidebar's top and foot hold the switcher, the command field and the account; the rail keeps the essentials", async ({ admin }) => {
+  await renderApp('/featherbase/admin/all-tables', admin)
+  const top = await screen.findByTestId('sidebar-top', {}, T)
+  expect(aside()).toContainElement(top)
+  expect(within(top).getByTestId('top-bar-name')).toHaveAccessibleName(/^Switch application: /)
+  expect(within(top).getByTestId('notif-bell')).toBeInTheDocument()
+  const field = within(top).getByTestId('command-field')
+  expect(field).toHaveTextContent(/^Search or Command(⌘K|Ctrl\+K)$/)
+  const foot = await screen.findByTestId('sidebar-account', {}, T)
+  expect(aside()).toContainElement(foot)
+  for (const id of ['session-user', 'help-button', 'theme-button']) expect(within(foot).getByTestId(id)).toBeInTheDocument()
+  expect(within(within(foot).getByTestId('session-user')).getByText('Administrator')).toBeInTheDocument()
+  // The foot comes before the Collapse row.
+  expect(foot.compareDocumentPosition(screen.getByTestId('sidebar-collapse')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+  // The field opens the command bar, its input focused.
+  await userEvent.click(field)
+  expect(screen.getByRole('textbox', { name: 'Search or type a command' })).toHaveFocus()
+  await userEvent.keyboard('{Escape}')
+
+  await userEvent.click(screen.getByTestId('sidebar-collapse'))
+  expect(within(aside()).queryByTestId('notif-bell')).not.toBeInTheDocument()
+  expect(within(aside()).queryByTestId('help-button')).not.toBeInTheDocument()
+  expect(within(aside()).queryByTestId('theme-button')).not.toBeInTheDocument()
+  // The avatar alone: the name stays only as the button's accessible name.
+  expect(within(within(aside()).getByTestId('session-user')).queryByText('Administrator')).not.toBeInTheDocument()
+  const magnifier = within(aside()).getByTestId('command-field')
+  expect(magnifier).toHaveTextContent('')
+  fireEvent.pointerOver(magnifier)
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Search or Command')
 })
 
 test('in the rail a link is named at once by a tooltip; open, it is not', async ({ admin }) => {

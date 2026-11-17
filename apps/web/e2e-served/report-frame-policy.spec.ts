@@ -255,7 +255,7 @@ test('leaving the report for Sign-in methods drops the embed origin: a new docum
   expect(seen.loaded('/featherbase/account/sign-in-methods')).toBe(1)
   expect(await documentPath(page)).toBe('/featherbase/account/sign-in-methods')
   expect(await seen.policyOf('/featherbase/account/sign-in-methods')).toBe("frame-src 'self'")
-  // Still signed in, with the shared top bar, after the full load.
+  // Still signed in, with the shared chrome, after the full load.
   await expect(page.getByTestId('session-user')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Sign-in methods' })).toBeVisible()
   // An embed frame here is refused by the browser.
@@ -283,7 +283,8 @@ test('a System Manager moves Admin → report → Admin: the frame is allowed on
   const seen = watch(page)
   await signIn(page, MANAGER)
   await page.waitForURL('**/featherbase/admin**')
-  await expect(page.getByTestId('top-bar')).toBeVisible()
+  // #1253: the Admin's chrome is its sidebar; there is no top bar beside it.
+  await expect(page.getByTestId('admin-sidebar')).toBeVisible()
   expect(await seen.policyOf('/featherbase/login')).toBe("frame-src 'self'")
   await shoot(page, '3a-manager-admin')
 

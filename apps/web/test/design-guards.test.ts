@@ -406,57 +406,59 @@ const tagWith = (text: string, id: string) => {
 
 describe('the Admin shell', () => {
   const shell = source('src/pages/AdminLayout.tsx')
-  // #489: the bar's frame is the shared top bar, which the Admin screens wear.
+  // #489: the shared bar, which the Admin screens wear; #1253: drawn into the sidebar.
   const topBar = source('src/components/TopBar.tsx')
-  test("the navbar's left zone is exactly the sidebar's width, with the sidebar's padding", () => {
-    const zone = tagWith(topBar, 'top-bar-left')
-    expect(zone).toMatch(/\bmd:w-60\b/)
-    expect(zone).toMatch(/\bmd:shrink-0\b/)
-    expect(zone).toMatch(/\bmd:px-3\b/)
-    // The sidebar's tag holds an arrow function, so read a window, not up to '>'.
-    // #1235: the Admin and the account pages share one sidebar frame (SidebarAside).
+  const rail = source('src/components/SidebarRail.tsx')
+  test("#1253: a page with a sidebar has no top bar: the bar draws into the sidebar's top and foot", () => {
+    expect(topBar).toMatch(/createPortal\([\s\S]{0,800}slots\.top/)
+    expect(topBar).toMatch(/createPortal\([\s\S]{0,800}slots\.foot/)
+    // The sidebar is still 240px, a 56px rail, beside the page.
     expect(shell).toMatch(/<SidebarAside testid="admin-sidebar"/)
     expect(shell).toMatch(/data-testid=\{testid\}[\s\S]{0,600}\bmd:w-60\b/)
-    // The header gives up its own left padding at md+, so the zone starts where the sidebar does.
-    expect(tagWith(topBar, 'top-bar')).toMatch(/\bmd:pl-0\b/)
   })
 
-  test('the command bar has ONE width rule at every size: fill up to the cap, then centre — no breakpoint jump', () => {
-    const bar = tagWith(shell, 'awesomebar')
-    expect(bar).toMatch(/\bsm:flex-1\b/)
-    // Exactly one max-width and one centring rule, both from sm up, and no
-    // width rule keyed to a wider breakpoint (that is what made it jump).
-    expect([...bar.matchAll(/[\w:[\]-]*max-w-[\w[\]-]+/g)].map((m) => m[0])).toEqual(['sm:max-w-4xl'])
-    expect(bar).toMatch(/\bsm:mx-auto\b/)
-    expect(bar).not.toMatch(/(?:md|lg|xl|2xl|min-\[[^\]]+\]):(?:max-w|w|mx|basis|flex)-/)
-    // The bell group must not grab the free space with its own auto margin at sm+.
-    expect(tagWith(topBar, 'top-bar-right')).toMatch(/\bsm:ml-0\b/)
+  test('#1253: the command bar opens as a wide box in the middle of the screen', () => {
+    const palette = tagWith(shell, 'command-palette')
+    expect(palette).toMatch(/\bfixed inset-0\b/)
+    expect(palette).toMatch(/\bjustify-center\b/)
+    expect(palette).toMatch(/\bbg-scrim\/\d+/)
+    expect(shell).toMatch(/role=\{barFocused \? 'dialog' : undefined\}[^>]*className=\{cardClasses\('w-full max-w-2xl/)
+    // The field that opens it: a soft fill, no border, one line.
+    const field = /function CommandField[\s\S]*?\n}\n/.exec(shell)?.[0] ?? ''
+    expect(field).toMatch(/\bwhitespace-nowrap\b/)
+    expect(field).toMatch(/\bbg-border\/\d+/)
+    expect(field).not.toMatch(/(?<![\w:/-])border(?:-border)?\s/)
   })
 
-  test('the sidebar scrolls as one column: the Home Pages never shrink', () => {
+  test('the sidebar scrolls as one column between its top and foot: the Home Pages never shrink', () => {
     const nav = tagWith(shell, 'home-page-nav')
     expect(nav).toMatch(/\bshrink-0\b/)
     expect(nav).not.toMatch(/\bflex-1\b|overflow-y-auto/)
-    expect(shell).toMatch(/data-testid=\{testid\}[\s\S]{0,600}\boverflow-y-auto\b/)
+    expect(tagWith(shell, 'sidebar-links')).toMatch(/\bmin-h-0 flex-1 overflow-y-auto\b/)
   })
 
   // #1236: the switcher is a menu button with each app's icon and purpose, not a select.
   test('the shell draws no native select arrow: the switcher is a menu button', () => {
     const switcher = source('src/components/AppSwitcher.tsx')
     expect(shell).not.toMatch(/<select\b/)
-    expect(shell).toMatch(/<AppSwitcher\s*\/>/)
+    expect(topBar).toMatch(/<AppSwitcher app=\{switcherApp\}/)
     expect(switcher).not.toMatch(/<select\b/)
     expect(switcher).toMatch(/aria-label=\{`Switch application: \$\{name\}`\}[\s\S]{0,40}aria-haspopup="menu"/)
   })
 
-  // The owner's review (17-Nov-2026): a heading stands apart from its rows (semibold,
-  // darker), and each group's icons carry its own hue (--color-group-*).
-  test('the sidebar group headings all look alike, semibold and never uppercase; item icons take their group hue', () => {
-    const cls = (id: string) => /className="([^"]+)"/.exec(tagWith(shell, id))?.[1]
-    expect(cls('sidebar-group-heading')).toBe(cls('sidebar-recents-heading'))
-    expect(cls('sidebar-group-heading')).toMatch(/\bfont-semibold\b/)
-    expect(cls('sidebar-group-heading')).not.toMatch(/\buppercase\b/)
+  // #1253 (Quiet Canvas, 17-Nov-2026): group titles are small, grey and regular
+  // weight; each group's icons carry its own hue (--color-group-*); the open
+  // page is a white tile with a soft shadow; no rules between the groups.
+  test('the sidebar group titles all look alike, small, grey and regular weight; item icons take their group hue', () => {
+    const heading = /SIDEBAR_HEADING = '([^']+)'/.exec(rail)?.[1] ?? ''
+    expect(heading).toMatch(/\btext-xs\b/)
+    expect(heading).toMatch(/\btext-ink-muted\b/)
+    expect(heading).not.toMatch(/\bfont-(?:semibold|bold|medium)\b|\buppercase\b/)
+    expect(tagWith(shell, 'sidebar-group-heading')).toMatch(/className=\{SIDEBAR_HEADING\}/)
+    expect(tagWith(shell, 'sidebar-recents-heading')).toMatch(/className=\{SIDEBAR_HEADING\}/)
     expect(tagWith(shell, 'sidebar-item-icon')).toMatch(/GROUP_TONE/)
+    expect(/ROW_SELECTED = '([^']+)'/.exec(rail)?.[1]).toMatch(/\bbg-surface\b.*\bshadow-sm\b/)
+    expect(shell).not.toMatch(/border-t border-border px-2/)
     // Past imports is a nav item, no longer a small underlined link.
     expect(shell).not.toMatch(/data-testid="past-imports-link"[^>]*underline/)
   })
