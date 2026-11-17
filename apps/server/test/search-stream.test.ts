@@ -53,3 +53,16 @@ test('a search whose client went away stops and yields nothing more', async ({ a
   abort.abort()
   expect(await events.next()).toEqual({ done: true, value: undefined })
 })
+
+// Codex round 4: a machine-keyed row with no title of its own is no hit, and never crowds out a named one.
+test('rows of machine-made keys with an empty title neither show nor crowd out a named match', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Ss Hash Titled', id_pattern: 'hash', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }, { column_name: 'note', column_type: 'Data' }] })
+  const { sql } = await import('../src/db')
+  const { tableRelation } = await import('../src/table-engine')
+  const relation = await tableRelation('Ss Hash Titled')
+  for (const id of ['aaaa1111qq', 'aaaa2222qq', 'aaaa3333qq']) await sql`insert into ${sql(relation)} (row_id, label) values (${id}, null)`
+  await sql`insert into ${sql(relation)} (row_id, label) values ('aaaa4444qq', 'Named qq row')`
+  const lines = await searchLines(admin, 'qq')
+  const group = lines.find((l) => l.table === 'Ss Hash Titled') as { hits: { title: string }[] }
+  expect(group.hits.map((h) => h.title)).toEqual(['Named qq row'])
+})

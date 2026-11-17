@@ -143,12 +143,16 @@ async function searchOne(t: Record<string, unknown>, user: string, like: string)
   const live = meta.name === 'Table' ? sql`and archived_at is null` : sql``
   // An untitled Table names its rows by their keys; machine-made keys name
   // nothing, so such a Table gives no hits (decided before any LIMIT).
-  if (!title && machineKeys(meta.id_pattern)) return []
+  const machine = machineKeys(meta.id_pattern)
+  if (!title && machine) return []
   const shown = title ? readExpression(title) : key
+  // A row of machine-made keys with no title of its own (empty, or hidden from
+  // this viewer) would read as its key: it is no hit either (Codex round 4).
+  const named = machine ? sql`and nullif(trim(${shown}::text), '') is not null` : sql``
   const rows = await sql`
     select ${key} as row_id, ${shown} as title from ${sql(table)}
     where ${where} ${live} and (${key} ilike ${like}${title ? sql` or ${readExpression(title)} ilike ${like}` : sql``})
-      and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID}
+      and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID} ${named}
     limit ${PER_TABLE}`
   return rows
     .map((row) => ({
