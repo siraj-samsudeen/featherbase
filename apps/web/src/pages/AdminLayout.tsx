@@ -16,6 +16,7 @@ import {
   recentActions,
   recentSearches,
   uniqueByDisplay,
+  sharedNames,
   recordAction,
   type RecentEntry,
   type ServerRecentEntry,
@@ -38,7 +39,7 @@ import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { StatusPill, buttonClasses, cardClasses, cx, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
@@ -412,6 +413,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     ? uniqueByDisplay([...recentSlots, ...offered(frequentActions(user.row_id, 12))]).slice(recentSlots.length, recentSlots.length + 2)
     : []
   const sidebarRecent = sidebarFrequent.length ? recentSlots : sidebarCandidates
+  // Two rows of one name (a list under two filters) each say what sets them apart.
+  const sharedRecentNames = sharedNames([...sidebarRecent, ...sidebarFrequent])
 
   function recordSearch(q: string) {
     if (user && q) recordAction(user.row_id, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
@@ -828,7 +831,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
             <RailFold label="Recently Opened" icon={Clock} testid="sidebar-recents" tone="slate">
               {(close) => [...sidebarRecent, ...sidebarFrequent].map((r) => (
                 <RailMenuItem key={r.key} close={close} onSelect={() => openRecent(r)}>
-                  <span className="truncate"><EntryLabel entry={r} /></span>
+                  <span className="truncate"><EntryLabel entry={r} /><RecentDiffers entry={r} shared={sharedRecentNames} /></span>
                 </RailMenuItem>
               ))}
             </RailFold>
@@ -838,7 +841,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
               {/* A heading, not a link: small, grey, regular weight (#1253). */}
               <h2 className={SIDEBAR_HEADING} data-testid="sidebar-recents-heading">Recently Opened</h2>
               {sidebarRecent.map((r) => (
-                <SidebarRecentRow key={r.key} entry={r} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
+                <SidebarRecentRow key={r.key} entry={r} shared={sharedRecentNames} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
               ))}
               {sidebarFrequent.length > 0 && (
                 <h2 className="px-2 pb-0.5 pt-2 text-xs text-ink-subtle">
@@ -846,7 +849,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                 </h2>
               )}
               {sidebarFrequent.map((r) => (
-                <SidebarRecentRow key={r.key} entry={r} frequent onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
+                <SidebarRecentRow key={r.key} entry={r} shared={sharedRecentNames} frequent onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
               ))}
             </div>
           )}
@@ -1209,12 +1212,26 @@ function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
   )
 }
 
+/** Whether this entry shares its name with another and has something of its own to say. */
+function differs(entry: RecentEntry, shared: Set<string>): boolean {
+  const shown = displayEntry(entry)
+  return !shown.row && Boolean(shown.sub) && shared.has(shown.label)
+}
+
+/** " · Site = Head Office" after a recent entry whose name another one shares. */
+function RecentDiffers({ entry, shared }: { entry: RecentEntry; shared: Set<string> }) {
+  if (!differs(entry, shared)) return null
+  return <span className="text-ink-subtle" data-testid="recent-differs">{'\u00a0· '}{displayEntry(entry).sub}</span>
+}
+
 function SidebarRecentRow({
   entry,
+  shared,
   frequent,
   onOpen,
 }: {
   entry: RecentEntry
+  shared: Set<string>
   frequent?: boolean
   onOpen: (entry: RecentEntry) => void
 }) {
@@ -1245,7 +1262,11 @@ function SidebarRecentRow({
       className={touchRowClasses(`${SIDEBAR_LINE} text-ink hover:bg-border/50`)}
     >
       <TableTile name={table} />
-      <span className="min-w-0 flex-1 truncate"><EntryLabel entry={entry} /></span>
+      {/* What sets a row apart keeps most of the row: the name gives way first (the tile and tooltip still name it). */}
+      <span className="flex min-w-0 flex-1">
+        <span className={cx('min-w-0 truncate', differs(entry, shared) && 'max-w-[40%] shrink-0')}><EntryLabel entry={entry} /></span>
+        <span className="min-w-0 flex-1 truncate"><RecentDiffers entry={entry} shared={shared} /></span>
+      </span>
       {frequent && <span aria-hidden className={`text-xs ${GROUP_TONE.amber}`}>★</span>}
       <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{meta}</span>
     </a>

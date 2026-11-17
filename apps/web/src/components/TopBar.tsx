@@ -501,6 +501,17 @@ const MENU_ITEM = 'flex min-h-control w-full items-center px-3 text-left text-sm
 
 /** #72 / #489: the avatar is the Account menu — the person's name, Sign-in
  *  methods, Log out. On a phone it also carries Open Admin and the theme. */
+/** The roles everyone holds say nothing about who someone is. */
+const EVERYONE_ROLES = new Set(['All', 'Guest'])
+
+/** Under the name at the sidebar's foot: "System Manager" for whoever manages
+ *  the instance, else their first role and how many more. */
+export function roleLine(who: { roles: string[]; capabilities: { manage: boolean } }): string {
+  if (who.capabilities.manage) return 'System Manager'
+  const roles = who.roles.filter((role) => !EVERYONE_ROLES.has(role))
+  return [roles[0], roles.length > 1 ? `+${roles.length - 1} more` : null].filter(Boolean).join(' · ')
+}
+
 function AccountMenu({ inMenu, inSidebar }: {
   inMenu?: { offerAdmin: boolean }
   /** #1253: the avatar and name at the sidebar's foot (the avatar alone in the
@@ -511,7 +522,8 @@ function AccountMenu({ inMenu, inSidebar }: {
   const { t } = useI18n()
   const signOutNow = useSignOut()
   const navigate = useNavigate()
-  const caps = useWhoAmI().data?.capabilities
+  const whoami = useWhoAmI().data
+  const caps = whoami?.capabilities
   const [open, setOpen] = useState(false)
   const wrapper = useRef<HTMLDivElement>(null)
   const avatar = useRef<HTMLButtonElement>(null)
@@ -570,7 +582,13 @@ function AccountMenu({ inMenu, inSidebar }: {
         <span aria-hidden="true" className={`flex ${inSidebar ? 'size-7' : 'size-8'} shrink-0 items-center justify-center rounded-full bg-action text-xs font-semibold text-action-ink`}>
           {initials}
         </span>
-        {named && <span aria-hidden="true" className="min-w-0 flex-1 truncate">{shown}</span>}
+        {named && (
+          <span aria-hidden="true" className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate">{shown}</span>
+            {/* #1253 mockup: who they are here, small and muted under the name. */}
+            {whoami && roleLine(whoami) && <span className="truncate text-xs text-ink-muted" data-testid="session-user-role">{roleLine(whoami)}</span>}
+          </span>
+        )}
         <span className="sr-only">{t('Account')}: {shown}</span>
       </button>
       {open && (
