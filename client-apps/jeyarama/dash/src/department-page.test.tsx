@@ -575,6 +575,36 @@ describe('a set-up in use, before its review (#1191, #1205)', () => {
   })
 })
 
+// #1219: the reviewer with who they are, and whoever else may decide a set-up.
+describe('who reviews a set-up (#1219)', () => {
+  const MANI = { name: 'Mani', code: 'KL-RR-7831', jobs: ['Store Manager · Lakeside'], staff: 'current' }
+  beforeEach(() => window.localStorage.clear())
+  it('the form names the reviewer with code, job and site', async () => {
+    answers.department_setup = { ...SETUP, reviewers: [MANI] }
+    const page = await render('YourDepartment')
+    expect(page.q('reviewer-identity')?.textContent).toBe('Mani · KL-RR-7831 · Store Manager · Lakeside')
+    await page.done()
+  })
+  it('a waiting set-up and one in use name theirs too', async () => {
+    answers.department_setup = { ...SETUP, reviewers: [MANI], current: { state: 'waiting', bundle: 'B1', name: 'Ladies', sections: ['Sarees'], waiting_for: 'Mani', reviewers: [MANI], asked_on: '2026-11-11' } }
+    let page = await render('YourDepartment')
+    expect(page.q('waiting')?.querySelector('[data-testid="reviewer-identity"]')?.textContent).toBe('Mani · KL-RR-7831 · Store Manager · Lakeside')
+    await page.done()
+    answers.department_setup = { ...SETUP, reviewers: [MANI], current: { state: 'set_up', name: 'Ladies', sections: ['Sarees'], reviewing: { bundle: 'B1', waiting_for: 'Mani', reviewers: [MANI] } } }
+    page = await render('YourDepartment')
+    expect(page.q('set-up')?.querySelector('[data-testid="reviewer-identity"]')?.textContent).toBe('Mani · KL-RR-7831 · Store Manager · Lakeside')
+    await page.done()
+  })
+  it('a set-up card names whoever else may decide it', async () => {
+    answers.department_approvals = [{ bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: '2026-11-11',
+      sections: [{ id: 'S1', name: 'Sarees', team_leaders: [] }], also_with: [MANI] }]
+    answers.approvals = { state: 'ok', proposals: [] }
+    const page = await render('Approvals')
+    expect(page.q('setup-card')?.querySelector('[data-testid="also-with"]')?.textContent).toBe('Also withManiKL-RR-7831 · Store Manager · Lakeside')
+    await page.done()
+  })
+})
+
 describe('the name keeps up with the ticked sections (#1209)', () => {
   const tick = (container: Element, name: string) => [...container.querySelectorAll('[data-testid=section-row] input')]
     .find(box => (box as HTMLInputElement).getAttribute('aria-label') === name)!

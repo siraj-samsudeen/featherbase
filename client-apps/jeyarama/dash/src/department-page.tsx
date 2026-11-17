@@ -8,16 +8,17 @@ import { Button, buttonClasses, Card, EmptyState, Field, fmtDate, Notice, Segmen
 import { act } from './api'
 import { andList, mentionsRemoved, sectionsName } from './department-name'
 import { LoadFailed, Loading, NotSetUp, Shell, useAnswer } from './sections-page'
+import { AlsoWith, ReviewerIdentity, type Reviewer } from './person-identity'
 
 interface Section { id: string; name: string; floor: string; sells: string[]; more: number; team_leaders: string[]; suggested: boolean; held_by: string | null }
 type Current =
-  | { state: 'set_up'; name: string; sections: string[]; section_refs?: { id: string; name: string }[]; reviewing?: { bundle: string; waiting_for: string } | null; prefilled?: Prefilled }
-  | { state: 'waiting'; bundle: string; name: string; sections: string[]; waiting_for: string; asked_on: string }
+  | { state: 'set_up'; name: string; sections: string[]; section_refs?: { id: string; name: string }[]; reviewing?: { bundle: string; waiting_for: string; reviewers?: Reviewer[] } | null; prefilled?: Prefilled }
+  | { state: 'waiting'; bundle: string; name: string; sections: string[]; waiting_for: string; reviewers?: Reviewer[]; asked_on: string }
   | { state: 'turned_down'; name: string; sections: string[]; reason: string }
 export type Setup =
   | { state: 'not_set_up' | 'unknown_person' | 'no_job' }
-  | { state: 'no_sections'; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean }
-  | { state: 'ok'; name: string; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean; applies_at_once?: boolean; floors: { id: string; name: string }[]; start_floors: string[]
+  | { state: 'no_sections'; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean; reviewers?: Reviewer[] }
+  | { state: 'ok'; name: string; job: { id: string; store: string }; reviewer: string; reviewer_is_team: boolean; reviewers?: Reviewer[]; applies_at_once?: boolean; floors: { id: string; name: string }[]; start_floors: string[]
       sections: Section[]; names: string[]; current: Current | null }
 type Ok = Extract<Setup, { state: 'ok' }>
 
@@ -70,6 +71,7 @@ export function YourDepartment() {
         <Card data-testid="no-sections">
           <EmptyState title={`${answer.job.store}'s sections aren't set up yet`}
             body={`A department is a group of your store's sections, and Dash has none for ${answer.job.store} yet. The master data team sets them up; then you can choose yours here. ${capital(answer.reviewer)} will review it.`} />
+          <ReviewerIdentity reviewers={answer.reviewers} className="items-center px-4 pb-4" />
         </Card>
       )}
       {answer?.state === 'ok' && <Ready setup={answer} onChanged={load} />}
@@ -123,7 +125,7 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
         {intro}
         {/* A pre-fill is always open for review, so it names its reviewer. */}
         {note && <Notice tone={note.tone}><span data-testid="note">{note.text}</span></Notice>}
-        {current.prefilled && <PrefillBanner jobId={setup.job.id} name={current.name} prefilled={current.prefilled} reviewer={current.reviewing!.waiting_for}
+        {current.prefilled && <PrefillBanner jobId={setup.job.id} name={current.name} prefilled={current.prefilled} reviewer={current.reviewing!.waiting_for} reviewers={current.reviewing!.reviewers}
           onAnswered={async () => { const reviewer = current.reviewing!.waiting_for; await onChanged(); setNote({ tone: 'positive', text: `Thank you. It is your department now; ${reviewer} reviews it.` }) }}
           onChange={startEditing} />}
         <Card title={`${current.name} · ${setup.job.store}`} data-testid="set-up"
@@ -136,6 +138,7 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
             {current.reviewing
               ? <p className="fd-muted text-sm" data-testid="reviewing">Your report shows these sections now. {capital(current.reviewing.waiting_for)} will look at it, and can undo it.</p>
               : <p className="fd-muted text-sm">Your report shows these sections. To change them, ask {setup.reviewer}.</p>}
+            <ReviewerIdentity reviewers={current.reviewing ? current.reviewing.reviewers : setup.reviewers} />
             {current.reviewing && !current.prefilled && (
               <div className="flex flex-wrap gap-2 pt-1">
                 <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
@@ -156,6 +159,7 @@ function Ready({ setup, onChanged }: { setup: Ok; onChanged: () => Promise<unkno
             <p className="font-semibold" data-testid="waiting-name">{current.name}</p>
             <p>{listed(current.sections)}</p>
             <p data-testid="sent-note">Sent to {current.waiting_for}. Your report opens as soon as it is kept.</p>
+            <ReviewerIdentity reviewers={current.reviewers} />
             <p className="fd-muted text-sm">Sent on {fmtDate(current.asked_on)}.{awayLine(current.waiting_for, setup.reviewer_is_team)}</p>
             <div className="flex flex-wrap gap-2 pt-1">
               <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" disabled={busy} onClick={startEditing}>Change it</Button>
@@ -278,7 +282,12 @@ function SetupForm({ setup, before, replaces, inUse = false, onCancel, onTouched
       </div>
     </div>
   )
-  const lead = <p className="fd-muted" data-testid="lead">Say which sections are yours and give the department a name. {atOnce && !inUse ? `Your report opens on them at once; ${setup.reviewer} reviews it afterwards.` : <>{capital(setup.reviewer)} reviews it{inUse ? '. What you send replaces the one in use; your report keeps working meanwhile.' : `, and your report opens once it is kept.${replaces ? ' What you send replaces the one waiting.' : ''}`}</>}</p>
+  const lead = (
+    <div className="flex flex-col gap-1">
+      <p className="fd-muted" data-testid="lead">Say which sections are yours and give the department a name. {atOnce && !inUse ? `Your report opens on them at once; ${setup.reviewer} reviews it afterwards.` : <>{capital(setup.reviewer)} reviews it{inUse ? '. What you send replaces the one in use; your report keeps working meanwhile.' : `, and your report opens once it is kept.${replaces ? ' What you send replaces the one waiting.' : ''}`}</>}</p>
+      <ReviewerIdentity reviewers={setup.reviewers} />
+    </div>
+  )
   const toggleBar = <Segmented label="Layout" options={LAYOUTS} value={layout} onChange={value => { setLayout(value); setStep(1) }} className="self-end" />
 
   if (layout === 'list')
@@ -367,8 +376,8 @@ function ViewMenu({ label, onChoose }: { label: string; onChoose: () => void }) 
   )
 }
 
-export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, onChange }:
-  { jobId: string; name: string; prefilled: Prefilled; reviewer: string; onAnswered: () => Promise<unknown>; onChange?: () => void }) {
+export function PrefillBanner({ jobId, name, prefilled, reviewer, reviewers, onAnswered, onChange }:
+  { jobId: string; name: string; prefilled: Prefilled; reviewer: string; reviewers?: Reviewer[]; onAnswered: () => Promise<unknown>; onChange?: () => void }) {
   const [style, setStyle] = useState<BannerStyle>(prefillStyle)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -402,6 +411,7 @@ export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, on
         <p>Your report shows <SectionLinks sections={prefilled.sections} />: the sections your team works in. Is this right?</p>
         {prefilled.flagged.length > 0 && <p className="text-sm" data-testid="prefill-flagged">{listed(prefilled.flagged)} {prefilled.flagged.length === 1 ? 'is' : 'are'} shared with another department's team.</p>}
         <p className="fd-muted text-sm" data-testid="prefill-reviewer">{capital(reviewer)} reviews it.</p>
+        <ReviewerIdentity reviewers={reviewers} />
         <div className="flex flex-wrap gap-2">
           <Button data-action variant="primary" disabled={busy} onClick={yes}>Yes, that's right</Button>
           {change}
@@ -414,7 +424,9 @@ export function PrefillBanner({ jobId, name, prefilled, reviewer, onAnswered, on
 }
 
 /** Set-ups waiting for this reviewer, on Waiting for your approval. */
-export interface WaitingSetup { bundle: string; who: string; job: string; store: string; name: string; asked_on: string; applied?: boolean; prefilled?: boolean; flagged?: string[]; sections: { id: string; name: string; team_leaders: string[] }[] }
+export interface WaitingSetup { bundle: string; who: string; job: string; store: string; name: string; asked_on: string; applied?: boolean; prefilled?: boolean; flagged?: string[]; sections: { id: string; name: string; team_leaders: string[] }[]
+  /** #1219: whoever else may decide it, the viewer left out. */
+  also_with?: Reviewer[] }
 
 export function DepartmentApprovals({ setups, onDecided }: { setups: WaitingSetup[]; onDecided: (said: string) => Promise<unknown> }) {
   return <>{setups.map(setup => <SetupCard key={setup.bundle} setup={setup} onDecided={onDecided} />)}</>
@@ -442,6 +454,7 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
     <Card title={`${setup.who} · ${setup.job}`} data-testid="setup-card" actions={<StatusPill tone="caution">{setup.prefilled ? 'Set up from reporting lines' : 'New department'}</StatusPill>}>
       <div className="flex flex-col gap-3 p-4">
         <p className="font-semibold" data-testid="setup-ask">{setup.prefilled ? `“${setup.name}” at ${setup.store}, set up from the reporting lines to ${setup.who}` : `Set up “${setup.name}” at ${setup.store}`}</p>
+        <AlsoWith reviewers={setup.also_with} />
         {setup.applied && <p className="text-sm" data-testid="setup-applied">Already in use: {setup.who}'s report shows these sections.<span data-action-hint> Keep it, or undo it.</span></p>}
         {mode === 'change' ? (
           <>
