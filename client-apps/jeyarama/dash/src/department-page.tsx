@@ -442,7 +442,7 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
     <Card title={`${setup.who} · ${setup.job}`} data-testid="setup-card" actions={<StatusPill tone="caution">{setup.prefilled ? 'Set up from reporting lines' : 'New department'}</StatusPill>}>
       <div className="flex flex-col gap-3 p-4">
         <p className="font-semibold" data-testid="setup-ask">{setup.prefilled ? `“${setup.name}” at ${setup.store}, set up from the reporting lines to ${setup.who}` : `Set up “${setup.name}” at ${setup.store}`}</p>
-        {setup.applied && <p className="text-sm" data-testid="setup-applied">Already in use: {setup.who}'s report shows these sections. Keep it, or undo it.</p>}
+        {setup.applied && <p className="text-sm" data-testid="setup-applied">Already in use: {setup.who}'s report shows these sections.<span data-action-hint> Keep it, or undo it.</span></p>}
         {mode === 'change' ? (
           <>
             {!setup.applied && <Field label="Department name"><TextInput value={name} maxLength={60} onChange={event => setName(event.target.value)} data-testid="change-name" /></Field>}
