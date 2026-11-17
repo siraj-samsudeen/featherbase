@@ -79,6 +79,13 @@ function idTitle(meta: TableMeta): ColumnDef | undefined {
   return title && meta.id_pattern === `field:${title.column_name}` ? title : undefined
 }
 
+/** A link table (Job Assignment, Section Subcategory): its title is its own id,
+ *  so its rows read by what they link to. A Table with a readable title
+ *  (Section, Department, Site) is not one. */
+export function isLinkTable(meta: TableMeta): boolean {
+  return Boolean(idTitle(meta))
+}
+
 /** admin-lists 4 (one-app-chrome, 17-Nov): what a list leads with. Its title
  *  column; but where that is the Table's own id, its first readable link
  *  (Section, Employee…), and the id moves to Show Columns. A Table with no
@@ -86,8 +93,15 @@ function idTitle(meta: TableMeta): ColumnDef | undefined {
  *  the row's name elsewhere is unchanged. */
 export function listLeader(meta: TableMeta): ColumnDef | undefined {
   const title = titleListColumn(meta)
-  if (!title || !idTitle(meta)) return title
-  return dataColumns(meta).find((c) => c.column_type === 'Reference' && c.reference_table && c !== title) ?? title
+  if (!title || !isLinkTable(meta)) return title
+  return readableLinks(meta).find((c) => c !== title) ?? title
+}
+
+/** A Table's readable links: the Reference columns this person may read that
+ *  point into one named Table, in column order. What a list leads with
+ *  (listLeader) and what a group's row is named by (far-side) are drawn from these. */
+export function readableLinks(meta: TableMeta): ColumnDef[] {
+  return dataColumns(meta).filter((c) => c.column_type === 'Reference' && Boolean(c.reference_table))
 }
 
 /** What this person's list shows: the title column first (the link to the

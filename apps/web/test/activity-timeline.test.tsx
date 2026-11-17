@@ -207,7 +207,9 @@ test('#829: the activity opens with who created the row', async ({ admin }) => {
     { testMode: true },
   )
   await renderApp(`/featherbase/admin/table/${tableSlug('Person')}/row/${issued.user.row_id}`, admin)
-  const created = await screen.findByTestId('activity-created', {}, { timeout: 10_000 })
+  // #1267: a Person's page also has a glance at its newest activity; this is the full timeline.
+  const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 10_000 })
+  const created = await within(timeline).findByTestId('activity-created', {}, { timeout: 10_000 })
   await waitFor(() => expect(created).toHaveTextContent(/^Google sign-in created this · \d{2}-[A-Z][a-z]{2}-\d{4} \d{2}:\d{2} IST$/))
 })
 

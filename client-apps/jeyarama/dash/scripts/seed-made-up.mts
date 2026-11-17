@@ -134,6 +134,8 @@ if (!granted) for (const table of BASE_TABLES as { name: string }[])
 // #1046: Dash Reader goes to everyone who signs in, and the reports given to each person decide
 // whether Dash opens for them. Local only: on a real instance a System Manager sets this.
 await save('System Settings', { everyone_roles: 'Dash Reader' })
+// #1218: HR's titles some made-up job assignments carry.
+for (const designation of org.designations as string[]) await keep('Designation', designation, { designation })
 // One reader per state of the report page.
 let code = 3000
 for (const reader of org.readers as { key: string; name: string; jobs: [string, string, Record<string, string>][] | null; roles?: string[] }[]) {
@@ -311,6 +313,16 @@ for (const [store, managers] of Object.entries(Object.groupBy(org.prefills as { 
   if (failed.length) throw new Error(`A made-up pre-fill did not take: ${JSON.stringify(failed)}`)
 }
 
+// #1218, in shadow: the starting business roles, written by the made-up Report Access Manager on the first run, and
+// the made-up reports given to the job Store Manager too, so a Store Manager's access is the same in both models.
+await save('dash.report_access', { report_bundle: bundle, job: 'Store Manager' }).catch(() => {})
+const manager = await (await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ usr: 'access-manager@example.test', pwd: PASSWORD }) })).json() as { token: string }
+const started = await fetch(`${api}/api/app_actions/dash/add_starting_roles`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${manager.token}`,
+  'X-Featherbase-App-Version': `dash@${JSON.parse(await readFile(resolve(appDir, 'package.json'), 'utf8')).version}` }, body: JSON.stringify({ idempotencyKey: randomUUID(), payload: {} }) })
+// A rerun finds them there already, and the action says so.
+if (!started.ok && !(await started.text()).includes('There are business roles already')) throw new Error(`The starting business roles were not written: HTTP ${started.status}`)
+
 // The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
 const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ usr: 'reader-sm@example.test', pwd: PASSWORD }) })
@@ -335,6 +347,9 @@ ${says(org.sectionPeople, 'sections')}
 Report access (/dash/?view=access), same password:
   access-manager@example.test          Report Access Manager: gives reports and bundles, and sees who has what
   sections-categoryhead@example.test   Team Report Manager: gives reports to her own team only, two of them named Vinod Buyer-Two (#1217)
+Business roles in shadow (#1218): /dash/?view=roles, ?view=explain and ?view=changes, as access-manager@example.test:
+  explain reader-sm (Selvi, Store Manager), reader-buyer (Bina, Category head of Sarees, East), reader-opsexec (Sundar, to Correct),
+  reader-staff1 (Siva, who would lose Dash) and reader-office (Omar, who would gain every store).
 View as (#1222), same password:
   view-as-tester@example.test          View As Tester: sees Dash as any of the people above, for viewing only
   view-as-manager@example.test         Report Access Manager and View As Tester: "What a person sees" offers View as`)

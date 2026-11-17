@@ -42,7 +42,8 @@ export interface NavStep {
   row?: string
   filters?: ListFilter[]
   pane?: NavPane
-  view?: 'form' | 'map' | 'tree'
+  // #1267: a record page's tab, Collaboration and Activity included, is kept in the walk.
+  view?: 'form' | 'map' | 'tree' | 'collaboration' | 'activity'
   // tree node ids unfolded
   expanded?: string[]
   place?: 'auto' | 'right' | 'bottom'
@@ -165,7 +166,7 @@ function readStep(v: unknown): NavStep | null {
     step.pane = pane
   }
   if (v.view !== undefined) {
-    if (!oneOf(v.view, ['form', 'map', 'tree'] as const)) return null
+    if (!oneOf(v.view, ['form', 'map', 'tree', 'collaboration', 'activity'] as const)) return null
     step.view = v.view
   }
   if (v.expanded !== undefined) {

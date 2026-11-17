@@ -290,7 +290,7 @@ describe('third review round', () => {
     const rr80 = await person('RR-80')
     await linkDelegated(rr80, 'tl_80', { subject: 'RR-80' })
     const res = await admin.get<{ methods: { key: string; label: string; enabled: boolean }[] }>(`/api/people/${rr80}/identities`)
-    expect(res.methods).toContainEqual({ key: 'stylehr', kind: 'delegated_password', label: 'StyleHR', enabled: false })
+    expect(res.methods).toContainEqual({ key: 'stylehr', kind: 'delegated_password', label: 'StyleHR', enabled: false, employees_only: false })
   })
 
   test('a failed Google link always comes back to the Sign-in methods page, never raw JSON', async ({ api }) => {

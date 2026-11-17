@@ -119,36 +119,29 @@ test("a file reads as its file's name in the pane", async ({ admin }) => {
   }
 })
 
+// #1218 slice 1: a group's rows are lines, each a link with its facts beneath.
+const itemLine = async (bin: HTMLElement, name: RegExp) =>
+  (await within(bin).findByRole('link', { name }, T)).closest('[data-testid=linked-row]') as HTMLElement
+
 test("a group's rows show a choice by its label", async ({ admin }) => {
   const bin = await openNorthBay(admin)
   fireEvent.click(await within(bin).findByRole('button', { name: `${ITEM} 2` }, T))
-  const table = await within(bin).findByRole('table', {}, T)
-  await waitFor(() => expect(within(table).getByRole('row', { name: /Hinges/ })).toHaveTextContent('Prime'))
+  await waitFor(async () => expect(within(await itemLine(bin, /^Hinges/)).getByTestId('linked-row-facts')).toHaveTextContent('Prime'))
 })
 
-test("Enter on a group's row drills to it", async ({ admin }) => {
+test("clicking a group's row drills to it", async ({ admin }) => {
   const bin = await openNorthBay(admin)
   fireEvent.click(await within(bin).findByRole('button', { name: `${ITEM} 2` }, T))
-  const table = await within(bin).findByRole('table', {}, T)
-  fireEvent.keyDown(await within(table).findByRole('row', { name: /Hinges/ }, T), { key: 'Enter' })
+  fireEvent.click(await within(bin).findByRole('link', { name: /^Hinges/ }, T))
   expect(await pane(/^Hinges/)).toHaveTextContent(ITEM)
 })
 
-test("a key other than Enter on a group's row stays on the bin", async ({ admin }) => {
+test("Ctrl-click on a group's row is left to the browser, a new tab", async ({ admin }) => {
   const bin = await openNorthBay(admin)
   fireEvent.click(await within(bin).findByRole('button', { name: `${ITEM} 2` }, T))
-  const table = await within(bin).findByRole('table', {}, T)
-  fireEvent.keyDown(await within(table).findByRole('row', { name: /Hinges/ }, T), { key: 'a' })
+  const link = await within(bin).findByRole('link', { name: /^Hinges/ }, T)
+  expect(fireEvent.click(link, { ctrlKey: true })).toBe(true)
   expect(screen.getByRole('complementary', { name: /^North bay/ })).toBeInTheDocument()
-})
-
-test("a compact group's row drills to it", async ({ admin }) => {
-  const bin = await openNorthBay(admin)
-  fireEvent.click(await within(bin).findByRole('button', { name: `${ITEM} 2` }, T))
-  await within(bin).findByRole('table', {}, T)
-  fireEvent.click(within(bin).getByRole('button', { name: 'Compact' }))
-  fireEvent.click(await within(bin).findByRole('button', { name: /^Hinges/ }, T))
-  expect(await pane(/^Hinges/)).toHaveTextContent(ITEM)
 })
 
 test('Ctrl-click on Open as list is left to the browser, a new tab', async ({ admin }) => {

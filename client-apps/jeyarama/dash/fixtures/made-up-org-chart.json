@@ -739,6 +739,12 @@
    "name": "Kumar",
    "says": "one of four staff named Kumar (#1216): on the staff list with no job today",
    "jobs": []
+  },
+  {
+   "key": "opsexec",
+   "name": "Sundar Operations",
+   "says": "runs Lakeside, but HR has him as Head office staff titled Operations Executive: Explain him, then Correct to Store Manager (#1218)",
+   "jobs": [["Head office staff", "LKS", {"designation": "Operations Executive"}]]
   }
  ],
  "sectionPeople": [
@@ -1019,6 +1025,7 @@
    "Lata No-Sign-In"
   ]
  ],
+ "designations": ["Operations Executive"],
  "regions": [
   "East",
   "West"
