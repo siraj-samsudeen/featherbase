@@ -55,6 +55,26 @@ type Grant = { grant?: { role: string }; withdraw?: { role: string } }
 export const withoutTeamManager = <T extends Grant | { create?: string }>(list: T[]) =>
   list.filter(entry => ('create' in entry ? entry.create : ((entry as Grant).grant ?? (entry as Grant).withdraw)?.role) !== TEAM_MANAGER)
 
+/** #1218's 0.13.27 taken out of a manifest: no business role Tables, their grants, or the reads of HR titles. Its reads and
+ *  actions stay declared: the earlier version shares this build's server module. */
+export const SHADOW_TABLES = ['dash.business_role', 'dash.business_role_permission', 'dash.title_map', 'dash.role_assignment']
+/** #1218's grants, which this version brings too: the upgrade tests of earlier steps compare without them. */
+export const withoutBusinessRoles = <T,>(list: T[]) =>
+  list.filter(entry => !SHADOW_TABLES.includes(((entry as Grant & { grant?: { table?: string } }).grant as { table?: string } | undefined)?.table ?? ''))
+export function revertBusinessRoles(manifest: { migrations: { id: string }[]; tables?: { name: string }[]; permissions?: { table: string }[];
+  baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] } }) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_shadow', fromVersion: '0.13.26' })
+  if (manifest.tables) manifest.tables = manifest.tables.filter(t => !SHADOW_TABLES.includes(t.name))
+  if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !SHADOW_TABLES.includes(p.table))
+  if (manifest.actions) manifest.actions.tables = manifest.actions.tables.filter(t => !SHADOW_TABLES.includes(t))
+  const read = manifest.baseTables?.read
+  if (read) {
+    for (const table of [...SHADOW_TABLES, 'Designation']) delete read[table]
+    read['Job Assignment'] = read['Job Assignment'].filter(c => c !== 'designation')
+    read.Cluster = read.Cluster.filter(c => c !== 'name')
+  }
+}
+
 /** #1219's 0.13.26 taken out of a manifest. Its Put back action stays declared: the earlier version
  *  shares this build's server module, and the platform refuses handlers it doesn't declare. */
 export function revertMdeReview(manifest: { migrations: { id: string }[] }) {
@@ -79,7 +99,8 @@ export const withoutViewAsTester = <T extends Grant | { create?: string }>(list:
  */
 export function revertViewAs(manifest: { roles: string[]; permissions: { role: string }[]; migrations: { id: string }[]; viewAs?: unknown }) {
   // #1254's 0.13.23 to 0.13.25 change no Table, role or grant; they come off first.
-  // #1219's 0.13.26 sits on top of #1254's steps; it comes off first.
+  // #1219's 0.13.26 sits on top of #1254's steps, and #1218's 0.13.27 on top of it; they come off first.
+  revertBusinessRoles(manifest as never)
   revertMdeReview(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'deciders_read_together', fromVersion: '0.13.24', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'holders_read_whole', fromVersion: '0.13.23', operations: [] })

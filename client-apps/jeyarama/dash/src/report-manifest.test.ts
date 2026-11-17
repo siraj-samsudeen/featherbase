@@ -10,6 +10,7 @@ import type { SalesRow } from './report.ts'
 import { PROVIDER_FIELDS, PROVIDER_TABLES } from './provider.ts'
 import { BASE_TABLES } from './my-sections.ts'
 import { BUYER_TABLES } from './buyers.ts'
+import { DESIGNATION, SHADOW_TABLES } from './business-roles-server.ts'
 
 type Dataset = { name: string; source: string; query: string; columns: { name: string; type: string }[]; keys: string[]; filters: Record<string, string>
   guard?: { kind: string; column?: string; value?: number; within?: string }[] }
@@ -149,7 +150,7 @@ describe("last month's datasets", () => {
 describe('what Dash owns and what it reads', () => {
   it('owns its list of Dives, its entry Table, and the report access Tables (#1046)', () => {
     expect([manifest.entryTable, manifest.tables.map(table => table.name)])
-      .toEqual(['dash.report', ['dash.report', 'dash.report_bundle', 'dash.report_bundle_member', 'dash.report_access']])
+      .toEqual(['dash.report', ['dash.report', 'dash.report_bundle', 'dash.report_bundle_member', 'dash.report_access', ...SHADOW_TABLES]])
   })
 
   it('decides scope with none of its own Tables, so role grants decide who gives reports', () => {
@@ -159,7 +160,9 @@ describe('what Dash owns and what it reads', () => {
   it("declares a read of every Table its scope provider and Your sections read, and of nothing else", () => {
     // #1046: and its own report access Tables, read as the app so a reader needs no grant on them.
     expect(Object.keys(manifest.baseTables.read).sort()).toEqual([...new Set([...PROVIDER_TABLES, ...BASE_TABLES, ...BUYER_TABLES,
-      'dash.report_access', 'dash.report_bundle', 'dash.report_bundle_member'])].sort())
+      'dash.report_access', 'dash.report_bundle', 'dash.report_bundle_member',
+      // #1218: the business roles in shadow, and the HR title they map from.
+      ...SHADOW_TABLES, DESIGNATION])].sort())
   })
 
   it('declares the Tables the scope provider reads, as the provider lists them', () => {
@@ -223,7 +226,9 @@ describe('the read grants, declared before the first install', () => {
     expect(writes.map(p => [p.role, p.table])).toEqual([['Report Access Manager', 'dash.report'],
       ['Report Access Manager', 'dash.report_bundle'], ['Report Access Manager', 'dash.report_bundle_member'], ['Report Access Manager', 'dash.report_access'],
       // #1217: a Team Report Manager writes only the access rows they made, and the save rule takes them only from Dash's own actions.
-      ['Team Report Manager', 'dash.report_access']])
+      ['Team Report Manager', 'dash.report_access'],
+      // #1218: the business roles in shadow; no delete, a hand change is marked removed.
+      ...SHADOW_TABLES.map(table => ['Report Access Manager', table])])
     expect(manifest.permissions.find(p => p.role === 'Team Report Manager' && p.table === 'dash.report_access')).toEqual({
       table: 'dash.report_access', role: 'Team Report Manager', scope_mode: 'creator', operations: { read: '@basic', create: '@basic', update: '@basic' } })
   })
@@ -289,9 +294,11 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['deciders_read_together', '0.13.24', '0.13.25', 0],
       // #1219: the master data team's Put back action; no Table change, and no new read.
       ['mde_review', '0.13.25', '0.13.26', 0],
+      // #1218: business roles in shadow, four Tables that decide no one's access yet
+      ['business_roles_shadow', '0.13.26', '0.13.27', 4],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
-    expect(pkg.version).toBe('0.13.26')
+    expect(pkg.version).toBe('0.13.27')
   })
 })

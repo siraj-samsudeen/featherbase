@@ -14,6 +14,7 @@ import { prefillActions } from './department-prefill.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
 import { VIEW_AS_TESTER, viewAsPeople } from './view-as-people.ts'
+import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, removeRole } from './business-roles-server.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -327,6 +328,11 @@ export const actions = {
   add_to_bundle: (context: AccessContext) => addToBundle(context),
   remove_from_bundle: (context: AccessContext) => removeFromBundle(context),
   add_report: (context: AccessContext) => addReport(context),
+  // #1218: business roles in shadow; they change no one's access.
+  give_role: (context: AccessContext) => giveRole(context),
+  remove_role: (context: AccessContext) => removeRole(context),
+  map_title: (context: AccessContext) => mapTitle(context),
+  add_starting_roles: (context: AccessContext) => addStartingRoles(context),
 }
 
 export const reads = {
@@ -355,6 +361,13 @@ export const reads = {
   manages_access(context: ReadContext) {
     return managesAccess(context as AccessContext) || managesTeamAccess(context as AccessContext)
   },
+
+  /** #1218: whether this person sees the business roles pages (company-wide managers only), for the sidebar's links. */
+  manages_roles: (context: ReadContext) => managesAccess(context as AccessContext),
+  /** #1218, in shadow: the Business Roles page, Explain a person, and Who would gain or lose access. Company-wide managers only. */
+  business_roles: (context: ReadContext) => businessRoles(context as AccessContext),
+  explain_person: (context: ReadContext) => explainPerson(context as AccessContext),
+  access_changes: (context: ReadContext) => accessChanges(context as AccessContext),
 
   /** The Report access page (#1046). Managers only. */
   access_page: (context: ReadContext) => accessPage(withReach(context as AccessContext)),
