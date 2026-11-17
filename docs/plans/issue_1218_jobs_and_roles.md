@@ -119,3 +119,17 @@ Clients think "give these apps to these people or roles". The finer detail comes
 So level 2 is renamed **"App and level"** (Dash · Reader, Tasker · Manager). Holding any level of an app means the person can open that app.
 A business role reads as a list of apps, each at a level. Explain-a-person shows "Apps it opens, and at what level".
 Open: may an app and level be given straight to one person (for example a consultant given Tasker · User), or only through a business role? This is folded into Q1.
+
+## Decisions
+
+### D1 — Shape (owner, 17-Nov-2026: "Yes, agree")
+Three fixed levels: business role → app access → permission. Normally a person gets apps through their business role. As an exception, one person can be given an app directly, with a reason and an end date (consultants, guests). No roles inside roles. No "X Member" roles.
+
+## Owner's steer, 17-Nov-2026: fine-grained by area, and fewer words
+
+- Master data needs fine-grained rights: a category manager manages their category, and a store manager manages the sections in their store.
+- The location hierarchy is store → cluster → region → whole company. Site, store and plant are near-synonyms. How should they be handled?
+- "Use Dash" / "Dash Reader" / "Reports: View" is redundant. There should be one Basic bundle that gives most apps, with CRUD on your own things. A manager adds team level.
+- Team, location and category are separate hierarchies that cut across each other, like a consulting n×n matrix. How do we present that simply?
+
+The answer drafted in the explainer: every permission is a thing, a verb and a **reach**: Own, Team, Area or All. The area comes from the assignment, as one point on each axis (location, merchandise). Its place in the people tree gives the team. To be asked as Q2.
