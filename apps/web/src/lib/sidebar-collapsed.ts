@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
-import { noteShortcutUse } from './shortcuts'
+import { SIDEBAR_SHORTCUT_DEF, addShortcut, noteShortcutUse } from './shortcuts'
 
 // #1227: one sidebar state for every page that has a sidebar — the Admin's own
 // and the shared app sidebar (<featherbase-sidebar>) under any installed app.
@@ -70,10 +70,13 @@ export function readSidebar(user: string | undefined): SidebarState {
   return stateFor(user)
 }
 
-export function toggleSidebarCollapsed(user: string | undefined): void {
+/** #1251: every toggle but the key's is a mouse or touch control (the bar's
+ *  icon, the rail's footer and edge); each use is noted for the shortcut tips. */
+export function toggleSidebarCollapsed(user: string | undefined, via: 'key' | 'mouse' = 'mouse'): void {
   const collapsed = !stateFor(user).collapsed
   save(user, collapsed)
   set({ collapsed })
+  noteShortcutUse(SIDEBAR_SHORTCUT_DEF.id, via)
 }
 
 export function setSidebarDrawerOpen(open: boolean): void {
@@ -88,9 +91,12 @@ export function registerSidebar(user: string | undefined): () => void {
     set({ present: 1, collapsed: load(user), drawerOpen: false })
   } else set({ present: state.present + 1 })
   let left = false
+  // #1251: while a sidebar is on the page, its key is on the shortcut list.
+  const removeShortcut = addShortcut(SIDEBAR_SHORTCUT_DEF)
   return () => {
     if (left) return
     left = true
+    removeShortcut()
     set({ present: Math.max(0, state.present - 1), ...(state.present <= 1 ? { drawerOpen: false } : {}) })
   }
 }
@@ -201,10 +207,7 @@ export function listenForSidebarKeys(user: () => string | undefined, target: Doc
     if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'b') return
     if (isEditingText(e.composedPath()[0] ?? e.target) || isDrawerWidth()) return
     e.preventDefault()
-    if (!e.repeat) {
-      toggleSidebarCollapsed(user())
-      noteShortcutUse('sidebar', 'key') // #1251: taught and remembered
-    }
+    if (!e.repeat) toggleSidebarCollapsed(user(), 'key')
   }
   target.addEventListener('keydown', onKey)
   return () => target.removeEventListener('keydown', onKey)
