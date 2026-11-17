@@ -16,7 +16,12 @@ interface ReadContext {
   userName: string
   /** #918: the caller's own roles. */
   roles?: readonly string[]
-  people: { names(ids: string[]): Promise<Record<string, string | null>>; enabled(ids: string[]): Promise<string[]> }
+  people: {
+    names(ids: string[]): Promise<Record<string, string | null>>
+    /** #1224: names of people who acted on Tickets' own rows, whatever the caller may read. */
+    actorNames(ids: string[]): Promise<Record<string, string | null>>
+    enabled(ids: string[]): Promise<string[]>
+  }
   payload: unknown
   settings: Readonly<Record<string, string>>
   reject(message: string, fields?: Record<string, string>): never
@@ -346,7 +351,20 @@ function workflow(request: Row, events: Row[]) {
   const approval = decoded.filter(e => e.operation === 'decide' && e.approval_key === request.approval_key).at(-1)
   return { verification, approval }
 }
-// Names of the people who acted in Tickets, as each of them last appeared.
+// #1256: what a viewer is shown, as Person holds it now: anyone who acted on
+// Tickets' rows (whatever the viewer may read), then anyone the viewer may read
+// or the settings name. An id neither names is absent.
+async function liveNames(ctx: ReadContext, ids: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  const add = (named: Record<string, string | null>) => { for (const [id, name] of Object.entries(named)) if (name) out[id] = name }
+  for (let i = 0; i < ids.length; i += 500) add(await ctx.people.actorNames(ids.slice(i, i + 500)))
+  const rest = ids.filter(id => !out[id] && /^(psn|sa|svc)_/.test(id))
+  for (let i = 0; i < rest.length; i += 500) add(await ctx.people.names(rest.slice(i, i + 500)))
+  return out
+}
+// The caller's own stored name copy, as they appear now. Only their own: names
+// are read live (above), so a copy is shown only where Person can't be read,
+// and a copy of someone who never acts again keeps their last name (#1256).
 async function remember(ctx: Context) {
   const [row] = await ctx.documents.list('tickets.member', { fields: ['row_id', 'full_name', 'updated_at'], filters: [['row_id', '=', ctx.user]], limit_page_length: 1 })
   if (!row) await ctx.documents.create('tickets.member', { row_id: ctx.user, full_name: ctx.userName })
@@ -373,11 +391,12 @@ async function names(ctx: ReadContext, ...values: unknown[]): Promise<Record<str
   const ids = new Set<string>()
   for (const value of values) idsIn(value, ids)
   if (!ids.size) return {}
-  const rows = await all(ctx, 'tickets.member', ['row_id', 'full_name'], [['row_id', 'in', [...ids]]])
-  const known: Record<string, string> = Object.fromEntries(rows.map(row => [String(row.row_id), String(row.full_name)]))
-  // Anyone else (a "raised for" person who never used Tickets), as the viewer may see them.
-  const rest = [...ids].filter(id => !known[id] && /^(psn|sa|svc)_/.test(id))
-  if (rest.length) for (const [id, name] of Object.entries(await ctx.people.names(rest))) if (name) known[id] = name
+  // #1256: Person first, live; the stored copy only for whoever it can't name
+  // (a "raised for" person who never acted, seen by someone who can't read Person).
+  const known = await liveNames(ctx, [...ids])
+  const rest = [...ids].filter(id => !known[id])
+  if (rest.length) for (const row of await all(ctx, 'tickets.member', ['row_id', 'full_name'], [['row_id', 'in', rest]]))
+    known[String(row.row_id)] = String(row.full_name)
   return known
 }
 async function history(ctx: ReadContext, ticket: Row) {

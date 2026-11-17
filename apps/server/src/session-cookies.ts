@@ -55,9 +55,9 @@ export function externalOrigin(c: Context): URL {
 // Mock flow stays same-origin (relative) so the dev proxy keeps the browser
 // on the SPA origin end to end; real Google needs an absolute redirect_uri
 // that byte-matches the registered one.
-export function oauthRedirectUri(c: Context, clientId: string): string {
-  if (!clientId) return OAUTH_CALLBACK_PATH
-  return `${externalOrigin(c).origin}${OAUTH_CALLBACK_PATH}`
+export function oauthRedirectUri(c: Context, clientId: string, callbackPath: string = OAUTH_CALLBACK_PATH): string {
+  if (!clientId) return callbackPath
+  return `${externalOrigin(c).origin}${callbackPath}`
 }
 
 // The login challenge (OAuth `state` + PKCE verifier) rides HttpOnly cookies

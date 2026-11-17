@@ -120,7 +120,7 @@ function DecideCard({ move, onDecided }: { move: BuyerMoveToDecide; onDecided: (
           {move.from && <> from <RecordLink table={RECORD.buyerSection} id={move.from_id}>{move.from}</RecordLink></>}
           {move.from ? ' to ' : ' into '}<RecordLink table={RECORD.buyerSection} id={move.to_id}>{move.to}</RecordLink>
           {' '}<span className="fd-muted font-normal">· <RecordLink table={RECORD.region} id={move.region}>{move.region}</RecordLink></span></p>
-        <p className="fd-muted text-sm">{move.applied ? `Already in use. Keep it, or undo it.` : `Asked on ${fmtDate(move.asked_on)}. Keeping it changes who buys ${move.subcategory_name} from today.`}</p>
+        <p className="fd-muted text-sm">{move.applied ? <>Already in use.<span data-action-hint> Keep it, or undo it.</span></> : `Asked on ${fmtDate(move.asked_on)}. Keeping it changes who buys ${move.subcategory_name} from today.`}</p>
         {rejecting && <Field label={move.applied ? 'Reason' : 'Why not?'}><TextInput value={reason} onChange={event => setReason(event.target.value)} data-testid="buyer-reject-reason" /></Field>}
         {error && <Notice tone="negative"><span data-testid="buyer-decide-refused">{error}</span></Notice>}
         <div className="flex flex-wrap gap-2">

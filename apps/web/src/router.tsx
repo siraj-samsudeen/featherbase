@@ -13,6 +13,7 @@ import {
 import { parseFilters, tableSlug } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
+import { SetPasswordPage } from './pages/SetPassword'
 import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
@@ -40,6 +41,8 @@ import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { AccessExplanation } from './pages/AccessExplanation'
 import { AccountLayout } from './pages/AccountLayout'
+import { AgentConnectPage } from './pages/AgentConnect'
+import { ConnectedApps } from './pages/ConnectedApps'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { InstanceHealth } from './pages/InstanceHealth'
@@ -190,6 +193,17 @@ const loginRoute = createRoute({
   component: LoginPage,
 })
 
+// mcp-oauth-connect (#1207): where an agent sends the person's browser to
+// connect it (the authorization endpoint). Signed out, the usual sign-in first,
+// with the agent's whole request as the way back. The page sends a signed-out
+// browser to sign in itself: the route's location has the query re-encoded,
+// which would change the agent's values (a long numeric state, say).
+const agentConnectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/connect',
+  component: AgentConnectPage,
+})
+
 // WEB-002: public web form (no session required).
 const webFormRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -260,6 +274,16 @@ const resetPasswordRoute = createRoute({
   component: ResetPasswordPage,
 })
 
+// #1257: public "Set your password" page (target of a password invite).
+const setPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/set-password',
+  validateSearch: (search: Record<string, unknown>) => ({
+    key: searchString(search.key),
+  }),
+  component: SetPasswordPage,
+})
+
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/admin',
@@ -272,13 +296,12 @@ const adminRoute = createRoute({
 })
 
 function AdminRouteLayout() {
-  const wide = useRouterState({ select: (state) => state.matches.some((match) =>
+  // #1253 (Siraj, 17-Nov): every page fills the panel's width; the shell sets it.
+  // Two pages also fill its height: the source browser and copy setup.
+  const fillHeight = useRouterState({ select: (state) => state.matches.some((match) =>
     match.routeId === sourceBrowserRoute.id || match.routeId === copySetupRoute.id,
   ) })
-  // #1018: a Table's list has no reading width to keep, so a wide one gets the whole page.
-  // Lists (a Table's, All tables) take the width, up to the standard's 1280.
-  const fullWidth = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === tableRoute.id || match.routeId === allTablesRoute.id) })
-  return <AdminLayout wide={wide} fullWidth={fullWidth} />
+  return <AdminLayout fillHeight={fillHeight} />
 }
 
 /** An Admin path that is neither a known page nor an existing Table: said
@@ -686,6 +709,13 @@ const signInMethodsRoute = createRoute({
   component: SignInMethods,
 })
 
+// mcp-oauth-connect (#1207): the agents the signed-in person connected.
+const connectedAppsRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: 'connected-apps',
+  component: ConnectedApps,
+})
+
 // #628: what a person can see, and why. An account page, so a person without
 // Admin access opens their own; the server refuses anyone else's to all but a
 // System Manager.
@@ -1082,13 +1112,15 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   featherbaseIndexRoute,
   loginRoute,
+  agentConnectRoute,
   resetPasswordRoute,
+  setPasswordRoute,
   webFormRoute,
   oauthCallbackRoute,
   portalListRoute,
   portalDocRoute,
   salesTargetRoute,
-  accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
+  accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
   adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

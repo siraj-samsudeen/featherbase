@@ -130,7 +130,9 @@ describe('permissions-and-roles', () => {
       // /api/app_catalog is its switcher listing the apps this person can open
       // (#1227). /api/view_as is the bar asking whether this person may view as
       // anyone (#1222): "no" for them. The closed-app list stays a System Manager's.
-      const adminCalls = urls.filter((u) => !/^\/api\/(whoami|brand|runtime_app_versions|sales_target\/|app_catalog$|view_as$)/.test(u))
+      // /api/user_settings/__shortcuts is the bar reading the person's own
+      // keyboard-shortcut learning (#1251): their record, nobody else's.
+      const adminCalls = urls.filter((u) => !/^\/api\/(whoami|brand|runtime_app_versions|sales_target\/|app_catalog$|view_as$|user_settings\/__shortcuts$)/.test(u))
       expect(adminCalls).toEqual([])
     })
   })

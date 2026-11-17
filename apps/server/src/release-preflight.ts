@@ -117,6 +117,10 @@ export async function settingsRequirements(): Promise<Required<Pick<CheckVariabl
     select 1 from sign_in_method
     where kind = 'google' and enabled and coalesce(trim(client_id), '') <> '' limit 1`
   if (google) conditions.add('google-sign-in-enabled')
+  const [microsoft] = await sql`
+    select 1 from sign_in_method
+    where kind = 'microsoft' and enabled and coalesce(trim(client_id), '') <> '' limit 1`
+  if (microsoft) conditions.add('microsoft-sign-in-enabled')
   // A Data Source reads its connection from the variable its url_env names,
   // so that variable is required while the source exists.
   const rows = await sql`

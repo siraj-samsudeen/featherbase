@@ -159,7 +159,8 @@ test('a Person form is headed by the name, never the id, offers no Rename, and R
   await userEvent.click(within(form).getByRole('button', { name: 'Record actions' }))
   expect(within(form).queryByRole('button', { name: 'Rename' })).toBeNull()
   const recent = await screen.findAllByTestId('sidebar-recent')
-  const row = recent.find((r) => r.textContent?.includes('Person'))!
+  // #1253 (style A): the row's table is named in its tooltip, not on a second line.
+  const row = recent.find((r) => r.getAttribute('title')?.startsWith('Person'))!
   await waitFor(() => expect(row).toHaveTextContent('Asha Form'))
   expect(row.textContent).not.toContain(asha.user!)
   expect(row.getAttribute('title') ?? '').not.toContain(asha.user!)

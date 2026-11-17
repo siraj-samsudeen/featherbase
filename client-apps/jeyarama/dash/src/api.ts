@@ -54,12 +54,17 @@ const platformGet = async <T>(path: string): Promise<T> => {
 export const mayViewAs = async () => (await platformGet<{ may?: boolean }>('/api/view_as').catch(() => ({ may: false }))).may === true
 
 /** #1222: view as `person`; the page (and other tabs on this sign-in) reload to show what they see. */
-export async function startViewAs(person: string): Promise<void> {
+export async function startViewAs(person: string, name: string): Promise<void> {
   const response = await fetch('/api/view_as/start', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ person }) })
   const body = await response.json().catch(() => ({}))
   if (!response.ok) throw new ApiError(body.error?.message ?? 'Could not view as them. Try again.', response.status)
-  try { window.localStorage.setItem('featherbase.view-as.changed', String(Date.now())) } catch { /* private window: this tab only */ }
-  window.location.reload()
+  try {
+    window.localStorage.setItem('featherbase.view-as.changed', String(Date.now()))
+    // Whom the platform's pages are about now (its lib/viewing-as.ts): every "me" is this person.
+    window.localStorage.setItem('featherbase.viewing-as', JSON.stringify({ row_id: person, full_name: name }))
+  } catch { /* private window: this tab only */ }
+  // Land on Dash's home: the page you started from (Report access) may not be one they can open.
+  window.location.assign(window.location.pathname)
 }
 
 /**

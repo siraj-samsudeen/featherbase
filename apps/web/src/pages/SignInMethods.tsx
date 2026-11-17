@@ -7,10 +7,12 @@ import { ApiError, api, getSessionUser } from '../lib/api'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
 import { Button, Card, Notice, buttonClasses } from '@featherbase/shop-floor'
+import { NotWhileViewing } from '../components/ViewAs'
+import { viewedPerson } from '../lib/viewing-as'
 import { usePageTitle } from '../lib/page-title'
 
 // person-identities (#275): the ways the signed-in person can get in — their
-// password and each linked outside account — with linking Google and removing
+// password and each linked outside account — with linking Google or Microsoft and removing
 // a method. The server refuses removing the last way in and anything from a
 // test-mode sign-in; this page shows its message.
 
@@ -32,26 +34,34 @@ interface MyMethods {
   test_mode: boolean
 }
 
-const LINK_OUTCOMES: Record<string, { tone: 'positive' | 'negative' | 'caution'; text: string }> = {
-  linked: { tone: 'positive', text: 'Your Google account is linked. You can sign in with it from now on.' },
-  taken: { tone: 'negative', text: 'That Google account belongs to another account. Contact your administrator.' },
-  reserved: { tone: 'negative', text: 'That Google address is reserved for another account. Contact your administrator.' },
-  google_failed: { tone: 'negative', text: 'Google did not confirm the account. Try again.' },
-  expired: { tone: 'caution', text: 'That link attempt expired or was started in another browser. Start it again from here.' },
-  sign_in_again: { tone: 'caution', text: 'Sign in again first, then link within a few minutes.' },
-  not_allowed: { tone: 'negative', text: 'Linking Google is not available for this sign-in.' },
+// A link attempt comes back as `?link=<code>`, with `&via=microsoft` when it
+// was Microsoft's; each text names the provider by its label.
+const LINK_OUTCOMES: Record<string, { tone: 'positive' | 'negative' | 'caution'; text: (p: string) => string }> = {
+  linked: { tone: 'positive', text: (p) => `Your ${p} account is linked. You can sign in with it from now on.` },
+  taken: { tone: 'negative', text: (p) => `That ${p} account belongs to another account. Contact your administrator.` },
+  reserved: { tone: 'negative', text: (p) => `That ${p} address is reserved for another account. Contact your administrator.` },
+  google_failed: { tone: 'negative', text: (p) => `${p} did not confirm the account. Try again.` },
+  microsoft_failed: { tone: 'negative', text: (p) => `${p} did not confirm the account. Try again.` },
+  expired: { tone: 'caution', text: () => 'That link attempt expired or was started in another browser. Start it again from here.' },
+  sign_in_again: { tone: 'caution', text: () => 'Sign in again first, then link within a few minutes.' },
+  not_allowed: { tone: 'negative', text: (p) => `Linking ${p} is not available for this sign-in.` },
   domain_not_allowed: {
     tone: 'negative',
-    text: 'That Google account is not on a domain this site allows, so it was not linked. Link your work Google account instead.',
+    text: (p) => `That ${p} account is not on a domain this site allows, so it was not linked. Link your work ${p} account instead.`,
   },
-  wrong_session: { tone: 'caution', text: 'That link was started by a different sign-in. Try again.' },
-  failed: { tone: 'negative', text: 'Linking did not work. Try again.' },
+  wrong_session: { tone: 'caution', text: () => 'That link was started by a different sign-in. Try again.' },
+  failed: { tone: 'negative', text: () => 'Linking did not work. Try again.' },
 }
 
 const when = (iso: string | null) => (iso ? fmtInstantIST(iso) : 'never')
 
 export function SignInMethods() {
   usePageTitle('Sign-in methods')
+  // #1222: these are the signed-in account's own; never the tester's while the page is someone else's.
+  return viewedPerson() ? <NotWhileViewing what="Sign-in methods" /> : <OwnSignInMethods />
+}
+
+function OwnSignInMethods() {
   const qc = useQueryClient()
   const me = getSessionUser()?.row_id
   const { data, error } = useQuery({
@@ -62,10 +72,16 @@ export function SignInMethods() {
     mutationFn: (path: string) => api.delete(path),
     onSettled: () => qc.invalidateQueries({ queryKey: ['me', 'sign_in_methods'] }),
   })
-  const outcome = LINK_OUTCOMES[new URLSearchParams(window.location.search).get('link') ?? '']
+  const query = new URLSearchParams(window.location.search)
+  const outcome = LINK_OUTCOMES[query.get('link') ?? '']
   const labelOf = (key: string) => data?.methods.find((m) => m.key === key)?.label ?? key
   const google = data?.methods.find((m) => m.kind === 'google' && m.self_link)
   const hasGoogle = data?.identities.some((i) => i.linked && i.method === google?.key)
+  const microsoft = data?.methods.find((m) => m.kind === 'microsoft' && m.self_link)
+  const hasMicrosoft = data?.identities.some((i) => i.linked && i.method === microsoft?.key)
+  const outcomeProvider = query.get('via') === 'microsoft'
+    ? (data?.methods.find((m) => m.kind === 'microsoft')?.label || 'Microsoft')
+    : (data?.methods.find((m) => m.kind === 'google')?.label || 'Google')
   const { t } = useI18n()
   // #72: changing one's own password. #489 moved it here from the Account
   // menu, which holds only the name, Sign-in methods and Log out.
@@ -88,7 +104,7 @@ export function SignInMethods() {
       {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
       {outcome && (
         <div data-testid="link-outcome">
-          <Notice tone={outcome.tone}>{outcome.text}</Notice>
+          <Notice tone={outcome.tone}>{outcome.text(outcomeProvider)}</Notice>
         </div>
       )}
       {data?.test_mode && <Notice tone="caution">You signed in through test mode, so sign-in methods cannot be changed.</Notice>}
@@ -141,6 +157,11 @@ export function SignInMethods() {
         // A full-page navigation: the server's OAuth redirects drive the browser.
         <a href="/api/oauth/google/link" className={buttonClasses()} data-testid="link-google">
           Link a Google account
+        </a>
+      )}
+      {microsoft && !hasMicrosoft && !data?.test_mode && (
+        <a href="/api/oauth/microsoft/link" className={buttonClasses({ className: google && !hasGoogle ? 'ml-2' : '' })} data-testid="link-microsoft">
+          Link a Microsoft account
         </a>
       )}
       {/* person-resolution D9: a person keeps their own contact details here

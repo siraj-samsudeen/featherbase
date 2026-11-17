@@ -6,8 +6,10 @@ import { test, expect, renderApp } from './pg-test'
 import { holdResponses } from './held-requests'
 
 const WAIT = { timeout: 10_000 }
+/** #1253: the account page's chrome is its sidebar; the switcher is at its top. */
+const chrome = () => screen.getByTestId('account-sidebar')
 
-test("an account page whose address cannot say what it opens still opens, under the plain bar", async ({ createUser }) => {
+test("an account page whose address cannot say what it opens still opens, in the plain frame", async ({ createUser }) => {
   const me = await createUser({ roles: [] })
   const real = globalThis.fetch
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -17,17 +19,17 @@ test("an account page whose address cannot say what it opens still opens, under 
   })
   await renderApp('/featherbase/account/sign-in-methods', me)
   expect(await screen.findByTestId('account-layout', {}, WAIT)).toBeInTheDocument()
-  await waitFor(() => expect(within(screen.getByTestId('top-bar')).getByTestId('top-bar-name')).toHaveTextContent('Featherbase'), WAIT)
+  await waitFor(() => expect(within(chrome()).getByTestId('top-bar-name')).toHaveTextContent('Featherbase'), WAIT)
 })
 
 test("the bar of an account page names nobody's product until the server says who is looking", async ({ createUser }) => {
   const me = await createUser({ roles: [] })
   const whoami = holdResponses('/api/whoami')
   await renderApp('/featherbase/account/sign-in-methods', me)
-  const bar = await screen.findByTestId('top-bar', {}, WAIT)
+  const bar = await screen.findByTestId('account-sidebar', {}, WAIT)
   await whoami.asked
   await new Promise((r) => setTimeout(r, 100))
   expect(within(bar).queryByTestId('top-bar-name')?.textContent ?? '').toBe('')
   await act(async () => { whoami.release() })
-  await waitFor(() => expect(within(screen.getByTestId('top-bar')).getByTestId('top-bar-name')).toHaveTextContent('Featherbase'), WAIT)
+  await waitFor(() => expect(within(chrome()).getByTestId('top-bar-name')).toHaveTextContent('Featherbase'), WAIT)
 })

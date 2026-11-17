@@ -1,7 +1,7 @@
 import { Outlet } from '@tanstack/react-router'
-import { TopBar, useOnAppAddress } from '../components/TopBar'
+import { PagePickerSlot, TopBar, useOnAppAddress } from '../components/TopBar'
 import { useShellKind } from '../lib/session'
-import { AccountSidebarGroup, AdminShell, SidebarAside } from './AdminLayout'
+import { AccountSidebarGroup, AdminShell, PAGE_PANEL, SidebarAside } from './AdminLayout'
 import { getSessionUser } from '../lib/api'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 
@@ -23,11 +23,11 @@ export function AccountLayout() {
 function AccountFrame() {
   const kind = useShellKind()
   const onAppAddress = useOnAppAddress()
-  if (kind === 'admin' && onAppAddress === false) return <AdminShell wide={false} account />
+  if (kind === 'admin' && onAppAddress === false) return <AdminShell fillHeight={false} account />
   // The page waits for the frame: swapping frames under it would remount it.
   const deciding = kind === 'loading' || onAppAddress === undefined
   return (
-    <div className="flex min-h-screen flex-col bg-canvas" data-testid="account-layout">
+    <div className="flex h-screen flex-col bg-canvas" data-testid="account-layout">
       <TopBar forPerson />
       {/* #1235 item 7: the shared sidebar with the Account group, and the page at
           the shared x (32px from the sidebar, left-aligned, at most 880px). */}
@@ -35,7 +35,8 @@ function AccountFrame() {
         <SidebarAside testid="account-sidebar" user={getSessionUser()?.row_id}>
           <AccountSidebarGroup />
         </SidebarAside>
-        <main className="min-w-0 flex-1 overflow-auto bg-canvas p-3 sm:px-5 sm:py-4">
+        <main className={PAGE_PANEL} data-testid="page-panel">
+          <PagePickerSlot />
           <div className="max-w-[880px]" data-testid="account-content">
             {!deciding && <Outlet />}
           </div>

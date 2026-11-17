@@ -73,6 +73,8 @@ export function ownFramePolicyPage(path: string): string | null {
 // every address serves them (an app's address keeps people out of Admin).
 export const ACCOUNT_ROOT = '/featherbase/account'
 export const ACCOUNT_SIGN_IN_METHODS_PATH = `${ACCOUNT_ROOT}/sign-in-methods`
+// mcp-oauth-connect (#1207): the agents a person connected.
+export const ACCOUNT_CONNECTED_APPS_PATH = `${ACCOUNT_ROOT}/connected-apps`
 
 // Static pages under /featherbase/admin (no Table behind them), one catalog
 // for every reader: the router, the page headings, the recent-actions

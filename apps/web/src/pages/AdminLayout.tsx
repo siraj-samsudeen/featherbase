@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { GROUP_TONE, RAIL_ROW, ROW_IDLE, RailFold, RailMenuItem, RailRule, SidebarRailContext, useSidebarRail, type GroupTone } from '../components/SidebarRail'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { GROUP_TONE, RAIL_ROW, ROW_IDLE, ROW_SELECTED, RailFold, RailMenuItem, RailRule, SIDEBAR_HEADING, SidebarRailContext, TableTile, useSidebarRail, type GroupTone } from '../components/SidebarRail'
 import { attachRailTips, railMark, sidebarWords } from '../lib/sidebar-rail'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { SIDEBAR_VIEWS_KEY } from '../lib/nav-settings'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import {
@@ -25,14 +25,12 @@ import { useCapabilities, useShellKind } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
-import { AppSwitcher } from '../components/AppSwitcher'
 import { ActionDisclosure } from '../components/ActionDisclosure'
-import { PHONE_QUERY, TopBar } from '../components/TopBar'
-import { isOpaqueId } from '../lib/people'
+import { TopBar } from '../components/TopBar'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
-import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
+import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
@@ -41,8 +39,9 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, Bookmark, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Upload, Compass, Database, Eye, History, Key, LayoutDashboard, ListChecks, LogIn, ShieldLock, Table, UserRound, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
+import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
 
 interface SearchHit {
   table: string
@@ -84,16 +83,16 @@ connectEventSink({
 // home page sidebar. All Tables render inside <Outlet/>.
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
-export function AdminLayout({ wide, fullWidth = false }: { wide: boolean; fullWidth?: boolean }) {
+export function AdminLayout({ fillHeight }: { fillHeight: boolean }) {
   // #489: the signed-in person's theme choice outlives every toggle on the page.
   return (
     <ThemeChoiceProvider>
-      <AdminLayoutForKind wide={wide} fullWidth={fullWidth} />
+      <AdminLayoutForKind fillHeight={fillHeight} />
     </ThemeChoiceProvider>
   )
 }
 
-function AdminLayoutForKind({ wide, fullWidth }: { wide: boolean; fullWidth: boolean }) {
+function AdminLayoutForKind({ fillHeight }: { fillHeight: boolean }) {
   const kind = useShellKind()
   // #489 item 10: while whoami loads, the bar's frame and name are drawn and
   // its right side stays empty — no flash of the wrong items.
@@ -114,10 +113,10 @@ function AdminLayoutForKind({ wide, fullWidth }: { wide: boolean; fullWidth: boo
   // A report reader has no Admin page left: their sign-in methods are an
   // account page now (#489), so every Admin address sends them to the report.
   if (kind === 'report-only') return <Navigate to={REPORT_PATH} replace />
-  return <AdminShell wide={wide} fullWidth={fullWidth} />
+  return <AdminShell fillHeight={fillHeight} />
 }
 
-export function AdminShell({ wide, fullWidth = false, account = false }: { wide: boolean; fullWidth?: boolean; account?: boolean }) {
+export function AdminShell({ fillHeight, account = false }: { fillHeight: boolean; account?: boolean }) {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -203,9 +202,6 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
   // #1248: collapsed (md+), the sidebar is an icon rail; each group draws its rail form.
   const drawerWidth = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const rail = collapsedChoice && !drawerWidth
-  // #489: on a phone the command bar takes its own row under the bar, so Tab
-  // still follows what the eye reads: the bar's row first, then the search.
-  const isPhone = useMediaQuery(PHONE_QUERY)
 
   // RT-003: unread notification count, live-updated when a realtime
   // 'notification' event arrives for this user.
@@ -241,7 +237,21 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
+  useShortcut(COMMAND_SHORTCUT_DEF) // #1251
+  useShortcut(ADMIN_HOME_SHORTCUT_DEF)
+  // G then N makes a row of the Table on screen: listed only where there is one.
+  const onTable = useRouterState({ select: (s) => s.matches.some((m) => 'table' in m.params) })
+  useShortcut(NEW_ROW_SHORTCUT_DEF, onTable)
   const commandFormRef = useRef<HTMLFormElement>(null)
+  // #1253: the command bar is a box in the middle of the screen, drawn while
+  // open; its input takes the focus once it is drawn.
+  useLayoutEffect(() => {
+    if (barFocused) searchRef.current?.focus()
+  }, [barFocused])
+  function openCommandBar() {
+    setBarFocused(true)
+    setSelection(null)
+  }
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
@@ -284,6 +294,7 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
         setSelection(null)
         searchRef.current?.focus()
         searchRef.current?.select()
+        noteShortcutUse('command', 'key')
         return
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
@@ -298,10 +309,12 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
         leader = now
       } else if (e.key.toLowerCase() === 'd' && now - leader < 1000) {
         leader = 0
+        noteShortcutUse(ADMIN_HOME_SHORTCUT_DEF.id, 'key')
         navigate({ to: '/featherbase/admin' })
       } else if (e.key.toLowerCase() === 'n' && now - leader < 1000) {
         leader = 0
         const dt = currentTable()
+        if (dt) noteShortcutUse(NEW_ROW_SHORTCUT_DEF.id, 'key')
         if (dt) navigate({ to: '/featherbase/admin/table/$table/new', params: { table: dt }, search: { prefill: undefined } })
       } else {
         leader = 0
@@ -500,7 +513,8 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
       ? commands.filter((c) => c.label.toLowerCase().includes(search.trim().toLowerCase()))
       : []
 
-  // The command bar: inline in the top bar from sm up, its own row on a phone.
+  // #1253: the command bar, opened from the sidebar's field or ⌘K as a wide box
+  // in the middle of the screen.
   const commandBar = (
         <form
           ref={commandFormRef}
@@ -521,9 +535,10 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
               setSelection(null)
             }
           }}
-          className="relative w-full sm:min-w-0 sm:flex-1 sm:mx-auto sm:max-w-4xl"
+          className="relative w-full"
           data-testid="awesomebar"
         >
+          <div className="relative">
           <input
             ref={searchRef}
             value={search}
@@ -555,14 +570,15 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
             aria-controls={barFocused ? 'command-results' : undefined}
             aria-activedescendant={selectedId}
             aria-autocomplete="list"
-            className={inputClasses('bg-canvas pr-12 focus:bg-surface')}
+            className={inputClasses('pr-12')}
           />
           <kbd
             className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-surface px-1 text-xs text-ink-subtle"
             aria-hidden="true"
           >
-            ⌘K
+            {COMMAND_SHORTCUT}
           </kbd>
+          </div>
           {barFocused && (suggestions.length > 0 ||
             pageHits.length > 0 ||
             commandHits.length > 0 ||
@@ -573,7 +589,7 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
               id="command-results"
               role="listbox"
               aria-label="Search results"
-              className={cardClasses('absolute z-20 mt-1 max-h-[min(70vh,32rem)] w-full overflow-y-auto py-1 [&_[aria-selected=true]]:bg-action-tint')}
+              className="mt-2 max-h-[min(60vh,32rem)] w-full overflow-y-auto py-1 [&_[aria-selected=true]]:bg-action-tint"
               data-testid="awesomebar-results"
               onMouseDown={(e) => e.preventDefault()}
             >
@@ -718,29 +734,28 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
 
   return (
     <>
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-canvas">
       {/* #465 D8: System Managers only, while a health check fails; above the
           top bar, beside the preview banner. */}
       <HealthBanner enabled={canManage} />
       <SetupBanner enabled={canManage} />
-      {/* #489: the shared top bar, with the Admin menus inside it: the app
-          switcher in the name's place, the sidebar toggle, the command bar
-          and the notification bell. md+: the left zone is exactly the
-          sidebar's width (w-60, TopBar) so the selector lines up with the
-          column below; the command bar then fills what is left up to the bell. */}
+      {/* #1253: no top bar. The shared bar draws the Admin's switcher, the
+          notification bell and the "Search or Command" field at the top of
+          the sidebar, and the account at its foot; a phone keeps a slim
+          header with the menu button. */}
       <TopBar
         home="admin"
-        left={<AppSwitcher />}
+        command={<CommandField rail={rail} onOpen={openCommandBar} />}
         beforeRight={
-          <div className="relative" title="Notifications">
+          <div className="relative shrink-0" title="Notifications">
             {/* An indicator, not a control, so it needs no thumb-sized hit area. */}
-            <span className="flex size-9 items-center justify-center text-ink-muted" data-testid="notif-bell">
-              <Bell aria-hidden size={20} />
+            <span className="flex size-8 items-center justify-center text-ink-muted" data-testid="notif-bell">
+              <Bell aria-hidden size={16} />
               <span className="sr-only">Notifications</span>
             </span>
             {(unread.data?.count ?? 0) > 0 && (
               <span
-                className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-negative px-1 text-xs font-semibold text-action-ink"
+                className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-negative px-1 text-xs font-semibold text-action-ink"
                 data-testid="unread-count"
               >
                 {unread.data?.count}
@@ -748,10 +763,16 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
             )}
           </div>
         }
-        below={isPhone && <div className="shrink-0 border-b border-border bg-surface px-2 pb-1 pt-1" data-testid="awesomebar-row">{commandBar}</div>}
+      />
+      <div
+        className={barFocused ? 'fixed inset-0 z-50 flex items-start justify-center bg-scrim/30 px-4 pt-[12vh]' : 'hidden'}
+        data-testid="command-palette"
       >
-        {!isPhone && commandBar}
-      </TopBar>
+        {/* A dialog only while open: closed, it is not one on the page. */}
+        <div role={barFocused ? 'dialog' : undefined} aria-label={barFocused ? 'Search or Command' : undefined} className={cardClasses('w-full max-w-2xl p-2 shadow-lg')}>
+          {commandBar}
+        </div>
+      </div>
 
       <div className="relative flex min-h-0 flex-1">
         <SidebarAside testid="admin-sidebar" user={user?.row_id}>
@@ -762,13 +783,10 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
               grouping and curation moved there, nothing is hidden. */}
           {/* The sidebar scrolls as ONE column: the Home Pages keep their full
               height whatever sits below them. */}
-          <nav className="shrink-0 px-2 pb-4 pt-3" data-testid="home-page-nav" aria-label="Modules">
+          <nav className={`shrink-0 px-2 ${rail ? 'py-1' : 'pt-1'}`} data-testid="home-page-nav" aria-label="Modules">
             {/* #1242 (admin-lists 8): headed and drawn like every other group. */}
             {rail ? <RailRule heading="Modules" /> : (
-            <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted" data-testid="sidebar-group-heading">
-              <LayoutDashboard aria-hidden size={12} className={GROUP_TONE.blue} />
-              Modules
-            </h2>
+            <h2 className={SIDEBAR_HEADING} data-testid="sidebar-group-heading">Modules</h2>
             )}
             {homePages.isLoading && (
               <p className="px-2 py-1 text-xs text-ink-subtle">Loading…</p>
@@ -791,13 +809,14 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
                   activeProps={{ className: SIDEBAR_ROW_SELECTED, 'aria-current': 'page' }}
                 >
                   {/* The page's own emoji takes the icon's place, unread. */}
+                  {/* #1253: a module with no emoji shows its initials, tinted in the group's hue. */}
                   {rail
                     ? (p.icon
                         ? <span aria-hidden className="text-base leading-none">{p.icon}</span>
-                        : <span aria-hidden data-testid="rail-mark" className={`grid h-[26px] w-[26px] place-items-center rounded-[7px] border-[1.5px] border-current text-xs font-bold leading-none ${GROUP_TONE.blue}`}>{mark}</span>)
+                        : <span aria-hidden data-testid="rail-mark" className={`grid h-[26px] w-[26px] place-items-center rounded-[7px] bg-current/15 text-xs font-bold leading-none ${GROUP_TONE.blue}`}>{mark}</span>)
                     : p.icon
-                      ? <span aria-hidden data-testid="sidebar-item-icon" className={`flex w-3.5 shrink-0 justify-center text-sm leading-none ${GROUP_TONE.blue}`}>{p.icon}</span>
-                      : <LayoutDashboard aria-hidden size={14} className={`shrink-0 ${GROUP_TONE.blue}`} data-testid="sidebar-item-icon" />}
+                      ? <span aria-hidden data-testid="sidebar-item-icon" className={`flex w-5 shrink-0 justify-center text-sm leading-none ${GROUP_TONE.blue}`}>{p.icon}</span>
+                      : <span aria-hidden data-testid="sidebar-item-icon" className={`grid h-5 w-5 shrink-0 place-items-center rounded-md bg-current/15 text-xs font-bold leading-none ${GROUP_TONE.blue}`}>{railMark(label)}</span>}
                   <span className={rail ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{label}</span>
                 </Link>
               )
@@ -815,17 +834,14 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
             </RailFold>
           )}
           {!rail && (sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
-            <div className="border-t border-border px-2 py-2" data-testid="sidebar-recents">
-              {/* A heading, not a link: muted, sentence case, with a clock. */}
-              <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted" data-testid="sidebar-recents-heading">
-                <Clock aria-hidden size={12} className={GROUP_TONE.slate} />
-                Recently Opened
-              </h2>
+            <div className="px-2 pt-3" data-testid="sidebar-recents">
+              {/* A heading, not a link: small, grey, regular weight (#1253). */}
+              <h2 className={SIDEBAR_HEADING} data-testid="sidebar-recents-heading">Recently Opened</h2>
               {sidebarRecent.map((r) => (
                 <SidebarRecentRow key={r.key} entry={r} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
               ))}
               {sidebarFrequent.length > 0 && (
-                <h2 className="px-2 pb-0.5 pt-2 text-xs font-medium text-ink-subtle">
+                <h2 className="px-2 pb-0.5 pt-2 text-xs text-ink-subtle">
                   Frequent
                 </h2>
               )}
@@ -842,7 +858,6 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           <SidebarGroup
             heading="Data"
             tone="teal"
-            icon={Database}
             testid="sidebar-group-data"
             items={[
               // #100 pattern 4: the cross-filter Explore surface.
@@ -865,7 +880,6 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           <SidebarGroup
             heading="People and access"
             tone="rose"
-            icon={ShieldLock}
             testid="sidebar-group-access"
             items={[
               // #131: automation credentials are self-service (the endpoint is
@@ -891,7 +905,6 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           <SidebarGroup
             heading="This instance"
             tone="green"
-            icon={ListChecks}
             testid="sidebar-group-instance"
             items={canManage
               ? [
@@ -906,10 +919,10 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
         </SidebarAside>
 
         {/* Page canvas */}
-        {/* UX standard §3.1 (#1242): content starts 32px from the sidebar, left-aligned,
-            so every page's title sits at the same x; lists up to 1280, reading pages 880. */}
-        <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-3 sm:px-5 sm:py-4${wide ? ' flex flex-col' : ''}`}>
-          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : fullWidth ? 'w-full' : 'max-w-[880px] has-data-[pane=right]:max-w-none'}>
+        {/* #1253 (Siraj, 17-Nov): the shell sets the page's width, and every page fills
+            the white panel; no page caps itself. Running text keeps its own measure. */}
+        <main className={`${PAGE_PANEL}${fillHeight ? ' flex flex-col' : ''}`} data-testid="page-panel">
+          <div className={fillHeight ? 'flex min-h-0 w-full flex-1 flex-col' : 'w-full'} data-testid="page-content">
             <Outlet />
           </div>
         </main>
@@ -919,10 +932,13 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
   )
 }
 
-/** A sidebar row's colours (UI standard §4): selected is action-tint with action
- *  text, nothing else coloured; otherwise muted. */
-const SIDEBAR_ROW_IDLE = 'text-ink-muted hover:bg-subtle hover:text-ink'
-const SIDEBAR_ROW_SELECTED = 'font-medium text-action bg-action-tint'
+/** A sidebar row's colours (#1253, Quiet Canvas): the open page is a white tile
+ *  with a soft shadow on the grey canvas; a hover is a soft grey fill. */
+const SIDEBAR_ROW_IDLE = ROW_IDLE
+const SIDEBAR_ROW_SELECTED = ROW_SELECTED
+/** #1253: the page is one white panel on the canvas, set off by a soft shadow,
+ *  8px from the window's edges; a phone shows it edge to edge. */
+export const PAGE_PANEL = 'min-w-0 flex-1 overflow-auto bg-surface p-3 sm:px-5 sm:py-4 md:my-2 md:mr-2 md:rounded-xl md:shadow-sm'
 
 interface SidebarItem {
   to: string
@@ -936,12 +952,14 @@ interface SidebarItem {
 /** A labelled group of sidebar links: a muted sentence-case heading with a
  *  small icon (a heading, not a link), then each link with its grey icon.
  *  Renders nothing — heading included — when no item is visible. */
+/** #1253 (style A): a one-line sidebar item: its tile, its name, its detail on the right. */
+const SIDEBAR_LINE = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm'
+
 /** Recently opened holds at most this many items, Frequent included. */
 const SIDEBAR_RECENT_CAP = 5
 
-export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first = false, tone = 'slate' }: {
+export function SidebarGroup({ heading, testid, items, first = false, tone = 'slate' }: {
   heading: string
-  icon: LucideIcon
   testid: string
   items: SidebarItem[]
   /** The group's hue for its icons (owner's review, 17-Nov). */
@@ -953,12 +971,9 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first 
   if (items.length === 0) return null
   const base = rail ? RAIL_ROW : touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')
   return (
-    <div className={rail ? 'px-2 py-1' : `${first ? 'pt-3' : 'border-t border-border'} px-2 py-2`} data-testid={testid}>
+    <div className={rail ? 'px-2 py-1' : `px-2 ${first ? 'pt-1' : 'pt-3'}`} data-testid={testid}>
       {rail ? (!first && <RailRule heading={sidebarWords(heading)} />) : (
-      <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted" data-testid="sidebar-group-heading">
-        <HeadingIcon aria-hidden size={12} className={GROUP_TONE[tone]} />
-        {sidebarWords(heading)}
-      </h2>
+      <h2 className={SIDEBAR_HEADING} data-testid="sidebar-group-heading">{sidebarWords(heading)}</h2>
       )}
       {items.map(({ to, search, label, icon: Icon, testid: id, badge }) => (
         <Link
@@ -987,6 +1002,12 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first 
  * beside the page, a 256px drawer with a backdrop under 48rem, hidden when
  * collapsed; the bar's controls and Cmd/Ctrl+B work it (lib/sidebar-collapsed).
  * Following any link inside it closes the drawer.
+ *
+ * #1253 (Quiet Canvas): no fill and no border of its own, on the grey canvas.
+ * Its top and foot are slots the shared bar draws into (the switcher, the bell
+ * and the command field; the account, help and theme), and only the links
+ * between them scroll, so the menus that open from the top and foot are never
+ * clipped.
  */
 export function SidebarAside({ testid, user, children }: { testid: string; user: string | undefined; children: ReactNode }) {
   useRegisterSidebar(user)
@@ -995,6 +1016,8 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
   const collapsed = choice && !isDrawer
   // #1248: in the rail each row is named at once by a tooltip beside it.
   const aside = useRef<HTMLElement>(null)
+  const top = useRef<HTMLDivElement>(null)
+  const foot = useRef<HTMLDivElement>(null)
   const railRef = useRef(collapsed)
   railRef.current = collapsed
   useEffect(() => {
@@ -1003,9 +1026,12 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
     return attachRailTips({
       root, layer: document.body,
       active: () => railRef.current,
-      rowOf: (target) => (target instanceof Element ? target.closest<HTMLElement>('a, button') : null) ?? null,
+      // A row of an open menu (the switcher's, the account's) needs no tooltip.
+      rowOf: (target) => (target instanceof Element && !target.closest('[role="menu"]') ? target.closest<HTMLElement>('a, button') : null) ?? null,
     })
   }, [])
+  // Offered before the first paint, so the page never shows a top bar first.
+  useLayoutEffect(() => offerSidebarSlots({ top: top.current!, foot: foot.current! }), [])
   const words = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
   return (
     <SidebarRailContext.Provider value={collapsed}>
@@ -1026,12 +1052,16 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('a')) setDrawerOpen(false)
         }}
-        className={`${collapsed ? 'md:w-14 md:overflow-x-hidden' : 'md:w-60'} absolute inset-y-0 left-0 z-30 flex w-64 flex-col overflow-y-auto border-r border-border bg-surface transition-transform md:static md:shrink-0 md:translate-x-0 md:transition-[width] md:duration-200 md:ease-linear motion-reduce:transition-none ${
+        className={`${collapsed ? 'md:w-14' : 'md:w-60'} absolute inset-y-0 left-0 z-30 flex w-64 flex-col bg-canvas transition-transform md:static md:shrink-0 md:translate-x-0 md:bg-transparent md:transition-[width] md:duration-200 md:ease-linear motion-reduce:transition-none ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
-        {children}
-        {/* #1248: the control is the sidebar's own: its footer row, and its edge. */}
-        <div className="sticky bottom-0 mt-auto border-t border-border bg-surface p-2 max-md:hidden">
+        <div ref={top} className="shrink-0" data-testid="sidebar-slot-top" />
+        <div className={`min-h-0 flex-1 overflow-y-auto${collapsed ? ' md:overflow-x-hidden' : ''}`} data-testid="sidebar-links">
+          {children}
+        </div>
+        <div className="shrink-0 p-2">
+          <div ref={foot} data-testid="sidebar-slot-foot" />
+          {/* #1248: the control is the sidebar's own: its footer row, and its edge. */}
           <button
             type="button"
             onClick={toggleCollapsed}
@@ -1041,11 +1071,11 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
             data-shortcut-key={SIDEBAR_SHORTCUT}
             aria-label={words}
             aria-keyshortcuts="Meta+B Control+B"
-            title={`${words} (${SIDEBAR_SHORTCUT})`}
-            className={collapsed ? `${RAIL_ROW} ${ROW_IDLE}` : touchRowClasses(`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm ${ROW_IDLE}`)}
+            title={`${words.replace('sidebar', 'Sidebar')} · ${SIDEBAR_SHORTCUT}`}
+            className={`max-md:hidden ${collapsed ? `${RAIL_ROW} ${ROW_IDLE}` : touchRowClasses(`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm ${ROW_IDLE}`)}`}
           >
-            {collapsed ? <ChevronsRight aria-hidden size={18} /> : <ChevronsLeft aria-hidden size={16} className="shrink-0" />}
-            {!collapsed && <span className="flex-1 text-left">Collapse</span>}
+            {collapsed ? <ChevronsRight aria-hidden size={18} className="text-ink-muted" /> : <ChevronsLeft aria-hidden size={16} className="shrink-0 text-ink-muted" />}
+            {!collapsed && <span className="flex-1 text-left text-ink-muted">Collapse</span>}
             {!collapsed && <kbd className="font-mono text-xs text-ink-subtle">{SIDEBAR_SHORTCUT}</kbd>}
           </button>
         </div>
@@ -1062,6 +1092,31 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
   )
 }
 
+/** #1253: the field at the sidebar's top that opens the command bar; in the
+ *  rail, a magnifier named by its tooltip. */
+function CommandField({ rail, onOpen }: { rail: boolean; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        noteShortcutUse(COMMAND_SHORTCUT_DEF.id, 'mouse', e.currentTarget) // #1251: counts towards the ⌘K tip
+        onOpen()
+      }}
+      data-testid="command-field"
+      aria-label="Search or Command"
+      aria-keyshortcuts="Meta+K Control+K"
+      {...shortcutControl(COMMAND_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF.label)}
+      className={rail
+        ? `${RAIL_ROW} ${ROW_IDLE} focus-visible:outline-2 focus-visible:outline-focus`
+        : 'flex min-h-8 w-full min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-md bg-border/60 px-2.5 text-sm text-ink-muted hover:bg-border focus-visible:outline-2 focus-visible:outline-focus'}
+    >
+      <Search aria-hidden size={rail ? 18 : 14} className="shrink-0" />
+      {!rail && <span className="min-w-0 flex-1 truncate text-left">Search or Command</span>}
+      {!rail && <kbd className="shrink-0 font-sans text-xs text-ink-subtle">{COMMAND_SHORTCUT}</kbd>}
+    </button>
+  )
+}
+
 /** #1235 item 7 (UI standard §4): the person's own pages, at the top of the
  *  sidebar on every account page. */
 export function AccountSidebarGroup() {
@@ -1071,10 +1126,10 @@ export function AccountSidebarGroup() {
       first
       heading="Account"
       tone="indigo"
-      icon={UserRound}
       testid="sidebar-group-account"
       items={[
         { to: ACCOUNT_SIGN_IN_METHODS_PATH, label: 'Sign-in methods', icon: LogIn, testid: 'sidebar-sign-in-methods' },
+        { to: ACCOUNT_CONNECTED_APPS_PATH, label: 'Connected apps', icon: Cable, testid: 'sidebar-connected-apps' },
         ...(user ? [{ to: `/featherbase/account/access/${encodeURIComponent(user.row_id)}`, label: 'What you can see', icon: Eye, testid: 'sidebar-access-explanation' }] : []),
       ]}
     />
@@ -1125,11 +1180,8 @@ function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
     </RailFold>
   )
   return (
-    <div className="border-t border-border px-2 py-2" data-testid="sidebar-saved-views">
-      <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted">
-        <Bookmark aria-hidden size={12} className={GROUP_TONE.amber} />
-        Saved Views
-      </h2>
+    <div className="px-2 pt-3" data-testid="sidebar-saved-views">
+      <h2 className={SIDEBAR_HEADING}>Saved Views</h2>
       {list.map((view) => {
         const href = hrefOf(view)
         return (
@@ -1142,11 +1194,12 @@ function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
               onOpen(href)
             }}
             data-testid="sidebar-saved-view"
-            title={`${view.label} — ${view.table}${view.mine ? '' : ' (shared with you)'}`}
-            className={touchRowClasses('flex w-full flex-col justify-center rounded-md px-2 py-1 text-left hover:bg-subtle')}
+            // #1253 (style A): one line; the table and who it is shared with live in the tooltip.
+            title={`${view.table} table${view.mine ? '' : ' · Shared with you'}`}
+            className={touchRowClasses(`${SIDEBAR_LINE} text-ink hover:bg-border/50`)}
           >
-            <span className="truncate text-sm text-ink">{view.label}</span>
-            <span className="truncate text-xs text-ink-subtle">{view.table}{view.mine ? '' : ' · shared'}</span>
+            <TableTile name={view.table} />
+            <span className="min-w-0 flex-1 truncate">{view.label}</span>
           </a>
         )
       })}
@@ -1164,6 +1217,18 @@ function SidebarRecentRow({
   onOpen: (entry: RecentEntry) => void
 }) {
   const shown = displayEntry(entry)
+  // #1253 (Siraj's style A): one line. The table's tile and the row's name; the
+  // time (Recently Opened) or the count (Frequent) on the right; the table in the tooltip.
+  // A row's Table comes from its key (row:<Table>/<id>); a list or a page is its own name.
+  const table = shown.row?.table ?? (entry.key.startsWith('row:') ? entry.key.slice(4, entry.key.indexOf('/')) : shown.label)
+  // A filtered list says its filter in the tooltip (the second line it had before).
+  const what = !shown.row && shown.sub ? `${table} (${shown.sub})` : table
+  const last = entry.visits[entry.visits.length - 1] ?? 0
+  const when = ago(last)
+  const meta = frequent ? `${entry.visits.length}×` : when
+  const title = frequent
+    ? `${what} · opened ${entry.visits.length} times`
+    : `${what} · opened ${when === 'now' ? 'just now' : `${when} ago`}`
   return (
     <a
       href={entry.path}
@@ -1174,19 +1239,13 @@ function SidebarRecentRow({
         onOpen(entry)
       }}
       data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
-      title={shown.row || isOpaqueId(shown.label) ? shown.sub : shown.sub ? `${shown.label} — ${shown.sub}` : shown.label}
-      className={touchRowClasses('flex w-full flex-col justify-center rounded-md px-2 py-1 text-left hover:bg-subtle')}
+      title={title}
+      className={touchRowClasses(`${SIDEBAR_LINE} text-ink hover:bg-border/50`)}
     >
-      <span className="flex min-w-0 items-center gap-1.5 text-sm text-ink">
-        <KindIcon kind={shown.kind} tone="grey" />
-        {frequent && <span className="text-caution">★</span>}
-        <span className="truncate">
-          <EntryLabel entry={entry} />
-        </span>
-      </span>
-      {shown.sub && (
-        <span className="block truncate pl-5 text-xs text-ink-subtle">{shown.sub}</span>
-      )}
+      <TableTile name={table} />
+      <span className="min-w-0 flex-1 truncate"><EntryLabel entry={entry} /></span>
+      {frequent && <span aria-hidden className={`text-xs ${GROUP_TONE.amber}`}>★</span>}
+      <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{meta}</span>
     </a>
   )
 }

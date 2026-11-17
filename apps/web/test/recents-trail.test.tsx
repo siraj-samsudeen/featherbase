@@ -106,7 +106,8 @@ test('#101 P2: the sidebar\'s filtered-list entry names its filter and opens the
   const app = await buildTrail(admin, ROW)
   const sidebar = await screen.findByTestId('sidebar-recents', {}, WAIT)
   const entry = await waitFor(() => {
-    const found = within(sidebar).getAllByTestId('sidebar-recent').find((e) => e.textContent?.includes('Note = searchable'))
+    // #1253 (style A): one line; the filter is named in the row's tooltip.
+    const found = within(sidebar).getAllByTestId('sidebar-recent').find((e) => e.getAttribute('title')?.includes('Note = searchable'))
     expect(found).toBeDefined()
     return found!
   }, WAIT)

@@ -82,6 +82,7 @@ only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 | `FILE_URL_SECRET` | no | yes | `JWT_SECRET` | signs the short-lived URLs of private files (must differ across environments) |
 | `ADMIN_PASSWORD` | no | yes |  | provisions a null Administrator password hash; missing or blank leaves production password login locked. Never rotates an existing hash (see [Rotating credentials](#rotating-credentials)) |
 | `GOOGLE_CLIENT_SECRET` | **yes**, while a Google sign-in method is enabled with a client id | yes |  | the Google OAuth client secret; the client id and allowed domains live on the Google sign-in method (must match across environments) |
+| `MICROSOFT_CLIENT_SECRET` | **yes**, while a Microsoft sign-in method is enabled with a client id | yes |  | the Microsoft Entra app's client secret; the client id, tenant and allowed domains live on the Microsoft sign-in method (must match across environments) |
 | `FILE_STORAGE_DIR` | recommended (warns when missing outside development and test) | no | `apps/server/storage` | uploaded-file directory; it must persist across deploys (on Railway, a Volume) |
 | `APP_DELIVERY_TOKEN` | no | yes |  | turns on `/deliver/app`: the deploy pipeline, holding this key, delivers an app's code fix to the running instance. At least 32 characters; unset keeps the route off. See [Delivering an app fix](#delivering-an-app-fix) |
 | `CHROMIUM_PATH` | no | no |  | Chromium binary for PDF printing; unset, Playwright resolves its own. Never hardcoded |
@@ -100,6 +101,8 @@ only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 | `PREAUTH_FORM_MAX` | no | no | `30` | public web-form POSTs per source and window |
 | `PREAUTH_SIGNUP_MAX` | no | no | `10` | sign-ups per source and window |
 | `PREAUTH_HANDOFF_MAX` | no | no | `200` | steps of the hand-off between instance addresses per source and window; each hand-off takes two, apart from the Google buckets |
+| `PREAUTH_AGENT_REGISTER_MAX` | no | no | `30` | agent registrations (connecting an agent) per source and window |
+| `PREAUTH_AGENT_TOKEN_MAX` | no | no | `300` | agent sign-in codes exchanged and short keys renewed per source and window |
 | `TRUSTED_PROXY_IPS` | no | no |  | comma-separated exact socket IPs trusted to append `X-Forwarded-For` |
 | `CLIENT_ADDRESS_HEADER` | no | no |  | one request header the edge overwrites with the client's address (Railway's edge sets `X-Real-IP` and `X-Forwarded-For`), recorded on each sign-in and used for the pre-auth budgets. Set it only when the edge replaces the caller's copy; see [Behind a proxy](#behind-a-proxy) |
 | `RATE_LIMIT_WINDOW_MS` | no | no | `60000` | per-user API rate-limit window |

@@ -3,13 +3,13 @@ export const PLATFORM_SCHEMA = 'featherbase'
 // Physical basenames owned by Featherbase at the cf88a7b convergence boundary.
 // Metadata-backed user Tables are resolved separately by tableRelation().
 const PLATFORM_RELATIONS = new Set([
-  'access_log', 'access_request', 'access_token', 'activity_log', 'app_dataset_row', 'app_role_binding', 'app_setting', 'assignment_rule',
+  'access_log', 'access_request', 'access_token', 'activity_log', 'agent_auth_code', 'agent_client', 'agent_connection', 'agent_refresh_token', 'app_dataset_row', 'app_role_binding', 'app_setting', 'assignment_rule',
   'approval_type', 'assignment_rule_user', 'auto_email_report', 'background_job', 'change_proposal', 'change_proposal_approver', 'change_proposal_column', 'client_script',
   'column_def', 'comment', 'custom_field', 'dashboard', 'data_scope', 'data_source',
   'dataset_miss', 'dataset_place_drop', 'dataset_snapshot', 'email_account', 'email_queue', 'email_rule',
   'email_sink', 'file', 'glossary_avoid_word', 'glossary_link', 'glossary_term', 'has_role', 'health_check_event', 'home_page', 'home_page_link', 'home_page_role',
   'import_log', 'installed_app', 'instance_settings_apply', 'internal_metadata', 'job_execution', 'letter_head',
-  'metadata_override', 'migration', 'notification_log', 'password_reset',
+  'metadata_override', 'migration', 'notification_log', 'password_invite', 'password_reset',
   'permission', 'pre_auth_bucket', 'print_format', 'report', 'revoked_session', 'role', 'view_as_session',
   'runtime_action_result',
   'sales_target_snapshot_name', 'sales_target_snapshot_row', 'saved_view', 'scheduled_job', 'series', 'server_script',

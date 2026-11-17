@@ -2,7 +2,7 @@
 // only — each source, and under a MotherDuck source the databases it reads, each
 // opening the browser there. Styled like SidebarGroup (AdminLayout).
 import { Link, useNavigate, useRouter } from '@tanstack/react-router'
-import { GROUP_TONE, RailFold, RailMenuItem, useSidebarRail } from './SidebarRail'
+import { GROUP_TONE, ROW_IDLE, ROW_SELECTED, RailFold, RailMenuItem, SIDEBAR_HEADING, useSidebarRail } from './SidebarRail'
 import { sourceWords } from '../lib/sidebar-rail'
 import { useQuery } from '@tanstack/react-query'
 import { Cable, Database, Plus, useRecordHref } from '@featherbase/shop-floor'
@@ -30,7 +30,7 @@ export function DataSourcesSidebar() {
     queryFn: () => api.get<{ data: SourceRow[] }>(`/api/table/Data%20Source?fields=${FIELDS}&order_by=row_id asc&limit=50`),
   })
   const base = touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')
-  const link = `${base} text-ink-muted hover:bg-subtle hover:text-ink`
+  const link = `${base} ${ROW_IDLE}`
   const rail = useSidebarRail()
   const navigate = useNavigate()
   // #1248: in the rail, the sources and their databases fold into one icon.
@@ -52,11 +52,8 @@ export function DataSourcesSidebar() {
     </RailFold>
   )
   return (
-    <div className="border-t border-border px-2 py-2" data-testid="sidebar-group-sources">
-      <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted" data-testid="sidebar-group-heading">
-        <Database aria-hidden size={12} className={GROUP_TONE.violet} />
-        Data Sources
-      </h2>
+    <div className="px-2 pt-3" data-testid="sidebar-group-sources">
+      <h2 className={SIDEBAR_HEADING} data-testid="sidebar-group-heading">Data Sources</h2>
       {(sources.data?.data ?? []).map((s) => (
         <div key={s.row_id} data-testid="sidebar-source">
           <Link
@@ -77,7 +74,7 @@ export function DataSourcesSidebar() {
               search={{ database: d.name, schema: undefined }}
               className={`${link} pl-6`}
               activeOptions={{ includeSearch: true }}
-              activeProps={{ className: `${base} pl-6 font-medium text-action bg-action-tint` }}
+              activeProps={{ className: `${base} pl-6 ${ROW_SELECTED}` }}
               data-testid="sidebar-source-database"
             >
               <Database aria-hidden size={14} className={`shrink-0 ${GROUP_TONE.violet}`} data-testid="sidebar-item-icon" />

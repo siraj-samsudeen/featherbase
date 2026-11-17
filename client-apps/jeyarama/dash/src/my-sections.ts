@@ -25,6 +25,7 @@ interface BaseTablesHelper {
 interface ChangeProposalsReader {
   list(filter?: ProposalList): Promise<ChangeProposal[]>
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
+  mayDecideMany(asks: { maker: string; approvers: ApproverRequest }[]): Promise<boolean[]>
   routeFor(maker: string, approvers: ApproverRequest): Promise<{ people: string[]; roles: string[] } | null>
   modeOf(type: string): Promise<string>
 }
@@ -144,8 +145,33 @@ async function myJob(ctx: ActionContext, id: unknown, today: string) {
 export async function approversOf(ctx: BaseContext, job: Row | undefined): Promise<{ approvers: ApproverRequest; manager: string | null; reportsTo: string | null }> {
   const managerId = exact(job?.reports_to)
   const [manager] = managerId ? await list(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['row_id', '=', managerId]]) : []
+  return approversFrom(manager)
+}
+function approversFrom(manager: Row | undefined) {
   const person = exact(manager?.[EMPLOYEE_STATUS]) === 'Current' ? exact(manager?.person) : ''
-  return { approvers: { people: person ? [person] : [], fallbackRoles: [FALLBACK_ROLE] }, manager: person ? text(manager.name) : null, reportsTo: text(manager?.name) || null }
+  return { approvers: { people: person ? [person] : [], fallbackRoles: [FALLBACK_ROLE] } as ApproverRequest, manager: person ? text(manager!.name) : null, reportsTo: text(manager?.name) || null }
+}
+
+/** Who decides each of many proposals, from a fixed few reads (#1254): every job's manager, and every
+ *  from-section's Team Leaders and theirs, are read once. Reading them per proposal cost about 14 queries
+ *  each: 5 s on production. The platform is then asked about all of them at once (mayDecideMany). */
+export async function approverLookup(ctx: ReadContext, jobs: (Row | undefined)[], fromSections: string[], today: string) {
+  // The same holders a decision reads under its locks.
+  const holders = await holdersOf(ctx, unique(fromSections.filter(Boolean)), today)
+  const ids = unique([...jobs, ...holders].map(job => exact(job?.reports_to)).filter(Boolean))
+  const managers = ids.length ? byId(await all(ctx, T.employee, ['name', EMPLOYEE_STATUS, 'person'], [['row_id', 'in', ids]])) : new Map<string, Row>()
+  const of = (job: Row | undefined) => approversFrom(managers.get(exact(job?.reports_to))).approvers
+  return {
+    approversOf: of,
+    /** As approversFor, from what was read. */
+    approversFor(a: Pick<About, 'kind' | 'from_section'>, job: Row | undefined): ApproverRequest {
+      const approvers = of(job)
+      if (a.kind !== 'add' || !a.from_section) return approvers
+      const people = [...approvers.people]
+      for (const holder of holders.filter(h => exact(h.section) === exact(a.from_section))) people.push(...of(holder).people)
+      return { people: unique(people), fallbackRoles: approvers.fallbackRoles }
+    },
+  }
 }
 
 /** A later placement of this subcategory here: an open-ended new row would overlap it. */
@@ -175,7 +201,8 @@ export function fewNames(names: (string | undefined)[]): string | null {
 
 async function holdersOf(ctx: BaseContext, sections: string[], today: string): Promise<Row[]> {
   if (!sections.length) return []
-  return (await list(ctx, T.job, JOB_FIELDS, [['section', 'in', sections]])).filter(job => inForce(job, today) && text(job.job) === 'Team Leader')
+  // Every page (#1254, Codex): a section's past and Staff jobs must never push its Team Leader past the first 500.
+  return (await all(ctx, T.job, JOB_FIELDS, [['section', 'in', sections]])).filter(job => inForce(job, today) && text(job.job) === 'Team Leader')
 }
 export async function employeeNames(ctx: BaseContext, ids: string[]): Promise<Map<string, string>> {
   const wanted = unique(ids)
@@ -223,7 +250,7 @@ function view(proposal: ChangeProposal, waitingFor?: string) {
 export const sentView = async (ctx: BaseContext, proposal: ChangeProposal) => view(proposal, await waitingName(ctx, proposal.route.people))
 
 /** The pending proposals this caller may decide now; with `setUps`, the Department Managers' set-ups instead. */
-async function waitingForMe(ctx: ReadContext, setUps = false): Promise<ChangeProposal[]> {
+export async function waitingForMe(ctx: ReadContext, setUps = false): Promise<ChangeProposal[]> {
   const mine: ChangeProposal[] = []
   const today = istToday()
   for (let start = 0; ; start += 500) {
@@ -233,11 +260,13 @@ async function waitingForMe(ctx: ReadContext, setUps = false): Promise<ChangePro
     const others = pending.filter(proposal => proposal.maker !== ctx.user && (setUps ? about(proposal).kind as string === 'department'
       && (proposal.about as Record<string, unknown>).for_person !== ctx.user : !isSetUp(proposal)))
     const jobs = others.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(others.map(p => about(p).job_assignment))]])) : new Map<string, Row>()
-    for (const proposal of others) {
+    const lookup = await approverLookup(ctx, [...jobs.values()], setUps ? [] : others.map(p => exact(about(p).from_section)), today)
+    const asks = others.map(proposal => {
       const a = about(proposal)
-      const approvers = setUps ? (await approversOf(ctx, jobs.get(a.job_assignment))).approvers : await approversFor(ctx, a, jobs.get(a.job_assignment), today)
-      if (await ctx.changeProposals.mayDecide(proposal.maker, approvers)) mine.push(proposal)
-    }
+      return { maker: proposal.maker, approvers: setUps ? lookup.approversOf(jobs.get(a.job_assignment)) : lookup.approversFor(a, jobs.get(a.job_assignment)) }
+    })
+    const may = asks.length ? await ctx.changeProposals.mayDecideMany(asks) : []
+    mine.push(...others.filter((_, index) => may[index]))
     if (pending.length < 500) return mine
   }
 }

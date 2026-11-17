@@ -437,6 +437,9 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
+      // #1257: a Person's email change cancels their invites on the server; the
+      // Sign-in methods panel reads them again rather than show them as live.
+      if (table === 'Person') await queryClient.invalidateQueries({ queryKey: ['user-identities', name] })
       // A save can settle a health check, and the banners shouldn't lag behind it (#1003).
       void queryClient.invalidateQueries({ queryKey: INSTANCE_HEALTH_QUERY_KEY })
       if (editingOverride) {

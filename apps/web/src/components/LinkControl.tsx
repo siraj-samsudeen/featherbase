@@ -126,6 +126,8 @@ export function LinkControl({
   // window resizes it follows the box, and closes only once the box has left the
   // window: a field near the bottom edge is nudged into view as it takes focus,
   // and that small scroll must not close the list it just opened (#1249's tours).
+  // CI's Tasker tour (17-Nov): the list kept the place it had while its box was
+  // below the window, and nothing moved it.
   useEffect(() => {
     if (!floating || !open) return
     const follow = (event: Event) => {
@@ -137,9 +139,21 @@ export function LinkControl({
     }
     window.addEventListener('scroll', follow, true)
     window.addEventListener('resize', follow)
+    // The page can also move the box with no scroll at all (a bar or banner
+    // drawn above it as data arrives): each frame, a box that moved takes its
+    // list with it, so the list never stays where the box used to be.
+    let seen = ''
+    let frame = requestAnimationFrame(function track() {
+      const rect = box.current?.getBoundingClientRect()
+      const at = rect ? `${rect.top} ${rect.bottom} ${rect.left} ${rect.width} ${window.innerHeight}` : ''
+      if (rect && at !== seen) setPlace(placeFor(rect))
+      seen = at
+      frame = requestAnimationFrame(track)
+    })
     return () => {
       window.removeEventListener('scroll', follow, true)
       window.removeEventListener('resize', follow)
+      cancelAnimationFrame(frame)
     }
   }, [floating, open])
 
@@ -150,6 +164,10 @@ export function LinkControl({
   }, [open])
 
   function openList() {
+    // A box partly outside the window is brought in first: a list placed beside
+    // a box nobody can see is a list nobody can reach.
+    const seen = floating ? box.current?.getBoundingClientRect() : undefined
+    if (seen && (seen.top < 0 || seen.bottom > window.innerHeight)) box.current?.scrollIntoView?.({ block: 'nearest' })
     const rect = floating ? box.current?.getBoundingClientRect() : undefined
     setPlace(rect ? placeFor(rect) : null)
     setOpen(true)

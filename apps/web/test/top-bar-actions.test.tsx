@@ -83,7 +83,9 @@ test('Open Admin refused because the grant went meanwhile stays on the page, rea
     'test',
   )
   const r = await renderApp('/featherbase/account/sign-in-methods', clerk)
-  const button = await within(await screen.findByTestId('top-bar')).findByTestId('open-admin', {}, { timeout: 8000 })
+  // #1253: beside the sidebar, Open Admin is in the Account menu at the sidebar's foot.
+  await userEvent.click(await screen.findByTestId('session-user', {}, { timeout: 8000 }))
+  const button = await within(await screen.findByTestId('account-menu')).findByTestId('open-admin', {}, { timeout: 8000 })
   await admin.delete(`/api/table/Permission/${encodeURIComponent(grantId)}`)
   await userEvent.click(button)
   await waitFor(() => expect(button).toBeEnabled())

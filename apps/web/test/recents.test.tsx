@@ -11,12 +11,14 @@ import {
   flushPendingEvents,
   frecency,
   frequentActions,
+  historyPaused,
   replaceServerEntries,
   recentActions,
   recentSearches,
   recordAction,
   renameTableInRecents,
 } from '../src/lib/recents'
+import { setViewedPerson } from '../src/lib/viewing-as'
 
 // #101 Phase 1: the client-side recents buffer behind the command bar.
 
@@ -33,6 +35,31 @@ const row = (name: string) => ({
 })
 
 beforeEach(() => localStorage.clear())
+
+describe('while viewing as someone (#1222)', () => {
+  it('neither shows nor adds to the tester’s own history, and resumes after', () => {
+    // A user of its own: recordAction keeps an unconfirmed journal per user across tests.
+    const TESTER = 'View As Tester'
+    recordAction(TESTER, row('MINE'), NOW)
+    recordAction(TESTER, row('MINE'), NOW + 1)
+    setViewedPerson({ row_id: 'P-1', full_name: 'Asha Leader' })
+    expect(historyPaused()).toBe(true)
+    recordAction(TESTER, row('THEIRS'), NOW + 2)
+    expect(recentActions(TESTER, 10)).toEqual([])
+    expect(frequentActions(TESTER, 10, NOW + 3)).toEqual([])
+    expect(recentSearches(TESTER, '', 10)).toEqual([])
+    setViewedPerson(null)
+    expect(recentActions(TESTER, 10).map((e) => e.label)).toEqual(['MINE'])
+  })
+
+  it('a browser that refuses storage keeps nothing and hides nothing', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
+    expect(() => setViewedPerson({ row_id: 'P-1', full_name: null })).not.toThrow()
+    expect(historyPaused()).toBe(false)
+    get.mockRestore(); set.mockRestore()
+  })
+})
 
 describe('recordAction / recentActions', () => {
   it('clears cached destinations when the server history is empty', () => {

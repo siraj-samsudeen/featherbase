@@ -1,7 +1,7 @@
 // #1235 item 7 / what-you-can-see 1 (UI standard §4): the account pages open in a
-// frame with the shared sidebar, an "Account" group (Sign-in methods, What you can
-// see) at its top, and the page at the shared x (32px from the sidebar, left-aligned,
-// at most 880px wide; standard X1).
+// frame with the shared sidebar, an "Account" group (Sign-in methods, Connected apps
+// (#1207), What you can see) at its top, and the page at the shared x (32px from the
+// sidebar, left-aligned, at most 880px wide; standard X1).
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
@@ -14,15 +14,14 @@ test('in the Admin frame the account pages put the Account group at the top of t
   const sidebar = await screen.findByTestId('admin-sidebar', {}, WAIT)
   const account = await within(sidebar).findByTestId('sidebar-group-account', {}, WAIT)
   expect(within(account).getByTestId('sidebar-group-heading')).toHaveTextContent(/^Account$/)
-  expect(groupLinks(account)).toEqual(['Sign-in Methods', 'What You Can See'])
-  // At the top: nothing of the sidebar's comes before it.
-  expect(sidebar.firstElementChild).toBe(account)
+  expect(groupLinks(account)).toEqual(['Sign-in Methods', 'Connected Apps', 'What You Can See'])
+  // At the top of the links: only the switcher and the command field (#1253) come before it.
+  expect(within(sidebar).getByTestId('sidebar-links').firstElementChild).toBe(account)
   const selected = within(account).getByRole('link', { name: 'Sign-in Methods' })
   expect(selected).toHaveAttribute('aria-current', 'page')
-  // Verifier, round 5: selected reads in the action colour, never also the muted one.
-  expect(selected.className).toMatch(/\btext-action\b/)
-  expect(selected.className).not.toMatch(/\btext-ink-muted\b/)
-  expect(within(account).getByRole('link', { name: 'What You Can See' }).className).toMatch(/\btext-ink-muted\b/)
+  // #1253 (Quiet Canvas): the open page is a white tile with a soft shadow; the others are plain.
+  expect(selected.className).toMatch(/\bbg-surface\b.*\bshadow-sm\b/)
+  expect(within(account).getByRole('link', { name: 'What You Can See' }).className).not.toMatch(/\bbg-surface\b/)
 })
 
 test('the Admin pages that are not account pages have no Account group', async ({ admin }) => {
@@ -37,7 +36,7 @@ test('someone without Admin reads the account pages beside a sidebar of their ow
   const frame = await screen.findByTestId('account-layout', {}, WAIT)
   const sidebar = await within(frame).findByTestId('account-sidebar', {}, WAIT)
   const account = within(sidebar).getByTestId('sidebar-group-account')
-  expect(groupLinks(account)).toEqual(['Sign-in Methods', 'What You Can See'])
+  expect(groupLinks(account)).toEqual(['Sign-in Methods', 'Connected Apps', 'What You Can See'])
   expect(screen.queryByTestId('admin-sidebar')).not.toBeInTheDocument()
   // The bar works this sidebar as it does every other (#1227).
   const collapse = await screen.findByTestId('sidebar-collapse', {}, WAIT)

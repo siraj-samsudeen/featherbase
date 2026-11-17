@@ -1,4 +1,5 @@
 import type { SignInMethodKind } from 'shared'
+import { setViewedPerson, viewedPerson } from './viewing-as'
 import { followDevice } from '@featherbase/shop-floor/theme'
 import { clearVisitJournal } from './recents'
 import { pageLoad } from './page-load'
@@ -37,9 +38,17 @@ export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
 }
 
-export function getSessionUser(): SessionUser | null {
+/** Who signed in on this browser: for what belongs to them, not to the page (theme, sidebar, history). */
+export function getSignedInUser(): SessionUser | null {
   const raw = localStorage.getItem(USER_KEY)
   return raw ? (JSON.parse(raw) as SessionUser) : null
+}
+
+/** Whom the page is about: the signed-in person, or while they view as someone (#1222), that person. */
+export function getSessionUser(): SessionUser | null {
+  const user = getSignedInUser()
+  const viewed = user ? viewedPerson() : null
+  return user && viewed ? { ...user, row_id: viewed.row_id, full_name: viewed.full_name, email: null } : user
 }
 
 export function clearSession() {
@@ -47,6 +56,7 @@ export function clearSession() {
   clearVisitJournal()
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
+  setViewedPerson(null)
   // #380: whoever uses this browser next sees their device's theme, not the
   // departing person's choice. Every sign-out path ends here.
   followDevice()

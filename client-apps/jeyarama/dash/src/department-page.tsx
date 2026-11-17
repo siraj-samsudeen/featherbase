@@ -442,7 +442,7 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
     <Card title={`${setup.who} · ${setup.job}`} data-testid="setup-card" actions={<StatusPill tone="caution">{setup.prefilled ? 'Set up from reporting lines' : 'New department'}</StatusPill>}>
       <div className="flex flex-col gap-3 p-4">
         <p className="font-semibold" data-testid="setup-ask">{setup.prefilled ? `“${setup.name}” at ${setup.store}, set up from the reporting lines to ${setup.who}` : `Set up “${setup.name}” at ${setup.store}`}</p>
-        {setup.applied && <p className="text-sm" data-testid="setup-applied">Already in use: {setup.who}'s report shows these sections. Keep it, or undo it.</p>}
+        {setup.applied && <p className="text-sm" data-testid="setup-applied">Already in use: {setup.who}'s report shows these sections.<span data-action-hint> Keep it, or undo it.</span></p>}
         {mode === 'change' ? (
           <>
             {!setup.applied && <Field label="Department name"><TextInput value={name} maxLength={60} onChange={event => setName(event.target.value)} data-testid="change-name" /></Field>}
@@ -465,7 +465,7 @@ function SetupCard({ setup, onDecided }: { setup: WaitingSetup; onDecided: (said
           <Field label={setup.applied ? 'Reason' : 'Why not?'}><TextInput value={reason} onChange={event => setReason(event.target.value)} data-testid="reject-reason" /></Field>
         )}
         {/* The undo box says it once while it is open. */}
-        {!(setup.applied && mode === 'reject') && <p className="fd-muted text-sm">{setup.applied ? `Undoing it takes these sections off ${setup.who}'s report.` : `Asked on ${fmtDate(setup.asked_on)}. Keeping it opens ${setup.who}'s report for these sections.`}</p>}
+        {!(setup.applied && mode === 'reject') && <p className="fd-muted text-sm" data-action-hint>{setup.applied ? `Undoing it takes these sections off ${setup.who}'s report.` : `Asked on ${fmtDate(setup.asked_on)}. Keeping it opens ${setup.who}'s report for these sections.`}</p>}
         {error && <Notice tone="negative"><span data-testid="decide-refused">{error}</span></Notice>}
         <div className="flex flex-wrap gap-2">
           {mode === 'view' && <>

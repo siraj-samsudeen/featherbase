@@ -66,7 +66,12 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   person_id_map: { '*': code },
   access_request: { person: id, email: code, app: text, app_name: code, declined_by: id, declined_reason: text },
   access_log: { user: id, operation: code, ref_table: code, reference_name: on('ref_table'), method: code, scope: code, reason: text, snapshot: text },
-  access_token: { id: code, label: text, token_hash: code, person: id, service_account: id },
+  access_token: { id: code, label: text, token_hash: code, person: id, service_account: id, agent_connection: code },
+  // #1207: an agent's sign-in. The agent's name is what it calls itself.
+  agent_auth_code: { code_hash: code, client_id: code, person: id, redirect_uri: code, code_challenge: code, return_place: code },
+  agent_client: { id: code, client_name: text },
+  agent_connection: { id: code, person: id, client_id: code, client_name: text, return_place: code, ended_reason: code },
+  agent_refresh_token: { token_hash: code, connection_id: code },
   activity_log: { user: id, operation: text, full_name: text, ip_address: code, sign_in_method: code },
   // #620: an app's settings (configuration, never a person) and which roles carry its roles.
   app_role_binding: { app: code, app_role: code, bound_role: code },
@@ -136,6 +141,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   metadata_override: { '*': code },
   migration: { '*': code },
   notification_log: { for_user: id, subject: text, ref_table: code, ref_name: on('ref_table') },
+  password_invite: { id: code, person: id, token_hash: code, invited_by: id, email: code },
   password_reset: { token: code, user: id },
   permission: { '*': code },
   pre_auth_bucket: { '*': code },
