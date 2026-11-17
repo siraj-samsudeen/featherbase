@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { viewColumns } from './list-view-columns'
 import type { ReadingPresentation } from 'shared'
@@ -197,6 +197,13 @@ export function tableLabel(table: string, meta: Pick<TableMeta, 'label'> | undef
 
 export function useTableLabel(table: string): string {
   return tableLabel(table, useMeta(table).data)
+}
+
+/** #1241: the labels of several Tables at once, each its name while it loads. */
+export function useTableLabels(tables: readonly string[]): (table: string) => string {
+  const unique = [...new Set(tables.filter(Boolean))]
+  const metas = useQueries({ queries: unique.map((t) => metaQuery(t)) })
+  return (table) => tableLabel(table, metas[unique.indexOf(table)]?.data)
 }
 
 // Columns for a list view: Row ID first, then the Table's list columns (or

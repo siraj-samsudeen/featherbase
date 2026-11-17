@@ -5,7 +5,7 @@ import { Button, TreeOutline, type TreeNode } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import { connectionsQuery, type Connection, type Filter } from '../lib/connections'
 import { listFields, viewColumns } from '../lib/list-view-columns'
-import { metaQuery, type TableMeta } from '../lib/meta'
+import { metaQuery, tableLabel, type TableMeta } from '../lib/meta'
 import type { NavPane } from '../lib/nav-path'
 import { ALL_ROWS, TREE_PAGE, backlinkGroups, groupOrder, forwardLinks, groupRowsQuery, shownCode, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
 import { rowTitleQuery } from '../lib/row-titles'
@@ -82,7 +82,9 @@ function rowChildren(w: Walker, id: string, table: string, row: string, ctx: Ctx
     for (const link of links) children.push(linkedLine(w, lineId(id, `f:${link.column}`), link.table, link.row_id, ctx))
   }
   const groups = backlinkGroups(cnx.connections, (c) =>
-    w.get<TableMeta>(metaQuery(c.via ?? c.table))?.columns.find((x) => x.column_name === c.column)?.label ?? c.column)
+    w.get<TableMeta>(metaQuery(c.via ?? c.table))?.columns.find((x) => x.column_name === c.column)?.label ?? c.column,
+    // #1241: a group by its Table's label.
+    (t) => tableLabel(t, w.get<TableMeta>(metaQuery(t))))
   if (groups.length) {
     children.push({ id: lineId(id, 'h:from'), label: 'Linked from', heading: true })
     for (const g of groups) children.push(groupLine(w, lineId(id, `g:${g.key}`), g, table, row, ctx))
@@ -97,7 +99,7 @@ interface RowOpts { forward: boolean; backLink?: string }
 /** A row this one links to: named by the title lookup; unreadable, it is a bare line. */
 function linkedLine(w: Walker, id: string, table: string, row: string, ctx: Ctx): TreeNode {
   const title = w.get<string | null>(rowTitleQuery(table, row))
-  if (title === undefined) return { id, label: '…', kind: table }
+  if (title === undefined) return { id, label: '…', kind: tableLabel(table, w.get<TableMeta>(metaQuery(table))) }
   if (title === null) return { id, label: UNSEEN_ROW }
   const meta = w.get<TableMeta>(metaQuery(table))
   return rowLine(w, id, { table, row, label: title, code: meta ? shownCode(meta, row, title) : undefined }, ctx)
@@ -105,7 +107,8 @@ function linkedLine(w: Walker, id: string, table: string, row: string, ctx: Ctx)
 
 function rowLine(w: Walker, id: string, root: TreeRoot, ctx: Ctx, opts: RowOpts = { forward: true }): TreeNode {
   w.open.set(id, { table: root.table, row: root.row })
-  const node: TreeNode = { id, label: root.label, code: root.code, kind: root.table, hasChildren: true }
+  // #1241: the line's Table tag by its label.
+  const node: TreeNode = { id, label: root.label, code: root.code, kind: tableLabel(root.table, w.get<TableMeta>(metaQuery(root.table))), hasChildren: true }
   if (!ctx.expanded.has(id)) return node
   const { children, loading } = rowChildren(w, id, root.table, root.row, ctx, opts)
   return { ...node, children, loading, hasChildren: loading || children.length > 0 }
@@ -256,7 +259,7 @@ export function TreeOfAll({ table, filters, expanded, onExpandedChange, onOpen }
     const label = rowDisplayTitle(meta, r, rowId)
     return { table, row: rowId, label, code: shownCode(meta, rowId, label) }
   })
-  return <TableRelationTree roots={roots} label={`Every ${table} row`} expanded={expanded}
+  return <TableRelationTree roots={roots} label={`Every ${tableLabel(table, meta)} row`} expanded={expanded}
     onExpandedChange={onExpandedChange} onOpen={onOpen}
     footer={total > roots.length && loaded === -1 && <div className="mt-3">
       <Button onClick={() => setPages(pages + 1)}>Show more</Button>

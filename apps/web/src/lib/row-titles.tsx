@@ -1,6 +1,7 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { ShownName } from './people'
+import { useTableLabel } from './meta'
 import { displayEntry, type RecentAction } from './recents'
 
 // Home cleanup: a referenced row reads as its title — the Table's title
@@ -97,5 +98,11 @@ export function RowTitle({ table, rowId }: { table: string; rowId: string }) {
  *  catalog title, or the recorded label. */
 export function EntryLabel({ entry }: { entry: Pick<RecentAction, 'key' | 'label' | 'path'> & { kind?: RecentAction['kind']; sub?: string } }) {
   const shown = displayEntry(entry)
-  return shown.row ? <RowTitle table={shown.row.table} rowId={shown.row.rowId} /> : <ShownName id={shown.label} />
+  if (shown.row) return <RowTitle table={shown.row.table} rowId={shown.row.rowId} />
+  // #1241: a list is its Table as people read it.
+  return shown.kind === 'list' ? <TableWords table={shown.label} /> : <ShownName id={shown.label} />
+}
+
+function TableWords({ table }: { table: string }) {
+  return <>{useTableLabel(table)}</>
 }

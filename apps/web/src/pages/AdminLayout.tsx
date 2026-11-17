@@ -29,7 +29,7 @@ import { searchHitKind } from '../lib/search-hit'
 import { ActionDisclosure } from '../components/ActionDisclosure'
 import { TopBar } from '../components/TopBar'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
-import { metaQuery, type TableMeta } from '../lib/meta'
+import { metaQuery, tableLabel, useMeta, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
@@ -1240,7 +1240,10 @@ function SidebarRecentRow({
   // #1253 (Siraj's style A): one line. The table's tile and the row's name; the
   // time (Recently Opened) or the count (Frequent) on the right; the table in the tooltip.
   // A row's Table comes from its key (row:<Table>/<id>); a list or a page is its own name.
-  const table = shown.row?.table ?? (entry.key.startsWith('row:') ? entry.key.slice(4, entry.key.indexOf('/')) : shown.label)
+  const tableName = shown.row?.table ?? (entry.key.startsWith('row:') ? entry.key.slice(4, entry.key.indexOf('/')) : shown.label)
+  // #1241: a row's or a list's Table by its label (a page is its own title).
+  const ofTable = Boolean(shown.row) || entry.key.startsWith('row:') || shown.kind === 'list'
+  const table = tableLabel(tableName, useMeta(tableName, ofTable).data)
   // A filtered list says its filter in the tooltip (the second line it had before).
   const what = !shown.row && shown.sub ? `${table} · ${shown.sub}` : table
   const last = entry.visits[entry.visits.length - 1] ?? 0
