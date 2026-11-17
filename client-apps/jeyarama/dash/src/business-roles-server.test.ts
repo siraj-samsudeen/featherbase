@@ -549,3 +549,20 @@ describe('Codex round 3 on 70c47d3c4', () => {
     expect(roles.filter(r => r.source === 'Corrected by hand').map(r => [r.area.parts.map(p => p.name), r.area.stores])).toEqual([[['Lakeside'], 1]])
   })
 })
+
+describe('Dash\'s own records open on Dash\'s own pages (verifier on 70c47d3c4)', () => {
+  const refs = [{ table: 'dash.business_role', id: 'r' }, { table: 'dash.report_bundle', id: 'b' }, { table: 'dash.report', id: 'vs' }, { table: 'dash.report', id: 'sales' }, { table: 'Section', id: 'S9' }]
+  const ask = async (user: string, roles: string[]) => {
+    const tables = await seeded()
+    tables['dash.report_access'] = [{ row_id: 'g', report: 'vs', person: user }]
+    return reads.dash_pages_open({ ...context(tables, { user, roles, payload: { refs } }), settings: {} } as never)
+  }
+
+  it('lets a Report Access Manager open business roles and bundles, and a report they are offered', async () => {
+    expect(await ask('sm', ['Report Access Manager'])).toEqual([true, true, true, false, false])
+  })
+
+  it('leaves business roles and bundles plain words for anyone else, and a report they are not offered', async () => {
+    expect(await ask('st', ['Dash Reader'])).toEqual([false, false, true, false, false])
+  })
+})

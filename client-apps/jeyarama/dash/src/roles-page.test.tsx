@@ -186,3 +186,21 @@ describe('Who Would Gain Or Lose Access', () => {
       .toEqual([[['Siva', '?view=explain&person=st']], '1'])
   })
 })
+
+describe('a bundle\'s record link', () => {
+  it('opens Report access on that bundle, marked', async () => {
+    const { showBundleInAddress } = await import('./access-page')
+    window.history.replaceState(null, '', '/dash/?view=access&section=bundles&bundle=b2')
+    document.body.innerHTML = '<div data-bundle-id="b1"></div><div data-bundle-id="b2"></div>'
+    showBundleInAddress()
+    expect([...document.querySelectorAll('[aria-current]')].map(el => el.getAttribute('data-bundle-id'))).toEqual(['b2'])
+  })
+
+  it('marks nothing when the address names no bundle', async () => {
+    const { showBundleInAddress } = await import('./access-page')
+    window.history.replaceState(null, '', '/dash/?view=access')
+    document.body.innerHTML = '<div data-bundle-id="b1"></div>'
+    showBundleInAddress()
+    expect(document.querySelectorAll('[aria-current]')).toHaveLength(0)
+  })
+})

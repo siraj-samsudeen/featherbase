@@ -81,6 +81,9 @@ export function setEmbedFetch(f: typeof fetch | null) {
 
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
+/** #1218: the Dash Tables whose records open on a page only a company-wide manager may open. */
+const MANAGERS_PAGES = new Set(['dash.business_role', 'dash.report_bundle'])
+
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
 export { DASH_ROLES }
 
@@ -343,6 +346,21 @@ export const reads = {
   ...storeReads,
   ...buyerSectionReads,
   ...coverageReads,
+
+  /**
+   * Which records this viewer may open on Dash's own pages (record-link.tsx): people, departments and sections by
+   * coverage.ts's rules; #1218: a report they are offered opens as itself, and a business role or a bundle on the
+   * pages that show them, which only a company-wide manager may open.
+   */
+  async dash_pages_open(context: ReadContext) {
+    const answers = await coverageReads.dash_pages_open(context as never) as boolean[]
+    const manager = managesAccess(context as AccessContext)
+    const offered = new Set((await offeredReports(context as ScopedContext)).map(report => report.report_key))
+    return answers.map((answer, i) => {
+      const { table, id } = (context.payload as { refs: { table: unknown; id: unknown }[] }).refs[i]
+      return table === 'dash.report' ? offered.has(String(id)) : MANAGERS_PAGES.has(String(table)) ? manager : answer
+    })
+  },
 
   /** The signed-in person, as the platform knows them. */
   me({ user }: ReadContext) {

@@ -112,6 +112,15 @@ function keepInAddress(name: string, value: string) {
   window.history.replaceState(null, '', url)
 }
 
+/** Brings the bundle the address names (`?bundle=`) into view and marks it, once the page has drawn it. */
+export function showBundleInAddress() {
+  const id = new URLSearchParams(window.location.search).get('bundle')
+  const found = id ? [...document.querySelectorAll('[data-bundle-id]')].find(el => el.getAttribute('data-bundle-id') === id) : undefined
+  if (!found) return
+  found.setAttribute('aria-current', 'true')
+  found.scrollIntoView?.({ block: 'center' })
+}
+
 /** The top of the page, whichever element scrolls it. */
 const toTop = () => { window.scrollTo(0, 0); document.body.scrollTop = 0; document.documentElement.scrollTop = 0 }
 
@@ -156,6 +165,8 @@ function CompanyAccess({ page, onChanged }: { page: Page; onChanged: () => Promi
     ) })
   }
   const [section, setSection] = useState<Section>(() => fromAddress('section', SECTIONS, 'reports'))
+  // #1218: a bundle's record link opens this page on that bundle.
+  useEffect(() => { showBundleInAddress() }, [section, layout])
   // #1225: the area chosen, one for the reports and the bundles, kept in the address (#1228's
   // remembered filters will take it over).
   const [area, setArea] = useState<Area | null>(() => { const chosen = fromAddress('area', [...AREAS, 'all'] as const, 'all'); return chosen === 'all' ? null : chosen })
@@ -850,7 +861,7 @@ function Bundles({ page, onChanged, onNew, area, onArea }: { page: Page; onChang
         {page.bundles.filter(bundle => !onArea || !area || bundleAreas(bundle.reports.map(held => held.key), page.reports).includes(area)).map(bundle => {
           const missing = page.reports.filter(report => !bundle.reports.some(held => held.key === report.key))
           return (
-            <div key={bundle.id} className={onNew ? 'flex flex-col gap-2 rounded-control border border-border p-3' : 'flex flex-col gap-2 border-b border-border pb-3'} data-testid="bundle">
+            <div key={bundle.id} className={onNew ? 'flex flex-col gap-2 rounded-control border border-border p-3' : 'flex flex-col gap-2 border-b border-border pb-3'} data-testid="bundle" data-bundle-id={bundle.id}>
               <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="flex flex-wrap items-center gap-2 font-semibold"><RecordLink table={RECORD.bundle} id={bundle.id}>{bundle.name}</RecordLink>{onArea && <AreaLabels areas={bundleAreas(bundle.reports.map(held => held.key), page.reports)} />}
                 <span className="text-sm font-normal text-ink-muted">{bundle.reports.length} report{bundle.reports.length === 1 ? '' : 's'}</span></p>
@@ -938,7 +949,7 @@ function BundleCards({ page, rows, onChanged, onNew, area, onArea, onGiveBundle 
           const missing = page.reports.filter(report => !bundle.reports.some(held => held.key === report.key))
           const givenTo = rows.filter(row => row.gives.kind === 'Bundle' && row.gives.name === bundle.name).length
           return (
-            <section key={bundle.id} className="flex flex-col gap-3 rounded-card border border-border p-4" data-testid="bundle" aria-label={bundle.name}>
+            <section key={bundle.id} className="flex flex-col gap-3 rounded-card border border-border p-4" data-testid="bundle" data-bundle-id={bundle.id} aria-label={bundle.name}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <RecordLink table={RECORD.bundle} id={bundle.id} className="font-semibold">{bundle.name}</RecordLink>
                 <span className="flex flex-wrap gap-1"><AreaLabels areas={areasOfBundle(bundle)} /></span>
