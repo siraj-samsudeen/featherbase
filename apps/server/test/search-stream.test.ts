@@ -105,3 +105,11 @@ test('a Table that fails while earlier answers are being read ends the search wi
   await expect((async () => { for await (const event of events) rest.push(event) })()).rejects.toThrow()
   expect(rest).not.toContainEqual({ done: true })
 })
+
+// Codex round 6: the test helper never passes a failed search off as an empty one.
+test('searchHits rejects a search that ended in an error line', async ({ admin }) => {
+  const { searchHits } = await import('./fixtures')
+  const { sql } = await import('../src/db')
+  await sql`drop table data_scope`
+  await expect(searchHits(admin, 'anything')).rejects.toThrow('search did not finish')
+})

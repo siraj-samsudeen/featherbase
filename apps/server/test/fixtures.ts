@@ -282,7 +282,12 @@ export async function searchLines(client: TestClient, query: string): Promise<Re
   return (await res.text()).split('\n').filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>)
 }
 
-/** Every hit the search streamed, in the order the Tables answered. */
+/** Every hit the search streamed, in the order the Tables answered. A search
+ *  that ended in an error line, or without its done line, rejects: an empty
+ *  answer from a crash must never pass for a permission check (Codex review). */
 export async function searchHits<T = { table: string; row_id: string; title: string; kind_label?: string }>(client: TestClient, query: string): Promise<T[]> {
-  return (await searchLines(client, query)).flatMap((line) => (Array.isArray(line.hits) ? (line.hits as T[]) : []))
+  const lines = await searchLines(client, query)
+  const last = lines.at(-1)
+  if (!last || last.done !== true) throw new Error(`search did not finish: ${JSON.stringify(last)}`)
+  return lines.flatMap((line) => (Array.isArray(line.hits) ? (line.hits as T[]) : []))
 }
