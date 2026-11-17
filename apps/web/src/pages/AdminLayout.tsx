@@ -923,8 +923,8 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
         {/* Page canvas */}
         {/* UX standard §3.1 (#1242): content starts 32px from the sidebar, left-aligned,
             so every page's title sits at the same x; lists up to 1280, reading pages 880. */}
-        <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:px-8 sm:py-6${wide ? ' flex flex-col' : ''}`}>
-          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : fullWidth ? 'w-full max-w-[1280px]' : 'max-w-[880px] has-data-[pane=right]:max-w-none'}>
+        <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-3 sm:px-5 sm:py-4${wide ? ' flex flex-col' : ''}`}>
+          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : fullWidth ? 'w-full' : 'max-w-[880px] has-data-[pane=right]:max-w-none'}>
             <Outlet />
           </div>
         </main>
