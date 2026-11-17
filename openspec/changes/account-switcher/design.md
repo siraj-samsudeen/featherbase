@@ -16,7 +16,7 @@ The list is every account on this browser, the active one included. An account j
 `POST /api/accounts/switch` names an account by its session id. The server finds that session in the list and checks it as any request is checked. It ends any View as on the departing session, sets `sid`, and answers as sign-in does: token, person and landing. The page stores the token and reloads. A browser can only choose among the sessions it already holds; it never supplies a token.
 
 ### D4. A held session that ended says why, and is not removed silently
-The list check names the reason: it ran out, it was signed out, the person's sessions were ended, the person was turned off, or the sign-in method was ended. The account stays listed as "Signed out" with that reason and a Sign in action, until the person signs in again or removes it. An entry whose signature fails is dropped without a word, since it names no one.
+The list check names the reason: it ran out, it was signed out, the person's sessions were ended, the person was turned off, or the sign-in method was ended. The account stays listed as "Signed out" with that reason and a Sign in action, until the person signs in again or removes it, or 30 days after its session's end. The list's cookie lives 30 days past its longest session, so a return after a long absence still finds it. An entry whose signature fails is dropped without a word, since it names no one.
 
 ### D5. At most five accounts per browser
 The active account plus four. When the list is full of live accounts, "Add another account" and "Use another account" say so and ask the person to remove one. An ended account gives way to a new sign-in without asking. Five tokens keep the cookie well under the browser's 4 KB limit.

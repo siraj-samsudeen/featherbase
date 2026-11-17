@@ -185,6 +185,13 @@ describe('#1255: a held account ends as any session does, and says why', () => {
     await b.list()
     const later = await withTimeFromNow(120_000, () => b.list())
     expect(later.accounts.find((a) => a.person === id)).toMatchObject({ state: 'ended', reason: 'expired' })
+    // The list's cookie outlives its sessions by 30 days, so a long absence still finds it…
+    const res = await b.send('/api/accounts', { method: 'POST' })
+    const maxAge = Number(res.headers.getSetCookie().find((l) => l.startsWith('sid_accounts='))?.match(/Max-Age=(\d+)/i)?.[1] ?? 0)
+    expect(maxAge).toBeGreaterThan(30 * 24 * 3600 - 60)
+    // …and an account more than 30 days past its end is dropped.
+    const gone = await withTimeFromNow(31 * 24 * 3600 * 1000, () => b.list())
+    expect(gone.accounts.map((a) => a.person)).not.toContain(id)
   })
 })
 

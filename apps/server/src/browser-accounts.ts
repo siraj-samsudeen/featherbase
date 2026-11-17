@@ -20,6 +20,9 @@ export const ACCOUNTS_COOKIE = 'sid_accounts'
 export const ACCOUNTS_PATH = '/api/accounts'
 /** The active account plus four held (D5). Five tokens keep the cookie well under 4 KB. */
 export const MAX_ACCOUNTS = 5
+/** D4: an ended account stays listed, with its reason, this long after its
+ *  session's end, so a return after a long absence still finds it. */
+export const KEEP_ENDED_SECONDS = 30 * 24 * 3600
 
 interface Entry {
   token: string
@@ -53,7 +56,7 @@ async function held(c: Context): Promise<Held[]> {
   const out = new Map<string, Held>()
   for (const entry of parse(getCookie(c, ACCOUNTS_COOKIE))) {
     const n = await named(entry.token)
-    if (!n) continue
+    if (!n || n.exp + KEEP_ENDED_SECONDS < now()) continue
     const before = out.get(n.person)
     if (!before || before.usedAt < entry.usedAt) out.set(n.person, { ...entry, ...n })
   }
@@ -66,8 +69,8 @@ function write(c: Context, accounts: Held[]) {
     deleteCookie(c, ACCOUNTS_COOKIE, { path: ACCOUNTS_PATH, secure })
     return
   }
-  // The cookie lives as long as its longest-lived session.
-  const maxAge = Math.max(60, Math.max(...accounts.map((a) => a.exp)) - now())
+  // The list outlives its longest session by KEEP_ENDED_SECONDS (D4).
+  const maxAge = Math.max(60, Math.max(...accounts.map((a) => a.exp)) + KEEP_ENDED_SECONDS - now())
   setCookie(c, ACCOUNTS_COOKIE, accounts.map((a) => `${a.usedAt}!${a.token}`).join('~'), {
     httpOnly: true, sameSite: 'Lax', path: ACCOUNTS_PATH, maxAge, secure,
   })
@@ -200,6 +203,9 @@ export function accountRoutes(withLanding: Landing) {
   // The browser's accounts, the active one joined if it is new.
   routes.post('/', async (c) => {
     const { accounts, active, states } = await register(c)
+    // Written back each time: its life runs from now, and what was dropped
+    // (forged, or past its keeping) leaves the cookie too.
+    if (accounts.length || getCookie(c, ACCOUNTS_COOKIE)) write(c, accounts)
     return c.json(await describe(accounts, active, states))
   })
 
