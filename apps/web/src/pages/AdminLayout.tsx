@@ -39,7 +39,7 @@ import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { StatusPill, buttonClasses, cardClasses, cx, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
@@ -1218,7 +1218,8 @@ function differs(entry: RecentEntry, shared: Set<string>): boolean {
   return !shown.row && Boolean(shown.sub) && shared.has(shown.label)
 }
 
-/** " · Site = Head Office" after a recent entry whose name another one shares. */
+/** " · Site = Head Office" after a recent entry whose name another one shares
+ *  (the rail's menu, which has no tile to name the Table). */
 function RecentDiffers({ entry, shared }: { entry: RecentEntry; shared: Set<string> }) {
   if (!differs(entry, shared)) return null
   return <span className="text-ink-subtle" data-testid="recent-differs">{'\u00a0· '}{displayEntry(entry).sub}</span>
@@ -1241,7 +1242,7 @@ function SidebarRecentRow({
   // A row's Table comes from its key (row:<Table>/<id>); a list or a page is its own name.
   const table = shown.row?.table ?? (entry.key.startsWith('row:') ? entry.key.slice(4, entry.key.indexOf('/')) : shown.label)
   // A filtered list says its filter in the tooltip (the second line it had before).
-  const what = !shown.row && shown.sub ? `${table} (${shown.sub})` : table
+  const what = !shown.row && shown.sub ? `${table} · ${shown.sub}` : table
   const last = entry.visits[entry.visits.length - 1] ?? 0
   const when = ago(last)
   const meta = frequent ? `${entry.visits.length}×` : when
@@ -1262,10 +1263,12 @@ function SidebarRecentRow({
       className={touchRowClasses(`${SIDEBAR_LINE} text-ink hover:bg-border/50`)}
     >
       <TableTile name={table} />
-      {/* What sets a row apart keeps most of the row: the name gives way first (the tile and tooltip still name it). */}
-      <span className="flex min-w-0 flex-1">
-        <span className={cx('min-w-0 truncate', differs(entry, shared) && 'max-w-[40%] shrink-0')}><EntryLabel entry={entry} /></span>
-        <span className="min-w-0 flex-1 truncate"><RecentDiffers entry={entry} shared={shared} /></span>
+      {/* A row whose name another shares reads as what sets it apart (one-app-chrome, 17-Nov):
+          the tile names the Table, the tooltip says it all. */}
+      <span className="min-w-0 flex-1 truncate">
+        {differs(entry, shared)
+          ? <span data-testid="recent-differs">{shown.sub}</span>
+          : <EntryLabel entry={entry} />}
       </span>
       {frequent && <span aria-hidden className={`text-xs ${GROUP_TONE.amber}`}>★</span>}
       <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{meta}</span>

@@ -10,7 +10,7 @@ const DT = 'Differs DT'
 const LIST = `/featherbase/admin/table/${tableSlug(DT)}`
 const COLUMNS = [{ column_name: 'site', label: 'Site', column_type: 'Data' as const }]
 
-test('two rows of one list say their filters; an unfiltered one stays its name', async ({ admin }) => {
+test('of two rows of one list, the filtered one reads as its filter; the unfiltered one stays its name', async ({ admin }) => {
   await admin.post('/api/table_def', { name: DT, columns: [{ ...COLUMNS[0], in_list_view: true }] })
   const now = Date.now()
   recordAction('Administrator', actionForLocation(LIST, {}, DT)!, now - 60_000)
@@ -22,9 +22,12 @@ test('two rows of one list say their filters; an unfiltered one stays its name',
     expect(found.length).toBe(2)
     return found
   })
-  expect(rows[0]).toContain(`${DT} · Site = Head Office`)
+  // The tile names the Table; the filtered row reads as its filter, the plain one as its name.
+  expect(rows[0]).toContain('Site = Head Office')
+  expect(rows[0]).not.toContain(DT)
+  expect(within(recents).getAllByTestId('sidebar-recent')[0]).toHaveAttribute('title', expect.stringContaining(`${DT} · Site = Head Office · opened`))
   expect(rows[1]).toContain(DT)
-  expect(rows[1]).not.toContain('·')
+  expect(rows[1]).not.toContain('Site')
 })
 
 test('the same list remembered with no filters and with an empty filter list is one row', async ({ admin }) => {
