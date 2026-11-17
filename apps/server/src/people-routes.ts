@@ -10,6 +10,7 @@ import { explainAccess } from './access-explanation'
 import { pickPeople, principalNames, tableMembers } from './people-directory'
 import { actorNamesOn } from './actor-names'
 import { googleAuthorizeUrl, googleAvailable, newLoginChallenge, codeChallengeFor } from './oauth'
+import { MICROSOFT_CALLBACK_PATH, microsoftAuthorizeUrl, microsoftAvailable } from './microsoft'
 import { sendInvitation } from './invitation-email'
 import { requestHost } from './instance-addresses'
 import { getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
@@ -25,7 +26,7 @@ export const peopleRoutes = new Hono<Env>()
 peopleRoutes.get('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   const user = c.req.param('id')
-  const [row] = await sql`select (password_hash is not null) as has_password, email, expects_google_sign_in from person where row_id = ${user}`
+  const [row] = await sql`select (password_hash is not null) as has_password, email, expects_google_sign_in, expects_microsoft_sign_in from person where row_id = ${user}`
   if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
   // Every method row, turned off or not, so an identity on a disabled method
   // still shows its name on the Person form.
@@ -38,6 +39,7 @@ peopleRoutes.get('/api/people/:id/identities', async (c) => {
     // an expected Google sign-in, and says where an invitation went.
     email: row.email ?? null,
     expects_google_sign_in: row.expects_google_sign_in === true,
+    expects_microsoft_sign_in: row.expects_microsoft_sign_in === true,
     mail_transport: mailTransport(),
   })
 })
@@ -216,6 +218,18 @@ peopleRoutes.get('/api/oauth/google/link', async (c) => {
   setLoginChallengeCookies(c, state, verifier)
   const hint = { email: c.req.query('email'), name: c.req.query('name'), subject: c.req.query('subject') }
   return c.redirect(googleAuthorizeUrl(clientId, state, oauthRedirectUri(c, clientId), codeChallengeFor(verifier), hint))
+})
+
+// The same for Microsoft (microsoft-sign-in), marked as Microsoft's in the state.
+peopleRoutes.get('/api/oauth/microsoft/link', async (c) => {
+  const me = c.get('user')
+  assertFreshForLinking(me)
+  const microsoft = await microsoftAvailable()
+  if (!microsoft || !microsoft.self_link) throw new AppError('PermissionError', 'Linking Microsoft is not available')
+  const { state, verifier } = newLoginChallenge(requestHost(c.req.url), { purpose: 'link', uid: me.row_id, provider: 'microsoft' })
+  setLoginChallengeCookies(c, state, verifier)
+  const redirectUri = oauthRedirectUri(c, microsoft.client_id, MICROSOFT_CALLBACK_PATH)
+  return c.redirect(microsoftAuthorizeUrl(microsoft, state, redirectUri, codeChallengeFor(verifier)))
 })
 
 // #131: access tokens (replaces the API-005 key pair). Users manage their
