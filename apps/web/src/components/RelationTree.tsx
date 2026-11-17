@@ -4,7 +4,7 @@ import { rowDisplayTitle } from 'shared'
 import { Button, TreeOutline, type TreeNode } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import { connectionsQuery, type Connection, type Filter } from '../lib/connections'
-import { listFields, viewColumns } from '../lib/list-view-columns'
+import { listFields, titleListColumn, viewColumns } from '../lib/list-view-columns'
 import { metaQuery, tableLabel, type TableMeta } from '../lib/meta'
 import type { NavPane } from '../lib/nav-path'
 import { ALL_ROWS, TREE_PAGE, backlinkGroups, groupOrder, forwardLinks, groupRowsQuery, shownCode, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
@@ -238,8 +238,10 @@ export function TreeOfAll({ table, filters, expanded, onExpandedChange, onOpen }
 }) {
   const [pages, setPages] = useState(1)
   const meta = useQuery(metaQuery(table)).data
-  // The row's own title too, whatever the list leads with (admin-lists 4): a line is named by it.
-  const fields = meta ? [...new Set([...listFields(viewColumns(meta, {})), ...(meta.title_column ? [meta.title_column] : [])])] : []
+  // A line is named by the row's own title, whatever the list leads with
+  // (admin-lists 4); fetched only where this viewer may read it.
+  const readableTitle = meta ? titleListColumn(meta)?.column_name : undefined
+  const fields = meta ? [...new Set([...listFields(viewColumns(meta, {})), ...(readableTitle ? [readableTitle] : [])])] : []
   // One read per page of 20, from its own offset: a single growing read
   // would stop at the server's cap of 500 rows.
   const reads = useQueries({

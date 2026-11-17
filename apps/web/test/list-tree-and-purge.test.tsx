@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { PLANT, PROFIT, SITE, seedSites } from './relational-fixture'
+import { createUserWithRole } from 'server/test/fixtures'
 
 const T = { timeout: 10_000 }
 const tree = () => screen.findByRole('tree', {}, T)
@@ -87,4 +88,19 @@ test("Tree of all names a line by its title even where the list leads with a lin
   fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }, T))
   const t = await tree()
   await waitFor(() => expect(topLines(t)[0]).toHaveTextContent('LKS-S1'))
+})
+
+// Codex review: the tree asks for a row's title only where the viewer may read that column.
+test('Tree of all opens for someone who may not read the title column', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', {
+    name: 'Ltp Secret', title_column: 'codename',
+    columns: [{ column_name: 'codename', column_type: 'Data', tier: 'restricted' }, { column_name: 'note', column_type: 'Data', in_list_view: true }],
+  })
+  await admin.post('/api/save_row', { table: 'Ltp Secret', row: { codename: 'Falcon', note: 'visible note' } })
+  const reader = await createUserWithRole(admin, createUser as never, { role: 'Ltp Basic', table: 'Ltp Secret', tier: 'basic', can_read: true })
+  await renderApp(tableHref('Ltp Secret'), reader)
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }, T))
+  const t = await tree()
+  await waitFor(() => expect(topLines(t)).toHaveLength(1))
+  expect(t).not.toHaveTextContent('Falcon')
 })
