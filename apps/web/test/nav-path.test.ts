@@ -122,9 +122,15 @@ describe('encodePath / decodePath', () => {
       expanded: ['site-1', 'plant-7'],
       place: 'bottom',
       compact: true,
+      layout: 'split',
     }
     const path = go(walk(sites, kerala, full), 1)
     expect(decodePath(encodePath(path))).toEqual(path)
+  })
+
+  it("#1259: a step whose list view is not one of the three is refused, like any malformed step", () => {
+    const step = { screen: 'list', table: 'Site', layout: 'kanban' }
+    expect(decodePath(JSON.stringify({ steps: [step], at: 0 }))).toBeNull()
   })
 
   it("round-trips a group's relationship filter through a sub-table", () => {

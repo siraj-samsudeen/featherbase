@@ -16,11 +16,14 @@ import { getMeta } from './meta'
 import { isBound } from './sources/dispatch'
 import { displayName, principalNames } from './people-directory'
 import { ROSTER_LINK_ACTOR } from './roster-link-actor'
+import { INSTANCE_SETTINGS_ACTOR } from './managed-settings'
 
 /** System steps, as a reader says them. Not people, not service accounts. */
 export const ACTOR_LABELS: Readonly<Record<string, string>> = {
   ...SYSTEM_ACTOR_LABELS,
   [ROSTER_LINK_ACTOR]: 'Staff roster sync',
+  // #1264 verifier: the instance's own settings file, applied at start-up.
+  [INSTANCE_SETTINGS_ACTOR]: 'Instance settings',
   Administrator: 'Administrator',
 }
 

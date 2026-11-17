@@ -55,6 +55,10 @@ test('the first tip covers no control and stays on screen', async ({ session, re
     })
 })
 
+// 1180px here is how 1280px lays out under CI's Linux fonts (a little wider):
+// the reminder wraps to three lines and must still fit above the filters.
+for (const width of [1280, 1180]) test.describe(`at ${width}px`, () => {
+test.use({ viewport: { width, height: 800 } })
 test('a reminder with the sidebar expanded still fits near the top, covering no control', async ({ session, request }) => {
   // Used the key two days ago, then the mouse once: two more mouse uses bring
   // the reminder, and leave the sidebar expanded (the narrower content area).
@@ -80,4 +84,5 @@ test('a reminder with the sidebar expanded still fits near the top, covering no 
       const box = await reminder.boundingBox()
       expect(box!.y - main!.y).toBeLessThan(80)
     })
+})
 })
