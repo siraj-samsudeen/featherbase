@@ -192,6 +192,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
   // #837: a Google account reads as its address; its account number means
   // nothing to an administrator and waits under Details.
   // A Microsoft account reads the same way: its tenant/object ID is just as opaque.
+  // (Named for Google, where #837 began; it means "an account read by its address".)
   const isGoogle = (i: AdminIdentity) => ['google', 'microsoft'].includes(data?.methods.find((m) => m.key === i.method)?.kind ?? '')
   const shownAs = (i: AdminIdentity) =>
     isGoogle(i) && i.email ? i.email : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')
@@ -255,7 +256,9 @@ export function PersonSignInMethods({ user }: { user: string }) {
               {i.subject != null && isGoogle(i) && i.email && (
                 <details className="text-sm text-ink-muted" data-testid="identity-details">
                   <summary className="cursor-pointer">Details</summary>
-                  <span className="block">Google account number: {i.subject}</span>
+                  <span className="block">
+                    {data?.methods.find((m) => m.key === i.method)?.kind === 'microsoft' ? 'Microsoft account ID' : 'Google account number'}: {i.subject}
+                  </span>
                 </details>
               )}
               {i.subject == null && i.invitation_sent_at && (

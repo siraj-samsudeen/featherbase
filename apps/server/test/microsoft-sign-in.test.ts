@@ -4,6 +4,7 @@
 // a System Manager's, the domain rule re-checked on a domain-ruled link, and
 // the tenant setting.
 import { afterEach, describe, expect, vi } from 'vitest'
+import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { createUserWithRole, expectStatus, makePerson } from './fixtures'
@@ -278,7 +279,7 @@ describe('the stand-in honours the tenant (Codex standard round 2)', () => {
 })
 
 describe('what Microsoft or the stand-in may hand back (coverage of the refusals)', () => {
-  const startReal = async (api: Parameters<Parameters<typeof test>[1]>[0]['api']) => {
+  const startReal = async (api: TestClient) => {
     await configureMicrosoft({ client_id: CLIENT })
     const start = await api.fetch('/api/oauth/microsoft/login')
     const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
@@ -366,5 +367,60 @@ describe('the verify step\'s own guards (coverage)', () => {
       withMicrosoftFetch(async () => new Response('<html>oops</html>', { status: 200 }), () =>
         exchangeMicrosoftCode('c', '/cb', method({ client_id: CLIENT }), 'v', 's')),
     ).rejects.toThrow(/Microsoft sign-in failed/)
+  })
+})
+
+describe('the remaining edges (coverage)', () => {
+  test('the release requires the Microsoft secret while the method is on with a client id', async () => {
+    const { settingsRequirements } = await import('../src/release-preflight')
+    await configureMicrosoft({ enabled: false })
+    expect((await settingsRequirements()).conditions.has('microsoft-sign-in-enabled')).toBe(false)
+    await configureMicrosoft({ client_id: CLIENT })
+    expect((await settingsRequirements()).conditions.has('microsoft-sign-in-enabled')).toBe(true)
+  })
+
+  test('widening the tenant back to any organisation ends no one\'s session', async ({ admin }) => {
+    const patch = async (tenant: string) => {
+      const [m] = await sql`select updated_at from sign_in_method where row_id = 'microsoft'`
+      return admin.fetch('/api/table/Sign%20In%20Method/microsoft', { method: 'PATCH', body: JSON.stringify({ settings: { tenant }, updated_at: m.updated_at }) })
+    }
+    await configureMicrosoft({ allowed_email_domains: DOMAIN })
+    const person = await makePerson({ email: `asha@${DOMAIN}` })
+    await linkIdentity(person, { method: 'microsoft', subject: `${TENANT}/${OID}` }, 'Administrator')
+    await expectStatus(await patch(TENANT), 200)
+    await expectStatus(await patch('organizations'), 200)
+    const [row] = await sql`select sessions_ended_at from sign_in_identity where person_id = ${person} and method = 'microsoft'`
+    expect(row.sessions_ended_at).toBeNull()
+  })
+
+  test('Microsoft sign-in turned off while Microsoft answers refuses the sign-in', async ({ api }) => {
+    await configureMicrosoft({ client_id: CLIENT, allowed_email_domains: DOMAIN })
+    const start = await api.fetch('/api/oauth/microsoft/login')
+    const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!
+    const res = await withMicrosoftFetch(
+      async () => {
+        await sql`update sign_in_method set enabled = false where row_id = 'microsoft'`
+        return Response.json({
+          id_token: idToken({
+            iss: `https://login.microsoftonline.com/${TENANT}/v2.0`, aud: CLIENT, exp: Math.floor(Date.now() / 1000) + 600,
+            nonce: microsoftNonce(state), tid: TENANT, oid: OID, email: `asha@${DOMAIN}`, xms_edov: true,
+          }),
+        })
+      },
+      () => api.fetch(`/api/oauth/microsoft/callback?code=c&state=${enc(state)}`, { headers: { cookie, accept: 'text/html' } }),
+    )
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_off&via=microsoft')
+  })
+
+  test('a sign-in started for Google cannot finish at Microsoft\'s callback', async ({ api }) => {
+    await configureGoogle({ enabled: true, client_id: '' })
+    await configureMicrosoft({})
+    const start = await api.fetch('/api/oauth/google/login')
+    const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+    const state = new URLSearchParams((start.headers.get('location') as string).split('?')[1]).get('state') as string
+    const res = await api.fetch(`/api/oauth/microsoft/callback?code=c&state=${enc(state)}`, { headers: { cookie } })
+    await expectStatus(res, 401)
+    expect(await res.text()).toContain('another sign-in method')
   })
 })
