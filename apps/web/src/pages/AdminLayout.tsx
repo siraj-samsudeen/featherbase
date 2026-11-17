@@ -541,8 +541,6 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
           <div className="relative">
           <input
             ref={searchRef}
-            {...shortcutControl(COMMAND_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF.label)}
-            onMouseDown={(e) => document.activeElement !== e.currentTarget && noteShortcutUse('command', 'mouse', e.currentTarget)}
             value={search}
             onChange={(e) => {
               setSelection(null)
@@ -1100,11 +1098,14 @@ function CommandField({ rail, onOpen }: { rail: boolean; onOpen: () => void }) {
   return (
     <button
       type="button"
-      onClick={onOpen}
+      onClick={(e) => {
+        noteShortcutUse(COMMAND_SHORTCUT_DEF.id, 'mouse', e.currentTarget) // #1251: counts towards the ⌘K tip
+        onOpen()
+      }}
       data-testid="command-field"
       aria-label="Search or Command"
       aria-keyshortcuts="Meta+K Control+K"
-      title={rail ? undefined : `Search or Command (${COMMAND_SHORTCUT})`}
+      {...shortcutControl(COMMAND_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF.label)}
       className={rail
         ? `${RAIL_ROW} ${ROW_IDLE} focus-visible:outline-2 focus-visible:outline-focus`
         : 'flex min-h-8 w-full min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-md bg-border/60 px-2.5 text-sm text-ink-muted hover:bg-border focus-visible:outline-2 focus-visible:outline-focus'}

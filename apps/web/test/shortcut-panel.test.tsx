@@ -66,11 +66,13 @@ test("the panel lists the Admin's leader keys: G then N only where there is a Ta
   await waitFor(() => expect(row('New Row Of This Table')).toContain('G then N'))
 })
 
-test('the command search carries its key in its hover text', async ({ admin }) => {
+test('the Search or Command field carries its key in its hover text and badge', async ({ admin }) => {
   await openAdmin(admin)
-  const search = screen.getByLabelText('Search or type a command')
-  expect(search.title).toMatch(/^Search Or Type A Command · (⌘K|Ctrl\+K)$/)
-  expect(search).toHaveAttribute('data-shortcut-id', 'command')
+  const field = await screen.findByTestId('command-field', {}, WAIT)
+  expect(field.title).toMatch(/^Search or Command · (⌘K|Ctrl\+K)$/)
+  expect(field).toHaveAttribute('data-shortcut-id', 'command')
+  await openFromHelp()
+  expect(screen.getByTestId('shortcut-badge-command')).toHaveTextContent(/^(⌘K|Ctrl\+K)$/)
 })
 
 test('Got It dismisses the tip', async ({ admin }) => {
@@ -125,16 +127,15 @@ test('the key badges follow the controls when the window changes size', async ({
   expect(screen.getByTestId('shortcut-badge-sidebar')).toHaveTextContent(/^(⌘B|Ctrl\+B)$/)
 })
 
-test('clicking into the command search three times brings its tip', async ({ admin }) => {
-  await openAdmin(admin)
+test('opening Search or Command with the mouse three times brings its tip', async ({ admin }) => {
   await admin.put(`/api/user_settings/${SHORTCUT_SETTINGS}`, { use: {}, quietUntil: 0, quiets: 0, lastTip: 0 })
-  const search = screen.getByLabelText('Search or type a command')
+  await openAdmin(admin)
   for (let i = 0; i < 3; i++) {
-    await userEvent.click(search)
-    await userEvent.click(document.body)
+    await userEvent.click(await screen.findByTestId('command-field', {}, WAIT))
+    await userEvent.keyboard('{Escape}')
   }
   const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
-  expect(tip).toHaveTextContent(/Press (⌘K|Ctrl\+K) to search or type a command from anywhere\./)
+  expect(tip).toHaveTextContent(/Press (⌘K|Ctrl\+K) to search or run a command from anywhere\./)
 })
 
 test('? opens the panel on a page without a sidebar too (Sales Target)', async ({ admin }) => {

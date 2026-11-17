@@ -44,8 +44,8 @@ export const SIDEBAR_SHORTCUT_DEF: Shortcut = {
 export const COMMAND_SHORTCUT_DEF: Shortcut = {
   id: 'command',
   keys: mod('K'),
-  label: 'Search Or Type A Command',
-  tip: `Press ${mod('K')} to search or type a command from anywhere.`,
+  label: 'Search or Command',
+  tip: `Press ${mod('K')} to search or run a command from anywhere.`,
 }
 
 /** The Admin's leader keys, listed so the panel shows them (they were in
