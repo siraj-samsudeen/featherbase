@@ -1,0 +1,69 @@
+// #1271: Leavers Who Can Still Sign In, as a System Manager reads it: the shared list of the
+// server's rebuilt report, a header saying whether the leaver job disables anyone, and Refresh Now.
+import { configure, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
+import { sql } from 'server/src/db'
+import { configureDelegated } from 'server/test/identity-fixtures'
+import { grantRole } from 'server/test/fixtures'
+import { rowHref } from 'shared'
+import { test, expect, renderApp } from './pg-test'
+
+configure({ asyncUtilTimeout: 10_000 })
+
+test('the list shows each person who can still sign in, why, and how; the header says the leaver job is off', async ({ admin, createUser }) => {
+  const gone = await createUser({ email: 'gone.1271@example.com', fullName: 'Gone Leaver' })
+  await sql`insert into leaver_sign_in (row_id, person, why, ways_in, left_on, source)
+    values ('r1271a', ${gone.user!}, 'Left on 03-Oct-2026', 'Google, Password', '2026-10-03', 'leaver job')`
+  await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
+  const page = await screen.findByTestId('leavers-who-can-sign-in')
+  expect(await within(page).findByText('Left on 03-Oct-2026')).toBeInTheDocument()
+  expect(within(page).getByText('Google, Password')).toBeInTheDocument()
+  expect(await within(page).findByRole('link', { name: /Gone Leaver/ })).toBeInTheDocument()
+  expect(await within(page).findByTestId('leaver-job-line')).toHaveTextContent('Leaver job: Off')
+  expect(within(page).getByTestId('leaver-job-line')).toHaveTextContent('nobody is disabled while it is off')
+  expect(within(page).getByTestId('leaver-checked')).toHaveTextContent('Checked never')
+})
+
+test('Refresh Now queues the rebuild', async ({ admin }) => {
+  await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
+  await userEvent.click(await screen.findByTestId('leaver-refresh'))
+  await waitFor(() => expect(screen.getByTestId('leaver-refresh')).toHaveTextContent('Refreshing…'))
+  await waitFor(async () => expect(await sql`select 1 from background_job where method = 'refresh_leaver_sign_in'`).not.toHaveLength(0))
+})
+
+test('a System Manager is offered the list under People and access', async ({ admin }) => {
+  await renderApp('/featherbase/admin', admin)
+  expect(await screen.findByTestId('leavers-link')).toHaveAttribute('href', '/featherbase/admin/leavers-who-can-sign-in')
+})
+
+test('someone who is not a System Manager is not offered it', async ({ admin, createUser }) => {
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Reader 1271' } })
+  await grantRole(admin, { table: 'Person', role: 'Person Reader 1271', can_read: true })
+  const reader = await createUser({ email: 'reader.1271@example.com', roles: ['Person Reader 1271'] })
+  await renderApp('/featherbase/admin', reader)
+  await screen.findByTestId('sidebar-group-access')
+  expect(screen.queryByTestId('leavers-link')).not.toBeInTheDocument()
+})
+
+test('an outsider still holding an employees-only link is told to remove it; an employee is not', async ({ admin, createUser }) => {
+  await configureDelegated()
+  await sql`update sign_in_method set employees_only = true where row_id = 'stylehr'`
+  const out = await createUser({ email: 'out.1271@example.com' })
+  await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by) values ('uid_out1271', ${out.user!}, 'stylehr', 'RR-1271', 'out', 'Administrator')`
+  const real = globalThis.fetch
+  let status = 'none'
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) =>
+    /\/standing$/.test(new URL(String(url), 'http://localhost').pathname) ? Response.json({ status, code: null, jobs: [], external_label: null }) : real(url, init))
+  try {
+    const first = await renderApp(rowHref('Person', out.user!), admin)
+    const panel = await screen.findByTestId('user-sign-in-methods')
+    expect(await within(panel).findByTestId('sign-in-leftover-uid_out1271')).toHaveTextContent('Not an employee: remove this link.')
+    first.unmount()
+    status = 'current'
+    await renderApp(rowHref('Person', out.user!), admin)
+    const again = await screen.findByTestId('user-sign-in-methods')
+    await within(again).findByTestId('user-method-uid_out1271')
+    expect(within(again).queryByTestId('sign-in-leftover-uid_out1271')).not.toBeInTheDocument()
+  } finally { spy.mockRestore() }
+})
