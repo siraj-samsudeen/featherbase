@@ -65,6 +65,7 @@ import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker, stopWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
+import { ACCOUNTS_PATH, accountRoutes } from './browser-accounts'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
@@ -309,6 +310,10 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.json(await withLanding(c, session), 201)
 })
+
+// #1255: the browser's signed-in accounts (browser-accounts.ts). Public: the
+// routes read only the browser's own cookies.
+app.route(ACCOUNTS_PATH, accountRoutes(withLanding))
 
 // The SPA's sign-out. Public — it must clear the sid cookie even when the
 // bearer token is already gone or expired, otherwise the cookie survives as

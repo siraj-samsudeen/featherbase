@@ -439,18 +439,32 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
   if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
+  const checked = await checkSession(token)
+  if ('ended' in checked) throw new AppError('AuthenticationError', 'Invalid or expired session')
+  return checked.user
+}
+
+/** #1255: why a session no longer works. `invalid` names no one (a bad
+ *  signature, or a token from before sessions carried an id). */
+export type SessionEnd = 'invalid' | 'expired' | 'signed_out' | 'turned_off' | 'sessions_ended' | 'method_ended'
+
+/** The session check every request makes, answering why when it fails
+ *  (#1255: a held account says why it was signed out). */
+export async function checkSession(token: string): Promise<{ user: SessionUser } | { ended: SessionEnd }> {
   let payload: { sub?: unknown; iat?: unknown; at?: unknown; exp?: unknown; jti?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
   try {
     payload = (await verify(token, jwtSecret(), 'HS256')) as typeof payload
   } catch {
-    throw new AppError('AuthenticationError', 'Invalid or expired session')
+    // Correctly signed but past its time is "expired"; anything else names no one.
+    const signed = await verify(token, jwtSecret(), { alg: 'HS256', exp: false }).then(() => true, () => false)
+    return { ended: signed ? 'expired' : 'invalid' }
   }
   // A token minted before person-identities carries no `iat`: such sessions
   // were ended at the upgrade (no compatibility window — Siraj, 22-Oct-2026).
-  if (typeof payload.iat !== 'number') throw new AppError('AuthenticationError', 'Invalid or expired session')
+  if (typeof payload.iat !== 'number') return { ended: 'invalid' }
   // #411: nor does one minted before sessions carried an id — it could never
   // be signed out, so it ended at that upgrade too.
-  if (typeof payload.jti !== 'string' || !payload.jti) throw new AppError('AuthenticationError', 'Invalid or expired session')
+  if (typeof payload.jti !== 'string' || !payload.jti) return { ended: 'invalid' }
   const jti = payload.jti
   // When the person signed in: a hand-off's source time, else the issue time
   // (every session minted before `at` existed was its own sign-in).
@@ -473,27 +487,26 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
     left join sign_in_identity i on i.id = ${identity}
     left join revoked_session r on r.jti = ${jti}
     where u.row_id = ${String(payload.sub)}`
-  const ended =
-    !user ||
-    !user.enabled ||
+  const ended: SessionEnd | null =
+    !user || !user.enabled ? 'turned_off'
     // #411: this session was signed out (a primary-key lookup).
-    user.signed_out ||
-    (method !== null && user.method_enabled !== true) ||
-    (user?.method_kind === 'password' && !user.has_password) ||
+    : user.signed_out ? 'signed_out'
+    : (method !== null && user.method_enabled !== true) || (user.method_kind === 'password' && !user.has_password) ? 'method_ended'
     // #391: a session whose sign-in came before the person's sessions were
     // ended (for a handed-over session, its source's sign-in). Whole seconds,
     // like `iat` (floor(now)): a sign-in in the same second as the reset
     // survives — and so would an older one from that same second.
-    (user.sessions_ended_at != null && authenticatedAt < Number(user.sessions_ended_at)) ||
+    : user.sessions_ended_at != null && authenticatedAt < Number(user.sessions_ended_at) ? 'sessions_ended'
     // person-resolution D5: a session opened through an identity that has
     // since ended (left, moved, unlinked) ends on its next request.
-    (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null || user.identity_ended != null)) ||
+    : identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null || user.identity_ended != null) ? 'method_ended'
     // #693: the link stopped being admitted by its method's domains (Siraj,
     // 30-Oct-2026). Whole seconds like iat; a sign-in in that same second
     // ends too, since after the change that link could not sign in.
-    (identity !== null && user.identity_sessions_ended_at != null && authenticatedAt <= Number(user.identity_sessions_ended_at))
-  if (ended) throw new AppError('AuthenticationError', 'Invalid or expired session')
-  return {
+    : identity !== null && user.identity_sessions_ended_at != null && authenticatedAt <= Number(user.identity_sessions_ended_at) ? 'method_ended'
+    : null
+  if (ended) return { ended }
+  return { user: {
     row_id: user.row_id as string,
     kind: 'person',
     email: (user.email as string | null) ?? null,
@@ -508,7 +521,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
       session_id: jti,
       expires_at: Number(payload.exp),
     },
-  }
+  } }
 }
 
 /** #411: the session a credential names, for sign-out. The signature must
@@ -527,6 +540,21 @@ export async function sessionToRevoke(authorization?: string): Promise<SessionTo
   }
   if (typeof payload.jti !== 'string' || !payload.jti || typeof payload.exp !== 'number') return null
   return { jti: payload.jti, person: String(payload.sub), expiresAt: payload.exp }
+}
+
+/** #1255: what a correctly signed session token names, whether or not it has
+ *  expired or ended; null for anything not signed here. Never a credential
+ *  check — checkSession is. */
+export interface SessionClaims { jti: string; person: string; exp: number; method: string | null; identity: string | null }
+export async function sessionClaims(token: string): Promise<SessionClaims | null> {
+  if (token.startsWith(TOKEN_PREFIX)) return null
+  try {
+    const p = (await verify(token, jwtSecret(), { alg: 'HS256', exp: false })) as Record<string, unknown>
+    if (typeof p.jti !== 'string' || !p.jti || typeof p.sub !== 'string' || typeof p.exp !== 'number') return null
+    return { jti: p.jti, person: p.sub, exp: p.exp, method: typeof p.m === 'string' ? p.m : null, identity: typeof p.idn === 'string' ? p.idn : null }
+  } catch {
+    return null
+  }
 }
 
 /** #411: record a signed-out session so resolveToken refuses it. Only that
