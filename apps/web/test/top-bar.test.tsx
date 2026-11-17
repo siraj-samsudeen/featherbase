@@ -9,7 +9,7 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { resolve } from 'node:path'
 import { afterEach, vi } from 'vitest'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, rowHref } from 'shared'
+import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, rowHref } from 'shared'
 import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { discoverPackages } from 'server/src/runtime-packages'
@@ -343,17 +343,23 @@ test('the right side reads Open Admin, the theme toggle, then the Account menu',
 
 // ---- 5. the Account menu --------------------------------------------------------
 
-test('the Account menu holds the name, Sign-in methods, What you can see (#628), then Log out', async ({ admin }) => {
+test('the Account menu holds the name, Sign-in methods, Connected apps (#1207), What you can see (#628), then Log out', async ({ admin }) => {
   await renderApp('/featherbase/sales-target', admin)
   const menu = await openAccountMenu()
   const order = [...menu.querySelectorAll('[data-testid="account-identity"], [role="menuitem"]')].map((el) => el.getAttribute('data-testid'))
-  expect(order).toEqual(['account-identity', 'account-sign-in-methods', 'account-access-explanation', 'logout'])
+  expect(order).toEqual(['account-identity', 'account-sign-in-methods', 'account-connected-apps', 'account-access-explanation', 'logout'])
 })
 
 test("the Account menu's Sign-in methods opens the account page", async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
   await openAccountMenu()
   expect(screen.getByTestId('account-sign-in-methods')).toHaveAttribute('href', ACCOUNT_SIGN_IN_METHODS_PATH)
+})
+
+test("the Account menu's Connected apps opens the account page", async ({ admin }) => {
+  await renderApp('/featherbase/admin', admin)
+  await openAccountMenu()
+  expect(screen.getByTestId('account-connected-apps')).toHaveAttribute('href', ACCOUNT_CONNECTED_APPS_PATH)
 })
 
 // #1227: was "the person's name in the Account menu is not a control" (#489). The

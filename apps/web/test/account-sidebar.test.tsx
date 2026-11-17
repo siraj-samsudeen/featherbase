@@ -1,7 +1,7 @@
 // #1235 item 7 / what-you-can-see 1 (UI standard §4): the account pages open in a
-// frame with the shared sidebar, an "Account" group (Sign-in methods, What you can
-// see) at its top, and the page at the shared x (32px from the sidebar, left-aligned,
-// at most 880px wide; standard X1).
+// frame with the shared sidebar, an "Account" group (Sign-in methods, Connected apps
+// (#1207), What you can see) at its top, and the page at the shared x (32px from the
+// sidebar, left-aligned, at most 880px wide; standard X1).
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
@@ -14,7 +14,7 @@ test('in the Admin frame the account pages put the Account group at the top of t
   const sidebar = await screen.findByTestId('admin-sidebar', {}, WAIT)
   const account = await within(sidebar).findByTestId('sidebar-group-account', {}, WAIT)
   expect(within(account).getByTestId('sidebar-group-heading')).toHaveTextContent(/^Account$/)
-  expect(groupLinks(account)).toEqual(['Sign-in methods', 'What you can see'])
+  expect(groupLinks(account)).toEqual(['Sign-in methods', 'Connected apps', 'What you can see'])
   // At the top: nothing of the sidebar's comes before it.
   expect(sidebar.firstElementChild).toBe(account)
   const selected = within(account).getByRole('link', { name: 'Sign-in methods' })
@@ -37,7 +37,7 @@ test('someone without Admin reads the account pages beside a sidebar of their ow
   const frame = await screen.findByTestId('account-layout', {}, WAIT)
   const sidebar = await within(frame).findByTestId('account-sidebar', {}, WAIT)
   const account = within(sidebar).getByTestId('sidebar-group-account')
-  expect(groupLinks(account)).toEqual(['Sign-in methods', 'What you can see'])
+  expect(groupLinks(account)).toEqual(['Sign-in methods', 'Connected apps', 'What you can see'])
   expect(screen.queryByTestId('admin-sidebar')).not.toBeInTheDocument()
   // The bar works this sidebar as it does every other (#1227).
   const collapse = await screen.findByTestId('sidebar-collapse', {}, WAIT)
