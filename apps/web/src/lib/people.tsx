@@ -1,6 +1,8 @@
 import { useQueries, useQuery, type QueryClient } from '@tanstack/react-query'
 import { SYSTEM_ACTOR_LABELS } from 'shared'
+import { RecordLink } from '@featherbase/shop-floor'
 import { api } from './api'
+import { useCapabilities } from './session'
 
 // person-rename: a person's id is opaque (`psn_…`), so a screen never shows
 // it where a name exists. Names are fetched in batches — every name asked
@@ -124,13 +126,44 @@ export function PrincipalName({ id, actorOf }: { id: string; actorOf?: string })
   return <span data-testid="principal-name" title={name ?? undefined}>{principalLabel(id, name, loading)}</span>
 }
 
+/** #1264: the Table a principal is a record of: a person's Person row, a
+ *  service account's Service Account row; the system's own actors (jobs, steps)
+ *  are no record. */
+export function principalTable(id: string): 'Person' | 'Service Account' | null {
+  if (id === 'Administrator' || id.startsWith('psn_')) return 'Person'
+  if (id.startsWith('svc_')) return 'Service Account'
+  return null
+}
+
+/** #1264, "every record shown is a RecordLink": a person or service account
+ *  named and linked to their record for a viewer who may open it, plain words
+ *  otherwise; a system actor reads as its phrase. `name` is one the server
+ *  already gave (#1224); without it the name is looked up. Never inside
+ *  another link: there PrincipalName draws the words alone. */
+export function PrincipalLink({ id, name: given, actorOf }: { id: string; name?: string | null; actorOf?: string }) {
+  const caps = useCapabilities()
+  const looked = usePrincipalNameState(given ? null : id, actorOf)
+  const name = given || looked.name
+  const table = principalTable(id)
+  if (!table || !name) {
+    if (given) return <span data-testid="principal-name" title={given}>{given}</span>
+    // A system actor, or plain text that is no principal, reads as its words alone.
+    if (!isOpaqueId(id)) return <>{SYSTEM_ACTOR_LABELS[id] ?? id}</>
+    return <PrincipalName id={id} actorOf={actorOf} />
+  }
+  return (
+    <span data-testid="principal-name">
+      <RecordLink table={table} rowId={id} name={name} canOpen={Boolean(caps && (caps.manage || caps.tables.includes(table)))} />
+    </span>
+  )
+}
+
 /** #1224: who did something. The server names the actor with the payload
  *  (a person's display name even when this viewer may not read Person, a
  *  service account as "Automation (…)", a system step as a phrase); without
- *  that name it falls back to the viewer's own lookup. */
+ *  that name it falls back to the viewer's own lookup. #1264: a link to them. */
 export function ActorName({ id, name }: { id: string; name?: string | null }) {
-  if (name) return <span data-testid="principal-name" title={name}>{name}</span>
-  return <ShownName id={id} />
+  return <PrincipalLink id={id} name={name} />
 }
 
 /** A record name as a person would read it: a principal's name for an opaque

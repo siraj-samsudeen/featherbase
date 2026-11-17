@@ -10,7 +10,7 @@ import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import type { ListColumn } from '../lib/list-view-columns'
 import { useI18n } from '../lib/i18n'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
-import { PrincipalName, usePrincipalLabels } from '../lib/people'
+import { PrincipalLink, PrincipalName, usePrincipalLabels } from '../lib/people'
 import { OneLine } from './list-one-line'
 import { Button, DataCards, Select, touchLinkClasses, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp } from '@featherbase/shop-floor'
@@ -231,7 +231,8 @@ export function ListCell({
         <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         // #1224: who made, changed or retired a row is named to anyone who may read the row.
-        <PrincipalName id={String(value)} actorOf={ACTOR_COLUMNS.has(col.column_name) ? table : undefined} />
+        // #1264: and links to them; the click opens their record, not this row's panel.
+        <span onClick={(e) => e.stopPropagation()}><PrincipalLink id={String(value)} actorOf={ACTOR_COLUMNS.has(col.column_name) ? table : undefined} /></span>
       ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
         // #792: a link reads as the linked row's title and opens that row;
         // #910 D5: its code follows when people use one.

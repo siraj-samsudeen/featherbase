@@ -5,7 +5,7 @@ import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { Button, Card, Select, TextInput } from '@featherbase/shop-floor'
-import { ShownName, principalLabel, usePrincipalNameState } from '../lib/people'
+import { PrincipalLink, principalLabel, usePrincipalNameState } from '../lib/people'
 
 // person-identities (#275, review B-M4): on a Person's form, a System Manager
 // sees how that person signs in — password, linked outside accounts, pending
@@ -44,7 +44,7 @@ function LinkedHow({ by, who }: { by: string; who: string }) {
   if (by === 'self') return <>by {who}</>
   return (
     <>
-      by <ShownName id={by} />
+      by <PrincipalLink id={by} />
     </>
   )
 }

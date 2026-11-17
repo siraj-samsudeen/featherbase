@@ -6,15 +6,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { api } from '../lib/api'
 import { ROW_STAMPS, linkRowsTable, type ColumnDef, type TableMeta } from '../lib/meta'
-import { ShownName, usePrincipalNameState } from '../lib/people'
+import { PrincipalLink } from '../lib/people'
 import { formatValue, type Settings } from '../lib/settings'
 import { RowTitle } from '../lib/row-titles'
 import { RowLink } from '../lib/row-name'
-import { useCapabilities, useIsSystemManager } from '../lib/session'
+import { useIsSystemManager } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 import { useNavigation } from '../lib/navigation'
 import {
-  RecordLink, buttonClasses, fmtDate, pillClasses,
+  buttonClasses, fmtDate, pillClasses,
   Braces, CalendarDays, ChevronDown, ChevronRight, Hash, Image, Link2, ToggleRight, Type, type LucideIcon,
 } from '@featherbase/shop-floor'
 
@@ -321,7 +321,7 @@ function RowStamps({ values, table }: { values: Record<string, unknown>; table?:
     <span key={p.at}>
       {i > 0 && ', '}
       {i > 0 ? ROW_STAMPS[p.at].label.toLowerCase() : ROW_STAMPS[p.at].label} {p.day}
-      {p.by && <> by <StampedBy id={p.by} table={table} /></>}
+      {p.by && <> by <PrincipalLink id={p.by} actorOf={table} /></>}
     </span>
   ))}</>
 }
@@ -329,13 +329,6 @@ function RowStamps({ values, table }: { values: Record<string, unknown>; table?:
 /** Who stamped a row. A person is a record, so a link to their Person row for
  *  a viewer who may open it (#1253: every record is a link); a service account
  *  or a system step is read as its name. */
-function StampedBy({ id, table }: { id: string; table?: string }) {
-  const caps = useCapabilities()
-  const { name } = usePrincipalNameState(id, table)
-  const person = id === 'Administrator' || id.startsWith('psn_')
-  if (!person || !name) return <ShownName id={id} actorOf={table} />
-  return <RecordLink table="Person" rowId={id} name={name} canOpen={Boolean(caps && (caps.manage || caps.tables.includes('Person')))} />
-}
 
 /** When the row was created and changed, and by whom, on one quiet line:
  *  the platform's stamps, then any bookkeeping columns a source keeps. */

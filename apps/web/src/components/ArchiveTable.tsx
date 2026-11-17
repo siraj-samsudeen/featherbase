@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Notice, buttonClasses, cardClasses, fmtInstant, inputClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
-import { PrincipalName } from '../lib/people'
+import { PrincipalLink } from '../lib/people'
 import { isArchived, type TableMeta } from '../lib/meta'
 
 // #905: archive a Table that something else replaced, or (#1041) an app's unused one. Its rows and
@@ -154,7 +154,7 @@ export function ArchivedBanner({ table, meta, canUnarchive }: { table: string; m
           <strong>{table} is archived.</strong> Archived on {fmtInstant(meta.archived_at)}
           {meta.archived_by && (
             <>
-              {' '}by <PrincipalName id={meta.archived_by} actorOf={table} />
+              {' '}by <PrincipalLink id={meta.archived_by} actorOf={table} />
             </>
           )}
           . Its rows are read only.

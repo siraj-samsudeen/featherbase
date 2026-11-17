@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { fmtDate } from '@featherbase/shop-floor'
-import { PrincipalName } from '../lib/people'
+import { PrincipalLink } from '../lib/people'
 import { Button, Card, Notice, Select, TextInput } from '@featherbase/shop-floor'
 import { Plus } from 'lucide-react'
 import { RowMenu } from './RowMenu'
@@ -123,7 +123,7 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
       {replacedBy && (
         <div className="mb-2" data-testid="replaced-banner">
           <Notice>
-          This record was merged into <PrincipalName id={replacedBy} />. Open that record to make changes.
+          This record was merged into <PrincipalLink id={replacedBy} />. Open that record to make changes.
           </Notice>
         </div>
       )}

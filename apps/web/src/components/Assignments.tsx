@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
 import { useCanReadTable } from '../lib/session'
-import { ShownName } from '../lib/people'
+import { PrincipalLink } from '../lib/people'
 import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
 interface ToDoRow {
@@ -67,7 +67,7 @@ export function Assignments({ table, name, readOnly }: { table: string; name: st
         )}
         {todos.data?.data.map((t) => (
           <li key={t.row_id} className="text-sm text-ink" data-testid="assignee">
-            <ShownName id={t.allocated_to} />
+            <PrincipalLink id={t.allocated_to} />
           </li>
         ))}
       </ul>

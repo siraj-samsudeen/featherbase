@@ -3,7 +3,7 @@ import { canRetire } from 'shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { StatusPill, buttonClasses, cardClasses, fmtInstant, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
-import { PrincipalName } from '../lib/people'
+import { PrincipalLink } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
 import { useTableLabel } from '../lib/meta'
 
@@ -43,7 +43,7 @@ export function RetiredNotice({ row, table }: { row: Row; table?: string }) {
   return (
     <p className="mb-3 text-sm text-ink-muted" data-testid="retired-notice">
       Retired {fmtInstant(String(row.retired_at))} by{' '}
-      <span className="font-medium text-ink">{row.retired_by ? <PrincipalName id={String(row.retired_by)} actorOf={table} /> : 'someone'}</span>
+      <span className="font-medium text-ink">{row.retired_by ? <PrincipalLink id={String(row.retired_by)} actorOf={table} /> : 'someone'}</span>
       {row.retired_reason ? <> — <span className="text-ink" data-testid="retired-reason">{String(row.retired_reason)}</span></> : null}
     </p>
   )
