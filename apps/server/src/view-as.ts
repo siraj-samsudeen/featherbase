@@ -43,7 +43,7 @@ export interface ViewAsPerson {
   jobs?: string[]
 }
 
-/** The View as app this tester may use: the first, by app name, that is switched on and whose role they hold. */
+/** The View as app this tester may use: the first that is switched on and whose role they hold. */
 async function testerApp(tester: string) {
   const declared = (await packages()).viewAsApps()
   if (!declared.length) return null
@@ -51,7 +51,7 @@ async function testerApp(tester: string) {
   const on = new Set((await sql`select name from installed_app where enabled and not activation_pending and name in ${sql(declared.map((d) => d.app))}`)
     .map((r) => String(r.name)).filter((name) => activeApps.has(name)))
   const roles = new Set(await getRoles(tester))
-  return declared.sort((a, b) => a.app.localeCompare(b.app)).find((entry) => on.has(entry.app) && roles.has(entry.role)) ?? null
+  return declared.find((entry) => on.has(entry.app) && roles.has(entry.role)) ?? null
 }
 
 export async function mayViewAs(user: SessionUser): Promise<boolean> {
@@ -167,6 +167,7 @@ export async function startViewAs(user: SessionUser, person: unknown): Promise<v
     await lockSession(tx, session)
     // Under the lock: a sign-out that got here first has ended this session.
     const [revoked] = await tx`select 1 from revoked_session where jti = ${session}`
+    /* v8 ignore next -- a race: a request from a revoked session is refused before it gets here; only a sign-out landing between that check and this lock reaches it */
     if (revoked) throw new AppError('AuthenticationError', 'Invalid or expired session')
     await endExpired(tx)
     const [before] = await tx`select person from view_as_session where session_id = ${session} and ended_at is null`

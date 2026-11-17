@@ -14,14 +14,14 @@ import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packa
 import { issueAccessToken } from '../src/auth'
 import { logAccess, logActivity } from '../src/audit'
 import { runViewingAs } from '../src/view-as-context'
-import { viewAsRoute } from '../src/view-as'
+import { sweepExpiredViewAs, viewAsRoute } from '../src/view-as'
 import { rowCapabilities } from '../src/document'
 import { sql } from '../src/db'
 import { grantRole } from './fixtures'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import WebSocket from 'ws'
-import { attachRealtime, publishUserEvent } from '../src/realtime'
+import { attachRealtime, publishUserEvent, recheckSessionSockets } from '../src/realtime'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const TESTER = 'Bar Tester'
@@ -48,6 +48,9 @@ async function viewable(viewAs: Record<string, unknown> = { role: TESTER, people
   await appendFile(resolve(directory, 'server.mjs'), `
 reads.people = ({ payload, roles, reject }) => {
   if (!roles.includes('${TESTER}')) reject('Only a Bar Tester')
+  if (globalThis.__viewAsPeopleFails) throw new Error('down')
+  if (globalThis.__viewAsPeopleShape === 'object') return { not: 'a list' }
+  if (globalThis.__viewAsPeopleShape === 'junk') return [{ nobody: true }]
   const ids = payload.persons ?? (payload.q ? globalThis.__viewAsPeople ?? [] : [])
   return ids.map(person => ({ person, name: 'Made-up ' + person.slice(-4), code: 'C-' + person.slice(-4), jobs: ['Team Leader · Lakeside'], email: 'secret@example.test' }))
 }
@@ -254,6 +257,111 @@ describe('View as on the platform', () => {
     // While viewing, a link opens as the person viewed, who can't open Person records.
     expect((await status(start(manager, person.user)))[0]).toBe(200)
     expect((await manager.get<{ person_link: boolean }>('/api/view_as')).person_link).toBe(false)
+  })
+
+  test('a live-update socket opened while viewing gets the person\'s own events, and the periodic check keeps it while the view holds', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await status(start(tester, person.user)))[0]).toBe(200)
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${tester.token}` } })
+    const frames: { event?: string }[] = []
+    const closed = new Promise<number>((resolve) => socket.on('close', (code) => resolve(code)))
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.on('message', (raw) => { const frame = JSON.parse(String(raw)) as { event?: string }; frames.push(frame); if (frame.event === 'ready') resolve() })
+        setTimeout(() => reject(new Error('no ready frame')), 5_000)
+      })
+      publishUserEvent(person.user!, 'notification', { subject: 'for the person viewed' })
+      const deadline = Date.now() + 5_000
+      while (!frames.some((f) => f.event === 'notification') && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(frames.some((f) => f.event === 'notification')).toBe(true)
+      await recheckSessionSockets()
+      expect(socket.readyState).toBe(WebSocket.OPEN)
+      // Ended without a request (time up, marked by the sweep): the periodic check closes it.
+      await sql`update view_as_session set ended_at = now()`
+      await recheckSessionSockets()
+      expect(await closed).toBe(4009)
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
+
+  test('sign-out that cannot end the View as says so, and the cookie is still cleared', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await status(start(tester, person.user)))[0]).toBe(200)
+    await sql`create function featherbase.t1222_refuse() returns trigger language plpgsql as $$ begin raise exception 'refused'; end $$`
+    await sql`create trigger t1222_refuse before delete on featherbase.view_as_session for each row execute function featherbase.t1222_refuse()`
+    const out = await tester.fetch('/api/logout', { method: 'POST', headers: json, body: '{}' })
+    expect(out.status).toBe(503)
+  })
+
+  test("the no-access check, while viewing, answers the person's own state when they have one", async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await status(start(tester, person.user)))[0]).toBe(200)
+    expect(await tester.post<{ state: string }>('/api/access_request', { app: 'barproof' })).toMatchObject({ state: 'open' })
+    const outsider = await createUser({ email: 'outsider3@example.test', roles: [] })
+    await sql`insert into access_request (row_id, person, app, app_name, created_by, updated_by) values ('ar-1222', ${outsider.user}, 'Bar proof', 'barproof', ${outsider.user}, ${outsider.user})`
+    expect((await status(start(tester, outsider.user)))[0]).toBe(200)
+    expect(await tester.post<{ state: string }>('/api/access_request', { app: 'barproof' })).toMatchObject({ state: 'waiting' })
+    expect(await sql`select count(*)::int as n from access_request`).toEqual([{ n: 1 }])
+  })
+
+  test('identifiers listed while viewing offer no change', async ({ admin, createUser }) => {
+    const { person } = await install(admin, createUser)
+    const manager = await createUser({ email: 'tester-ids@example.test', roles: [TESTER, 'System Manager'] })
+    const viewed = person
+    expect((await status(start(manager, viewed.user)))[0]).toBe(200)
+    const listed = await manager.fetch(`/api/people/${viewed.user}/identifiers`)
+    const body = await listed.json() as { identifiers?: { editable: boolean }[]; addable?: unknown[] }
+    expect([listed.status, (body.identifiers ?? []).every((i) => !i.editable), body.addable ?? []]).toEqual([200, true, []])
+  })
+
+  test('who can be viewed, and the picker\'s small answers', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect(await status(start(tester, 'psn_nobody_at_all'))).toEqual([403, expect.stringContaining('was not found')])
+    expect(await status(start(tester, 'Administrator'))).toEqual([403, expect.stringContaining('built-in account')])
+    expect(await status(start(tester, ''))).toEqual([417, expect.stringContaining('Expected { person }')])
+    expect(await tester.get('/api/view_as/people?q=a')).toEqual([])
+    expect(await person.get('/api/view_as')).toEqual({ may: false })
+    await sql`update person set enabled = false where row_id = ${person.user}`
+    expect(await status(start(tester, person.user))).toEqual([403, expect.stringContaining('turned off')])
+  })
+
+  test('the picker still names people when the app\'s people read fails or answers oddly', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await status(start(tester, person.user)))[0]).toBe(200)
+    const g = globalThis as { __viewAsPeopleFails?: boolean; __viewAsPeopleShape?: string; __viewAsPeople?: string[] }
+    try {
+      g.__viewAsPeopleFails = true
+      expect((await tester.get<{ recent: { name: string }[] }>('/api/view_as')).recent.map((p) => p.name)).toEqual(['person'])
+      g.__viewAsPeopleFails = false
+      g.__viewAsPeopleShape = 'object'
+      expect((await tester.get<{ recent: { name: string }[] }>('/api/view_as')).recent.map((p) => p.name)).toEqual(['person'])
+      g.__viewAsPeopleShape = 'junk'
+      expect((await tester.get<{ recent: { name: string }[] }>('/api/view_as')).recent.map((p) => p.name)).toEqual(['person'])
+    } finally { delete g.__viewAsPeopleFails; delete g.__viewAsPeopleShape }
+  })
+
+  test('the sweep ends an expired View as on the record, with nobody asking', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await status(start(tester, person.user)))[0]).toBe(200)
+    await sql`update view_as_session set expires_at = now() - interval '1 minute'`
+    await sweepExpiredViewAs(true)
+    expect(await sql`select method from access_log where operation = 'view_as_end'`).toEqual([{ method: 'expired' }])
+  })
+
+  test('with no app offering View as, nobody may view as anyone', async ({ createUser }) => {
+    const directory = await mkdtemp(resolve('test/.b5-1222-plain-'))
+    directories.push(directory)
+    await cp(BAR_PROOF, directory, { recursive: true })
+    expect(await discoverPackages([directory])).toEqual([])
+    const someone = await createUser({ email: 'plain@example.test', roles: [] })
+    expect(await someone.get('/api/view_as')).toEqual({ may: false })
   })
 
   test('an access token never views as anyone', async ({ admin, createUser }) => {

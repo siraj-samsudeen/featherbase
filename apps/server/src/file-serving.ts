@@ -51,6 +51,7 @@ export async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boo
   const content = await readStored(fileUrl)
   // #1222: released only if the View as that allowed it still holds.
   if (viewedBy && !(await viewAsStillHolds(signedInFor!, viewedBy.as.person)))
+    /* v8 ignore next -- a race: only an Exit landing between this request's own two checks reaches it; the same final check on an API read is tested by holding a read open across Exit (test/view-as.test.ts) */
     throw new AppError('ConflictError', VIEW_AS_ENDED)
   // #506: the type is whatever the uploader declared, and the file is served
   // from this app's own address. Only types a browser shows without running
