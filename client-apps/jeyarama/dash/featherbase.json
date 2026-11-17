@@ -3,13 +3,16 @@
   "platformVersion": "2026-10",
   "name": "dash",
   "title": "Dash",
+  "summary": "Sales and targets for the stores you look after",
+  "icon": "report",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "dash.report",
   "roles": [
     "Dash All-Stores Reader",
     "Dash Reader",
-    "Report Access Manager"
+    "Report Access Manager",
+    "Team Report Manager"
   ],
   "roleDefaults": {},
   "settings": [
@@ -20,6 +23,29 @@
     {
       "name": "linked_tables",
       "required": false
+    }
+  ],
+  "approvalTypes": [
+    {
+      "name": "subcategory_add",
+      "title": "Add a subcategory to my section"
+    },
+    {
+      "name": "subcategory_removal",
+      "title": "Not mine: take a subcategory out of my section"
+    },
+    {
+      "name": "job_section",
+      "title": "My section is wrong: change my job's section"
+    },
+    {
+      "name": "department_setup",
+      "title": "Set up my department: its sections and its name",
+      "grantsAccess": false
+    },
+    {
+      "name": "buyer_section_move",
+      "title": "Move a subcategory to another Buyer Section"
     }
   ],
   "secrets": [
@@ -57,7 +83,12 @@
     "approvers": [
       "Report Access Manager"
     ],
-    "page": "?view=access"
+    "page": "?view=access",
+    "grant": {
+      "title": "Dash reports",
+      "read": "grant_options",
+      "action": "give_report"
+    }
   },
   "datasets": [
     {
@@ -333,6 +364,33 @@
         "store": "store_code",
         "subcategory": "subcategory_code"
       }
+    },
+    {
+      "name": "organisation_dives",
+      "source": "motherduck",
+      "unscoped": true,
+      "query": "select cast(id as varchar) as dive_id, title, owner_name, cast(updated_at as date) as saved_on from MD_LIST_DIVES(include_org_shares => true) where coalesce(status, '') <> 'archived'",
+      "columns": [
+        {
+          "name": "dive_id",
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "type": "text"
+        },
+        {
+          "name": "owner_name",
+          "type": "text"
+        },
+        {
+          "name": "saved_on",
+          "type": "date"
+        }
+      ],
+      "keys": [
+        "dive_id"
+      ]
     }
   ],
   "tables": [
@@ -559,7 +617,12 @@
       "Section",
       "Section Subcategory",
       "Merchandise Assignment",
-      "Subcategory"
+      "Subcategory",
+      "Department",
+      "Department Section",
+      "Cluster",
+      "Buyer Section",
+      "Buyer Section Subcategory"
     ],
     "unmarkedTables": [
       "Employee",
@@ -569,7 +632,16 @@
       "Section",
       "Section Subcategory",
       "Merchandise Assignment",
-      "Subcategory"
+      "Subcategory",
+      "Department",
+      "Department Section",
+      "Cluster",
+      "Buyer Section",
+      "Buyer Section Subcategory"
+    ],
+    "optionalTables": [
+      "Buyer Section",
+      "Buyer Section Subcategory"
     ]
   },
   "permissions": [
@@ -586,6 +658,14 @@
     {
       "table": "dash.report",
       "role": "Report Access Manager",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic"
+      }
+    },
+    {
+      "table": "dash.report",
+      "role": "Team Report Manager",
       "can_read": true
     },
     {
@@ -597,6 +677,11 @@
         "update": "@basic",
         "delete": true
       }
+    },
+    {
+      "table": "dash.report_bundle",
+      "role": "Team Report Manager",
+      "can_read": true
     },
     {
       "table": "dash.report_bundle_member",
@@ -616,6 +701,16 @@
         "create": "@basic",
         "update": "@basic",
         "delete": true
+      }
+    },
+    {
+      "table": "dash.report_access",
+      "role": "Team Report Manager",
+      "scope_mode": "creator",
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic"
       }
     }
   ],
@@ -692,7 +787,31 @@
           "kind": "generic"
         }
       },
-      "subcategory_search": {
+      "subcategory_levels": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "category_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "unplaced": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "holds_master_data": {
         "policy": {
           "kind": "table"
         },
@@ -709,6 +828,14 @@
         }
       },
       "reports": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "feedback_context": {
         "policy": {
           "kind": "table"
         },
@@ -760,6 +887,14 @@
           "kind": "generic"
         }
       },
+      "grant_options": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
       "person_search": {
         "policy": {
           "kind": "table"
@@ -777,6 +912,111 @@
         }
       },
       "manages_access": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "department_setup": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "department_approvals": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "holds_department_job": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "dive_choices": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "outbound": true
+      },
+      "manages_area": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "my_store": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "coverage": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "section_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "find_subcategories": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "coverage_people": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "dash_pages_open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "buyer_sections": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "buyer_section_approvals": {
         "policy": {
           "kind": "table"
         },
@@ -1878,14 +2118,118 @@
       "fromVersion": "0.12.10",
       "toVersion": "0.12.11",
       "operations": []
-    }
+    },
+    {
+      "id": "sections_not_mine",
+      "fromVersion": "0.12.11",
+      "toVersion": "0.13.0",
+      "operations": []
+    },
+    {
+      "id": "department_self_setup",
+      "fromVersion": "0.13.0",
+      "toVersion": "0.13.1",
+      "operations": []
+    },
+    {
+      "id": "person_identity",
+      "fromVersion": "0.13.1",
+      "toVersion": "0.13.2",
+      "operations": []
+    },
+    {
+      "id": "report_access_managers_add_dives",
+      "fromVersion": "0.13.2",
+      "toVersion": "0.13.3",
+      "operations": []
+    },
+    {
+      "id": "team_report_giving",
+      "fromVersion": "0.13.3",
+      "toVersion": "0.13.4",
+      "operations": []
+    },
+    {
+      "id": "waiting_for_access_grant",
+      "fromVersion": "0.13.4",
+      "toVersion": "0.13.5",
+      "operations": []
+    },
+    {
+      "id": "department_name_follows_sections",
+      "fromVersion": "0.13.5",
+      "toVersion": "0.13.6",
+      "operations": []
+    },
+    {
+      "id": "named_cluster_head",
+      "fromVersion": "0.13.6",
+      "toVersion": "0.13.7",
+      "operations": []
+    },
+    {
+      "id": "one_app_chrome",
+      "fromVersion": "0.13.7",
+      "toVersion": "0.13.8",
+      "operations": []
+    },
+    {
+      "id": "ends_on_inclusive",
+      "fromVersion": "0.13.8",
+      "toVersion": "0.13.9",
+      "operations": []
+    },
+    {
+      "id": "manager_area",
+      "fromVersion": "0.13.9",
+      "toVersion": "0.13.10",
+      "operations": []
+    },
+    {
+      "id": "report_an_issue",
+      "fromVersion": "0.13.10",
+      "toVersion": "0.13.12",
+      "operations": []
+    },
+    {
+      "id": "report_access_redesign",
+      "fromVersion": "0.13.12",
+      "toVersion": "0.13.13",
+      "operations": []
+    },
+    {
+      "id": "more_list_closes",
+      "fromVersion": "0.13.13",
+      "toVersion": "0.13.14",
+      "operations": []
+    },
+    {
+      "id": "store_run_by",
+      "fromVersion": "0.13.14",
+      "toVersion": "0.13.15",
+      "operations": []
+    },
+    {
+      "id": "buyer_section_desks",
+      "fromVersion": "0.13.15",
+      "toVersion": "0.13.16",
+      "operations": []
+    },
+    {
+      "id": "buyer_section_moves",
+      "fromVersion": "0.13.16",
+      "toVersion": "0.13.17",
+      "operations": []
+    },
+    {"id": "switcher_summary", "fromVersion": "0.13.17", "toVersion": "0.13.19", "operations": []}
   ],
   "baseTables": {
     "read": {
       "Employee": [
         "name",
         "status",
-        "person"
+        "person",
+        "employee_code"
       ],
       "Job Assignment": [
         "employee",
@@ -1906,6 +2250,23 @@
         "category",
         "subcategory",
         "operating_region",
+        "starts_on",
+        "ends_on"
+      ],
+      "Buyer Section": [
+        "buyer_section_id",
+        "name",
+        "operating_region",
+        "buyer",
+        "category_head",
+        "purchasing_group",
+        "starts_on",
+        "ends_on"
+      ],
+      "Buyer Section Subcategory": [
+        "buyer_section_subcategory_id",
+        "buyer_section",
+        "subcategory",
         "starts_on",
         "ends_on"
       ],
@@ -1965,6 +2326,25 @@
         "report",
         "updated_at",
         "removed"
+      ],
+      "Department": [
+        "department_id",
+        "store",
+        "name",
+        "manager",
+        "starts_on",
+        "ends_on"
+      ],
+      "Department Section": [
+        "department_section_id",
+        "store",
+        "department",
+        "section",
+        "starts_on",
+        "ends_on"
+      ],
+      "Cluster": [
+        "cluster_manager"
       ]
     },
     "propose": {
@@ -1995,6 +2375,44 @@
         ],
         "startsOn": "starts_on",
         "endsOn": "ends_on"
+      },
+      "Department": {
+        "columns": [
+          "store",
+          "name",
+          "manager"
+        ],
+        "stamp": [
+          "department_id",
+          "source_key"
+        ],
+        "startsOn": "starts_on",
+        "endsOn": "ends_on"
+      },
+      "Department Section": {
+        "columns": [
+          "store",
+          "department",
+          "section"
+        ],
+        "stamp": [
+          "department_section_id",
+          "source_key"
+        ],
+        "startsOn": "starts_on",
+        "endsOn": "ends_on"
+      },
+      "Buyer Section Subcategory": {
+        "columns": [
+          "buyer_section",
+          "subcategory"
+        ],
+        "stamp": [
+          "buyer_section_subcategory_id",
+          "source_key"
+        ],
+        "startsOn": "starts_on",
+        "endsOn": "ends_on"
       }
     }
   },
@@ -2007,23 +2425,31 @@
       "dash.report_bundle_member"
     ],
     "operations": {
-      "propose_move": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
-      "propose_add": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
       "propose_section": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "propose_removal": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "propose_adds": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "withdraw": {
         "policy": {
           "kind": "table"
         },
@@ -2072,6 +2498,94 @@
         }
       },
       "remove_from_bundle": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "set_up_department": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "withdraw_department": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "decide_department": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "prefill_departments": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "undo_prefill": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "add_report": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "move_staff": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "manage_add": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "manage_remove": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "move_buyer_subcategory": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "decide_buyer_section": {
         "policy": {
           "kind": "table"
         },

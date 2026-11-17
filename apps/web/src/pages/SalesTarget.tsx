@@ -650,6 +650,13 @@ function SalesTargetReport() {
 /** #955: finding no access to Dash is the request for it. */
 function NoReportAccess() {
   const asked = useAccessRequest('dash')
+  if (asked?.state === 'declined')
+    return (
+      <>
+        <p className="font-medium text-ink">You don't have access to {asked.title}</p>
+        <p className="mt-1 text-ink-muted">An admin declined your request. Ask your manager if you need it.</p>
+      </>
+    )
   if (asked?.state === 'waiting')
     return (
       <>

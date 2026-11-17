@@ -6,10 +6,12 @@ import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { getBrowser } from '../src/print'
 import { expectRefused, expectStatus, makePerson } from './fixtures'
-import { _setGoogleFetch, assertSignInAvailable, exchangeCode, googleAuthorizeUrl, mintHandoffCode, mockApproveRedirect, mockConsentHtml, newLoginChallenge, redeemHandoffCode, verifyState } from '../src/oauth'
+import { assertSignInAvailable, exchangeCode, googleAuthorizeUrl, mintHandoffCode, mockApproveRedirect, mockConsentHtml, newLoginChallenge, redeemHandoffCode, verifyState } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
+import { withTime } from './clock'
+import { beginMockApproval, mockApproveUrl, mockOAuth, withGoogleFetch } from './google-mock'
 import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
 
 // PLAT-006: Google OAuth server-side flow, driven through the dev mock
@@ -38,18 +40,12 @@ async function beginLogin(api: TestClient): Promise<{ state: string; cookie: str
   return { state, cookie }
 }
 
-function approveUrl(state: string, email: string, name: string, extra: { subject?: string; hd?: string } = {}): string {
-  return (
-    '/api/oauth/mock/approve?' +
-    new URLSearchParams({ state, redirect_uri: '/api/oauth/google/callback', email, name, ...extra }).toString()
-  )
-}
-
 async function mockSignIn(api: TestClient, email: string, name = 'Test User', extra: { subject?: string; hd?: string } = {}) {
-  const { state, cookie } = await beginLogin(api)
-  const approve = await api.fetch(approveUrl(state, email, name, extra), { headers: { cookie } })
-  if (approve.status !== 302) return approve
-  return api.fetch(approve.headers.get('location') as string, { headers: { cookie } })
+  // The login start must redirect to the provider; a refusal there is not the
+  // sign-in outcome these tests examine.
+  const { start, approve, callback, cookie } = await beginMockApproval(api, email, { ...extra, name })
+  expect(start.status, 'the login start redirects to the provider').toBe(302)
+  return callback === null ? approve : api.fetch(callback, { headers: { cookie } })
 }
 
 // #150: what the callback hands the SPA is a one-time handoff code, not the
@@ -77,12 +73,12 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     await setClientId('')
     await setAllowedDomains('*')
     const started = Math.floor(Date.now() / 1000) * 1000
-    try {
+    await withTime(started, async () => {
       for (const seconds of [599, 601]) {
         vi.setSystemTime(started)
         const email = `elapsed-${seconds}@example.test`
         const { state, cookie } = await beginLogin(api)
-        const approved = await api.fetch(approveUrl(state, email, 'Elapsed Login'), { headers: { cookie } })
+        const approved = await api.fetch(mockApproveUrl(state, email, { name: 'Elapsed Login' }), { headers: { cookie } })
         await expectStatus(approved, 302)
         vi.setSystemTime(started + seconds * 1000)
         const callback = await api.fetch(approved.headers.get('location')!, { headers: { cookie } })
@@ -99,9 +95,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
           expect(await sql`select row_id from person where email = ${email}`).toEqual([])
         }
       }
-    } finally {
-      vi.useRealTimers()
-    }
+    })
   })
 
   test('Google sign-in gives the sid cookie the configured session lifetime', async ({ api }) => {
@@ -343,18 +337,16 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const { state, cookie } = await beginLogin(api)
     await setClientId('') // explicitly blank — the exact state that used to fail open
 
-    const prev = process.env.ALLOW_MOCK_OAUTH
-    delete process.env.ALLOW_MOCK_OAUTH
+    mockOAuth(false)
     try {
       await expectStatus(await api.fetch('/api/oauth/mock/consent'), 401)
-      await expectStatus(await api.fetch(approveUrl(state, 'Administrator', 'x'), { headers: { cookie } }), 401)
+      await expectStatus(await api.fetch(mockApproveUrl(state, 'Administrator', { name: 'x' }), { headers: { cookie } }), 401)
       // Sign-in itself refuses rather than falling back to the mock, and the
       // callback will not decode a mock code either.
       await expectStatus(await api.fetch('/api/oauth/google/login'), 401)
       await expectStatus(await api.fetch('/api/oauth/google/callback?code=x&state=y'), 401)
     } finally {
-      if (prev === undefined) delete process.env.ALLOW_MOCK_OAUTH
-      else process.env.ALLOW_MOCK_OAUTH = prev
+      vi.unstubAllEnvs()
     }
     // Nothing was provisioned by any of it.
     const [row] = await sql`select 1 from sign_in_identity where person_id = 'Administrator' and method = 'google'`
@@ -374,7 +366,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     // makes the assertion below depend on this test alone, not on ambient state.
     await sql`delete from person where email = 'attacker@gmail.com'`
     const { state, cookie } = await beginLogin(api)
-    const approve = await api.fetch(approveUrl(state, 'attacker@gmail.com', 'Attacker'), {
+    const approve = await api.fetch(mockApproveUrl(state, 'attacker@gmail.com', { name: 'Attacker' }), {
       headers: { cookie },
     })
     await expectStatus(approve, 302)
@@ -404,7 +396,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const { state, cookie } = await beginLogin(api)
     expect(cookie).toContain('oauth_state=')
     expect(cookie).toContain('oauth_verifier=')
-    const approved = await api.fetch(approveUrl(state, email, 'Signed Code Control'), { headers: { cookie } })
+    const approved = await api.fetch(mockApproveUrl(state, email, { name: 'Signed Code Control' }), { headers: { cookie } })
     await expectStatus(approved, 302)
     const callback = new URL(approved.headers.get('location')!, 'http://localhost')
     expect(callback.pathname).toBe('/api/oauth/google/callback')
@@ -453,7 +445,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('the approve step also requires the state cookie', async ({ api }) => {
     const { state } = await beginLogin(api)
     // Same signed state, no cookie — the mock consent bounce refuses too.
-    await expectStatus(await api.fetch(approveUrl(state, 'someone@gmail.com', 'Someone')), 401)
+    await expectStatus(await api.fetch(mockApproveUrl(state, 'someone@gmail.com', { name: 'Someone' })), 401)
   })
 
   // --- Defect C: x-forwarded-proto is a LIST, not a scalar -------------------
@@ -543,7 +535,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     }
 
     // The application's own callback still works.
-    const ok = await api.fetch(approveUrl(state, 'demo.user@gmail.com', 'Demo'), { headers: { cookie } })
+    const ok = await api.fetch(mockApproveUrl(state, 'demo.user@gmail.com', { name: 'Demo' }), { headers: { cookie } })
     await expectStatus(ok, 302)
     expect(ok.headers.get('location')).toMatch(/^\/api\/oauth\/google\/callback\?/)
   })
@@ -580,18 +572,13 @@ describe('exchanging a code with Google itself', () => {
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
   // Answers the token endpoint and the userinfo endpoint in turn; Google is never contacted.
   async function exchangeWith(token: Response, userinfo?: Response) {
-    const { _setGoogleFetch, exchangeCode } = await import('../src/oauth')
     const calls: { url: string; body: string; authorization: string | null }[] = []
-    _setGoogleFetch(async (input, init) => {
+    const handler: typeof fetch = async (input, init) => {
       const url = String(input)
       calls.push({ url, body: String(init?.body ?? ''), authorization: new Headers(init?.headers).get('authorization') })
       return url.includes('oauth2.googleapis.com') ? token : (userinfo as Response)
-    })
-    try {
-      return { calls, result: await exchangeCode('the-code', '/api/oauth/google/callback', 'client-1', 'the-verifier').then((v) => v, (e: Error) => e) }
-    } finally {
-      _setGoogleFetch(null)
     }
+    return withGoogleFetch(handler, async () => ({ calls, result: await exchangeCode('the-code', '/api/oauth/google/callback', 'client-1', 'the-verifier').then((v) => v, (e: Error) => e) }))
   }
 
   test('a verified account is returned by its permanent ID, with the PKCE verifier sent to Google', async () => {
@@ -634,15 +621,11 @@ describe('exchanging a code with Google itself', () => {
 
   test('an exchange with no PKCE verifier sends an empty one', async () => {
     const bodies: string[] = []
-    _setGoogleFetch(async (input, init) => {
+    const handler: typeof fetch = async (input, init) => {
       bodies.push(String(init?.body ?? ''))
       return String(input).includes('oauth2.googleapis.com') ? json({ access_token: 'at' }) : json({ sub: '11' })
-    })
-    try {
-      await exchangeCode('the-code', '/api/oauth/google/callback', 'client-1', undefined)
-    } finally {
-      _setGoogleFetch(null)
     }
+    await withGoogleFetch(handler, () => exchangeCode('the-code', '/api/oauth/google/callback', 'client-1', undefined))
     expect(new URLSearchParams(bodies[0]).get('code_verifier')).toBe('')
   })
 
@@ -662,7 +645,7 @@ describe('#396: the sign-in records the client address', () => {
     vi.stubEnv('CLIENT_ADDRESS_HEADER', 'x-real-ip')
     await setAllowedDomains('*')
     const { state, cookie } = await beginLogin(api)
-    const approve = await api.fetch(approveUrl(state, 'google.address@gmail.com', 'Google Address'), { headers: { cookie } })
+    const approve = await api.fetch(mockApproveUrl(state, 'google.address@gmail.com', { name: 'Google Address' }), { headers: { cookie } })
     const res = await api.fetch(approve.headers.get('location') as string, { headers: { cookie, ...FROM_CLIENT } })
     await expectStatus(res, 302)
     const [person] = await sql`select row_id from person where email = 'google.address@gmail.com'`
@@ -677,7 +660,7 @@ describe('the OAuth steps refuse what they cannot use', () => {
   })
 
   test('with no client id and the mock provider off, sign-in is not available', () => {
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     expect(() => assertSignInAvailable('')).toThrow('Google sign-in is not configured')
   })
 
@@ -717,7 +700,7 @@ describe('the OAuth steps refuse what they cannot use', () => {
   })
 
   test('a mock code is not exchanged once the mock provider is off', async () => {
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     await expect(exchangeCode('any', '/api/oauth/google/callback', '', undefined)).rejects.toThrow('Mock OAuth provider is disabled')
   })
 
@@ -764,13 +747,13 @@ describe('the OAuth steps refuse what they cannot use', () => {
     const state = new URL(start.headers.get('location') as string).searchParams.get('state') as string
     const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    _setGoogleFetch(async () => { throw new TypeError('fetch failed') })
     try {
-      const res = await expectStatus(await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=c`, { headers: { cookie, accept: 'text/html' } }), 302)
-      expect(res.headers.get('location')).toBe('/featherbase/login?error=google_failed')
-      expect(error.mock.calls.some((call) => call[0] === '[sign-in] google callback failed')).toBe(true)
+      await withGoogleFetch(async () => { throw new TypeError('fetch failed') }, async () => {
+        const res = await expectStatus(await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=c`, { headers: { cookie, accept: 'text/html' } }), 302)
+        expect(res.headers.get('location')).toBe('/featherbase/login?error=google_failed')
+        expect(error.mock.calls.some((call) => call[0] === '[sign-in] google callback failed')).toBe(true)
+      })
     } finally {
-      _setGoogleFetch(null)
       error.mockRestore()
     }
   })

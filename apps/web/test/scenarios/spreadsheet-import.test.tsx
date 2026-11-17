@@ -13,6 +13,7 @@ import { scenarioFor } from 'server/test/scenario'
 import { importedEarlier, importedZones, populations, populationsOf, zoneCount, zonesCsv, type ImportedZones, type Zone, type ZoneOptions } from 'server/test/reimport-zones'
 import { clearSession } from '../../src/lib/import-session'
 import { test, expect, renderApp, onScreen } from '../pg-test'
+import { openListMenu } from '../list-menus'
 
 const scenario = scenarioFor(test, 'spreadsheet-import')
 const WAIT = { timeout: 20_000 }
@@ -72,7 +73,7 @@ class Wizard {
   async openForTable(as: TestClient, table: string) {
     cleanup()
     await renderApp(tableHref(table), as)
-    await onScreen().clickButton('List actions')
+    await openListMenu('List actions')
     await this.user.click(await screen.findByTestId('open-import'))
     await screen.findByTestId('import-wizard', {}, WAIT)
   }
@@ -141,6 +142,10 @@ class Wizard {
   confirmationText = () => (screen.queryByTestId('iw-confirm-updates')?.textContent ?? '')
   appendWarningText = () => (screen.queryByTestId('iw-append-warning')?.textContent ?? '')
   completed = () => screen.queryByTestId('iw-done') !== null || screen.queryByTestId('list-view') !== null
+  /** #1228: returning to a bare list waits for the person's saved settings, so the list shows a moment later. */
+  async finished() {
+    await waitFor(() => expect(this.completed(), `The import did not finish. The page says: ${this.text(document.body).slice(0, 1500)}`).toBe(true), { timeout: 30_000 })
+  }
 
   async acknowledgeAppend() {
     if (!screen.queryByTestId('iw-append-warning'))
@@ -163,7 +168,7 @@ class Wizard {
   }
 
   async latestHistoryText(as: TestClient, table: string) {
-    if (!this.completed()) throw new Error(`Import has not completed: ${this.confirmationText()}`)
+    await this.finished()
     await this.openForTable(as, table)
     return this.text(await screen.findByTestId('iw-run-0', {}, WAIT))
   }
@@ -396,7 +401,7 @@ describe('spreadsheet-import', () => {
 
   async function proceedsWithoutTypedCount(admin: TestClient, r: Reimport) {
     expect(r.wizard.confirmationText(), 'Unchanged matches must not count toward the typed-confirmation threshold').toBe('')
-    expect(r.wizard.completed()).toBe(true)
+    await r.wizard.finished()
     expect(await zoneCount(admin, r.table)).toBe(61)
     expect(await populations(admin, r.table)).toEqual(populationsOf(r.incoming))
   }

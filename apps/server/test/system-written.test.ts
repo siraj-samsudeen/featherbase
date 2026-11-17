@@ -3,9 +3,10 @@
 // rows through the generic API, bulk paths or structure changes; only the
 // server's own writers (sign-in logging, the job runner, the import logger,
 // the version trail) put rows there. Reads are unchanged.
-import { describe, expect, vi } from 'vitest'
+import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
+import { withTimeFromNow } from './clock'
 import { sql } from '../src/db'
 import { app } from '../src/index'
 import * as documentModule from '../src/document'
@@ -348,7 +349,9 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/set_language': 'personal preference',
     'POST /api/set_password': 'credentials',
     'POST /api/people/names': 'read',
+    'POST /api/people/actor_names': 'read',
     'POST /api/access_request': 'audit: records an access request for the person asking (#955)',
+    'POST /api/access_request/:id/:decision': 'access control: a System Manager approves (roles through the Person save, app access through the app action), declines or dismisses a request; one activity row each (#1173)',
     'POST /api/row_titles': 'read',
     'POST /api/people/:id/identities': 'person identities',
     'POST /api/people/:id/identifiers': 'person identifiers',
@@ -533,18 +536,12 @@ describe('#432: kept history and the database clock', () => {
 
   test('an import stays revertible when the app clock runs behind the database', async ({ admin }) => {
     await makeTable(admin, { name: 'Audit Skew', columns: ['title'] })
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(Date.now() - 60 * 60 * 1000)
     // Called in-process: a skewed clock would also expire the HTTP session.
-    try {
-      await getCollectionAction('import')!.handler({
-        table: 'Audit Skew',
-        args: { rows: [{ title: 'one' }], context: { run_id: 'skew-run' } },
-        user: { row_id: 'Administrator' } as never,
-      })
-    } finally {
-      vi.useRealTimers()
-    }
+    await withTimeFromNow(-60 * 60 * 1000, async () => getCollectionAction('import')!.handler({
+      table: 'Audit Skew',
+      args: { rows: [{ title: 'one' }], context: { run_id: 'skew-run' } },
+      user: { row_id: 'Administrator' } as never,
+    }))
     expect(await admin.post('/api/table/Audit%20Skew:import-revert', { run_id: 'skew-run' })).toMatchObject({ deleted: 1 })
   })
 

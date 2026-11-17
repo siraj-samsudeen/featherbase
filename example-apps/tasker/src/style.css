@@ -11,7 +11,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .48; }
 
-.tasker-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
+.tasker-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
 .tasker-nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
 .tasker-nav-item > span:not(.tasker-count), .tasker-sidebar-project-name > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .tasker-count { display: inline-flex; min-width: 23px; height: 23px; align-items: center; justify-content: center; color: inherit; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -123,7 +123,7 @@ button:disabled { cursor: default; opacity: .48; }
 .tasker-focus-order button { width: 26px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--color-ink-muted); }
 .tasker-focus-order button:hover { background: var(--color-subtle); }
 
-.tasker-shell:has(.tasker-inspector) { grid-template-columns: 240px minmax(0, 1fr) minmax(360px, 420px); }
+.tasker-shell:has(.tasker-inspector) { grid-template-columns: auto minmax(0, 1fr) minmax(360px, 420px); }
 .tasker-shell:has(.tasker-inspector) .tasker-main { padding-inline: 28px; }
 .tasker-shell:has(.tasker-inspector) .tasker-task-guide { display: none; }
 .tasker-shell:has(.tasker-inspector) .tasker-task-row { grid-template-columns: 24px minmax(0, 1fr) auto; }
@@ -175,7 +175,7 @@ html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: 
 @media (max-width: 1100px) {
   html.tasker-compact-inspector-open, html.tasker-compact-inspector-open body { overflow: hidden; }
   html.tasker-compact-inspector-open .tasker-sidebar, html.tasker-compact-inspector-open .tasker-main { display: none; }
-  .tasker-shell:has(.tasker-inspector) { grid-template-columns: 240px minmax(0, 1fr); }
+  .tasker-shell:has(.tasker-inspector) { grid-template-columns: auto minmax(0, 1fr); }
   .tasker-inspector { position: fixed; inset: var(--featherbase-bar-height, 0px) 0 0; box-sizing: border-box; width: 100%; height: calc(100dvh - var(--featherbase-bar-height, 0px)); }
   .tasker-task-guide { display: none; }
   .tasker-task-row { grid-template-columns: 24px minmax(0, 1fr) auto; }

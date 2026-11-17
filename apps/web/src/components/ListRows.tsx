@@ -18,6 +18,9 @@ import { RetiredBadge } from './RowRetirement'
 import { fmtCount } from '@featherbase/shop-floor'
 import { Indicator } from './Indicator'
 
+/** #1224: the columns that record who acted on a row. */
+const ACTOR_COLUMNS = new Set(['created_by', 'updated_by', 'retired_by'])
+
 // SET-004: cells render through the global display settings (date format,
 // currency/float precision). Non-typed columns fall back to a plain string.
 // person-rename: a Reference to a person or a service account shows the
@@ -55,6 +58,7 @@ export function ListRow({
   onToggleExpand,
   inPane,
   onOpenPane,
+  titleOpensPane,
 }: {
   row: Record<string, unknown>
   table: string
@@ -74,6 +78,8 @@ export function ListRow({
   inPane: boolean
   /** #910: shows a row in the drill pane; absent where there is no pane. */
   onOpenPane?: (pane: { table: string; row: string }) => void
+  /** #1173: the row's name link opens the pane too, in place of the row's page. */
+  titleOpensPane?: boolean
 }) {
   // A title that is a person's id reads as their name.
   const shownTitle = usePrincipalLabels([title])
@@ -83,9 +89,16 @@ export function ListRow({
     if ((e.target as HTMLElement).closest('a,button,input,select,label,textarea')) return
     onOpenPane({ table, row: rowId })
   })
+  // Captured before the link handles it, so the router does not navigate.
+  const titleClick = onOpenPane && titleOpensPane ? (e: React.MouseEvent) => {
+    if (!(e.target as HTMLElement).closest('[data-title-cell] a')) return
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+    e.preventDefault()
+    onOpenPane({ table, row: rowId })
+  } : undefined
   return (
     <>
-      <tr onClick={select || undefined} aria-selected={onOpenPane ? inPane : undefined}
+      <tr onClick={select || undefined} onClickCapture={titleClick} aria-selected={onOpenPane ? inPane : undefined}
         // #910 checklist 21: a line goes to the pane from the keyboard too;
         // Enter on a link or control inside it keeps doing its own thing.
         tabIndex={onOpenPane ? 0 : undefined}
@@ -124,7 +137,7 @@ export function ListRow({
           </td>
         )}
         {columns.map((col, i) => (
-          <td key={col.column_name} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-focus-visible:bg-action-tint ${inPane ? 'bg-action-tint' : 'bg-surface group-hover:bg-subtle'}` : ''}`}>
+          <td key={col.column_name} data-title-cell={i === 0 ? '' : undefined} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-focus-visible:bg-action-tint ${inPane ? 'bg-action-tint' : 'bg-surface group-hover:bg-subtle'}` : ''}`}>
             <OneLine className={i === 0 ? NAME_CLIP : 'max-w-80'}>
               <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
             </OneLine>
@@ -217,7 +230,8 @@ function ListCell({
       {col.column_type === 'Choice' && value != null && value !== '' ? (
         <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
-        <PrincipalName id={String(value)} />
+        // #1224: who made, changed or retired a row is named to anyone who may read the row.
+        <PrincipalName id={String(value)} actorOf={ACTOR_COLUMNS.has(col.column_name) ? table : undefined} />
       ) : col.column_type === 'Reference' && col.reference_table && !isBlank(value) ? (
         // #792: a link reads as the linked row's title and opens that row;
         // #910 D5: its code follows when people use one.

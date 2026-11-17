@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { clearSession } from '../src/lib/import-session'
+import { openSidebarNew } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const ONE = 'Batch Sheet One'
@@ -32,6 +33,7 @@ function workbook(name: string): File {
 async function openWizard(admin: Admin, file: File) {
   clearSession()
   await renderApp('/featherbase/admin', admin)
+  await openSidebarNew({ timeout: 8000 })
   await userEvent.click(await screen.findByTestId('import-data-link', {}, WAIT))
   fireEvent.change(await screen.findByTestId('iw-file-input', {}, WAIT), { target: { files: [file] } })
   await screen.findByTestId('iw-overview', {}, WAIT)

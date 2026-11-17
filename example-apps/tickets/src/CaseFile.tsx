@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -12,22 +13,30 @@ import {
 } from './api'
 import { configuredTypes, display, fields, kindLabel, person, short, stateLabel, time, type TicketAction } from './ticket-words'
 import { Label, Structured, TypeSelect } from './ticket-fields'
-import { StatePill, assignee } from './ticket-state'
+import { REPORT_FEEDBACK } from './report-feedback'
+import { ReportFeedbackFacts } from './report-feedback-facts'
+import { StatePill } from './ticket-state'
+import { RulesCard, type Rule } from './rules'
+import { CoveredRowsCard, coveredSummary, type Covered } from './covered-rows'
+import { RecordLink } from '@featherbase/shop-floor'
+import { useOpenablePeople } from './record-link'
 
-function Facts({ values }: { values: RecordData }) {
+function Facts({ values, title }: { values: RecordData; title?: string }) {
+  const shown = Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  // #1230: a titled set with nothing in it shows nothing, not a heading over whatever comes next.
+  if (title && !shown.length) return null
   return (
-    <dl className="facts">
-      {Object.entries(values)
-        .filter(
-          ([, value]) => value !== undefined && value !== null && value !== '',
-        )
-        .map(([key, value]) => (
+    <>
+      {title && <h3>{title}</h3>}
+      <dl className="facts">
+        {shown.map(([key, value]) => (
           <div key={key}>
             <dt>{stateLabel(key)}</dt>
             <dd>{display(value)}</dd>
           </div>
         ))}
-    </dl>
+      </dl>
+    </>
   )
 }
 function EventBody({ value }: { value: unknown }) {
@@ -222,25 +231,56 @@ function TicketActions({
   choose: (action: HeaderAction) => void
 }) {
   if (!actions.length) return null
+  // #1233 (UX spec 4): one primary button for the next state, then Add note, then More for the rest.
+  const lead = actions.find((item) => !SIDE_ACTIONS.includes(item.key))
+  const note = actions.find((item) => item.key === 'note')
+  const rest = actions.filter((item) => item !== lead && item !== note)
+  // With no state to move to and only one other step, it shows as itself, not hidden in a menu.
+  const loose = !lead && !note && rest.length === 1 ? rest : []
+  const menu = loose.length ? [] : rest
   return (
     <div className="header-actions" role="group" aria-label="Actions on this ticket">
-      {actions.map((item, i) => (
-        <button
-          key={item.key}
-          type="button"
-          className={i === 0 ? 'primary' : 'secondary'}
-          onClick={() => choose(item)}
-        >
-          {item.label}
-        </button>
+      {lead && <button type="button" className="primary" onClick={() => choose(lead)}>{lead.label}</button>}
+      {[...(note ? [note] : []), ...loose].map((item) => (
+        <button key={item.key} type="button" className="secondary" onClick={() => choose(item)}>{item.label}</button>
       ))}
+      {menu.length > 0 && <MoreActions actions={menu} choose={choose} />}
+    </div>
+  )
+}
+// What any ticket offers beside its next state: working on it rather than moving it.
+const SIDE_ACTIONS = ['edit', 'wording', 'evidence', 'link', 'note']
+function MoreActions({ actions, choose }: { actions: HeaderAction[]; choose: (action: HeaderAction) => void }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !box.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', close)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close) }
+  }, [open])
+  return (
+    <div className="more-actions" ref={box}>
+      <button type="button" className="secondary" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>More ▾</button>
+      {open && (
+        <div className="more-menu" role="menu" aria-label="More actions">
+          {actions.map((item) => (
+            <button key={item.key} type="button" role="menuitem" onClick={() => { setOpen(false); choose(item) }}>{item.label}</button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 // #918: the actions this ticket's type lets the viewer take now. The server
 // decides which; each asks for its own fields before it is taken.
-function TypeActions({ actions, state, mutate, busy, open, setOpen }: {
+function TypeActions({ actions, state, mutate, busy, open, setOpen, openRules }: {
   actions: TicketAction[]; state: string; mutate: Mutate; busy: boolean
+  // #1196: rules that still have rows to fix: a warning, never a block.
+  openRules: number
   // #941: which move's form is open, held by the ticket so its header can open one.
   open: string; setOpen: (action: string) => void
 }) {
@@ -252,6 +292,7 @@ function TypeActions({ actions, state, mutate, busy, open, setOpen }: {
   return (
     <section className="card ticket-actions">
       <h3>Next step</h3>
+      {openRules > 0 && <p className="rules-warning" role="note">{openRules} {openRules === 1 ? 'rule still has' : 'rules still have'} rows to fix</p>}
       {actions.length ? (
         <div className="actions">
           {actions.map((a) => (
@@ -351,7 +392,14 @@ export function CaseFile({
     people = session.people ?? [],
     me = typeof session.user === 'string' ? session.user : session.user.row_id
   const [picked, setPicked] = useState(current)
+  // #1230: the requester and assignee link to their Person record for a viewer who may open it.
+  const openPeople = useOpenablePeople([ticket.owner, ticket.assigned_to])
+  const covered = detail.coveredRows as Covered | undefined
   useEffect(() => setPicked(current), [current, ticket.updated_at, ticket.row_id])
+  // #1233: the assignee reads as a name; support opens the picker with Change.
+  const [changing, setChanging] = useState(false)
+  useEffect(() => setChanging(false), [current, ticket.updated_at, ticket.row_id])
+  const rules = detail.rules as Rule[]
   const actions = availableActions({
     support,
     rewordable: canReword,
@@ -378,44 +426,69 @@ export function CaseFile({
     <>
       <header className="ticket-header" aria-label="Ticket">
         <div className="ticket-kicker">
-          <span>
-            {short(ticket.row_id)} · {kindLabel(ticket.kind)}
-          </span>
+          {short(ticket.row_id)} · {kindLabel(ticket.kind)}
+        </div>
+        {/* #1233: the title, with its state beside it where the eye lands first. */}
+        <div className="ticket-title-row">
+          <h2>{ticket.title}</h2>
           <StatePill ticket={ticket} />
         </div>
-        <h2>{ticket.title}</h2>
+        {/* #1233 (UX spec 3): who raised it, who has it, when it last moved; people link to their record. */}
         <dl className="ticket-facts">
           <div>
-            <dt id="assigned-to-label">Assigned to</dt>
-            <dd>
-              {support ? (
-                <select
-                  aria-labelledby="assigned-to-label"
-                  value={picked}
-                  disabled={busy}
-                  onChange={(e) => setPicked(e.target.value)}
-                >
-                  <option value="">Unassigned</option>
-                  {current && !people.some((p) => p.row_id === current) && (
-                    <option value={current}>{person(current)}</option>
-                  )}
-                  {people.map((p) => (
-                    <option key={p.row_id} value={p.row_id}>{p.full_name}</option>
-                  ))}
-                </select>
-              ) : (
-                assignee(ticket)
-              )}
-            </dd>
+            <dt>Raised by</dt>
+            <dd><RecordLink table="Person" rowId={ticket.owner} name={person(ticket.owner)} canOpen={openPeople.has(ticket.owner)} /></dd>
           </div>
           <div>
-            <dt>Raised by</dt>
-            <dd>{person(ticket.owner)}</dd>
+            <dt id="assigned-to-label">Assigned to</dt>
+            <dd className="assignee-fact">
+              {support && (changing || picked !== current) ? (
+                <>
+                  <select
+                    aria-labelledby="assigned-to-label"
+                    value={picked}
+                    disabled={busy}
+                    autoFocus
+                    onChange={(e) => setPicked(e.target.value)}
+                  >
+                    <option value="">Unassigned</option>
+                    {current && !people.some((p) => p.row_id === current) && (
+                      <option value={current}>{person(current)}</option>
+                    )}
+                    {people.map((p) => (
+                      <option key={p.row_id} value={p.row_id}>{p.full_name}</option>
+                    ))}
+                  </select>
+                  {picked === current && (
+                    <button type="button" className="link-button quiet" onClick={() => setChanging(false)}>Cancel</button>
+                  )}
+                </>
+              ) : (
+                <>
+                  {ticket.assigned_to
+                    ? <RecordLink table="Person" rowId={ticket.assigned_to} name={person(ticket.assigned_to)} canOpen={openPeople.has(ticket.assigned_to)} />
+                    : <span>Unassigned</span>}
+                  {support && (
+                    <button type="button" className="link-button quiet" aria-label="Change the assignee" disabled={busy} onClick={() => setChanging(true)}>Change</button>
+                  )}
+                </>
+              )}
+            </dd>
           </div>
           <div>
             <dt>Updated</dt>
             <dd>{time(ticket.updated_at)}</dd>
           </div>
+          {covered && covered.total > 0 && (
+            <div>
+              <dt>Rows</dt>
+              <dd>
+                <button type="button" className="link-button" onClick={() => { setTab('Request'); setFocus({ target: 'covered-rows', at: Date.now() }) }}>
+                  {coveredSummary(covered)}
+                </button>
+              </dd>
+            </div>
+          )}
         </dl>
         {support && picked !== current && (
           <div className="assign-confirm" role="group" aria-label="Confirm the assignee">
@@ -435,9 +508,10 @@ export function CaseFile({
                 if (!(await mutate('edit', { assigned_to: picked || null }))) setPicked(current)
               }}
             >
-              Assign
+              {/* The button names the act the row asks about. */}
+              {picked === '' ? 'Remove' : 'Assign'}
             </button>
-            <button type="button" className="secondary" disabled={busy} onClick={() => setPicked(current)}>
+            <button type="button" className="secondary" disabled={busy} onClick={() => { setPicked(current); setChanging(false) }}>
               Cancel
             </button>
           </div>
@@ -474,21 +548,23 @@ export function CaseFile({
       <section role="tabpanel" id="case-panel" aria-labelledby={`tab-${tab}`}>
         {tab === 'Request' && (
           <>
-            <section className="card public-progress">
-              <h3>Public progress</h3>
-              <p>{ticket.public_update || 'No public update yet.'}</p>
-            </section>
+            {/* #1230: the ticket's own words first, then the rows it covers, its rules and progress. */}
             {detail.details ? (
               <>
-                <div className="section-label">
-                  {configured?.details_visible_to === 'everyone'
-                    ? 'Visible to everyone who can see this ticket'
-                    : 'Private · requester & support'}
-                </div>
-                <h3>Original message</h3>
-                <p className="request-body">
-                  {display(detail.details.original)}
-                </p>
+                {/* #1233 (UX spec 5): the message is a reading card; who may read it is a small hint, not an eyebrow. */}
+                <section className="card request-message" aria-label="Original message">
+                  <div className="request-message-head">
+                    <h3>Original message</h3>
+                    <span className="privacy-hint">
+                      {configured?.details_visible_to === 'everyone'
+                        ? 'Shown to everyone who can see the ticket'
+                        : 'Private · requester and support'}
+                    </span>
+                  </div>
+                  <p className="request-body">
+                    {display(detail.details.original)}
+                  </p>
+                </section>
                 {rewording && canReword && (
                   <Reword original={String(detail.details.original ?? '')} mutate={mutate} busy={busy} close={() => setRewording(false)} />
                 )}
@@ -502,8 +578,8 @@ export function CaseFile({
                     ))}
                   </details>
                 )}
-                <h3>Request details</h3>
-                <Facts
+                {ticket.kind === REPORT_FEEDBACK && structured ? <ReportFeedbackFacts values={structured} /> : <Facts
+                  title="Request details"
                   values={
                     configured
                       ? Object.fromEntries(
@@ -521,17 +597,9 @@ export function CaseFile({
                           ),
                         )
                   }
-                />
+                />}
                 {support && (
                   <>
-                    {editing && (
-                      <button
-                        className="secondary"
-                        onClick={() => setEditing(false)}
-                      >
-                        Cancel editing
-                      </button>
-                    )}
                     {editing && (
                       <form
                         id="action-edit"
@@ -599,7 +667,11 @@ export function CaseFile({
                             requires the dependent checks again. The original
                             message cannot be edited.
                           </p>
-                          <button className="primary">Save request</button>
+                          {/* #1233: Cancel sits beside Save, as on every other form here, and drops the draft. */}
+                          <div className="actions">
+                            <button type="button" onClick={() => { setKind(ticket.kind); setDraft(structured ?? {}); setEditing(false) }}>Cancel</button>
+                            <button className="primary">Save request</button>
+                          </div>
                         </fieldset>
                       </form>
                     )}
@@ -615,6 +687,14 @@ export function CaseFile({
                 </p>
               </div>
             )}
+            <CoveredRowsCard covered={detail.coveredRows as Covered | undefined} setup={detail.coveredRowsSetup as string | undefined} />
+            {/* Rules are added on configured types (such as a data quality issue), not on built-in requests. */}
+            <RulesCard rules={rules} tables={configured ? (detail.ruleTables as string[] | undefined) : undefined} owners={people}
+              mutate={mutate} busy={busy} />
+            <section className="card public-progress">
+              <h3>Public progress</h3>
+              <p>{ticket.public_update || 'No public update yet.'}</p>
+            </section>
           </>
         )}
         {tab === 'Workflow' && (
@@ -773,7 +853,8 @@ export function CaseFile({
                 )}
               </>
             ) : configured?.transitions ? (
-              <TypeActions actions={(detail.actions as TicketAction[] | undefined) ?? []} state={ticket.ticket_state} mutate={mutate} busy={busy} open={typeOpen} setOpen={setTypeOpen} />
+              <TypeActions actions={(detail.actions as TicketAction[] | undefined) ?? []} state={ticket.ticket_state} mutate={mutate} busy={busy} open={typeOpen} setOpen={setTypeOpen}
+                openRules={rules.filter((rule) => (rule.rows_left ?? 0) > 0).length} />
             ) : (
               <>
                 <section className="card">

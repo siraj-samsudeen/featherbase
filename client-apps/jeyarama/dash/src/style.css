@@ -8,6 +8,7 @@
 @source './';
 @source '../index.html';
 @source '../../../../packages/shop-floor/src';
+@source '../../../../packages/shop-floor/hierarchy';
 @source not '../../../../packages/shop-floor/src/**/*.stories.tsx';
 
 /* The shared top bar sits in the flow above #root, so #root is as tall as its content, not the
@@ -20,7 +21,7 @@ a { color: var(--color-action); }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* The shared sidebar beside the page, together filling the window under the shared top bar. */
-.fd-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
+.fd-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
 .fd-page { width: 100%; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; }
 .fd-card { padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
 .fd-notice { max-width: 36rem; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
@@ -90,3 +91,41 @@ code {
 
 /* The group label above the reader's reports in the sidebar. */
 .fd-sidebar-group { display: block; padding: 12px 12px 4px; font-size: 12px; font-weight: 600; color: var(--color-ink-muted); }
+
+/* #1240: "Report an issue": a button on the header's line, right, and a side panel over the right
+   edge of the report, so the figure being reported stays in view. */
+.fd-head-row { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 8px; }
+.fd-head-row > .fd-heading { flex: 1; margin-bottom: 0; }
+.fd-head-row:empty { display: none; }
+.fd-report-issue { margin-left: auto; flex-shrink: 0; }
+.fd-report-issue-count { color: var(--color-ink-muted); font-weight: 400; }
+.fd-issue-panel { position: fixed; top: var(--featherbase-bar-height, 48px); right: 0; bottom: 0; z-index: 30; width: 420px; max-width: 100vw;
+  display: flex; flex-direction: column; gap: 12px; padding: 20px; overflow-y: auto;
+  background: var(--color-surface); border-left: 1px solid var(--color-border); }
+.fd-issue-head { display: flex; align-items: center; }
+.fd-issue-head h2 { margin: 0; }
+.fd-issue-close { margin-left: auto; border: 0; background: none; color: var(--color-ink-muted); font: inherit; font-size: 16px; cursor: pointer; padding: 4px 8px; border-radius: var(--radius-control); }
+.fd-issue-close:hover { background: var(--color-subtle); }
+.fd-issue-sub { margin: -8px 0 0; font-size: 13px; color: var(--color-ink-muted); }
+.fd-issue-body { display: flex; flex-direction: column; gap: 14px; }
+.fd-issue-field { display: flex; flex-direction: column; gap: 6px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.fd-issue-label { font-size: 14px; font-weight: 500; color: var(--color-ink); margin: 0 0 6px; padding: 0; }
+.fd-issue-field .fd-issue-label { margin: 0; }
+.fd-issue-optional { font-weight: 400; color: var(--color-ink-muted); }
+.fd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.fd-chip { border: 1px solid var(--color-border-control); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; background: var(--color-surface); color: var(--color-ink); cursor: pointer; }
+.fd-chip:hover { background: var(--color-subtle); }
+.fd-chip-on, .fd-chip-on:hover { background: var(--color-action-tint); border-color: var(--color-action); color: var(--color-action); font-weight: 500; }
+.fd-input { width: 100%; min-height: var(--spacing-control); padding: 8px 10px; border: 1px solid var(--color-border-control); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-ink); font: inherit; }
+.fd-textarea { resize: vertical; }
+.fd-issue-context { border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-subtle); padding: 10px 12px; font-size: 13px; }
+.fd-issue-context dl { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 4px 8px; margin: 0; }
+.fd-issue-context dt { color: var(--color-ink-muted); }
+.fd-issue-context dd { margin: 0; overflow-wrap: anywhere; }
+.fd-issue-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.fd-record { color: var(--color-action); font-weight: 500; text-decoration: none; }
+.fd-record:hover, .fd-record:focus-visible { text-decoration: underline; }
+.fd-issue-mine { border-top: 1px solid var(--color-border); padding-top: 12px; }
+.fd-issue-mine ul { list-style: none; margin: 0; padding: 0; }
+.fd-issue-mine li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--color-border); font-size: 13px; }
+.fd-issue-mine-what { flex: 1; min-width: 0; overflow-wrap: anywhere; }

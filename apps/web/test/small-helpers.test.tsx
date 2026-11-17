@@ -5,7 +5,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, test } from 'vitest'
 import { refusalMessage } from '../src/lib/table-refusal'
-import { useSidebarCollapsed } from '../src/lib/sidebar-collapsed'
+import { useSidebar } from '../src/lib/sidebar-collapsed'
 import { flushPendingEvents, recentActions, recordAction, renameTableInRecents } from '../src/lib/recents'
 
 afterEach(() => localStorage.clear())
@@ -66,10 +66,10 @@ describe('recently opened, from what this browser kept', () => {
 
 describe('the sidebar’s collapsed choice', () => {
   test('with nobody signed in it starts open and is kept for the visit only', () => {
-    const { result } = renderHook(() => useSidebarCollapsed(undefined))
-    expect(result.current[0]).toBe(false)
-    act(() => result.current[1]())
-    expect(result.current[0]).toBe(true)
+    const { result } = renderHook(() => useSidebar(undefined))
+    expect(result.current.collapsed).toBe(false)
+    act(() => result.current.toggleCollapsed())
+    expect(result.current.collapsed).toBe(true)
     expect(localStorage.length).toBe(0)
   })
 })

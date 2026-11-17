@@ -11,7 +11,11 @@ export interface ActionListArgs {
 
 /** #975: who may approve. The people who can sign in, else the holders of the roles; never the maker. */
 export interface ApproverRequest { people: string[]; fallbackRoles: string[] }
-export type ChangeProposalState = 'Pending' | 'Applied' | 'Rejected' | 'Needs fresh review'
+export type ChangeProposalState = 'Pending' | 'Applied' | 'Rejected' | 'Needs fresh review' | 'Withdrawn'
+  /** #1191: applied when asked for, waiting for a reviewer; then confirmed, or undone. */
+  | 'Not yet reviewed' | 'Confirmed' | 'Undone'
+/** #1191: how an approval type works, set per type in the Approval Type Table. */
+export type ApprovalMode = 'Approve first' | 'Apply now, review after'
 export interface ProposalRequest {
   table: string
   /** The row to end and replace; null for a new row. */
@@ -21,6 +25,12 @@ export interface ProposalRequest {
   reviewed?: string[]
   approvers: ApproverRequest
   about?: Record<string, unknown>
+  /** #1175: approving ends the row and adds nothing in its place; `changes` is then empty. */
+  ends?: boolean
+  /** #1191: one of the app's declared approval types; its mode decides whether this applies at once. */
+  type?: string
+  /** #1191: what applying needs, used only when the type applies at once: as an approval's. */
+  apply?: Pick<DecisionApproval, 'effectiveOn' | 'newRow'>
 }
 export interface ProposalFilter { ids?: string[]; states?: ChangeProposalState[]; makers?: string[]; limit?: number; start?: number }
 export interface ChangeProposal {
@@ -35,22 +45,38 @@ export interface ChangeProposal {
   decided_at: string | null
   decision_reason: string | null
   result_row: string | null
+  /** #1175: approving ends the row and adds nothing. */
+  ends_row: boolean
+  /** #1191: the declared type it was made as, and the mode it was made under. */
+  approval_type: string | null
+  approval_mode: ApprovalMode
   created_at: string
   changes: { column_name: string; original_value: string | null; proposed_value: string | null; review_base_value: string | null }[]
   /** Who it waits for: named people, or else roles. */
   route: { people: string[]; roles: string[] }
 }
 export interface DecisionNote { approvers: ApproverRequest; reason: string }
+/** #1191: a reviewer's confirmation of an applied change, with an optional note. */
+export interface ReviewConfirmation { approvers: ApproverRequest; note?: string }
+/** #1191: an undo. A reviewer gives a reason; the maker undoing their own needs none. */
+export interface ReviewUndo { approvers: ApproverRequest; reason?: string }
 export interface DecisionApproval {
   approvers: ApproverRequest
   /** The day the new row starts; the old row ends the day before. */
   effectiveOn: string
   /** Declared `stamp` columns for the new row, such as its identifier. */
   newRow?: Record<string, string | null>
+  /** #1175: the approver's own values for columns the proposal changes, applied in place of the proposed ones. */
+  instead?: Record<string, string | null>
+  /** What the maker reads about the decision, such as what was done instead. */
+  reason?: string
 }
 /** #975: declared base Tables, read as the app: the fields named must be declared. */
 export interface BaseTablesHelper {
   list(table: string, args: ActionListArgs & { fields: string[] }): Promise<ActionRow[]>
+  /** #1230: whether `list` can read this Table now: declared, reachable, and every declared column there.
+   *  False, never a failure, for a Table not linked, deleted, reshaped or unsupported. */
+  available(table: string): Promise<boolean>
 }
 export interface ChangeProposalsReader {
   list(filter?: ProposalFilter): Promise<ChangeProposal[]>
@@ -58,6 +84,8 @@ export interface ChangeProposalsReader {
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
   /** Who these approvers come to now for this maker; null when nobody can act. */
   routeFor(maker: string, approvers: ApproverRequest): Promise<{ people: string[]; roles: string[] } | null>
+  /** #1191: how one of the app's declared approval types works on this instance now. */
+  modeOf(type: string): Promise<ApprovalMode>
 }
 export interface ChangeProposalsHelper extends ChangeProposalsReader {
   /** Holds a declared base row until the action commits. */
@@ -68,6 +96,12 @@ export interface ChangeProposalsHelper extends ChangeProposalsReader {
   approve(id: string, decision: DecisionApproval): Promise<ChangeProposal>
   reject(id: string, decision: DecisionNote): Promise<ChangeProposal>
   needsFreshReview(id: string, decision: DecisionNote): Promise<ChangeProposal>
+  /** #1175: the maker takes back their own pending proposal. */
+  withdraw(id: string): Promise<ChangeProposal>
+  /** #1191: a reviewer confirms a change that applied at once. */
+  confirm(id: string, decision: ReviewConfirmation): Promise<ChangeProposal>
+  /** #1191: a reviewer, or the maker, puts the rows back as they were before it applied. */
+  undo(id: string, decision: ReviewUndo): Promise<ChangeProposal>
 }
 
 // Structural package API: no core exception, SQL handle or identity override.
@@ -82,6 +116,14 @@ export interface RuntimeActionContext {
    *  person the caller may not read maps to null. Never contact data. */
   readonly people: {
     names(ids: string[]): Promise<Record<string, string | null>>
+    /** #1224: who did something, by name: a person's display name even when
+     *  the caller may not read Person, a service account's readable name
+     *  ("Automation (installer)"), a system step's phrase ("Staff roster sync").
+     *  Only an id that acted on this app's own data — created or last changed
+     *  one of its rows, or made or decided one of its change proposals — is
+     *  named; any other id maps to null.
+     *  Never contact data. */
+    actorNames(ids: string[]): Promise<Record<string, string | null>>
     /** #963: which of these ids are enabled people, as the caller may see them:
      *  never a built-in or merged-away account, nor a service account. */
     enabled(ids: string[]): Promise<string[]>
@@ -117,6 +159,8 @@ export interface RuntimeActionContext {
     get(table: string, rowId: string): Promise<ActionRow>
     members(table: string): Promise<{ row_id: string; full_name: string }[]>
     list(table: string, args?: ActionListArgs): Promise<ActionRow[]>
+    /** #1196: how many rows match, as the caller; null for a linked Table the caller may not read. */
+    count(table: string, filters?: ActionListArgs['filters']): Promise<number | null>
     create(table: string, values: ActionRow): Promise<ActionRow>
     update(table: string, values: ActionRow): Promise<ActionRow>
     delete(table: string, rowId: string, updatedAt: string): Promise<void>
@@ -152,7 +196,7 @@ export interface DatasetAnswer {
 }
 
 export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents' | 'mail' | 'changeProposals'> {
-  readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'activity' | 'isReader'>
+  readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'count' | 'activity' | 'isReader'>
   /** #967: what this outbound read's `prepare` answered; undefined everywhere else. */
   readonly prepared?: unknown
   /** #975: a read can list proposals, never make or decide one. */

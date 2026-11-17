@@ -9,6 +9,7 @@ import { describe } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { expectApiError } from 'server/test/fixtures'
 import { holdResponses } from './held-requests'
+import { openListMenu } from './list-menus'
 
 const DT = 'Td Unwanted Zones'
 const ENC = encodeURIComponent(DT)
@@ -27,7 +28,7 @@ describe('Only the builder authority can delete a table, and confirmation names 
     const user = userEvent.setup()
     await seed(admin)
     await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`, admin)
-    await user.click(await screen.findByRole('button', { name: 'Table administration' }))
+    await openListMenu('Table administration')
     await user.click(await screen.findByTestId('delete-table', undefined, { timeout: 10_000 }))
 
     const dialog = await screen.findByTestId('delete-table-dialog')
@@ -100,7 +101,7 @@ const pathOf = (router: unknown) => (router as { state: { location: { pathname: 
 
 async function openAdministration(admin: Parameters<typeof renderApp>[1], table: string) {
   const rendered = await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(table))}`, admin)
-  await userEvent.click(await screen.findByRole('button', { name: 'Table administration' }))
+  await openListMenu('Table administration')
   return rendered
 }
 

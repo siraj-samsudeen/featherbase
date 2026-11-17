@@ -8,7 +8,7 @@ import { childColumns } from '../src/row-readers'
 import { enabledPeople } from '../src/people-directory'
 import { getMeta, invalidateMeta } from '../src/meta'
 import { checkRowForInsert } from '../src/document'
-import { readLegacyPermission } from '../src/app-permission-format'
+import { grantWords, readLegacyPermission } from '../src/app-permission-format'
 import { expectStatus } from './fixtures'
 
 // #917: a Permission row names one operation and the Columns it reaches; the
@@ -278,5 +278,16 @@ describe('a grant reaches only what its rows allow', () => {
     await expect(admin.post('/api/save_row', { table: 'Permission', row: {
       ref_table: 'Pr Line', role: ROLE, operation: 'read', parent_permission: 'no-such-grant', parent_column: link,
     } })).rejects.toMatchObject({ status: 417 })
+  })
+})
+
+// #1217: the deploy and the activity log name a grant limited to its holder's own rows as such.
+describe('how a grant is named in the deploy and the activity log', () => {
+  test('says own rows only for a grant to the rows its holder made', () => {
+    expect([
+      grantWords({ role: 'Auditor', table: 'other.task', operations: { read: '@basic', update: '@basic' } }),
+      grantWords({ role: 'Team Report Manager', table: 'dash.report_access', scope_mode: 'creator', operations: { read: '@basic', create: '@basic' } }),
+      grantWords({ role: 'Reader', table: 'other.task', scope_mode: 'all', operations: { read: '@basic' } }),
+    ]).toEqual(['Auditor read, update on other.task', 'Team Report Manager read, create (own rows only) on dash.report_access', 'Reader read on other.task'])
   })
 })

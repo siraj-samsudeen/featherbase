@@ -181,7 +181,8 @@ describe('person-rename: names, not ids (review B-M2, B-M3)', () => {
       [asha]: 'Asha Kumar',
       [handle]: '@ravi.m',
       [mailOnly]: 'Unnamed person',
-      [svc.row_id]: 'svc-named',
+      // #1224: a service account reads as automation, never its slug.
+      [svc.row_id]: 'Automation (named)',
       psn_nobodyaaaaaaaaaaaaa: null,
     })
   })

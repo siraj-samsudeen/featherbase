@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { PrincipalName } from '../lib/people'
+import { ActorName } from '../lib/people'
 import { cardClasses, fmtInstant } from '@featherbase/shop-floor'
 import { activityQuery, AuthorInitials, type VersionRow } from './Comments'
 import { useChangeFormat } from '../lib/change-format'
 import { AgentMark } from './AgentMark'
 
 type Entry =
-  | { kind: 'comment'; at: string; who: string; content: string }
-  | { kind: 'version'; at: string; who: string; changes: [string, unknown, unknown][]; created?: boolean; importRun?: string; resolution?: NonNullable<VersionRow['data']>['resolution']; retirement?: NonNullable<VersionRow['data']>['retirement']; agent?: string }
+  | { kind: 'comment'; at: string; who: string; whoName?: string; content: string }
+  | { kind: 'version'; at: string; who: string; whoName?: string; changes: [string, unknown, unknown][]; created?: boolean; importRun?: string; resolution?: NonNullable<VersionRow['data']>['resolution']; retirement?: NonNullable<VersionRow['data']>['retirement']; agent?: string }
 
 // UI-019: activity timeline interleaving comments and versions (edits with
 // their column diff) chronologically. Workflow actions join here once WF
@@ -19,7 +19,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
   const entries = useMemo<Entry[]>(() => {
     const out: Entry[] = []
     for (const c of activity.data?.comments ?? [])
-      out.push({ kind: 'comment', at: c.created_at, who: c.created_by, content: c.content })
+      out.push({ kind: 'comment', at: c.created_at, who: c.created_by, whoName: c.author_name, content: c.content })
     for (const v of activity.data?.versions ?? []) {
       // #1101: a row an agent created gets a created entry with no changes,
       // only to carry the mark; it reads in the "created this" line instead.
@@ -28,6 +28,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
         kind: 'version',
         at: v.created_at,
         who: v.created_by,
+        whoName: v.author_name,
         changes: v.data?.changed ?? [],
         created: v.data?.created,
         importRun: v.data?.import_run,
@@ -61,7 +62,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
           <li className="flex gap-2 text-sm" data-testid="activity-created">
             <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ink-subtle" />
             <div className="min-w-0 flex-1 text-xs text-ink-muted">
-              <span className="font-medium text-ink"><PrincipalName id={String(activity.data.created.created_by)} /></span>{' '}
+              <span className="font-medium text-ink"><ActorName id={String(activity.data.created.created_by)} name={activity.data.created.author_name} /></span>{' '}
               created this<AgentMark label={createdVia} /> ·{' '}
               <span className="whitespace-nowrap" data-testid="activity-created-time">{fmtInstant(activity.data.created.created_at)}</span>
             </div>
@@ -69,12 +70,12 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
         )}
         {entries.map((e, i) => (
           <li key={i} className="flex gap-2 text-sm" data-testid={`activity-${e.kind}`}>
-            {e.kind === 'comment' ? <AuthorInitials id={e.who} /> : <span
+            {e.kind === 'comment' ? <AuthorInitials id={e.who} name={e.whoName} /> : <span
               className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ink-subtle"
             />}
             <div className="min-w-0 flex-1">
               <div className="text-xs text-ink-muted">
-                <span className="font-medium text-ink" data-testid={e.kind === 'comment' ? 'comment-author' : undefined}><PrincipalName id={e.who} /></span>{' '}
+                <span className="font-medium text-ink" data-testid={e.kind === 'comment' ? 'comment-author' : undefined}><ActorName id={e.who} name={e.whoName} /></span>{' '}
                 {e.kind === 'comment' ? 'commented' : e.retirement ? (e.retirement.action === 'retired' ? 'retired this' : 'reactivated this') : e.resolution ? (e.resolution.decision === 'keep' ? 'kept their correction' : 'adopted the import value') : e.importRun ? 'imported' : e.created ? 'created' : 'edited'}
                 {e.kind === 'version' && <AgentMark label={e.agent} />} ·{' '}
                 <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstant(e.at)}</span>

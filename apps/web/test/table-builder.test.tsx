@@ -7,6 +7,7 @@ import { tableSlug } from 'shared'
 import userEvent from '@testing-library/user-event'
 import { describe } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
+import { openSidebarNew } from './list-menus'
 
 const gridRows = () => [...document.querySelectorAll<HTMLTableRowElement>('[data-testid=dt-fields] [data-columnrow]')]
 const cell = (row: HTMLElement, field: string) =>
@@ -175,6 +176,7 @@ describe('Build a table in the grid and use it at once', () => {
     const user = userEvent.setup()
     const T = 'Builder Widget'
     const app = await renderApp('/featherbase/admin', admin)
+    await openSidebarNew({ timeout: 8000 })
     await user.click(await screen.findByTestId('new-table-link', {}, { timeout: 8000 }))
     await screen.findByTestId('table-builder', {}, { timeout: 8000 })
     await user.type(screen.getByTestId('dt-name'), T)

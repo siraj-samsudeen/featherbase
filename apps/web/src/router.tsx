@@ -21,6 +21,7 @@ import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
 import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
+import { rememberFilters, useRememberedFilters } from './lib/remembered-filters'
 import { useQuery } from '@tanstack/react-query'
 import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
@@ -275,7 +276,8 @@ function AdminRouteLayout() {
     match.routeId === sourceBrowserRoute.id || match.routeId === copySetupRoute.id,
   ) })
   // #1018: a Table's list has no reading width to keep, so a wide one gets the whole page.
-  const fullWidth = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === tableRoute.id) })
+  // Lists (a Table's, All tables) take the width, up to the standard's 1280.
+  const fullWidth = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === tableRoute.id || match.routeId === allTablesRoute.id) })
   return <AdminLayout wide={wide} fullWidth={fullWidth} />
 }
 
@@ -468,6 +470,28 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
     return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
   }, [table, filters])
   const nav = useAddressNavigation(here, path)
+  const router = useRouter()
+  // #1228: a bare open (no filters, no walk in the address) brings back the
+  // person's last filters, replacing the address rather than adding a Back step.
+  // The list shows at once and takes them when they arrive, while the address is
+  // still bare: a slow answer never leaves an empty page, and never overrides what
+  // the person has chosen meanwhile (a Table's first open in a tab; later ones are
+  // known in the tab at once).
+  // Either way the address is settled: with nothing remembered it says so
+  // (`filters=[]`), so Back to this entry later shows it as it was, rather than
+  // restoring over it filters chosen since (Codex review, round 2).
+  const fresh = filters === undefined && path === undefined
+  const remembered = useRememberedFilters(table, fresh)
+  useEffect(() => {
+    if (!fresh || remembered === undefined) return
+    // Only the query changes, for the remembered filters as for none: the path
+    // stays spelled as it was opened (a Table's exact name is not always its
+    // slug, which for two legacy Tables of one spelling names neither).
+    const at = new URL(router.state.location.href, 'http://address.invalid')
+    at.searchParams.set('filters', JSON.stringify(remembered))
+    router.history.replace(`${at.pathname}${at.search}${at.hash}`, router.state.location.state)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fresh, remembered])
   return (
     <div data-testid="table-page">
       {/* #772: a table copied from a data source shows where from, and Copy again. */}
@@ -482,6 +506,7 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
             onFiltersChange={(next) => {
               const { filters: _, ...step } = nav.step
               nav.push(next.length ? { ...step, filters: next } : step)
+              rememberFilters(table, next)
             }}
           />
         </PaneSplit>
@@ -689,20 +714,23 @@ const waitingForAccessRoute = createRoute({
   path: 'waiting-for-access',
   validateSearch: (search: Record<string, unknown>) => ({
     filters: searchString(search.filters),
+    view: search.view === 'declined' ? ('declined' as const) : undefined,
   }),
   component: WaitingForAccessPage,
 })
 
 function WaitingForAccessPage() {
-  const { filters } = waitingForAccessRoute.useSearch()
+  const { filters, view } = waitingForAccessRoute.useSearch()
   const navigate = waitingForAccessRoute.useNavigate()
   return (
     <ManageOnly>
       <WaitingForAccess
         filters={parseFilters(filters)}
         onFiltersChange={(next) =>
-          navigate({ search: { filters: next.length ? JSON.stringify(next) : undefined }, replace: true })
+          navigate({ search: { filters: next.length ? JSON.stringify(next) : undefined, view }, replace: true })
         }
+        view={view ?? 'waiting'}
+        onViewChange={(next) => navigate({ search: { filters, view: next === 'declined' ? next : undefined }, replace: true })}
       />
     </ManageOnly>
   )

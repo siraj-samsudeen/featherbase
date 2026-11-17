@@ -8,8 +8,7 @@ import { sql } from '../src/db'
 import { expectStatus, makePerson } from './fixtures'
 import { sign } from 'hono/jwt'
 import { configureDelegated, giveEmployeeCode, configureGoogle, inviteGoogleRaw, linkDelegated } from './identity-fixtures'
-import { googleLink, googleSignIn, linkOutcome, redeemSession } from './google-mock'
-import { _setGoogleFetch } from '../src/oauth'
+import { beginMockApproval, googleLink, googleSignIn, linkOutcome, redeemSession, withGoogleFetch } from './google-mock'
 import { getSignInMethod } from '../src/identities'
 import { completeSignIn, linkVerifiedToSelf, resolveVerified } from '../src/sign-in'
 import { issueSession } from '../src/auth'
@@ -255,12 +254,8 @@ describe('a Google link that cannot finish comes back with its reason', () => {
   // Starts a link as `token` and approves it at the mock; returns the
   // callback URL and the challenge cookies the browser carries back.
   async function approvedLink(api: TestClient, token: string, email: string, subject: string) {
-    const start = await api.fetch('/api/oauth/google/link', { headers: { cookie: `sid=${token}` } })
-    const state = new URLSearchParams((start.headers.get('location') ?? '').split('?')[1]).get('state') as string
-    const challenge = start.headers.getSetCookie().map((c) => c.split(';')[0])
-    const approve = await api.fetch('/api/oauth/mock/approve?' + new URLSearchParams({ state, redirect_uri: '/api/oauth/google/callback', email, name: 'Linker', subject }).toString(),
-      { headers: { cookie: [`sid=${token}`, ...challenge].join('; ') } })
-    return { callback: approve.headers.get('location') as string, challenge }
+    const { callback, challenge } = await beginMockApproval(api, email, { token, name: 'Linker', subject })
+    return { callback: callback as string, challenge }
   }
 
   test('a callback arriving with another person\'s session links nothing', async ({ api, admin }) => {
@@ -320,13 +315,10 @@ describe('a Google link that cannot finish comes back with its reason', () => {
     const start = await api.fetch('/api/oauth/google/link', { headers: { cookie: `sid=${me.token}` } })
     const state = new URL(start.headers.get('location') as string).searchParams.get('state') as string
     const cookie = [`sid=${me.token}`, ...start.headers.getSetCookie().map((c) => c.split(';')[0])].join('; ')
-    _setGoogleFetch(async () => { throw new TypeError('fetch failed') })
-    try {
+    await withGoogleFetch(async () => { throw new TypeError('fetch failed') }, async () => {
       const res = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=c`, { headers: { cookie } })
       expect(linkOutcome(res)).toBe('failed')
-    } finally {
-      _setGoogleFetch(null)
-    }
+    })
   })
 
   test('linking the Google account a person already holds again keeps the one link', async ({ api, admin }) => {

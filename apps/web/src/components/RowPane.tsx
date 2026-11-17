@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
@@ -8,13 +8,13 @@ import {
   type FieldGridGroup, type PanePlaceValue, type ViewMode,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
-import { NO_COLUMN_TYPES, linkRowsTable, metaQuery, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, linkRowsTable, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { dataColumns, listFields, viewColumns, type ListColumn } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { push, type NavGroup, type NavPane, type NavStep } from '../lib/nav-path'
 import { useNavigation, type Navigation } from '../lib/navigation'
 import { useNavigationSettings } from '../lib/nav-settings'
-import { backlinkGroups, forwardLinks, groupKey, groupOrder, rowNameText, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
+import { forwardLinks, groupKey, groupOrder, rowNameText, useBacklinkGroups, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
 import { useConnections } from '../lib/connections'
 import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './FormArrangement'
 import { useI18n } from '../lib/i18n'
@@ -86,12 +86,7 @@ function RowPane({ nav, pane, place, placeChoice, onFocus }: {
   const pageHref = nav.addressed ? nav.href(push(nav.path, { screen: 'row', table, row })) : href
   const title = name.state === 'loading' ? '…' : rowNameText(name)
   // Two links from one Table are told apart by the link column's label.
-  const holders = [...new Set((cnx.data?.connections ?? []).map((c) => c.via ?? c.table))]
-  const holderMetas = useQueries({ queries: holders.map((t) => metaQuery(t)) })
-  const groups = cnx.data ? backlinkGroups(cnx.data.connections, (c) => {
-    const col = holderMetas[holders.indexOf(c.via ?? c.table)]?.data?.columns.find((x) => x.column_name === c.column)
-    return col?.label ?? c.column
-  }) : []
+  const groups = useBacklinkGroups(cnx.data?.connections)
   const open = pane.group ? groups.find((g) => g.key === groupKey(pane.group!)) : undefined
 
   // A row the viewer cannot read offers no way to it (checklist 22), not even
@@ -349,12 +344,9 @@ export function RowConnections({ table, row, values }: { table: string; row: str
   const nav = useNavigation()
   const meta = useMeta(table)
   const cnx = useConnections(table, row, Boolean(values))
-  const holders = [...new Set((cnx.data?.connections ?? []).map((c) => c.via ?? c.table))]
-  const holderMetas = useQueries({ queries: holders.map((t) => metaQuery(t)) })
+  const groups = useBacklinkGroups(cnx.data?.connections)
   if (!nav || !meta.data || !values) return null
   const links = forwardLinks(meta.data, values)
-  const groups = cnx.data ? backlinkGroups(cnx.data.connections, (c) =>
-    holderMetas[holders.indexOf(c.via ?? c.table)]?.data?.columns.find((x) => x.column_name === c.column)?.label ?? c.column) : []
   if (!links.length && !groups.length) return null
   const step = nav.step
   const open = (pane: NavPane) => nav.push({ ...step, pane })

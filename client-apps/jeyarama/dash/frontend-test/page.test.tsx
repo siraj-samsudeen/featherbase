@@ -189,7 +189,8 @@ describe('Dash against the real platform', () => {
     await waitForText("You don't have a report to open yet.")
     expect(document.querySelector('[data-testid=dash] a[href*=instance-health]')).toBeNull()
     expect([...new Set(requests.map(r => r.path))].sort()).toEqual([
-      '/api/app_reads/dash/approvals', '/api/app_reads/dash/embed_session', '/api/app_reads/dash/manages_access', '/api/app_reads/dash/reach_problem', '/api/app_reads/dash/report', '/api/app_reads/dash/reports', '/api/whoami',
+      '/api/app_reads/dash/approvals', '/api/app_reads/dash/department_approvals', '/api/app_reads/dash/embed_session', '/api/app_reads/dash/holds_department_job', '/api/app_reads/dash/holds_master_data',
+      '/api/app_reads/dash/manages_access', '/api/app_reads/dash/reach_problem', '/api/app_reads/dash/report', '/api/app_reads/dash/reports', '/api/whoami',
     ])
   })
 
@@ -566,13 +567,14 @@ describe('Dash against the real platform', () => {
     expect(document.querySelector('[data-testid=fix-link]')?.getAttribute('href')).toBe('?view=sections')
   })
 
-  installed("tells a Department Manager their report waits for the store's departments", async ({ dash, createUser }) => {
+  installed('asks a Department Manager to set up their department (#1195)', async ({ dash, createUser }) => {
     const person = await createUser({ email: 'dash-department@example.test', roles: ['Dash Reader'] })
     await dash.job(person.user!, 'Department Manager')
     token = person.token
     history.replaceState(null, '', '/dash/')
     await open()
-    await waitForText("Your store's departments aren't filled in yet")
+    await waitForText('Set up your department to open your report')
+    expect(document.querySelector('[data-testid=department-link]')?.getAttribute('href')).toBe('?view=department')
   })
 
   // #1172: Dash opens for Head office staff (a Dash role) and says why there is no store report.

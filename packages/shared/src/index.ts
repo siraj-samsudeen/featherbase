@@ -2,6 +2,7 @@ export { DEFAULT_ID_PATTERN, namingColumn, columnNamingPattern, idFromColumn, re
 export { tableSchemaToZod, zodFieldErrors, readingPresentationSchema, type ReadingPresentation, type ColumnDef } from './schema'
 export { choiceLabel } from './choice-label'
 export { DISPLAY_DEFAULTS } from './display-settings'
+export { NAVIGATION_SETTINGS } from './user-settings'
 export { METADATA_OVERRIDE_PROPERTIES, METADATA_OVERRIDE_BOOLEAN_VALUES } from './metadata-overrides'
 export type { RowCapabilities } from './row-capabilities'
 export { canRetire } from './row-retirement'
@@ -16,7 +17,7 @@ export { MAX_RELATED_DEPTH, parseFilters, RELATED_OPS, type ListFilter } from '.
 export type { WebFormColumn, WebFormConfig } from './webform'
 export { INSTANCE_SETTINGS_TABLES, INSTANCE_SETTINGS_FILE, MANAGED_FIELD_HINT, SETUP_MAX_PEOPLE } from './instance-settings'
 export { SIGN_IN_METHOD_KINDS, NEW_PERSON_RULES, SYSTEM_ACTOR_LABELS, signInActor, type SignInMethodKind, type NewPersonRule } from './sign-in'
-export type { ApproverRequest, BaseTablesHelper, ChangeProposal, ChangeProposalsHelper, ChangeProposalsReader, ChangeProposalState, DecisionApproval, DecisionNote, ProposalFilter, ProposalRequest, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler, ActionRow, ActionListArgs, DatasetAnswer, DatasetFilters, DatasetRow, AppJobGrant, AppJobPerson, RuntimeJobContext, RuntimeJobHandler } from './runtime-actions'
+export type { ApprovalMode, ApproverRequest, BaseTablesHelper, ChangeProposal, ChangeProposalsHelper, ChangeProposalsReader, ChangeProposalState, DecisionApproval, DecisionNote, ProposalFilter, ProposalRequest, ReviewConfirmation, ReviewUndo, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler, ActionRow, ActionListArgs, DatasetAnswer, DatasetFilters, DatasetRow, AppJobGrant, AppJobPerson, RuntimeJobContext, RuntimeJobHandler } from './runtime-actions'
 export { APP_JOB_GRANTS } from './runtime-actions'
 export type { AppAccessPolicy, AppFactDeclaration, AppScopeSource, AppProductAuthorization, AppOperationDeclaration, AppScopeFacts, AppScopeResolutionContext, ResolvedAppScope, AppScopeResolver, AppAuthorizationContext, AppProductAuthorizationContext, AppProductAuthorizer, RuntimeActionAuthorization, AppScopeProvider, AppScopeProviderContext } from './app-access'
 export {

@@ -65,7 +65,8 @@ test('with a connected service the page opens on its form, and the other ways in
     await connectStyleHR()
     await renderApp('/featherbase/login', anonymous)
     const form = await screen.findByTestId('delegated-login-form')
-    expect(screen.getByTestId('login-subtitle')).toHaveTextContent('Sign in with StyleHR')
+    // #1235 item 2: the button already says it; no subtitle repeats it.
+    expect(screen.queryByTestId('login-subtitle')).not.toBeInTheDocument()
     expect(screen.queryByTestId('login-form')).not.toBeInTheDocument()
     // The ID box comes before the password box, and both before the other ways in.
     const id = screen.getByLabelText('StyleHR ID')

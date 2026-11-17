@@ -264,7 +264,7 @@ describe('#101: GET /api/activity_feed', () => {
     expect(JSON.stringify(login)).not.toContain('psn_')
   })
 
-  test('an edit made with a service-account token shows its label, never the svc_ id', async ({ admin, api }) => {
+  test('an edit made with a service-account token shows it as automation, never the svc_ id (#1224)', async ({ admin, api }) => {
     const svc = await admin.post<{ row_id: string }>('/api/service_accounts', {
       label: 'svc-nightly-importer',
       roles: ['System Manager'],
@@ -291,7 +291,7 @@ describe('#101: GET /api/activity_feed', () => {
     await asSvc({ row_id: 'svc-row', title: 'v2', updated_at: created.updated_at })
     const team = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=team')
     const change = team.items.find((i) => i.kind === 'change' && i.label === 'svc-row')
-    expect(change).toMatchObject({ who_name: 'svc-nightly-importer', who_role: 'Service account' })
+    expect(change).toMatchObject({ who_name: 'Automation (nightly importer)', who_role: 'Service account' })
     expect(String(change!.who_name)).not.toContain('svc_')
   })
 

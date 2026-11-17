@@ -95,7 +95,7 @@ test('a service account\'s agent reads as the account, via the token\'s label', 
   const agent = await connectAgent(await issueToken(admin, 'Sync agent', account.row_id))
   const rowId = await agentThenHand(admin, agent)
   const { timeline } = await openActivity(admin, rowId)
-  await waitFor(() => expect(entryFor(timeline, 'City: Chennai → Salem')).toHaveTextContent(/^nightly-sync edited via Sync agent · /))
+  await waitFor(() => expect(entryFor(timeline, 'City: Chennai → Salem')).toHaveTextContent(/^Automation \(nightly sync\) edited via Sync agent · /))
 })
 
 test('a Version record made through an agent reads "Changed by <person> via" the label', async ({ admin }) => {

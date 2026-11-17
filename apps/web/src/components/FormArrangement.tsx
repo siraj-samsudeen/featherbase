@@ -310,7 +310,7 @@ function stampDay(value: unknown): string {
 
 /** "Created 04-Nov-2026 by Asha, updated 05-Nov-2026 by Ravi": the row's
  *  own stamps (ROW_STAMPS, as the reading presentation names them). */
-function RowStamps({ values }: { values: Record<string, unknown> }) {
+function RowStamps({ values, table }: { values: Record<string, unknown>; table?: string }) {
   const parts = (['created_at', 'updated_at'] as const).flatMap((at) => {
     const day = isEmpty(values[at]) ? '' : stampDay(values[at])
     if (!day) return []
@@ -321,21 +321,21 @@ function RowStamps({ values }: { values: Record<string, unknown> }) {
     <span key={p.at}>
       {i > 0 && ', '}
       {i > 0 ? ROW_STAMPS[p.at].label.toLowerCase() : ROW_STAMPS[p.at].label} {p.day}
-      {p.by && <> by <ShownName id={p.by} /></>}
+      {p.by && <> by <ShownName id={p.by} actorOf={table} /></>}
     </span>
   ))}</>
 }
 
 /** When the row was created and changed, and by whom, on one quiet line:
  *  the platform's stamps, then any bookkeeping columns a source keeps. */
-export function BookkeepingLine({ fields, values, settings }: { fields: ColumnDef[]; values: Record<string, unknown>; settings: Settings }) {
+export function BookkeepingLine({ table, fields, values, settings }: { table?: string; fields: ColumnDef[]; values: Record<string, unknown>; settings: Settings }) {
   const { t } = useI18n()
   const shown = fields.filter((f) => !isEmpty(values[f.column_name]))
   const stamped = !isEmpty(values.created_at) || !isEmpty(values.updated_at)
   if (!shown.length && !stamped) return null
   return (
     <p className="mt-3 border-t border-border pt-2 text-xs text-ink-subtle" data-testid="bookkeeping-line">
-      {stamped && <RowStamps values={values} />}
+      {stamped && <RowStamps values={values} table={table} />}
       {shown.map((f, i) => (
         <span key={f.column_name}>
           {(i > 0 || stamped) && ' · '}

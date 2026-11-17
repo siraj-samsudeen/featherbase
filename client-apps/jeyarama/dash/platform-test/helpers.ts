@@ -31,9 +31,38 @@ const asAdmin = (admin: TestClient) => (path: string, init?: RequestInit) =>
   init?.method === 'PUT' ? admin.fetch(path, init).then(r => r.json()) : admin.get(path)
 
 /** The core Tables created and listed in `dash.linked_tables`. */
-export async function createCoreTables(admin: TestClient) {
-  for (const table of BASE_TABLES) await admin.post('/api/table_def', table)
+export async function createCoreTables(admin: TestClient, { without = [] as string[] } = {}) {
+  for (const table of BASE_TABLES.filter(t => !without.includes(t.name))) await admin.post('/api/table_def', table)
   await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
 }
 
 export { ACCESS_ROWS, REPORT_ROWS }
+
+/**
+ * #1169's 0.13.3 taken out of a manifest, for the upgrade tests' earlier versions: a Report Access
+ * Manager reads reports and creates none. Its read, action and dataset stay declared, since the
+ * earlier version shares this build's server module; only the grant differs from production's.
+ */
+export function revertAddDive(manifest: { permissions: Record<string, unknown>[] }) {
+  const grant = manifest.permissions.find(p => p.table === 'dash.report' && p.role === 'Report Access Manager')!
+  delete grant.operations
+  grant.can_read = true
+}
+
+/** #1217's role, which a later step brings: the upgrade tests of earlier steps compare without it. */
+export const TEAM_MANAGER = 'Team Report Manager'
+type Grant = { grant?: { role: string }; withdraw?: { role: string } }
+export const withoutTeamManager = <T extends Grant | { create?: string }>(list: T[]) =>
+  list.filter(entry => ('create' in entry ? entry.create : ((entry as Grant).grant ?? (entry as Grant).withdraw)?.role) !== TEAM_MANAGER)
+
+/** #1217's 0.13.4 taken out of a manifest: no Team Report Manager, nor its grants. */
+export function revertTeamReportGiving(manifest: { roles: string[]; permissions: { role: string }[]; migrations: { id: string }[] }) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'team_report_giving', fromVersion: '0.13.3' })
+  manifest.roles = manifest.roles.filter(role => role !== TEAM_MANAGER)
+  manifest.permissions = manifest.permissions.filter(p => p.role !== TEAM_MANAGER)
+}
+
+/** #1216's 0.13.2 taken out of a manifest: Dash reads no employee code. */
+export function revertPersonIdentity(manifest: { baseTables: { read: { Employee: string[] } } }) {
+  manifest.baseTables.read.Employee = manifest.baseTables.read.Employee.filter(column => column !== 'employee_code')
+}

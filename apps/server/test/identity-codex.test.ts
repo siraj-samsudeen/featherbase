@@ -7,7 +7,7 @@ import { hashPassword } from '../src/auth'
 import { SIGN_IN_METHOD_KINDS } from 'shared'
 import { KINDS } from '../src/identities'
 import { configureGoogle, inviteGoogleRaw, removeDelegated, setPasswordMethod } from './identity-fixtures'
-import { googleSignIn } from './google-mock'
+import { googleSignIn, mockOAuth } from './google-mock'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -50,7 +50,7 @@ describe('Codex P1: any change of email cancels every unclaimed invite', () => {
 
 describe('Codex P2: Google is never enabled while it cannot work', () => {
   test('turning Google on without a client id (and no dev mock) is refused', async ({ admin }) => {
-    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    mockOAuth(false)
     await configureGoogle({ enabled: false, client_id: '' })
     const [g] = await sql`select updated_at from sign_in_method where row_id = 'google'`
     const res = await admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}/google`, {

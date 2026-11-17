@@ -1,5 +1,6 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { PanePlaceValue } from '@featherbase/shop-floor'
+import { NAVIGATION_SETTINGS } from 'shared'
 import { api, getToken } from './api'
 import { decodeRecent, encodePath, rememberWalk, type NavPath } from './nav-path'
 
@@ -8,12 +9,27 @@ import { decodeRecent, encodePath, rememberWalk, type NavPath } from './nav-path
 // follows them across sign-ins and devices: where the drill pane sits, and
 // their last ten walks — as identities, named afresh whenever shown.
 
-/** The settings record that is not one Table's: the person's navigation. */
-export const NAVIGATION_SETTINGS = '__navigation'
+/** The settings record that is not one Table's: the person's navigation (shared with the server). */
+export { NAVIGATION_SETTINGS }
 
 interface Stored {
   panePlace?: PanePlaceValue
   recentPaths?: unknown[]
+  /** #1229: others' shared saved views this person put in their sidebar. */
+  starredViews?: string[]
+}
+
+/** The Admin sidebar's saved views (GET /api/saved_views/sidebar), under the
+ *  saved-views prefix every view change invalidates. */
+export const SIDEBAR_VIEWS_KEY = ['saved-views', '__sidebar'] as const
+
+/** After any change to saved views (save, share, delete, star): every saved-view
+ *  read, the sidebar's included, asks again. A read still pending is cancelled
+ *  first: invalidation would reuse it, and its answer from before the change
+ *  could hide the change (Codex review, round 3). */
+export async function refreshSavedViews(queryClient: QueryClient): Promise<void> {
+  await queryClient.cancelQueries({ queryKey: ['saved-views'] })
+  await queryClient.invalidateQueries({ queryKey: ['saved-views'] })
 }
 
 const KEY = ['user-settings', NAVIGATION_SETTINGS]
@@ -29,13 +45,15 @@ export function useNavigationSettings() {
   const queryClient = useQueryClient()
   const stored = useQuery({
     queryKey: KEY,
-    queryFn: () => api.get<{ settings: Stored | null }>(`/api/user_settings/${NAVIGATION_SETTINGS}`),
+    // `read` marks data the server answered: a save's optimistic write carries
+    // it forward and never invents it (Codex review, round 4).
+    queryFn: async () => ({ ...(await api.get<{ settings: Stored | null }>(`/api/user_settings/${NAVIGATION_SETTINGS}`)), read: true }),
     retry: false,
     staleTime: Infinity,
   })
   const settings = stored.data?.settings ?? {}
   const save = (next: Stored) => {
-    queryClient.setQueryData(KEY, { settings: { ...settings, ...next } })
+    queryClient.setQueryData(KEY, { settings: { ...settings, ...next }, read: stored.data?.read === true })
     // A save merges into the person's record; one that fails keeps the
     // choice for this visit only.
     const token = getToken()
@@ -48,7 +66,21 @@ export function useNavigationSettings() {
       .catch(() => {})
   }
   const recent = decodeRecent(settings.recentPaths)
+  const starredViews = Array.isArray(settings.starredViews) ? settings.starredViews.filter((id) => typeof id === 'string') : []
   return {
+    starredViews,
+    /** #1229: puts another person's shared view in the sidebar, or takes it out. */
+    /** Stars can be changed only once the person's settings have been read:
+     *  before that (or after a failed read) the list is unknown, and a save
+     *  would overwrite the stars they have (Codex review, round 3). */
+    starsLoaded: stored.data?.read === true,
+    toggleStar: (view: string) => {
+      if (stored.data?.read !== true) return
+      const next = starredViews.includes(view) ? starredViews.filter((id) => id !== view) : [...starredViews, view]
+      save({ starredViews: next })
+      // The sidebar's list reads the stars on the server: ask again once saved.
+      void settingsWrite.then(() => refreshSavedViews(queryClient))
+    },
     ready: !stored.isPending,
     panePlace: PLACES.includes(settings.panePlace as PanePlaceValue) ? settings.panePlace! : 'auto',
     setPanePlace: (panePlace: PanePlaceValue) => save({ panePlace }),

@@ -73,7 +73,10 @@ test('a viewer signing in on the form lands on the report, headed with their nam
   await signIn('test_employee_1', 'pw-1')
   await waitFor(() => expect(pathOf(r)).toBe('/featherbase/sales-target'), { timeout: 8000 })
   await waitFor(() => expect(screen.getByTestId('identity').textContent).toBe('Employee 1 · 1501 — ATK · 01-Sep-2026 to 17-Sep-2026'), { timeout: 8000 })
-  expect(document.querySelectorAll('select')).toHaveLength(0)
+  // No store choice: the page has no select at all (the shared bar's app
+  // switcher is a menu button since #1236).
+  expect([...document.querySelectorAll('select')].map(select => select.getAttribute('aria-label'))).toEqual([])
+  expect(screen.getByRole('button', { name: /^Switch application/ })).toBeInTheDocument()
   await waitFor(() => expect(frameSession()).toBe(`s-${E1.join('+')}`))
 })
 

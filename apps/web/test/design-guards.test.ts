@@ -414,7 +414,9 @@ describe('the Admin shell', () => {
     expect(zone).toMatch(/\bmd:shrink-0\b/)
     expect(zone).toMatch(/\bmd:px-3\b/)
     // The sidebar's tag holds an arrow function, so read a window, not up to '>'.
-    expect(shell).toMatch(/data-testid="admin-sidebar"[\s\S]{0,600}\bmd:w-60\b/)
+    // #1235: the Admin and the account pages share one sidebar frame (SidebarAside).
+    expect(shell).toMatch(/<SidebarAside testid="admin-sidebar"/)
+    expect(shell).toMatch(/data-testid=\{testid\}[\s\S]{0,600}\bmd:w-60\b/)
     // The header gives up its own left padding at md+, so the zone starts where the sidebar does.
     expect(tagWith(topBar, 'top-bar')).toMatch(/\bmd:pl-0\b/)
   })
@@ -435,15 +437,16 @@ describe('the Admin shell', () => {
     const nav = tagWith(shell, 'home-page-nav')
     expect(nav).toMatch(/\bshrink-0\b/)
     expect(nav).not.toMatch(/\bflex-1\b|overflow-y-auto/)
-    expect(shell).toMatch(/data-testid="admin-sidebar"[\s\S]{0,600}\boverflow-y-auto\b/)
+    expect(shell).toMatch(/data-testid=\{testid\}[\s\S]{0,600}\boverflow-y-auto\b/)
   })
 
-  test('the shell draws no native select arrow: it uses the design-system Select', () => {
+  // #1236: the switcher is a menu button with each app's icon and purpose, not a select.
+  test('the shell draws no native select arrow: the switcher is a menu button', () => {
     const switcher = source('src/components/AppSwitcher.tsx')
     expect(shell).not.toMatch(/<select\b/)
     expect(shell).toMatch(/<AppSwitcher\s*\/>/)
     expect(switcher).not.toMatch(/<select\b/)
-    expect(switcher).toMatch(/<Select\s[^>]*aria-label="Switch application"/)
+    expect(switcher).toMatch(/aria-label=\{`Switch application: \$\{name\}`\}[\s\S]{0,40}aria-haspopup="menu"/)
   })
 
   test('the sidebar group headings look exactly like "Recently opened": muted, sentence case, small icon', () => {

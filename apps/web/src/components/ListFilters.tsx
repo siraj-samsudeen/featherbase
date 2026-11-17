@@ -2,10 +2,10 @@ import { useState } from 'react'
 import { choiceLabel } from 'shared'
 import { LinkedTitle } from '../lib/row-name'
 import { LinkControl } from './LinkControl'
-import { NO_COLUMN_TYPES } from '../lib/meta'
+import { NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { useI18n } from '../lib/i18n'
-import { buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
+import { SearchInput, buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
 
 export type Filter = [string, string, unknown]
 
@@ -14,6 +14,10 @@ export type Filter = [string, string, unknown]
 // could only produce malformed filters. Related filters arrive via links
 // (Connections, Explore) and render as chips like any other filter.
 const OPS = ['=', '!=', 'like', '>', '<', '>=', '<='] as const
+// #1196: no value or empty text; they take no value. Only the platform's own
+// database answers them, so a connected Table's list does not offer them.
+const BLANK_OPS = ['is blank', 'is not blank'] as const
+const isBlankOp = (op: string) => (BLANK_OPS as readonly string[]).includes(op)
 
 // Standard filters (adopted from PR 2's Admin screen): typed per-column
 // inputs for the list's visible columns — Choices become dropdowns, text-ish
@@ -36,6 +40,67 @@ function filterBoxKind(col: import('../lib/meta').ColumnDef | undefined, op: str
   if (col.column_type === 'Datetime') return 'datetime-local'
   if (NUMBER_TYPES.has(col.column_type)) return 'number'
   return 'text'
+}
+
+const TEXT_TYPES = new Set(['Data', 'Text', 'Small Text', 'Long Text'])
+
+/** The column a list's Search looks in: the Table's title column when it holds
+ *  text, else its first text column; none when it has no text to search. A
+ *  title that is a link (a Reference) holds an id, not the name people read,
+ *  so Search never looks there (Codex review, round 12). */
+export function searchColumn(meta: TableMeta): string | undefined {
+  const title = meta.title_column ? meta.columns.find((c) => c.column_name === meta.title_column) : undefined
+  if (title && TEXT_TYPES.has(title.column_type)) return title.column_name
+  return meta.columns.find((c) => TEXT_TYPES.has(c.column_type) && !NO_COLUMN_TYPES.has(c.column_type) && !c.hidden)?.column_name
+}
+
+const SEARCH_OP = 'like'
+const unwrap = (value: unknown) => (typeof value === 'string' ? value.replace(/^%|%$/g, '') : '')
+
+/**
+ * #1242 (admin-lists 3): Search a list by its title. Enter puts it on as an
+ * ordinary filter (a chip), so it is remembered (#1228), shared in the address
+ * and cleared like any other; an empty search takes it off.
+ */
+export function ListSearch({ meta, filters, onChange, label }: {
+  meta: TableMeta
+  filters: Filter[]
+  onChange: (filters: Filter[]) => void
+  label: string
+}) {
+  const column = searchColumn(meta)
+  const on = column ? filters.find((f) => f[0] === column && f[1] === SEARCH_OP) : undefined
+  const active = unwrap(on?.[2])
+  const [text, setText] = useState(active)
+  // Codex review, round 9: when the search on the list changes from elsewhere (a
+  // saved view, Back, Clear filters), the box shows it; typing in between is kept.
+  const [shown, setShown] = useState(active)
+  if (active !== shown) {
+    setShown(active)
+    setText(active)
+  }
+  if (!column) return null
+  return (
+    <form
+      role="search"
+      aria-label={`Search ${label}`}
+      onSubmit={(e) => {
+        e.preventDefault()
+        const rest = filters.filter((f) => !(f[0] === column && f[1] === SEARCH_OP))
+        const words = text.trim()
+        onChange(words ? [...rest, [column, SEARCH_OP, `%${words}%`]] : rest)
+      }}
+    >
+      <SearchInput
+        aria-label={`Search ${label}`}
+        placeholder={`Search ${label}`}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        data-testid="list-search"
+        className="w-56"
+      />
+    </form>
+  )
 }
 
 export function StandardFilters({
@@ -176,10 +241,14 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   const linked =
     col?.column_type === 'Reference' && col.reference_table && (op === '=' || op === '!=') &&
     (typeof value === 'string' || typeof value === 'number') && String(value) !== ''
+  // #1242 (verifier, round 3): a "%words%" pattern, as Search writes, reads
+  // "contains words" rather than its wildcards; other patterns stay as written.
+  const contains = (op === 'like' || op === 'not like') && typeof value === 'string' && /^%[^%_]+%$/.test(value)
+  if (contains) return <>{label} {op === 'like' ? 'contains' : 'does not contain'} {(value as string).slice(1, -1)}</>
   return (
     <>
-      {label} {op}{' '}
-      {linked ? <LinkedTitle table={col.reference_base ?? col.reference_table!} rowId={String(value)} />
+      {label} {op}{isBlankOp(op) ? null : ' '}
+      {isBlankOp(op) ? null : linked ? <LinkedTitle table={col.reference_base ?? col.reference_table!} rowId={String(value)} />
         : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
         : filterValueLabel(op, value)}
     </>
@@ -211,7 +280,9 @@ export function FilterBar({
   const column = meta.columns.find((c) => c.column_name === field)
   const kind = filterBoxKind(column, op)
 
+  const ops: readonly string[] = meta.data_source ? OPS : [...OPS, ...BLANK_OPS]
   function add() {
+    if (isBlankOp(op)) return onChange([...filters, [field, op, null]])
     if (!value.trim()) return
     const v = op === 'like' ? `%${value.trim()}%` : value.trim()
     onChange([...filters, [field, op, v]])
@@ -244,13 +315,13 @@ export function FilterBar({
           data-testid="filter-op"
           className={inputClasses('max-w-[10rem]')}
         >
-          {OPS.map((o) => (
+          {ops.map((o) => (
             <option key={o} value={o}>
               {o}
             </option>
           ))}
         </select>
-        {kind === 'link' ? (
+        {isBlankOp(op) ? null : kind === 'link' ? (
           <LinkControl
             key={field}
             field={column!}
@@ -311,6 +382,15 @@ export function FilterBar({
               </button>
             </span>
           ))}
+          {/* #1228: filters come back on the next visit, so one control takes them all off. */}
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            data-testid="filter-clear-all"
+            className="text-sm text-action underline-offset-2 hover:underline"
+          >
+            Clear filters
+          </button>
         </div>
       )}
     </div>

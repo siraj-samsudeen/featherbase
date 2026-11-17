@@ -488,8 +488,14 @@ describe('what a job that reaches nothing is told', () => {
     expect(reachMessage([problem])).toEqual({ text: "You aren't set against a section yet, so there is no report to show.", sectionsLink: true })
   })
 
-  it('departments_not_filled: wait for them, with no link', () => {
-    expect(reachMessage(['departments_not_filled'])).toEqual({ text: "Your store's departments aren't filled in yet. Your report will open once they are.", sectionsLink: false })
+  it('departments_not_filled: set up your department, with the way in (#1195)', () => {
+    expect(reachMessage(['departments_not_filled'])).toEqual({ title: 'Set up your department to open your report', sectionsLink: false, departmentLink: true,
+      text: "Your report shows your department's sections, and Dash doesn't know them yet. Say which sections are yours and give the department a name. It takes a minute." })
+  })
+
+  it("store_sections_not_set_up: the store's sections come first, with no way in yet (#1195)", () => {
+    expect(reachMessage(['store_sections_not_set_up'])).toMatchObject({ title: "Your store's sections aren't set up yet", sectionsLink: false })
+    expect(reachMessage(['store_sections_not_set_up'])?.departmentLink).toBeUndefined()
   })
 
   it('no_cluster: not in a cluster, with no link', () => {
