@@ -117,7 +117,8 @@ export function RowMap({ table, name }: { table: string; name: string }) {
   const farTables = connections.map((c, i) => {
     const gm = groupMetaOf(c.table)
     const rows = groupRows[i]?.data?.data
-    if (!gm || !rows) return undefined
+    // Codex round 2: a capped read is not the whole group; name it only when every row was read.
+    if (!gm || !rows || rows.length < c.count) return undefined
     return farSideTable(rows.map((r) => farSides(gm, r, { backLink: c.via ? undefined : c.column, record: { table, row_id: name }, own })))
   })
   connections.forEach((c, i) =>
