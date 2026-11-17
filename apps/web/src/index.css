@@ -1,3 +1,16 @@
 @import '@featherbase/shop-floor/styles.css';
 @source '../../../packages/shop-floor/src';
 @source not '../../../packages/shop-floor/src/**/*.stories.tsx';
+
+/* #1248: a sidebar rail's tooltip (lib/sidebar-rail.ts): the row's name, beside it, at once. */
+.featherbase-rail-tip {
+  background: var(--color-ink);
+  color: var(--color-surface);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-scrim) 15%, transparent);
+}
