@@ -709,3 +709,18 @@ describe('every source gives only the area its role\'s Reaches allows (Codex rou
     expect(role.area.parts[0].name).toBe('No area: Auditor reaches nothing yet: its Reaches is not set, and this person is named only in their job at Lakeside')
   })
 })
+
+describe('a hand change with nowhere to apply', () => {
+  it('reads No area yet for a store role given to someone with no job, no merchandise and no store named', async () => {
+    const tables = await seeded()
+    await giveRole(context(tables, { payload: { person: 'outsider', change: 'Also give', role: roleId(tables, 'Store Manager') } }) as never)
+    expect((await explainPerson(context(tables, { payload: { person: 'outsider' } }) as never)).roles[0].area.parts.map(p => p.name)).toEqual(['No area yet'])
+  })
+
+  it('records no giver\'s name when the platform gives none', async () => {
+    const tables = await seeded()
+    const ctx = { ...context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Team Leader') } }), userName: undefined }
+    await giveRole(ctx as never)
+    expect(tables['dash.role_assignment'].at(-1)!.given_by_name).toBeNull()
+  })
+})

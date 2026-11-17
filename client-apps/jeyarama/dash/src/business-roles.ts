@@ -111,8 +111,7 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
     const merchandiseFirst = reachesOf.get(given.role) === 'Merchandise' && facts.merchandise.length > 0
     const spots: Spot[] = merchandiseFirst ? [{ kind: 'merchandise', assignments: facts.merchandise.map(m => m.id) }]
       : given.site && !jobs.length ? [placed(given)]
-      : jobs.length ? jobs.map(job => at(job.id, given.site))
-        : facts.merchandise.length ? [{ kind: 'merchandise', assignments: facts.merchandise.map(m => m.id) }] : [{ kind: 'none' }]
+      : jobs.length ? jobs.map(job => at(job.id, given.site)) : [{ kind: 'none' }]
     for (const spot of spots) held.push({ role: given.role, source: 'also_given', title: null, spot, ...handFacts(given) })
   }
   // Every source's area in the shape its role's Reaches allows; a whole-company role held twice from one source is one.
