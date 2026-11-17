@@ -70,10 +70,11 @@ export function farSideCode(title: string, code: string | undefined): string | u
   return code && !code.toLowerCase().includes(title.trim().toLowerCase()) ? code : undefined
 }
 
-const FACT_TYPES = new Set(['Date', 'Datetime', 'Choice'])
+const FACT_TYPES = new Set(['Date', 'Datetime', 'Choice', 'Check'])
 
 /** The row's facts worth a small line under its name: its dates and statuses,
- *  never a code or a link, at most two, only those with values. */
+ *  never a code or a link, at most two, only those with values. A yes/no
+ *  reads with its label, "Passed ✓", since a bare tick says nothing. */
 export function groupFacts(meta: TableMeta, row: Row, max = 2): ColumnDef[] {
   return factColumns(meta).filter((c) => !isBlank(row[c.column_name])).slice(0, max)
 }

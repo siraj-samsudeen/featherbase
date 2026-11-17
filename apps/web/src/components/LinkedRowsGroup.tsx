@@ -103,7 +103,7 @@ function LinkedRowLine({ meta, row, far, onOpen }: { meta: TableMeta; row: Row; 
       })()}
       {facts.length > 0 && (
         <span className="text-xs text-ink-muted" data-testid="linked-row-facts">
-          {facts.map((c, i) => <span key={c.column_name}>{i > 0 && ' · '}<Fact type={c.column_type} value={row[c.column_name]} labels={c.choice_labels} settings={settings} /></span>)}
+          {facts.map((c, i) => <span key={c.column_name}>{i > 0 && ' · '}<Fact type={c.column_type} label={c.label ?? c.column_name} value={row[c.column_name]} labels={c.choice_labels} settings={settings} /></span>)}
         </span>
       )}
     </li>
@@ -127,8 +127,9 @@ function NameThenCode({ code, children }: { code?: string; children: ReactNode }
   return <span className="min-w-0">{children}{code && <>{' '}<span className="text-ink-muted">· {code}</span></>}</span>
 }
 
-function Fact({ type, value, labels, settings }: { type: string; value: unknown; labels?: Record<string, string> | null; settings: Settings }) {
+function Fact({ type, label, value, labels, settings }: { type: string; label: string; value: unknown; labels?: Record<string, string> | null; settings: Settings }) {
   const { t } = useI18n()
+  if (type === 'Check') return <>{label} {value === true || value === 1 || value === '1' || value === 'true' ? '✓' : '✗'}</>
   if (type === 'Choice') return <>{choiceLabel(String(value), labels, t)}</>
   return <>{formatValue(type, value, settings) || String(value)}</>
 }
