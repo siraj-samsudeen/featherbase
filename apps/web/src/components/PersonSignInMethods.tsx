@@ -227,7 +227,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
             Password
             {data.password_invite.latest?.status === 'accepted' && data.password_invite.latest.accepted_at && (
               <span className="block text-sm text-ink-muted" data-testid="password-invite-accepted">
-                set from a password invite {fmtInstantIST(data.password_invite.latest.accepted_at)}
+                set from a password invite <span className="whitespace-nowrap">{fmtInstantIST(data.password_invite.latest.accepted_at)}</span>
               </span>
             )}
           </li>
