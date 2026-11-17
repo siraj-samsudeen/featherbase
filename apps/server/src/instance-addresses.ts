@@ -173,6 +173,8 @@ export function appRoot(app: string, installed: boolean): string {
 const SERVED_EVERYWHERE = [
   '/featherbase/login',
   '/featherbase/reset-password',
+  // #1257: a password invite's link, which goes to the address marked for emails.
+  '/featherbase/set-password',
   '/featherbase/oauth-callback',
   // #1207: an agent connecting by this address signs in and allows it here.
   '/featherbase/connect',
