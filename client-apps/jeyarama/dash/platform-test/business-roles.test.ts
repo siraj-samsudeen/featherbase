@@ -53,8 +53,16 @@ describe('business roles in shadow', () => {
       const reader = await createUser({ email: 'shadow-reader@example.test', roles: ['Dash Reader'] })
       await save('Employee', { employee_code: 'R1', name: 'Made-up Reader', person: reader.user, status: 'Current' })
       await save('Job Assignment', { assignment_id: 'JA-R1', employee: 'R1', job: 'Staff', starts_on: '2026-01-01' })
-      const before = (await reader.post<{ result: { key: string }[] }>('/api/app_reads/dash/reports', { payload: {} })).result
-      expect(before.map(r => r.key)).toEqual(['open'])
+      // What today's access answers for the reader: their reports, the front door, and why their job reaches nothing.
+      const todays = async () => {
+        const answers: unknown[] = []
+        for (const name of ['reports', 'can_open', 'reach_problem']) answers.push((await reader.post<{ result: unknown }>(`/api/app_reads/dash/${name}`, { payload: {} })).result)
+        return answers
+      }
+      const scope = () => admin.get(`/api/people/${encodeURIComponent(reader.user)}/scope?app=dash`)
+      const before = await todays()
+      const scopeBefore = await scope()
+      expect((before[0] as { key: string }[]).map(r => r.key)).toEqual(['open'])
       const manager = await createUser({ email: 'shadow-manager@example.test', roles: ['Dash Reader', MANAGER] })
       const act = (name: string, payload: Record<string, unknown>) => manager.post<{ result: unknown }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload })
       await act('add_starting_roles', {})
@@ -62,10 +70,14 @@ describe('business roles in shadow', () => {
       expect(page.roles).toHaveLength(12)
       const storeManager = page.roles.find(r => r.name === 'Store Manager')!.id
       await act('give_role', { person: reader.user, change: 'Correct', role: storeManager, reason: 'Runs the store' })
+      // A role that would reach every store in the new model, and a mapping that changes the reader's title: neither may leak into today.
+      await act('give_role', { person: reader.user, change: 'Also give', role: page.roles.find(r => r.name === 'Leadership')!.id })
+      await act('map_title', { title: 'Staff', role: page.roles.find(r => r.name === 'Head Office')!.id })
       const explained = (await manager.post<{ result: { roles: { name: string; source: string }[] } }>('/api/app_reads/dash/explain_person', { payload: { person: reader.user } })).result
-      expect(explained.roles.map(r => [r.name, r.source])).toEqual([['Store Manager', 'Corrected by hand']])
+      expect(explained.roles.map(r => [r.name, r.source])).toEqual([['Store Manager', 'Corrected by hand'], ['Leadership', 'Also given by hand']])
 
-      expect((await reader.post<{ result: { key: string }[] }>('/api/app_reads/dash/reports', { payload: {} })).result).toEqual(before)
+      expect(await todays()).toEqual(before)
+      expect(await scope()).toEqual(scopeBefore)
       const refused = await reader.fetch('/api/app_reads/dash/business_roles', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ payload: {} }) })
       expect(refused.status).toBeGreaterThanOrEqual(400)
     } finally { await rm(previous, { recursive: true, force: true }) }

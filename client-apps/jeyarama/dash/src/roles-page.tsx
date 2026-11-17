@@ -34,6 +34,12 @@ export function Chip({ children, tone = 'quiet', testid }: { children: ReactNode
   return <span className={pillClasses(tone === 'hand' ? 'bg-caution-tint text-caution' : 'bg-subtle text-ink-muted')} data-testid={testid}>{children}</span>
 }
 
+/** #1267's words for whoIs()'s standing: a description only, never what grants access. */
+export const STAFF_BADGE = { current: 'Employee', left: 'Former Employee', none: 'External' } as const
+export function StaffBadge({ who }: { who: Who | null | undefined }) {
+  return <Chip testid="staff-badge">{STAFF_BADGE[who?.staff ?? 'none']}</Chip>
+}
+
 /** One quiet line: the name, its muted facts below, and chips or actions on the right. */
 function Line({ name, meta, side, testid, children }: { name: ReactNode; meta?: ReactNode; side?: ReactNode; testid?: string; children?: ReactNode }) {
   return (
@@ -233,7 +239,7 @@ function Explanation({ answer, onChanged }: { answer: Explained; onChanged: () =
   const sameAsToday = answer.today.opens === answer.next.opens && answer.today.reports === answer.reports.length
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm text-ink-muted" data-testid="explain-who"><PersonName name={answer.name} who={answer.who} /></p>
+      <p className="flex flex-wrap items-center gap-2 text-sm text-ink-muted" data-testid="explain-who"><PersonName name={answer.name} who={answer.who} /><StaffBadge who={answer.who} /></p>
       <p className="text-[13px] text-ink-muted" data-testid="explain-today">
         Today: {answer.today.opens ? 'Dash opens' : 'Dash does not open'} · {plural(answer.today.reports, 'report')} · {plural(answer.today.stores, 'store')}.
         {' '}{sameAsToday ? 'The new model gives the same.' : <>The new model differs: <a className="font-medium text-action hover:underline" href={CHANGES_ADDRESS}>see who would gain or lose access</a>.</>}
@@ -373,7 +379,7 @@ function ChangeGroup({ kind, people }: { kind: Kind; people: Changed[] }) {
           <Line key={p.person} testid="changed-person"
             name={<a href={explainAddress(p.person)} className="font-medium text-action hover:underline" data-testid="changed-name">{p.name}</a>}
             meta={<Facts person={p} />}
-            side={p.roles.length ? <Chip>{p.roles.join(', ')}</Chip> : <Chip>No business role</Chip>} />
+            side={<><StaffBadge who={p.who} />{p.roles.length ? <Chip>{p.roles.join(', ')}</Chip> : <Chip>No business role</Chip>}</>} />
         ))}
         {people.length > SHOWN && !all && <li className="px-2"><button type="button" className="text-[13px] font-medium text-action hover:underline" onClick={() => setAll(true)}>Show all {people.length.toLocaleString('en-IN')}</button></li>}
       </Group>

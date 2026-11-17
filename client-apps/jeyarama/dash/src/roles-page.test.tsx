@@ -92,6 +92,11 @@ describe('Explain A Person', () => {
     expect([calls.find(c => c.name === 'give_role')?.payload, calls.filter(c => c.name === 'explain_person').length])
       .toEqual([{ person: 'sm', change: 'Also give', role: 'r-tl', ends_on: '2027-03-31', reason: '' }, 2])
   })
+
+  it('says whether they are an Employee, a Former Employee or External', async () => {
+    const { all } = await render('explain')
+    expect(all('staff-badge').map(b => b.textContent)).toEqual(['Employee'])
+  })
 })
 
 describe('Business Roles', () => {
