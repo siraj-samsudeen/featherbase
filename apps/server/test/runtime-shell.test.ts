@@ -18,9 +18,12 @@ describe("an app's entry document", () => {
     expect(html).toContain('data-title="Notes &amp; &quot;&lt;O&#39;Brien&gt;&quot;"')
   })
 
-  test("the platform's bar script is loaded as a module at the end of the head", () => {
-    const html = composeRuntimeShell('<html><head><title>t</title></head><body></body></html>', app)
-    expect(html).toContain('<title>t</title><script type="module" src="/featherbase/bar.js"></script></head>')
+  // #1260: the bar bundle also waits out a deploy's gap for the page's
+  // requests, so it must run before the app's own scripts: module scripts run
+  // in document order, and an app's first reads went out unwrapped (verifier).
+  test("the platform's bar script is a module first in the head, before the app's own scripts", () => {
+    const html = composeRuntimeShell('<html><head lang="x"><title>t</title><script type="module" src="/notes/assets/app.js"></script></head><body></body></html>', app)
+    expect(html).toContain('<head lang="x"><script type="module" src="/featherbase/bar.js"></script><title>t</title><script type="module" src="/notes/assets/app.js"></script></head>')
   })
 
   test('a document without head or body still gets the script and the host first', () => {
@@ -30,7 +33,7 @@ describe("an app's entry document", () => {
 
   test('a document with a head but no body gets the host right after the script', () => {
     const html = composeRuntimeShell('<head><title>t</title></head><main>x</main>', app)
-    expect(html).toBe('<head><title>t</title><script type="module" src="/featherbase/bar.js"></script><featherbase-bar data-app="notes" data-title="Notes"></featherbase-bar></head><main>x</main>')
+    expect(html).toBe('<head><script type="module" src="/featherbase/bar.js"></script><featherbase-bar data-app="notes" data-title="Notes"></featherbase-bar><title>t</title></head><main>x</main>')
   })
 
   test("the old runtime-shell header is gone", () => {
@@ -42,7 +45,7 @@ describe("an app's entry document", () => {
   // 980px wide (no viewport of its own) would never show.
   test("a page of an app with tabs and no viewport of its own gets the device's width, once", () => {
     const bare = composeRuntimeShell('<html><head><title>n</title></head><body></body></html>', { ...app, tabs: true })
-    expect(bare).toContain('<title>n</title><meta name="viewport" content="width=device-width, initial-scale=1"><script type="module"')
+    expect(bare).toContain('<head><meta name="viewport" content="width=device-width, initial-scale=1"><script type="module"')
     const own = composeRuntimeShell('<html><head><meta name="viewport" content="width=500"></head><body></body></html>', { ...app, tabs: true })
     expect(own.match(/name="viewport"/g)).toHaveLength(1)
     // No tabs, no change to the app's document beyond the bar.
