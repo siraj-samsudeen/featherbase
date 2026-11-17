@@ -89,6 +89,25 @@ describe('#1255: the sign-in page lists the accounts on this browser', () => {
     expect(jar.get('sid')?.value).toBe(token)
   })
 
+  test('continuing as an account goes back to the page it was asked for (next)', async ({ db }) => {
+    await signInHere(await person(db as Sql, 'Siraj Made-up', 'siraj.made-up@example.test'))
+    jar.delete('sid')
+    const load = vi.spyOn(pageLoad, 'assign').mockImplementation(() => {})
+    await renderApp('/featherbase/login?next=%2Ffeatherbase%2Faccount%2Fsign-in-methods', anonymous)
+    await userEvent.click(await screen.findByRole('button', { name: /Siraj Made-up/ }))
+    await waitFor(() => expect(load).toHaveBeenCalledWith('/featherbase/account/sign-in-methods'))
+  })
+
+  test('an account that belongs on another address is handed over there', async ({ db }) => {
+    await signInHere(await person(db as Sql, 'Siraj Made-up', 'siraj.made-up@example.test'))
+    jar.delete('sid')
+    vi.spyOn(browserAccounts, 'switchTo').mockResolvedValue({ row_id: 'psn_x', email: null, full_name: 'Siraj Made-up', handoff: 'https://dash.example.test/handoff?code=made-up' })
+    const load = vi.spyOn(pageLoad, 'assign').mockImplementation(() => {})
+    await renderApp('/featherbase/login', anonymous)
+    await userEvent.click(await screen.findByRole('button', { name: /Siraj Made-up/ }))
+    await waitFor(() => expect(load).toHaveBeenCalledWith('https://dash.example.test/handoff?code=made-up'))
+  })
+
   test('an account whose session ended says so, and Sign in opens the form with its ID filled in', async ({ db }) => {
     const siraj = await person(db as Sql, 'Siraj Made-up', 'siraj.made-up@example.test')
     await signInHere(siraj)

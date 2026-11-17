@@ -2,7 +2,7 @@ import { sign } from 'hono/jwt'
 import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { issueSession, revokeSession } from '../src/auth'
+import { issueAccessToken, issueSession, revokeSession, sessionClaims } from '../src/auth'
 import { expectStatus, makePerson } from './fixtures'
 import { withTimeFromNow } from './clock'
 
@@ -377,5 +377,36 @@ describe('#1255: signing out and removing', () => {
     const elsewhere = (await issueSession(await makePerson({ full_name: 'Someone else' }))).token
     expect((await b.post('/api/accounts/remove', { session: await sessionOf(elsewhere) })).status).toBe(404)
     expect(await whoami(api, elsewhere)).toBe(200)
+  })
+})
+
+describe('#1255: what a held entry names', () => {
+  test('an access token, or a signed token without a session id, names no session', async () => {
+    const id = await makePerson({ full_name: 'Siraj StyleHR' })
+    expect(await sessionClaims((await issueAccessToken(id, 'made-up')).token)).toBeNull()
+    expect(await sessionClaims(await sign({ sub: id, iat: 1, exp: Math.floor(Date.now() / 1000) + 60 }, 'dev-secret-change-me', 'HS256'))).toBeNull()
+  })
+
+  test('removing the account signed in now clears sid too', async ({ api }) => {
+    const { b, rb, second } = await twoAccounts(api)
+    await b.list()
+    await expectStatus(await b.post('/api/accounts/remove', { session: await sessionOf(second) }), 200)
+    expect(b.sid()).toBeUndefined()
+    expect(await whoami(api, second)).toBe(401)
+    expect((await b.list()).accounts.map((a) => a.person)).not.toContain(rb)
+  })
+
+  test('a sid this browser does not hold is ended by sign-out too, and the page continues as a held account', async ({ api }) => {
+    const siraj = await makePerson({ full_name: 'Siraj StyleHR' })
+    const b = browser(api)
+    b.signIn((await issueSession(siraj)).token)
+    await b.list()
+    // A session that was signed out elsewhere, so it never joins the list.
+    const stray = (await issueSession(await makePerson({ full_name: 'Stray' }))).token
+    await revokeSession({ jti: await sessionOf(stray), person: 'x', expiresAt: Math.floor(Date.now() / 1000) + 3600 })
+    b.signIn(stray)
+    const res = await b.post('/api/accounts/sign_out')
+    await expectStatus(res, 200)
+    expect(((await res.json()) as { user?: { row_id: string } }).user?.row_id).toBe(siraj)
   })
 })
