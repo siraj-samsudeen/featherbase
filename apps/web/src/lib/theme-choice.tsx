@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from 'react'
-import { getSessionUser } from './api'
+import { getSignedInUser } from './api'
 import { useTheme, type Theme } from './theme'
 
 // #489: the theme choice and its save queue belong to the signed-in page, not
@@ -25,7 +25,7 @@ function PersonThemeChoice({ children }: { children: ReactNode }) {
 }
 
 export function ThemeChoiceProvider({ children }: { children: ReactNode }) {
-  return <PersonThemeChoice key={getSessionUser()?.row_id ?? ''}>{children}</PersonThemeChoice>
+  return <PersonThemeChoice key={getSignedInUser()?.row_id ?? ''}>{children}</PersonThemeChoice>
 }
 
 /** The signed-in person's one theme choice (ThemeChoiceProvider above). */

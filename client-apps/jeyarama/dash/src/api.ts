@@ -13,19 +13,33 @@ export async function read<T>(name: string, payload: Record<string, unknown> = {
     body: JSON.stringify({ payload }),
   })
   const body = await response.json().catch(() => ({}))
+  reloadIfViewAsEnded(response.status, body)
   if (!response.ok) throw new ApiError(body.error?.message ?? 'Request failed', response.status)
   return body.result as T
 }
 
+/** #1222: the platform says a View as just ended; reload, so the page never shows two people at once. */
+function reloadIfViewAsEnded(status: number, body: { error?: { message?: string } }) {
+  if (status === 409 && body.error?.message?.startsWith('View as has ended') && typeof window !== 'undefined') window.location.reload()
+}
+
+/** The platform's bar marks the page while a tester views as someone (#1222). */
+export const VIEWING_AS_ATTRIBUTE = 'data-featherbase-viewing-as'
+export const viewingAs = () => typeof document !== 'undefined' && document.documentElement.hasAttribute(VIEWING_AS_ATTRIBUTE)
+export const VIEWING_ONLY = 'You are viewing as someone else: this is for looking only. Exit View as to make changes.'
+
 /** Runs one of Dash's declared actions. A fresh key per call: a retry after a lost answer is
  *  the caller pressing the button again, and the rules refuse a repeat. */
 export async function act<T>(name: string, payload: Record<string, unknown>): Promise<T> {
+  // #1222: while a tester views as someone, the page is for looking only; its change buttons are hidden.
+  if (viewingAs()) throw new ApiError(VIEWING_ONLY, 403)
   const response = await fetch(`/api/app_actions/dash/${encodeURIComponent(name)}`, {
     method: 'POST', credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `dash@${version}` },
     body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), payload }),
   })
   const body = await response.json().catch(() => ({}))
+  reloadIfViewAsEnded(response.status, body)
   if (!response.ok) throw new ApiError(body.error?.message ?? 'That did not go through. Try again.', response.status)
   return body.result as T
 }
@@ -34,6 +48,23 @@ const platformGet = async <T>(path: string): Promise<T> => {
   const response = await fetch(path, { credentials: 'same-origin' })
   if (!response.ok) throw new ApiError('Request failed', response.status)
   return await response.json() as T
+}
+
+/** #1222: whether the signed-in person may view as someone (the platform answers for them, never for whom they view). */
+export const mayViewAs = async () => (await platformGet<{ may?: boolean }>('/api/view_as').catch(() => ({ may: false }))).may === true
+
+/** #1222: view as `person`; the page (and other tabs on this sign-in) reload to show what they see. */
+export async function startViewAs(person: string, name: string): Promise<void> {
+  const response = await fetch('/api/view_as/start', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ person }) })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new ApiError(body.error?.message ?? 'Could not view as them. Try again.', response.status)
+  try {
+    window.localStorage.setItem('featherbase.view-as.changed', String(Date.now()))
+    // Whom the platform's pages are about now (its lib/viewing-as.ts): every "me" is this person.
+    window.localStorage.setItem('featherbase.viewing-as', JSON.stringify({ row_id: person, full_name: name }))
+  } catch { /* private window: this tab only */ }
+  // Land on Dash's home: the page you started from (Report access) may not be one they can open.
+  window.location.assign(window.location.pathname)
 }
 
 /**

@@ -257,9 +257,9 @@ export function YourSections() {
       )}
       {answer?.state === 'ok' && (
         <>
-          <p className="fd-muted" data-testid="person-name">{answer.name}. {Object.values(answer.applies_at_once ?? NOT_AT_ONCE).every(Boolean)
+          <p className="fd-muted" data-testid="person-name">{answer.name}. <span data-action-hint>{Object.values(answer.applies_at_once ?? NOT_AT_ONCE).every(Boolean)
             ? 'If something here is wrong, change it. It changes at once, and your manager reviews it afterwards.'
-            : 'If something here is wrong, say so. Nothing changes until it is approved.'}</p>
+            : 'If something here is wrong, say so. Nothing changes until it is approved.'}</span></p>
           {answer.waiting_for_me > 0 && (
             <Notice tone="caution">
               {/* UX standard §8: waiting work is a caution notice with a Review button, not a link sentence. */}
@@ -310,14 +310,14 @@ function JobCard({ job, atOnce, onSent }: { job: Job; atOnce: AtOnce; onSent: ()
   const pathOf = (row: (typeof rows)[number]) => ('placed' in row ? row.placed : row.added)
   return (
     <Card data-testid="job-card" title={<>{job.job} · <RecordLink table={RECORD.site} id={job.store_id}>{job.store}</RecordLink></>}
-      actions={!job.section && job.other_sections.length > 0 ? <Button variant="secondary" onClick={() => start('section')}>Say which section is yours</Button> : undefined}>
+      actions={!job.section && job.other_sections.length > 0 ? <Button data-action variant="secondary" onClick={() => start('section')}>Say which section is yours</Button> : undefined}>
       <div className="flex flex-col gap-3 p-4">
         <p className="fd-muted" data-testid="reports-to">{job.reports_to ? <>You report to <RecordLink table={RECORD.employee} id={job.reports_to_code}>{job.reports_to}</RecordLink></> : 'No manager is set against this job'}</p>
         {note && <Notice tone={note.tone}><span data-testid={note.tone === 'positive' ? 'sent-note' : 'refused-note'}>{note.text}</span></Notice>}
         {job.section ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-semibold" data-testid="section-name">{sectionLabel(job.section)}</p>
-            {job.other_sections.length > 0 && <Button variant="quiet" className="-mx-3 max-sm:-mx-4" onClick={() => start('section')}>My section is wrong</Button>}
+            {job.other_sections.length > 0 && <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" onClick={() => start('section')}>My section is wrong</Button>}
           </div>
         ) : job.other_sections.length > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-2" data-testid="no-section">
@@ -360,7 +360,7 @@ function JobCard({ job, atOnce, onSent }: { job: Job; atOnce: AtOnce; onSent: ()
                 )}
               </HierarchyGroups>
             )}
-            <div><Button onClick={() => start('add')}>Add subcategories</Button></div>
+            <div><Button data-action onClick={() => start('add')}>Add subcategories</Button></div>
             {open === 'add' && <AddSubcategories job={job} atOnce={atOnce.add} onCancel={close} onRefused={onSent}
               onSent={count => sent(atOnce.add ? `Added ${count === 1 ? '1 subcategory' : `${count} subcategories`}. ${job.waiting_for} will review ${count === 1 ? 'it' : 'them'}.`
                 : `Asked to add ${count === 1 ? '1 subcategory' : `${count} subcategories`}. Nothing changes until it is approved.`)} />}
@@ -385,9 +385,9 @@ function PlacedRow({ placed, busy, onNotMine, onUndo }: { placed: Placed; busy: 
         <span className="flex flex-wrap items-center gap-2">
           <StatusPill tone={asked.applied ? 'neutral' : 'caution'} className="max-w-full whitespace-normal!">{asked.applied ? 'Taken out · not yet reviewed'
             : asked.kind === 'move' && asked.to ? `Move to ${asked.to} waiting for approval` : 'Removal waiting for approval'}</StatusPill>
-          <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === asked.id} disabled={busy !== null} onClick={() => onUndo(asked.id)}>Undo</Button>
+          <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === asked.id} disabled={busy !== null} onClick={() => onUndo(asked.id)}>Undo</Button>
         </span>
-      ) : <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === placed.id} disabled={busy !== null} onClick={onNotMine}>Not mine</Button>}
+      ) : <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === placed.id} disabled={busy !== null} onClick={onNotMine}>Not mine</Button>}
     </li>
   )
 }
@@ -401,7 +401,7 @@ function AddedRow({ added, busy, onUndo }: { added: Addition; busy: string | nul
       </span>
       <span className="flex flex-wrap items-center gap-2">
         <StatusPill tone={added.applied ? 'neutral' : 'caution'} className="max-w-full whitespace-normal!">{added.applied ? 'Added · not yet reviewed' : 'Addition waiting for approval'}</StatusPill>
-        <Button variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === added.id} disabled={busy !== null} onClick={() => onUndo(added.id)}>Undo</Button>
+        <Button data-action variant="quiet" className="-mx-3 max-sm:-mx-4" loading={busy === added.id} disabled={busy !== null} onClick={() => onUndo(added.id)}>Undo</Button>
       </span>
     </li>
   )
@@ -437,7 +437,7 @@ function PickSection({ job, atOnce, action, label, payload, onCancel, onSent, on
         </Select>
       </Field>
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" loading={busy} onClick={send}>{atOnce ? 'Change it' : 'Send for approval'}</Button>
+        <Button data-action variant="primary" loading={busy} onClick={send}>{atOnce ? 'Change it' : 'Send for approval'}</Button>
         <Button onClick={onCancel} disabled={busy}>Cancel</Button>
       </div>
     </div>
@@ -487,7 +487,7 @@ function AddSubcategories({ job, atOnce, onCancel, onSent, onRefused }: { job: J
       {levels && <HierarchyPicker label="Subcategories to add" levels={levels.levels} start={levels.start} loadLeaves={loadLeaves}
         selected={chosen} onChange={setChosen} annotate={holderLine} />}
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" loading={busy} disabled={!chosen.length} onClick={send}>{atOnce ? (chosen.length ? `Add ${chosen.length}` : 'Add') : chosen.length ? `Ask to add ${chosen.length}` : 'Ask to add'}</Button>
+        <Button data-action variant="primary" loading={busy} disabled={!chosen.length} onClick={send}>{atOnce ? (chosen.length ? `Add ${chosen.length}` : 'Add') : chosen.length ? `Ask to add ${chosen.length}` : 'Ask to add'}</Button>
         <Button onClick={onCancel} disabled={busy}>Cancel</Button>
       </div>
     </div>
@@ -641,7 +641,7 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
               <TextInput value={reason} onChange={event => setReason(event.target.value)} />
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="danger" loading={busy === 'reject'} onClick={() => decide('reject')}>{applied ? 'Undo it' : 'Reject'}</Button>
+              <Button data-action variant="danger" loading={busy === 'reject'} onClick={() => decide('reject')}>{applied ? 'Undo it' : 'Reject'}</Button>
               <Button disabled={busy !== null} onClick={cancel}>Cancel</Button>
             </div>
           </div>
@@ -655,22 +655,22 @@ function ApprovalCard({ proposal, onDone }: { proposal: Approval; onDone: (note:
               </Select>
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" loading={busy === 'elsewhere'} onClick={() => decide('elsewhere')}>Move it there</Button>
+              <Button data-action variant="primary" loading={busy === 'elsewhere'} onClick={() => decide('elsewhere')}>Move it there</Button>
               <Button disabled={busy !== null} onClick={cancel}>Cancel</Button>
             </div>
           </div>
         )}
         {mode === 'decide' && applied && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" loading={busy === 'confirm'} onClick={() => decide('confirm')}>Confirm</Button>
-            <Button variant="danger" disabled={busy !== null} onClick={() => setMode('reject')}>Undo…</Button>
+            <Button data-action variant="primary" loading={busy === 'confirm'} onClick={() => decide('confirm')}>Confirm</Button>
+            <Button data-action variant="danger" disabled={busy !== null} onClick={() => setMode('reject')}>Undo…</Button>
           </div>
         )}
         {mode === 'decide' && !applied && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" loading={busy === 'approve'} onClick={() => decide('approve')}>{isMove ? 'Approve move' : 'Approve'}</Button>
-            {isMove && <Button disabled={busy !== null} onClick={() => setMode('elsewhere')}>Move it elsewhere…</Button>}
-            <Button variant="danger" disabled={busy !== null} onClick={() => setMode('reject')}>Reject</Button>
+            <Button data-action variant="primary" loading={busy === 'approve'} onClick={() => decide('approve')}>{isMove ? 'Approve move' : 'Approve'}</Button>
+            {isMove && <Button data-action disabled={busy !== null} onClick={() => setMode('elsewhere')}>Move it elsewhere…</Button>}
+            <Button data-action variant="danger" disabled={busy !== null} onClick={() => setMode('reject')}>Reject</Button>
           </div>
         )}
       </div>

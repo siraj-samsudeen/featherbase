@@ -1,6 +1,7 @@
 // Per-user warm history cache, reconciled with the server on app load.
 
 import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
+import { viewedPerson } from './viewing-as'
 import type { ColumnDef } from './meta'
 
 export type RecentKind = 'row' | 'list' | 'page' | 'search'
@@ -69,7 +70,16 @@ function remember(entries: RecentEntry[], action: RecentAction, now: number): vo
   }
 }
 
+/**
+ * #1222: while a tester views as someone, the page is the other person's, so the tester's own
+ * history (kept in this browser) is neither shown nor added to.
+ */
+export function historyPaused(): boolean {
+  return viewedPerson() !== null
+}
+
 export function recordAction(user: string, action: RecentAction, now = Date.now()): void {
+  if (historyPaused()) return
   const entries = loadAll(user)
   remember(entries, action, now)
   save(user, entries)
@@ -264,6 +274,7 @@ export function replaceServerEntries(user: string, remote: ServerRecentEntry[]):
 
 /** Newest-first, deduplicated by construction. */
 export function recentActions(user: string, limit: number): RecentEntry[] {
+  if (historyPaused()) return []
   return loadAll(user)
     .sort((a, b) => lastVisit(b) - lastVisit(a))
     .slice(0, limit)
@@ -285,6 +296,7 @@ export function frecency(entry: RecentEntry, now: number): number {
 
 /** Frecency-ranked repeat destinations (2+ visits; searches excluded). */
 export function frequentActions(user: string, limit: number, now = Date.now()): RecentEntry[] {
+  if (historyPaused()) return []
   return loadAll(user)
     .filter((e) => e.kind !== 'search' && e.visits.length >= 2)
     .sort((a, b) => frecency(b, now) - frecency(a, now))
@@ -293,6 +305,7 @@ export function frequentActions(user: string, limit: number, now = Date.now()): 
 
 /** Past searches matching a prefix (all of them when the bar is empty). */
 export function recentSearches(user: string, query: string, limit: number): RecentEntry[] {
+  if (historyPaused()) return []
   const needle = query.trim().toLowerCase()
   return loadAll(user)
     .filter(

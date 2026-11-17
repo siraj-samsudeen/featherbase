@@ -10,6 +10,8 @@ import { assertRowsWritable } from './system-written'
 import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { runInSession } from './session-context'
+import { VIEW_AS_ENDED, viewAsStillHolds, activeViewAs, endViewAs, endViewAsSession, searchViewAs, sweepExpiredViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
+import { runViewingAs } from './view-as-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { tableStorageIdentity } from './table-engine'
 import { deleteDoc, getDoc, revokeGrant, rowCapabilities, saveDoc } from './document'
@@ -22,7 +24,7 @@ import { GOOGLE_OFF, LINK_DOMAIN_NOT_ALLOWED, completeSignIn, linkVerifiedToSelf
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { personByEmail } from './people-directory'
-import { countWaitingForAccess, noAccessYetPage, requestAccess } from './waiting-for-access'
+import { countWaitingForAccess, noAccessYetPage, peekAccess, requestAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
 import { hold, rosterFirstSignIn } from './roster-first-sign-in'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
@@ -328,6 +330,14 @@ app.post('/api/logout', async (c) => {
       console.error('sign-out: revoking a session failed', err)
       incomplete = true
     }
+    // #1222: signing out ends a View as too, on the record: after the revocation, so a
+    // start racing the sign-out finds the session ended and refuses.
+    try {
+      await endViewAsSession(session.jti, 'sign_out')
+    } catch (err) {
+      console.error('sign-out: ending View as failed', err)
+      incomplete = true
+    }
   }
   if (incomplete)
     return c.json({ error: { type: 'ServiceUnavailableError', message: 'Sign-out did not complete. Try again.' } }, 503)
@@ -619,6 +629,15 @@ app.post('/deliver/app', async (c) => {
   return c.json(await deliverApp(await c.req.json().catch(() => null)))
 })
 
+/** #1222: an app the person being viewed can't open. Nothing is asked in their name. */
+function viewingNoAccessPage(name: string): string {
+  const who = name.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`)
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not open to ${who}</title></head>
+    <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
+    <h1>${who} can't open this application</h1><p>You are viewing as ${who}, for viewing only. They have no access to it, so there is nothing of theirs to see here.</p>
+    <form method="post" action="/api/view_as/exit"><button type="submit" style="font:inherit;padding:.5rem 1rem;border-radius:6px;border:0;background:#1c2126;color:white;cursor:pointer">Exit View as</button></form></main></body></html>`
+}
+
 // #1207: how an agent signs in from the agent address alone (agent-auth-routes.ts).
 app.route('/', agentAuthPublicRoutes)
 
@@ -626,15 +645,54 @@ app.route('/', agentAuthPublicRoutes)
 
 app.use('/api/*', async (c, next) => {
   const user = await resolveToken(authCredential(c))
+  // #1222: a session viewing as someone reads as that person. Anything else
+  // (its own View as controls, any change) runs as the tester themself, never
+  // as the person viewed; the pages offer no change while viewing.
+  await sweepExpiredViewAs()
+  const viewing = await activeViewAs(user)
+  const route = viewing ? viewAsRoute(c.req.method, c.req.path, user.row_id) : 'tester'
+  if (viewing && route === 'drop') return c.body(null, 204)
+  if (viewing && route === 'read') {
+    c.set('user', viewing.user)
+    c.set('viewingAs', viewing.as)
+    await runInSession(user.sign_in, () => runViewingAs(viewing.as, () => next()))
+    // A slow read admitted while viewing is released only if that View as still holds,
+    // so an Exit or Switch made meanwhile never lets the person's data through after it.
+    if (!(await viewAsStillHolds(user, viewing.as.person)))
+      c.res = c.json({ error: { type: 'ConflictError', message: VIEW_AS_ENDED } }, 409)
+    return
+  }
   c.set('user', user)
   // #473: a test-mode or preview session cannot add a lasting way in, even
   // through the generic save path (document.ts).
   await runInSession(user.sign_in, () => next())
 })
 
+app.use('/api/*', rateLimit)
+
+// #1222: View as — the tester's own state, people search, start or switch, and exit.
+app.get('/api/view_as', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await viewAsState(c.get('user')))
+})
+app.get('/api/view_as/people', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await searchViewAs(c.get('user'), c.req.query('q')))
+})
+app.post('/api/view_as/start', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { person?: unknown } | null
+  await startViewAs(c.get('user'), body?.person)
+  return c.json(await viewAsState(c.get('user')))
+})
+app.post('/api/view_as/exit', async (c) => {
+  await endViewAs(c.get('user'))
+  // A plain form (the page shown when the person viewed can't open an app) goes home.
+  if (c.req.header('content-type')?.includes('application/x-www-form-urlencoded')) return c.redirect('/', 303)
+  return c.json(await viewAsState(c.get('user')))
+})
+
 // API-007: throttle authenticated requests per user (runs after auth so it can
 // key by the resolved user and read their budget).
-app.use('/api/*', rateLimit)
 
 /** A request that reaches only the copy actions, whichever way its path is
  *  encoded (a colon may arrive as %3A): any other suffix or verb takes the lock. */
@@ -723,17 +781,27 @@ app.get('*', async (c, next) => {
     }
     let resource
     let user: SessionUser | undefined
+    let viewing: Awaited<ReturnType<typeof activeViewAs>> = null
     try {
-      user = await resolveToken(authCredential(c))
-      resource = await appAsset(name, asset, user.row_id, c.req.header('accept')?.includes('text/html'))
+      const signedIn = await resolveToken(authCredential(c))
+      // #1222: while viewing as someone, an app's page opens as it does for them.
+      viewing = await activeViewAs(signedIn)
+      user = viewing?.user ?? signedIn
+      const open = (as: string) => appAsset(name, asset, as, c.req.header('accept')?.includes('text/html'))
+      const as = viewing
+      resource = as ? await runViewingAs(as.as, () => open(as.user.row_id)) : await open(signedIn.row_id)
     } catch (error) {
       if (!(error instanceof AppError)) throw error
+      // #1222: View as ended on this very request; the same address now opens as the tester.
+      if (error.message === VIEW_AS_ENDED) return c.redirect(`${url.pathname}${url.search}`, 302)
       const navigation = !asset || c.req.header('accept')?.includes('text/html')
       if (navigation && error.type === 'AuthenticationError')
         return c.redirect(
           `/featherbase/login?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`,
         )
       if (!navigation || path.extname(asset)) throw error
+      // #1222: while viewing, nothing is asked in the viewed person's name; just say they can't open it.
+      if (viewing) return c.html(viewingNoAccessPage(viewing.as.name), 403)
       // #955: a served app this person cannot open: opening it is the request.
       const asked = user && (await requestAccess(user.row_id, name))
       if (asked && asked.state !== 'open')
@@ -787,6 +855,8 @@ app.get('/api/whoami', async (c) => {
   const access = manage
     ? { readable: [] as string[], creatable: [] as string[], ownGrant: true, admin: true }
     : await tableAccessFor(user.row_id, roles)
+  // #1222: while viewing as someone, the shell offers no new rows.
+  if (c.get('viewingAs')) access.creatable = []
   // #905: archived Tables the person can read, so the shell lists them apart
   // and keeps them out of the pickers.
   const archived = (await sql`select name from table_def where archived_at is not null order by name`)
@@ -1170,6 +1240,12 @@ app.get('/api/people/waiting_for_access/count', async (c) => {
 // no-access page, Dash's) says so here; opening it is the request.
 app.post('/api/access_request', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { app?: unknown }
+  // #1222: while viewing as someone, only look; the page then shows its plain no-access message.
+  if (c.get('viewingAs')) {
+    const seen = typeof body.app === 'string' ? await peekAccess(who(c), body.app) : null
+    if (!seen) throw new AppError('PermissionError', 'They have no access to this, and nothing is asked while viewing as them')
+    return c.json(seen)
+  }
   const answer = typeof body.app === 'string' ? await requestAccess(who(c), body.app) : null
   if (!answer) throw new AppError('ValidationError', 'No such app to ask for')
   return c.json(answer)
@@ -1320,6 +1396,9 @@ app.get('/api/signed_url', async (c) => {
     if (row.ref_table && row.ref_name)
       await getDoc(row.ref_table as string, row.ref_name as string, user)
     else await getDoc('File', row.row_id as string, user)
+    // #1222: a signed link would outlive the View as that allowed it. While viewing, the plain
+    // address: the browser's session opens it, checked as the person viewed, file by file.
+    if (c.get('viewingAs')) return c.json({ signed_url: fileUrl })
     return c.json({ signed_url: signFileUrl(fileUrl) })
   }
   return c.json({ signed_url: fileUrl })

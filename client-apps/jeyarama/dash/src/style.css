@@ -129,3 +129,7 @@ code {
 .fd-issue-mine ul { list-style: none; margin: 0; padding: 0; }
 .fd-issue-mine li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--color-border); font-size: 13px; }
 .fd-issue-mine-what { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+/* #1222: while a tester views as someone (the platform's bar marks the page), nothing offers a change. */
+html[data-featherbase-viewing-as] [data-action],
+html[data-featherbase-viewing-as] [data-action-hint] { display: none !important; }

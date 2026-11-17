@@ -64,7 +64,7 @@ export function ReportIssue({ reportKey, reportName, store, month, diveFilters, 
   const count = mine?.length ?? 0
   return (
     <>
-      <Button variant="secondary" className="fd-report-issue" data-testid="report-issue" aria-expanded={open} onClick={() => setOpen(true)}>
+      <Button data-action variant="secondary" className="fd-report-issue" data-testid="report-issue" aria-expanded={open} onClick={() => setOpen(true)}>
         Report an issue{count > 0 && <span className="fd-report-issue-count"> · {fmtCount(count)} open</span>}
       </Button>
       {open && (

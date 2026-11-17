@@ -147,6 +147,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   print_format: { ref_table: code, template: text, letter_head: code },
   report: { ref_table: code, config: text, report_type: code, report_script: code },
   revoked_session: { jti: code, person_id: id },
+  view_as_session: { session_id: code, tester: id, person: id },
   role: { '*': code },
   runtime_action_result: { caller: id, app: code, action: code, idempotency_key: code, payload: text, result: text, authorization: text },
   sales_target_snapshot_name: { '*': code },
