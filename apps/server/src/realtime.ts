@@ -274,7 +274,17 @@ async function recheckViewAsSockets(open: Client[]): Promise<void> {
 export const MAX_FRAME_BYTES = REALTIME_MAX_FRAME_BYTES
 export const MAX_PENDING_FRAMES = 32
 
-export function attachRealtime(server: Server): void {
+/** What a stopping server does with its realtime sockets. */
+export interface RealtimeServer {
+  /** #1260: refuse new sockets, tell every open page the server is restarting
+   *  (close code 1012) so it reconnects to the new server, and resolve once
+   *  they are gone; one that does not finish its close in a second is dropped. */
+  closeAll(): Promise<void>
+  /** Drop every socket now (the shutdown deadline has passed). */
+  terminateAll(): void
+}
+
+export function attachRealtime(server: Server): RealtimeServer {
   // A client only ever sends short subscribe/unsubscribe lists; anything this
   // large is refused by `ws` itself (close 1009) before it is buffered.
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_FRAME_BYTES })
@@ -317,6 +327,20 @@ export function attachRealtime(server: Server): void {
     socket.on('close', forget)
     socket.on('error', forget)
   })
+  return {
+    closeAll: () => new Promise<void>((resolve) => {
+      // First, so an upgrade arriving from now on is refused rather than
+      // joining after the others were told (Codex, #1260).
+      wss.close(() => resolve())
+      for (const socket of wss.clients) {
+        setTimeout(() => socket.terminate(), 1000).unref()
+        socket.close(1012, 'Server restarting')
+      }
+    }),
+    terminateAll: () => {
+      for (const socket of wss.clients) socket.terminate()
+    },
+  }
 }
 
 async function authenticate(socket: WebSocket, cookie: string | undefined): Promise<Client | null> {
