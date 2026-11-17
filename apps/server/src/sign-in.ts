@@ -18,6 +18,8 @@ import {
   consumeExpectedSignIn,
   disableLeaver,
   DOMAIN_RULED_LINKS,
+  EXPECTS_COLUMN,
+  isRedirectKind,
   GOOGLE_CONSUMER_DOMAINS,
   domainAllowed,
   foldName,
@@ -60,26 +62,33 @@ export const ADDRESS_IN_USE = 'An account already uses this address. Contact you
 const CONSUMER_DOMAINS = new Set(GOOGLE_CONSUMER_DOMAINS)
 
 export const GOOGLE_OFF = 'Google sign-in is not configured'
+export const MICROSOFT_OFF = 'Microsoft sign-in is not configured'
 /** #693: a person may link only an account the method's domains admit. */
 export const LINK_DOMAIN_NOT_ALLOWED = 'This account is not on a domain this sign-in method allows. Link your work account instead.'
 
 /** The reasons a browser-navigation sign-in (the Google callback) can be
  *  refused, as the short code the sign-in page explains. Only the code
  *  travels — never the address, the domain or the server's message. */
-type SignInRefusal = 'not_provisioned' | 'not_allowed' | 'address_in_use' | 'google_off' | 'expired' | 'google_failed'
+type SignInRefusal =
+  | 'not_provisioned' | 'not_allowed' | 'address_in_use' | 'expired'
+  | 'google_off' | 'google_failed' | 'microsoft_off' | 'microsoft_failed'
 
-export function signInRefusal(err: unknown): SignInRefusal {
-  if (!(err instanceof AppError)) return 'google_failed'
+/** `provider` is the redirect sign-in that failed; its own off and failed
+ *  codes name it on the sign-in page. */
+export function signInRefusal(err: unknown, provider: 'google' | 'microsoft' = 'google'): SignInRefusal {
+  const failed = provider === 'microsoft' ? 'microsoft_failed' : 'google_failed'
+  if (!(err instanceof AppError)) return failed
   if (err.message === NOT_PROVISIONED) return 'not_provisioned'
   if (err.message === ADDRESS_IN_USE) return 'address_in_use'
   if (err.message === GOOGLE_OFF) return 'google_off'
+  if (err.message === MICROSOFT_OFF) return 'microsoft_off'
   // A disabled person, a method that may not admit them, a leaver.
   if (err.message === INVALID_CREDENTIALS || err.type === 'PermissionError') return 'not_allowed'
-  // Google itself failed to answer the exchange: not this browser's state.
-  if (/^Google /.test(err.message)) return 'google_failed'
+  // The provider failed to answer, or answered with a token it may not use.
+  if (/^(Google|Microsoft) /.test(err.message)) return failed
   // The login challenge: missing, from another browser, forged or too old.
   if (/state|token|expired|signature/i.test(err.message)) return 'expired'
-  return 'google_failed'
+  return failed
 }
 
 function unavailableError(method: SignInMethod): AppError {
@@ -111,7 +120,9 @@ function domainAdmitted(method: SignInMethod, v: VerifiedIdentity): { ok: boolea
   if (!domainAllowed(method, v.email)) return { ok: false, reason: 'domain not allowed' }
   // domainAllowed matched exactly one @ with a domain after it.
   const domain = v.email.split('@')[1]
-  if (CONSUMER_DOMAINS.has(domain) || parseDomainList(method.allowed_email_domains).includes('*'))
+  // Google's personal domains need no claim; a Microsoft address always needs
+  // its tenant to have verified the domain.
+  if ((method.kind === 'google' && CONSUMER_DOMAINS.has(domain)) || parseDomainList(method.allowed_email_domains).includes('*'))
     return { ok: true, reason: 'allowed domain' }
   return v.hosted_domain === domain
     ? { ok: true, reason: 'allowed company domain' }
@@ -195,19 +206,20 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
  *  mark is consumed in the same transaction. Null when any fails, so the
  *  caller falls through to today's answer (refused, or a new person). */
 async function claimExpectedSignIn(method: SignInMethod, v: VerifiedIdentity): Promise<Found | null> {
-  if (method.kind !== 'google' || !v.subject || !v.email_verified || !v.email) return null
+  if (!isRedirectKind(method.kind) || !v.subject || !v.email_verified || !v.email) return null
+  const column = EXPECTS_COLUMN[method.kind]
   if (!domainAdmitted(method, v).ok) return null
   const address = foldName(v.email)
   try {
     return await withTransaction(async () => {
       const people = await sql`
-        select row_id, email, enabled, replaced_by, expects_google_sign_in from person
+        select row_id, email, enabled, replaced_by, ${sql(column)} as expects from person
         where lower(email) = ${address} limit 2 for update`
       // One holder only: two people on one address is for an administrator.
       if (people.length !== 1) return null
       const [p] = people
       const person = String(p.row_id)
-      if (p.expects_google_sign_in !== true || p.enabled !== true || p.replaced_by != null) return null
+      if (p.expects !== true || p.enabled !== true || p.replaced_by != null) return null
       if (foldName(String(p.email ?? '')) !== address) return null
       const [held] = await sql`
         select 1 from sign_in_identity where person_id = ${person} and method = ${method.key} and ended_at is null limit 1`

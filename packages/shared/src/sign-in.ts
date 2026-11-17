@@ -2,7 +2,7 @@
 // The server's KINDS record, the Sign In Method Table's choices, the
 // controller's messages and the web client's types all derive from these, so
 // adding a kind is one edit here and the compiler finds every other place.
-export const SIGN_IN_METHOD_KINDS = ['password', 'google', 'delegated_password'] as const
+export const SIGN_IN_METHOD_KINDS = ['password', 'google', 'microsoft', 'delegated_password'] as const
 export type SignInMethodKind = (typeof SIGN_IN_METHOD_KINDS)[number]
 
 // #970: create_if_on_roster makes a person only when the ID they typed is one
@@ -19,6 +19,7 @@ export const signInActor = (kind: SignInMethodKind): string => `${kind.replace(/
 /** How such an actor reads wherever a person's name would show. */
 export const SYSTEM_ACTOR_LABELS: Readonly<Record<string, string>> = {
   [signInActor('google')]: 'Google sign-in',
+  [signInActor('microsoft')]: 'Microsoft sign-in',
   [signInActor('password')]: 'Password sign-in',
   [signInActor('delegated_password')]: 'Connected service sign-in',
 }
