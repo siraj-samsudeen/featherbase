@@ -208,3 +208,14 @@ He expects to give vendors some access. Proposed: **Vendor** is a ready-made bus
    - merge Master Data Editor and Data Quality Manager into Master Data Steward.
 
 Each of these is its own issue with its own review.
+
+## Note from the manager session, 17-Nov-2026: one encoding for the merchandise area
+
+Dash's reach now sends merchandise as **code prefixes**, and Dives match them with `starts_with` (dash-reach-prefixes; this fixed HTTP 413 on the embed API):
+- 2 digits for a division (02 Home, 03 Grocery);
+- 4 digits for a category;
+- 9 digits for a subcategory.
+
+D2's Area on the merchandise axis must produce exactly this shape, so one encoding serves both the permission check and the Dive filters. A Category Head's area is therefore one 4-digit prefix, not a list of 9-digit codes.
+
+(Store codes in this plan were replaced with "Store A/B/C" before pushing to the public repo.)
