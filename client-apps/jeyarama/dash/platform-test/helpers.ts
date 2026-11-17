@@ -68,11 +68,11 @@ export const withoutViewAsTester = <T extends Grant | { create?: string }>(list:
   list.filter(entry => ('create' in entry ? entry.create : ((entry as Grant).grant ?? (entry as Grant).withdraw)?.role) !== VIEW_AS_TESTER)
 
 /**
- * #1222's 0.13.8 taken out of a manifest: no View As Tester, nor its grant, nor View as. Its read
+ * #1222's 0.13.20 taken out of a manifest: no View As Tester, nor its grant, nor View as. Its read
  * stays declared, since the earlier version shares this build's server module.
  */
 export function revertViewAs(manifest: { roles: string[]; permissions: { role: string }[]; migrations: { id: string }[]; viewAs?: unknown }) {
-  expect(manifest.migrations.pop()).toMatchObject({ id: 'view_as', fromVersion: '0.13.7' })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'view_as', fromVersion: '0.13.19' })
   manifest.roles = manifest.roles.filter(role => role !== VIEW_AS_TESTER)
   manifest.permissions = manifest.permissions.filter(p => p.role !== VIEW_AS_TESTER)
   delete manifest.viewAs
