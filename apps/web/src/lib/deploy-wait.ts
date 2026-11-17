@@ -112,13 +112,16 @@ export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
 
   const serverBack = (): Promise<void> => {
     back ??= new Promise<void>((resolve) => {
-      // The first ask is soon, so a brief blip ends before the notice shows.
+      // Asked every `firstPollMs` until the notice would show, then every
+      // `pollMs`: a blip under a second ends before the notice (verifier, #1260).
+      const started = Date.now()
+      const next = () => (Date.now() - started < noticeAfterMs ? firstPollMs : pollMs)
       const ask = (delay: number) => {
         setTimeout(async () => {
           if (await ping(pingTimeoutMs)) {
             back = null
             resolve()
-          } else if (held.size) ask(pollMs)
+          } else if (held.size) ask(next())
           else back = null
         }, delay)
       }

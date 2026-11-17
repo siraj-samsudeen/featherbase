@@ -189,18 +189,24 @@ describe('what passes through untouched', () => {
 })
 
 describe('waiting together', () => {
-  test('several held requests share one ping a second, and all go once it answers', async () => {
-    let up = false
-    const { fetch, calls, pings } = scripted(() => (up ? OK() : EDGE_502()), () => up)
-    const wrapped = waitThroughDeploys(fetch, { onWaiting })
-    const answers = [wrapped('/api/a'), wrapped('/api/b'), wrapped('/api/c')]
-    await vi.advanceTimersByTimeAsync(3500)
-    expect(pings.length).toBeGreaterThanOrEqual(3)
-    expect(pings.length).toBeLessThanOrEqual(4)
-    up = true
-    await vi.advanceTimersByTimeAsync(1100)
-    expect((await Promise.all(answers)).map((r) => r.status)).toEqual([200, 200, 200])
-    expect(calls).toHaveLength(6)
+  test('held requests share one ping: three held ask the server no more often than one', async () => {
+    const pingsFor = async (count: number) => {
+      let up = false
+      const { fetch, calls, pings } = scripted(() => (up ? OK() : EDGE_502()), () => up)
+      const wrapped = waitThroughDeploys(fetch, { onWaiting })
+      const answers = Array.from({ length: count }, (_, i) => wrapped(`/api/r${i}`))
+      await vi.advanceTimersByTimeAsync(3500)
+      const asked = pings.length
+      up = true
+      await vi.advanceTimersByTimeAsync(1100)
+      expect((await Promise.all(answers)).every((r) => r.status === 200)).toBe(true)
+      expect(calls).toHaveLength(count * 2)
+      return asked
+    }
+    const one = await pingsFor(1)
+    const three = await pingsFor(3)
+    expect(three).toBe(one)
+    expect(one).toBeLessThanOrEqual(7)
   })
 
   test('a held request whose page gave up on it is not sent again', async () => {
@@ -229,6 +235,18 @@ describe('the notice', () => {
     await vi.advanceTimersByTimeAsync(1100)
     await answer
     expect(notices).toEqual([true, false])
+  })
+
+  // Verifier (#1260): with a ping at 250 ms and then every second, a 0.5 s gap
+  // held its requests ~1.25 s and flashed the notice.
+  test('a half-second gap shows nothing', async () => {
+    let up = false
+    setTimeout(() => { up = true }, 500)
+    const { fetch } = scripted(() => (up ? OK() : EDGE_502()), () => up)
+    const answer = waitThroughDeploys(fetch, { onWaiting })('/api/rows')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect((await answer).status).toBe(200)
+    expect(notices).toEqual([])
   })
 
   test('a gap shorter than a second shows nothing', async () => {
