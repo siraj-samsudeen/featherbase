@@ -29,7 +29,7 @@ test('the control is the sidebar footer, not the top bar, and collapsing leaves 
   expect(aside().className).not.toMatch(/\bmd:hidden\b/)
   expect(aside()).not.toHaveAttribute('aria-hidden')
   expect(control).toHaveAccessibleName('Expand sidebar')
-  expect(within(aside()).getByRole('link', { name: 'All tables' })).toBeInTheDocument()
+  expect(within(aside()).getByRole('link', { name: 'All Tables' })).toBeInTheDocument()
 
   await userEvent.click(screen.getByTestId('sidebar-edge'))
   expect(collapsed()).toBe(false)
@@ -66,10 +66,10 @@ test('Saved views fold into one icon in the rail, whose menu opens a view', asyn
   await screen.findByTestId('sidebar-saved-views', {}, T)
   await userEvent.click(screen.getByTestId('sidebar-collapse'))
 
-  const fold = within(aside()).getByRole('button', { name: 'Saved views' })
+  const fold = within(aside()).getByRole('button', { name: 'Saved Views' })
   expect(fold).toHaveAttribute('aria-haspopup', 'menu')
   await userEvent.click(fold)
-  const menu = screen.getByRole('menu', { name: 'Saved views' })
+  const menu = screen.getByRole('menu', { name: 'Saved Views' })
   await userEvent.click(within(menu).getByRole('menuitem', { name: /ATK Departments/ }))
   // The view's list, with its one filter on.
   expect(await screen.findByTestId('table-page', {}, T)).toBeInTheDocument()
@@ -90,12 +90,12 @@ test('a fold menu works by keyboard, and a click outside closes it', async ({ ad
   await renderApp('/featherbase/admin/all-tables', admin)
   await screen.findByTestId('sidebar-saved-views', {}, T)
   await userEvent.click(screen.getByTestId('sidebar-collapse'))
-  const fold = within(aside()).getByRole('button', { name: 'Saved views' })
+  const fold = within(aside()).getByRole('button', { name: 'Saved Views' })
 
   // The right arrow opens it on its first item; the arrows move; Escape returns to the icon.
   fold.focus()
   fireEvent.keyDown(fold, { key: 'ArrowRight' })
-  const menu = await screen.findByRole('menu', { name: 'Saved views' })
+  const menu = await screen.findByRole('menu', { name: 'Saved Views' })
   const [first, second] = within(menu).getAllByRole('menuitem')
   await waitFor(() => expect(first).toHaveFocus())
   fireEvent.keyDown(menu, { key: 'ArrowDown' })
@@ -126,8 +126,8 @@ test('Recently opened folds into one icon in the rail, and its menu opens the pl
   await nav.navigate({ href: '/featherbase/admin/all-tables' })
   await screen.findByTestId('sidebar-recents', {}, T)
   await userEvent.click(screen.getByTestId('sidebar-collapse'))
-  await userEvent.click(within(aside()).getByRole('button', { name: 'Recently opened' }))
-  await userEvent.click(within(screen.getByRole('menu', { name: 'Recently opened' })).getByRole('menuitem', { name: new RegExp(DEPT) }))
+  await userEvent.click(within(aside()).getByRole('button', { name: 'Recently Opened' }))
+  await userEvent.click(within(screen.getByRole('menu', { name: 'Recently Opened' })).getByRole('menuitem', { name: new RegExp(DEPT) }))
   await waitFor(() => expect(nav.state.location.pathname).toBe('/featherbase/admin/table/rail-department'), T)
 })
 
@@ -141,15 +141,14 @@ test("a module's tooltip is its name alone, not its initials too", async ({ admi
   expect(system).toHaveAccessibleName('System')
 })
 
-// Owner's review (17-Nov): in the rail the "+" menu was clipped by the narrow sidebar.
-test('in the rail, + opens its New menu outside the sidebar, and New table opens', async ({ admin }) => {
+// Owner's review (17-Nov): New Table and Import Data are two links in the Data
+// group (no "+ New" menu); in the rail they are icons like any other row.
+test('New Table and Import Data are links in the Data group, also in the rail', async ({ admin }) => {
   const { router } = await renderApp('/featherbase/admin/all-tables', admin)
-  await screen.findByTestId('sidebar-new', {}, T)
+  const data = await screen.findByTestId('sidebar-group-data', {}, T)
+  expect(within(data).getAllByRole('link').map((a) => a.textContent?.trim())).toEqual(['Explore', 'All Tables', 'New Table', 'Import Data', 'Glossary', 'Past Imports'])
+  expect(screen.queryByTestId('sidebar-new')).not.toBeInTheDocument()
   await userEvent.click(screen.getByTestId('sidebar-collapse'))
-  await userEvent.click(within(aside()).getByRole('button', { name: 'New' }))
-  const menu = screen.getByRole('menu', { name: 'New' })
-  // Drawn in the page, not inside the rail that would clip it.
-  expect(aside()).not.toContainElement(menu)
-  await userEvent.click(within(menu).getByRole('menuitem', { name: 'New table' }))
+  await userEvent.click(within(screen.getByTestId('sidebar-group-data')).getByRole('link', { name: 'New Table' }))
   await waitFor(() => expect((router as unknown as { state: { location: { pathname: string } } }).state.location.pathname).toBe('/featherbase/admin/new-table'), T)
 })

@@ -87,7 +87,7 @@ test('UI-025: navigating from the open phone drawer closes it, and the list and 
   const user = userEvent.setup()
   const app = await renderApp('/featherbase/admin', admin)
   await user.click(await screen.findByTestId('sidebar-toggle', {}, { timeout: 8000 }))
-  await user.click(await screen.findByRole('link', { name: 'All tables' }))
+  await user.click(await screen.findByRole('link', { name: 'All Tables' }))
   await waitFor(() => expect((app.router as { state: { location: { pathname: string } } }).state.location.pathname).toBe('/featherbase/admin/all-tables'))
   expect(screen.queryByTestId('sidebar-backdrop')).not.toBeInTheDocument()
   expect(sidebar()).toHaveAttribute('inert')
@@ -112,7 +112,7 @@ test('UI-025: a mounted layout crossing 768 pixels switches between the drawer a
   const screenSize = viewport(767)
   await renderApp('/featherbase/admin', admin)
   // The Admin shell is up (its "+ New" menu is a System Manager's).
-  await screen.findByTestId('sidebar-new', {}, { timeout: 8000 })
+  await screen.findByTestId('import-data-link', {}, { timeout: 8000 })
   expect(sidebar()).toHaveAttribute('inert')
 
   screenSize.resize(768)
