@@ -210,7 +210,7 @@ export function ViewAsBanner() {
         <p className="min-w-0 flex-1 text-sm">
           Viewing as <strong data-testid="view-as-name"><RecordLink table="Person" rowId={viewing.person} name={viewing.name} canOpen={Boolean(data.person_link)} className="text-surface" /></strong>
           {line && <span className="opacity-80"> · {line}</span>}
-          <span className="ml-2 inline-block rounded-full bg-caution px-2 py-0.5 align-middle text-[11px] font-semibold uppercase tracking-wide text-surface">For viewing only</span>
+          <span className="ml-2 inline-block rounded-full bg-caution px-2 py-0.5 align-middle text-xs font-semibold uppercase tracking-wide text-surface">For viewing only</span>
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => setSwitching((s) => !s)} aria-expanded={switching} data-testid="view-as-switch"
