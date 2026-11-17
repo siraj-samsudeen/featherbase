@@ -164,29 +164,37 @@ async function mintPair(connectionId: string, person: string, clientName: string
 
 const BAD_CODE = 'The sign-in code is invalid, expired or already used'
 
-/** grant_type=authorization_code: the code is burned whatever follows, then
- *  checked; a good one makes the connection. */
+/** grant_type=authorization_code. One transaction, locking the person before
+ *  the code, the order a password change writes in (auth.ts setUserPassword):
+ *  a change either deletes the code first, or waits and then ends the
+ *  connection made here. The code is burned whatever follows, so a refused
+ *  exchange cannot be retried; a code issued before the person's sessions
+ *  were last ended opens nothing (D10). */
 export async function exchangeCode(form: Record<string, string>): Promise<TokenAnswer> {
   const { code, redirect_uri, client_id, code_verifier } = form
   if (!code || !redirect_uri || !code_verifier) throw new OAuthError('invalid_request', 'code, redirect_uri, client_id and code_verifier are required')
   const client = await knownClient(client_id)
-  // Burned in its own statement, so a refused exchange cannot be retried.
-  const [grant] = await sql`
-    delete from agent_auth_code where code_hash = ${hashToken(code)}
-    returning client_id, person, redirect_uri, code_challenge, return_place, expires_at > now() as fresh`
-  if (!grant || !grant.fresh || grant.client_id !== client.id || grant.redirect_uri !== redirect_uri
-    || !verifierMatches(code_verifier, grant.code_challenge as string))
-    throw new OAuthError('invalid_grant', BAD_CODE)
-  const person = grant.person as string
-  return withTransaction(async () => {
-    const [who] = await sql`
-      select p.enabled, c.client_name from person p join agent_client c on c.id = ${client.id} where p.row_id = ${person}`
-    if (!who?.enabled) throw new OAuthError('invalid_grant', BAD_CODE)
+  const hash = hashToken(code)
+  const answer = await withTransaction(async () => {
+    const [peek] = await sql`select person from agent_auth_code where code_hash = ${hash}`
+    if (!peek) return null
+    const [who] = await sql`select enabled, sessions_ended_at from person where row_id = ${peek.person as string} for share`
+    const [grant] = await sql`
+      delete from agent_auth_code where code_hash = ${hash}
+      returning client_id, person, redirect_uri, code_challenge, return_place, expires_at > now() as fresh,
+        expires_at - interval '5 minutes' > ${who.sessions_ended_at ?? new Date(0)} as after_sessions_ended`
+    if (!grant || !grant.fresh || !grant.after_sessions_ended || !who.enabled || grant.client_id !== client.id
+      || grant.redirect_uri !== redirect_uri || !verifierMatches(code_verifier, grant.code_challenge as string))
+      return null
+    const person = grant.person as string
+    const [named] = await sql`select client_name from agent_client where id = ${client.id}`
     const id = 'con_' + randomBytes(12).toString('hex')
     await sql`insert into agent_connection (id, person, client_id, client_name, return_place)
-      values (${id}, ${person}, ${client.id}, ${who.client_name as string}, ${grant.return_place as string})`
-    return mintPair(id, person, who.client_name as string)
+      values (${id}, ${person}, ${client.id}, ${named.client_name as string}, ${grant.return_place as string})`
+    return mintPair(id, person, named.client_name as string)
   })
+  if (!answer) throw new OAuthError('invalid_grant', BAD_CODE)
+  return answer
 }
 
 const BAD_RENEWAL = 'The renewal key is invalid, or its connection has ended'

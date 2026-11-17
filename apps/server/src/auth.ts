@@ -46,8 +46,11 @@ export async function setUserPassword(name: string, password: string, db: Sql | 
     where row_id = ${name}`
   // #1207 (D10): every password change (an emailed reset, an admin's, the
   // shell's) ends the person's agent connections; access tokens made by hand
-  // are left as they are.
+  // are left as they are. Its sign-in codes not yet exchanged go too: one
+  // allowed before the change must not open a connection after it. The person
+  // row is written first, the order the code exchange locks in (agent-auth.ts).
   await endConnections(name, 'password changed', undefined, db)
+  await db`delete from agent_auth_code where person = ${name}`
 }
 
 /** #391: the break-glass reset from an operator shell. The same write as
