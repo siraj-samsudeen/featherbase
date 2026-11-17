@@ -11,6 +11,10 @@ export const INTERRUPTED_WRITE = 'The app was updating when this change was sent
 
 const EDGE_STATUSES = new Set([502, 503, 504])
 const READS = new Set(['GET', 'HEAD'])
+// An app's declared read is sent as a POST (it carries a payload), but the
+// server runs it writing nothing (runtime-actions.ts, #1254), so it is retried
+// like a GET (Codex round 2: Dash's reports). Its sibling, app_actions, is a write.
+const APP_READ = /^\/api\/app_reads\/[^/]+\/[^/]+$/
 
 interface Options {
   /** Told true once a request has been held `noticeAfterMs`, false when none is. */
@@ -18,6 +22,8 @@ interface Options {
   pingPath?: string
   firstPollMs?: number
   pollMs?: number
+  /** A ping not answered by then is dropped and asked again. */
+  pingTimeoutMs?: number
   noticeAfterMs?: number
   giveUpMs?: number
 }
@@ -34,7 +40,7 @@ const abortError = () => new DOMException('The operation was aborted.', 'AbortEr
  *  for a slow app too. It waits out the gap, then fails with INTERRUPTED_WRITE
  *  in Featherbase's own error shape, which every page already shows. */
 export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
-  const { onWaiting, pingPath = '/api/ping', firstPollMs = 250, pollMs = 1000, noticeAfterMs = 1000, giveUpMs = 90_000 } = options
+  const { onWaiting, pingPath = '/api/ping', firstPollMs = 250, pollMs = 1000, pingTimeoutMs = 5000, noticeAfterMs = 1000, giveUpMs = 90_000 } = options
   // Every held request waits on the same ping, so a gap is asked about once a
   // second, not once per request.
   const held = new Set<{ since: number }>()
@@ -61,7 +67,11 @@ export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
       // The first ask is soon, so a brief blip ends before the notice shows.
       const ask = (delay: number) => {
         setTimeout(async () => {
-          const answer = await base(pingPath, { cache: 'no-store' }).catch(() => null)
+          // Its own timer, not AbortSignal.timeout, so one clock drives it in tests.
+          const stalled = new AbortController()
+          const timer = setTimeout(() => stalled.abort(), pingTimeoutMs)
+          const answer = await base(pingPath, { cache: 'no-store', signal: stalled.signal }).catch(() => null)
+          clearTimeout(timer)
           if (answer?.ok && answer.headers.get('x-railway-fallback') !== 'true') {
             back = null
             resolve()
@@ -78,7 +88,7 @@ export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
     const url = new URL(input instanceof Request ? input.url : String(input), window.location.href)
     if (url.origin !== window.location.origin || !url.pathname.startsWith('/api/')) return base(input, init)
     const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
-    const read = READS.has(method)
+    const read = READS.has(method) || (method === 'POST' && APP_READ.test(url.pathname))
     // A body that is a stream can be sent only once; such a request is not held.
     if (init?.body instanceof ReadableStream) return base(input, init)
     // A Request's body is consumed by sending it, so each try sends a copy.

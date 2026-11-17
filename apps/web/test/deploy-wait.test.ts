@@ -116,6 +116,53 @@ describe('a write during a deploy', () => {
   })
 })
 
+describe('an app read, which apps send as a POST', () => {
+  // Codex round 2 (#1260): Dash loads its reports with POST /api/app_reads/dash/<read>.
+  // The server runs a declared read with no writes, so it is retried like a GET.
+  test('is held and sent again with its body, so the report loads after the gap', async () => {
+    const { fetch, calls } = scripted((_call, n) => (n === 1 ? EDGE_502() : OK('{"answer":{"rows":[]}}')))
+    const answer = waitThroughDeploys(fetch, { onWaiting })('/api/app_reads/dash/team_report', {
+      method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: '{"payload":{"store":"LKS"}}',
+    })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect((await answer).status).toBe(200)
+    expect(calls).toEqual([
+      { url: '/api/app_reads/dash/team_report', method: 'POST', body: '{"payload":{"store":"LKS"}}' },
+      { url: '/api/app_reads/dash/team_report', method: 'POST', body: '{"payload":{"store":"LKS"}}' },
+    ])
+  })
+
+  test('an app action, its sibling, is still never sent twice', async () => {
+    const { fetch, calls } = scripted((_call, n) => (n === 1 ? EDGE_502() : OK()))
+    const answer = waitThroughDeploys(fetch, { onWaiting })('/api/app_actions/dash/decide', { method: 'POST', body: '{}' })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect((await answer).status).toBe(503)
+    expect(calls).toHaveLength(1)
+  })
+})
+
+describe('a ping that never answers', () => {
+  // Codex round 2 (#1260): a stalled ping froze the shared check, so every later read waited the full 90 s.
+  test('is given up after a few seconds and asked again, so the held read goes once the server is back', async () => {
+    let pingCalls = 0
+    const base = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input), window.location.href).pathname
+      if (path === '/api/ping') {
+        pingCalls++
+        if (pingCalls === 1) return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+        })
+        return Promise.resolve(OK())
+      }
+      return Promise.resolve(pingCalls >= 2 ? OK() : EDGE_502())
+    }) as unknown as typeof globalThis.fetch
+    const answer = waitThroughDeploys(base, { onWaiting })('/api/rows')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect((await answer).status).toBe(200)
+    expect(pingCalls).toBeGreaterThanOrEqual(2)
+  })
+})
+
 describe('what passes through untouched', () => {
   test('Featherbase\'s own 502 and 503 reach the page at once', async () => {
     for (const status of [502, 503]) {
