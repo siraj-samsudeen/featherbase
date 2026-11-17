@@ -18,6 +18,7 @@ import { sweepExpiredViewAs, viewAsRoute } from '../src/view-as'
 import { rowCapabilities } from '../src/document'
 import { sql } from '../src/db'
 import { grantRole } from './fixtures'
+import { saveUpload } from '../src/storage'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import WebSocket from 'ws'
@@ -247,6 +248,81 @@ describe('View as on the platform', () => {
     expect((await status(start(tester, person.user)))[0]).toBe(200)
     const [code, body] = await status(tester.fetch('/api/signed_url?file_url=/private/files/f-1222.png'))
     expect([code, body]).toEqual([200, JSON.stringify({ signed_url: '/private/files/f-1222.png' })])
+  })
+
+  test('while viewing, a private file opens as it does for the person viewed', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    const { file_url } = await saveUpload(Buffer.from('viewed bytes'), 'view-as-1222.txt', true)
+    await sql`insert into file ${sql({ row_id: 'f-1222-open', file_url, file_name: 'view-as-1222.txt', mime_type: 'text/plain', created_by: person.user, updated_by: person.user })}`
+    expect((await status(start(tester, person.user)))[0]).toBe(200)
+    // Neither may read Files yet: refused as the person viewed.
+    expect((await tester.fetch(file_url)).status).toBe(403)
+    await grantRole(admin, { role: 'Bar Reader', table: 'File', can_read: true })
+    const opened = await tester.fetch(file_url)
+    expect([opened.status, await opened.text()]).toEqual([200, 'viewed bytes'])
+  })
+
+  test("the no-access page escapes the person's name; a start that isn't JSON is refused; an unknown app is only looked at", async ({ admin, createUser }) => {
+    const { tester } = await install(admin, createUser)
+    expect((await tester.fetch('/api/view_as/start', { method: 'POST', headers: json, body: 'not json' })).status).toBe(417)
+    const odd = await createUser({ email: 'odd@example.test', roles: [], fullName: `Ann O'Neil & <Co>` })
+    expect((await status(start(tester, odd.user)))[0]).toBe(200)
+    const page = await (await tester.fetch('/barproof/', { headers: { accept: 'text/html' } })).text()
+    expect(page).toContain('Ann O&#39;Neil &#38; &#60;Co&#62; can&#39;t open this application'.replace('can&#39;t', "can't"))
+    expect(page).not.toContain('<Co>')
+    expect((await tester.fetch('/api/access_request', { method: 'POST', headers: json, body: JSON.stringify({ app: 'no-such-app' }) })).status).toBe(403)
+    expect(await sql`select count(*)::int as n from access_request`).toEqual([{ n: 0 }])
+  })
+
+  test('live-update sockets: one opened after the view ran out is the tester\'s own; losing the role closes one at the next check; a list event the person can\'t read is not sent', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const open = async () => {
+      const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${tester.token}` } })
+      const frames: { channel?: string; event?: string; payload?: { user?: string } }[] = []
+      const closed = new Promise<number>((resolve) => socket.on('close', (code) => resolve(code)))
+      const next = (event: string) => new Promise<void>((resolve, reject) => {
+        const look = () => { if (frames.some((f) => f.event === event)) resolve(); else if (Date.now() > until) reject(new Error(`no ${event} frame`)); else setTimeout(look, 20) }
+        const until = Date.now() + 5_000
+        look()
+      })
+      socket.on('message', (raw) => { frames.push(JSON.parse(String(raw))) })
+      await next('ready')
+      return { socket, frames, closed, next }
+    }
+    try {
+      // Ran out, and nothing has told the page yet: the socket serves the tester.
+      expect((await status(start(tester, person.user)))[0]).toBe(200)
+      await sql`update view_as_session set expires_at = now() - interval '1 minute'`
+      const lapsed = await open()
+      expect(lapsed.frames.find((f) => f.event === 'ready')?.payload?.user).toBe(tester.user)
+      lapsed.socket.close()
+      await tester.fetch('/api/whoami')
+
+      // A list event the person viewed can't read never reaches the socket.
+      expect((await status(start(tester, person.user)))[0]).toBe(200)
+      const watching = await open()
+      watching.socket.send(JSON.stringify({ subscribe: ['list:barproof.note'] }))
+      await watching.next('subscribed')
+      await sql`delete from has_role where parent = ${person.user} and role = 'Bar Reader'`
+      const { publishDocEvent } = await import('../src/realtime')
+      publishDocEvent('barproof.note', 'n-1222', 'updated')
+      publishUserEvent(person.user!, 'notification', { subject: 'after the list event' })
+      await watching.next('notification')
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(watching.frames.some((f) => f.channel === 'list:barproof.note' && f.event === 'updated')).toBe(false)
+
+      // The tester loses the role: the periodic check closes the socket.
+      await sql`delete from has_role where parent = ${tester.user} and role = ${TESTER}`
+      await recheckSessionSockets()
+      expect(await watching.closed).toBe(4009)
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
   })
 
   test("names link to a person's record only when it would open for whoever a link opens as", async ({ admin, createUser }) => {
