@@ -1,6 +1,6 @@
 # ADR 0027: Agents connect by signing in through the instance, which issues ordinary access tokens
 
-**Status:** Proposed · **Date:** 2026-11-12 · **Issue:** [#1207](https://github.com/siraj-samsudeen/featherbase/issues/1207) · **Change:** `openspec/changes/mcp-oauth-connect`
+**Status:** Accepted · **Date:** 2026-11-12, accepted 2026-11-17 · **Issue:** [#1207](https://github.com/siraj-samsudeen/featherbase/issues/1207) · **Change:** `openspec/changes/mcp-oauth-connect`
 
 ## Context and Problem Statement
 
@@ -28,7 +28,8 @@ Chosen: **each instance is its own authorization server and issues ordinary acce
 A person connects a client by its `/mcp` address, signs in with the instance's own methods,
 approves the client, and the client receives a person-owned access token that expires within
 an hour, plus a refresh token that works once. The token belongs to a connection the person
-can see and end. `/mcp` and the HTTP API treat it exactly like any other access token, so
+can see and end; it lasts while used at least once every 30 days, and ends on a password
+change, on ending all sessions, or when the person is disabled. `/mcp` and the HTTP API treat it exactly like any other access token, so
 ADR 0021 holds unchanged: one path to rows, the agent acts as the person, and history marks
 the agent. Hand-made access tokens stay, for service accounts and automation.
 

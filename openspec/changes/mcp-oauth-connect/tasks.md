@@ -68,34 +68,34 @@ enabled, and it was created after the person's `sessions_ended_at` (D5, D10).
 
 ## 1. Tests
 
-- [ ] 1.1 Scenario tests for every `agent-sign-in` scenario, red first, driven by the MCP SDK's
+- [x] 1.1 Scenario tests for every `agent-sign-in` scenario, red first, driven by the MCP SDK's
       own OAuth client in-process (an `OAuthClientProvider` whose browser step is a signed-in
       test person calling the request and decision routes)
-- [ ] 1.2 Server tests for what the scenarios leave out: metadata documents, 401 header,
+- [x] 1.2 Server tests for what the scenarios leave out: metadata documents, 401 header,
       registration refusals, authorize refusals, token errors, PKCE mismatch, code reuse,
       grace window, hand-made tokens unchanged and not tied to connections, red first
-- [ ] 1.3 Web component tests for the connect page and Connected apps, red first
+- [x] 1.3 Web component tests for the connect page and Connected apps, red first
 
 ## 2. Server
 
-- [ ] 2.1 Migration and the connection model (live rule, last used)
-- [ ] 2.2 Metadata documents and the `/mcp` 401 header
-- [ ] 2.3 Registration, request, decision, token routes
-- [ ] 2.4 Access token lookup and listing honour connections
-- [ ] 2.5 Connected apps routes
+- [x] 2.1 Migration and the connection model (live rule, last used)
+- [x] 2.2 Metadata documents and the `/mcp` 401 header
+- [x] 2.3 Registration, request, decision, token routes
+- [x] 2.4 Access token lookup and listing honour connections
+- [x] 2.5 Connected apps routes
 
 ## 3. Web
 
-- [ ] 3.1 Connect page, signed-out round trip through sign-in
-- [ ] 3.2 Connected apps page and its link
-- [ ] 3.3 Vite proxies for `/mcp` and `/.well-known`
+- [x] 3.1 Connect page, signed-out round trip through sign-in
+- [x] 3.2 Connected apps page and its link
+- [x] 3.3 Vite proxies for `/mcp` and `/.well-known`
 
 ## 4. Proof and release
 
 - [ ] 4.1 Coverage 100% on both suites; typechecks; `pnpm check:scenarios`, `check:specs`
-- [ ] 4.2 Independent UI verifier against the issue checklist
-- [ ] 4.3 Real Claude Code against a local instance: sign-in and consent screenshots, a tool call
+- [x] 4.2 Independent UI verifier against the issue checklist
+- [x] 4.3 Real Claude Code against a local instance: sign-in and consent screenshots, a tool call
       returning permitted data and refused forbidden data
-- [ ] 4.4 Upgrade rehearsed on a restored copy of production
-- [ ] 4.5 Codex review, findings triaged
+- [x] 4.4 Upgrade rehearsed on a restored copy of production
+- [x] 4.5 Codex review, findings triaged
 - [ ] 4.6 Sync and archive the change; ADR 0027 accepted
