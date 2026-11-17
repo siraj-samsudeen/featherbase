@@ -28,6 +28,7 @@ import { Tags } from './Tags'
 import { Comments } from './Comments'
 import { PersonSignInMethods, managedBySignIn } from './PersonSignInMethods'
 import { SaveState } from './SaveState'
+import { PersonStanding } from './PersonStanding'
 import { PersonIdentifiers } from './PersonIdentifiers'
 import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
@@ -608,6 +609,8 @@ export function FormView({
             {tableLabel(table, meta.data)}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
             <GlossaryHelp table={table} className="ml-1" />
           </h1>
+          {/* #1267 step 3: who the person is, their jobs and stores, and their email. */}
+          {personPage && <PersonStanding person={name} email={typeof values.email === 'string' ? values.email : null} />}
           {/* #1267: a saved record says so once, at the tab row's right end; a new one here. */}
           {isNew && (
             <span className="text-xs text-ink-muted" data-testid="form-status">

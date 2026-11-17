@@ -4,6 +4,7 @@
 // ones a click away, and a glance at the newest activity.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
 import { configureMicrosoft } from 'server/test/microsoft-mock'
@@ -288,4 +289,70 @@ test("the record pane leaves out a Person's sign-in switches", async ({ admin, c
   await waitFor(() => expect(pane).toHaveTextContent('Full Name'))
   expect(pane).not.toHaveTextContent('Expects Google sign-in')
   expect(pane).not.toHaveTextContent('Expects Microsoft sign-in')
+})
+
+// ---- step 3: who the person is ----
+
+/** The standing route answers `answer` for every person; any other request goes through. */
+function fakeStanding(answer: Record<string, unknown>) {
+  const real = globalThis.fetch
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    if (/\/api\/people\/[^/]+\/standing/.test(new URL(String(url), 'http://localhost').pathname))
+      return Response.json(answer)
+    return real(url, init)
+  })
+}
+
+test.for([
+  ['current', null, 'Employee', 'Has a current employee record'],
+  ['left', null, 'Former Employee', 'Has only past employee records'],
+  ['none', 'Vendor', 'External · Vendor', 'Has no employee record'],
+] as const)('a person whose standing is %s wears the badge %s', async ([status, label, words, why], { admin, createUser }) => {
+  const spy = fakeStanding({ status, code: null, jobs: [], external_label: label })
+  try {
+    const p = await createUser({ email: `badge-${status}.1267@example.com` })
+    await renderApp(rowHref('Person', p.user!), admin)
+    const badge = await screen.findByTestId('person-standing-badge')
+    expect(badge).toHaveTextContent(words)
+    expect(badge).toHaveAttribute('title', why)
+  } finally { spy.mockRestore() }
+})
+
+test("an employee's jobs show with each store as a link, then the email once", async ({ admin, createUser }) => {
+  const spy = fakeStanding({ status: 'current', code: '2001', external_label: null,
+    jobs: [{ job: 'Team Leader', site: { table: 'Person', id: 'Administrator', name: 'Lakeside' } }, { job: 'Buyer' }] })
+  try {
+    const p = await createUser({ email: 'jobs.1267@example.com' })
+    await renderApp(rowHref('Person', p.user!), admin)
+    const jobs = await screen.findAllByTestId('person-standing-job')
+    expect(jobs.map((j) => j.textContent)).toEqual(['Team Leader · Lakeside', 'Buyer'])
+    expect(within(jobs[0]).getByRole('link', { name: 'Lakeside' })).toBeInTheDocument()
+    expect(screen.getByTestId('person-standing-email')).toHaveTextContent('jobs.1267@example.com')
+  } finally { spy.mockRestore() }
+})
+
+test('an unknown standing shows no badge, and keeps the employees-only line', async ({ admin, createUser }) => {
+  await configureDelegated()
+  await sql`update sign_in_method set employees_only = true where row_id = 'stylehr'`
+  const spy = fakeStanding({ status: 'unknown', code: null, jobs: [], external_label: null })
+  try {
+    const p = await createUser({ email: 'unknown.1267@example.com' })
+    await renderApp(rowHref('Person', p.user!), admin)
+    const panel = await screen.findByTestId('user-sign-in-methods')
+    expect(await within(panel).findByTestId('sign-in-line-stylehr')).toBeInTheDocument()
+    expect(screen.queryByTestId('person-standing-badge')).not.toBeInTheDocument()
+  } finally { spy.mockRestore() }
+})
+
+test.for(['left', 'none'] as const)('a person whose standing is %s is offered no employees-only sign-in', async (status, { admin, createUser }) => {
+  await configureDelegated()
+  await sql`update sign_in_method set employees_only = true where row_id = 'stylehr'`
+  const spy = fakeStanding({ status, code: null, jobs: [], external_label: null })
+  try {
+    const p = await createUser({ email: `closed-${status}.1267@example.com` })
+    await renderApp(rowHref('Person', p.user!), admin)
+    const panel = await screen.findByTestId('user-sign-in-methods')
+    expect(await within(panel).findByTestId('sign-in-closed-stylehr')).toHaveTextContent('StyleHR sign-in is only for current employees.')
+    expect(within(panel).queryByTestId('sign-in-line-stylehr')).not.toBeInTheDocument()
+  } finally { spy.mockRestore() }
 })

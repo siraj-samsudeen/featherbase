@@ -32,7 +32,7 @@ peopleRoutes.get('/api/people/:id/identities', async (c) => {
   if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
   // Every method row, turned off or not, so an identity on a disabled method
   // still shows its name on the Person form.
-  const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
+  const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled, employees_only: m.employees_only }))
   return c.json({
     identities: await listIdentities(user, { includeEnded: true }),
     has_password: row.has_password === true,
