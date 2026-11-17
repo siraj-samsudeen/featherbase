@@ -119,6 +119,21 @@ describe('the ticket page reads at a glance (#1233)', () => {
   })
 })
 
+describe('an empty history says so plainly (#1252)', () => {
+  test('each empty history reads "No activity yet.", its heading saying whose it is', async ({ admin, createUser }) => {
+    const t = new Tickets(admin, createUser)
+    await t.complaint()
+    await open(t, 'Support')
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }))
+    const empty = await waitFor(() => {
+      const found = screen.getAllByText(/activity yet/)
+      expect(found.length).toBeGreaterThan(0)
+      return found
+    })
+    expect(empty.map(p => p.textContent)).toEqual(empty.map(() => 'No activity yet.'))
+  })
+})
+
 describe('the assignee reads as a name (#1233)', () => {
   test('support sees the name with a quiet Change that opens the picker; Cancel puts the name back', async ({ admin, createUser }) => {
     const t = new Tickets(admin, createUser)
