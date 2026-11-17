@@ -35,7 +35,7 @@ function AccountFrame() {
         <SidebarAside testid="account-sidebar" user={getSessionUser()?.row_id}>
           <AccountSidebarGroup />
         </SidebarAside>
-        <main className="min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:px-8 sm:py-6">
+        <main className="min-w-0 flex-1 overflow-auto bg-canvas p-3 sm:px-5 sm:py-4">
           <div className="max-w-[880px]" data-testid="account-content">
             {!deciding && <Outlet />}
           </div>

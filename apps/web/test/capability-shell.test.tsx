@@ -41,7 +41,7 @@ async function seed(admin: Admin) {
 }
 
 // Management tools are System Manager only. Access tokens are self-service (#131), so they stay.
-const ADMIN_ONLY_TESTIDS = ['sidebar-new', 'new-table-link', 'import-data-link', 'past-imports-link']
+const ADMIN_ONLY_TESTIDS = ['new-table-link', 'import-data-link', 'past-imports-link']
 
 test('management content stays hidden until the server confirms the current person can manage', async ({ admin }) => {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })

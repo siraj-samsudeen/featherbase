@@ -16,4 +16,4 @@ In Siraj's review of the ticket page on 17-Nov-2026 (#1252), "rows" told a store
 
 ## Impact
 
-- Tickets 0.2.19, an empty upgrade step from 0.2.18. Wording and layout only; what is read and saved is unchanged.
+- Tickets 0.2.20, an empty upgrade step from 0.2.19. Wording and layout only; what is read and saved is unchanged.
