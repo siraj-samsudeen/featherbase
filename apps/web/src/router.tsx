@@ -194,13 +194,12 @@ const loginRoute = createRoute({
 
 // mcp-oauth-connect (#1207): where an agent sends the person's browser to
 // connect it (the authorization endpoint). Signed out, the usual sign-in first,
-// with the agent's whole request as the way back.
+// with the agent's whole request as the way back. The page sends a signed-out
+// browser to sign in itself: the route's location has the query re-encoded,
+// which would change the agent's values (a long numeric state, say).
 const agentConnectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/connect',
-  beforeLoad: ({ location }) => {
-    if (!getToken()) throw redirect({ href: loginHref(location.href) })
-  },
   component: AgentConnectPage,
 })
 

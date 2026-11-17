@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Button, cardClasses } from '@featherbase/shop-floor'
-import { api } from '../lib/api'
+import { api, getToken, loginHref } from '../lib/api'
 import { Logo } from '../components/Logo'
 import { usePageTitle } from '../lib/page-title'
 import { browserNavigation } from '../lib/browser-navigation'
@@ -25,10 +25,20 @@ interface ConnectRequest {
 export const returnPlaceText = (place: string) => (place === 'loopback' ? 'your computer' : place)
 
 export function AgentConnectPage() {
-  usePageTitle('Connect an agent')
+  const router = useRouter()
   // The agent's query exactly as it arrived: the server checks it, and the
   // answer must carry the agent's own values back unchanged.
-  const query = useRouter().history.location.search
+  const query = router.history.location.search
+  const signedIn = Boolean(getToken())
+  // Signed out: the usual sign-in, coming back here with the query unchanged.
+  useEffect(() => {
+    if (!signedIn) router.history.replace(loginHref(`/featherbase/connect${query}`))
+  }, [signedIn, router, query])
+  return signedIn ? <AgentConnect query={query} /> : null
+}
+
+function AgentConnect({ query }: { query: string }) {
+  usePageTitle('Connect an agent')
   const request = useQuery({
     queryKey: ['agent-auth', 'request', query],
     queryFn: () => api.get<ConnectRequest>(`/api/agent-auth/request${query}`),
