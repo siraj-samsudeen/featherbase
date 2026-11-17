@@ -89,10 +89,25 @@ export const KINDS: Record<
 > = {
   password: { trustedSubject: true, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
   google: { trustedSubject: true, verifiedEmail: true, hostedDomain: true, candidateFirst: false, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
+  // microsoft-sign-in: Entra ID; the "hosted domain" is the domain the tenant
+  // has proven it owns (xms_edov), so a company domain needs it to agree.
+  microsoft: { trustedSubject: true, verifiedEmail: true, hostedDomain: true, candidateFirst: false, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
   delegated_password: { trustedSubject: false, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: false, rosterFirstSignIn: true, unique: false },
 }
 
 export const METHOD_TABLE = 'Sign In Method'
+
+/** The redirect sign-ins: each needs a client id (or the dev stand-in), and
+ *  each has its own "expects … sign-in" mark on Person (#473). */
+export const REDIRECT_KINDS = ['google', 'microsoft'] as const
+type RedirectKind = (typeof REDIRECT_KINDS)[number]
+export const isRedirectKind = (kind: string): kind is RedirectKind => (REDIRECT_KINDS as readonly string[]).includes(kind)
+
+/** The Person column holding each redirect kind's expected-sign-in mark. */
+export const EXPECTS_COLUMN: Record<RedirectKind, 'expects_google_sign_in' | 'expects_microsoft_sign_in'> = {
+  google: 'expects_google_sign_in',
+  microsoft: 'expects_microsoft_sign_in',
+}
 
 // The mock Google provider mints a session for ANY typed email from a
 // pre-auth endpoint, so only ALLOW_MOCK_OAUTH=1 turns it on (see oauth.ts).
@@ -100,11 +115,11 @@ export function mockOAuthEnabled(): boolean {
   return switchedOn('ALLOW_MOCK_OAUTH')
 }
 
-/** Can a method actually sign anyone in? Google also needs a client id (or
- *  the dev mock). Used by every way-in count, so the counts agree. */
+/** Can a method actually sign anyone in? Google and Microsoft also need a
+ *  client id (or the dev mock). Used by every way-in count, so they agree. */
 export function methodUsable(m: { kind: string; enabled: boolean; client_id?: string | null }): boolean {
   if (!m.enabled) return false
-  return m.kind !== 'google' || Boolean(String(m.client_id ?? '').trim()) || mockOAuthEnabled()
+  return !isRedirectKind(m.kind) || Boolean(String(m.client_id ?? '').trim()) || mockOAuthEnabled()
 }
 
 function toMethod(r: Record<string, unknown>): SignInMethod {
@@ -144,7 +159,7 @@ export async function getSignInMethod(key: string): Promise<SignInMethod | null>
   return row ? toMethod(row) : null
 }
 
-/** The one method of a unique kind (password, google). */
+/** The one method of a unique kind (password, google, microsoft). */
 export async function methodOfKind(kind: MethodKind): Promise<SignInMethod | null> {
   const [row] = await sql`select ${methodFields()} from sign_in_method where kind = ${kind} order by row_id limit 1`
   return row ? toMethod(row) : null
@@ -241,7 +256,7 @@ function keepsDomain(lists: string, proof: WayInProof) {
   const list = sql`coalesce(${lists}::text::jsonb -> m.row_id::text, '[]'::jsonb)`
   const domain = sql`lower(split_part(i.email, '@', 2))`
   return sql`(
-    m.kind <> 'google'
+    m.kind <> all(${[...REDIRECT_KINDS]}::text[])
     or coalesce(i.linked_by, '') <> all(${[...DOMAIN_RULED_LINKS]}::text[])
     or jsonb_array_length(${list}) = 0
     or (
@@ -251,7 +266,7 @@ function keepsDomain(lists: string, proof: WayInProof) {
       coalesce(i.email, '') like '%_@_%'
       and coalesce(i.email_verified, true)
       and (${list} ? '*' or ${list} ? ${domain})
-      and (${list} ? '*' or ${domain} = any(${[...GOOGLE_CONSUMER_DOMAINS]}::text[]) or lower(i.hosted_domain) = ${domain}
+      and (${list} ? '*' or (m.kind = 'google' and ${domain} = any(${[...GOOGLE_CONSUMER_DOMAINS]}::text[])) or lower(i.hosted_domain) = ${domain}
         or (i.hosted_domain is null and ${proof === 'possible'}::boolean))
     )
   )`
@@ -288,15 +303,16 @@ export function newIdentityId(): string {
   return 'uid_' + randomBytes(9).toString('base64url')
 }
 
-/** #473: once a person has a Google sign-in, by any path, they no longer
- *  expect one — clear the mark so a later unlink cannot reopen linking by
- *  address. `updated_at` moves, so a form loaded before is told to reload
- *  rather than echo the mark back. A no-op for any other kind. */
+/** #473: once a person has a Google (or Microsoft) sign-in, by any path, they
+ *  no longer expect one — clear that kind's mark so a later unlink cannot
+ *  reopen linking by address. `updated_at` moves, so a form loaded before is
+ *  told to reload rather than echo the mark back. A no-op for other kinds. */
 export async function consumeExpectedSignIn(person: string, method: Pick<SignInMethod, 'kind'>, db: Sql | TxSql = sql): Promise<boolean> {
-  if (method.kind !== 'google') return false
+  if (!isRedirectKind(method.kind)) return false
+  const column = EXPECTS_COLUMN[method.kind]
   const rows = await db`
-    update person set expects_google_sign_in = false, updated_at = now()
-    where row_id = ${person} and expects_google_sign_in returning row_id`
+    update person set ${db(column)} = false, updated_at = now()
+    where row_id = ${person} and ${db(column)} returning row_id`
   return rows.length > 0
 }
 
@@ -494,7 +510,7 @@ export async function updateIdentity(
 // System Manager is never signed in through a delegated method, so for them
 // those links do not count (review A-M2).
 const usableWhere = (mock: boolean) =>
-  sql`m.enabled and (m.kind <> 'google' or coalesce(m.client_id, '') <> '' or ${mock}::boolean)`
+  sql`m.enabled and (m.kind <> all(${[...REDIRECT_KINDS]}::text[]) or coalesce(m.client_id, '') <> '' or ${mock}::boolean)`
 
 /** How many working ways in a person has right now. Pending invites never
  *  count. `excluding` leaves one identity id (or 'password') out. */
@@ -655,13 +671,14 @@ export async function endSessionsNoLongerAdmitted(methodKey: string, nextDomains
   const ended = await db`
     update sign_in_identity i set sessions_ended_at = clock_timestamp()
     from sign_in_method m
-    where m.row_id = i.method and i.method = ${methodKey} and m.kind = 'google'
+    where m.row_id = i.method and i.method = ${methodKey} and m.kind = any(${[...REDIRECT_KINDS]}::text[])
       and i.subject is not null and i.ended_at is null
       and i.linked_by = any(${[...DOMAIN_RULED_LINKS]}::text[])
       and ${keepsDomain(before, 'possible')} and not ${keepsDomain(after, 'possible')}
     returning i.person_id`
   const people = [...new Set(ended.map((r) => String(r.person_id)))].sort()
-  for (const person of people) await logActivity(person, `google_sessions_ended_domain_not_allowed ${methodKey}`)
+  // Named by the method (`google_…` for Google's, as before).
+  for (const person of people) await logActivity(person, `${methodKey}_sessions_ended_domain_not_allowed ${methodKey}`)
   return people
 }
 

@@ -35,7 +35,7 @@ Then Microsoft is not offered
 
 An administrator who manages the system SHALL be able to mark a person as expecting Microsoft sign-in. That person's first Microsoft sign-in SHALL link to them only when Microsoft confirms the address, it is the person's own address on a domain Microsoft sign-in admits, the person is enabled and has no Microsoft sign-in yet; after that the link is permanent and the mark is used up.
 
-#### Scenario: The expected person signs in
+#### Scenario: The person expecting Microsoft sign-in is linked
 
 ```gherkin
 Given Asha is expected to sign in with Microsoft

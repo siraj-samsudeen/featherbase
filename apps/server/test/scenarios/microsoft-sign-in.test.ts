@@ -2,7 +2,7 @@
 // and linking a first Microsoft sign-in to a person who expects it. Driven
 // through the development stand-in for Microsoft, which signs its accounts'
 // claims into the same ID-token checks a real sign-in goes through.
-import { expect } from 'vitest'
+import { afterEach, expect, vi } from 'vitest'
 import { test } from '../pg-test'
 import { scenarioFor } from '../scenario'
 import { expectStatus, makePerson } from '../fixtures'
@@ -12,6 +12,8 @@ import { linkIdentity } from '../../src/identities'
 import { sql } from '../../src/db'
 
 const scenario = scenarioFor(test, 'sign-in-and-accounts')
+
+afterEach(() => vi.unstubAllEnvs())
 
 const DOMAIN = 'bisquared.example'
 const ASHA = { oid: '5f1e2d3c-4b5a-4968-8776-655443322110', name: 'Asha Kumar' }
@@ -51,7 +53,7 @@ scenario('An address whose domain Microsoft has not confirmed is refused', async
   })
   await step('they are refused and told to contact IT', async () => {
     await expectStatus(res, 302)
-    expect(res.headers.get('location')).toBe('/featherbase/login?error=not_provisioned')
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=not_provisioned&via=microsoft')
   })
   await step("Asha's account has no Microsoft sign-in", async () => {
     expect(await microsoftLinks(person)).toHaveLength(0)
@@ -76,7 +78,7 @@ scenario('Microsoft sign-in is not offered until it is set up', async ({ api }, 
   })
 })
 
-scenario('The expected person signs in', async ({ api }, step) => {
+scenario('The person expecting Microsoft sign-in is linked', async ({ api }, step) => {
   let person = ''
   let res: Response
   await step('Asha is expected to sign in with Microsoft', async () => {
@@ -111,7 +113,7 @@ scenario('The same address from another Microsoft account later', async ({ api }
     res = await microsoftSignIn(api, `asha@${DOMAIN}`, { oid: '11112222-3333-4444-8555-666677778888' })
   })
   await step("it is refused, and only Asha's own Microsoft account opens her account", async () => {
-    expect(res.headers.get('location')).toBe('/featherbase/login?error=not_provisioned')
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=not_provisioned&via=microsoft')
     expect(await microsoftLinks(person)).toEqual([expect.objectContaining({ subject: `${TENANT}/${ASHA.oid}` })])
   })
 })

@@ -3,7 +3,7 @@
 // turned off, linking from the Sign-in methods page, the expected mark being
 // a System Manager's, the domain rule re-checked on a domain-ruled link, and
 // the tenant setting.
-import { describe, expect, vi } from 'vitest'
+import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { createUserWithRole, expectStatus, makePerson } from './fixtures'
@@ -17,6 +17,9 @@ const DOMAIN = 'bisquared.example'
 const CLIENT = 'b1e2c3d4-0000-4000-8000-00000000c1d0'
 const OID = '5f1e2d3c-4b5a-4968-8776-655443322110'
 const enc = encodeURIComponent
+
+// A stubbed variable (the stand-in switched off, the secret) lasts one test.
+afterEach(() => vi.unstubAllEnvs())
 
 const idToken = (claims: Record<string, unknown>) =>
   ['e30', Buffer.from(JSON.stringify(claims)).toString('base64url'), 'sig'].join('.')
@@ -88,7 +91,7 @@ describe('real Microsoft', () => {
       async () => new Response('{"error":"invalid_grant"}', { status: 400 }),
       () => api.fetch(`/api/oauth/microsoft/callback?code=x&state=${enc(state)}`, { headers: { cookie, accept: 'text/html' } }),
     )
-    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_failed')
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_failed&via=microsoft')
   })
 })
 
@@ -96,16 +99,16 @@ describe('turned off', () => {
   test('a disabled method, or one without a client and without the stand-in, sends the browser back explained', async ({ api }) => {
     await configureMicrosoft({ enabled: false })
     const res = await api.fetch('/api/oauth/microsoft/login', { headers: { accept: 'text/html' } })
-    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_off')
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_off&via=microsoft')
     mockOAuth(false)
     await configureMicrosoft({ client_id: '' })
     const again = await api.fetch('/api/oauth/microsoft/login', { headers: { accept: 'text/html' } })
-    expect(again.headers.get('location')).toBe('/featherbase/login?error=microsoft_off')
+    expect(again.headers.get('location')).toBe('/featherbase/login?error=microsoft_off&via=microsoft')
   })
 
   test('the stand-in refuses to serve once a real client is set', async ({ api }) => {
     await configureMicrosoft({ client_id: CLIENT })
-    await expectStatus(await api.fetch('/api/oauth/mock/microsoft/consent?state=x&redirect_uri=/api/oauth/microsoft/callback'), 400)
+    await expectStatus(await api.fetch('/api/oauth/mock/microsoft/consent?state=x&redirect_uri=/api/oauth/microsoft/callback'), 417)
   })
 
   test('the stand-in only sends its code to Microsoft sign-in\'s own callback', async ({ api }) => {
@@ -124,7 +127,7 @@ describe('linking from the Sign-in methods page', () => {
     const person = await makePerson({ email: `asha@${DOMAIN}` })
     const { token } = await issueSession(person)
     const res = await microsoftLink(api, token, `asha@${DOMAIN}`, { oid: OID })
-    expect(res.headers.get('location')).toMatch(/link=linked$/)
+    expect(res.headers.get('location')).toMatch(/link=linked&via=microsoft$/)
     expect(await microsoftLinks(person)).toEqual([{ subject: `${TENANT}/${OID}`, linked_by: 'self', email: `asha@${DOMAIN}` }])
   })
 
@@ -133,10 +136,10 @@ describe('linking from the Sign-in methods page', () => {
     const person = await makePerson({ email: `asha@${DOMAIN}` })
     const { token } = await issueSession(person)
     const res = await microsoftLink(api, token, 'asha@elsewhere.example', { oid: OID })
-    expect(res.headers.get('location')).toMatch(/link=domain_not_allowed$/)
+    expect(res.headers.get('location')).toMatch(/link=domain_not_allowed&via=microsoft$/)
     // An address Microsoft did not confirm is not admitted either.
     const unconfirmed = await microsoftLink(api, token, `asha@${DOMAIN}`, { oid: OID, edov: false })
-    expect(unconfirmed.headers.get('location')).toMatch(/link=domain_not_allowed$/)
+    expect(unconfirmed.headers.get('location')).toMatch(/link=domain_not_allowed&via=microsoft$/)
     expect(await microsoftLinks(person)).toHaveLength(0)
   })
 })
@@ -149,7 +152,7 @@ describe('the domain rule keeps governing a link it made', () => {
     await microsoftLink(api, token, `asha@${DOMAIN}`, { oid: OID })
     expect(await canSignInNow(person)).toBe(true)
     const res = await microsoftSignIn(api, `asha@${DOMAIN}`, { oid: OID, edov: false })
-    expect(res.headers.get('location')).toBe('/featherbase/login?error=not_provisioned')
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=not_provisioned&via=microsoft')
     const ok = await microsoftSignIn(api, `asha@${DOMAIN}`, { oid: OID })
     expect((await redeemSession(api, ok)).user.row_id).toBe(person)
   })
@@ -158,7 +161,7 @@ describe('the domain rule keeps governing a link it made', () => {
     await configureMicrosoft({ allowed_email_domains: 'gmail.com' })
     const person = await makePerson({ email: 'asha@gmail.com', expects_microsoft_sign_in: true })
     const res = await microsoftSignIn(api, 'asha@gmail.com', { oid: OID, edov: false })
-    expect(res.headers.get('location')).toBe('/featherbase/login?error=not_provisioned')
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=not_provisioned&via=microsoft')
     expect(await microsoftLinks(person)).toHaveLength(0)
   })
 })
