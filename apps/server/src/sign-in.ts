@@ -30,7 +30,6 @@ import {
   normaliseEmail,
   touchIdentity,
   assertMethodOpenTo,
-  employeesOnlyRefusal,
   type SignInMethod,
 } from './identities'
 
@@ -111,9 +110,10 @@ export async function assertEligible(method: SignInMethod, user: string): Promis
   const c = await candidate(user)
   if (!c || !c.enabled || (c.privileged && !KINDS[method.kind].admitsPrivileged))
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
-  // #1267: an employees-only method signs in no former employee or external
-  // person. Refused as any failed sign-in is, so it says nothing about them.
-  if (await employeesOnlyRefusal(method, user)) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
+  // #1267 (Codex round 2): employees_only is decided when a link is made, not
+  // here. A sign-in writes its link and person before this point and runs in a
+  // transaction a slow lookup must not hold; StyleHR's own login already
+  // refuses a leaver (delegated-login.ts), and its roster asks for Current.
 }
 
 /** Domain admission (design D4): a verified email on an allowed domain, and a

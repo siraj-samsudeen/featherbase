@@ -226,31 +226,26 @@ describe('every way in asks the employees-only question', () => {
       .rejects.toThrow('Google sign-in is only for current employees')
   })
 
-  test('a former employee already linked cannot sign in with an employees-only method; an employee can', async ({ admin, createUser }) => {
+  test('sign-in itself does not ask: the question is settled when the link is made', async ({ admin, createUser }) => {
     await installDescriber(admin)
     await configureDelegated()
     const left = await createUser({ email: 'signin-left.1267@example.test' })
-    const emp = await createUser({ email: 'signin-emp.1267@example.test' })
     await sql`update sign_in_method set employees_only = true where row_id = 'stylehr'`
-    globalThis.__standing = {
-      [left.user!]: { person: left.user, status: 'left', code: '7', jobs: [] },
-      [emp.user!]: { person: emp.user, status: 'current', code: '8', jobs: [] },
-    }
+    globalThis.__standing = { [left.user!]: { person: left.user, status: 'left', code: '7', jobs: [] } }
+    globalThis.__describedAs = undefined
     const stylehr = (await getSignInMethod('stylehr'))!
-    await expect(assertEligible(stylehr, left.user!)).rejects.toThrow()
-    await expect(assertEligible(stylehr, emp.user!)).resolves.toBeUndefined()
+    await expect(assertEligible(stylehr, left.user!)).resolves.toBeUndefined()
+    // Not even asked: a sign-in never waits on the people app.
+    expect(globalThis.__describedAs).toBeUndefined()
   })
 })
 
 // Codex round 2: the mark never locks out an administrator.
-test('a System Manager is never refused by an employees-only method, even when external', async ({ admin, createUser }) => {
+test('a System Manager is never refused a link by an employees-only method, even when external', async ({ admin, createUser }) => {
   await installDescriber(admin)
   await configureDelegated()
   await sql`update sign_in_method set employees_only = true where row_id in ('stylehr', 'password')`
   const boss = await createUser({ email: 'boss.1267@example.test', roles: ['System Manager'] })
-  const password = (await getSignInMethod('password'))!
-  await expect(assertEligible(password, boss.user!)).resolves.toBeUndefined()
-  await expect(assertEligible(password, 'Administrator')).resolves.toBeUndefined()
   const linked = await admin.fetch(`/api/people/${encodeURIComponent(boss.user!)}/identities`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method: 'stylehr', subject: 'RR-BOSS' }),
   })

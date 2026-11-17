@@ -25,5 +25,5 @@ insert into featherbase.column_def (row_id, parent, position, column_name, label
   read_only, hidden, in_list_view, tier, parenttype, parentfield, custom, description)
 select gen_random_uuid()::text, 'Sign In Method', 11, 'employees_only', 'Only for employees', 'Check', false, false, '0',
   false, false, false, 'basic', 'Table', 'columns', false,
-  'Only current employees may sign in this way: it is not offered or linked for a former employee or someone external.'
+  'Only for current employees: it is not offered or linked for a former employee or someone external.'
 where not exists (select 1 from featherbase.column_def where parent = 'Sign In Method' and column_name = 'employees_only');
