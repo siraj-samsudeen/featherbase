@@ -34,7 +34,7 @@ test('#1257: a person with no way in is sent a password invite, and the panel sh
   const notice = await within(panel).findByTestId('user-method-notice')
   expect(notice).toHaveTextContent('Password invite saved to the Email Sink for ravi@partner.test; this instance does not send email.')
   const status = await within(panel).findByTestId('password-invite-status')
-  expect(status).toHaveTextContent(/Password invite saved to the Email Sink .+ · expires .+/)
+  expect(status).toHaveTextContent(/^Saved to the Email Sink .+ · expires .+$/)
   expect(panel).not.toHaveTextContent(/emailed/i)
 
   const first = await mailedKey('ravi@partner.test')
@@ -83,4 +83,17 @@ test('#1257: a spent link says so and points to sign-in', async ({ admin, create
   const refused = await screen.findByTestId('set-password-invalid', {}, { timeout: 8000 })
   expect(refused).toHaveTextContent('This invitation link is invalid or has expired. Ask the person who invited you to send a new one.')
   expect(within(refused).getByRole('link', { name: 'Go to sign-in' })).toHaveAttribute('href', '/featherbase/login')
+})
+
+test('#1257: saving a new email on the Person shows the invite as cancelled without a reload', async ({ admin, createUser }) => {
+  const nina = await createUser({ email: 'nina@partner.test', fullName: 'Nina Second' })
+  await admin.post(`/api/people/${nina.user}/password_invite`, {})
+  const panel = await openPerson(admin, nina.user!)
+  await within(panel).findByTestId('password-invite-status')
+  const email = await screen.findByLabelText('Email')
+  await userEvent.clear(email)
+  await userEvent.type(email, 'nina.changed@partner.test')
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(within(panel).getByTestId('password-invite')).toHaveTextContent('The last password invite was cancelled. Emails nina.changed@partner.test'), { timeout: 8000 })
+  expect(within(panel).getByRole('button', { name: 'Send password invite' })).toBeInTheDocument()
 })

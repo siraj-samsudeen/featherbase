@@ -359,13 +359,12 @@ function PasswordInviteRow({ invite, email, toSink, busy, onSend }: {
     not_sent: 'The last password invite was not sent',
   }
   return (
-    <li className="flex items-start justify-between gap-2" data-testid="password-invite">
-      <span className="min-w-0">
+    <li className="space-y-2" data-testid="password-invite">
+      <span className="block">
         <span className="font-medium">Password invite</span>
         {live && invite.sent_at ? (
           <span className="block text-sm text-ink-muted" data-testid="password-invite-status">
-            {toSink ? 'Password invite saved to the Email Sink' : 'Password invite emailed'} {fmtInstantIST(invite.sent_at)} · expires{' '}
-            {fmtInstantIST(invite.expires_at)}
+            {toSink ? 'Saved to the Email Sink' : 'Emailed'} {fmtInstantIST(invite.sent_at)} · expires {fmtInstantIST(invite.expires_at)}
           </span>
         ) : (
           <span className="block text-sm text-ink-muted">
@@ -374,7 +373,7 @@ function PasswordInviteRow({ invite, email, toSink, busy, onSend }: {
           </span>
         )}
       </span>
-      <Button variant="secondary" className="shrink-0" disabled={busy} onClick={onSend}>
+      <Button variant="secondary" block disabled={busy} onClick={onSend}>
         {live ? 'Resend password invite' : 'Send password invite'}
       </Button>
     </li>
