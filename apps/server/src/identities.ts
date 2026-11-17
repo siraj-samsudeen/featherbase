@@ -387,6 +387,35 @@ async function clash(method: SignInMethod, what: { subject?: string | null; sign
   )
 }
 
+/** #1266, #1270: who holds each of these addresses: as their Person email, or
+ *  as any live sign-in's email, name or invite. The one home of that rule, for
+ *  an Admin link (assertAddressFree) and the roster sync alike. A hit on the
+ *  same column of the same method is left out: its unique index and clash()
+ *  answer it. Keys are the folded addresses. */
+export async function addressHolders(
+  addresses: string[],
+  method: string,
+  as: 'sign_in_name' | 'pending_email' | 'email',
+  edit: { identity?: string } = {},
+  db: Sql | TxSql = sql,
+): Promise<Map<string, string[]>> {
+  const folded = [...new Set(addresses.filter((a) => looksLikeEmail(a)).map(foldName))]
+  const out = new Map<string, string[]>()
+  if (!folded.length) return out
+  const rows = await db`
+    select lower(p.email) as address, p.row_id as person from person p where lower(p.email) = any(${folded})
+    union all
+    select a.address, i.person_id from sign_in_identity i
+      cross join lateral (values (lower(i.email), true), (lower(i.sign_in_name), not (i.method = ${method} and ${as} = 'sign_in_name')),
+        (i.pending_email, not (i.method = ${method} and ${as} = 'pending_email'))) as a(address, counts)
+      where i.ended_at is null and i.id <> ${edit.identity ?? ''} and a.counts and a.address = any(${folded})`
+  for (const r of rows) {
+    const k = String(r.address)
+    out.set(k, [...new Set([...(out.get(k) ?? []), String(r.person)])])
+  }
+  return out
+}
+
 /** #1266: an address another person already signs in with, or is known by,
  *  is theirs. Linking it to this person would let one sign in as the other
  *  (a password manager filled in the manager's own address on someone's page).
@@ -404,20 +433,9 @@ export async function assertAddressFree(
   db: Sql = sql,
 ): Promise<void> {
   if (!value || !looksLikeEmail(value)) return
-  const folded = foldName(value)
-  // Every live identity's addresses count, in every column; only a hit on the
-  // same column of the same method is left to its unique index and clash().
-  const [held] = await db`
-    select p.row_id, p.full_name, p.username from person p
-    where p.row_id <> ${user} and (
-      lower(p.email) = ${folded}
-      or exists (
-        select 1 from sign_in_identity i
-        where i.person_id = p.row_id and i.ended_at is null and i.id <> ${edit.identity ?? ''}
-          and (lower(i.email) = ${folded}
-            or (lower(i.sign_in_name) = ${folded} and not (i.method = ${method} and ${as} = 'sign_in_name'))
-            or (i.pending_email = ${folded} and not (i.method = ${method} and ${as} = 'pending_email')))))
-    limit 1`
+  const holders = (await addressHolders([value], method, as, edit, db)).get(foldName(value)) ?? []
+  const other = holders.find((h) => h !== user)
+  const [held] = other ? await db`select row_id, full_name, username from person where row_id = ${other}` : []
   if (!held) return
   throw new AppError(
     'ConflictError',

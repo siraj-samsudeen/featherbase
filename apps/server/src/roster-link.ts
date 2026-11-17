@@ -23,7 +23,7 @@ import { saveDoc } from './document'
 import { runAsSystemActor } from './system-actor'
 import { ROSTER_LINK_RUN } from './delegated-login'
 import { ROSTER_LINK_ACTOR } from './roster-link-actor'
-import { auditIdentity, foldName, getSignInMethod, looksLikeEmail, newIdentityId, type SignInMethod } from './identities'
+import { addressHolders, auditIdentity, foldName, getSignInMethod, looksLikeEmail, newIdentityId, type SignInMethod } from './identities'
 import { addIdentifier, closeRow, endIdentityIdentifiers, writeThroughIdentity } from './person-identifiers'
 import { normaliseValue, type IdentifierKind, type NormaliseRule } from './identifiers'
 import { rowOf, usableRoster, type Roster, type RosterRow } from './roster-first-sign-in'
@@ -197,21 +197,8 @@ async function loadFacts(ctx: Ctx, rows: RosterRow[]): Promise<Facts> {
       facts.liveByName.set(l.sign_in_name.toLowerCase(), l)
     } else facts.endedBySubject.set(l.subject, l) // oldest first, so the latest end wins
   }
-  // #1270: a roster address another person has already (their email, or any live
-  // sign-in's name, email or invite; this method's own names are byName's) is theirs.
-  const addresses = [...new Set(rows.map((r) => r.sign_in_id).filter((v) => looksLikeEmail(v)).map(foldName))]
-  if (addresses.length) {
-    const claimed = await sql`
-      select lower(p.email) as address, p.row_id as person from person p where lower(p.email) = any(${addresses})
-      union all select lower(i.sign_in_name), i.person_id from sign_in_identity i
-        where i.ended_at is null and i.method <> ${ctx.method.key} and lower(i.sign_in_name) = any(${addresses})
-      union all select lower(i.email), i.person_id from sign_in_identity i where i.ended_at is null and lower(i.email) = any(${addresses})
-      union all select i.pending_email, i.person_id from sign_in_identity i where i.ended_at is null and i.pending_email = any(${addresses})`
-    for (const c of claimed) {
-      const k = String(c.address)
-      facts.addressHolders.set(k, [...new Set([...(facts.addressHolders.get(k) ?? []), String(c.person)])])
-    }
-  }
+  // #1270: who already has each roster address, by the one rule an Admin link uses.
+  facts.addressHolders = await addressHolders(rows.map((r) => r.sign_in_id), ctx.method.key, 'sign_in_name')
   const values = [...new Set(rows.flatMap((r) => (valuesOf(ctx, r) ?? []).map(([, v]) => v)))]
   const held = await sql`
     select distinct system, value, person_id from person_identifier
