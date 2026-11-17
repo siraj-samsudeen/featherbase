@@ -1,0 +1,517 @@
+<title>Following the Links</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the page frames each idea inside a drawing of the real app (Quiet Canvas sidebar on grey, one white panel). The accent is the app's action blue; reach chips reuse the four-step ladder. */
+:root{
+  --page:#eef1f4; --canvas:#e6e9ee; --panel:#ffffff; --ink:#18212b; --muted:#5d6876; --subtle:#f4f6f8; --line:#e1e5ea; --line2:#cfd6de;
+  --action:#2457c5; --action-tint:#e8eefb; --pos:#1d7a46; --neg:#a3361f; --neg-tint:#fbe9e5; --lock:#7a6a3a; --lock-tint:#f6f1e1;
+  --own:#475569; --own-bg:#edf0f4; --team:#2563a8; --team-bg:#e7effa; --area:#0f6e6a; --area-bg:#e2f1ef; --all:#a3361f; --all-bg:#fbe9e5;
+  --f-d:"Manrope",system-ui,sans-serif; --f-b:"Inter",system-ui,sans-serif; --f-m:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --page:#0f1419; --canvas:#141b22; --panel:#1b232c; --ink:#e4eaf0; --muted:#98a4b2; --subtle:#212b35; --line:#2a3541; --line2:#36434f;
+  --action:#7ea6f2; --action-tint:#1d2a40; --pos:#6fd39a; --neg:#f19a85; --neg-tint:#3a1f1a; --lock:#d8c48a; --lock-tint:#33301f;
+  --own:#a9b6c7; --own-bg:#232d38; --team:#7fb2ee; --team-bg:#17283b; --area:#4cc2b9; --area-bg:#15302e; --all:#f19a85; --all-bg:#3a1f1a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --page:#0f1419; --canvas:#141b22; --panel:#1b232c; --ink:#e4eaf0; --muted:#98a4b2; --subtle:#212b35; --line:#2a3541; --line2:#36434f;
+  --action:#7ea6f2; --action-tint:#1d2a40; --pos:#6fd39a; --neg:#f19a85; --neg-tint:#3a1f1a; --lock:#d8c48a; --lock-tint:#33301f;
+  --own:#a9b6c7; --own-bg:#232d38; --team:#7fb2ee; --team-bg:#17283b; --area:#4cc2b9; --area-bg:#15302e; --all:#f19a85; --all-bg:#3a1f1a; color-scheme:dark}
+body{background:var(--page);color:var(--ink);font-family:var(--f-b);font-size:14px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:26px 64px;display:grid;gap:22px}
+h1,h2,h3{font-family:var(--f-d);margin:0;text-wrap:balance}
+h1{font-size:28px;font-weight:800} h2{font-size:19px;font-weight:700} h3{font-size:14px;font-weight:700}
+p{margin:0;max-width:72ch}
+.lede{color:var(--muted);font-size:15px}
+.eyebrow{font-family:var(--f-m);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+button{font:inherit;color:inherit}
+button:focus-visible,a:focus-visible{outline:2px solid var(--action);outline-offset:2px}
+
+/* Idea tabs */
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tabs button{border:0;background:var(--panel);padding:8px 14px;border-radius:999px;cursor:pointer;font-weight:600;font-size:13.5px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--panel)}
+.tabs .tag{font-family:var(--f-m);font-size:10.5px;font-weight:500;opacity:.75;margin-left:6px}
+
+/* The app drawing */
+.app{display:grid;grid-template-columns:200px minmax(0,1fr);background:var(--canvas);border-radius:14px;padding:10px;gap:10px;min-height:560px}
+.side{display:grid;align-content:start;gap:4px;padding:6px 4px;font-size:13px}
+.side .search{background:var(--panel);border-radius:8px;padding:7px 10px;color:var(--muted);margin-bottom:8px;font-size:12.5px}
+.side .grp{font-family:var(--f-m);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:10px 6px 2px}
+.side .row{display:flex;gap:8px;align-items:center;padding:5px 6px;border-radius:7px}
+.side .row.on{background:var(--panel);font-weight:600}
+.tile{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:10.5px;font-weight:700;background:var(--action-tint);color:var(--action)}
+.pagep{background:var(--panel);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:16px 18px;display:grid;align-content:start;gap:14px;min-width:0;position:relative;overflow:hidden}
+@media (max-width:820px){.app{grid-template-columns:1fr}.side{display:none}}
+
+/* Path bar, as the real one */
+.pathbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px}
+.pathbar .nav{border:1px solid var(--line2);border-radius:7px;width:28px;height:28px;display:grid;place-items:center;background:var(--panel);cursor:pointer}
+.pathbar .steps{display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-width:0}
+.pathbar .step{border:0;background:none;padding:3px 6px;border-radius:6px;cursor:pointer;color:var(--action)}
+.pathbar .step.cur{color:var(--ink);font-weight:600;background:var(--subtle)}
+.pathbar .sep{color:var(--muted)}
+.pathbar .right{margin-left:auto;display:flex;gap:6px}
+.pill{border:1px solid var(--line2);background:var(--panel);border-radius:7px;padding:4px 10px;font-size:12.5px;cursor:pointer}
+.why-pill{background:var(--action-tint);color:var(--action);border-color:transparent}
+
+/* Record header */
+.rec-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+.rec-h .t{font-family:var(--f-d);font-weight:800;font-size:20px}
+.rec-h .s{color:var(--muted);font-size:13px}
+.ctrl{display:flex;gap:4px;align-items:center;font-size:13px}
+.ctrl .tab{padding:5px 12px;border-radius:7px;cursor:pointer;border:0;background:none}
+.ctrl .tab.on{background:var(--subtle);font-weight:600}
+.saved{color:var(--pos);font-size:12.5px;margin-left:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px}
+.chip{display:inline-flex;gap:6px;align-items:center;background:var(--subtle);border-radius:999px;padding:3px 10px}
+.chip a{color:var(--action);text-decoration:none;font-weight:500}
+.chip .k{color:var(--muted)}
+
+/* Lens */
+.lens{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:18px}
+@media (max-width:980px){.lens{grid-template-columns:1fr}}
+.fields{display:grid;grid-template-columns:120px 1fr;gap:6px 12px;font-size:13px;align-content:start}
+.fields .l{color:var(--muted)}
+.rel{display:grid;gap:6px}
+.rel-h{display:flex;align-items:center;gap:8px}
+.rel-h .n{color:var(--muted);font-size:12.5px}
+.rel-h .sp{flex:1}
+.rel-list{display:grid;gap:2px}
+.li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;font-size:13px}
+.li:hover{background:var(--subtle)}
+.li .nm a{color:var(--action);text-decoration:none;font-weight:500}
+.li .meta{color:var(--muted);font-size:12px}
+.li.off .nm{color:var(--muted)}
+.box{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--line2);display:grid;place-items:center;font-size:11px;cursor:pointer;background:var(--panel)}
+.box.on{background:var(--action);border-color:var(--action);color:var(--panel)}
+.box.lock{background:var(--lock-tint);border-color:var(--lock);color:var(--lock);cursor:not-allowed}
+.src{font-family:var(--f-m);font-size:10.5px;padding:1px 7px;border-radius:999px;white-space:nowrap}
+.src.hr{background:var(--team-bg);color:var(--team)} .src.hand{background:var(--lock-tint);color:var(--lock)} .src.role{background:var(--subtle);color:var(--muted)}
+.act{font-size:12px;color:var(--action);cursor:pointer;border:0;background:none;padding:0 4px}
+.inline-form{grid-column:2/4;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--action-tint);border-radius:8px;padding:8px 10px;font-size:12.5px}
+.inline-form .fld{background:var(--panel);border-radius:6px;padding:4px 8px;border:1px solid var(--line2)}
+.whyline{grid-column:2/4;font-size:12.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:2px 0 4px}
+.whyline b{color:var(--ink);font-weight:600}
+.whyline .ar{color:var(--line2)}
+.r{display:inline-flex;font-family:var(--f-m);font-size:11px;padding:1px 7px;border-radius:5px}
+.r-Own{color:var(--own);background:var(--own-bg)} .r-Team{color:var(--team);background:var(--team-bg)} .r-Area{color:var(--area);background:var(--area-bg)} .r-All{color:var(--all);background:var(--all-bg)}
+.pending{position:sticky;bottom:0;display:flex;gap:10px;align-items:center;background:var(--ink);color:var(--panel);padding:9px 14px;border-radius:10px;font-size:13px}
+.pending .sp{flex:1}
+.pending button{border:0;border-radius:7px;padding:5px 12px;cursor:pointer}
+.pending .save{background:var(--action);color:#fff}
+.pending .ghost{background:transparent;color:var(--panel);border:1px solid color-mix(in srgb,var(--panel) 40%,transparent)}
+
+/* Map */
+.mapwrap{overflow-x:auto}
+svg text{font-family:var(--f-b)}
+.mnode rect{fill:var(--panel);stroke:var(--line2)}
+.mnode.cnx rect{stroke-dasharray:4 3}
+.mnode.centre rect{fill:var(--action-tint);stroke:var(--action)}
+.mnode.hot rect{stroke:var(--action);stroke-width:2}
+.mnode text.t{fill:var(--ink);font-size:12.5px;font-weight:600}
+.mnode text.s{fill:var(--muted);font-size:11px}
+.mnode text.c{fill:var(--action);font-size:12px;font-weight:700}
+.medge{stroke:var(--line2);fill:none}
+.medge.hot{stroke:var(--action);stroke-width:2}
+.mnode{cursor:pointer}
+.modes{display:flex;gap:6px;flex-wrap:wrap}
+
+/* Grid */
+.gscroll{overflow-x:auto;border-radius:10px;border:1px solid var(--line)}
+table.g{border-collapse:separate;border-spacing:0;font-size:12.5px;min-width:760px;width:100%}
+table.g th,table.g td{padding:0 8px;height:32px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+table.g thead th{background:var(--subtle);font-weight:600;font-size:12px;vertical-align:bottom;height:auto;padding:8px}
+table.g thead th.rl{white-space:normal;width:86px;line-height:1.25;text-align:center}
+table.g td:first-child,table.g th:first-child{position:sticky;left:0;background:var(--panel);z-index:1}
+table.g thead th:first-child{background:var(--subtle)}
+table.g td.c{text-align:center;padding:0 4px}
+table.g tr.app td{background:var(--subtle);font-family:var(--f-d);font-weight:700}
+.cell{border:1px dashed var(--line2);border-radius:5px;min-width:44px;height:22px;display:inline-grid;place-items:center;cursor:pointer;background:none;font-family:var(--f-m);font-size:11px;color:var(--muted)}
+.cell.set{border-style:solid;border-color:transparent}
+.cell.changed{box-shadow:0 0 0 2px var(--action)}
+.swap{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px}
+
+/* Columns */
+.cols{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));border:1px solid var(--line);border-radius:10px;overflow:hidden;min-width:640px}
+.colsw{overflow-x:auto}
+.col{border-right:1px solid var(--line);display:grid;align-content:start}
+.col:last-child{border-right:0}
+.col .ch{font-family:var(--f-m);font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:8px 10px;background:var(--subtle)}
+.col button{display:flex;justify-content:space-between;gap:6px;width:100%;border:0;background:none;padding:7px 10px;text-align:left;cursor:pointer;font-size:13px}
+.col button:hover{background:var(--subtle)}
+.col button.sel{background:var(--action-tint);color:var(--action);font-weight:600}
+.col .cnt{color:var(--muted);font-size:12px}
+.pick{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--subtle);border-radius:10px;padding:10px 12px;font-size:13px}
+.pick b{font-weight:600}
+
+/* Sentences */
+.sent{display:grid;gap:8px}
+.sline{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--subtle);font-size:14px}
+.tok{padding:2px 9px;border-radius:7px;background:var(--panel);border:1px solid var(--line2);font-weight:600}
+.tok.role{color:var(--action)}
+
+/* Notes under each idea */
+.verdict{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:820px){.verdict{grid-template-columns:1fr}}
+.vcard{background:var(--panel);border-radius:12px;padding:14px;display:grid;gap:6px;align-content:start}
+.vcard ul{margin:0;padding-left:18px;font-size:13.5px}
+.vcard.good h3{color:var(--pos)} .vcard.bad h3{color:var(--neg)}
+.rec{background:var(--action-tint);border-radius:14px;padding:18px;display:grid;gap:10px}
+.rec ol{margin:0;padding-left:20px;display:grid;gap:6px;font-size:14px}
+.foot{font-size:12.5px;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<header style="display:grid;gap:8px">
+  <span class="eyebrow">Featherbase #1218 · relational navigation · design options · nothing built</span>
+  <h1>Following the links</h1>
+  <p class="lede">Fable's ideas drawn inside today's frame, with our own records: a made-up floor manager who is also a buyer, her roles, her reports and her store. Each idea keeps the path bar and builds on the Map rather than replacing them.</p>
+</header>
+
+<div class="tabs" role="tablist" id="tabs"></div>
+<section id="stage" style="display:grid;gap:14px"></section>
+
+<section class="rec" style="background:var(--panel)">
+  <h2>What was promised before, and what this fixes</h2>
+  <p class="foot" style="font-size:13.5px">From your earlier pages: Relational Navigation (Aug), Relational Navigator (4-Nov), List And Record (today).</p>
+  <div style="overflow-x:auto"><table class="g" style="min-width:680px">
+    <thead><tr><th>Promised</th><th>Built today</th><th>In this design</th></tr></thead><tbody>
+    <tr><td>Rows read by name ("1503 · Enchakkal Supermarket")</td><td>Link rows shown by codes</td><td><b>Slice 1</b>, being built tonight: every group names a row by what it points to</td></tr>
+    <tr><td>An open group is a real list, with "Open as list"</td><td>A squeezed table in the panel</td><td><b>Slice 1</b>: one line per row, first 10, then "Show all"</td></tr>
+    <tr><td>A Map you can walk: real rows, Focus here, trail</td><td>Fixed group boxes, one step out</td><td>Map tab: try it. Slice 2.</td></tr>
+    <tr><td>Peek stack: Level 2 of 4, Esc closes all</td><td>One panel only</td><td>Lens tab: click "Buyer". Slice 3.</td></tr>
+    <tr><td>Clicking rows is the filter, with counts and totals</td><td>Explore: dropdown chains, admin only</td><td>The filter bar gains "Linked to…". Explore retired. Slice 4.</td></tr>
+    <tr><td>Go there / Filter on every link cell</td><td>Only in the panel's chips</td><td>Same two hover actions in table cells. Slice 4.</td></tr>
+    <tr><td>Tree capped: first 20, then show all</td><td>Long and uncapped</td><td>Tree becomes Links, capped at 10. Slice 1, then 2.</td></tr>
+    <tr><td>Empty groups greyed, not hidden; "+ New" prefilled</td><td>Partly</td><td>Kept everywhere by the shared group component</td></tr>
+    </tbody></table></div>
+</section>
+
+<section class="rec" style="background:var(--panel)">
+  <h2>Simple like Tableau, not like Power BI</h2>
+  <ol>
+    <li><b>One obvious default in each place.</b> The panel shows Links, the record page opens on Form, and the Map opens on Neighbours. Most people never change anything.</li>
+    <li><b>An option appears only where it applies.</b> Grid only for small pairs, Why only where a chain is declared, ticking only where you may change the link.</li>
+    <li><b>Controls sit beside what they change.</b> Open as grid sits on its group and Focus on its box. One View ▾ menu holds the rest. No settings dialogs with tabs.</li>
+    <li><b>Every change is remembered:</b> in the saved view when one is open, otherwise per person per Table. The app admin sets each Table's starting default.</li>
+    <li><b>The same pieces everywhere.</b> One linked-rows group, one tick list, one grid, one map. Learn it once in Featherbase and it works the same in Dash and Tasker.</li>
+  </ol>
+</section>
+
+<section class="rec">
+  <h2>The final structure</h2>
+  <p>One walk, recorded in the path bar. Three places, each with one job. A view appears only where it makes sense, the app admin picks each table's default, and each person's last choice is remembered.</p>
+  <div class="tablewrap" style="overflow-x:auto;background:var(--panel);border-radius:10px"><table class="g" style="min-width:680px">
+    <thead><tr><th>Place</th><th>Its job</th><th>What it shows</th><th>What changes from today</th></tr></thead>
+    <tbody>
+      <tr><td><b>List page</b></td><td>Find rows</td><td>Table · List And Record · Table With Panel</td><td>Unchanged. "Add filter" gains <i>Linked to…</i> and <i>Not linked to…</i>, so a chain like Explore's is built from the list.</td></tr>
+      <tr><td><b>Record panel</b> (side)</td><td>A quick look without leaving the list</td><td>Header, link chips, fields, then <b>Links</b></td><td>"Pointed At By" stops drawing a cramped table. Each group lists rows one per line, by the far side's name (people, subcategories), not by link-row codes.</td></tr>
+      <tr><td><b>Record page</b> (full)</td><td>Work on one record</td><td>Form · <b>Links</b> · Map · Activity</td><td>Tree becomes <b>Links</b>: the same unfolding, plus ticking (Edit), source chips, <i>Why?</i> and <i>Open as grid</i>. The chips under the title jump to their Links section.</td></tr>
+      <tr><td><b>Map</b></td><td>See and explain</td><td>One step out · <b>Why</b></td><td>Link tables collapse to their far side ("People 8 through Job Assignment"). Why mode appears where a path is declared. The "Open in Explore" button goes.</td></tr>
+      <tr><td><b>Grid</b></td><td>Compare or tick many at once</td><td>Rows × columns with ticks or reach</td><td>Only offered for small pairs (about 40 × 40). It replaces the separate permission matrix.</td></tr>
+      <tr><td><b>Path bar</b></td><td>Where I came from</td><td>Back · steps · Recent paths · Copy link</td><td>Adds a sideways ▾ on the current step for siblings from the list you came from.</td></tr>
+      <tr><td><b>Explore</b></td><td>—</td><td>—</td><td>Retired once the filter bar can follow links. Its one job, chained filters, becomes path steps.</td></tr>
+    </tbody></table></div>
+  <h2 style="margin-top:8px">Recommendation</h2>
+  <ol>
+    <li><b>Lens is the record panel you already have</b>, with three additions: relationship sections that tick and untick, a source chip on every link, and a "Why?" line on anything inherited.</li>
+    <li><b>The path bar gains a sideways step</b> (▾ beside the current step): jump to another floor manager at the same store without going back up. Try it on the Lens tab.</li>
+    <li><b>Map gains a "Why" mode.</b> Same boxes RB likes, but instead of one step out it draws the declared chain: person → role → app → permission, or person → role → report.</li>
+    <li><b>Grid is a toggle</b> ("Open as grid") on any relationship whose two sides are small: roles × permissions, reports × roles, departments × sections. It replaces the one-off permission matrix.</li>
+    <li><b>Columns only as the area picker</b> for the location and merchandise trees, never as a general view.</li>
+    <li><b>Sentences are a label, not a screen</b>: every permission and grant reads as one line everywhere.</li>
+  </ol>
+  <p class="foot">The people and figures are made up. Store names are placeholders.</p>
+</section>
+</div>
+
+<script>
+const IDEAS=[
+ {id:'lens',name:'Lens',tag:'default',sub:'The record panel, with relationships you can tick'},
+ {id:'map',name:'Map',tag:'RB\'s favourite, now walkable',sub:'Real rows in each group; click one to focus on it, the path bar keeps the trail. Or the whole "why" chain.'},
+ {id:'grid',name:'Grid',tag:'toggle',sub:'Two small sides, ticks with reach'},
+ {id:'cols',name:'Columns',tag:'area picker only',sub:'Walk a hierarchy left to right'},
+ {id:'sent',name:'Sentences',tag:'a label everywhere',sub:'Every grant reads as one line'}
+];
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+const R=w=>`<span class="r r-${w}">${w}</span>`;
+
+function frame(inner,active){
+  return `<div class="app"><nav class="side" aria-label="Sidebar (drawing)">
+    <div class="search">Search or Command ⌘K</div>
+    <div class="row"><span class="tile">FB</span>Featherbase</div>
+    <div class="grp">People</div>
+    <div class="row ${active==='people'?'on':''}"><span class="tile">Pe</span>People</div>
+    <div class="row ${active==='roles'?'on':''}"><span class="tile">BR</span>Business Roles</div>
+    <div class="row"><span class="tile">TM</span>Title Map</div>
+    <div class="grp">Places</div>
+    <div class="row ${active==='sites'?'on':''}"><span class="tile">Si</span>Sites</div>
+    <div class="row"><span class="tile">Sc</span>Sections</div>
+    <div class="grp">Recently Opened</div>
+    <div class="row"><span class="tile">Pe</span>Priya S.</div>
+    <div class="row"><span class="tile">Re</span>Vendor Sales</div>
+  </nav><main class="pagep">${inner}</main></div>`;
+}
+function pathbar(steps,cur){
+  return `<div class="pathbar"><button class="nav" aria-label="Back">‹</button><button class="nav" aria-label="Forward">›</button>
+   <div class="steps">${steps.map((s,i)=>`${i?'<span class="sep">›</span>':''}<button class="step ${i===cur?'cur':''}" data-step="${i}">${esc(s)}</button>${i===cur&&i>0?`<button class="step" data-sib aria-label="Others like ${esc(s)}">▾</button>`:''}`).join('')}${sibOpen&&steps.length>1?`<div style="position:absolute;z-index:5;margin-top:150px;margin-left:90px;background:var(--panel);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:6px;display:grid;font-size:13px;min-width:240px"><span class="eyebrow" style="padding:4px 8px">Step sideways · same role, same store</span>${['Meena R. · Floor Manager · Store C','Joseph T. · Floor Manager · Store C','Kavya N. · Floor Manager · Store C'].map(x=>`<a href="#" style="padding:6px 8px;color:var(--action);text-decoration:none;border-radius:6px">${x}</a>`).join('')}</div>`:''}</div>
+   <div class="right"><button class="pill">Copy link</button><button class="pill">Recent paths ▾</button></div></div>`;
+}
+function verdict(good,bad,who){
+  return `<div class="verdict"><div class="vcard"><h3>Best for</h3><ul>${who.map(x=>`<li>${x}</li>`).join('')}</ul></div>
+   <div class="vcard good"><h3>Strengths</h3><ul>${good.map(x=>`<li>${x}</li>`).join('')}</ul></div>
+   <div class="vcard bad"><h3>Risks</h3><ul>${bad.map(x=>`<li>${x}</li>`).join('')}</ul></div></div>`;
+}
+
+/* ---------- Lens ---------- */
+const ROLES=[
+ {n:'Floor Manager',on:true,src:'hr',meta:'Store C · First floor',from:'From HR title "Floor Manager"'},
+ {n:'Buyer',on:true,src:'hand',meta:'Kids Ethnic · Tamil Nadu · until 31-Mar-2027',from:'Also given by Arun K., 04-Nov-2026'},
+ {n:'Team Leader',on:false},{n:'Store Manager',on:false},{n:'Category Head',on:false},{n:'Head Office',on:false},{n:'Master Data Steward',on:false}
+];
+let lensOpen=null, lensWhy={}, sibOpen=false, peek=[];
+function lens(){
+  const roles=ROLES.map((r,i)=>{
+    const box=r.on?(r.src==='hr'?`<span class="box lock" title="From HR: change it with Correct">✓</span>`:`<button class="box on" data-role="${i}" aria-label="Untick ${esc(r.n)}">✓</button>`):`<button class="box" data-role="${i}" aria-label="Tick ${esc(r.n)}"></button>`;
+    let row=`<div class="li ${r.on?'':'off'}">${box}<div class="nm">${r.on?`<a href="#" data-peek="${r.n==='Buyer'?'buyer':'fm'}">${esc(r.n)}</a>`:esc(r.n)}${r.on?`<div class="meta">${esc(r.meta)}</div>`:''}</div>
+      <div>${r.on?`<span class="src ${r.src}">${r.src==='hr'?'from HR':'given by hand'}</span>`:''}${r.src==='hr'?' <button class="act">Correct</button>':''}</div>`;
+    if(lensOpen===i) row+=`<div class="inline-form">Also give <b>${esc(r.n)}</b> · Area <span class="fld">Pick on the trees ▸</span> · Ends <span class="fld">optional</span> · Reason <span class="fld">…</span> <button class="pill why-pill">Add</button> <button class="act" data-cancel>Cancel</button></div>`;
+    return row+'</div>';
+  }).join('');
+  const apps=[['Dash','Reader','Floor Manager, Buyer'],['Tasker','Manager','Floor Manager'],['Tickets','Raiser','Basic']];
+  const reps=[['Vendor Sales','Floor Manager','Store C · First floor'],['Sales · Target vs Actual','Buyer','Kids Ethnic · Tamil Nadu'],['Section Stock Ageing','Floor Manager','Store C · First floor']];
+  const derived=(key,items,fn)=>items.map((it,i)=>{const k=key+i;return `<div class="li"><span class="box lock" aria-hidden="true" title="Inherited">✓</span><div class="nm"><a href="#">${esc(it[0])}</a>${fn(it)}</div><div><span class="src role">via ${esc(it[1])}</span> <button class="act" data-why="${k}">${lensWhy[k]?'Hide why':'Why?'}</button></div>${lensWhy[k]?`<div class="whyline"><b>Priya S.</b><span class="ar">→</span>${esc(it[1].split(',')[0])} <span class="src ${it[1].startsWith('Buyer')?'hand':'hr'}">${it[1].startsWith('Buyer')?'by hand':'HR title'}</span><span class="ar">→</span><b>${esc(it[0])}</b>${it[2]?`<span class="ar">·</span>area ${esc(it[2])}`:''}</div>`:''}</div>`}).join('');
+  return frame(`${pathbar(['People','Priya S.'],1)}
+   <div class="rec-h"><span class="t">Priya S.</span><span class="s">Person · Employee · Floor Manager</span></div>
+   <div class="ctrl"><button class="tab">Form</button><button class="tab on">Links</button><button class="tab">Map</button><button class="tab">Activity</button><span class="saved">✓ Saved</span></div>
+   <div class="chips"><span class="chip"><span class="k">Employee</span><a href="#">Priya S.</a></span><span class="chip"><span class="k">Site</span><a href="#">Store C</a></span><span class="chip"><span class="k">Reports To</span><a href="#">Arun K.</a></span></div>
+   <div class="lens">
+     <div class="fields"><span class="l">HR title</span><span>Floor Manager</span><span class="l">Status</span><span>Employee</span><span class="l">Email</span><span>priya.s@example.test</span><span class="l">Joined</span><span>12-Jun-2019</span></div>
+     <div style="display:grid;gap:16px">
+       <div class="rel"><div class="rel-h"><h3>Business Roles</h3><span class="n">2 of 7</span><span class="sp"></span><button class="pill">Open as grid</button></div><div class="rel-list">${roles}</div></div>
+       <div class="rel"><div class="rel-h"><h3>Apps She Can Open</h3><span class="n">3 · worked out from her roles</span></div><div class="rel-list">${derived('a',apps,it=>`<div class="meta">at level ${esc(it[1]==='Basic'?'Raiser':it[1])}</div>`.replace(it[1],it[1]))}</div></div>
+       <div class="rel"><div class="rel-h"><h3>Reports She Sees</h3><span class="n">3 · given to her roles</span></div><div class="rel-list">${derived('r',reps,it=>`<div class="meta">${esc(it[2])}</div>`)}</div></div>
+       <div class="rel"><div class="rel-h"><h3>Pointed At By</h3></div><div class="chips"><span class="chip"><a href="#">Tasks</a><span class="k">12</span></span><span class="chip"><a href="#">Tickets</a><span class="k">3</span></span><span class="chip"><a href="#">People Reporting To Her</a><span class="k">9</span></span></div></div>
+     </div>
+   </div>${peek.length?peekHtml():''}`,'people')+
+   `<p class="foot">Try it: click "Buyer" to stack a panel over the page (Esc or ✕ closes all, ← goes back one); tick Team Leader to see the inline form; untick Buyer; click "Why?" on a report. The HR role is locked: it changes only through Correct.</p>`+
+   verdict(['It is the record panel and path bar you already have, so nothing new to learn.','Direct links tick; inherited ones say where they come from and cannot be unticked by mistake.','"Why?" answers the staff question on the spot.'],
+     ['You see one person at a time; comparing twelve roles needs the grid.','The panel grows long for someone with many links, so each section folds after ten.'],
+     ['A manager looking at one person or one section','Staff asking "why can I see this?"','Anyone ticking a person\'s roles']);
+}
+
+function peekHtml(){
+  const top=peek[peek.length-1];const n=G[top];
+  return `<div role="dialog" aria-label="${esc(n.name)}" style="position:absolute;top:12px;right:12px;bottom:12px;width:min(400px,92%);background:var(--panel);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:16px;display:grid;align-content:start;gap:12px;z-index:6">
+    <div style="display:flex;gap:6px;align-items:center"><button class="pill" data-peekback ${peek.length>1?'':'disabled style="opacity:.4"'}>←</button><span class="foot">Level ${peek.length+1} of ${peek.length+1}</span><span style="flex:1"></span><button class="pill">Open Full Page</button><button class="pill" data-peekclose aria-label="Close all">✕</button></div>
+    <div><div class="rec-h"><span class="t" style="font-size:18px">${esc(n.name)}</span></div><div class="s foot">${esc(n.kind)}</div></div>
+    ${n.right.map(g=>`<div class="rel"><div class="rel-h"><h3>${esc(g.t)}</h3><span class="n">${fmt(g.count)}</span><span class="sp"></span><button class="act">Open as list</button></div><div class="rel-list">${g.rows.slice(0,4).map(r=>`<div class="li" style="grid-template-columns:minmax(0,1fr) auto"><div class="nm">${G[r]?`<a href="#" data-peek="${r}">${esc(G[r].name)}</a>`:esc(r)}</div><div></div></div>`).join('')}${g.count>4?`<div class="foot" style="padding:2px 8px">+ ${fmt(g.count-4)} more</div>`:''}</div></div>`).join('')}
+  </div>`;
+}
+/* ---------- Map ---------- */
+let mapMode='one', mapHot=null, mapFocus='priya', mapTrail=['priya'];
+const fmt=n=>Number(n).toLocaleString('en-IN');
+const G={
+ priya:{name:'Priya S.',kind:'Person',left:[{k:'Site',to:'storec'},{k:'Reports To',to:'arun'},{k:'HR Title',to:'Floor Manager'}],
+   right:[{t:'Business Roles',count:2,rows:['fm','buyer']},{t:'Tasks',count:12,rows:['Restock first-floor racks','Fix price tags, Sarees','Plan Onam display','Count fitting-room stock']},{t:'People Reporting To Her',count:9,rows:['meena','Joseph T.','Kavya N.','Ravi P.']}]},
+ fm:{name:'Floor Manager',kind:'Business Role',left:[],
+   right:[{t:'People',count:41,rows:['priya','meena','Joseph T.','Kavya N.']},{t:'Reports Given',count:3,rows:['vs','Section Stock Ageing','Sales · Target vs Actual']},{t:'Apps',count:3,rows:['Dash · Reader','Tasker · Manager','Tickets · Raiser']}]},
+ buyer:{name:'Buyer',kind:'Business Role',left:[],
+   right:[{t:'People',count:58,rows:['priya','Lakshmi T.','Faisal M.','Deepa V.']},{t:'Reports Given',count:2,rows:['Sales · Target vs Actual','vs']},{t:'Apps',count:3,rows:['Dash · Reader','Tasker · User','Tickets · Raiser']}]},
+ storec:{name:'Store C',kind:'Site',left:[{k:'Region',to:'Kerala'},{k:'Cluster',to:'Kerala North'}],
+   right:[{t:'Sections',count:38,rows:['Sarees','Kids Ethnic','Footwear','Fancy, Lingerie & Home']},{t:'People',count:212,rows:['arun','priya','meena','Ravi P.']},{t:'Departments',count:6,rows:['Womenswear','Kidswear','Home','Grocery']}]},
+ arun:{name:'Arun K.',kind:'Person',left:[{k:'Site',to:'storec'},{k:'HR Title',to:'Assistant Manager – Operations'}],
+   right:[{t:'Business Roles',count:1,rows:['Store Manager']},{t:'People Reporting To Him',count:14,rows:['priya','meena','Joseph T.','Kavya N.']},{t:'Tickets',count:0,rows:[]}]},
+ meena:{name:'Meena R.',kind:'Person',left:[{k:'Site',to:'storec'},{k:'Reports To',to:'arun'}],
+   right:[{t:'Business Roles',count:1,rows:['fm']},{t:'Tasks',count:7,rows:['Window display','Weekly count','Staff roster','Damaged stock']}]},
+ vs:{name:'Vendor Sales',kind:'Report',left:[],
+   right:[{t:'Given To Roles',count:4,rows:['Store Manager','fm','Department Manager','Cluster Manager']},{t:'In Bundles',count:1,rows:['Store leadership pack']}]}
+};
+function mapSvg(){
+  const W=900;
+  if(mapMode==='one'){
+    const n=G[mapFocus]; const W2=900;
+    const left=n.left||[]; const right=n.right||[];
+    const rowsR=right.reduce((k,g)=>k+1+Math.min(g.rows.length,4)+(g.count>4?1:0),0);
+    const H=Math.max(left.length*62+30, rowsR*30+right.length*14+40, 200);
+    const cy=H/2-26;
+    let s=`<svg viewBox="0 0 ${W2} ${H}" width="100%" role="img" aria-label="Map of ${esc(n.name)}">`;
+    left.forEach((l,i)=>{const y=H/2-(left.length*62)/2+i*62+8;s+=`<path class="medge" d="M240 ${y+23} C 300 ${y+23}, 300 ${cy+26}, 350 ${cy+26}"/>`});
+    left.forEach((l,i)=>{const y=H/2-(left.length*62)/2+i*62+8;const go=G[l.to];
+      s+=`<g class="mnode" ${go?`data-focus="${l.to}" tabindex="0"`:''}><rect x="20" y="${y}" width="220" height="46" rx="8"/><text class="s" x="32" y="${y+18}">${esc(l.k)}</text><text class="t" x="32" y="${y+36}" ${go?'style="fill:var(--action)"':''}>${esc(go?go.name:l.to)}</text></g>`});
+    s+=`<g class="mnode centre"><rect x="350" y="${cy}" width="200" height="52" rx="8"/><text class="s" x="364" y="${cy+20}">${esc(n.kind)}</text><text class="t" x="364" y="${cy+40}">${esc(n.name)}</text></g>`;
+    let y=20;
+    right.forEach(g=>{
+      const gy=y; const shown=g.rows.slice(0,4); const more=g.count-shown.length;
+      const h=26+shown.length*28+(more>0?24:0)+6;
+      s+=`<path class="medge" d="M550 ${cy+26} C 600 ${cy+26}, 600 ${gy+13}, 640 ${gy+13}"/>`;
+      s+=`<g class="mnode cnx"><rect x="640" y="${gy}" width="240" height="${h}" rx="8" ${g.count?'':'style="opacity:.5"'}/><text class="t" x="652" y="${gy+18}">${esc(g.t)}</text><text class="c" x="868" y="${gy+18}" text-anchor="end">${fmt(g.count)}</text>${g.via?`<text class="s" x="652" y="${gy+32}"></text>`:''}</g>`;
+      shown.forEach((r,i)=>{const ry=gy+26+i*28;const go=G[r];
+        s+=`<g class="mnode" ${go?`data-focus="${r}" tabindex="0"`:''}><rect x="652" y="${ry}" width="216" height="24" rx="6" style="stroke:transparent;fill:var(--subtle)"/><text class="t" x="662" y="${ry+16}" style="font-weight:500;${go?'fill:var(--action)':''}">${esc(go?go.name:r)}</text>${go?`<text class="s" x="860" y="${ry+16}" text-anchor="end">Focus</text>`:''}</g>`});
+      if(more>0) s+=`<text class="s" x="662" y="${gy+26+shown.length*28+14}">+ ${fmt(more)} more in the panel</text>`;
+      y+=h+14;
+    });
+    return s+'</svg>';
+  }
+  // why mode: columns person → assignment(role+area) → app → permission / report
+  const cols=[
+    {x:20,h:'Person',nodes:[['Priya S.','Employee']]},
+    {x:200,h:'Business role · area',nodes:[['Floor Manager','Store C · First floor','hr'],['Buyer','Kids Ethnic · Tamil Nadu','hand']]},
+    {x:400,h:'App · level',nodes:[['Dash · Reader','both roles'],['Tasker · Manager','Floor Manager'],['Tickets · Raiser','Basic']]},
+    {x:600,h:'What she can do',nodes:[['View reports','Area'],['Give reports to team','—'],['Edit own tasks','Own'],['See team\'s tasks','Team']]},
+  ];
+  const edges=[[0,0,1,0],[0,0,1,1],[1,0,2,0],[1,1,2,0],[1,0,2,1],[0,0,2,2],[2,0,3,0],[2,1,3,2],[2,1,3,3]];
+  const rowsMax=4, H=rowsMax*62+50;
+  const y=(c,i)=>{const n=cols[c].nodes.length;return 40+(H-50-n*62)/2+i*62};
+  const hotSet=new Set();
+  if(mapHot){const [c,i]=mapHot; hotSet.add(c+'-'+i);
+    // walk back
+    let frontier=[[c,i]];while(frontier.length){const [cc,ii]=frontier.pop();edges.forEach(e=>{if(e[2]===cc&&e[3]===ii){hotSet.add(e[0]+'-'+e[1]);hotSet.add('e'+e.join());frontier.push([e[0],e[1]])}})}}
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Why map">`;
+  cols.forEach(c=>s+=`<text class="s" x="${c.x}" y="20" style="fill:var(--muted);font-size:11px;font-family:var(--f-m)">${esc(c.h.toUpperCase())}</text>`);
+  edges.forEach(e=>{const x1=cols[e[0]].x+170,y1=y(e[0],e[1])+23,x2=cols[e[2]].x,y2=y(e[2],e[3])+23;s+=`<path class="medge ${hotSet.has('e'+e.join())?'hot':''}" d="M${x1} ${y1} C ${x1+20} ${y1}, ${x2-20} ${y2}, ${x2} ${y2}"/>`});
+  cols.forEach((c,ci)=>c.nodes.forEach((n,i)=>{const yy=y(ci,i);const hot=hotSet.has(ci+'-'+i);
+    s+=`<g class="mnode ${ci===0?'centre':''} ${hot?'hot':''}" data-node="${ci}-${i}" tabindex="0"><rect x="${c.x}" y="${yy}" width="170" height="46" rx="8"/><text class="t" x="${c.x+12}" y="${yy+20}">${esc(n[0])}</text><text class="s" x="${c.x+12}" y="${yy+37}">${esc(n[2]==='hand'?n[1]+' · by hand':n[2]==='hr'?n[1]+' · HR':n[1])}</text></g>`}));
+  return s+'</svg>';
+}
+function map(){
+  const fn=G[mapFocus];
+  return frame(`${mapMode==='one'?pathbar(mapTrail.map(k=>G[k].name),mapTrail.length-1).replace(/data-step="(\d+)"/g,'data-trail="$1"'):pathbar(['People','Priya S.'],1)}
+   <div class="rec-h"><span class="t">${esc(mapMode==='one'?fn.name:'Priya S.')}</span><span class="s">${esc(mapMode==='one'?fn.kind:'Person · Employee')}</span></div>
+   <div class="ctrl"><button class="tab">Form</button><button class="tab">Links</button><button class="tab on">Map</button><button class="tab">Activity</button></div>
+   <div class="modes"><button class="pill ${mapMode==='one'?'why-pill':''}" data-mode="one">Neighbours</button><button class="pill ${mapMode==='why'?'why-pill':''}" data-mode="why">Why: her access</button></div>
+   <div class="mapwrap">${mapSvg()}</div>
+   <p class="foot">${mapMode==='why'?'Click any box on the right, for example "See team\'s tasks": the chain that gives it lights up back to Priya.':'Click any blue name to focus on it: the map re-centres and the path bar above gains a step. Real rows show inside each group (first 4, then "+ N more"); an empty group stays, greyed.'}</p>`,'people')+
+   verdict(['RB already reads it without help.','"Why" mode shows two routes to the same thing at once, which the Lens cannot.','Same boxes, same click-to-open-in-panel behaviour as today.'],
+     ['Past about 30 boxes it stops being readable, so it shows one person or one role, never a whole table.','You look here; you do not tick here. Changes happen in the Lens.'],
+     ['Explaining access to RB or a store manager','Spotting a role that gives more than intended','A training screen']);
+}
+
+/* ---------- Grid ---------- */
+const GROLES=['Staff','Team Leader','Floor Manager','Store Manager','Buyer','Category Head','Head Office','Master Data Steward'];
+const GROWS=[
+ ['Dash','Use Dash',['','Area','Area','Area','Area','Area','Area','']],
+ ['Dash','Reports · Give',['','Team','Team','Team','','Team','','']],
+ ['Tasker','Tasks · View',['Own','Team','Team','Team','Own','Team','Own','Own']],
+ ['Tasker','Tasks · Edit',['Own','Team','Team','Team','Own','Team','Own','Own']],
+ ['Master data','Sections · Edit',['','','','Area','','','','All']],
+ ['Master data','Section ↔ Subcategory · Approve',['','','','Area','','Area','','All']],
+ ['Master data','Subcategories · Edit',['','','','','','Area','','All']],
+ ['Master data','Sites · Edit',['','','','','','','','All']]
+];
+const LADDER=['','Own','Team','Area','All'];
+let gChanges={};
+const REPORTS=['Vendor Sales','Sales · Target vs Actual','Section Stock Ageing','Store P&L'];
+const RROLES=['Floor Manager','Department Manager','Store Manager','Cluster Manager','Buyer','Category Head'];
+const RGIVE={'Vendor Sales':[1,1,1,1,0,0],'Sales · Target vs Actual':[1,1,1,1,1,1],'Section Stock Ageing':[1,1,1,0,0,0],'Store P&L':[0,0,1,1,0,0]};
+let gView='perm';
+function grid(){
+  let body='';
+  if(gView==='perm'){
+    let last='';
+    body=`<table class="g"><thead><tr><th>Permission</th>${GROLES.map(r=>`<th class="rl">${esc(r)}</th>`).join('')}</tr></thead><tbody>`;
+    GROWS.forEach((row,ri)=>{if(row[0]!==last){body+=`<tr class="app"><td colspan="${GROLES.length+1}">${esc(row[0])}</td></tr>`;last=row[0]}
+      body+=`<tr><td>${esc(row[1])}</td>${row[2].map((v,ci)=>{const k=ri+'-'+ci;const val=k in gChanges?gChanges[k]:v;return `<td class="c"><button class="cell ${val?'set r-'+val:''} ${k in gChanges?'changed':''}" data-cell="${k}" aria-label="${esc(row[1])} for ${esc(GROLES[ci])}: ${val||'none'}">${val||'—'}</button></td>`}).join('')}</tr>`});
+    body+='</tbody></table>';
+  } else {
+    body=`<table class="g"><thead><tr><th>Report</th>${RROLES.map(r=>`<th class="rl">${esc(r)}</th>`).join('')}</tr></thead><tbody>`+
+     REPORTS.map(rep=>`<tr><td><a href="#" style="color:var(--action);text-decoration:none">${esc(rep)}</a></td>${RGIVE[rep].map((v,ci)=>{const k='r'+rep+ci;const on=k in gChanges?gChanges[k]:v;return `<td class="c"><button class="cell ${on?'set r-Area':''} ${k in gChanges?'changed':''}" data-tick="${esc(k)}" data-v="${on}">${on?'✓':'—'}</button></td>`}).join('')}</tr>`).join('')+'</tbody></table>';
+  }
+  const n=Object.keys(gChanges).length;
+  return frame(`${pathbar(['Business Roles','Grid'],1)}
+   <div class="rec-h"><span class="t">${gView==='perm'?'What each business role can do':'Who gets each report'}</span><span class="s">${gView==='perm'?'8 roles × 8 permissions':'4 reports × 6 roles'}</span></div>
+   <div class="swap">Rows × columns: <button class="pill ${gView==='perm'?'why-pill':''}" data-gview="perm">Permissions × Roles</button><button class="pill ${gView==='rep'?'why-pill':''}" data-gview="rep">Reports × Roles</button><span class="foot">${gView==='perm'?'Click a cell to step through — · Own · Team · Area · All':'Click to tick or untick. One grant per report covers every ticked role.'}</span></div>
+   <div class="gscroll">${body}</div>
+   ${n?`<div class="pending"><span>${n} change${n>1?'s':''} waiting</span><span class="sp"></span><span class="foot" style="color:inherit;opacity:.8">affects about ${n*120} people</span><button class="ghost" data-discard>Discard</button><button class="save">Review and save</button></div>`:''}`,'roles')+
+   verdict(['The only view that compares many roles at once.','Changes wait in a bar with their reach before anything is saved.','Replaces today\'s one-off permission matrix with the same control for any small pair.'],
+     ['One click changes access for hundreds of people, so it always goes through review.','Useless when a side is big: 8,000 people × 12 roles is never offered as a grid.'],
+     ['An app admin designing roles','RB checking who gets which report','Audits: "which roles can edit sites?"']);
+}
+
+/* ---------- Columns ---------- */
+let cSel=['Tamil Nadu','Chennai South','Store E',null], cAxis='loc';
+const LOC={'Whole company':{'Kerala':{'Kerala North':['Store A','Store B','Store C'],'Kerala South':['Store D']},'Tamil Nadu':{'Chennai South':['Store E','Store F'],'Chennai West':['Store G']}}};
+const FLOORS={'Store E':['Ground floor','First floor','Second floor']};
+const MER={'Fashion':{'Womenswear':['Women Ethnic Wear','Western Wear'],'Kidswear':['Kids Ethnic','Kids Casual']},'Home':{'Kitchen':['Cookware','Storage']}};
+function cols(){
+  let c1,c2,c3,c4,h;
+  if(cAxis==='loc'){
+    h=['Region','Cluster','Store','Floor'];
+    const regs=LOC['Whole company'];
+    c1=Object.keys(regs).map(r=>[r,Object.values(regs[r]).flat().length+' stores']);
+    c2=cSel[0]?Object.keys(regs[cSel[0]]).map(c=>[c,regs[cSel[0]][c].length+' stores']):[];
+    c3=cSel[0]&&cSel[1]?regs[cSel[0]][cSel[1]].map(s=>[s,'']):[];
+    c4=cSel[2]?(FLOORS[cSel[2]]||['Ground floor']).map(f=>[f,'']):[];
+  } else {
+    h=['Division','Subdivision','Category','Subcategories'];
+    c1=Object.keys(MER).map(d=>[d,'']);
+    c2=cSel[0]&&MER[cSel[0]]?Object.keys(MER[cSel[0]]).map(s=>[s,'']):[];
+    c3=cSel[0]&&cSel[1]&&MER[cSel[0]]?.[cSel[1]]?MER[cSel[0]][cSel[1]].map(c=>[c,'']):[];
+    c4=cSel[2]?['all subcategories in it'].map(x=>[x,'']):[];
+  }
+  const col=(i,items)=>`<div class="col"><div class="ch">${h[i]}</div>${items.map(([n,c])=>`<button class="${cSel[i]===n?'sel':''}" data-col="${i}" data-v="${esc(n)}"><span>${esc(n)}</span><span class="cnt">${esc(c)} ›</span></button>`).join('')||'<div class="foot" style="padding:10px">Pick on the left</div>'}</div>`;
+  const picked=cSel.filter(Boolean);
+  return frame(`${pathbar(['People','Priya S.','Also give Store Manager'],2)}
+   <div class="rec-h"><span class="t">Pick the area</span><span class="s">for Store Manager, given to Priya S.</span></div>
+   <div class="swap">Axis: <button class="pill ${cAxis==='loc'?'why-pill':''}" data-axis="loc">Location</button><button class="pill ${cAxis==='mer'?'why-pill':''}" data-axis="mer">Merchandise</button></div>
+   <div class="colsw"><div class="cols">${[c1,c2,c3,c4].map((it,i)=>col(i,it)).join('')}</div></div>
+   <div class="pick">Area: <b>${picked.length?esc(picked.join(' › ')):(cAxis==='loc'?'Whole company':'All merchandise')}</b><span style="flex:1"></span><button class="pill">Stop here</button><button class="pill why-pill">Use this area</button></div>`,'people')+
+   verdict(['Natural for trees: company › region › cluster › store › floor.','Stopping at any column is the answer: stop at a cluster and the area is the cluster.','The same control serves location and merchandise.'],
+     ['Shows one path at a time, so it is wrong as a general view of links.','Four columns need a wide screen; on a phone it becomes one column with a back arrow.'],
+     ['Picking an area when giving a role','Browsing the store and merchandise trees']);
+}
+
+/* ---------- Sentences ---------- */
+function sent(){
+  const S=[
+   ['Store Managers','can','Edit','Sections','Area','in their store'],
+   ['Category Heads','can','Approve','Section ↔ Subcategory changes','Area','in their category'],
+   ['Team Leaders','can','View','Tasks','Team','of people who report to them'],
+   ['Master Data Stewards','can','Edit','Sites','All','everywhere'],
+  ];
+  return frame(`${pathbar(['Business Roles','Store Manager'],1)}
+   <div class="rec-h"><span class="t">Store Manager</span><span class="s">Business role · 25 people · from HR title and by hand</span></div>
+   <div class="sent">${S.map(s=>`<div class="sline"><span class="tok role">${esc(s[0])}</span>${esc(s[1])}<span class="tok">${esc(s[2])}</span><span class="tok">${esc(s[3])}</span>${R(s[4])}<span class="foot" style="font-size:13px">${esc(s[5])}</span></div>`).join('')}
+    <div class="sline" style="background:var(--action-tint)"><span class="tok">Vendor Sales</span>is given to<span class="tok role">Store, Floor, Department and Cluster Managers</span><span class="foot" style="font-size:13px">each sees their own area</span></div></div>`,'roles')+
+   verdict(['Anyone can read it aloud and know if it is right.','Same line works in the Lens, the Grid\'s tooltip, an email and the audit log.'],
+     ['As a screen for building rules it is slow; use it as the label, not the editor.'],
+     ['Every audience, as the way a rule is shown']);
+}
+
+const RENDER={lens,map,grid,cols,sent};
+let cur='lens';
+function draw(){
+  document.getElementById('tabs').innerHTML=IDEAS.map(i=>`<button role="tab" aria-selected="${i.id===cur}" data-tab="${i.id}">${esc(i.name)}<span class="tag">${esc(i.tag)}</span></button>`).join('');
+  const idea=IDEAS.find(i=>i.id===cur);
+  document.getElementById('stage').innerHTML=`<div><h2>${esc(idea.name)}</h2><p class="lede">${esc(idea.sub)}</p></div>`+RENDER[cur]();
+  try{localStorage.setItem('idea',cur)}catch(e){}
+}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-peek],[data-peekback],[data-peekclose],[data-focus],[data-trail],[data-sib],[data-tab],[data-role],[data-cancel],[data-why],[data-mode],[data-node],[data-cell],[data-tick],[data-gview],[data-discard],[data-col],[data-axis],a[href="#"]');
+  if(!t)return;
+  if(t.matches('a[href="#"]')&&!t.dataset.peek){e.preventDefault();return}
+  if(t.dataset.peek){e.preventDefault();peek.push(t.dataset.peek)}
+  else if(t.hasAttribute('data-peekback')){peek.pop()}
+  else if(t.hasAttribute('data-peekclose')){peek=[]}
+  else if(t.dataset.focus){mapTrail=mapTrail.slice(0,mapTrail.length);mapTrail.push(t.dataset.focus);mapFocus=t.dataset.focus}
+  else if(t.dataset.trail!==undefined){const i=+t.dataset.trail;mapTrail=mapTrail.slice(0,i+1);mapFocus=mapTrail[i]}
+  else if(t.hasAttribute('data-sib')){sibOpen=!sibOpen}
+  else if(t.dataset.tab){cur=t.dataset.tab;sibOpen=false}
+  else if(t.dataset.role!==undefined){const r=ROLES[+t.dataset.role]; if(r.on){r.on=false;lensOpen=null}else{lensOpen=+t.dataset.role}}
+  else if(t.hasAttribute('data-cancel')){lensOpen=null}
+  else if(t.dataset.why){lensWhy[t.dataset.why]=!lensWhy[t.dataset.why]}
+  else if(t.dataset.mode){mapMode=t.dataset.mode;mapHot=null}
+  else if(t.dataset.node){const [c,i]=t.dataset.node.split('-').map(Number);mapHot=(mapHot&&mapHot[0]===c&&mapHot[1]===i)?null:[c,i]}
+  else if(t.dataset.cell){const [ri,ci]=t.dataset.cell.split('-').map(Number);const base=GROWS[ri][2][ci];const now=t.dataset.cell in gChanges?gChanges[t.dataset.cell]:base;const next=LADDER[(LADDER.indexOf(now)+1)%LADDER.length];if(next===base)delete gChanges[t.dataset.cell];else gChanges[t.dataset.cell]=next}
+  else if(t.dataset.tick){const k=t.dataset.tick;const rep=REPORTS.find(r=>k.startsWith('r'+r));const ci=+k.slice(('r'+rep).length);const base=RGIVE[rep][ci];const now=k in gChanges?gChanges[k]:base;const next=now?0:1;if(next===base)delete gChanges[k];else gChanges[k]=next}
+  else if(t.dataset.gview){gView=t.dataset.gview}
+  else if(t.hasAttribute('data-discard')){gChanges={}}
+  else if(t.dataset.col!==undefined){const i=+t.dataset.col;cSel[i]=t.dataset.v;for(let j=i+1;j<4;j++)cSel[j]=null}
+  else if(t.dataset.axis){cAxis=t.dataset.axis;cSel=cAxis==='loc'?['Tamil Nadu','Chennai South','Store E',null]:['Fashion','Kidswear','Kids Ethnic',null]}
+  draw();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&peek.length){peek=[];draw();return}if((e.key==='Enter'||e.key===' ')&&e.target.closest('[data-node],[data-focus]')){e.preventDefault();e.target.closest('[data-node],[data-focus]').dispatchEvent(new MouseEvent('click',{bubbles:true}))}});
+try{const s=localStorage.getItem('idea');if(s&&RENDER[s])cur=s}catch(e){}
+draw();
+</script>
