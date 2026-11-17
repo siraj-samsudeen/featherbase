@@ -83,7 +83,7 @@ describe.each(APPS)("$title's sidebar", (page) => {
     // #1248: the bar has no control for it on a wide window.
     expect(bar.queryByTestId('sidebar-collapse')).not.toBeInTheDocument()
     expect(control()).toHaveAccessibleName('Collapse sidebar')
-    expect(control().title).toMatch(/^Collapse sidebar \((⌘B|Ctrl\+B)\)$/)
+    expect(control().title).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
 
     await userEvent.click(control())
     expect(collapsed()).toBe(true)

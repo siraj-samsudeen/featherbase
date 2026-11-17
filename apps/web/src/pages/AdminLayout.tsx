@@ -41,6 +41,7 @@ import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
+import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
 
 interface SearchHit {
   table: string
@@ -236,6 +237,11 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
+  useShortcut(COMMAND_SHORTCUT_DEF) // #1251
+  useShortcut(ADMIN_HOME_SHORTCUT_DEF)
+  // G then N makes a row of the Table on screen: listed only where there is one.
+  const onTable = useRouterState({ select: (s) => s.matches.some((m) => 'table' in m.params) })
+  useShortcut(NEW_ROW_SHORTCUT_DEF, onTable)
   const commandFormRef = useRef<HTMLFormElement>(null)
   // #1253: the command bar is a box in the middle of the screen, drawn while
   // open; its input takes the focus once it is drawn.
@@ -288,6 +294,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
         setSelection(null)
         searchRef.current?.focus()
         searchRef.current?.select()
+        noteShortcutUse('command', 'key')
         return
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
@@ -302,10 +309,12 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
         leader = now
       } else if (e.key.toLowerCase() === 'd' && now - leader < 1000) {
         leader = 0
+        noteShortcutUse(ADMIN_HOME_SHORTCUT_DEF.id, 'key')
         navigate({ to: '/featherbase/admin' })
       } else if (e.key.toLowerCase() === 'n' && now - leader < 1000) {
         leader = 0
         const dt = currentTable()
+        if (dt) noteShortcutUse(NEW_ROW_SHORTCUT_DEF.id, 'key')
         if (dt) navigate({ to: '/featherbase/admin/table/$table/new', params: { table: dt }, search: { prefill: undefined } })
       } else {
         leader = 0
@@ -1062,7 +1071,7 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
             data-shortcut-key={SIDEBAR_SHORTCUT}
             aria-label={words}
             aria-keyshortcuts="Meta+B Control+B"
-            title={`${words} (${SIDEBAR_SHORTCUT})`}
+            title={`${words.replace('sidebar', 'Sidebar')} · ${SIDEBAR_SHORTCUT}`}
             className={`max-md:hidden ${collapsed ? `${RAIL_ROW} ${ROW_IDLE}` : touchRowClasses(`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm ${ROW_IDLE}`)}`}
           >
             {collapsed ? <ChevronsRight aria-hidden size={18} className="text-ink-muted" /> : <ChevronsLeft aria-hidden size={16} className="shrink-0 text-ink-muted" />}
@@ -1089,11 +1098,14 @@ function CommandField({ rail, onOpen }: { rail: boolean; onOpen: () => void }) {
   return (
     <button
       type="button"
-      onClick={onOpen}
+      onClick={(e) => {
+        noteShortcutUse(COMMAND_SHORTCUT_DEF.id, 'mouse', e.currentTarget) // #1251: counts towards the ⌘K tip
+        onOpen()
+      }}
       data-testid="command-field"
       aria-label="Search or Command"
       aria-keyshortcuts="Meta+K Control+K"
-      title={rail ? undefined : `Search or Command (${COMMAND_SHORTCUT})`}
+      {...shortcutControl(COMMAND_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF.label)}
       className={rail
         ? `${RAIL_ROW} ${ROW_IDLE} focus-visible:outline-2 focus-visible:outline-focus`
         : 'flex min-h-8 w-full min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-md bg-border/60 px-2.5 text-sm text-ink-muted hover:bg-border focus-visible:outline-2 focus-visible:outline-focus'}

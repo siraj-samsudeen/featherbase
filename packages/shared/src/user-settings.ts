@@ -11,3 +11,7 @@ export const NAVIGATION_SETTINGS = '__navigation'
  *  the table with the record sliding over its right side (Table With Panel). */
 export const LIST_LAYOUTS = ['table', 'split', 'panel'] as const
 export type ListLayout = (typeof LIST_LAYOUTS)[number]
+
+/** #1251: what the person has learnt of the keyboard shortcuts, and whether
+ *  they quieted the tips. The web writes and reads it; the server only stores it. */
+export const SHORTCUT_SETTINGS = '__shortcuts'
