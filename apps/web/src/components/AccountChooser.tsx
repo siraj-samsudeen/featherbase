@@ -78,7 +78,7 @@ export function AccountChooser({ list, onList, onSignedIn, onSignInAgain, onUseA
     try {
       onSignedIn(await browserAccounts.switchTo(account.session))
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't continue as that account. Try again.")
+      setError((err as Error).message)
       onList(await browserAccounts.list().catch(() => list))
     } finally {
       setBusy(null)
@@ -93,7 +93,7 @@ export function AccountChooser({ list, onList, onSignedIn, onSignInAgain, onUseA
       onList(next)
       if (!next.accounts.length) onUseAnother()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't remove that account. Try again.")
+      setError((err as Error).message)
     } finally {
       setBusy(null)
     }

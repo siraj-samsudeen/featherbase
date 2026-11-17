@@ -35,7 +35,7 @@ export function AccountSwitcherSection({ onDone }: { onDone: () => void }) {
       onDone()
       pageLoad.assign(user.handoff ?? (here().startsWith('/featherbase/') ? returnOrLanding(here(), user) : landingPath(user)))
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("Couldn't switch. Try again."))
+      setError((err as Error).message)
       setList(await browserAccounts.list().catch(() => list))
     } finally {
       setBusy(false)

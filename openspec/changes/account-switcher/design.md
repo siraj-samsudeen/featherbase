@@ -36,6 +36,13 @@ The switcher's routes read only the cookies, never the request's viewed person, 
 ### D9. Every tab follows the account
 `localStorage` is shared by a browser's tabs. When the signed-in account changes in one tab, every other tab reloads, so no page keeps showing one account while acting as another.
 
+### D10. An account row is a switch, not a record shown
+In the sign-in chooser and under "Switch to", each row is one button that continues as that account. The person's name inside it is plain text, not a RecordLink. A row there is a way to switch account, not a record on display, and a link inside the button would make one click do two things. (Siraj, 17-Nov-2026: an exception to "every record shown is a link".)
+
+### Deliberately not handled
+- The "signed in on the same browser as …" row (D7) is written just after a sign-in, not inside it. If that one write fails, the account still works and only that extra row is missing. The sign-in's own row and every switch's row are always written. A private window skips the list anyway. (Codex adversarial round 3; Siraj, 17-Nov-2026: set aside.)
+- No strict per-request check that the page's token is still the one it loaded with. Every tab reloads when the signed-in account changes in another tab (D9), and many pages and tests write the token directly.
+
 ```mermaid
 sequenceDiagram
   participant P as Page

@@ -327,6 +327,43 @@ describe('#1255: signing out and removing', () => {
     expect((await b.list()).accounts.map((a) => a.person)).toEqual([rb])
   })
 
+  test('a sign-out that could not be recorded says so and leaves both cookies for the retry', async ({ api }) => {
+    const { b, second } = await twoAccounts(api)
+    await b.list()
+    const before = b.jar.get('sid_accounts')?.value
+    await sql.unsafe(`create function featherbase.t1255_down() returns trigger language plpgsql as $$ begin raise exception 'down'; end $$`)
+    await sql`create trigger t1255_down before insert on featherbase.revoked_session for each row execute function featherbase.t1255_down()`
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await b.post('/api/accounts/sign_out')).status).toBe(503)
+    expect(b.sid()).toBe(second)
+    expect(b.jar.get('sid_accounts')?.value).toBe(before)
+  })
+
+  test('a removal whose View as could not be ended says so and keeps the account listed', async ({ api }) => {
+    const { b, siraj, first } = await twoAccounts(api)
+    await b.list()
+    await sql`insert into view_as_session (session_id, tester, person, expires_at) values (${await sessionOf(first)}, ${siraj}, ${siraj}, now() + interval '1 hour')`
+    await sql.unsafe(`create function featherbase.t1255_keep() returns trigger language plpgsql as $$ begin raise exception 'down'; end $$`)
+    await sql`create trigger t1255_keep before delete on featherbase.view_as_session for each row execute function featherbase.t1255_keep()`
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await b.post('/api/accounts/remove', { session: await sessionOf(first) })).status).toBe(503)
+    expect((await b.list()).accounts.map((a) => a.person)).toContain(siraj)
+  })
+
+  test('signing out continues as the account sid names, else the most recently used of several', async ({ api }) => {
+    const { b, siraj, rb } = await twoAccounts(api)
+    await b.list()
+    const third = await makePerson({ full_name: 'Third' })
+    b.signIn((await issueSession(third)).token)
+    await b.list()
+    // Switch back to RB, then sign out of RB: Third was used after Siraj, so Third is next.
+    const rbSession = (await b.list()).accounts.find((a) => a.person === rb)!.session
+    await expectStatus(await b.post('/api/accounts/switch', { session: rbSession }), 200)
+    const body = (await (await b.post('/api/accounts/sign_out')).json()) as { user?: { row_id: string } }
+    expect(body.user?.row_id).toBe(third)
+    expect((await b.list()).accounts.map((a) => a.person).sort()).toEqual([siraj, third].sort())
+  })
+
   test('removing a session the browser does not hold is refused and ends nothing', async ({ api }) => {
     const { b } = await twoAccounts(api)
     await b.list()
