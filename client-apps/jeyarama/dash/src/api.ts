@@ -59,7 +59,8 @@ export async function startViewAs(person: string): Promise<void> {
   const body = await response.json().catch(() => ({}))
   if (!response.ok) throw new ApiError(body.error?.message ?? 'Could not view as them. Try again.', response.status)
   try { window.localStorage.setItem('featherbase.view-as.changed', String(Date.now())) } catch { /* private window: this tab only */ }
-  window.location.reload()
+  // Land on Dash's home: the page you started from (Report access) may not be one they can open.
+  window.location.assign(window.location.pathname)
 }
 
 /**
