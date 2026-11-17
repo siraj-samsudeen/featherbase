@@ -113,7 +113,7 @@ describe('the Rules card (#1196)', () => {
     const x = new TicketRules(new Tickets(admin, createUser))
     await x.raised()
     const first = (await openAs(x, 'Colleague')).session
-    await first.assertText('Public progress')
+    await first.assertText('Public Progress')
     expect(screen.queryByRole('region', { name: 'Rules' })).toBeNull()
     await x.add()
     await openAs(x, 'Colleague')

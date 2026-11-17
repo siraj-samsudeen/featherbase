@@ -168,7 +168,7 @@ read it; for anyone else they SHALL be plain text.
 Given Anjali's Data Quality Issue covers 3 rows, one fixed on 07-Nov-2026
 When Anjali, Bala or Colleague opens the ticket
 Then each sees the same 3 rows, the open ones first
-And the list reads "3 rows · 1 fixed"
+And the list reads "3 records · 1 fixed"
 ```
 
 #### Scenario: A row links to its record only for someone who may read it
