@@ -12,7 +12,7 @@ import { useI18n } from '../lib/i18n'
 import { BarControls, useBarControls } from './BarControls'
 import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
-import { ViewAsBanner, ViewAsMenuEntry, ViewAsPaletteButton, ViewAsPicker, useViewAs } from './ViewAs'
+import { ViewAsBanner, ViewAsButton } from './ViewAs'
 import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
 import { listenForSidebarKeys, useSidebar } from '../lib/sidebar-collapsed'
@@ -258,7 +258,7 @@ export function TopBar({
             <>
               {beforeRight}
               {offerAdmin && !isPhone && <OpenAdminButton />}
-              <ViewAsPaletteButton compact={isPhone} />
+              <ViewAsButton compact={isPhone} />
               {!isPhone && <ThemeToggle />}
               <AccountMenu inMenu={isPhone ? { offerAdmin } : undefined} />
             </>
@@ -443,10 +443,6 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
   const navigate = useNavigate()
   const caps = useWhoAmI().data?.capabilities
   const [open, setOpen] = useState(false)
-  // #1222: the menu turns into the View as picker.
-  const [viewing, setViewing] = useState(false)
-  const viewAs = useViewAs().data
-  useEffect(() => { if (!open) setViewing(false) }, [open])
   const wrapper = useRef<HTMLDivElement>(null)
   const avatar = useRef<HTMLButtonElement>(null)
   const menuId = useId()
@@ -498,12 +494,7 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
         </span>
         <span className="sr-only">{t('Account')}: {shown}</span>
       </button>
-      {open && (viewing && viewAs ? (
-        <div id={menuId} className={cardClasses('absolute right-0 top-full z-30 mt-1 w-[min(24rem,calc(100vw-1rem))] p-2')} data-testid="account-menu-view-as" role="dialog" aria-label="View as">
-          <button type="button" onClick={() => setViewing(false)} className="mb-1 px-2 text-xs text-action hover:underline" data-testid="view-as-back">← Account</button>
-          <ViewAsPicker state={viewAs} autoFocus />
-        </div>
-      ) : (
+      {open && (
         <div id={menuId} className={cardClasses('absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden py-1')} data-testid="account-menu" role="menu" aria-label={t('Account')}>
           <div className="border-b border-border px-3 py-2 text-sm" data-testid="account-identity">
             {/* #1227: a record shown is a RecordLink — the person's own Person record, for
@@ -531,7 +522,6 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
               <ThemeToggle labelled />
             </>
           )}
-          <ViewAsMenuEntry onOpen={() => setViewing(true)} />
           <Link
             role="menuitem"
             to={ACCOUNT_SIGN_IN_METHODS_PATH}
@@ -558,7 +548,7 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
             {t('Log out')}
           </button>
         </div>
-      ))}
+      )}
     </div>
   )
 }

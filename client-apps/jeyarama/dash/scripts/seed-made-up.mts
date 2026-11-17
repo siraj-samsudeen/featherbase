@@ -242,6 +242,8 @@ await seed('sales_last_month_meta', [...new Set(month.map(m => `${m.store_code} 
 await person('access-manager@example.test', 'Made-up Access Manager', ['Report Access Manager'], false)
 // #1222: someone who tests the app by viewing as anyone, read-only, and nothing else.
 await person('view-as-tester@example.test', 'Made-up Tester', ['View As Tester'], false)
+// #1222 (E): someone who manages report access and may view as anyone: "What a person sees" offers View as.
+await person('view-as-manager@example.test', 'Made-up Access Tester', ['Report Access Manager', 'View As Tester'], false)
 // #1216: same-named people on that page. Four current Kumars are among the readers above; here a
 // Kumar who has left and someone not on the staff list, each given a report directly with one current Kumar.
 const leftKumar = await person('reader-same-left@example.test', 'Kumar')
@@ -334,6 +336,7 @@ Report access (/dash/?view=access), same password:
   access-manager@example.test          Report Access Manager: gives reports and bundles, and sees who has what
   sections-categoryhead@example.test   Team Report Manager: gives reports to her own team only, two of them named Vinod Buyer-Two (#1217)
 View as (#1222), same password:
-  view-as-tester@example.test          View As Tester: sees Dash as any of the people above, read-only`)
+  view-as-tester@example.test          View As Tester: sees Dash as any of the people above, for viewing only
+  view-as-manager@example.test         Report Access Manager and View As Tester: "What a person sees" offers View as`)
 await sql.end()
 process.exit(0)

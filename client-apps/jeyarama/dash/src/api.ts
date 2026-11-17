@@ -50,6 +50,18 @@ const platformGet = async <T>(path: string): Promise<T> => {
   return await response.json() as T
 }
 
+/** #1222: whether the signed-in person may view as someone (the platform answers for them, never for whom they view). */
+export const mayViewAs = async () => (await platformGet<{ may?: boolean }>('/api/view_as').catch(() => ({ may: false }))).may === true
+
+/** #1222: view as `person`; the page (and other tabs on this sign-in) reload to show what they see. */
+export async function startViewAs(person: string): Promise<void> {
+  const response = await fetch('/api/view_as/start', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ person }) })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new ApiError(body.error?.message ?? 'Could not view as them. Try again.', response.status)
+  try { window.localStorage.setItem('featherbase.view-as.changed', String(Date.now())) } catch { /* private window: this tab only */ }
+  window.location.reload()
+}
+
 /**
  * What the platform says about this person and this app, for the page's "no access" message:
  * whether they can manage the instance (whoami) and, if so, what instance health says the app

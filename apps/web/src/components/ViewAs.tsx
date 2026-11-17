@@ -4,13 +4,14 @@
 // would change something. Starting, switching and exiting reload the page, so
 // nothing read as one person is ever shown as another.
 //
-// Two ways to pick, behind a toggle while the owner chooses one (remembered
-// in this browser): from the avatar menu, or from a command-palette window.
+// Two ways in to the same picker (owner, 17-Nov-2026: C and B): a "View as"
+// button on the bar opens it as a dropdown, and Ctrl/⌘+Shift+K opens it as a
+// window in the middle of the page. Dash's "What a person sees" offers a third
+// (E), which starts View as directly.
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { rowHref } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
-import { Eye, History, Search, Clock, UserRoundSearch, RecordLink, Segmented, buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
+import { Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
 
 export interface ViewAsPerson {
   person: string
@@ -28,35 +29,8 @@ export interface ViewAsState {
   person_link?: boolean
 }
 
-export type PickerStyle = 'menu' | 'palette'
-const PICKER_KEY = 'featherbase.view-as.picker'
 /** On the document's root while viewing, for an app's own page to hide what would change something. */
 export const VIEWING_AS_ATTRIBUTE = 'data-featherbase-viewing-as'
-const CHOICE_EVENT = 'featherbase:view-as-choice'
-
-/** A choice kept in this browser, shared by every part of the bar. */
-function useChoice<T extends string>(key: string, fallback: T, allowed: readonly T[]): [T, (value: T) => void] {
-  const read = () => {
-    try {
-      const stored = window.localStorage.getItem(key) as T | null
-      return stored && allowed.includes(stored) ? stored : fallback
-    } catch { return fallback }
-  }
-  const [value, setValue] = useState<T>(read)
-  useEffect(() => {
-    const sync = () => setValue(read())
-    window.addEventListener(CHOICE_EVENT, sync)
-    window.addEventListener('storage', sync)
-    return () => { window.removeEventListener(CHOICE_EVENT, sync); window.removeEventListener('storage', sync) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
-  return [value, (next: T) => {
-    try { window.localStorage.setItem(key, next) } catch { /* private window: this page only */ }
-    setValue(next)
-    window.dispatchEvent(new Event(CHOICE_EVENT))
-  }]
-}
-export const usePickerStyle = () => useChoice<PickerStyle>(PICKER_KEY, 'menu', ['menu', 'palette'])
 
 /** Whether this person may view as someone, whom they view now, and their Recent and Frequently used. */
 export function useViewAs() {
@@ -105,24 +79,15 @@ async function changeView(path: string, body: unknown, onError: (message: string
   }
 }
 
+/** One person: their record (a link when the tester may open it, #1227) and the button that views as them. */
 function PersonRow({ person, onPick, linked }: { person: ViewAsPerson; onPick: (person: ViewAsPerson) => void; linked: boolean }) {
-  const line = identityLine(person)
   return (
-    <div className="flex items-start gap-1 rounded-control hover:bg-action-tint" data-testid="view-as-person">
-      <button
-        type="button"
-        onClick={() => onPick(person)}
-        aria-label={`View as ${person.name}`}
-        className="min-w-0 flex-1 rounded-control px-2 py-1.5 text-left focus-visible:outline-2 focus-visible:outline-focus max-sm:min-h-11"
-      >
-        <span className="block truncate text-sm font-medium text-ink">{person.name}</span>
-        <span className="block truncate text-xs text-ink-subtle">{line}</span>
-      </button>
-      {/* Its record, beside the choice: a link can't sit inside the button that chooses them. */}
-      {linked && (
-        <a href={rowHref('Person', person.person)} title={`Open ${person.name}'s record`} aria-label={`Open ${person.name}'s record`} data-testid="view-as-person-record"
-          className="mt-1.5 mr-1 shrink-0 rounded-control px-1.5 py-1 text-xs text-action hover:underline">Record</a>
-      )}
+    <div className="flex items-center gap-2 rounded-control px-2 py-1.5 hover:bg-action-tint" data-testid="view-as-person">
+      <span className="min-w-0 flex-1 truncate text-sm">
+        <RecordLink table="Person" rowId={person.person} name={person.name} detail={identityLine(person)} layout="two-lines" canOpen={linked} />
+      </span>
+      <button type="button" onClick={() => onPick(person)} aria-label={`View as ${person.name}`} data-testid="view-as-pick"
+        className={buttonClasses({ variant: 'secondary', className: 'shrink-0 px-2 text-xs max-sm:min-h-11' })}>View as</button>
     </div>
   )
 }
@@ -197,21 +162,7 @@ export function ViewAsPicker({ state, autoFocus = false }: {
           </>
         )}
       </div>
-      <StyleChoices minutes={state.minutes ?? 60} />
-    </div>
-  )
-}
-
-/** While the owner chooses: which picker. */
-function StyleChoices({ minutes }: { minutes: number }) {
-  const [picker, setPicker] = usePickerStyle()
-  return (
-    <div className="mt-1 flex flex-col gap-1.5 border-t border-border px-2 pt-2" data-testid="view-as-choices">
-      <p className="text-xs text-ink-subtle">For looking only: you see what they see. Ends after {minutes} minutes.</p>
-      <span className="flex items-center gap-1.5 text-xs text-ink-subtle">Picker
-        <Segmented label="Picker" value={picker} onChange={setPicker}
-          options={[{ value: 'menu', label: 'Menu' }, { value: 'palette', label: 'Palette' }]} />
-      </span>
+      <p className="mt-1 border-t border-border px-2 pt-2 text-xs text-ink-subtle">For looking only: you see what they see. Ends after {state.minutes ?? 60} minutes.</p>
     </div>
   )
 }
@@ -228,7 +179,7 @@ function useDismiss(open: boolean, close: () => void, inside: React.RefObject<HT
   }, [open, close, inside])
 }
 
-/** The banner while viewing: who, for viewing only, Switch and Exit. Always shown, whichever picker style. */
+/** The banner while viewing: who, for viewing only, Switch and Exit. */
 export function ViewAsBanner() {
   const { data, error: stateError } = useViewAs()
   useReloadOnChange(data, stateError)
@@ -278,51 +229,44 @@ export function ViewAsBanner() {
   )
 }
 
-/** Style 1: "View as…" in the avatar menu; the menu becomes the picker. */
-export function ViewAsMenuEntry({ onOpen }: { onOpen: () => void }) {
+/**
+ * C: a "View as" button on the bar opens the picker under it. B: Ctrl/⌘+Shift+K opens the same
+ * picker as a window in the middle of the page. Only someone who may view as anyone sees either.
+ */
+export function ViewAsButton({ compact }: { compact: boolean }) {
   const { data } = useViewAs()
-  const [style] = usePickerStyle()
-  if (!data?.may || style !== 'menu') return null
-  return (
-    <button role="menuitem" type="button" onClick={onOpen} data-testid="view-as-menu-item"
-      className="flex min-h-control w-full items-center gap-2 px-3 text-left text-sm text-ink hover:bg-action-tint">
-      <UserRoundSearch aria-hidden size={16} className="text-ink-subtle" />View as…
-    </button>
-  )
-}
-
-/** Style 2: a "View as" button in the bar and Ctrl/⌘+Shift+K open a palette window. */
-export function ViewAsPaletteButton({ compact }: { compact: boolean }) {
-  const { data } = useViewAs()
-  const [style] = usePickerStyle()
-  const [open, setOpen] = useState(false)
-  const card = useRef<HTMLDivElement>(null)
-  useDismiss(open, () => setOpen(false), card)
-  const active = Boolean(data?.may) && style === 'palette'
+  const [open, setOpen] = useState<'dropdown' | 'window' | null>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  useDismiss(open !== null, () => setOpen(null), panel)
+  const may = Boolean(data?.may)
   useEffect(() => {
-    if (!active) return
+    if (!may) return
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); setOpen(true) }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); setOpen('window') }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [active])
-  if (!active || !data) return null
+  }, [may])
+  if (!may || !data) return null
   return (
-    <>
-      <button type="button" onClick={() => setOpen(true)} data-testid="view-as-palette-button" title="View as (Ctrl+Shift+K)"
-        className={buttonClasses({ variant: 'secondary', className: compact ? 'size-control px-0' : 'gap-1.5' })}>
+    <div className="relative" ref={open === 'dropdown' ? panel : undefined}>
+      <button type="button" onClick={() => setOpen(open === 'dropdown' ? null : 'dropdown')} aria-expanded={open === 'dropdown'} data-testid="view-as-button"
+        title="View as someone (Ctrl+Shift+K)" className={buttonClasses({ variant: 'secondary', className: compact ? 'size-control px-0' : 'gap-1.5' })}>
         <UserRoundSearch aria-hidden size={16} />{!compact && <span>View as</span>}
-        {!compact && <kbd className="ml-1 rounded border border-border px-1 text-[10px] text-ink-subtle">⌃⇧K</kbd>}
       </button>
-      {open && (
+      {open === 'dropdown' && (
+        <div className={cardClasses('absolute right-0 top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2')} role="dialog" aria-label="View as" data-testid="view-as-dropdown">
+          <ViewAsPicker state={data} autoFocus />
+        </div>
+      )}
+      {open === 'window' && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-scrim/40 px-2 pt-[12vh]" data-testid="view-as-palette">
-          <div ref={card} role="dialog" aria-modal="true" aria-label="View as" className={cardClasses('w-[min(36rem,100%)] p-3')}>
+          <div ref={panel} role="dialog" aria-modal="true" aria-label="View as" className={cardClasses('w-[min(36rem,100%)] p-3')}>
             <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink"><UserRoundSearch aria-hidden size={16} />View as someone</h2>
             <ViewAsPicker state={data} autoFocus />
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }

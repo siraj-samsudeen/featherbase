@@ -307,7 +307,7 @@ export async function viewAsState(user: SessionUser) {
 }
 
 /** Featherbase's reads that are sent as POST (a body too large for an address), and the record of an export, which is a read's own audit row. */
-const READ_POSTS = new Set(['/api/access_request', '/api/access_log', '/api/dashboard/count', '/api/dashboard/chart', '/api/report_chart', '/api/run_script_report', '/api/row_titles', '/api/people/names', '/api/sales_target/embed_session'])
+const READ_POSTS = new Set(['/api/access_request', '/api/access_log', '/api/dashboard/count', '/api/dashboard/chart', '/api/report_chart', '/api/run_script_report', '/api/row_titles', '/api/people/names', '/api/people/actor_names', '/api/sales_target/embed_session'])
 
 /**
  * How the middleware treats a request while viewing:

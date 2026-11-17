@@ -7,7 +7,7 @@ import { ChevronDown, Plus, UserRound, X } from '@featherbase/shop-floor'
 import { iconButtonClasses, ToastProvider, useToast } from '@featherbase/shop-floor'
 import { SameForEveryone } from './pills'
 import { Button, Card, DataList, EmptyState, Field, KindTag, Notice, SearchInput, Segmented, Select, Skeleton, StatusPill, TextInput, type DataColumn } from '@featherbase/shop-floor'
-import { act, read } from './api'
+import { act, mayViewAs, read, startViewAs } from './api'
 import { DashSidebar } from './sections-page'
 import { PickerToggle, TeamNote, TeamSelect, keepPickerLayout, startPickerLayout, type PickerLayout, type TeamMember } from './team-access-page'
 import { diveIdIn, matchingDives, type DiveChoice } from './add-dive'
@@ -770,6 +770,9 @@ function PersonLookup({ team }: { team?: TeamPicking } = {}) {
   const [person, setPerson] = useState<Found | null>(null)
   const [answer, setAnswer] = useState<Lookup | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // #1222: a View As Tester can go straight to what this person sees.
+  const [canViewAs, setCanViewAs] = useState(false)
+  useEffect(() => { let live = true; void mayViewAs().then(may => { if (live) setCanViewAs(may) }); return () => { live = false } }, [])
   useEffect(() => {
     setAnswer(null)
     setError(null)
@@ -788,6 +791,9 @@ function PersonLookup({ team }: { team?: TeamPicking } = {}) {
         {error && <Notice tone="negative">{error}</Notice>}
         {answer && answer.reports.length === 0 && <p data-testid="lookup-none">{answer.name} sees no report. Nothing has been given to them, their roles or their job.</p>}
         {answer && answer.reports.length > 0 && <p className="font-semibold" data-testid="lookup-count">{answer.name} can open {answer.reports.length} report{answer.reports.length === 1 ? '' : 's'}</p>}
+        {answer && person && canViewAs && (
+          <div><Button variant="secondary" data-testid="lookup-view-as" onClick={() => void startViewAs(person.person).catch(failure => setError(messageOf(failure)))}>View as {answer.name}</Button></div>
+        )}
         {answer && answer.reports.length > 0 && (
           <ul className="flex flex-col divide-y divide-border" data-testid="lookup-reports">
             {answer.reports.map(report => (
