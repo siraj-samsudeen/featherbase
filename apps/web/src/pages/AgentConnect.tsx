@@ -21,7 +21,8 @@ interface ConnectRequest {
   remembered: boolean
 }
 
-const returnsTo = (place: string) => (place === 'loopback' ? 'your computer' : place)
+/** Where an agent returns to, in words: a program on this computer, or its https origin. */
+export const returnPlaceText = (place: string) => (place === 'loopback' ? 'your computer' : place)
 
 export function AgentConnectPage() {
   usePageTitle('Connect an agent')
@@ -75,7 +76,7 @@ export function AgentConnectPage() {
                 <p className="text-xs text-ink-subtle">The name is how the app describes itself.</p>
               </div>
               <ul className="space-y-1 text-sm text-ink">
-                <li>It will return to {returnsTo(request.data.return_place)}</li>
+                <li>It will return to {returnPlaceText(request.data.return_place)}</li>
                 <li>Signed in as {request.data.person}</li>
               </ul>
               <p className="text-sm text-ink">It will act as you, with your roles and permissions, until you disconnect it.</p>
