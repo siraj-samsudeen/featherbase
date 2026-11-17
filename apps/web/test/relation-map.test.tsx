@@ -91,6 +91,22 @@ test('a group whose rows all point to one Table reads as that Table, through the
   expect(box('Billed to')).not.toHaveTextContent('through')
 })
 
+// Codex round 1: only a link table's rows are read, to find its far side;
+// any other group needs only its count.
+test("the map reads a group's rows only for a link table", async ({ admin }) => {
+  await seedVisits(admin)
+  const fetches = vi.spyOn(globalThis, 'fetch')
+  const listed = (table: string) => fetches.mock.calls.map(([input]) => decodeURIComponent(String(input instanceof Request ? input.url : input)))
+    .filter((url) => url.includes(`/api/table/${table}?`) && url.includes('limit_page_length=500'))
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  // The positive control: the visits (a link table) are read and read through.
+  await waitFor(() => expect(screen.getAllByTestId('map-group-Rm Visit').some((g) => g.textContent?.includes('through'))).toBe(true))
+  expect(listed('Rm Visit').length).toBeGreaterThan(0)
+  await screen.findByTestId('map-group-Rm Order')
+  expect(listed('Rm Order')).toEqual([])
+  fetches.mockRestore()
+})
+
 test('the map offers no Open in Explore', async ({ admin }) => {
   await seed(admin)
   await openMap(admin, 'Rm Customer', 'cust-1')

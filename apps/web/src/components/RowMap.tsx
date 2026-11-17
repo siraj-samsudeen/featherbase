@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { linkRowsTable, metaQuery, useMeta, useTableLabels, type ColumnDef } from '../lib/meta'
 import { useConnections, type Connection } from '../lib/connections'
 import { farSide, farSideTable, groupBoxWords, groupRowFields } from '../lib/far-side'
+import { isLinkTable } from '../lib/list-view-columns'
 import { buttonClasses, cardClasses, fmtCount } from '@featherbase/shop-floor'
 import { useNavigation } from '../lib/navigation'
 import { ALL_ROWS, forwardLinks, groupKey, groupOrder, groupRowsQuery, rowNameText, useRowName } from '../lib/relations'
@@ -68,7 +69,8 @@ export function RowMap({ table, name }: { table: string; name: string }) {
       const gm = groupMetaOf(c.table)
       return {
         ...groupRowsQuery(c, { fields: gm ? groupRowFields(gm) : [], limit: ALL_ROWS, orderBy: gm ? groupOrder(gm) : undefined }),
-        enabled: Boolean(gm) && c.count > 0,
+        // Only a link table reads through; any other group needs just its count.
+        enabled: Boolean(gm && isLinkTable(gm)) && c.count > 0,
       }
     }),
   })
