@@ -13,7 +13,6 @@ import { LEAVER_CHECK_JOB, planLeaverCheck, type Leaver } from './leaver-check'
 import { describePeople } from './person-standing'
 
 export const LEAVER_SIGN_IN_JOB = 'refresh_leaver_sign_in'
-const TABLE = 'leaver_sign_in'
 /** The people app is asked about this many people at a time. */
 const BATCH = 200
 
@@ -80,9 +79,9 @@ export async function leaverSignInRows(): Promise<LeaverSignInRow[]> {
 export async function refreshLeaverSignIn(): Promise<number> {
   const rows = await leaverSignInRows()
   await withTransaction(async () => {
-    await sql`delete from ${sql(TABLE)}`
+    await sql`delete from leaver_sign_in`
     for (const r of rows)
-      await sql`insert into ${sql(TABLE)} ${sql({
+      await sql`insert into leaver_sign_in ${sql({
         row_id: createHash('sha256').update(r.person).digest('hex').slice(0, 20),
         person: r.person, why: r.why, ways_in: r.ways_in, left_on: r.left_on, source: r.source,
       })}`
