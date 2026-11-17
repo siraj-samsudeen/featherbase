@@ -113,6 +113,9 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
       if (signal?.aborted) return
       while (finished.length) yield finished.shift()!
     }
+    // The last Table can fail while the caller holds a yielded line: that is
+    // no completed search (Codex round 5).
+    if (failure) throw failure
     if (!signal?.aborted) yield { done: true }
   } finally {
     stopped = true

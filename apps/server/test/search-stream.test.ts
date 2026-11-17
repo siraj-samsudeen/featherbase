@@ -88,3 +88,20 @@ test('a client that reads the first line and leaves stops the stream', async ({ 
   await reader.cancel()
   await new Promise((done) => setTimeout(done, 100))
 })
+
+// Codex round 5: a Table that fails while the caller is still reading earlier lines ends the search as failed, never done.
+test('a Table that fails while earlier answers are being read ends the search with an error, never done', async ({ admin }) => {
+  // Searched last (by name), after the others have answered.
+  await admin.post('/api/table_def', { name: 'Zz Broken', title_column: 'note', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  const { sql } = await import('../src/db')
+  const { tableRelation } = await import('../src/table-engine')
+  await sql`alter table ${sql(await tableRelation('Zz Broken'))} rename to zz_broken_gone`
+  const { streamSearch } = await import('../src/search')
+  const events = streamSearch('a', admin.user!)
+  await events.next() // groups
+  await events.next() // a first answer; the rest, the broken one included, settle while this one is held
+  await new Promise((done) => setTimeout(done, 500))
+  const rest: unknown[] = []
+  await expect((async () => { for await (const event of events) rest.push(event) })()).rejects.toThrow()
+  expect(rest).not.toContainEqual({ done: true })
+})
