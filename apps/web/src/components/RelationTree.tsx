@@ -109,7 +109,7 @@ function linkedLine(w: Walker, id: string, table: string, row: string, ctx: Ctx)
 function rowLine(w: Walker, id: string, root: TreeRoot, ctx: Ctx, opts: RowOpts = { forward: true }): TreeNode {
   w.open.set(id, { table: root.table, row: root.row })
   // #1241: the line's Table tag by its label.
-  const node: TreeNode = { id, label: root.label, code: root.code, kind: tableLabel(root.table, w.get<TableMeta>(metaQuery(root.table))), hasChildren: true }
+  const node: TreeNode = { id, label: root.label, code: root.code, kind: tableLabel(root.table, w.get<TableMeta>(metaQuery(root.table))), hasChildren: true, record: true }
   if (!ctx.expanded.has(id)) return node
   const { children, loading } = rowChildren(w, id, root.table, root.row, ctx, opts)
   return { ...node, children, loading, hasChildren: loading || children.length > 0 }

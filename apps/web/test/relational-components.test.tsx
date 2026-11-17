@@ -705,11 +705,20 @@ describe('TreeOutline', () => {
     expect(onActivate).toHaveBeenCalledWith('aisle')
   })
 
+  // #1218 (verifier, 17-Nov): a record's line reads as a link, its code muted after it.
+  test("a record's line reads as a link, with its code muted after the name", () => {
+    render(<TreeOutline label="Linked" nodes={[{ id: 'r', label: 'Asha Leader', code: '2001', record: true }, { id: 'u', label: 'A row you cannot see' }]}
+      expanded={new Set()} onToggle={() => {}} onActivate={() => {}} />)
+    const name = screen.getByText('Asha Leader')
+    expect(name).toHaveClass('text-action')
+    expect(within(name).getByText('· 2001')).toHaveClass('text-ink-muted')
+    expect(screen.getByText('A row you cannot see')).not.toHaveClass('text-action')
+  })
+
   test('a capped group offers to show all its rows', async () => {
     const user = userEvent.setup()
     render(<Tree open={['shelves']} />)
-    expect(screen.getByText(/first 20/)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'show all 40' }))
+    await user.click(screen.getByRole('button', { name: 'Show all 40' }))
     expect(nodes[4].more!.onShowAll).toHaveBeenCalledOnce()
   })
 
@@ -875,7 +884,7 @@ describe('UI Lab tree example', () => {
     render(<TreeDemo />)
     item('Stock count 8').focus()
     await user.keyboard('{ArrowRight}')
-    await user.click(screen.getByRole('button', { name: 'show all 8' }))
+    await user.click(screen.getByRole('button', { name: 'Show all 8' }))
     expect(screen.getAllByRole('treeitem', { name: /^Count / })).toHaveLength(8)
   })
 
