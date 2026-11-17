@@ -77,8 +77,8 @@ export function AccountSwitcherSection({ onDone }: { onDone: () => void }) {
               >
                 <AccountAvatar account={account} size="size-6" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate">{account.name ?? account.sign_in_id}</span>
-                  <span className="block truncate text-xs text-ink-muted">{live ? accountWayIn(account) : account.reason_text}</span>
+                  <span className="block break-words">{account.name ?? account.sign_in_id}</span>
+                  <span className="block break-all text-xs text-ink-muted">{live ? accountWayIn(account) : account.reason_text}</span>
                 </span>
               </button>
             )

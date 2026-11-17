@@ -31,9 +31,18 @@ export function accountWayIn(account: BrowserAccount): string {
   return [account.method_label, account.sign_in_id].filter(Boolean).join(' · ')
 }
 
+// Two people can share initials (Divya Director, Deepa Department-Manager);
+// a colour fixed per person tells their avatars apart.
+const AVATAR_COLOURS = ['var(--color-series-1)', 'var(--color-series-2)', 'var(--color-series-3)', 'var(--color-series-5)', 'var(--color-action)']
+export function avatarColour(person: string): string {
+  let h = 0
+  for (const ch of person) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return AVATAR_COLOURS[h % AVATAR_COLOURS.length]
+}
+
 export function AccountAvatar({ account, size = 'size-8' }: { account: BrowserAccount; size?: string }) {
   return (
-    <span aria-hidden="true" className={`flex ${size} shrink-0 items-center justify-center rounded-full bg-action text-xs font-semibold text-action-ink`}>
+    <span aria-hidden="true" style={{ backgroundColor: avatarColour(account.person) }} className={`flex ${size} shrink-0 items-center justify-center rounded-full text-xs font-semibold text-on-scrim`}>
       {accountInitials(account)}
     </span>
   )
@@ -49,14 +58,16 @@ export function useBrowserAccounts() {
   return [list, setList] as const
 }
 
-export function AccountChooser({ list, onList, onSignedIn, onSignInAgain, onUseAnother }: {
+export function AccountChooser({ list, onList, onSignedIn, onSignInAgain, onUseAnother, startRemoving = false }: {
   list: BrowserAccounts
   onList: (list: BrowserAccounts) => void
   onSignedIn: (user: SignedIn) => void
   onSignInAgain: (account: BrowserAccount) => void
   onUseAnother: () => void
+  /** Opened to add an account when the list is full: removing comes first. */
+  startRemoving?: boolean
 }) {
-  const [removing, setRemoving] = useState(false)
+  const [removing, setRemoving] = useState(startRemoving)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const lastUsed = list.accounts.find((a) => a.state === 'live')?.session
@@ -102,15 +113,18 @@ export function AccountChooser({ list, onList, onSignedIn, onSignInAgain, onUseA
           const details = (
             <>
               <AccountAvatar account={account} />
+              {/* Name, then the way in, then when: each on its own line and
+                  wrapped, never cut off (the verifier's item 1). */}
               <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-x-2 text-sm font-semibold text-ink">
-                  <span className="truncate">{account.name ?? account.sign_in_id}</span>
+                <span className="flex items-start justify-between gap-2 text-sm font-semibold text-ink">
+                  <span className="min-w-0 break-words">{account.name ?? account.sign_in_id}</span>
                   {account.session === lastUsed && (
-                    <span className="rounded-full bg-positive-tint px-2 text-xs font-semibold text-positive">Last used</span>
+                    <span className="shrink-0 whitespace-nowrap rounded-full bg-positive-tint px-2 text-xs font-semibold text-positive">Last used</span>
                   )}
                 </span>
-                <span className="block truncate text-xs text-ink-muted">
-                  {live ? [way, lastUsedText(account.last_used)].filter(Boolean).join(' · ') : account.reason_text}
+                {way && <span className="block break-all text-xs text-ink-muted" data-testid="account-way-in">{way}</span>}
+                <span className="block break-words text-xs text-ink-muted" data-testid="account-last-used">
+                  {live ? `Used ${lastUsedText(account.last_used)}` : account.reason_text}
                 </span>
               </span>
             </>
@@ -126,7 +140,7 @@ export function AccountChooser({ list, onList, onSignedIn, onSignInAgain, onUseA
                   className="flex min-w-0 flex-1 items-center gap-3 rounded-md border border-border px-3 py-2 text-left hover:border-action hover:bg-action-tint focus-visible:outline-2 focus-visible:outline-focus"
                 >
                   {details}
-                  <span className="text-xs font-semibold text-action">Continue</span>
+                  <span aria-hidden="true" className="text-lg leading-none text-action">›</span>
                 </button>
               ) : (
                 <div className="flex min-w-0 flex-1 items-center gap-3 rounded-md border border-border px-3 py-2">

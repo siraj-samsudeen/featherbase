@@ -130,6 +130,11 @@ async function register(c: Context): Promise<{ accounts: Held[]; active: Held | 
         const room = [...others].sort((x, y) =>
           Number(states.get(y.jti)?.live) - Number(states.get(x.jti)?.live) || y.usedAt - x.usedAt)
         accounts = [active, ...room.slice(0, MAX_ACCOUNTS - 1)]
+        // D5: what no longer fits is ended, so no live session sits off the list.
+        for (const dropped of room.slice(MAX_ACCOUNTS - 1)) {
+          await endSession(dropped, 'sign_out')
+          states.delete(dropped.jti)
+        }
         for (const other of alongside)
           await sql.begin((tx) => logAccess(named_.person, 'account_added', { table: 'Person', row_id: other.person, method: 'same_browser', required: true }, tx))
         write(c, accounts)
@@ -165,7 +170,9 @@ async function describe(accounts: Held[], active: Held | null, states: Map<strin
     const kind = (m?.kind as string | undefined) ?? null
     // The ID they would type: a connected service's ID, else the address or username.
     const id = (i?.sign_in_name as string | undefined)
-      ?? (i?.email as string | undefined) ?? (p?.email as string | undefined) ?? (p?.username as string | undefined) ?? null
+      ?? (i?.email as string | undefined) ?? (p?.email as string | undefined) ?? (p?.username as string | undefined)
+      // A built-in account (Administrator) is typed by its name; never an opaque `psn_…` id.
+      ?? (a.person.startsWith('psn_') ? null : a.person)
     const state = states.get(a.jti)
     return {
       session: a.jti,

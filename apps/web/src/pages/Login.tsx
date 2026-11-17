@@ -414,8 +414,10 @@ export function LoginPage() {
         <div className={cardClasses('p-6')}>
           {!panelShowing && !useAnother && accountList === null ? (
             <p className="text-sm text-ink-muted" data-testid="accounts-loading">Loading…</p>
-          ) : !panelShowing && !useAnother && accountList?.accounts.length ? (
+          ) : !panelShowing && accountList?.accounts.length && (!useAnother || accountList.full) ? (
+            // #1255 D5: a full list is shown even to "add another", removing first.
             <AccountChooser
+              startRemoving={useAnother && accountList.full}
               list={accountList}
               onList={setAccountList}
               onSignedIn={continued}

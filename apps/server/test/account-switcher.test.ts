@@ -114,6 +114,9 @@ describe('#1255: the browser holds its signed-in accounts', () => {
     await b.list()
     b.signIn((await issueSession(rb)).token)
     const list = await b.list()
+    // A built-in account with no email or username is typed by its name.
+    b.signIn((await issueSession('Administrator')).token)
+    expect((await b.list()).accounts.find((a) => a.person === 'Administrator')).toMatchObject({ sign_in_id: 'Administrator' })
     expect(list.accounts.map((a) => [a.name, (a as unknown as { method_label: string | null }).method_label, (a as unknown as { sign_in_id: string | null }).sign_in_id]))
       .toEqual([['RB', null, 'rb.made-up@example.test'], ['Siraj StyleHR', 'StyleHR', 'EMP0412']])
   })
@@ -131,7 +134,7 @@ describe('#1255: the browser holds its signed-in accounts', () => {
     expect(list.accounts).toHaveLength(1)
   })
 
-  test('a list of five live accounts is full; a sixth sign-in pushes out the least recently used, without ending it', async ({ api }) => {
+  test('a list of five live accounts is full; a sixth sign-in pushes out the least recently used and ends it, so no live session sits off the list', async ({ api }) => {
     const b = browser(api)
     const tokens: string[] = []
     for (let i = 0; i < 5; i++) {
@@ -146,7 +149,8 @@ describe('#1255: the browser holds its signed-in accounts', () => {
     const list = await b.list()
     expect(list.accounts).toHaveLength(5)
     expect(list.accounts.map((a) => a.session)).not.toContain(await sessionOf(tokens[0]))
-    expect(await whoami(api, tokens[0])).toBe(200)
+    expect(await whoami(api, tokens[0])).toBe(401)
+    expect(await whoami(api, tokens[1])).toBe(200)
   })
 })
 
