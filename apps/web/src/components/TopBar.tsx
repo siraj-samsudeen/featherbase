@@ -14,8 +14,8 @@ import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
 import { ViewAsBanner, ViewAsMenuEntry, ViewAsPaletteButton, ViewAsPicker, useViewAs } from './ViewAs'
 import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { List, Menu, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Sun, type LucideIcon } from '@featherbase/shop-floor'
-import { SIDEBAR_SHORTCUT, listenForSidebarKeys, useSidebar } from '../lib/sidebar-collapsed'
+import { List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
+import { listenForSidebarKeys, useSidebar } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
 
@@ -289,34 +289,21 @@ function switcherAppFor(
   return name === PLATFORM_NAME ? { name: '', title: PLATFORM_NAME, href: '/' } : { name: DASH, title: name, href: home(DASH) }
 }
 
-/** #1018 / #1227: the sidebar's controls, right after the switcher on every
- *  page with a sidebar, so the way back is where the way out was. Narrower
- *  than md the sidebar is a drawer, opened from the menu button. */
+/** #1018 / #1227: narrower than md the sidebar is a drawer, opened from the
+ *  bar's menu button. #1248: from md up the sidebar collapses to a rail by its
+ *  own footer row and edge (and Ctrl/Cmd+B), so the bar has no control for it. */
 function SidebarControls({ sidebar }: { sidebar: ReturnType<typeof useSidebar> }) {
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => sidebar.setDrawerOpen(!sidebar.drawerOpen)}
-        data-testid="sidebar-toggle"
-        aria-label="Toggle menu"
-        aria-expanded={sidebar.drawerOpen}
-        className={iconButtonClasses('shrink-0 md:hidden')}
-      >
-        <Menu aria-hidden size={20} />
-      </button>
-      <button
-        type="button"
-        onClick={sidebar.toggleCollapsed}
-        data-testid="sidebar-collapse"
-        aria-label={sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        aria-keyshortcuts="Meta+B Control+B"
-        title={`${sidebar.collapsed ? 'Expand' : 'Collapse'} sidebar (${SIDEBAR_SHORTCUT})`}
-        className={iconButtonClasses('hidden shrink-0 md:inline-flex')}
-      >
-        {sidebar.collapsed ? <PanelLeftOpen aria-hidden size={20} /> : <PanelLeftClose aria-hidden size={20} />}
-      </button>
-    </>
+    <button
+      type="button"
+      onClick={() => sidebar.setDrawerOpen(!sidebar.drawerOpen)}
+      data-testid="sidebar-toggle"
+      aria-label="Toggle menu"
+      aria-expanded={sidebar.drawerOpen}
+      className={iconButtonClasses('shrink-0 md:hidden')}
+    >
+      <Menu aria-hidden size={20} />
+    </button>
   )
 }
 

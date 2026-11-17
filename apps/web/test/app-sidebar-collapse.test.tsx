@@ -1,7 +1,7 @@
 // #1227: every app's sidebar (<featherbase-sidebar>) collapses the way the
-// Admin's does (#1018, sidebar-collapse.test.tsx): the top bar's control and
-// Ctrl/Cmd+B, never while typing, remembered per person in this browser, and a
-// drawer at phone width. The bar and the sidebar are mounted the way an app's
+// Admin's does (#1018, sidebar-collapse.test.tsx): since #1248 to an icon rail,
+// by the sidebar's own control and Ctrl/Cmd+B, never while typing, remembered
+// per person in this browser, and a drawer at phone width. The bar and the sidebar are mounted the way an app's
 // served document mounts them (runtime-shell.ts, bar/main.tsx), once for each
 // app's own sidebar. Real widths and pixels are the verifier's (#1080).
 import { act, fireEvent, waitFor, within } from '@testing-library/react'
@@ -63,6 +63,8 @@ function openAppPage(as: TestClient, { app, title, label, rows }: (typeof APPS)[
 }
 
 const sidebar = () => document.querySelector('featherbase-sidebar') as HTMLElement
+/** The sidebar's own collapse control (#1248: its footer row, in its shadow). */
+const control = () => sidebar().shadowRoot!.querySelector<HTMLElement>('[data-testid=sidebar-collapse]')!
 const collapsed = () => sidebar().hasAttribute('data-collapsed')
 
 function atPhoneWidth() {
@@ -73,26 +75,28 @@ function atPhoneWidth() {
 }
 
 describe.each(APPS)("$title's sidebar", (page) => {
-  test('the bar collapses and reopens it, and says what it will do', async ({ admin }) => {
+  test("the sidebar's own control collapses it to a rail and reopens it, and says what it will do", async ({ admin }) => {
     const { bar } = openAppPage(admin, page)
-    const control = await bar.findByTestId('sidebar-collapse')
-    expect(control).toHaveAccessibleName('Collapse sidebar')
-    expect(control.title).toMatch(/^Collapse sidebar \((⌘B|Ctrl\+B)\)$/)
+    await bar.findByTestId('session-user')
+    // #1248: the bar has no control for it on a wide window.
+    expect(bar.queryByTestId('sidebar-collapse')).not.toBeInTheDocument()
+    expect(control()).toHaveAccessibleName('Collapse sidebar')
+    expect(control().title).toMatch(/^Collapse sidebar \((⌘B|Ctrl\+B)\)$/)
 
-    await userEvent.click(control)
+    await userEvent.click(control())
     expect(collapsed()).toBe(true)
-    // Hidden means out of the tab order and the accessibility tree too.
-    expect(sidebar().inert).toBe(true)
-    expect(control).toHaveAccessibleName('Expand sidebar')
+    // A rail: still in the tab order and the accessibility tree.
+    expect(sidebar().inert).toBe(false)
+    expect(control()).toHaveAccessibleName('Expand sidebar')
 
-    await userEvent.click(control)
+    await userEvent.click(control())
     expect(collapsed()).toBe(false)
     expect(sidebar().inert).toBe(false)
   })
 
   test('Ctrl+B and Cmd+B collapse and reopen it from the page', async ({ admin }) => {
     const { bar } = openAppPage(admin, page)
-    await bar.findByTestId('sidebar-collapse')
+    await bar.findByTestId('session-user')
     expect(fireEvent.keyDown(document.body, { key: 'b', ctrlKey: true })).toBe(false)
     expect(collapsed()).toBe(true)
     expect(fireEvent.keyDown(sidebar().querySelector('a')!, { key: 'b', metaKey: true })).toBe(false)
@@ -101,7 +105,7 @@ describe.each(APPS)("$title's sidebar", (page) => {
 
   test("typing in the app's own field leaves Ctrl/Cmd+B to the field", async ({ admin }) => {
     const { bar, search } = openAppPage(admin, page)
-    await bar.findByTestId('sidebar-collapse')
+    await bar.findByTestId('session-user')
     const editor = document.createElement('div')
     editor.setAttribute('contenteditable', 'true')
     const textarea = document.createElement('textarea')
@@ -117,14 +121,15 @@ describe.each(APPS)("$title's sidebar", (page) => {
 
 test("the choice is the person's own and carries from one app to the next", async ({ admin }) => {
   const first = openAppPage(admin, APPS[0])
-  await userEvent.click(await first.bar.findByTestId('sidebar-collapse'))
+  await first.bar.findByTestId('session-user')
+  await userEvent.click(control())
   expect(collapsed()).toBe(true)
   act(() => mounted?.unmount())
   document.body.replaceChildren()
 
   // A reload into another app: the same person, the same choice.
   const second = openAppPage(admin, APPS[1])
-  await second.bar.findByTestId('sidebar-collapse')
+  await second.bar.findByTestId('session-user')
   expect(collapsed()).toBe(true)
   expect(Object.keys(localStorage).filter((key) => key === `fc-sidebar-collapsed:${admin.user}`)).toHaveLength(1)
 })

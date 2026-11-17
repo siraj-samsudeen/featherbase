@@ -2240,7 +2240,8 @@
       "operations": []
     },
     {"id": "switcher_summary", "fromVersion": "0.13.17", "toVersion": "0.13.19", "operations": []},
-    {"id": "view_as", "fromVersion": "0.13.19", "toVersion": "0.13.20", "operations": []}
+    {"id": "sidebar_icon_rail", "fromVersion": "0.13.19", "toVersion": "0.13.21", "operations": []},
+    {"id": "view_as", "fromVersion": "0.13.21", "toVersion": "0.13.22", "operations": []}
   ],
   "baseTables": {
     "read": {

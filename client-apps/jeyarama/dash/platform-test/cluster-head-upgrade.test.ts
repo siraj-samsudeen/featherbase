@@ -36,7 +36,9 @@ async function previousVersion(): Promise<{ directory: string; version: string }
   // #1245's 0.13.15 changes no Table either; it comes off first.
   // #1246's 0.13.16 and 0.13.17 change no Table either; they come off first.
   // #1236's 0.13.19 changes no Table either; it comes off first.
+  // #1248's 0.13.21 changes no Table either; it comes off first.
   revertViewAs(manifest)
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'sidebar_icon_rail', toVersion: '0.13.21', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'switcher_summary', toVersion: '0.13.19', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'buyer_section_moves', toVersion: '0.13.17', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'buyer_section_desks', toVersion: '0.13.16', operations: [] })
@@ -100,7 +102,7 @@ describe("deploying the named cluster head to an instance shaped like production
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; roles: unknown[]; permissions: { grant?: { role: string } }[]; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves', 'switcher_summary', 'view_as'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves', 'switcher_summary', 'sidebar_icon_rail', 'view_as'])
       // #1222: the upgrade creates View As Tester with one grant, the read of the reports list.
       expect([plan.roles, plan.permissions.filter(p => p.grant?.role === VIEW_AS_TESTER)]).toEqual([[{ create: VIEW_AS_TESTER }],
         [{ grant: { table: 'dash.report', role: VIEW_AS_TESTER, operations: { read: '@basic' } } }]])

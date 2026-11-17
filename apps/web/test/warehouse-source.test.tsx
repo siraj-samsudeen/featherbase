@@ -412,3 +412,25 @@ test('a copied table can be refreshed automatically, paused and resumed from its
   await user.selectOptions(cadence, 'off')
   await waitFor(() => expect(schedule).toHaveTextContent('Paused · hourly'), WAIT)
 }, 60_000)
+
+// #1248: in the sidebar's rail, the sources and their databases fold into one
+// icon; its menu opens a database, the source's record, or Connect a source.
+test('collapsed to a rail, Data sources is one icon whose menu opens each place', async ({ admin }) => {
+  await connect(admin, 'web-wh-rail')
+  const { router } = await renderApp('/featherbase/admin/all-tables', admin)
+  const path = () => (router as unknown as { state: { location: { pathname: string; search: Record<string, unknown> } } }).state.location
+  const group = await screen.findByTestId('sidebar-group-sources', {}, WAIT)
+  await waitFor(() => expect(within(group).getAllByTestId('sidebar-source-database').length).toBeGreaterThan(0), WAIT)
+  await userEvent.click(screen.getByTestId('sidebar-collapse'))
+
+  const open = async (name: RegExp | string) => {
+    await userEvent.click(within(screen.getByTestId('admin-sidebar')).getByRole('button', { name: 'Data sources' }))
+    await userEvent.click(within(screen.getByRole('menu', { name: 'Data sources' })).getByRole('menuitem', { name }))
+  }
+  await open('sales')
+  await waitFor(() => expect(path().pathname).toBe('/featherbase/admin/source/web-wh-rail'), WAIT)
+  await open('web-wh-rail')
+  await waitFor(() => expect(path().pathname).toBe('/featherbase/admin/table/data-source/row/web-wh-rail'), WAIT)
+  await open('Connect a source')
+  await waitFor(() => expect(path().pathname).toBe('/featherbase/admin/table/data-source/new'), WAIT)
+})

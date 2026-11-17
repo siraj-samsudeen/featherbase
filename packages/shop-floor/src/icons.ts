@@ -15,6 +15,8 @@ export {
   ChartColumn,
   ChevronDown,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   CircleCheck,
   CircleHelp,
   CircleX,
