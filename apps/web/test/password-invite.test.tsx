@@ -11,6 +11,7 @@ import { rowHref } from 'shared'
 
 type Admin = Parameters<typeof renderApp>[1]
 const anonymous = { user: null, token: null } as never
+const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { pathname: string } } }).state.location.pathname
 
 async function openPerson(admin: Admin, user: string) {
   await renderApp(rowHref('Person', user), admin)
@@ -59,7 +60,7 @@ test('#1257: the link sets the first password, signs the person in, and works on
   await admin.post(`/api/people/${ravi.user}/password_invite`, {})
   const key = await mailedKey('link@partner.test')
 
-  const { router } = await renderApp(`/featherbase/set-password?key=${key}`, anonymous)
+  const rendered = await renderApp(`/featherbase/set-password?key=${key}`, anonymous)
   const form = await screen.findByTestId('set-password-form', {}, { timeout: 8000 })
   expect(screen.getByRole('heading', { name: 'Set your password' })).toBeInTheDocument()
   expect(within(form).getByLabelText('Email')).toHaveValue('link@partner.test')
@@ -68,7 +69,7 @@ test('#1257: the link sets the first password, signs the person in, and works on
   await userEvent.click(within(form).getByRole('button', { name: 'Set password and sign in' }))
 
   await waitFor(() => expect(getSessionUser()?.row_id).toBe(ravi.user), { timeout: 8000 })
-  await waitFor(() => expect(router.state.location.pathname).not.toBe('/featherbase/set-password'))
+  await waitFor(() => expect(pathOf(rendered)).not.toBe('/featherbase/set-password'))
   const [row] = await sql`select password_hash from person where row_id = ${ravi.user!}`
   expect(row.password_hash).not.toBeNull()
 })

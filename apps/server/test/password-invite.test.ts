@@ -3,7 +3,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { issueSession, setPasswordFromShell } from '../src/auth'
-import { _setPasswordInviteDeliveryForTests } from '../src/password-invite'
+import { _setPasswordInviteAcceptHooksForTests, _setPasswordInviteDeliveryForTests, sendPasswordInvite } from '../src/password-invite'
 import { test } from './pg-test'
 import { expectRefused, expectStatus, makePerson } from './fixtures'
 import { configureDelegated, inviteGoogleRaw, linkDelegated, setPasswordMethod } from './identity-fixtures'
@@ -226,7 +226,7 @@ describe('#1257 password invite', () => {
     const person = await newcomer('who@partner.test')
     const someone = await createUser({ email: 'clerk@x.test', roles: [] })
     await expectRefused(someone.post(`/api/people/${person}/password_invite`, {}), 403)
-    const { token } = await issueSession(admin.user, { testMode: true })
+    const { token } = await issueSession(admin.user!, { testMode: true })
     const res = await api.fetch(`/api/people/${person}/password_invite`, {
       method: 'POST', body: '{}', headers: { authorization: `Bearer ${token}` },
     })
@@ -250,5 +250,48 @@ describe('#1257 password invite', () => {
     const key = new URL(/Set your password here: (\S+)/.exec(captured)![1]).searchParams.get('key')!
     await expectRefused(post(api, '/api/password_invite/accept', { key, new_password: 'chosen-pw-1' }), 417, INVALID)
     expect((await panel(admin, person)).password_invite.latest).toMatchObject({ status: 'not_sent' })
+  })
+
+  // Codex, adversarial round 1: what lands between the burn and the password
+  // write, and between that write and the session, still counts.
+  test('a resend, email change or shell reset between using the link and the password write refuses it', async ({ admin, api }) => {
+    const cases: [string, (person: string) => Promise<unknown>][] = [
+      ['resend', (p) => sendPasswordInvite(p, 'Administrator', 'http://localhost')],
+      ['email changed', (p) => sql`update person set email = 'elsewhere@partner.test' where row_id = ${p}`],
+      ['shell reset', (p) => setPasswordFromShell(p, 'shell-pw-1')],
+    ]
+    for (const [label, change] of cases) {
+      const email = `gap-${label.replace(/ /g, '-')}@partner.test`
+      const person = await newcomer(email)
+      await send(admin, person)
+      const { key } = await linkFromMail(email)
+      _setPasswordInviteAcceptHooksForTests({ afterBurn: async () => { await change(person) } })
+      try {
+        await expectRefused(post(api, '/api/password_invite/accept', { key, new_password: 'chosen-pw-1' }), 417, INVALID)
+      } finally {
+        _setPasswordInviteAcceptHooksForTests(null)
+      }
+      const [row] = await sql`select password_hash from person where row_id = ${person}`
+      if (label !== 'shell reset') expect(row.password_hash, label).toBeNull()
+      expect(await sql`select 1 from password_invite where person = ${person} and accepted_at is not null`, label).toEqual([])
+    }
+  })
+
+  test('a shell reset between the password write and the session leaves no session', async ({ admin, api }) => {
+    const email = 'reset-race@partner.test'
+    const person = await newcomer(email)
+    await send(admin, person)
+    const { key } = await linkFromMail(email)
+    _setPasswordInviteAcceptHooksForTests({ beforeSession: async () => { await setPasswordFromShell(person, 'shell-pw-1') } })
+    try {
+      await expectRefused(post(api, '/api/password_invite/accept', { key, new_password: 'chosen-pw-1' }), 417, INVALID)
+    } finally {
+      _setPasswordInviteAcceptHooksForTests(null)
+    }
+    // The session issued before the check was revoked; the shell's password stands.
+    const [{ n }] = await sql`select count(*)::int as n from revoked_session where person_id = ${person}`
+    expect(n).toBe(1)
+    await expectStatus(await post(api, '/api/login', { usr: email, pwd: 'shell-pw-1' }), 200)
+    await expectRefused(post(api, '/api/login', { usr: email, pwd: 'chosen-pw-1' }), 401)
   })
 })

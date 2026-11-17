@@ -2,13 +2,14 @@ import { createHash, randomBytes } from 'node:crypto'
 import { config } from './config'
 import { sql, type TxSql } from './db'
 import { AppError } from './errors'
-import { setUserPassword } from './auth'
+import { revokeSession, setUserPassword, type IssuedSession } from './auth'
 import { logActivity } from './audit'
 import { deliverEmail, type MailMessage } from './email'
 import { emailOrigin } from './instance-addresses'
 import { getSystemSettings } from './settings'
 import { isReservedEmail, methodOfKind } from './identities'
 import { MIN_PASSWORD_LENGTH } from './password-reset'
+import { completeSignIn } from './sign-in'
 
 // #1257: a password invite. A System Manager sends a person who has no way to
 // sign in a one-time link; opening it sets their first password, and the
@@ -30,6 +31,15 @@ let deliver: (msg: MailMessage) => Promise<void> = deliverEmail
 /** Test-only: replace the transport (null restores it). */
 export function _setPasswordInviteDeliveryForTests(fn: ((msg: MailMessage) => Promise<void>) | null): void {
   deliver = fn ?? deliverEmail
+}
+
+/** Test-only seams inside the two gaps of an acceptance: after the link is
+ *  burned and before the password write, and after that write and before the
+ *  session is issued. */
+interface AcceptHooks { afterBurn?: () => Promise<void>; beforeSession?: () => Promise<void> }
+let acceptHooks: AcceptHooks = {}
+export function _setPasswordInviteAcceptHooksForTests(h: AcceptHooks | null): void {
+  acceptHooks = h ?? {}
 }
 
 export type InviteStatus = 'sending' | 'pending' | 'expired' | 'accepted' | 'voided' | 'not_sent'
@@ -120,21 +130,24 @@ export async function sendPasswordInvite(person: string, actor: string, requestO
     const t = tx as unknown as TxSql
     // The person's row lock orders this against a concurrent send, accept,
     // email change or password write.
-    await t`select 1 from person where row_id = ${person} for update`
+    const [p] = await t`select email, full_name from person where row_id = ${person} for update`
     const why = await whyNot(person, t)
     if (why) throw new AppError('ValidationError', why)
-    await t`update password_invite set voided_at = now() where person = ${person} and used_at is null and voided_at is null`
+    // Every earlier link not yet accepted, a used one still on its way to the
+    // password write included: that write refuses a voided link.
+    await t`update password_invite set voided_at = now() where person = ${person} and accepted_at is null and voided_at is null`
+    const email = String(p.email).trim()
     const [row] = await t`insert into password_invite ${sql({
       id: 'pwi_' + randomBytes(9).toString('hex'),
       person,
       token_hash: fingerprint(key),
       invited_by: actor,
+      email,
       // The clock, not the transaction's start: the newest invite is the latest.
       created_at: new Date(),
       expires_at: new Date(Date.now() + INVITE_TTL_MS),
     })} returning *`
-    const [p] = await t`select email, full_name from person where row_id = ${person}`
-    return { row, email: String(p.email).trim(), name: typeof p.full_name === 'string' ? p.full_name.trim() : '' }
+    return { row, email, name: typeof p.full_name === 'string' ? p.full_name.trim() : '' }
   })
 
   const settings = await getSystemSettings()
@@ -166,7 +179,7 @@ export async function sendPasswordInvite(person: string, actor: string, requestO
     const code = failureCode(err)
     // The failure class only, never the address.
     console.error(JSON.stringify({ level: 'error', event: 'mail_delivery_failed', purpose: 'password_invite', code }))
-    await sql`update password_invite set voided_at = now() where id = ${invite.row.id as string} and used_at is null and voided_at is null`
+    await sql`update password_invite set voided_at = now() where id = ${invite.row.id as string} and accepted_at is null and voided_at is null`
     throw new AppError('ServiceUnavailableError', `The invite email was not sent (${code})`)
   }
   const [sent] = await sql`update password_invite set sent_at = now() where id = ${invite.row.id as string} returning *`
@@ -181,22 +194,32 @@ export async function checkPasswordInvite(key: string): Promise<{ email: string;
   const [row] = await sql`
     select i.person, i.expires_at, p.email from password_invite i join person p on p.row_id = i.person
     where i.token_hash = ${fingerprint(key)} and i.used_at is null and i.voided_at is null
-      and i.sent_at is not null and i.expires_at > now()`
+      and i.sent_at is not null and i.expires_at > now()
+      and lower(trim(coalesce(p.email, ''))) = lower(i.email)`
   if (!row || (await whyNot(row.person as string))) throw new AppError('ValidationError', INVALID_INVITE)
   return { email: String(row.email).trim(), expires_at: iso(row.expires_at)! }
 }
 
+/** What an acceptance left on the person: the session issued after it must
+ *  find both unchanged, or nothing changed them in between. */
+interface Accepted { person: string; passwordHash: string; sessionsEndedAt: string | null }
+
 /**
- * Use a link: set the person's first password. Returns the person, whom the
- * route then signs in.
+ * Use a link: set the person's first password.
  *
  * Burn-on-use, as password reset: the link is spent in its own committed
  * transaction before the password write, so a write that is then refused
  * never gives the link back. Its conditions sit in the locking query's WHERE,
  * so a concurrent use re-reads the spent row under READ COMMITTED and finds
  * nothing.
+ *
+ * Between the burn and the write, a resend, an email change or a shell reset
+ * can still void the link (Codex, #1257): each voids every link not yet
+ * accepted and takes the person's row lock, which the write takes too. So,
+ * under that lock, the write refuses a voided link and one whose address is
+ * no longer the person's.
  */
-export async function acceptPasswordInvite(key: string, newPassword: string): Promise<string> {
+async function acceptPasswordInvite(key: string, newPassword: string): Promise<Accepted> {
   if (!key) throw new AppError('ValidationError', INVALID_INVITE)
   if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH)
     throw new AppError('ValidationError', `Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
@@ -212,20 +235,55 @@ export async function acceptPasswordInvite(key: string, newPassword: string): Pr
     await t`update password_invite set used_at = now() where id = ${row.id as string}`
     return { id: row.id as string, person: row.person as string, issuedAt: new Date(row.created_at as string) }
   })
+  await acceptHooks.afterBurn?.()
 
-  // Under the person's row lock: still someone with no way in (no password,
-  // no other method, enabled, an address), and nothing ended their sessions
-  // after the link was made (a shell reset takes the same lock).
-  await sql.begin(async (tx) => {
+  // Under the person's row lock: the link was not voided since, still went to
+  // the person's address, and the person still has no way in (no password,
+  // no other method, enabled), with nothing ending their sessions after the
+  // link was made.
+  const accepted = await sql.begin(async (tx) => {
     const t = tx as unknown as TxSql
-    const [p] = await t`select sessions_ended_at from person where row_id = ${used.person} for update`
+    const [p] = await t`select email, sessions_ended_at from person where row_id = ${used.person} for update`
     if (!p) throw new AppError('ValidationError', INVALID_INVITE)
+    const [invite] = await t`select email, voided_at from password_invite where id = ${used.id}`
+    if (!invite || invite.voided_at) throw new AppError('ValidationError', INVALID_INVITE)
+    const current = typeof p.email === 'string' ? p.email.trim().toLowerCase() : ''
+    if (current !== String(invite.email).toLowerCase()) throw new AppError('ValidationError', INVALID_INVITE)
     if (p.sessions_ended_at && new Date(p.sessions_ended_at as string) > used.issuedAt)
       throw new AppError('ValidationError', INVALID_INVITE)
     if (await whyNot(used.person, t)) throw new AppError('ValidationError', INVALID_INVITE)
     await setUserPassword(used.person, newPassword, t)
     await t`update password_invite set accepted_at = now() where id = ${used.id}`
+    const [after] = await t`select password_hash, sessions_ended_at::text as ended from person where row_id = ${used.person}`
+    return { person: used.person, passwordHash: after.password_hash as string, sessionsEndedAt: (after.ended as string | null) ?? null }
   })
   await logActivity(used.person, 'password_invite_accepted')
-  return used.person
+  return accepted
+}
+
+/**
+ * Use a link and sign the person in. The session is issued after the
+ * password write, so a shell reset (or any password change or ended
+ * sessions) that lands in between would otherwise leave a session the reset
+ * did not end (Codex, #1257). Once issued, under the person's row lock, the
+ * password and the sessions cut-off must still be what the acceptance left;
+ * if not, the session is revoked and the link answers as spent.
+ */
+export async function signInWithPasswordInvite(key: string, newPassword: string, ipAddress: string | null): Promise<IssuedSession> {
+  const accepted = await acceptPasswordInvite(key, newPassword)
+  await acceptHooks.beforeSession?.()
+  const method = await methodOfKind('password')
+  if (!method) throw new AppError('ValidationError', INVALID_INVITE)
+  const issued = await completeSignIn(method, { status: 'verified' }, { user: accepted.person, identity: null }, { ipAddress })
+  const unchanged = await sql.begin(async (tx) => {
+    const t = tx as unknown as TxSql
+    const [p] = await t`select password_hash, sessions_ended_at::text as ended from person where row_id = ${accepted.person} for update`
+    return Boolean(p) && p.password_hash === accepted.passwordHash && ((p.ended as string | null) ?? null) === accepted.sessionsEndedAt
+  })
+  if (!unchanged) {
+    const s = issued.user.sign_in!
+    await revokeSession({ jti: s.session_id, person: accepted.person, expiresAt: s.expires_at })
+    throw new AppError('ValidationError', INVALID_INVITE)
+  }
+  return issued
 }

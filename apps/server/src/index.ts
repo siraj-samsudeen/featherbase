@@ -67,7 +67,7 @@ import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { MIN_PASSWORD_LENGTH, requestPasswordReset, resetPassword } from './password-reset'
-import { acceptPasswordInvite, checkPasswordInvite } from './password-invite'
+import { checkPasswordInvite, signInWithPasswordInvite } from './password-invite'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
@@ -371,13 +371,11 @@ app.post('/api/password_invite/check', async (c) => {
 })
 
 // Setting the first password signs the person in, through the same tail as
-// every other sign-in (sign-in.ts).
+// every other sign-in (sign-in.ts); password-invite.ts says why it re-checks.
 app.post('/api/password_invite/accept', publicLimit('LOGIN'), async (c) => {
   const { key, new_password } = (await c.req.json().catch(() => ({}))) as { key?: unknown; new_password?: unknown }
-  const person = await acceptPasswordInvite(typeof key === 'string' ? key : '', typeof new_password === 'string' ? new_password : '')
-  const method = await methodOfKind('password')
-  if (!method) throw new AppError('AuthenticationError', 'Password sign-in is turned off')
-  const issued = await completeSignIn(method, { status: 'verified' }, { user: person, identity: null }, { ipAddress: clientAddress(c) })
+  const issued = await signInWithPasswordInvite(
+    typeof key === 'string' ? key : '', typeof new_password === 'string' ? new_password : '', clientAddress(c))
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.json(await withLanding(c, session))
