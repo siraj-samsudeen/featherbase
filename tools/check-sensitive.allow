@@ -44,3 +44,9 @@ resetme@jeyarama.com
 set@jeyarama.com
 someone@jeyarama.com
 two@jeyarama.com
+
+# Tails of made-up Microsoft tenant and object ids (GUIDs) in the Microsoft sign-in
+# tests, whose last 12 digits happen to pass Verhoeff.
+666666666666
+333333333333
+666677778888
