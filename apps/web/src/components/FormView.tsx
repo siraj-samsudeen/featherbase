@@ -485,7 +485,7 @@ export function FormView({
   for (const f of m.columns) {
     if (f.column_type === 'Section Break') sections.push([])
     // #1267: a saved Person's Sign-In lines own its "expects … sign-in" switches.
-    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name)) && !(personPage && f.column_name === 'external_label' && standing.data?.status !== 'none'))
+    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name)) && !(table === 'Person' && f.column_name === 'external_label' && (isNew || standing.data?.status !== 'none')))
       sections[sections.length - 1].push(f)
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
@@ -1036,7 +1036,9 @@ export function FormView({
       {changeRecord && <ChangeRecord values={values} />}
       <RawDetails data-testid={reading || changeRecord ? 'raw-details' : undefined}>
       {(reading || changeRecord) && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t(changeRecord ? 'Raw JSON' : 'Raw details')}</summary>}
-      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea}
+      {/* #1267: a new record's fields are locked while its first save is on the way; an edit made
+          then would be lost when the page becomes the record. A failed save unlocks them, as typed. */}
+      {isNew ? <fieldset disabled={saving} aria-busy={saving} className="m-0 min-w-0 border-0 p-0" data-testid="new-record-fields">{work}</fieldset> : <ContentTabs label="Record workspace" value={area} onChange={setArea}
         actions={<>
           {/* #1267: one save state for the record, with the time in its tooltip. */}
           <SaveState dirty={dirty} savedHere={banner === 'Saved'} savedAt={savedAt}
