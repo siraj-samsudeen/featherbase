@@ -5,7 +5,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { DAY_MS, SHORTCUT_SETTINGS } from 'shared'
 import { api, setSession } from '../src/lib/api'
-import { SIDEBAR_SHORTCUT_DEF, TIP_MS, addShortcut, noteShortcutUse, quietTips, useShortcutState, useShortcutTeaching } from '../src/lib/shortcuts'
+import { SIDEBAR_SHORTCUT_DEF, TIP_MS, addShortcut, flushShortcutLearning, noteShortcutUse, quietTips, resetTips, useShortcutState, useShortcutTeaching } from '../src/lib/shortcuts'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, expect } from './pg-test'
 
@@ -145,4 +145,44 @@ test('a signed-out page loads no learning and counts nothing', () => {
   act(() => noteShortcutUse('sidebar', 'key'))
   expect(page.result.current.learning.use.sidebar).toBeUndefined()
   page.unmount()
+})
+
+test('a reset made before the learning arrives is not undone by it', async ({ admin }) => {
+  setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
+  await admin.put(`/api/user_settings/${SHORTCUT_SETTINGS}`, { use: { sidebar: { keys: 4, mouse: 0, shown: 0, lastKey: Date.now() } }, quietUntil: 0, quiets: 0, lastTip: 0 })
+  const page = renderHook(() => {
+    useShortcutTeaching()
+    return useShortcutState()
+  })
+  act(() => resetTips()) // before the read answers
+  await waitFor(async () => {
+    const stored = await admin.get<{ settings: { use?: { sidebar?: unknown } } | null }>(`/api/user_settings/${SHORTCUT_SETTINGS}`)
+    expect(stored.settings?.use?.sidebar).toBeUndefined()
+  })
+  expect(page.result.current.learning.use.sidebar).toBeUndefined()
+  page.unmount()
+})
+
+test('uses made just before leaving, while the learning is still arriving, are saved', async ({ admin }) => {
+  setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
+  await admin.put(`/api/user_settings/${SHORTCUT_SETTINGS}`, { use: {}, quietUntil: 0, quiets: 0, lastTip: 0 })
+  const page = renderHook(() => useShortcutTeaching())
+  noteShortcutUse('sidebar', 'key')
+  page.unmount() // the page closes before the read answers
+  await waitFor(async () => {
+    const stored = await admin.get<{ settings: { use?: { sidebar?: { keys: number } } } | null }>(`/api/user_settings/${SHORTCUT_SETTINGS}`)
+    expect(stored.settings?.use?.sidebar?.keys).toBe(1)
+  })
+})
+
+test('signing out before the learning arrives saves nothing for anyone', async ({ admin }) => {
+  setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
+  await admin.put(`/api/user_settings/${SHORTCUT_SETTINGS}`, { use: {}, quietUntil: 0, quiets: 0, lastTip: 0 })
+  const page = renderHook(() => useShortcutTeaching())
+  noteShortcutUse('sidebar', 'key')
+  localStorage.clear() // signed out
+  page.unmount()
+  await flushShortcutLearning()
+  const stored = await admin.get<{ settings: { use?: { sidebar?: unknown } } | null }>(`/api/user_settings/${SHORTCUT_SETTINGS}`)
+  expect(stored.settings?.use?.sidebar).toBeUndefined()
 })
