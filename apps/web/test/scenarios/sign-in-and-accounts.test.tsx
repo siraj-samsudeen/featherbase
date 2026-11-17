@@ -38,7 +38,7 @@ describe('sign-in-and-accounts', () => {
       await session.within(byTestId(row), (google) => google.assertText('Google'))
     })
     await step("the Google sign-in leads with the person's address", () =>
-      session.within(`${byTestId(row)} ${byTestId('identity-head')}`, (head) => head.assertExactText(`Google · ${address}`)))
+      session.within(`${byTestId(row)} ${byTestId('identity-head')}`, (head) => head.assertExactText(`On · signs in as ${address}`)))
     await step('it says it was linked at first sign-in, and when it was last used', () => {
       // A pattern over the dates: the DSL's text verbs match literal text only.
       expect(within(screen.getByTestId(row)).getByTestId('identity-linked').textContent).toMatch(
