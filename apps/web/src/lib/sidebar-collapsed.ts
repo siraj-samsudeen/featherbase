@@ -136,6 +136,31 @@ export function useSidebarSlots(): SidebarSlots | undefined {
   return useSyncExternalStore(subscribe, snapshot, snapshot)
 }
 
+/** #1253 (Siraj, 17-Nov): an app's declared pickers (Dash's Store and Month)
+ *  sit inside the white page panel, at its top and right-aligned, never on the
+ *  canvas above it. The panel offers this slot; the shared bar draws into it. */
+let pickerSlot: HTMLElement | undefined
+const pickerListeners = new Set<() => void>()
+
+export function offerPickerSlot(next: HTMLElement): () => void {
+  pickerSlot = next
+  for (const listener of pickerListeners) listener()
+  return () => {
+    if (pickerSlot !== next) return
+    pickerSlot = undefined
+    for (const listener of pickerListeners) listener()
+  }
+}
+
+export function usePickerSlot(): HTMLElement | undefined {
+  const subscribe = (listener: () => void) => {
+    pickerListeners.add(listener)
+    return () => pickerListeners.delete(listener)
+  }
+  const snapshot = () => pickerSlot
+  return useSyncExternalStore(subscribe, snapshot, snapshot)
+}
+
 /** The page has a sidebar for as long as the calling component is mounted. */
 export function useRegisterSidebar(user: string | undefined): void {
   useEffect(() => registerSidebar(user), [user])

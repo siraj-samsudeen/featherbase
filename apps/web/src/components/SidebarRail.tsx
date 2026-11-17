@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { cardClasses, cx, type LucideIcon } from '@featherbase/shop-floor'
-import { railMenuPlace } from '../lib/sidebar-rail'
+import { railMark, railMenuPlace } from '../lib/sidebar-rail'
 
 // #1248: the Admin sidebar's icon rail. Whether the sidebar is collapsed (md+)
 // reaches each group here, and each draws its own rail form: icons in 40px
@@ -28,12 +28,32 @@ export const GROUP_TONE = {
 } as const
 export type GroupTone = keyof typeof GROUP_TONE
 
-/** A group's heading in the rail: a short rule, the heading kept for screen readers. */
+/** The hues a table's tile is drawn in, in the order its name's hash picks them. */
+const TILE_TONES: GroupTone[] = ['blue', 'teal', 'rose', 'amber', 'violet', 'green', 'indigo']
+
+/** #1253 (Siraj's style A, 17-Nov): a table's own colour, like an avatar's:
+ *  a stable hash of its name, so Role always looks the same and Department
+ *  always looks different from it. */
+export function tableTone(name: string): GroupTone {
+  const hash = [...name].reduce((sum, ch) => (sum * 31 + ch.charCodeAt(0)) >>> 0, 7)
+  return TILE_TONES[hash % TILE_TONES.length]
+}
+
+/** A 22px tile with a table's initials, tinted in its own colour. */
+export function TableTile({ name }: { name: string }) {
+  return (
+    <span aria-hidden data-testid="table-tile" className={cx('grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-current/15 text-xs font-bold leading-none', GROUP_TONE[tableTone(name)])}>
+      {railMark(name)}
+    </span>
+  )
+}
+
+/** A group's heading in the rail: a gap, no line (#1253, minimal lines); the heading kept for screen readers. */
 export function RailRule({ heading }: { heading: string }) {
   return (
     <>
       <h2 className="sr-only">{heading}</h2>
-      <div aria-hidden className="mx-3 my-2 h-px bg-border/70" data-testid="sidebar-rail-rule" />
+      <div aria-hidden className="h-4" data-testid="sidebar-rail-rule" />
     </>
   )
 }

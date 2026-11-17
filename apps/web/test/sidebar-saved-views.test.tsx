@@ -31,7 +31,8 @@ test("a person's own saved view is in the sidebar and opens its list with the vi
   await admin.post('/api/saved_views', { table: DEPT, label: 'ATK Departments', filters: [ATK], shared: true })
   await renderApp('/featherbase/admin', admin)
   const row = await within(await group()).findByRole('link', { name: /ATK Departments/ }, T)
-  expect(row).toHaveTextContent(DEPT)
+  // #1253 (style A): one line; the view's table is in its tooltip.
+  expect(row.getAttribute('title')).toContain(DEPT)
 
   await userEvent.click(row)
   // The Department list, with the view's one filter on.
@@ -71,7 +72,7 @@ test("starring someone else's shared view on the list puts it in the sidebar, an
   expect(screen.queryByTestId('sidebar-saved-views')).not.toBeInTheDocument()
 
   await userEvent.click(star)
-  expect(await within(await group()).findByRole('link', { name: /ATK Departments/ }, T)).toHaveTextContent('shared')
+  expect((await within(await group()).findByRole('link', { name: /ATK Departments/ }, T)).getAttribute('title')).toContain('Shared with you')
   expect(star).toHaveAccessibleName('Remove ATK Departments from the sidebar')
 
   await userEvent.click(star)
