@@ -1,10 +1,14 @@
 // #1257: a System Manager sends a person with no way in a "Set your password"
 // link from the Person's sign-in panel; the link's page sets the password and
 // signs them in.
+import { afterEach, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { setUserPassword } from 'server/src/auth'
+import { config } from 'server/src/config'
+import { parseInstanceAddresses } from 'server/src/instance-addresses'
+import { VIEWER_ROLE } from 'server/src/sales-target'
 import { getSessionUser } from '../src/lib/api'
 import { test, expect, renderApp } from './pg-test'
 import { rowHref } from 'shared'
@@ -12,6 +16,26 @@ import { rowHref } from 'shared'
 type Admin = Parameters<typeof renderApp>[1]
 const anonymous = { user: null, token: null } as never
 const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { pathname: string } } }).state.location.pathname
+
+afterEach(() => {
+  config.instanceAddresses = null
+  vi.restoreAllMocks()
+})
+
+async function openSetPassword(admin: Admin, email: string) {
+  const [{ row_id }] = await sql`select row_id from person where email = ${email}`
+  await admin.post(`/api/people/${row_id}/password_invite`, {})
+  const key = await mailedKey(email)
+  const rendered = await renderApp(`/featherbase/set-password?key=${key}`, anonymous)
+  const form = await screen.findByTestId('set-password-form', {}, { timeout: 8000 })
+  return { rendered, form, key }
+}
+
+async function choose(form: HTMLElement, pw: string, confirm = pw) {
+  await userEvent.type(within(form).getByLabelText('New password'), pw)
+  await userEvent.type(within(form).getByLabelText('Confirm password'), confirm)
+  await userEvent.click(within(form).getByRole('button', { name: 'Set password and sign in' }))
+}
 
 async function openPerson(admin: Admin, user: string) {
   await renderApp(rowHref('Person', user), admin)
@@ -109,4 +133,36 @@ test('#1257: the notice from a send does not outlive the address it names', asyn
   await userEvent.click(screen.getByRole('button', { name: 'Save' }))
   await waitFor(() => expect(within(panel).getByTestId('password-invite')).toHaveTextContent('cancelled'), { timeout: 8000 })
   expect(within(panel).queryByTestId('user-method-notice')).not.toBeInTheDocument()
+})
+
+test('#1257: mismatched passwords are caught on the page, and a refused password reads plainly', async ({ admin, createUser }) => {
+  await createUser({ email: 'typo@partner.test' })
+  const { form } = await openSetPassword(admin, 'typo@partner.test')
+  await choose(form, 'chosen-pw-1', 'chosen-pw-2')
+  expect(await within(form).findByTestId('set-password-error')).toHaveTextContent('Passwords do not match')
+  await userEvent.clear(within(form).getByLabelText('New password'))
+  await userEvent.clear(within(form).getByLabelText('Confirm password'))
+  await choose(form, 'abc')
+  await waitFor(() => expect(within(form).getByTestId('set-password-error')).toHaveTextContent('Password must be at least 6 characters'))
+  const [row] = await sql`select password_hash from person where email = 'typo@partner.test'`
+  expect(row.password_hash).toBeNull()
+})
+
+test('#1257: someone who belongs on another address is handed off there once the password is set', async ({ admin, createUser }) => {
+  config.instanceAddresses = parseInstanceAddresses(
+    JSON.stringify([
+      { address: 'http://localhost', opens: 'admin', emails: true },
+      { address: 'http://dash.example.test', opens: 'dash' },
+    ]),
+    'test',
+  )
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
+  await createUser({ email: 'handoff.invite@partner.test', roles: [VIEWER_ROLE] })
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const navigations = () => errors.mock.calls.filter((c) => /Not implemented: navigation/.test(String(c[0]?.message ?? c[0])))
+  const { rendered, form } = await openSetPassword(admin, 'handoff.invite@partner.test')
+  await choose(form, 'chosen-pw-1')
+  await waitFor(() => expect(navigations()).toHaveLength(1), { timeout: 8000 })
+  // Nothing on this address took them anywhere: the hand-off is the way on.
+  expect(pathOf(rendered)).toBe('/featherbase/set-password')
 })
