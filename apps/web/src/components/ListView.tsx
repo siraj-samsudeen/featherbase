@@ -422,6 +422,14 @@ export function ListView({
       ? line.querySelector<HTMLElement>('button')
       : line)?.focus({ preventScroll: true })
   }, [panelled, paneRow, layout])
+  // #1259 (one-app-chrome): the panel over the table starts under its column
+  // names, so they stay in sight.
+  const [headRow, setHeadRow] = useState(0)
+  const panelShown = Boolean(recordPanel) && layout !== 'split'
+  useLayoutEffect(() => {
+    if (!panelShown) return
+    setHeadRow(tableScroll?.querySelector('thead')?.getBoundingClientRect().height ?? 0)
+  }, [panelShown, tableScroll, rows.length])
 
   if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
   // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
@@ -1159,7 +1167,7 @@ export function ListView({
       {/* #1259: Table With Panel: the record slides over the table's right side, under its header. */}
       {/* A record the address opens shows here in the Table view too (a pasted link). */}
       {(layout === 'panel' || layout === 'table') && recordPanel && (
-        <div className="absolute inset-y-0 right-0 z-[3] w-[min(430px,100%)]" data-testid="record-panel-over">{recordPanel}</div>
+        <div className="absolute bottom-0 right-0 z-[3] w-[min(430px,100%)]" style={{ top: headRow }} data-testid="record-panel-over">{recordPanel}</div>
       )}
       <div className={cardClasses('featherbase-scroll overflow-auto')} ref={setTableScroll} data-testid="list-table-scroll">
         {/* Separate borders: a collapsed one stays behind when its sticky cell scrolls. */}

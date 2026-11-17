@@ -36,11 +36,12 @@ test("selecting a row shows it in the pane, named with its table", async ({ admi
   expect(listed()).toBe(3)
 })
 
-test('the pane lists what the row points at, with Go there and Filter', async ({ admin }) => {
+test('the pane lists what the row points at: a link to its page, Show here and Filter', async ({ admin }) => {
   const { pane } = await openEnchakkal(admin)
   const pointsAt = (await within(pane).findByRole('heading', { name: 'Points at' })).parentElement!
-  await waitFor(() => expect(within(pointsAt).getByRole('button', { name: 'Kerala · KL' })).toBeInTheDocument())
-  expect(within(pointsAt).getByRole('button', { name: 'Go there' })).toBeInTheDocument()
+  // #1259: the name is a real link to the row's page; Show here keeps #910's drill.
+  await waitFor(() => expect(within(pointsAt).getByRole('link', { name: 'Kerala · KL' })).toHaveAttribute('href', expect.stringContaining('/row/KL')))
+  expect(within(pointsAt).getByRole('button', { name: 'Show Kerala · KL here' })).toBeInTheDocument()
   expect(within(pointsAt).getByRole('button', { name: 'Filter' })).toBeInTheDocument()
 })
 
@@ -79,9 +80,9 @@ test('clicking a row in the pane drills to it, growing the path and leaving the 
   expect(listed()).toBe(3)
 })
 
-test('Go there opens the linked row in the pane', async ({ admin }) => {
+test('Show here opens the linked row in the pane', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
-  fireEvent.click(await within(site).findByRole('button', { name: 'Go there' }))
+  fireEvent.click(await within(site).findByRole('button', { name: 'Show Kerala · KL here' }))
   expect(await pane('Kerala · KL')).toHaveTextContent(REGION)
 })
 
@@ -100,7 +101,7 @@ test("Filter is unavailable when the list underneath has no such column", async 
   await renderApp(tableHref(PLANT), admin)
   await select('Enchakkal Supermarket')
   const plant = await pane('Enchakkal Supermarket · 1503')
-  fireEvent.click(await within(plant).findByRole('button', { name: 'Go there' }))
+  fireEvent.click(await within(plant).findByRole('button', { name: /^Show Enchakkal · ENK here$/ }))
   const site = await pane('Enchakkal · ENK')
   // The plants list has no Region column to narrow.
   await waitFor(() => expect(within(site).getByRole('button', { name: 'Filter' })).toBeDisabled())
@@ -145,11 +146,11 @@ test('Open as list on a group linked through a sub-table shows only the related 
   expect(listed()).toBe(1)
 })
 
-test('Open row page and Edit are separate ways to the row', async ({ admin }) => {
+test('Edit is the one way to the row\'s page, its editable form', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
-  // The ways to the row show once the row is known to be readable.
-  expect(await within(site).findByRole('link', { name: 'Open Full Page' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
-  expect(within(site).getByRole('link', { name: 'Edit' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
+  // The way to the row shows once the row is known to be readable.
+  expect(await within(site).findByRole('link', { name: 'Edit' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
+  expect(within(site).queryByRole('link', { name: 'Open Full Page' })).not.toBeInTheDocument()
 })
 
 test('the fields read formatted: dates, rupees, links by name', async ({ admin }) => {
@@ -198,7 +199,7 @@ test("a link to a row the viewer can't read shows no name, no id and no action",
   expect(await within(pointsAt).findByText('Not visible to you')).toBeInTheDocument()
   expect(pointsAt).not.toHaveTextContent('Kerala')
   expect(pointsAt).not.toHaveTextContent('KL')
-  expect(within(pointsAt).queryByRole('button', { name: 'Go there' })).not.toBeInTheDocument()
+  expect(within(pointsAt).queryByRole('button', { name: /^Show .* here$/ })).not.toBeInTheDocument()
 })
 
 test('two links from the same table stay separate groups, each with its own count', async ({ admin }) => {

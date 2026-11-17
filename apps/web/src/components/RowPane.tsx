@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
-  FieldGrid, GroupChip, LinkChip, PaneSection, Plus, SplitWithPane, ViewToggle, X,
-  buttonClasses, cx, fmtCount, iconButtonClasses, resolvePanePlace, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
+  FieldGrid, GroupChip, LinkChip, PaneSection, PanelRight, Plus, RecordLink, SplitWithPane, ViewToggle, X,
+  buttonClasses, cx, fmtCount, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
   type FieldGridGroup, type ViewMode,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
@@ -107,8 +107,8 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
       actions={readable ? <>
         {onFocus && !(step.screen === 'row' && step.table === table && step.row === row) &&
           <button type="button" onClick={() => onFocus(pane)} className={buttonClasses({ variant: 'quiet' })}>Focus here</button>}
+        {/* The row's page is its editable form: one way there (one-app-chrome, #1259). */}
         <HrefLink href={pageHref} className={buttonClasses({ variant: 'secondary' })}>Edit</HrefLink>
-        <HrefLink href={pageHref} className={buttonClasses({ variant: 'secondary' })}>Open Full Page</HrefLink>
       </> : null}>
       {unreadable ? (
         <p className="text-sm text-ink-muted">You can't see this row.</p>
@@ -235,11 +235,12 @@ function PointsAt({ links, nav, onOpen, status, editHref }: {
           nav.advanceTo(push(push(before, listOnly), filtered))
         })
         return (
-          // Go there and Filter show on hover or keyboard focus, so a chip reads as one line.
+          // #1259 (one-app-chrome): the name is a link to the row's page; a small
+          // control shows it here instead (#910's drill); Filter shows on hover or focus.
           <span key={link.column} data-testid="record-chip"
-            className="group inline-flex min-w-0 items-center gap-2 rounded-md bg-canvas px-2 py-1 text-sm [&_button:not(:first-of-type)]:hidden group-hover:[&_button:not(:first-of-type)]:inline-flex group-focus-within:[&_button:not(:first-of-type)]:inline-flex">
+            className="group inline-flex min-w-0 items-center gap-1.5 rounded-md bg-canvas px-2 py-1 text-sm [&_button:not(:first-of-type)]:hidden group-hover:[&_button:not(:first-of-type)]:inline-flex group-focus-within:[&_button:not(:first-of-type)]:inline-flex">
             <span className="text-ink-muted">{link.label}</span>
-            <PaneLink table={link.table} rowId={link.row_id} onOpen={onOpen} goThere
+            <ChipLink table={link.table} rowId={link.row_id} onOpen={onOpen}
               onFilter={filter || undefined}
               filterDisabledReason={overList && !column ? `This list has no ${link.label} column` : undefined} />
           </span>
@@ -252,6 +253,32 @@ function PointsAt({ links, nav, onOpen, status, editHref }: {
       </HrefLink>
     </section>
   )
+}
+
+/** #1259: a chip's linked row: its name a link to its page, a control to show it
+ *  here in the panel, and Filter (the list under the panel by this value). */
+function ChipLink({ table, rowId, onOpen, onFilter, filterDisabledReason }: {
+  table: string
+  rowId: string
+  onOpen: (pane: NavPane) => void
+  onFilter?: () => void
+  filterDisabledReason?: string
+}) {
+  const name = useRowName(table, rowId)
+  if (name.state === 'loading') return <span className="text-sm text-ink-subtle">…</span>
+  if (name.state === 'unreadable') return <LinkChip label="" unreadable />
+  const text = nameAndCode(name.title, name.code)
+  return <>
+    <RecordLink table={table} rowId={rowId} name={text} />
+    <button type="button" onClick={() => onOpen({ table, row: rowId })} aria-label={`Show ${text} here`} title="Show here"
+      className={iconButtonClasses('size-6 text-ink-muted hover:text-ink')}>
+      <PanelRight aria-hidden size={14} />
+    </button>
+    {(onFilter || filterDisabledReason) && (
+      <button type="button" onClick={onFilter} disabled={!!filterDisabledReason} title={filterDisabledReason}
+        className={smallActionClasses}>Filter</button>
+    )}
+  </>
 }
 
 /** A linked row by its name and code; opening it shows it in the pane. */

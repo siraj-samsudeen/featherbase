@@ -141,7 +141,8 @@ test('a linked row opens in the drill pane beside the form; its own link moves t
 
   // Its own link: the country; the pane moves there.
   const pointsAt = (await within(first).findByRole('heading', { name: 'Points at' })).parentElement!
-  fireEvent.click(await within(pointsAt).findByRole('button', { name: 'Indialand' }))
+  // #1259: the chip's name links to the row's page; Show here moves the pane.
+  fireEvent.click(await within(pointsAt).findByRole('button', { name: 'Show Indialand here' }))
   const second = await screen.findByRole('complementary', { name: 'Indialand' })
   expect(second).toHaveTextContent('Peek Country')
 
@@ -195,7 +196,7 @@ test('a linked row in the drill pane: Open row page goes to that row\'s own form
 
   fireEvent.mouseDown(await screen.findByTestId('link-pane-mother'))
   const pane = await screen.findByRole('complementary', { name: 'Mother' })
-  fireEvent.click(await within(pane).findByRole('link', { name: 'Open Full Page' }))
+  fireEvent.click(await within(pane).findByRole('link', { name: 'Edit' }))
 
   await waitFor(() => expect(field('label')).toHaveValue('Mother'))
   expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('Peek Parent')
