@@ -4,6 +4,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
+import { pageLoad } from '../src/lib/page-load'
 
 /** A controllable /api/search: lines are sent when the test says, per query. */
 function fakeSearch() {
@@ -143,5 +144,27 @@ test('a long wait names three groups and counts the rest', async ({ admin }) => 
     await waitFor(() => expect(screen.getByTestId('search-progress-text')).toHaveTextContent('Still searching Table A, Table B, Table C and 3 more…'), { timeout: 3000 })
   } finally {
     search.restore()
+  }
+})
+
+// Codex review: View as ending mid-search reloads the page, as every other read does.
+test('a search answered with View as has ended reloads the page; another refusal is a failed search', async ({ admin }) => {
+  const reload = vi.spyOn(pageLoad, 'reload').mockImplementation(() => {})
+  const real = globalThis.fetch
+  let answer = { status: 409, message: 'View as has ended. Reloading.' }
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    const u = new URL(String(url), 'http://localhost')
+    if (u.pathname !== '/api/search') return real(url, init)
+    return new Response(JSON.stringify({ error: { type: 'ConflictError', message: answer.message } }), { status: answer.status, headers: { 'content-type': 'application/json' } })
+  })
+  try {
+    const bar = await openBar(admin, 'ended')
+    await waitFor(() => expect(reload).toHaveBeenCalled())
+    answer = { status: 409, message: 'Something else' }
+    fireEvent.change(bar, { target: { value: 'other' } })
+    expect(await screen.findByTestId('search-failed')).toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
+    reload.mockRestore()
   }
 })

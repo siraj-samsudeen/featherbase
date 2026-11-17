@@ -18,16 +18,29 @@ test('the groups come first, each by label; every group answers once; done comes
   expect(lines.at(-1)).toEqual({ done: true })
 })
 
-test("a row whose only name is a machine's id is no result; a typed code is", async ({ admin }) => {
-  // A Table with no title column names its rows by their key.
-  await admin.post('/api/table_def', { name: 'Ss Keyed', id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] })
-  await admin.post('/api/save_row', { table: 'Ss Keyed', row: { row_id: 'psn_aaaaaaaaaaaaaaaaaaaa', note: 'x' } })
-  await admin.post('/api/save_row', { table: 'Ss Keyed', row: { row_id: 'psn-readable-code', note: 'y' } })
-  await admin.post('/api/save_row', { table: 'Ss Keyed', row: { row_id: 'c1aad020aa9b533c', note: 'z' } })
-  const keyed = (await searchLines(admin, 'psn')).find((l) => l.table === 'Ss Keyed') as { hits: { title: string }[] }
-  expect(keyed.hits.map((h) => h.title)).toEqual(['psn-readable-code'])
-  const hashed = (await searchLines(admin, 'c1aad')).find((l) => l.table === 'Ss Keyed') as { hits: unknown[] }
+// Codex review (round 3): what names nothing is decided by the Table's id rule, not the id's look.
+test("a code people gave is found, even all digits; a Table of machine-made keys gives nothing", async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Ss Coded', id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  await admin.post('/api/save_row', { table: 'Ss Coded', row: { row_id: '010101001', note: 'x' } })
+  const coded = (await searchLines(admin, '010101001')).find((l) => l.table === 'Ss Coded') as { hits: { title: string }[] }
+  expect(coded.hits.map((h) => h.title)).toEqual(['010101001'])
+  await admin.post('/api/table_def', { name: 'Ss Hashed', id_pattern: 'hash', columns: [{ column_name: 'note', column_type: 'Data' }] })
+  const row = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Ss Hashed', row: { note: 'y' } })
+  const hashed = (await searchLines(admin, row.row_id)).find((l) => l.table === 'Ss Hashed') as { hits: unknown[] }
   expect(hashed.hits).toEqual([])
+})
+
+test("a title that looks like an id is still a name; nameless rows never crowd out a named one", async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Ss Titled', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  await admin.post('/api/save_row', { table: 'Ss Titled', row: { label: '12345678' } })
+  const titled = (await searchLines(admin, '12345678')).find((l) => l.table === 'Ss Titled') as { hits: { title: string }[] }
+  expect(titled.hits.map((h) => h.title)).toEqual(['12345678'])
+  // Three people with no name (named only by their opaque ids) and one with a name, all matching "zz".
+  await admin.post('/api/table_def', { name: 'Ss People', id_pattern: 'prompt', title_column: 'label', columns: [{ column_name: 'label', column_type: 'Data' }] })
+  for (const n of ['a', 'b', 'c']) await admin.post('/api/save_row', { table: 'Ss People', row: { row_id: `zz-${n}`, label: `psn_zz${n}aaaaaaaaaaaaaaaaa` } })
+  await admin.post('/api/save_row', { table: 'Ss People', row: { row_id: 'zz-d', label: 'Named zz person' } })
+  const people = (await searchLines(admin, 'zz')).find((l) => l.table === 'Ss People') as { hits: { title: string }[] }
+  expect(people.hits.map((h) => h.title)).toEqual(['Named zz person'])
 })
 
 // Codex review: a search the client has abandoned launches no more Tables and ends.

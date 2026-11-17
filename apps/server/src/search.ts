@@ -35,10 +35,16 @@ export const registryLabel = (name: string): string | undefined =>
 const PER_TABLE = 3
 /** How many Tables are searched at once (#1265). */
 const AT_ONCE = 6
-/** #1265: an id made by machine names no one: a person's or service account's
- *  (`psn_…`), or a generated hash ("c1aad020aa9b533c", an Activity Log row's).
- *  A code people type ("JA-3001-1") is a name and stays. */
-const MACHINE_ID = /^(?:(?:psn|svc)_[a-z2-7]{20}|[0-9a-f]{8,})$/
+/** #1265: a person's or service account's opaque id names no one (Postgres pattern). */
+const OPAQUE_ID = '^(psn|svc)_[a-z2-7]{20}$'
+
+/** #1265: a Table whose keys the machine makes (a hash like an Activity Log
+ *  row's "c1aad020aa9b533c", a counter, an opaque id) names nothing by them.
+ *  A code people give (prompt, a field, a series like TASK-00012) is a name. */
+const machineKeys = (idPattern: unknown) => {
+  const p = String(idPattern ?? '')
+  return p === 'hash' || p === 'integer' || p.startsWith('opaque:')
+}
 
 /** #1265: what the search sends, one line at a time. First the groups it will
  *  search, by label, in the order they show; then each group as its Table
@@ -135,15 +141,15 @@ async function searchOne(t: Record<string, unknown>, user: string, like: string)
   const key = sql(meta.row_key)
   // #1041: an archived Table's own definition is out of search with its rows.
   const live = meta.name === 'Table' ? sql`and archived_at is null` : sql``
-  const rows = title
-    ? await sql`
-        select ${key} as row_id, ${readExpression(title)} as title from ${sql(table)}
-        where ${where} ${live} and (${key} ilike ${like} or ${readExpression(title)} ilike ${like})
-        limit ${PER_TABLE}`
-    : await sql`
-        select ${key} as row_id, ${key} as title from ${sql(table)}
-        where ${where} ${live} and ${key} ilike ${like}
-        limit ${PER_TABLE}`
+  // An untitled Table names its rows by their keys; machine-made keys name
+  // nothing, so such a Table gives no hits (decided before any LIMIT).
+  if (!title && machineKeys(meta.id_pattern)) return []
+  const shown = title ? readExpression(title) : key
+  const rows = await sql`
+    select ${key} as row_id, ${shown} as title from ${sql(table)}
+    where ${where} ${live} and (${key} ilike ${like}${title ? sql` or ${readExpression(title)} ilike ${like}` : sql``})
+      and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID}
+    limit ${PER_TABLE}`
   return rows
     .map((row) => ({
       table: meta.name,
@@ -151,6 +157,4 @@ async function searchOne(t: Record<string, unknown>, user: string, like: string)
       title: String(row.title ?? row.row_id),
       ...(registryLabel(meta.name) ? { kind_label: registryLabel(meta.name) } : {}),
     }))
-    // #1265: a row whose only name is a machine's id is no result anyone can read.
-    .filter((hit) => !MACHINE_ID.test(hit.title))
 }

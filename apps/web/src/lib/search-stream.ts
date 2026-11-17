@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { send } from './api'
+import { pageLoad } from './page-load'
 
 // #1265: Search or Command shows its work. /api/search answers one JSON line
 // at a time: the groups it will search, then each group as its Table answers,
@@ -66,7 +67,14 @@ export function useStreamedSearch(query: string): StreamedSearch {
     void (async () => {
       try {
         const res = await send(`/api/search?q=${encodeURIComponent(query)}`, { signal: abort.signal })
-        if (!res.ok || !res.body) return update({ ...current, done: true, failed: true })
+        if (!res.ok || !res.body) {
+          // #1222: View as ended while it searched: reload, as every other read does.
+          if (res.status === 409) {
+            const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
+            if (body.error?.message?.startsWith('View as has ended')) return pageLoad.reload()
+          }
+          return update({ ...current, done: true, failed: true })
+        }
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
