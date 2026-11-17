@@ -154,11 +154,20 @@ function toMethod(r: Record<string, unknown>): SignInMethod {
  *  says is a former employee or external. An unknown answer (the app failed or
  *  was slow) refuses nothing: a failed lookup must not lock an employee out. */
 export async function assertMethodOpenTo(method: Pick<SignInMethod, 'label' | 'employees_only'>, person: string): Promise<void> {
-  if (!method.employees_only) return
+  const refusal = await employeesOnlyRefusal(method, person)
+  if (refusal)
+    throw new AppError('ValidationError', `${method.label} sign-in is only for current employees, and this person is ${refusal === 'left' ? 'a former employee' : 'not an employee'}.`)
+}
+
+/** Why an employees-only method is closed to this person ('left' or 'none'), or
+ *  null when it is open: the method is open to anyone, the person is a current
+ *  employee, or the people app could not say. Every way a link or a sign-in
+ *  is made asks this one question. */
+export async function employeesOnlyRefusal(method: Pick<SignInMethod, 'employees_only'>, person: string): Promise<'left' | 'none' | null> {
+  if (!method.employees_only) return null
   const { describePeople } = await import('./person-standing')
   const status = (await describePeople([person])).get(person)!.status
-  if (status === 'left' || status === 'none')
-    throw new AppError('ValidationError', `${method.label} sign-in is only for current employees, and this person is ${status === 'left' ? 'a former employee' : 'not an employee'}.`)
+  return status === 'left' || status === 'none' ? status : null
 }
 
 const methodFields = () =>
@@ -532,6 +541,7 @@ export async function linkIdentity(
 export async function inviteGoogle(user: string, email: string, actor: string): Promise<Identity & { created: boolean }> {
   const method = await methodOfKind('google')
   if (!method) throw new AppError('ValidationError', 'Google sign-in is not set up')
+  await assertMethodOpenTo(method, user)
   const address = normaliseEmail(email)
   if (!address || !looksLikeEmail(address)) throw new AppError('ValidationError', 'Expected { email }', { email: 'a real address' })
   await assertHumanUser(user)

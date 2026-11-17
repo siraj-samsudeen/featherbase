@@ -10,7 +10,9 @@ import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
 import { grantRole } from './fixtures'
-import { configureDelegated } from './identity-fixtures'
+import { configureDelegated, configureGoogle } from './identity-fixtures'
+import { getSignInMethod, methodOfKind } from '../src/identities'
+import { assertEligible, linkVerifiedToSelf } from '../src/sign-in'
 import { describeActor } from '../src/person-standing'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
@@ -181,5 +183,61 @@ describe('an employees-only sign-in method', () => {
     await configureDelegated()
     const ext = await createUser({ email: 'ext4.1267@example.test' })
     expect((await link(admin, ext.user!, 'RR-6')).status).toBe(201)
+  })
+})
+
+// Codex round 1: an installed describer that cannot answer reads as unknown; every way a
+// link or a sign-in is made asks the employees-only question.
+describe('an installed people app that cannot answer', () => {
+  test('makes everyone unknown, never External, and refuses no link', async ({ admin, createUser }) => {
+    await installDescriber(admin)
+    await configureDelegated()
+    await sql`update sign_in_method set employees_only = true where row_id = 'stylehr'`
+    await sql`update installed_app set enabled = false where name = 'barproof'`
+    const someone = await createUser({ email: 'off.1267@example.test' })
+    expect((await admin.get<{ status: string }>(`/api/people/${someone.user}/standing`)).status).toBe('unknown')
+    const linked = await admin.fetch(`/api/people/${encodeURIComponent(someone.user!)}/identities`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method: 'stylehr', subject: 'RR-OFF' }),
+    })
+    expect(linked.status).toBe(201)
+  })
+})
+
+describe('every way in asks the employees-only question', () => {
+  test('a Google invite for someone external is refused when Google is employees only', async ({ admin, createUser }) => {
+    await installDescriber(admin)
+    await configureGoogle({ enabled: true, client_id: 'made-up-client' })
+    await sql`update sign_in_method set employees_only = true where row_id = 'google'`
+    const ext = await createUser({ email: 'invite-ext.1267@example.test' })
+    const invited = await admin.fetch(`/api/people/${encodeURIComponent(ext.user!)}/identities`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method: 'google', email: 'invite-ext.1267@gmail.com', send_invitation_email: false }),
+    })
+    expect(invited.status).toBe(417)
+    expect(await invited.text()).toContain('Google sign-in is only for current employees')
+  })
+
+  test("a person linking their own Google account is refused when they are external", async ({ admin, createUser }) => {
+    await installDescriber(admin)
+    await configureGoogle({ enabled: true, client_id: 'made-up-client', self_link: true })
+    await sql`update sign_in_method set employees_only = true where row_id = 'google'`
+    const ext = await createUser({ email: 'self-ext.1267@example.test' })
+    const google = (await methodOfKind('google'))!
+    await expect(linkVerifiedToSelf(google, ext.user!, { status: 'verified', subject: 'g-self-1267', email: 'self-ext.1267@gmail.com', email_verified: true }))
+      .rejects.toThrow('Google sign-in is only for current employees')
+  })
+
+  test('a former employee already linked cannot sign in with an employees-only method; an employee can', async ({ admin, createUser }) => {
+    await installDescriber(admin)
+    await configureDelegated()
+    const left = await createUser({ email: 'signin-left.1267@example.test' })
+    const emp = await createUser({ email: 'signin-emp.1267@example.test' })
+    await sql`update sign_in_method set employees_only = true where row_id = 'stylehr'`
+    globalThis.__standing = {
+      [left.user!]: { person: left.user, status: 'left', code: '7', jobs: [] },
+      [emp.user!]: { person: emp.user, status: 'current', code: '8', jobs: [] },
+    }
+    const stylehr = (await getSignInMethod('stylehr'))!
+    await expect(assertEligible(stylehr, left.user!)).rejects.toThrow()
+    await expect(assertEligible(stylehr, emp.user!)).resolves.toBeUndefined()
   })
 })

@@ -46,13 +46,21 @@ const answerSchema = z.array(z.object({
 /** The actor an app's describe read runs as: named, and System Manager only inside that read. */
 export const describeActor = (app: string) => `people-describe:${app}`
 
-/** The first switched-on app that describes people, or null. */
-async function describer(): Promise<{ app: string; describe: string } | null> {
-  const declared = (await packages()).peopleDescribers()
-  if (!declared.length) return null
-  const on = new Set((await sql`select name from installed_app where enabled and not activation_pending and name in ${sql(declared.map((d) => d.app))}`)
-    .map((r) => String(r.name)).filter((name) => activeApps.has(name)))
-  return declared.find((d) => on.has(d.app)) ?? null
+/** The app that says who people are. 'none' when no installed app describes
+ *  people; 'unavailable' when one does but cannot answer now (turned off, not
+ *  loaded, waiting for activation): its people are then unknown, never External. */
+async function describer(): Promise<{ app: string; describe: string } | 'none' | 'unavailable'> {
+  // The installed manifests, not only the loaded ones: an app that failed to load still describes people.
+  const installed = await sql`select name, enabled, activation_pending from installed_app
+    where manifest -> 'people' ->> 'describe' is not null order by name`
+  if (!installed.length) return 'none'
+  const loaded = (await packages()).peopleDescribers()
+  for (const row of installed) {
+    const ready = row.enabled === true && row.activation_pending !== true && activeApps.has(String(row.name))
+    const found = ready ? loaded.find((d) => d.app === String(row.name)) : undefined
+    if (found) return found
+  }
+  return 'unavailable'
 }
 
 /** Each person's standing as the app says it, unfiltered. Internal: callers that
@@ -62,8 +70,8 @@ export async function describePeople(persons: string[]): Promise<Map<string, Sta
   const out = new Map<string, Standing>()
   if (!wanted.length) return out
   const app = await describer()
-  if (!app) {
-    for (const person of wanted) out.set(person, NONE)
+  if (app === 'none' || app === 'unavailable') {
+    for (const person of wanted) out.set(person, app === 'none' ? NONE : UNKNOWN)
     return out
   }
   const actor = describeActor(app.app)
