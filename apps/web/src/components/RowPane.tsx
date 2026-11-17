@@ -1,10 +1,10 @@
-import { type ReactNode, useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
   FieldGrid, GroupChip, LinkChip, PaneSection, PanelRight, Plus, RecordLink, SplitWithPane, X,
-  buttonClasses, cx, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
+  buttonClasses, cx, fmtCount, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
   type FieldGridGroup,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
@@ -19,6 +19,7 @@ import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './For
 import { useI18n } from '../lib/i18n'
 import { ActivityTimeline } from './ActivityTimeline'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
+import { managedBySignIn } from './PersonSignInMethods'
 
 // #910 checklist 4–10: the drill pane. One row of any Table, beside or below
 // the screen it was opened from: what it points at (each with Go there and,
@@ -321,7 +322,8 @@ function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; onOpen: 
   const arrangement = useFormArrangement(meta.name, meta.columns.some((c) => c.column_type === 'Section Break'))
   if (!arrangement.ready) return <p className="text-sm text-ink-subtle">Loading…</p>
   const readable = new Set(dataColumns(meta).map((c) => c.column_name))
-  const shown = (c: ColumnDef) => readable.has(c.column_name) && !NO_COLUMN_TYPES.has(c.column_type) && !isBookkeeping(c)
+  // #1267: a Person's sign-in switches are set on its Sign-In lines only.
+  const shown = (c: ColumnDef) => readable.has(c.column_name) && !NO_COLUMN_TYPES.has(c.column_type) && !isBookkeeping(c) && !managedBySignIn(meta.name, c.column_name)
   let sets: { title?: string; fields: ColumnDef[] }[]
   if (arrangement.mode === 'source') {
     sets = [{ fields: [] }]
@@ -363,17 +365,56 @@ function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: u
  * rows it points at and the counted groups that point at it, the same chips
  * as the drill pane. Opening one shows it in the pane.
  */
-export function RowConnections({ table, row, values }: { table: string; row: string; values: Row | undefined }) {
+export function RowConnections({ table, row, values, layout = 'chips' }: {
+  table: string; row: string; values: Row | undefined
+  /** #1267: 'list' is a Person page's right column, one group per line with its count. */
+  layout?: 'chips' | 'list'
+}) {
   const nav = useNavigation()
   const meta = useMeta(table)
   const cnx = useConnections(table, row, Boolean(values))
   const groups = useBacklinkGroups(cnx.data?.connections)
+  // #1267: groups with no rows wait behind "Show N empty", opened in place.
+  const [showEmpty, setShowEmpty] = useState(false)
   if (!nav || !meta.data || !values) return null
   const links = forwardLinks(meta.data, values)
   if (!links.length && !groups.length) return null
   const step = nav.step
   const open = (pane: NavPane) => nav.push({ ...step, pane })
   const chosen = step.pane?.table === table && step.pane.row === row ? step.pane.group : undefined
+  const full = groups.filter((g) => g.count > 0)
+  const empty = groups.filter((g) => g.count === 0)
+  const shown = showEmpty ? [...full, ...empty] : full
+  const choose = (g: BacklinkGroup) => open({ table, row, group: { table: g.connection.table, column: g.connection.column, via: g.connection.via } })
+  const isChosen = (g: BacklinkGroup) => (chosen ? groupKey(chosen) === g.key : false)
+  const emptyToggle = empty.length > 0 && (
+    <button type="button" onClick={() => setShowEmpty((was) => !was)} aria-expanded={showEmpty} data-testid="connections-show-empty"
+      className={touchLinkClasses('text-sm text-ink-muted hover:text-ink hover:underline')}>
+      {showEmpty ? 'Hide empty' : `Show ${fmtCount(empty.length)} empty`}
+    </button>
+  )
+  if (layout === 'list')
+    return (
+      <section aria-labelledby="connections-heading" data-testid="connections-list" className="flex min-w-0 flex-col gap-1">
+        <h2 id="connections-heading" className="text-sm font-medium text-ink-muted">Linked Records</h2>
+        {links.map((link) => (
+          <span key={link.column} className="flex min-w-0 items-center justify-between gap-2 text-sm">
+            <span className="text-ink-muted">{link.label}</span>
+            <PaneLink table={link.table} rowId={link.row_id} onOpen={open} />
+          </span>
+        ))}
+        {shown.map((g) => (
+          <button key={g.key} type="button" aria-pressed={isChosen(g)} onClick={() => choose(g)} data-testid="connection-group"
+            className={`flex min-h-control items-center justify-between gap-3 rounded-md px-2 text-left text-sm hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-action-tint ${g.count ? 'text-action' : 'text-ink-muted'}`}>
+            <span className="min-w-0">{g.label}</span>
+            <span className="tabular-nums text-ink-muted">{fmtCount(g.count)}</span>
+          </button>
+        ))}
+        {/* Said only once the counts are in, never while they load. */}
+        {cnx.data && !full.length && !showEmpty && <p className="text-sm text-ink-subtle">Nothing links here yet.</p>}
+        {emptyToggle && <span className="px-2">{emptyToggle}</span>}
+      </section>
+    )
   return (
     <section aria-label="Connections" className="mb-4 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
       {links.map((link) => (
@@ -382,12 +423,11 @@ export function RowConnections({ table, row, values }: { table: string; row: str
           <PaneLink table={link.table} rowId={link.row_id} onOpen={open} />
         </span>
       ))}
-      {groups.length > 0 && <span className="flex flex-wrap gap-2">
-        {groups.map((g) => (
-          <GroupChip key={g.key} label={g.label} count={g.count}
-            selected={chosen ? groupKey(chosen) === g.key : false}
-            onSelect={() => open({ table, row, group: { table: g.connection.table, column: g.connection.column, via: g.connection.via } })} />
+      {groups.length > 0 && <span className="flex flex-wrap items-center gap-2">
+        {shown.map((g) => (
+          <GroupChip key={g.key} label={g.label} count={g.count} selected={isChosen(g)} onSelect={() => choose(g)} />
         ))}
+        {emptyToggle}
       </span>}
     </section>
   )

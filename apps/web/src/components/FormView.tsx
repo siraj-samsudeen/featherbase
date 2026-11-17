@@ -26,7 +26,8 @@ import {
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
 import { Comments } from './Comments'
-import { PersonSignInMethods } from './PersonSignInMethods'
+import { PersonSignInMethods, managedBySignIn } from './PersonSignInMethods'
+import { SaveState } from './SaveState'
 import { PersonIdentifiers } from './PersonIdentifiers'
 import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
@@ -46,7 +47,7 @@ import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
-import { ContentTabs, buttonClasses, fmtClockTime, cardClasses, inputClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { ContentTabs, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
 import type { Row } from './form-row'
 import { FieldControl } from './FieldControl'
 import { usePageTitle } from '../lib/page-title'
@@ -267,6 +268,8 @@ export function FormView({
     return <p className="text-sm text-negative">Cannot load {table} {name}</p>
 
   const m = meta.data!
+  // #1267: a saved Person's page is laid out in two columns of its own.
+  const personPage = !isNew && table === 'Person'
 
   // Build the `frm` a client-script handler receives, over a given doc snapshot.
   function makeFrm(docSnapshot: Row): Frm {
@@ -478,7 +481,8 @@ export function FormView({
   const sections: ColumnDef[][] = [[]]
   for (const f of m.columns) {
     if (f.column_type === 'Section Break') sections.push([])
-    else if (!f.hidden) sections[sections.length - 1].push(f)
+    // #1267: a saved Person's Sign-In lines own its "expects … sign-in" switches.
+    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name))) sections[sections.length - 1].push(f)
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
@@ -546,19 +550,31 @@ export function FormView({
         </div>
       )}
       </div>
+      {/* #1267 layout A: under a Person's details, how they sign in, then their identifiers. */}
+      {personPage && (
+        <div className="mt-2 flex max-w-3xl flex-col gap-6" data-testid="person-left-column">
+          {/* person-identities: the one platform Table whose rows sign in. */}
+          <PersonSignInMethods user={name} rowUpdatedAt={baseline.updated_at} />
+          <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />
+          {/* #628: what this person can see, and why. */}
+          <RouterLink to="/featherbase/account/access/$person" params={{ person: name }} className="text-sm text-action hover:underline" data-testid="person-access-explanation">
+            What they can see
+          </RouterLink>
+        </div>
+      )}
     </div>
     {/* Only the Tables with panels of their own give the form a side column. */}
-    {!isNew && (table === 'Person' || table === 'Identifier System') && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
-      {/* person-identities: the one platform Table whose rows sign in. */}
-      {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
-      {table === 'Person' && <PersonSignInMethods user={name} />}
-      {/* #628: what this person can see, and why. */}
-      {table === 'Person' && (
-        <RouterLink to="/featherbase/account/access/$person" params={{ person: name }} className="text-sm text-action hover:underline" data-testid="person-access-explanation">
-          What they can see
-        </RouterLink>
-      )}
-      {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
+    {personPage && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-80" data-testid="person-right-column">
+      <RowConnections table={table} row={name} values={doc.data} layout="list" />
+      {/* #1267: a glance at the newest events; the Activity tab holds them all. */}
+      <div className="flex flex-col gap-2">
+        <ActivityTimeline table={table} name={name} bare latest={3} />
+        <button type="button" onClick={() => setArea('Activity')} data-testid="see-all-activity"
+          className={touchLinkClasses('self-start text-sm text-action hover:underline')}>See All Activity →</button>
+      </div>
+    </aside>}
+    {!isNew && table === 'Identifier System' && <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
+      <IdentifierSystemDefaults systemKey={name} />
     </aside>}
   </div>
   const saveDisabled = saving || !dirty || (submittable && status !== 'draft') || (editingOverride && !overrideTarget.data)
@@ -787,7 +803,7 @@ export function FormView({
           )}
         </div>
       </div>
-      {!isNew && <RowConnections table={table} row={name} values={doc.data} />}
+      {!isNew && !personPage && <RowConnections table={table} row={name} values={doc.data} />}
       {storage && (
         <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
           <span className="font-medium">Storage</span>
@@ -1017,11 +1033,8 @@ export function FormView({
       {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea}
         actions={<>
           {/* #1267: one save state for the record, with the time in its tooltip. */}
-          <span className={`inline-flex items-center gap-1 text-xs ${dirty ? 'text-ink-muted' : 'text-positive'}`}
-            title={!dirty && savedAt ? `Saved ${fmtClockTime(savedAt)}` : undefined}>
-            {!dirty && <span aria-hidden>✓</span>}
-            <span data-testid="form-status">{dirty ? 'Not saved' : banner === 'Saved' ? <span data-testid="form-banner">Saved</span> : 'Saved'}</span>
-          </span>
+          <SaveState dirty={dirty} savedHere={banner === 'Saved'} savedAt={savedAt}
+            updatedAt={baseline.updated_at} updatedBy={baseline.updated_by} />
           {area === 'Form' && (
             <ViewMenu mode={arrangement.mode} columns={arrangement.columns}
               onMode={arrangement.setMode} onColumns={arrangement.setColumns} />

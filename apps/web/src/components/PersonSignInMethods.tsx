@@ -1,10 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
 import { fmtInstantIST } from '@featherbase/shop-floor'
-import { Button, Card, Select, TextInput } from '@featherbase/shop-floor'
+import { Button, TextInput, cardClasses } from '@featherbase/shop-floor'
 import { PrincipalLink, principalLabel, usePrincipalNameState } from '../lib/people'
 import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
 
@@ -12,6 +12,18 @@ import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
 // sees how that person signs in — password, linked outside accounts, pending
 // Google invites — and can link a connected service, invite a Google address
 // or unlink one. Moving a link stays an API call (PATCH /api/identities/:id).
+//
+// #1267 layout A: one line per way in, each with its status and one button.
+// The button opens a small dialog asking only for that method's fields, so
+// no field on the page sits beside a button it does not belong to.
+
+/** The Person columns the Sign-In lines set, so a saved Person's fields leave
+ *  them out wherever they are drawn generically (the form, the record pane). */
+const SIGN_IN_OWNS = new Set(['expects_google_sign_in', 'expects_microsoft_sign_in'])
+
+export function managedBySignIn(table: string, column: string): boolean {
+  return table === 'Person' && SIGN_IN_OWNS.has(column)
+}
 
 interface AdminIdentity {
   id: string
@@ -64,7 +76,11 @@ interface MethodInfo {
   label: string
 }
 
-export function PersonSignInMethods({ user }: { user: string }) {
+export function PersonSignInMethods({ user, rowUpdatedAt }: {
+  user: string
+  /** The Person row as the page loaded it: a change to its sign-in switches is made against it. */
+  rowUpdatedAt?: unknown
+}) {
   // #414: the confirmation names the person, never their opaque id.
   const named = usePrincipalNameState(user)
   const who = principalLabel(user, named.name, named.loading)
@@ -98,6 +114,18 @@ export function PersonSignInMethods({ user }: { user: string }) {
   })
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<ReactNode>(null)
+  const [dialog, setDialog] = useState<Dialog | null>(null)
+  const [showEnded, setShowEnded] = useState(false)
+  const heading = useRef<HTMLHeadingElement>(null)
+  // The button to return to after an action, placed once the redrawn lines are on the page.
+  const refocus = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const opener = refocus.current
+    if (!opener) return
+    refocus.current = null
+    if (opener.isConnected) opener.focus()
+    else heading.current?.focus()
+  }, [data])
   // #1257: a notice names an address; once the Person's email changes (their
   // invites are then cancelled) it no longer describes anything live.
   const shownEmail = data?.email
@@ -105,9 +133,25 @@ export function PersonSignInMethods({ user }: { user: string }) {
     setNotice(null)
     setError(null)
   }, [shownEmail])
+  const open = (what: Dialog['what'], opener: HTMLElement, identity?: AdminIdentity, method?: MethodInfo) => {
+    setError(null)
+    setDialog({ what, opener, identity, method })
+  }
+  // Escape or Cancel: focus goes back to the line's button.
+  const close = () => {
+    const opener = dialog?.opener
+    setDialog(null)
+    setError(null)
+    opener?.focus()
+  }
+  // A finished action redraws the lines; once they are read again, focus goes
+  // to the same button if it is still there, otherwise to the Sign-In heading.
   const done = () => {
+    const opener = dialog?.opener
+    setDialog(null)
     setError(null)
     setNotice(null)
+    refocus.current = opener ?? null
     void qc.invalidateQueries({ queryKey: key })
   }
   const fail = (err: unknown) => {
@@ -132,13 +176,12 @@ export function PersonSignInMethods({ user }: { user: string }) {
       )
     if (email?.status === 'failed') setError(`Invited ${address}, but ${email.error.charAt(0).toLowerCase()}${email.error.slice(1)}.`)
   }
-  // The form is cleared only when the server accepted it, so a refused link
-  // (a clash, a typo) keeps what was typed for correcting.
+  // A refused link or invite (a clash, a typo) keeps its dialog open with what
+  // was typed, for correcting.
   const add = useMutation({
-    mutationFn: ({ body }: { body: Record<string, string | boolean>; form: HTMLFormElement }) =>
+    mutationFn: (body: Record<string, string | boolean>) =>
       api.post<{ invitation_email?: InvitationEmail }>(`/api/people/${encodeURIComponent(user)}/identities`, body),
-    onSuccess: (res, { body, form }) => {
-      form.reset()
+    onSuccess: (res, body) => {
       done()
       if (typeof body.email === 'string') reportEmail(body.email, res.invitation_email)
     },
@@ -176,9 +219,35 @@ export function PersonSignInMethods({ user }: { user: string }) {
     onSuccess: done,
     onError: fail,
   })
+  const rename = useMutation({
+    mutationFn: ({ id, signInName }: { id: string; signInName: string }) =>
+      api.patch(`/api/identities/${encodeURIComponent(id)}`, { sign_in_name: signInName || null }),
+    onSuccess: done,
+    onError: fail,
+  })
+  // #1267: whether this person is expected to sign in with Google or Microsoft
+  // is a Person column; the details form reads it again.
+  const expect = useMutation({
+    mutationFn: (change: Partial<Record<'expects_google_sign_in' | 'expects_microsoft_sign_in', boolean>>) =>
+      api.patch(`/api/table/Person/${encodeURIComponent(user)}`, { ...change, updated_at: rowUpdatedAt }),
+    onSuccess: () => {
+      done()
+      void qc.invalidateQueries({ queryKey: ['doc', 'Person', user] })
+    },
+    onError: fail,
+  })
   if (!isManager) return null
+  // Lines are drawn once both answers are in: a link drawn before its method is
+  // known would be placed apart and then move, a flicker for anyone reading it.
+  if (!data || !methods.data)
+    return (
+      <section aria-labelledby="sign-in-heading" className="flex flex-col gap-2" data-testid="user-sign-in-methods">
+        <h2 id="sign-in-heading" className="text-sm font-medium text-ink-muted">Sign-In</h2>
+        <p className="text-sm text-ink-subtle">Loading…</p>
+      </section>
+    )
 
-  const all = methods.data?.methods ?? []
+  const all = methods.data.methods
   const delegated = all.filter((m) => m.kind === 'delegated_password')
   const google = all.find((m) => m.kind === 'google')
   const microsoft = all.find((m) => m.kind === 'microsoft')
@@ -190,219 +259,368 @@ export function PersonSignInMethods({ user }: { user: string }) {
     const row = data?.methods.find((m) => m.key === k)
     return row ? `${row.label}${row.enabled ? '' : ' (turned off)'}` : k
   }
-  // #837: a Google account reads as its address; its account number means
-  // nothing to an administrator and waits under Details.
-  // A Microsoft account reads the same way: its tenant/object ID is just as opaque.
-  // (Named for Google, where #837 began; it means "an account read by its address".)
-  const isGoogle = (i: AdminIdentity) => ['google', 'microsoft'].includes(data?.methods.find((m) => m.key === i.method)?.kind ?? '')
+  const kindOf = (i: AdminIdentity) => data?.methods.find((m) => m.key === i.method)?.kind ?? ''
+  // #837: a Google or Microsoft account reads as its address; its account
+  // number means nothing to an administrator and waits under Details.
+  const byAddress = (i: AdminIdentity) => ['google', 'microsoft'].includes(kindOf(i))
   const shownAs = (i: AdminIdentity) =>
-    isGoogle(i) && i.email ? i.email : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')
+    byAddress(i) && i.email ? i.email : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')
 
-  // #833: an expected Google sign-in is a way in the panel names, until a
-  // Google link or invite takes its place.
-  const holdsGoogle = Boolean(google && data?.identities.some((i) => !i.ended_at && i.method === google.key))
-  const expectsGoogle = Boolean(google && data?.expects_google_sign_in && data.email && !holdsGoogle)
-  // microsoft-sign-in: the same for an expected Microsoft sign-in.
-  const holdsMicrosoft = Boolean(microsoft && data?.identities.some((i) => !i.ended_at && i.method === microsoft.key))
-  const expectsMicrosoft = Boolean(microsoft && data?.expects_microsoft_sign_in && data.email && !holdsMicrosoft)
+  const live = data?.identities.filter((i) => !i.ended_at) ?? []
+  const ended = data?.identities.filter((i) => i.ended_at) ?? []
+  const liveOf = (m: MethodInfo | undefined) => (m ? live.filter((i) => i.method === m.key) : [])
+  // #833: an expected sign-in is a way in the panel names, until a link or an
+  // invite takes its place.
+  const expectsGoogle = Boolean(google && data?.expects_google_sign_in && data.email && !liveOf(google).length)
+  const expectsMicrosoft = Boolean(microsoft && data?.expects_microsoft_sign_in && data.email && !liveOf(microsoft).length)
   // #833: the Person's own address starts the invite, so it is typed once;
   // it can be changed for another Google address.
-  const ownAddress = data?.email && !data.identities.some((i) => !i.ended_at && i.pending_email === data.email!.toLowerCase()) ? data.email : ''
+  const ownAddress = data?.email && !live.some((i) => i.pending_email === data.email!.toLowerCase()) ? data.email : ''
+  // Links on a method this instance no longer offers still show, to be turned off.
+  const shownKeys = new Set([google?.key, microsoft?.key, ...delegated.map((m) => m.key)])
+  const orphans = live.filter((i) => !shownKeys.has(i.method))
+  const noWayIn = data && !data.has_password && !expectsGoogle && !expectsMicrosoft && live.length === 0
 
-  function onLink(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const f = new FormData(e.currentTarget)
-    add.mutate({
-      body: { method: String(f.get('method')), subject: String(f.get('link_record_number')).trim(), sign_in_name: String(f.get('link_login_id')).trim() },
-      form: e.currentTarget,
-    })
+  /** One linked account or invite: what it is, and its one button. */
+  const identityLine = (i: AdminIdentity, name: string) => {
+    const invited = i.subject == null
+    const delegatedLink = kindOf(i) === 'delegated_password'
+    return (
+      <MethodLine key={i.id} name={name} testid={`user-method-${i.id}`}
+        status={
+          <>
+            <span data-testid="identity-head">
+              {invited ? <>Invited · <b className="font-medium text-ink">{i.pending_email}</b></>
+                : delegatedLink ? <><span className="font-medium text-positive">Linked</span> · <b className="font-medium text-ink">{shownAs(i)}</b></>
+                  : <><span className="font-medium text-positive">On</span> · signs in as <b className="font-medium text-ink">{shownAs(i)}</b></>}
+            </span>
+            {!invited && i.linked_at && (
+              <span className="block" data-testid="identity-linked">
+                linked {fmtInstantIST(i.linked_at)} {i.linked_by && <LinkedHow by={i.linked_by} who={who} />}
+                {' · '}
+                {i.last_used_at ? `last signed in ${fmtInstantIST(i.last_used_at)}` : 'not signed in with it yet'}
+              </span>
+            )}
+            {!invited && byAddress(i) && i.email && (
+              <details data-testid="identity-details">
+                <summary className="cursor-pointer">Details</summary>
+                <span className="block">{kindOf(i) === 'microsoft' ? 'Microsoft account ID' : 'Google account number'}: {i.subject}</span>
+              </details>
+            )}
+            {invited && i.invitation_sent_at && (
+              <span className="block" data-testid={`invitation-sent-${i.id}`}>
+                {toSink ? 'invitation saved to the Email Sink' : 'invitation emailed'} {fmtInstantIST(i.invitation_sent_at)}
+              </span>
+            )}
+          </>
+        }
+        action={invited ? 'Change' : delegatedLink ? 'Change' : 'Turn Off'}
+        onAction={(el) => open(invited ? 'invited' : delegatedLink ? 'change-link' : 'turn-off', el, i)}
+      />
+    )
   }
-  function onInvite(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const f = new FormData(e.currentTarget)
-    add.mutate({
-      body: { method: google!.key, email: String(f.get('invite_address')).trim(), send_invitation_email: f.get('send_invitation_email') === 'on' },
-      form: e.currentTarget,
-    })
+
+  const dialogFor = (d: Dialog) => {
+    const i = d.identity
+    switch (d.what) {
+      case 'turn-off':
+        return (
+          <MethodDialog title={`Turn off ${labelOf(i!.method)}`} onClose={close} error={error} testid="sign-in-dialog">
+            <p className="text-sm text-ink-muted">
+              {byAddress(i!) && i!.subject != null
+                ? `Unlink ${shownAs(i!)}? This ${labelOf(i!.method)} account will no longer sign in as ${who}.`
+                : `Remove this ${labelOf(i!.method)} sign-in from ${who}?`}
+            </p>
+            <DialogButtons onClose={close}>
+              <Button variant="danger" data-autofocus disabled={unlink.isPending} onClick={() => unlink.mutate(i!.id)}>Turn Off</Button>
+            </DialogButtons>
+          </MethodDialog>
+        )
+      case 'invited':
+        return (
+          <MethodDialog title={`Invitation to ${i!.pending_email}`} onClose={close} error={error} testid="sign-in-dialog">
+            <p className="text-sm text-ink-muted">
+              {i!.invitation_sent_at ? `${toSink ? 'Saved to the Email Sink' : 'Emailed'} ${fmtInstantIST(i!.invitation_sent_at)}. ` : ''}
+              The invitation lets this address sign in with {labelOf(i!.method)} as {who}.
+            </p>
+            <DialogButtons onClose={close}>
+              <Button variant="danger" disabled={unlink.isPending} onClick={() => unlink.mutate(i!.id)}>Withdraw Invite</Button>
+              <Button variant="primary" data-autofocus disabled={resend.isPending} onClick={() => resend.mutate(i!)}>Resend Invitation</Button>
+            </DialogButtons>
+          </MethodDialog>
+        )
+      case 'google-invite':
+        return (
+          <MethodDialog title={`Invite a ${google!.label} address`} onClose={close} error={error} testid="sign-in-dialog">
+            <form className="space-y-3" data-testid="invite-google-form" {...NO_AUTOFILL_FORM}
+              onSubmit={(e) => {
+                e.preventDefault()
+                const f = new FormData(e.currentTarget)
+                add.mutate({ method: google!.key, email: String(f.get('invite_address')).trim(), send_invitation_email: f.get('send_invitation_email') === 'on' })
+              }}>
+              <p className="text-sm text-ink-muted">
+                {expectsGoogle
+                  ? `${data!.email} is expected to sign in with ${google!.label}, which lets it in only when its domain is allowed. An invite lets it in from any domain.`
+                  : `An invite lets this address in from any domain.${data?.email ? ` Expecting ${data.email} instead lets it in only when its domain is allowed for ${google!.label} sign-in.` : ''}`}
+              </p>
+              <TextInput name="invite_address" type="text" inputMode="email" {...NO_AUTOFILL_FIELD}
+                aria-label="Google address to invite" placeholder="Google address to invite" defaultValue={ownAddress} required />
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input type="checkbox" name="send_invitation_email" defaultChecked className="shrink-0 accent-action" />
+                Email an invitation to this address
+              </label>
+              <DialogButtons onClose={close}>
+                {expectsGoogle && (
+                  <Button variant="danger" type="button" disabled={expect.isPending} onClick={() => expect.mutate({ expects_google_sign_in: false })}>
+                    Stop Expecting
+                  </Button>
+                )}
+                {/* #833: without an invite, the person's own address may still be let in by its domain. */}
+                {!expectsGoogle && data?.email && (
+                  <Button variant="secondary" type="button" disabled={expect.isPending} onClick={() => expect.mutate({ expects_google_sign_in: true })}>
+                    Expect Sign-In Instead
+                  </Button>
+                )}
+                <Button variant="primary" type="submit" disabled={add.isPending}>Invite</Button>
+              </DialogButtons>
+            </form>
+          </MethodDialog>
+        )
+      case 'microsoft-on':
+        return (
+          <MethodDialog title={`Set up ${microsoft!.label}`} onClose={close} error={error} testid="sign-in-dialog">
+            <p className="text-sm text-ink-muted">
+              {data?.email
+                ? `Lets ${data.email} sign in with ${microsoft!.label}. It works only when its domain is allowed for ${microsoft!.label} sign-in and ${microsoft!.label} confirms the organisation owns it.`
+                : `Give ${who} an email first: ${microsoft!.label} sign-in uses it.`}
+            </p>
+            <DialogButtons onClose={close}>
+              {data?.email && (
+                <Button variant="primary" data-autofocus disabled={expect.isPending} onClick={() => expect.mutate({ expects_microsoft_sign_in: true })}>Set Up</Button>
+              )}
+            </DialogButtons>
+          </MethodDialog>
+        )
+      case 'microsoft-off':
+        return (
+          <MethodDialog title={`Turn off ${microsoft!.label}`} onClose={close} error={error} testid="sign-in-dialog">
+            <p className="text-sm text-ink-muted">Stop expecting {data!.email} to sign in with {microsoft!.label}?</p>
+            <DialogButtons onClose={close}>
+              <Button variant="danger" data-autofocus disabled={expect.isPending} onClick={() => expect.mutate({ expects_microsoft_sign_in: false })}>Turn Off</Button>
+            </DialogButtons>
+          </MethodDialog>
+        )
+      case 'link':
+        return (
+          <MethodDialog title={`Link a ${d.method!.label} record`} onClose={close} error={error} testid="sign-in-dialog">
+            <form className="space-y-3" data-testid="link-delegated-form" {...NO_AUTOFILL_FORM}
+              onSubmit={(e) => {
+                e.preventDefault()
+                const f = new FormData(e.currentTarget)
+                add.mutate({ method: d.method!.key, subject: String(f.get('link_record_number')).trim(), sign_in_name: String(f.get('link_login_id')).trim() })
+              }}>
+              <TextInput name="link_record_number" aria-label="Record number at the service" placeholder="Record number at the service" required {...NO_AUTOFILL_FIELD} />
+              <TextInput name="link_login_id" aria-label="Login ID at the service" placeholder="Login ID at the service" {...NO_AUTOFILL_FIELD} />
+              <DialogButtons onClose={close}>
+                <Button variant="primary" type="submit" disabled={add.isPending}>Link</Button>
+              </DialogButtons>
+            </form>
+          </MethodDialog>
+        )
+      case 'change-link':
+        return (
+          <MethodDialog title={`Change the ${labelOf(i!.method)} link`} onClose={close} error={error} testid="sign-in-dialog">
+            <p className="mb-3 text-sm text-ink-muted">
+              Linked to number {i!.subject}. Only its login ID changes here; to use another number, unlink this one and link that.
+            </p>
+            <form className="space-y-3" data-testid="change-link-form" {...NO_AUTOFILL_FORM}
+              onSubmit={(e) => {
+                e.preventDefault()
+                rename.mutate({ id: i!.id, signInName: String(new FormData(e.currentTarget).get('link_login_id')).trim() })
+              }}>
+              <TextInput name="link_login_id" aria-label="Login ID at the service" placeholder="Login ID at the service"
+                defaultValue={i!.sign_in_name ?? ''} {...NO_AUTOFILL_FIELD} />
+              <DialogButtons onClose={close}>
+                <Button variant="danger" type="button" disabled={unlink.isPending} onClick={() => unlink.mutate(i!.id)}>Unlink</Button>
+                <Button variant="primary" type="submit" disabled={rename.isPending}>Save</Button>
+              </DialogButtons>
+            </form>
+          </MethodDialog>
+        )
+      case 'password-invite': {
+        const pending = data?.password_invite.latest?.status === 'pending'
+        return (
+          <MethodDialog title={pending ? 'Resend the password invite' : 'Send a password invite'} onClose={close} error={error} testid="sign-in-dialog">
+            <p className="text-sm text-ink-muted">
+              Emails {data?.email} a link to set a password. It works once, for 72 hours.{pending ? ' The earlier link stops working.' : ''}
+            </p>
+            <DialogButtons onClose={close}>
+              <Button variant="primary" data-autofocus disabled={passwordInvite.isPending} onClick={() => passwordInvite.mutate()}>
+                {pending ? 'Resend' : 'Send Invite'}
+              </Button>
+            </DialogButtons>
+          </MethodDialog>
+        )
+      }
+    }
+  }
+
+  const invite = data?.password_invite
+  const pendingPassword = invite?.latest?.status === 'pending' ? invite.latest : null
+  const endedPassword: Partial<Record<PasswordInvite['status'], string>> = {
+    expired: 'The last password invite expired.',
+    voided: 'The last password invite was cancelled.',
+    not_sent: 'The last password invite was not sent.',
   }
 
   return (
-    <Card className="p-3" data-testid="user-sign-in-methods">
-      <h3 className="mb-2 text-sm font-semibold text-ink">Sign-in methods</h3>
-      <ul className="space-y-2 text-sm">
-        {data?.has_password && (
-          <li data-testid="user-method-password">
-            Password
-            {data.password_invite.latest?.status === 'accepted' && data.password_invite.latest.accepted_at && (
-              <span className="block text-sm text-ink-muted" data-testid="password-invite-accepted">
-                set from a password invite <span className="whitespace-nowrap">{fmtInstantIST(data.password_invite.latest.accepted_at)}</span>
-              </span>
-            )}
-          </li>
-        )}
-        {data?.identities.filter((i) => !i.ended_at).map((i) => (
-          <li key={i.id} className="flex items-start justify-between gap-2" data-testid={`user-method-${i.id}`}>
-            <span className="min-w-0">
-              <span data-testid="identity-head">
-                <span className="font-medium">{labelOf(i.method)}</span>{' '}
-                <span className="text-sm text-ink-muted">{i.subject == null ? `invited: ${i.pending_email}` : isGoogle(i) && i.email ? `· ${i.email}` : shownAs(i)}</span>
-              </span>
-              {i.subject != null && i.linked_at && (
-                <span className="block text-sm text-ink-muted" data-testid="identity-linked">
-                  linked {fmtInstantIST(i.linked_at)} {i.linked_by && <LinkedHow by={i.linked_by} who={who} />}
-                  {' · '}
-                  {i.last_used_at ? `last signed in ${fmtInstantIST(i.last_used_at)}` : 'not signed in with it yet'}
+    <section aria-labelledby="sign-in-heading" className="flex flex-col gap-2" data-testid="user-sign-in-methods">
+      <h2 id="sign-in-heading" ref={heading} tabIndex={-1} className="text-sm font-medium text-ink-muted focus-visible:outline-none">Sign-In</h2>
+      {noWayIn && <p className="text-sm text-ink-muted">No way to sign in yet.</p>}
+      {data && google && (liveOf(google).length ? liveOf(google).map((i) => identityLine(i, google.label)) : (
+        <MethodLine name={google.label} testid={expectsGoogle ? 'user-method-expected-google' : 'sign-in-line-google'}
+          status={expectsGoogle ? <>Expected as <b className="font-medium text-ink">{data.email}</b>, when its domain is allowed</> : 'Not set up'}
+          action={expectsGoogle ? 'Change' : 'Set Up'} onAction={(el) => open('google-invite', el)} />
+      ))}
+      {data && microsoft && (liveOf(microsoft).length ? liveOf(microsoft).map((i) => identityLine(i, microsoft.label)) : (
+        <MethodLine name={microsoft.label} testid={expectsMicrosoft ? 'user-method-expected-microsoft' : 'sign-in-line-microsoft'}
+          status={expectsMicrosoft
+            ? <>Expected as <b className="font-medium text-ink">{data.email}</b>, when its domain is allowed and {microsoft.label} confirms the organisation owns it</>
+            : 'Not set up'}
+          action={expectsMicrosoft ? 'Turn Off' : 'Set Up'} onAction={(el) => open(expectsMicrosoft ? 'microsoft-off' : 'microsoft-on', el)} />
+      ))}
+      {data && delegated.map((m) => (liveOf(m).length ? liveOf(m).map((i) => identityLine(i, m.label)) : (
+        <MethodLine key={m.key} name={m.label} testid={`sign-in-line-${m.key}`} status="Not linked"
+          action="Link" onAction={(el) => open('link', el, undefined, m)} />
+      )))}
+      {orphans.map((i) => identityLine(i, labelOf(i.method)))}
+      {data && (
+        <MethodLine name="Password" testid={data.has_password ? 'user-method-password' : pendingPassword || invite?.offered ? 'password-invite' : 'sign-in-line-password'}
+          status={data.has_password ? (
+            <>
+              <span className="font-medium text-positive">Set</span>
+              {invite?.latest?.status === 'accepted' && invite.latest.accepted_at && (
+                <span className="block" data-testid="password-invite-accepted">
+                  set from a password invite <span className="whitespace-nowrap">{fmtInstantIST(invite.latest.accepted_at)}</span>
                 </span>
               )}
-              {i.subject != null && isGoogle(i) && i.email && (
-                <details className="text-sm text-ink-muted" data-testid="identity-details">
-                  <summary className="cursor-pointer">Details</summary>
-                  <span className="block">
-                    {data?.methods.find((m) => m.key === i.method)?.kind === 'microsoft' ? 'Microsoft account ID' : 'Google account number'}: {i.subject}
-                  </span>
-                </details>
-              )}
-              {i.subject == null && i.invitation_sent_at && (
-                <span className="block text-sm text-ink-muted" data-testid={`invitation-sent-${i.id}`}>
-                  {toSink ? 'invitation saved to the Email Sink' : 'invitation emailed'} {fmtInstantIST(i.invitation_sent_at)}
-                </span>
-              )}
+            </>
+          ) : pendingPassword?.sent_at ? (
+            <span data-testid="password-invite-status">
+              Invite {toSink ? 'saved to the Email Sink' : 'emailed'} <span className="whitespace-nowrap">{fmtInstantIST(pendingPassword.sent_at)}</span> · expires{' '}
+              <span className="whitespace-nowrap">{fmtInstantIST(pendingPassword.expires_at)}</span>
             </span>
-            <span className="flex shrink-0 flex-col gap-1">
-              {i.subject == null && (
-                <Button variant="secondary" disabled={resend.isPending} onClick={() => resend.mutate(i)}>
-                  Resend invitation
-                </Button>
-              )}
-              <Button
-                variant="danger"
-                onClick={() => {
-                  const ask =
-                    isGoogle(i) && i.subject != null
-                      ? `Unlink ${shownAs(i)}? This ${labelOf(i.method)} account will no longer sign in as ${who}.`
-                      : `Remove this ${labelOf(i.method)} sign-in from ${who}?`
-                  if (window.confirm(ask)) unlink.mutate(i.id)
-                }}
-              >
-                Unlink
-              </Button>
-            </span>
-          </li>
-        ))}
-        {data?.identities.filter((i) => i.ended_at).map((i) => (
-          <li key={i.id} className="text-sm text-ink-muted" data-testid={`user-method-ended-${i.id}`}>
-            {labelOf(i.method)} {shownAs(i)} — ended{' '}
-            {fmtInstantIST(i.ended_at!)} ({i.ended_reason})
-          </li>
-        ))}
-        {expectsGoogle && (
-          <li className="text-sm text-ink-muted" data-testid="user-method-expected-google">
-            <span className="font-medium text-ink">Expects Google sign-in as {data!.email}.</span> That lets this address in only
-            when its domain is allowed for Google sign-in. Invite the address to let it in from any domain.
-          </li>
-        )}
-        {expectsMicrosoft && (
-          <li className="text-sm text-ink-muted" data-testid="user-method-expected-microsoft">
-            <span className="font-medium text-ink">Expects Microsoft sign-in as {data!.email}.</span> That lets this address in only
-            when its domain is allowed for Microsoft sign-in and Microsoft confirms the organisation owns it.
-          </li>
-        )}
-        {data && !data.has_password && !expectsGoogle && !expectsMicrosoft && data.identities.filter((i) => !i.ended_at).length === 0 && (
-          <li className="text-sm text-ink-muted">No way to sign in yet.</li>
-        )}
-        {data && !data.has_password && (data.password_invite.offered || data.password_invite.latest?.status === 'pending') && (
-          <PasswordInviteRow
-            invite={data.password_invite.latest}
-            email={data.email ?? ''}
-            toSink={toSink}
-            busy={passwordInvite.isPending}
-            onSend={() => passwordInvite.mutate()}
-          />
-        )}
-      </ul>
-      {delegated.length > 0 && (
-        <form className="mt-3 space-y-2" onSubmit={onLink} data-testid="link-delegated-form" {...NO_AUTOFILL_FORM}>
-          <Select name="method" aria-label="Service" defaultValue={delegated[0].key}>
-            {delegated.map((m) => (
-              <option key={m.key} value={m.key}>{m.label}</option>
-            ))}
-          </Select>
-          <TextInput name="link_record_number" aria-label="Record number at the service" placeholder="Record number at the service" required {...NO_AUTOFILL_FIELD} />
-          <TextInput name="link_login_id" aria-label="Login ID at the service" placeholder="Login ID at the service" {...NO_AUTOFILL_FIELD} />
-          <Button type="submit" block>Link</Button>
-        </form>
+          ) : (
+            <>
+              Not set
+              {invite?.latest && endedPassword[invite.latest.status] && <span className="block">{endedPassword[invite.latest.status]}</span>}
+              {!invite?.offered && invite?.refusal && <span className="block">{invite.refusal}</span>}
+            </>
+          )}
+          action={data.has_password ? undefined : pendingPassword ? 'Resend' : invite?.offered ? 'Send Invite' : undefined}
+          onAction={(el) => open('password-invite', el)} />
       )}
-      {/* Shown once the Person is loaded, so the starting address never
-          replaces what the administrator has begun to type. */}
-      {google && data && (
-        <form className="mt-3 space-y-2" onSubmit={onInvite} data-testid="invite-google-form" {...NO_AUTOFILL_FORM}>
-          <TextInput
-            key={ownAddress}
-            name="invite_address"
-            type="text"
-            inputMode="email"
-            {...NO_AUTOFILL_FIELD}
-            aria-label="Google address to invite"
-            placeholder="Google address to invite"
-            defaultValue={ownAddress}
-            required
-          />
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" name="send_invitation_email" defaultChecked className="shrink-0 accent-action" />
-            Email an invitation to this address
-          </label>
-          <Button type="submit" block>Invite {google.label} address</Button>
-        </form>
+      {ended.length > 0 && (
+        <div className="px-1">
+          <button type="button" aria-expanded={showEnded} onClick={() => setShowEnded((was) => !was)} data-testid="sign-in-show-ended"
+            className="text-sm text-ink-muted hover:text-ink hover:underline">
+            {showEnded ? 'Hide ended' : `Show ${ended.length} ended`}
+          </button>
+          {showEnded && (
+            <ul className="mt-1 space-y-1">
+              {ended.map((i) => (
+                <li key={i.id} className="text-sm text-ink-muted" data-testid={`user-method-ended-${i.id}`}>
+                  {labelOf(i.method)} {shownAs(i)} — ended {fmtInstantIST(i.ended_at!)} ({i.ended_reason})
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       {notice && (
-        <p className="mt-2 text-sm text-positive" role="status" data-testid="user-method-notice">
+        <p className="text-sm text-positive" role="status" data-testid="user-method-notice">
           {notice}
         </p>
       )}
-      {error && (
-        <p className="mt-2 text-sm text-negative" data-testid="user-method-error">
+      {error && !dialog && (
+        <p className="text-sm text-negative" data-testid="user-method-error">
           {error}
         </p>
       )}
-    </Card>
+      {dialog && dialogFor(dialog)}
+    </section>
   )
 }
 
-/** #1257: the password invite in the panel: what was sent and when it
- *  expires, with Resend; or what sending one does, with Send. */
-function PasswordInviteRow({ invite, email, toSink, busy, onSend }: {
-  invite: PasswordInvite | null
-  email: string
-  toSink: boolean
-  busy: boolean
-  onSend: () => void
+interface Dialog {
+  what: 'turn-off' | 'invited' | 'google-invite' | 'microsoft-on' | 'microsoft-off' | 'link' | 'change-link' | 'password-invite'
+  opener: HTMLElement
+  identity?: AdminIdentity
+  method?: MethodInfo
+}
+
+/** #1267: one way in: its name, its status, and at most one button. */
+function MethodLine({ name, status, action, onAction, testid }: {
+  name: string
+  status: ReactNode
+  action?: string
+  onAction: (opener: HTMLElement) => void
+  testid: string
 }) {
-  const live = invite?.status === 'pending'
-  const ended: Partial<Record<PasswordInvite['status'], string>> = {
-    expired: 'The last password invite expired',
-    voided: 'The last password invite was cancelled',
-    not_sent: 'The last password invite was not sent',
-  }
   return (
-    <li className="space-y-2" data-testid="password-invite">
-      <span className="block">
-        <span className="font-medium">Password invite</span>
-        {live && invite.sent_at ? (
-          <span className="block text-sm text-ink-muted" data-testid="password-invite-status">
-            {toSink ? 'Saved to the Email Sink' : 'Emailed'} <span className="whitespace-nowrap">{fmtInstantIST(invite.sent_at)}</span> · expires{' '}
-            <span className="whitespace-nowrap">{fmtInstantIST(invite.expires_at)}</span>
-          </span>
-        ) : (
-          <span className="block text-sm text-ink-muted">
-            {invite && ended[invite.status] ? `${ended[invite.status]}. ` : ''}
-            Emails {email} a link to set a password. It works once, for 72 hours.
-          </span>
+    <div className="flex items-start gap-3 rounded-lg bg-subtle px-3 py-2.5" data-testid={testid}>
+      <span className="w-24 shrink-0 pt-1 text-sm font-semibold text-ink">{name}</span>
+      <span className="min-w-0 flex-1 pt-1 text-sm text-ink-muted">{status}</span>
+      {action && (
+        <Button variant="secondary" className="shrink-0" onClick={(e) => onAction(e.currentTarget)} data-testid="sign-in-line-action">
+          {action}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+/** #1267: a small dialog for one method's fields. Its first field (or main
+ *  button) takes focus; Escape, Cancel or a click outside closes it. */
+function MethodDialog({ title, onClose, error, testid, children }: {
+  title: string
+  onClose: () => void
+  error: string | null
+  testid: string
+  children: ReactNode
+}) {
+  const id = useId()
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    box.current?.querySelector<HTMLElement>('input:not([type="checkbox"]), [data-autofocus]')?.focus()
+  }, [])
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape') return
+        e.stopPropagation()
+        onClose()
+      }}>
+      <div ref={box} role="dialog" aria-modal="true" aria-labelledby={id} data-testid={testid} className={cardClasses('w-full max-w-sm p-4')}>
+        <h2 id={id} className="mb-2 text-base font-semibold text-ink">{title}</h2>
+        {children}
+        {error && (
+          <p className="mt-3 text-sm text-negative" role="alert" data-testid="user-method-error">
+            {error}
+          </p>
         )}
-      </span>
-      <Button variant="secondary" block disabled={busy} onClick={onSend}>
-        {live ? 'Resend password invite' : 'Send password invite'}
-      </Button>
-    </li>
+      </div>
+    </div>
+  )
+}
+
+function DialogButtons({ onClose, children }: { onClose: () => void; children?: ReactNode }) {
+  return (
+    <div className="mt-4 flex flex-wrap justify-end gap-2">
+      <Button type="button" variant="secondary" onClick={onClose} data-testid="sign-in-dialog-cancel">Cancel</Button>
+      {children}
+    </div>
   )
 }
 
