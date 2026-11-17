@@ -178,3 +178,27 @@ describe("a colleague's choices on a changed default", () => {
     expect(names(viewColumns(newDefault(), colleague))).not.toContain('floor')
   })
 })
+
+// admin-lists 4 (one-app-chrome, 17-Nov): a Table whose title is its own id
+// ("LKS-Bags & Silk-2026-11-16") leads its list with its first readable link.
+describe('a Table whose title is its id', () => {
+  const departmentSection = (columns = [
+    column('department_section_id', { in_list_view: true }),
+    column('store', { column_type: 'Reference', reference_table: 'Site', in_list_view: true }),
+    column('section', { column_type: 'Reference', reference_table: 'Section', in_list_view: true }),
+  ]) => ({ name: 'Department Section', id_pattern: 'field:department_section_id', title_column: 'department_section_id', columns }) as unknown as TableMeta
+
+  it('leads with its first readable link, and the id waits in Show Columns', () => {
+    expect(names(viewColumns(departmentSection(), {}))).toEqual(['store', 'section'])
+    expect(names(viewColumns(departmentSection(), { shownCols: ['department_section_id'] }))).toEqual(['store', 'department_section_id', 'section'])
+  })
+
+  it('keeps the id where the Table has no readable link: never the only identifier hidden', () => {
+    const lone = departmentSection([column('department_section_id', { in_list_view: true }), column('note', { in_list_view: true })])
+    expect(names(viewColumns(lone, {}))).toEqual(['department_section_id', 'note'])
+  })
+
+  it('a title that is not the id is unchanged', () => {
+    expect(names(viewColumns(sectionMapping({ title_column: 'floor', id_pattern: 'field:section' } as Partial<TableMeta>), {}))).toEqual(['floor', 'section', 'mch'])
+  })
+})
