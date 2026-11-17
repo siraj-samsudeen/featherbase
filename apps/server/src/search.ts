@@ -35,8 +35,10 @@ export const registryLabel = (name: string): string | undefined =>
 const PER_TABLE = 3
 /** How many Tables are searched at once (#1265). */
 const AT_ONCE = 6
-/** A person's or service account's opaque id names no one (#1265: no ids in results). */
-const OPAQUE = /^(psn|svc)_[a-z2-7]{20}$/
+/** #1265: an id made by machine names no one: a person's or service account's
+ *  (`psn_…`), or a generated hash ("c1aad020aa9b533c", an Activity Log row's).
+ *  A code people type ("JA-3001-1") is a name and stays. */
+const MACHINE_ID = /^(?:(?:psn|svc)_[a-z2-7]{20}|[0-9a-f]{8,})$/
 
 /** #1265: what the search sends, one line at a time. First the groups it will
  *  search, by label, in the order they show; then each group as its Table
@@ -74,6 +76,8 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   // order, so a slow Table is never crowded out by faster ones (Codex review).
   const queue = [...readable]
   const finished: SearchEvent[] = []
+  // Every search started, so none outlives the lifecycle lock the caller holds.
+  const started = new Set<Promise<unknown>>()
   let wake: (() => void) | null = null
   let running = 0
   let failure: unknown = null
@@ -86,10 +90,11 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
     while (!halted() && running < AT_ONCE && queue.length) {
       const t = queue.shift()!
       running++
-      void searchOne(t, user, like)
+      const one: Promise<void> = searchOne(t, user, like)
         .then((hits) => { finished.push({ table: String(t.name), hits }) })
         .catch((error: unknown) => { failure ??= error })
-        .finally(() => { running--; launch(); wake?.() })
+        .finally(() => { running--; started.delete(one); launch(); wake?.() })
+      started.add(one)
     }
   }
   try {
@@ -108,6 +113,8 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   } finally {
     stopped = true
     signal?.removeEventListener('abort', onAbort)
+    // An abandoned or failed search still waits for what it started (Codex review).
+    await Promise.allSettled([...started])
   }
 }
 
@@ -144,6 +151,6 @@ async function searchOne(t: Record<string, unknown>, user: string, like: string)
       title: String(row.title ?? row.row_id),
       ...(registryLabel(meta.name) ? { kind_label: registryLabel(meta.name) } : {}),
     }))
-    // #1265: a row whose only name is an opaque id is no result anyone can read.
-    .filter((hit) => !OPAQUE.test(hit.title))
+    // #1265: a row whose only name is a machine's id is no result anyone can read.
+    .filter((hit) => !MACHINE_ID.test(hit.title))
 }

@@ -624,7 +624,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                   </div>
                   <p className="text-xs text-ink-muted" data-testid="search-progress-text">
                     {slow && pendingGroups.length
-                      ? `Still searching ${pendingGroups.map((g) => g.label).join(', ')}…`
+                      ? `Still searching ${pendingGroups.slice(0, 3).map((g) => g.label).join(', ')}${pendingGroups.length > 3 ? ` and ${pendingGroups.length - 3} more` : ''}…`
                       : 'Searching people, records and tables…'}
                   </p>
                 </div>

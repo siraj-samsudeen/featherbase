@@ -131,3 +131,17 @@ test('a group that answers late still comes before later groups, within fifteen 
     search.restore()
   }
 })
+
+// Verifier (#1265): with many groups still pending, the wait names three and counts the rest.
+test('a long wait names three groups and counts the rest', async ({ admin }) => {
+  const search = fakeSearch()
+  const many = ['A', 'B', 'C', 'D', 'E', 'F'].map((x) => ({ table: `T ${x}`, label: `Table ${x}` }))
+  try {
+    await openBar(admin, 'slow')
+    await search.asked('slow')
+    await search.send('slow', { groups: many })
+    await waitFor(() => expect(screen.getByTestId('search-progress-text')).toHaveTextContent('Still searching Table A, Table B, Table C and 3 more…'), { timeout: 3000 })
+  } finally {
+    search.restore()
+  }
+})

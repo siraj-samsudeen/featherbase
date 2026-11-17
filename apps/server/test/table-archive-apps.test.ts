@@ -11,7 +11,7 @@ import { discoverPackages, repinToFolder } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
-import { expectApiError, expectRefused, makeTable, searchHits } from './fixtures'
+import { expectApiError, expectRefused, makeTable, searchHits, searchLines } from './fixtures'
 
 // Every request names the app versions its client loaded, as the web client does.
 const atVersions = (client: TestClient, versions: string) => makeClient({ request: (path, init) => client.fetch(String(path), {
@@ -126,8 +126,11 @@ describe("#1041: archiving an app's table", () => {
 
   test('global search leaves it out, and finds it again once un-archived', async ({ admin }) => {
     await installActionProof(admin)
-    const row = await saveRow(admin, DESTINATION, { title: 'Findable' })
-    const inSearch = async () => (await search(admin, row.row_id)).some((hit) => hit.table === DESTINATION)
+    await saveRow(admin, DESTINATION, { title: 'Findable' })
+    // #1265: the search names every Table it searches before it answers; its
+    // rows are named by generated ids, which the bar never shows, so the
+    // Table's place among the searched groups is what is checked.
+    const inSearch = async () => ((await searchLines(admin, 'Findable'))[0] as { groups: { table: string }[] }).groups.some((g) => g.table === DESTINATION)
     expect(await inSearch()).toBe(true)
     await archive(admin, DESTINATION)
     expect(await inSearch()).toBe(false)

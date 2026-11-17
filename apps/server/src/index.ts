@@ -1939,6 +1939,12 @@ app.get('/api/search', async (c) => {
   return c.body(body, 200, headers)
 })
 
+// admin-lists 11: how many rows each Table holds, for All Tables.
+app.get('/api/table_counts', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json({ counts: await tableRowCounts(who(c)) })
+})
+
 app.get('/api/command_destinations', async (c) => {
   return c.json(await commandDestinations(who(c)))
 })

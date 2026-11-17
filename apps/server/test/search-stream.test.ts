@@ -18,13 +18,16 @@ test('the groups come first, each by label; every group answers once; done comes
   expect(lines.at(-1)).toEqual({ done: true })
 })
 
-test('a row whose only name is an opaque id is no result', async ({ admin }) => {
+test("a row whose only name is a machine's id is no result; a typed code is", async ({ admin }) => {
   // A Table with no title column names its rows by their key.
   await admin.post('/api/table_def', { name: 'Ss Keyed', id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] })
   await admin.post('/api/save_row', { table: 'Ss Keyed', row: { row_id: 'psn_aaaaaaaaaaaaaaaaaaaa', note: 'x' } })
   await admin.post('/api/save_row', { table: 'Ss Keyed', row: { row_id: 'psn-readable-code', note: 'y' } })
+  await admin.post('/api/save_row', { table: 'Ss Keyed', row: { row_id: 'c1aad020aa9b533c', note: 'z' } })
   const keyed = (await searchLines(admin, 'psn')).find((l) => l.table === 'Ss Keyed') as { hits: { title: string }[] }
   expect(keyed.hits.map((h) => h.title)).toEqual(['psn-readable-code'])
+  const hashed = (await searchLines(admin, 'c1aad')).find((l) => l.table === 'Ss Keyed') as { hits: unknown[] }
+  expect(hashed.hits).toEqual([])
 })
 
 // Codex review: a search the client has abandoned launches no more Tables and ends.
