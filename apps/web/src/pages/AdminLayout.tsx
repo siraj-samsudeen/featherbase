@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { GROUP_TONE, RAIL_ROW, ROW_IDLE, RailFold, RailMenuItem, RailRule, SidebarRailContext, useSidebarRail, type GroupTone } from '../components/SidebarRail'
+import { attachRailTips, railMark, sidebarWords } from '../lib/sidebar-rail'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
@@ -30,7 +32,7 @@ import { isOpaqueId } from '../lib/people'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
-import { SIDEBAR_DRAWER_QUERY, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
+import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
@@ -39,7 +41,7 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, Bookmark, CalendarClock, Clock, Compass, Database, Eye, History, Key, LayoutDashboard, ListChecks, LogIn, ShieldLock, Table, UserRound, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { Bell, BookOpen, Bookmark, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Upload, Compass, Database, Eye, History, Key, LayoutDashboard, ListChecks, LogIn, ShieldLock, Table, UserRound, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
@@ -197,7 +199,10 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
   // be collapsed to give the page its width; a phone keeps its drawer,
   // whatever was chosen on a wider window. #1227: the state, the controls and
   // Ctrl/Cmd+B are the shared ones every app's sidebar uses (TopBar).
-  const { setDrawerOpen: setSidebarOpen } = useSidebar(user?.row_id)
+  const { collapsed: collapsedChoice, setDrawerOpen: setSidebarOpen } = useSidebar(user?.row_id)
+  // #1248: collapsed (md+), the sidebar is an icon rail; each group draws its rail form.
+  const drawerWidth = useMediaQuery(SIDEBAR_DRAWER_QUERY)
+  const rail = collapsedChoice && !drawerWidth
   // #489: on a phone the command bar takes its own row under the bar, so Tab
   // still follows what the eye reads: the bar's row first, then the search.
   const isPhone = useMediaQuery(PHONE_QUERY)
@@ -752,29 +757,6 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
         <SidebarAside testid="admin-sidebar" user={user?.row_id}>
           {/* #1235 item 7: on the account pages, the Account group leads the sidebar. */}
           {account && <AccountSidebarGroup />}
-          {/* #1242 (admin-lists 7): one quiet "+ New" menu, so the sidebar does not
-              compete with the page's own New. */}
-          {canManage && (
-          <div className="px-3 pt-4 [&>div>button]:w-full [&>div>button]:justify-between" data-testid="sidebar-new">
-            <ActionDisclosure label="+ New">
-              <Link
-                to="/featherbase/admin/new-table"
-                data-testid="new-table-link"
-                className={buttonClasses({ variant: 'quiet', className: 'justify-start' })}
-              >
-                New table
-              </Link>
-              <Link
-                to="/featherbase/admin/import"
-                search={{ table: undefined }}
-                data-testid="import-data-link"
-                className={buttonClasses({ variant: 'quiet', className: 'justify-start' })}
-              >
-                Import data
-              </Link>
-            </ActionDisclosure>
-          </div>
-          )}
           {/* #80: the sidebar is Home Pages only. Every
               table stays reachable through the All tables entry below —
               grouping and curation moved there, nothing is hidden. */}
@@ -782,43 +764,62 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
               height whatever sits below them. */}
           <nav className="shrink-0 px-2 pb-4 pt-3" data-testid="home-page-nav" aria-label="Modules">
             {/* #1242 (admin-lists 8): headed and drawn like every other group. */}
-            <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-group-heading">
-              <LayoutDashboard aria-hidden size={12} />
+            {rail ? <RailRule heading="Modules" /> : (
+            <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted" data-testid="sidebar-group-heading">
+              <LayoutDashboard aria-hidden size={12} className={GROUP_TONE.blue} />
               Modules
             </h2>
+            )}
             {homePages.isLoading && (
               <p className="px-2 py-1 text-xs text-ink-subtle">Loading…</p>
             )}
             {(homePages.data?.pages ?? []).map((p) => {
               const marked = p.row_id === openModulePage
+              const label = p.label || p.row_id
+              // #1248: a module with no emoji of its own shows its initials in the rail.
+              const mark = p.icon ? undefined : railMark(label)
               return (
                 <Link
                   key={p.row_id}
                   to="/featherbase/admin/home/$name"
                   params={{ name: p.row_id }}
                   data-testid={`home-page-link-${p.row_id}`}
+                  data-rail-mark={mark}
                   aria-current={marked ? 'page' : undefined}
-                  className={`${touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')}${marked ? ` ${SIDEBAR_ROW_SELECTED}` : ''}`}
+                  className={`${rail ? RAIL_ROW : touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')}${marked ? ` ${SIDEBAR_ROW_SELECTED}` : ''}`}
                   inactiveProps={{ className: marked ? '' : SIDEBAR_ROW_IDLE }}
                   activeProps={{ className: SIDEBAR_ROW_SELECTED, 'aria-current': 'page' }}
                 >
                   {/* The page's own emoji takes the icon's place, unread. */}
-                  {p.icon
-                    ? <span aria-hidden data-testid="sidebar-item-icon" className="flex w-3.5 shrink-0 justify-center text-sm leading-none text-ink-subtle">{p.icon}</span>
-                    : <LayoutDashboard aria-hidden size={14} className="shrink-0 text-ink-subtle" data-testid="sidebar-item-icon" />}
-                  <span className="min-w-0 flex-1 truncate">{p.label || p.row_id}</span>
+                  {rail
+                    ? (p.icon
+                        ? <span aria-hidden className="text-base leading-none">{p.icon}</span>
+                        : <span aria-hidden data-testid="rail-mark" className={`grid h-[26px] w-[26px] place-items-center rounded-[7px] border-[1.5px] border-current text-xs font-bold leading-none ${GROUP_TONE.blue}`}>{mark}</span>)
+                    : p.icon
+                      ? <span aria-hidden data-testid="sidebar-item-icon" className={`flex w-3.5 shrink-0 justify-center text-sm leading-none ${GROUP_TONE.blue}`}>{p.icon}</span>
+                      : <LayoutDashboard aria-hidden size={14} className={`shrink-0 ${GROUP_TONE.blue}`} data-testid="sidebar-item-icon" />}
+                  <span className={rail ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{label}</span>
                 </Link>
               )
             })}
           </nav>
           {/* #101 Phase 2: recall without a keystroke — the same per-user
               buffer the command bar reads. */}
-          {(sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
+          {rail && (sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
+            <RailFold label="Recently Opened" icon={Clock} testid="sidebar-recents" tone="slate">
+              {(close) => [...sidebarRecent, ...sidebarFrequent].map((r) => (
+                <RailMenuItem key={r.key} close={close} onSelect={() => openRecent(r)}>
+                  <span className="truncate"><EntryLabel entry={r} /></span>
+                </RailMenuItem>
+              ))}
+            </RailFold>
+          )}
+          {!rail && (sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
             <div className="border-t border-border px-2 py-2" data-testid="sidebar-recents">
               {/* A heading, not a link: muted, sentence case, with a clock. */}
-              <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-recents-heading">
-                <Clock aria-hidden size={12} />
-                Recently opened
+              <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted" data-testid="sidebar-recents-heading">
+                <Clock aria-hidden size={12} className={GROUP_TONE.slate} />
+                Recently Opened
               </h2>
               {sidebarRecent.map((r) => (
                 <SidebarRecentRow key={r.key} entry={r} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
@@ -840,12 +841,18 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
               with nothing visible for this person drops its heading too. */}
           <SidebarGroup
             heading="Data"
+            tone="teal"
             icon={Database}
             testid="sidebar-group-data"
             items={[
               // #100 pattern 4: the cross-filter Explore surface.
               { to: '/featherbase/admin/explore', search: { root: undefined, chain: undefined, select: undefined }, label: 'Explore', icon: Compass, testid: 'explore-link' },
               { to: '/featherbase/admin/all-tables', label: 'All tables', icon: Table, testid: 'all-tables-link' },
+              // The owner's review (17-Nov): New table and Import data are two links here, not a "+ New" menu.
+              ...(canManage ? [
+                { to: '/featherbase/admin/new-table', label: 'New table', icon: Plus, testid: 'new-table-link' },
+                { to: '/featherbase/admin/import', search: { table: undefined }, label: 'Import data', icon: Upload, testid: 'import-data-link' },
+              ] : []),
               // #629: everyone signed in reads the glossary.
               { to: GLOSSARY_PATH, label: 'Glossary', icon: BookOpen, testid: 'glossary-link' },
               // #206: an import is a thing you did, not just rows that appeared —
@@ -857,6 +864,7 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           {canManage && <DataSourcesSidebar />}
           <SidebarGroup
             heading="People and access"
+            tone="rose"
             icon={ShieldLock}
             testid="sidebar-group-access"
             items={[
@@ -882,6 +890,7 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           />
           <SidebarGroup
             heading="This instance"
+            tone="green"
             icon={ListChecks}
             testid="sidebar-group-instance"
             items={canManage
@@ -899,8 +908,8 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
         {/* Page canvas */}
         {/* UX standard §3.1 (#1242): content starts 32px from the sidebar, left-aligned,
             so every page's title sits at the same x; lists up to 1280, reading pages 880. */}
-        <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:px-8 sm:py-6${wide ? ' flex flex-col' : ''}`}>
-          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : fullWidth ? 'w-full max-w-[1280px]' : 'max-w-[880px] has-data-[pane=right]:max-w-none'}>
+        <main className={`min-w-0 flex-1 overflow-auto bg-canvas p-3 sm:px-5 sm:py-4${wide ? ' flex flex-col' : ''}`}>
+          <div className={wide ? 'flex min-h-0 w-full flex-1 flex-col' : fullWidth ? 'w-full' : 'max-w-[880px] has-data-[pane=right]:max-w-none'}>
             <Outlet />
           </div>
         </main>
@@ -930,22 +939,27 @@ interface SidebarItem {
 /** Recently opened holds at most this many items, Frequent included. */
 const SIDEBAR_RECENT_CAP = 5
 
-export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first = false }: {
+export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first = false, tone = 'slate' }: {
   heading: string
   icon: LucideIcon
   testid: string
   items: SidebarItem[]
+  /** The group's hue for its icons (owner's review, 17-Nov). */
+  tone?: GroupTone
   /** The sidebar's first group: no rule above it. */
   first?: boolean
 }) {
+  const rail = useSidebarRail()
   if (items.length === 0) return null
-  const base = touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')
+  const base = rail ? RAIL_ROW : touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')
   return (
-    <div className={`${first ? 'pt-3' : 'border-t border-border'} px-2 py-2`} data-testid={testid}>
-      <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-group-heading">
-        <HeadingIcon aria-hidden size={12} />
-        {heading}
+    <div className={rail ? 'px-2 py-1' : `${first ? 'pt-3' : 'border-t border-border'} px-2 py-2`} data-testid={testid}>
+      {rail ? (!first && <RailRule heading={sidebarWords(heading)} />) : (
+      <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted" data-testid="sidebar-group-heading">
+        <HeadingIcon aria-hidden size={12} className={GROUP_TONE[tone]} />
+        {sidebarWords(heading)}
       </h2>
+      )}
       {items.map(({ to, search, label, icon: Icon, testid: id, badge }) => (
         <Link
           key={id}
@@ -958,9 +972,10 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first 
           inactiveProps={{ className: SIDEBAR_ROW_IDLE }}
           activeProps={{ className: SIDEBAR_ROW_SELECTED, 'aria-current': 'page' }}
         >
-          <Icon aria-hidden size={14} className="shrink-0 text-ink-subtle" data-testid="sidebar-item-icon" />
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          {badge}
+          <Icon aria-hidden size={rail ? 18 : 14} className={`shrink-0 ${GROUP_TONE[tone]}`} data-testid="sidebar-item-icon" />
+          <span className={rail ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{sidebarWords(label)}</span>
+          {/* #1248: in the rail a count that asks for action is a badge on the icon. */}
+          {badge && <span data-sidebar-count className={rail ? 'absolute -right-1.5 -top-1.5 [&>*]:px-1 [&>*]:py-0 [&>*]:text-xs' : 'contents'}>{badge}</span>}
         </Link>
       ))}
     </div>
@@ -975,11 +990,25 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first 
  */
 export function SidebarAside({ testid, user, children }: { testid: string; user: string | undefined; children: ReactNode }) {
   useRegisterSidebar(user)
-  const { collapsed: choice, drawerOpen, setDrawerOpen } = useSidebar(user)
+  const { collapsed: choice, drawerOpen, setDrawerOpen, toggleCollapsed } = useSidebar(user)
   const isDrawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const collapsed = choice && !isDrawer
+  // #1248: in the rail each row is named at once by a tooltip beside it.
+  const aside = useRef<HTMLElement>(null)
+  const railRef = useRef(collapsed)
+  railRef.current = collapsed
+  useEffect(() => {
+    // The aside is always drawn by the time this runs.
+    const root = aside.current!
+    return attachRailTips({
+      root, layer: document.body,
+      active: () => railRef.current,
+      rowOf: (target) => (target instanceof Element ? target.closest<HTMLElement>('a, button') : null) ?? null,
+    })
+  }, [])
+  const words = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
   return (
-    <>
+    <SidebarRailContext.Provider value={collapsed}>
       {/* UI-025: on mobile, a backdrop closes the drawer. */}
       {drawerOpen && (
         <div
@@ -989,6 +1018,7 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
         />
       )}
       <aside
+        ref={aside}
         data-testid={testid}
         data-collapsed={collapsed ? true : undefined}
         inert={isDrawer && !drawerOpen ? true : undefined}
@@ -996,13 +1026,39 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('a')) setDrawerOpen(false)
         }}
-        className={`absolute inset-y-0 left-0 z-30 flex w-64 flex-col overflow-y-auto border-r border-border bg-surface transition-transform md:static md:w-60 md:shrink-0 md:translate-x-0 ${
-          drawerOpen ? 'translate-x-0' : '-translate-x-full'
-        }${collapsed ? ' md:hidden' : ''}`}
+        className={`${collapsed ? 'md:w-14 md:overflow-x-hidden' : 'md:w-60'} absolute inset-y-0 left-0 z-30 flex w-64 flex-col overflow-y-auto border-r border-border bg-surface transition-transform md:static md:shrink-0 md:translate-x-0 md:transition-[width] md:duration-200 md:ease-linear motion-reduce:transition-none ${
+          drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {children}
+        {/* #1248: the control is the sidebar's own: its footer row, and its edge. */}
+        <div className="sticky bottom-0 mt-auto border-t border-border bg-surface p-2 max-md:hidden">
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            data-testid="sidebar-collapse"
+            // #1251's keyboard-shortcut list finds the control by these.
+            data-shortcut-id="sidebar"
+            data-shortcut-key={SIDEBAR_SHORTCUT}
+            aria-label={words}
+            aria-keyshortcuts="Meta+B Control+B"
+            title={`${words} (${SIDEBAR_SHORTCUT})`}
+            className={collapsed ? `${RAIL_ROW} ${ROW_IDLE}` : touchRowClasses(`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm ${ROW_IDLE}`)}
+          >
+            {collapsed ? <ChevronsRight aria-hidden size={18} /> : <ChevronsLeft aria-hidden size={16} className="shrink-0" />}
+            {!collapsed && <span className="flex-1 text-left">Collapse</span>}
+            {!collapsed && <kbd className="font-mono text-xs text-ink-subtle">{SIDEBAR_SHORTCUT}</kbd>}
+          </button>
+        </div>
       </aside>
-    </>
+      <div
+        aria-hidden
+        data-testid="sidebar-edge"
+        onClick={toggleCollapsed}
+        className="group relative z-30 -mx-1.5 w-3 shrink-0 cursor-col-resize max-md:hidden"
+      >
+        <span className="absolute inset-y-0 left-[5px] w-0.5 bg-transparent transition-colors group-hover:bg-action" />
+      </div>
+    </SidebarRailContext.Provider>
   )
 }
 
@@ -1014,6 +1070,7 @@ export function AccountSidebarGroup() {
     <SidebarGroup
       first
       heading="Account"
+      tone="indigo"
       icon={UserRound}
       testid="sidebar-group-account"
       items={[
@@ -1054,15 +1111,27 @@ function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
     queryFn: () => api.get<{ views: SidebarView[] }>('/api/saved_views/sidebar'),
   })
   const list = views.data?.views ?? []
+  const rail = useSidebarRail()
   if (list.length === 0) return null
+  const hrefOf = (view: SidebarView) => `${tableHref(view.table)}?filters=${encodeURIComponent(JSON.stringify(view.filters))}`
+  if (rail) return (
+    <RailFold label="Saved Views" icon={Bookmark} testid="sidebar-saved-views" tone="amber">
+      {(close) => list.map((view) => (
+        <RailMenuItem key={view.row_id} close={close} onSelect={() => onOpen(hrefOf(view))}>
+          <span className="truncate">{view.label}</span>
+          <span className="truncate text-xs text-ink-subtle">{view.table}{view.mine ? '' : ' · shared'}</span>
+        </RailMenuItem>
+      ))}
+    </RailFold>
+  )
   return (
     <div className="border-t border-border px-2 py-2" data-testid="sidebar-saved-views">
-      <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle">
-        <Bookmark aria-hidden size={12} />
-        Saved views
+      <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted">
+        <Bookmark aria-hidden size={12} className={GROUP_TONE.amber} />
+        Saved Views
       </h2>
       {list.map((view) => {
-        const href = `${tableHref(view.table)}?filters=${encodeURIComponent(JSON.stringify(view.filters))}`
+        const href = hrefOf(view)
         return (
           <a
             key={view.row_id}

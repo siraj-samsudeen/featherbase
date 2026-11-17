@@ -156,7 +156,8 @@ export function DashSidebar({ current, count }: { current: DashView; count?: num
   return createElement('featherbase-sidebar', { 'aria-label': 'Dash navigation' },
     reports.length > 0 && <span className="fd-sidebar-group" data-testid="reports-group">Reports</span>,
     ...reports.map(report => (
-      <a key={report.key} href={reportAddress(report.key, window.location.search)} data-testid="report-link" {...(shown === report.key ? { 'aria-current': 'page' as const } : {})}>
+      // #1248: every report shares one chart icon, so in the rail each shows its initials.
+      <a key={report.key} href={reportAddress(report.key, window.location.search)} data-testid="report-link" data-rail-initials {...(shown === report.key ? { 'aria-current': 'page' as const } : {})}>
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18M7 14v3m5-8v8m5-12v12" /></svg>
         <span>{report.name}</span>
       </a>

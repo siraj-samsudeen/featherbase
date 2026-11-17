@@ -449,12 +449,14 @@ describe('the Admin shell', () => {
     expect(switcher).toMatch(/aria-label=\{`Switch application: \$\{name\}`\}[\s\S]{0,40}aria-haspopup="menu"/)
   })
 
-  test('the sidebar group headings look exactly like "Recently opened": muted, sentence case, small icon', () => {
+  // The owner's review (17-Nov-2026): a heading stands apart from its rows (semibold,
+  // darker), and each group's icons carry its own hue (--color-group-*).
+  test('the sidebar group headings all look alike, semibold and never uppercase; item icons take their group hue', () => {
     const cls = (id: string) => /className="([^"]+)"/.exec(tagWith(shell, id))?.[1]
     expect(cls('sidebar-group-heading')).toBe(cls('sidebar-recents-heading'))
-    expect(cls('sidebar-group-heading')).toMatch(/\btext-ink-subtle\b/)
+    expect(cls('sidebar-group-heading')).toMatch(/\bfont-semibold\b/)
     expect(cls('sidebar-group-heading')).not.toMatch(/\buppercase\b/)
-    expect(tagWith(shell, 'sidebar-item-icon')).toMatch(/\btext-ink-subtle\b/)
+    expect(tagWith(shell, 'sidebar-item-icon')).toMatch(/GROUP_TONE/)
     // Past imports is a nav item, no longer a small underlined link.
     expect(shell).not.toMatch(/data-testid="past-imports-link"[^>]*underline/)
   })

@@ -15,6 +15,8 @@ export {
   ChartColumn,
   ChevronDown,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   CircleCheck,
   CircleHelp,
   CircleX,
@@ -55,6 +57,7 @@ export {
   Type,
   UserRound,
   UserRoundSearch,
+  Upload,
   X,
 } from 'lucide-react'
 export type { LucideIcon } from 'lucide-react'

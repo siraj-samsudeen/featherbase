@@ -1,3 +1,4 @@
+import { useFitToWindow } from '../lib/fit-to-window'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
@@ -146,6 +147,8 @@ export function ListView({
   const [compact, setCompact] = useState(false)
   const [tableScroll, setTableScroll] = useState<HTMLDivElement | null>(null)
   const moreToTheRight = useMoreToTheRight(tableScroll)
+  // #1249: the table fits the window, so its scroll bar and the pager stay in view.
+  useFitToWindow(tableScroll)
   // #1017: the Add filter row waits until it's asked for.
   const [addFilterOpen, setAddFilterOpen] = useState(false)
   const [colPickerOpen, setColPickerOpen] = useState(false)
@@ -1083,10 +1086,11 @@ export function ListView({
         />
       ) : (
       <div className="relative">
-      <div className={cardClasses('overflow-x-auto')} ref={setTableScroll} data-testid="list-table-scroll">
+      <div className={cardClasses('featherbase-scroll overflow-auto')} ref={setTableScroll} data-testid="list-table-scroll">
         {/* Separate borders: a collapsed one stays behind when its sticky cell scrolls. */}
         <table className="w-full border-separate border-spacing-0 text-sm">
-          <thead className="bg-subtle text-left">
+          {/* #1249: the header row stays in view while the rows scroll under it. */}
+          <thead className="sticky top-0 z-[2] bg-subtle text-left">
             <tr>
               {/* Selection exists only to feed the bulk bar — a read-only
                   source has neither (EDS-13: absent, not disabled). */}
@@ -1109,7 +1113,7 @@ export function ListView({
                 </th>
               )}
               {columns.map((col, i) => (
-                <th key={col.column_name} className={`border-b border-border ${i === 0 ? 'sticky left-0 z-[1] border-r bg-subtle' : ''}`}>
+                <th key={col.column_name} className={`border-b border-border bg-subtle ${i === 0 ? 'sticky left-0 z-[3] border-r' : ''}`}>
                   <button
                     className={`flex w-full px-3 py-2 font-medium text-ink-muted hover:text-ink ${isFigure(col) ? 'justify-end text-right' : 'text-left'}`}
                     data-testid={`col-${col.column_name}`}
