@@ -1,0 +1,176 @@
+// #1260: wait out a deploy instead of showing it. The service has a Railway
+// volume, so Railway stops the old server before the new one serves; for
+// about 11 s its edge answers 502 itself, marked `x-railway-fallback: true`
+// (measured on dev, 17-Nov-2026). Featherbase's own answers never carry that
+// mark, so only the edge's are held. Installed by both page entries: the
+// platform's (main.tsx) and the shared bar every app page loads (bar/main.tsx).
+
+export const NOTICE_TEXT = 'Updating to the latest version. Back in a few seconds.'
+
+const EDGE_STATUSES = new Set([502, 503, 504])
+const READS = new Set(['GET', 'HEAD'])
+
+interface Options {
+  /** Told true once a request has been held `noticeAfterMs`, false when none is. */
+  onWaiting: (waiting: boolean) => void
+  pingPath?: string
+  firstPollMs?: number
+  pollMs?: number
+  noticeAfterMs?: number
+  giveUpMs?: number
+}
+
+type Fetch = typeof globalThis.fetch
+
+const abortError = () => new DOMException('The operation was aborted.', 'AbortError')
+
+/** `base`, except that a same-site `/api/...` request answered by Railway's
+ *  edge (or, for a read, failing on the network) is held until the server
+ *  answers its ping, then sent again; after `giveUpMs` it fails as before. */
+export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
+  const { onWaiting, pingPath = '/api/ping', firstPollMs = 250, pollMs = 1000, noticeAfterMs = 1000, giveUpMs = 90_000 } = options
+  // Every held request waits on the same ping, so a gap is asked about once a
+  // second, not once per request.
+  const held = new Set<{ since: number }>()
+  let back: Promise<void> | null = null
+  let noticeShown = false
+  let noticeTimer: ReturnType<typeof setTimeout> | null = null
+
+  const refreshNotice = () => {
+    if (noticeTimer) clearTimeout(noticeTimer)
+    noticeTimer = null
+    if (!held.size) {
+      if (noticeShown) onWaiting((noticeShown = false))
+      return
+    }
+    if (noticeShown) return
+    const oldest = Math.min(...[...held].map((h) => h.since))
+    const due = oldest + noticeAfterMs - Date.now()
+    if (due <= 0) onWaiting((noticeShown = true))
+    else noticeTimer = setTimeout(refreshNotice, due)
+  }
+
+  const serverBack = (): Promise<void> => {
+    back ??= new Promise<void>((resolve) => {
+      // The first ask is soon, so a brief blip ends before the notice shows.
+      const ask = (delay: number) => {
+        setTimeout(async () => {
+          const answer = await base(pingPath, { cache: 'no-store' }).catch(() => null)
+          if (answer?.ok && answer.headers.get('x-railway-fallback') !== 'true') {
+            back = null
+            resolve()
+          } else if (held.size) ask(pollMs)
+          else back = null
+        }, delay)
+      }
+      ask(firstPollMs)
+    })
+    return back
+  }
+
+  return async function fetchThroughDeploys(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const url = new URL(input instanceof Request ? input.url : String(input), window.location.href)
+    if (url.origin !== window.location.origin || !url.pathname.startsWith('/api/')) return base(input, init)
+    const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
+    const read = READS.has(method)
+    // A body that is a stream can be sent only once; such a request is not held.
+    if (init?.body instanceof ReadableStream) return base(input, init)
+    // A Request's body is consumed by sending it, so each try sends a copy.
+    const template = input instanceof Request ? input.clone() : null
+    const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+    const deadline = Date.now() + giveUpMs
+    let entry: { since: number } | null = null
+    const release = () => {
+      if (entry) held.delete(entry)
+      entry = null
+      refreshNotice()
+    }
+    let lastError: unknown = null
+    try {
+      for (;;) {
+        let answer: Response | null = null
+        try {
+          answer = await base(template ? template.clone() : input, init)
+        } catch (error) {
+          // A write that failed on the network may have reached the server:
+          // it is passed on, never sent twice.
+          if (!read || signal?.aborted || Date.now() >= deadline) throw error
+          lastError = error
+        }
+        const fromEdge = answer !== null && EDGE_STATUSES.has(answer.status) && answer.headers.get('x-railway-fallback') === 'true'
+        if (answer && !fromEdge) return answer
+        if (Date.now() >= deadline) {
+          if (answer) return answer
+          throw lastError
+        }
+        if (!entry) {
+          entry = { since: Date.now() }
+          held.add(entry)
+          refreshNotice()
+        }
+        const outcome = await new Promise<'back' | 'late' | 'aborted'>((resolve) => {
+          const finish = (result: 'back' | 'late' | 'aborted') => {
+            clearTimeout(late)
+            signal?.removeEventListener('abort', onAbort)
+            resolve(result)
+          }
+          const onAbort = () => finish('aborted')
+          const late = setTimeout(() => finish('late'), deadline - Date.now())
+          if (signal?.aborted) return finish('aborted')
+          signal?.addEventListener('abort', onAbort, { once: true })
+          void serverBack().then(() => finish('back'))
+        })
+        if (outcome === 'aborted') throw abortError()
+        if (outcome === 'late') {
+          if (answer) return answer
+          throw lastError
+        }
+      }
+    } finally {
+      release()
+    }
+  }
+}
+
+const INSTALLED = Symbol.for('featherbase.deploy-wait')
+const NOTICE_TAG = 'featherbase-updating'
+
+/** Wrap the page's fetch (once) and draw the notice while a deploy is waited out. */
+export function installDeployWait(win: Window & typeof globalThis, doc: Document): void {
+  const marked = win as unknown as Record<symbol, boolean>
+  if (marked[INSTALLED]) return
+  marked[INSTALLED] = true
+  win.fetch = waitThroughDeploys(win.fetch.bind(win), {
+    onWaiting: (waiting) => (waiting ? showNotice(doc) : hideNotice(doc)),
+  })
+}
+
+// Its own shadow root: an app's styles never reach the notice, and the
+// notice's never reach the app.
+// Colours are the page's own Shop Floor tokens (every page loads them, and
+// custom properties reach into a shadow root), inverted: ink behind, surface
+// in front, so the notice reads on a light page and a dark one alike.
+const NOTICE_STYLE = `
+:host { position: fixed; left: 0; right: 0; bottom: 24px; display: flex; justify-content: center; pointer-events: none; z-index: 2147483647; }
+.pill { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 999px; font: 500 14px/1.3 var(--font-sans, system-ui, sans-serif); background: var(--color-ink); color: var(--color-surface); box-shadow: 0 6px 24px color-mix(in srgb, var(--color-ink) 22%, transparent); max-width: calc(100vw - 32px); }
+.spinner { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; opacity: .8; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+`
+
+function showNotice(doc: Document) {
+  let host = doc.querySelector(NOTICE_TAG)
+  if (!host) {
+    host = doc.createElement(NOTICE_TAG)
+    const root = host.attachShadow({ mode: 'open' })
+    root.innerHTML = `<style>${NOTICE_STYLE}</style><div class="pill" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span class="text"></span></div>`
+    doc.body.append(host)
+  }
+  const pill = host.shadowRoot!.querySelector('.pill')!
+  // Written after the live region exists, so a screen reader announces it.
+  pill.querySelector('.text')!.textContent = NOTICE_TEXT
+}
+
+function hideNotice(doc: Document) {
+  doc.querySelector(NOTICE_TAG)?.remove()
+}
