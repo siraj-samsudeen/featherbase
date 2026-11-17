@@ -29,7 +29,9 @@ export function rowLabel(row: Element): string {
   const walk = (node: Node) => {
     for (const child of node.childNodes) {
       if (child.nodeType === Node.TEXT_NODE) text += child.textContent
-      else if (child instanceof Element && !child.hasAttribute('data-sidebar-count') && child.tagName.toLowerCase() !== 'svg') walk(child)
+      // A count, an icon, or anything hidden from screen readers (a rail's
+      // initials tile) is not part of the row's name.
+      else if (child instanceof Element && !child.hasAttribute('data-sidebar-count') && child.tagName.toLowerCase() !== 'svg' && child.getAttribute('aria-hidden') !== 'true') walk(child)
     }
   }
   walk(row)

@@ -130,3 +130,26 @@ test('Recently opened folds into one icon in the rail, and its menu opens the pl
   await userEvent.click(within(screen.getByRole('menu', { name: 'Recently opened' })).getByRole('menuitem', { name: new RegExp(DEPT) }))
   await waitFor(() => expect(nav.state.location.pathname).toBe('/featherbase/admin/table/rail-department'), T)
 })
+
+// Owner's review (17-Nov): the tooltip read "SySystem", the initials tile and the name together.
+test("a module's tooltip is its name alone, not its initials too", async ({ admin }) => {
+  await renderApp('/featherbase/admin/all-tables', admin)
+  const system = await screen.findByTestId('home-page-link-system', {}, T)
+  await userEvent.click(screen.getByTestId('sidebar-collapse'))
+  fireEvent.pointerOver(system)
+  expect(screen.getByRole('tooltip')).toHaveTextContent(/^System$/)
+  expect(system).toHaveAccessibleName('System')
+})
+
+// Owner's review (17-Nov): in the rail the "+" menu was clipped by the narrow sidebar.
+test('in the rail, + opens its New menu outside the sidebar, and New table opens', async ({ admin }) => {
+  const { router } = await renderApp('/featherbase/admin/all-tables', admin)
+  await screen.findByTestId('sidebar-new', {}, T)
+  await userEvent.click(screen.getByTestId('sidebar-collapse'))
+  await userEvent.click(within(aside()).getByRole('button', { name: 'New' }))
+  const menu = screen.getByRole('menu', { name: 'New' })
+  // Drawn in the page, not inside the rail that would clip it.
+  expect(aside()).not.toContainElement(menu)
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'New table' }))
+  await waitFor(() => expect((router as unknown as { state: { location: { pathname: string } } }).state.location.pathname).toBe('/featherbase/admin/new-table'), T)
+})

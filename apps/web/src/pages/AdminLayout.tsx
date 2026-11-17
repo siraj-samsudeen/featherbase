@@ -41,7 +41,7 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, Bookmark, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Compass, Database, Eye, History, Key, LayoutDashboard, ListChecks, LogIn, ShieldLock, Table, UserRound, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { Bell, BookOpen, Bookmark, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Compass, Database, Eye, History, Key, LayoutDashboard, ListChecks, LogIn, ShieldLock, Table, UserRound, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
@@ -760,8 +760,21 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           {/* #1242 (admin-lists 7): one quiet "+ New" menu, so the sidebar does not
               compete with the page's own New. */}
           {canManage && (
-          <div className={rail ? 'flex justify-center px-2 pt-3 [&>div>button]:h-10 [&>div>button]:w-10 [&>div>button]:justify-center [&>div>button]:px-0' : 'px-3 pt-4 [&>div>button]:w-full [&>div>button]:justify-between'} data-testid="sidebar-new">
-            <ActionDisclosure label={rail ? '+' : '+ New'} ariaLabel={rail ? 'New' : undefined} compact={rail}>
+          rail ? (
+            // #1248: in the rail, a menu drawn outside the sidebar, so the narrow rail never clips it.
+            <RailFold label="New" icon={Plus} testid="sidebar-new">
+              {(close) => [
+                <RailMenuItem key="table" close={close} onSelect={() => void navigate({ to: '/featherbase/admin/new-table' })}>
+                  <span>New table</span>
+                </RailMenuItem>,
+                <RailMenuItem key="import" close={close} onSelect={() => void navigate({ to: '/featherbase/admin/import', search: { table: undefined } })}>
+                  <span>Import data</span>
+                </RailMenuItem>,
+              ]}
+            </RailFold>
+          ) : (
+          <div className="px-3 pt-4 [&>div>button]:w-full [&>div>button]:justify-between" data-testid="sidebar-new">
+            <ActionDisclosure label="+ New">
               <Link
                 to="/featherbase/admin/new-table"
                 data-testid="new-table-link"
@@ -779,6 +792,7 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
               </Link>
             </ActionDisclosure>
           </div>
+          )
           )}
           {/* #80: the sidebar is Home Pages only. Every
               table stays reachable through the All tables entry below —
