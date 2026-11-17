@@ -17,6 +17,14 @@ export const RAIL_ROW = 'relative mx-auto flex h-10 w-10 shrink-0 items-center j
 export const ROW_IDLE = 'text-ink-muted hover:bg-subtle hover:text-ink'
 export const ROW_SELECTED = 'font-medium text-action bg-action-tint'
 
+/** The owner's review (17-Nov-2026): each sidebar group's icons in its own hue,
+ *  so groups read apart at a glance (theme tokens --color-group-*). */
+export const GROUP_TONE = {
+  blue: 'text-group-blue', teal: 'text-group-teal', rose: 'text-group-rose', amber: 'text-group-amber',
+  violet: 'text-group-violet', green: 'text-group-green', indigo: 'text-group-indigo', slate: 'text-group-slate',
+} as const
+export type GroupTone = keyof typeof GROUP_TONE
+
 /** A group's heading in the rail: a short rule, the heading kept for screen readers. */
 export function RailRule({ heading }: { heading: string }) {
   return (
@@ -29,10 +37,12 @@ export function RailRule({ heading }: { heading: string }) {
 
 /** A long list of one kind (Recently opened, Saved views, Data sources), one
  *  icon in the rail: its menu lists them, beside the rail, never clipped. */
-export function RailFold({ label, icon: Icon, testid, children }: {
+export function RailFold({ label, icon: Icon, testid, tone = 'slate', children }: {
   label: string
   icon: LucideIcon
   testid?: string
+  /** The group's hue for its icon. */
+  tone?: GroupTone
   /** The menu's items, given a way to close the menu. */
   children: (close: () => void) => ReactNode
 }) {
@@ -82,7 +92,7 @@ export function RailFold({ label, icon: Icon, testid, children }: {
         onKeyDown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); setOpen(true) } }}
         className={cx(RAIL_ROW, open ? 'bg-subtle text-ink' : ROW_IDLE, 'focus-visible:outline-2 focus-visible:outline-focus')}
       >
-        <Icon aria-hidden size={18} />
+        <Icon aria-hidden size={18} className={GROUP_TONE[tone]} />
       </button>
       {open && createPortal(
         <div

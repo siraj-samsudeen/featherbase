@@ -101,8 +101,8 @@ test('the searchable catalog opens a preview and keeps its filters and selection
   const user = userEvent.setup()
   await renderApp('/featherbase/admin', admin)
   const group = await screen.findByTestId('sidebar-group-sources', {}, WAIT)
-  await waitFor(() => expect(within(group).getAllByTestId('sidebar-source-database').map((a) => a.textContent)).toEqual(expect.arrayContaining(['sales', 'stock'])), WAIT)
-  const sales = within(group).getAllByTestId('sidebar-source-database').find((a) => a.textContent === 'sales' && a.getAttribute('href')?.includes('web-wh-browse'))!
+  await waitFor(() => expect(within(group).getAllByTestId('sidebar-source-database').map((a) => a.textContent)).toEqual(expect.arrayContaining(['Sales', 'Stock'])), WAIT)
+  const sales = within(group).getAllByTestId('sidebar-source-database').find((a) => a.textContent === 'Sales' && a.getAttribute('href')?.includes('web-wh-browse'))!
   await user.click(sales)
   await screen.findByTestId('warehouse-browser', {}, WAIT)
   const catalogTab = await screen.findByRole('tab', { name: /tables|catalog/i })
@@ -424,13 +424,13 @@ test('collapsed to a rail, Data sources is one icon whose menu opens each place'
   await userEvent.click(screen.getByTestId('sidebar-collapse'))
 
   const open = async (name: RegExp | string) => {
-    await userEvent.click(within(screen.getByTestId('admin-sidebar')).getByRole('button', { name: 'Data sources' }))
-    await userEvent.click(within(screen.getByRole('menu', { name: 'Data sources' })).getByRole('menuitem', { name }))
+    await userEvent.click(within(screen.getByTestId('admin-sidebar')).getByRole('button', { name: 'Data Sources' }))
+    await userEvent.click(within(screen.getByRole('menu', { name: 'Data Sources' })).getByRole('menuitem', { name }))
   }
-  await open('sales')
+  await open('Sales')
   await waitFor(() => expect(path().pathname).toBe('/featherbase/admin/source/web-wh-rail'), WAIT)
-  await open('web-wh-rail')
+  await open('Web Wh Rail')
   await waitFor(() => expect(path().pathname).toBe('/featherbase/admin/table/data-source/row/web-wh-rail'), WAIT)
-  await open('Connect a source')
+  await open('Connect A Source')
   await waitFor(() => expect(path().pathname).toBe('/featherbase/admin/table/data-source/new'), WAIT)
 })

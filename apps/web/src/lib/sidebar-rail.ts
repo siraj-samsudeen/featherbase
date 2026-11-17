@@ -29,7 +29,9 @@ export function rowLabel(row: Element): string {
   const walk = (node: Node) => {
     for (const child of node.childNodes) {
       if (child.nodeType === Node.TEXT_NODE) text += child.textContent
-      else if (child instanceof Element && !child.hasAttribute('data-sidebar-count') && child.tagName.toLowerCase() !== 'svg') walk(child)
+      // A count, an icon, or anything hidden from screen readers (a rail's
+      // initials tile) is not part of the row's name.
+      else if (child instanceof Element && !child.hasAttribute('data-sidebar-count') && child.tagName.toLowerCase() !== 'svg' && child.getAttribute('aria-hidden') !== 'true') walk(child)
     }
   }
   walk(row)
@@ -97,4 +99,25 @@ export function railMenuPlace(button: Element, menuHeight = 0): { left: number; 
   const box = button.getBoundingClientRect()
   const top = Math.max(8, Math.min(box.top - 6, window.innerHeight - menuHeight - 8))
   return { left: box.right + 8, top }
+}
+
+/** The owner's rule for the sidebar (17-Nov-2026): every heading and item reads
+ *  in Title Case, each word capitalised, "and" as "&" ("People & Access",
+ *  "All Tables"). Words already capitalised inside (MotherDuck) are kept. */
+export function sidebarWords(label: string): string {
+  return label
+    .split(' ')
+    .map((word) => (word === 'and' ? '&' : word ? word[0]!.toUpperCase() + word.slice(1) : word))
+    .join(' ')
+}
+
+/** Names that are brands are spelled the brand's way, whatever their stored case. */
+const BRANDS: Record<string, string> = { motherduck: 'MotherDuck', postgres: 'Postgres', postgresql: 'PostgreSQL', duckdb: 'DuckDB' }
+
+/** A data source's or database's stored name, as the sidebar shows it:
+ *  "motherduck" → "MotherDuck", "gold" → "Gold", "sales_daily" → "Sales Daily". */
+export function sourceWords(name: string): string {
+  const brand = BRANDS[name.toLowerCase()]
+  if (brand) return brand
+  return sidebarWords(name.replace(/[_-]+/g, ' ').trim())
 }

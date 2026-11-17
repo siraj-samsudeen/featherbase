@@ -22,7 +22,7 @@ describe('tickets-type-transitions', () => {
       ;({ session } = await openTickets(t.people.Bala))
       await ticketOpens(selectTicket(session, t.ticket.row_id))
         .clickButton('Workflow')
-        .assertText('Next step')
+        .assertText('Next Step')
     })
     await step('Bala is offered to confirm it, and Anjali is not', async () => {
       // A button, by role: the DSL has no verb for "this button is offered".

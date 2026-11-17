@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { RAIL_ROW, ROW_IDLE, RailFold, RailMenuItem, RailRule, SidebarRailContext, useSidebarRail } from '../components/SidebarRail'
-import { attachRailTips, railMark } from '../lib/sidebar-rail'
+import { GROUP_TONE, RAIL_ROW, ROW_IDLE, RailFold, RailMenuItem, RailRule, SidebarRailContext, useSidebarRail, type GroupTone } from '../components/SidebarRail'
+import { attachRailTips, railMark, sidebarWords } from '../lib/sidebar-rail'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
@@ -41,7 +41,7 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, Bookmark, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Compass, Database, Eye, History, Key, LayoutDashboard, ListChecks, LogIn, ShieldLock, Table, UserRound, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { Bell, BookOpen, Bookmark, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Upload, Compass, Database, Eye, History, Key, LayoutDashboard, ListChecks, LogIn, ShieldLock, Table, UserRound, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
 interface SearchHit {
@@ -757,29 +757,6 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
         <SidebarAside testid="admin-sidebar" user={user?.row_id}>
           {/* #1235 item 7: on the account pages, the Account group leads the sidebar. */}
           {account && <AccountSidebarGroup />}
-          {/* #1242 (admin-lists 7): one quiet "+ New" menu, so the sidebar does not
-              compete with the page's own New. */}
-          {canManage && (
-          <div className={rail ? 'flex justify-center px-2 pt-3 [&>div>button]:h-10 [&>div>button]:w-10 [&>div>button]:justify-center [&>div>button]:px-0' : 'px-3 pt-4 [&>div>button]:w-full [&>div>button]:justify-between'} data-testid="sidebar-new">
-            <ActionDisclosure label={rail ? '+' : '+ New'} ariaLabel={rail ? 'New' : undefined} compact={rail}>
-              <Link
-                to="/featherbase/admin/new-table"
-                data-testid="new-table-link"
-                className={buttonClasses({ variant: 'quiet', className: 'justify-start' })}
-              >
-                New table
-              </Link>
-              <Link
-                to="/featherbase/admin/import"
-                search={{ table: undefined }}
-                data-testid="import-data-link"
-                className={buttonClasses({ variant: 'quiet', className: 'justify-start' })}
-              >
-                Import data
-              </Link>
-            </ActionDisclosure>
-          </div>
-          )}
           {/* #80: the sidebar is Home Pages only. Every
               table stays reachable through the All tables entry below —
               grouping and curation moved there, nothing is hidden. */}
@@ -788,8 +765,8 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           <nav className="shrink-0 px-2 pb-4 pt-3" data-testid="home-page-nav" aria-label="Modules">
             {/* #1242 (admin-lists 8): headed and drawn like every other group. */}
             {rail ? <RailRule heading="Modules" /> : (
-            <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-group-heading">
-              <LayoutDashboard aria-hidden size={12} />
+            <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted" data-testid="sidebar-group-heading">
+              <LayoutDashboard aria-hidden size={12} className={GROUP_TONE.blue} />
               Modules
             </h2>
             )}
@@ -817,10 +794,10 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
                   {rail
                     ? (p.icon
                         ? <span aria-hidden className="text-base leading-none">{p.icon}</span>
-                        : <span aria-hidden data-testid="rail-mark" className="grid h-[26px] w-[26px] place-items-center rounded-[7px] border-[1.5px] border-current text-xs font-bold leading-none">{mark}</span>)
+                        : <span aria-hidden data-testid="rail-mark" className={`grid h-[26px] w-[26px] place-items-center rounded-[7px] border-[1.5px] border-current text-xs font-bold leading-none ${GROUP_TONE.blue}`}>{mark}</span>)
                     : p.icon
-                      ? <span aria-hidden data-testid="sidebar-item-icon" className="flex w-3.5 shrink-0 justify-center text-sm leading-none text-ink-subtle">{p.icon}</span>
-                      : <LayoutDashboard aria-hidden size={14} className="shrink-0 text-ink-subtle" data-testid="sidebar-item-icon" />}
+                      ? <span aria-hidden data-testid="sidebar-item-icon" className={`flex w-3.5 shrink-0 justify-center text-sm leading-none ${GROUP_TONE.blue}`}>{p.icon}</span>
+                      : <LayoutDashboard aria-hidden size={14} className={`shrink-0 ${GROUP_TONE.blue}`} data-testid="sidebar-item-icon" />}
                   <span className={rail ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{label}</span>
                 </Link>
               )
@@ -829,7 +806,7 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           {/* #101 Phase 2: recall without a keystroke — the same per-user
               buffer the command bar reads. */}
           {rail && (sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
-            <RailFold label="Recently opened" icon={Clock} testid="sidebar-recents">
+            <RailFold label="Recently Opened" icon={Clock} testid="sidebar-recents" tone="slate">
               {(close) => [...sidebarRecent, ...sidebarFrequent].map((r) => (
                 <RailMenuItem key={r.key} close={close} onSelect={() => openRecent(r)}>
                   <span className="truncate"><EntryLabel entry={r} /></span>
@@ -840,9 +817,9 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           {!rail && (sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
             <div className="border-t border-border px-2 py-2" data-testid="sidebar-recents">
               {/* A heading, not a link: muted, sentence case, with a clock. */}
-              <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-recents-heading">
-                <Clock aria-hidden size={12} />
-                Recently opened
+              <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted" data-testid="sidebar-recents-heading">
+                <Clock aria-hidden size={12} className={GROUP_TONE.slate} />
+                Recently Opened
               </h2>
               {sidebarRecent.map((r) => (
                 <SidebarRecentRow key={r.key} entry={r} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
@@ -864,12 +841,18 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
               with nothing visible for this person drops its heading too. */}
           <SidebarGroup
             heading="Data"
+            tone="teal"
             icon={Database}
             testid="sidebar-group-data"
             items={[
               // #100 pattern 4: the cross-filter Explore surface.
               { to: '/featherbase/admin/explore', search: { root: undefined, chain: undefined, select: undefined }, label: 'Explore', icon: Compass, testid: 'explore-link' },
               { to: '/featherbase/admin/all-tables', label: 'All tables', icon: Table, testid: 'all-tables-link' },
+              // The owner's review (17-Nov): New table and Import data are two links here, not a "+ New" menu.
+              ...(canManage ? [
+                { to: '/featherbase/admin/new-table', label: 'New table', icon: Plus, testid: 'new-table-link' },
+                { to: '/featherbase/admin/import', search: { table: undefined }, label: 'Import data', icon: Upload, testid: 'import-data-link' },
+              ] : []),
               // #629: everyone signed in reads the glossary.
               { to: GLOSSARY_PATH, label: 'Glossary', icon: BookOpen, testid: 'glossary-link' },
               // #206: an import is a thing you did, not just rows that appeared —
@@ -881,6 +864,7 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           {canManage && <DataSourcesSidebar />}
           <SidebarGroup
             heading="People and access"
+            tone="rose"
             icon={ShieldLock}
             testid="sidebar-group-access"
             items={[
@@ -906,6 +890,7 @@ export function AdminShell({ wide, fullWidth = false, account = false }: { wide:
           />
           <SidebarGroup
             heading="This instance"
+            tone="green"
             icon={ListChecks}
             testid="sidebar-group-instance"
             items={canManage
@@ -954,11 +939,13 @@ interface SidebarItem {
 /** Recently opened holds at most this many items, Frequent included. */
 const SIDEBAR_RECENT_CAP = 5
 
-export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first = false }: {
+export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first = false, tone = 'slate' }: {
   heading: string
   icon: LucideIcon
   testid: string
   items: SidebarItem[]
+  /** The group's hue for its icons (owner's review, 17-Nov). */
+  tone?: GroupTone
   /** The sidebar's first group: no rule above it. */
   first?: boolean
 }) {
@@ -967,10 +954,10 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first 
   const base = rail ? RAIL_ROW : touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')
   return (
     <div className={rail ? 'px-2 py-1' : `${first ? 'pt-3' : 'border-t border-border'} px-2 py-2`} data-testid={testid}>
-      {rail ? (!first && <RailRule heading={heading} />) : (
-      <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-group-heading">
-        <HeadingIcon aria-hidden size={12} />
-        {heading}
+      {rail ? (!first && <RailRule heading={sidebarWords(heading)} />) : (
+      <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted" data-testid="sidebar-group-heading">
+        <HeadingIcon aria-hidden size={12} className={GROUP_TONE[tone]} />
+        {sidebarWords(heading)}
       </h2>
       )}
       {items.map(({ to, search, label, icon: Icon, testid: id, badge }) => (
@@ -985,8 +972,8 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items, first 
           inactiveProps={{ className: SIDEBAR_ROW_IDLE }}
           activeProps={{ className: SIDEBAR_ROW_SELECTED, 'aria-current': 'page' }}
         >
-          <Icon aria-hidden size={rail ? 18 : 14} className={rail ? 'shrink-0' : 'shrink-0 text-ink-subtle'} data-testid="sidebar-item-icon" />
-          <span className={rail ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{label}</span>
+          <Icon aria-hidden size={rail ? 18 : 14} className={`shrink-0 ${GROUP_TONE[tone]}`} data-testid="sidebar-item-icon" />
+          <span className={rail ? 'sr-only' : 'min-w-0 flex-1 truncate'}>{sidebarWords(label)}</span>
           {/* #1248: in the rail a count that asks for action is a badge on the icon. */}
           {badge && <span data-sidebar-count className={rail ? 'absolute -right-1.5 -top-1.5 [&>*]:px-1 [&>*]:py-0 [&>*]:text-xs' : 'contents'}>{badge}</span>}
         </Link>
@@ -1083,6 +1070,7 @@ export function AccountSidebarGroup() {
     <SidebarGroup
       first
       heading="Account"
+      tone="indigo"
       icon={UserRound}
       testid="sidebar-group-account"
       items={[
@@ -1127,7 +1115,7 @@ function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
   if (list.length === 0) return null
   const hrefOf = (view: SidebarView) => `${tableHref(view.table)}?filters=${encodeURIComponent(JSON.stringify(view.filters))}`
   if (rail) return (
-    <RailFold label="Saved views" icon={Bookmark} testid="sidebar-saved-views">
+    <RailFold label="Saved Views" icon={Bookmark} testid="sidebar-saved-views" tone="amber">
       {(close) => list.map((view) => (
         <RailMenuItem key={view.row_id} close={close} onSelect={() => onOpen(hrefOf(view))}>
           <span className="truncate">{view.label}</span>
@@ -1138,9 +1126,9 @@ function SidebarSavedViews({ onOpen }: { onOpen: (href: string) => void }) {
   )
   return (
     <div className="border-t border-border px-2 py-2" data-testid="sidebar-saved-views">
-      <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle">
-        <Bookmark aria-hidden size={12} />
-        Saved views
+      <h2 className="flex items-center gap-1.5 px-2 pb-1 pt-1.5 text-xs font-semibold text-ink-muted">
+        <Bookmark aria-hidden size={12} className={GROUP_TONE.amber} />
+        Saved Views
       </h2>
       {list.map((view) => {
         const href = hrefOf(view)

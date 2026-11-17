@@ -133,7 +133,7 @@ test('the sidebar heads its list "Recently opened", and each item leads with a g
   const recent = await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
   const heading = screen.getByTestId('sidebar-recents-heading')
   expect(heading.tagName).toBe('H2')
-  expect(heading).toHaveTextContent(/^Recently opened$/)
+  expect(heading).toHaveTextContent(/^Recently Opened$/)
   expect(heading.closest('a')).toBeNull()
   const icon = within(recent).getByRole('img', { name: 'Page' })
   expect(icon).toHaveClass('text-ink-subtle')
@@ -143,22 +143,21 @@ test('the sidebar heads its list "Recently opened", and each item leads with a g
 const groupLinks = (testid: string) =>
   within(screen.getByTestId(testid)).getAllByRole('link').map((a) => a.textContent?.trim())
 
-test('a System Manager sees Data and People and access, each link with a grey icon', async ({ admin }) => {
+test('a System Manager sees Data and People & Access in Title Case, each link with its group’s coloured icon', async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
   await screen.findByTestId('sidebar-group-data')
   const data = screen.getByTestId('sidebar-group-data')
   expect(within(data).getByTestId('sidebar-group-heading')).toHaveTextContent(/^Data$/)
   expect(within(data).getByTestId('sidebar-group-heading').tagName).toBe('H2')
-  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables', 'Glossary', 'Past imports'])
+  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All Tables', 'New Table', 'Import Data', 'Glossary', 'Past Imports'])
   const access = screen.getByTestId('sidebar-group-access')
-  expect(within(access).getByTestId('sidebar-group-heading')).toHaveTextContent(/^People and access$/)
+  expect(within(access).getByTestId('sidebar-group-heading')).toHaveTextContent(/^People & Access$/)
   // #489 item 6: Sign-in methods is in the Account menu only.
-  expect(groupLinks('sidebar-group-access')).toEqual(['Access tokens', 'Waiting for access'])
+  expect(groupLinks('sidebar-group-access')).toEqual(['Access Tokens', 'Waiting For Access'])
   for (const link of within(screen.getByTestId('admin-sidebar')).getAllByRole('link').filter((a) => a.closest('[data-testid^="sidebar-group-"]')))
-    expect(within(link).getByTestId('sidebar-item-icon')).toHaveClass('text-ink-subtle')
-  // Past imports is a normal nav link now; Import data stays the plain button.
+    expect(within(link).getByTestId('sidebar-item-icon').getAttribute('class')).toMatch(/\btext-group-[a-z]+\b/)
+  // Past imports is a normal nav link.
   expect(screen.getByTestId('past-imports-link')).not.toHaveClass('underline')
-  expect(screen.getByTestId('sidebar-new')).not.toContainElement(screen.getByTestId('past-imports-link'))
 })
 
 test('a person with only a Table grant keeps today’s links, and no management ones', async ({ admin, createUser }) => {
@@ -168,8 +167,8 @@ test('a person with only a Table grant keeps today’s links, and no management 
   const clerk = await createUser({ email: 'home.clerk@example.com', roles: ['Home Shelf Clerk'] })
   await renderApp('/featherbase/admin', clerk)
   await screen.findByTestId('sidebar-group-data')
-  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables', 'Glossary'])
-  expect(groupLinks('sidebar-group-access')).toEqual(['Access tokens'])
+  expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All Tables', 'Glossary'])
+  expect(groupLinks('sidebar-group-access')).toEqual(['Access Tokens'])
 })
 
 test('Team: a sign-in reads "<person> signed in", the verb styled like every other verb', async ({ admin }) => {

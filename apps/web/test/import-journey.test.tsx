@@ -37,7 +37,7 @@ async function dropZones(admin: Admin) {
   const r = await renderApp('/featherbase/admin', admin)
   // #1242 (admin-lists 7): Import data is in the sidebar's "+ New" menu.
   await openSidebarNew(WAIT)
-  await userEvent.click(await screen.findByRole('link', { name: 'Import data' }, WAIT))
+  await userEvent.click(await screen.findByRole('link', { name: 'Import Data' }, WAIT))
   expect(await screen.findByTestId('iw-dropzone', {}, WAIT)).toHaveTextContent('Drag & drop a CSV or Excel workbook here')
   fireEvent.drop(screen.getByTestId('iw-dropzone'), { dataTransfer: { files: [zonesCsv()] } })
   await screen.findByTestId('iw-target-0', {}, WAIT)

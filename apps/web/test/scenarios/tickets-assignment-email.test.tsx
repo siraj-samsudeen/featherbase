@@ -16,7 +16,7 @@ const LISTED = 'Colleague is listed as someone tickets can be assigned to'
 const CONFIRM = '[aria-label="Confirm the assignee"]'
 
 // The picker's options by their value, a person's id: the DSL reads options by their text.
-const picker = () => screen.getByRole('combobox', { name: 'Assigned to' }) as HTMLSelectElement
+const picker = () => screen.getByRole('combobox', { name: 'Assigned To' }) as HTMLSelectElement
 const confirmRow = () => screen.queryByRole('group', { name: 'Confirm the assignee' })
 
 /** That person's ticket screen, open on this ticket. */
@@ -103,7 +103,7 @@ describe('tickets-assignment-email', () => {
         .until('the confirmation has closed', () => !confirmRow()))
     await step('the ticket screen shows the ticket as Unassigned', async () => {
       await session.within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned'))
-      expect(screen.queryByRole('combobox', { name: 'Assigned to' })).toBeNull()
+      expect(screen.queryByRole('combobox', { name: 'Assigned To' })).toBeNull()
       const { session: reopened } = await openOnScreen(x, 'Support')
       await reopened.within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned'))
     })
@@ -146,7 +146,7 @@ describe('tickets-assignment-email', () => {
     })
     await step('Anjali sees the ticket as Unassigned, with no way to assign it', async () => {
       await session.within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned'))
-      expect(screen.queryByRole('combobox', { name: 'Assigned to' })).toBeNull()
+      expect(screen.queryByRole('combobox', { name: 'Assigned To' })).toBeNull()
     })
   })
 })
