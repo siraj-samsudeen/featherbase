@@ -31,7 +31,7 @@ test('a Microsoft refusal names Microsoft and offers another Microsoft account',
   await configureMicrosoft({ client_id: 'b1e2c3d4-0000-4000-8000-00000000c1d0' })
   await renderApp('/featherbase/login?error=not_provisioned&via=microsoft', anonymous)
   expect(await screen.findByTestId('sign-in-refused')).toHaveTextContent("This Microsoft account isn't set up for")
-  expect(screen.getByTestId('refused-microsoft-retry')).toHaveTextContent('Try another Microsoft account')
+  expect(await screen.findByTestId('refused-microsoft-retry')).toHaveTextContent('Try another Microsoft account')
   expect(screen.queryByTestId('refused-google-retry')).not.toBeInTheDocument()
 })
 

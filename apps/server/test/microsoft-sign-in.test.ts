@@ -239,3 +239,38 @@ describe('the tenant is part of who may still sign in (Codex adversarial round 1
     await expectStatus(await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${session.token}` } }), 401)
   })
 })
+
+describe('a tenant narrowed while Microsoft is answering (Codex adversarial round 2)', () => {
+  test('the sign-in is judged by the method as it is after the exchange', async ({ api }) => {
+    await configureMicrosoft({ client_id: CLIENT, allowed_email_domains: DOMAIN })
+    const person = await makePerson({ email: `asha@${DOMAIN}` })
+    await linkIdentity(person, { method: 'microsoft', subject: `${TENANT}/${OID}` }, 'Administrator')
+    const start = await api.fetch('/api/oauth/microsoft/login')
+    const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!
+    const res = await withMicrosoftFetch(
+      async () => {
+        // An administrator narrows the tenant while the exchange is in flight.
+        await sql`update sign_in_method set settings = ${JSON.stringify({ tenant: '55555555-5555-4555-8555-555555555555' })}::text::jsonb where row_id = 'microsoft'`
+        return Response.json({
+          id_token: idToken({
+            iss: `https://login.microsoftonline.com/${TENANT}/v2.0`, aud: CLIENT, exp: Math.floor(Date.now() / 1000) + 600,
+            nonce: microsoftNonce(state), tid: TENANT, oid: OID, email: `asha@${DOMAIN}`, xms_edov: true,
+          }),
+        })
+      },
+      () => api.fetch(`/api/oauth/microsoft/callback?code=c&state=${enc(state)}`, { headers: { cookie, accept: 'text/html' } }),
+    )
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_failed&via=microsoft')
+  })
+})
+
+describe('the stand-in honours the tenant (Codex standard round 2)', () => {
+  test('a method set to one tenant refuses the stand-in\'s account from another', async ({ api }) => {
+    await configureMicrosoft({ allowed_email_domains: DOMAIN, tenant: '66666666-6666-4666-8666-666666666666' })
+    const person = await makePerson({ email: `asha@${DOMAIN}`, expects_microsoft_sign_in: true })
+    const res = await microsoftSignIn(api, `asha@${DOMAIN}`, { oid: OID })
+    expect(res.headers.get('location')).toBe('/featherbase/login?error=microsoft_failed&via=microsoft')
+    expect(await microsoftLinks(person)).toHaveLength(0)
+  })
+})
