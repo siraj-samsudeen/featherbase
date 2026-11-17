@@ -9,7 +9,10 @@ import { api, getSessionUser, getSignedInUser, setSession, clearSession } from '
 import { setViewedPerson, viewedPerson, VIEWING_AS_KEY } from '../src/lib/viewing-as'
 
 const WAIT = { timeout: 10_000 }
-afterEach(() => setViewedPerson(null))
+afterEach(() => {
+  setViewedPerson(null)
+  vi.restoreAllMocks()
+})
 
 test('“me” is the viewed person; who signed in stays for the browser’s own things; sign-out forgets both', () => {
   setSession('t', { row_id: 'tester', email: 'tester@example.test', full_name: 'Tess Tester', landing: '/dash/' })
@@ -35,9 +38,21 @@ test('nobody signed in is nobody, whatever the marker says; a marker not naming 
 test('What You Can See, opened at the tester’s own address, shows the viewed person’s, and its link and address say so', async ({ admin, createUser }) => {
   const person = await createUser({ fullName: 'Vas Person' })
   setViewedPerson({ row_id: person.user!, full_name: 'Vas Person' })
+  // The server agrees whom the browser views: otherwise the bar's View as
+  // check (no session was started on the server) clears the marker and
+  // reloads, and this test only passed when it asserted before that answer
+  // arrived (#1251 added requests at page start and CI lost the race). What
+  // the server answers while viewing is proved in server/test/view-as.test.ts.
+  const realGet = api.get.bind(api)
+  vi.spyOn(api, 'get').mockImplementation(((path: string) =>
+    path === '/api/view_as'
+      ? Promise.resolve({ may: true, viewing: { person: person.user!, name: 'Vas Person', expires_at: new Date(Date.now() + 3_600_000).toISOString() }, recent: [], frequent: [] })
+      : realGet(path)) as typeof api.get)
   await renderApp('/featherbase/account/access/Administrator', admin)
   await waitFor(() => expect(screen.getByTestId('access-explanation-heading')).toHaveTextContent('What you can see'), WAIT)
   expect(window.location.pathname).toBe(`/featherbase/account/access/${encodeURIComponent(person.user!)}`)
+  // Checked after the bar has asked whom it views, so no answer can still change it.
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/view_as'), WAIT)
   const account = await screen.findByTestId('sidebar-group-account', {}, WAIT)
   expect(within(account).getByRole('link', { name: 'What You Can See' })).toHaveAttribute('href', `/featherbase/account/access/${encodeURIComponent(person.user!)}`)
 })
