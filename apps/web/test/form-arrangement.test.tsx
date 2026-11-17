@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, beforeAll, describe } from 'vitest'
 import postgres, { type Sql } from 'postgres'
@@ -170,7 +170,7 @@ test('by importance, when and by whom the row was created and updated is one foo
 })
 
 // #1267: one row of controls: the tabs, one save state, and View at the end; Escape closes View back to its button.
-test('the tab row holds one save state and the View menu; Escape closes the menu back to its button', async ({ admin }) => {
+test('the tab row holds one save state and the View menu; Escape or a click outside closes the menu back to its button', async ({ admin }) => {
   await parcelDesk(admin)
   await renderApp('/featherbase/admin/table/arrange-desk/row/D-1', admin)
   const actions = await screen.findByTestId('content-tabs-actions', undefined, { timeout: 8000 })
@@ -184,6 +184,18 @@ test('the tab row holds one save state and the View menu; Escape closes the menu
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByTestId('view-menu')).not.toBeInTheDocument()
   expect(button).toHaveFocus()
+  // A click on empty page closes it back to its button too; a click on a field keeps that field's focus.
+  button.click()
+  await screen.findByTestId('view-menu')
+  fireEvent.pointerDown(document.body)
+  expect(screen.queryByTestId('view-menu')).not.toBeInTheDocument()
+  await waitFor(() => expect(button).toHaveFocus())
+  button.click()
+  await screen.findByTestId('view-menu')
+  const tab = screen.getByRole('tab', { name: 'Map' })
+  fireEvent.pointerDown(tab)
+  expect(screen.queryByTestId('view-menu')).not.toBeInTheDocument()
+  expect(button).not.toHaveFocus()
   // On the Map, the fields' View has nothing to arrange.
   await userEvent.click(screen.getByRole('tab', { name: 'Map' }))
   expect(within(actions).queryByTestId('view-menu-button')).not.toBeInTheDocument()

@@ -95,10 +95,14 @@ export function useFormArrangement(table: string, designed: boolean) {
 
 /** #1267: a record's View menu, at the tab row's right end: how its fields
  *  are arranged and in how many columns. One button instead of a row of pills. */
+const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
+
 export function ViewMenu({ mode, columns, onMode, onColumns }: {
   mode: Arrangement; columns: Columns; onMode: (m: Arrangement) => void; onColumns: (c: Columns) => void
 }) {
   const [open, setOpen] = useState(false)
+  // #1267: fixed to the button's place, so a short record's scrolling area never clips the menu.
+  const [at, setAt] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
   const button = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const menuId = useId()
@@ -106,18 +110,35 @@ export function ViewMenu({ mode, columns, onMode, onColumns }: {
     if (!open) return
     menu.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus()
     const outside = (event: PointerEvent) => {
-      const target = event.target as Node
-      if (!menu.current?.contains(target) && !button.current?.contains(target)) setOpen(false)
+      const target = event.target as Element
+      if (menu.current?.contains(target) || button.current?.contains(target)) return
+      setOpen(false)
+      // Focus goes back to View ▾, unless the click chose another control. After the
+      // press's own default, which would otherwise move focus to the page's body.
+      if (!target.closest?.(FOCUSABLE)) setTimeout(() => button.current?.focus())
     }
+    // A fixed menu would drift from its button when the page moves: close it instead.
+    const moved = (event: Event) => { if (!menu.current?.contains(event.target as Node)) setOpen(false) }
     document.addEventListener('pointerdown', outside, true)
-    return () => document.removeEventListener('pointerdown', outside, true)
+    window.addEventListener('scroll', moved, true)
+    window.addEventListener('resize', moved)
+    return () => {
+      document.removeEventListener('pointerdown', outside, true)
+      window.removeEventListener('scroll', moved, true)
+      window.removeEventListener('resize', moved)
+    }
   }, [open])
+  const toggle = () => {
+    const box = button.current!.getBoundingClientRect()
+    setAt({ top: box.bottom + 4, right: window.innerWidth - box.right })
+    setOpen((was) => !was)
+  }
   const close = () => { setOpen(false); button.current?.focus() }
   const on = 'bg-action-tint text-action'
   return (
     <div className="relative">
       <button ref={button} type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((was) => !was)} data-testid="view-menu-button"
+        onClick={toggle} data-testid="view-menu-button"
         className={buttonClasses({ className: 'whitespace-nowrap px-2.5 py-1 text-xs' })}>View ▾</button>
       {open && (
         <div ref={menu} id={menuId} role="menu" aria-label="View" data-testid="view-menu"
@@ -129,7 +150,8 @@ export function ViewMenu({ mode, columns, onMode, onColumns }: {
             const at = items.indexOf(document.activeElement as HTMLElement)
             items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
           }}
-          className={cardClasses('absolute right-0 top-full z-30 mt-1 w-60 p-1.5 shadow-lg')}>
+          style={{ top: at.top, right: at.right }}
+          className={cardClasses('fixed z-30 w-60 p-1.5 shadow-lg')}>
           <div role="group" aria-label="Arrange Fields">
             <p aria-hidden className="px-2 pb-1 pt-1 text-xs text-ink-subtle">Arrange Fields</p>
             {ARRANGEMENTS.map(([m, label]) => (
