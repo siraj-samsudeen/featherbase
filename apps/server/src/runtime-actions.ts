@@ -4,6 +4,7 @@ import { appActorNames } from './actor-names'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
+import { withStablePermissionReads } from './permission-reads'
 import { appOperation, assertAppAvailable, assertStillServing, servingIdentity } from './app-lifecycle'
 import { canonicalJson, recordAppAccessRefusal, withAppAuthorization, type DeclaredAppOperation } from './app-access'
 import { AppError } from './errors'
@@ -323,7 +324,9 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
         const prepared = handler.prepare ? (await inTransaction(handler.prepare)).answer.result : undefined
         return { outbound: { handler, contribution, frozen: { authorization, payload, setup, provenance, prepared }, identity: await servingIdentity(app) } }
       }
-      return await inTransaction(handler)
+      // #1254: a read writes nothing, so its permission facts (who holds which role, what each Table's policy
+      // and grants are) cannot change while it runs: each is read once, not once per base Table it lists.
+      return await withStablePermissionReads(() => inTransaction(handler))
     })
   })
   // #667: drops are recorded once the read's transaction has committed, on
@@ -360,7 +363,7 @@ function closedDocuments(): never {
 }
 const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, count: closedDocuments, activity: closedDocuments, isReader: closedDocuments })
 const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments, available: closedDocuments })
-const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, routeFor: closedDocuments, modeOf: closedDocuments })
+const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, mayDecideMany: closedDocuments, routeFor: closedDocuments, modeOf: closedDocuments })
 
 interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance; prepared?: unknown }
 

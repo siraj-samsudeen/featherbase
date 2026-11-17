@@ -8,6 +8,8 @@ import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { tableRelation } from '../src/table-engine'
 import { expectRefused } from './fixtures'
+import { getRoles, getRolesMany } from '../src/permissions'
+import { canSignInNow, canSignInNowAmong } from '../src/identities'
 
 // #975: the first slice of #627's Change Proposal, through a proof app that hands each helper
 // call straight through. Every person, place and row here is made up.
@@ -383,6 +385,53 @@ describe('what the helpers refuse', () => {
     expect(named.result).toEqual({ may: true, route: { people: [manager.user], roles: [] } })
     const byRole = await other.post<any>('/api/app_reads/proposalproof/look', { payload: { authority: asks({ people: [manager.user], fallbackRoles: ['Proof Editor'] }) } })
     expect(byRole.result).toEqual({ may: false, route: { people: [manager.user], roles: [] } })
+  })
+})
+
+// #1254: one read asks about many proposals at once. Every answer must be exactly what asking one at a time gives.
+describe('asking about many proposals at once', () => {
+  test('gives, in order, what mayDecide gives for each, from a read and from an action', async ({ admin, createUser }) => {
+    const { maker, manager, other } = await setUp(admin, createUser)
+    await giveRole(admin, other.user, 'Proof Editor')
+    const noWayIn = await createUser({ email: `no-way-in-${randomUUID()}@example.test` })
+    const disabled = await createUser({ email: `disabled-${randomUUID()}@example.test` })
+    await sql`update person set password_hash = 'made-up', enabled = false where row_id = ${disabled.user!}`
+    const ask = (people: (string | null | undefined)[], fallbackRoles: string[] = ['Proof Editor'], by = maker.user) => ({ maker: by, approvers: { people: people as string[], fallbackRoles } })
+    const asks = [
+      ask([manager.user]), ask([noWayIn.user]), ask([disabled.user]), ask([]), ask([], []), ask([maker.user]),
+      ask([manager.user, noWayIn.user]), ask([noWayIn.user], ['Proof Editor'], other.user), ask([manager.user], [], manager.user), ask([manager.user]),
+    ]
+    for (const viewer of [manager, other, maker, noWayIn]) {
+      const read = (await viewer.post<any>('/api/app_reads/proposalproof/look', { payload: { authorityMany: asks } })).result
+      expect(read.many).toEqual(read.each)
+      const acted = await probe(viewer, { op: 'authority_many', asks })
+      expect(acted.many).toEqual(acted.each)
+      expect(acted.many).toEqual(read.many)
+    }
+    // Who decides what, so the comparison is not of two empty answers.
+    expect((await manager.post<any>('/api/app_reads/proposalproof/look', { payload: { authorityMany: asks } })).result.many)
+      .toEqual([true, false, false, false, false, false, true, false, false, true])
+    expect((await other.post<any>('/api/app_reads/proposalproof/look', { payload: { authorityMany: asks } })).result.many)
+      .toEqual([false, true, true, true, false, true, false, false, false, false])
+  })
+
+  test('refuses anything but a list of makers and approvers', async ({ admin, createUser }) => {
+    const { manager } = await setUp(admin, createUser)
+    for (const asks of [null, 'x', [null], [{ approvers: { people: [], fallbackRoles: [] } }], [{ maker: manager.user, approvers: {} }]])
+      await expectRefused(probe(manager, { op: 'authority_many', asks }), 417)
+  })
+
+  test('reads roles and ways in for many people exactly as for one', async ({ admin, createUser }) => {
+    const { maker, manager, other } = await setUp(admin, createUser)
+    await giveRole(admin, other.user, 'Proof Editor')
+    const noWayIn = await createUser({ email: `no-way-in-${randomUUID()}@example.test` })
+    const people = [maker.user!, manager.user!, other.user!, noWayIn.user!, 'Administrator', 'Guest', 'psn_nobody_here']
+    const many = await getRolesMany(people)
+    for (const person of people) expect(many.get(person)).toEqual(await getRoles(person))
+    const signIn = await canSignInNowAmong(people)
+    for (const person of people) expect(signIn.has(person)).toBe(await canSignInNow(person))
+    expect(signIn.has(manager.user!)).toBe(true)
+    expect(signIn.has(noWayIn.user!)).toBe(false)
   })
 })
 

@@ -62,6 +62,7 @@ function context(tables: Record<string, Row[]>, { user = 'asha', payload, settin
         return rows.slice(start, start + (filter.limit ?? 200))
       },
       mayDecide: async () => true,
+      mayDecideMany: async (asks: unknown[]) => asks.map(() => true),
       modeOf: async () => 'Approve first',
       routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: route === 'ghost' ? ['nobody-on-staff'] : approvers.people, roles: [] }),
       lockRow: async () => {},
