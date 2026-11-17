@@ -24,9 +24,9 @@ export const STARTING_ROLES: StartingRole[] = [
   { name: 'Category Head', description: 'Heads the buyers of a category, subdivision or division.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, ['Dash', 'Manager', 'Edit', 'Buyer Sections', 'Area'], TEAM_TASKS, TICKETS] },
   { name: 'Head Office', description: 'Works at head office; reaches the whole company.', grants: [EVERY_REPORT, OWN_TASKS, TICKETS] },
   { name: 'Leadership', description: 'Directors and the chief operating officer; reaches the whole company.', grants: [EVERY_REPORT, GIVE_TO_TEAM, TEAM_TASKS, TICKETS] },
-  { name: 'Master Data Steward', description: 'Keeps the master tables right (D9): reads, adds and edits them everywhere, and deletes none.', by_hand_only: true,
+  { name: 'Master Data Steward', description: 'Keeps the master tables right: reads, adds and edits them everywhere, and deletes none.', by_hand_only: true,
     grants: [['Master Data', 'Steward', 'View', 'Master Tables', 'All'], ['Master Data', 'Steward', 'Add', 'Master Tables', 'All'], ['Master Data', 'Steward', 'Edit', 'Master Tables', 'All']] },
-  { name: 'Vendor', description: 'An outside supplier (D8), given by hand: sees only their own supplier\'s articles once the supplier area is set up.', by_hand_only: true, grants: [REPORTS_IN_AREA] },
+  { name: 'Vendor', description: 'An outside supplier, given by hand: sees only their own supplier\'s articles once the supplier area is set up.', by_hand_only: true, grants: [REPORTS_IN_AREA] },
 ]
 
 /** Today's ten jobs and the two merchandise responsibilities, each mapped to its business role. */

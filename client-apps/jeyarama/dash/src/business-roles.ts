@@ -10,18 +10,20 @@ export type Reach = (typeof REACHES)[number]
 export interface BusinessRole { id: string; name: string; description?: string | null; by_hand_only?: boolean }
 export interface Permission { role: string; app: string; level: string; verb: string; thing: string; reach: Reach }
 export interface TitleRule { title: string; role: string | null }
-export interface HandChange { id: string; change: 'Correct' | 'Also give'; role: string; ends_on?: string | null; reason?: string | null; removed?: boolean }
+/** `site`: the place the hand change names ("treat as Store Manager at Lakeside"); blank keeps the place of their job. */
+export interface HandChange { id: string; change: 'Correct' | 'Also give'; role: string; ends_on?: string | null; reason?: string | null; removed?: boolean; site?: string | null }
 export interface HeldJob { id: string; job: string; designation: string | null }
 export interface HeldMerchandise { id: string; responsibility: string }
-export interface PersonFacts { jobs: HeldJob[]; merchandise: HeldMerchandise[]; clustersHeaded: string[]; hand: HandChange[] }
+/** `buyerSections`: the open Buyer Sections naming them their buyer (#1246), which reach as a Buyer row does. */
+export interface PersonFacts { jobs: HeldJob[]; merchandise: HeldMerchandise[]; clustersHeaded: string[]; hand: HandChange[]; buyerSections?: string[] }
 export interface Model { rules: TitleRule[]; roles: BusinessRole[]; permissions: Permission[]; today: string }
 
-export type Source = 'hr_title' | 'merchandise' | 'cluster_head' | 'corrected' | 'also_given'
+export type Source = 'hr_title' | 'merchandise' | 'buyer_section' | 'cluster_head' | 'corrected' | 'also_given'
 export const SOURCE_WORDS: Record<Source, string> = {
-  hr_title: 'From HR title', merchandise: 'From merchandise assignment', cluster_head: 'Named cluster head', corrected: 'Corrected by hand', also_given: 'Also given by hand',
+  hr_title: 'From HR title', merchandise: 'From merchandise assignment', buyer_section: 'Buyer on a Buyer Section', cluster_head: 'Named cluster head', corrected: 'Corrected by hand', also_given: 'Also given by hand',
 }
 /** Where a role applies, before it is turned into stores and subcategories. */
-export type Spot = { kind: 'job'; job: string } | { kind: 'merchandise'; assignments: string[] } | { kind: 'cluster'; cluster: string } | { kind: 'company' } | { kind: 'none' }
+export type Spot = { kind: 'job'; job: string; site?: string } | { kind: 'merchandise'; assignments: string[] } | { kind: 'cluster'; cluster: string } | { kind: 'buyer_sections'; sections: string[] } | { kind: 'company' } | { kind: 'none' }
 export interface HeldRole { role: string; source: Source; title: string | null; spot: Spot; hand?: string; until?: string | null; reason?: string | null }
 export interface Unmapped { title: string; job: string }
 
@@ -29,6 +31,8 @@ export interface Unmapped { title: string; job: string }
 const WHOLE_COMPANY = new Set(['head office', 'leadership'])
 /** The job whose title names a cluster head's role. */
 export const CLUSTER_TITLE = 'Cluster Manager'
+/** The merchandise responsibility whose role a Buyer Section's buyer holds. */
+export const BUYER_TITLE = 'Buyer'
 
 const key = (title: string) => title.trim().toLowerCase()
 /** Title to role id, for rows naming a role that still exists. */
@@ -49,7 +53,7 @@ const inForce = (hand: HandChange, today: string) => !hand.removed && (!hand.end
 export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; unmapped: Unmapped[] } {
   const map = mapping(model)
   const company = (role: string) => wholeCompany(role, model)
-  const at = (role: string, job: string): Spot => (company(role) ? { kind: 'company' } : { kind: 'job', job })
+  const at = (role: string, job: string, site?: string | null): Spot => (company(role) ? { kind: 'company' } : { kind: 'job', job, ...(site ? { site } : {}) })
   const hand = facts.hand.filter(h => inForce(h, model.today) && model.roles.some(r => r.id === h.role))
   const corrections = hand.filter(h => h.change === 'Correct')
   const handFacts = (h: HandChange) => ({ hand: h.id, until: h.ends_on ?? null, reason: h.reason ?? null })
@@ -60,7 +64,9 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
     const role = byDesignation ?? map.get(key(job.job))
     const title = byDesignation ? job.designation! : job.job
     if (corrections.length) {
-      for (const c of corrections) held.push({ role: c.role, source: 'corrected', title, spot: at(c.role, job.id), ...handFacts(c) })
+      // A Correct naming a place applies once, there; one naming none applies at each job.
+      for (const c of corrections.filter(c => !c.site || job === facts.jobs[0]))
+        held.push({ role: c.role, source: 'corrected', title, spot: at(c.role, job.id, c.site), ...handFacts(c) })
       continue
     }
     if (!role) { unmapped.push({ title: job.designation ?? job.job, job: job.job }); continue }
@@ -79,12 +85,17 @@ export function rolesOf(facts: PersonFacts, model: Model): { held: HeldRole[]; u
   }
   for (const [role, { title, assignments }] of byRole)
     held.push({ role, source: 'merchandise', title, spot: { kind: 'merchandise', assignments } })
+  // A buyer named only on Buyer Sections holds the Buyer role there; with Buyer rows too, their merchandise run covers both.
+  const buyerRole = map.get(key(BUYER_TITLE))
+  if (facts.buyerSections?.length && buyerRole && !byRole.has(buyerRole))
+    held.push({ role: buyerRole, source: 'buyer_section', title: null, spot: { kind: 'buyer_sections', sections: facts.buyerSections } })
   // A named cluster head holds whatever role the title Cluster Manager maps to; none while it maps to nothing.
   const clusterRole = map.get(key(CLUSTER_TITLE))
   for (const cluster of clusterRole ? facts.clustersHeaded : []) held.push({ role: clusterRole!, source: 'cluster_head', title: null, spot: { kind: 'cluster', cluster } })
   for (const given of hand.filter(h => h.change === 'Also give')) {
+    const jobs = given.site ? facts.jobs.slice(0, 1) : facts.jobs
     const spots: Spot[] = company(given.role) ? [{ kind: 'company' }]
-      : facts.jobs.length ? facts.jobs.map(job => ({ kind: 'job', job: job.id }) as Spot)
+      : jobs.length ? jobs.map(job => at(given.role, job.id, given.site))
         : facts.merchandise.length ? [{ kind: 'merchandise', assignments: facts.merchandise.map(m => m.id) }] : [{ kind: 'none' }]
     for (const spot of spots) held.push({ role: given.role, source: 'also_given', title: null, spot, ...handFacts(given) })
   }
@@ -174,23 +185,29 @@ export function decisionReports(who: { person: string; roles: readonly string[];
 /** One side of the comparison: Dash opens, the places by store (null: the whole store), the reports. */
 export interface Side { opens: boolean; places: Record<string, string[] | null>; reports: string[] }
 export type ChangeKind = 'loses_dash' | 'gains_dash' | 'stores' | 'reports' | 'decision'
-export interface Difference { kind: ChangeKind | null; storesGained: string[]; storesLost: string[]; storesChanged: string[]; gained: string[]; lost: string[]; decisions: string[] }
+export interface Difference { kind: ChangeKind | null; kinds: ChangeKind[]; storesGained: string[]; storesLost: string[]; storesChanged: string[]; gained: string[]; lost: string[]; decisions: string[] }
 
 /** What changes for one person from today to the new model; `decisions` are today's reports given only through an app role. */
 export function differences(today: Side, next: Side, decisions: string[]): Difference {
-  const now = Object.keys(today.places)
-  const then = Object.keys(next.places)
+  // Where Dash is shut, its places reach nothing: floor staff with no Dash on either side reach the same.
+  const nowPlaces = today.opens ? today.places : {}
+  const thenPlaces = next.opens ? next.places : {}
+  const now = Object.keys(nowPlaces)
+  const then = Object.keys(thenPlaces)
   const same = (a: string[] | null, b: string[] | null) => (a === null || b === null ? a === b : a.length === b.length && [...a].sort().join() === [...b].sort().join())
   const storesGained = then.filter(s => !now.includes(s)).sort()
   const storesLost = now.filter(s => !then.includes(s)).sort()
-  const storesChanged = now.filter(s => then.includes(s) && !same(today.places[s], next.places[s])).sort()
+  const storesChanged = now.filter(s => then.includes(s) && !same(nowPlaces[s], thenPlaces[s])).sort()
   const gained = next.reports.filter(r => !today.reports.includes(r)).sort()
   const missing = today.reports.filter(r => !next.reports.includes(r))
   const lost = missing.filter(r => !decisions.includes(r)).sort()
   const undecided = missing.filter(r => decisions.includes(r)).sort()
-  const kind: ChangeKind | null = today.opens && !next.opens ? 'loses_dash' : !today.opens && next.opens ? 'gains_dash'
-    : storesGained.length || storesLost.length || storesChanged.length ? 'stores' : gained.length || lost.length ? 'reports' : undecided.length ? 'decision' : null
-  return { kind, storesGained, storesLost, storesChanged, gained, lost, decisions: undecided }
+  // Every kind that applies: someone losing Dash and reaching other stores is listed under both.
+  const kinds = ([
+    ['loses_dash', today.opens && !next.opens], ['gains_dash', !today.opens && next.opens],
+    ['stores', storesGained.length + storesLost.length + storesChanged.length > 0], ['reports', gained.length + lost.length > 0], ['decision', undecided.length > 0],
+  ] as [ChangeKind, boolean][]).filter(([, applies]) => applies).map(([kind]) => kind)
+  return { kind: kinds[0] ?? null, kinds, storesGained, storesLost, storesChanged, gained, lost, decisions: undecided }
 }
 
 /** Subcategory codes are SAP's levels: 2 digits the line of business, 4 the main category, 6 the category. */

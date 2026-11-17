@@ -20,3 +20,8 @@ export const offered = (shape: string, places: readonly Place[]) => openableByRe
 /** can_open: a Dash role, or a System Manager (who manages access), or any report offered. */
 export const opensDashFor = (roles: readonly string[], offeredCount: number) =>
   roles.some(role => role === 'System Manager' || DASH_ROLES.has(role)) || offeredCount > 0
+
+/** The roles the `report` and `embed_session` reads require (featherbase.json's readRoles, enforced by the platform): a
+ *  report taking a filter opens only for a holder; one taking none opens through report_open, which requires none. */
+export const READ_ROLES: readonly string[] = [ALL_STORES_ROLE, 'Dash Reader']
+export const readableByRoles = (shape: string, roles: readonly string[]) => shape === 'No filter' || roles.some(role => READ_ROLES.includes(role))

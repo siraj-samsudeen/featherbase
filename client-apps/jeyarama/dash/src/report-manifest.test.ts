@@ -11,6 +11,7 @@ import { PROVIDER_FIELDS, PROVIDER_TABLES } from './provider.ts'
 import { BASE_TABLES } from './my-sections.ts'
 import { BUYER_TABLES } from './buyers.ts'
 import { DESIGNATION, SHADOW_TABLES } from './business-roles-server.ts'
+import { READ_ROLES } from './report-eligibility.ts'
 
 type Dataset = { name: string; source: string; query: string; columns: { name: string; type: string }[]; keys: string[]; filters: Record<string, string>
   guard?: { kind: string; column?: string; value?: number; within?: string }[] }
@@ -208,6 +209,11 @@ describe('the read grants, declared before the first install', () => {
   // #1192 (same day): Dash All-Stores Reader reaches every store. #1217: Team Report Manager gives reports to their team.
   it('declares only the roles Dash uses', () => {
     expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester'])
+  })
+
+  // #1218: the comparison judges today's reports by the same roles the platform enforces on these reads.
+  it('names in report-eligibility.ts the roles its report and embed reads require', () => {
+    expect(['report', 'embed_session'].map(name => [...operations[name].policy.readRoles!].sort())).toEqual([[...READ_ROLES].sort(), [...READ_ROLES].sort()])
   })
 
   it('give the All-Stores Reader only the read of the entry Table, and every read the Reader has', () => {

@@ -121,6 +121,28 @@ describe('the less common routes to a role', () => {
   })
 })
 
+describe('Buyer Sections and places named by hand', () => {
+  it('gives a buyer named only on Buyer Sections the Buyer role there', () => {
+    expect(rolesOf({ ...none, buyerSections: ['BS-1'] }, model).held).toEqual([{ role: 'r-buyer', source: 'buyer_section', title: null, spot: { kind: 'buyer_sections', sections: ['BS-1'] } }])
+  })
+
+  it('gives no second Buyer role to a buyer who also has Buyer rows', () => {
+    expect(rolesOf({ ...none, merchandise: [{ id: 'M1', responsibility: 'Buyer' }], buyerSections: ['BS-1'] }, model).held.map(r => r.source)).toEqual(['merchandise'])
+  })
+
+  it('applies a Correct naming a place once, at that place', () => {
+    const { held } = rolesOf({ ...none, jobs: [{ id: 'J1', job: 'Head office staff', designation: null }, { id: 'J2', job: 'Staff', designation: null }],
+      hand: [{ id: 'H1', change: 'Correct', role: 'r-sm', site: 'LKS' }] }, model)
+    expect(held.map(r => r.spot)).toEqual([{ kind: 'job', job: 'J1', site: 'LKS' }])
+  })
+
+  it('adds an Also give naming a place once, at that place', () => {
+    const { held } = rolesOf({ ...none, jobs: [{ id: 'J1', job: 'Staff', designation: null }, { id: 'J2', job: 'Staff', designation: null }],
+      hand: [{ id: 'H1', change: 'Also give', role: 'r-sm', site: 'HIL' }] }, model)
+    expect(held.filter(r => r.source === 'also_given').map(r => r.spot)).toEqual([{ kind: 'job', job: 'J1', site: 'HIL' }])
+  })
+})
+
 describe('apps and levels', () => {
   it('lists each app and level once, with the roles that give it', () => {
     const held = rolesOf({ ...none, jobs: [{ id: 'J1', job: 'Store Manager', designation: null }, { id: 'J2', job: 'Team Leader', designation: null }] }, model).held
@@ -207,6 +229,14 @@ describe('today against the new model', () => {
 
   it('says who would lose Dash first', () => {
     expect(differences(side(), side({ opens: false, places: {}, reports: [] }), []).kind).toBe('loses_dash')
+  })
+
+  it('compares no stores where Dash is shut on both sides', () => {
+    expect(differences(side({ opens: false }), side({ opens: false, places: {}, reports: ['vs'] }), []).kind).toBeNull()
+  })
+
+  it('lists every kind that applies', () => {
+    expect(differences(side(), side({ opens: false, places: {}, reports: [] }), []).kinds).toEqual(['loses_dash', 'stores', 'reports'])
   })
 
   it('says who would gain Dash', () => {
