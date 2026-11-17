@@ -49,6 +49,14 @@ function LinkedHow({ by, who }: { by: string; who: string }) {
   )
 }
 
+/** #1257: a password invite, as the Person's panel reads it. */
+interface PasswordInvite {
+  status: 'sending' | 'pending' | 'expired' | 'accepted' | 'voided' | 'not_sent'
+  sent_at: string | null
+  expires_at: string
+  accepted_at: string | null
+}
+
 interface MethodInfo {
   key: string
   kind: string
@@ -75,6 +83,8 @@ export function PersonSignInMethods({ user }: { user: string }) {
         email: string | null
         expects_google_sign_in: boolean
         mail_transport: 'smtp' | 'email_sink'
+        /** #1257: whether a password invite can be sent, why not, and the latest. */
+        password_invite: { offered: boolean; refusal: string | null; latest: PasswordInvite | null }
       }>(
         `/api/people/${encodeURIComponent(user)}/identities`,
       ),
@@ -134,6 +144,24 @@ export function PersonSignInMethods({ user }: { user: string }) {
     },
     onError: fail,
   })
+  // #1257: send, or send again (a new link voids the earlier one).
+  const passwordInvite = useMutation({
+    mutationFn: () => api.post(`/api/people/${encodeURIComponent(user)}/password_invite`, {}),
+    onSuccess: () => {
+      done()
+      const address = data?.email ?? ''
+      setNotice(
+        toSink ? (
+          <>
+            Password invite saved to the <EmailSinkLink /> for {address}; this instance does not send email.
+          </>
+        ) : (
+          `Password invite emailed to ${address}.`
+        ),
+      )
+    },
+    onError: fail,
+  })
   const unlink = useMutation({
     mutationFn: (id: string) => api.delete(`/api/identities/${encodeURIComponent(id)}`),
     onSuccess: done,
@@ -187,7 +215,16 @@ export function PersonSignInMethods({ user }: { user: string }) {
     <Card className="p-3" data-testid="user-sign-in-methods">
       <h3 className="mb-2 text-sm font-semibold text-ink">Sign-in methods</h3>
       <ul className="space-y-2 text-sm">
-        {data?.has_password && <li data-testid="user-method-password">Password</li>}
+        {data?.has_password && (
+          <li data-testid="user-method-password">
+            Password
+            {data.password_invite.latest?.status === 'accepted' && data.password_invite.latest.accepted_at && (
+              <span className="block text-sm text-ink-muted" data-testid="password-invite-accepted">
+                set from a password invite {fmtInstantIST(data.password_invite.latest.accepted_at)}
+              </span>
+            )}
+          </li>
+        )}
         {data?.identities.filter((i) => !i.ended_at).map((i) => (
           <li key={i.id} className="flex items-start justify-between gap-2" data-testid={`user-method-${i.id}`}>
             <span className="min-w-0">
@@ -250,6 +287,15 @@ export function PersonSignInMethods({ user }: { user: string }) {
         {data && !data.has_password && !expectsGoogle && data.identities.filter((i) => !i.ended_at).length === 0 && (
           <li className="text-sm text-ink-muted">No way to sign in yet.</li>
         )}
+        {data && !data.has_password && (data.password_invite.offered || data.password_invite.latest?.status === 'pending') && (
+          <PasswordInviteRow
+            invite={data.password_invite.latest}
+            email={data.email ?? ''}
+            toSink={toSink}
+            busy={passwordInvite.isPending}
+            onSend={() => passwordInvite.mutate()}
+          />
+        )}
       </ul>
       {delegated.length > 0 && (
         <form className="mt-3 space-y-2" onSubmit={onLink} data-testid="link-delegated-form">
@@ -294,6 +340,44 @@ export function PersonSignInMethods({ user }: { user: string }) {
         </p>
       )}
     </Card>
+  )
+}
+
+/** #1257: the password invite in the panel: what was sent and when it
+ *  expires, with Resend; or what sending one does, with Send. */
+function PasswordInviteRow({ invite, email, toSink, busy, onSend }: {
+  invite: PasswordInvite | null
+  email: string
+  toSink: boolean
+  busy: boolean
+  onSend: () => void
+}) {
+  const live = invite?.status === 'pending'
+  const ended: Partial<Record<PasswordInvite['status'], string>> = {
+    expired: 'The last password invite expired',
+    voided: 'The last password invite was cancelled',
+    not_sent: 'The last password invite was not sent',
+  }
+  return (
+    <li className="flex items-start justify-between gap-2" data-testid="password-invite">
+      <span className="min-w-0">
+        <span className="font-medium">Password invite</span>
+        {live && invite.sent_at ? (
+          <span className="block text-sm text-ink-muted" data-testid="password-invite-status">
+            {toSink ? 'Password invite saved to the Email Sink' : 'Password invite emailed'} {fmtInstantIST(invite.sent_at)} · expires{' '}
+            {fmtInstantIST(invite.expires_at)}
+          </span>
+        ) : (
+          <span className="block text-sm text-ink-muted">
+            {invite && ended[invite.status] ? `${ended[invite.status]}. ` : ''}
+            Emails {email} a link to set a password. It works once, for 72 hours.
+          </span>
+        )}
+      </span>
+      <Button variant="secondary" className="shrink-0" disabled={busy} onClick={onSend}>
+        {live ? 'Resend password invite' : 'Send password invite'}
+      </Button>
+    </li>
   )
 }
 
