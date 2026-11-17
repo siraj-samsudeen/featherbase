@@ -49,7 +49,7 @@ interface Page {
   rows: Row[]
   waiting: { person: string; name: string; asked_on: string; who?: Who }[]
 }
-interface Found extends Who { person: string; name: string }
+export interface Found extends Who { person: string; name: string }
 interface Lookup { name: string; reports: { key: string; name: string; because: string[]; closed: string | null }[] }
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'That did not go through. Try again.')
@@ -650,7 +650,7 @@ function GiveBar({ page, onGiven, team, start = '', startPerson = null, onClose 
 }
 
 /** Finds a person on the staff list by name. */
-function PersonPicker({ chosen, onChoose, label, nobody = 'No one on the staff list matches that' }: { chosen: Found | null; onChoose: (found: Found | null) => void; label: string; nobody?: string }) {
+export function PersonPicker({ chosen, onChoose, label, nobody = 'No one on the staff list matches that' }: { chosen: Found | null; onChoose: (found: Found | null) => void; label: string; nobody?: string }) {
   const [typed, setTyped] = useState('')
   const [found, setFound] = useState<Found[] | null>(null)
   useEffect(() => {
