@@ -56,7 +56,13 @@ describe('who counts as a leaver', () => {
   test('an exit date that has passed disables, with the date as the reason', async () => {
     const plan = planLeavers([who('a', { record_ids: ['1'] })], [rec('1', 'C-1', { exit_date: '2026-10-09', movement_active: false })], TODAY, TODAY)
     expect(plan.refused).toBeNull()
-    expect(plan.to_disable).toEqual([{ person: 'a', full_name: null, reason: 'exit date 09-Oct-2026 has passed', basis: 'exit date' }])
+    expect(plan.to_disable).toEqual([{ person: 'a', full_name: null, reason: 'exit date 09-Oct-2026 has passed', basis: 'exit date', left_on: '2026-10-09' }])
+  })
+
+  // #1271: the report's leaving date is the latest exit date that has passed, never one still to come.
+  test('a leaver decided another way carries no future exit date as its leaving date', async () => {
+    const plan = planLeavers([who('a', { record_ids: ['1'] })], [rec('1', 'C-1', { exit_date: '2099-01-01', movement_active: false })], TODAY, TODAY)
+    expect(plan.to_disable).toEqual([expect.objectContaining({ person: 'a', basis: 'inactive', left_on: null })])
   })
 
   test('an exit date still in the future does not', async () => {

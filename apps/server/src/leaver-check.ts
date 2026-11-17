@@ -54,15 +54,17 @@ export interface LinkedPerson {
   codes: string[]
 }
 
-interface Leaver {
+export interface Leaver {
   person: string
   full_name: string | null
   reason: string
   /** For the activity row and the summary: which basis decided it. */
   basis: 'exit date' | 'inactive' | 'not on payroll'
+  /** #1271: the latest exit date any of their records gives, when one does. */
+  left_on: string | null
 }
 
-interface LeaverPlan {
+export interface LeaverPlan {
   today: string
   latest_feed_day: string | null
   linked: number
@@ -178,7 +180,9 @@ export function planLeavers(
       continue
     }
     const decisive = left.sort((a, b) => a.rank - b.rank)[0]
-    const leaver: Leaver = { person: p.person, full_name: p.full_name, reason: decisive.reason, basis: decisive.basis }
+    // Only an exit date that has passed is a leaving date; a future one is not yet.
+    const exits = mine.map((r) => r.exit_date).filter((d): d is string => Boolean(d) && d! <= today).sort()
+    const leaver: Leaver = { person: p.person, full_name: p.full_name, reason: decisive.reason, basis: decisive.basis, left_on: exits.at(-1) ?? null }
     if (p.privileged) plan.privileged_leavers.push(leaver)
     else plan.to_disable.push(leaver)
   }
