@@ -165,6 +165,10 @@ export async function assertMethodOpenTo(method: Pick<SignInMethod, 'label' | 'e
  *  is made asks this one question. */
 export async function employeesOnlyRefusal(method: Pick<SignInMethod, 'employees_only'>, person: string): Promise<'left' | 'none' | null> {
   if (!method.employees_only) return null
+  // Codex round 2: a System Manager is never refused, so the mark can't lock
+  // an instance out of its own administration (the last-way-in rule stays whole).
+  const { isPrivileged } = await import('./permissions')
+  if (await isPrivileged(person)) return null
   const { describePeople } = await import('./person-standing')
   const status = (await describePeople([person])).get(person)!.status
   return status === 'left' || status === 'none' ? status : null

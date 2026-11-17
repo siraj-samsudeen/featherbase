@@ -241,3 +241,18 @@ describe('every way in asks the employees-only question', () => {
     await expect(assertEligible(stylehr, emp.user!)).resolves.toBeUndefined()
   })
 })
+
+// Codex round 2: the mark never locks out an administrator.
+test('a System Manager is never refused by an employees-only method, even when external', async ({ admin, createUser }) => {
+  await installDescriber(admin)
+  await configureDelegated()
+  await sql`update sign_in_method set employees_only = true where row_id in ('stylehr', 'password')`
+  const boss = await createUser({ email: 'boss.1267@example.test', roles: ['System Manager'] })
+  const password = (await getSignInMethod('password'))!
+  await expect(assertEligible(password, boss.user!)).resolves.toBeUndefined()
+  await expect(assertEligible(password, 'Administrator')).resolves.toBeUndefined()
+  const linked = await admin.fetch(`/api/people/${encodeURIComponent(boss.user!)}/identities`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method: 'stylehr', subject: 'RR-BOSS' }),
+  })
+  expect(linked.status).toBe(201)
+})
