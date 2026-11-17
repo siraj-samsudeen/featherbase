@@ -1,6 +1,6 @@
 # #1218 — Jobs and roles: one idea people can follow
 
-Status: **design in progress** — nothing built. Questions are asked one at a time; each answer is recorded below.
+Status: **design agreed 17-Nov-2026 (D1–D9)**. Nothing built. Building needs the owner's yes. Questions are asked one at a time; each answer is recorded below.
 
 ## The problem in one line
 
@@ -153,6 +153,21 @@ Two actions on a person, with an optional end date on both:
 
 HR-derived roles are never edited directly. Explain-a-person shows the source of every role: HR title, merchandise assignment, corrected by hand, or also given by hand.
 
+### D7 — One word per thing (owner, 17-Nov-2026: "yes")
+- **Site** on admin screens, for any physical place.
+- **Store** on Dash and staff screens, which only show sites that sell.
+- **Plant** is SAP's code. It is never shown to staff and is never on the location axis; reaching a site reaches its plants.
+- The Glossary keeps the other names people use ("outlet", "branch"), and search matches them.
+
+### D8 — Vendors (owner, 17-Nov-2026: "yes")
+- **Vendor** is a ready-made business role for External people, given by hand with an optional end date.
+- Its area sits on a new **Supplier** axis: a vendor sees only their own supplier's articles.
+- **Consultants** get apps one at a time ("Also give").
+
+### D9 — Master Data Steward (owner, 17-Nov-2026: "yes")
+- Master Data Editor and Data Quality Manager merge into one role, **Master Data Steward**.
+- It can read, create and update master tables at All reach, and cannot delete.
+
 ## Owner's steer, 17-Nov-2026: fine-grained by area, and fewer words
 
 - Master data needs fine-grained rights: a category manager manages their category, and a store manager manages the sections in their store.
@@ -174,3 +189,22 @@ The platform's built-in "Guest" role (anonymous visitors) is another reason to a
 ## Owner, 17-Nov-2026 (via the Person page session): Vendor and Consultant confirmed as labels on External
 
 He expects to give vendors some access. Proposed: **Vendor** is a ready-made business role, given by hand with an end date. Its area sits on a fourth axis, **Supplier**: a vendor sees only their own supplier's products, for example a Vendor Sales report narrowed to their articles. Consultant has no fixed shape, so a consultant gets apps one at a time ("Also give"). Queued as a question after Q2, because it depends on the reach and axes answer.
+
+
+## What building this means (for a later issue, not started)
+
+1. **Business role** becomes instance data. It lists what it includes, as rows of permission × reach.
+2. **Title map**, owned by Jeyarama. Titles nobody has mapped yet wait on a visible list.
+3. **One assignment shape**: person · business role · area (a point on each axis) · source · optional end date. It is fed by Job Assignment, Merchandise Assignment and the two hand actions.
+4. **Dash moves onto the model**:
+   - The front door opens through a business role that includes Dash.
+   - Reach follows the area.
+   - Report grants name business roles.
+   - The roles Dash Reader, Dash All-Stores Reader, Report Access Manager and Team Report Manager go away.
+5. **An "Explain a person" screen.** Build this first, because every real failure was a failure to explain.
+6. **Moving people over:**
+   - map today's hand-given roles onto business roles;
+   - turn grants that name a job into grants that name roles;
+   - merge Master Data Editor and Data Quality Manager into Master Data Steward.
+
+Each of these is its own issue with its own review.
