@@ -66,8 +66,10 @@ export async function seedSites(admin: Admin, opts: { profitCentres?: number } =
 // as plants. Its region is the site's own region, so it is passed over.
 export async function seedPostings(admin: Admin) {
   await admin.post('/api/table_def', {
-    name: 'Nv Posting', id_pattern: 'hash',
+    // A link table: its title is its own id.
+    name: 'Nv Posting', id_pattern: 'field:posting_id', title_column: 'posting_id',
     columns: [
+      { column_name: 'posting_id', column_type: 'Data', label: 'Posting' },
       { column_name: 'region', column_type: 'Reference', reference_table: REGION, label: 'Region' },
       { column_name: 'site', column_type: 'Reference', reference_table: SITE, label: 'Site' },
       { column_name: 'plant', column_type: 'Reference', reference_table: PLANT, label: 'Plant' },
@@ -76,6 +78,6 @@ export async function seedPostings(admin: Admin) {
       { column_name: 'ends_on', column_type: 'Date', label: 'Ends on' },
     ],
   })
-  await admin.post('/api/save_row', { table: 'Nv Posting', row: { region: 'KL', site: 'ENK', plant: '1503', posted_on: '2026-04-01', status: 'Active', ends_on: '2027-03-31' } })
-  await admin.post('/api/save_row', { table: 'Nv Posting', row: { region: 'KL', site: 'ENK', plant: '1504' } })
+  await admin.post('/api/save_row', { table: 'Nv Posting', row: { posting_id: 'ENK-1503', region: 'KL', site: 'ENK', plant: '1503', posted_on: '2026-04-01', status: 'Active', ends_on: '2027-03-31' } })
+  await admin.post('/api/save_row', { table: 'Nv Posting', row: { posting_id: 'ENK-1504', region: 'KL', site: 'ENK', plant: '1504' } })
 }

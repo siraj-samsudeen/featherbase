@@ -306,7 +306,8 @@ function PanelGroup({ table, row, group, nav, onOpen }: { table: string; row: st
   const showAllHref = nav.addressed
     ? nav.href(push(nav.path, listStep))
     : `${tableHref(connection.table)}?filters=${encodeURIComponent(JSON.stringify(connection.filters))}`
-  return <LinkedRowsGroup table={table} record={row} group={group} showAllHref={showAllHref} onOpen={onOpen} />
+  // Opened from its chip, right above: the chip already names it (verifier, 17-Nov).
+  return <LinkedRowsGroup table={table} record={row} group={group} showAllHref={showAllHref} onOpen={onOpen} heading={false} />
 }
 
 // ---------- fields ----------

@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowDisplayTitle, tableHref } from 'shared'
-import { RecordLink, fmtCount, nameAndCode } from '@featherbase/shop-floor'
+import type { ReactNode } from 'react'
+import { RecordLink, fmtCount } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import { GROUP_ROWS, farSide, groupFacts, groupRowFields, type FarSide } from '../lib/far-side'
 import { useMeta, type TableMeta } from '../lib/meta'
@@ -67,15 +68,17 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
       {!total ? <p className="text-sm text-ink-muted">No rows</p>
         : rows.isPending || !meta.data || doc.isPending ? <p className="text-sm text-ink-subtle">Loading…</p>
         : (
-          <ul className="flex min-w-0 flex-col gap-3">
+          <ul className="flex min-w-0 flex-col gap-0.5">
             {data.map((r) => (
               <LinkedRowLine key={String(r.row_id)} meta={meta.data!} row={r} onOpen={onOpen}
                 far={farSide(meta.data!, r, { backLink, record, own })} />
             ))}
           </ul>
         )}
-      {/* Always there: the whole group as its list, where a new row starts linked to the record. */}
-      {total > 0 && <ShowAll href={href} total={total} />}
+      {/* More than shown: Show all N. Otherwise a quieter way to the group as a
+          list, where a new row starts linked to the record. */}
+      {total > data.length && data.length > 0 ? <ListLink href={href} quiet={false}>Show all {fmtCount(total)}</ListLink>
+        : total > 0 && <ListLink href={href} quiet>Open as list</ListLink>}
     </section>
   )
 }
@@ -86,11 +89,13 @@ function LinkedRowLine({ meta, row, far, onOpen }: { meta: TableMeta; row: Row; 
   const rowId = String(row.row_id)
   const facts = groupFacts(meta, row)
   return (
-    <li className="flex min-w-0 flex-col text-sm" data-testid="linked-row">
+    <li className="flex min-w-0 flex-col rounded-control px-2 py-1.5 text-[13px] hover:bg-subtle" data-testid="linked-row">
       {far ? <FarSideLink far={far} onOpen={onOpen} /> : (() => {
         const title = rowDisplayTitle(meta, row, rowId)
-        return <RecordLink table={meta.name} rowId={rowId} name={nameAndCode(title, shownCode(meta, rowId, title))}
-          onNavigate={onOpen ? () => onOpen({ table: meta.name, row: rowId }) : undefined} />
+        return <NameThenCode code={shownCode(meta, rowId, title)}>
+          <RecordLink table={meta.name} rowId={rowId} name={title}
+            onNavigate={onOpen ? () => onOpen({ table: meta.name, row: rowId }) : undefined} />
+        </NameThenCode>
       })()}
       {facts.length > 0 && (
         <span className="text-xs text-ink-muted" data-testid="linked-row-facts">
@@ -106,8 +111,15 @@ function FarSideLink({ far, onOpen }: { far: FarSide; onOpen?: (pane: NavPane) =
   if (name.state === 'loading') return <span className="text-ink-subtle">…</span>
   // The row is listed; what it points to the viewer may not open: plain words, no id.
   if (name.state === 'unreadable') return <RecordLink table={far.table} rowId={far.row_id} name={UNSEEN_ROW} canOpen={false} />
-  return <RecordLink table={far.table} rowId={far.row_id} name={nameAndCode(name.title, name.code)}
-    onNavigate={onOpen ? () => onOpen({ table: far.table, row: far.row_id }) : undefined} />
+  return <NameThenCode code={name.code}>
+    <RecordLink table={far.table} rowId={far.row_id} name={name.title}
+      onNavigate={onOpen ? () => onOpen({ table: far.table, row: far.row_id }) : undefined} />
+  </NameThenCode>
+}
+
+/** The name alone is the link; the code people use follows it, muted, as in a list ("Lakeside · LKS"). */
+function NameThenCode({ code, children }: { code?: string; children: ReactNode }) {
+  return <span className="min-w-0">{children}{code && <>{' '}<span className="text-ink-muted">· {code}</span></>}</span>
 }
 
 function Fact({ type, value, labels, settings }: { type: string; value: unknown; labels?: Record<string, string> | null; settings: Settings }) {
@@ -116,17 +128,19 @@ function Fact({ type, value, labels, settings }: { type: string; value: unknown;
   return <>{formatValue(type, value, settings) || String(value)}</>
 }
 
-/** "Show all N": the group's Table, filtered to the record. */
-function ShowAll({ href, total }: { href: string; total: number }) {
+/** The group's Table filtered to the record: "Show all N", or a quieter "Open as list". */
+function ListLink({ href, quiet, children }: { href: string; quiet: boolean; children: ReactNode }) {
   const navigate = useNavigate()
   return (
-    <a href={href} className="self-start text-sm font-medium text-action underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+    <a href={href} className={quiet
+      ? 'self-start px-2 text-sm text-ink-muted underline-offset-2 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-focus'
+      : 'self-start px-2 text-sm font-medium text-action underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus'}
       onClick={(e) => {
         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
         e.preventDefault()
         void navigate({ href })
       }}>
-      Show all {fmtCount(total)}
+      {children}
     </a>
   )
 }

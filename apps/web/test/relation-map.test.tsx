@@ -53,6 +53,8 @@ test('the map shows what a row points to and what points back, with a count', as
   // #1218: an order points at a customer by one link only, so the link is not named.
   await waitFor(() => expect(back).toHaveTextContent('Rm Order'))
   expect(back).not.toHaveTextContent('via')
+  // An order has a title of its own: it is no link table, so it never reads through.
+  expect(back).not.toHaveTextContent('through')
 })
 
 // #1218 slice 1: a group whose rows all point to one Table reads as that Table.
@@ -63,8 +65,9 @@ async function seedVisits(admin: Parameters<typeof renderApp>[1]) {
     columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
   })
   await admin.post('/api/table_def', {
-    name: 'Rm Visit', id_pattern: 'hash',
+    name: 'Rm Visit', id_pattern: 'field:visit_id', title_column: 'visit_id',
     columns: [
+      { column_name: 'visit_id', column_type: 'Data', label: 'Visit' },
       { column_name: 'customer', column_type: 'Reference', reference_table: 'Rm Customer', label: 'Customer' },
       { column_name: 'rep', column_type: 'Reference', reference_table: 'Rm Rep', label: 'Rep' },
       { column_name: 'billed_to', column_type: 'Reference', reference_table: 'Rm Customer', label: 'Billed to' },
@@ -72,8 +75,8 @@ async function seedVisits(admin: Parameters<typeof renderApp>[1]) {
   })
   await admin.post('/api/save_row', { table: 'Rm Rep', row: { row_id: 'rep-1', title: 'Anu' } })
   await admin.post('/api/save_row', { table: 'Rm Rep', row: { row_id: 'rep-2', title: 'Bala' } })
-  await admin.post('/api/save_row', { table: 'Rm Visit', row: { customer: 'cust-1', rep: 'rep-1' } })
-  await admin.post('/api/save_row', { table: 'Rm Visit', row: { customer: 'cust-1', rep: 'rep-2' } })
+  await admin.post('/api/save_row', { table: 'Rm Visit', row: { visit_id: 'V1', customer: 'cust-1', rep: 'rep-1' } })
+  await admin.post('/api/save_row', { table: 'Rm Visit', row: { visit_id: 'V2', customer: 'cust-1', rep: 'rep-2' } })
 }
 
 test('a group whose rows all point to one Table reads as that Table, through the group, naming the link when there are two', async ({ admin }) => {

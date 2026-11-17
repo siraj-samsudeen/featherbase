@@ -309,14 +309,15 @@ describe('relational-navigation', () => {
           { column_name: 'floor', column_type: 'Data', label: 'Floor', in_list_view: true }] })
       await admin.post('/api/table_def', { name: 'Sc Employee', id_pattern: 'prompt', title_column: 'employee_name',
         columns: [{ column_name: 'employee_name', column_type: 'Data', label: 'Name', in_list_view: true }] })
-      await admin.post('/api/table_def', { name: 'Sc Job Assignment', id_pattern: 'hash', columns: [
+      await admin.post('/api/table_def', { name: 'Sc Job Assignment', id_pattern: 'field:assignment_id', title_column: 'assignment_id', columns: [
+        { column_name: 'assignment_id', column_type: 'Data', label: 'Assignment' },
         { column_name: 'section', column_type: 'Reference', reference_table: 'Sc Section', label: 'Section' },
         { column_name: 'employee', column_type: 'Reference', reference_table: 'Sc Employee', label: 'Employee' },
       ] })
       await admin.post('/api/save_row', { table: 'Sc Section', row: { row_id: 'S13039', section_name: 'Ladies Wear', floor: 'First' } })
       for (const [row_id, employee_name] of [['E1001', 'Anitha'], ['E1002', 'Bindu']]) {
         await admin.post('/api/save_row', { table: 'Sc Employee', row: { row_id, employee_name } })
-        await admin.post('/api/save_row', { table: 'Sc Job Assignment', row: { section: 'S13039', employee: row_id } })
+        await admin.post('/api/save_row', { table: 'Sc Job Assignment', row: { assignment_id: `S13039-${row_id}`, section: 'S13039', employee: row_id } })
       }
     })
     await step("the user opens the section's job assignments in the drill pane", async () => {
@@ -340,7 +341,7 @@ describe('relational-navigation', () => {
     })
     await step('the user opens its group of plants as a list', async () => {
       await openGroup('Enchakkal', 'Plant')
-      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Show all 3' }))
+      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Open as list' }))
     })
     await step('the list of plants opens, narrowed to the 3 plants of Enchakkal', async () => {
       await waitFor(() => expect(location(view).pathname).toBe(tableHref('Plant')))
@@ -356,7 +357,7 @@ describe('relational-navigation', () => {
       await seedOrganisation(admin)
       ;({ view } = await selectInSites(admin, 'Enchakkal'))
       await openGroup('Enchakkal', 'Plant')
-      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Show all 3' }))
+      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Open as list' }))
       await waitFor(() => expect(location(view).pathname).toBe(tableHref('Plant')))
     })
     await step('the user starts a new plant', async () => {

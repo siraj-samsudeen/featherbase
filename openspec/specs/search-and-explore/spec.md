@@ -305,8 +305,9 @@ Each linked row on the relationship map SHALL say which Table it comes from
 and, in full and in the words the user knows the link by, which link joins it
 to the row at the center, never a technical name. A related collection SHALL
 name its link only when its Table links to the row at the center by more than
-one, and SHALL read as the one Table its rows all point to, through itself
-("Employee 8 · through Job Assignment"), when there is one.
+one. A collection of a link table (its title is its own id) SHALL read as the
+one Table its rows all point to, through itself ("Employee 8 · through Job
+Assignment"), when there is one.
 
 #### Scenario: A chore's assignee reads "Assigned To"
 

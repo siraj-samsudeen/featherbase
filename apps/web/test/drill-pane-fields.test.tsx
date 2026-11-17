@@ -144,10 +144,10 @@ test("Ctrl-click on a group's row is left to the browser, a new tab", async ({ a
   expect(screen.getByRole('complementary', { name: /^North bay/ })).toBeInTheDocument()
 })
 
-test('Ctrl-click on Show all is left to the browser, a new tab', async ({ admin }) => {
+test('Ctrl-click on Open as list is left to the browser, a new tab', async ({ admin }) => {
   const bin = await openNorthBay(admin)
   fireEvent.click(await within(bin).findByRole('button', { name: `${ITEM} 2` }, T))
-  const link = await within(bin).findByRole('link', { name: 'Show all 2' }, T)
+  const link = await within(bin).findByRole('link', { name: 'Open as list' }, T)
   // fireEvent answers true when no handler took the click (preventDefault).
   expect(fireEvent.click(link, { ctrlKey: true })).toBe(true)
   expect(screen.getByRole('complementary', { name: /^North bay/ })).toBeInTheDocument()
