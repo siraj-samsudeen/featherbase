@@ -281,7 +281,9 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['sidebar_icon_rail', '0.13.19', '0.13.21', 0],
       // #1222: View As Tester and its people read
       ['view_as', '0.13.21', '0.13.22', 0],
+      // #1254: Waiting for you reads who decides in a few queries
+      ['waiting_reads_fast', '0.13.22', '0.13.23', 0],
     ])
-    expect(pkg.version).toBe('0.13.22')
+    expect(pkg.version).toBe('0.13.23')
   })
 })

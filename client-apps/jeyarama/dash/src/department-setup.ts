@@ -5,7 +5,7 @@
 // still checks who may decide.
 import {
   APPLY_NOW, BASE_TABLES, JOB_FIELDS, MASTER_DATA_TEAM, PLACEMENT_FIELDS, SECTION_FIELDS, T,
-  all, approversOf, byId, employeeNames, freeId, inForce, isActive, istDay, list, myEmployees, myJobs, unique, waitingName,
+  all, approversOf, byId, employeeNames, freeId, inForce, isActive, istDay, list, myEmployees, myJobs, unique, waitingForMe, waitingName,
   type ActionContext, type ChangeProposal, type ReadContext, type Row, type ApproverRequest,
 } from './my-sections.ts'
 import { istToday } from './report.ts'
@@ -219,21 +219,14 @@ export const departmentReads = {
   async department_approvals(ctx: ReadContext) {
     if (!isSetUp(ctx)) return []
     const today = istToday()
-    const heads: ChangeProposal[] = []
-    for (let start = 0; ; start += 500) {
-      const page = await ctx.changeProposals.list({ states: OPEN, limit: 500, start })
-      // #1205: a Department Manager never reviews a pre-fill of their own department.
-      heads.push(...page.filter(p => about(p).kind === 'department' && p.maker !== ctx.user && about(p).for_person !== ctx.user))
-      if (page.length < 500) break
-    }
-    const jobs = heads.length ? byId(await list(ctx, T.job, JOB_FIELDS, [['row_id', 'in', unique(heads.map(p => about(p).job_assignment))]])) : new Map<string, Row>()
-    const mine: ChangeProposal[] = []
-    for (const head of heads)
-      if (await ctx.changeProposals.mayDecide(head.maker, (await approversOf(ctx, jobs.get(about(head).job_assignment))).approvers)) mine.push(head)
+    // #1205: a Department Manager never reviews a pre-fill of their own department. #1254: who decides is read in a few queries, not per set-up.
+    const mine = await waitingForMe(ctx, true)
+    const leadersAt = new Map<string, Map<string, string[]>>()
+    for (const site of unique(mine.map(head => about(head).site))) leadersAt.set(site, (await teamLeadersOf(ctx, site, today)).leaders)
     const answers = []
     for (const head of mine.sort((a, b) => a.created_at.localeCompare(b.created_at))) {
       const a = about(head)
-      const { leaders } = await teamLeadersOf(ctx, a.site, today)
+      const leaders = leadersAt.get(a.site)!
       answers.push({ bundle: a.bundle, who: a.maker_name, job: JOB, store: a.store, name: a.name, asked_on: istDay(head.created_at), applied: head.state === APPLIED_UNREVIEWED,
         prefilled: a.prefilled === true, flagged: a.sections.filter(id => (a.flagged ?? []).includes(id)).map(id => a.section_names[a.sections.indexOf(id)]),
         sections: a.sections.map((id, i) => ({ id, name: a.section_names[i], team_leaders: leaders.get(id) ?? [] })) })
