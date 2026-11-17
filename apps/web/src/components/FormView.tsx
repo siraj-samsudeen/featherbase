@@ -28,7 +28,7 @@ import { Tags } from './Tags'
 import { Comments } from './Comments'
 import { PersonSignInMethods, managedBySignIn } from './PersonSignInMethods'
 import { SaveState } from './SaveState'
-import { PersonStanding } from './PersonStanding'
+import { PersonStanding, standingQuery } from './PersonStanding'
 import { PersonIdentifiers } from './PersonIdentifiers'
 import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
@@ -151,6 +151,8 @@ export function FormView({
   const [banner, setBanner] = useState<string | null>(null)
   // #1267: when this page last saved the record, for the save state's tooltip.
   const [savedAt, setSavedAt] = useState<Date | null>(null)
+  // #1267 step 3: a Person's External label is asked only while they are External.
+  const standing = useQuery({ ...standingQuery(name), enabled: table === 'Person' && !isNew })
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -483,7 +485,8 @@ export function FormView({
   for (const f of m.columns) {
     if (f.column_type === 'Section Break') sections.push([])
     // #1267: a saved Person's Sign-In lines own its "expects … sign-in" switches.
-    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name))) sections[sections.length - 1].push(f)
+    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name)) && !(personPage && f.column_name === 'external_label' && standing.data?.status !== 'none'))
+      sections[sections.length - 1].push(f)
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 

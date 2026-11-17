@@ -356,3 +356,15 @@ test.for(['left', 'none'] as const)('a person whose standing is %s is offered no
     expect(within(panel).queryByTestId('sign-in-line-stylehr')).not.toBeInTheDocument()
   } finally { spy.mockRestore() }
 })
+
+test.for([['none', true], ['current', false], ['unknown', false]] as const)('the External label is asked for only while the person is External (%s)', async ([status, shown], { admin, createUser }) => {
+  const spy = fakeStanding({ status, code: null, jobs: [], external_label: null })
+  try {
+    const p = await createUser({ email: `label-${status}.1267@example.com` })
+    await renderApp(rowHref('Person', p.user!), admin)
+    await screen.findByTestId('person-standing')
+    await waitFor(() => expect(screen.getByTestId('form-fields')).toHaveTextContent('Full Name'))
+    if (shown) await waitFor(() => expect(screen.getByTestId('form-fields')).toHaveTextContent('External label'))
+    else expect(screen.getByTestId('form-fields')).not.toHaveTextContent('External label')
+  } finally { spy.mockRestore() }
+})
