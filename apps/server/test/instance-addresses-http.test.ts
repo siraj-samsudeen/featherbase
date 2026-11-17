@@ -128,6 +128,13 @@ describe('on an address that opens an app', () => {
       expect([page, (await get(api, `${DASH}${page}`)).status]).not.toEqual([page, 302])
   })
 
+  // #1207, Codex round 1 (P1): an agent connecting by this address signs in
+  // and allows it here, so the connect page and its sign-in are served.
+  test('the agent connect page is served', async ({ api }) => {
+    for (const page of ['/featherbase/connect', '/featherbase/connect?response_type=code&client_id=cli_x'])
+      expect([page, (await get(api, `${DASH}${page}`)).status]).not.toEqual([page, 302])
+  })
+
   test("another app's root redirects to the app root", async ({ api }) => {
     const res = await get(api, `${DASH}/tasker/`)
     await expectStatus(res, 302)

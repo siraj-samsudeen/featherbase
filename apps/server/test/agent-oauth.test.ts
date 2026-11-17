@@ -355,6 +355,22 @@ describe('#1207 the token endpoint: a code for a key pair', () => {
     await expectOAuthError(await exchange(grant), 400, 'invalid_grant')
   })
 
+  // Codex round 1 (P2): a code the person allowed before securing the account
+  // must not open a connection after it.
+  test('a code allowed before a password change gets no key', async ({ createUser }) => {
+    const user = await createUser()
+    const grant = await allowed(user)
+    await setUserPassword(user.user!, 'a-new-password-1207')
+    await expectOAuthError(await exchange(grant), 400, 'invalid_grant')
+  })
+
+  test('a code allowed before all sessions were ended gets no key', async ({ createUser }) => {
+    const user = await createUser()
+    const grant = await allowed(user)
+    await sql`update person set sessions_ended_at = now() + interval '1 second' where row_id = ${user.user!}`
+    await expectOAuthError(await exchange(grant), 400, 'invalid_grant')
+  })
+
   test('another grant type is refused', async () => {
     await expectOAuthError(await tokenPost({ grant_type: 'client_credentials' }), 400, 'unsupported_grant_type')
   })
