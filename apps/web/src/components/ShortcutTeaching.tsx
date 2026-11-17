@@ -255,7 +255,7 @@ function Tip({ tip }: { tip: ShownTip }) {
       role="status"
       aria-label={tip.reminder ? 'Reminder' : 'Tip'}
       className={cx(
-        'fixed z-[45] flex items-center gap-2 rounded-control border bg-surface py-1.5 pl-2.5 pr-1.5 text-[13px] text-ink shadow-lg',
+        'fixed z-[45] flex items-center gap-2 rounded-control border bg-surface py-1 pl-2.5 pr-1.5 text-[13px] leading-4 text-ink shadow-lg',
         tip.reminder ? 'border-caution' : 'border-action',
       )}
       style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: 'hidden' }}
@@ -265,8 +265,8 @@ function Tip({ tip }: { tip: ShownTip }) {
         {tip.reminder ? 'Reminder' : 'Tip'}
       </span>
       <span>{text}</span>
-      <button type="button" onClick={dismissTip} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-1 text-[13px] text-ink' })}>Got It</button>
-      <button type="button" onClick={quietTips} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-1 text-[13px] text-ink' })}>Quiet Tips For {nextQuietStep(learning).label}</button>
+      <button type="button" onClick={dismissTip} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-0.5 text-[13px] text-ink' })}>Got It</button>
+      <button type="button" onClick={quietTips} className={buttonClasses({ variant: 'quiet', className: 'shrink-0 px-2 py-0.5 text-[13px] text-ink' })}>Quiet Tips For {nextQuietStep(learning).label}</button>
     </div>
   )
 }
