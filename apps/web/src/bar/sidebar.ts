@@ -169,6 +169,9 @@ export class FeatherbaseSidebar extends HTMLElement {
     control.type = 'button'
     control.className = 'sidebar-collapse'
     control.dataset.testid = 'sidebar-collapse'
+    // #1251's keyboard-shortcut list finds the control by these.
+    control.dataset.shortcutId = 'sidebar'
+    control.dataset.shortcutKey = SIDEBAR_SHORTCUT
     control.setAttribute('aria-keyshortcuts', 'Meta+B Control+B')
     control.addEventListener('click', () => toggleSidebarCollapsed(getSessionUser()?.row_id))
     foot.append(control)

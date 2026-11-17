@@ -19,6 +19,9 @@ test('the control is the sidebar footer, not the top bar, and collapsing leaves 
   expect(aside()).toContainElement(control)
   expect(screen.getByTestId('top-bar')).not.toContainElement(control)
   expect(control).toHaveAccessibleName('Collapse sidebar')
+  // #1251's keyboard-shortcut list finds it by these.
+  expect(control).toHaveAttribute('data-shortcut-id', 'sidebar')
+  expect(control.getAttribute('data-shortcut-key')).toMatch(/^(⌘B|Ctrl\+B)$/)
 
   await userEvent.click(control)
   expect(collapsed()).toBe(true)

@@ -58,6 +58,9 @@ test('the control is on the sidebar, not in the bar, and collapses it to a rail 
   const control = shadow(sidebar).getByTestId('sidebar-collapse')
   expect(control).toHaveAccessibleName('Collapse sidebar')
   expect(control.title).toMatch(/^Collapse sidebar \((⌘B|Ctrl\+B)\)$/)
+  // #1251's keyboard-shortcut list finds it by these.
+  expect(control).toHaveAttribute('data-shortcut-id', 'sidebar')
+  expect(control.getAttribute('data-shortcut-key')).toMatch(/^(⌘B|Ctrl\+B)$/)
   await userEvent.click(control)
   expect(collapsed(sidebar)).toBe(true)
   // A rail, not a hidden sidebar: still in the tab order and the accessibility tree.

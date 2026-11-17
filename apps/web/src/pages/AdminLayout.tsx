@@ -1011,8 +1011,8 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
   const railRef = useRef(collapsed)
   railRef.current = collapsed
   useEffect(() => {
-    const root = aside.current
-    if (!root) return
+    // The aside is always drawn by the time this runs.
+    const root = aside.current!
     return attachRailTips({
       root, layer: document.body,
       active: () => railRef.current,
@@ -1049,6 +1049,9 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
             type="button"
             onClick={toggleCollapsed}
             data-testid="sidebar-collapse"
+            // #1251's keyboard-shortcut list finds the control by these.
+            data-shortcut-id="sidebar"
+            data-shortcut-key={SIDEBAR_SHORTCUT}
             aria-label={words}
             aria-keyshortcuts="Meta+B Control+B"
             title={`${words} (${SIDEBAR_SHORTCUT})`}
