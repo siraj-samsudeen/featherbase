@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
@@ -96,6 +96,13 @@ export function PersonSignInMethods({ user }: { user: string }) {
   })
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<ReactNode>(null)
+  // #1257: a notice names an address; once the Person's email changes (their
+  // invites are then cancelled) it no longer describes anything live.
+  const shownEmail = data?.email
+  useEffect(() => {
+    setNotice(null)
+    setError(null)
+  }, [shownEmail])
   const done = () => {
     setError(null)
     setNotice(null)
@@ -364,7 +371,8 @@ function PasswordInviteRow({ invite, email, toSink, busy, onSend }: {
         <span className="font-medium">Password invite</span>
         {live && invite.sent_at ? (
           <span className="block text-sm text-ink-muted" data-testid="password-invite-status">
-            {toSink ? 'Saved to the Email Sink' : 'Emailed'} {fmtInstantIST(invite.sent_at)} · expires {fmtInstantIST(invite.expires_at)}
+            {toSink ? 'Saved to the Email Sink' : 'Emailed'} <span className="whitespace-nowrap">{fmtInstantIST(invite.sent_at)}</span> · expires{' '}
+            <span className="whitespace-nowrap">{fmtInstantIST(invite.expires_at)}</span>
           </span>
         ) : (
           <span className="block text-sm text-ink-muted">

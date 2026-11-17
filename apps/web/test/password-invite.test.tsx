@@ -97,3 +97,16 @@ test('#1257: saving a new email on the Person shows the invite as cancelled with
   await waitFor(() => expect(within(panel).getByTestId('password-invite')).toHaveTextContent('The last password invite was cancelled. Emails nina.changed@partner.test'), { timeout: 8000 })
   expect(within(panel).getByRole('button', { name: 'Send password invite' })).toBeInTheDocument()
 })
+
+test('#1257: the notice from a send does not outlive the address it names', async ({ admin, createUser }) => {
+  const lena = await createUser({ email: 'lena@partner.test', fullName: 'Lena Fourth' })
+  const panel = await openPerson(admin, lena.user!)
+  await userEvent.click(await within(panel).findByRole('button', { name: 'Send password invite' }))
+  expect(await within(panel).findByTestId('user-method-notice')).toHaveTextContent('for lena@partner.test')
+  const email = await screen.findByLabelText('Email')
+  await userEvent.clear(email)
+  await userEvent.type(email, 'lena.changed@partner.test')
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(within(panel).getByTestId('password-invite')).toHaveTextContent('cancelled'), { timeout: 8000 })
+  expect(within(panel).queryByTestId('user-method-notice')).not.toBeInTheDocument()
+})
