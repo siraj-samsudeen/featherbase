@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -17,7 +18,7 @@ import { REPORT_FEEDBACK } from './report-feedback'
 import { ReportFeedbackFacts } from './report-feedback-facts'
 import { StatePill } from './ticket-state'
 import { RulesCard, type Rule } from './rules'
-import { CoveredRowsCard, coveredSummary, type Covered } from './covered-rows'
+import { CoveredRowsCard, coveredFact, type Covered } from './covered-rows'
 import { RecordLink } from '@featherbase/shop-floor'
 import { useOpenablePeople } from './record-link'
 
@@ -230,23 +231,59 @@ function TicketActions({
   actions: HeaderAction[]
   choose: (action: HeaderAction) => void
 }) {
-  if (!actions.length) return null
-  // #1233 (UX spec 4): one primary button for the next state, then Add note, then More for the rest.
+  // #1233 (UX spec 4): the next state first, as the primary button, then Add note, then the rest.
   const lead = actions.find((item) => !SIDE_ACTIONS.includes(item.key))
   const note = actions.find((item) => item.key === 'note')
-  const rest = actions.filter((item) => item !== lead && item !== note)
-  // With no state to move to and only one other step, it shows as itself, not hidden in a menu.
-  const loose = !lead && !note && rest.length === 1 ? rest : []
-  const menu = loose.length ? [] : rest
+  const ordered = [lead, note, ...actions.filter((item) => item !== lead && item !== note)].filter((item) => !!item)
+  // #1252: as many show as buttons as fit the row; only the rest go under More, recounted on resize.
+  const row = useRef<HTMLDivElement>(null)
+  const ruler = useRef<HTMLDivElement>(null)
+  const [fits, setFits] = useState(ordered.length)
+  const keys = ordered.map((item) => item.label).join('|')
+  useLayoutEffect(() => {
+    const recount = () => {
+      if (!row.current || !ruler.current) return
+      const widths = [...ruler.current.children].map((button) => button.getBoundingClientRect().width)
+      setFits(fitCount(widths.slice(0, -1), widths.at(-1) ?? 0, row.current.clientWidth, ACTION_GAP))
+    }
+    recount()
+    if (typeof ResizeObserver !== 'function' || !row.current) return
+    const observer = new ResizeObserver(recount)
+    observer.observe(row.current)
+    return () => observer.disconnect()
+  }, [keys])
+  if (!ordered.length) return null
+  const shown = ordered.slice(0, fits)
+  const menu = ordered.slice(fits)
+  const style = (item: HeaderAction) => (item === lead ? 'primary' : 'secondary')
   return (
-    <div className="header-actions" role="group" aria-label="Actions on this ticket">
-      {lead && <button type="button" className="primary" onClick={() => choose(lead)}>{lead.label}</button>}
-      {[...(note ? [note] : []), ...loose].map((item) => (
-        <button key={item.key} type="button" className="secondary" onClick={() => choose(item)}>{item.label}</button>
+    <div className="header-actions" role="group" aria-label="Actions on this ticket" ref={row}>
+      {shown.map((item) => (
+        <button key={item.key} type="button" className={style(item)} onClick={() => choose(item)}>{item.label}</button>
       ))}
       {menu.length > 0 && <MoreActions actions={menu} choose={choose} />}
+      {/* Every button at its own width, unseen, so the row knows how many fit. */}
+      <div className="header-actions-ruler" ref={ruler} aria-hidden="true" inert>
+        {ordered.map((item) => <button key={item.key} type="button" tabIndex={-1} className={style(item)}>{item.label}</button>)}
+        <button type="button" tabIndex={-1} className="secondary">More ▾</button>
+      </div>
     </div>
   )
+}
+const ACTION_GAP = 6
+/** How many buttons of these widths fit in `available`: all of them, or as many as leave room for More (at least one).
+ *  A row not laid out yet (width 0) shows them all. */
+export function fitCount(widths: number[], more: number, available: number, gap: number): number {
+  const total = widths.reduce((sum, width, i) => sum + width + (i ? gap : 0), 0)
+  if (!available || total <= available) return widths.length
+  let used = more
+  let count = 0
+  for (const width of widths) {
+    if (used + gap + width > available) break
+    used += gap + width
+    count++
+  }
+  return Math.max(1, count)
 }
 // What any ticket offers beside its next state: working on it rather than moving it.
 const SIDE_ACTIONS = ['edit', 'wording', 'evidence', 'link', 'note']
@@ -291,7 +328,7 @@ function TypeActions({ actions, state, mutate, busy, open, setOpen, openRules }:
     mutate('transition', { action: action.action, ...(action.fields.length ? { values: recorded } : {}) })
   return (
     <section className="card ticket-actions">
-      <h3>Next step</h3>
+      <h3>Next Step</h3>
       {openRules > 0 && <p className="rules-warning" role="note">{openRules} {openRules === 1 ? 'rule still has' : 'rules still have'} rows to fix</p>}
       {actions.length ? (
         <div className="actions">
@@ -331,7 +368,7 @@ function Reword({ original, mutate, busy, close }: { original: string; mutate: M
       if (await mutate('edit', { original: text })) close()
     }}>
       <fieldset disabled={busy}>
-        <Label title="Original message">
+        <Label title="Original Message">
           <textarea name="original" required rows={4} defaultValue={original} />
         </Label>
         <p className="fine">The earlier wording is kept in the ticket's history.</p>
@@ -436,11 +473,11 @@ export function CaseFile({
         {/* #1233 (UX spec 3): who raised it, who has it, when it last moved; people link to their record. */}
         <dl className="ticket-facts">
           <div>
-            <dt>Raised by</dt>
+            <dt>Raised By</dt>
             <dd><RecordLink table="Person" rowId={ticket.owner} name={person(ticket.owner)} canOpen={openPeople.has(ticket.owner)} /></dd>
           </div>
           <div>
-            <dt id="assigned-to-label">Assigned to</dt>
+            <dt id="assigned-to-label">Assigned To</dt>
             <dd className="assignee-fact">
               {support && (changing || picked !== current) ? (
                 <>
@@ -481,10 +518,10 @@ export function CaseFile({
           </div>
           {covered && covered.total > 0 && (
             <div>
-              <dt>Rows</dt>
+              <dt>Records To Fix</dt>
               <dd>
                 <button type="button" className="link-button" onClick={() => { setTab('Request'); setFocus({ target: 'covered-rows', at: Date.now() }) }}>
-                  {coveredSummary(covered)}
+                  {coveredFact(covered)}
                 </button>
               </dd>
             </div>
@@ -552,9 +589,9 @@ export function CaseFile({
             {detail.details ? (
               <>
                 {/* #1233 (UX spec 5): the message is a reading card; who may read it is a small hint, not an eyebrow. */}
-                <section className="card request-message" aria-label="Original message">
+                <section className="card request-message" aria-label="Original Message">
                   <div className="request-message-head">
-                    <h3>Original message</h3>
+                    <h3>Original Message</h3>
                     <span className="privacy-hint">
                       {configured?.details_visible_to === 'everyone'
                         ? 'Shown to everyone who can see the ticket'
@@ -579,7 +616,7 @@ export function CaseFile({
                   </details>
                 )}
                 {ticket.kind === REPORT_FEEDBACK && structured ? <ReportFeedbackFacts values={structured} /> : <Facts
-                  title="Request details"
+                  title="Request Details"
                   values={
                     configured
                       ? Object.fromEntries(
@@ -692,7 +729,7 @@ export function CaseFile({
             <RulesCard rules={rules} tables={configured ? (detail.ruleTables as string[] | undefined) : undefined} owners={people}
               mutate={mutate} busy={busy} />
             <section className="card public-progress">
-              <h3>Public progress</h3>
+              <h3>Public Progress</h3>
               <p>{ticket.public_update || 'No public update yet.'}</p>
             </section>
           </>
@@ -720,13 +757,13 @@ export function CaseFile({
                     </span>
                     {verification && (
                       <section className="card">
-                        <h3>Employee verification</h3>
+                        <h3>Employee Verification</h3>
                         <Facts values={verification} />
                       </section>
                     )}
                     {approval && (
                       <section className="card">
-                        <h3>Current decision</h3>
+                        <h3>Current Decision</h3>
                         <Facts values={approval} />
                       </section>
                     )}
@@ -767,7 +804,7 @@ export function CaseFile({
                       />
                     </ActionForm>
                     <section className="card" id="action-decide">
-                      <h3>Regional decision</h3>
+                      <h3>Regional Decision</h3>
                       <p>
                         Only the configured approver for the current verified
                         region can decide. The server checks membership and
@@ -858,7 +895,7 @@ export function CaseFile({
             ) : (
               <>
                 <section className="card">
-                  <h3>Investigation workflow</h3>
+                  <h3>Investigation Workflow</h3>
                   <p>
                     Support records findings and references, then resolves the
                     request with a reason and supporting evidence. No automated
