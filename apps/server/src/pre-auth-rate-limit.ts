@@ -7,7 +7,10 @@ import { sql, type Sql } from './db'
 // HANDOFF (#488) is charged by both legs of the hand-off between addresses, so
 // 200 is a hundred hand-offs per source and window: a store's whole shift
 // signing in at once from one public IP, past the Google buckets.
-const DEFAULTS = { LOGIN: 60, PASSWORD: 5, OAUTH_LOGIN: 30, OAUTH_CALLBACK: 30, FORM: 30, SIGNUP: 10, HANDOFF: 200 } as const
+// #1207: agents register once per connect, and each connection renews its
+// short key about hourly, so an office of agents behind one address stays far
+// below AGENT_TOKEN.
+const DEFAULTS = { LOGIN: 60, PASSWORD: 5, OAUTH_LOGIN: 30, OAUTH_CALLBACK: 30, FORM: 30, SIGNUP: 10, HANDOFF: 200, AGENT_REGISTER: 30, AGENT_TOKEN: 300 } as const
 type Kind = keyof typeof DEFAULTS
 
 function positiveInteger(env: Record<string, string | undefined>, name: string, fallback: number) {

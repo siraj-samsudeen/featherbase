@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabLink } from 'shared'
+import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabLink } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
 import { useBarAddress } from '../lib/bar-address'
@@ -596,6 +596,15 @@ function AccountMenu({ inMenu, inSidebar }: {
             className={MENU_ITEM}
           >
             {t('Sign-in methods')}
+          </Link>
+          <Link
+            role="menuitem"
+            to={ACCOUNT_CONNECTED_APPS_PATH}
+            onClick={() => setOpen(false)}
+            data-testid="account-connected-apps"
+            className={MENU_ITEM}
+          >
+            {t('Connected apps')}
           </Link>
           {user && (
             <Link

@@ -79,6 +79,7 @@ import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { mcpHandler, mcpMethodNotAllowed } from './mcp'
+import { agentAuthPublicRoutes, agentAuthRoutes } from './agent-auth-routes'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
@@ -636,6 +637,9 @@ function viewingNoAccessPage(name: string): string {
     <h1>${who} can't open this application</h1><p>You are viewing as ${who}, for viewing only. They have no access to it, so there is nothing of theirs to see here.</p>
     <form method="post" action="/api/view_as/exit"><button type="submit" style="font:inherit;padding:.5rem 1rem;border-radius:6px;border:0;background:#1c2126;color:white;cursor:pointer">Exit View as</button></form></main></body></html>`
 }
+
+// #1207: how an agent signs in from the agent address alone (agent-auth-routes.ts).
+app.route('/', agentAuthPublicRoutes)
 
 // ---- API-004: everything below requires a valid session --------------------
 
@@ -1266,6 +1270,8 @@ app.post('/api/access_request/:id/:decision', async (c) => {
 })
 
 app.route('/', peopleRoutes)
+// #1207: the browser's part of an agent's sign-in, and Connected apps.
+app.route('/', agentAuthRoutes)
 
 app.route('/', tableDefRoutes)
 

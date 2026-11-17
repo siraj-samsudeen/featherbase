@@ -1,6 +1,7 @@
 // Per-user warm history cache, reconciled with the server on app load.
 
 import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
+import { viewedPerson } from './viewing-as'
 import type { ColumnDef } from './meta'
 
 export type RecentKind = 'row' | 'list' | 'page' | 'search'
@@ -71,20 +72,10 @@ function remember(entries: RecentEntry[], action: RecentAction, now: number): vo
 
 /**
  * #1222: while a tester views as someone, the page is the other person's, so the tester's own
- * history is neither shown nor added to. Set before the reload that starts or ends View as, and
- * corrected from the server's answer (ViewAs.tsx); Dash's own start button sets it too.
+ * history (kept in this browser) is neither shown nor added to.
  */
-export const VIEWING_AS_KEY = 'featherbase.viewing-as'
-
 export function historyPaused(): boolean {
-  try { return window.localStorage.getItem(VIEWING_AS_KEY) === '1' } catch { return false }
-}
-
-export function pauseHistory(paused: boolean): void {
-  try {
-    if (paused) window.localStorage.setItem(VIEWING_AS_KEY, '1')
-    else window.localStorage.removeItem(VIEWING_AS_KEY)
-  } catch { /* private window: nothing kept, nothing to hide */ }
+  return viewedPerson() !== null
 }
 
 export function recordAction(user: string, action: RecentAction, now = Date.now()): void {

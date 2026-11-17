@@ -18,6 +18,8 @@ import {
 } from '@featherbase/shop-floor'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { invalidatePrincipalName } from '../lib/people'
+import { NotWhileViewing } from '../components/ViewAs'
+import { viewedPerson } from '../lib/viewing-as'
 
 interface Token {
   id: string
@@ -79,6 +81,11 @@ function tokenState(t: Token): 'active' | 'revoked' | 'expired' | 'owner disable
 }
 
 export function AccessTokens() {
+  // #1222: tokens belong to the signed-in account; never the tester's while the page is someone else's.
+  return viewedPerson() ? <NotWhileViewing what="Access tokens" /> : <OwnAccessTokens />
+}
+
+function OwnAccessTokens() {
   const isSM = useIsSystemManager()
   const identity = useWhoAmI()
   const me = getSessionUser()?.row_id ?? ''

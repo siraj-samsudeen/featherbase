@@ -11,8 +11,8 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
-import { historyPaused, pauseHistory } from '../lib/recents'
-import { Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, iconButtonClasses, inputClasses } from '@featherbase/shop-floor'
+import { setViewedPerson, viewedPerson } from '../lib/viewing-as'
+import { Card, EmptyState, Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, iconButtonClasses, inputClasses } from '@featherbase/shop-floor'
 
 export interface ViewAsPerson {
   person: string
@@ -53,8 +53,13 @@ function useReloadOnChange(state: ViewAsState | undefined, error: unknown) {
     if (error instanceof ApiError && error.status === 409) { window.location.reload(); return }
     if (!state) return
     const now = state.may ? state.viewing?.person ?? null : null
-    // The history marker went stale (View as ended while this tab was away): fix it and redraw.
-    if (historyPaused() !== (now !== null)) { pauseHistory(now !== null); window.location.reload(); return }
+    // Whom this browser thinks it views as went stale (View as ended or switched while this tab was
+    // away): correct it and redraw, so every "me" on the page is the right person.
+    if ((viewedPerson()?.row_id ?? null) !== now) {
+      setViewedPerson(now && state.viewing ? { row_id: now, full_name: state.viewing.name } : null)
+      window.location.reload()
+      return
+    }
     if (shown.current !== undefined && shown.current !== now) window.location.reload()
     shown.current = now
   }, [state, error])
@@ -72,10 +77,10 @@ const CHANGED_KEY = 'featherbase.view-as.changed'
 if (typeof window !== 'undefined')
   window.addEventListener('storage', (event) => { if (event.key === CHANGED_KEY) window.location.reload() })
 
-async function changeView(path: string, body: unknown, onError: (message: string) => void) {
+async function changeView(path: string, body: unknown, onError: (message: string) => void, viewing: ViewAsPerson | null) {
   try {
     await api.post(path, body)
-    pauseHistory(path.endsWith('/start'))
+    setViewedPerson(viewing && { row_id: viewing.person, full_name: viewing.name })
     try { window.localStorage.setItem(CHANGED_KEY, String(Date.now())) } catch { /* private window: this tab only */ }
     window.location.reload()
   } catch (error) {
@@ -124,7 +129,7 @@ export function ViewAsPicker({ state, autoFocus = false }: {
     queryFn: () => api.get<ViewAsPerson[]>(`/api/view_as/people?q=${encodeURIComponent(query)}`),
     enabled: query.length >= 2,
   })
-  const pick = (person: ViewAsPerson) => void changeView('/api/view_as/start', { person: person.person }, setError)
+  const pick = (person: ViewAsPerson) => void changeView('/api/view_as/start', { person: person.person }, setError, person)
   const viewing = state.viewing?.person
   const cap = 5
   const recent = (state.recent ?? []).filter((p) => p.person !== viewing).slice(0, cap)
@@ -183,6 +188,16 @@ function useDismiss(open: boolean, close: () => void, inside: React.RefObject<HT
   }, [open, close, inside])
 }
 
+/** An account page that is only ever the signed-in person's own, while viewing as someone else. */
+export function NotWhileViewing({ what }: { what: string }) {
+  return (
+    <Card className="p-4" data-testid="not-while-viewing">
+      <EmptyState icon={Eye} title={`${what} are not shown while viewing as someone`}
+        body="They belong to the account that signed in, so they are never shown as someone else’s. Exit View as to see your own." />
+    </Card>
+  )
+}
+
 /** The banner while viewing: who, for viewing only, Switch and Exit. */
 export function ViewAsBanner() {
   const { data, error: stateError } = useViewAs()
@@ -219,7 +234,7 @@ export function ViewAsBanner() {
         <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => setSwitching((s) => !s)} aria-expanded={switching} data-testid="view-as-switch"
             className="rounded-control border border-surface/40 px-3 py-1 text-sm font-medium hover:bg-surface/10 max-sm:min-h-11">Switch</button>
-          <button type="button" onClick={() => void changeView('/api/view_as/exit', {}, setError)} data-testid="view-as-exit"
+          <button type="button" onClick={() => void changeView('/api/view_as/exit', {}, setError, null)} data-testid="view-as-exit"
             className="rounded-control bg-surface px-3 py-1 text-sm font-semibold text-ink hover:opacity-90 max-sm:min-h-11">Exit</button>
         </div>
       </div>

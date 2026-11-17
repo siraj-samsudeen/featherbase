@@ -174,6 +174,8 @@ const SERVED_EVERYWHERE = [
   '/featherbase/login',
   '/featherbase/reset-password',
   '/featherbase/oauth-callback',
+  // #1207: an agent connecting by this address signs in and allows it here.
+  '/featherbase/connect',
   '/featherbase/form',
   ACCOUNT_ROOT,
   BAR_SCRIPT,

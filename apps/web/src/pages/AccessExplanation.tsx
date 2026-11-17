@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ApiError, api, getSessionUser } from '../lib/api'
+import { ApiError, api, getSessionUser, getSignedInUser } from '../lib/api'
+import { viewedPerson } from '../lib/viewing-as'
 import { ShownName } from '../lib/people'
 import { Card, EmptyState, Notice, ShieldLock, buttonClasses, fmtDate, fmtInstantIST } from '@featherbase/shop-floor'
 import { AreasLayout, LayoutToggle, RolesLayout, SummaryLayout, reachedTables, useAccessLayout, withImplicitRoles, Actor, OpensContext, Rec, opensFrom, type RoleRow, type TableReach } from './AccessLayouts'
@@ -65,8 +66,14 @@ function By({ who, name, when, verb }: { who: string; name?: string | null; when
   )
 }
 
-export function AccessExplanation({ person }: { person: string }) {
+export function AccessExplanation({ person: asked }: { person: string }) {
   usePageTitle('What you can see')
+  // #1222: while viewing as someone, the tester's own page (an old link, a bookmark) is theirs.
+  const viewed = viewedPerson()
+  const person = viewed && asked === getSignedInUser()?.row_id ? viewed.row_id : asked
+  useEffect(() => {
+    if (person !== asked) window.history.replaceState(window.history.state, '', `/featherbase/account/access/${encodeURIComponent(person)}`)
+  }, [person, asked])
   const me = getSessionUser()?.row_id
   const self = me === person
   // #1006: on your own page, every section says "you".
