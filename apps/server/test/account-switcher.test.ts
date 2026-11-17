@@ -258,6 +258,21 @@ describe('#1255: signing out and removing', () => {
     expect((await b.list()).accounts.map((a) => a.person)).toEqual([siraj])
   })
 
+  test('a sign-out retried after its answer was lost signs out no other account', async ({ api }) => {
+    const { b, siraj, first, second } = await twoAccounts(api)
+    await b.list()
+    const page = { authorization: `Bearer ${second}` }
+    // The first attempt ends RB's session and moves sid on to Siraj's; its answer is lost.
+    await expectStatus(await b.send('/api/accounts/sign_out', { method: 'POST', headers: page }), 200)
+    expect(b.sid()).toBe(first)
+    // The page, still holding RB's copy, tries again.
+    const retry = await b.send('/api/accounts/sign_out', { method: 'POST', headers: page })
+    await expectStatus(retry, 200)
+    expect(((await retry.json()) as { user?: { row_id: string } }).user?.row_id).toBe(siraj)
+    expect(await whoami(api, first)).toBe(200)
+    expect(b.sid()).toBe(first)
+  })
+
   test('signing out of the last account clears sid and leaves the list empty', async ({ api }) => {
     const id = await makePerson({ full_name: 'Siraj StyleHR' })
     const b = browser(api)

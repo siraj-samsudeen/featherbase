@@ -234,20 +234,27 @@ export function accountRoutes(withLanding: Landing) {
   routes.post('/sign_out', async (c) => {
     const { accounts, active } = await register(c)
     const sid = getCookie(c, 'sid')
-    const leaving = active ?? (sid ? await named(sid) : null)
-    const ends = new Map<string, Named>()
-    if (leaving) ends.set(leaving.jti, leaving)
-    // The page's own copy of the session, when it names another one (as /api/logout).
+    const fromSid = active ?? (sid ? await named(sid) : null)
+    // The page names the account it signs out of: its own copy of the session.
+    // A `sid` naming another account this browser holds is that account, not
+    // the one leaving (a retry whose earlier answer already moved `sid` on), so
+    // it is kept and the page continues as it. A `sid` this browser does not
+    // hold is ended too, as /api/logout does, so it cannot outlive the sign-out.
     const bearer = c.req.header('authorization')?.match(/^Bearer (.+)$/)?.[1]
     const fromHeader = bearer ? await named(bearer) : null
-    if (fromHeader) ends.set(fromHeader.jti, fromHeader)
+    const leaving = fromHeader ?? fromSid
+    const ends = new Map<string, Named>()
+    if (leaving) ends.set(leaving.jti, leaving)
+    if (fromSid && !accounts.some((a) => a.jti === fromSid.jti)) ends.set(fromSid.jti, fromSid)
     let complete = true
     for (const n of ends.values()) complete = (await endSession(n, 'sign_out')) && complete
     // Not recorded: the cookies stay as they were, so a retry still holds every
     // session it must end (revoking one twice is harmless).
     if (!complete)
       return c.json({ error: { type: 'ServiceUnavailableError', message: 'Sign-out did not complete. Try again.' } }, 503)
-    const rest = accounts.filter((a) => !ends.has(a.jti)).sort((x, y) => y.usedAt - x.usedAt)
+    // The account `sid` already names comes first, then the most recently used.
+    const rest = accounts.filter((a) => !ends.has(a.jti))
+      .sort((x, y) => Number(y.jti === fromSid?.jti) - Number(x.jti === fromSid?.jti) || y.usedAt - x.usedAt)
     let next: { held: Held; user: SessionUser } | null = null
     for (const a of rest) {
       const s = await stateOf(a.token)
