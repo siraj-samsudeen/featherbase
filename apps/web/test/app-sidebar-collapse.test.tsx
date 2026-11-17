@@ -8,7 +8,8 @@ import { act, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, vi } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
-import { setSession } from '../src/lib/api'
+import { api, setSession } from '../src/lib/api'
+import { setViewedPerson } from '../src/lib/viewing-as'
 import { mountBar } from '../src/bar/mount'
 import { FeatherbaseSidebar } from '../src/bar/sidebar'
 import { test, expect } from './pg-test'
@@ -134,6 +135,39 @@ test("the choice is the person's own and carries from one app to the next", asyn
   await signedIn()
   expect(collapsed()).toBe(true)
   expect(Object.keys(localStorage).filter((key) => key === `fc-sidebar-collapsed:${admin.user}`)).toHaveLength(1)
+})
+
+// Seen on staging (17-Nov): viewing as a Store Manager, the sidebar read the
+// tester's choice (the rail) while its foot read the viewed person's (open),
+// so Help and Theme were drawn past the rail's edge, and Collapse could be
+// undone by the next read. The choice is the tester's, at the keyboard.
+test("viewing as someone, the sidebar and its foot keep the tester's own choice and agree", async ({ admin, createUser }) => {
+  const person = await createUser({ fullName: 'Vas Person' })
+  localStorage.setItem(`fc-sidebar-collapsed:${admin.user}`, '1')
+  setViewedPerson({ row_id: person.user!, full_name: 'Vas Person' })
+  // The server agrees whom the browser views (as in view-as-me.test.tsx), so the bar keeps the marker.
+  const realGet = api.get.bind(api)
+  vi.spyOn(api, 'get').mockImplementation(((path: string) =>
+    path === '/api/view_as'
+      ? Promise.resolve({ may: true, viewing: { person: person.user!, name: 'Vas Person', expires_at: new Date(Date.now() + 3_600_000).toISOString() }, recent: [], frequent: [] })
+      : realGet(path)) as typeof api.get)
+  openAppPage(admin, APPS[0])
+  await signedIn()
+  await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/view_as'))
+  const foot = () => within(sidebar().shadowRoot!.querySelector<HTMLElement>('[data-testid=sidebar-account]')!)
+
+  expect(collapsed()).toBe(true)
+  expect(foot().queryByTestId('help-button')).not.toBeInTheDocument()
+  expect(foot().queryByTestId('theme-toggle')).not.toBeInTheDocument()
+
+  await userEvent.click(control())
+  expect(collapsed()).toBe(false)
+  expect(foot().getByTestId('help-button')).toBeInTheDocument()
+
+  await userEvent.click(control())
+  expect(collapsed()).toBe(true)
+  expect(foot().queryByTestId('help-button')).not.toBeInTheDocument()
+  expect(localStorage.getItem(`fc-sidebar-collapsed:${person.user}`)).toBeNull()
 })
 
 test('a page with no sidebar has no sidebar controls, and Ctrl/Cmd+B is left alone', async ({ admin }) => {

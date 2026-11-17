@@ -15,12 +15,12 @@ const withQueries = ({ children }: { children: ReactNode }) =>
 
 describe('the shared sidebar (#1227)', () => {
   test('a sidebar that leaves twice is counted once', () => {
-    const { result } = renderHook(() => useSidebar('someone'))
+    const { result } = renderHook(() => useSidebar())
     const before = result.current
-    const leave = registerSidebar('someone')
+    const leave = registerSidebar()
     leave()
     leave()
-    expect(renderHook(() => useSidebar('someone')).result.current).toMatchObject({ collapsed: before.collapsed, drawerOpen: false })
+    expect(renderHook(() => useSidebar()).result.current).toMatchObject({ collapsed: before.collapsed, drawerOpen: false })
   })
 })
 

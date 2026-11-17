@@ -196,7 +196,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   // be collapsed to give the page its width; a phone keeps its drawer,
   // whatever was chosen on a wider window. #1227: the state, the controls and
   // Ctrl/Cmd+B are the shared ones every app's sidebar uses (TopBar).
-  const { collapsed: collapsedChoice, setDrawerOpen: setSidebarOpen } = useSidebar(user?.row_id)
+  const { collapsed: collapsedChoice, setDrawerOpen: setSidebarOpen } = useSidebar()
   // #1248: collapsed (md+), the sidebar is an icon rail; each group draws its rail form.
   const drawerWidth = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const rail = collapsedChoice && !drawerWidth
@@ -827,7 +827,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
       </div>
 
       <div className="relative flex min-h-0 flex-1">
-        <SidebarAside testid="admin-sidebar" user={user?.row_id}>
+        <SidebarAside testid="admin-sidebar">
           {/* #1235 item 7: on the account pages, the Account group leads the sidebar. */}
           {account && <AccountSidebarGroup />}
           {/* #80: the sidebar is Home Pages only. Every
@@ -1061,9 +1061,9 @@ export function SidebarGroup({ heading, testid, items, first = false, tone = 'sl
  * between them scroll, so the menus that open from the top and foot are never
  * clipped.
  */
-export function SidebarAside({ testid, user, children }: { testid: string; user: string | undefined; children: ReactNode }) {
-  useRegisterSidebar(user)
-  const { collapsed: choice, drawerOpen, setDrawerOpen, toggleCollapsed } = useSidebar(user)
+export function SidebarAside({ testid, children }: { testid: string; children: ReactNode }) {
+  useRegisterSidebar()
+  const { collapsed: choice, drawerOpen, setDrawerOpen, toggleCollapsed } = useSidebar()
   const isDrawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const collapsed = choice && !isDrawer
   // #1248: in the rail each row is named at once by a tooltip beside it.

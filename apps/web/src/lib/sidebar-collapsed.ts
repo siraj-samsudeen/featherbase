@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import { SIDEBAR_SHORTCUT_DEF, addShortcut, noteShortcutUse } from './shortcuts'
+import { getSignedInUser } from './api'
 
 // #1227: one sidebar state for every page that has a sidebar — the Admin's own
 // and the shared app sidebar (<featherbase-sidebar>) under any installed app.
@@ -9,6 +10,12 @@ import { SIDEBAR_SHORTCUT_DEF, addShortcut, noteShortcutUse } from './shortcuts'
 // #1018: whether this person keeps the sidebar collapsed is a convenience kept
 // per person in this browser, like the recents: a shared browser never shows
 // one person's choice to another, and blocked storage only costs the memory.
+//
+// The choice is the signed-in person's, the one at the keyboard, even while
+// they view as someone else (#1222). The store asks for them itself, so the
+// bar's foot, the Admin's sidebar and an app's <featherbase-sidebar> can never
+// read it for different people and disagree about whether it is the rail.
+const keeper = () => getSignedInUser()?.row_id ?? undefined
 const storageKey = (user: string) => `fc-sidebar-collapsed:${user}`
 
 /** Below this the sidebar is a drawer over the page, never collapsed (UI-025). */
@@ -53,7 +60,7 @@ function set(next: Partial<SidebarState>) {
 
 /** The state for this person: a different person (or a first sidebar on the
  *  page, as after a reload) reads their own choice back from the browser. */
-function stateFor(user: string | undefined): SidebarState {
+function stateFor(user: string | undefined = keeper()): SidebarState {
   if (user !== owner) {
     owner = user
     state = { ...state, collapsed: load(user) }
@@ -66,13 +73,14 @@ export function subscribeSidebar(listener: () => void): () => void {
   return () => listeners.delete(listener)
 }
 
-export function readSidebar(user: string | undefined): SidebarState {
-  return stateFor(user)
+export function readSidebar(): SidebarState {
+  return stateFor()
 }
 
 /** #1251: every toggle but the key's is a mouse or touch control (the bar's
  *  icon, the rail's footer and edge); each use is noted for the shortcut tips. */
-export function toggleSidebarCollapsed(user: string | undefined, via: 'key' | 'mouse' = 'mouse'): void {
+export function toggleSidebarCollapsed(via: 'key' | 'mouse' = 'mouse'): void {
+  const user = keeper()
   const collapsed = !stateFor(user).collapsed
   save(user, collapsed)
   set({ collapsed })
@@ -84,7 +92,8 @@ export function setSidebarDrawerOpen(open: boolean): void {
 }
 
 /** A sidebar joins the page; the returned function is its leaving. */
-export function registerSidebar(user: string | undefined): () => void {
+export function registerSidebar(): () => void {
+  const user = keeper()
   // The first sidebar on a page starts from the kept choice, as a reload does.
   if (state.present === 0) {
     owner = user
@@ -102,11 +111,11 @@ export function registerSidebar(user: string | undefined): () => void {
 }
 
 /** The sidebar state, for React. */
-export function useSidebar(user: string | undefined) {
+export function useSidebar() {
   // The same snapshot serves the browser and a server render.
-  const snapshot = () => stateFor(user)
+  const snapshot = () => stateFor()
   const current = useSyncExternalStore(subscribeSidebar, snapshot, snapshot)
-  const toggle = useCallback(() => toggleSidebarCollapsed(user), [user])
+  const toggle = useCallback(() => toggleSidebarCollapsed(), [])
   return { ...current, toggleCollapsed: toggle, setDrawerOpen: setSidebarDrawerOpen }
 }
 
@@ -169,8 +178,8 @@ export function usePickerSlot(): HTMLElement | undefined {
 }
 
 /** The page has a sidebar for as long as the calling component is mounted. */
-export function useRegisterSidebar(user: string | undefined): void {
-  useEffect(() => registerSidebar(user), [user])
+export function useRegisterSidebar(): void {
+  useEffect(() => registerSidebar(), [])
 }
 
 /** The shortcut as this person's keyboard names it, for the control's hover text. */
@@ -194,7 +203,7 @@ const isDrawerWidth = () => typeof window.matchMedia === 'function' && window.ma
 
 /** Ctrl/Cmd+B collapses and reopens the sidebar, and Escape closes the drawer,
  *  on any page that has a sidebar. Returns the listener's removal. */
-export function listenForSidebarKeys(user: () => string | undefined, target: Document = document): () => void {
+export function listenForSidebarKeys(target: Document = document): () => void {
   function onKey(e: KeyboardEvent) {
     if (state.present === 0) return
     if (e.key === 'Escape' && state.drawerOpen) {
@@ -207,7 +216,7 @@ export function listenForSidebarKeys(user: () => string | undefined, target: Doc
     if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'b') return
     if (isEditingText(e.composedPath()[0] ?? e.target) || isDrawerWidth()) return
     e.preventDefault()
-    if (!e.repeat) toggleSidebarCollapsed(user(), 'key')
+    if (!e.repeat) toggleSidebarCollapsed('key')
   }
   target.addEventListener('keydown', onKey)
   return () => target.removeEventListener('keydown', onKey)

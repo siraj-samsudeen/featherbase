@@ -66,7 +66,7 @@ describe('recently opened, from what this browser kept', () => {
 
 describe('the sidebar’s collapsed choice', () => {
   test('with nobody signed in it starts open and is kept for the visit only', () => {
-    const { result } = renderHook(() => useSidebar(undefined))
+    const { result } = renderHook(() => useSidebar())
     expect(result.current.collapsed).toBe(false)
     act(() => result.current.toggleCollapsed())
     expect(result.current.collapsed).toBe(true)

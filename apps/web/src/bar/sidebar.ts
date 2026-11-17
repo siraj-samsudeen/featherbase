@@ -1,7 +1,6 @@
 import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
-import { getSignedInUser } from '../lib/api'
 import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerPickerSlot, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
 import { attachRailTips, railMark, railMenuPlace, rowCount, rowLabel } from '../lib/sidebar-rail'
 
@@ -205,13 +204,13 @@ export class FeatherbaseSidebar extends HTMLElement {
     control.dataset.shortcutId = 'sidebar'
     control.dataset.shortcutKey = SIDEBAR_SHORTCUT
     control.setAttribute('aria-keyshortcuts', 'Meta+B Control+B')
-    control.addEventListener('click', () => toggleSidebarCollapsed(getSignedInUser()?.row_id))
+    control.addEventListener('click', () => toggleSidebarCollapsed())
     foot.append(control)
     const edge = document.createElement('div')
     edge.className = 'sidebar-edge'
     edge.dataset.testid = 'sidebar-edge'
     edge.setAttribute('aria-hidden', 'true')
-    edge.addEventListener('click', () => toggleSidebarCollapsed(getSignedInUser()?.row_id))
+    edge.addEventListener('click', () => toggleSidebarCollapsed())
     const layer = document.createElement('div')
     layer.className = 'rail-layer'
     nav.append(foot, edge, layer)
@@ -258,7 +257,7 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.panelObserver?.disconnect()
     this.panelObserver = new MutationObserver(() => this.placePickers())
     if (this.parentElement) this.panelObserver.observe(this.parentElement, { childList: true, subtree: false })
-    this.leave = registerSidebar(getSignedInUser()?.row_id)
+    this.leave = registerSidebar()
     this.unsubscribe = subscribeSidebar(this.onWidth)
     this.drawerWidth = typeof window.matchMedia === 'function' ? window.matchMedia(SIDEBAR_DRAWER_QUERY) : undefined
     this.drawerWidth?.addEventListener?.('change', this.onWidth)
@@ -317,7 +316,7 @@ export class FeatherbaseSidebar extends HTMLElement {
   /** Draws the shared state: collapsed (md+) is the rail; at phone width the
    *  drawer, which is out of the tab order and the accessibility tree while shut. */
   private sync() {
-    const state = readSidebar(getSignedInUser()?.row_id)
+    const state = readSidebar()
     const drawer = Boolean(this.drawerWidth?.matches)
     const collapsed = state.collapsed && !drawer
     const open = drawer && state.drawerOpen

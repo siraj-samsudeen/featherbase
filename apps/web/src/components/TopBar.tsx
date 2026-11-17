@@ -220,8 +220,8 @@ export function TopBar({
   const tabs = useAppTabs(context, installed, isPhone && Boolean(caps))
   // #1227: the page's sidebar, wherever it is drawn (the Admin's own, or an
   // app's <featherbase-sidebar>), is worked from here, the same on every page.
-  const sidebar = useSidebar(getSessionUser()?.row_id)
-  useEffect(() => listenForSidebarKeys(() => getSessionUser()?.row_id), [])
+  const sidebar = useSidebar()
+  useEffect(() => listenForSidebarKeys(), [])
   // #1227: the switcher on every signed-in page, named for the page's app; a
   // page of the person's own is named for where they belong (#501).
   const switcherApp = app ?? (context && name
