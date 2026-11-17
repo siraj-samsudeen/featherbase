@@ -56,19 +56,24 @@ key in practice.
 ### D4. Renewal keys rotate, and reuse ends the connection
 
 Question: may a renewal key be used more than once?
-Choice: once. Using a spent renewal key ends the whole connection.
+Choice: once, with a grace of two minutes: within two minutes of a renewal, the key it replaced
+still renews (the client may have sent two requests at once, or crashed before saving the new
+key). After that, a spent key is refused and ends the connection.
 Why: OAuth 2.1 requires rotation or sender binding for public clients; rotation with reuse
-detection is the simple one, and a reuse means two parties hold the key. Rejected: reusable
-renewal keys, which a thief could use forever.
+detection is the simple one, and a late reuse means two parties hold the key. The grace keeps
+rotation from ever disconnecting a person whose client merely raced or crashed: the owner's rule
+is that no security control may cost the person a sign-in. Rejected: strict single use, which
+disconnects people for a client bug; reusable renewal keys, which a thief could use forever.
 
 ### D5. How long a connection lasts
 
 Question: what lifetimes?
-Choice: short key 1 hour; a connection ends after 30 days without use; no absolute limit while
-used.
-Why: ease of use first, the MotherDuck experience being "connect once". An unused connection
-retires itself. Rejected: tying it to the instance's session length (8 hours by default), which
-would make people sign in again daily.
+Choice: short key 1 hour, renewed by the client without the person noticing. The connection
+itself never expires: it lasts until the person disconnects it or is disabled.
+Why: the owner's rule (17-Nov-2026): connect once and forget, as hosted MCP servers do; nothing
+may bother the person again. The short key keeps a leaked key's damage to the hour, invisibly.
+Rejected: ending an unused connection after 30 days, or tying it to the instance's session
+length (8 hours by default); both make people sign in again.
 
 ### D6. Which clients may register
 
@@ -89,13 +94,19 @@ Why: the person's roles already decide what is reachable, and every agent client
 before destructive tools. A read-only scope is the obvious next step and can be added without
 changing anything here. Rejected now: per-Table scopes, which duplicate permissions.
 
-### D8. Consent every time
+### D8. Consent once per client
 
 Question: remember a person's Allow for a client and skip the page next time?
-Choice: always ask. Each Allow creates its own connection.
-Why: clients re-register freely, so "the same client" cannot be told apart reliably, and a silent
-grant is the classic way an attacker obtains a key. One click is cheap. Rejected: remembered
-consent.
+Choice: remember it. The page shows the first time a person connects a client; later, when the
+same person connects a client with the same name returning to the same place, the browser
+returns at once. "The same place" is the same `https` address, or any local address on the
+person's own computer (local clients pick a new port each time). Disconnecting a client forgets
+its Allow, so connecting it again asks again.
+Why: the owner's rule: connect once and forget. A reconnect (a new computer, a reinstalled
+client) should feel like nothing. The risk a remembered Allow carries is a lookalike client
+obtaining a key silently; that needs the code to reach the lookalike, and the code only goes to
+the remembered place: a local address the attacker does not control, or the same `https` site.
+Rejected: asking every time, which the owner ruled out as a bother.
 
 ### D9. How the sign-in step reuses Featherbase's sign-in
 
@@ -110,11 +121,13 @@ which would have to repeat each method.
 ### D10. When a connection ends besides Disconnect
 
 Question: should password resets and "end all sessions" end connections too?
-Choice: yes. A connection made before the person's sessions were last ended stops working, as do
-connections of a disabled person.
-Why: a person who suspects their account was taken over resets the password and expects that to
-lock everyone else out. Hand-made access tokens keep their current rule (revoked separately),
-because they are deliberate, named credentials.
+Choice: no. A connection ends only when the person disconnects it or is disabled. Hand-made
+access tokens follow the same rule today.
+Why: the owner's rule: connect once and forget. A routine password change, or signing out
+everywhere, must not silently break every agent the person uses. A person who suspects a
+takeover uses Connected apps, which lists every connection with when it was last used, and
+disconnects what they do not recognise; an administrator disables the person. Rejected: ending
+connections on a reset, which costs every reset a round of reconnecting.
 
 ### D11. Where Connected apps lives
 

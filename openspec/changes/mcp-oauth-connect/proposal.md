@@ -14,10 +14,13 @@ signed in as themselves (#1207).
 2. Their browser opens on the instance. If they are not signed in there, they get the usual
    sign-in page with the instance's usual choices (a connected HR sign-in, Google, or email and
    password). If they already are, this step is skipped.
-3. A consent page shows which client is asking (the name it gives itself and the address it will
-   return to), who they are signed in as, and what it may do: "act as you, with your roles and
-   permissions, until you disconnect it". They choose Allow or Deny.
+3. The first time they connect a client, a consent page shows which client is asking (the name
+   it gives itself and the address it will return to), who they are signed in as, and what it may
+   do: "act as you, with your roles and permissions, until you disconnect it". They choose Allow
+   or Deny. Connecting the same client again later (a new computer, a reinstall) skips this page.
 4. The browser says they can close the window. The client is connected and its tools work.
+5. That is the last time they are asked anything. The connection keeps working until they
+   disconnect it.
 
 ## What a connected client can and cannot do
 
@@ -36,15 +39,15 @@ signed in as themselves (#1207).
 
 - **Connected apps**, a page under the person's own account, lists each client they connected:
   its name, when it was connected and when it was last used, with **Disconnect**. Disconnecting
-  stops the client at its next call; it would have to ask the person again.
-- A connection also ends when the person is disabled, when their password is reset or all their
-  sessions are ended, and after 30 days without use.
+  stops the client at its next call; connecting it again asks the person again.
+- A connection also ends when the person is disabled. Nothing else ends it: not time, not a
+  password change, not signing out.
 
 ## How long things last
 
-- The client holds a short-lived key, valid for one hour, and a renewal key it trades for a fresh
-  pair whenever the short one runs out. Each renewal key works once.
-- While the client is used at least once every 30 days it stays connected, with no new sign-in.
+- Connect once and forget: a connection has no expiry.
+- Behind the scenes the client holds a short-lived key, valid for one hour, and a renewal key it
+  trades for a fresh pair whenever the short one runs out. The person never sees this.
 
 ## Security points
 
@@ -55,7 +58,12 @@ signed in as themselves (#1207).
   person's own computer or to an `https` address.
 - Nothing usable is stored in the clear: keys are kept only as fingerprints, as access tokens are
   today.
-- A renewal key used twice is treated as stolen, and the whole connection is ended.
+- A remembered Allow only skips the page when the client returns to the same place as before,
+  so a lookalike client cannot slip through silently.
+- Each renewal key works once (with a two-minute grace, so a client that raced or crashed is not
+  disconnected). A renewal key used again later is treated as stolen, and the connection ends.
+- A leaked short-lived key stops working within the hour, on its own.
+- Apart from that sign of theft, no security check ever asks the person to sign in again.
 - Web pages on other sites still cannot call `/mcp`.
 
 ## What Changes
