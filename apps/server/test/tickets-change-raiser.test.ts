@@ -11,6 +11,7 @@ import { loadInstalledApps } from '../src/apps'
 import { callerDocuments } from '../src/runtime-actions'
 import { enabledPeople } from '../src/people-directory'
 import { sql } from '../src/db'
+import { tablesBefore } from './tickets-world'
 
 // #963: a System Manager corrects who raised a ticket; nothing else can.
 const directory = resolve('../..', 'example-apps/tickets')
@@ -258,7 +259,7 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       },
     }
     const context = (operation: object) => ({ user: 'psn_actor', userName: 'Actor', roles: ['All', 'System Manager'],
-      settings: { support_users: JSON.stringify(['psn_actor']) }, people: { names: async () => ({}), enabled: async () => [] }, reject: rejectWith, documents, ...operation })
+      settings: { support_users: JSON.stringify(['psn_actor']) }, people: { names: async () => ({}), actorNames: async () => ({}), enabled: async () => [] }, reject: rejectWith, documents, ...operation })
     await expect(app.actions.note(context({ payload: { row_id: 'FT-1', updated_at: 'r1', text: 'hello' } }))).rejects.toThrow('The requester is immutable')
     expect(() => app.validators['tickets.ticket']({ row: { ...old, owner: 'psn_new' }, old, user: 'psn_actor', isNew: false, reject: rejectWith }))
       .toThrow('Use an authorized Tickets action')
@@ -279,7 +280,7 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       const RULES = 'tickets.data_quality_rule'
       const { baseTables: _base, ...before } = manifest
       const earlier = { ...before, migrations: manifest.migrations.filter((m: any) => !later.includes(m)),
-        tables: manifest.tables.filter((t: any) => t.name !== RULES), permissions: manifest.permissions.filter((p: any) => p.table !== RULES),
+        tables: tablesBefore(manifest.tables.filter((t: any) => t.name !== RULES), later), permissions: manifest.permissions.filter((p: any) => p.table !== RULES),
         actions: { ...manifest.actions, tables: manifest.actions.tables.filter((t: string) => t !== RULES) },
         reads: { ...manifest.reads, tables: manifest.reads.tables.filter((t: string) => t !== RULES) } }
       await writeFile(resolve(prior, 'featherbase.json'), JSON.stringify(earlier))
@@ -298,7 +299,8 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       await loadInstalledApps()
       const plan = await admin.post<any>('/api/preview_app_upgrade', { name: 'tickets', version })
       expect(plan).toMatchObject({ currentVersion: step.fromVersion, targetVersion: version, codeOnly: false, destructive: false,
-        tables: ['tickets.data_quality_rule'],
+        // #1256: tickets.member is only relabelled.
+        tables: ['tickets.data_quality_rule', 'tickets.member'],
         permissions: [{ grant: { table: RULES, role: 'All' } }] })
       await admin.post('/api/upgrade_app', { name: 'tickets', version, planId: plan.planId })
       await admin.post('/api/activate_app_upgrade', { name: 'tickets', version })
@@ -307,6 +309,7 @@ describe('Tickets: changing who raised a ticket (#963)', () => {
       // The added Table is there, and its declared grant lets everyone read it.
       expect((await admin.get<{ data: unknown[] }>(`/api/table/${RULES}`)).data).toEqual([])
       expect((await sql`select count(*)::int as n from permission where ref_table = ${RULES} and role = 'All'`)[0].n).toBeGreaterThan(0)
+      expect((await sql`select label from table_def where name = 'tickets.member'`)[0].label).toBe('Person in Tickets')
     } finally { await rm(prior, { recursive: true, force: true }) }
   })
 
@@ -465,7 +468,7 @@ describe('Tickets: raising a ticket on someone\'s behalf (#1193)', () => {
       },
     })
     const context = (documents: object, payload: object, extra: object = {}) => ({ user: 'psn_actor', userName: 'Actor', roles: ['All', 'System Manager'],
-      settings: { support_users: JSON.stringify(['psn_actor']) }, people: { names: async () => ({}), enabled: async (ids: string[]) => ids },
+      settings: { support_users: JSON.stringify(['psn_actor']) }, people: { names: async () => ({}), actorNames: async () => ({}), enabled: async (ids: string[]) => ids },
       reject: rejectWith, documents, payload, ...extra })
     await expect(app.actions.note(context(forging(true), { row_id: 'FT-1', updated_at: 'r1', text: 'hello' }))).rejects.toThrow('A person may record only their own name')
     await expect(app.actions.create(context(forging(false), { title: 't', original: 'o' }))).rejects.toThrow('A person may record only their own name')

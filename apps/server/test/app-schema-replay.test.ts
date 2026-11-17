@@ -221,6 +221,28 @@ describe('renameTable', () => {
   })
 })
 
+// #1256: a Table's label is what people read; changing it touches no row.
+describe('relabelTable', () => {
+  test('a relabel replays both ways', () => {
+    expect(() => validateMigrations('shop', '0.2.0', [item(), { ...supplier, label: 'Vendor' }],
+      [step([{ kind: 'relabelTable', table: 'shop.supplier', from: 'Supplier', to: 'Vendor' }])])).not.toThrow()
+  })
+
+  test('a relabel must start from the label the history holds', () => {
+    expect(refusal(() => replayForward('shop', [supplier], [{ kind: 'relabelTable', table: 'shop.supplier', from: 'Seller', to: 'Vendor' }])))
+      .toMatch(/relabelTable shop\.supplier does not hold the label "Seller"/)
+  })
+
+  test('relabelling a Table outside the app is refused', () => {
+    expect(refusal(() => replayForward('shop', [supplier], [{ kind: 'relabelTable', table: 'other.supplier', from: 'Supplier', to: 'Vendor' }])))
+      .toMatch(/only its own Tables/)
+  })
+
+  test('an empty label is refused', () => {
+    expect(() => step([{ kind: 'relabelTable', table: 'shop.supplier', from: 'Supplier', to: ' ' }])).toThrow()
+  })
+})
+
 describe('history', () => {
   test('a history that stops short of the version is refused', () => {
     expect(refusal(() => validateMigrations('shop', '0.3.0', [item()], [step([])])))
