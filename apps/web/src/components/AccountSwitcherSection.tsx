@@ -63,7 +63,7 @@ export function AccountSwitcherSection({ onDone }: { onDone: () => void }) {
         <>
           <p className="px-3 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">{t('Switch to')}</p>
           {/* #1253: the menu opens near the window's foot; a long list scrolls on its own. */}
-          <div className="max-h-56 overflow-y-auto">
+          <div className="max-h-[min(14rem,30vh)] overflow-y-auto">
           {others.map((account) => {
             const live = account.state === 'live'
             return (
