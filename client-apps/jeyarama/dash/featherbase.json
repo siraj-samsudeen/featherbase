@@ -2245,7 +2245,8 @@
     {"id": "waiting_reads_fast", "fromVersion": "0.13.22", "toVersion": "0.13.23", "operations": []},
     {"id": "holders_read_whole", "fromVersion": "0.13.23", "toVersion": "0.13.24", "operations": []},
     {"id": "deciders_read_together", "fromVersion": "0.13.24", "toVersion": "0.13.25", "operations": []},
-    {"id": "mde_review", "fromVersion": "0.13.25", "toVersion": "0.13.26", "operations": []}
+    {"id": "mde_review", "fromVersion": "0.13.25", "toVersion": "0.13.26", "operations": []},
+    {"id": "reach_prefixes", "fromVersion": "0.13.26", "toVersion": "0.13.27", "operations": []}
   ],
   "baseTables": {
     "read": {
