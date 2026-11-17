@@ -10,6 +10,7 @@ import { tableHref } from 'shared'
 import { invalidateMeta } from 'server/src/meta'
 import { createUserWithRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
+import { REGION, seedPostings, seedSites } from './relational-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -105,6 +106,29 @@ test("the map reads a group's rows only for a link table", async ({ admin }) => 
   await screen.findByTestId('map-group-Rm Order')
   expect(listed('Rm Order')).toEqual([])
   fetches.mockRestore()
+})
+
+// Verifier round 2: rows with two far sides keep the group's own name.
+test('a group whose rows have two far sides keeps its own name on the map', async ({ admin }) => {
+  await seedSites(admin)
+  await seedPostings(admin)
+  const fetches = vi.spyOn(globalThis, 'fetch')
+  const rowsRead = () => fetches.mock.calls.findIndex(([input]) => decodeURIComponent(String(input instanceof Request ? input.url : input)).includes('/api/table/Nv Posting?'))
+  await openMap(admin, REGION, 'KL')
+  // Once the postings are read, the box still names its own Table.
+  await waitFor(() => expect(rowsRead()).toBeGreaterThanOrEqual(0))
+  await fetches.mock.results[rowsRead()]!.value
+  const box = await screen.findByTestId('map-group-Nv Posting')
+  await waitFor(() => expect(box).toHaveTextContent('Nv Posting'))
+  expect(box).not.toHaveTextContent('through')
+  fetches.mockRestore()
+})
+
+test('the same postings, seen from their site, read as their one far side, the plant', async ({ admin }) => {
+  await seedSites(admin)
+  await seedPostings(admin)
+  await openMap(admin, 'Nv Site', 'ENK')
+  await waitFor(async () => expect(await screen.findByTestId('map-group-Nv Posting')).toHaveTextContent('through Nv Posting'))
 })
 
 test('the map offers no Open in Explore', async ({ admin }) => {

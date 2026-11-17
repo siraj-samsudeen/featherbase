@@ -98,6 +98,22 @@ test("a group's rows read by what they point to, with at most two of their own f
   for (const line of lines(site)) expect(line).not.toHaveTextContent('Kerala')
 })
 
+// Verifier round 2: from the region, a posting has two far sides left, its site
+// and its plant: each its own link, joined by ›, with no code and no posting id.
+test('a row with two far sides reads by both, each its own link', async ({ admin }) => {
+  await seedSites(admin)
+  await seedPostings(admin)
+  await renderApp(tableHref(REGION), admin)
+  await select('Kerala')
+  const region = await pane('Kerala')
+  fireEvent.click(await within(region).findByRole('button', { name: 'Nv Posting 2' }))
+  const line = await lineWith(region, 'Enchakkal Supermarket')
+  expect(within(line).getByRole('link', { name: 'Enchakkal' })).toHaveAttribute('href', expect.stringContaining('/row/ENK'))
+  expect(line).toHaveTextContent(/^Enchakkal › Enchakkal Supermarket/)
+  expect(line).not.toHaveTextContent('1503')
+  expect(region).not.toHaveTextContent('ENK-1503')
+})
+
 test('a far side the viewer may not open is plain words, never a link', async ({ admin, createUser }) => {
   await seedSites(admin)
   await seedPostings(admin)

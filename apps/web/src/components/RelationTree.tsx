@@ -9,7 +9,7 @@ import { metaQuery, tableLabel, type TableMeta } from '../lib/meta'
 import type { NavPane } from '../lib/nav-path'
 import { ALL_ROWS, TREE_PAGE, backlinkGroups, groupOrder, forwardLinks, groupRowsQuery, shownCode, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
 import { rowTitleQuery } from '../lib/row-titles'
-import { GROUP_ROWS, farSide, groupRowFields } from '../lib/far-side'
+import { GROUP_ROWS, farSideCode, farSides, groupRowFields } from '../lib/far-side'
 
 // #910 checklist 18–19: a tree of related rows. Each row line unfolds in
 // place into what it links to and the counted groups that link to it; a
@@ -98,12 +98,14 @@ interface Ctx { expanded: Set<string>; showAll: Set<string>; onShowAll: (id: str
 interface RowOpts { forward: boolean; backLink?: string }
 
 /** A row this one links to: named by the title lookup; unreadable, it is a bare line. */
-function linkedLine(w: Walker, id: string, table: string, row: string, ctx: Ctx): TreeNode {
+function linkedLine(w: Walker, id: string, table: string, row: string, ctx: Ctx, farSide = false): TreeNode {
   const title = w.get<string | null>(rowTitleQuery(table, row))
   if (title === undefined) return { id, label: '…', kind: tableLabel(table, w.get<TableMeta>(metaQuery(table))) }
   if (title === null) return { id, label: UNSEEN_ROW }
   const meta = w.get<TableMeta>(metaQuery(table))
-  return rowLine(w, id, { table, row, label: title, code: meta ? shownCode(meta, row, title) : undefined }, ctx)
+  const code = meta ? shownCode(meta, row, title) : undefined
+  // A far side keeps its own code (an employee's), never a composed key.
+  return rowLine(w, id, { table, row, label: title, code: farSide ? farSideCode(title, code) : code }, ctx)
 }
 
 function rowLine(w: Walker, id: string, root: TreeRoot, ctx: Ctx, opts: RowOpts = { forward: true }): TreeNode {
@@ -135,8 +137,14 @@ function groupLine(w: Walker, id: string, g: BacklinkGroup, table: string, row: 
   const children = rows.data.map((r) => {
     const rowId = String(r.row_id)
     // Each row by what it points to (a job assignment by its employee), else by its own name.
-    const far = farSide(meta, r, { backLink, record: { table, row_id: row }, own })
-    if (far) return linkedLine(w, lineId(id, `r:${rowId}`), far.table, far.row_id, ctx)
+    const far = farSides(meta, r, { backLink, record: { table, row_id: row }, own })
+    if (far.length === 1) return linkedLine(w, lineId(id, `r:${rowId}`), far[0]!.table, far[0]!.row_id, ctx, true)
+    if (far.length === 2) {
+      // "Sarees › Silk sarees": the row by both its far sides; the line opens the row itself.
+      const names = far.map((f) => w.get<string | null>(rowTitleQuery(f.table, f.row_id)))
+      const label = names.map((n) => (n === undefined ? '…' : n === null ? UNSEEN_ROW : n)).join(' › ')
+      return rowLine(w, lineId(id, `r:${rowId}`), { table: g.connection.table, row: rowId, label }, ctx, { forward: true, backLink })
+    }
     const label = rowDisplayTitle(meta, r, rowId)
     return rowLine(w, lineId(id, `r:${rowId}`), { table: g.connection.table, row: rowId, label, code: shownCode(meta, rowId, label) }, ctx,
       { forward: true, backLink })

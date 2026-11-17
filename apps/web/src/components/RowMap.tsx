@@ -3,7 +3,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { linkRowsTable, metaQuery, useMeta, useTableLabels, type ColumnDef } from '../lib/meta'
 import { useConnections, type Connection } from '../lib/connections'
-import { farSide, farSideTable, groupBoxWords, groupRowFields } from '../lib/far-side'
+import { farSideTable, farSides, groupBoxWords, groupRowFields } from '../lib/far-side'
 import { isLinkTable } from '../lib/list-view-columns'
 import { buttonClasses, cardClasses, fmtCount } from '@featherbase/shop-floor'
 import { useNavigation } from '../lib/navigation'
@@ -118,7 +118,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
     const gm = groupMetaOf(c.table)
     const rows = groupRows[i]?.data?.data
     if (!gm || !rows) return undefined
-    return farSideTable(rows.map((r) => farSide(gm, r, { backLink: c.via ? undefined : c.column, record: { table, row_id: name }, own })))
+    return farSideTable(rows.map((r) => farSides(gm, r, { backLink: c.via ? undefined : c.column, record: { table, row_id: name }, own })))
   })
   connections.forEach((c, i) =>
     groups.push({

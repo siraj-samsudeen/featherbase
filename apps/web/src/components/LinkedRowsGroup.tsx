@@ -4,7 +4,7 @@ import { choiceLabel, rowDisplayTitle, tableHref } from 'shared'
 import type { ReactNode } from 'react'
 import { RecordLink, fmtCount } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
-import { GROUP_ROWS, farSide, groupFacts, groupRowFields, type FarSide } from '../lib/far-side'
+import { GROUP_ROWS, farSideCode, farSides, groupFacts, groupRowFields, type FarSide } from '../lib/far-side'
 import { useMeta, type TableMeta } from '../lib/meta'
 import type { NavPane } from '../lib/nav-path'
 import { UNSEEN_ROW, forwardLinks, groupOrder, shownCode, useGroupRows, useRowName, type BacklinkGroup } from '../lib/relations'
@@ -71,7 +71,7 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
           <ul className="flex min-w-0 flex-col gap-0.5">
             {data.map((r) => (
               <LinkedRowLine key={String(r.row_id)} meta={meta.data!} row={r} onOpen={onOpen}
-                far={farSide(meta.data!, r, { backLink, record: { table, row_id: record }, own })} />
+                far={farSides(meta.data!, r, { backLink, record: { table, row_id: record }, own })} />
             ))}
           </ul>
         )}
@@ -84,13 +84,17 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
 }
 
 /** One row of a group: its far side by name, or the row itself; its facts beneath. */
-function LinkedRowLine({ meta, row, far, onOpen }: { meta: TableMeta; row: Row; far?: FarSide; onOpen?: (pane: NavPane) => void }) {
+function LinkedRowLine({ meta, row, far, onOpen }: { meta: TableMeta; row: Row; far: FarSide[]; onOpen?: (pane: NavPane) => void }) {
   const settings = useSettings()
   const rowId = String(row.row_id)
   const facts = groupFacts(meta, row)
   return (
     <li className="flex min-w-0 flex-col rounded-control px-2 py-1.5 text-[13px] hover:bg-subtle" data-testid="linked-row">
-      {far ? <FarSideLink far={far} onOpen={onOpen} /> : (() => {
+      {far.length === 1 ? <FarSideLink far={far[0]!} onOpen={onOpen} withCode />
+        // Two far sides: each name its own link, "Sarees › Silk sarees"; no codes, no row id.
+        : far.length === 2 ? <span className="min-w-0">
+          <FarSideLink far={far[0]!} onOpen={onOpen} /><span className="text-ink-muted"> › </span><FarSideLink far={far[1]!} onOpen={onOpen} />
+        </span> : (() => {
         const title = rowDisplayTitle(meta, row, rowId)
         return <NameThenCode code={shownCode(meta, rowId, title)}>
           <RecordLink table={meta.name} rowId={rowId} name={title}
@@ -106,12 +110,13 @@ function LinkedRowLine({ meta, row, far, onOpen }: { meta: TableMeta; row: Row; 
   )
 }
 
-function FarSideLink({ far, onOpen }: { far: FarSide; onOpen?: (pane: NavPane) => void }) {
+function FarSideLink({ far, onOpen, withCode = false }: { far: FarSide; onOpen?: (pane: NavPane) => void; withCode?: boolean }) {
   const name = useRowName(far.table, far.row_id)
   if (name.state === 'loading') return <span className="text-ink-subtle">…</span>
   // The row is listed; what it points to the viewer may not open: plain words, no id.
   if (name.state === 'unreadable') return <RecordLink table={far.table} rowId={far.row_id} name={UNSEEN_ROW} canOpen={false} />
-  return <NameThenCode code={name.code}>
+  // The far-side record's own code (an employee's 2001), never a composed key.
+  return <NameThenCode code={withCode ? farSideCode(name.title, name.code) : undefined}>
     <RecordLink table={far.table} rowId={far.row_id} name={name.title}
       onNavigate={onOpen ? () => onOpen({ table: far.table, row: far.row_id }) : undefined} />
   </NameThenCode>

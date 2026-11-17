@@ -31,31 +31,43 @@ export interface RecordRef {
 const key = (r: RecordRef) => `${r.table}\u0000${r.row_id}`
 
 /**
- * The far side of one row of a group pointing at `record`. `backLink` is the
- * row's column pointing back (unknown for a group linked through a sub-table);
- * any link to the record itself is passed over as well. `own` are the records
- * the record's own links point to. Records match by Table and id together.
+ * The far sides of one row of a group pointing at `record`: its readable links
+ * with a value, in column order, passing over the link back (`backLink`; unknown
+ * for a group linked through a sub-table), any link to the record itself, and
+ * any link to one of the records the record's own links point to (`own`).
+ * Records match by Table and id together. A second link into a Table already
+ * named (an assignment's Reports to beside its Employee) is no new side. At
+ * most two: a section subcategory seen from its site reads "Sarees › Silk sarees".
  */
-export function farSide(meta: TableMeta, row: Row, opts: { backLink?: string; record: RecordRef; own: Iterable<RecordRef> }): FarSide | undefined {
+export function farSides(meta: TableMeta, row: Row, opts: { backLink?: string; record: RecordRef; own: Iterable<RecordRef> }): FarSide[] {
   // Only a link table reads through: a section keeps its name, never its floor.
-  if (!isLinkTable(meta)) return undefined
+  if (!isLinkTable(meta)) return []
   const skip = new Set([opts.record, ...opts.own].map(key))
+  const sides: FarSide[] = []
   for (const c of readableLinks(meta)) {
     const value = row[c.column_name]
     if (c.column_name === opts.backLink || isBlank(value)) continue
     const target = { table: linkRowsTable(c)!, row_id: String(value) }
-    if (skip.has(key(target))) continue
-    return { column: c.column_name, label: c.label ?? c.column_name, ...target }
+    if (skip.has(key(target)) || sides.some((s) => s.table === target.table)) continue
+    sides.push({ column: c.column_name, label: c.label ?? c.column_name, ...target })
+    if (sides.length === 2) break
   }
-  return undefined
+  return sides
 }
 
-/** The one Table every row's far side is in, or none when any row has no far
- *  side or they differ. */
-export function farSideTable(sides: (FarSide | undefined)[]): string | undefined {
-  const tables = new Set(sides.map((s) => s?.table))
+/** The one Table the group's rows point to, when every row has exactly one far
+ *  side and all are in that Table; else none (the group keeps its own name). */
+export function farSideTable(rows: FarSide[][]): string | undefined {
+  const tables = new Set(rows.map((sides) => (sides.length === 1 ? sides[0]!.table : undefined)))
   const [only] = tables
   return tables.size === 1 && only ? only : undefined
+}
+
+/** The far-side record's code, after its name: kept when it is a code people use
+ *  (an employee's 2001), dropped when it only spells the name again inside a
+ *  composed key ("LKS-Bags & Silk-2026-11-17"). */
+export function farSideCode(title: string, code: string | undefined): string | undefined {
+  return code && !code.toLowerCase().includes(title.trim().toLowerCase()) ? code : undefined
 }
 
 const FACT_TYPES = new Set(['Date', 'Datetime', 'Choice'])

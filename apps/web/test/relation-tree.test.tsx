@@ -53,6 +53,16 @@ test("a group's rows on the tree read by what they point to", async ({ admin }) 
   expect(postings).not.toHaveTextContent('Kerala')
 })
 
+test('a row with two far sides reads by both on the tree', async ({ admin }) => {
+  await seedSites(admin)
+  await seedPostings(admin)
+  await openTree(admin, REGION, 'KL')
+  const postings = await line('Nv Posting 2')
+  await waitFor(() => expect(within(postings).getAllByRole('treeitem').map((i) => i.textContent))
+    .toEqual(expect.arrayContaining([expect.stringContaining('Enchakkal › Enchakkal Supermarket')])))
+  expect(postings).not.toHaveTextContent('ENK-1503')
+})
+
 test('lines unfold in place several levels deep', async ({ admin }) => {
   await seedSites(admin)
   await openTree(admin, SITE, 'ENK')
