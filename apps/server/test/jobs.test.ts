@@ -106,6 +106,33 @@ describe('Long work runs in the background', () => {
   })
 })
 
+// #1260 item 8: a deploy's SIGTERM lets the job running now finish rather
+// than killing it part-way.
+describe('stopping the worker while a job runs', () => {
+  test('the stop resolves only once the running job has finished', async () => {
+    await setup()
+    let finished = false
+    registerJob('slow_job_for_stop', async () => {
+      await new Promise((r) => setTimeout(r, 300))
+      finished = true
+    })
+    const id = await enqueue('slow_job_for_stop', {})
+    await nudgeDueJobs()
+    startWorker(10)
+    const deadline = Date.now() + 5000
+    while ((await sql`select job_status from background_job where row_id = ${id}`)[0].job_status === 'queued' && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 10))
+    await stopWorker()
+    expect(finished).toBe(true)
+    expect((await sql`select job_status from background_job where row_id = ${id}`)[0].job_status).toBe('done')
+  })
+
+  test('a stop with no job running resolves at once', async () => {
+    startWorker(600000)
+    await expect(stopWorker()).resolves.toBeUndefined()
+  })
+})
+
 describe('the worker with no interval given', () => {
   test('polls on its default interval', async () => {
     await setup()

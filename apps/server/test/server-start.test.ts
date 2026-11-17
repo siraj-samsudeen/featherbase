@@ -41,6 +41,35 @@ describe('booting the server', () => {
   })
 })
 
+// #1260 item 8: a deploy's SIGTERM drains the server. An open realtime
+// socket is told the server is restarting (1012), so the page reconnects to
+// the new server, and the socket does not hold the old one open.
+describe('stopping the server', () => {
+  test('an open realtime socket is closed with 1012 and the stop does not wait on it', async ({ admin }) => {
+    vi.stubEnv('JOB_POLL_MS', '600000')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { port, stop } = await startServer(0)
+      const { default: WebSocket } = await import('ws')
+      const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${admin.token}` } })
+      const ready = new Promise<void>((resolve) => socket.on('message', (raw) => {
+        if (String(raw).includes('"ready"')) resolve()
+      }))
+      const closed = new Promise<number>((resolve) => socket.on('close', (code) => resolve(code)))
+      await ready
+      const started = Date.now()
+      expect(await stop()).toBe('drained')
+      expect(await closed).toBe(1012)
+      expect(Date.now() - started).toBeLessThan(3000)
+    } finally {
+      log.mockRestore()
+      warn.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+})
+
 describe('booting with a Data Source whose variable is unset', () => {
   test('the server starts and warns, naming the variable', async () => {
     vi.stubEnv('JOB_POLL_MS', '600000')
