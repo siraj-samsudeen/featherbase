@@ -92,10 +92,10 @@ enabled, and it was created after the person's `sessions_ended_at` (D5, D10).
 
 ## 4. Proof and release
 
-- [ ] 4.1 Coverage 100% on both suites; typechecks; `pnpm check:scenarios`, `check:specs`
+- [x] 4.1 Coverage 100% on both suites; typechecks; `pnpm check:scenarios`, `check:specs`
 - [x] 4.2 Independent UI verifier against the issue checklist
 - [x] 4.3 Real Claude Code against a local instance: sign-in and consent screenshots, a tool call
       returning permitted data and refused forbidden data
 - [x] 4.4 Upgrade rehearsed on a restored copy of production
 - [x] 4.5 Codex review, findings triaged
-- [ ] 4.6 Sync and archive the change; ADR 0027 accepted
+- [x] 4.6 Sync and archive the change; ADR 0027 accepted
