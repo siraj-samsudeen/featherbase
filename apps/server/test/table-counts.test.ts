@@ -72,3 +72,12 @@ test('a count that runs past its time is cancelled and left out; any other failu
   const broken = Object.assign(Promise.reject(Object.assign(new Error('boom'), { code: '42P01' })), { cancel: () => {} })
   await expect(withinTime(broken, 1_000)).rejects.toThrow('boom')
 })
+
+test("a refusal leaves a Table out; an app that is off too; anything else is a real failure", async () => {
+  const { skipRefused } = await import('../src/table-counts')
+  const { AppError } = await import('../src/errors')
+  expect(skipRefused(new AppError('PermissionError', 'no'), false)).toBeNull()
+  expect(skipRefused(new AppError('ConflictError', 'off'), true)).toBeNull()
+  expect(() => skipRefused(new AppError('ConflictError', 'clash'), false)).toThrow('clash')
+  expect(() => skipRefused(new Error('boom'), true)).toThrow('boom')
+})

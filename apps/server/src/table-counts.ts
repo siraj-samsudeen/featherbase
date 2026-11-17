@@ -38,10 +38,7 @@ async function countOne(name: string, user: string, ofApp: boolean): Promise<num
   // A Table this viewer may not read (an access policy they are not admitted
   // to) has no count; an app that is off or awaiting activation answers
   // nothing, as in search (#648). Anything else is a real failure.
-  const scoped = await scopedWhere(name, user, []).catch((error: unknown) => {
-    if (error instanceof AppError && (error.type === 'PermissionError' || (ofApp && error.type === 'ConflictError'))) return null
-    throw error
-  })
+  const scoped = await scopedWhere(name, user, []).catch((error: unknown) => skipRefused(error, ofApp))
   if (!scoped) return null
   const { table, where } = scoped
   const counted = await withinTime<{ rows: string }[]>(
@@ -49,6 +46,13 @@ async function countOne(name: string, user: string, ofApp: boolean): Promise<num
     COUNT_MS,
   )
   return counted ? Number(counted[0].rows) : null
+}
+
+/** null for a Table this viewer may not read, or an app's that is off or
+ *  awaiting activation; any other failure is thrown on. */
+export function skipRefused(error: unknown, ofApp: boolean): null {
+  if (error instanceof AppError && (error.type === 'PermissionError' || (ofApp && error.type === 'ConflictError'))) return null
+  throw error
 }
 
 /** A query's answer, or null once it has run `ms` and Postgres has cancelled
