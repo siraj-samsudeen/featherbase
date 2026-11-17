@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, Card, EmptyState, Notice, fmtDate, localCalendarDate } from '@featherbase/shop-floor'
+import { Button, Card, EmptyState, Notice, fmtAgo, fmtDate, timelineDayKey } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { usePageTitle } from '../lib/page-title'
@@ -18,15 +18,7 @@ interface Connection {
 }
 
 /** The reader's own calendar day of an instant, as DD-Mon-YYYY. */
-const day = (iso: string) => fmtDate(localCalendarDate(Date.parse(iso), Intl.DateTimeFormat().resolvedOptions().timeZone))
-
-/** How long ago an instant was: "just now", "5 minutes ago", "3 hours ago", "yesterday". */
-function ago(iso: string): string {
-  const minutes = Math.floor((Date.now() - Date.parse(iso)) / 60_000)
-  if (minutes < 1) return 'just now'
-  const [value, unit] = minutes < 60 ? [minutes, 'minute' as const] : minutes < 1440 ? [Math.floor(minutes / 60), 'hour' as const] : [Math.floor(minutes / 1440), 'day' as const]
-  return new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(-value, unit)
-}
+const day = (iso: string) => fmtDate(timelineDayKey(new Date(iso)))
 
 export function ConnectedApps() {
   const { t } = useI18n()
@@ -58,7 +50,7 @@ export function ConnectedApps() {
               <div className="min-w-0">
                 <p className="text-sm font-medium text-ink">“{c.client_name}”</p>
                 <p className="truncate text-sm text-ink-muted">
-                  Returns to {returnPlaceText(c.return_place)} · Connected {day(c.created_at)} · Last used {ago(c.last_used_at)}
+                  Returns to {returnPlaceText(c.return_place)} · Connected {day(c.created_at)} · Last used {fmtAgo(c.last_used_at)}
                 </p>
               </div>
               <Button disabled={disconnect.isPending} onClick={() => disconnectAfterAsking(c)}>Disconnect</Button>
