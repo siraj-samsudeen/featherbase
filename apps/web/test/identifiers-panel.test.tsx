@@ -6,12 +6,16 @@
 // says it is awaiting its record number.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { afterEach, vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { applySeedPack } from 'server/src/seed-packs'
 import { addIdentifier } from 'server/src/person-identifiers'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
+import { openListMenu } from './list-menus'
+
+afterEach(() => vi.restoreAllMocks())
 
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
 
@@ -27,7 +31,7 @@ test('a System Manager sees codes with their periods and the address; a roster v
   // #415: days read the Indian way, DD-Mon-YYYY, like the rest of the app.
   expect(codes).toHaveTextContent('since 03-Mar-2026')
   expect(codes).toHaveTextContent('01-Jun-2024 – 03-Mar-2026')
-  expect(within(codes).queryByRole('button', { name: 'End' })).toBeNull()
+  expect(within(codes).queryByRole('button', { name: /^More actions/ })).toBeNull()
   expect(within(panel).getByTestId('identifier-group-email')).toHaveTextContent('tl.ids@example.com')
 })
 
@@ -37,6 +41,7 @@ test('a person adds their own phone and sees it is not yet verified', async ({ a
   // Their own page: Sign-in methods (account menu), not the Admin Person form.
   await renderApp('/featherbase/account/sign-in-methods', me)
   const panel = await screen.findByTestId('person-identifiers')
+  await userEvent.click(await within(panel).findByRole('button', { name: 'Add an identifier' }))
   const form = await within(panel).findByTestId('add-identifier-form')
   await userEvent.selectOptions(within(form).getByLabelText('Identifier'), 'phone')
   await userEvent.type(within(form).getByLabelText('Value'), '98470 12345')
@@ -45,7 +50,9 @@ test('a person adds their own phone and sees it is not yet verified', async ({ a
   expect(phone).toHaveTextContent('+919847012345')
   expect(phone).toHaveTextContent('not verified')
   // Ended on the day it was added: it was never in force, so it goes.
-  await userEvent.click(within(phone).getByRole('button', { name: 'End' }))
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  await userEvent.click(within(phone).getByRole('button', { name: /^More actions for Mobile phone/ }))
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'End' }))
   await waitFor(() => expect(within(panel).queryByTestId('identifier-group-phone')).toBeNull())
 })
 
@@ -59,6 +66,7 @@ test('a merged-away record names its survivor (never its id) and offers no chang
   await waitFor(() => expect(banner).toHaveTextContent('merged into Survivor Sasi'))
   expect(banner.textContent).not.toContain(survivor.user!)
   expect(within(panel).queryByTestId('add-identifier-form')).toBeNull()
+  expect(within(panel).queryByRole('button', { name: 'Add an identifier' })).toBeNull()
 })
 
 test('until the roster sync runs, a System Manager records a joiner’s code by hand with a note', async ({ admin, createUser }) => {
@@ -67,6 +75,7 @@ test('until the roster sync runs, a System Manager records a joiner’s code by 
   const joiner = await createUser({ email: 'joiner.ids@example.com', fullName: 'Joiner Jaya' })
   await renderApp(`/featherbase/admin/table/person/row/${encodeURIComponent(joiner.user!)}`, admin)
   const panel = await screen.findByTestId('person-identifiers')
+  await userEvent.click(await within(panel).findByRole('button', { name: 'Add an identifier' }))
   const form = await within(panel).findByTestId('add-identifier-form')
   expect(within(form).queryByTestId('identifier-note')).toBeNull()
   await userEvent.selectOptions(within(form).getByLabelText('Identifier'), 'stylehr-employee-code')
@@ -77,10 +86,10 @@ test('until the roster sync runs, a System Manager records a joiner’s code by 
   expect(codes).toHaveTextContent('RR-30001')
   expect(codes).toHaveTextContent('recorded by hand')
   expect(codes).toHaveTextContent('not verified')
-  // The address mirrors the person's own email: said in words.
-  expect(within(panel).getByTestId('identifier-group-email')).toHaveTextContent('the person’s email')
-  // #415: the End button keeps its label on one line in the narrow card.
-  expect(within(codes).getByRole('button', { name: 'End' })).toHaveClass('shrink-0')
+  // #1235 item 11: the address mirrors the person's own email, which its label already says.
+  expect(within(panel).getByTestId('identifier-group-email')).not.toHaveTextContent('the person’s email')
+  // #415: the row's ⋯ menu never squeezes in the narrow card.
+  expect(within(codes).getByRole('button', { name: /^More actions for StyleHR employee code/ }).parentElement).toHaveClass('shrink-0')
 })
 
 test('the Identifier System form shows each setting’s default, offers a revert, and says why an option is refused', async ({ admin }) => {
@@ -130,7 +139,7 @@ test('the Person list links to Find by code; an old code finds the person, shown
   const leaver = await createUser({ email: 'leaver.find@example.com', fullName: 'Leaving Latha' })
   await addIdentifier(leaver.user!, { system: 'stylehr-employee-code', value: 'RR-777', valid_from: '2024-01-01', valid_to: '2025-01-01' }, 'sync', ROSTER)
   await renderApp('/featherbase/admin/table/person', admin)
-  await userEvent.click(await screen.findByRole('button', { name: 'List actions' }))
+  await openListMenu('List actions')
   expect(await screen.findByTestId('open-find-person')).toHaveAttribute('href', '/featherbase/admin/find-person')
   await renderApp('/featherbase/admin/find-person', admin)
   const page = await screen.findByTestId('find-person')

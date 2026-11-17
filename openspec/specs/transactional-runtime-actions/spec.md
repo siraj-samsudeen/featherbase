@@ -192,6 +192,14 @@ An app MAY declare base Tables of the instance, with the columns it reads and th
 - **WHEN** an app asks for a column it didn't declare, or proposes on one
 - **THEN** it is refused
 
+### Requirement: An app can ask whether a base Table can be read now
+An app SHALL be able to ask whether a declared base Table can be read now, and be told no, without failing its read, for one not listed, deleted, unsupported or missing a declared column.
+
+#### Scenario: A base Table that no longer fits
+
+- **WHEN** an app asks whether a declared Table can be read, and it was deleted or has lost a declared column since
+- **THEN** it is told no, and the rest of its read goes on
+
 ### Requirement: An action can email a person after it commits
 A runtime action SHALL be able to queue an email to a person by Person ID, and to ask whether that person may read one row of the app's own Tables. The platform SHALL resolve the address, never handing it to the app, and SHALL queue the email only after the action's transaction commits. A failure to queue SHALL NOT undo the action.
 
@@ -239,3 +247,32 @@ An app's action or read SHALL be able to ask whether its caller is one of the pe
 
 - **WHEN** a read asks for someone who reads the row only through their own role
 - **THEN** the answer is no
+
+### Requirement: An action or read counts rows as its caller
+An app's action or read SHALL count the rows of a Table it may read that match a filter, as its caller: rows
+the caller may not read SHALL NOT be counted. A linked Table the caller may not read at all, that no longer
+exists, or whose columns no longer fit the filter, SHALL give no count rather than zero or a failure.
+
+#### Scenario: An app counts only what its caller reads
+
+```gherkin
+Given a linked Table "Buyer Assignment" with 3 rows, and a person who may not read it
+When the app counts the rows of "Buyer Assignment" for that person
+Then there is no count
+And for a person who reads it, the count is 3
+```
+
+### Requirement: A scope provider can ask whether a Table can be read now
+A scope provider SHALL be able to ask whether one of its Tables can be read now. It SHALL be told no, without
+failing the person's scope, for a Table it did not declare, one the instance does not have, or one it may not read.
+A Table it is told no about SHALL contribute nothing to the scope; reading it anyway SHALL still refuse the scope.
+
+#### Scenario: A Table not installed yet contributes nothing
+
+- **WHEN** a scope provider asks about a declared Table the instance does not have
+- **THEN** it is told no, and the person's scope is what its other Tables give, never more
+
+#### Scenario: Reading a Table that is not available still refuses
+
+- **WHEN** a scope provider reads a Table it was told is not available
+- **THEN** the person gets no scope, as for any failed read

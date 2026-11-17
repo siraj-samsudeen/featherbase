@@ -21,7 +21,8 @@ const n = (x: number) => x.toLocaleString('en-US')
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 async function dropFile(page: Page, name: string, buffer: Buffer): Promise<void> {
-  await page.getByRole('link', { name: 'Import Data' }).first().click()
+  // The owner's review (17-Nov): Import Data is a link in the sidebar's Data group.
+  await page.getByRole('link', { name: 'Import Data' }).click()
   await expect(page).toHaveURL(/\/admin\/import$/)
   await expect(page.getByTestId('iw-dropzone')).toBeVisible()
   await page.getByTestId('iw-file-input').setInputFiles({ name, mimeType: XLSX_TYPE, buffer })
@@ -53,14 +54,15 @@ const openTree = (page: Page) =>
 
 /** Open a Table from All tables, as someone who doesn't know its address would. */
 async function openTable(page: Page, label: string): Promise<void> {
-  await page.getByRole('link', { name: 'All tables' }).first().click()
+  await page.getByRole('link', { name: 'All Tables' }).first().click()
   await page.getByRole('link', { name: label, exact: true }).first().click()
   await expect(page.getByTestId('list-view')).toBeVisible()
 }
 
 async function openColumns(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Table administration' }).click()
-  await page.getByRole('link', { name: 'Edit columns' }).click()
+  // #1242 (admin-lists 2): Table administration is a group in the list's More menu.
+  await page.getByRole('button', { name: 'More', exact: true }).click()
+  await page.getByRole('group', { name: 'Table administration' }).getByRole('link', { name: 'Edit columns' }).click()
   await expect(page.getByTestId('column-editor')).toBeVisible()
 }
 
@@ -344,8 +346,9 @@ tour('Featherbase: from a spreadsheet to an app you can navigate', async ({ stor
   await s.chapter('Change her mind', limit(20_000), async () => {
     await s.step('The import history holds the run; undoing it is previewed first', async () => {
       await openTable(page(), 'Store Assets')
-      await page().getByRole('button', { name: 'List actions' }).click()
-      await page().getByTestId('open-import').click()
+      // #1242 (admin-lists 2): List actions is a group in the list's More menu.
+      await page().getByRole('button', { name: 'More', exact: true }).click()
+      await page().getByRole('group', { name: 'List actions' }).getByTestId('open-import').click()
       await expect(page().getByTestId('iw-run-history')).toBeVisible()
       const run = page().getByTestId(/^iw-run-\d+$/).filter({ hasText: 't nagar update.xlsx' })
       await expect(run).toHaveCount(1)

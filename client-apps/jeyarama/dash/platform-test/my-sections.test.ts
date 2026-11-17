@@ -241,7 +241,8 @@ describe('what an approver decides', () => {
     expect(after.jobs[0].subcategories.map((s: any) => s.name)).toEqual(['Kurtis'])
     expect(after.proposals[0]).toMatchObject({ state: 'Applied', decided_on: today })
     expect(await read(maker, 'unplaced')).toEqual({ state: 'not_allowed' })
-    expect(await read(editor, 'unplaced')).toEqual({ state: 'ok', rows: [{ store: 'Lakeside', code: '010101001', name: 'Sarees', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses', was_in: 'Ladies Wear', since: today }] })
+    expect(await read(editor, 'unplaced')).toEqual({ state: 'ok', rows: [{ store: 'Lakeside', code: '010101001', name: 'Sarees', division: 'Women', subdivision: 'Ethnic Wear', category: 'Sarees and Blouses', was_in: 'Ladies Wear', since: today, put_back: null,
+      removed_by: { name: 'Asha Maker', id: '1001', code: '1001', jobs: ['Team Leader · Lakeside'], staff: 'current' } }] })
     expect(await read(editor, 'holds_master_data')).toBe(true)
     expect(await read(maker, 'holds_master_data')).toBe(false)
     // Asked for again, it shows as in no section, and leaves the list once added.
@@ -323,11 +324,11 @@ describe('what an approver decides', () => {
   })
 
   test('nobody decides their own or someone else\'s, System Manager included', async ({ admin, createUser }) => {
-    const { maker, otherStaff, editor, holderManager } = await world(admin, createUser)
+    const { maker, otherStaff, holderManager } = await world(admin, createUser)
     const proposal = await act(maker, 'propose_removal', removal())
     await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values (${randomUUID()}, ${maker.user!}, 'Person', 'roles', 'System Manager')`
-    // Silk's manager has no say over a removal from Ladies Wear.
-    for (const who of [maker, otherStaff, editor, admin, holderManager])
+    // Silk's manager has no say over a removal from Ladies Wear. A Master Data Editor has (#1219).
+    for (const who of [maker, otherStaff, admin, holderManager])
       await expect(act(who, 'decide', { proposal: proposal.id, decision: 'approve' })).rejects.toBeTruthy()
     expect(await row('Section Subcategory', 'LKS-1')).toMatchObject({ section: 'LKS-S1', ends_on: null })
   })
@@ -608,3 +609,244 @@ describe('apply now, review after (#1191)', () => {
   })
 })
 
+
+// #1254: Waiting for you read the asker's manager, and asked the platform who may decide, once per waiting change:
+// 14 queries each, 5 s on production. What it reads must not grow with how many changes wait.
+describe('what reading Waiting for you costs', () => {
+  const scans = async () => Object.fromEntries((await sql`select relname, (coalesce(seq_scan, 0) + coalesce(idx_scan, 0))::int as n
+    from pg_stat_xact_user_tables where schemaname = 'featherbase' and relname in ('employee', 'job_assignment', 'sign_in_method')`).map(r => [r.relname, r.n]))
+  const cost = async (client: TestClient, name: string) => {
+    const before = await scans()
+    await read(client, name)
+    const after = await scans()
+    return Object.fromEntries(Object.keys(after).map(table => [table, after[table] - (before[table] ?? 0)]))
+  }
+
+  test('is the same for three waiting changes as for one', async ({ admin, createUser }) => {
+    const { maker, manager } = await world(admin, createUser)
+    await act(maker, 'propose_removal', removal())
+    expect((await read(manager, 'approvals')).proposals).toHaveLength(1)
+    const one = await cost(manager, 'approvals')
+    await oldStyleMove(maker, manager, 'LKS-2', 'LKS-S2')
+    await oldStyleMove(maker, manager, 'LKS-3', 'LKS-S1')
+    expect((await read(manager, 'approvals')).proposals).toHaveLength(3)
+    expect(await cost(manager, 'approvals')).toEqual(one)
+  })
+
+  // #1219: a Master Data Editor sees changes waiting on different managers, each named with whoever else has it.
+  // (What the platform is asked is proved in src/my-sections.test.ts: one call, every manager in it. Index scans
+  // here grow by one per person even on the manager's own read, so they can't measure that.)
+  test('for a Master Data Editor, changes waiting on different managers each name their own', async ({ admin, createUser }) => {
+    const { maker, holder, otherStaff, editor } = await world(admin, createUser)
+    await act(maker, 'propose_removal', removal())
+    await act(holder, 'propose_removal', { job: 'JA-6', placement: 'LKS-3' })
+    await act(otherStaff, 'propose_section', { job: 'JA-4', to_section: 'LKS-S2' })
+    // Other Staff's manager has no sign-in: it waits for the master data team, and names no one else.
+    expect((await read(editor, 'approvals')).proposals.map((p: any) => p.also_with.map((r: any) => r.name)).sort()).toEqual([[], ['Mani Manager'], ['Nila Other Manager']])
+  })
+
+})
+
+// #1219: a Master Data Editor acts on any open review as the person's manager can, and puts back
+// what was taken out while its review is open. Reviewers are named with who they are (#1216).
+describe('the master data team acts like the manager (#1219)', () => {
+  const MANI = { name: 'Mani Manager', id: '1002', code: '1002', jobs: [], staff: 'current' }
+  const proposalRow = async (id: string) => (await sql`select proposal_state, decided_by, decision_reason from change_proposal where row_id = ${id}`)[0]
+
+  test('every open review is in their Waiting for you, beside the manager, who is named with who they are', async ({ admin, createUser }) => {
+    const { maker, manager, editor, otherStaff, holderManager, stranger } = await world(admin, createUser)
+    await applyNow(admin)
+    const out = await act(maker, 'propose_removal', removal())
+    await sql`delete from approval_type`
+    const [asked] = await act(maker, 'propose_adds', adds('010101004'))
+    const ids = (answer: any) => answer.proposals.map((p: any) => p.id).sort()
+    expect(ids(await read(manager, 'approvals'))).toEqual([out.id, asked.id].sort())
+    expect(ids(await read(editor, 'approvals'))).toEqual([out.id, asked.id].sort())
+    // The editor is told who else has it; the manager is not told about themselves.
+    expect((await read(editor, 'approvals')).proposals.map((p: any) => p.also_with)).toEqual([[MANI], [MANI]])
+    expect((await read(manager, 'approvals')).proposals.map((p: any) => p.also_with)).toEqual([[], []])
+    for (const who of [otherStaff, holderManager, stranger]) expect((await read(who, 'approvals')).proposals).toEqual([])
+  })
+
+  test('they confirm, undo with a reason, and approve, as the manager would; the review records them', async ({ admin, createUser }) => {
+    const { maker, editor } = await world(admin, createUser)
+    await applyNow(admin)
+    const [added] = await act(maker, 'propose_adds', adds('010101004'))
+    expect(await act(editor, 'decide', { proposal: added.id, decision: 'confirm' })).toMatchObject({ state: 'Confirmed' })
+    expect(await proposalRow(added.id)).toMatchObject({ proposal_state: 'Confirmed', decided_by: editor.user })
+    // Decided as the role: the platform read the role when it decided.
+    expect(await sql`select role from change_proposal_approver where parent = ${added.id}`).toEqual([{ role: 'Master Data Editor' }])
+
+    const out = await act(maker, 'propose_removal', removal())
+    await expect(act(editor, 'decide', { proposal: out.id, decision: 'undo' })).rejects.toMatchObject({ status: 417 })
+    expect(await act(editor, 'decide', { proposal: out.id, decision: 'undo', reason: 'Sarees stay in Ladies Wear' })).toMatchObject({ state: 'Undone' })
+    expect(await inForce('010101001')).toEqual([{ row_id: 'LKS-1', section: 'LKS-S1' }])
+    // The row put back is saved under their sign-in, so its history names them.
+    expect((await row('Section Subcategory', 'LKS-1')).updated_by).toBe(editor.user)
+    expect(await proposalRow(out.id)).toMatchObject({ decided_by: editor.user, decision_reason: 'Sarees stay in Ladies Wear' })
+    expect((await read(maker, 'my_sections')).proposals.find((p: any) => p.id === out.id)).toMatchObject({ state: 'Undone', reason: 'Sarees stay in Ladies Wear', taken_back: false })
+
+    await sql`delete from approval_type`
+    const pending = await act(maker, 'propose_section', { job: 'JA-1', to_section: 'LKS-S2' })
+    expect(await act(editor, 'decide', { proposal: pending.id, decision: 'approve' })).toMatchObject({ state: 'Applied' })
+    expect(await proposalRow(pending.id)).toMatchObject({ decided_by: editor.user })
+  })
+
+  test('the role taken away before they decide: refused, though their request carried it', async ({ admin, createUser }) => {
+    const { maker, editor } = await world(admin, createUser)
+    await applyNow(admin)
+    const out = await act(maker, 'propose_removal', removal())
+    await sql`delete from has_role where parent = ${editor.user!} and role = 'Master Data Editor'`
+    await expect(act(editor, 'decide', { proposal: out.id, decision: 'undo', reason: 'No' })).rejects.toMatchObject({ status: 417 })
+    await expect(act(editor, 'put_back', { proposal: out.id })).rejects.toMatchObject({ status: 417 })
+    expect((await proposalRow(out.id)).proposal_state).toBe('Not yet reviewed')
+  })
+
+  test('the manager keeps working as before, and once either decides, the other is told it is done', async ({ admin, createUser }) => {
+    const { maker, manager, editor } = await world(admin, createUser)
+    await applyNow(admin)
+    const out = await act(maker, 'propose_removal', removal())
+    expect(await act(manager, 'decide', { proposal: out.id, decision: 'confirm' })).toMatchObject({ state: 'Confirmed' })
+    expect(await proposalRow(out.id)).toMatchObject({ decided_by: manager.user })
+    await expect(act(editor, 'decide', { proposal: out.id, decision: 'undo', reason: 'Late' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('already been reviewed') })
+    expect((await read(editor, 'approvals')).proposals).toEqual([])
+  })
+
+  test('refused: anyone else, the manager of another section, and an editor deciding their own', async ({ admin, createUser }) => {
+    const { maker, editor, otherStaff, holderManager, stranger, save } = await world(admin, createUser)
+    await applyNow(admin)
+    const out = await act(maker, 'propose_removal', removal())
+    for (const who of [otherStaff, holderManager, stranger]) {
+      await expect(act(who, 'decide', { proposal: out.id, decision: 'undo', reason: 'No' })).rejects.toMatchObject({ status: 417 })
+      await expect(act(who, 'put_back', { proposal: out.id })).rejects.toMatchObject({ status: 417 })
+    }
+    // The maker takes their own back with Undo, never with Put back.
+    await expect(act(maker, 'put_back', { proposal: out.id })).rejects.toMatchObject({ status: 417 })
+    expect(await inForce('010101001')).toEqual([])
+    // An editor on the staff, as a Team Leader: their own change is never theirs to review.
+    await save('Employee', { employee_code: '1005', name: 'Eli Editor', person: editor.user, status: 'Current' })
+    await save('Job Assignment', { assignment_id: 'JA-5', employee: '1005', job: 'Team Leader', site: 'LKS', section: 'LKS-S2', reports_to: '1002', starts_on: '2026-10-01' })
+    const own = await act(editor, 'propose_removal', { job: 'JA-5', placement: 'LKS-3' })
+    expect((await read(editor, 'approvals')).proposals.map((p: any) => p.id)).toEqual([out.id])
+    await expect(act(editor, 'decide', { proposal: own.id, decision: 'confirm' })).rejects.toMatchObject({ status: 417 })
+    await expect(act(editor, 'put_back', { proposal: own.id })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('Put back, on Not in any section: back in the section it left, its review settled, gone from both lists', async ({ admin, createUser }) => {
+    const { maker, manager, editor } = await world(admin, createUser)
+    await applyNow(admin)
+    const out = await act(maker, 'propose_removal', removal())
+    const before = await read(editor, 'unplaced')
+    expect(before.rows).toEqual([expect.objectContaining({ code: '010101001', was_in: 'Ladies Wear', put_back: { proposal: out.id } })])
+    expect(await act(editor, 'put_back', { proposal: out.id })).toMatchObject({ state: 'Undone' })
+    expect(await inForce('010101001')).toEqual([{ row_id: 'LKS-1', section: 'LKS-S1' }])
+    expect(await proposalRow(out.id)).toMatchObject({ proposal_state: 'Undone', decided_by: editor.user, decision_reason: 'Put back in Ladies Wear by the master data team.' })
+    expect((await read(editor, 'unplaced')).rows).toEqual([])
+    expect((await read(manager, 'approvals')).proposals).toEqual([])
+    expect((await read(maker, 'my_sections')).proposals[0]).toMatchObject({ id: out.id, state: 'Undone', reason: 'Put back in Ladies Wear by the master data team.' })
+    // Settled now: a second put back is refused.
+    await expect(act(editor, 'put_back', { proposal: out.id })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('no Put back once the removal is reviewed, or once it is in another section', async ({ admin, createUser }) => {
+    const { maker, manager, editor, holder } = await world(admin, createUser)
+    await applyNow(admin)
+    const reviewed = await act(maker, 'propose_removal', removal())
+    await act(manager, 'decide', { proposal: reviewed.id, decision: 'confirm' })
+    expect((await read(editor, 'unplaced')).rows).toEqual([expect.objectContaining({ code: '010101001', put_back: null })])
+    await expect(act(editor, 'put_back', { proposal: reviewed.id })).rejects.toMatchObject({ status: 417 })
+
+    const moved = await act(maker, 'propose_removal', removal({ placement: 'LKS-2' }))
+    await act(holder, 'propose_adds', { job: 'JA-6', subcategories: ['010101002'] })
+    await expect(act(editor, 'put_back', { proposal: moved.id })).rejects.toMatchObject({ status: 417, message: expect.stringMatching(/has since been put in Silk, so it can't be put back$/) })
+    expect((await proposalRow(moved.id)).proposal_state).toBe('Not yet reviewed')
+  })
+
+  test('only an open removal is put back: never an addition or a section change', async ({ admin, createUser }) => {
+    const { maker, editor } = await world(admin, createUser)
+    await applyNow(admin)
+    const [added] = await act(maker, 'propose_adds', adds('010101004'))
+    await expect(act(editor, 'put_back', { proposal: added.id })).rejects.toMatchObject({ status: 417 })
+    expect((await proposalRow(added.id)).proposal_state).toBe('Not yet reviewed')
+  })
+
+  test('the person and their reviewers are named with who they are', async ({ admin, createUser }) => {
+    const { maker, otherStaff } = await world(admin, createUser)
+    await applyNow(admin)
+    const out = await act(maker, 'propose_removal', removal())
+    const page = await read(maker, 'my_sections')
+    expect(page.jobs[0].reviewers).toEqual([MANI])
+    expect(page.proposals.find((p: any) => p.id === out.id).reviewers).toEqual([MANI])
+    expect(out.reviewers).toEqual([MANI])
+    // The master data team is a team, not a person: nobody to name.
+    expect((await read(otherStaff, 'my_sections')).jobs[0].reviewers).toEqual([])
+  })
+})
+
+// #1219: Not in any section says who took each one out, with who they are (#1216).
+describe('who took it out (#1219)', () => {
+  test('a removal in Dash names the person who asked, a Master Data Editor included', async ({ admin, createUser }) => {
+    const { maker, manager, editor, save } = await world(admin, createUser)
+    await applyNow(admin)
+    await act(maker, 'propose_removal', removal())
+    const reviewed = await act(maker, 'propose_removal', removal({ placement: 'LKS-2' }))
+    await act(manager, 'decide', { proposal: reviewed.id, decision: 'confirm' })
+    // The editor, on the staff list as Silk's Team Leader, takes one out of their own section.
+    await save('Employee', { employee_code: '1005', name: 'Eli Editor', person: editor.user, status: 'Current' })
+    await save('Job Assignment', { assignment_id: 'JA-5', employee: '1005', job: 'Team Leader', site: 'LKS', section: 'LKS-S2', reports_to: '1002', starts_on: '2026-10-01' })
+    await act(editor, 'propose_removal', { job: 'JA-5', placement: 'LKS-3' })
+    const rows = (await read(editor, 'unplaced')).rows
+    expect(Object.fromEntries(rows.map((r: any) => [r.name, r.removed_by]))).toEqual({
+      Sarees: { name: 'Asha Maker', id: '1001', code: '1001', jobs: ['Team Leader · Lakeside'], staff: 'current' },
+      Kurtis: { name: 'Asha Maker', id: '1001', code: '1001', jobs: ['Team Leader · Lakeside'], staff: 'current' },
+      'Silk Sarees': { name: 'Eli Editor', id: '1005', code: '1005', jobs: ['Team Leader · Lakeside'], staff: 'current' },
+    })
+    // Their own removal is never theirs to put back.
+    expect(rows.find((r: any) => r.name === 'Silk Sarees').put_back).toBeNull()
+  })
+
+  test('the latest end says who: a Dash removal, reopened, then ended again in Featherbase names whoever ended it last', async ({ admin, createUser }) => {
+    const { maker, manager, editor } = await world(admin, createUser)
+    await applyNow(admin)
+    const out = await act(maker, 'propose_removal', removal())
+    await act(manager, 'decide', { proposal: out.id, decision: 'confirm' })
+    expect((await read(editor, 'unplaced')).rows[0].removed_by).toMatchObject({ name: 'Asha Maker' })
+    // Reopened, then ended again, both by the Administrator in Featherbase.
+    for (const ends_on of [null, yesterday]) {
+      const placed = await row('Section Subcategory', 'LKS-1')
+      await admin.post('/api/save_row', { table: 'Section Subcategory', row: { row_id: 'LKS-1', updated_at: placed.updated_at.toISOString(), ends_on } })
+    }
+    expect((await read(editor, 'unplaced')).rows[0].removed_by).toMatchObject({ name: 'Administrator', staff: 'none' })
+  })
+
+  test('one ended outside Dash names whoever saved it: staff by the staff list, anyone else by the platform\'s name for them', async ({ admin, createUser }) => {
+    const { editor, save } = await world(admin, createUser)
+    const endBy = async (id: string, actor: string | null) => {
+      const placed = await row('Section Subcategory', id)
+      await admin.post('/api/save_row', { table: 'Section Subcategory', row: { row_id: id, updated_at: placed.updated_at.toISOString(), ends_on: yesterday } })
+      // As if that person or service had ended it: the row's own history says who set its end.
+      if (actor) await sql`update ${sql(await tableRelation('Version'))} set created_by = ${actor}
+        where ref_table = 'Section Subcategory' and ref_name = ${id} and exists (select 1 from jsonb_array_elements(data->'changed') c where c->>0 = 'ends_on')`
+    }
+    // In Featherbase, by a master data analyst on the staff list; by the Administrator; by an import's service account.
+    await save('Employee', { employee_code: '1005', name: 'Eli Editor', person: editor.user, status: 'Current' })
+    await save('Job Assignment', { assignment_id: 'JA-5', employee: '1005', job: 'Staff', site: 'HIL', starts_on: '2026-10-01' })
+    await sql`insert into service_account (row_id, label, enabled) values ('svc_made_up_import', 'Made-up StyleHR import', true)`
+    await endBy('LKS-1', editor.user!)
+    await endBy('LKS-2', null)
+    await endBy('LKS-3', 'svc_made_up_import')
+    // Saved again later by someone else, in a column other than its end: who took it out stays the same.
+    const sarees = await row('Section Subcategory', 'LKS-1')
+    await admin.post('/api/save_row', { table: 'Section Subcategory', row: { row_id: 'LKS-1', updated_at: sarees.updated_at.toISOString(), source_key: 'Corrected later' } })
+    const rows = (await read(editor, 'unplaced')).rows
+    expect(Object.fromEntries(rows.map((r: any) => [r.name, r.removed_by]))).toEqual({
+      Sarees: { name: 'Eli Editor', id: '1005', code: '1005', jobs: ['Staff · Hillview'], staff: 'current' },
+      Kurtis: { name: 'Administrator', id: null, code: null, jobs: [], staff: 'none' },
+      // The platform's own name for a service account (its actor-name helper), never its id.
+      'Silk Sarees': { name: expect.stringMatching(/StyleHR import/), id: null, code: null, jobs: [], staff: 'none' },
+    })
+    expect(rows.every((r: any) => r.put_back === null)).toBe(true)
+    expect(JSON.stringify(rows)).not.toContain('svc_made_up_import')
+  })
+
+})

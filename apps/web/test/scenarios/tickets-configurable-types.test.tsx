@@ -46,7 +46,7 @@ describe('tickets-configurable-types', () => {
     await step('Anjali submitted a Data Quality Issue raised on "2026-11-04"', () => x.submit({ urgency: 'Now', raised_on: '2026-11-04' }))
     await step("Anjali opens that ticket's page", async () => {
       ;({ session } = await openTickets(t.people.Anjali))
-      await selectTicket(session, t.ticket.row_id).assertText('Original message')
+      await selectTicket(session, t.ticket.row_id).assertText('Original Message')
     })
     await step('its raised-on date reads "04-Nov-2026" and no date on the page is written with slashes', async () => {
       await session.within('main', (page) => page.assertText('04-Nov-2026'))

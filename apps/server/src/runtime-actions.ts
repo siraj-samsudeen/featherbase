@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { enabledPeople, namesForApp, ownDisplayName, tableMembers } from './people-directory'
+import { appActorNames } from './actor-names'
 import { z } from 'zod'
 import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
 import { inAppTransaction, sql } from './db'
+import { withStablePermissionReads } from './permission-reads'
 import { appOperation, assertAppAvailable, assertStillServing, servingIdentity } from './app-lifecycle'
 import { canonicalJson, recordAppAccessRefusal, withAppAuthorization, type DeclaredAppOperation } from './app-access'
 import { AppError } from './errors'
@@ -12,7 +14,7 @@ import { tableRelation } from './table-engine'
 import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
 import { holdBeforeRowLock } from './row-lock-order'
 import { documentActivity, retainedDocumentCounts } from './document-activity'
-import { getList } from './query'
+import { countDocs, getList } from './query'
 import { logActivity } from './audit'
 import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup, type ReadySetup } from './app-settings'
 import { callerMail, readsRow } from './runtime-mail'
@@ -57,6 +59,7 @@ export function linkedTables(settings: Readonly<Record<string, string>>): string
 function callerPeople(user: string, app: string, settings: Readonly<Record<string, string>>): RuntimeActionContext['people'] {
   return Object.freeze({
     names: (ids: string[]) => namesForApp(ids, user, settings),
+    actorNames: async (ids: string[]) => Object.freeze(await appActorNames(app, ids)),
     enabled: (ids: string[]) => enabledPeople(ids, user),
     // #1046: an app that gives things to roles says why someone has one.
     rolesOf: async (person: string) => {
@@ -74,7 +77,7 @@ function callerPeople(user: string, app: string, settings: Readonly<Record<strin
       await settleAccessRequests()
       // Their name, so an approver who can't read people still sees who is waiting; a name that is still an address isn't shown.
       const rows = await sql`select r.person, r.created_at, p.full_name from access_request r left join person p on p.row_id = r.person
-        where r.app_name = ${app} order by r.created_at, r.person`
+        where r.app_name = ${app} and r.declined_at is null order by r.created_at, r.person`
       return Object.freeze(rows.map((r) => ({ person: String(r.person), name: r.full_name && !String(r.full_name).includes('@') ? String(r.full_name) : null,
         asked_at: new Date(r.created_at as string).toISOString() })))
     },
@@ -82,7 +85,7 @@ function callerPeople(user: string, app: string, settings: Readonly<Record<strin
 }
 
 // #918: the caller's own roles, so an app can let a role take a step.
-async function callerRoles(user: string): Promise<readonly string[]> {
+export async function callerRoles(user: string): Promise<readonly string[]> {
   return Object.freeze([...new Set(await getRoles(user))].sort())
 }
 
@@ -164,6 +167,17 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
       if (readOnly(table)) return getList(table, args, user).then(r => r.data, (error: unknown) =>
         error instanceof AppError && error.type === 'PermissionError' ? [] : Promise.reject(error))
       return (await getList(table, args, user)).data
+    }),
+    // #1196: a count as the caller, scoped as list is. A linked Table the
+    // caller may not read, or whose columns no longer fit the filter, gives no
+    // count rather than a misleading zero or a failed read.
+    // A linked Table that was deleted or renamed since counts as nothing to show, too.
+    count: (table, filters = []) => operation(async () => {
+      if (filters.some(([, operator]) => operator === 'related' || operator === 'not related')) reject('Action counts do not support cross-table related filters')
+      if (!readOnly(table)) { await metaFor(table); return countDocs(table, filters, user) }
+      const uncountable = (error: unknown) =>
+        error instanceof AppError && ['PermissionError', 'ValidationError', 'NotFoundError'].includes(error.type) ? null : Promise.reject(error)
+      return metaFor(table).then(() => countDocs(table, filters, user)).catch(uncountable)
     }),
     create: (table, values) => operation(() => save(table, values, true)),
     update: (table, values) => operation(() => save(table, values, false)),
@@ -299,18 +313,20 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
       // lifecycle connection while it calls out.
       const inTransaction = async (step: RuntimeReadHandler) => {
         const context = callerDocuments(app, contribution.tables, user, linkedTables(setup.settings))
-        const { get, list, activity, isReader } = context.documents
+        const { get, list, count, activity, isReader } = context.documents
         const base = baseTablesReader(app, contribution.baseTables, linkedTables(setup.settings))
         const proposals = proposalsReader(app, user, contribution.entryTable)
         return runRead(app, name, user, step, contribution, { authorization, payload, setup, provenance },
-          Object.freeze({ get, list, activity, isReader }), async () => { await context.close(); await base.close(); await proposals.close() }, undefined, base.helper, proposals.helper)
+          Object.freeze({ get, list, count, activity, isReader }), async () => { await context.close(); await base.close(); await proposals.close() }, undefined, base.helper, proposals.helper)
       }
       if (outbound) {
         // #967: the one chance to read documents before the transaction closes.
         const prepared = handler.prepare ? (await inTransaction(handler.prepare)).answer.result : undefined
         return { outbound: { handler, contribution, frozen: { authorization, payload, setup, provenance, prepared }, identity: await servingIdentity(app) } }
       }
-      return await inTransaction(handler)
+      // #1254: a read writes nothing, so its permission facts (who holds which role, what each Table's policy
+      // and grants are) cannot change while it runs: each is read once, not once per base Table it lists.
+      return await withStablePermissionReads(() => inTransaction(handler))
     })
   })
   // #667: drops are recorded once the read's transaction has committed, on
@@ -345,9 +361,9 @@ interface Outbound {
 function closedDocuments(): never {
   throw new AppError('ValidationError', 'This read is outbound and its transaction has closed: read documents in a read that is not outbound')
 }
-const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, activity: closedDocuments, isReader: closedDocuments })
-const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments })
-const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, routeFor: closedDocuments, modeOf: closedDocuments })
+const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, count: closedDocuments, activity: closedDocuments, isReader: closedDocuments })
+const CLOSED_BASE_TABLES: RuntimeReadContext['baseTables'] = Object.freeze({ list: closedDocuments, available: closedDocuments, changedBy: closedDocuments })
+const CLOSED_PROPOSALS: RuntimeReadContext['changeProposals'] = Object.freeze({ list: closedDocuments, mayDecide: closedDocuments, mayDecideMany: closedDocuments, routeFor: closedDocuments, modeOf: closedDocuments })
 
 interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance; prepared?: unknown }
 

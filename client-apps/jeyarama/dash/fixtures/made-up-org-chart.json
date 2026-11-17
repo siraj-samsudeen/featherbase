@@ -170,6 +170,13 @@
    "Active"
   ],
   [
+   "LKS-S11",
+   "Girls Tops",
+   "LKS",
+   "LKS-F2",
+   "Active"
+  ],
+  [
    "HIL-S1",
    "Accessories",
    "HIL",
@@ -683,6 +690,55 @@
    "name": "Nisha No-Job",
    "says": "on no staff list: the no-access page",
    "jobs": null
+  },
+  {
+   "key": "same-leader",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): Team Leader of Sarees at Lakeside",
+   "jobs": [
+    [
+     "Team Leader",
+     "LKS",
+     {
+      "section": "LKS-S1"
+     }
+    ]
+   ]
+  },
+  {
+   "key": "same-office",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): Head office staff",
+   "jobs": [
+    [
+     "Head office staff",
+     "HOF",
+     {}
+    ]
+   ]
+  },
+  {
+   "key": "same-two-jobs",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): Store Manager at Hillview and Floor Manager at Riverside",
+   "jobs": [
+    [
+     "Store Manager",
+     "HIL",
+     {}
+    ],
+    [
+     "Floor Manager",
+     "RIV",
+     {}
+    ]
+   ]
+  },
+  {
+   "key": "same-no-job",
+   "name": "Kumar",
+   "says": "one of four staff named Kumar (#1216): on the staff list with no job today",
+   "jobs": []
   }
  ],
  "sectionPeople": [
@@ -830,7 +886,7 @@
      "2002"
     ]
    ],
-   "says": "Department Manager at Lakeside, reporting to Mani Manager: sets up their department on Your department (#1195)"
+   "says": "Department Manager at Lakeside, reporting to Mani Manager: their department is pre-filled from their team as Bags & Silk, waiting for Mani; the banner asks \"Is this right?\" (#1205)"
   },
   {
    "key": "bagsleader",
@@ -878,7 +934,83 @@
      "2002"
     ]
    ],
-   "says": "Department Manager at Lakeside, reporting to Mani Manager, with no pre-fill: sets up their department from the card (#1195)"
+   "says": "Department Manager at Lakeside, reporting to Mani Manager, with no department: sets it up from the card (#1195)"
+  },
+  {
+   "key": "sysmanager",
+   "name": "Sam System-Manager",
+   "code": null,
+   "roles": [
+    "System Manager"
+   ],
+   "jobs": [],
+   "says": "System Manager with no job: approves nothing, because approvers come from the reporting line (Master Data Editor is the only fallback)"
+  },
+  {
+   "key": "categoryhead",
+   "name": "Hema Category-Head",
+   "code": "2020",
+   "roles": [
+    "Team Report Manager"
+   ],
+   "jobs": [
+    [
+     "JA-2020-HOF",
+     "Head office staff",
+     "HOF",
+     null,
+     null
+    ]
+   ],
+   "says": "Team Report Manager: gives reports to Usha and Vinod, who report to her (#1217)"
+  },
+  {
+   "key": "buyerone",
+   "name": "Usha Buyer-One",
+   "code": "2021",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2021-HOF",
+     "Head office staff",
+     "HOF",
+     null,
+     "2020"
+    ]
+   ],
+   "says": "Reports to Hema; Vendor sales given to her by the Access Manager"
+  },
+  {
+   "key": "buyertwo",
+   "name": "Vinod Buyer-Two",
+   "code": "2022",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2022-HOF",
+     "Head office staff",
+     "HOF",
+     null,
+     "2020"
+    ]
+   ],
+   "says": "Reports to Hema"
+  },
+  {
+   "key": "buyertwosame",
+   "name": "Vinod Buyer-Two",
+   "code": "2023",
+   "roles": [],
+   "jobs": [
+    [
+     "JA-2023-LKS",
+     "Staff",
+     "LKS",
+     null,
+     "2020"
+    ]
+   ],
+   "says": "A second Vinod Buyer-Two in Hema's team, at Lakeside: told apart by code, job and site (#1216, #1217)"
   }
  ],
  "noSignIn": [
@@ -1126,7 +1258,8 @@
    "Kids",
    "2012",
    [
-    "LKS-S3"
+    "LKS-S3",
+    "LKS-S11"
    ]
   ],
   [
@@ -1143,5 +1276,31 @@
    "2008",
    []
   ]
- ]
+ ],
+ "_departmentStart": "Every run puts the made-up Department Managers without a department back to their start: their set-ups are removed, then each in prefills is pre-filled again as the loader would (#1205). Sections are names at that store; flagged ones are shared with another Team Leader.",
+ "prefills": [
+  {
+   "store": "LKS",
+   "employee": "2010",
+   "sections": [
+    "Bags",
+    "Silk"
+   ],
+   "flagged": [
+    "Silk"
+   ]
+  }
+ ],
+ "heads": {
+  "_about": "Made-up cluster heads a Cluster row names in cluster_manager, by Employee id (rama_dw #4588): each reaches every store in the cluster, whole.",
+  "people": [
+   {
+    "key": "clusterhead",
+    "name": "Kiran Cluster-Head",
+    "code": "3911",
+    "cluster": "NORTH",
+    "says": "named head of cluster North: Lakeside and Hillview, whole"
+   }
+  ]
+ }
 }

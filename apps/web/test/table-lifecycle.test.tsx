@@ -7,6 +7,7 @@ import { tableSlug } from 'shared'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
+import { openListMenu } from './list-menus'
 
 const NOTE = 'Journey Lifecycle Note'
 const REF = 'Journey Lifecycle Ref'
@@ -33,12 +34,12 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
   await waitFor(() => expect(screen.getByTestId('list-total')).toHaveTextContent('0 total'))
 
   // J1.2 — Report and Import sit behind the toolbar's disclosures; New is in the toolbar.
-  await user.click(screen.getByRole('button', { name: 'View: List' }))
+  await openListMenu('View')
   expect(await screen.findByTestId('open-report')).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'View: List' }))
-  await user.click(screen.getByRole('button', { name: 'List actions' }))
+  await openListMenu('View')
+  await openListMenu('List actions')
   expect(await screen.findByTestId('open-import')).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'List actions' }))
+  await openListMenu('List actions')
   expect(screen.getByTestId('list-new')).toBeInTheDocument()
   // The empty Table offers the same way forward inline.
   expect(await screen.findByTestId('list-empty-new')).toBeInTheDocument()

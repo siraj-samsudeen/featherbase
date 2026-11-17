@@ -1,7 +1,7 @@
 // #772, #969: a MotherDuck source, read with the instance's one token — the calls the
 // connect page, the source page and the browser make, and where each person
 // last browsed (a per-user localStorage entry, like recents).
-import { api, getSessionUser } from './api'
+import { api, getSignedInUser } from './api'
 
 const SOURCES = '/api/table/Data%20Source'
 const enc = encodeURIComponent
@@ -22,7 +22,7 @@ export const previewTable = (name: string, database: string, schema: string, tab
   api.get<TablePreview>(`${SOURCES}/${enc(name)}:preview?database=${enc(database)}&schema=${enc(schema)}&table=${enc(table)}`)
 
 export interface BrowsePlace { database?: string; schema?: string }
-const placeKey = (source: string) => `fb-warehouse-place:${getSessionUser()?.row_id ?? ''}:${source}`
+const placeKey = (source: string) => `fb-warehouse-place:${getSignedInUser()?.row_id ?? ''}:${source}`
 
 export interface BrowseContext extends BrowsePlace {
   table?: string
@@ -43,7 +43,7 @@ export function browserHref(source: string, context: BrowseContext): string {
 }
 
 // Only copy setup drafts, never credentials. Scoped to this tab and signed-in person.
-const draftKey = (identity: string) => `fb-warehouse-copy:${getSessionUser()?.row_id ?? ''}:${identity}`
+const draftKey = (identity: string) => `fb-warehouse-copy:${getSignedInUser()?.row_id ?? ''}:${identity}`
 export function readCopyDraft<T>(identity: string): T | undefined {
   try {
     return JSON.parse(sessionStorage.getItem(draftKey(identity)) ?? 'null') ?? undefined

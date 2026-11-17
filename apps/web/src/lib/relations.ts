@@ -2,7 +2,7 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { listResource } from './api'
 import type { Connection } from './connections'
 import { dataColumns } from './list-view-columns'
-import { linkRowsTable, metaQuery, type TableMeta } from './meta'
+import { linkRowsTable, metaQuery, tableLabel, type TableMeta } from './meta'
 import { rowTitleQuery } from './row-titles'
 
 // #910 D3: what the drill pane, the map and the tree show about one row,
@@ -73,12 +73,14 @@ export const groupKey = (c: { table: string; column: string; via?: string | null
 export function backlinkGroups(
   connections: Connection[],
   labelOf: (c: Connection) => string = (c) => c.column,
+  // #1237: a group is named by its Table's label ("Support event"), not its name.
+  tableLabelOf: (table: string) => string = (table) => table,
 ): BacklinkGroup[] {
   const perTable = new Map<string, number>()
   for (const c of connections) perTable.set(c.table, (perTable.get(c.table) ?? 0) + 1)
   return connections.map((c) => ({
     key: groupKey(c),
-    label: perTable.get(c.table)! > 1 ? `${c.table} · ${labelOf(c)}` : c.table,
+    label: perTable.get(c.table)! > 1 ? `${tableLabelOf(c.table)} · ${labelOf(c)}` : tableLabelOf(c.table),
     count: c.count,
     connection: c,
   }))
@@ -168,4 +170,19 @@ export function groupOrder(meta: Pick<TableMeta, 'title_column' | 'id_pattern' |
   const title = meta.title_column && meta.title_column !== 'row_id' ? meta.title_column : undefined
   if (title && (meta.data_source || !generatedIds(meta.id_pattern))) return 'row_id asc'
   return title ? `${title} asc` : undefined
+}
+
+/** #1237: the groups of a row's connections, named as people read them: each
+ *  linked Table by its label, and two links from one Table by their columns'
+ *  labels. Loads the metadata of every Table involved. */
+export function useBacklinkGroups(connections: Connection[] | undefined): BacklinkGroup[] {
+  const tables = [...new Set((connections ?? []).flatMap((c) => [c.via ?? c.table, c.table]))]
+  const metas = useQueries({ queries: tables.map((t) => metaQuery(t)) })
+  if (!connections) return []
+  const metaOf = (t: string) => metas[tables.indexOf(t)]?.data
+  return backlinkGroups(
+    connections,
+    (c) => metaOf(c.via ?? c.table)?.columns.find((x) => x.column_name === c.column)?.label ?? c.column,
+    (t) => tableLabel(t, metaOf(t)),
+  )
 }

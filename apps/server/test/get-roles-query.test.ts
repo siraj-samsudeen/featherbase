@@ -15,7 +15,7 @@ vi.mock('../src/db', async (original) => {
   } }) }
 })
 
-const { getRoles } = await import('../src/permissions')
+const { getRoles, getRolesMany } = await import('../src/permissions')
 const { sql } = await import('../src/db')
 
 describe('getRoles', () => {
@@ -26,5 +26,16 @@ describe('getRoles', () => {
     counter.queries = 0
     expect(await getRoles(person)).toContain('System Manager')
     expect(counter.queries).toBe(1)
+  })
+
+  // #1254: Waiting for you asks about everyone who might decide a waiting change; one query, however many.
+  test('reads many people\'s roles in one query, each as getRoles gives it', async () => {
+    const people = [await makePerson({ email: 'roles-a@example.test' }), await makePerson({ email: 'roles-b@example.test' }), await makePerson({ email: 'roles-c@example.test' })]
+    await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values ('hr-1254', ${people[1]}, 'Person', 'roles', 'System Manager')`
+    await getRolesMany(people)
+    counter.queries = 0
+    const many = await getRolesMany(people)
+    expect(counter.queries).toBe(1)
+    for (const person of people) expect(many.get(person)).toEqual(await getRoles(person))
   })
 })

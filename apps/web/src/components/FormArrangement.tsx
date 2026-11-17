@@ -6,15 +6,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { api } from '../lib/api'
 import { ROW_STAMPS, linkRowsTable, type ColumnDef, type TableMeta } from '../lib/meta'
-import { ShownName } from '../lib/people'
+import { ShownName, usePrincipalNameState } from '../lib/people'
 import { formatValue, type Settings } from '../lib/settings'
 import { RowTitle } from '../lib/row-titles'
 import { RowLink } from '../lib/row-name'
-import { useIsSystemManager } from '../lib/session'
+import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 import { useNavigation } from '../lib/navigation'
 import {
-  buttonClasses, fmtDate, pillClasses,
+  RecordLink, buttonClasses, fmtDate, pillClasses,
   Braces, CalendarDays, ChevronDown, ChevronRight, Hash, Image, Link2, ToggleRight, Type, type LucideIcon,
 } from '@featherbase/shop-floor'
 
@@ -310,7 +310,7 @@ function stampDay(value: unknown): string {
 
 /** "Created 04-Nov-2026 by Asha, updated 05-Nov-2026 by Ravi": the row's
  *  own stamps (ROW_STAMPS, as the reading presentation names them). */
-function RowStamps({ values }: { values: Record<string, unknown> }) {
+function RowStamps({ values, table }: { values: Record<string, unknown>; table?: string }) {
   const parts = (['created_at', 'updated_at'] as const).flatMap((at) => {
     const day = isEmpty(values[at]) ? '' : stampDay(values[at])
     if (!day) return []
@@ -321,21 +321,32 @@ function RowStamps({ values }: { values: Record<string, unknown> }) {
     <span key={p.at}>
       {i > 0 && ', '}
       {i > 0 ? ROW_STAMPS[p.at].label.toLowerCase() : ROW_STAMPS[p.at].label} {p.day}
-      {p.by && <> by <ShownName id={p.by} /></>}
+      {p.by && <> by <StampedBy id={p.by} table={table} /></>}
     </span>
   ))}</>
 }
 
+/** Who stamped a row. A person is a record, so a link to their Person row for
+ *  a viewer who may open it (#1253: every record is a link); a service account
+ *  or a system step is read as its name. */
+function StampedBy({ id, table }: { id: string; table?: string }) {
+  const caps = useCapabilities()
+  const { name } = usePrincipalNameState(id, table)
+  const person = id === 'Administrator' || id.startsWith('psn_')
+  if (!person || !name) return <ShownName id={id} actorOf={table} />
+  return <RecordLink table="Person" rowId={id} name={name} canOpen={Boolean(caps && (caps.manage || caps.tables.includes('Person')))} />
+}
+
 /** When the row was created and changed, and by whom, on one quiet line:
  *  the platform's stamps, then any bookkeeping columns a source keeps. */
-export function BookkeepingLine({ fields, values, settings }: { fields: ColumnDef[]; values: Record<string, unknown>; settings: Settings }) {
+export function BookkeepingLine({ table, fields, values, settings }: { table?: string; fields: ColumnDef[]; values: Record<string, unknown>; settings: Settings }) {
   const { t } = useI18n()
   const shown = fields.filter((f) => !isEmpty(values[f.column_name]))
   const stamped = !isEmpty(values.created_at) || !isEmpty(values.updated_at)
   if (!shown.length && !stamped) return null
   return (
     <p className="mt-3 border-t border-border pt-2 text-xs text-ink-subtle" data-testid="bookkeeping-line">
-      {stamped && <RowStamps values={values} />}
+      {stamped && <RowStamps values={values} table={table} />}
       {shown.map((f, i) => (
         <span key={f.column_name}>
           {(i > 0 || stamped) && ' · '}

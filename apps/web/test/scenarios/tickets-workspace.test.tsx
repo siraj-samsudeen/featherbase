@@ -53,7 +53,7 @@ function header(title: string) {
   const heading = within(screen.getByRole('main')).getAllByRole('heading').find(h => h.textContent?.trim() === title && !h.closest(`${BAR}, ${SIDEBAR}`))
   expect(heading, `a heading for "${title}"`).toBeTruthy()
   let box = heading!.parentElement
-  while (box && box.tagName !== 'MAIN' && !/Assigned to/.test(box.textContent ?? '')) box = box.parentElement
+  while (box && box.tagName !== 'MAIN' && !/Assigned To/.test(box.textContent ?? '')) box = box.parentElement
   const named = !!box && box.tagName !== 'MAIN'
   const actions = named ? [...box!.querySelectorAll('button')]
     .filter(b => b.getAttribute('role') !== 'tab' && !b.closest('[role=tablist]') && !b.disabled).map(b => b.textContent?.trim()) : []
@@ -126,7 +126,7 @@ describe('tickets-workspace', () => {
     })
     await step("the ticket's title, state and assignee are shown at the top of the page", () => {
       const { box } = header(selected.title)
-      expect(box, 'the ticket header shows who it is assigned to ("Assigned to")').toBeTruthy()
+      expect(box, 'the ticket header shows who it is assigned to ("Assigned To")').toBeTruthy()
       expect(box!.textContent).toMatch(new RegExp(selected.ticket_state, 'i'))
       // No introductory text sits above the work: the page opens on the queue's toolbar.
       const main = screen.getByRole('main')

@@ -10,6 +10,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { resolveAccessTokenCaller, type AccessTokenCaller } from './auth'
 import { runAsAgent } from './agent-context'
+import { mcpChallenge } from './agent-auth-routes'
 import { config } from './config'
 import { AppError } from './errors'
 import { getMeta } from './meta'
@@ -176,7 +177,11 @@ export function mcpHandler(app: ApiApp) {
     if (origin && !config.allowedOrigins.includes(origin))
       throw new AppError('PermissionError', `A page on ${origin} may not reach /mcp`)
     const authorization = c.req.header('authorization')
-    const caller: AccessTokenCaller = await resolveAccessTokenCaller(authorization)
+    // #1207: a caller without a usable key learns where to sign in (RFC 9728).
+    const caller: AccessTokenCaller = await resolveAccessTokenCaller(authorization).catch((error: unknown) => {
+      c.header('WWW-Authenticate', mcpChallenge(c))
+      throw error
+    })
     const mark = { token_id: caller.token.id, token_label: caller.token.label }
     const api = async (method: string, path: string, body?: Json): Promise<Json> => {
       const res = await runAsAgent(mark, () => app.request(path, {

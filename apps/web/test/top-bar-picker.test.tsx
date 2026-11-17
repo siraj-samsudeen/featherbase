@@ -68,16 +68,22 @@ test("on the app's address the bar draws the declared picker, named by its label
   onAddressThatOpens('barproof')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   const store = await picker()
-  expect(screen.getByTestId('top-bar')).toContainElement(store)
+  // #1253 (Siraj, 17-Nov): beside a sidebar there is no top bar; the app's
+  // pickers sit inside the white page panel, at its top, right-aligned.
+  expect(screen.getByTestId('page-panel')).toContainElement(store)
+  expect(screen.getByTestId('page-pickers')).toContainElement(store)
+  expect(screen.getByTestId('page-header')).not.toContainElement(store)
 })
 
-test("the picker sits after the app's name, before the Account menu", async ({ admin, createUser }) => {
+test("the picker sits inside the page panel, apart from the sidebar's switcher and Account menu", async ({ admin, createUser }) => {
   const reader = await readerOf(admin, createUser, STORES)
   onAddressThatOpens('barproof')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   const store = await picker()
-  const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
-  expect([before(screen.getByTestId('top-bar-name'), store), before(store, screen.getByTestId('session-user'))]).toEqual([true, true])
+  const sidebar = screen.getByTestId('account-sidebar')
+  expect(sidebar).not.toContainElement(store)
+  expect(sidebar).toContainElement(screen.getByTestId('top-bar-name'))
+  expect(sidebar).toContainElement(await screen.findByTestId('session-user'))
 })
 
 test("the picker offers the reader's own options, in the order the app's read gives them", async ({ admin, createUser }) => {
@@ -94,9 +100,9 @@ test('with exactly one option the bar shows it as plain text, with no picker', a
   const reader = await readerOf(admin, createUser, [['Riverside', 'S101']])
   onAddressThatOpens('barproof')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
-  const bar = await screen.findByTestId('top-bar')
+  const bar = await screen.findByTestId('page-pickers')
   expect(await within(bar).findByText('Riverside')).toBeInTheDocument()
-  expect(within(bar).queryByRole('combobox')).not.toBeInTheDocument()
+  expect(within(bar).queryByRole('combobox', { name: 'Store' })).not.toBeInTheDocument()
 })
 
 /** Long enough for the bar's own request to have answered. */
@@ -108,7 +114,9 @@ test('with no options the control is not shown', async ({ admin, createUser }) =
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   await screen.findByTestId('session-user')
   await settle()
-  expect(within(screen.getByTestId('top-bar')).queryByText('Store')).not.toBeInTheDocument()
+  // With nothing to pick, nothing is drawn in the panel, and the phone's header holds only its menu button.
+  expect(screen.queryByTestId('page-pickers')).not.toBeInTheDocument()
+  expect(screen.getByTestId('page-header').className).toMatch(/\bmd:hidden\b/)
 })
 
 test("on the Admin address the bar draws no app's picker", async ({ admin, createUser }) => {
@@ -201,12 +209,13 @@ test('Escape closes the list and leaves focus on the picker', async ({ admin, cr
 })
 
 // The next three moved from e2e/top-bar-picker.spec.ts (#1080).
-test("Tab from the app's name reaches the picker", async ({ admin, createUser }) => {
+test('the picker is reached by Tab after the sidebar, at the top of the page', async ({ admin, createUser }) => {
   const reader = await readerOf(admin, createUser, STORES)
   onAddressThatOpens('barproof')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   const store = await picker()
-  screen.getByTestId('top-bar-name').focus()
+  // #1253: the picker is the page's first stop: from the sidebar's last control, Tab reaches it next.
+  screen.getByTestId('sidebar-collapse').focus()
   await userEvent.tab()
   expect(store).toHaveFocus()
 })

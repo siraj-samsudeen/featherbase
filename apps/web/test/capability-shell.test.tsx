@@ -1,7 +1,7 @@
 // #410: the shell shows only what the person can use. Three layouts, driven
 // by `capabilities` from /api/whoami — computed on the server, never guessed
 // from role names in the browser.
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
@@ -15,6 +15,7 @@ import { setSession } from '../src/lib/api'
 import { ManageOnly } from '../src/pages/RestrictedShell'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
+import { hasListMenu, openListMenu, openSidebarNew } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 
@@ -53,6 +54,7 @@ test('management content stays hidden until the server confirms the current pers
 test('a System Manager keeps the whole Admin shell', async ({ admin }) => {
   await seed(admin)
   await renderApp('/featherbase/admin/all-tables', admin)
+  await openSidebarNew({ timeout: 8000 })
   for (const id of ADMIN_ONLY_TESTIDS) expect(await screen.findByTestId(id)).toBeInTheDocument()
   expect(screen.getByTestId('all-tables-link')).toBeInTheDocument()
   expect(screen.getByTestId('access-tokens-link')).toBeInTheDocument()
@@ -89,9 +91,12 @@ test('a viewer-only person reaches their sign-in methods on the account page, st
   const urls = recordCalls()
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, tl)
   expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
-  expect(screen.getByTestId('top-bar')).toBeInTheDocument()
+  // #1253: the account page's chrome is the shared sidebar, with the switcher at its top.
+  expect(within(screen.getByTestId('account-sidebar')).getByTestId('top-bar-name')).toBeInTheDocument()
   for (const id of [...ADMIN_ONLY_TESTIDS, 'all-tables-link', 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-  expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog|unread_count|events|navigable_tables)/.test(u))).toEqual([])
+  // #1227: the shared switcher reads the open app catalog on every signed-in page
+  // (only the apps this person can open); the closed-app list stays a System Manager's.
+  expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog\/closed|unread_count|events|navigable_tables)/.test(u))).toEqual([])
 })
 
 test('a person with neither the viewer role nor a Table grant lands on a plain no-access page, which asks for access', async ({ admin, createUser }) => {
@@ -101,7 +106,7 @@ test('a person with neither the viewer role nor a Table grant lands on a plain n
   await renderApp('/featherbase/admin/home/home', nobody)
   await screen.findByTestId('no-access')
   for (const id of [...ADMIN_ONLY_TESTIDS, 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-  expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog|unread_count|events)/.test(u))).toEqual([])
+  expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog\/closed|unread_count|events)/.test(u))).toEqual([])
   // #489: signing out is in the shared top bar's Account menu.
   await userEvent.click(await screen.findByTestId('session-user'))
   await userEvent.click(screen.getByTestId('logout'))
@@ -171,9 +176,9 @@ test('a Table list offers Columns, Merge and Import only to a System Manager, an
   await renderApp('/featherbase/admin/table/back-office', clerk)
   await screen.findByTestId('list-new')
   // Import is a System Manager tool (its route and wizard are), even for someone who can create rows.
-  await userEvent.click(await screen.findByRole('button', { name: 'List actions' }))
+  await openListMenu('List actions')
   expect(screen.queryByTestId('open-import')).not.toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'Table administration' })).not.toBeInTheDocument()
+  expect(await hasListMenu('Table administration')).toBe(false)
   expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
   expect(screen.queryByTestId('open-merge')).not.toBeInTheDocument()
   cleanup()
@@ -187,16 +192,16 @@ test('a Table list offers Columns, Merge and Import only to a System Manager, an
   cleanup()
 
   await renderApp('/featherbase/admin/table/back-office', admin)
-  await userEvent.click(await screen.findByRole('button', { name: 'Table administration' }))
+  await openListMenu('Table administration')
   expect(await screen.findByTestId('open-columns')).toBeInTheDocument()
   expect(screen.getByTestId('open-merge')).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'List actions' }))
+  await openListMenu('List actions')
   expect(screen.getByTestId('open-import')).toBeInTheDocument()
   // Escape from a menu item dismisses the disclosure and returns focus to
   // its trigger, so keyboard users can continue along the toolbar.
   screen.getByTestId('open-import').focus()
   await userEvent.keyboard('{Escape}')
-  const actions = screen.getByRole('button', { name: 'List actions' })
+  const actions = screen.getByRole('button', { name: 'More' })
   expect(actions).toHaveAttribute('aria-expanded', 'false')
   expect(actions).toHaveFocus()
   expect(screen.queryByTestId('open-import')).not.toBeInTheDocument()

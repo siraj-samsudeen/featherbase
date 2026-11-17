@@ -1,12 +1,14 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
-import { OPEN_ROLES, PLATFORM_ROLES, getRoles } from './permissions'
+import { OPEN_ROLES, PLATFORM_ROLES, assertPermission, getRoles } from './permissions'
+import { canUseAdmin } from './landing'
 import { NoPersonScope, coversPersonScope, resolvePersonScope } from './person-scope'
-import { findScopeProvider } from './runtime-packages'
+import { appCatalog, findScopeProvider } from './runtime-packages'
 import { principalReach, type TableReach } from './token-reach'
 import { rowTitles } from './row-titles'
 import { everyoneRoles } from './everyone-roles'
+import { actorNames } from './actor-names'
 
 // #628: "What can this person see, and why". The platform's own reasons for a
 // person's access, as one answer: their roles (who gave each, and when), the
@@ -24,17 +26,49 @@ export interface ExplainedRole {
   /** #923: held because System Settings gives it to everyone who signs in. */
   everyone: boolean
   given_by: string | null
+  /** #1224: who gave it, by name, even when the viewer may not read Person. */
+  given_by_name: string | null
   given_at: string | null
+}
+
+/** #1224: a Table as a reader says it, so the page can group by module and
+ *  say "Reports (Dash)" instead of dash.report_access. */
+export interface ExplainedTable extends TableReach {
+  label: string
+  module: string
+  app: string | null
+  /** A mandatory privacy policy keeps some of its rows to the people they
+   *  belong to (a shared or inherited policy; a roles-only one admits roles
+   *  and keeps no row private, Codex round 16), whatever the grants say. */
+  keeps_private: boolean
 }
 
 export interface AccessExplanation {
   person: string
+  /** #1224: the person's display name, for the page title; the viewer may
+   *  open this page, so who it is about is not hidden from them. */
+  person_name: string | null
+  /** #1224: the apps the person can open, by title, for the summary. */
+  apps: { name: string; title: string; href: string }[]
+  /** #1224: the Tables, by label, whose mandatory privacy policy keeps some
+   *  rows to the people they belong to — of those reached, or every one for
+   *  someone who reaches every Table (Codex round 15). */
+  private_tables: string[]
   every_table: boolean
   roles: ExplainedRole[]
-  read: TableReach[]
-  change: TableReach[]
-  limits: { table: string; value: string; title: string | null; set_by: string; set_at: string }[]
-  shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_at: string }[]
+  read: ExplainedTable[]
+  change: ExplainedTable[]
+  /** #1224: which of the Tables this page names (Role, Person, Service
+   *  Account, each Table reached) the VIEWER may open in the Admin, so the
+   *  page links only what will open. Empty when they cannot use the Admin. */
+  viewer_opens: string[]
+  /** #1224 (Codex adversarial round 6): the ROWS this page names (the
+   *  person, each giver, role, limited and shared row) that the viewer may
+   *  open, read as the viewer with row rules and Data Scope applied; a link
+   *  to one row is drawn only when it is here. */
+  viewer_opens_rows: { table: string; row_id: string }[]
+  limits: { table: string; value: string; title: string | null; set_by: string; set_by_name: string | null; set_at: string }[]
+  shares: { table: string; row_id: string; title: string | null; write: boolean; reshare: boolean; shared_by: string; shared_by_name: string | null; shared_at: string }[]
   /** The places the instance's scope-providing app gives the person today,
    *  each with the reasons the app gives (Q1 C). Null when no app provides a
    *  scope. Labels and reasons only, never a filter value. */
@@ -45,6 +79,16 @@ export interface AccessExplanation {
     problem: NoPersonScope['reason'] | null
     places: { label: string; reasons: { text: string; since: string | null; until: string | null }[] }[]
   } | null
+}
+
+/** A Table's label, else its name in words: "dash.report_access" reads
+ *  "Report access". */
+export function tableLabel(name: string, label: unknown): string {
+  const given = String(label ?? '').trim()
+  if (given) return given
+  const bare = name.includes('.') ? name.slice(name.indexOf('.') + 1) : name
+  const words = bare.replace(/[_-]+/g, ' ').trim()
+  return words ? words[0]!.toUpperCase() + words.slice(1) : name
 }
 
 const iso = (value: unknown) => (value as Date).toISOString()
@@ -132,12 +176,12 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
     const role = String(r.role)
     // A role given before history recorded roles falls back to its row.
     const from = given.get(role) ?? { by: String(r.created_by), at: iso(r.created_at) }
-    return { role, app: null, through: null, everyone: false, given_by: from.by, given_at: from.at }
+    return { role, app: null, through: null, everyone: false, given_by: from.by, given_by_name: null, given_at: from.at }
   })
   // #923: a person also holds the roles given to everyone who signs in.
   const [isPerson] = await sql`select 1 from person where row_id = ${person} and row_id <> 'Guest'`
   for (const role of isPerson ? await everyoneRoles(sql) : [])
-    if (!roles.some((r) => r.role === role)) roles.push({ role, app: null, through: null, everyone: true, given_by: null, given_at: null })
+    if (!roles.some((r) => r.role === role)) roles.push({ role, app: null, through: null, everyone: true, given_by: null, given_by_name: null, given_at: null })
   // App roles bound to the person's own roles (#620), from available apps only,
   // the same rule getRoles applies.
   const own = roles.map((r) => r.role)
@@ -151,10 +195,19 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
         and b.app = any(${[...activeApps]}::text[])
       order by b.app, b.app_role, b.bound_role`
     for (const b of bound)
-      roles.push({ role: String(b.app_role), app: String(b.app), through: String(b.bound_role), everyone: false, given_by: null, given_at: null })
+      roles.push({ role: String(b.app_role), app: String(b.app), through: String(b.bound_role), everyone: false, given_by: null, given_by_name: null, given_at: null })
   }
 
   const reach = await principalReach(person)
+  const tableNames = [...new Set([...reach.read, ...reach.change].map((t) => t.table))]
+  const defs = new Map((tableNames.length
+    ? await sql`select name, label, module, owner_app,
+      (coalesce(to_jsonb(access_policy), '{}'::jsonb)->>'shared_column' is not null or coalesce(to_jsonb(access_policy), '{}'::jsonb)->>'inherit_column' is not null) as keeps_private from table_def where name in ${sql(tableNames)}` : [])
+    .map((d) => [String(d.name), d]))
+  const described = (t: TableReach): ExplainedTable => {
+    const d = defs.get(t.table)
+    return { ...t, label: tableLabel(t.table, d?.label), module: String(d?.module ?? 'Core'), app: (d?.owner_app as string | null) ?? null, keeps_private: Boolean(d?.keeps_private) }
+  }
   const scope = await scopeOf(person)
 
   const scopeRows = await sql`
@@ -172,19 +225,61 @@ export async function explainAccess(person: string, viewer: string): Promise<Acc
   const titles = new Map((await rowTitles(viewer, refs)).map((t) => [`${t.table}\u0000${t.row_id}`, t.title]))
   const title = (table: string, rowId: string) => titles.get(`${table}\u0000${rowId}`) ?? null
 
+  // #1224: the people (or accounts, or system steps) who gave, set or shared
+  // each of these are named. The viewer may already open this page, so who
+  // acted on it is not hidden from them; only the display name travels.
+  const named = await actorNames([
+    ...roles.map((r) => r.given_by), ...scopeRows.map((r) => r.created_by), ...shareRows.map((r) => r.created_by)])
+  const nameOf = (id: unknown) => (id == null ? null : named.get(String(id)) ?? null)
+  for (const r of roles) r.given_by_name = nameOf(r.given_by)
+
+  const candidates = [...new Set(['Role', 'Person', 'Service Account', ...tableNames, ...refs.map((r) => r.table)])]
+  const viewer_opens: string[] = []
+  // One after the other: inside a request they share its transaction.
+  const usesAdmin = await canUseAdmin(viewer)
+  if (usesAdmin)
+    for (const table of candidates)
+      if (await assertPermission(viewer, table, 'read').then(() => true, () => false)) viewer_opens.push(table)
+  const actorRef = (id: unknown) => {
+    const row_id = String(id ?? '')
+    return row_id.startsWith('svc_') ? { table: 'Service Account', row_id } : { table: 'Person', row_id }
+  }
+  const linkable = [
+    actorRef(person),
+    ...roles.filter((r) => r.given_by).map((r) => actorRef(r.given_by)),
+    ...scopeRows.map((r) => actorRef(r.created_by)), ...shareRows.map((r) => actorRef(r.created_by)),
+    ...roles.map((r) => ({ table: 'Role', row_id: r.role })),
+    ...refs,
+  ].filter((r) => r.row_id && viewer_opens.includes(r.table))
+  const viewer_opens_rows = usesAdmin && linkable.length
+    ? (await rowTitles(viewer, linkable)).map((t) => ({ table: t.table, row_id: t.row_id })) : []
+
+  const apps = (await appCatalog(person)).map((a) => ({ name: String(a.name), title: String(a.title ?? a.name), href: String(a.href) }))
+
+  const privateDefs = reach.every_table
+    ? await sql`select name, label from table_def where kind <> 'sub_table'
+        and (coalesce(to_jsonb(access_policy), '{}'::jsonb)->>'shared_column' is not null or coalesce(to_jsonb(access_policy), '{}'::jsonb)->>'inherit_column' is not null) order by coalesce(label, name)`
+    : [...defs.values()].filter((d) => d.keeps_private)
+  const private_tables = privateDefs.map((d) => tableLabel(String(d.name), d.label))
+
   return {
     person,
+    private_tables,
+    person_name: (await actorNames([person])).get(person) ?? null,
+    apps,
     every_table: reach.every_table,
+    viewer_opens,
+    viewer_opens_rows,
     roles,
-    read: reach.read,
-    change: reach.change,
+    read: reach.read.map(described),
+    change: reach.change.map(described),
     limits: scopeRows.map((r) => ({
       table: String(r.allow_table), value: String(r.for_value), title: title(String(r.allow_table), String(r.for_value)),
-      set_by: String(r.created_by), set_at: iso(r.created_at),
+      set_by: String(r.created_by), set_by_name: nameOf(r.created_by), set_at: iso(r.created_at),
     })),
     shares: shareRows.map((r) => ({
       table: String(r.share_table), row_id: String(r.share_name), title: title(String(r.share_table), String(r.share_name)),
-      write: Boolean(r.write), reshare: Boolean(r.share), shared_by: String(r.created_by), shared_at: iso(r.created_at),
+      write: Boolean(r.write), reshare: Boolean(r.share), shared_by: String(r.created_by), shared_by_name: nameOf(r.created_by), shared_at: iso(r.created_at),
     })),
     scope,
   }

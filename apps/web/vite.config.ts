@@ -125,6 +125,10 @@ export default defineConfig({
       // vite server would otherwise serve index.html for it and the redirect
       // that establishes the session would never happen.
       '/preview': api,
+      // #1207: an agent signs in from the agent address alone, so dev is one
+      // origin for /mcp and the metadata documents, as production is.
+      '/mcp': api,
+      '/.well-known': api,
       '/ws': { target: `ws://localhost:${apiPort}`, ws: true },
     },
   },

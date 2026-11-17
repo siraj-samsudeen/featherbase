@@ -74,11 +74,19 @@ export interface DecisionApproval {
 /** #975: declared base Tables, read as the app: the fields named must be declared. */
 export interface BaseTablesHelper {
   list(table: string, args: ActionListArgs & { fields: string[] }): Promise<ActionRow[]>
+  /** #1230: whether `list` can read this Table now: declared, reachable, and every declared column there.
+   *  False, never a failure, for a Table not linked, deleted, reshaped or unsupported. */
+  available(table: string): Promise<boolean>
+  /** featherbase #1219: who last changed a column the app reads, per row, from the row's own history.
+   *  Rows with no recorded change of it are left out. At most 500 rows. */
+  changedBy(table: string, args: { rows: string[]; column: string }): Promise<Record<string, { by: string; at: string }>>
 }
 export interface ChangeProposalsReader {
   list(filter?: ProposalFilter): Promise<ChangeProposal[]>
   /** Whether the caller may decide a proposal by this maker, with these approvers. */
   mayDecide(maker: string, approvers: ApproverRequest): Promise<boolean>
+  /** #1254: mayDecide for many at once, in order; who can act is read for all of them together. */
+  mayDecideMany(asks: { maker: string; approvers: ApproverRequest }[]): Promise<boolean[]>
   /** Who these approvers come to now for this maker; null when nobody can act. */
   routeFor(maker: string, approvers: ApproverRequest): Promise<{ people: string[]; roles: string[] } | null>
   /** #1191: how one of the app's declared approval types works on this instance now. */
@@ -113,6 +121,14 @@ export interface RuntimeActionContext {
    *  person the caller may not read maps to null. Never contact data. */
   readonly people: {
     names(ids: string[]): Promise<Record<string, string | null>>
+    /** #1224: who did something, by name: a person's display name even when
+     *  the caller may not read Person, a service account's readable name
+     *  ("Automation (installer)"), a system step's phrase ("Staff roster sync").
+     *  Only an id that acted on this app's own data — created or last changed
+     *  one of its rows, or made or decided one of its change proposals — is
+     *  named; any other id maps to null.
+     *  Never contact data. */
+    actorNames(ids: string[]): Promise<Record<string, string | null>>
     /** #963: which of these ids are enabled people, as the caller may see them:
      *  never a built-in or merged-away account, nor a service account. */
     enabled(ids: string[]): Promise<string[]>
@@ -148,6 +164,8 @@ export interface RuntimeActionContext {
     get(table: string, rowId: string): Promise<ActionRow>
     members(table: string): Promise<{ row_id: string; full_name: string }[]>
     list(table: string, args?: ActionListArgs): Promise<ActionRow[]>
+    /** #1196: how many rows match, as the caller; null for a linked Table the caller may not read. */
+    count(table: string, filters?: ActionListArgs['filters']): Promise<number | null>
     create(table: string, values: ActionRow): Promise<ActionRow>
     update(table: string, values: ActionRow): Promise<ActionRow>
     delete(table: string, rowId: string, updatedAt: string): Promise<void>
@@ -183,7 +201,7 @@ export interface DatasetAnswer {
 }
 
 export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents' | 'mail' | 'changeProposals'> {
-  readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'activity' | 'isReader'>
+  readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'count' | 'activity' | 'isReader'>
   /** #967: what this outbound read's `prepare` answered; undefined everywhere else. */
   readonly prepared?: unknown
   /** #975: a read can list proposals, never make or decide one. */

@@ -1,4 +1,5 @@
 import { getSystemSettings } from './settings'
+import { grantWords } from './app-permission-format'
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
@@ -12,7 +13,7 @@ import { tableAccessPolicy } from './mandatory-access'
 import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
-import { callerDocuments, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
+import { callerDocuments, callerRoles, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { approvalTypesDeclaration, baseTablesDeclaration } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
@@ -32,6 +33,8 @@ interface PackageHookContext {
   row: Record<string, unknown>
   old?: Record<string, unknown>
   user: string
+  /** #1217: the writer's roles, read fresh for this save, so a rule can treat writers differently. */
+  readonly roles: readonly string[]
   isNew: boolean
   documents: Pick<import('shared').RuntimeActionContext['documents'], 'get' | 'list' | 'members'>
   reject(message: string, fields?: Record<string, string>): never
@@ -98,6 +101,15 @@ const accessDeclaration = z.object({
   approvers: z.array(z.string().min(1)).optional(),
   /** Where on the app's own pages approvers see who is waiting: a query string, like ?view=access. */
   page: z.string().regex(/^\?[a-z0-9_=&-]{1,100}$/).optional(),
+  /** #1173: how a System Manager gives this app's own access from the Waiting
+   *  for access page. `read` lists what can be given to one person (payload
+   *  { person }); `action` gives one of them, with the choice's payload plus
+   *  { person }, under the app's own rules. `title` names the section. */
+  grant: z.object({
+    title: z.string().min(1).max(60),
+    read: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+    action: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+  }).strict().optional(),
 }).strict()
 
 const manifestSchema = z.object({
@@ -105,6 +117,14 @@ const manifestSchema = z.object({
   platformVersion: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'platformVersion must be a month, like 2026-10'),
   name: z.string().regex(/^[a-z][a-z0-9_]{0,30}$/),
   title: z.string().min(1),
+  // #1236: what the app is for, in one line, and its icon (from the tab icon
+  // set), for the app switcher's menu.
+  summary: z.string().min(1).max(80).optional(),
+  icon: z.enum(APP_TAB_ICONS).optional(),
+  // #1237: the app's own page for a row of one of its Tables, as an address
+  // with {row} for the row's id ("/tickets/?ticket={row}"). The Featherbase
+  // record page of such a row offers "Open in <App>".
+  recordPages: z.record(z.string().min(1), z.string().regex(/^\/[^\s]*\{row\}[^\s]*$/, 'a record page is an address of the app with {row} in it')).optional(),
   tables: z.array(tableDefSchema).min(1),
   roles: z.array(z.string().min(1)).optional(),
   permissions: z.array(appPermissionSchema).default([]),
@@ -133,6 +153,13 @@ const manifestSchema = z.object({
   bar: z.array(barControl).optional(),
   // #1046: the app's own gate check and who approves access to it.
   access: accessDeclaration.optional(),
+  // #1222: View as. `role` is the app's own role whose holders may view as
+  // another person, read-only; `people` is the read that finds and describes
+  // people for the picker (payload { q } or { persons }), run as the tester.
+  viewAs: z.object({
+    role: z.string().min(1),
+    people: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+  }).strict().optional(),
   tabs: tabsDeclaration.optional(),
   // #941 (ADR 0019): the app's accent, one of the platform's named set. Any
   // text is accepted here so the app is still found; installing (or upgrading
@@ -393,6 +420,11 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     // Table's mark is checked on every read.
     const notDeclared = provider.unmarkedTables?.find(table => !provider.tables.includes(table))
     if (notDeclared) throw new Error(`A scope provider's unmarked Table ${notDeclared} is not one of the Tables it reads`)
+    const notListed = provider.optionalTables?.find(table => !provider.tables.includes(table))
+    if (notListed) throw new Error(`A scope provider's optional Table ${notListed} is not one of the Tables it reads`)
+    // An app's own Table is installed with the app, so it is never optional.
+    const ownOptional = provider.optionalTables?.find(table => manifest.tables.some(t => t.name === table))
+    if (ownOptional) throw new Error(`A scope provider's own Table ${ownOptional} is installed with the app; it cannot be optional`)
     const ownUnmarked = provider.unmarkedTables?.find(table => manifest.tables.some(t => t.name === table))
     if (ownUnmarked) throw new Error(`A scope provider's own Table ${ownUnmarked} must be marked decides_scope`)
     for (const table of provider.tables) {
@@ -411,10 +443,21 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (barKeys.has(control.sets)) throw new Error(`Two bar controls set ${control.sets}; each sets its own key`)
     barKeys.add(control.sets)
   }
+  // #1237: an app opens only its own rows, on its own pages.
+  for (const [table, address] of Object.entries(manifest.recordPages ?? {})) {
+    if (!manifest.tables.some((declared) => declared.name === table))
+      throw new Error(`The app's record page for ${table} is for a Table that is not one of the app's`)
+    if (!address.startsWith(appHref(manifest.name)))
+      throw new Error(`The app's record page for ${table} is ${address}, which is not one of the app's own pages (${appHref(manifest.name)}…)`)
+  }
   if (manifest.access?.gate && !Object.hasOwn(readOperations, manifest.access.gate))
     throw new Error(`The app's gate is its read ${manifest.access.gate}, which is not one of the app's reads`)
   const strangers = (manifest.access?.approvers ?? []).filter(role => !(manifest.roles ?? []).includes(role))
   if (strangers.length) throw new Error(`The app's access approvers must be its own roles: ${strangers.join(', ')}`)
+  if (manifest.viewAs && !(manifest.roles ?? []).includes(manifest.viewAs.role))
+    throw new Error(`The app's View as role must be one of its own roles: ${manifest.viewAs.role}`)
+  if (manifest.viewAs && !Object.hasOwn(readOperations, manifest.viewAs.people))
+    throw new Error(`The app's View as people are found by its read ${manifest.viewAs.people}, which is not one of the app's reads`)
   // #666: an operation needs only secrets the app declares.
   const declaredSecrets = new Set(secretEntries(manifest.secrets).map(entry => entry.name))
   for (const [kind, operations] of [['read', readOperations], ['action', actionOperations]] as const)
@@ -450,7 +493,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
         const access = callerDocuments(manifest.name, [...names], ctx.user)
         try {
           await (validator as Validator)({
-            row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
+            row: ctx.row, old: ctx.old, user: ctx.user, roles: await callerRoles(ctx.user), isNew: ctx.isNew,
             now: new Date().toISOString(), timeZone: (await getSystemSettings()).time_zone,
             documents: Object.freeze({ get: access.documents.get, list: access.documents.list, members: access.documents.members }),
             reject(message, fields) { throw new AppError('ValidationError', message, fields) },
@@ -483,7 +526,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
   return { name: manifest.name, title: manifest.title,
     entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
+    scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], optionalTables: provider.optionalTables ?? [], identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
     actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
     reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, baseTables: manifest.baseTables } : undefined }
@@ -651,11 +694,15 @@ async function upgradePlan(name: string, version: string, preview = true) {
   if (!sameDeclaration(replayForward(name, prior.manifest.tables, operations), target.manifest.tables))
     refuse('Unsupported destructive or undeclared schema change')
   // #437: an upgrade may withdraw grants (narrowing access is always safe to
-  // apply) but never add or widen one on a Table the app already had; those
-  // still need a reviewed install. #651: a renamed Table's grants follow it,
+  // apply); since #1169 it may also add or widen them for its own roles (see
+  // ownRole below). #651: a renamed Table's grants follow it,
   // a dropped Table's grants end with it (a Table later given its name does
   // not inherit them), and a Table the upgrade adds arrives with exactly the
   // grants this version declares for it, listed in the preview.
+  // #1169: a dataset that was scoped staying scoped; becoming unscoped would give every reader
+  // every row with nothing in the preview. A new dataset may start unscoped.
+  const widened = (target.manifest.datasets ?? []).filter(d => d.unscoped && (prior.manifest.datasets ?? []).some(p => p.name === d.name && !p.unscoped))
+  if (widened.length) refuse(`The dataset ${widened.map(d => d.name).join(', ')} was limited to each reader's stores; an upgrade can't make it unscoped. Declare a new dataset instead`)
   const { added, follow } = tableFates(prior.manifest.tables.map(t => t.name), operations)
   const priorGrants = prior.manifest.permissions.map(p => ({ prior: p, now: follow(p.table) === undefined ? null : { ...p, table: follow(p.table)! } }))
   const held = new Set(priorGrants.flatMap(g => g.now ? [canonical(g.now)] : []))
@@ -671,10 +718,9 @@ async function upgradePlan(name: string, version: string, preview = true) {
     })
   }
   // #1192: a role this version declares and the installed one did not is
-  // created by the upgrade, with its declared grants: any on a Table the
-  // upgrade adds, reads only on one the app already had (an upgrade never
-  // brings writes there). Only a role the instance does not have yet: it
-  // starts with no holders, so the upgrade widens nobody's access. A
+  // created by the upgrade, with its declared grants (#1169: writes too, on
+  // any of the app's Tables). Only a role the instance does not have yet: it
+  // starts with no holders. A
   // same-named role already there is refused rather than merged, and checked
   // again when the upgrade is applied. A platform role is never new.
   const priorRoles = new Set(prior.manifest.roles ?? [])
@@ -682,14 +728,21 @@ async function upgradePlan(name: string, version: string, preview = true) {
   const taken = newRoles.length ? await sql`select row_id from role where row_id in ${sql(newRoles)} order by row_id` : []
   if (taken.length)
     refuse(`The role ${taken.map(row => String(row.row_id)).join(', ')} already exists on this instance; this version declares it as new. Rename or remove that role, then upgrade`)
-  const forNewRole = (permission: typeof target.manifest.permissions[number]) =>
-    newRoles.includes(permission.role) && Object.keys(permission.operations).every(operation => operation === 'read')
-  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p) || forNewRole(p)) || prior.app.runtime_manifest == null ||
+  // #1169 (owner, 14-Nov-2026): an upgrade applies the access its version
+  // declares, new or wider, so a fix reaches production without the owner
+  // present. Only to a role the version itself declares (never All or Guest,
+  // never a platform role, never another app's or the instance's own), and
+  // only on the app's own Tables, never a platform or another app's Table. Each
+  // grant is in the preview, and the activity log names it once applied.
+  const ownRole = (permission: typeof target.manifest.permissions[number]) =>
+    (target.manifest.roles ?? []).includes(permission.role) && !PLATFORM_ROLES.includes(permission.role) &&
+    permission.table.startsWith(`${name}.`)
+  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p)) || narrowsAudience(p) || ownRole(p)) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
   const kept = new Set(target.manifest.permissions.map(canonical))
   const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
-  const granted = target.manifest.permissions.filter(p => added.has(p.table) || forNewRole(p) || (!held.has(canonical(p)) && narrowsAudience(p)))
+  const granted = target.manifest.permissions.filter(p => added.has(p.table) || (!held.has(canonical(p)) && (narrowsAudience(p) || ownRole(p))))
   const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
   // #700: what the upgrade does to the app's scheduled jobs.
   const jobs = planJobChanges(name, prior.manifest.jobs ?? [], target.manifest.jobs ?? [])
@@ -791,7 +844,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           for (const role of created.roles)
             await logActivity(actor, `app_role_added ${name}@${version}: ${role}`.slice(0, 140))
           for (const p of prepared.granted)
-            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} on ${p.table}`.slice(0, 140))
+            await logActivity(actor, `app_grant_added ${name}@${version}: ${grantWords(p)}`.slice(0, 140))
         }
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},
@@ -916,6 +969,12 @@ export async function appCatalog(user: string) {
     if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read') && await passesGate(pkg, user))
       result.push({
         name: pkg.name, title: pkg.title, href: appHref(pkg.name),
+        // #1236: the switcher's menu draws each app's icon and one line, in its accent.
+        ...(pkg.manifest.summary && { summary: pkg.manifest.summary }),
+        ...(pkg.manifest.icon && { icon: pkg.manifest.icon }),
+        ...(pkg.manifest.accent && { accent: pkg.manifest.accent }),
+        // #1237: where the app shows one of its rows, for the record page's "Open in <App>".
+        ...(pkg.manifest.recordPages && { recordPages: pkg.manifest.recordPages }),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
       })
   }
@@ -940,6 +999,30 @@ async function passesGate(pkg: RuntimePackage, user: string): Promise<boolean> {
 export function accessApprovers(name: string): { roles: readonly string[]; page?: string } {
   const access = packages.get(name)?.manifest.access
   return { roles: access?.approvers ?? [], ...(access?.page ? { page: `${appHref(name)}${access.page}` } : {}) }
+}
+
+/** #1173: the apps loaded here that say how their own access is given. */
+export function accessGrantApps(): { app: string; title: string; read: string; action: string }[] {
+  return [...packages.values()].flatMap((pkg) => {
+    const grant = pkg.manifest.access?.grant
+    return grant ? [{ app: pkg.name, ...grant }] : []
+  })
+}
+
+/** #1222: the apps loaded here that let a role view as another person, and
+ *  the read each finds people with. */
+export function viewAsApps(): { app: string; role: string; people: string }[] {
+  return [...packages.values()].flatMap((pkg) => pkg.manifest.viewAs ? [{ app: pkg.name, ...pkg.manifest.viewAs }] : [])
+}
+
+/** #1173: run an app's declared grant read or action as `user`, as the app's
+ *  loaded version, and return its result. */
+export async function runGrant(app: string, kind: 'read' | 'action', name: string, input: unknown, user: string): Promise<unknown> {
+  const pkg = packages.get(app)
+  if (!pkg) throw new AppError('NotFoundError', 'App is unavailable')
+  const answer = await withAppIdentity(pkg.name, pkg.version, () =>
+    kind === 'read' ? runPackageRead(app, name, input, user) : runPackageAction(app, name, input, user)) as { result?: unknown }
+  return answer.result
 }
 
 /** #1008: the installed apps this person can't open, and the roles that would

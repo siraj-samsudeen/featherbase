@@ -23,6 +23,17 @@ function readableTitleColumn(meta: TableMeta | undefined): string | undefined {
 
 /** What a Table column of a link to a row of any Table offers: stored Tables
  *  only, and of those only the ones its row columns allow, when they list any. */
+/** Where a floating list goes beside its box: below it, or above it when there
+ *  is more room there and too little below; it fits in the window either way. */
+function placeFor(rect: DOMRect): { top?: number; bottom?: number; left: number; width: number; maxHeight: number } {
+  const below = window.innerHeight - rect.bottom - 8
+  const above = rect.top - 8
+  const across = { left: rect.left, width: Math.max(rect.width, 224) }
+  return below < 240 && above > below
+    ? { ...across, bottom: window.innerHeight - rect.top + 4, maxHeight: above }
+    : { ...across, top: rect.bottom + 4, maxHeight: below }
+}
+
 export function anyTableFilters(rows: ColumnDef[]): unknown[] {
   const lists = rows.map((row) => (row.choices ?? '').split('\n').map((name) => name.trim()).filter(Boolean))
   const allowed = lists.some((list) => !list.length) ? null : [...new Set(lists.flat())]
@@ -111,20 +122,38 @@ export function LinkControl({
   // A filter has its own clear control and stays a filter: no pane or open.
   const hasValue = Boolean(value) && query === null && !forFilter && !(anyTable && targetMeta.isError)
 
-  // The floating list is placed once, beside the box; scrolling the page or
-  // resizing would leave it behind, so either closes it.
+  // The floating list is drawn beside the box. When the page scrolls or the
+  // window resizes it follows the box, and closes only once the box has left the
+  // window: a field near the bottom edge is nudged into view as it takes focus,
+  // and that small scroll must not close the list it just opened (#1249's tours).
+  // CI's Tasker tour (17-Nov): the list kept the place it had while its box was
+  // below the window, and nothing moved it.
   useEffect(() => {
     if (!floating || !open) return
-    // The list's own scrolling isn't the page moving away from it.
-    const close = (event: Event) => {
+    const follow = (event: Event) => {
+      // The list's own scrolling isn't the page moving away from it.
       if (event.target instanceof Node && listBox.current?.contains(event.target)) return
-      setOpen(false)
+      const rect = box.current?.getBoundingClientRect()
+      if (!rect || rect.bottom < 0 || rect.top > window.innerHeight) setOpen(false)
+      else setPlace(placeFor(rect))
     }
-    window.addEventListener('scroll', close, true)
-    window.addEventListener('resize', close)
+    window.addEventListener('scroll', follow, true)
+    window.addEventListener('resize', follow)
+    // The page can also move the box with no scroll at all (a bar or banner
+    // drawn above it as data arrives): each frame, a box that moved takes its
+    // list with it, so the list never stays where the box used to be.
+    let seen = ''
+    let frame = requestAnimationFrame(function track() {
+      const rect = box.current?.getBoundingClientRect()
+      const at = rect ? `${rect.top} ${rect.bottom} ${rect.left} ${rect.width} ${window.innerHeight}` : ''
+      if (rect && at !== seen) setPlace(placeFor(rect))
+      seen = at
+      frame = requestAnimationFrame(track)
+    })
     return () => {
-      window.removeEventListener('scroll', close, true)
-      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', follow, true)
+      window.removeEventListener('resize', follow)
+      cancelAnimationFrame(frame)
     }
   }, [floating, open])
 
@@ -135,18 +164,12 @@ export function LinkControl({
   }, [open])
 
   function openList() {
+    // A box partly outside the window is brought in first: a list placed beside
+    // a box nobody can see is a list nobody can reach.
+    const seen = floating ? box.current?.getBoundingClientRect() : undefined
+    if (seen && (seen.top < 0 || seen.bottom > window.innerHeight)) box.current?.scrollIntoView?.({ block: 'nearest' })
     const rect = floating ? box.current?.getBoundingClientRect() : undefined
-    if (rect) {
-      // Scrolling closes the list, so it has to fit in the window where it opens.
-      const below = window.innerHeight - rect.bottom - 8
-      const above = rect.top - 8
-      const across = { left: rect.left, width: Math.max(rect.width, 224) }
-      setPlace(below < 240 && above > below
-        ? { ...across, bottom: window.innerHeight - rect.top + 4, maxHeight: above }
-        : { ...across, top: rect.bottom + 4, maxHeight: below })
-    } else {
-      setPlace(null)
-    }
+    setPlace(rect ? placeFor(rect) : null)
     setOpen(true)
   }
 

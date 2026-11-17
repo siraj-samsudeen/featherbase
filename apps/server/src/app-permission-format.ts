@@ -27,3 +27,10 @@ export function readLegacyPermission(input: unknown): unknown {
   const rest = Object.fromEntries(Object.entries(declared).filter(([key]) => !LEGACY_KEYS.has(key)))
   return { ...rest, ...(declared.own_rows_only === true ? { scope_mode: 'creator' } : {}), operations }
 }
+
+/** #1217: a grant as the deploy and the activity log say it: "Team Report Manager read, create
+ *  (own rows only) on dash.report_access". A grant limited to the rows its holder made says so,
+ *  so nobody reads it as a write on every row. */
+export function grantWords(p: { role: string; table: string; operations: Record<string, unknown>; scope_mode?: string }): string {
+  return `${p.role} ${Object.keys(p.operations).join(', ')}${p.scope_mode === 'creator' ? ' (own rows only)' : ''} on ${p.table}`
+}

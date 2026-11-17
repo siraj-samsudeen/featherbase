@@ -231,7 +231,7 @@ test('a saved view stays visible when the initial empty read arrives after savin
     await waitFor(() => expect(screen.queryByTestId('filter-nudge')).not.toBeInTheDocument())
     const saved = await admin.get<{ views: { label: string; filters: unknown }[] }>('/api/saved_views?table=Sv%20Pending')
     expect(saved.views).toMatchObject([{ label: 'Pending open items', filters: OPEN }])
-    expect(await screen.findByRole('button', { name: '★ Pending open items' })).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByRole('button', { name: 'Pending open items' })).toHaveAttribute('aria-pressed', 'true')
 
     await act(async () => {
       release()

@@ -77,3 +77,36 @@ A person holding the Dash All-Stores Reader role SHALL reach every store, as a d
 
 - **WHEN** a head office person holding Dash All-Stores Reader opens the sales report
 - **THEN** it opens with every store, and nothing says their job is in head office
+
+### Requirement: Whoever gives reports can add a Dive as one
+A person who manages report access SHALL be able to add any Dive in the organisation's MotherDuck as a report, by searching for it or pasting its link, and give it at once. An added report SHALL take no filter, so everyone given it sees everything the Dive shows. Dash SHALL refuse a Dive that is already a report, naming that report, and a name another report already has. Nobody else SHALL be able to list or add Dives.
+
+#### Scenario: A buyer brings in a Dive he built
+
+- **WHEN** a Report Access Manager pastes the link of a Dive he saved today, names it "Floor stock" and adds it
+- **THEN** "Floor stock" can be given or put in a bundle straight away, and someone given it opens the Dive
+
+#### Scenario: A Dive already in Dash
+
+- **WHEN** a Report Access Manager finds the Women Buyers Dashboard, which is already a report
+- **THEN** it says which report opens it, and it can't be added again
+
+### Requirement: A reader reports an issue from the report
+Every report SHALL offer "Report an issue" wherever Tickets runs on the instance. The reader SHALL choose what is wrong from Data looks wrong, Stock missing, Item ran out, Target too high or too low, or Something else, and MAY name the item, store or number and add a note. The ticket SHALL carry, untyped, the report, a link back to the view, the store and month on show, the Dive's filters, the reader's reach and job, and the time.
+
+#### Scenario: A Team Leader says a target is too high
+
+- **GIVEN** a Team Leader of Sarees and Kids Wear at Lakeside opens Sales versus target
+- **WHEN** they choose "Target too high or too low", name "Kanchipuram silk target" and send
+- **THEN** a ticket "Target too high or too low: Sales versus target" is raised as theirs
+- **AND** it carries the report, a link back to the view, Lakeside, this month, their sections and job, and the time
+- **AND** the panel links to the ticket and lists it among their open feedback on this report
+
+### Requirement: The reader's own ticket, and only one
+The ticket SHALL be raised in Tickets by the reader themselves, and a retried Send SHALL never raise a second ticket. Once sent, the reader SHALL see a link to their ticket and their open feedback on that report.
+
+#### Scenario: A lost answer is retried
+
+- **GIVEN** a reader's Send reached Tickets but its answer was lost
+- **WHEN** they press Send again without changing anything
+- **THEN** Tickets answers with the same ticket and raises no second one

@@ -13,6 +13,7 @@ import {
 import { parseFilters, tableSlug } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
+import { SetPasswordPage } from './pages/SetPassword'
 import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
@@ -21,6 +22,7 @@ import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
 import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
+import { rememberFilters, useRememberedFilters } from './lib/remembered-filters'
 import { useQuery } from '@tanstack/react-query'
 import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
@@ -39,6 +41,8 @@ import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { AccessExplanation } from './pages/AccessExplanation'
 import { AccountLayout } from './pages/AccountLayout'
+import { AgentConnectPage } from './pages/AgentConnect'
+import { ConnectedApps } from './pages/ConnectedApps'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { InstanceHealth } from './pages/InstanceHealth'
@@ -189,6 +193,17 @@ const loginRoute = createRoute({
   component: LoginPage,
 })
 
+// mcp-oauth-connect (#1207): where an agent sends the person's browser to
+// connect it (the authorization endpoint). Signed out, the usual sign-in first,
+// with the agent's whole request as the way back. The page sends a signed-out
+// browser to sign in itself: the route's location has the query re-encoded,
+// which would change the agent's values (a long numeric state, say).
+const agentConnectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/connect',
+  component: AgentConnectPage,
+})
+
 // WEB-002: public web form (no session required).
 const webFormRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -259,6 +274,16 @@ const resetPasswordRoute = createRoute({
   component: ResetPasswordPage,
 })
 
+// #1257: public "Set your password" page (target of a password invite).
+const setPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/set-password',
+  validateSearch: (search: Record<string, unknown>) => ({
+    key: searchString(search.key),
+  }),
+  component: SetPasswordPage,
+})
+
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/admin',
@@ -271,12 +296,12 @@ const adminRoute = createRoute({
 })
 
 function AdminRouteLayout() {
-  const wide = useRouterState({ select: (state) => state.matches.some((match) =>
+  // #1253 (Siraj, 17-Nov): every page fills the panel's width; the shell sets it.
+  // Two pages also fill its height: the source browser and copy setup.
+  const fillHeight = useRouterState({ select: (state) => state.matches.some((match) =>
     match.routeId === sourceBrowserRoute.id || match.routeId === copySetupRoute.id,
   ) })
-  // #1018: a Table's list has no reading width to keep, so a wide one gets the whole page.
-  const fullWidth = useRouterState({ select: (state) => state.matches.some((match) => match.routeId === tableRoute.id) })
-  return <AdminLayout wide={wide} fullWidth={fullWidth} />
+  return <AdminLayout fillHeight={fillHeight} />
 }
 
 /** An Admin path that is neither a known page nor an existing Table: said
@@ -358,7 +383,7 @@ function AdminIndexPage() {
     <p className="text-sm text-ink-muted" data-testid="admin-index-empty">
       No Home Pages are visible to you. Browse{' '}
       <Link to="/featherbase/admin/all-tables" className="text-action underline">
-        All tables
+        All Tables
       </Link>{' '}
       instead.
     </p>
@@ -468,6 +493,28 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
     return parsed.length ? { screen: 'list', table, filters: parsed } : { screen: 'list', table }
   }, [table, filters])
   const nav = useAddressNavigation(here, path)
+  const router = useRouter()
+  // #1228: a bare open (no filters, no walk in the address) brings back the
+  // person's last filters, replacing the address rather than adding a Back step.
+  // The list shows at once and takes them when they arrive, while the address is
+  // still bare: a slow answer never leaves an empty page, and never overrides what
+  // the person has chosen meanwhile (a Table's first open in a tab; later ones are
+  // known in the tab at once).
+  // Either way the address is settled: with nothing remembered it says so
+  // (`filters=[]`), so Back to this entry later shows it as it was, rather than
+  // restoring over it filters chosen since (Codex review, round 2).
+  const fresh = filters === undefined && path === undefined
+  const remembered = useRememberedFilters(table, fresh)
+  useEffect(() => {
+    if (!fresh || remembered === undefined) return
+    // Only the query changes, for the remembered filters as for none: the path
+    // stays spelled as it was opened (a Table's exact name is not always its
+    // slug, which for two legacy Tables of one spelling names neither).
+    const at = new URL(router.state.location.href, 'http://address.invalid')
+    at.searchParams.set('filters', JSON.stringify(remembered))
+    router.history.replace(`${at.pathname}${at.search}${at.hash}`, router.state.location.state)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fresh, remembered])
   return (
     <div data-testid="table-page">
       {/* #772: a table copied from a data source shows where from, and Copy again. */}
@@ -482,6 +529,7 @@ function NavigatedList({ table, filters, path }: { table: string; filters?: stri
             onFiltersChange={(next) => {
               const { filters: _, ...step } = nav.step
               nav.push(next.length ? { ...step, filters: next } : step)
+              rememberFilters(table, next)
             }}
           />
         </PaneSplit>
@@ -661,6 +709,13 @@ const signInMethodsRoute = createRoute({
   component: SignInMethods,
 })
 
+// mcp-oauth-connect (#1207): the agents the signed-in person connected.
+const connectedAppsRoute = createRoute({
+  getParentRoute: () => accountRoute,
+  path: 'connected-apps',
+  component: ConnectedApps,
+})
+
 // #628: what a person can see, and why. An account page, so a person without
 // Admin access opens their own; the server refuses anyone else's to all but a
 // System Manager.
@@ -689,20 +744,23 @@ const waitingForAccessRoute = createRoute({
   path: 'waiting-for-access',
   validateSearch: (search: Record<string, unknown>) => ({
     filters: searchString(search.filters),
+    view: search.view === 'declined' ? ('declined' as const) : undefined,
   }),
   component: WaitingForAccessPage,
 })
 
 function WaitingForAccessPage() {
-  const { filters } = waitingForAccessRoute.useSearch()
+  const { filters, view } = waitingForAccessRoute.useSearch()
   const navigate = waitingForAccessRoute.useNavigate()
   return (
     <ManageOnly>
       <WaitingForAccess
         filters={parseFilters(filters)}
         onFiltersChange={(next) =>
-          navigate({ search: { filters: next.length ? JSON.stringify(next) : undefined }, replace: true })
+          navigate({ search: { filters: next.length ? JSON.stringify(next) : undefined, view }, replace: true })
         }
+        view={view ?? 'waiting'}
+        onViewChange={(next) => navigate({ search: { filters, view: next === 'declined' ? next : undefined }, replace: true })}
       />
     </ManageOnly>
   )
@@ -1054,13 +1112,15 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   featherbaseIndexRoute,
   loginRoute,
+  agentConnectRoute,
   resetPasswordRoute,
+  setPasswordRoute,
   webFormRoute,
   oauthCallbackRoute,
   portalListRoute,
   portalDocRoute,
   salesTargetRoute,
-  accountRoute.addChildren([signInMethodsRoute, accessExplanationRoute]),
+  accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
   adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

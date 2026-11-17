@@ -6,6 +6,9 @@ import { discoverPackages, installedPackageDifference, notRunningMessage, notRun
 import { activateInstalledApp, installApp, type AppManifest, listInstalledApps, registerApp, setAppEnabled, suspendRuntimeApp, uninstallApp, whyAppNotRunning } from '../src/apps'
 import { ownDisplayName } from '../src/people-directory'
 import { installedAppsAtStart } from '../src/release-preflight'
+import { TICKETS_VERSION } from './tickets-world'
+
+const ticketsVersion = TICKETS_VERSION.replaceAll('.', '\\.')
 
 // #912: an install made elsewhere starts here, and an app that cannot run
 // says why. Synthetic rows; Tickets is only the package that is at hand.
@@ -24,7 +27,7 @@ describe('an installed app that is not running here (#912)', () => {
     await discoverPackages([tickets])
     expect(installedPackageDifference({ name: 'nothing_here', package_version: '1.0.0' })).toBe('absent')
     expect(installedPackageDifference({ name: 'tickets', package_version: '9.9.9' })).toBe('version')
-    expect(notRunningReason({ name: 'tickets' })).toMatch(/this server has tickets 0\.2\.7/)
+    expect(notRunningReason({ name: 'tickets' })).toMatch(new RegExp(`this server has tickets ${ticketsVersion}`))
     await admin.post('/api/install_app', { name: 'tickets' })
     const [row] = await sql`select * from installed_app where name = 'tickets'`
     expect(installedPackageDifference(row)).toBeNull()
@@ -68,7 +71,7 @@ describe('an installed app that is not running here (#912)', () => {
     await sql`update installed_app set artifact_digest = 'an-earlier-build' where name = 'tickets'`
     vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([tickets]))
     try {
-      expect(await installedAppsAtStart('development')).toEqual([expect.stringMatching(/^WARNING: App tickets 0\.2\.7 is installed, but its files changed/)])
+      expect(await installedAppsAtStart('development')).toEqual([expect.stringMatching(new RegExp(`^WARNING: App tickets ${ticketsVersion} is installed, but its files changed`))])
     } finally { vi.unstubAllEnvs() }
   })
 
@@ -86,7 +89,7 @@ describe('an installed app that is not running here (#912)', () => {
   test("an app's context names its own caller: a person, a service account, or nobody", async ({ admin }) => {
     expect(await ownDisplayName(String(admin.user))).toEqual(expect.any(String))
     await sql`insert into service_account (row_id, label) values ('svc_bbbbbbbbbbbbbbbbbbbb', 'Nightly loader')`
-    expect(await ownDisplayName('svc_bbbbbbbbbbbbbbbbbbbb')).toBe('Nightly loader')
+    expect(await ownDisplayName('svc_bbbbbbbbbbbbbbbbbbbb')).toBe('Automation (Nightly loader)')
     expect(await ownDisplayName('psn_nobody')).toBe('Unnamed person')
   })
 })

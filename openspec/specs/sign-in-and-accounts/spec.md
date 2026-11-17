@@ -1351,3 +1351,108 @@ current. A link SHALL sign nobody in by itself.
 
 - **WHEN** a run would end more than the limit of links
 - **THEN** it ends none and is reported as refused, and still links new rows
+
+### Requirement: Act on a request for access
+
+A System Manager SHALL be able to open a waiting request beside the waiting list and see who the person is,
+how they sign in, their job as installed apps describe it, and what they asked for. From there they SHALL
+approve it with roles and the access apps give, decline it with a reason, or dismiss it. Each decision SHALL
+be recorded in the activity log with who made it, the person, the app, and what was given or why it was
+declined. No email SHALL be sent for any of them.
+
+#### Scenario: Approving with a role and a report
+
+- **WHEN** a System Manager approves Priya's request for Dash with the role Master Data Editor and the report
+  Company notices
+- **THEN** Priya holds the role and the report, the activity log names both, and once she can open Dash her
+  request leaves the list
+
+#### Scenario: Given, but it does not open the app
+
+- **WHEN** what was given does not let Priya open the app she asked for
+- **THEN** the System Manager is told so, and her request stays on the list
+
+#### Scenario: Declining a request
+
+- **WHEN** a System Manager declines Priya's request for Featherbase with the reason "Not in head office"
+- **THEN** the request leaves the waiting list and the menu count, and shows in the Declined view with the
+  reason, who declined it and when
+- **AND** when Priya opens Featherbase again she is told "An admin declined your request. Ask your manager if
+  you need it.", without the reason, and nobody is emailed
+
+#### Scenario: A declined person gets access another way
+
+- **WHEN** Priya, declined for Featherbase, is later given a role that opens it
+- **THEN** her declined request goes
+
+#### Scenario: Dismissing a false alarm
+
+- **WHEN** a System Manager dismisses Priya's request
+- **THEN** it is gone, and opening the app again makes a fresh request
+
+### Requirement: A grant from a request gives no more than the admin could
+
+Only a System Manager SHALL see or decide a request this way. Roles SHALL be given through the same rule as
+editing a person's roles. An app's access SHALL be given through the app's own declared action, under its own
+rules, and only for what that app offers the person. Giving System Manager SHALL need a confirmation.
+
+#### Scenario: System Manager is confirmed
+
+- **WHEN** a System Manager ticks System Manager for Priya and approves
+- **THEN** they are warned that it gives full admin access, and nothing is given until they confirm
+
+#### Scenario: Only a System Manager decides
+
+- **WHEN** someone who is not a System Manager, a Report Access Manager included, tries to see or decide a
+  request this way
+- **THEN** they are refused and nothing changes
+
+### Requirement: An administrator invites a person to set their first password
+
+A System Manager SHALL be able to send a password invite to a person who has
+an email address and no way to sign in yet, while password sign-in is on. The
+person gets an email with a link that works once and for 72 hours. Opening it
+lets them choose their first password, which signs them in.
+
+#### Normative details for the whole requirement
+
+An invite is offered only to an enabled person with no password, no linked or
+pending sign-in and no expected Google sign-in, so an account that signs in
+another way is never given a password by an invite; "Forgot password" still
+refuses an account with no password. Sending again replaces the earlier link.
+A link stops working once it is used, when it expires, when another is sent,
+when the person's email changes, when their password is reset from the
+server, and when, by the time it is used, the person is disabled, has a
+password or another way in, or had their sessions ended after it was sent.
+The person's sign-in panel says when the invite was emailed, when it expires,
+and when it was accepted.
+
+#### Scenario: A tester from another company gets in
+
+- **WHEN** an administrator adds Ravi, who has a Microsoft 365 address and no
+  way to sign in, and sends him a password invite
+- **AND** Ravi opens the link within 72 hours and chooses a password
+- **THEN** he is signed in, and later signs in with his email and that
+  password
+
+#### Scenario: Not offered to someone who signs in another way
+
+- **WHEN** an administrator tries to send a password invite to a store
+  manager who signs in through the HR system
+- **THEN** it is refused and the account gets no password
+
+#### Scenario: Sending again replaces the link
+
+- **WHEN** an administrator sends Ravi a second invite and he opens the first
+  link
+- **THEN** the first link is refused and the second one works
+
+#### Scenario: A used link
+
+- **WHEN** Ravi opens the link a second time after setting his password
+- **THEN** it is refused
+
+#### Scenario: Email changed before the link is used
+
+- **WHEN** an administrator changes Ravi's email after sending the invite
+- **THEN** the link sent to the old address no longer works

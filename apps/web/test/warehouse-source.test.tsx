@@ -9,6 +9,7 @@ import { invalidateSources } from 'server/src/sources/registry'
 import { buildStandin, changeStandin, STANDIN_TOKENS } from 'server/test/motherduck-standin'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
+import { openListMenu } from './list-menus'
 
 type Client = Parameters<typeof renderApp>[1]
 const WAIT = { timeout: 15_000 }
@@ -100,8 +101,8 @@ test('the searchable catalog opens a preview and keeps its filters and selection
   const user = userEvent.setup()
   await renderApp('/featherbase/admin', admin)
   const group = await screen.findByTestId('sidebar-group-sources', {}, WAIT)
-  await waitFor(() => expect(within(group).getAllByTestId('sidebar-source-database').map((a) => a.textContent)).toEqual(expect.arrayContaining(['sales', 'stock'])), WAIT)
-  const sales = within(group).getAllByTestId('sidebar-source-database').find((a) => a.textContent === 'sales' && a.getAttribute('href')?.includes('web-wh-browse'))!
+  await waitFor(() => expect(within(group).getAllByTestId('sidebar-source-database').map((a) => a.textContent)).toEqual(expect.arrayContaining(['Sales', 'Stock'])), WAIT)
+  const sales = within(group).getAllByTestId('sidebar-source-database').find((a) => a.textContent === 'Sales' && a.getAttribute('href')?.includes('web-wh-browse'))!
   await user.click(sales)
   await screen.findByTestId('warehouse-browser', {}, WAIT)
   const catalogTab = await screen.findByRole('tab', { name: /tables|catalog/i })
@@ -329,7 +330,7 @@ test('Copy again refreshes corrected native rows through source changes', async 
   expect(await admin.get(rowPath)).toMatchObject({ name: 'Hill Street renamed', state_code: 'Owner correction' })
   expect(await admin.get('/api/table/Copybar%20Store/S003')).toMatchObject({ deleted_at_source: true })
 
-  await user.click(screen.getByRole('button', { name: 'List actions' }))
+  await openListMenu('List actions')
   await user.click(await screen.findByRole('button', { name: 'Import conflicts' }))
   const panel = await screen.findByRole('region', { name: 'Import conflicts' })
   expect(await within(panel).findByText('Owner correction')).toBeInTheDocument()
@@ -411,3 +412,25 @@ test('a copied table can be refreshed automatically, paused and resumed from its
   await user.selectOptions(cadence, 'off')
   await waitFor(() => expect(schedule).toHaveTextContent('Paused · hourly'), WAIT)
 }, 60_000)
+
+// #1248: in the sidebar's rail, the sources and their databases fold into one
+// icon; its menu opens a database, the source's record, or Connect a source.
+test('collapsed to a rail, Data sources is one icon whose menu opens each place', async ({ admin }) => {
+  await connect(admin, 'web-wh-rail')
+  const { router } = await renderApp('/featherbase/admin/all-tables', admin)
+  const path = () => (router as unknown as { state: { location: { pathname: string; search: Record<string, unknown> } } }).state.location
+  const group = await screen.findByTestId('sidebar-group-sources', {}, WAIT)
+  await waitFor(() => expect(within(group).getAllByTestId('sidebar-source-database').length).toBeGreaterThan(0), WAIT)
+  await userEvent.click(screen.getByTestId('sidebar-collapse'))
+
+  const open = async (name: RegExp | string) => {
+    await userEvent.click(within(screen.getByTestId('admin-sidebar')).getByRole('button', { name: 'Data Sources' }))
+    await userEvent.click(within(screen.getByRole('menu', { name: 'Data Sources' })).getByRole('menuitem', { name }))
+  }
+  await open('Sales')
+  await waitFor(() => expect(path().pathname).toBe('/featherbase/admin/source/web-wh-rail'), WAIT)
+  await open('Web Wh Rail')
+  await waitFor(() => expect(path().pathname).toBe('/featherbase/admin/table/data-source/row/web-wh-rail'), WAIT)
+  await open('Connect A Source')
+  await waitFor(() => expect(path().pathname).toBe('/featherbase/admin/table/data-source/new'), WAIT)
+})

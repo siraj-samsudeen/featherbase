@@ -57,6 +57,8 @@ const displayOnly = (to: z.infer<typeof alterable>) => Object.keys(to).every(key
 // or column as it stood, an altered column's `from`), so a history replays
 // backward from the final declaration as well as forward from the installed
 // one.
+const tableLabel = z.string().trim().min(1)
+
 export const operationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('addAccessPolicy'), table: z.string(), policy: accessPolicySchema }).strict(),
   z.object({ kind: z.literal('addTable'), table: tableDefSchema }).strict(),
@@ -67,6 +69,8 @@ export const operationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('renameColumn'), table: z.string(), from: columnName, to: columnName }).strict(),
   z.object({ kind: z.literal('dropColumn'), table: z.string(), column, position: z.number().int().min(1).optional(), destructive: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal('renameTable'), from: z.string(), to: ownedTableName }).strict(),
+  // #1256: what people call a Table; no row and no storage changes.
+  z.object({ kind: z.literal('relabelTable'), table: z.string(), from: tableLabel, to: tableLabel }).strict(),
 ])
 export type Operation = z.infer<typeof operationSchema>
 export const migrationSchema = z.object({
@@ -272,6 +276,14 @@ function forward(app: string, state: TableDef[], op: Operation) {
       if (state.some(t => t.name === op.to)) refuse(`${what}: ${op.to} already exists`)
       table.name = op.to
       renameLinks(state, op.from, op.to)
+      return
+    }
+    case 'relabelTable': {
+      const what = `relabelTable ${op.table}`
+      mustOwn(app, op.table)
+      const table = tableIn(state, op.table, what)
+      if (table.label !== op.from) refuse(`${what} does not hold the label ${JSON.stringify(op.from)}`)
+      table.label = op.to
     }
   }
 }
@@ -324,6 +336,13 @@ function backward(state: TableDef[], op: Operation) {
     case 'renameTable':
       tableIn(state, op.to, `renameTable ${op.to}`).name = op.from
       renameLinks(state, op.to, op.from)
+      return
+    case 'relabelTable': {
+      const what = `relabelTable ${op.table}`
+      const table = tableIn(state, op.table, what)
+      if (table.label !== op.to) refuse(`${what}: the Table as declared after it does not hold the label ${JSON.stringify(op.to)}`)
+      table.label = op.from
+    }
   }
 }
 
@@ -602,6 +621,14 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       await owned(op.from, owner, `renameTable ${op.from}`)
       await renameTable(op.from, op.to, owner, actor)
       return null
+    case 'relabelTable': {
+      await owned(op.table, owner, `relabelTable ${op.table}`)
+      // The app's own declared label: an Admin relabel is a Metadata
+      // Override, kept apart, and still wins over this.
+      await sql`update table_def set label = ${op.to}, updated_at = ${new Date()} where name = ${op.table}`
+      invalidateMeta(op.table)
+      return null
+    }
   }
 }
 

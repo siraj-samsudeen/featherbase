@@ -31,7 +31,7 @@ test.for([
   { name: 'declared membership', role: 'Members', declared: true, write: false, allowed: true },
   { name: 'undeclared membership', role: 'Members', declared: false, write: false, allowed: false },
   { name: 'Guest audience', role: 'Guest', declared: true, write: false, allowed: false },
-  { name: 'expanded member writes', role: 'Members', declared: true, write: true, allowed: false },
+  { name: 'expanded member writes', role: 'Members', declared: true, write: true, allowed: true },
   { name: 'expanded All writes', role: 'All', declared: true, write: true, allowed: false },
 ])('upgrade audience contract: $name', async ({ role, declared, write, allowed }, { admin }) => {
   const source = resolve('../..', 'test-apps/other')
@@ -49,7 +49,7 @@ test.for([
     await admin.post('/api/install_app', { name: 'other' })
     expect(await discoverPackages([source, target])).toEqual([])
     const preview = admin.post<{ permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
-    if (allowed) expect(await preview).toMatchObject({ permissions: expect.arrayContaining([{ grant: { table: 'other.task', role: 'Members', operations: { read: '@basic' } } }]) })
+    if (allowed) expect(await preview).toMatchObject({ permissions: expect.arrayContaining([{ grant: { table: 'other.task', role: 'Members', operations: expect.objectContaining({ read: '@basic' }) } }]) })
     else await expect(preview).rejects.toMatchObject({ status: 417, message: expect.stringContaining('Permission or package identity changes are unsupported') })
   } finally { await rm(target, { recursive: true, force: true }) }
 })

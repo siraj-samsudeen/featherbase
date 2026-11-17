@@ -1,3 +1,4 @@
+import { REPORT_FEEDBACK_FIELDS } from './report-feedback'
 export const kinds: Record<string, string> = {
   generic: 'General request',
   access: 'Access request',
@@ -8,9 +9,12 @@ export const kinds: Record<string, string> = {
   schema: 'New column / model',
   pipeline: 'Pipeline failure',
   backfill: 'Backfill',
+  // #1240: raised from a report (Dash's "Report an issue"), never from the New ticket form.
+  report_feedback: 'Feedback on a report',
 }
 export const fields: Record<string, [string, string, string?][]> = {
   generic: [],
+  report_feedback: REPORT_FEEDBACK_FIELDS.map(({ key, label }) => [key, label] as [string, string]),
   access: [
     ['email', 'Recipient email', 'email'],
     ['resource', 'Resource / database / table'],

@@ -45,7 +45,8 @@ export async function explainPersonScope(asker: string, person: string, app: str
     provider: binding ? { app: binding.app, title: binding.title } : null,
     problem,
     places: places.map((place) => ({ label: place.label, filters: Object.keys(place.filters).sort() })),
-    datasets: datasets.map((dataset) => ({
+    // #1169: an unscoped dataset applies no place, so it has nothing to explain.
+    datasets: datasets.filter((dataset) => !dataset.unscoped).map((dataset) => ({
       name: dataset.name,
       applied: places.filter((place) => !unappliableKeys(dataset, place).length).map((place) => place.label),
       dropped: places.flatMap((place) => {

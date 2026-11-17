@@ -116,6 +116,7 @@ function context(tables: Record<string, Row[]>, { user = 'deepa', payload, setti
         return rows.slice(start, start + (filter.limit ?? 200))
       },
       mayDecide: async () => decides,
+      mayDecideMany: async (asks: unknown[]) => asks.map(() => decides),
       modeOf: async () => MODE,
       routeFor: async (_maker: string, approvers: { people: string[] }) => (route === 'none' ? null : { people: route === 'people' ? approvers.people : [], roles: [] }),
       lockRow: async () => {},
@@ -155,7 +156,8 @@ describe('the department set-up read', () => {
   })
   it("says a store with no sections can't be set up yet, and who sets up its sections", async () => {
     const tables = world({ 'Job Assignment': [job('J1', 'E1', 'Department Manager', 'RIV', null, 'E2')] })
-    expect(await read(tables)).toEqual({ state: 'no_sections', job: { id: 'J1', store: 'Riverside' }, reviewer: 'Mani', reviewer_is_team: false })
+    expect(await read(tables)).toEqual({ state: 'no_sections', job: { id: 'J1', store: 'Riverside' }, reviewer: 'Mani', reviewer_is_team: false,
+      reviewers: [{ name: 'Mani', id: 'E2', code: null, jobs: [], staff: 'current' }] })
   })
 
   it('lists the floors, the sections with what they sell and who leads them, and what is suggested', async () => {
@@ -350,9 +352,9 @@ describe('what waits for a reviewer', () => {
   it('lists each waiting bundle once, with its sections and their Team Leaders', async () => {
     const { ctx } = context(world(), { user: 'mani', proposals: [...bundle(), ...bundle({ bundle: 'B2', job_assignment: 'J6', maker_name: 'Arun' }).map(p => ({ ...p, row_id: `${p.row_id}-2`, maker: 'arun' }))] })
     expect(await departmentReads.department_approvals(ctx)).toEqual([
-      { bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false, prefilled: false, flagged: [],
+      { bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false, prefilled: false, flagged: [], also_with: [],
         sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }, { id: 'S2', name: 'Silk', team_leaders: ['Bala'] }] },
-      { bundle: 'B2', who: 'Arun', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false, prefilled: false, flagged: [],
+      { bundle: 'B2', who: 'Arun', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: today, applied: false, prefilled: false, flagged: [], also_with: [],
         sections: [{ id: 'S1', name: 'Sarees', team_leaders: ['Asha'] }, { id: 'S2', name: 'Silk', team_leaders: ['Bala'] }] },
     ])
   })

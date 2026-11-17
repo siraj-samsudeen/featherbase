@@ -28,10 +28,14 @@ test('lists the password and a linked service; the last one cannot be removed', 
   expect(hr).toHaveTextContent('StyleHR')
   expect(hr).toHaveTextContent('tl_methods')
 
-  await userEvent.click(within(password).getByRole('button', { name: 'Remove' }))
+  // #1235 item 9: removing is in a ⋯ menu and asks first.
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  await userEvent.click(within(password).getByRole('button', { name: 'More actions for Password' }))
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }))
   await waitFor(() => expect(screen.queryByTestId('method-password')).not.toBeInTheDocument())
 
-  await userEvent.click(within(screen.getByTestId(`method-${identity}`)).getByRole('button', { name: 'Remove' }))
+  await userEvent.click(within(screen.getByTestId(`method-${identity}`)).getByRole('button', { name: 'More actions for StyleHR' }))
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }))
   expect(await screen.findByTestId('method-error')).toHaveTextContent('last way to sign in')
   expect(screen.getByTestId(`method-${identity}`)).toBeInTheDocument()
 })

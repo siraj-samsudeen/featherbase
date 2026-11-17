@@ -89,10 +89,25 @@ export const KINDS: Record<
 > = {
   password: { trustedSubject: true, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
   google: { trustedSubject: true, verifiedEmail: true, hostedDomain: true, candidateFirst: false, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
+  // microsoft-sign-in: Entra ID; the "hosted domain" is the domain the tenant
+  // has proven it owns (xms_edov), so a company domain needs it to agree.
+  microsoft: { trustedSubject: true, verifiedEmail: true, hostedDomain: true, candidateFirst: false, admitsPrivileged: true, rosterFirstSignIn: false, unique: true },
   delegated_password: { trustedSubject: false, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: false, rosterFirstSignIn: true, unique: false },
 }
 
 export const METHOD_TABLE = 'Sign In Method'
+
+/** The redirect sign-ins: each needs a client id (or the dev stand-in), and
+ *  each has its own "expects … sign-in" mark on Person (#473). */
+export const REDIRECT_KINDS = ['google', 'microsoft'] as const
+type RedirectKind = (typeof REDIRECT_KINDS)[number]
+export const isRedirectKind = (kind: string): kind is RedirectKind => (REDIRECT_KINDS as readonly string[]).includes(kind)
+
+/** The Person column holding each redirect kind's expected-sign-in mark. */
+export const EXPECTS_COLUMN: Record<RedirectKind, 'expects_google_sign_in' | 'expects_microsoft_sign_in'> = {
+  google: 'expects_google_sign_in',
+  microsoft: 'expects_microsoft_sign_in',
+}
 
 // The mock Google provider mints a session for ANY typed email from a
 // pre-auth endpoint, so only ALLOW_MOCK_OAUTH=1 turns it on (see oauth.ts).
@@ -100,11 +115,11 @@ export function mockOAuthEnabled(): boolean {
   return switchedOn('ALLOW_MOCK_OAUTH')
 }
 
-/** Can a method actually sign anyone in? Google also needs a client id (or
- *  the dev mock). Used by every way-in count, so the counts agree. */
+/** Can a method actually sign anyone in? Google and Microsoft also need a
+ *  client id (or the dev mock). Used by every way-in count, so they agree. */
 export function methodUsable(m: { kind: string; enabled: boolean; client_id?: string | null }): boolean {
   if (!m.enabled) return false
-  return m.kind !== 'google' || Boolean(String(m.client_id ?? '').trim()) || mockOAuthEnabled()
+  return !isRedirectKind(m.kind) || Boolean(String(m.client_id ?? '').trim()) || mockOAuthEnabled()
 }
 
 function toMethod(r: Record<string, unknown>): SignInMethod {
@@ -144,7 +159,7 @@ export async function getSignInMethod(key: string): Promise<SignInMethod | null>
   return row ? toMethod(row) : null
 }
 
-/** The one method of a unique kind (password, google). */
+/** The one method of a unique kind (password, google, microsoft). */
 export async function methodOfKind(kind: MethodKind): Promise<SignInMethod | null> {
   const [row] = await sql`select ${methodFields()} from sign_in_method where kind = ${kind} order by row_id limit 1`
   return row ? toMethod(row) : null
@@ -241,7 +256,7 @@ function keepsDomain(lists: string, proof: WayInProof) {
   const list = sql`coalesce(${lists}::text::jsonb -> m.row_id::text, '[]'::jsonb)`
   const domain = sql`lower(split_part(i.email, '@', 2))`
   return sql`(
-    m.kind <> 'google'
+    m.kind <> all(${[...REDIRECT_KINDS]}::text[])
     or coalesce(i.linked_by, '') <> all(${[...DOMAIN_RULED_LINKS]}::text[])
     or jsonb_array_length(${list}) = 0
     or (
@@ -251,9 +266,21 @@ function keepsDomain(lists: string, proof: WayInProof) {
       coalesce(i.email, '') like '%_@_%'
       and coalesce(i.email_verified, true)
       and (${list} ? '*' or ${list} ? ${domain})
-      and (${list} ? '*' or ${domain} = any(${[...GOOGLE_CONSUMER_DOMAINS]}::text[]) or lower(i.hosted_domain) = ${domain}
+      and (${list} ? '*' or (m.kind = 'google' and ${domain} = any(${[...GOOGLE_CONSUMER_DOMAINS]}::text[])) or lower(i.hosted_domain) = ${domain}
         or (i.hosted_domain is null and ${proof === 'possible'}::boolean))
     )
+  )`
+}
+
+/** microsoft-sign-in (Codex round 1): a Microsoft link is a way in only
+ *  while its method admits its tenant: `organizations` (or unset) admits any,
+ *  a tenant ID only links whose subject (`tid/oid`) starts with it. `tenant`
+ *  is the method's tenant as SQL (the stored setting, or a proposed one). */
+function tenantKept(tenant: ReturnType<typeof sql>) {
+  return sql`(
+    m.kind <> 'microsoft'
+    or coalesce(nullif(lower(trim(${tenant})), ''), 'organizations') = 'organizations'
+    or lower(split_part(coalesce(i.subject, ''), '/', 1)) = lower(trim(${tenant}))
   )`
 }
 
@@ -288,15 +315,16 @@ export function newIdentityId(): string {
   return 'uid_' + randomBytes(9).toString('base64url')
 }
 
-/** #473: once a person has a Google sign-in, by any path, they no longer
- *  expect one — clear the mark so a later unlink cannot reopen linking by
- *  address. `updated_at` moves, so a form loaded before is told to reload
- *  rather than echo the mark back. A no-op for any other kind. */
+/** #473: once a person has a Google (or Microsoft) sign-in, by any path, they
+ *  no longer expect one — clear that kind's mark so a later unlink cannot
+ *  reopen linking by address. `updated_at` moves, so a form loaded before is
+ *  told to reload rather than echo the mark back. A no-op for other kinds. */
 export async function consumeExpectedSignIn(person: string, method: Pick<SignInMethod, 'kind'>, db: Sql | TxSql = sql): Promise<boolean> {
-  if (method.kind !== 'google') return false
+  if (!isRedirectKind(method.kind)) return false
+  const column = EXPECTS_COLUMN[method.kind]
   const rows = await db`
-    update person set expects_google_sign_in = false, updated_at = now()
-    where row_id = ${person} and expects_google_sign_in returning row_id`
+    update person set ${db(column)} = false, updated_at = now()
+    where row_id = ${person} and ${db(column)} returning row_id`
   return rows.length > 0
 }
 
@@ -494,33 +522,47 @@ export async function updateIdentity(
 // System Manager is never signed in through a delegated method, so for them
 // those links do not count (review A-M2).
 const usableWhere = (mock: boolean) =>
-  sql`m.enabled and (m.kind <> 'google' or coalesce(m.client_id, '') <> '' or ${mock}::boolean)`
+  sql`m.enabled and (m.kind <> all(${[...REDIRECT_KINDS]}::text[]) or coalesce(m.client_id, '') <> '' or ${mock}::boolean)`
 
 /** How many working ways in a person has right now. Pending invites never
  *  count. `excluding` leaves one identity id (or 'password') out. */
 async function waysIn(user: string, db: Sql | TxSql, excluding?: string, proof: WayInProof = 'proven'): Promise<number> {
+  return (await waysInEach([user], db, excluding, proof)).get(user) ?? 0
+}
+
+/** waysIn for many people in one round trip (#1254), each counted exactly as waysIn counts them. */
+async function waysInEach(users: string[], db: Sql | TxSql, excluding?: string, proof: WayInProof = 'proven'): Promise<Map<string, number>> {
   await lockWaysIn(db)
   const mock = mockOAuthEnabled()
   const lists = await domainListsJson(db)
-  const [row] = await db`
-    with p as (
-      select (u.row_id = 'Administrator' or exists (
+  const rows = await db`
+    with wanted as (select distinct unnest(${users}::text[]) as id),
+    p as (
+      select u.row_id as id, (u.row_id = 'Administrator' or exists (
         select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator'))) as privileged
-      from person u where u.row_id = ${user}
+      from person u join wanted w on w.id = u.row_id
     )
-    select
+    select w.id,
       (select count(*) from person u join sign_in_method m on m.kind = 'password' and ${usableWhere(mock)}
-        where u.row_id = ${user} and u.password_hash is not null and ${excluding ?? ''}::text <> 'password')::int
+        where u.row_id = w.id and u.password_hash is not null and ${excluding ?? ''}::text <> 'password')::int
       + (select count(*) from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
-        where i.person_id = ${user} and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
-          and not (m.kind = 'delegated_password' and (select privileged from p))
-          and ${keepsDomain(lists, proof)})::int as n`
-  return Number(row.n)
+        where i.person_id = w.id and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
+          and not (m.kind = 'delegated_password' and (select privileged from p where p.id = w.id))
+          and ${keepsDomain(lists, proof)}
+          and ${tenantKept(sql`m.settings->>'tenant'`)})::int as n
+    from wanted w`
+  return new Map(rows.map((row) => [String(row.id), Number(row.n)]))
 }
 
 /** #975: whether this person has a working way to sign in now. */
 export async function canSignInNow(user: string): Promise<boolean> {
   return (await waysIn(user, sql)) > 0
+}
+
+/** #1254: of these people, those with a working way to sign in now, asked in one round trip. */
+export async function canSignInNowAmong(users: string[]): Promise<Set<string>> {
+  if (!users.length) return new Set()
+  return new Set([...(await waysInEach(users, sql))].filter(([, n]) => n > 0).map(([user]) => user))
 }
 
 /** An administrator who can sign in now must still be able to afterwards. */
@@ -655,13 +697,31 @@ export async function endSessionsNoLongerAdmitted(methodKey: string, nextDomains
   const ended = await db`
     update sign_in_identity i set sessions_ended_at = clock_timestamp()
     from sign_in_method m
-    where m.row_id = i.method and i.method = ${methodKey} and m.kind = 'google'
+    where m.row_id = i.method and i.method = ${methodKey} and m.kind = any(${[...REDIRECT_KINDS]}::text[])
       and i.subject is not null and i.ended_at is null
       and i.linked_by = any(${[...DOMAIN_RULED_LINKS]}::text[])
       and ${keepsDomain(before, 'possible')} and not ${keepsDomain(after, 'possible')}
     returning i.person_id`
   const people = [...new Set(ended.map((r) => String(r.person_id)))].sort()
-  for (const person of people) await logActivity(person, `google_sessions_ended_domain_not_allowed ${methodKey}`)
+  // Named by the method (`google_…` for Google's, as before).
+  for (const person of people) await logActivity(person, `${methodKey}_sessions_ended_domain_not_allowed ${methodKey}`)
+  return people
+}
+
+/** microsoft-sign-in (Codex round 1): when a Microsoft method narrows to one
+ *  tenant, sessions opened through its links from any other tenant end now,
+ *  as narrowing the domain list does. The links are kept. */
+export async function endSessionsOutsideTenant(methodKey: string, tenant: string | null, db: Sql | TxSql = sql): Promise<string[]> {
+  const t = String(tenant ?? '').trim().toLowerCase()
+  if (!t || t === 'organizations') return []
+  await lockWaysIn(db)
+  const ended = await db`
+    update sign_in_identity i set sessions_ended_at = clock_timestamp()
+    where i.method = ${methodKey} and i.subject is not null and i.ended_at is null
+      and lower(split_part(i.subject, '/', 1)) <> ${t}
+    returning i.person_id`
+  const people = [...new Set(ended.map((r) => String(r.person_id)))].sort()
+  for (const person of people) await logActivity(person, `${methodKey}_sessions_ended_tenant_not_allowed ${methodKey}`)
   return people
 }
 
@@ -672,13 +732,15 @@ export async function endSessionsNoLongerAdmitted(methodKey: string, nextDomains
  *  `next` is the method's state after the change; null = deleted. */
 export async function assertNoAdminLockout(
   methodKey: string,
-  next: { enabled: boolean; client_id: string; allowed_email_domains?: string } | null,
+  next: { enabled: boolean; client_id: string; allowed_email_domains?: string; tenant?: string | null } | null,
   db: Sql | TxSql = sql,
 ) {
   await lockWaysIn(db)
   const mock = mockOAuthEnabled()
   const nextEnabled = next?.enabled === true
   const nextClient = next?.client_id ?? ''
+  // undefined = the tenant is not changing.
+  const nextTenant = next?.tenant
   // #693: narrowing the domain list can end a link's sign-ins too.
   const before = await domainListsJson(db)
   const after =
@@ -690,24 +752,26 @@ export async function assertNoAdminLockout(
         and (u.row_id = 'Administrator' or exists (
           select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator')))
     ), m0 as (
-      select row_id, kind, enabled, client_id from sign_in_method
+      select row_id, kind, enabled, client_id, settings->>'tenant' as tenant from sign_in_method
     ), m1 as (
       select row_id, kind,
         case when row_id = ${methodKey}::text then ${nextEnabled}::boolean else enabled end as enabled,
-        case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id
+        case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id,
+        case when row_id = ${methodKey}::text and ${nextTenant !== undefined}::boolean then ${nextTenant ?? null}::text
+          else settings->>'tenant' end as tenant
       from sign_in_method
     ), links as (
       -- Each live link, judged before and after: possible (may work) and
       -- proven (known to work), per keepsDomain.
       select i.person_id,
         exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          and ${keepsDomain(before, 'possible')}) as possible_before,
+          and ${keepsDomain(before, 'possible')} and ${tenantKept(sql`m.tenant`)}) as possible_before,
         exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          and ${keepsDomain(before, 'proven')}) as proven_before,
+          and ${keepsDomain(before, 'proven')} and ${tenantKept(sql`m.tenant`)}) as proven_before,
         exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          and ${keepsDomain(after, 'possible')}) as possible_after,
+          and ${keepsDomain(after, 'possible')} and ${tenantKept(sql`m.tenant`)}) as possible_after,
         exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          and ${keepsDomain(after, 'proven')}) as proven_after
+          and ${keepsDomain(after, 'proven')} and ${tenantKept(sql`m.tenant`)}) as proven_after
       from sign_in_identity i join privileged p on p.row_id = i.person_id
       where i.subject is not null and i.ended_at is null
     ), passwords as (

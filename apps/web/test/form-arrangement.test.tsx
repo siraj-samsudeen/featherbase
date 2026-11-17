@@ -157,6 +157,10 @@ test('by importance, when and by whom the row was created and updated is one foo
   const footer = await screen.findByTestId('bookkeeping-line', undefined, { timeout: 8000 })
   const day = '\\d{2}-[A-Z][a-z]{2}-\\d{4}'
   expect(footer.textContent).toMatch(new RegExp(`^Created ${day} by Administrator, updated ${day} by Administrator$`))
+  // #1253: every record is a link: who stamped the row opens their Person record.
+  const people = within(footer).getAllByRole('link', { name: 'Administrator' })
+  expect(people).toHaveLength(2)
+  expect(people[0].getAttribute('href')).toMatch(/\/person\/row\/Administrator$/)
 })
 
 test('in a narrow form Arrange by and Columns wrap as whole controls, every one in sight', async ({ admin }) => {

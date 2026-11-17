@@ -16,6 +16,12 @@ import { grantRole, makeTable } from './fixtures'
 export const TICKETS_DIRECTORY = resolve('../..', 'example-apps/tickets')
 export const TICKETS_VERSION = (JSON.parse(readFileSync(resolve(TICKETS_DIRECTORY, 'package.json'), 'utf8')) as { version: string }).version
 
+/** Today's Tables as they stood before `later` migrations: each relabel undone (#1256). */
+export function tablesBefore<T extends { name: string; label: string }>(tables: T[], later: { operations: { kind: string; table?: string; from?: string }[] }[]): T[] {
+  const relabels = later.flatMap(m => m.operations).filter(op => op.kind === 'relabelTable').reverse()
+  return tables.map(t => relabels.reduce((table, op) => op.table === table.name ? { ...table, label: op.from! } : table, t))
+}
+
 /** A client that names the installed Tickets version, as Tickets' own page does. */
 export const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
   ...init, headers: { ...(init?.headers as Record<string, string>), 'X-Featherbase-App-Version': `tickets@${TICKETS_VERSION}` },
@@ -158,6 +164,20 @@ export class Tickets {
     return this.action('change_raiser', { new_raiser: this.ids[person], reason }, actor, true)
   }
 
+  /** An agent (#1193): a service account holding System Manager that calls with its access token, as automation does. */
+  async agent(name = 'Agent') {
+    if (this.people[name]) return this.people[name]
+    const account = await this.admin.post<{ row_id: string }>('/api/service_accounts', { label: `svc-${name.toLowerCase()}`, roles: ['System Manager'] })
+    const { token } = await this.admin.post<{ token: string }>('/api/access_tokens', { label: name, owner: account.row_id })
+    // The admin client carries the pinned Tickets version; the token's header replaces the admin's.
+    this.people[name] = makeClient({ request: (path, init) => this.admin.fetch(String(path), init) }, token, account.row_id)
+    this.ids[name] = account.row_id
+    this.roles[name] = ['System Manager']
+    return this.people[name]
+  }
+  /** How many tickets exist: a refused create leaves it as it was. */
+  async ticketCount() { return Number((await sql`select count(*) as n from tickets.ticket`)[0]!.n) }
+
   /** What Tickets queued about the current ticket (#1001): nothing here sends. */
   async mail(): Promise<{ recipient: string; body: string }[]> {
     return [...await sql<{ recipient: string; body: string }[]>`select recipient, body from email_queue
@@ -294,6 +314,13 @@ export class TicketTransitions {
     await this.types.submit({ urgency: 'Now', source_system: this.types.systems.SAP, current_value: '78/499/1' })
     expect(this.t.ticket.assigned_to).toBe(this.t.ids.Bala)
   }
+  /** #1193: `actor` raises the Data Quality Issue for SAP naming `person` as its raiser; refused or not when `attempt`. */
+  async raiseFor(actor: string, person: string, attempt = false) {
+    await this.configure()
+    if (actor === 'Agent') await this.t.agent()
+    return this.t.action('create', { title: 'Plant address is wrong', original: 'Two plants carry both door numbers', kind: this.types.key,
+      details: { urgency: 'Now', source_system: this.types.systems.SAP, current_value: '78/499/1' }, raiser: this.t.ids[person] }, actor, attempt)
+  }
   take(actor: string, action: string, values?: Record<string, unknown>, attempt = false) {
     return this.t.action('transition', { action, ...(values ? { values } : {}) }, actor, attempt)
   }
@@ -328,4 +355,115 @@ export class TicketsAssignmentEmail {
     await this.t.action('create', { title: `${name} files one`, original: `${name} files one`, kind: 'generic', details: {} }, name)
     this.t.ticket = raised
   }
+}
+
+// ---- data quality rules (#1196) ----
+
+export type Rule = { row_id: string; title: string; table: string; filters: [string, string, unknown][]; severity: string
+  owner?: string | null; how_to_fix?: string | null; rows_when_raised: number; rows_left: number | null }
+export const BUYER_BLANK = { title: 'Buyer is blank', table: 'Buyer Assignment', severity: 'Medium',
+  filters: [['role', '=', 'Buyer'], ['person', 'is blank', null]] as [string, string, unknown][],
+  how_to_fix: 'Pick the buyer from the category\'s purchasing group' }
+
+/** A Data Quality Issue raised to Bala, and a linked Table "Buyer Assignment" whose rows a rule counts. */
+export class TicketRules {
+  readonly transitions: TicketTransitions
+  readonly table = 'Buyer Assignment'
+  rows: { row_id: string; updated_at: string }[] = []
+  rule?: Rule
+  constructor(readonly t: Tickets) { this.transitions = new TicketTransitions(t) }
+
+  private save(table: string, row: object) { return this.t.admin.post<any>('/api/save_row', { table, row }) }
+
+  /** The linked Table, read by Tickets support only; Colleague may not read it. */
+  async desk() {
+    await this.transitions.configure()
+    if (this.rows.length) return
+    await makeTable(this.t.admin, { name: this.table, columns: ['role', 'person', 'store'] })
+    await grantRole(this.t.admin, { role: 'Tickets Support', table: this.table, can_read: true })
+    await this.t.configure({ linked_tables: [this.transitions.types.systemsTable, this.transitions.types.ownersTable, this.table] })
+    for (const store of ['North', 'South', 'East']) this.rows.push(await this.save(this.table, { role: 'Buyer', store }))
+    await this.save(this.table, { role: 'Buyer', store: 'West', person: 'Asha' })
+    await this.save(this.table, { role: 'Category head', store: 'West', person: 'Ravi' })
+  }
+  async raised() { await this.desk(); await this.transitions.raise() }
+
+  add(rule: Record<string, unknown> = BUYER_BLANK, actor = 'Bala', attempt = false) {
+    return this.t.action('add_rule', { ...rule }, actor, attempt)
+  }
+  /** A ticket with the rule "Buyer is blank" and 3 of 3 rows left. */
+  async withRule() {
+    await this.raised()
+    await this.add()
+    this.rule = (await this.rules())[0]
+  }
+  async rules(actor = 'Bala'): Promise<Rule[]> { return (await this.t.open(actor)).rules ?? [] }
+  async ruleNamed(title: string, actor = 'Bala') { const rule = (await this.rules(actor)).find(r => r.title === title); expect(rule, `rule ${title}`).toBeDefined(); return rule! }
+
+  /** Fills in a person on that many of the blank buyer rows. */
+  async fill(count: number) {
+    for (const row of this.rows.splice(0, count)) {
+      const current = await this.t.admin.get<{ updated_at: string }>(`/api/table/${encodeURIComponent(this.table)}/${row.row_id}`)
+      await this.save(this.table, { row_id: row.row_id, updated_at: current.updated_at, person: 'Filled In' })
+    }
+  }
+  async newBlankBuyer() { this.rows.push(await this.save(this.table, { role: 'Buyer', store: 'Central' })) }
+  remove(reason: string, actor = 'Bala', attempt = false) { return this.t.action('remove_rule', { rule: this.rule!.row_id, reason }, actor, attempt) }
+  preview(table: string, filters: unknown, actor = 'Bala') { return this.t.read('rule_preview', { table, filters }, actor) }
+  refusedWith(pattern: RegExp) {
+    expect(this.t.last.status, JSON.stringify(this.t.last.body)).not.toBe(200)
+    expect(JSON.stringify(this.t.last.body)).toMatch(pattern)
+  }
+}
+
+// ---- the rows a data quality ticket covers (#1230) ----
+
+export type CoveredRow = { table: string; row: string; note: string | null; fixed_on: string | null; link: boolean; record: string | null }
+export type Covered = { rows: CoveredRow[]; total: number; fixed: number }
+
+/** The instance's Data Quality Row Table, as production has it: one line per affected row, linked to its ticket.
+ *  Its rows sit in "Section", which only Tickets support may read. */
+export class TicketCoveredRows {
+  readonly transitions: TicketTransitions
+  readonly table = 'Data Quality Row'
+  readonly affected = 'Section'
+  readonly columns = [
+    { column_name: 'ticket', column_type: 'Reference', reference_table: 'tickets.ticket', reqd: true },
+    { column_name: 'affected_table', column_type: 'Data', reqd: true },
+    { column_name: 'affected_row', column_type: 'Data', reqd: true },
+    { column_name: 'fixed_on', column_type: 'Date' },
+    { column_name: 'fixed_by', column_type: 'Data' },
+    { column_name: 'note', column_type: 'Text' }]
+  sections: Record<string, string> = {}
+  other = ''
+  /** Lets Tickets support open Data Quality Row records themselves (nobody may, until then). */
+  grantRows: () => Promise<unknown> = async () => {}
+  constructor(readonly t: Tickets) { this.transitions = new TicketTransitions(t) }
+
+  private save(table: string, row: object) { return this.t.admin.post<any>('/api/save_row', { table, row }) }
+
+  /** Anjali's Data Quality Issue (assigned to Bala) covers three rows, one fixed; another ticket covers one more. */
+  async world({ link = true }: { link?: boolean } = {}) {
+    await this.transitions.raise()
+    const ticket = this.t.ticket
+    const admin = this.t.admin
+    await makeTable(admin, { name: this.affected, id_pattern: 'field:section', title_column: 'section', columns: [{ column_name: 'section', column_type: 'Data', reqd: true }] })
+    await grantRole(admin, { role: 'Tickets Support', table: this.affected, can_read: true })
+    this.grantRows = () => grantRole(admin, { role: 'Tickets Support', table: this.table, can_read: true })
+    for (const name of ['North Grocery', 'South Fashion']) this.sections[name] = (await this.save(this.affected, { section: name })).row_id
+    await makeTable(admin, { name: this.table, columns: this.columns })
+    await this.save(this.table, { ticket: ticket.row_id, affected_table: this.affected, affected_row: this.sections['South Fashion'],
+      note: 'Mixes grocery with fashion', fixed_on: '2026-11-07', fixed_by: 'FIXER-SECRET-1230' })
+    await this.save(this.table, { ticket: ticket.row_id, affected_table: this.affected, affected_row: this.sections['North Grocery'], note: 'Mixes grocery with home' })
+    await this.save(this.table, { ticket: ticket.row_id, affected_table: 'Merchandise Assignment', affected_row: 'Every buyer row with no person' })
+    // Another ticket, with a row of its own that this ticket must never show.
+    await this.transitions.types.submit({ urgency: 'Later', source_system: this.transitions.types.systems.SAP })
+    this.other = this.t.ticket.row_id
+    await this.save(this.table, { ticket: this.other, affected_table: this.affected, affected_row: 'OTHER-TICKET-ROW-1230', note: 'Belongs elsewhere' })
+    this.t.ticket = ticket
+    const types = this.transitions.types
+    await this.t.configure({ linked_tables: [types.systemsTable, types.ownersTable, ...(link ? [this.table, this.affected] : [])] })
+  }
+
+  async covered(actor: string): Promise<Covered | undefined> { return (await this.t.open(actor)).coveredRows }
 }

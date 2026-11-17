@@ -574,3 +574,113 @@ describe('a set-up in use, before its review (#1191, #1205)', () => {
     await page.done()
   })
 })
+
+// #1219: the reviewer with who they are, and whoever else may decide a set-up.
+describe('who reviews a set-up (#1219)', () => {
+  const MANI = { name: 'Mani', code: 'KL-RR-7831', jobs: ['Store Manager · Lakeside'], staff: 'current' }
+  beforeEach(() => window.localStorage.clear())
+  it('the form names the reviewer with code, job and site', async () => {
+    answers.department_setup = { ...SETUP, reviewers: [MANI] }
+    const page = await render('YourDepartment')
+    expect(page.q('reviewer-identity')?.textContent).toBe('Mani · KL-RR-7831 · Store Manager · Lakeside')
+    await page.done()
+  })
+  it('a waiting set-up and one in use name theirs too', async () => {
+    answers.department_setup = { ...SETUP, reviewers: [MANI], current: { state: 'waiting', bundle: 'B1', name: 'Ladies', sections: ['Sarees'], waiting_for: 'Mani', reviewers: [MANI], asked_on: '2026-11-11' } }
+    let page = await render('YourDepartment')
+    expect(page.q('waiting')?.querySelector('[data-testid="reviewer-identity"]')?.textContent).toBe('Mani · KL-RR-7831 · Store Manager · Lakeside')
+    await page.done()
+    answers.department_setup = { ...SETUP, reviewers: [MANI], current: { state: 'set_up', name: 'Ladies', sections: ['Sarees'], reviewing: { bundle: 'B1', waiting_for: 'Mani', reviewers: [MANI] } } }
+    page = await render('YourDepartment')
+    expect(page.q('set-up')?.querySelector('[data-testid="reviewer-identity"]')?.textContent).toBe('Mani · KL-RR-7831 · Store Manager · Lakeside')
+    await page.done()
+  })
+  it('a set-up card names whoever else may decide it', async () => {
+    answers.department_approvals = [{ bundle: 'B1', who: 'Deepa', job: 'Department Manager', store: 'Lakeside', name: 'Ladies Ethnic', asked_on: '2026-11-11',
+      sections: [{ id: 'S1', name: 'Sarees', team_leaders: [] }], also_with: [MANI] }]
+    answers.approvals = { state: 'ok', proposals: [] }
+    const page = await render('Approvals')
+    expect(page.q('setup-card')?.querySelector('[data-testid="also-with"]')?.textContent).toBe('Also withManiKL-RR-7831 · Store Manager · Lakeside')
+    await page.done()
+  })
+})
+
+describe('the name keeps up with the ticked sections (#1209)', () => {
+  const tick = (container: Element, name: string) => [...container.querySelectorAll('[data-testid=section-row] input')]
+    .find(box => (box as HTMLInputElement).getAttribute('aria-label') === name)!
+  const nameNow = (page: { q: (id: string) => Element | null }) => (page.q('name-input') as HTMLInputElement).value
+  const named = (name: string, sections: [string, string][]) => ({ ...SETUP, current: { state: 'set_up', name, sections: sections.map(([, n]) => n),
+    reviewing: { bundle: 'B1', waiting_for: 'Mani' }, prefilled: { bundle: 'B1', sections: sections.map(([id, n]) => ({ id, name: n })), flagged: [] } } })
+  beforeEach(() => window.localStorage.clear())
+
+  it('re-suggests a name built from the sections as they are ticked, and sends it', async () => {
+    answers.department_setup = named('Sarees & Silk', [['S1', 'Sarees'], ['S2', 'Silk']])
+    answers.set_up_department = { state: 'set_up' }
+    const page = await render('YourDepartment')
+    await page.click('Change it')
+    await page.press(tick(page.container, 'Silk'))
+    expect(nameNow(page)).toBe('Sarees')
+    await page.press(tick(page.container, 'Bags'))
+    expect(nameNow(page)).toBe('Bags & Sarees')
+    await page.press(tick(page.container, 'Silk'))
+    expect(nameNow(page)).toBe('Bags, Sarees & Silk')
+    expect(page.q('name-mentions-removed')).toBeNull()
+    await page.click('Send to Mani')
+    expect(sentCalls('set_up_department')).toEqual([{ job: 'J1', name: 'Bags, Sarees & Silk', sections: ['S5', 'S1', 'S2'], replaces: 'B1' }])
+    await page.done()
+  })
+  it('keeps a name they typed, and says gently when it mentions a section they took out', async () => {
+    answers.department_setup = named('Sarees & Silk', [['S1', 'Sarees'], ['S2', 'Silk']])
+    answers.set_up_department = { state: 'set_up' }
+    const page = await render('YourDepartment')
+    await page.click('Change it')
+    await page.choose(page.q('name-input') as HTMLInputElement, 'Silk Corner')
+    await page.press(tick(page.container, 'Silk'))
+    expect(nameNow(page)).toBe('Silk Corner')
+    expect(page.q('name-mentions-removed')?.textContent).toBe("This name mentions Silk, which you've taken out.")
+    expect(page.button('Send to Mani').disabled).toBe(false)
+    await page.press(tick(page.container, 'Silk'))
+    expect(page.q('name-mentions-removed')).toBeNull()
+    await page.done()
+  })
+  it('puts the hint right under the name, read with it, and counts a section ticked here then taken out', async () => {
+    answers.department_setup = named('Sarees & Silk', [['S1', 'Sarees'], ['S2', 'Silk']])
+    const page = await render('YourDepartment')
+    await page.click('Change it')
+    await page.choose(page.q('name-input') as HTMLInputElement, 'Bags Corner')
+    await page.press(tick(page.container, 'Bags'))
+    expect(page.q('name-mentions-removed')).toBeNull()
+    await page.press(tick(page.container, 'Bags'))
+    const hint = page.q('name-mentions-removed')!
+    expect(hint.textContent).toBe("This name mentions Bags, which you've taken out.")
+    const described = (page.q('name-input') as HTMLInputElement).getAttribute('aria-describedby')!.split(' ').map(id => document.getElementById(id))
+    expect(described.some(element => element?.contains(hint))).toBe(true)
+    expect(described.some(element => element?.textContent?.includes('Use the name your store uses on the floor'))).toBe(true)
+    await page.done()
+  })
+  it('treats a name of their own the same from the start, and names every section it mentions', async () => {
+    answers.department_setup = named('Sarees and Silk Corner', [['S1', 'Sarees'], ['S2', 'Silk']])
+    const page = await render('YourDepartment')
+    await page.click('Change it')
+    await page.press(tick(page.container, 'Silk'))
+    await page.press(tick(page.container, 'Sarees'))
+    expect(nameNow(page)).toBe('Sarees and Silk Corner')
+    expect(page.q('name-mentions-removed')?.textContent).toBe("This name mentions Sarees and Silk, which you've taken out.")
+    await page.done()
+  })
+  it('keeps a name picked from other stores, and leaves a new set-up to be named', async () => {
+    answers.department_setup = named('Sarees & Silk', [['S1', 'Sarees'], ['S2', 'Silk']])
+    const page = await render('YourDepartment')
+    await page.click('Change it')
+    await page.click('Menswear')
+    await page.press(tick(page.container, 'Silk'))
+    expect(nameNow(page)).toBe('Menswear')
+    expect(page.q('name-mentions-removed')).toBeNull()
+    await page.done()
+    answers.department_setup = SETUP
+    const fresh = await render('YourDepartment')
+    await fresh.press(tick(fresh.container, 'Silk'))
+    expect(nameNow(fresh)).toBe('')
+    await fresh.done()
+  })
+})

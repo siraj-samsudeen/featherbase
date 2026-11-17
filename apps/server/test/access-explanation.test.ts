@@ -40,11 +40,11 @@ test('roles say who gave them, and the Tables they reach name the roles that gra
   // The built-in All role is every account's, not this person's: it is not listed.
   expect(page.roles.map((r) => r.role)).not.toContain('All')
 
-  expect(page.read.find((t) => t.table === 'Ae Plant')).toEqual({
+  expect(page.read.find((t) => t.table === 'Ae Plant')).toMatchObject({
     table: 'Ae Plant', own_rows: false, roles: ['Ae Plant Reader', 'Ae Plant Writer'],
   })
   // Only the own-rows grant changes it, so the change is own rows only.
-  expect(page.change.find((t) => t.table === 'Ae Plant')).toEqual({ table: 'Ae Plant', own_rows: true, roles: ['Ae Plant Writer'] })
+  expect(page.change.find((t) => t.table === 'Ae Plant')).toMatchObject({ table: 'Ae Plant', own_rows: true, roles: ['Ae Plant Writer'] })
 })
 
 test('a role given later says who gave it then; the roles held before keep theirs', async ({ admin, createUser }) => {
@@ -72,7 +72,7 @@ test('a service account\'s roles, and an app role held through one of them', asy
   const page = await admin.get<Explanation>(pageOf(account.row_id))
   expect(page.roles).toEqual([
     expect.objectContaining({ role: 'Setup Staff', app: null, through: null, given_by: 'Administrator' }),
-    { role: 'Setup Reader', app: 'setupproof', through: 'Setup Staff', everyone: false, given_by: null, given_at: null },
+    { role: 'Setup Reader', app: 'setupproof', through: 'Setup Staff', everyone: false, given_by: null, given_by_name: null, given_at: null },
   ])
 })
 
@@ -216,4 +216,67 @@ test('a scope provider that is not set up yet says so, and the rest of the page 
     expect(page.scope).toEqual({ app: 'placeroster', title: 'Place roster proof', problem: 'configuration', places: [] })
     expect(page.person).toBe(person.user)
   } finally { await rm(copy, { recursive: true, force: true }) }
+})
+
+test('#1224: each Table reached says its label and module, and an app Table with no label reads in words', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Ae Brand', module: 'Merchandising', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await grantRole(admin, { role: 'Ae Brand Editor', table: 'Ae Brand', can_read: true, can_write: true })
+  const person = await createUser({ roles: ['Ae Brand Editor'] })
+  const page = await admin.get<{ read: { table: string; label: string; module: string; app: string | null }[] }>(pageOf(person.user!))
+  expect(page.read.find((t) => t.table === 'Ae Brand')).toMatchObject({ label: 'Ae Brand', module: 'Merchandising', app: null })
+  const { tableLabel } = await import('../src/access-explanation')
+  expect(tableLabel('dash.report_access', null)).toBe('Report access')
+  expect(tableLabel('Glossary Term', '')).toBe('Glossary Term')
+})
+
+test('#1224 the page says which of the records it names the viewer may open', async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Ae Depot', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await grantRole(admin, { role: 'Ae Depot Reader', table: 'Ae Depot', can_read: true })
+  const person = await createUser({ roles: ['Ae Depot Reader'] })
+  const asManager = await admin.get<{ viewer_opens: string[] }>(pageOf(person.user!))
+  expect(asManager.viewer_opens).toEqual(expect.arrayContaining(['Role', 'Person', 'Service Account', 'Ae Depot']))
+  // Their own page: they may open the Table they read, never Person or Role.
+  const own = await person.get<{ viewer_opens: string[] }>(pageOf(person.user!))
+  expect(own.viewer_opens).toContain('Ae Depot')
+  expect(own.viewer_opens).not.toContain('Person')
+  expect(own.viewer_opens).not.toContain('Role')
+})
+
+test('#1224 the page names the person it is about, even to a viewer who may not read Person, and lists the apps they can open', async ({ admin, createUser }) => {
+  const person = await createUser({ roles: [], fullName: 'Ae Named Person' })
+  const own = await person.get<{ person_name: string; apps: { name: string; title: string }[] }>(pageOf(person.user!))
+  expect(own.person_name).toBe('Ae Named Person')
+  expect(own.apps).toEqual([])
+  // An installed app with pages of its own, open to everyone: listed by name, title and address.
+  await discoverPackages([resolve('../..', 'test-apps/other')])
+  await admin.post('/api/install_app', { name: 'other' })
+  expect((await person.get<{ apps: unknown[] }>(pageOf(person.user!))).apps).toEqual([{ name: 'other', title: 'Other tasks', href: '/other/' }])
+})
+
+test('#1224 a row is linkable only when the viewer may open that row, not just its Table', async ({ admin, createUser }) => {
+  // Creator-only Person read: the Table is readable, the Administrator's row is not.
+  await grantRole(admin, { role: 'Ae Own People', table: 'Person', can_read: true, own_rows_only: true })
+  const person = await createUser({ roles: ['Ae Own People'] })
+  const page = await person.get<{ viewer_opens: string[]; viewer_opens_rows: { table: string; row_id: string }[]; roles: { role: string; given_by: string }[] }>(pageOf(person.user!))
+  expect(page.viewer_opens).toContain('Person')
+  expect(page.roles.find((r) => r.role === 'Ae Own People')?.given_by).toBe('Administrator')
+  expect(page.viewer_opens_rows).not.toContainEqual({ table: 'Person', row_id: 'Administrator' })
+  // As a System Manager, the same rows are linkable.
+  const asManager = await admin.get<{ viewer_opens_rows: { table: string; row_id: string }[] }>(pageOf(person.user!))
+  expect(asManager.viewer_opens_rows).toEqual(expect.arrayContaining([
+    { table: 'Person', row_id: 'Administrator' }, { table: 'Person', row_id: person.user }, { table: 'Role', row_id: 'Ae Own People' }]))
+})
+
+test('#1224 the page names the Tables that keep rows private, for someone who reaches every Table too', async ({ admin, createUser }) => {
+  const { sql } = await import('../src/db')
+  await admin.post('/api/table_def', { name: 'Ae Private', label: 'Ae Private', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await sql`update table_def set access_policy = ${sql.json({ roles: ['All'], shared_column: 'body', inherit_column: null })} where name = 'Ae Private'`
+  // A roles-only policy admits roles; it keeps no row private.
+  await admin.post('/api/table_def', { name: 'Ae Roles Only', label: 'Ae Roles Only', columns: [{ column_name: 'body', column_type: 'Data' }] })
+  await sql`update table_def set access_policy = ${sql.json({ roles: ['All'], shared_column: null, inherit_column: null })} where name = 'Ae Roles Only'`
+  const manager = await createUser({ roles: ['System Manager'] })
+  const page = await admin.get<{ every_table: boolean; private_tables: string[] }>(pageOf(manager.user!))
+  expect(page.every_table).toBe(true)
+  expect(page.private_tables).toContain('Ae Private')
+  expect(page.private_tables).not.toContain('Ae Roles Only')
 })

@@ -1,7 +1,7 @@
 // tickets-assignment-email (#1001, #1069), the fenced scenarios on Tickets'
 // ticket screen, step by step, rendered in jsdom against the real in-process
 // server; what the Email Queue alone proves is in apps/server/test/scenarios/.
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { describe } from 'vitest'
 import { scenarioFor } from 'server/test/scenario'
 import { settleSandboxRequests } from 'server/test/pg-test-shared'
@@ -16,7 +16,7 @@ const LISTED = 'Colleague is listed as someone tickets can be assigned to'
 const CONFIRM = '[aria-label="Confirm the assignee"]'
 
 // The picker's options by their value, a person's id: the DSL reads options by their text.
-const picker = () => screen.getByRole('combobox', { name: 'Assigned to' }) as HTMLSelectElement
+const picker = () => screen.getByRole('combobox', { name: 'Assigned To' }) as HTMLSelectElement
 const confirmRow = () => screen.queryByRole('group', { name: 'Confirm the assignee' })
 
 /** That person's ticket screen, open on this ticket. */
@@ -28,7 +28,11 @@ async function openOnScreen(x: TicketsAssignmentEmail, actor: string): Promise<{
 async function pick(x: TicketsAssignmentEmail, name: string): Promise<{ session: Session }> {
   const { session } = await openOnScreen(x, 'Support')
   // By the person's id, the option's value: the scenario names people by their part, not the name the picker shows.
-  await session.step(`pick ${name} as the assignee`, ({ user }) => user.selectOptions(picker(), x.t.ids[name]!))
+  // #1233: the assignee reads as a name; Change opens the picker.
+  await session.step(`pick ${name} as the assignee`, async ({ user }) => {
+    await user.click(screen.getByRole('button', { name: 'Change the assignee' }))
+    await user.selectOptions(picker(), x.t.ids[name]!)
+  })
   return { session }
 }
 async function mail(x: TicketsAssignmentEmail) {
@@ -98,11 +102,39 @@ describe('tickets-assignment-email', () => {
         .within(CONFIRM, (confirm) => confirm.clickButton('Cancel'))
         .until('the confirmation has closed', () => !confirmRow()))
     await step('the ticket screen shows the ticket as Unassigned', async () => {
-      await session.assertSelected('Assigned to', 'Unassigned')
+      await session.within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned'))
+      expect(screen.queryByRole('combobox', { name: 'Assigned To' })).toBeNull()
       const { session: reopened } = await openOnScreen(x, 'Support')
-      await reopened.assertSelected('Assigned to', 'Unassigned')
+      await reopened.within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned'))
     })
     await step('nobody is emailed about the ticket', async () => expect(await mail(x)).toEqual([]))
+  })
+
+  scenario('Removing the assignee asks with Remove', async ({ admin, createUser }, step) => {
+    const x = new TicketsAssignmentEmail(new Tickets(admin, createUser))
+    let session!: Session
+    await step('Anjali has raised a ticket that support has assigned to Colleague', async () => {
+      await x.raise()
+      await x.assignable('Colleague')
+      await x.t.action('edit', { assigned_to: x.t.ids.Colleague }, 'Support')
+    })
+    await step('support picks Unassigned on the ticket screen', async () => {
+      ;({ session } = await openOnScreen(x, 'Support'))
+      await session.step('pick Unassigned', async ({ user }) => {
+        await user.click(screen.getByRole('button', { name: 'Change the assignee' }))
+        await user.selectOptions(picker(), '')
+      })
+    })
+    await step('the ticket screen asks "Remove the assignee?" with Remove and Cancel', () => {
+      const row = confirmRow()!
+      expect(row.textContent).toContain('Remove the assignee?')
+      expect(within(row).getAllByRole('button').map(b => b.textContent)).toEqual(['Remove', 'Cancel'])
+    })
+    await step('when support removes the assignee, the ticket screen shows the ticket as Unassigned', () =>
+      session
+        .within(CONFIRM, (confirm) => confirm.clickButton('Remove'))
+        .until('the confirmation has closed', () => !confirmRow())
+        .within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned')))
   })
 
   scenario('The requester sees the assignee as text', async ({ admin, createUser }, step) => {
@@ -114,7 +146,7 @@ describe('tickets-assignment-email', () => {
     })
     await step('Anjali sees the ticket as Unassigned, with no way to assign it', async () => {
       await session.within('header.ticket-header .ticket-facts', (facts) => facts.assertText('Unassigned'))
-      expect(screen.queryByRole('combobox', { name: 'Assigned to' })).toBeNull()
+      expect(screen.queryByRole('combobox', { name: 'Assigned To' })).toBeNull()
     })
   })
 })
