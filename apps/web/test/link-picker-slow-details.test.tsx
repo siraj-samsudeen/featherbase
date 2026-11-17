@@ -37,3 +37,37 @@ test("a link picker never shows bare ids while its Table's details are still on 
     spy.mockRestore()
   }
 })
+
+// An older search that fails after a newer one answered changes nothing.
+test('a stale search that fails late never empties the newer answer', async ({ admin }) => {
+  await seedSites(admin)
+  let failOld!: () => void
+  const oldHeld = new Promise<void>((done) => { failOld = done })
+  const real = globalThis.fetch
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    const text = decodeURIComponent(String(url))
+    if (text.includes(REGION) && text.includes('"%k%"')) {
+      await oldHeld
+      return new Response(JSON.stringify({ error: { type: 'InternalError', message: 'late failure' } }), { status: 500, headers: { 'content-type': 'application/json' } })
+    }
+    return real(url, init)
+  })
+  try {
+    await renderApp(tableHref(SITE), admin)
+    fireEvent.click(await screen.findByTestId('filter-toggle'))
+    fireEvent.change(await screen.findByTestId('filter-field'), { target: { value: 'region' } })
+    fireEvent.focus(screen.getByTestId('filter-value'))
+    const list = await screen.findByTestId('link-options-region')
+    await waitFor(() => expect(within(list).getAllByTestId('link-option').length).toBeGreaterThan(0))
+    const box = within(list).getByRole('searchbox')
+    fireEvent.change(box, { target: { value: 'k' } })
+    await new Promise((done) => setTimeout(done, 300))
+    fireEvent.change(box, { target: { value: 'ke' } })
+    await waitFor(() => expect(within(list).getByRole('button', { name: 'Kerala' })).toBeInTheDocument())
+    failOld()
+    await new Promise((done) => setTimeout(done, 300))
+    expect(within(list).getByRole('button', { name: 'Kerala' })).toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
+  }
+})
