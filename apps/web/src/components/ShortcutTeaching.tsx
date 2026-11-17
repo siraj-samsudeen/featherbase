@@ -133,11 +133,14 @@ function ShortcutsPanel({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
   )
 }
 
-/** Every control on screen with a shortcut, in the document and in this bar's own root. */
+/** Every control on screen with a shortcut: in the document, in this bar's own
+ *  root, and inside each app sidebar's (open) shadow root, where its Collapse
+ *  control lives (#1248). */
 function shortcutControls(anchor: RefObject<HTMLElement | null>): HTMLElement[] {
   const roots: ParentNode[] = [document]
   const root = anchor.current?.getRootNode()
   if (root instanceof ShadowRoot) roots.push(root)
+  for (const sidebar of document.querySelectorAll('featherbase-sidebar')) if (sidebar.shadowRoot) roots.push(sidebar.shadowRoot)
   return roots.flatMap((r) => [...r.querySelectorAll<HTMLElement>('[data-shortcut-key]')])
     .filter((el) => (el as HTMLElement & { checkVisibility?: () => boolean }).checkVisibility?.() !== false)
 }
