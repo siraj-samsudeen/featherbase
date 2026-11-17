@@ -632,17 +632,17 @@ test('the Admin bar stays named and its Account menu usable when the brand endpo
   expect(within(await openAccountMenu()).getByTestId('logout')).toBeInTheDocument()
 })
 
-test("Tab walks the bar on an app's address: Open Admin, the three theme choices, Keyboard (#1251), then the Account menu", async ({ admin }) => {
+test("Tab walks the bar on an app's address: Open Admin, the three theme choices, then the Account menu", async ({ admin }) => {
   onAddressThatOpens('dash')
   await renderApp('/featherbase/sales-target', admin)
   await within(await settledBar()).findByTestId('open-admin')
   ;(await nameElement()).focus()
   const reached: string[] = []
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 5; i++) {
     await userEvent.tab()
     reached.push(document.activeElement?.getAttribute('data-testid') ?? '')
   }
-  expect(reached).toEqual(['open-admin', 'theme-light', 'theme-dark', 'theme-device', 'shortcuts-button', 'session-user'])
+  expect(reached).toEqual(['open-admin', 'theme-light', 'theme-dark', 'theme-device', 'session-user'])
 
   // Space opens the Account menu; after a Tab into it, Escape closes it and
   // focus returns to the avatar.

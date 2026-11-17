@@ -41,7 +41,7 @@ import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
-import { COMMAND_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
+import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
 
 interface SearchHit {
   table: string
@@ -238,6 +238,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
   useShortcut(COMMAND_SHORTCUT_DEF) // #1251
+  useShortcut(ADMIN_HOME_SHORTCUT_DEF)
+  useShortcut(NEW_ROW_SHORTCUT_DEF)
   const commandFormRef = useRef<HTMLFormElement>(null)
   // #1253: the command bar is a box in the middle of the screen, drawn while
   // open; its input takes the focus once it is drawn.
@@ -305,10 +307,12 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
         leader = now
       } else if (e.key.toLowerCase() === 'd' && now - leader < 1000) {
         leader = 0
+        noteShortcutUse(ADMIN_HOME_SHORTCUT_DEF.id, 'key')
         navigate({ to: '/featherbase/admin' })
       } else if (e.key.toLowerCase() === 'n' && now - leader < 1000) {
         leader = 0
         const dt = currentTable()
+        if (dt) noteShortcutUse(NEW_ROW_SHORTCUT_DEF.id, 'key')
         if (dt) navigate({ to: '/featherbase/admin/table/$table/new', params: { table: dt }, search: { prefill: undefined } })
       } else {
         leader = 0

@@ -31,7 +31,7 @@ test("on an app's page the sidebar's key badge sits on the Collapse control insi
   document.body.append(sidebar)
 
   const inBar = (selector: string) => bar.shadowRoot?.querySelector<HTMLElement>(selector) ?? null
-  await waitFor(() => expect(inBar('[data-testid="shortcuts-button"]')).not.toBeNull(), { timeout: 8000 })
+  await waitFor(() => expect(inBar('[data-testid="shortcut-teaching"]')).not.toBeNull(), { timeout: 8000 })
   const collapse = await waitFor(() => {
     const control = sidebar.shadowRoot?.querySelector<HTMLElement>('[data-shortcut-id="sidebar"]')
     expect(control).toBeTruthy()

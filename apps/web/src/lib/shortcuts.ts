@@ -48,6 +48,21 @@ export const COMMAND_SHORTCUT_DEF: Shortcut = {
   tip: `Press ${mod('K')} to search or type a command from anywhere.`,
 }
 
+/** The Admin's leader keys, listed so the panel shows them (they were in
+ *  #1253's Help list); their mouse equivalents are many, so they get no tips. */
+export const ADMIN_HOME_SHORTCUT_DEF: Shortcut = {
+  id: 'admin-home',
+  keys: 'G then D',
+  label: 'Go To The Admin Home',
+  tip: 'Press G then D to go to the Admin home.',
+}
+export const NEW_ROW_SHORTCUT_DEF: Shortcut = {
+  id: 'new-row',
+  keys: 'G then N',
+  label: 'New Row Of This Table',
+  tip: 'Press G then N to start a new row of this Table.',
+}
+
 /** How long a tip stays unless dismissed. */
 export const TIP_MS = 10_000
 /** Uses are sent together, at most this often. */
@@ -101,8 +116,8 @@ export function addShortcut(shortcut: Shortcut): () => void {
   return () => {
     if (removed) return
     removed = true
-    const current = added.get(shortcut.id)
-    if (!current) return
+    // Only this owner's removal runs (the flag above), so its entry is there.
+    const current = added.get(shortcut.id)!
     if (current.count <= 1) added.delete(shortcut.id)
     else current.count -= 1
     publish()

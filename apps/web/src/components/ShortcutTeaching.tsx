@@ -15,23 +15,53 @@ import {
 } from '../lib/shortcuts'
 import { placeTip, type Box } from '../lib/tip-place'
 
-// #1251: the keyboard-shortcut teaching, drawn by the top bar on every page:
-// the "Keyboard ?" button, the Keyboard Shortcuts panel and its key badges,
-// the tip or reminder, and the "tips are quiet" notice. Everything is fixed to
-// the window, so it works the same inside the app bar's shadow root.
+// #1251: the keyboard-shortcut teaching. Since #1253 there is no top bar: the
+// sidebar foot's Help menu opens the Keyboard Shortcuts panel, and an invisible
+// host (rendered once by the bar beside the foot) loads the person's learning,
+// listens for `?`, and draws the panel and its key badges, the tip or reminder,
+// and the "tips are quiet" notice. All are fixed to the window and placed from
+// the page's content area, so they work the same inside the bar's shadow root.
 
 const kbdClasses = 'rounded-[5px] border border-b-2 border-border bg-surface px-1.5 font-mono text-xs text-ink-muted whitespace-nowrap'
 
-/** Below the top bar this button sits in: where the panel, tip and notice start. */
-function barBottom(anchor: RefObject<HTMLElement | null>): number {
-  const bar = anchor.current?.closest('header')
-  return bar ? bar.getBoundingClientRect().bottom : 52
+/** Where the page itself sits: the Admin's <main> panel, else everything right
+ *  of an app's sidebar. The panel, tip and notice are placed within it. */
+export function contentArea(): { left: number; right: number; top: number } {
+  const main = document.querySelector('main')
+  if (main) {
+    const r = main.getBoundingClientRect()
+    return { left: r.left, right: r.right, top: r.top }
+  }
+  const sidebar = document.querySelector('featherbase-sidebar')
+  return { left: sidebar ? sidebar.getBoundingClientRect().right : 0, right: window.innerWidth, top: 0 }
 }
 
-export function ShortcutsButton() {
+/** The Help menu's first item (#1253's sidebar foot): opens the panel. */
+export function KeyboardShortcutsItem({ className }: { className: string }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={(e) => {
+        // Close the Help menu the way it closes itself, then open the panel.
+        e.currentTarget.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }))
+        setShortcutsPanelOpen(true)
+      }}
+      data-shortcut-id="help"
+      data-shortcut-key="?"
+      data-testid="keyboard-shortcuts-item"
+      className={cx(className, 'flex items-center justify-between gap-3')}
+    >
+      <span>Keyboard Shortcuts</span>
+      <kbd className={kbdClasses}>?</kbd>
+    </button>
+  )
+}
+
+export function ShortcutTeachingHost() {
   useShortcutTeaching()
   const state = useShortcutState()
-  const ref = useRef<HTMLButtonElement>(null)
+  const ref = useRef<HTMLSpanElement>(null)
   const open = useRef(state.panelOpen)
   open.current = state.panelOpen
 
@@ -49,37 +79,24 @@ export function ShortcutsButton() {
   }, [])
 
   return (
-    <>
-      <button
-        ref={ref}
-        type="button"
-        onClick={() => setShortcutsPanelOpen(!state.panelOpen)}
-        aria-expanded={state.panelOpen}
-        title="Keyboard Shortcuts · ?"
-        data-shortcut-id="help"
-        data-shortcut-key="?"
-        data-testid="shortcuts-button"
-        className={buttonClasses({ variant: 'quiet', className: 'gap-1.5 px-2 py-1 text-[13px] text-ink-muted' })}
-      >
-        Keyboard <kbd className={kbdClasses}>?</kbd>
-      </button>
-      {state.panelOpen && <ShortcutsPanel anchor={ref} />}
+    <span ref={ref} hidden={!state.panelOpen && !state.tip && !state.notice} data-testid="shortcut-teaching">
+      {state.panelOpen && <ShortcutsPanel />}
       {state.panelOpen && <KeyBadges anchor={ref} />}
-      {state.tip && <Tip key={`${state.tip.id}-${state.tip.mouseUses}`} tip={state.tip} anchor={ref} />}
+      {state.tip && <Tip key={`${state.tip.id}-${state.tip.mouseUses}`} tip={state.tip} />}
       {state.notice && (
         <div
           role="status"
-          className="fixed left-1/2 z-[60] -translate-x-1/2 rounded-control bg-ink px-3.5 py-2 text-[13px] text-surface shadow-lg"
-          style={{ top: barBottom(ref) + 12 }}
+          className="fixed z-[60] -translate-x-1/2 rounded-control bg-ink px-3.5 py-2 text-[13px] text-surface shadow-lg"
+          style={(({ left, right, top }) => ({ left: (left + right) / 2, top: top + 16 }))(contentArea())}
         >
           {state.notice}
         </div>
       )}
-    </>
+    </span>
   )
 }
 
-function ShortcutsPanel({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
+function ShortcutsPanel() {
   const { shortcuts, learning } = useShortcutState()
   const now = Date.now()
   const quiet = isQuiet(learning, now)
@@ -89,8 +106,8 @@ function ShortcutsPanel({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
       role="dialog"
       aria-modal="false"
       aria-label="Keyboard Shortcuts"
-      className="fixed right-4 z-[46] grid w-[340px] max-w-[calc(100vw-2rem)] gap-2 rounded-card border border-border bg-surface p-3 text-[13px] shadow-lg"
-      style={{ top: barBottom(anchor) + 8 }}
+      className="fixed z-[46] grid w-[340px] max-w-[calc(100vw-2rem)] gap-2 rounded-card border border-border bg-surface p-3 text-[13px] shadow-lg"
+      style={(({ right, top }) => ({ top: top + 16, right: window.innerWidth - right + 16 }))(contentArea())}
       data-testid="shortcuts-panel"
     >
       <div className="flex items-center justify-between">
@@ -185,22 +202,22 @@ function KeyBadges({ anchor }: { anchor: RefObject<HTMLElement | null> }) {
 
 const INTERACTIVE = 'button, a[href], input, select, textarea, [role=tab], [role=button]'
 
-function Tip({ tip, anchor }: { tip: ShownTip; anchor: RefObject<HTMLElement | null> }) {
+function Tip({ tip }: { tip: ShownTip }) {
   const { learning } = useShortcutState()
   const ref = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ left: number; top: number } | null>(null)
   useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
+    const el = ref.current! // rendered: the effect runs after the tip is in the page
     const size = { width: el.offsetWidth, height: el.offsetHeight }
-    const top = barBottom(anchor) + 8
+    const area = contentArea()
+    const top = area.top + 16
     const avoid: Box[] = [...document.querySelectorAll<HTMLElement>(INTERACTIVE)]
       .filter((c) => !el.contains(c))
       .map((c) => c.getBoundingClientRect())
       .filter((r) => r.width > 0 && r.bottom > top && r.top < top + 4 * (size.height + 8))
     if (tip.near) avoid.push(tip.near)
-    setAt(placeTip(size, avoid, { left: 16, right: window.innerWidth - 16, top }))
-  }, [tip, anchor])
+    setAt(placeTip(size, avoid, { left: area.left + 16, right: area.right - 16, top }))
+  }, [tip])
   const text = tip.reminder
     ? `You've done this by mouse ${tip.mouseUses} times since you last used ${tip.shortcut.keys}. ${tip.shortcut.tip}`
     : tip.shortcut.tip

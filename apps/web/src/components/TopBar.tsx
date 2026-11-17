@@ -13,6 +13,7 @@ import { useI18n } from '../lib/i18n'
 import { BarControls, useBarControls } from './BarControls'
 import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
+import { KeyboardShortcutsItem, ShortcutTeachingHost } from './ShortcutTeaching'
 import { ViewAsBanner, ViewAsButton } from './ViewAs'
 import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
@@ -285,11 +286,13 @@ export function TopBar({
           // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen.
           <div className={rail ? 'relative flex flex-col items-center gap-1' : 'relative flex min-w-0 items-center gap-0.5'} data-testid="sidebar-account">
             <AccountMenu inSidebar={{ rail, offerAdmin }} />
-            {!rail && <HelpMenu commands={Boolean(command)} />}
+            {!rail && <HelpMenu />}
             {!rail && <ThemeMenu />}
           </div>,
           slots.foot,
         )}
+        {/* #1251: the shortcut teaching, once per page (Admin and apps alike). */}
+        {caps && <ShortcutTeachingHost />}
         {phoneTabs}
       </>
     )
@@ -701,24 +704,13 @@ function ThemeMenu() {
   )
 }
 
-/** Help at the sidebar's foot: the keyboard shortcuts that work on this page. */
-function HelpMenu({ commands }: { commands: boolean }) {
-  const shortcuts: [string, string][] = [
-    ...(commands ? [['Search or Command', COMMAND_SHORTCUT] as [string, string]] : []),
-    ['Collapse or open the sidebar', SIDEBAR_SHORTCUT],
-    ...(commands ? [['Go to the Admin home', 'G then D'], ['New row of this Table', 'G then N']] as [string, string][] : []),
-  ]
+/** Help at the sidebar's foot. #1251: its first item opens the Keyboard
+ *  Shortcuts panel, which lists the shortcuts on this page and which ones the
+ *  person uses; `?` opens it from anywhere. */
+function HelpMenu() {
   return (
     <FootMenu label="Help" icon={CircleHelp} testid="help-button">
-      <p className="px-3 pb-1 pt-1.5 text-xs text-ink-muted">Keyboard Shortcuts</p>
-      <dl className="px-3 pb-1.5 text-sm">
-        {shortcuts.map(([what, keys]) => (
-          <div key={what} className="flex items-center justify-between gap-3 py-1">
-            <dt className="text-ink">{what}</dt>
-            <dd><kbd className="font-mono text-xs text-ink-subtle">{keys}</kbd></dd>
-          </div>
-        ))}
-      </dl>
+      <KeyboardShortcutsItem className={MENU_ITEM} />
     </FootMenu>
   )
 }

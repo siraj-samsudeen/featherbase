@@ -15,27 +15,42 @@ beforeEach(() => localStorage.clear())
 
 async function openAdmin(admin: Admin) {
   await renderApp('/featherbase/admin/all-tables', admin)
-  return screen.findByTestId('shortcuts-button', {}, WAIT)
+  await screen.findByTestId('shortcut-teaching', {}, WAIT)
+}
+/** #1253: the panel opens from the sidebar foot's Help menu. */
+async function openFromHelp() {
+  await userEvent.click(await screen.findByTestId('help-button', {}, WAIT))
+  await userEvent.click(screen.getByTestId('keyboard-shortcuts-item'))
 }
 const panel = () => screen.queryByRole('dialog', { name: 'Keyboard Shortcuts' })
 const sidebarStatus = () => (screen.getByText('Collapse Or Expand The Sidebar').closest('[data-shortcut-row]') as HTMLElement).textContent
 
-test('the Keyboard button, Close and Escape open and close the panel', async ({ admin }) => {
-  const button = await openAdmin(admin)
-  expect(button).toHaveAttribute('title', 'Keyboard Shortcuts · ?')
-  await userEvent.click(button)
+test("Help's Keyboard Shortcuts item opens the panel and closes the menu; Close, ? and Escape close it", async ({ admin }) => {
+  await openAdmin(admin)
+  await openFromHelp()
   expect(panel()).toBeInTheDocument()
-  expect(button).toHaveAttribute('aria-expanded', 'true')
-  await userEvent.click(button)
-  expect(panel()).toBeNull()
-
-  await userEvent.click(button)
+  expect(screen.queryByTestId('help-button-menu')).toBeNull()
   await userEvent.click(within(panel()!).getByRole('button', { name: 'Close' }))
   expect(panel()).toBeNull()
 
-  await userEvent.click(button)
+  await openFromHelp()
+  fireEvent.keyDown(document.body, { key: '?', shiftKey: true })
+  expect(panel()).toBeNull()
+
+  await openFromHelp()
   fireEvent.keyDown(document.body, { key: 'Escape' })
   expect(panel()).toBeNull()
+})
+
+test("the panel lists the Admin's leader keys, and using one counts", async ({ admin }) => {
+  await openAdmin(admin)
+  fireEvent.keyDown(document.body, { key: 'g' })
+  fireEvent.keyDown(document.body, { key: 'd' })
+  await openFromHelp()
+  const row = (label: string) => (within(panel()!).getByText(label).closest('[data-shortcut-row]') as HTMLElement).textContent
+  expect(row('Go To The Admin Home')).toContain('G then D')
+  expect(row('New Row Of This Table')).toContain('G then N')
+  await waitFor(() => expect(row('Go To The Admin Home')).toContain('In Use · 1×'))
 })
 
 test('the command search carries its key in its hover text', async ({ admin }) => {
@@ -56,8 +71,8 @@ test('Got It dismisses the tip', async ({ admin }) => {
 
 test('while tips are quiet the panel says until when, and Turn Tips On Now ends it', async ({ admin }) => {
   await admin.put(`/api/user_settings/${SHORTCUT_SETTINGS}`, { quietUntil: Date.now() + 7 * DAY_MS, quiets: 1 })
-  const button = await openAdmin(admin)
-  await userEvent.click(button)
+  await openAdmin(admin)
+  await openFromHelp()
   await waitFor(() => expect(within(panel()!).getByText(/^Tips are quiet until \d\d-[A-Z][a-z]{2}-\d{4}\.$/)).toBeInTheDocument(), WAIT)
   await userEvent.click(within(panel()!).getByRole('button', { name: 'Turn Tips On Now' }))
   expect(within(panel()!).queryByText(/Tips are quiet until/)).toBeNull()
@@ -67,9 +82,40 @@ test('while tips are quiet the panel says until when, and Turn Tips On Now ends 
 
 test('Reset Tips forgets what was learnt', async ({ admin }) => {
   await admin.put(`/api/user_settings/${SHORTCUT_SETTINGS}`, { use: { sidebar: { keys: 2, mouse: 0, shown: 0, lastKey: Date.now() } } })
-  const button = await openAdmin(admin)
-  await userEvent.click(button)
+  await openAdmin(admin)
+  await openFromHelp()
   await waitFor(() => expect(sidebarStatus()).toContain('In Use · 2×'), WAIT)
   await userEvent.click(within(panel()!).getByRole('button', { name: 'Reset Tips' }))
   expect(sidebarStatus()).toContain('Not Tried Yet')
+})
+
+test('? opens the panel from the page, but not while typing in a text box', async ({ admin }) => {
+  await openAdmin(admin)
+  const notes = document.createElement('textarea')
+  document.body.append(notes)
+  fireEvent.keyDown(notes, { key: '?', shiftKey: true })
+  expect(panel()).toBeNull()
+  notes.remove()
+  fireEvent.keyDown(document, { key: '?', shiftKey: true })
+  expect(panel()).toBeInTheDocument()
+})
+
+test('the key badges follow the controls when the window changes size', async ({ admin }) => {
+  await openAdmin(admin)
+  await openFromHelp()
+  const before = screen.getAllByTestId(/^shortcut-badge-/).length
+  fireEvent(window, new Event('resize'))
+  expect(screen.getAllByTestId(/^shortcut-badge-/)).toHaveLength(before)
+})
+
+test('clicking into the command search three times brings its tip', async ({ admin }) => {
+  await openAdmin(admin)
+  await admin.put(`/api/user_settings/${SHORTCUT_SETTINGS}`, { use: {}, quietUntil: 0, quiets: 0, lastTip: 0 })
+  const search = screen.getByLabelText('Search or type a command')
+  for (let i = 0; i < 3; i++) {
+    await userEvent.click(search)
+    await userEvent.click(document.body)
+  }
+  const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
+  expect(tip).toHaveTextContent(/Press (⌘K|Ctrl\+K) to search or type a command from anywhere\./)
 })
