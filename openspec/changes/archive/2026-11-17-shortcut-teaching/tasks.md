@@ -14,5 +14,5 @@
 
 ## 3. Checks
 
-- [ ] 3.1 Web and server suites, coverage, tours, served e2e, e2e, apps:prove, vocabulary, specs and scenarios
-- [ ] 3.2 Independent verifier against #1251's checklist and the reference screenshots
+- [x] 3.1 Web and server suites, coverage, tours, served e2e, e2e, apps:prove, vocabulary, specs and scenarios
+- [x] 3.2 Independent verifier against #1251's checklist and the reference screenshots
