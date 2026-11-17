@@ -20,9 +20,11 @@ function column(column_name: string, extra: Partial<ColumnDef> = {}): ColumnDef 
 const link = (name: string, table: string, extra: Partial<ColumnDef> = {}) =>
   column(name, { column_type: 'Reference', reference_table: table, ...extra })
 
+// A link table: its title is its own id (the same test listLeader uses).
 const jobAssignment = {
-  name: 'dash.job_assignment', id_pattern: 'hash', title_column: null,
+  name: 'dash.job_assignment', id_pattern: 'field:assignment_id', title_column: 'assignment_id',
   columns: [
+    column('assignment_id'),
     link('section', 'dash.section'),
     link('employee', 'dash.employee'),
     link('designation', 'dash.designation'),
@@ -68,15 +70,37 @@ describe('farSide', () => {
     expect(farSide(jobAssignment, row, { backLink: 'section', record: section.record, own: [] })).toMatchObject({ column: 'designation' })
   })
 
-  it('leaves a row with no other readable link to keep its own name', () => {
-    const plant = { name: 'Plant', id_pattern: 'prompt', title_column: 'plant_name',
-      columns: [column('plant_name'), link('site', 'Site'), column('format')] } as unknown as TableMeta
-    expect(farSide(plant, { row_id: '1503', plant_name: 'Enchakkal Supermarket', site: 'ENK' }, { backLink: 'site', record: 'ENK', own: ['KL'] }))
+  it('leaves a link table with no other readable link to keep its own name', () => {
+    const tag = { name: 'Tag', id_pattern: 'field:tag_id', title_column: 'tag_id',
+      columns: [column('tag_id'), link('site', 'Site'), column('format')] } as unknown as TableMeta
+    expect(farSide(tag, { row_id: 'T1', tag_id: 'T1', site: 'ENK' }, { backLink: 'site', record: 'ENK', own: ['KL'] }))
+      .toBeUndefined()
+  })
+
+  // Verifier, 17-Nov: on Site Lakeside, sections read as their floors and
+  // departments as their managers. A Table with a readable title is not a link table.
+  it("keeps a Site's sections by their own names, never their floors", () => {
+    const sectionMeta = { name: 'Section', id_pattern: 'field:section_id', title_column: 'name',
+      columns: [column('section_id'), column('name'), link('site', 'Site'), link('floor', 'Store Floor')] } as unknown as TableMeta
+    expect(farSide(sectionMeta, { row_id: 'LKS-S1', name: 'Sarees', site: 'LKS', floor: 'LKS-F1' }, { backLink: 'site', record: 'LKS', own: [] }))
+      .toBeUndefined()
+  })
+
+  it("keeps a Site's departments by their own names, never their managers", () => {
+    const department = { name: 'Department', id_pattern: 'field:department_id', title_column: 'name',
+      columns: [column('department_id'), link('store', 'Site'), column('name'), link('manager', 'Employee')] } as unknown as TableMeta
+    expect(farSide(department, { row_id: 'D1', department_id: 'D1', store: 'LKS', name: 'Ladies', manager: '2001' }, { backLink: 'store', record: 'LKS', own: [] }))
+      .toBeUndefined()
+  })
+
+  it('keeps a Table with no title by its own name', () => {
+    const posting = { ...jobAssignment, id_pattern: 'hash', title_column: null } as unknown as TableMeta
+    expect(farSide(posting, { row_id: 'ja1', section: 'KL-RR-S13039', employee: 'E1001' }, { backLink: 'section', record: section.record, own: [] }))
       .toBeUndefined()
   })
 
   it('never names a row by a link the viewer may not read', () => {
-    const scoped = { ...jobAssignment, readable_columns: ['section', 'designation', 'starts_on'] } as TableMeta
+    const scoped = { ...jobAssignment, readable_columns: ['assignment_id', 'section', 'designation', 'starts_on'] } as TableMeta
     const row = { row_id: 'ja1', section: 'KL-RR-S13039', employee: 'E1001', designation: 'D7' }
     expect(farSide(scoped, row, { backLink: 'section', record: section.record, own: [] })).toMatchObject({ column: 'designation' })
   })

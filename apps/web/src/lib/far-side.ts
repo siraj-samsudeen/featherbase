@@ -1,10 +1,10 @@
 // Relational navigation slice 1 (#1218): a group's rows read by what they point
-// to. A row in a group (rows that point at one record) is named by its far
+// to. A row of a link table (its title is its own id) in a group is named by its far
 // side: its first readable link, with a value, that is neither the link back to
 // the record nor a link holding one of the record's own values (a Section
 // Subcategory's store is the section's own site). With none, the row keeps its
 // own name. One rule for the record panel, the Tree and the Map.
-import { dataColumns, readableLinks, titleListColumn } from './list-view-columns'
+import { dataColumns, isLinkTable, readableLinks, titleListColumn } from './list-view-columns'
 import { linkRowsTable, type ColumnDef, type TableMeta } from './meta'
 
 type Row = Record<string, unknown>
@@ -29,6 +29,8 @@ export const GROUP_ROWS = 10
  * of the record's own links.
  */
 export function farSide(meta: TableMeta, row: Row, opts: { backLink?: string; record: string; own: Iterable<string> }): FarSide | undefined {
+  // Only a link table reads through: a section keeps its name, never its floor.
+  if (!isLinkTable(meta)) return undefined
   const skip = new Set([opts.record, ...opts.own])
   for (const c of readableLinks(meta)) {
     const value = row[c.column_name]

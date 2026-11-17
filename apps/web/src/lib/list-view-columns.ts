@@ -79,6 +79,13 @@ function idTitle(meta: TableMeta): ColumnDef | undefined {
   return title && meta.id_pattern === `field:${title.column_name}` ? title : undefined
 }
 
+/** A link table (Job Assignment, Section Subcategory): its title is its own id,
+ *  so its rows read by what they link to. A Table with a readable title
+ *  (Section, Department, Site) is not one. */
+export function isLinkTable(meta: TableMeta): boolean {
+  return Boolean(idTitle(meta))
+}
+
 /** admin-lists 4 (one-app-chrome, 17-Nov): what a list leads with. Its title
  *  column; but where that is the Table's own id, its first readable link
  *  (Section, Employee…), and the id moves to Show Columns. A Table with no
@@ -86,7 +93,7 @@ function idTitle(meta: TableMeta): ColumnDef | undefined {
  *  the row's name elsewhere is unchanged. */
 export function listLeader(meta: TableMeta): ColumnDef | undefined {
   const title = titleListColumn(meta)
-  if (!title || !idTitle(meta)) return title
+  if (!title || !isLinkTable(meta)) return title
   return readableLinks(meta).find((c) => c !== title) ?? title
 }
 
