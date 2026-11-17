@@ -78,3 +78,14 @@ test("moving a person's own invite to someone else is refused and leaves it with
   expect((await patch(admin, invite.id, { person_id: staff })).status).toBe(409)
   expect((await getIdentity(invite.id)).person_id).toBe(manager)
 })
+
+// Coverage of the guard's own edges (#1266).
+test('the guard passes anything that is not an address, and a domain rule refuses text that is not one', async () => {
+  const { assertAddressFree, domainAllowed, methodOfKind } = await import('../src/identities')
+  await configureGoogle({ allowed_email_domains: 'jeyarama.test' })
+  await expect(assertAddressFree('Administrator', 'stylehr', 'plain-login', 'sign_in_name')).resolves.toBeUndefined()
+  await expect(assertAddressFree('Administrator', 'stylehr', null, 'email')).resolves.toBeUndefined()
+  const google = (await methodOfKind('google'))!
+  expect(domainAllowed(google, 'not an address')).toBe(false)
+  expect(domainAllowed(google, 'someone@jeyarama.test')).toBe(true)
+})
