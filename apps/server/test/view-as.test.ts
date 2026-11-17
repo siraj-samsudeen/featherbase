@@ -17,6 +17,7 @@ import { runViewingAs } from '../src/view-as-context'
 import { viewAsRoute } from '../src/view-as'
 import { rowCapabilities } from '../src/document'
 import { sql } from '../src/db'
+import { grantRole } from './fixtures'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import WebSocket from 'ws'
@@ -229,10 +230,15 @@ describe('View as on the platform', () => {
     } finally { hooks.wait = async () => {} }
   })
 
-  test('no signed file link is made while viewing', async ({ admin, createUser }) => {
+  test('while viewing, a file link is the plain address the session opens, never a signed one', async ({ admin, createUser }) => {
     const { tester, person } = await install(admin, createUser)
+    await sql`insert into file ${sql({ row_id: 'f-1222', file_url: '/private/files/f-1222.png', created_by: person.user, updated_by: person.user })}`
+    await grantRole(admin, { role: 'Bar Reader', table: 'File', can_read: true })
+    const signed = (await admin.get<{ signed_url: string }>('/api/signed_url?file_url=/private/files/f-1222.png')).signed_url
+    expect(signed).not.toBe('/private/files/f-1222.png')
     expect((await status(start(tester, person.user)))[0]).toBe(200)
-    expect(await status(tester.fetch('/api/signed_url?file_url=/private/files/anything'))).toEqual([403, expect.stringContaining('not made while viewing')])
+    const [code, body] = await status(tester.fetch('/api/signed_url?file_url=/private/files/f-1222.png'))
+    expect([code, body]).toEqual([200, JSON.stringify({ signed_url: '/private/files/f-1222.png' })])
   })
 
   test("names link to a person's record only when the tester may open it, whoever is viewed", async ({ admin, createUser }) => {

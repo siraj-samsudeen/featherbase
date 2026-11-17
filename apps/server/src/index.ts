@@ -1378,8 +1378,6 @@ app.post('/api/upload_file', async (c) => {
 app.get('/api/signed_url', async (c) => {
   const fileUrl = c.req.query('file_url')
   if (!fileUrl) throw new AppError('ValidationError', 'Expected file_url')
-  // #1222: a signed link outlives the View as that would have allowed it; none is made while viewing.
-  if (c.get('viewingAs')) throw new AppError('PermissionError', 'Signed links are not made while viewing as someone')
   const [row] = await sql`
     select row_id, ref_table, ref_name from file where file_url = ${fileUrl}`
   if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
@@ -1392,6 +1390,9 @@ app.get('/api/signed_url', async (c) => {
     if (row.ref_table && row.ref_name)
       await getDoc(row.ref_table as string, row.ref_name as string, user)
     else await getDoc('File', row.row_id as string, user)
+    // #1222: a signed link would outlive the View as that allowed it. While viewing, the plain
+    // address: the browser's session opens it, checked as the person viewed, file by file.
+    if (c.get('viewingAs')) return c.json({ signed_url: fileUrl })
     return c.json({ signed_url: signFileUrl(fileUrl) })
   }
   return c.json({ signed_url: fileUrl })
