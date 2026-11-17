@@ -503,11 +503,11 @@ describe('Codex adversarial round 2 and standard review on 296fa29fc', () => {
   it('gives a buyer named only on a Buyer Section the Buyer role there, with its stores', async () => {
     const tables = await seeded()
     tables.Employee.push({ row_id: 'E-BS', name: 'Usha', employee_code: 'E-BS', status: 'Current', person: 'bs' })
-    tables['Buyer Section'] = [{ row_id: 'BS-1', name: 'Silk desk', operating_region: 'East', buyer: 'E-BS', starts_on: '2026-01-01' }]
+    tables['Buyer Section'] = [{ row_id: 'BS-1', name: 'Silk section', operating_region: 'East', buyer: 'E-BS', starts_on: '2026-01-01' }]
     tables['Buyer Section Subcategory'] = [{ row_id: 'BL-1', buyer_section: 'BS-1', subcategory: '010101001', starts_on: '2026-01-01' }]
     const explained = await explainPerson(context(tables, { payload: { person: 'bs' } }) as never)
     expect([explained.roles.map(r => [r.name, r.source, r.area.parts.map(p => p.name), r.area.stores]), explained.change.kinds])
-      .toEqual([[['Buyer', 'Buyer on a Buyer Section', ['Silk desk'], 1]], ['decision']])
+      .toEqual([[['Buyer', 'Buyer on a Buyer Section', ['Silk section'], 1]], ['decision']])
   })
 })
 
@@ -639,7 +639,7 @@ describe('every source asks the role\'s Reaches, with stores outside the first a
 
   it('gives a Buyer Section\'s buyer in the East every store, Hillview in the West too, when Buyer maps to Leadership', async () => {
     const tables = await twoStores()
-    tables['Buyer Section'] = [{ row_id: 'BS-1', name: 'Silk desk', operating_region: 'East', buyer: 'E-X', starts_on: '2026-01-01' }]
+    tables['Buyer Section'] = [{ row_id: 'BS-1', name: 'Silk section', operating_region: 'East', buyer: 'E-X', starts_on: '2026-01-01' }]
     tables['Buyer Section Subcategory'] = [{ row_id: 'BL-1', buyer_section: 'BS-1', subcategory: '010101001', starts_on: '2026-01-01' }]
     remap(tables, 'Buyer')
     const role = (await explainPerson(context(tables, { payload: { person: 'x' } }) as never)).roles[0]
@@ -675,7 +675,7 @@ describe('every source gives only the area its role\'s Reaches allows (Codex rou
 
   it('takes Also give Category Head from their merchandise assignments, not their job', async () => {
     const tables = await seeded()
-    tables['Merchandise Assignment'].push({ row_id: 'M-SM', employee: 'E-SM', responsibility: 'Unmapped desk', category: 'Sarees', operating_region: 'East', starts_on: '2026-01-01' })
+    tables['Merchandise Assignment'].push({ row_id: 'M-SM', employee: 'E-SM', responsibility: 'Unmapped section', category: 'Sarees', operating_region: 'East', starts_on: '2026-01-01' })
     await giveRole(context(tables, { payload: { person: 'sm', change: 'Also give', role: roleId(tables, 'Category Head') } }) as never)
     const roles = (await explainPerson(context(tables, { payload: { person: 'sm' } }) as never)).roles
     expect(roles.find(r => r.name === 'Category Head')!.area.parts.map(p => p.name)).toEqual(['Sarees', 'East'])
@@ -693,7 +693,7 @@ describe('every source gives only the area its role\'s Reaches allows (Codex rou
     tables['dash.title_map'].find(r => r.title === 'Category head')!.business_role = roleId(tables, 'Store Manager')
     tables['dash.title_map'].find(r => r.title === 'Buyer')!.business_role = roleId(tables, 'Store Manager')
     tables.Employee.push({ row_id: 'E-BS', name: 'Usha', employee_code: 'E-BS', status: 'Current', person: 'bs' })
-    tables['Buyer Section'] = [{ row_id: 'BS-1', name: 'Silk desk', operating_region: 'East', buyer: 'E-BS', starts_on: '2026-01-01' }]
+    tables['Buyer Section'] = [{ row_id: 'BS-1', name: 'Silk section', operating_region: 'East', buyer: 'E-BS', starts_on: '2026-01-01' }]
     tables['Buyer Section Subcategory'] = [{ row_id: 'BL-1', buyer_section: 'BS-1', subcategory: '010101001', starts_on: '2026-01-01' }]
     const words = async (person: string) => (await explainPerson(context(tables, { payload: { person } }) as never)).roles[0].area.parts[0].name
     expect([await words('buy'), await words('bs')]).toEqual([
