@@ -106,6 +106,33 @@ describe('stopping the server while sockets misbehave', () => {
   })
 })
 
+describe('stopping the server at its deadline', () => {
+  test('a realtime socket still open when the deadline passes is dropped then, and the stop says it cut', async ({ admin }) => {
+    vi.stubEnv('JOB_POLL_MS', '600000')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { port, stop } = await startServer(0)
+      const net = await import('node:net')
+      const raw = net.connect(port, '127.0.0.1')
+      const upgraded = new Promise<void>((resolve) => raw.on('data', (chunk) => { if (String(chunk).startsWith('HTTP/1.1 101')) resolve() }))
+      raw.write(['GET /ws HTTP/1.1', `Host: 127.0.0.1:${port}`, 'Upgrade: websocket', 'Connection: Upgrade',
+        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==', 'Sec-WebSocket-Version: 13', `Cookie: sid=${admin.token}`, '', ''].join('\r\n'))
+      await upgraded
+      const rawClosed = new Promise<void>((resolve) => raw.on('close', () => resolve()))
+      const started = Date.now()
+      // Shorter than the 1 s a socket gets to finish its close: the deadline drops it.
+      expect(await stop(300)).toBe('cut')
+      await rawClosed
+      expect(Date.now() - started).toBeLessThan(1000)
+    } finally {
+      log.mockRestore()
+      warn.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+})
+
 describe('booting with a Data Source whose variable is unset', () => {
   test('the server starts and warns, naming the variable', async () => {
     vi.stubEnv('JOB_POLL_MS', '600000')

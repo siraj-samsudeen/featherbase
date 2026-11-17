@@ -445,18 +445,19 @@ let running: Promise<void> | null = null
 export function startWorker(intervalMs = Number(readVariable('JOB_POLL_MS') ?? 500)): void {
   if (timer) return
   let ticking = false
-  timer = setInterval(async () => {
+  timer = setInterval(() => {
     if (ticking) return
     ticking = true
-    running = runOneJob().then(() => {}, () => {
-      // A worker crash must not kill the interval.
-    })
-    try {
-      await running
-    } finally {
-      ticking = false
-      running = null
-    }
+    running = (async () => {
+      try {
+        await runOneJob()
+      } catch {
+        // A worker crash must not kill the interval.
+      } finally {
+        ticking = false
+        running = null
+      }
+    })()
   }, intervalMs)
 }
 

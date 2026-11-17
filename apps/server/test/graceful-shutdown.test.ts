@@ -139,6 +139,20 @@ describe('the shutdown signal', () => {
     }
   })
 
+  test('without an exit of its own, the process itself exits', async () => {
+    const exit = vi.fn()
+    const proc = Object.assign(new EventEmitter(), { exit }) as unknown as NodeJS.Process
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      exitOnShutdownSignal(proc, async () => 'cut')
+      ;(proc as unknown as EventEmitter).emit('SIGTERM')
+      await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0))
+      expect(log.mock.calls.flat()).toContain('shutdown: requests still running after 25 s were cut')
+    } finally {
+      log.mockRestore()
+    }
+  })
+
   test('a drain that fails still exits, with code 1', async () => {
     const proc = new EventEmitter() as unknown as NodeJS.Process
     const exit = vi.fn()

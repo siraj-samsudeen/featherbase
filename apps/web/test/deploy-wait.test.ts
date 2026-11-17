@@ -48,14 +48,17 @@ const here = (path: string) => new URL(path, window.location.href).href
 
 describe('a read during a deploy', () => {
   test('an answer from Railway\'s edge is held, and the read is sent again once the server answers its ping', async () => {
-    const { fetch, calls } = scripted((_call, n) => (n < 3 ? EDGE_502() : OK('{"rows":[1]}')))
+    let up = false
+    const { fetch, calls } = scripted(() => (up ? OK('{"rows":[1]}') : EDGE_502()), () => up)
     const wrapped = waitThroughDeploys(fetch, { onWaiting })
     const answer = wrapped('/api/rows')
-    await vi.advanceTimersByTimeAsync(5000)
+    await vi.advanceTimersByTimeAsync(3000)
+    up = true
+    await vi.advanceTimersByTimeAsync(1100)
     const res = await answer
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ rows: [1] })
-    expect(calls).toHaveLength(3)
+    expect(calls).toHaveLength(2)
   })
 
   test('a network error is held and the read sent again', async () => {
@@ -160,6 +163,114 @@ describe('a ping that never answers', () => {
     await vi.advanceTimersByTimeAsync(10_000)
     expect((await answer).status).toBe(200)
     expect(pingCalls).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('a failure that is not a deploy', () => {
+  // CI (#1260, Tasker's journey): a read cut on the network while the server
+  // answers its ping is not a deploy. It was held and resent for 90 s, so the
+  // page never showed its own "Sign in" fallback. Once the ping says the server
+  // is back, a request gets one more try; a second failure is the page's.
+  test('a read that fails on the network while the server answers its ping fails after one retry', async () => {
+    let reads = 0
+    const base = vi.fn(async (input: RequestInfo | URL) => {
+      if (new URL(String(input), window.location.href).pathname === '/api/ping') return OK()
+      reads++
+      throw new TypeError('Failed to fetch')
+    }) as unknown as typeof globalThis.fetch
+    const answer = waitThroughDeploys(base, { onWaiting })('/api/whoami').catch((error: Error) => error)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(await answer).toBeInstanceOf(TypeError)
+    expect(reads).toBe(2)
+    expect(notices).toEqual([])
+  })
+
+  test('a read the edge answers again after the server is back is passed on, not held for 90 s', async () => {
+    const { fetch, calls } = scripted(() => EDGE_502(), () => true)
+    const answer = waitThroughDeploys(fetch, { onWaiting })('/api/slow_report')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect((await answer).status).toBe(502)
+    expect(calls).toHaveLength(2)
+  })
+})
+
+describe('the remaining paths', () => {
+  const hangingPing = (init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+  })
+
+  test('a slow request that answers while its reachability check is out shows nothing', async () => {
+    const base = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (new URL(String(input), window.location.href).pathname === '/api/ping') return hangingPing(init)
+      return new Promise<Response>((resolve) => setTimeout(() => resolve(OK()), 4000))
+    }) as unknown as typeof globalThis.fetch
+    const answer = waitThroughDeploys(base, { onWaiting })('/api/rows')
+    await vi.advanceTimersByTimeAsync(6000)
+    expect((await answer).status).toBe(200)
+    expect(notices).toEqual([])
+  })
+
+  test('the notice shown during a hang goes when the answer comes, and the check stops', async () => {
+    let pings = 0
+    const base = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (new URL(String(input), window.location.href).pathname === '/api/ping') { pings++; return hangingPing(init) }
+      return new Promise<Response>((resolve) => setTimeout(() => resolve(OK()), 5500))
+    }) as unknown as typeof globalThis.fetch
+    const answer = waitThroughDeploys(base, { onWaiting })('/api/rows')
+    await vi.advanceTimersByTimeAsync(5200)
+    expect(notices).toEqual([true])
+    await vi.advanceTimersByTimeAsync(800)
+    expect((await answer).status).toBe(200)
+    expect(notices).toEqual([true, false])
+    const asked = pings
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(pings).toBe(asked)
+  })
+
+  test('two slow requests share one reachability check', async () => {
+    let pings = 0
+    const base = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (new URL(String(input), window.location.href).pathname === '/api/ping') { pings++; return hangingPing(init) }
+      return new Promise<Response>((resolve) => setTimeout(() => resolve(OK()), 4000))
+    }) as unknown as typeof globalThis.fetch
+    const wrapped = waitThroughDeploys(base, { onWaiting })
+    const answers = [wrapped('/api/a'), wrapped('/api/b')]
+    await vi.advanceTimersByTimeAsync(3500)
+    expect(pings).toBe(1)
+    await vi.advanceTimersByTimeAsync(3000)
+    await Promise.all(answers)
+  })
+
+  test('a read whose body is a stream is passed through, since it can be sent only once', async () => {
+    const base = vi.fn(async () => EDGE_502()) as unknown as typeof globalThis.fetch
+    const body = new ReadableStream({ start(controller) { controller.close() } })
+    const res = await waitThroughDeploys(base, { onWaiting })('/api/rows', { method: 'GET', body } as RequestInit)
+    expect(res.status).toBe(502)
+    expect(base).toHaveBeenCalledTimes(1)
+  })
+
+  test('a read cut on the network while the server never comes back fails with its own error after 90 s', async () => {
+    const base = vi.fn(async (input: RequestInfo | URL) => {
+      if (new URL(String(input), window.location.href).pathname === '/api/ping') return EDGE_502()
+      throw new TypeError('Failed to fetch')
+    }) as unknown as typeof globalThis.fetch
+    const answer = waitThroughDeploys(base, { onWaiting })('/api/rows').catch((error: Error) => error)
+    await vi.advanceTimersByTimeAsync(91_000)
+    expect(await answer).toBeInstanceOf(TypeError)
+    expect(notices).toEqual([true, false])
+  })
+
+  test('an installed page removes the notice when the requests go through', async () => {
+    let up = false
+    const win = { fetch: scripted(() => (up ? OK() : EDGE_502()), () => up).fetch, location: window.location } as unknown as Window & typeof globalThis
+    installDeployWait(win, document)
+    const answer = win.fetch('/api/rows')
+    await vi.advanceTimersByTimeAsync(1200)
+    expect(document.querySelector('featherbase-updating')).not.toBeNull()
+    up = true
+    await vi.advanceTimersByTimeAsync(1100)
+    await answer
+    expect(document.querySelector('featherbase-updating')).toBeNull()
   })
 })
 

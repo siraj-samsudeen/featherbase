@@ -140,68 +140,67 @@ export function waitThroughDeploys(base: Fetch, options: Options): Fetch {
     // A Request's body is consumed by sending it, so each try sends a copy.
     const template = input instanceof Request ? input.clone() : null
     const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
-    const deadline = Date.now() + giveUpMs
-    let entry: { since: number } | null = null
-    const release = () => {
-      if (entry) held.delete(entry)
-      entry = null
-      refreshNotice()
+    // One try, then (if Railway's edge answered, or a read failed on the
+    // network) a wait until the server answers its ping, then one more try
+    // whose outcome is the page's. Bounded at two: a read cut on the network
+    // while the server answers is not a deploy (CI, Tasker's sign-in
+    // fallback), and was resent for 90 s when this was a loop.
+    const attempt = async (): Promise<{ answer: Response } | { error: unknown }> => {
+      inFlight++
+      const watch = setTimeout(() => void checkReachable(), suspectAfterMs)
+      try {
+        return { answer: await base(template ? template.clone() : input, init) }
+      } catch (error) {
+        return { error }
+      } finally {
+        clearTimeout(watch)
+        inFlight--
+      }
     }
-    let lastError: unknown = null
+    const first = await attempt()
+    if ('answer' in first && !fromEdge(first.answer)) {
+      // Featherbase itself answered: it is reachable.
+      reachable()
+      return first.answer
+    }
+    // A write that failed on the network may have reached the server: it is
+    // passed on, never sent twice. A page that gave up gets its own abort.
+    if ('error' in first && (!read || signal?.aborted)) throw first.error
+    const entry = { since: Date.now() }
+    held.add(entry)
+    refreshNotice()
     try {
-      for (;;) {
-        let answer: Response | null = null
-        inFlight++
-        const watch = setTimeout(() => void checkReachable(), suspectAfterMs)
-        try {
-          answer = await base(template ? template.clone() : input, init)
-        } catch (error) {
-          // A write that failed on the network may have reached the server:
-          // it is passed on, never sent twice.
-          if (!read || signal?.aborted || Date.now() >= deadline) throw error
-          lastError = error
-        } finally {
-          clearTimeout(watch)
-          inFlight--
+      const outcome = await new Promise<'back' | 'late' | 'aborted'>((resolve) => {
+        const finish = (result: 'back' | 'late' | 'aborted') => {
+          clearTimeout(late)
+          signal?.removeEventListener('abort', onAbort)
+          resolve(result)
         }
-        const fromEdge = answer !== null && EDGE_STATUSES.has(answer.status) && answer.headers.get('x-railway-fallback') === 'true'
-        if (answer && !fromEdge) {
-          // Featherbase itself answered: it is reachable.
-          reachable()
-          return answer
-        }
-        if (Date.now() >= deadline) {
-          if (answer) return read ? answer : interruptedWrite()
-          throw lastError
-        }
-        if (!entry) {
-          entry = { since: Date.now() }
-          held.add(entry)
-          refreshNotice()
-        }
-        const outcome = await new Promise<'back' | 'late' | 'aborted'>((resolve) => {
-          const finish = (result: 'back' | 'late' | 'aborted') => {
-            clearTimeout(late)
-            signal?.removeEventListener('abort', onAbort)
-            resolve(result)
-          }
-          const onAbort = () => finish('aborted')
-          const late = setTimeout(() => finish('late'), deadline - Date.now())
-          if (signal?.aborted) return finish('aborted')
-          signal?.addEventListener('abort', onAbort, { once: true })
-          void serverBack().then(() => finish('back'))
-        })
-        if (outcome === 'aborted') throw abortError()
-        if (outcome === 'late') {
-          if (answer) return read ? answer : interruptedWrite()
-          throw lastError
-        }
-        if (!read) return interruptedWrite()
+        const onAbort = () => finish('aborted')
+        const late = setTimeout(() => finish('late'), giveUpMs)
+        signal?.addEventListener('abort', onAbort, { once: true })
+        void serverBack().then(() => finish('back'))
+      })
+      if (outcome === 'aborted') throw abortError()
+      if ('error' in first) {
+        if (outcome === 'late') throw first.error
+      } else if (!read || outcome === 'late') {
+        return read ? first.answer : interruptedWrite()
       }
     } finally {
-      release()
+      held.delete(entry)
+      refreshNotice()
     }
+    const second = await attempt()
+    if ('error' in second) throw second.error
+    if (!fromEdge(second.answer)) reachable()
+    return second.answer
   }
+}
+
+/** An answer Railway's edge made itself (the server did not answer). */
+function fromEdge(answer: Response): boolean {
+  return EDGE_STATUSES.has(answer.status) && answer.headers.get('x-railway-fallback') === 'true'
 }
 
 function interruptedWrite(): Response {
@@ -237,16 +236,13 @@ const NOTICE_STYLE = `
 `
 
 function showNotice(doc: Document) {
-  let host = doc.querySelector(NOTICE_TAG)
-  if (!host) {
-    host = doc.createElement(NOTICE_TAG)
-    const root = host.attachShadow({ mode: 'open' })
-    root.innerHTML = `<style>${NOTICE_STYLE}</style><div class="pill" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span class="text"></span></div>`
-    doc.body.append(host)
-  }
-  const pill = host.shadowRoot!.querySelector('.pill')!
+  hideNotice(doc)
+  const host = doc.createElement(NOTICE_TAG)
+  const root = host.attachShadow({ mode: 'open' })
+  root.innerHTML = `<style>${NOTICE_STYLE}</style><div class="pill" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span class="text"></span></div>`
+  doc.body.append(host)
   // Written after the live region exists, so a screen reader announces it.
-  pill.querySelector('.text')!.textContent = NOTICE_TEXT
+  root.querySelector('.text')!.textContent = NOTICE_TEXT
 }
 
 function hideNotice(doc: Document) {
