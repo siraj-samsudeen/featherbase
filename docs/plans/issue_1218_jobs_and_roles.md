@@ -142,3 +142,7 @@ The answer drafted in the explainer: every permission is a thing, a verb and a *
 - **External**: has no Employee row. Gets only what someone gives by hand ("Also give", with an end date). "Consultant" is an optional label.
 
 The platform's built-in "Guest" role (anonymous visitors) is another reason to avoid the word. Sent to the Person page session (#1267).
+
+## Owner, 17-Nov-2026 (via the Person page session): Vendor and Consultant confirmed as labels on External
+
+He expects to give vendors some access. Proposed: **Vendor** is a ready-made business role, given by hand with an end date. Its area sits on a fourth axis, **Supplier**: a vendor sees only their own supplier's products, for example a Vendor Sales report narrowed to their articles. Consultant has no fixed shape, so a consultant gets apps one at a time ("Also give"). Queued as a question after Q2, because it depends on the reach and axes answer.
