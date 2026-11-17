@@ -154,14 +154,14 @@ async function describe(accounts: Held[], active: Held | null, states: Map<strin
   const methods = new Map((await sql`
     select row_id, kind, label from sign_in_method where row_id = any(${accounts.flatMap((a) => (a.method ? [a.method] : []))})`).map((m) => [String(m.row_id), m]))
   const identities = new Map((await sql`
-    select id, subject, email from sign_in_identity where id = any(${accounts.flatMap((a) => (a.identity ? [a.identity] : []))})`).map((i) => [String(i.id), i]))
+    select id, sign_in_name, email from sign_in_identity where id = any(${accounts.flatMap((a) => (a.identity ? [a.identity] : []))})`).map((i) => [String(i.id), i]))
   const rows = [...accounts].sort((x, y) => Number(y.jti === active?.jti) - Number(x.jti === active?.jti) || y.usedAt - x.usedAt).map((a) => {
     const p = people.get(a.person)
     const m = a.method ? methods.get(a.method) : undefined
     const i = a.identity ? identities.get(a.identity) : undefined
     const kind = (m?.kind as string | undefined) ?? null
     // The ID they would type: a connected service's ID, else the address or username.
-    const id = (kind === 'delegated' ? (i?.subject as string | undefined) : undefined)
+    const id = (i?.sign_in_name as string | undefined)
       ?? (i?.email as string | undefined) ?? (p?.email as string | undefined) ?? (p?.username as string | undefined) ?? null
     const state = states.get(a.jti)
     return {
@@ -210,7 +210,8 @@ export function accountRoutes(withLanding: Landing) {
     const target = accounts.find((a) => a.jti === session)
     if (!target) throw new AppError('NotFoundError', 'That account is not signed in on this browser')
     const state = await stateOf(target.token)
-    if (!state.live) throw new AppError('AuthenticationError', REASON_TEXT[state.reason])
+    // 409, not 401: the page treats a 401 as its own session ending.
+    if (!state.live) throw new AppError('ConflictError', REASON_TEXT[state.reason])
     if (active && active.jti !== target.jti) await endViewAsSession(active.jti, 'account_switch')
     target.usedAt = now()
     write(c, accounts)

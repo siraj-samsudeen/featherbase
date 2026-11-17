@@ -104,6 +104,20 @@ describe('#1255: the browser holds its signed-in accounts', () => {
     expect(list.accounts[0].session).toBe(await sessionOf(again))
   })
 
+  test('each account says how it signed in and the ID to type again: a connected service ID, else the email', async ({ api }) => {
+    const siraj = await makePerson({ full_name: 'Siraj StyleHR', email: 'siraj.made-up@example.test' })
+    await sql`insert into sign_in_method (row_id, kind, label, enabled) values ('stylehr-made-up', 'delegated_password', 'StyleHR', true)`
+    await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by) values ('idn-siraj', ${siraj}, 'stylehr-made-up', 'sub-siraj', 'EMP0412', 'Administrator')`
+    const rb = await makePerson({ full_name: 'RB', email: 'rb.made-up@example.test' })
+    const b = browser(api)
+    b.signIn((await issueSession(siraj, { method: 'stylehr-made-up', identity: 'idn-siraj' })).token)
+    await b.list()
+    b.signIn((await issueSession(rb)).token)
+    const list = await b.list()
+    expect(list.accounts.map((a) => [a.name, (a as unknown as { method_label: string | null }).method_label, (a as unknown as { sign_in_id: string | null }).sign_in_id]))
+      .toEqual([['RB', null, 'rb.made-up@example.test'], ['Siraj StyleHR', 'StyleHR', 'EMP0412']])
+  })
+
   test('a forged entry in the cookie names nobody and is dropped', async ({ api }) => {
     const id = await makePerson({ full_name: 'Siraj StyleHR' })
     const b = browser(api)
@@ -148,7 +162,7 @@ describe('#1255: a held account ends as any session does, and says why', () => {
     expect(list.accounts.find((a) => a.person === siraj)).toMatchObject({ state: 'ended', reason })
     const target = list.accounts.find((a) => a.person === siraj)!.session
     const res = await b.post('/api/accounts/switch', { session: target })
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(409)
     expect(b.sid()).toBe(second)
   })
 
