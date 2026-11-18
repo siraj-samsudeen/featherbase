@@ -3,7 +3,8 @@
 --   1. whom the leaver job (disable_leavers, leaver-check.ts) would disable, and the rule that hit them;
 --   2. System Managers who match a leaver rule, whom the job never disables;
 --   3. people the people app says have left whom the leaver job does not list (most hold no StyleHR link);
---   4. people the people app says are not employees who hold a StyleHR link.
+--   4. people the people app says are not employees who hold a StyleHR link;
+--   5. for review only: off the latest payroll with no exit date and not inactive (owner-directors are); never disabled.
 -- It changes nobody: disabling stays the leaver job's alone. System Managers only (no grants).
 create table if not exists featherbase.leaver_sign_in (
   row_id character varying(140) not null primary key,
@@ -18,7 +19,7 @@ create table if not exists featherbase.leaver_sign_in (
   ways_in text not null,
   left_on date,
   section text not null check (section in ('1. Leaver job would disable', '2. System Manager: never disabled by the job',
-    '3. Left, not on the leaver job''s list', '4. Not an employee, holds a StyleHR link'))
+    '3. Left, not on the leaver job''s list', '4. Not an employee, holds a StyleHR link', '5. Not on payroll, but no exit date'))
 );
 alter table featherbase.leaver_sign_in enable row level security;
 -- The rebuild whose rows are on show: when it started and what it said. A rebuild
@@ -45,8 +46,8 @@ insert into featherbase.column_def ("row_id", "parent", "position", "column_name
 select gen_random_uuid()::text, 'Leaver Sign In', c.position, c.column_name, c.label, c.column_type, c.reference_table, c.choices, c.reqd, false, true, false, c.in_list_view, 'basic', 'Table', 'columns', false, c.description
 from (values
   (1, 'section', 'Section', 'Choice', null,
-     E'1. Leaver job would disable\n2. System Manager: never disabled by the job\n3. Left, not on the leaver job''s list\n4. Not an employee, holds a StyleHR link',
-     true, true, 'Which part of the report: the leaver job''s own plan (1, 2), or what the people app says (3, 4).'),
+     E'1. Leaver job would disable\n2. System Manager: never disabled by the job\n3. Left, not on the leaver job''s list\n4. Not an employee, holds a StyleHR link\n5. Not on payroll, but no exit date',
+     true, true, 'Which part of the report: the leaver job''s own plan (1, 2), what the people app says (3, 4), or for review only (5).'),
   (2, 'person', 'Person', 'Reference', 'Person', null, true, true, null),
   (3, 'why', 'Why', 'Data', null, null, true, true, 'The rule that listed them: the leaver job''s own wording, or what the people app says.'),
   (4, 'left_on', 'Leaving Date', 'Date', null, null, false, true, null),

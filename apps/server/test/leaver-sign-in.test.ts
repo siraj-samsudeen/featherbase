@@ -13,7 +13,7 @@ import { newIdentifierId } from '../src/person-identifiers'
 import { discoverPackages } from '../src/runtime-packages'
 import { configureDelegated, configureGoogle } from './identity-fixtures'
 import { _setWarehouseReader, type EmployeeRecord } from '../src/leaver-check'
-import { leaverSignInRows, refreshLeaverSignIn } from '../src/leaver-sign-in'
+import { leaverSignInRows, rebuildSummary, refreshLeaverSignIn } from '../src/leaver-sign-in'
 
 /** Today in India, as the leaver check reckons it. */
 const istToday = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
@@ -86,6 +86,23 @@ test("the leaver job's own plan lists its leavers with the rule that hit them, t
       { section: '1. Leaver job would disable', person: inactive, why: 'Marked inactive in StyleHR', ways_in: 'Password', left_on: null },
       { section: '2. System Manager: never disabled by the job', person: boss, why: 'Exit date 01-Sep-2026 has passed', ways_in: 'Password', left_on: '2026-09-01' },
     ])
+})
+
+test('someone off the payroll with no exit date is listed in section 5 for review, outside the leaver count', async () => {
+  await applySeedPack('jeyarama')
+  const director = await makePerson({ full_name: 'Off Payroll Director' })
+  const gone = await makePerson({ full_name: 'Gone Too' })
+  await linkStyleHrRecord(director, '801')
+  await linkStyleHrRecord(gone, '802')
+  await password(director)
+  await password(gone)
+  warehouse([rec('801', 'C-801', { payroll_active: false, date_of_joining: '2010-01-01' }), rec('802', 'C-802', { exit_date: '2026-10-01' })])
+  const report = await leaverSignInRows()
+  expect(report.rows).toEqual([
+    { section: '1. Leaver job would disable', person: gone, why: 'Exit date 01-Oct-2026 has passed', ways_in: 'Password', left_on: '2026-10-01' },
+    { section: '5. Not on payroll, but no exit date', person: director, why: 'Off the latest payroll, but no exit date has passed and StyleHR does not mark them inactive', ways_in: 'Password', left_on: null },
+  ])
+  expect(rebuildSummary(report)).toBe('1 person can still sign in. 1 person off the payroll with no exit date, for review. No app says who people are, so sections 3 and 4 are not checked')
 })
 
 test("a plan the leaver job would refuse, or cannot read, is named; a StyleHR leaver it misses is still listed from the people app", async ({ admin }) => {

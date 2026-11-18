@@ -6,7 +6,9 @@
 //   3. people the people app says have left who hold no StyleHR link, whom
 //      the leaver job never sees;
 //   4. people the people app says are not employees who hold a StyleHR link
-//      or a link on another employees-only method (#1267).
+//      or a link on another employees-only method (#1267);
+//   5. for review only: people off the latest payroll with no exit date passed
+//      and not marked inactive (owner-directors are), whom the job never disables.
 import { createHash } from 'node:crypto'
 import { sql, withTransaction } from './db'
 import { LEAVER_CHECK_JOB, planLeaverCheck, type Leaver, type LeaverPlan } from './leaver-check'
@@ -23,7 +25,10 @@ export const SECTIONS = [
   '2. System Manager: never disabled by the job',
   "3. Left, not on the leaver job's list",
   '4. Not an employee, holds a StyleHR link',
+  '5. Not on payroll, but no exit date',
 ] as const
+/** The sections of people who have left, or are not employees. Section 5 is for review only. */
+const LEAVER_SECTIONS: readonly Section[] = SECTIONS.slice(0, 4)
 export type Section = (typeof SECTIONS)[number]
 export interface LeaverSignInRow { section: Section; person: string; why: string; ways_in: string; left_on: string | null }
 export interface LeaverSignInReport {
@@ -128,11 +133,21 @@ export async function leaverSignInRows(): Promise<LeaverSignInReport> {
   fromPlan(SECTIONS[1], plan?.privileged_leavers ?? [])
   // Everyone else who can sign in, as the people app sees them.
   const describer = await peopleDescriberState()
-  if (describer === 'none') {
-    notes.push('No app says who people are, so sections 3 and 4 are not checked')
-    return { rows: ordered([...rows.values()]), notes }
+  if (describer === 'none') notes.push('No app says who people are, so sections 3 and 4 are not checked')
+  const rest = describer === 'none' ? [] : [...ways.keys()].filter((p) => !rows.has(p) && p !== 'Administrator')
+  const unknown = await fromPeopleApp(rest, ways, rows)
+  if (unknown) notes.push(`The people app could not say who ${count(unknown, 'person is', 'people are')}, so they are not checked`)
+  // For review only, after the people app: someone it says has left stays in section 3.
+  for (const o of plan?.not_on_payroll ?? []) {
+    const how = listed(o.person)
+    if (how && !rows.has(o.person))
+      rows.set(o.person, { section: SECTIONS[4], person: o.person, why: 'Off the latest payroll, but no exit date has passed and StyleHR does not mark them inactive', ways_in: how, left_on: null })
   }
-  const rest = [...ways.keys()].filter((p) => !rows.has(p) && p !== 'Administrator')
+  return { rows: ordered([...rows.values()]), notes }
+}
+
+/** Sections 3 and 4, from the people app. Returns how many it could not describe. */
+async function fromPeopleApp(rest: string[], ways: Map<string, WaysIn>, rows: Map<string, LeaverSignInRow>): Promise<number> {
   let unknown = 0
   for (let i = 0; i < rest.length; i += BATCH) {
     const said = await describePeople(rest.slice(i, i + BATCH))
@@ -150,14 +165,19 @@ export async function leaverSignInRows(): Promise<LeaverSignInReport> {
         rows.set(person, { section: SECTIONS[3], person, why: `Not an employee, holds a ${w.employeesOnly.join(' and ')} link`, ways_in: w.ways.join(', '), left_on: null })
     }
   }
-  if (unknown) notes.push(`The people app could not say who ${count(unknown, 'person is', 'people are')}, so they are not checked`)
-  return { rows: ordered([...rows.values()]), notes }
+  return unknown
 }
 
 /** The rebuild's one-line summary: how many can still sign in, and whatever it could not check. */
 export function rebuildSummary(report: LeaverSignInReport): string {
-  const n = report.rows.length
-  return [`${n} ${n === 1 ? 'person' : 'people'} can still sign in`, ...report.notes].join('. ')
+  // Section 5 is for review only: never in the leaver count.
+  const n = report.rows.filter((r) => LEAVER_SECTIONS.includes(r.section)).length
+  const review = report.rows.length - n
+  return [
+    `${n} ${n === 1 ? 'person' : 'people'} can still sign in`,
+    ...(review ? [`${count(review, 'person', 'people')} off the payroll with no exit date, for review`] : []),
+    ...report.notes,
+  ].join('. ')
 }
 
 /** Rebuild the report in one go: readers see the old rows or the new, never

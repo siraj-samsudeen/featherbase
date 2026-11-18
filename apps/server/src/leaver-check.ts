@@ -58,8 +58,10 @@ export interface Leaver {
   person: string
   full_name: string | null
   reason: string
-  /** For the activity row and the summary: which basis decided it. */
-  basis: 'exit date' | 'inactive' | 'not on payroll'
+  /** For the activity row and the summary: which basis decided it. Not being on
+   *  payroll is never a basis: owner-directors are off payroll and have not left
+   *  (#1271). Such people are only listed for review (LeaverPlan.not_on_payroll). */
+  basis: 'exit date' | 'inactive'
   /** #1271: the latest exit date any of their records gives, when one does. */
   left_on: string | null
 }
@@ -74,6 +76,9 @@ export interface LeaverPlan {
   privileged_leavers: Leaver[]
   not_found: string[]
   recent_joiners: string[]
+  /** #1271: off the latest payroll with no exit date passed and not marked
+   *  inactive. Listed for review only: never a leaver, never disabled. */
+  not_on_payroll: { person: string; full_name: string | null }[]
 }
 
 // ------------------------------------------------------------- dates
@@ -111,19 +116,22 @@ const normCode = (c: string) => c.trim().toUpperCase()
 
 // ------------------------------------------------------------- the rule
 
-type Verdict = { leaver: true; basis: Leaver['basis']; reason: string; rank: number } | { leaver: false; recentJoiner: boolean }
+type Verdict =
+  | { leaver: true; basis: Leaver['basis']; reason: string; rank: number }
+  | { leaver: false; recentJoiner: boolean; offPayroll: boolean }
 
-/** Has this one record left, as of `today`? An exit date that has passed comes
- *  first, then an inactive status, then not being on payroll. */
+/** Has this one record left, as of `today`? Only an exit date that has passed,
+ *  then an inactive status, says so. Being off the payroll alone never does
+ *  (#1271: owner-directors are off payroll); it is only marked for review. */
 function recordVerdict(r: EmployeeRecord, today: string): Verdict {
   if (r.exit_date && r.exit_date <= today)
     return { leaver: true, basis: 'exit date', reason: `exit date ${displayDate(r.exit_date)} has passed`, rank: 0 }
   if (r.movement_active === false) return { leaver: true, basis: 'inactive', reason: 'marked inactive in StyleHR', rank: 1 }
   if (r.payroll_active === false) {
-    if (r.date_of_joining && daysBetween(r.date_of_joining, today) < JOINER_GRACE_DAYS) return { leaver: false, recentJoiner: true }
-    return { leaver: true, basis: 'not on payroll', reason: 'not on the latest payroll', rank: 2 }
+    if (r.date_of_joining && daysBetween(r.date_of_joining, today) < JOINER_GRACE_DAYS) return { leaver: false, recentJoiner: true, offPayroll: false }
+    return { leaver: false, recentJoiner: false, offPayroll: true }
   }
-  return { leaver: false, recentJoiner: false }
+  return { leaver: false, recentJoiner: false, offPayroll: false }
 }
 
 /** Pure: who this run would disable, and whether it must refuse. */
@@ -154,6 +162,7 @@ export function planLeavers(
     privileged_leavers: [],
     not_found: [],
     recent_joiners: [],
+    not_on_payroll: [],
   }
   if (!latestFeedDay || daysBetween(latestFeedDay, today) > MAX_FEED_AGE_DAYS) {
     plan.refused = `the warehouse's StyleHR data is stale (latest day ${latestFeedDay ? displayDate(latestFeedDay) : 'none'}, today ${displayDate(today)})`
@@ -175,8 +184,10 @@ export function planLeavers(
     const verdicts = mine.map((r) => recordVerdict(r, today))
     const left = verdicts.filter((v): v is Extract<Verdict, { leaver: true }> => v.leaver)
     if (left.length !== verdicts.length) {
-      if (verdicts.some((v) => !v.leaver && v.recentJoiner) && !verdicts.some((v) => !v.leaver && !v.recentJoiner))
-        plan.recent_joiners.push(p.person)
+      const staying = verdicts.filter((v): v is Extract<Verdict, { leaver: false }> => !v.leaver)
+      if (staying.every((v) => v.recentJoiner)) plan.recent_joiners.push(p.person)
+      // Off the payroll on every record that has not left: listed for review, never disabled.
+      else if (staying.every((v) => v.offPayroll)) plan.not_on_payroll.push({ person: p.person, full_name: p.full_name })
       continue
     }
     const decisive = left.sort((a, b) => a.rank - b.rank)[0]
@@ -394,5 +405,6 @@ export function formatLeaverPlan(plan: LeaverPlan | null, opts: { applied?: Leav
     plan.refused ? `leaver check: REFUSED — ${plan.refused}` : `leaver check: ${verb} ${n} (${basis(opts.applied ?? plan.to_disable)})`,
     `leaver check: System Managers who have left, not disabled: ${plan.privileged_leavers.length}`,
     `leaver check: no StyleHR record found: ${plan.not_found.length}; recent joiners not yet on payroll: ${plan.recent_joiners.length}`,
+    `leaver check: not on payroll but no exit date, listed for review only: ${plan.not_on_payroll.length}`,
   ].join('\n')
 }
