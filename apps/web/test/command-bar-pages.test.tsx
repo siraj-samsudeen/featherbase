@@ -67,6 +67,18 @@ test('Enter pressed before the results arrive waits for them and opens the first
   await waitFor(() => expect(pathOf(app)).toMatch(/\/row\/cbp-qzx-only$/), T)
 })
 
+test('an early Enter is dropped when the search is changed before its results arrive', async ({ admin }) => {
+  await aRecord(admin, 'cbp-drop-me')
+  const { app, bar } = await openBar(admin)
+  fireEvent.change(bar, { target: { value: 'drop-me' } })
+  fireEvent.submit(screen.getByTestId('awesomebar'))
+  // Typed over before anything was listed: the waiting Enter belongs to the old words.
+  fireEvent.change(bar, { target: { value: 'Cbp nothing matches this' } })
+  expect(await screen.findByTestId('search-no-match', {}, T)).toBeInTheDocument()
+  await new Promise((r) => setTimeout(r, 300))
+  expect(pathOf(app)).toBe('/featherbase/admin/all-tables')
+})
+
 test('"What you can see" opens your own access page', async ({ admin }) => {
   const { app, bar } = await openBar(admin)
   fireEvent.change(bar, { target: { value: 'What you can see' } })
