@@ -1,18 +1,19 @@
-import type { ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { choiceLabel } from 'shared'
 import { api } from '../lib/api'
 import { LinkedTitle, RowLink } from '../lib/row-name'
 import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
 import { useNavigation } from '../lib/navigation'
+import { push } from '../lib/nav-path'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import type { ListColumn } from '../lib/list-view-columns'
 import { useI18n } from '../lib/i18n'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { PrincipalLink, PrincipalName, usePrincipalLabels } from '../lib/people'
 import { OneLine } from './list-one-line'
-import { Button, DataCards, Select, touchLinkClasses, type DataColumn } from '@featherbase/shop-floor'
+import { Button, DataCards, LinkActions, Select, touchLinkClasses, useRecordHref, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp } from '@featherbase/shop-floor'
 import { RetiredBadge } from './RowRetirement'
 import { fmtCount } from '@featherbase/shop-floor'
@@ -137,10 +138,11 @@ export function ListRow({
           </td>
         )}
         {columns.map((col, i) => (
-          <td key={col.column_name} data-title-cell={i === 0 ? '' : undefined} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-focus-visible:bg-action-tint ${inPane ? 'bg-action-tint' : 'bg-surface group-hover:bg-subtle'}` : ''}`}>
+          <td key={col.column_name} data-title-cell={i === 0 ? '' : undefined} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-focus-visible:bg-action-tint ${inPane ? 'bg-action-tint' : 'bg-surface group-hover:bg-subtle'}` : 'group/cell relative'}`}>
             <OneLine className={i === 0 ? NAME_CLIP : 'max-w-80'}>
               <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
             </OneLine>
+            {i > 0 && <LinkCellActions row={row} col={col} />}
           </td>
         ))}
         <td aria-hidden className="border-b border-border p-0 group-last:border-b-0" />
@@ -254,6 +256,60 @@ export function ListCell({
 }
 
 const isBlank = (v: unknown) => v == null || String(v).trim() === ''
+
+/** #1276: how a list narrows itself by one link's value, for its link cells'
+ *  Filter. Absent where the list's filters are not the person's to change. */
+export const LinkCellFilter = createContext<((filters: [string, string, unknown][]) => void) | null>(null)
+
+/**
+ * #1276 (B2): a link cell's two hover actions, floated just past the cell so
+ * they never hide its value, the same pair the record panel's
+ * chips offer (LinkActions): Go there opens the linked row's own page, as a step
+ * on the walk; Filter narrows this list to rows linked to that same row. A row
+ * the viewer cannot read offers neither.
+ */
+function LinkCellActions({ row, col }: { row: Record<string, unknown>; col: ListColumn }) {
+  const filter = useContext(LinkCellFilter)
+  const nav = useNavigation()
+  const navigate = useNavigate()
+  const value = row[col.column_name]
+  const anyTable = col.table_column ? row[col.table_column] : undefined
+  const target = col.column_type !== 'Reference' || isBlank(value) ? null
+    : col.table_column ? (isBlank(anyTable) ? null : String(anyTable)) : (col.reference_base ?? col.reference_table ?? null)
+  const principal = isPrincipalTable(target)
+  const title = useLinkTitle(target && !principal ? target : undefined, target ? String(value) : undefined)
+  const href = useRecordHref(target ?? '', target ? String(value) : '')
+  // Roving focus: the pair joins the Tab order only while focus is in its cell,
+  // so a list does not gain two Tab stops per link cell.
+  const [box, setBox] = useState<HTMLElement | null>(null)
+  const [inCell, setInCell] = useState(false)
+  useEffect(() => {
+    const cell = box?.parentElement
+    if (!cell) return
+    const enter = () => setInCell(true)
+    const leave = (e: FocusEvent) => { if (!cell.contains(e.relatedTarget as Node | null)) setInCell(false) }
+    cell.addEventListener('focusin', enter)
+    cell.addEventListener('focusout', leave)
+    return () => {
+      cell.removeEventListener('focusin', enter)
+      cell.removeEventListener('focusout', leave)
+    }
+  }, [box])
+  if (!target || (!principal && title.state !== 'read')) return null
+  const rowId = String(value)
+  // On a walk, the row is the walk's next step, so the path bar and Back follow it.
+  const goThere = () => void navigate({ href: nav ? nav.href(push(nav.path, { screen: 'row', table: target, row: rowId })) : href })
+  return (
+    <span data-testid="link-cell-actions" ref={setBox}
+      className="absolute left-full top-1/2 z-[3] -ml-1 hidden -translate-y-1/2 items-center gap-1 rounded-control bg-surface p-1 shadow-md group-hover/cell:flex group-focus-within/cell:flex">
+      <LinkActions tabIndex={inCell ? 0 : -1} onGoThere={goThere} onFilter={filter ? () => filter([
+        // A link to a row of any Table names its Table too: an id alone may repeat across Tables.
+        ...(col.table_column ? [[col.table_column, '=', target] as [string, string, unknown]] : []),
+        [col.column_name, '=', rowId],
+      ]) : undefined} />
+    </span>
+  )
+}
 
 /** A nested row's link, by its key as before; a row the viewer cannot read
  *  is neutral words with no link (#910 D3). */

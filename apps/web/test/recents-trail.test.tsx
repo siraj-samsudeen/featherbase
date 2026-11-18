@@ -121,7 +121,7 @@ test('#101 P2: the Recent strip above the list offers its recent filter set, whi
   const app = await buildTrail(admin, LIST)
   const strip = await screen.findByTestId('recent-strip', {}, WAIT)
   const view = await within(strip).findByTestId('recent-strip-view', {}, WAIT)
-  expect(view).toHaveTextContent('Note = searchable')
+  expect(view).toHaveTextContent('Note: searchable')
   fireEvent.click(view)
   await waitFor(() => expect(filtersIn(app)).toContainEqual(['note', '=', 'searchable']))
 })

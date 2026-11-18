@@ -1,6 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { api } from './api'
-import { viewColumns } from './list-view-columns'
 import type { ReadingPresentation } from 'shared'
 
 export interface ColumnDef {
@@ -220,9 +219,3 @@ export function useTableLabels(tables: readonly string[]): (table: string) => st
   return (table) => tableLabel(table, metas[unique.indexOf(table)]?.data)
 }
 
-// Columns for a list view: Row ID first, then the Table's list columns (or
-// the first two data columns when none is flagged) — a list with nobody's
-// arrangement applied. #738: one definition, in list-view-columns.
-export function listColumns(meta: TableMeta) {
-  return viewColumns(meta, {})
-}

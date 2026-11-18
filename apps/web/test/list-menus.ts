@@ -1,6 +1,6 @@
 // #1242 (admin-lists 2): a Table's list keeps List actions and Table
 // administration as two labelled groups in one ⋯ More menu, and its other
-// views (and Explore) in a View menu in the toolbar. Tests reach them here.
+// views in a View menu in the toolbar. Tests reach them here.
 import { screen, within, type BoundFunctions, type queries } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 

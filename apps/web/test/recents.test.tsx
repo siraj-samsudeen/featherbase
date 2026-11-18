@@ -456,8 +456,8 @@ describe('helpers', () => {
 // existed read the same as new ones.
 describe('displayEntry', () => {
   it('reads an old slug-labelled page as its catalog title', () => {
-    expect(displayEntry({ kind: 'list', key: 'list:explore?', label: 'explore', path: '/featherbase/admin/explore' }))
-      .toEqual({ kind: 'page', label: 'Explore' })
+    expect(displayEntry({ kind: 'list', key: 'list:glossary?', label: 'glossary', path: '/featherbase/admin/glossary' }))
+      .toEqual({ kind: 'page', label: 'Glossary' })
   })
   it('reads a row by reference, with its Table as the sub-line', () => {
     expect(displayEntry(row('1517|040802006'))).toEqual({
@@ -468,7 +468,7 @@ describe('displayEntry', () => {
     expect(displayEntry({ key: '', label: 'Bins', path: '/featherbase/admin/table/bin' })).toEqual({ kind: 'list', label: 'Bins' })
   })
   it('takes the kind from the key when a pinned target carries none', () => {
-    expect(displayEntry({ key: 'page:explore', label: 'explore', path: '/featherbase/admin/explore' }).label).toBe('Explore')
+    expect(displayEntry({ key: 'page:glossary', label: 'glossary', path: '/featherbase/admin/glossary' }).label).toBe('Glossary')
     expect(displayEntry({ key: 'list:Task?', label: 'Task', sub: 'kanban', path: '/featherbase/admin/table/task' }))
       .toEqual({ kind: 'list', label: 'Task', sub: 'kanban' })
   })
@@ -476,9 +476,9 @@ describe('displayEntry', () => {
 
 describe('uniqueByDisplay', () => {
   it('folds an old slug entry and a new page entry for the same page into one', () => {
-    const old = { kind: 'list' as const, key: 'list:explore?', label: 'explore', path: '/featherbase/admin/explore', visits: [1] }
-    const now = { kind: 'page' as const, key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore', visits: [2] }
-    expect(uniqueByDisplay([now, old]).map((e) => e.key)).toEqual(['page:explore'])
+    const old = { kind: 'list' as const, key: 'list:glossary?', label: 'glossary', path: '/featherbase/admin/glossary', visits: [1] }
+    const now = { kind: 'page' as const, key: 'page:glossary', label: 'Words and meanings', path: '/featherbase/admin/glossary', visits: [2] }
+    expect(uniqueByDisplay([now, old]).map((e) => e.key)).toEqual(['page:glossary'])
     expect(uniqueByDisplay([{ ...row('A'), visits: [1] }, { ...row('B'), visits: [1] }])).toHaveLength(2)
   })
 })

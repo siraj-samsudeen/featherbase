@@ -1,5 +1,5 @@
 // #1242 (admin-lists 1-3): a Table's list has one primary action, New <thing>,
-// last on the title's line after a ⋯ More menu; its other views and Explore are
+// last on the title's line after a ⋯ More menu; its other views are
 // in the toolbar's View menu; Search filters on the title column as a chip; and
 // Show retired is a toggle chip in the toolbar.
 import { screen, waitFor, within } from '@testing-library/react'
@@ -34,11 +34,12 @@ test('the title line: <Module> / <label>, the label and its total, then More, th
   const controls = [...header.querySelectorAll('a, button')].map((el) => el.textContent?.trim())
   expect(controls.at(-1)).toBe('New job assignment')
   expect(controls).toContain('More')
-  // The other views and Explore are not on the title's line.
+  // The other views are not on the title's line.
   expect(within(header).queryByRole('button', { name: /^View/ })).toBeNull()
   const view = await openListMenu('View')
   expect(view.getByTestId('open-report')).toBeInTheDocument()
-  expect(view.getByTestId('open-explore')).toBeInTheDocument()
+  // #1276: Explore is retired; a list follows links with Linked to… instead.
+  expect(view.queryByTestId('open-explore')).not.toBeInTheDocument()
 })
 
 test('Search finds rows by their title, as a remembered filter chip; an empty search takes it off', async ({ admin }) => {

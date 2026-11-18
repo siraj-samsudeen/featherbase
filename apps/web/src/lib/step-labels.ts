@@ -1,9 +1,10 @@
 import { useQueries } from '@tanstack/react-query'
 import { choiceLabel, RELATED_OPS } from 'shared'
 import type { ListFilter } from 'shared'
-import { linkRowsTable, metaQuery, type TableMeta } from './meta'
+import { linkRowsTable, metaQuery, tableLabel, type TableMeta } from './meta'
 import { stepKind, stepRefs, type NavStep } from './nav-path'
-import { rowNameText, useRowNames, type RowName } from './relations'
+import { filterRowName, rowNameText, useRowNames, type RowName } from './relations'
+import { chainTables, chainText, parseChain } from './linked-filters'
 
 // #910 checklist 11: each step of the path is named for whoever is looking —
 // the list's Table, a filter's column and value, a row's name — through the
@@ -41,10 +42,14 @@ function relatedTarget(op: string, value: unknown): { table: string; filters?: L
 /** A filter as its step reads: "Region: Kerala · KL", "Region in Kerala · KL,
  *  Tamil Nadu · TN". Until the table's columns are known, its value is a
  *  placeholder, since it may be a row's id. */
-export function filterText(table: string, meta: TableMeta | undefined, filter: ListFilter, name: (r: Ref) => string): string {
+export function filterText(table: string, meta: TableMeta | undefined, filter: ListFilter, name: (r: Ref) => string,
+  metaOf: (table: string) => TableMeta | undefined = () => undefined): string {
   const [column, op, value] = filter
   // A relationship filter reads as the rows it relates to: "Nv Site: Enchakkal · ENK".
   const related = relatedTarget(op, value)
+  // #1276: a Linked to chain reads as its steps: "Linked to Subcategory › Division: Accessories".
+  const chain = related && parseChain(filter)
+  if (chain) return chainText(chain, (t) => tableLabel(t, metaOf(t)), name, metaOf)
   if (related) {
     const refs = filterRefs(table, meta, filter)
     const named = `${related.table}${refs.length ? `: ${refs.map(name).join(', ')}` : ''}`
@@ -68,7 +73,9 @@ export function filterText(table: string, meta: TableMeta | undefined, filter: L
 
 /** One label per step, in order. */
 export function useStepLabels(steps: NavStep[]): string[] {
-  const tables = [...new Set(steps.map((s) => s.table))]
+  // A Linked to chain names its own steps' Tables too.
+  const chains = steps.flatMap((s) => (s.filters ?? []).map((f) => parseChain(f)?.steps ?? []))
+  const tables = [...new Set([...steps.map((s) => s.table), ...chains.flatMap(chainTables)])]
   const metas = useQueries({ queries: tables.map((t) => metaQuery(t)) })
   const metaOf = (t: string) => metas[tables.indexOf(t)]?.data
   const refs = new Map<string, Ref>()
@@ -81,7 +88,9 @@ export function useStepLabels(steps: NavStep[]): string[] {
   const names = useRowNames(list)
   const nameOf = new Map<string, RowName>(list.map((r, i) => [keyOf(r), names[i]]))
   const name = (r: Ref) => rowNameText(nameOf.get(keyOf(r)) ?? { state: 'loading' })
-  const filterLabel = (step: NavStep) => step.filters!.map((f) => filterText(step.table, metaOf(step.table), f, name)).join(', ')
+  // A filter names its rows by title, as its chip does ("Site: Bayside"); a row step adds its code.
+  const filterName = (r: Ref) => filterRowName(nameOf.get(keyOf(r)))
+  const filterLabel = (step: NavStep) => step.filters!.map((f) => filterText(step.table, metaOf(step.table), f, filterName, metaOf)).join(', ')
   return steps.map((step, i) => {
     const kind = stepKind(step)
     // A filter added with a row in the pane is named by the filter, not again by the row.

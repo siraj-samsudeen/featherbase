@@ -155,10 +155,9 @@ describe('record-workspace', () => {
     })
     await step('the user consults its list views and related navigation', async () => {
       await openList(reader)
-      // #1242 (admin-lists 2): the other views and Explore share the View menu.
-      const views = await openListMenu('View')
+      // #1242 (admin-lists 2): the other views share the View menu.
+      await openListMenu('View')
       expect(await screen.findByTestId('open-report')).toBeVisible()
-      expect(views.getByTestId('open-explore')).toBeVisible()
       await onScreen().pressKey('Escape')
       expect(screen.queryByTestId('open-report')).not.toBeInTheDocument()
     })

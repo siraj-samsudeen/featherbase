@@ -12,6 +12,8 @@ interface RelatedSpec {
 }
 
 // Shared syntax and amplification limits for native and source predicates.
+// `column` without `via` is a back-link (#1276): rows of this Table that the
+// target's Reference column (or a sub-table's `parent`) points at.
 export function parseRelatedSpec(value: unknown): RelatedSpec {
   const bad = (message: string) => new AppError('ValidationError', message)
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -23,8 +25,6 @@ export function parseRelatedSpec(value: unknown): RelatedSpec {
     throw bad(`'related' via must be a sub-table name`)
   if (v.column !== undefined && (typeof v.column !== 'string' || !v.column))
     throw bad(`'related' column must be a column name`)
-  if (v.column !== undefined && v.via === undefined)
-    throw bad(`'related' column only applies together with via`)
   if (v.via !== undefined && v.column === undefined)
     throw bad(`'related' via needs the sub-table column that references the target`)
   if (v.parentfield !== undefined && (typeof v.parentfield !== 'string' || !v.parentfield))

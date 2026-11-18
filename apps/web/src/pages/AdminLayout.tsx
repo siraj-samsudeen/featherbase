@@ -912,8 +912,6 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
             tone="teal"
             testid="sidebar-group-data"
             items={[
-              // #100 pattern 4: the cross-filter Explore surface.
-              { to: '/featherbase/admin/explore', search: { root: undefined, chain: undefined, select: undefined }, label: 'Explore', icon: Compass, testid: 'explore-link' },
               { to: '/featherbase/admin/all-tables', label: 'All tables', icon: Table, testid: 'all-tables-link' },
               // The owner's review (17-Nov): New table and Import data are two links here, not a "+ New" menu.
               ...(canManage ? [

@@ -236,7 +236,7 @@ function PointsAt({ links, nav, onOpen, status, editHref }: {
   editHref: string
 }) {
   const step = nav.step
-  // Filter narrows the list the pane sits over; Explore's pane has none.
+  // Filter narrows the list the pane sits over, when there is one.
   const overList = step.screen === 'list' && nav.addressed
   const listMeta = useMeta(step.table, overList)
   // #1259: the record's properties as chips under its title: each link by its

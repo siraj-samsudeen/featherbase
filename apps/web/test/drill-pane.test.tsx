@@ -315,7 +315,7 @@ test('a pane on a row the viewer cannot read offers no way to the row', async ({
 test('Filter from the pane puts the filter on the path before the row it was read from', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
   fireEvent.click(await within(site).findByRole('button', { name: 'Filter' }))
-  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK']))
+  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala', 'Enchakkal · ENK']))
 })
 
 // Checklist 21: a list line goes to the pane from the keyboard.
@@ -344,11 +344,11 @@ test("after Filter from the pane, the browser's back button lands on the filter'
   const history = (view.router as unknown as { history: { length: number; back: () => void } }).history
   const before = history.length
   fireEvent.click(await within(site).findByRole('button', { name: 'Filter' }))
-  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK']))
+  await waitFor(() => expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala', 'Enchakkal · ENK']))
   expect(history.length).toBe(before + 1)
   history.back()
-  await waitFor(() => expect(within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button', { current: 'step' })).toHaveTextContent('Region: Kerala · KL'))
-  expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala · KL', 'Enchakkal · ENK'])
+  await waitFor(() => expect(within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button', { current: 'step' })).toHaveTextContent('Region: Kerala'))
+  expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala', 'Enchakkal · ENK'])
 })
 
 // #1273 (D3): on the row page a group's chip jumps to its section on the Links tab.
@@ -373,6 +373,6 @@ test('a filter added while a row is in the pane is named on the path by the filt
   const options = await screen.findByTestId('link-options-region')
   fireEvent.mouseDown((await within(options).findAllByTestId('link-option')).find((o) => o.textContent === 'Kerala')!)
   await waitFor(() => expect(pathSteps()).toHaveLength(before + 1))
-  expect(within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button', { current: 'step' })).toHaveTextContent('Region: Kerala · KL')
+  expect(within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button', { current: 'step' })).toHaveTextContent('Region: Kerala')
   expect(await pane('Enchakkal')).toBeInTheDocument()
 })

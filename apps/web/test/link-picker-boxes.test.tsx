@@ -194,7 +194,7 @@ test("the Add filter row's Value is the same picker as the quick filter for a li
   fireEvent.mouseDown(within(list).getAllByTestId('link-option')[1])
   await waitFor(() => expect(value()).toHaveValue('Kerala'))
   fireEvent.click(screen.getByTestId('filter-add'))
-  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent('Region = Kerala'))
+  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent('Region: Kerala'))
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(1))
   expect(value()).toHaveValue('')
 })

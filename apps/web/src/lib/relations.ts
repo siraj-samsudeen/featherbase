@@ -159,6 +159,12 @@ export function useRowName(table: string | undefined, rowId: string | undefined)
 /** What a step, a pane or a tree line says for a row the viewer cannot read. */
 export const UNSEEN_ROW = 'A row you cannot see'
 
+/** A row as a filter names it, in a chip and on the path bar: its title alone
+ *  (#792, #1276: "Site: Bayside"), or the neutral words. */
+export function filterRowName(name: RowName | undefined): string {
+  return name?.state === 'read' ? name.title : rowNameText(name ?? { state: 'loading' })
+}
+
 /** A row name as one string: "Enchakkal Supermarket · 1503", or the neutral words. */
 export function rowNameText(name: RowName, loading = '…'): string {
   if (name.state === 'unreadable') return UNSEEN_ROW

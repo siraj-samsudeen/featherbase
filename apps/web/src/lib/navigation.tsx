@@ -5,9 +5,9 @@ import { EMPTY_PATH, decodePath, encodePath, go as goTo, push as pushStep, repla
 
 // #910 D1: where the user is on their walk between related rows. The list
 // and row pages keep the path in their address (`?path=`), so every drill and
-// filter is a browser history entry and a shareable link; other screens
-// (Explore) keep one in memory. Screens read and move it through this
-// context; a screen outside any provider simply has no path.
+// filter is a browser history entry and a shareable link. Screens read and
+// move it through this context; a screen outside any provider simply has no
+// path.
 
 interface Walk {
   path: NavPath
@@ -39,12 +39,7 @@ export interface AddressNavigation extends Walk {
   setExpanded: (expanded: string[]) => void
 }
 
-/** The walk of a screen with no address of its own (Explore's drill pane). */
-export interface LocalNavigation extends Walk {
-  addressed: false
-}
-
-export type Navigation = AddressNavigation | LocalNavigation
+export type Navigation = AddressNavigation
 
 const NavigationContext = createContext<Navigation | null>(null)
 
@@ -143,18 +138,4 @@ export function useAddressNavigation(here: NavStep, raw: unknown): Navigation {
       setExpanded: (expanded) => setUnfolded({ path, expanded }),
     }
   }, [path, show, live, depth, router, navigate])
-}
-
-/** A navigation held in memory, for a screen with no address of its own. */
-export function useLocalNavigation(here: NavStep): LocalNavigation {
-  const [path, setPath] = useState<NavPath>(() => pushStep(EMPTY_PATH, here))
-  return useMemo<LocalNavigation>(() => ({
-    path,
-    step: path.steps[path.at],
-    push: (step) => setPath((p) => pushStep(p, step)),
-    replace: (step) => setPath((p) => replaceAt(p, step)),
-    open: setPath,
-    advanceTo: setPath,
-    addressed: false,
-  }), [path])
 }

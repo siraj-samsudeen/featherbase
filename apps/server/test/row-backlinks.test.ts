@@ -35,4 +35,17 @@ describe('Tables that point at a table', () => {
     const outsider = await createUser({ roles: [] })
     await expectRefused(outsider.get(`/api/table/${encodeURIComponent(EMP)}:backlinks`), 403)
   })
+
+  // #1276: a sub-table's rows are held by the Tables with a Sub-table column of
+  // it, which a list of those rows can be Linked to through `parent`.
+  test('names the readable Tables holding a sub-table', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Blk Line', kind: 'sub_table', columns: [{ column_name: 'qty', column_type: 'Int' }] })
+    for (const name of ['Blk Order', 'Blk Return'])
+      await admin.post('/api/table_def', { name, columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Blk Line' }] })
+    const holders = async (client: TestClient) =>
+      (await client.get<{ holders: string[] }>(`/api/table/${encodeURIComponent('Blk Line')}:backlinks`)).holders
+    expect(await holders(admin)).toEqual(['Blk Order', 'Blk Return'])
+    await grantRole(admin, { table: ['Blk Line', 'Blk Order'], role: 'Blk Line Reader', can_read: true })
+    expect(await holders(await createUser({ roles: ['Blk Line Reader'] }))).toEqual(['Blk Order'])
+  })
 })
