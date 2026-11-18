@@ -324,6 +324,46 @@ When the user opens Enchakkal's map
 Then the plants' box is named "Plant · Site Enchakkal" with its count 3
 ```
 
+### Requirement: The map explains a record where an app declares how
+
+The map SHALL offer Why beside Neighbours only for a record of a Table that an installed app
+declares, and only when the server, asking that app's own read, says the viewer may have this record
+explained. Neighbours SHALL stay the default. Why SHALL draw the app's answer in columns, and
+clicking a box SHALL light every chain that leads to it, back to the first column.
+
+#### Scenario: Why a floor manager reads Dash
+
+```gherkin
+Given an installed app explains a floor manager's access, and lets the user see it
+When the user opens her map and chooses Why: Access
+Then the app's columns show, and Floor Manager says HR and Buyer says by hand
+When the user clicks Dash · Reader
+Then every chain that leads to it lights up, back to her
+```
+
+#### Scenario: No Why for someone the app does not let see it
+
+```gherkin
+Given an installed app explains a floor manager's access, but not to the user
+When the user opens her map
+Then the map shows her neighbours with no Why to choose
+```
+
+### Requirement: An app's explanation only reads, and is checked before it is drawn
+
+An app SHALL declare a Why by two of its reads, never its actions, and the platform SHALL refuse it
+at install otherwise. The platform SHALL check every explanation against one versioned shape before
+the map draws it, refusing a malformed one whole, and SHALL name no record in it that the viewer may
+not read.
+
+#### Scenario: A broken explanation
+
+```gherkin
+Given an app's explanation of a record joins a box to one that is not there
+When the user chooses Why on that record's map
+Then the map says it can't explain this right now, and draws none of it
+```
+
 ### Requirement: The tree unfolds links in both directions
 
 The tree SHALL show what the row links to above it and the groups that link to it below, each

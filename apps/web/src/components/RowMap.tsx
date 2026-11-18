@@ -8,6 +8,7 @@ import { useConnections, type Connection } from '../lib/connections'
 import { farSideTable, farSides, groupBoxWords, groupRowFields, linksOnly, type FarSide } from '../lib/far-side'
 import { useNavigation } from '../lib/navigation'
 import { push as pushStep, type NavStep } from '../lib/nav-path'
+import { WhyMap, whyOfferQuery } from './WhyMap'
 import { ALL_ROWS, UNSEEN_ROW, forwardLinks, groupKey, groupOrder, groupRowsQuery, rowNameText, useRowName } from '../lib/relations'
 
 type Row = Record<string, unknown>
@@ -187,24 +188,39 @@ export function RowMap({ table, name }: { table: string; name: string }) {
   const frame = useRef<HTMLElement>(null)
   const edges = useEdges(frame)
   const walk: Walk = { focus, href: focusHref }
+  // #1282 (E1, A2): Why is offered only where the server says an app explains this
+  // record for this viewer; Neighbours is the default, and the toggle is not drawn otherwise.
+  const why = useQuery(whyOfferQuery(table, name))
+  const offer = why.data?.offer ?? null
+  const [mode, setMode] = useState<'neighbours' | 'why'>('neighbours')
+  const showWhy = mode === 'why' && offer
 
   return (
+    <div className="flex min-w-0 flex-col gap-4">
+      {offer && (
+        <div role="group" aria-label="Map view" className="flex gap-1">
+          <ModeButton pressed={!showWhy} onClick={() => setMode('neighbours')}>Neighbours</ModeButton>
+          <ModeButton pressed={Boolean(showWhy)} onClick={() => setMode('why')}>{offer.label}</ModeButton>
+        </div>
+      )}
+      {showWhy ? <WhyMap table={table} row={name} /> : (
     <section ref={frame} data-testid="relation-map" aria-label={`Relationship map for ${centreTitle}`}
       className="@container relative" onKeyDown={spaceFollowsLinks}>
       {/* The lines join the centre to each box; they sit behind the boxes, drawn where they fall.
-          The columns follow the map's own width, not the window's, so they still fit beside the drill pane. */}
+          The columns follow the map's own width, not the window's, so they still fit beside the drill pane;
+          on a wide page the links hug the left, the groups (at most 360px) the right, and the gaps take the rest. */}
       <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" data-testid="map-edges">
         {edges.map((p, i) => <path key={i} d={p} fill="none" stroke="var(--color-border)" strokeWidth={1.5} />)}
       </svg>
-      <div className="relative grid grid-cols-1 items-start gap-4 @2xl:grid-cols-[minmax(9rem,15rem)_minmax(8rem,13rem)_minmax(12rem,18rem)] @2xl:gap-x-12">
-        <div className="flex min-w-0 flex-col gap-3 @2xl:self-center">
+      <div className="relative grid grid-cols-1 items-start gap-4 @2xl:grid-cols-[minmax(9rem,15rem)_minmax(3rem,1fr)_minmax(8rem,13rem)_minmax(3rem,1fr)_minmax(12rem,22.5rem)] @2xl:gap-x-0">
+        <div className="flex min-w-0 flex-col gap-3 @2xl:col-start-1 @2xl:row-start-1 @2xl:self-center">
           {forward.map((f, i) => <ForwardBox key={i} link={f} walk={walk} />)}
         </div>
-        <div data-testid="map-center" data-map-centre="" className="order-first min-w-0 rounded-lg border border-action bg-action-tint px-3 py-2.5 @2xl:order-none @2xl:self-center">
+        <div data-testid="map-center" data-map-centre="" className="order-first min-w-0 rounded-lg border border-action bg-action-tint px-3 py-2.5 @2xl:order-none @2xl:col-start-3 @2xl:row-start-1 @2xl:self-center">
           <div className="text-xs text-ink-muted">{tableWords}</div>
           <div className="break-words text-sm font-semibold text-ink">{centreTitle}</div>
         </div>
-        <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-3 @2xl:col-start-5 @2xl:row-start-1">
           {groups.map((g, i) => (
             <GroupBox key={i} group={g} chosen={chosen === groupId(g)} onOpen={openGroup && (() => openGroup(g))} walk={walk} />
           ))}
@@ -212,6 +228,18 @@ export function RowMap({ table, name }: { table: string; name: string }) {
       </div>
       {!forward.length && !groups.length && <p className="mt-3 text-sm text-ink-muted">No related rows</p>}
     </section>
+      )}
+    </div>
+  )
+}
+
+/** One side of the Neighbours | Why toggle: the chosen one tinted, as the design's pills. */
+function ModeButton({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" aria-pressed={pressed} onClick={onClick}
+      className={`rounded-full px-3 py-1 text-sm focus-visible:outline-2 focus-visible:outline-focus ${pressed ? 'bg-action-tint font-medium text-action' : 'text-ink-muted hover:bg-subtle'}`}>
+      {children}
+    </button>
   )
 }
 
@@ -344,8 +372,9 @@ function Line({ name, focus, children }: { name: string; focus?: () => void; chi
 function useEdges(frame: RefObject<HTMLElement | null>): string[] {
   const [paths, setPaths] = useState<string[]>([])
   useLayoutEffect(() => {
-    // The section is always drawn, so a layout effect always finds it.
-    const el = frame.current!
+    // In Why mode the neighbours are not drawn, and there is nothing to join.
+    const el = frame.current
+    if (!el) return
     const draw = () => {
       const box = el.getBoundingClientRect()
       const c = el.querySelector('[data-map-centre]')?.getBoundingClientRect()

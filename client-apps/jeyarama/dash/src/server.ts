@@ -20,7 +20,7 @@ import { TEAM_MANAGER } from './team-access.ts'
 import { viewAsPeople } from './view-as-people.ts'
 import { describePeople } from './people-describe.ts'
 import { DASH_ROLES, offeredByPlaces, openableByReach, opensDashFor } from './report-eligibility.ts'
-import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, removeRole } from './business-roles-server.ts'
+import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, removeRole, whyAccess } from './business-roles-server.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -441,6 +441,9 @@ export const reads = {
   /** #1218, in shadow: the Business Roles page, Explain a person, and Who would gain or lose access. Company-wide managers only. */
   business_roles: (context: ReadContext) => businessRoles(context as AccessContext),
   explain_person: (context: ReadContext) => explainPerson(context as AccessContext),
+  /** #1282: the platform Map's Why for a Person: whether this viewer may have it, and the chain. */
+  why_access_offered: (context: ReadContext) => mayExplainAccess(context as AccessContext),
+  why_access: (context: ReadContext) => whyAccess(context as AccessContext),
   access_changes: (context: ReadContext) => accessChanges(context as AccessContext),
   /** #1277: what decides Dash access now, and the business roles log. Company-wide managers only. */
   access_source: (context: ReadContext) => businessAccessSummary(context as AccessContext),

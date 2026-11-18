@@ -401,6 +401,13 @@
       ]
     }
   ],
+  "why": {
+    "Person": {
+      "explain": "why_access",
+      "may": "why_access_offered",
+      "label": "Why: Access"
+    }
+  },
   "tables": [
     {
       "name": "dash.report",
@@ -1079,6 +1086,22 @@
         }
       },
       "explain_person": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "why_access_offered": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "why_access": {
         "policy": {
           "kind": "table"
         },
@@ -3037,8 +3060,30 @@
       "toVersion": "0.13.32",
       "operations": []
     },
-    {"id": "site_kind", "fromVersion": "0.13.32", "toVersion": "0.13.33", "operations": []},
-    {"id": "division_head_and_visual_merchandising", "fromVersion": "0.13.33", "toVersion": "0.13.34", "operations": []}
+    {
+      "id": "site_kind",
+      "fromVersion": "0.13.32",
+      "toVersion": "0.13.33",
+      "operations": []
+    },
+    {
+      "id": "division_head_and_visual_merchandising",
+      "fromVersion": "0.13.33",
+      "toVersion": "0.13.34",
+      "operations": []
+    },
+    {
+      "id": "why_on_the_map",
+      "fromVersion": "0.13.34",
+      "toVersion": "0.13.35",
+      "operations": []
+    },
+    {
+      "id": "why_app_levels_merged",
+      "fromVersion": "0.13.35",
+      "toVersion": "0.13.36",
+      "operations": []
+    }
   ],
   "baseTables": {
     "read": {
