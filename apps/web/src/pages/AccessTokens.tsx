@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRouterState } from '@tanstack/react-router'
 import { api, getSessionUser, listResource } from '../lib/api'
 import { adminPageTitle } from 'shared'
 import { useIsSystemManager, useWhoAmI } from '../lib/session'
@@ -90,7 +91,9 @@ function OwnAccessTokens() {
   const identity = useWhoAmI()
   const me = getSessionUser()?.row_id ?? ''
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'tokens' | 'accounts'>('tokens')
+  // #1325: the command bar's "Service accounts" opens this page on that tab (?tab=accounts).
+  const opensOn = useRouterState({ select: (state) => new URLSearchParams(state.location.searchStr).get('tab') })
+  const [tab, setTab] = useState<'tokens' | 'accounts'>(opensOn === 'accounts' ? 'accounts' : 'tokens')
   const tokens = useQuery({
     queryKey: ['access-tokens'],
     queryFn: () => api.get<{ tokens: Token[] }>('/api/access_tokens'),

@@ -40,12 +40,15 @@ function navigationReports() {
   return () => errors.mock.calls.filter((c) => /Not implemented: navigation/.test(String(c[0]?.message ?? c[0])))
 }
 
-test('Enter on a name that matches nothing opens that address, which says the page is not found', async ({ admin }) => {
+// #1325 (audit F39): never a guessed address; the bar says nothing matched and the page stays.
+test('Enter on a name that matches nothing stays where it is and says nothing matched', async ({ admin }) => {
   const { app, bar } = await openBar(admin)
   fireEvent.change(bar, { target: { value: 'Ase Nothing Here' } })
   fireEvent.submit(screen.getByTestId('awesomebar'))
-  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/table/ase-nothing-here'))
-  expect(await screen.findByTestId('page-not-found')).toBeInTheDocument()
+  expect(await screen.findByTestId('search-no-match', {}, { timeout: 8000 })).toBeInTheDocument()
+  fireEvent.submit(screen.getByTestId('awesomebar'))
+  await new Promise((r) => setTimeout(r, 200))
+  expect(pathOf(app)).toBe('/featherbase/admin/all-tables')
 })
 
 test('the New Table command opens the Table builder', async ({ admin }) => {
