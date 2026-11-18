@@ -602,8 +602,10 @@ export function FormView({
   const changeRecord = !isNew && table === 'Version'
   const RawDetails = reading || changeRecord ? 'details' : 'div'
 
+  // The record fills the space after the sidebar (one-app-chrome): Links, Map and Activity use the whole width;
+  // the Form tab's field grid keeps its own line length (max-w-[50rem]).
   return (
-    <div data-testid="form-view" className={`min-w-0 max-w-5xl [overflow-wrap:anywhere] ${unsaved && !rowsReadOnly ? 'pb-20' : ''}`}>
+    <div data-testid="form-view" className={`min-w-0 [overflow-wrap:anywhere] ${unsaved && !rowsReadOnly ? 'pb-20' : ''}`}>
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
         <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
         <span aria-hidden="true">/</span>
@@ -1075,7 +1077,8 @@ export function FormView({
           </LinkSaveContext.Provider>
         ) },
         { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },
-        { id: 'Activity', label: 'Activity', content: <div className="max-w-5xl space-y-6">
+        { id: 'Activity', label: 'Activity', content: <div className="space-y-6">
+          {/* The feed is read as text, so it keeps a reading width; People, Tags And Files use the whole width. */}
           <div className="max-w-3xl space-y-4">
             <ActivityTimeline table={table} name={name} />
             {m.enable_discussion && access.data?.comment && <Comments table={table} name={name} />}

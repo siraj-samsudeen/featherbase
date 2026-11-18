@@ -74,8 +74,9 @@ export const withoutBusinessRoles = <T,>(list: T[]) =>
 export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
 type Revertable = { migrations: { id: string }[]; tables?: { name: string; decides_scope?: boolean; columns?: { column_name: string }[] }[]; permissions?: { table: string }[];
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[]; optionalColumns?: Record<string, string[]> } }
-/** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. */
+/** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'division_head_and_visual_merchandising', fromVersion: '0.13.33', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'site_kind', fromVersion: '0.13.32', operations: [] })
   const read = manifest.baseTables?.read
   if (read?.Site) read.Site = read.Site.filter(c => c !== 'site_kind' && c !== 'status')
