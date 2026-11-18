@@ -85,7 +85,8 @@ function onlyThese(docs: Base, rows: { jobs: Row[]; merchandise: Row[]; clusters
     available: async table => rows.buyerSections && docs.available(table),
     list: async (table, args) => {
       if (table in given) return page(given[table], args)
-      const read = await docs.list(table, args)
+      // Retired rows too, as the scope provider always reads them, so the app's reads and the provider agree (Codex round 12).
+      const read = await docs.list(table, { ...args, with_retired: true })
       // Buyer Sections still take subcategories from Buyer rows; only a Buyer role gives the person their own (Codex adversarial round 4).
       return table === 'Buyer Section' && rows.notMine?.length ? read.map(row => (rows.notMine!.includes(exact(row.buyer)) ? { ...row, buyer: null } : row)) : read
     },

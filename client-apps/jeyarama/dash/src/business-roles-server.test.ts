@@ -5,6 +5,7 @@ import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
 import { convertGrants } from './switch-over'
 import { whoIs } from './report-access-server'
+import { liveReach } from './access-source'
 import { SITE_STORE_FIELDS, openStore } from './business-access'
 import { scopeProviders } from './server'
 import { personShadow, placesByStore, shadowWorld } from './business-roles-server'
@@ -1045,6 +1046,22 @@ describe('head office sites and people off payroll', () => {
     tables.Plant.push({ row_id: '9990', site: 'HOF', plant_type: 'Store' })
     tables['dash.role_assignment'].push({ row_id: 'h-c', person: 'consultant', change: 'Also give', business_role: roleId(tables, 'Tester'), site: 'HOF', updated_at: 'x' })
     expect(await scopeOf(tables, 'consultant')).toEqual({})
+  })
+})
+
+// Codex round 12: the app's reads see retired rows as the scope provider does, so both give the same places.
+describe('retired rows on the business path', () => {
+  it('gives a store manager their store through a retired plant, as the provider does', async () => {
+    const { tables } = await switched()
+    tables.Plant[0].retired_at = '2026-11-01'
+    const base = context(tables).baseTables
+    const hiding = { ...base, list: async (table: string, args: { with_retired?: boolean } & Record<string, unknown>) =>
+      (await base.list(table, args as never)).filter(row => args.with_retired || !(tables[table] ?? []).find(r => r.row_id === row.row_id)?.retired_at) }
+    const without = { ...hiding, list: async (table: string, args: Record<string, unknown>) => hiding.list(table, { ...args, with_retired: false }) }
+    // Without the retired rows the store would be lost: the guard is what keeps the two paths alike.
+    expect((await liveReach(without as never, 'sm', ['Dash Reader'], today)).places).toEqual([])
+    const app = (await liveReach(hiding as never, 'sm', ['Dash Reader'], today)).places.map(p => p.label)
+    expect([app, Object.keys(await scopeOf(tables, 'sm'))]).toEqual([['9901'], ['9901']])
   })
 })
 
