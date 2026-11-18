@@ -272,7 +272,8 @@ describe('markDecidesScope', () => {
   })
 
   test('a Table stored elsewhere, or a view, is refused: only a stored Table decides scope', () => {
-    for (const table of [{ ...supplier, data_source: 'warehouse' }, { ...supplier, kind: 'view' }])
+    // The Table type admits no 'view' kind; a stored manifest can still carry one.
+    for (const table of [{ ...supplier, data_source: 'warehouse' }, { ...supplier, kind: 'view' } as unknown as typeof supplier])
       expect(refusal(() => replayForward('shop', [table], [{ kind: 'markDecidesScope', table: 'shop.supplier' }])))
         .toMatch(/markDecidesScope shop\.supplier: only a stored Table decides scope/)
   })
