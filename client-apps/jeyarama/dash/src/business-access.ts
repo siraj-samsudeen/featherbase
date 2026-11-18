@@ -2,7 +2,7 @@
 // and the Who Would Gain Or Lose Access comparison all call businessAccess, so the comparison predicts
 // exactly what the live rules do. The role rules are business-roles.ts; where a role applies is reachOf's
 // (provider.ts), run over only the assignment that gives the role.
-import { DASH_APP, opensDash, rolesOf, type BusinessRole, type HandChange, type HeldRole, type Model, type Permission, type Reach, type Reaches, type TitleRule } from './business-roles.ts'
+import { BUYER_TITLE, DASH_APP, opensDash, rolesOf, type BusinessRole, type HandChange, type HeldRole, type Model, type Permission, type Reach, type Reaches, type TitleRule } from './business-roles.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
 import { EMPLOYEE_STATUS, checked, day, exact, holdsOn, text } from './values.ts'
 
@@ -72,7 +72,7 @@ export async function mineOf(docs: Base, person: string, today: string, designat
 }
 
 /** reachOf over only the rows that give one role: its job (as the role's job), merchandise rows, or cluster. */
-function onlyThese(docs: Base, rows: { jobs: Row[]; merchandise: Row[]; clusters: Row[]; buyerSections: boolean; employees?: Row[] }): Base {
+function onlyThese(docs: Base, rows: { jobs: Row[]; merchandise: Row[]; clusters: Row[]; buyerSections: boolean; employees?: Row[]; notMine?: string[] }): Base {
   const given: Record<string, Row[]> = { 'Job Assignment': rows.jobs, 'Merchandise Assignment': rows.merchandise, Cluster: rows.clusters, ...(rows.employees ? { Employee: rows.employees } : {}) }
   const page = (found: Row[], args: { filters?: Filter[]; limit_start?: number; limit_page_length?: number }) => {
     const kept = found.filter(row => (args.filters ?? []).every(([column, op, value]) =>
@@ -83,7 +83,12 @@ function onlyThese(docs: Base, rows: { jobs: Row[]; merchandise: Row[]; clusters
   return {
     // reachOf asks only about the Buyer Section Tables, which only a Buyer's own run reads.
     available: async table => rows.buyerSections && docs.available(table),
-    list: async (table, args) => (table in given ? page(given[table], args) : docs.list(table, args)),
+    list: async (table, args) => {
+      if (table in given) return page(given[table], args)
+      const read = await docs.list(table, args)
+      // Buyer Sections still take subcategories from Buyer rows; only a Buyer role gives the person their own (Codex adversarial round 4).
+      return table === 'Buyer Section' && rows.notMine?.length ? read.map(row => (rows.notMine!.includes(exact(row.buyer)) ? { ...row, buyer: null } : row)) : read
+    },
   }
 }
 
@@ -95,11 +100,24 @@ export async function rolePlaces(docs: Base, person: string, today: string, held
   const reach = async (rows: Partial<Parameters<typeof onlyThese>[1]>) =>
     (await reachOf(onlyThese(docs, { jobs: [], merchandise: [], clusters: [], buyerSections: false, ...rows }), person, today, [])).places
   const spot = held.spot
+  // #1277 (owner, 18-Nov-2026): a role reaching a Region covers every store whose site is in the region of the site its
+  // job (or the store it is given at) sits at, as a Store Manager of each; regions are the sites' own data.
+  const site = spot.kind === 'job' ? exact(mine.jobs.find(j => exact(j.row_id) === spot.job)?.site) : spot.kind === 'site' ? spot.site : ''
+  if (reaches === 'Region' && site) {
+    const [here] = await every(docs, 'Site', ['operating_region'], [['row_id', '=', site]])
+    const region = exact(here?.operating_region)
+    if (!region) return []
+    const stores = (await every(docs, 'Site', ['is_store'], [['operating_region', '=', region]])).filter(s => checked(s.is_store))
+    return reach({ employees: [{ row_id: 'by-region', person, status: 'Current' }],
+      jobs: stores.map(s => ({ row_id: `region-${exact(s.row_id)}`, employee: 'by-region', job: 'Store Manager', site: exact(s.row_id), starts_on: today })) })
+  }
   switch (spot.kind) {
     // An every-store job reaches every store, whatever its site, for anyone holding it, on the staff list or not.
     case 'company': return reach({ employees: [{ row_id: 'by-role', person, status: 'Current' }], jobs: [{ row_id: 'company', employee: 'by-role', job: 'Director', site: '', starts_on: today }] })
     case 'cluster': return reach({ clusters: mine.clusters.filter(c => exact(c.row_id) === spot.cluster) })
-    case 'merchandise': return reach({ merchandise: mine.merchandise.filter(m => spot.assignments.includes(exact(m.row_id))), buyerSections: reaches === 'Merchandise' })
+    case 'merchandise': return reach({ merchandise: mine.merchandise.filter(m => spot.assignments.includes(exact(m.row_id))), buyerSections: reaches === 'Merchandise',
+      // A merchandise role other than the Buyer's own gets no Buyer Section that names this person its buyer.
+      ...(text(held.title).toLowerCase() === BUYER_TITLE.toLowerCase() ? {} : { notMine: mine.employees.map(e => exact(e.row_id)) }) })
     // A store given by hand to someone with no job there: the whole store, as a Store Manager's, even for someone off the staff list.
     case 'site': return reach({ employees: [{ row_id: 'by-hand', person, status: 'Current' }], jobs: [{ row_id: 'by-hand', employee: 'by-hand', job: 'Store Manager', site: spot.site, starts_on: today }] })
     case 'buyer_sections': return reach({ buyerSections: true })

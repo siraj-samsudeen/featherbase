@@ -89,7 +89,7 @@ async function converted(tables: Record<string, Row[]>) {
 const roleId = (tables: Record<string, Row[]>, name: string) => String(tables['dash.business_role'].find(r => r.role_name === name)!.row_id)
 
 describe('the starting roles', () => {
-  it('writes the twelve business roles once', async () => {
+  it('writes the starting business roles once', async () => {
     const tables = await seeded()
     expect(tables['dash.business_role'].map(r => r.role_name)).toEqual(STARTING_ROLES.map(r => r.name))
   })
@@ -295,8 +295,8 @@ describe('areas on every route to a role', () => {
 
   it('says a Vendor given at a job, with no place named, has no area there, and why', async () => {
     const tables = await richWorld()
-    await giveRole(context(tables, { payload: { person: 'fm', change: 'Also give', role: roleId(tables, 'Vendor') } }) as never)
-    expect((await areaOf(tables, 'fm'))[1]).toEqual(['Vendor', 'No area: Vendor reaches the place it is given at, and this person is named only in their job at Lakeside'])
+    await giveRole(context(tables, { payload: { person: 'fm', change: 'Also give', role: roleId(tables, 'Supplier') } }) as never)
+    expect((await areaOf(tables, 'fm'))[1]).toEqual(['Supplier', 'No area: Supplier reaches the place it is given at, and this person is named only in their job at Lakeside'])
   })
 
   it('leaves out the parts of a job that names no site or section', async () => {
@@ -654,7 +654,7 @@ describe('reach as data on the role (Codex standard review round 4 on 1233e3d8c)
     const tables = await seeded()
     tables['dash.business_role'].push({ row_id: 'r-x', role_name: 'Auditor' })
     const page = await businessRoles(context(tables) as never)
-    expect(['Store Manager', 'Category Head', 'Leadership', 'Vendor', 'Auditor'].map(n => page.roles.find(r => r.name === n)!.reaches))
+    expect(['Store Manager', 'Category Head', 'Leadership', 'Supplier', 'Auditor'].map(n => page.roles.find(r => r.name === n)!.reaches))
       .toEqual(['their store', 'their merchandise', 'the whole company', 'the place it is given at', 'Not set'])
   })
 })
@@ -793,9 +793,9 @@ describe('the steps towards business roles run only when asked (#1277 J1, J3, J5
 
   it('adds the starting roles only on the button, logging each, and nothing on a second click', async () => {
     const tables = await seeded()
-    expect(tables['dash.switch_over_log'].filter(l => l.step === 'Starting role').length).toBe(12)
+    expect(tables['dash.switch_over_log'].filter(l => l.step === 'Starting role').length).toBe(STARTING_ROLES.length)
     expect(await addStartingRoles(context(tables) as never)).toEqual({ roles: 0, titles: 0 })
-    expect(tables['dash.switch_over_log'].filter(l => l.step === 'Starting role').length).toBe(12)
+    expect(tables['dash.switch_over_log'].filter(l => l.step === 'Starting role').length).toBe(STARTING_ROLES.length)
   })
 
   it('gives a grant to a job to its business role, and one to Dash Reader to every role that opens Dash, logging each, and sets no switch', async () => {
@@ -930,3 +930,44 @@ describe('one switch puts the old rules back (#1277 J5)', () => {
     expect(await scopeOf(tables, 'st', ['Dash Reader'])).toEqual({ 9901: ['010101001'] })
   })
 })
+
+// #1277 (owner, 18-Nov-2026): a Region reach, read from the sites' own regions; Tester at the stores it is given for.
+describe('Region and Tester', () => {
+  async function regional() {
+    const { tables } = await switched()
+    tables.Site.push({ row_id: 'HIL', name: 'Hillview', is_store: true, operating_region: 'East' }, { row_id: 'RIV', name: 'Riverside', is_store: true, operating_region: 'West' })
+    tables.Plant.push({ row_id: '9902', site: 'HIL', plant_type: 'Store' }, { row_id: '9903', site: 'RIV', plant_type: 'Store' })
+    return tables
+  }
+
+  it('gives a Regional Head, also given at their job, every store of their site\'s region and no other', async () => {
+    const tables = await regional()
+    await giveRole(context(tables, { payload: { person: 'sm', change: 'Correct', role: roleId(tables, 'Regional Head') } }) as never)
+    expect(await scopeOf(tables, 'sm')).toEqual({ 9901: null, 9902: null })
+    const explained = await explainPerson(context(tables, { payload: { person: 'sm' }, peopleRoles: { sm: ['Dash Reader'] } }) as never)
+    expect(explained.roles.map(r => [r.name, r.area.parts.map(p => p.name), r.area.stores])).toEqual([['Regional Head', ['East'], 2]])
+  })
+
+  it('maps no HR title to Regional Head', async () => {
+    const tables = await regional()
+    expect(tables['dash.title_map'].map(r => r.business_role)).not.toContain(roleId(tables, 'Regional Head'))
+  })
+
+  it('gives a Tester, by hand at two stores, those two stores only', async () => {
+    const tables = await regional()
+    for (const site of ['LKS', 'RIV']) await giveRole(context(tables, { payload: { person: 'consultant', change: 'Also give', role: roleId(tables, 'Tester'), site } }) as never)
+    expect(await scopeOf(tables, 'consultant')).toEqual({ 9901: null, 9903: null })
+  })
+
+  // Codex adversarial round 4: a Buyer Section naming someone reaches them only through a Buyer role.
+  it('gives a category head no Buyer Section of theirs when no Buyer role comes from it', async () => {
+    const { tables } = await switched(await seeded())
+    tables.Site.push({ row_id: 'RIV', name: 'Riverside', is_store: true, operating_region: 'West' })
+    tables.Plant.push({ row_id: '9903', site: 'RIV', plant_type: 'Store' })
+    tables['Buyer Section'] = [{ row_id: 'BS-K', name: 'Kids section', operating_region: 'West', buyer: 'E-BUY', starts_on: '2026-01-01' }]
+    tables['Buyer Section Subcategory'] = [{ row_id: 'BL-K', buyer_section: 'BS-K', subcategory: '010102001', starts_on: '2026-01-01' }]
+    tables['dash.title_map'] = tables['dash.title_map'].filter(r => r.title !== 'Buyer')
+    expect(Object.keys(await scopeOf(tables, 'buy'))).toEqual(['9901'])
+  })
+})
+

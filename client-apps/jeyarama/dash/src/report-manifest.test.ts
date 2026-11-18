@@ -227,7 +227,9 @@ describe('the read grants, declared before the first install', () => {
     const step = manifest.migrations.find(m => m.id === 'business_roles_shadow')!.operations as { table: { name: string; columns: { column_name: string }[] } }[]
     const inStep = step.find(op => op.table.name === 'dash.business_role')!.table.columns.find(c => c.column_name === 'reaches')
     const declared = manifest.tables.find(t => t.name === 'dash.business_role')!.columns.find(c => c.column_name === 'reaches')
-    expect([inStep, (declared as { choices?: string }).choices?.split('\n')]).toEqual([declared, [...REACHES_CHOICES]])
+    // #1277 adds Region with an alterColumn step.
+    const widened = (manifest.migrations.find(m => m.id === 'business_roles_live')!.operations as { kind: string; column?: string; to?: object }[]).find(op => op.kind === 'alterColumn' && op.column === 'reaches')!
+    expect([{ ...inStep, ...widened.to }, (declared as { choices?: string }).choices?.split('\n')]).toEqual([declared, [...REACHES_CHOICES]])
   })
 
   // #1218: the comparison judges today's reports by the same roles the platform enforces on these reads.
@@ -326,7 +328,7 @@ describe('the version step for Dash All-Stores Reader', () => {
       // #1269: a Dive's reach goes as wholly held code prefixes; no Table change, and no new read.
       ['reach_prefixes', '0.13.28', '0.13.29', 0],
       // #1277: business roles decide Dash access: four Tables marked as deciding scope, grants to business roles, the switch and its log
-      ['business_roles_live', '0.13.29', '0.13.30', 8],
+      ['business_roles_live', '0.13.29', '0.13.30', 9],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')

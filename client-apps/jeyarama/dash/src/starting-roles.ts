@@ -28,6 +28,8 @@ export const STARTING_ROLES: StartingRole[] = [
   { name: 'Department Manager', reaches: 'Department', description: 'Runs a department of a store.', grants: [REPORTS_IN_AREA, SECTIONS, TEAM_TASKS, TEAM_TICKETS] },
   { name: 'Store Manager', reaches: 'Store', description: 'Runs a store.', grants: [REPORTS_IN_AREA, SECTIONS, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
   { name: 'Cluster Manager', reaches: 'Cluster', description: 'Looks after the stores of a cluster.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
+  // Owner, 18-Nov-2026: no HR title maps to it yet; the owner decides which do.
+  { name: 'Regional Head', reaches: 'Region', description: 'Looks after the stores of a region, read from each site\'s region.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
   { name: 'Buyer', reaches: 'Merchandise', description: 'Buys subcategories for a region.', grants: [REPORTS_IN_AREA, OWN_TASKS, TICKETS] },
   { name: 'Category Head', reaches: 'Merchandise', description: 'Heads the buyers of a category, subdivision or division.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, ['Dash', 'Manager', 'Edit', 'Buyer Sections', 'Area'], TEAM_TASKS, TEAM_TICKETS] },
   // Owner, 18-Nov-2026: no reports and no Dash by default; head office staff get reports through a role given by hand or a grant.
@@ -35,7 +37,10 @@ export const STARTING_ROLES: StartingRole[] = [
   { name: 'Leadership', reaches: 'Whole company', description: 'Directors and the chief operating officer; reaches the whole company.', grants: [EVERY_REPORT, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
   { name: 'Master Data Manager', reaches: 'Whole company', description: 'Keeps the master tables right: reads, adds and edits them everywhere, and deletes none.', by_hand_only: true,
     grants: [MASTER_DATA('View'), MASTER_DATA('Add'), MASTER_DATA('Edit')] },
-  { name: 'Vendor', reaches: 'Given place', description: 'An outside supplier, given by hand: sees only their own supplier\'s articles once the supplier area is set up.', by_hand_only: true, grants: [REPORTS_IN_AREA] },
+  // Owner, 18-Nov-2026: Supplier (was Vendor), D8's supplier area.
+  { name: 'Supplier', reaches: 'Given place', description: 'An outside supplier, given by hand: sees only their own supplier\'s articles once the supplier area is set up.', by_hand_only: true, grants: [REPORTS_IN_AREA] },
+  // Owner, 18-Nov-2026: consultants testing the apps, given by hand at the stores they test.
+  { name: 'Tester', reaches: 'Given place', description: 'Tests the apps, given by hand at the stores it is given for: reads their reports there.', by_hand_only: true, grants: [REPORTS_IN_AREA, OWN_TASKS, TICKETS] },
 ]
 
 /** Today's ten jobs and the two merchandise responsibilities, each mapped to its business role. */

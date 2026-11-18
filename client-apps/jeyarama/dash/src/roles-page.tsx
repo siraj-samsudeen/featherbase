@@ -126,7 +126,7 @@ export function BusinessRolesPage() {
       {failed && <Failed message={failed} onRetry={load} />}
       {answer && answer.roles.length === 0 && (
         <Card data-testid="no-roles">
-          <EmptyState title="No business roles yet" body="Start from Jeyarama's twelve roles and the Title Map for today's jobs; edit them afterwards."
+          <EmptyState title="No business roles yet" body="Start from Jeyarama's starting roles and the Title Map for today's jobs; edit them afterwards."
             action={<Button variant="primary" loading={busy} onClick={start} data-testid="add-starting-roles">Add The Starting Roles</Button>} />
           {error && <Notice tone="negative">{error}</Notice>}
         </Card>

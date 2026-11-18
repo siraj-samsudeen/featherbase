@@ -648,16 +648,16 @@
           "label": "Given by hand only",
           "column_type": "Check",
           "in_list_view": true,
-          "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Manager or Vendor."
+          "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Manager or Supplier."
         },
         {
           "column_name": "reaches",
           "label": "Reaches",
           "column_type": "Choice",
-          "choices": "Section\nFloor\nDepartment\nStore\nCluster\nMerchandise\nWhole company\nGiven place",
+          "choices": "Section\nFloor\nDepartment\nStore\nCluster\nRegion\nMerchandise\nWhole company\nGiven place",
           "reqd": true,
           "in_list_view": true,
-          "description": "How far the role reaches, wherever its holder's assignment sits: their section, floor, department, store or cluster, their merchandise, the whole company, or the place it is given at. Decides each holder's area; the role's name never does."
+          "description": "How far the role reaches, wherever its holder's assignment sits: their section, floor, department, store, cluster or region, their merchandise, the whole company, or the place it is given at. Decides each holder's area; the role's name never does."
         }
       ],
       "decides_scope": true
@@ -3004,7 +3004,20 @@
             "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Steward or Vendor."
           },
           "to": {
-            "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Manager or Vendor."
+            "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Manager or Supplier."
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.business_role",
+          "column": "reaches",
+          "from": {
+            "choices": "Section\nFloor\nDepartment\nStore\nCluster\nMerchandise\nWhole company\nGiven place",
+            "description": "How far the role reaches, wherever its holder's assignment sits: their section, floor, department, store or cluster, their merchandise, the whole company, or the place it is given at. Decides each holder's area; the role's name never does."
+          },
+          "to": {
+            "choices": "Section\nFloor\nDepartment\nStore\nCluster\nRegion\nMerchandise\nWhole company\nGiven place",
+            "description": "How far the role reaches, wherever its holder's assignment sits: their section, floor, department, store, cluster or region, their merchandise, the whole company, or the place it is given at. Decides each holder's area; the role's name never does."
           }
         }
       ]

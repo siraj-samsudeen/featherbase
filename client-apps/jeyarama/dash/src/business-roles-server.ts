@@ -58,7 +58,7 @@ export function memoryDocuments(base: Base, designations: boolean): Base & { row
 }
 
 /** How much one Reaches covers, for the sentence an unresolved area reads as. Unset reads as such. */
-const REACHES_ONE: Record<string, string> = { Section: 'one section', Floor: 'one floor', Department: 'one department', Store: 'one store', Cluster: 'one cluster',
+const REACHES_ONE: Record<string, string> = { Section: 'one section', Floor: 'one floor', Department: 'one department', Store: 'one store', Cluster: 'one cluster', Region: 'one region',
   Merchandise: 'merchandise', 'Given place': 'the place it is given at', '': 'nothing yet: its Reaches is not set' }
 /** Where a person sits by a source that gives their role no area. */
 const PLACED_ONLY: Record<string, (from: Spot, world: ShadowWorld, mine: Mine) => Promise<string>> = {
@@ -166,6 +166,12 @@ export async function personShadow(world: ShadowWorld, person: string, roles: re
   }
 }
 
+/** A site's region in words, as the site carries it, linking to the region's record. */
+async function regionPart(world: ShadowWorld, site: string): Promise<Part> {
+  const region = (await world.names('Site', 'operating_region')).get(site) ?? ''
+  return region ? { name: region, table: 'Operating Region', id: region } : { name: 'No region on this site' }
+}
+
 /** Where one held role applies, in words: the records its area names, and how many stores and subcategories it reaches. */
 async function areaOf(world: ShadowWorld, held: HeldRole & { places: Place[] }, mine: Mine): Promise<Area> {
   // How far the role reaches is data on the role (Reaches); its name decides nothing.
@@ -186,6 +192,8 @@ async function areaOf(world: ShadowWorld, held: HeldRole & { places: Place[] }, 
       return [{ name: subcategoryNames.get(exact(m[level])) || text(m[level]) || 'Every subcategory', table: LEVEL_TABLE[level], id: exact(m[level]) },
         { name: text(m.operating_region) || 'Every region', table: 'Operating Region', id: exact(m.operating_region) }]
     })
+  } else if (spot.kind === 'site' && reaches === 'Region') {
+    parts = [await regionPart(world, spot.site)]
   } else if (spot.kind === 'site') {
     parts = [await part('Site', spot.site)]
   } else if (spot.kind === 'buyer_sections') {
@@ -194,7 +202,7 @@ async function areaOf(world: ShadowWorld, held: HeldRole & { places: Place[] }, 
     const job: Row = { ...mine.jobs.find(j => exact(j.row_id) === spot.job)!, ...(spot.site ? { site: spot.site } : {}) }
     const site = await part('Site', job.site)
     const cluster = (await world.names('Site', 'cluster')).get(exact(job.site))
-    parts = reaches === 'Store' ? [site] : reaches === 'Cluster' ? [await part('Cluster', cluster)]
+    parts = reaches === 'Store' ? [site] : reaches === 'Cluster' ? [await part('Cluster', cluster)] : reaches === 'Region' ? [await regionPart(world, exact(job.site))]
       : reaches === 'Floor' ? [await part('Store Floor', job.floor), site] : reaches === 'Department' ? [{ name: 'Their department' }, site]
         : [await part('Section', job.section), site]
   } else if (spot.kind === 'unresolved') {
@@ -243,7 +251,7 @@ async function titlesInUse(world: ShadowWorld): Promise<TitleInUse[]> {
 
 /** Starting roles first, in their order; any other after them, by name. */
 /** Reaches in plain words for the Business Roles page: "Reaches: their store". */
-const REACHES_WORDS: Record<string, string> = { Section: 'their section', Floor: 'their floor', Department: 'their department', Store: 'their store', Cluster: 'their cluster',
+const REACHES_WORDS: Record<string, string> = { Section: 'their section', Floor: 'their floor', Department: 'their department', Store: 'their store', Cluster: 'their cluster', Region: 'their region',
   Merchandise: 'their merchandise', 'Whole company': 'the whole company', 'Given place': 'the place it is given at' }
 const STARTING_ORDER = STARTING_ROLES.map(r => r.name)
 const order = (name: string) => (STARTING_ORDER.includes(name) ? STARTING_ORDER.indexOf(name) : STARTING_ORDER.length)

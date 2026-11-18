@@ -71,7 +71,7 @@ describe('business roles in shadow', () => {
       const act = (name: string, payload: Record<string, unknown>) => manager.post<{ result: unknown }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload })
       await act('add_starting_roles', {})
       const page = (await manager.post<{ result: { roles: { id: string; name: string }[] } }>('/api/app_reads/dash/business_roles', { payload: {} })).result
-      expect(page.roles).toHaveLength(12)
+      expect(page.roles).toHaveLength(14)
       const storeManager = page.roles.find(r => r.name === 'Store Manager')!.id
       await act('give_role', { person: reader.user, change: 'Correct', role: storeManager, reason: 'Runs the store' })
       // A role that would reach every store in the new model, and a mapping that changes the reader's title: neither may leak into today.
@@ -125,7 +125,7 @@ describe('business roles in shadow', () => {
       expect(await sql`select 1 from dash.business_role`).toEqual([])
       const systemManager = await createUser({ email: 'live-system-manager@example.test', roles: ['System Manager'] })
       const act = (name: string) => systemManager.post<{ result: Record<string, unknown> }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload: {} }).then(a => a.result)
-      expect(await act('add_starting_roles')).toEqual({ roles: 12, titles: 12 })
+      expect(await act('add_starting_roles')).toEqual({ roles: 14, titles: 12 })
       expect(await act('give_old_grants_to_roles')).toEqual({ grants_added: 1, grants_not_converted: 0 })
       expect(await read(staff, 'can_open')).toBe(true)
       // The owner's yes: a System Manager adds the switch row.

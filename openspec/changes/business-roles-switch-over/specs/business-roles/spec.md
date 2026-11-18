@@ -102,7 +102,7 @@ The starting business roles and their Title Map rows SHALL be added only when Ad
 - **THEN** nothing is added and Store Manager is unchanged
 
 ### Requirement: The starting roles as the owner reviewed them
-The starting roles SHALL be as the owner reviewed them on 18-Nov-2026: every manager role (Team Leader, Floor Manager, Department Manager, Store Manager, Cluster Manager, Category Head, Leadership) sees its team's tickets, while Staff, Buyer and Head Office raise their own; Head Office has no Dash permission; the master data role is named Master Data Manager. External people, such as consultants, get no role from a title and are given roles by hand.
+The starting roles SHALL be as the owner reviewed them on 18-Nov-2026: every manager role (Team Leader, Floor Manager, Department Manager, Store Manager, Cluster Manager, Category Head, Leadership) sees its team's tickets, while Staff, Buyer and Head Office raise their own; Head Office has no Dash permission; the master data role is named Master Data Manager; Vendor is named Supplier; a Tester role, given by hand at the stores it tests, reads their reports; a Regional Head reaches every store in the region of the site it is placed at, with no HR title mapped to it yet. Regions are the sites' own data. External people, such as consultants, get no role from a title and are given roles by hand.
 
 #### Scenario: Head office staff
 
@@ -114,8 +114,13 @@ The starting roles SHALL be as the owner reviewed them on 18-Nov-2026: every man
 - **WHEN** a System Manager also gives Store Manager at Lakeside to a consultant on no staff list
 - **THEN** Explain shows Store Manager at Lakeside, also given by hand, and with a Dash role the consultant reaches Lakeside
 
+#### Scenario: A regional head
+
+- **WHEN** Regional Head is given by hand to someone whose job is at a store in the East
+- **THEN** they reach every store whose site is in the East, and no other
+
 ### Requirement: Editing sections follows business roles when they decide
-The permission Edit Section names and subcategories SHALL mean editing a section's name and which subcategories sit under it, within the role's area. When business roles decide, a manager edits a section only where a role of theirs holding that permission comes from the very job whose store, floor, department or sections hold it; a role placed at another store gives no area at the job's own store. Under the old rules, the jobs alone decide.
+The permission Edit Section names and subcategories SHALL mean editing a section's name and which subcategories sit under it, within the role's area. When business roles decide, a manager edits a section only where a role of theirs holding that permission comes from the very job whose store, floor, department or sections hold it; a role placed at another store gives no area at the job's own store, and a role on another axis (Floor against Department) gives none. Moving staff still follows the jobs. Under the old rules, the jobs alone decide.
 
 #### Scenario: A store manager corrected to Staff
 

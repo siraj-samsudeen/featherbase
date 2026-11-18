@@ -9,7 +9,7 @@ import { reportsReaching, type AccessRow, type BundleMember } from './report-acc
 export const REACHES = ['Own', 'Team', 'Area', 'All'] as const
 export type Reach = (typeof REACHES)[number]
 /** How far a role reaches, wherever its holder's assignment sits: data on the role, never read from its name. */
-export const REACHES_CHOICES = ['Section', 'Floor', 'Department', 'Store', 'Cluster', 'Merchandise', 'Whole company', 'Given place'] as const
+export const REACHES_CHOICES = ['Section', 'Floor', 'Department', 'Store', 'Cluster', 'Region', 'Merchandise', 'Whole company', 'Given place'] as const
 export type Reaches = (typeof REACHES_CHOICES)[number]
 export interface BusinessRole { id: string; name: string; description?: string | null; by_hand_only?: boolean; reaches?: Reaches | null }
 export interface Permission { role: string; app: string; level: string; verb: string; thing: string; reach: Reach }
@@ -46,7 +46,7 @@ function mapping(model: Pick<Model, 'rules' | 'roles'>): Map<string, string> {
 const inForce = (hand: HandChange, today: string) => !hand.removed && (!hand.ends_on || hand.ends_on >= today)
 
 /** The location reaches, each covering what a job of its kind covers where the assignment sits. */
-const LOCATION: readonly (Reaches | undefined | null)[] = ['Section', 'Floor', 'Department', 'Store', 'Cluster']
+const LOCATION: readonly (Reaches | undefined | null)[] = ['Section', 'Floor', 'Department', 'Store', 'Cluster', 'Region']
 
 /**
  * The area a source gives, in a shape its role's Reaches allows (Codex rounds 5 and 6). Whole company is the
@@ -57,7 +57,7 @@ const LOCATION: readonly (Reaches | undefined | null)[] = ['Section', 'Floor', '
 export function fit(spot: Spot, reaches: Reaches | null | undefined): Spot {
   if (reaches === 'Whole company') return { kind: 'company' }
   if (spot.kind === 'job' && spot.site && reaches === 'Given place') return { kind: 'site', site: spot.site }
-  const fits = spot.kind === 'none' || (spot.kind === 'job' && LOCATION.includes(reaches)) || (spot.kind === 'site' && (reaches === 'Store' || reaches === 'Given place'))
+  const fits = spot.kind === 'none' || (spot.kind === 'job' && LOCATION.includes(reaches)) || (spot.kind === 'site' && (reaches === 'Store' || reaches === 'Region' || reaches === 'Given place'))
     || (spot.kind === 'cluster' && reaches === 'Cluster') || ((spot.kind === 'merchandise' || spot.kind === 'buyer_sections') && reaches === 'Merchandise')
   return fits ? spot : { kind: 'unresolved', from: spot }
 }
