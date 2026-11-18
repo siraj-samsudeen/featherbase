@@ -9,6 +9,7 @@ import { configureDelegated, removeDelegated } from 'server/test/identity-fixtur
 import { configureMicrosoft } from 'server/test/microsoft-mock'
 import { setUserPassword } from 'server/src/auth'
 import { test, expect, renderApp } from './pg-test'
+import { browserAccounts } from '../src/lib/api'
 
 const anonymous = { user: null, token: null } as never
 
@@ -290,6 +291,29 @@ describe('the "We couldn\'t sign you in" card (#474, #1283)', () => {
     expect(new URLSearchParams(window.location.search).get('next')).toBe('/featherbase/admin')
     expect(screen.queryByTestId('sign-in-refused-panel')).not.toBeInTheDocument()
     view.unmount()
+  })
+
+  // Codex round 2 on #1283: with an account held on this browser, the form stays in view after answering.
+  test('with an account held on this browser, a failed sign-in from the card keeps the form and its message in view', async () => {
+    await removeDelegated()
+    const held = vi.spyOn(browserAccounts, 'list').mockResolvedValue({
+      accounts: [{ session: 's1', person: 'p1', name: 'Held Person', method: 'password', method_kind: 'password', method_label: 'Password',
+        sign_in_id: 'held@example.com', last_used: 1, active: true, state: 'live' }],
+      full: false,
+    } as never)
+    try {
+      const path = '/featherbase/login?error=not_provisioned&next=%2Ffeatherbase%2Fadmin'
+      window.history.replaceState(null, '', path)
+      await renderApp(path, anonymous)
+      await screen.findByTestId('sign-in-refused-panel')
+      await userEvent.type(screen.getByLabelText('Email or username'), 'nobody.1283b@example.com')
+      await userEvent.type(screen.getByLabelText('Password'), 'wrong-pw')
+      await userEvent.click(screen.getByTestId('login-submit'))
+      expect(await screen.findByTestId('login-error')).toBeInTheDocument()
+      expect(screen.getByLabelText('Email or username')).toHaveValue('nobody.1283b@example.com')
+      expect(screen.queryByText('Held Person')).not.toBeInTheDocument()
+      expect(new URLSearchParams(window.location.search).get('next')).toBe('/featherbase/admin')
+    } finally { held.mockRestore() }
   })
 
   test('no refusal code, no card: the usual methods show straight away', async () => {

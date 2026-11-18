@@ -324,6 +324,9 @@ export function LoginPage() {
    *  drop `error` from the address bar, keeping everything else (#474). */
   function answerRefusal() {
     if (refusal && !refusalAnswered) {
+      // The card's form stays in view, not the browser's held accounts in its place, so a failed attempt's
+      // message and typed values stay too (Codex round 2 on #1283).
+      setUseAnother(true)
       const url = new URL(window.location.href)
       url.searchParams.delete('error')
       window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
