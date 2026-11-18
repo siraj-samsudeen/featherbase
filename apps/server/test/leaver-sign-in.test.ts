@@ -339,3 +339,10 @@ test('the refresh runs as its own job, records when it checked, and follows a le
   expect(await runOneJob()).toBe(true)
   expect(await sql`select 1 from background_job where method = 'refresh_leaver_sign_in' and job_status = 'queued'`).toHaveLength(1)
 })
+
+// #1314: the summary's counts are grouped as every count is (Indian grouping).
+test('the summary groups large counts: 1,802 for review, 1,386 can still sign in', () => {
+  const row = (section: string) => ({ section, person: 'p', why: '', ways_in: 'Password', left_on: null })
+  const report = { rows: [...Array(1386).fill(row('1. Leaver job would disable')), ...Array(1802).fill(row('5. Not on payroll, but no exit date'))], notes: [] }
+  expect(rebuildSummary(report as never)).toBe('1,386 people can still sign in. 1,802 people off the payroll with no exit date, for review')
+})

@@ -106,7 +106,8 @@ function ordered(rows: LeaverSignInRow[]): LeaverSignInRow[] {
     || a.person.localeCompare(b.person))
 }
 
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+/** A count in words, Indian-grouped as every count is (#1314): 1,802 people. */
+const count = (n: number, one: string, many: string) => `${n.toLocaleString('en-IN')} ${n === 1 ? one : many}`
 
 /** What the report holds now, worked out afresh. Pure of side effects. */
 export async function leaverSignInRows(): Promise<LeaverSignInReport> {
@@ -174,7 +175,7 @@ export function rebuildSummary(report: LeaverSignInReport): string {
   const n = report.rows.filter((r) => LEAVER_SECTIONS.includes(r.section)).length
   const review = report.rows.length - n
   return [
-    `${n} ${n === 1 ? 'person' : 'people'} can still sign in`,
+    `${count(n, 'person', 'people')} can still sign in`,
     ...(review ? [`${count(review, 'person', 'people')} off the payroll with no exit date, for review`] : []),
     ...report.notes,
   ].join('. ')
