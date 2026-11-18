@@ -85,6 +85,20 @@ test('Linked to a Table, picking rows of it with how many rows each links to', a
   await waitFor(() => expect(within(chip).getByTestId('linked-step-total')).toHaveTextContent('1'))
 })
 
+test('with none picked, a step’s search is part of the filter', async ({ admin }) => {
+  await seed(admin)
+  const r = await renderApp(listPath(ACCIDENT), admin)
+  await screen.findByText('Windshield')
+  await openLinked('Linked to…')
+  await chooseTable(0, VEHICLE)
+  await userEvent.type(await screen.findByTestId('linked-search'), 'Truck 2')
+  await waitFor(() => expect(within(stepCard(0)).getByTestId('linked-step-count')).toHaveTextContent(`${VEHICLE}: 1 match· none picked: those matching "Truck 2"`))
+  await userEvent.click(screen.getByTestId('linked-add'))
+  await waitFor(() => expect(rowTitles()).toEqual(['Windshield']))
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent(`Linked to ${VEHICLE} matching "Truck 2"`)
+  expect(addressFilters(r)).toEqual([['vehicle', 'related', { table: VEHICLE, filters: [['title', 'like', '%Truck 2%']] }]])
+})
+
 test('a chain: Claims linked to Accidents linked to one Vehicle, each step with its count', async ({ admin }) => {
   await seed(admin)
   const r = await renderApp(listPath(CLAIM), admin)

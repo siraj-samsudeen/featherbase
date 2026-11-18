@@ -4,7 +4,8 @@
 
 A list's Add filter SHALL offer Linked to…: pick a Table the list's rows are linked to (by their
 links, by its links back to them, through a link Table or a sub-table), then rows of it, searchable,
-each showing how many rows it is linked to; none picked means any of them. A step MAY be linked on
+each showing how many rows it is linked to; none picked means any of them, or those a search in
+the step finds. A step MAY be linked on
 to another Table, and each step SHALL show how many of its rows match.
 
 #### Scenario: The lines of one supplier's orders
@@ -45,9 +46,9 @@ keep. A row the viewer may not read SHALL never be counted or matched, at any st
 ### Requirement: An old Explore link opens the filtered list
 
 Explore SHALL be retired. An Explore address SHALL open the list of the last Table its chain
-reached, filtered by Linked to steps back to the rows it had picked; an address with no starting
-Table SHALL open All tables, and one naming what no longer exists SHALL open as much as still
-resolves.
+reached, filtered by Linked to steps back to the rows it had picked. A step whose Table or link is
+gone SHALL end the chain at the step before it, and an address whose starting Table is missing or
+gone SHALL open All tables.
 
 #### Scenario: A shared Explore link
 

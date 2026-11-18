@@ -134,19 +134,25 @@ export function linkFilter(link: Link, table: string, inner: Filter[], negate = 
 }
 
 /** One step of a chain: the Table it goes to, how, and the rows picked there
- *  (none picked means any row the next step allows). */
+ *  (none picked means any row the next step allows). With none picked, a search
+ *  typed in the step narrows it to the rows whose `column` contains `text`. */
 export interface ChainStep {
   table: string
   link: Link
   picked: string[]
+  search?: { column: string; text: string }
 }
+
+/** A step's search as the list filter it sends: "contains", as the list's own Search. */
+const searchFilter = (search: { column: string; text: string }): Filter => [search.column, 'like', `%${search.text}%`]
 
 /** The filters a step's own Table is narrowed by: its picked rows and the next step. */
 export function stepFilters(steps: ChainStep[], at: number): Filter[] {
   const step = steps[at]
   const next = steps[at + 1]
   return [
-    ...(step.picked.length ? [['row_id', 'in', step.picked] as Filter] : []),
+    ...(step.picked.length ? [['row_id', 'in', step.picked] as Filter]
+      : step.search?.text ? [searchFilter(step.search)] : []),
     ...(next ? [linkFilter(next.link, next.table, stepFilters(steps, at + 1))] : []),
   ]
 }
@@ -201,10 +207,16 @@ function readStep(field: string, value: unknown): ChainStep[] | null {
     link = { kind: 'forward', column: field }
   }
   let picked: string[] = []
+  let search: ChainStep['search']
   let next: ChainStep[] = []
   for (const f of rest) {
-    if (f[0] === 'row_id' && f[1] === 'in' && Array.isArray(f[2]) && f[2].every((n) => typeof n === 'string') && !picked.length) {
+    if (f[0] === 'row_id' && f[1] === 'in' && Array.isArray(f[2]) && f[2].every((n) => typeof n === 'string') && !picked.length && !search) {
       picked = f[2] as string[]
+      continue
+    }
+    const contains = f[1] === 'like' && typeof f[2] === 'string' ? /^%([^%_]+)%$/.exec(f[2]) : null
+    if (contains && f[0] !== 'row_id' && !picked.length && !search) {
+      search = { column: f[0], text: contains[1] }
       continue
     }
     if (f[1] === 'related' && !next.length) {
@@ -215,7 +227,7 @@ function readStep(field: string, value: unknown): ChainStep[] | null {
     }
     return null
   }
-  return [{ table, link, picked }, ...next]
+  return [{ table, link, picked, ...(search ? { search } : {}) }, ...next]
 }
 
 // ---------- counts ----------
@@ -267,19 +279,41 @@ function parseJson(raw: string | undefined): unknown {
   }
 }
 
+/** The Tables an Explore address names, whose metadata decides how much of it still resolves. */
+export function exploreTables(search: { root?: string; chain?: string }): string[] {
+  const raw = parseJson(search.chain)
+  const steps = (Array.isArray(raw) ? raw.slice(0, 2) : []).filter(isExploreStep)
+  return [...new Set([search.root, ...steps.flatMap((s) => [s.table, s.via])].filter((t): t is string => Boolean(t)))]
+}
+
+/** Whether an Explore step still holds: its Tables and its link are still there. */
+function stepResolves(step: ExploreStep, upstream: string, metaOf: (t: string) => TableMeta | undefined): boolean {
+  const down = metaOf(step.table)
+  if (!down) return false
+  const refersTo = (m: TableMeta | undefined, column: string, to: string) =>
+    Boolean(m?.columns.some((c) => c.column_name === column && c.column_type === 'Reference' && linkRowsTable(c) === to))
+  if (step.mode === 'backlink') return refersTo(down, step.column, upstream)
+  if (step.mode === 'child')
+    return Boolean(metaOf(upstream)?.columns.some((c) => c.column_name === step.column && c.column_type === 'Sub-table' && c.row_table === step.table))
+  return down.columns.some((c) => c.column_type === 'Sub-table' && c.row_table === step.via) && refersTo(metaOf(step.via!), step.column, upstream)
+}
+
 /**
  * B3: an Explore address as the list it showed last, filtered by the chain
  * that led there: the last pane's Table, linked to the pane before it, linked
- * to the first pane's picked rows. An address is user input: what does not
- * read as a chain is dropped from the first step that fails.
+ * to the first pane's picked rows. An address is user input, and what it names
+ * may since have gone: the chain stops at the last step that still resolves
+ * against the current metadata, and a root that is gone opens no list.
  */
-export function exploreToList(search: { root?: string; chain?: string; select?: string }): { table: string; filters: Filter[] } | null {
-  if (!search.root) return null
+export function exploreToList(search: { root?: string; chain?: string; select?: string }, metaOf: (t: string) => TableMeta | undefined): { table: string; filters: Filter[] } | null {
+  if (!search.root || !metaOf(search.root)) return null
   const rawChain = parseJson(search.chain)
   const chain: ExploreStep[] = []
+  let at = search.root
   for (const s of Array.isArray(rawChain) ? rawChain.slice(0, 2) : []) {
-    if (!isExploreStep(s)) break
+    if (!isExploreStep(s) || !stepResolves(s, at, metaOf)) break
     chain.push(s)
+    at = s.table
   }
   const rawSelect = parseJson(search.select)
   const select = Array.isArray(rawSelect) && rawSelect.every((n) => typeof n === 'string') ? (rawSelect as string[]) : []

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   chainFilter,
   choiceCountQuery,
+  exploreTables,
   exploreToList,
   fitsDepth,
   linkOptions,
@@ -111,6 +112,7 @@ describe('chain filters', () => {
     ['through', [{ table: 'Role', link: { kind: 'through', link: 'Job Assignment', back: 'employee', column: 'role' }, picked: ['R1'] }]],
     ['via', [{ table: 'Item', link: { kind: 'via', via: 'Order Line', column: 'item' }, picked: [] }]],
     ['two steps', sarees],
+    ['a search, none picked', [{ table: 'Division', link: { kind: 'forward', column: 'division' }, picked: [], search: { column: 'title', text: 'Sar' } }]],
   ] as [string, ChainStep[]][])('%s reads back as the chain it was built from', (_, steps) => {
     expect(parseChain(chainFilter(steps))).toEqual({ negate: false, steps })
     expect(parseChain(chainFilter(steps, true))).toEqual({ negate: true, steps })
@@ -119,7 +121,7 @@ describe('chain filters', () => {
   test('a filter that is not a chain reads as none', () => {
     expect(parseChain(['status', '=', 'Open'])).toBeNull()
     expect(parseChain(['x', 'related', 'nope'])).toBeNull()
-    expect(parseChain(['x', 'related', { table: 'T', filters: [['title', 'like', '%a%']] }])).toBeNull()
+    expect(parseChain(['x', 'related', { table: 'T', filters: [['title', '=', 'a']] }])).toBeNull()
     expect(parseChain(['x', 'related', { table: 'T', column: 'y' }])).toBeNull() // a back-link reads from row_id
   })
 
@@ -139,25 +141,38 @@ describe('chain filters', () => {
 })
 
 describe('old Explore addresses', () => {
+  const SUPPLIER = table('Supplier', [])
+  const PO = table('Purchase Order', [ref('supplier', 'Supplier'), { column_name: 'lines', column_type: 'Sub-table', row_table: 'PO Line' }])
+  const PO_LINE = table('PO Line', [ref('item', 'Item')], { kind: 'sub_table' })
+  const ORDER_V = table('Order', [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Order Line' }])
+  const now: Record<string, TableMeta> = { Supplier: SUPPLIER, 'Purchase Order': PO, 'PO Line': PO_LINE, Item: ITEM, Order: ORDER_V, 'Order Line': LINE }
+  const known = (t: string) => now[t]
+  const chain = JSON.stringify([{ mode: 'backlink', table: 'Purchase Order', column: 'supplier' }, { mode: 'child', table: 'PO Line', column: 'lines' }])
+
   test('a chain opens the last pane’s list, linked back to the first pane’s picks', () => {
-    expect(exploreToList({
-      root: 'Supplier',
-      chain: JSON.stringify([{ mode: 'backlink', table: 'Purchase Order', column: 'supplier' }, { mode: 'child', table: 'PO Line', column: 'lines' }]),
-      select: JSON.stringify(['S-1']),
-    })).toEqual({
+    expect(exploreToList({ root: 'Supplier', chain, select: JSON.stringify(['S-1']) }, known)).toEqual({
       table: 'PO Line',
       filters: [['parent', 'related', { table: 'Purchase Order', filters: [['supplier', 'related', { table: 'Supplier', filters: [['row_id', 'in', ['S-1']]] }]] }]],
     })
+    expect(exploreTables({ root: 'Supplier', chain })).toEqual(['Supplier', 'Purchase Order', 'PO Line'])
   })
 
   test('a via step and no picks follow every related row', () => {
-    expect(exploreToList({ root: 'Item', chain: JSON.stringify([{ mode: 'viabacklink', table: 'Order', column: 'item', via: 'Order Line' }]) }))
+    expect(exploreToList({ root: 'Item', chain: JSON.stringify([{ mode: 'viabacklink', table: 'Order', column: 'item', via: 'Order Line' }]) }, known))
       .toEqual({ table: 'Order', filters: [['row_id', 'related', { via: 'Order Line', column: 'item', table: 'Item', filters: [] }]] })
   })
 
+  test('a link removed since stops the chain at the last step that still holds', () => {
+    const gone = (t: string) => (t === 'Purchase Order' ? table('Purchase Order', [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'PO Line' }]) : known(t))
+    expect(exploreToList({ root: 'Supplier', chain }, gone)).toEqual({ table: 'Supplier', filters: [] })
+    const noLines = (t: string) => (t === 'Purchase Order' ? table('Purchase Order', [ref('supplier', 'Supplier')]) : known(t))
+    expect(exploreToList({ root: 'Supplier', chain }, noLines)?.table).toBe('Purchase Order')
+    expect(exploreToList({ root: 'Ghost', chain }, known)).toBeNull()
+  })
+
   test('a malformed address keeps what reads, and no root is no list', () => {
-    expect(exploreToList({ root: 'Supplier', chain: '{oops', select: '[1]' })).toEqual({ table: 'Supplier', filters: [] })
-    expect(exploreToList({ root: 'Supplier', chain: JSON.stringify([{ mode: 'nope' }]) })).toEqual({ table: 'Supplier', filters: [] })
-    expect(exploreToList({})).toBeNull()
+    expect(exploreToList({ root: 'Supplier', chain: '{oops', select: '[1]' }, known)).toEqual({ table: 'Supplier', filters: [] })
+    expect(exploreToList({ root: 'Supplier', chain: JSON.stringify([{ mode: 'nope' }]) }, known)).toEqual({ table: 'Supplier', filters: [] })
+    expect(exploreToList({}, known)).toBeNull()
   })
 })

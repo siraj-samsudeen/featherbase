@@ -29,7 +29,7 @@ import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
-import { useMeta, type TableMeta } from './lib/meta'
+import { metaQuery, useMeta, type TableMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
@@ -68,7 +68,7 @@ import { WarehouseBrowser } from './pages/WarehouseBrowser'
 import { CopySetup } from './pages/CopySetup'
 import { CopyBar } from './components/CopyBar'
 import type { BrowseContext } from './lib/warehouse'
-import { exploreToList } from './lib/linked-filters'
+import { exploreTables, exploreToList } from './lib/linked-filters'
 import { NavPathBar } from './components/NavPathBar'
 import { PaneSplit, RecordPanel } from './components/RowPane'
 import { NavigationProvider, useAddressNavigation } from './lib/navigation'
@@ -1094,8 +1094,12 @@ const exploreRoute = createRoute({
     chain: searchString(search.chain),
     select: searchString(search.select),
   }),
-  beforeLoad: ({ search }) => {
-    const list = exploreToList(search)
+  beforeLoad: async ({ search }) => {
+    // What the address names is checked against the metadata as it is now: a Table
+    // or link removed since stops the chain there (one the viewer cannot open reads as gone).
+    const names = exploreTables(search)
+    const metas = await Promise.all(names.map((t) => metaQuery(t).queryFn().catch(() => undefined)))
+    const list = exploreToList(search, (t) => metas[names.indexOf(t)])
     if (!list) throw redirect({ to: '/featherbase/admin/all-tables', replace: true })
     throw redirect({ href: `${tableHref(list.table)}?filters=${encodeURIComponent(JSON.stringify(list.filters))}`, replace: true })
   },

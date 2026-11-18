@@ -49,7 +49,8 @@ export function filterText(table: string, meta: TableMeta | undefined, filter: L
   // #1276: a Linked to chain reads as its steps: "Linked to Subcategory › Division: Accessories".
   const chain = related && parseChain(filter)
   if (chain) {
-    const steps = chain.steps.map((s) => `${s.table}${s.picked.length ? `: ${s.picked.map((id) => name({ table: s.table, row_id: id })).join(', ')}` : ''}`)
+    const steps = chain.steps.map((s) => `${s.table}${s.picked.length ? `: ${s.picked.map((id) => name({ table: s.table, row_id: id })).join(', ')}`
+      : s.search ? ` matching "${s.search.text}"` : ''}`)
     return `${chain.negate ? 'Not linked to' : 'Linked to'} ${steps.join(' › ')}`
   }
   if (related) {

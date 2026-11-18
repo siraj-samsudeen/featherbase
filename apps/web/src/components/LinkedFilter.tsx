@@ -62,13 +62,14 @@ export function useLinkOptions(table: string | undefined): { options: LinkOption
   return { options, ready }
 }
 
-type DraftStep = { option: LinkOption | null; picked: string[] }
+type DraftStep = { option: LinkOption | null; picked: string[]; search?: { column: string; text: string } }
 
 const toChain = (steps: DraftStep[]): ChainStep[] => {
   const out: ChainStep[] = []
   for (const s of steps) {
     if (!s.option) break
-    out.push({ table: s.option.table, link: s.option.link, picked: s.picked })
+    const search = s.search?.text.trim() ? { column: s.search.column, text: s.search.text.trim() } : undefined
+    out.push({ table: s.option.table, link: s.option.link, picked: s.picked, ...(search ? { search } : {}) })
   }
   return out
 }
@@ -181,8 +182,10 @@ function LinkedStep({ at, negate, from, fromFilters, room, step, next, onChange,
           fromFilters={fromFilters}
           option={step.option}
           picked={step.picked}
+          search={step.search?.text ?? ''}
           next={next}
           onPick={(picked) => onChange({ ...step, picked })}
+          onSearch={(search) => onChange({ ...step, search })}
         />
       )}
       {onLinkOn && (
@@ -197,16 +200,18 @@ function LinkedStep({ at, negate, from, fromFilters, room, step, next, onChange,
 
 /** A step's rows: those the steps after it allow, searchable, each with how many
  *  rows of the Table before it link to it. None picked means any of them. */
-function StepRows({ from, fromFilters, option, picked, next, onPick }: {
+function StepRows({ from, fromFilters, option, picked, search, next, onPick, onSearch }: {
   from: string
   fromFilters: Filter[]
   option: LinkOption
   picked: string[]
+  /** With none picked, the search is part of the filter: the rows it finds. */
+  search: string
   next: ChainStep[]
   onPick: (picked: string[]) => void
+  onSearch: (search: { column: string; text: string }) => void
 }) {
   const meta = useMeta(option.table)
-  const [search, setSearch] = useState('')
   const column = meta.data ? searchColumn(meta.data) : undefined
   const narrowed: Filter[] = next.length ? [linkFilter(next[0].link, next[0].table, stepFilters(next, 0))] : []
   const filters: Filter[] = [...narrowed, ...(column && search.trim() ? [[column, 'like', `%${search.trim()}%`] as Filter] : [])]
@@ -230,14 +235,15 @@ function StepRows({ from, fromFilters, option, picked, next, onPick }: {
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted" data-testid="linked-step-count">
         <span>{total === undefined ? '…' : `${name}: ${fmtCount(total)} match`}</span>
-        <span>· {picked.length ? `${fmtCount(picked.length)} picked` : 'none picked: any of them'}</span>
+        <span>· {picked.length ? `${fmtCount(picked.length)} picked`
+          : search.trim() ? `none picked: those matching "${search.trim()}"` : 'none picked: any of them'}</span>
       </div>
       {column && (
         <SearchInput
           aria-label={`Search ${name}`}
           placeholder={`Search ${name}`}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => onSearch({ column, text: e.target.value })}
           data-testid="linked-search"
           className="w-full"
           {...NOT_A_LOGIN}
@@ -298,6 +304,7 @@ function ChipStep({ at, negate, from, steps }: { at: number; negate: boolean; fr
       {label}
       {shown.length > 0 && <>: {shown.map((id, i) => <span key={id}>{i ? ', ' : ''}<LinkedTitle table={step.table} rowId={id} /></span>)}
         {step.picked.length > shown.length && ` +${step.picked.length - shown.length}`}</>}
+      {!shown.length && step.search && ` matching "${step.search.text}"`}
       {count.data && <span className="ml-1 rounded-full bg-canvas px-1.5 text-xs tabular-nums text-ink-muted" data-testid="linked-step-total"
         title={`${fmtCount(count.data.count)} ${tableLabel(step.table, meta.data)} match`}>{fmtCount(count.data.count)}</span>}
     </>
