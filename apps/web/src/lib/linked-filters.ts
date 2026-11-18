@@ -331,11 +331,10 @@ export function exploreToList(search: { root?: string; chain?: string; select?: 
   let upstream = search.root
   for (const step of chain) {
     const spec = { table: upstream, filters }
-    filters = [
-      step.mode === 'child' ? ['parent', 'related', spec]
-        : step.mode === 'viabacklink' ? ['row_id', 'related', { via: step.via, column: step.column, ...spec }]
-        : [step.column, 'related', spec],
-    ]
+    // A child step names its Sub-table column: two of them may hold one row Table (sales and returns).
+    filters = step.mode === 'child' ? [['parentfield', '=', step.column], ['parent', 'related', spec]]
+      : step.mode === 'viabacklink' ? [['row_id', 'related', { via: step.via, column: step.column, ...spec }]]
+      : [[step.column, 'related', spec]]
     upstream = step.table
   }
   return { table: upstream, filters }

@@ -176,7 +176,7 @@ describe('old Explore addresses', () => {
   test('a chain opens the last pane’s list, linked back to the first pane’s picks', () => {
     expect(exploreToList({ root: 'Supplier', chain, select: JSON.stringify(['S-1']) }, known)).toEqual({
       table: 'PO Line',
-      filters: [['parent', 'related', { table: 'Purchase Order', filters: [['supplier', 'related', { table: 'Supplier', filters: [['row_id', 'in', ['S-1']]] }]] }]],
+      filters: [['parentfield', '=', 'lines'], ['parent', 'related', { table: 'Purchase Order', filters: [['supplier', 'related', { table: 'Supplier', filters: [['row_id', 'in', ['S-1']]] }]] }]],
     })
     expect(exploreTables({ root: 'Supplier', chain })).toEqual(['Supplier', 'Purchase Order', 'PO Line'])
   })
@@ -191,6 +191,13 @@ describe('old Explore addresses', () => {
     expect(exploreToList({ root: 'Supplier', chain }, gone)).toEqual({ table: 'Supplier', filters: [] })
     const noLines = (t: string) => (t === 'Purchase Order' ? table('Purchase Order', [ref('supplier', 'Supplier')]) : known(t))
     expect(exploreToList({ root: 'Supplier', chain }, noLines)?.table).toBe('Purchase Order')
+    // A child step in the middle keeps its Sub-table column inside the next step.
+    const twoSteps = JSON.stringify([{ mode: 'child', table: 'PO Line', column: 'lines' }, { mode: 'backlink', table: 'Item', column: 'x' }])
+    const line = table('PO Line', [ref('item', 'Item')], { kind: 'sub_table' })
+    const itemBack = (t: string) => (t === 'Item' ? table('Item', [ref('x', 'PO Line')]) : t === 'PO Line' ? line : known(t))
+    expect(exploreToList({ root: 'Purchase Order', chain: twoSteps }, itemBack)?.filters).toEqual([['x', 'related', {
+      table: 'PO Line', filters: [['parentfield', '=', 'lines'], ['parent', 'related', { table: 'Purchase Order', filters: [] }]],
+    }]])
     expect(exploreToList({ root: 'Ghost', chain }, known)).toBeNull()
   })
 
