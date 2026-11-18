@@ -4,70 +4,12 @@
 // have this record explained, and draws the checked answer as columns of boxes.
 // Fixture: a copy of test-apps/fixtures/bar-proof with a `why` for its notes.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, vi } from 'vitest'
-import { resolve } from 'node:path'
-import { appendFile, cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { vi } from 'vitest'
 import { tableHref } from 'shared'
-import { discoverPackages } from 'server/src/runtime-packages'
 import { test, expect, renderApp } from './pg-test'
+import { hook, installWhy as install, openWhyRecordMap as openMap } from './why-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
-
-type Client = Parameters<typeof renderApp>[1]
-const NOTE = 'barproof.note'
-const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
-const tableRead = { policy: { kind: 'table' }, authorization: { kind: 'generic' } }
-
-const directories: string[] = []
-const hook = () => ((globalThis as unknown as { __why1282?: { answer: unknown; asked: unknown[]; may?: boolean } }).__why1282 ??= { answer: null, asked: [] })
-afterEach(async () => {
-  hook().answer = null
-  delete hook().may
-  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true })
-})
-
-/** A floor manager's access, as an app would explain it. */
-const ACCESS = {
-  version: 1,
-  columns: [
-    { heading: 'Person', boxes: [{ id: 'p', name: 'The note', record: { table: NOTE, row: 'n1' } }] },
-    { heading: 'Business Role · Area', boxes: [
-      { id: 'fm', name: 'Floor Manager', detail: 'Store C · First floor', source: 'hr' },
-      { id: 'buyer', name: 'Buyer', detail: 'Kids Ethnic', source: 'hand' },
-    ] },
-    { heading: 'App · Level', boxes: [{ id: 'dash', name: 'Dash · Reader' }, { id: 'tasker', name: 'Tasker · Manager' }] },
-    { heading: 'What They Can Do', boxes: [{ id: 'view', name: 'View reports', reach: 'Area' }, { id: 'hidden', name: 'Secret', record: { table: 'Person', row: 'psn_nobody_anyone_may_read' } }] },
-  ],
-  edges: [['p', 'fm'], ['p', 'buyer'], ['fm', 'dash'], ['buyer', 'dash'], ['fm', 'tasker'], ['dash', 'view']],
-}
-
-async function install(admin: Client, label?: string) {
-  const directory = await mkdtemp(resolve('test/.why-1282-'))
-  directories.push(directory)
-  await cp(BAR_PROOF, directory, { recursive: true })
-  const file = resolve(directory, 'featherbase.json')
-  const manifest = JSON.parse(await readFile(file, 'utf8'))
-  manifest.roles = ['Bar Reader', 'Bar Explainer']
-  manifest.reads.operations = { ...manifest.reads.operations, may_explain: tableRead, explain: tableRead }
-  manifest.why = { [NOTE]: { explain: 'explain', may: 'may_explain', ...(label ? { label } : {}) } }
-  await writeFile(file, JSON.stringify(manifest))
-  await appendFile(resolve(directory, 'server.mjs'), `
-const why = (globalThis.__why1282 ??= { answer: null, asked: [] })
-reads.may_explain = ({ roles }) => why.may !== false && (roles.includes('Bar Explainer') || roles.includes('System Manager'))
-reads.explain = () => why.answer
-`)
-  expect(await discoverPackages([directory])).toEqual([])
-  await admin.post('/api/install_app', { name: 'barproof' })
-  await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'n1', body: 'kept' } })
-  hook().answer = ACCESS
-}
-
-async function openMap(client: Client) {
-  const view = await renderApp(`${tableHref(NOTE)}/row/n1`, client)
-  fireEvent.click(await screen.findByRole('tab', { name: 'Map' }))
-  await screen.findByTestId('relation-map')
-  return view
-}
 
 const toggle = () => screen.findByRole('group', { name: 'Map view' })
 const showWhy = async (label = 'Why: Access') => fireEvent.click(within(await toggle()).getByRole('button', { name: label }))
