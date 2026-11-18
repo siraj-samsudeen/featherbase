@@ -54,6 +54,8 @@ test('the map shows what a row points to and what points back, with a count', as
   // #1218: an order points at a customer by one link only, so the link is not named.
   await waitFor(() => expect(back).toHaveTextContent('Rm Order'))
   expect(back).not.toHaveTextContent('via')
+  // #1282 (UI owner): a group pointing back is named from this record's side: Table · link · this record.
+  expect(await within(back).findByRole('button', { name: 'Rm Order · Customer Asha Stores 2' })).toBeInTheDocument()
   // An order has a title of its own: it is no link table, so it never reads through.
   expect(back).not.toHaveTextContent('through')
 })
@@ -84,11 +86,11 @@ test('a group whose rows all point to one Table reads as that Table, through the
   await seedVisits(admin)
   await openMap(admin, 'Rm Customer', 'cust-1')
   // Rm Visit points at a customer by Customer and Billed to: two groups, each naming its link.
-  const box = (link: string) => screen.getAllByTestId('map-group-Rm Visit').find((g) => g.textContent?.includes(`via ${link}`))
+  const box = (link: string) => screen.getAllByTestId('map-group-Rm Visit').find((g) => g.textContent?.includes(link))
   await waitFor(() => expect(box('Customer')).toHaveTextContent('through Rm Visit · via Customer'))
   expect(box('Customer')).toHaveTextContent(/^Rm Rep/)
-  // No visit is billed to Asha Stores: the empty group stays, as its own Table.
-  expect(box('Billed to')).toHaveTextContent('Rm Visit')
+  // No visit is billed to Asha Stores: the empty group stays, named from her side.
+  expect(box('Billed to')).toHaveTextContent('Rm Visit · Billed to Asha Stores')
   expect(box('Billed to')).not.toHaveTextContent('through')
 })
 
@@ -209,7 +211,7 @@ test('an empty group stays on the map, greyed, with no rows', async ({ admin }) 
   await seedVisits(admin)
   await openMap(admin, 'Rm Customer', 'cust-1')
   const empty = await waitFor(() => {
-    const box = screen.getAllByTestId('map-group-Rm Visit').find((g) => g.textContent?.includes('via Billed to'))
+    const box = screen.getAllByTestId('map-group-Rm Visit').find((g) => g.textContent?.includes('Billed to'))
     if (!box) throw new Error('no Billed to group yet')
     return box
   })
@@ -231,7 +233,7 @@ test("a link table's rows read by their far side on the map", async ({ admin }) 
 test("a group's header shows its rows in the drill pane", async ({ admin }) => {
   await seed(admin)
   await openMap(admin, 'Rm Customer', 'cust-1')
-  fireEvent.click(await within(await screen.findByTestId('map-group-Rm Order')).findByRole('button', { name: /^Rm Order 2/ }))
+  fireEvent.click(await within(await screen.findByTestId('map-group-Rm Order')).findByRole('button', { name: 'Rm Order · Customer Asha Stores 2' }))
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
   await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(2))
   expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores')
@@ -364,7 +366,7 @@ test('a linked row on the map re-centres it by Space', async ({ admin }) => {
 test("a group's header is a button: Tab reaches it, and Space opens it in the pane", async ({ admin }) => {
   await seed(admin)
   await openMap(admin, 'Rm Customer', 'cust-1')
-  const header = await within(await screen.findByTestId('map-group-Rm Order')).findByRole('button', { name: /^Rm Order 2/ })
+  const header = await within(await screen.findByTestId('map-group-Rm Order')).findByRole('button', { name: 'Rm Order · Customer Asha Stores 2' })
   expect(header.tagName).toBe('BUTTON')
   fireEvent.click(header)
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
@@ -473,7 +475,7 @@ test('the lines join the centre to each box beside it, measured where the boxes 
 test("a row opened in the pane from a group becomes the map's centre by Focus here", async ({ admin }) => {
   await seed(admin)
   await openMap(admin, 'Rm Customer', 'cust-1')
-  fireEvent.click(await within(await screen.findByTestId('map-group-Rm Order')).findByRole('button', { name: /^Rm Order 2/ }))
+  fireEvent.click(await within(await screen.findByTestId('map-group-Rm Order')).findByRole('button', { name: 'Rm Order · Customer Asha Stores 2' }))
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
   fireEvent.click(await within(pane).findByRole('link', { name: /Second order/ }))
   const order = await screen.findByRole('complementary', { name: /Second order/ })

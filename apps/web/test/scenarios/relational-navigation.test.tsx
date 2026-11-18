@@ -631,6 +631,19 @@ describe('relational-navigation', () => {
     })
   })
 
+  scenario('The plants whose site is Enchakkal', async ({ admin }, step) => {
+    let org!: OrgIds
+    await step('the site Enchakkal has three plants', async () => { org = await seedOrganisation(admin) })
+    await step("the user opens Enchakkal's map", async () => {
+      await openRowPage(admin, SITE, org[SITE]!.Enchakkal!)
+      await showTab('Map')
+    })
+    await step(`the plants' box is named "Plant · Site Enchakkal" with its count 3`, async () => {
+      const box = await screen.findByTestId('map-group-Plant')
+      expect(await within(box).findByRole('button', { name: 'Plant · Site Enchakkal 3' })).toBeVisible()
+    })
+  })
+
   scenario('The first 4 of 40 profit centres on the map', async ({ admin }, step) => {
     let box!: HTMLElement
     await step('Enchakkal Supermarket has 40 profit centres', () => seedOrganisation(admin))
@@ -715,7 +728,8 @@ describe('relational-navigation', () => {
       await showTab('Map')
       const plants = await screen.findByTestId('map-group-Plant')
       await waitFor(() => expect(within(plants).getAllByTestId('map-row')).toHaveLength(2))
-      seen.mapCount = countOf(within(plants).getByRole('button', { name: groupNamed('Plant') }))
+      // #1282: a map group is named from Enchakkal's side ("Plant · Site Enchakkal 2"): the count is its last number.
+      seen.mapCount = Number(within(plants).getByRole('button', { name: /^Plant · .+ \d+$/ }).getAttribute('aria-label')!.match(/(\d+)$/)![1])
       seen.mapText = document.body.textContent ?? ''
     })
     await step('the group of plants counts 2', () => {
