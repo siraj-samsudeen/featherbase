@@ -125,6 +125,12 @@ export async function rolePlaces(docs: Base, person: string, today: string, held
     case 'job': {
       // A hand change naming a place puts the job there ("treat as Store Manager at Lakeside"). fit() lets only a location reach here.
       const job: Row = { ...mine.jobs.find(j => exact(j.row_id) === spot.job)!, ...(spot.site ? { site: spot.site } : {}) }
+      // #1277 (owner, 18-Nov-2026): a head office or group site is no store: a role placed there reaches no store of it.
+      // The Site master's is_store says so (#1280's site_kind keeps it in step; read here once every instance has it).
+      if (reaches !== 'Cluster') {
+        const [here] = await every(docs, 'Site', ['is_store'], [['row_id', '=', exact(job.site)]])
+        if (!checked(here?.is_store)) return []
+      }
       return reach({ jobs: [{ ...job, job: AS_JOB[reaches!]!, acting: false }] })
     }
     default: return []

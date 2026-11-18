@@ -239,6 +239,10 @@ export async function whoIs(base: Documents, persons: string[], on: string, opts
     .sort((a, b) => exact(a.employee_code).localeCompare(exact(b.employee_code)))
   const current = employees.filter(row => text(row[EMPLOYEE_STATUS]) === 'Current')
   const jobs = current.length ? (await all(base, 'Job Assignment', ['employee', 'job', 'site', 'starts_on', 'ends_on'], [['employee', 'in', current.map(row => exact(row.row_id))]])).filter(row => holdsOn(row, on) && exact(row.job)) : []
+  // #1277 (owner, 18-Nov-2026): someone given a business role by hand that is in force is with the company even when
+  // payroll no longer lists them as current (owner-directors): never shown as having left.
+  const handGiven = new Set((await all(base, 'dash.role_assignment', ['person', 'ends_on', 'removed'], [['person', 'in', wanted]]))
+    .filter(row => !ticked(row.removed) && (!exact(row.ends_on) || exact(row.ends_on).slice(0, 10) >= on)).map(row => exact(row.person)))
   const siteIds = [...new Set(jobs.map(row => exact(row.site)).filter(Boolean))]
   const sites = new Map(siteIds.length ? (await all(base, 'Site', ['name'], [['row_id', 'in', siteIds]])).map(row => [exact(row.row_id), text(row.name)]) : [])
   for (const person of wanted) {
@@ -254,7 +258,7 @@ export async function whoIs(base: Documents, persons: string[], on: string, opts
       }
       const lines = [...held.keys()].sort()
       found.set(person, { code: nullable(mine[0].employee_code), jobs: lines, staff: 'current', ...(opts.sites ? { held: lines.map(l => held.get(l)!) } : {}) })
-    } else if (left) found.set(person, { code: nullable(left.employee_code), jobs: [], staff: 'left', ...(opts.sites ? { held: [] } : {}) })
+    } else if (left && !handGiven.has(person)) found.set(person, { code: nullable(left.employee_code), jobs: [], staff: 'left', ...(opts.sites ? { held: [] } : {}) })
   }
   return found
 }

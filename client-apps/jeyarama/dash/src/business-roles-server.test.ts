@@ -4,6 +4,7 @@ import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole
 import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
 import { convertGrants } from './switch-over'
+import { whoIs } from './report-access-server'
 import { scopeProviders } from './server'
 import { personShadow, placesByStore, shadowWorld } from './business-roles-server'
 import { businessModel } from './business-access'
@@ -1005,6 +1006,24 @@ describe('one reading of the switch per read', () => {
     const places = await scopeProviders.org_chart({ person: { id: 'sm', email: null, roles: ['Dash Reader'] }, documents: context(tables).baseTables } as never)
     tables['dash.access_source'][0].source = 'business_roles'
     expect(await reportsFor({ ...readerOf(tables, 'sm', ['Dash Reader']), authorization: { places } } as never)).toEqual([])
+  })
+})
+
+// Owner, 18-Nov-2026: a head office site gives no store reach; someone off payroll but given a role by hand has not left.
+describe('head office sites and people off payroll', () => {
+  it('gives a role placed at a head office site no store there', async () => {
+    const { tables } = await switched()
+    tables.Plant.push({ row_id: '9990', site: 'HOF', plant_type: 'Store' })
+    await giveRole(context(tables, { payload: { person: 'ho', change: 'Correct', role: roleId(tables, 'Store Manager') } }) as never)
+    expect(await scopeOf(tables, 'ho')).toEqual({})
+  })
+
+  it('never shows someone given a role by hand as having left, whatever payroll says', async () => {
+    const { tables } = await switched()
+    tables.Employee.push({ row_id: 'E-OD', name: 'Omana', employee_code: 'E-OD', status: 'Left', person: 'od' })
+    const before = (await whoIs(context(tables).baseTables as never, ['od'], today)).get('od')!.staff
+    await giveRole(context(tables, { payload: { person: 'od', change: 'Also give', role: roleId(tables, 'Owner Director') } }) as never)
+    expect([before, (await whoIs(context(tables).baseTables as never, ['od'], today)).get('od')!.staff]).toEqual(['left', 'none'])
   })
 })
 
