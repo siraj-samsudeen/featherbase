@@ -26,7 +26,7 @@ export function requiredText(v: Variable): string {
     'outside-dev': '**yes**, outside development and test',
     recommended: 'recommended (warns when missing outside development and test)',
     optional: 'no',
-    'forbidden-in-production': '**never in production**: development, test and dev (or staging) only',
+    'forbidden-in-production': '**never in production**: development, test, dev and staging only',
   }[r]
 }
 
