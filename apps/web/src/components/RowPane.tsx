@@ -337,7 +337,7 @@ function PanelGroup({ table, row, group, nav, onOpen }: { table: string; row: st
 const LONG = new Set(['Text', 'Long Text', 'JSON'])
 
 /** The row's fields as its form arranges them for this person (#795), read only. */
-export function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; onOpen: (pane: NavPane) => void }) {
+export function PaneFields({ meta, row, onOpen, stacked = true }: { meta: TableMeta; row: Row; onOpen: (pane: NavPane) => void; stacked?: boolean }) {
   const settings = useSettings()
   const { t } = useI18n()
   const arrangement = useFormArrangement(meta.name, meta.columns.some((c) => c.column_type === 'Section Break'))
@@ -366,7 +366,7 @@ export function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; o
     })),
   }))
   // #1259: two columns, each label over its value, as the record panel is drawn.
-  return <FieldGrid groups={groups} stacked />
+  return <FieldGrid groups={groups} stacked={stacked} />
 }
 
 function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: unknown; settings: Settings; onOpen: (pane: NavPane) => void }) {

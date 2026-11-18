@@ -13,6 +13,7 @@ import { rowHref, tableHref } from 'shared'
 import { sql } from 'server/src/db'
 import { tableRelation } from 'server/src/table-engine'
 import { createUserWithRole } from 'server/test/fixtures'
+import { pluralLabel } from '../src/components/LinkTickList'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect, renderApp } from './pg-test'
 import { SITE, seedSites, type Admin } from './relational-fixture'
@@ -27,7 +28,7 @@ const GIVEN = 'Lt Role Given'
 const NOTE = 'Lt Note'
 const ROLES = ['Floor Lead', 'Buyer', 'Team Leader', 'Store Lead', 'Category Head', 'Head Office', 'Data Steward']
 
-async function seed(admin: Admin, opts: { roles?: number; correctionPath?: boolean } = {}) {
+async function seed(admin: Admin, opts: { roles?: number; correctionPath?: boolean; moreFields?: boolean } = {}) {
   await admin.post('/api/table_def', { name: MEMBER, id_pattern: 'prompt', title_column: 'member_name',
     columns: [{ column_name: 'member_name', column_type: 'Data', label: 'Member name', in_list_view: true }] })
   await admin.post('/api/table_def', { name: ROLE, id_pattern: 'prompt', title_column: 'role_name',
@@ -43,6 +44,11 @@ async function seed(admin: Admin, opts: { roles?: number; correctionPath?: boole
       { column_name: 'place', column_type: 'Reference', reference_table: PLACE, label: 'Area' },
       { column_name: 'ends_on', column_type: 'Date', label: 'Ends' },
       { column_name: 'reason', column_type: 'Text', label: 'Reason' },
+      ...(opts.moreFields ? [
+        { column_name: 'confirmed', column_type: 'Check', label: 'Confirmed' },
+        { column_name: 'level', column_type: 'Choice', label: 'Level', choices: 'Reader\nManager' },
+        { column_name: 'weight', column_type: 'Int', label: 'Weight' },
+      ] : []),
     ] })
   await admin.post('/api/table_def', { name: NOTE, id_pattern: 'hash', title_column: 'note_text',
     columns: [
@@ -135,7 +141,7 @@ describe('relational-navigation', () => {
     await step('a role given by hand reads "given by hand" and can be unticked', async () => {
       const line = await lineOf('Buyer')
       expect(within(line).getByTestId('source-chip')).toHaveTextContent('given by hand')
-      expect(within(line).getByRole('button', { name: 'Untick Buyer' })).toBeEnabled()
+      await waitFor(() => expect(within(line).getByRole('button', { name: 'Untick Buyer' })).toBeEnabled())
       expect(within(line).queryByRole('link', { name: 'Correct' })).not.toBeInTheDocument()
     })
   })
@@ -174,7 +180,10 @@ describe('relational-navigation', () => {
     await step('the user unticks Buyer', async () => {
       await openLinks(admin)
       const line = await lineOf('Buyer')
-      fireEvent.click(await within(line).findByRole('button', { name: 'Untick Buyer' }))
+      // Enabled once the row itself says it may be deleted.
+      const untick = await within(line).findByRole('button', { name: 'Untick Buyer' })
+      await waitFor(() => expect(untick).toBeEnabled())
+      fireEvent.click(untick)
     })
     await step('the member no longer holds Buyer, and the page says it is saved', async () => {
       await waitFor(() => expect(within(screen.getByRole('region', { name: 'Lt Roles' })).getByTestId('tick-count')).toHaveTextContent('1 of 7'))
@@ -315,4 +324,73 @@ test('the area is picked from the link Table\'s other link, and saved with the r
   await waitFor(async () => expect((await admin.get<{ data: { role: string; place: string }[] }>(
     `/api/table/${encodeURIComponent(GIVEN)}?filters=${encodeURIComponent(JSON.stringify([['role', '=', 'R06']]))}&fields=${encodeURIComponent(JSON.stringify(['role', 'place']))}`)).data)
     .toEqual([{ role: 'R06', place: 'P2' }]))
+})
+
+// Codex review: a delete grant on one's own rows only leaves others' links ticked but not removable.
+test("someone who may delete only their own rows cannot untick another person's link", async ({ admin, createUser }) => {
+  await seed(admin)
+  const clerk = await createUserWithRole(admin, createUser, { role: 'Lt Own Rows', table: [MEMBER, ROLE, PLACE, NOTE], can_read: true })
+  await createUserWithRole(admin, createUser, { role: 'Lt Own Rows', table: GIVEN, can_read: true, can_create: true })
+  const { grantRole } = await import('server/test/fixtures')
+  await grantRole(admin, { role: 'Lt Own Rows', table: GIVEN, can_delete: true, own_rows_only: true })
+  await openLinks(clerk)
+  const line = await lineOf('Buyer')
+  await waitFor(() => expect(within(line).getByRole('button', { name: 'Untick Buyer' })).toBeDisabled())
+})
+
+test('Correct fills its address from a read-only column of the row', async ({ admin }) => {
+  await seed(admin)
+  await admin.put(`/api/table_def/${encodeURIComponent(GIVEN)}`, { correction_path: '/fix/{source_key}', columns: [
+    { column_name: 'member', column_type: 'Reference', reference_table: MEMBER },
+    { column_name: 'role', column_type: 'Reference', reference_table: ROLE },
+    { column_name: 'place', column_type: 'Reference', reference_table: PLACE, label: 'Area' },
+    { column_name: 'ends_on', column_type: 'Date', label: 'Ends' },
+    { column_name: 'reason', column_type: 'Text', label: 'Reason' },
+    { column_name: 'source_key', column_type: 'Data', label: 'Source key', read_only: true },
+  ] })
+  await sql`update ${sql(await tableRelation(GIVEN))} set source_key = 'HR-77' where role = 'R01'`
+  await openLinks(admin)
+  const line = await lineOf('Floor Lead')
+  expect(await within(line).findByRole('link', { name: 'Correct' })).toHaveAttribute('href', '/fix/HR-77')
+})
+
+test('the inline form asks for each kind of field, and Escape closes it', async ({ admin }) => {
+  await seed(admin, { moreFields: true })
+  await openLinks(admin)
+  fireEvent.click(within(await lineOf('Data Steward')).getByRole('button', { name: 'Tick Data Steward' }))
+  const form = await screen.findByTestId('also-give-form')
+  const ends = within(form).getByRole('textbox', { name: 'Ends' })
+  fireEvent.focus(ends)
+  const date = within(form).getByLabelText('Ends')
+  expect(date).toHaveAttribute('type', 'date')
+  fireEvent.change(date, { target: { value: '2027-01-31' } })
+  fireEvent.blur(date)
+  expect(within(form).getByLabelText('Ends')).toHaveAttribute('type', 'date')
+  fireEvent.click(within(form).getByRole('checkbox', { name: 'Confirmed' }))
+  fireEvent.change(within(form).getByRole('combobox', { name: 'Level' }), { target: { value: 'Manager' } })
+  fireEvent.change(within(form).getByRole('spinbutton', { name: 'Weight' }), { target: { value: '3' } })
+  fireEvent.click(within(form).getByRole('button', { name: 'Add' }))
+  await waitFor(async () => expect((await admin.get<{ data: Record<string, unknown>[] }>(
+    `/api/table/${encodeURIComponent(GIVEN)}?filters=${encodeURIComponent(JSON.stringify([['role', '=', 'R07']]))}&fields=${encodeURIComponent(JSON.stringify(['ends_on', 'confirmed', 'level', 'weight']))}`)).data)
+    .toEqual([expect.objectContaining({ ends_on: expect.stringMatching(/^2027-01-31/), confirmed: true, level: 'Manager', weight: 3 })]))
+  fireEvent.click(within(await lineOf('Store Lead')).getByRole('button', { name: 'Tick Store Lead' }))
+  fireEvent.keyDown(within(await screen.findByTestId('also-give-form')).getByRole('textbox', { name: 'Reason' }), { key: 'Escape' })
+  expect(screen.queryByTestId('also-give-form')).not.toBeInTheDocument()
+})
+
+test("a ticked name opens its record in the panel; View ▾ hides the fields beside the links", async ({ admin }) => {
+  await seed(admin)
+  await openLinks(admin)
+  expect(screen.getByTestId('links-fields')).toBeInTheDocument()
+  fireEvent.click(await within(await lineOf('Buyer')).findByRole('link', { name: 'Buyer' }))
+  expect(await screen.findByRole('complementary', { name: /^Buyer/ })).toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('view-menu-button'))
+  fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Hide' }))
+  await waitFor(() => expect(screen.queryByTestId('links-fields')).not.toBeInTheDocument())
+})
+
+test('a heading over many reads in the plural', () => {
+  expect(pluralLabel('Business Role')).toBe('Business Roles')
+  expect(pluralLabel('Category')).toBe('Categories')
+  expect(pluralLabel('Status')).toBe('Status')
 })

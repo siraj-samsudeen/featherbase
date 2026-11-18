@@ -1067,7 +1067,8 @@ export function FormView({
         </>}
         tabs={[
         { id: 'Form', label: 'Form', content: work },
-        { id: 'Links', label: 'Links', content: (
+        // Drawn only while open: its sections ask for every group's rows and choices.
+        { id: 'Links', label: 'Links', content: area !== 'Links' ? null : (
           <LinkSaveContext.Provider value={linkSave}>
             <RecordLinks table={table} name={name} values={doc.data} pref={linksPref} focusGroup={jumpTo} onFocused={jumped} />
           </LinkSaveContext.Provider>

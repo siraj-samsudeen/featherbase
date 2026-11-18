@@ -80,10 +80,11 @@ export function tickCount(lines: { ticked: TickedLine[] }, choices: Choice[]): s
 }
 
 /** May this viewer tick the link Table's rows: add AND delete them, on a Table
- *  that takes writes (not system-written, not archived, not a read-only source). */
+ *  of its own that takes writes (not system-written, archived or source-bound). */
 export function mayTick(caps: Pick<Capabilities, 'manage' | 'creatable'> & { deletable?: string[] } | undefined, meta: TableMeta): boolean {
   if (!caps) return false
-  if (meta.system_written || meta.archived_at || (meta.data_source && !meta.source_writable) || meta.kind !== 'table') return false
+  // A source-bound Table's rows carry no maker or revision here: it lists, never ticks.
+  if (meta.system_written || meta.archived_at || meta.data_source || meta.kind !== 'table') return false
   return caps.manage || (caps.creatable.includes(meta.name) && Boolean(caps.deletable?.includes(meta.name)))
 }
 

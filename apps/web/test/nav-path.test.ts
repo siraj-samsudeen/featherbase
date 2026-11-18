@@ -134,6 +134,12 @@ describe('encodePath / decodePath', () => {
     expect(decodePath(JSON.stringify({ steps: [step], at: 0 }))).toBeNull()
   })
 
+  it('#1273: a step whose Links layout is not sections or the tree is refused; Tree and Collaboration tabs are gone', () => {
+    for (const step of [{ screen: 'row', table: 'Site', row: 'ENK', view: 'links', linksAs: 'grid' },
+      { screen: 'row', table: 'Site', row: 'ENK', view: 'collaboration' }])
+      expect(decodePath(JSON.stringify({ steps: [step], at: 0 }))).toBeNull()
+  })
+
   it("round-trips a group's relationship filter through a sub-table", () => {
     // The :connections filter for a backlink through a sub-table (row-connections.ts).
     const contains: NavStep = {

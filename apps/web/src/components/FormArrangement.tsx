@@ -58,6 +58,17 @@ export const isBookkeeping = (f: ColumnDef) =>
   BOOKKEEPING.test(f.column_name) || BOOKKEEPING.test((f.label ?? '').trim().replace(/\s+/g, '_'))
 
 interface StoredForm { mode?: Arrangement; columns?: Columns }
+
+/** One person's settings for one Table (the form's arrangement, the list's
+ *  columns, #1273's Links view), one query shared by every reader. */
+export function userSettingsQuery(table: string) {
+  return {
+    queryKey: ['user-settings', table],
+    queryFn: () => api.get<{ settings: Record<string, unknown> & { form?: StoredForm } | null }>(`/api/user_settings/${encodeURIComponent(table)}`),
+    retry: false,
+    staleTime: Infinity,
+  }
+}
 const MODES = new Set(ARRANGEMENTS.map(([m]) => m))
 
 /** This person's arrangement for one Table, from their settings. A Table laid
@@ -65,13 +76,8 @@ const MODES = new Set(ARRANGEMENTS.map(([m]) => m))
  *  other Table starts by importance. */
 export function useFormArrangement(table: string, designed: boolean) {
   const queryClient = useQueryClient()
-  const key = ['user-settings', table]
-  const stored = useQuery({
-    queryKey: key,
-    queryFn: () => api.get<{ settings: { form?: StoredForm } | null }>(`/api/user_settings/${encodeURIComponent(table)}`),
-    retry: false,
-    staleTime: Infinity,
-  })
+  const { queryKey: key } = userSettingsQuery(table)
+  const stored = useQuery(userSettingsQuery(table))
   const [chosen, setChosen] = useState<StoredForm>({})
   const saved = stored.data?.settings?.form ?? {}
   const mode = chosen.mode ?? (saved.mode && MODES.has(saved.mode) ? saved.mode : designed ? 'source' : 'importance')

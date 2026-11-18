@@ -86,6 +86,16 @@ function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, 
   const newHref = canAdd ? newRowHref(group, record) : undefined
   // A group linked through a sub-table has no column of its own pointing back.
   const backLink = connection.via ? undefined : connection.column
+  // C4: an empty section is one greyed line, its + New beside its name.
+  if (heading && !total && rows.isSuccess)
+    return (
+      <section aria-label={group.label} data-testid="linked-rows-group" className="flex min-w-0 items-center gap-3">
+        <h4 className="text-sm font-semibold text-ink-muted" data-empty="true">
+          {group.label} <span className="font-normal">{fmtCount(0)}</span>
+        </h4>
+        {newHref && <ListLink href={newHref} quiet={false}>+ New</ListLink>}
+      </section>
+    )
   return (
     <section aria-label={group.label} data-testid="linked-rows-group" className="flex min-w-0 flex-col gap-3">
       {heading && (

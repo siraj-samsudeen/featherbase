@@ -15,6 +15,14 @@ import {
   useRowSources, type Choice, type TickedLine,
 } from '../lib/link-ticks'
 import { LinkControl } from './LinkControl'
+import { useRowCapabilities } from '../lib/row-capabilities'
+import { dataColumns } from '../lib/list-view-columns'
+
+/** The readable columns a Table's correction path names. */
+function correctionColumns(meta: TableMeta): string[] {
+  const readable = new Set(dataColumns(meta).map((c) => c.column_name))
+  return [...(meta.correction_path ?? '').matchAll(/\{([^}]*)\}/g)].map((m) => m[1]!).filter((name) => readable.has(name))
+}
 
 type Row = Record<string, unknown>
 
@@ -106,8 +114,8 @@ export function pluralLabel(label: string): string {
 /** #1273: a record page tells its one save state when a tick saves (C9). */
 export const LinkSaveContext = createContext<{ saved: () => void } | null>(null)
 
-const SRC = 'inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-[7px] py-px font-mono text-[10.5px]'
-const BOX = 'grid size-4 shrink-0 place-items-center rounded-[4px] border-[1.5px] text-[11px] leading-none'
+const SRC = 'inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-[7px] py-px font-mono text-xs'
+const BOX = 'grid size-4 shrink-0 place-items-center rounded-[4px] border-[1.5px] text-xs leading-none'
 
 /**
  * #1273 C5–C9, C12, C13: a relationship the viewer may change, as a tick list.
@@ -138,7 +146,9 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
     queryKey: ['group-rows', connection.table, JSON.stringify(connection.filters), 'ticks'],
     queryFn: () => listResource(connection.table, {
       filters: connection.filters,
-      fields: [...new Set(['row_id', 'updated_at', 'created_by', backLink, column.column_name, ...fields.map((c) => c.column_name)])],
+      fields: [...new Set(['row_id', 'updated_at', 'created_by', backLink, column.column_name, ...fields.map((c) => c.column_name),
+        // Correct's address may name any readable column of the row (Codex review).
+        ...correctionColumns(linkMeta)])],
       limit_page_length: ALL_ROWS,
     }),
   })
@@ -200,7 +210,8 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
         {plan.grid && gridHref && <GridButton href={gridHref} />}
       </div>
       {error && <p role="alert" className="text-xs text-negative">{error}</p>}
-      {rows.isPending ? <p className="text-sm text-ink-subtle">Loading…</p> : (
+      {rows.isError ? <p role="alert" className="text-xs text-negative">These links could not be read. Reload to try again.</p>
+        : rows.isPending ? <p className="text-sm text-ink-subtle">Loading…</p> : (
         <ul className="grid gap-0.5">
           {visible.map((item) => item.kind === 'ticked'
             ? <TickedLineView key={String(item.line.row.row_id)} line={item.line} farTable={farTable} linkMeta={linkMeta}
@@ -249,6 +260,9 @@ function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, s
   const name = useRowName(farTable, choice.id)
   const fromFeed = typeof source === 'string'
   const correct = fromFeed ? correctionHref(linkMeta.correction_path, row) : undefined
+  // A delete grant may reach only some rows (one's own): ask the row itself (Codex review).
+  const caps = useRowCapabilities(linkMeta.name, String(row.row_id), sourceKnown && !fromFeed)
+  const mayUntick = caps.data?.delete === true
   const title = name.state === 'read' ? name.title : choice.title || UNSEEN_ROW
   const areas = otherLinks.filter((c) => row[c.column_name] != null && row[c.column_name] !== '')
   const facts = dates.filter((c) => row[c.column_name] != null && row[c.column_name] !== '')
@@ -258,7 +272,8 @@ function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, s
       {fromFeed || !sourceKnown
         ? <span className={cx(BOX, 'cursor-not-allowed border-caution bg-caution-tint text-caution')} title={fromFeed ? `From ${source}: change it with Correct` : undefined}
             role="img" aria-label={`${title}, from ${source ?? 'a feed'}, locked`} data-testid="tick-locked">✓</span>
-        : <button type="button" onClick={onUntick} disabled={busy} aria-label={`Untick ${title}`} data-testid="tick-box"
+        : <button type="button" onClick={onUntick} disabled={busy || !mayUntick} aria-label={`Untick ${title}`} data-testid="tick-box"
+            title={caps.data && !mayUntick ? 'You may not remove this one' : undefined}
             className={cx(BOX, 'cursor-pointer border-action bg-action text-surface focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-60')}>✓</button>}
       <span className="flex min-w-0 flex-col">
         {name.state === 'unreadable'

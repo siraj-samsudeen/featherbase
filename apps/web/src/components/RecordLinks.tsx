@@ -8,9 +8,10 @@ import { push, type LinksLayout, type NavPane, type NavStep } from '../lib/nav-p
 import { useBacklinkGroups, type BacklinkGroup } from '../lib/relations'
 import { useConnections } from '../lib/connections'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
+import { useGroupPlans } from './LinkTickList'
 import { PaneFields } from './RowPane'
 import { RowTree } from './RowTree'
-import { MenuChoices, MenuShell } from './FormArrangement'
+import { MenuChoices, MenuShell, userSettingsQuery } from './FormArrangement'
 
 type Row = Record<string, unknown>
 
@@ -21,15 +22,10 @@ interface StoredLinks { as?: LinksLayout; fields?: boolean }
  *  and with the fields beside them or not. A walk's own choice comes first. */
 export function useLinksPreference(table: string, fromPath?: LinksLayout) {
   const queryClient = useQueryClient()
-  const key = ['user-settings', table]
-  const stored = useQuery({
-    queryKey: key,
-    queryFn: () => api.get<{ settings: { links?: StoredLinks } | null }>(`/api/user_settings/${encodeURIComponent(table)}`),
-    retry: false,
-    staleTime: Infinity,
-  })
+  const { queryKey: key } = userSettingsQuery(table)
+  const stored = useQuery(userSettingsQuery(table))
   const [chosen, setChosen] = useState<StoredLinks>({})
-  const saved = stored.data?.settings?.links ?? {}
+  const saved = (stored.data?.settings?.links ?? {}) as StoredLinks
   const as: LinksLayout = fromPath ?? chosen.as ?? (saved.as === 'tree' ? 'tree' : 'sections')
   const fields = chosen.fields ?? saved.fields ?? true
   const update = (next: StoredLinks) => {
@@ -82,13 +78,16 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }
   const nav = useNavigation()
   const meta = useMeta(table)
   const cnx = useConnections(table, name, Boolean(values))
-  const groups = useBacklinkGroups(cnx.data?.connections)
+  const all = useBacklinkGroups(cnx.data?.connections)
+  // Tick lists first, then groups with rows, then the empty ones, greyed.
+  const plans = useGroupPlans(table, name, all)
+  const rank = (g: BacklinkGroup) => (plans.get(g.key)?.tick ? 0 : g.count ? 1 : 2)
+  const groups = [...all].sort((a, b) => rank(a) - rank(b))
   useEffect(() => {
     if (!focusGroup || !groups.length) return
     const el = document.getElementById(linksSectionId({ key: focusGroup }))
-    if (!el) return
-    el.scrollIntoView?.({ block: 'start' })
-    el.focus({ preventScroll: true })
+    el?.scrollIntoView?.({ block: 'start' })
+    el?.focus({ preventScroll: true })
     onFocused?.()
   }, [focusGroup, groups.length, onFocused])
   if (pref.as === 'tree') return <RowTree table={table} name={name} />
@@ -100,7 +99,7 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }
   return (
     <div className="@container" data-testid="record-links">
       <div className={pref.fields ? 'grid gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]' : 'grid gap-6'}>
-        {pref.fields && (meta.data && values ? <div data-testid="links-fields"><PaneFields meta={meta.data} row={values} onOpen={open} /></div> : <span />)}
+        {pref.fields && (meta.data && values ? <div data-testid="links-fields"><PaneFields meta={meta.data} row={values} onOpen={open} stacked={false} /></div> : <span />)}
         <div className="flex min-w-0 flex-col gap-6">
           {groups.map((g) => (
             <div key={g.key} id={linksSectionId(g)} tabIndex={-1} className="scroll-mt-4 rounded-lg focus:outline-none focus-visible:outline-2 focus-visible:outline-focus">

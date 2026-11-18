@@ -49,9 +49,9 @@ export async function rowSources(viewer: string, name: string, rawIds: unknown):
   const meta = await getMeta(table)
   const out: Record<string, string | null> = {}
   if (isBound(meta)) {
-    // A bound Table's rows all come from its source; the caller must read the Table.
+    // A bound Table's rows are read on its source, under its own scope rules; this
+    // answers none of them (Codex review): such a Table lists its links, never ticks them.
     if ((await permissionScope(viewer, table, 'read')) === 'none') throw await permissionRefusal(viewer, name, 'read')
-    for (const id of ids) out[id] = sourceLabel(String(meta.data_source))
     return out
   }
   if (!ids.length) {

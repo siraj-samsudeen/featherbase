@@ -98,7 +98,7 @@ describe('mayTick', () => {
     expect(mayTick(manage, { ...roleGiven, system_written: true })).toBe(false)
     expect(mayTick(manage, { ...roleGiven, archived_at: '2026-11-01' })).toBe(false)
     expect(mayTick(manage, { ...roleGiven, data_source: 'Payroll', source_writable: false })).toBe(false)
-    expect(mayTick(manage, { ...roleGiven, data_source: 'Payroll', source_writable: true })).toBe(true)
+    expect(mayTick(manage, { ...roleGiven, data_source: 'Payroll', source_writable: true })).toBe(false)
   })
 })
 
