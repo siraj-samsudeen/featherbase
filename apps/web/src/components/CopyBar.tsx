@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { fmtCount } from '@featherbase/shop-floor'
 import { formatValue, useSettings } from '../lib/settings'
+import { useIsSystemManager } from '../lib/session'
 import { Button, Notice, cardClasses } from '@featherbase/shop-floor'
 import { CopySchedule } from './CopySchedule'
 
@@ -14,9 +15,13 @@ interface CopyResult { inserted: number; updated: number; failed: number; confli
 export function CopyBar({ table }: { table: string }) {
   const queryClient = useQueryClient()
   const settings = useSettings()
+  // #1301: only a System Manager may read copy information, so no one else asks;
+  // a Table that is not a copy answers null.
+  const manager = useIsSystemManager()
   const info = useQuery({
     queryKey: ['copy-info', table],
-    queryFn: () => api.get<CopyInfo>(`/api/table/${encodeURIComponent(table)}:copy_info`),
+    queryFn: () => api.get<CopyInfo | null>(`/api/table/${encodeURIComponent(table)}:copy_info`),
+    enabled: manager,
     retry: false,
   })
   const [busy, setBusy] = useState(false)
