@@ -258,7 +258,7 @@ async function namelessCustomer(admin: Client, rowId: string, item: string) {
 /** A list layout: "Table" and "Compact" in its group, and the list header's "Tree of all" (#910 checklist 19).
  *  Found by role and name, so its aria-pressed is read raw: the DSL's attribute verbs need a selector. */
 const layout = (name: 'Compact' | 'Tree') => name === 'Tree'
-  ? screen.getByRole('button', { name: /^Tree( of all)?$/ })
+  ? screen.getByRole('button', { name: /^Tree( of All)?$/ })
   // #1259: density is one Compact Rows button; "Table" names a list's view.
   : screen.getByRole('button', { name: 'Compact Rows' })
 const columnHeaders = () => within(screen.getByRole('main')).getAllByRole('columnheader').map((h) => (h.textContent ?? '').replace(/[↑↓]/g, '').trim())
@@ -458,15 +458,18 @@ describe('list-view', () => {
       openList(admin, ORDERS, customerFilter('Globex Ltd')))
     await step('the user sees the quick customer filter reading "Globex Ltd"', () =>
       onScreen().assertValue('Customer', 'Globex Ltd'))
+    // #1289: the box shows its filter, so no chip shows it a second time.
+    await step('no filter chip repeats it', () => expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0))
   })
 
   scenario('The filter in use names Globex Ltd', async ({ admin }, step) => {
     await step('the user is a System Manager', () => {})
     await step('orders from the customers "Globex Ltd" and "Initech"', () => ordersFromCustomers(admin))
-    await step('the user opens a link to the orders list filtered to the customer "Globex Ltd"', () =>
-      openList(admin, ORDERS, customerFilter('Globex Ltd')))
-    await step('the user sees the filter in use reading "Customer: Globex Ltd"', () =>
-      waitFor(() => expect((screen.getAllByTestId('filter-chip')[0]!.textContent ?? '').replace('×', '').trim()).toBe('Customer: Globex Ltd')))
+    // #1289: an equal-to filter shows in the Customer box; one with no box of its own is a chip.
+    await step('the user opens a link to the orders list that leaves out the customer "Globex Ltd"', () =>
+      openList(admin, ORDERS, `?filters=${enc(JSON.stringify([['customer', '!=', CUSTOMER_IDS['Globex Ltd']]]))}`))
+    await step('the user sees the filter in use reading "Customer != Globex Ltd"', () =>
+      waitFor(() => expect((screen.getAllByTestId('filter-chip')[0]!.textContent ?? '').replace('✕', '').trim()).toBe('Customer != Globex Ltd')))
   })
 
   scenario('The recent filter names Globex Ltd', async ({ admin }, step) => {
@@ -503,7 +506,7 @@ describe('list-view', () => {
     await step('the user opens a link to the orders list filtered to the item "Widgets"', () =>
       openList(admin, ORDERS, `?filters=${enc(JSON.stringify([['item', '=', 'Widgets']]))}`))
     await step('the user sees the filter in use reading "Item: Widgets"', () =>
-      waitFor(() => expect((screen.getAllByTestId('filter-chip')[0]!.textContent ?? '').replace('×', '').trim()).toBe('Item: Widgets')))
+      waitFor(() => expect((screen.getAllByTestId('filter-chip')[0]!.textContent ?? '').replace('✕', '').trim()).toBe('Item: Widgets')))
   })
 
   scenario('The Widgets order\'s customer reads "Globex Ltd"', async ({ admin }, step) => {

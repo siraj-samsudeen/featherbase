@@ -40,10 +40,10 @@ test("a list's filter boxes for columns stored with no label are named by their 
   await seed(admin, db)
   await renderApp(`${tableHref(T)}?filters=${encodeURIComponent(JSON.stringify([['depot', '=', 'dp-1']]))}`, admin)
   const filters = await screen.findByTestId('standard-filters')
-  expect(within(filters).getByTitle('item')).toHaveTextContent('item')
   expect(within(filters).getByTitle('grade')).toHaveTextContent('grade')
   expect(within(filters).getByTitle('depot')).toHaveTextContent('depot')
-  expect(screen.getByTestId('std-filter-item')).toHaveAttribute('placeholder', 'Filter item…')
+  // #1289: the title column is searched in the search box, so it has no box of its own.
+  expect(screen.getByTestId('list-search')).toHaveAttribute('placeholder', expect.stringMatching(/^Search /))
   expect(await screen.findByRole('button', { name: 'Clear the depot filter' })).toBeInTheDocument()
 })
 

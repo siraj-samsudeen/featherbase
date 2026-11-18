@@ -132,7 +132,7 @@ test("a viewer who can't read Enchakkal's other plants sees a count of 2 on the 
 test('Tree of all shows every site as a folded line, unfolding into its region and its plants', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
-  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of All' }))
   const t = await tree()
   await waitFor(() => expect(topLines(t)).toHaveLength(3))
   for (const item of topLines(t)) expect(item).toHaveAttribute('aria-expanded', 'false')
@@ -145,7 +145,7 @@ test('Tree of all shows every site as a folded line, unfolding into its region a
 test('Tree of all shows 20 rows at a time, with Show more', async ({ admin }) => {
   await seedSites(admin, { profitCentres: 25 })
   await renderApp(tableHref(PROFIT), admin)
-  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of All' }))
   const t = await tree()
   await waitFor(() => expect(topLines(t)).toHaveLength(20))
   fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
@@ -160,7 +160,7 @@ test('Show more reveals rows past one read\'s cap of 500, then goes away', async
      select 'pc-' || lpad(n::text, 3, '0'), 'Centre ' || lpad(n::text, 3, '0'), '1503' from generate_series(1, 510) n`,
   )
   await renderApp(tableHref(PROFIT), admin)
-  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of All' }))
   const t = await tree()
   await waitFor(() => expect(topLines(t)).toHaveLength(20))
   for (let shown = 20; shown < 510; shown += 20) {
