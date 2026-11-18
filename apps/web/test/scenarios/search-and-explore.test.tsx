@@ -295,6 +295,11 @@ class RelationMap {
     await waitFor(() => expect(el).toHaveTextContent(text))
     return (el.textContent ?? '').trim()
   }
+  /** A group's header, its name and count ("Plant 3"); #1282: its rows follow inside the box. */
+  async header(name: string) {
+    const box = await this.collection(name)
+    return (await within(box).findByRole('button', { name: /\d$/ })).getAttribute('aria-label') ?? ''
+  }
   centredOn = (title: string) => onScreen().within(byTestId('map-center'), (center) => center.assertText(title))
 }
 
@@ -415,7 +420,7 @@ describe('search-and-explore', () => {
       expect(await map.boxText(map.linkedRow('Region'), 'Kerala')).toContain('Kerala')
     })
     await step('a group of 3 plants pointing back at Enchakkal', async () => {
-      expect(await map.boxText(map.collection('Plant'), '3')).toMatch(/\b3\b/)
+      expect(await map.header('Plant')).toMatch(/\b3$/)
     })
   })
 
@@ -431,7 +436,7 @@ describe('search-and-explore', () => {
     })
     await step('the map re-centres on Kerala, showing what it in turn points to and back from', async () => {
       await map.centredOn('Kerala')
-      expect(await map.boxText(map.collection(SITE), '3')).toMatch(/\b3\b/)
+      expect(await map.header(SITE)).toMatch(/\b3$/)
     })
   })
 

@@ -208,7 +208,11 @@ test('a large group shows its first 4 rows and the rest in the panel, from one r
 test('an empty group stays on the map, greyed, with no rows', async ({ admin }) => {
   await seedVisits(admin)
   await openMap(admin, 'Rm Customer', 'cust-1')
-  const empty = await waitFor(() => screen.getAllByTestId('map-group-Rm Visit').find((g) => g.textContent?.includes('via Billed to'))!)
+  const empty = await waitFor(() => {
+    const box = screen.getAllByTestId('map-group-Rm Visit').find((g) => g.textContent?.includes('via Billed to'))
+    if (!box) throw new Error('no Billed to group yet')
+    return box
+  })
   expect(empty).toHaveAttribute('data-empty', 'true')
   expect(within(empty).queryAllByTestId('map-row')).toHaveLength(0)
 })
@@ -227,7 +231,7 @@ test("a link table's rows read by their far side on the map", async ({ admin }) 
 test("a group's header shows its rows in the drill pane", async ({ admin }) => {
   await seed(admin)
   await openMap(admin, 'Rm Customer', 'cust-1')
-  fireEvent.click(await screen.findByRole('button', { name: /^Rm Order 2/ }))
+  fireEvent.click(await within(await screen.findByTestId('map-group-Rm Order')).findByRole('button', { name: /^Rm Order 2/ }))
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
   await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(2))
   expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores')
@@ -296,6 +300,7 @@ test('a sub-table shows as a collection of its rows, and a row of it points back
   const invoice = await openMap(admin, 'Rm Invoice', 'inv-1')
   const lines = await screen.findByTestId('map-group-Rm Line')
   expect(lines).toHaveTextContent('2')
+  await waitFor(() => expect(within(lines).getAllByTestId('map-row')).toHaveLength(2))
   expect(within(lines).getAllByTestId('map-row').map((r) => r.textContent)).toEqual([expect.stringContaining('Saree'), expect.stringContaining('Shawl')])
   invoice.unmount()
   await openMap(admin, 'Rm Line', saved.lines[0].row_id)
@@ -359,7 +364,7 @@ test('a linked row on the map re-centres it by Space', async ({ admin }) => {
 test("a group's header is a button: Tab reaches it, and Space opens it in the pane", async ({ admin }) => {
   await seed(admin)
   await openMap(admin, 'Rm Customer', 'cust-1')
-  const header = await screen.findByRole('button', { name: /^Rm Order 2/ })
+  const header = await within(await screen.findByTestId('map-group-Rm Order')).findByRole('button', { name: /^Rm Order 2/ })
   expect(header.tagName).toBe('BUTTON')
   fireEvent.click(header)
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
@@ -403,4 +408,23 @@ test("a link's long name keeps its whole wording as the box's tooltip", async ({
   const words = within(box).getByTestId('map-link-words')
   expect(words).toHaveAttribute('title', `${long} · Rm Customer`)
   expect(words.className).toMatch(/\bline-clamp-2\b/)
+})
+
+// #1282, as the Links tab reads it (#1273): a Table with no title of its own only links
+// others, so its group reads as the one Table its rows point to.
+test('a group of a Table with no title reads as its far side, through itself', async ({ admin }) => {
+  await seedVisits(admin)
+  await admin.post('/api/table_def', {
+    name: 'Rm Pairing', id_pattern: 'hash',
+    columns: [
+      { column_name: 'customer', column_type: 'Reference', reference_table: 'Rm Customer', label: 'Customer' },
+      { column_name: 'rep', column_type: 'Reference', reference_table: 'Rm Rep', label: 'Rep' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Rm Pairing', row: { customer: 'cust-1', rep: 'rep-1' } })
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  const box = await screen.findByTestId('map-group-Rm Pairing')
+  await waitFor(() => expect(box).toHaveTextContent('through Rm Pairing'))
+  expect(within(box).getByRole('button', { name: 'Rm Rep 1' })).toBeInTheDocument()
+  expect(await within(box).findByRole('link', { name: 'Anu' })).toBeInTheDocument()
 })
