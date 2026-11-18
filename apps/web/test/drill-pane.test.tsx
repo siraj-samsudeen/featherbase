@@ -151,7 +151,7 @@ test('Filter narrows the list underneath to the same value, as a removable chip'
   await waitFor(() => expect(listed()).toBe(2))
   const chip = screen.getByTestId('filter-chip')
   await waitFor(() => expect(chip).toHaveTextContent('Kerala'))
-  expect(within(chip).getByRole('button', { name: 'Remove filter' })).toBeInTheDocument()
+  expect(within(chip).getByRole('button', { name: /^Remove .+ filter$/ })).toBeInTheDocument()
   expect(await pane('Enchakkal')).toBeInTheDocument()
 })
 

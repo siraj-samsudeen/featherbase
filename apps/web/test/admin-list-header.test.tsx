@@ -94,14 +94,16 @@ test('an empty Table shows the way forward: New and Import data', async ({ admin
 
 // Codex review, round 9: the box follows the search the list has, so Enter never
 // brings back words that were taken off elsewhere.
-test('Clear filters empties the search box as well', async ({ admin }) => {
+// #1289: with one filter on, its chip's ✕ takes it off (Clear All Filters shows only with more than one).
+test("taking the search's chip off empties the search box as well", async ({ admin }) => {
   await seed(admin)
   await renderApp(tableHref(DEPT), admin)
   await waitFor(() => expect(rows()).toHaveLength(3), T)
   const search = screen.getByRole('searchbox', { name: 'Search Job Assignment' })
   await userEvent.type(search, 'silk{Enter}')
   await waitFor(() => expect(rows()).toHaveLength(1), T)
-  await userEvent.click(screen.getByTestId('filter-clear-all'))
+  expect(screen.queryByTestId('filter-clear-all')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: /^Remove .+ filter$/ }))
   await waitFor(() => expect(rows()).toHaveLength(3), T)
   expect(search).toHaveValue('')
   await userEvent.type(search, '{Enter}')

@@ -383,7 +383,7 @@ describe('relational-navigation', () => {
     })
     await step("the filter shows as one of the list's filters, which the user can remove", () => {
       expect(filterWords().some((w) => w.includes('Kerala'))).toBe(true)
-      expect(within(screen.getAllByTestId('filter-chip')[0]!).getByRole('button', { name: 'Remove filter' })).toBeVisible()
+      expect(within(screen.getAllByTestId('filter-chip')[0]!).getByRole('button', { name: /^Remove .+ filter$/ })).toBeVisible()
     })
   })
 

@@ -48,7 +48,7 @@ test('a filter changed on the list comes back on the next bare open, in the addr
   await renderApp(withFilters([ATK, KIDS]), admin)
   await waitFor(() => expect(chips()).toHaveLength(2), T)
   // Taking the Kids filter off leaves Store = Attakulangara: that is remembered.
-  await userEvent.click(within(chips()[1]!).getByRole('button', { name: 'Remove filter' }))
+  await userEvent.click(within(chips()[1]!).getByRole('button', { name: /^Remove .+ filter$/ }))
   await waitFor(() => expect(chips()).toHaveLength(1), T)
 
   cleanup()
@@ -93,7 +93,7 @@ test("the remembered filters keep the list's sort and columns, and the other way
   await admin.put(`/api/user_settings/${encodeURIComponent(DEPT)}`, { sort: { field: 'dept_name', dir: 'desc' } })
   await renderApp(withFilters([ATK, KIDS]), admin)
   await waitFor(() => expect(chips()).toHaveLength(2), T)
-  await userEvent.click(within(chips()[1]!).getByRole('button', { name: 'Remove filter' }))
+  await userEvent.click(within(chips()[1]!).getByRole('button', { name: /^Remove .+ filter$/ }))
   await waitFor(async () => {
     const { settings } = await admin.get<{ settings: Record<string, unknown> }>(`/api/user_settings/${encodeURIComponent(DEPT)}`)
     expect(settings).toMatchObject({ sort: { field: 'dept_name', dir: 'desc' }, filters: [ATK] })
@@ -122,7 +122,7 @@ test('a bare open of the same Table, without leaving the list, brings back the r
   await waitFor(() => expect(chipWords()).toEqual([expect.stringContaining('Kids')]), T)
 
   // A change made now, then another bare open: the newer filters, not the earlier visit's.
-  await userEvent.click(screen.getByTestId('filter-clear-all'))
+  await userEvent.click(screen.getByRole('button', { name: /^Remove .+ filter$/ }))
   await waitFor(() => expect(chips()).toHaveLength(0), T)
   await act(async () => { await router.navigate({ href: withFilters([ATK]) }) })
   await waitFor(() => expect(chips()).toHaveLength(1), T)

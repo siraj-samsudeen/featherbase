@@ -5,7 +5,7 @@ import { LinkControl } from './LinkControl'
 import { NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { useI18n } from '../lib/i18n'
-import { SearchInput, buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
+import { FilterChip, SearchInput, buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
 import { parseChain } from '../lib/linked-filters'
 import { LinkedFilterBuilder, LinkedFilterWords, useLinkOptions } from './LinkedFilter'
 
@@ -269,6 +269,7 @@ export function FilterBar({
   onChange,
   builderOpen = true,
   onLinkedAdded,
+  chips = true,
 }: {
   meta: import('../lib/meta').TableMeta
   filters: Filter[]
@@ -277,6 +278,8 @@ export function FilterBar({
   builderOpen?: boolean
   /** #1276: a Linked to filter was added; the list closes its Add filter row. */
   onLinkedAdded?: () => void
+  /** #1289: false when the page shows the chips in its own filter row. */
+  chips?: boolean
 }) {
   const { t } = useI18n()
   const fields = [
@@ -400,34 +403,39 @@ export function FilterBar({
           }}
         />
       )}
-      {filters.length > 0 && (
-        <div className={`flex flex-wrap gap-2 ${builderOpen ? 'mt-2' : ''}`} data-testid="filter-chips">
-          {filters.map((f, i) => (
-            <span
-              key={i}
-              className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
-              data-testid="filter-chip"
-            >
-              <FilterWords meta={meta} filter={f} />
-              <button
-                aria-label="Remove filter"
-                onClick={() => onChange(filters.filter((_, j) => j !== i))}
-                className="text-ink-subtle hover:text-ink"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {/* #1228: filters come back on the next visit, so one control takes them all off. */}
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            data-testid="filter-clear-all"
-            className="text-sm text-action underline-offset-2 hover:underline"
-          >
-            Clear filters
-          </button>
-        </div>
+      {chips && <FilterChips meta={meta} filters={filters} onChange={onChange} className={builderOpen ? 'mt-2' : undefined} />}
+    </div>
+  )
+}
+
+/** #1289: the list's active filters as big chips, each with a round ✕, then Clear All Filters when more than one
+ *  is on. They sit in the list's one filter row; filters come back on the next visit (#1228), so one control takes
+ *  them all off. */
+export function FilterChips({ meta, filters, onChange, className }: {
+  meta: import('../lib/meta').TableMeta
+  filters: Filter[]
+  onChange: (filters: Filter[]) => void
+  className?: string
+}) {
+  const { t } = useI18n()
+  if (!filters.length) return null
+  const nameOf = ([column]: Filter) => (column === 'row_id' ? 'Row ID' : t(meta.columns.find((c) => c.column_name === column)?.label ?? String(column)))
+  return (
+    <div className={`flex flex-wrap items-center gap-2 ${className ?? ''}`} data-testid="filter-chips">
+      {filters.map((f, i) => (
+        <FilterChip key={i} name={nameOf(f)} onRemove={() => onChange(filters.filter((_, j) => j !== i))}>
+          <FilterWords meta={meta} filter={f} />
+        </FilterChip>
+      ))}
+      {filters.length > 1 && (
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          data-testid="filter-clear-all"
+          className="min-h-control text-sm font-medium text-action underline-offset-2 hover:underline"
+        >
+          Clear All Filters
+        </button>
       )}
     </div>
   )

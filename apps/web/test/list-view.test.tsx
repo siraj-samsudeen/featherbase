@@ -188,9 +188,9 @@ test('Narrow the list with filters: a filter narrows the rows, shows as its own 
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-03']))
   expect(screen.getAllByTestId('filter-chip')).toHaveLength(2)
 
-  fireEvent.click(within(screen.getAllByTestId('filter-chip')[1]).getByLabelText('Remove filter'))
+  fireEvent.click(within(screen.getAllByTestId('filter-chip')[1]).getByRole('button', { name: /^Remove .+ filter$/ }))
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-03', 'row-01']))
-  fireEvent.click(within(screen.getAllByTestId('filter-chip')[0]).getByLabelText('Remove filter'))
+  fireEvent.click(within(screen.getAllByTestId('filter-chip')[0]).getByRole('button', { name: /^Remove .+ filter$/ }))
   await waitFor(() => expect(cellTexts('title')).toHaveLength(4))
   expect(screen.queryByTestId('filter-chip')).not.toBeInTheDocument()
 })

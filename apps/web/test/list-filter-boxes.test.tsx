@@ -41,5 +41,5 @@ test('filters already applied stay visible with the Add filter row closed', asyn
   await addFilter()
   const chip = await screen.findByTestId('filter-chip')
   expect(screen.queryByTestId('filter-field')).not.toBeInTheDocument()
-  expect(within(chip).getByRole('button', { name: 'Remove filter' })).toBeInTheDocument()
+  expect(within(chip).getByRole('button', { name: /^Remove .+ filter$/ })).toBeInTheDocument()
 })
