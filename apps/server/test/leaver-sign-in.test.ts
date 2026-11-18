@@ -124,7 +124,7 @@ test('only ways in that can work now count: a switched-off password, an unconfig
   await password(pw)
   await configureGoogle({ enabled: true, client_id: '' })
   await googleLink(g, 'g.unset@gmail.com')
-  await sql`update person set expects_google_sign_in = true where row_id = ${expected}`
+  await sql`update person set expects_google_sign_in = true, email = 'expected.1271@gmail.com' where row_id = ${expected}`
   globalThis.__standing1271 = Object.fromEntries([pw, g, expected].map((p) => [p, { person: p, status: 'left' }]))
   await sql`update sign_in_method set enabled = false where kind = 'password'`
   // The tests run with the mock Google sign-in on, which makes any Google method usable.
@@ -133,11 +133,29 @@ test('only ways in that can work now count: a switched-off password, an unconfig
   expect(persons).not.toContain(pw)
   expect(persons).not.toContain(g)
   expect(persons).not.toContain(expected)
-  await configureGoogle({ client_id: 'made-up' })
+  await configureGoogle({ client_id: 'made-up', allowed_email_domains: '*' })
   const rows = (await leaverSignInRows()).rows
   persons = rows.map((r) => r.person)
   expect(persons).toContain(g)
   expect(rows.find((r) => r.person === expected)?.ways_in).toBe('Google (first sign-in expected)')
+})
+
+test('an expected first sign-in counts only where its claim could succeed', async ({ admin }) => {
+  await installDescriber(admin)
+  await configureGoogle({ enabled: true, client_id: 'made-up', allowed_email_domains: 'example.com' })
+  const ok = await makePerson({ full_name: 'Claim Ok' })
+  const wrongDomain = await makePerson({ full_name: 'Wrong Domain' })
+  const linked = await makePerson({ full_name: 'Already Linked' })
+  const set = (p: string, email: string) => sql`update person set expects_google_sign_in = true, email = ${email} where row_id = ${p}`
+  await set(ok, 'ok.1271@example.com')
+  await set(wrongDomain, 'wrong.1271@elsewhere.org')
+  await set(linked, 'linked.1271@example.com')
+  await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by) values ('uid_lnk1271', ${linked}, 'google', 'g-lnk', 'linked.1271@example.com', 'Administrator')`
+  globalThis.__standing1271 = Object.fromEntries([ok, wrongDomain, linked].map((p) => [p, { person: p, status: 'left' }]))
+  const ways = new Map((await leaverSignInRows()).rows.map((r) => [r.person, r.ways_in]))
+  expect(ways.get(ok)).toBe('Google (first sign-in expected)')
+  expect(ways.has(wrongDomain)).toBe(false)
+  expect(ways.get(linked)).toBe('Google')
 })
 
 test('a live password invitation is a way in; a used, voided, unsent or expired one is not', async ({ admin }) => {
@@ -169,15 +187,30 @@ test("a link sign-in would refuse is not a way in: a System Manager's StyleHR li
   expect((await leaverSignInRows()).rows.map((r) => r.person)).not.toContain(boss)
 })
 
-test('the status reads the last successful rebuild, and names a later one that failed', async ({ admin }) => {
-  await sql`insert into job_execution (row_id, job, method, attempt, outcome, result, started_at, duration_ms)
-    values ('je_ok2_1271', 'x', 'refresh_leaver_sign_in', 1, 'success', '2 people can still sign in', now() - interval '1 hour', 5)`
+test('the status reads the published rebuild, and names a later one that failed', async ({ admin }) => {
+  await sql`insert into leaver_sign_in_rebuild (id, started_at, summary) values (1, now() - interval '1 hour', '2 people can still sign in')`
   await sql`update scheduled_job set last_run_at = now(), last_outcome = 'error', last_result = 'warehouse down' where row_id = 'refresh_leaver_sign_in'`
   const status = await admin.get<{ checked_result: string; last_failed: { error: string } | null }>('/api/leaver_sign_in/status')
   expect(status.checked_result).toBe('2 people can still sign in')
   expect(status.last_failed?.error).toBe('warehouse down')
   await sql`update scheduled_job set last_outcome = 'success' where row_id = 'refresh_leaver_sign_in'`
   expect((await admin.get<{ last_failed: unknown }>('/api/leaver_sign_in/status')).last_failed).toBeNull()
+})
+
+test('a rebuild that started before the one on show writes nothing', async ({ admin }) => {
+  await installDescriber(admin)
+  await configureGoogle({ enabled: true, client_id: 'made-up' })
+  const leaver = await makePerson({ full_name: 'Newer Leaver' })
+  await googleLink(leaver, 'newer@gmail.com')
+  globalThis.__standing1271 = { [leaver]: { person: leaver, status: 'left' } }
+  await sql`insert into leaver_sign_in_rebuild (id, started_at, summary) values (1, now() + interval '1 hour', 'newer')`
+  const report = await refreshLeaverSignIn()
+  expect(report.published).toBe(false)
+  expect(await sql`select 1 from leaver_sign_in`).toHaveLength(0)
+  expect((await sql`select summary from leaver_sign_in_rebuild`)[0].summary).toBe('newer')
+  await sql`update leaver_sign_in_rebuild set started_at = now() - interval '1 hour'`
+  expect((await refreshLeaverSignIn()).published).toBe(true)
+  expect((await sql`select summary from leaver_sign_in_rebuild`)[0].summary).toBe('1 person can still sign in')
 })
 
 test('a second rebuild replaces the first; it never adds to it', async ({ admin }) => {

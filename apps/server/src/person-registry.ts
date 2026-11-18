@@ -139,6 +139,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   internal_metadata: { '*': code },
   job_execution: { job: code, method: code, outcome: code, error: text, result: text },
   leaver_sign_in: { person: id, section: code, why: text, ways_in: text },
+  leaver_sign_in_rebuild: { summary: text },
   letter_head: { '*': text },
   metadata_override: { '*': code },
   migration: { '*': code },

@@ -21,6 +21,14 @@ create table if not exists featherbase.leaver_sign_in (
     '3. Left, not on the leaver job''s list', '4. Not an employee, holds a StyleHR link'))
 );
 alter table featherbase.leaver_sign_in enable row level security;
+-- The rebuild whose rows are on show: when it started and what it said. A rebuild
+-- that started before the one already published writes nothing (#1271, Codex round 3).
+create table if not exists featherbase.leaver_sign_in_rebuild (
+  id integer primary key default 1 check (id = 1),
+  started_at timestamp with time zone not null,
+  summary text not null
+);
+alter table featherbase.leaver_sign_in_rebuild enable row level security;
 do $$ begin
   if not exists (select 1 from pg_policies where schemaname = 'featherbase' and tablename = 'leaver_sign_in' and policyname = 'fc_select') then
     create policy fc_select on featherbase.leaver_sign_in for select using (featherbase.fc_has_read('Leaver Sign In'::text));

@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto'
 import { sql, withTransaction } from './db'
 import { LEAVER_CHECK_JOB, planLeaverCheck, type Leaver, type LeaverPlan } from './leaver-check'
 import { describePeople, peopleDescriberState } from './person-standing'
-import { EXPECTS_COLUMN, REDIRECT_KINDS, methodUsable, workingLinkIds } from './identities'
+import { EXPECTS_COLUMN, REDIRECT_KINDS, domainAllowed, listSignInMethods, methodUsable, workingLinkIds } from './identities'
 import { errorMessage } from './errors'
 
 export const LEAVER_SIGN_IN_JOB = 'refresh_leaver_sign_in'
@@ -48,27 +48,32 @@ interface WaysIn {
  *  sign-in, on a method that can sign anyone in now (methodUsable, the rule
  *  every way-in count shares). */
 async function waysIn(): Promise<Map<string, WaysIn>> {
-  const methods = (await sql`select row_id, label, kind, enabled, client_id, employees_only from sign_in_method order by label`)
-    .filter((m) => methodUsable({ kind: String(m.kind), enabled: m.enabled === true, client_id: m.client_id as string | null }))
+  const methods = (await listSignInMethods()).filter(methodUsable)
   const out = new Map<string, WaysIn>()
   const of = (person: string) => out.get(person) ?? out.set(person, { ways: [], styleHr: [], employeesOnly: [] }).get(person)!
   const add = (w: WaysIn, way: string) => { if (!w.ways.includes(way)) w.ways.push(way) }
   const passwordOn = methods.some((m) => m.kind === 'password')
   // A live password invitation lets them set a password and sign in: as checkPasswordInvite reads it.
-  const people = await sql`select row_id, (password_hash is not null) as has_password, expects_google_sign_in, expects_microsoft_sign_in,
+  const people = await sql`select row_id, email, replaced_by, (password_hash is not null) as has_password, expects_google_sign_in, expects_microsoft_sign_in,
       exists (select 1 from password_invite i where i.person = person.row_id and i.used_at is null and i.voided_at is null
         and i.sent_at is not null and i.expires_at > now()) as invited
     from person where enabled order by row_id`
+  const held = new Set((await sql`select person_id || ' ' || method as k from sign_in_identity where ended_at is null`).map((r) => String(r.k)))
   for (const p of people) {
     const person = String(p.row_id)
     if (p.has_password && passwordOn) add(of(person), 'Password')
     else if (p.invited && passwordOn) add(of(person), 'Password (invited)')
     for (const kind of REDIRECT_KINDS) {
       const m = methods.find((x) => x.kind === kind)
-      if (m && p[EXPECTS_COLUMN[kind]] === true) add(of(person), `${String(m.label || kind)} (first sign-in expected)`)
+      const email = typeof p.email === 'string' ? p.email : ''
+      // As claimExpectedSignIn would admit it: the address's domain allowed, not replaced,
+      // no live link on the method yet. A hosted-domain claim is assumed possible.
+      if (m && p[EXPECTS_COLUMN[kind]] === true && p.replaced_by == null && domainAllowed(m, email)
+        && !held.has(`${person} ${m.key}`))
+        add(of(person), `${m.label || kind} (first sign-in expected)`)
     }
   }
-  const usable = new Map(methods.map((m) => [String(m.row_id), m]))
+  const usable = new Map(methods.map((m) => [m.key, m]))
   // A live link counts only where sign-in would accept it (its domain, tenant, and no StyleHR for a System Manager).
   const working = await workingLinkIds()
   const links = await sql`
@@ -149,38 +154,51 @@ export async function leaverSignInRows(): Promise<LeaverSignInReport> {
   return { rows: ordered([...rows.values()]), notes }
 }
 
-/** Rebuild the report in one go: readers see the old rows or the new, never half. */
-export async function refreshLeaverSignIn(): Promise<LeaverSignInReport> {
+/** The rebuild's one-line summary: how many can still sign in, and whatever it could not check. */
+export function rebuildSummary(report: LeaverSignInReport): string {
+  const n = report.rows.length
+  return [`${n} ${n === 1 ? 'person' : 'people'} can still sign in`, ...report.notes].join('. ')
+}
+
+/** Rebuild the report in one go: readers see the old rows or the new, never
+ *  half. Rebuilds replace in turn, and one that started before the rebuild
+ *  already published writes nothing, so an older result never replaces a
+ *  newer one. Returns whether this rebuild was published. */
+export async function refreshLeaverSignIn(): Promise<LeaverSignInReport & { published: boolean }> {
+  const [{ started }] = await sql`select clock_timestamp() as started`
   const report = await leaverSignInRows()
-  await withTransaction(async () => {
-    // One rebuild replaces the rows at a time, so two at once never mix their reports.
+  const published = await withTransaction(async () => {
     await sql`select pg_advisory_xact_lock(hashtext('refresh_leaver_sign_in'))`
+    const [shown] = await sql`select started_at from leaver_sign_in_rebuild where id = 1`
+    if (shown && new Date(shown.started_at as string) > new Date(started as string)) return false
+    await sql`insert into leaver_sign_in_rebuild (id, started_at, summary) values (1, ${started}, ${rebuildSummary(report)})
+      on conflict (id) do update set started_at = excluded.started_at, summary = excluded.summary`
     await sql`delete from leaver_sign_in`
     for (const [position, r] of report.rows.entries())
       await sql`insert into leaver_sign_in ${sql({
         row_id: createHash('sha256').update(r.person).digest('hex').slice(0, 20),
         position, section: r.section, person: r.person, why: r.why, ways_in: r.ways_in, left_on: r.left_on,
       })}`
+    return true
   })
-  return report
+  return { ...report, published }
 }
 
 /** The list header's line: the leaver job on or off and its last run; when
- *  this report was last rebuilt successfully, and a later attempt that failed. */
+ *  the rows on show were rebuilt, and a later attempt that failed. */
 export async function leaverSignInStatus() {
   const jobs = await sql`select row_id, enabled, last_run_at, last_outcome, last_result from scheduled_job where row_id in (${LEAVER_CHECK_JOB}, ${LEAVER_SIGN_IN_JOB})`
   const job = jobs.find((j) => j.row_id === LEAVER_CHECK_JOB)
   const report = jobs.find((j) => j.row_id === LEAVER_SIGN_IN_JOB)
-  // The rows on show are the last successful rebuild's: a failed one leaves them as they were.
-  const [ok] = await sql`select started_at, result from job_execution
-    where method = ${LEAVER_SIGN_IN_JOB} and outcome = 'success' order by started_at desc limit 1`
+  // The rows on show are the published rebuild's: a failed or superseded one leaves them as they were.
+  const [shown] = await sql`select started_at, summary from leaver_sign_in_rebuild where id = 1`
   const failed = report?.last_run_at && report.last_outcome !== 'success'
-    && (!ok || new Date(report.last_run_at as string) > new Date(ok.started_at as string))
+    && (!shown || new Date(report.last_run_at as string) > new Date(shown.started_at as string))
   return {
     leaver_job: job ? { on: job.enabled === true, last_run_at: job.last_run_at ?? null, last_outcome: job.last_outcome ?? null, last_result: job.last_result ?? null } : null,
-    checked_at: ok?.started_at ?? null,
-    /** The last successful rebuild's own summary, which names whatever it could not check. */
-    checked_result: ok?.result ?? null,
+    checked_at: shown?.started_at ?? null,
+    /** The published rebuild's own summary, which names whatever it could not check. */
+    checked_result: shown?.summary ?? null,
     /** The latest rebuild attempt, when it failed after the last success. */
     last_failed: failed ? { at: report.last_run_at, error: report.last_result ?? null } : null,
   }
