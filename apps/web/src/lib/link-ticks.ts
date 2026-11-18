@@ -57,6 +57,13 @@ export function formColumns(meta: TableMeta, links: string[]): ColumnDef[] {
     .sort((a, b) => (ORDER[a.column_type] ?? 2) - (ORDER[b.column_type] ?? 2))
 }
 
+/** Whether the inline form can give a new link everything it needs: every required column
+ *  with no default is one of the two links or a field the form asks for (Codex review). */
+export function formCompletes(meta: TableMeta, links: string[]): boolean {
+  const asked = new Set([...links, ...formColumns(meta, links).map((c) => c.column_name)])
+  return meta.columns.every((c) => !c.reqd || NO_COLUMN_TYPES.has(c.column_type) || (c.default_value != null && c.default_value !== '') || asked.has(c.column_name))
+}
+
 /** What a ticked link shows under its name: its readable areas (its other links) and dates,
  *  whether or not the viewer may give them to a new link. */
 export function shownColumns(meta: TableMeta, links: string[]): ColumnDef[] {

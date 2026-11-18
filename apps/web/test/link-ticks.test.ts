@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ColumnDef, TableMeta } from '../src/lib/meta'
 import {
-  correctionHref, formColumns, shownColumns, gridOffered, isUntil, mayTick, newLinkRow, tickColumn, tickCount, tickLines,
+  correctionHref, formColumns, formCompletes, shownColumns, gridOffered, isUntil, mayTick, newLinkRow, tickColumn, tickCount, tickLines,
 } from '../src/lib/link-ticks'
 
 function column(column_name: string, extra: Partial<ColumnDef> = {}): ColumnDef {
@@ -73,6 +73,16 @@ describe('tickColumn', () => {
 describe('formColumns', () => {
   it("asks for the link Table's own editable columns beyond its two links: areas first, then dates, then a reason", () => {
     expect(formColumns(roleGiven, ['person', 'role']).map((c) => c.column_name)).toEqual(['site', 'ends_on', 'reason'])
+  })
+})
+
+describe('formCompletes', () => {
+  it('ticks only where the inline form can give a new link every required column', () => {
+    expect(formCompletes(roleGiven, ['person', 'role'])).toBe(true)
+    const withFile = { ...roleGiven, columns: [...roleGiven.columns, column('proof', { column_type: 'Attach', reqd: true })] } as TableMeta
+    expect(formCompletes(withFile, ['person', 'role'])).toBe(false)
+    const defaulted = { ...roleGiven, columns: [...roleGiven.columns, column('proof', { column_type: 'Attach', reqd: true, default_value: 'none.pdf' })] } as TableMeta
+    expect(formCompletes(defaulted, ['person', 'role'])).toBe(true)
   })
 })
 

@@ -11,7 +11,7 @@ import { formatValue, useSettings } from '../lib/settings'
 import { useI18n } from '../lib/i18n'
 import type { NavPane } from '../lib/nav-path'
 import {
-  FOLD_AFTER, SMALL_SIDE, correctionHref, formColumns, shownColumns, gridOffered, isUntil, mayTick, newLinkRow, tickColumn, tickCount, tickLines,
+  FOLD_AFTER, SMALL_SIDE, correctionHref, formColumns, formCompletes, shownColumns, gridOffered, isUntil, mayTick, newLinkRow, tickColumn, tickCount, tickLines,
   useRowSources, type Choice, type TickedLine,
 } from '../lib/link-ticks'
 import { LinkControl } from './LinkControl'
@@ -96,7 +96,8 @@ export function useGroupPlans(table: string, record: string, groups: BacklinkGro
     plans.set(g.key, {
       state: 'ready', linkMeta, column, farTable, farMeta, choices,
       // Every link must be read to say which choices are unticked: past one read's worth it lists (Codex review).
-      tick: side.total <= SMALL_SIDE && g.count <= ALL_ROWS && mayTick(caps, linkMeta),
+      tick: side.total <= SMALL_SIDE && g.count <= ALL_ROWS && mayTick(caps, linkMeta)
+        && formCompletes(linkMeta, [g.connection.column, column.column_name]),
       grid: gridOffered(recordSide.data?.total, side.total),
     })
   }
