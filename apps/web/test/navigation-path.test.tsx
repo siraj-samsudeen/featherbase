@@ -202,6 +202,9 @@ test("a walk is listed in the sidebar's Recently Opened by its names after signi
   expect(screen.queryByRole('button', { name: 'Recent paths' })).not.toBeInTheDocument()
   await waitFor(() => expect(screen.getByTestId('sidebar-walk')).toHaveTextContent(`${SITE} › Region: Kerala`), { timeout: 10_000 })
   expect(within(screen.getByTestId('sidebar-walk')).getByTestId('walk-tile')).toBeInTheDocument()
+  // A modified click (new tab, new window) is the browser's: the page stays.
+  expect(fireEvent.click(screen.getByTestId('sidebar-walk'), { ctrlKey: true })).toBe(true)
+  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByTestId('sidebar-walk'))
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
   // The whole walk comes back: the bar names both steps.
