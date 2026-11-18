@@ -63,6 +63,26 @@ test('Refresh Now queues the rebuild and shows its rows once it has run', async 
   await waitFor(() => expect(screen.getByTestId('leaver-refresh')).toHaveTextContent('Refresh Now'))
 })
 
+test('a Refresh Now the server refuses lets the button be pressed again', async ({ admin }) => {
+  const real = globalThis.fetch
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) =>
+    /\/api\/leaver_sign_in\/refresh$/.test(new URL(String(url), 'http://localhost').pathname)
+      ? Response.json({ error: 'nope' }, { status: 500 }) : real(url, init))
+  try {
+    await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
+    await userEvent.click(await screen.findByTestId('leaver-refresh'))
+    await waitFor(() => expect(screen.getByTestId('leaver-refresh')).toHaveTextContent('Refresh Now'))
+    expect(screen.getByTestId('leaver-refresh')).toBeEnabled()
+  } finally { spy.mockRestore() }
+})
+
+test('a filter chosen on the list is kept in the address', async ({ admin }) => {
+  const app = await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
+  const page = await screen.findByTestId('leavers-who-can-sign-in')
+  await userEvent.selectOptions(await within(page).findByTestId('std-filter-section'), '5. Not on payroll, but no exit date')
+  await waitFor(() => expect((app.router.state as { location: { search: { filters?: string } } }).location.search.filters).toContain('5. Not on payroll'))
+})
+
 test('a rebuild that failed after the last good one is named, and the rows are said to be older', async ({ admin }) => {
   await sql`insert into leaver_sign_in_rebuild (id, started_at, summary) values (1, now() - interval '1 hour', '0 people can still sign in')`
   await sql`update scheduled_job set last_run_at = now(), last_outcome = 'error', last_result = 'warehouse down' where row_id = 'refresh_leaver_sign_in'`

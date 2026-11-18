@@ -230,6 +230,19 @@ test('a rebuild that started before the one on show writes nothing', async ({ ad
   expect((await sql`select summary from leaver_sign_in_rebuild`)[0].summary).toBe('1 person can still sign in')
 })
 
+test('a pending invite is a way in, but not yet a link they hold', async ({ admin }) => {
+  await installDescriber(admin)
+  await configureGoogle({ enabled: true, client_id: 'made-up' })
+  await sql`update sign_in_method set employees_only = true where row_id = 'google'`
+  const invited = await makePerson({ full_name: 'Invited To Google' })
+  await sql`insert into sign_in_identity (id, person_id, method, pending_email, linked_by) values ('uid_inv1271', ${invited}, 'google', 'inv.1271@gmail.com', 'Administrator')`
+  globalThis.__standing1271 = { [invited]: { person: invited, status: 'none' } }
+  // Not an employee, but the invite is not yet an employees-only link they hold: not listed in section 4.
+  expect((await leaverSignInRows()).rows.map((r) => r.person)).not.toContain(invited)
+  globalThis.__standing1271 = { [invited]: { person: invited, status: 'left' } }
+  expect((await leaverSignInRows()).rows).toContainEqual(expect.objectContaining({ person: invited, ways_in: 'Google (invited)' }))
+})
+
 test('a second rebuild replaces the first; it never adds to it', async ({ admin }) => {
   // Rebuilds take a lock first, so two at once replace in turn. The test runs in
   // one transaction, so it can show only that each rebuild replaces the rows.
