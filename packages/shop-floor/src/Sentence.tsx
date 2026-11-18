@@ -19,7 +19,7 @@ export function Sentence({ parts, className, renderRecord }: { parts: SentencePa
     <span className={className} data-testid="sentence">
       {parts.map((part, i) => typeof part === 'string' ? <span key={i}>{part}</span>
         : 'record' in part ? renderRecord ? <span key={i}>{renderRecord(part.record)}</span> : <RecordLink key={i} table={part.record.table} rowId={part.record.row} name={part.record.name} canOpen={part.record.canOpen ?? true} />
-        : <span key={i} className="mx-0.5 inline-block rounded-full bg-subtle px-2 py-px text-xs text-ink-muted" data-testid="sentence-reach">{part.chip}</span>)}
+        : <span key={i} className="mx-0.5 inline-block rounded-full border border-border bg-canvas px-2 py-px text-xs text-ink-muted" data-testid="sentence-reach">{part.chip}</span>)}
     </span>
   )
 }

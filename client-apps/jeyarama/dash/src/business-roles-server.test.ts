@@ -120,6 +120,10 @@ describe('a log line as a sentence', () => {
     const role = { table: 'dash.business_role', row: 'r1', name: 'Store Manager' }
     expect(linked('Gave the report Vendor Sales to Store Manager, as before', [role, { table: 'dash.report', row: 'vs', name: 'Vendor Sales' }, { table: 'dash.report', row: 'x', name: 'Renamed' }, { table: 'dash.report', row: 'y', name: '' }]))
       .toEqual(['Gave the report ', { record: { table: 'dash.report', row: 'vs', name: 'Vendor Sales' } }, ' to ', { record: role }, ', as before'])
+    // The role is what the title is mapped to, not the title of the same name; a line's subject is the role.
+    expect(linked('Mapped the title Buyer to Buyer', [{ ...role, name: 'Buyer' }])).toEqual(['Mapped the title Buyer to ', { record: { ...role, name: 'Buyer' } }])
+    expect(linked('Store Manager already had the report Store Manager pack', [role])).toEqual([{ record: role }, ' already had the report Store Manager pack'])
+    expect(linked('Added the starting role Store Manager, with its 5 permissions', [role])).toEqual(['Added the starting role ', { record: role }, ', with its 5 permissions'])
   })
 })
 
@@ -1376,6 +1380,8 @@ describe('business roles at their edges', () => {
   it('says to a manager what decides Dash access and what was done, and refuses anyone else', async () => {
     const tables0 = await richWorld()
     tables0['dash.report_access'].push({ row_id: 'g-n', report: 'vs', role: 'Report Access Manager' })
+    tables0['dash.report_bundle'] = [...tables0['dash.report_bundle'] ?? [], { row_id: 'b-x', bundle_name: 'Store pack' }]
+    tables0['dash.report_access'].push({ row_id: 'g-b', report_bundle: 'b-x', role: 'Dash Reader' })
     const { tables } = await switched(tables0)
     expect(await businessAccessSummary(context(tables, { roles: ['System Manager'] }) as never)).toMatchObject({ source: 'business_roles', switch_rows: [{ id: 's1', source: 'business_roles' }], can_switch: true })
     expect(await businessAccessSummary(context(tables) as never)).toMatchObject({ can_switch: false })
@@ -1386,6 +1392,7 @@ describe('business roles at their edges', () => {
     const added = log.find(l => l.outcome === 'Added' && l.parts.some(p => typeof p !== 'string' && p.record.table === 'dash.report'))!
     expect([added.parts.map(p => (typeof p === 'string' ? p : p.record.name)).join(''), added.parts.flatMap(p => (typeof p === 'string' ? [] : [p.record.table])).sort()])
       .toEqual([added.detail, ['dash.business_role', 'dash.report']])
+    expect(log.some(l => l.parts.some(p => typeof p !== 'string' && p.record.table === 'dash.report_bundle'))).toBe(true)
     expect((await reads.access_source(context(tables) as never)).source).toBe('business_roles')
     await expect(switchOverLog(context(tables, { roles: ['Dash Reader'] }) as never)).rejects.toThrow('Only a Report Access Manager')
     await expect(businessAccessSummary(context(tables, { roles: ['Dash Reader'] }) as never)).rejects.toThrow('Only a Report Access Manager')
