@@ -1046,5 +1046,13 @@ describe('head office sites and people off payroll', () => {
       isStore(site({ is_store: true, site_kind: '', status: '' }) as never, 'X'),
     ])).toEqual([false, true, true, false, true, true, false, false, false, false, false, true, true])
   })
+
+  // Codex round 8: a role placed by hand, with no job at all, reaches no store at a head office site either.
+  it('gives a consultant given Tester at a head office site no store there', async () => {
+    const { tables } = await switched()
+    tables.Plant.push({ row_id: '9990', site: 'HOF', plant_type: 'Store' })
+    tables['dash.role_assignment'].push({ row_id: 'h-c', person: 'consultant', change: 'Also give', business_role: roleId(tables, 'Tester'), site: 'HOF', updated_at: 'x' })
+    expect(await scopeOf(tables, 'consultant')).toEqual({})
+  })
 })
 

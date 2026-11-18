@@ -108,7 +108,8 @@ export async function rolePlaces(docs: Base, person: string, today: string, held
     const [here] = await every(docs, 'Site', ['operating_region'], [['row_id', '=', site]])
     const region = exact(here?.operating_region)
     if (!region) return []
-    const stores = (await every(docs, 'Site', ['is_store'], [['operating_region', '=', region]])).filter(s => checked(s.is_store))
+    const stores = []
+    for (const s of await every(docs, 'Site', ['is_store'], [['operating_region', '=', region]])) if (await isStore(docs, exact(s.row_id))) stores.push(s)
     return reach({ employees: [{ row_id: 'by-region', person, status: 'Current' }],
       jobs: stores.map(s => ({ row_id: `region-${exact(s.row_id)}`, employee: 'by-region', job: 'Store Manager', site: exact(s.row_id), starts_on: today })) })
   }
@@ -120,7 +121,8 @@ export async function rolePlaces(docs: Base, person: string, today: string, held
       // A merchandise role other than the Buyer's own gets no Buyer Section that names this person its buyer.
       ...(text(held.title).toLowerCase() === BUYER_TITLE.toLowerCase() ? {} : { notMine: mine.employees.map(e => exact(e.row_id)) }) })
     // A store given by hand to someone with no job there: the whole store, as a Store Manager's, even for someone off the staff list.
-    case 'site': return reach({ employees: [{ row_id: 'by-hand', person, status: 'Current' }], jobs: [{ row_id: 'by-hand', employee: 'by-hand', job: 'Store Manager', site: spot.site, starts_on: today }] })
+    case 'site': if (!(await isStore(docs, spot.site))) return []
+      return reach({ employees: [{ row_id: 'by-hand', person, status: 'Current' }], jobs: [{ row_id: 'by-hand', employee: 'by-hand', job: 'Store Manager', site: spot.site, starts_on: today }] })
     case 'buyer_sections': return reach({ buyerSections: true })
     case 'job': {
       // A hand change naming a place puts the job there ("treat as Store Manager at Lakeside"). fit() lets only a location reach here.
