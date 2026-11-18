@@ -22,10 +22,13 @@ export async function listVisiblePeople(
 export function peopleWithTaskResponsibility(
   listed: { row_id: string; full_name?: string | null }[],
   tasks: Pick<Task, 'assigned_to'>[],
-  currentUser: string,
+  currentUser: PersonOption,
 ) {
+  // #1298: the signed-in person is a current member, so until the directory
+  // answers they are named by the name their session already holds.
   const people = [...listed]
-  for (const rowId of [currentUser, ...tasks.map((task) => task.assigned_to ?? '')]) {
+  if (currentUser.row_id && !people.some((person) => person.row_id === currentUser.row_id)) people.push(currentUser)
+  for (const rowId of tasks.map((task) => task.assigned_to ?? '')) {
     if (rowId && !people.some((person) => person.row_id === rowId)) people.push({ row_id: rowId })
   }
   return people
