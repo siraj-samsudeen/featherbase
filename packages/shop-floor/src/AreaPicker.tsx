@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Button } from './Button'
+import { Button, iconButtonClasses } from './Button'
+import { X } from './icons'
 import { cx } from './cx'
 import { fmtCount } from './format'
 import { RecordLink } from './RecordLink'
@@ -8,7 +9,7 @@ import { RecordLink } from './RecordLink'
 // (Location: Region › Cluster › Store › Floor; Merchandise: Division › … ›
 // Subcategories) is browsed in columns, one per level; picking in a column
 // clears the columns to its right. The bar below names the area picked, each part
-// a link, and offers Stop here and Use this area. It knows nothing of where its
+// a link, and one action that names it ("Use North"). It knows nothing of where its
 // rows come from: `load` reads each column, as the viewer may see it.
 
 /** One level of an axis: its words ("Store" on a staff screen, "Site" on an admin one). */
@@ -55,18 +56,18 @@ export function AreaPicker({ axes, holds, load, onUse, onCancel }: {
   const [axisName, setAxisName] = useState(axes[0]!.name)
   const axis = axes.find((a) => a.name === axisName)!
   const [picked, setPicked] = useState<AreaRow[]>([])
-  const [stopped, setStopped] = useState(false)
-  const choose = (name: string) => { setAxisName(name); setPicked([]); setStopped(false) }
-  const pick = (level: number, row: AreaRow) => { setPicked([...picked.slice(0, level), row]); setStopped(false) }
-  const back = () => { setPicked(picked.slice(0, -1)); setStopped(false) }
-  // A column for each level picked so far, and the next one, unless the person stopped.
-  const shownLevels = Math.min(axis.levels.length, stopped ? picked.length : picked.length + 1)
+  const choose = (name: string) => { setAxisName(name); setPicked([]) }
+  const pick = (level: number, row: AreaRow) => setPicked([...picked.slice(0, level), row])
+  const back = () => setPicked(picked.slice(0, -1))
+  // A column for each level picked so far, and the next one.
+  const shownLevels = Math.min(axis.levels.length, picked.length + 1)
   const last = picked.length - 1
   const lastLevel = last >= 0 ? axis.levels[last]! : undefined
   const usable = lastLevel ? holds.includes(lastLevel.table) : false
   const holdsLabel = axis.levels.find((l) => holds.includes(l.table))?.label
   return (
     <div role="dialog" aria-label="Pick an area" data-testid="area-picker" className="@container flex min-w-0 flex-col gap-3 rounded-xl bg-surface p-3 shadow-lg">
+      <div className="flex items-center gap-1">
       {axes.length > 1 && (
         <div role="group" aria-label="Area by" className="flex gap-1">
           {axes.map((a) => (
@@ -78,6 +79,12 @@ export function AreaPicker({ axes, holds, load, onUse, onCancel }: {
           ))}
         </div>
       )}
+        <span className="flex-1" />
+        {/* Closing is the picker's own, so it never sits beside the form's Cancel (UI owner). */}
+        <button type="button" onClick={onCancel} aria-label="Close" title="Close" className={iconButtonClasses('size-7 text-ink-muted hover:text-ink')}>
+          <X aria-hidden size={14} />
+        </button>
+      </div>
       {/* On a phone, one column at a time with a way back (G5). */}
       {picked.length > 0 && (
         <button type="button" onClick={back} aria-label="Back one level" className="self-start rounded px-1 text-sm text-ink-muted hover:text-ink @lg:hidden">← {axis.levels[last]!.label}</button>
@@ -100,11 +107,10 @@ export function AreaPicker({ axes, holds, load, onUse, onCancel }: {
             ))}
         </span>
         <span className="flex-1" />
-        {picked.length > 0 && !stopped && picked.length < axis.levels.length && (
-          <Button onClick={() => setStopped(true)}>Stop here</Button>
-        )}
-        <Button variant="primary" disabled={!usable} onClick={() => onUse({ axis: axis.name, level: last, table: lastLevel!.table, row: picked[last]! })}>Use this area</Button>
-        <Button onClick={onCancel}>Cancel</Button>
+        {/* One action, named for the area (UI owner): off where the field cannot hold that level yet. */}
+        <Button variant="primary" disabled={!usable} onClick={() => onUse({ axis: axis.name, level: last, table: lastLevel!.table, row: picked[last]! })}>
+          {picked.length ? `Use ${picked[last]!.name}` : 'Use this area'}
+        </Button>
       </div>
       {picked.length > 0 && !usable && holdsLabel && (
         <p className="text-xs text-ink-muted" data-testid="area-not-yet">Can be given at {holdsLabel} level for now</p>

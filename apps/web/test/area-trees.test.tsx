@@ -78,7 +78,7 @@ test("Also give's Pick on the trees opens the shared area picker, in an admin sc
   expect(await within(picker).findByRole('region', { name: 'Site' })).toBeInTheDocument()
   expect(within(picker).getByTestId('area-not-yet')).toHaveTextContent('Can be given at Site level for now')
   fireEvent.click(await within(picker).findByRole('button', { name: 'Store E' }))
-  fireEvent.click(within(picker).getByRole('button', { name: 'Use this area' }))
+  fireEvent.click(within(picker).getByRole('button', { name: 'Use Store E' }))
   await waitFor(() => expect(within(form).queryByTestId('area-picker')).not.toBeInTheDocument())
   await waitFor(() => expect(within(form).getByTestId('area-pick')).toHaveTextContent('Store E ▸'))
   fireEvent.click(within(form).getByRole('button', { name: 'Add' }))
@@ -88,7 +88,7 @@ test("Also give's Pick on the trees opens the shared area picker, in an admin sc
   })
 })
 
-test('Cancel closes the picker and leaves the area as it was', async ({ admin }) => {
+test('the ✕ closes the picker and leaves the area as it was', async ({ admin }) => {
   await seed(admin)
   await renderApp(rowHref(MEMBER, 'm1'), admin)
   fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
@@ -96,7 +96,7 @@ test('Cancel closes the picker and leaves the area as it was', async ({ admin })
   fireEvent.click(within(line).getByRole('button', { name: 'Tick Team Leader' }))
   const form = await screen.findByTestId('also-give-form')
   fireEvent.click(within(form).getByTestId('area-pick'))
-  fireEvent.click(within(await within(form).findByTestId('area-picker')).getByRole('button', { name: 'Cancel' }))
+  fireEvent.click(within(await within(form).findByTestId('area-picker')).getByRole('button', { name: 'Close' }))
   await waitFor(() => expect(within(form).queryByTestId('area-picker')).not.toBeInTheDocument())
   expect(within(form).getByTestId('area-pick')).toHaveTextContent('Pick on the trees ▸')
 })

@@ -46,6 +46,7 @@ describe('the area picker', () => {
     expect(words()).toHaveTextContent('Area: Whole company')
     expect(await within(column('Cluster')).findByRole('button', { name: /Chennai South\s*2 stores/ })).toBeInTheDocument()
     expect(within(column('Cluster')).getByRole('button', { name: /North\s*1 store$/ })).toBeInTheDocument()
+    // One action, named for the area: nothing picked yet.
     expect(screen.getByRole('button', { name: 'Use this area' })).toBeDisabled()
   })
 
@@ -72,23 +73,20 @@ describe('the area picker', () => {
   test('a level the field cannot hold yet stays walkable, with Use this area off and one line saying why', async () => {
     const { onUse } = open()
     fireEvent.click(await within(column('Cluster')).findByRole('button', { name: /Chennai South/ }))
-    expect(screen.getByRole('button', { name: 'Use this area' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Use Chennai South' })).toBeDisabled()
     expect(screen.getByTestId('area-not-yet')).toHaveTextContent('Can be given at Store level for now')
     fireEvent.click(await within(column('Store')).findByRole('button', { name: /Store E/ }))
     expect(screen.queryByTestId('area-not-yet')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Use this area' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use Store E' }))
     expect(onUse).toHaveBeenCalledWith({ axis: 'Location', level: 1, table: 'Site', row: expect.objectContaining({ id: 'e', name: 'Store E' }) })
   })
 
-  test('Stop here closes the deeper columns; Cancel leaves', async () => {
+  test('one action only, no Stop here; the ✕ at the top closes the picker', async () => {
     const { onCancel } = open()
     fireEvent.click(await within(column('Cluster')).findByRole('button', { name: /Chennai South/ }))
-    fireEvent.click(await within(column('Store')).findByRole('button', { name: /Store E/ }))
-    await within(column('Floor')).findByRole('button', { name: 'First floor' })
-    fireEvent.click(screen.getByRole('button', { name: 'Stop here' }))
-    expect(screen.queryByRole('region', { name: 'Floor' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Stop here' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onCancel).toHaveBeenCalled()
   })
 
@@ -100,7 +98,7 @@ describe('the area picker', () => {
     fireEvent.click(await within(column('Division')).findByRole('button', { name: /Kids\s*1 category/ }))
     expect(await within(column('Category')).findByRole('button', { name: 'Kids Ethnic' })).toBeInTheDocument()
     // This field holds a store, so no merchandise level can be used yet.
-    expect(screen.getByRole('button', { name: 'Use this area' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Use Kids' })).toBeDisabled()
   })
 
   test('one level back, as a phone shows one column at a time; a column with nothing reads None', async () => {
