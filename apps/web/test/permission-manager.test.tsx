@@ -61,3 +61,11 @@ test('someone who is not a System Manager is told why instead of shown the matri
   expect(error.textContent).toMatch(/System Manager/)
   expect(screen.queryByTestId('permission-manager')).not.toBeInTheDocument()
 })
+
+test('each permission checkbox is named by its role and its permission', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/permissions`, admin)
+  const box = await screen.findByRole('checkbox', { name: `${ROLE}: Read` }, { timeout: 10_000 })
+  expect(box).toBe(screen.getByTestId(`perm-${ROLE}-can_read`))
+  expect(screen.getByRole('checkbox', { name: `${ROLE}: Amend` })).toBe(screen.getByTestId(`perm-${ROLE}-can_amend`))
+})

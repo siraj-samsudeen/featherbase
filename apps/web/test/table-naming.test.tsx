@@ -102,3 +102,10 @@ test('a rule the network drops says it failed to save', async ({ admin }) => {
   await user.click(screen.getByTestId('naming-save'))
   expect(await screen.findByTestId('naming-save-error')).toHaveTextContent('Failed to save')
 })
+
+test('the naming select is named for what it chooses', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/naming`, admin)
+  const select = await screen.findByRole('combobox', { name: 'How rows are named' }, { timeout: 8000 })
+  expect(select).toBe(screen.getByTestId('naming-naming'))
+})
