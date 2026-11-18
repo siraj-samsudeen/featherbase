@@ -8,12 +8,12 @@
 // remembered per person and Table (A1, A3, D1–D3).
 import { cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe } from 'vitest'
+import { describe, vi } from 'vitest'
 import { rowHref, tableHref } from 'shared'
 import { sql } from 'server/src/db'
 import { tableRelation } from 'server/src/table-engine'
 import { createUserWithRole } from 'server/test/fixtures'
-import { pluralLabel } from '../src/components/LinkTickList'
+import { newRowHref, pluralLabel } from '../src/components/LinkTickList'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect, renderApp } from './pg-test'
 import { SITE, seedSites, type Admin } from './relational-fixture'
@@ -393,4 +393,23 @@ test('a heading over many reads in the plural', () => {
   expect(pluralLabel('Business Role')).toBe('Business Roles')
   expect(pluralLabel('Category')).toBe('Categories')
   expect(pluralLabel('Status')).toBe('Status')
+})
+
+test('a group through a sub-table offers no + New: there is no column of its own to link back', () => {
+  const group = { key: 'k', label: 'Lines', count: 0, connection: { table: 'Lt Line', column: 'item', via: 'Lt Order Line', count: 0, filters: [] } }
+  expect(newRowHref(group, 'X1')).toBeUndefined()
+})
+
+test("a Links view choice that cannot be saved still holds for this visit", async ({ admin }) => {
+  await seed(admin)
+  const bridged = globalThis.fetch
+  vi.stubGlobal('fetch', (async (input: RequestInfo | URL, init?: RequestInit) =>
+    String(input).includes('/api/user_settings/') && init?.method === 'PUT'
+      ? Response.json({ error: { type: 'InternalError', message: 'down' } }, { status: 500 })
+      : bridged(input, init)) as typeof fetch)
+  await openLinks(admin)
+  fireEvent.click(screen.getByTestId('view-menu-button'))
+  fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Tree' }))
+  expect(await screen.findByRole('tree')).toBeInTheDocument()
+  vi.unstubAllGlobals()
 })

@@ -73,7 +73,10 @@ export function useGroupPlans(table: string, record: string, groups: BacklinkGro
     const meta = linkMetas[linkTables.indexOf(g.connection.table)]?.data
     return meta && own ? tickColumn(meta, g.connection, { table, own }) : undefined
   }
-  const farTables = [...new Set(groups.map(columnOf).map((c) => (c ? linkRowsTable(c) : null)).filter((t): t is string => Boolean(t)))]
+  // Choices come from the Table the link names, a view's own rows included (Codex review);
+  // the far side's records are its base Table's.
+  const choiceTable = (c: ColumnDef) => c.reference_table ?? linkRowsTable(c)
+  const farTables = [...new Set(groups.map(columnOf).map((c) => (c ? choiceTable(c) : null)).filter((t): t is string => Boolean(t)))]
   const farMetas = useQueries({ queries: farTables.map((t) => metaQuery(t)) })
   const farSides = useQueries({ queries: farTables.map((t, i) => sideQuery(t, farMetas[i]?.data, SMALL_SIDE + 1)) })
   // The record's own Table counted, for the grid (A2).
@@ -85,7 +88,7 @@ export function useGroupPlans(table: string, record: string, groups: BacklinkGro
     const column = columnOf(g)
     const farTable = column ? linkRowsTable(column) ?? undefined : undefined
     if (!column || !farTable) { plans.set(g.key, { state: 'ready', linkMeta, tick: false, grid: false }); continue }
-    const i = farTables.indexOf(farTable)
+    const i = farTables.indexOf(choiceTable(column)!)
     const farMeta = farMetas[i]?.data
     const side = farSides[i]?.data
     if (!farMeta || !side) { plans.set(g.key, { ...LOADING, linkMeta, column, farTable }); continue }

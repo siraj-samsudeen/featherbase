@@ -80,6 +80,15 @@ export async function rowSources(viewer: string, name: string, rawIds: unknown):
       where s.ref_table = ${table} and s.ref_name = any(${found}) and l.file_name is not null
       order by s.ref_name, s.created_at desc`)
       imported.set(String(r.ref_name), String(r.file_name))
+  // A Table that keeps no import observations still lists each run's rows in its log (Codex review).
+  const unnamed = found.filter((id) => !imported.has(id))
+  if (unnamed.length)
+    for (const r of await sql`
+      select distinct on (t.row_id) t.row_id, l.file_name from featherbase.import_log l
+      cross join lateral jsonb_to_recordset(case when jsonb_typeof(l.touched) = 'array' then l.touched else '[]'::jsonb end) as t(row_id text)
+      where l.ref_table = ${table} and l.reverted_at is null and l.file_name is not null and t.row_id = any(${unnamed})
+      order by t.row_id, l.created_at desc`)
+      imported.set(String(r.row_id), String(r.file_name))
   for (const r of rows) {
     const by = r.created_by ?? ''
     const maker = accounts.get(by) ?? (by !== 'Administrator' ? ACTOR_LABELS[by] : undefined)

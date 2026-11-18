@@ -44,6 +44,13 @@ describe('#1273: where a link row came from', () => {
     expect(sources).toEqual({ G1: null, G2: 'HR', G3: 'Staff roster', G4: 'Store roles' })
   })
 
+  test("a row imported into a Table that keeps no import observations reads by the run's file", async ({ admin }) => {
+    await seed(admin)
+    await sql`insert into featherbase.import_log (row_id, ref_table, file_name, run_id, touched)
+      values ('rs-log-2', ${GIVEN}, 'Area roles.csv', 'rs-run-2', ${sql.json([{ row_id: 'G1', action: 'updated' }])})`
+    expect((await sourcesOf(admin, ['G1'])).sources).toEqual({ G1: 'Area roles' })
+  })
+
   test('a row the caller may not read is left out, never named', async ({ admin, createUser }) => {
     await seed(admin)
     const reader = await createUserWithRole(admin, createUser, { role: 'Rs Own Rows', table: GIVEN, can_read: true, can_create: true, own_rows_only: true })
