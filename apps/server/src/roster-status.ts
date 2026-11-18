@@ -10,6 +10,10 @@
 //   passed, active, and on the payroll. Off the payroll it stays as it is.
 // - A row whose record is not in the feed, or in any other status, is never
 //   touched. A stale or empty feed changes nothing.
+// - Someone attendance shows at work after their exit date, or in the week
+//   before the feed's latest day when only marked inactive, is held, not
+//   marked left: the HR record may be stale or wrong, and attendance is the
+//   table the feed's freshness is judged by.
 // - A run that would change more than the limit changes none and says so.
 // - Each change is a normal save by the roster link, so it shows in the row's
 //   Activity and can be undone there.
@@ -18,7 +22,7 @@ import { logActivity } from './audit'
 import { saveDoc } from './document'
 import { runAsSystemActor } from './system-actor'
 import { ROSTER_LINK_ACTOR } from './roster-link-actor'
-import { FEED_RECORD_SYSTEM, feedRefusal, istToday, readWarehouse, recordVerdict, type EmployeeRecord } from './leaver-check'
+import { FEED_RECORD_SYSTEM, feedRefusal, istToday, readWarehouseWithPresence, recordVerdict, type EmployeeRecord } from './leaver-check'
 import type { Roster } from './roster-first-sign-in'
 import { errorMessage } from './errors'
 
@@ -52,6 +56,8 @@ export interface RosterStatusPlan {
   covered_left: number
   /** Rows in those statuses whose record the feed does not have: left alone. */
   not_in_feed: number
+  /** Current rows the rule says have left, held because attendance shows them at work since. */
+  held_at_work: string[]
   changes: StatusChange[]
   limit: number
   back_limit: number
@@ -87,6 +93,20 @@ function wanted(r: EmployeeRecord, row: StatusRow, s: Statuses, today: string): 
   return null
 }
 
+/** Attendance after this day says the person is still at work. */
+const PRESENT_WINDOW_DAYS = 7
+
+function addDays(iso: string, n: number): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+}
+
+/** At work after the record says they left: the leaver verdict is held. */
+function stillAtWork(r: EmployeeRecord, basis: StatusChange['basis'], latestFeedDay: string): boolean {
+  if (!r.last_present_day) return false
+  const since = basis === 'exit date' && r.exit_date ? r.exit_date : addDays(latestFeedDay, -PRESENT_WINDOW_DAYS)
+  return r.last_present_day > since
+}
+
 /** Pure: which rows change, and whether the run must refuse. */
 export function planStatusChanges(
   table: string,
@@ -111,7 +131,8 @@ export function planStatusChanges(
     if (row.status === s.current) plan.covered_current++
     else plan.covered_left++
     const change = wanted(r, row, s, today)
-    if (change) plan.changes.push(change)
+    if (change && change.to === s.left && stillAtWork(r, change.basis, latestFeedDay!)) plan.held_at_work.push(row.row_id)
+    else if (change) plan.changes.push(change)
   }
   const limitOf = (n: number) => Math.max(MIN_CHANGE_LIMIT, Math.ceil(n * MAX_CHANGE_SHARE))
   plan.limit = limitOf(plan.covered_current)
@@ -126,7 +147,7 @@ export function planStatusChanges(
 }
 
 function emptyPlan(table: string, today: string, refused: string | null): RosterStatusPlan {
-  return { table, today, latest_feed_day: null, covered: 0, covered_current: 0, covered_left: 0, not_in_feed: 0, changes: [], limit: MIN_CHANGE_LIMIT, back_limit: MIN_CHANGE_LIMIT, refused }
+  return { table, today, latest_feed_day: null, covered: 0, covered_current: 0, covered_left: 0, not_in_feed: 0, held_at_work: [], changes: [], limit: MIN_CHANGE_LIMIT, back_limit: MIN_CHANGE_LIMIT, refused }
 }
 
 const statusesOf = (roster: Roster): Statuses | null =>
@@ -154,7 +175,7 @@ export async function planRosterStatus(roster: Roster, today = istToday()): Prom
   if (roster.recordSystem !== FEED_RECORD_SYSTEM) return empty(`its record numbers are ${roster.recordSystem}, not the feed's ${FEED_RECORD_SYSTEM}`)
   let feed
   try {
-    feed = await readWarehouse()
+    feed = await readWarehouseWithPresence()
   } catch (err) {
     return empty(`the warehouse could not be read: ${errorMessage(err)}`)
   }
@@ -209,6 +230,7 @@ export function formatRosterStatus(plan: RosterStatusPlan | null, run?: RosterSt
       ? `roster status ${plan.table}: changed ${run.changed}${run.failed.length ? `; FAILED ${run.failed.length}` : ''}`
       : `roster status ${plan.table}: would mark ${n('left')} as left (exit date ${by('exit date')}, inactive ${by('inactive')}) and ${n('back')} as current again`,
   ]
+  if (plan.held_at_work.length) lines.push(`roster status ${plan.table}: held ${plan.held_at_work.length} the rule calls left whom attendance shows at work since; not changed`)
   if (plan.refused) lines.push(`roster status ${plan.table}: CHANGED NONE — ${plan.refused}`)
   return lines
 }

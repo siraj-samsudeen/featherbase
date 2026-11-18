@@ -42,13 +42,14 @@ const crewRow = (n: number, over: Record<string, unknown> = {}) => ({
 })
 
 /** One warehouse record, in the column order the leaver check reads. */
-type Feed = { key: string; payroll?: boolean | null; active?: boolean | null; joined?: string; exit?: string | null }
+type Feed = { key: string; payroll?: boolean | null; active?: boolean | null; joined?: string; exit?: string | null; present?: string | null }
 const feedRow = (f: Feed) => [f.key, `C-${f.key}`, 'payroll' in f ? f.payroll : true, 'active' in f ? f.active : true, f.joined ?? '2015-01-01', f.exit ?? null]
 
 function warehouse(records: Feed[], latestDay: string | null = istToday()) {
   const reads: string[] = []
   _setWarehouseReader(async (q) => {
     reads.push(q)
+    if (q.includes('as last_present')) return records.filter((f) => f.present).map((f) => [f.key, f.present])
     return q.includes('attendance') ? [[latestDay]] : records.map(feedRow)
   })
   return reads
@@ -164,6 +165,24 @@ describe('the roster’s status follows the HR record', () => {
     expect(row.updated_by).toBe('roster-link')
     const [log] = await sql`select "user", operation from activity_log where operation like 'roster_status %'`
     expect(log).toEqual({ user: 'roster-link', operation: `roster_status ${TABLE} ${row.row_id} Working to Gone: exit date` })
+  })
+
+  test('someone attendance shows at work after their exit date, or this week when only marked inactive, is held', async ({ admin }) => {
+    const today = istToday()
+    const daysAgo = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10)
+    await setUp(admin, [crewRow(1), crewRow(2), crewRow(3), crewRow(4)])
+    warehouse([
+      { key: '7001', exit: PAST, present: daysAgo(1) }, // at work after the exit date: held
+      { key: '7002', exit: PAST, present: PAST }, // last at work on the exit day: left
+      { key: '7003', active: false, present: daysAgo(2) }, // inactive, at work this week: held
+      { key: '7004', active: false, present: daysAgo(30) }, // inactive, not at work for a month: left
+    ])
+
+    const run = await runRosterLink('stylehr')
+
+    expect(await states()).toEqual({ 'TT-1001': 'Working', 'TT-1002': 'Gone', 'TT-1003': 'Working', 'TT-1004': 'Gone' })
+    expect(run.status!.plan!.held_at_work).toEqual([(await crew('TT-1001')).row_id, (await crew('TT-1003')).row_id].sort())
+    expect(formatRosterLink(run.plan, run)).toContain('held 2 the rule calls left whom attendance shows at work since')
   })
 
   test('a second run changes nothing', async ({ admin }) => {
@@ -311,6 +330,21 @@ describe('a bad feed or a big batch changes nothing', () => {
     const plan = (await planRosterLink('stylehr'))!
     expect(plan.status!.refused).toContain('more than the limit')
     expect(plan.ends).toEqual([])
+  })
+
+  test('a refused dry run applied with its accepted count links and ends on the new statuses', async ({ admin }) => {
+    const rows = Array.from({ length: 11 }, (_, i) => crewRow(i + 1))
+    await setUp(admin, rows)
+    warehouse(rows.map((r) => ({ key: String(r.hr_record) })))
+    await runRosterLink('stylehr')
+    warehouse(rows.map((r) => ({ key: String(r.hr_record), exit: PAST })))
+    const plan = (await planRosterLink('stylehr'))!
+    expect(plan.status!.refused).toContain('more than the limit')
+
+    const run = await runRosterLink('stylehr', { plan, acceptStatus: 11, acceptEnds: 11 })
+
+    expect(run).toMatchObject({ refused: null, ended: 11 })
+    expect(await liveLinks()).toEqual([])
   })
 
   test('a row changed by someone after the plan is left as they made it', async ({ admin }) => {

@@ -1373,6 +1373,13 @@ each change SHALL show in the row's Activity as the roster link's.
   is not marked inactive
 - **THEN** the row stays current
 
+#### Scenario: Someone still at work is held
+
+- **WHEN** a current row's HR record shows an exit date that has passed, but
+  attendance shows the person at work after it (or, when only marked inactive,
+  in the week before the feed's latest day)
+- **THEN** the row stays current and the run reports it as held
+
 #### Scenario: A rejoiner is current again
 
 - **WHEN** a left row's HR record is active and on the payroll again

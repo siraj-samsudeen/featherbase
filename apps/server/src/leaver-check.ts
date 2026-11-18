@@ -45,6 +45,9 @@ export interface EmployeeRecord {
   movement_active: boolean | null
   date_of_joining: string | null
   exit_date: string | null
+  /** The last day attendance shows them present, read from the same fresh
+   *  table the feed day is (#1286); absent where nothing reads it. */
+  last_present_day?: string | null
 }
 
 /** One enabled person with at least one StyleHR link. */
@@ -252,6 +255,8 @@ const RECORDS_SQL = `
   select e.employee_key, e.employee_code, e.payroll_active, e.movement_active, e.date_of_joining, x.exit_date
   from "gold"."hr"."employee" e
   left join "gold"."hr"."employee_exit" x on x.employee_key = e.employee_key and x.is_leaver`
+// #1286: each record's last day at work, from the table the feed day is judged by.
+const LAST_PRESENT_SQL = `select employee_key, max(date) as last_present from "gold"."hr"."attendance" where is_present group by 1`
 // A day with people present is a day StyleHR loaded and the warehouse built.
 const FEED_DAY_SQL = `select max(date) from "gold"."hr"."attendance" where is_present`
 
@@ -276,6 +281,13 @@ export async function readWarehouse(): Promise<{ records: EmployeeRecord[]; late
       exit_date: isoDay(r[5]),
     })),
   }
+}
+
+/** The feed's records with each one's last day at work (#1286). */
+export async function readWarehouseWithPresence(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
+  const feed = await readWarehouse()
+  const last = new Map((await read(LAST_PRESENT_SQL)).map((r) => [String(r[0]), isoDay(r[1])]))
+  return { ...feed, records: feed.records.map((r) => ({ ...r, last_present_day: last.get(r.employee_key) ?? null })) }
 }
 
 /** Nothing to check on an instance with no StyleHR identifier system. */

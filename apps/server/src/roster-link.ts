@@ -434,9 +434,11 @@ export async function runRosterLink(methodKey: string, opts: RosterLinkOpts = {}
   if (!ctx) return run
   // The statuses change first, so this same run links a rejoiner and ends a leaver's link.
   const status = opts.plan ? opts.plan.status : await planRosterStatus(ctx.roster)
+  // A supplied plan whose status changes were refused planned its links on the old statuses.
+  const plannedOnOldStatuses = Boolean(status?.refused)
   run.status = await applyRosterStatus(ctx.roster, status, { acceptCount: opts.acceptStatus })
   run.failed.push(...run.status.failed)
-  const plan = opts.plan ?? (await planWith(ctx, status))
+  const plan = opts.plan && !(plannedOnOldStatuses && run.status.changed) ? opts.plan : await planWith(ctx, status)
   if (opts.acceptEnds !== undefined) {
     if (plan.ends.length !== opts.acceptEnds) plan.refused ??= `it would end ${plan.ends.length} links, not the ${opts.acceptEnds} accepted`
     else if (plan.refused?.startsWith('it would end')) plan.refused = null
