@@ -11,7 +11,7 @@ import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, isView, t
 import { SaveAsView, ViewBanner } from './TableViews'
 import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, listLeader, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
-import { useSettings } from '../lib/settings'
+import { formatValue, useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
@@ -1309,6 +1309,7 @@ function ListSum({ table, filters, column, refreshedAt }: {
   /** When the list's rows last arrived: the sum follows every refresh of them. */
   refreshedAt: number
 }) {
+  const settings = useSettings()
   const filterKey = JSON.stringify(filters)
   const sum = useQuery({
     // Keyed to the list's last refresh, so an edit, a delete or realtime refreshes the sum
@@ -1323,7 +1324,8 @@ function ListSum({ table, filters, column, refreshedAt }: {
   return (
     <span className="text-xs text-ink-muted" data-testid="list-sum">
       {/* A total answers "how big is this?": Indian grouping, the readable ₹ ladder for money (ADR 750). */}
-      Σ {column.label}: {column.column_type === 'Currency' ? fmtINR(Number(sum.data.sum)) : fmtCount(Number(sum.data.sum), column.column_type === 'Int' ? 0 : 2)}
+      Σ {column.label}: {column.column_type !== 'Currency' ? fmtCount(Number(sum.data.sum), column.column_type === 'Int' ? 0 : 2)
+        : settings.currency === 'INR' ? fmtINR(Number(sum.data.sum)) : formatValue('Currency', Number(sum.data.sum), settings)}
     </span>
   )
 }
