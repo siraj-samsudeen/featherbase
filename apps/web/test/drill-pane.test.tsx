@@ -39,9 +39,8 @@ test("selecting a row shows it in the pane, named with its table", async ({ admi
 test('the pane lists what the row points at: a link to its page, Show here and Filter', async ({ admin }) => {
   const { pane } = await openEnchakkal(admin)
   const pointsAt = (await within(pane).findByRole('heading', { name: 'Points at' })).parentElement!
-  // #1259: the name is a real link to the row's page; Show here keeps #910's drill.
+  // #1259: the name is a real link to the row's page (a new tab opens it); #1282: a plain click peeks it here.
   await waitFor(() => expect(within(pointsAt).getByRole('link', { name: 'Kerala · KL' })).toHaveAttribute('href', expect.stringContaining('/row/KL')))
-  expect(within(pointsAt).getByRole('button', { name: 'Show Kerala · KL here' })).toBeInTheDocument()
   expect(within(pointsAt).getByRole('button', { name: 'Filter' })).toBeInTheDocument()
 })
 
@@ -70,14 +69,15 @@ test('a chosen group lists its rows one per line, each by its name as a link, ne
   expect(within(pane).getByRole('link', { name: 'Open as list' })).toBeInTheDocument()
 })
 
-test('a group of more than 10 shows its first 10, then Show all N', async ({ admin }) => {
+// #1282 C14: the pane is the peek, so a group there shows its first 4 rows, then + N more.
+test('a group in the pane shows its first 4, then + N more', async ({ admin }) => {
   await seedSites(admin, { profitCentres: 12 })
   await renderApp(tableHref(PLANT), admin)
   await select('Enchakkal Supermarket')
   const plant = await pane('Enchakkal Supermarket · 1503')
   fireEvent.click(await within(plant).findByRole('button', { name: `${PROFIT} 12` }))
-  await waitFor(() => expect(lines(plant)).toHaveLength(10))
-  expect(await within(plant).findByRole('link', { name: 'Show all 12' })).toBeInTheDocument()
+  await waitFor(() => expect(lines(plant)).toHaveLength(4))
+  expect(await within(plant).findByRole('link', { name: '+ 8 more' })).toBeInTheDocument()
 })
 
 const lineWith = (pane: HTMLElement, name: string) =>
@@ -143,9 +143,9 @@ test('clicking a row in the pane drills to it, growing the path and leaving the 
   expect(listed()).toBe(3)
 })
 
-test('Show here opens the linked row in the pane', async ({ admin }) => {
+test("a linked row's name opens it in the pane, one level deeper (#1282 C14)", async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
-  fireEvent.click(await within(site).findByRole('button', { name: 'Show Kerala · KL here' }))
+  fireEvent.click(await within(site).findByRole('link', { name: 'Kerala · KL' }))
   expect(await pane('Kerala · KL')).toHaveTextContent(REGION)
 })
 
@@ -165,7 +165,7 @@ test("Filter is unavailable when the list underneath has no such column", async 
   await renderApp(tableHref(PLANT), admin)
   await select('Enchakkal Supermarket')
   const plant = await pane('Enchakkal Supermarket · 1503')
-  fireEvent.click(await within(plant).findByRole('button', { name: /^Show Enchakkal · ENK here$/ }))
+  fireEvent.click(await within(plant).findByRole('link', { name: 'Enchakkal · ENK' }))
   const site = await pane('Enchakkal · ENK')
   // The plants list has no Region column to narrow.
   await waitFor(() => expect(within(site).getByRole('button', { name: 'Filter' })).toBeDisabled())
@@ -210,11 +210,13 @@ test('Open as list on a group linked through a sub-table shows only the related 
   expect(listed()).toBe(1)
 })
 
-test('Edit is the one way to the row\'s page, its editable form', async ({ admin }) => {
+// #1282 C14 (UI owner, 18-Nov-2026): the peek's header reads "← · Level N of N · Open Full Page · ✕",
+// so the one way to the row's page is Open Full Page, where #1259 had Edit.
+test("Open Full Page is the one way to the row's page, its editable form", async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
   // The way to the row shows once the row is known to be readable.
-  expect(await within(site).findByRole('link', { name: 'Edit' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
-  expect(within(site).queryByRole('link', { name: 'Open Full Page' })).not.toBeInTheDocument()
+  expect(await within(site).findByRole('link', { name: 'Open Full Page' })).toHaveAttribute('href', expect.stringContaining(`${tableHref(SITE)}/row/ENK`))
+  expect(within(site).queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument()
 })
 
 test('the fields read formatted: dates, rupees, links by name', async ({ admin }) => {

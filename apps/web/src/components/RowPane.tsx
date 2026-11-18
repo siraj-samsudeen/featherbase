@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
-  FieldGrid, GroupChip, LinkChip, PaneSection, PanelRight, Plus, RecordLink, SplitWithPane, X,
+  FieldGrid, GroupChip, LinkChip, PaneSection, Plus, RecordLink, SplitWithPane, X,
   buttonClasses, cx, fmtCount, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
   type FieldGridGroup,
 } from '@featherbase/shop-floor'
@@ -11,7 +11,7 @@ import { api } from '../lib/api'
 import { NO_COLUMN_TYPES, linkRowsTable, tableLabel, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { dataColumns } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
-import { push, type NavGroup, type NavPane, type NavStep } from '../lib/nav-path'
+import { push, type NavGroup, type NavPane, type NavPath, type NavStep } from '../lib/nav-path'
 import { useNavigation, type Navigation } from '../lib/navigation'
 import { forwardLinks, groupKey, rowNameText, useBacklinkGroups, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
 import { useConnections } from '../lib/connections'
@@ -110,13 +110,15 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
   const subtitle = [kind, status, code].filter(Boolean).join(' · ')
   const tickable = groups.filter((g) => plans.get(g.key)?.tick)
   const chips = groups.filter((g) => !plans.get(g.key)?.tick)
+  const levels = peekLevels(nav.path)
   return (
     <RecordFrame kind={subtitle} title={title} place={place} framed={framed} onClose={close}
+      levels={{ ...levels, back: levels.at > 1 ? () => nav.go(nav.path.at - 1) : undefined }}
       actions={readable ? <>
         {onFocus && !(step.screen === 'row' && step.table === table && step.row === row) &&
           <button type="button" onClick={() => onFocus(pane)} className={buttonClasses({ variant: 'quiet' })}>Focus here</button>}
         {/* The row's page is its editable form: one way there (one-app-chrome, #1259). */}
-        <HrefLink href={pageHref} className={buttonClasses({ variant: 'secondary' })}>Edit</HrefLink>
+        <HrefLink href={pageHref} className={buttonClasses({ variant: 'secondary' })}>Open Full Page</HrefLink>
       </> : null}>
       {unreadable ? (
         <p className="text-sm text-ink-muted">You can't see this row.</p>
@@ -164,12 +166,30 @@ function groupListHref(group: BacklinkGroup, nav: Navigation): string {
 }
 
 /**
+ * #1282 C14: the pane is the peek, and each drill in it a level. The levels are the
+ * run of steps around the current one that show a record in the pane over the same
+ * page: Level N of N, where N counts the steps still ahead too.
+ */
+export function peekLevels(path: NavPath): { at: number; of: number } {
+  const here = path.steps[path.at]
+  const page = (s: NavStep) => JSON.stringify([s.screen, s.table, s.row ?? null, s.filters ?? []])
+  const peeks = (s: NavStep | undefined) => Boolean(s?.pane) && page(s!) === page(here!)
+  let first = path.at
+  while (peeks(path.steps[first - 1])) first--
+  let last = path.at
+  while (peeks(path.steps[last + 1])) last++
+  return { at: path.at - first + 1, of: last - first + 1 }
+}
+
+/**
  * The panel's frame (#1259): the record's title (20px) over its Table and code,
  * the actions at the top beside Close. It takes focus when it opens; Escape
  * anywhere inside closes it. No lines: a soft shadow sets it off when framed.
  */
-function RecordFrame({ kind, title, onClose, actions, children, place, framed }: {
+function RecordFrame({ kind, title, onClose, actions, children, place, framed, levels }: {
   kind: string
+  /** #1282 C14: "← · Level N of N"; ← steps back one level. */
+  levels: { at: number; of: number; back?: () => void }
   title: string
   onClose: () => void
   actions?: ReactNode
@@ -191,9 +211,16 @@ function RecordFrame({ kind, title, onClose, actions, children, place, framed }:
         framed ? 'h-full rounded-xl shadow-lg' : place === 'right' ? 'h-full' : '')}
     >
       <header className="flex shrink-0 items-start gap-3 px-5 pb-2 pt-4">
-        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3.5 gap-y-0.5">
+        <button type="button" aria-label="Back one level" title="Back one level" disabled={!levels.back} onClick={levels.back}
+          className={iconButtonClasses('shrink-0 bg-canvas disabled:opacity-40')}>
+          <span aria-hidden>←</span>
+        </button>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-xs text-ink-muted" data-testid="peek-level">Level {levels.at} of {levels.of}</span>
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3.5 gap-y-0.5">
           <h2 className="break-words text-xl font-semibold text-ink">{title}</h2>
           <span className="text-sm text-ink-muted" data-testid="record-panel-kind">{kind}</span>
+        </div>
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
         <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={iconButtonClasses('shrink-0 bg-canvas')}>
@@ -264,7 +291,7 @@ function PointsAt({ links, nav, onOpen, status, editHref }: {
           // #1259 (one-app-chrome): the name is a link to the row's page; a small
           // control shows it here instead (#910's drill); Filter shows on hover or focus.
           <span key={link.column} data-testid="record-chip"
-            className="group inline-flex min-w-0 items-center gap-1.5 rounded-md bg-canvas px-2 py-1 text-sm [&_button:not(:first-of-type)]:hidden group-hover:[&_button:not(:first-of-type)]:inline-flex group-focus-within:[&_button:not(:first-of-type)]:inline-flex">
+            className="group inline-flex min-w-0 items-center gap-1.5 rounded-md bg-canvas px-2 py-1 text-sm [&_button]:hidden group-hover:[&_button]:inline-flex group-focus-within:[&_button]:inline-flex">
             <span className="text-ink-muted">{link.label}</span>
             <ChipLink table={link.table} rowId={link.row_id} onOpen={onOpen}
               onFilter={filter || undefined}
@@ -281,8 +308,8 @@ function PointsAt({ links, nav, onOpen, status, editHref }: {
   )
 }
 
-/** #1259: a chip's linked row: its name a link to its page, a control to show it
- *  here in the panel, and Filter (the list under the panel by this value). */
+/** #1259, #1282: a chip's linked row: its name peeks it here in the panel (a new-tab
+ *  click opens its page), and Filter (the list under the panel by this value). */
 function ChipLink({ table, rowId, onOpen, onFilter, filterDisabledReason }: {
   table: string
   rowId: string
@@ -295,11 +322,9 @@ function ChipLink({ table, rowId, onOpen, onFilter, filterDisabledReason }: {
   if (name.state === 'unreadable') return <LinkChip label="" unreadable />
   const text = nameAndCode(name.title, name.code)
   return <>
-    <RecordLink table={table} rowId={rowId} name={text} />
-    <button type="button" onClick={() => onOpen({ table, row: rowId })} aria-label={`Show ${text} here`} title="Show here"
-      className={iconButtonClasses('size-6 text-ink-muted hover:text-ink')}>
-      <PanelRight aria-hidden size={14} />
-    </button>
+    {/* #1282 C14 (UI owner, 18-Nov-2026): a plain click peeks, one level deeper in this pane;
+        a new-tab click, or Open Full Page, goes to its page. */}
+    <RecordLink table={table} rowId={rowId} name={text} onNavigate={() => onOpen({ table, row: rowId })} />
     {(onFilter || filterDisabledReason) && (
       <button type="button" onClick={onFilter} disabled={!!filterDisabledReason} title={filterDisabledReason}
         className={smallActionClasses}>Filter</button>
@@ -329,7 +354,8 @@ function PaneLink({ table, rowId, onOpen, goThere = false, onFilter, filterDisab
 /** #1218 slice 1: an opened group, its rows by what they point to (LinkedRowsGroup). */
 function PanelGroup({ table, row, group, nav, onOpen }: { table: string; row: string; group: BacklinkGroup; nav: Navigation; onOpen: (pane: NavPane) => void }) {
   // Opened from its chip, right above: the chip already names it (verifier, 17-Nov).
-  return <LinkedRowsGroup table={table} record={row} group={group} showAllHref={groupListHref(group, nav)} onOpen={onOpen} heading={false} />
+  // #1282 C14: a peeked group shows its first 4 rows, then "+ N more".
+  return <LinkedRowsGroup table={table} record={row} group={group} showAllHref={groupListHref(group, nav)} onOpen={onOpen} heading={false} maxRows={4} peek />
 }
 
 // ---------- fields ----------

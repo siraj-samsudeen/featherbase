@@ -67,6 +67,20 @@ Then the drill pane shows Enchakkal Supermarket and what points at it
 And the list of sites stays as it was
 ```
 
+### Requirement: The pane is a peek, one level per drill
+
+The drill pane SHALL count each drill inside it as a level and say "Level N of N" in its header,
+with a way back one level and Open Full Page; closing it, or Escape, SHALL close the whole pane. A
+linked name on a row page's Links tab, or inside the pane, SHALL open its row in the pane; a group
+in the pane SHALL show its first 4 rows, then how many more.
+
+#### Scenario: Three levels deep from a customer's page
+
+- **WHEN** the user, on a customer's Links tab, opens one of its orders, then that order's rep, then
+  another of the rep's orders
+- **THEN** the pane reads Level 3 of 3, back one level reads Level 2 of 3, and Escape closes it,
+  leaving the customer's page as it was
+
 ### Requirement: Two links from the same table stay separate groups
 
 When one table links to the row in two ways, the drill pane SHALL show each way as its own group
