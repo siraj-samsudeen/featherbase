@@ -91,7 +91,13 @@ COPY --from=web-build /app/apps/web/dist apps/web/dist
 
 ENV NODE_ENV=production
 EXPOSE 8000
-CMD ["pnpm", "--filter", "server", "start"]
+# Node itself is the container's first process, so a deploy's SIGTERM reaches
+# the server's drain (graceful-shutdown.ts). Under `pnpm --filter server start`
+# corepack's pnpm was the first process and never passed the signal on: the
+# drain never ran and Railway killed the server mid-request (#1284). The
+# server runs from apps/server, as it did under pnpm (serveWebDist reads paths
+# from there).
+CMD ["sh", "-c", "cd apps/server && exec node --import tsx src/index.ts"]
 
 # ---- Stage 4: a client instance's apps and folder ---------------------------
 # Skipped by every build that doesn't name an instance.

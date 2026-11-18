@@ -212,6 +212,9 @@ export async function leaverSignInStatus() {
   const report = jobs.find((j) => j.row_id === LEAVER_SIGN_IN_JOB)
   // The rows on show are the published rebuild's: a failed or superseded one leaves them as they were.
   const [shown] = await sql`select started_at, summary from leaver_sign_in_rebuild where id = 1`
+  // What the list holds now, counted the way the rebuild's summary counts it: section 5 is for review only.
+  const [held] = await sql`select count(*) filter (where section <> ${SECTIONS[4]})::int as can_sign_in,
+    count(*) filter (where section = ${SECTIONS[4]})::int as review from leaver_sign_in`
   const failed = report?.last_run_at && report.last_outcome !== 'success'
     && (!shown || new Date(report.last_run_at as string) > new Date(shown.started_at as string))
   return {
@@ -221,5 +224,6 @@ export async function leaverSignInStatus() {
     checked_result: shown?.summary ?? null,
     /** The latest rebuild attempt, when it failed after the last success. */
     last_failed: failed ? { at: report.last_run_at, error: report.last_result ?? null } : null,
+    counts: { can_sign_in: held.can_sign_in as number, review: held.review as number },
   }
 }
