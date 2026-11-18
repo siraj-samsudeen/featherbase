@@ -3,7 +3,7 @@
 // Lens tab of issue_1218_relational_navigation.html: header chips, fields beside links, a source chip
 // and a Why? per item) and Who Would Gain Or Lose Access. The rules are the server's.
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react'
-import { AreaPicker, Button, Card, EmptyState, Field, Notice, Select, TextInput, fmtDate, pillClasses } from '@featherbase/shop-floor'
+import { AreaPicker, Button, Sentence, type SentencePart, Card, EmptyState, Field, Notice, Select, TextInput, fmtDate, pillClasses } from '@featherbase/shop-floor'
 import { act, read } from './api'
 import { DASH_AREAS, loadDashArea } from './area-axes'
 import { LoadFailed, Loading, Shell } from './sections-page'
@@ -105,15 +105,19 @@ function Failed({ message, onRetry }: { message: string; onRetry: () => void }) 
 
 // ---------- Business Roles ----------
 
-interface Permission { app: string; level: string; verb: string; thing: string; reach: string; sentence: string }
+interface Permission { app: string; level: string; verb: string; thing: string; reach: string; sentence: string; parts: SentencePart[] }
 interface RolesAnswer {
-  roles: { id: string; name: string; description: string | null; by_hand_only: boolean; reaches: string; permissions: Permission[] }[]
+  roles: {
+    id: string; name: string; description: string | null; by_hand_only: boolean; reaches: string; permissions: Permission[]
+    reports: SentencePart[][]; people: number; people_from: string; holders: { person: string; name: string }[]
+  }[]
   titles: { title: string; role: string | null; role_name: string | null; people: number; falls_back_to?: string; holders: { person: string; name: string }[] }[]
 }
 
 export function BusinessRolesPage() {
   const { answer, failed, load } = useRead<RolesAnswer>('business_roles', {})
   const [open, setOpen] = useState<string | null>(new URLSearchParams(window.location.search).get('role'))
+  const [people, setPeople] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const start = async () => {
@@ -138,7 +142,12 @@ export function BusinessRolesPage() {
             {answer.roles.map(role => (
               <Line key={role.id} testid="role-line"
                 name={<RecordLink table={ROLE_TABLE} id={role.id}>{role.name}</RecordLink>}
-                meta={<><span data-testid="role-reaches">Reaches: {role.reaches}</span>{role.description ? ` · ${role.description}` : ''}</>}
+                meta={<>
+                  <span data-testid="role-header">Business role · <button type="button" className={linkClasses} aria-expanded={people === role.id}
+                    onClick={() => setPeople(people === role.id ? null : role.id)} data-testid="role-people">{plural(role.people, 'person', 'people')}</button> · {role.people_from}</span>
+                  {' · '}<span data-testid="role-reaches">Reaches: {role.reaches}</span>{role.description ? ` · ${role.description}` : ''}
+                  {people === role.id && <RolePeople role={role} />}
+                </>}
                 side={<>
                   {role.by_hand_only && <Chip tone="hand">Given by hand only</Chip>}
                   <button type="button" className={linkClasses} aria-expanded={open === role.id}
@@ -146,7 +155,7 @@ export function BusinessRolesPage() {
                     {open === role.id ? 'Hide what it can do' : 'What it can do'}
                   </button>
                 </>}>
-                {open === role.id && <PermissionGrid role={role.name} permissions={role.permissions} />}
+                {open === role.id && <PermissionGrid role={role.name} permissions={role.permissions} reports={role.reports} />}
               </Line>
             ))}
           </Group>
@@ -208,17 +217,37 @@ function AccessSource({ onSwitched }: { onSwitched: () => Promise<unknown> | voi
   )
 }
 
+/** A record in a sentence, drawn by Dash's own link: plain words where the viewer may not open it. */
+const sentenceRecord = (record: { table: string; row: string; name: string }) => <RecordLink table={record.table} id={record.row}>{record.name}</RecordLink>
+
+/** #1282 H4: the people who hold a role, each opening Explain A Person. */
+function RolePeople({ role }: { role: RolesAnswer['roles'][number] }) {
+  return (
+    <span className="block" data-testid="role-holders">
+      {role.holders.map((h, i) => <span key={h.person}>{i ? ', ' : ''}<a className="text-action hover:underline" href={explainAddress(h.person)}>{h.name}</a></span>)}
+      {role.people > role.holders.length && ` and ${(role.people - role.holders.length).toLocaleString('en-IN')} more`}
+      {role.people === 0 && 'Nobody holds it yet.'}
+    </span>
+  )
+}
+
 const CRUD = ['View', 'Add', 'Edit', 'Delete'] as const
 /** The roles map's grid: each app's things as rows, View / Add / Edit / Delete as columns, a reach chip in each cell; other verbs on the row. */
-function PermissionGrid({ role, permissions }: { role: string; permissions: Permission[] }) {
-  if (!permissions.length) return <p className="ml-4 mt-1 text-sm text-ink-muted">No permissions yet.</p>
+function PermissionGrid({ role, permissions, reports }: { role: string; permissions: Permission[]; reports: SentencePart[][] }) {
+  const given = reports.length > 0 && (
+    <ul className="ml-2 flex flex-col text-[13px]" data-testid="report-sentences">
+      {reports.map((parts, i) => <li key={i} data-testid="report-line"><Sentence parts={parts} renderRecord={sentenceRecord} /></li>)}
+    </ul>
+  )
+  if (!permissions.length) return <>{given}<p className="ml-4 mt-1 text-sm text-ink-muted">No permissions yet.</p></>
   const apps = [...new Set(permissions.map(p => p.app))]
   const th = 'px-2 py-1.5 text-start font-mono text-[11px] font-medium uppercase text-ink-muted'
   return (
     <div className="mt-2 flex flex-col gap-2" data-testid="role-permissions">
       <ul className="ml-2 flex flex-col text-[13px] text-ink-muted" data-testid="permission-sentences">
-        {permissions.map((p, i) => <li key={i} data-testid="permission-line">{p.sentence}</li>)}
+        {permissions.map((p, i) => <li key={i} data-testid="permission-line"><Sentence parts={p.parts} renderRecord={sentenceRecord} /></li>)}
       </ul>
+      {given}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[36rem] text-sm" data-testid="permission-grid" aria-label={`What ${role} can do`}>
           <thead><tr><th className={th}>Thing</th>{CRUD.map(v => <th key={v} className={th}>{v}</th>)}<th className={th}>Other</th></tr></thead>

@@ -153,11 +153,29 @@ export const everyReportRoles = (held: readonly HeldRole[], model: Pick<Model, '
   [...new Set(held.map(h => h.role).filter(role => model.permissions.some(p => p.role === role && viewsEveryReport(p))))].sort()
 
 const COLLECTIVE = new Set(['staff', 'leadership', 'head office'])
-const REACH_WORDS: Record<Reach, string> = { Own: 'they own', Team: 'for their Team', Area: 'in their Area', All: 'across the company' }
-/** "Store Managers can Edit Sections in their Area". */
+/** #1282 H1: the reach, said once, as the sentence's chip. */
+export const REACH_CHIP: Record<Reach, string> = { Own: 'their own', Team: 'for their team', Area: 'in their area', All: 'everywhere' }
+/** A role as its people: "Store Managers". */
+export const rolePlural = (role: string) => (COLLECTIVE.has(key(role)) || role.endsWith('s') ? role : `${role}s`)
+/** "Store Managers can Edit Sections in their area". */
 export function permissionSentence(role: string, p: Pick<Permission, 'verb' | 'thing' | 'reach'>): string {
-  const who = COLLECTIVE.has(key(role)) || role.endsWith('s') ? role : `${role}s`
-  return `${who} can ${p.verb} ${p.thing} ${REACH_WORDS[p.reach]}`
+  return `${rolePlural(role)} can ${p.verb} ${p.thing} ${REACH_CHIP[p.reach]}`
+}
+
+/** #1282 H1–H4: a sentence's parts, as the shared Sentence draws them: words, records (links) and the reach chip. */
+export type SentencePart = string | { record: { table: string; row: string; name: string } } | { chip: string }
+const roleRecord = (role: { id: string; name: string }): SentencePart => ({ record: { table: 'dash.business_role', row: role.id, name: rolePlural(role.name) } })
+/** Names said as a list: "A", "A and B", "A, B and C". */
+function listed(parts: SentencePart[]): SentencePart[] {
+  return parts.flatMap((part, i) => i === 0 ? [part] : [i === parts.length - 1 ? ' and ' : ', ', part])
+}
+/** H1: "[Store Managers] can Edit Sections (in their area)". */
+export function permissionParts(role: { id: string; name: string }, p: Pick<Permission, 'verb' | 'thing' | 'reach'>): SentencePart[] {
+  return [roleRecord(role), ` can ${p.verb} ${p.thing} `, { chip: REACH_CHIP[p.reach] }]
+}
+/** H2: "[Vendor Sales] is given to [Store Managers] and [Cluster Managers] (each in their own area)". */
+export function grantParts(report: { key: string; name: string }, roles: { id: string; name: string }[]): SentencePart[] {
+  return [{ record: { table: 'dash.report', row: report.key, name: report.name } }, ' is given to ', ...listed(roles.map(roleRecord)), ' ', { chip: 'each in their own area' }]
 }
 
 export interface TitleInUse { title: string; people: string[]; job?: string }

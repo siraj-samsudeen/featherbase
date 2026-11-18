@@ -218,8 +218,12 @@ describe('Explain A Person', () => {
 describe('Business Roles', () => {
   const ROLES = { business_roles: {
     roles: [{ id: 'r-sm', name: 'Store Manager', description: 'Runs a store.', by_hand_only: false, reaches: 'their store', permissions: [
-      { app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area', sentence: 'Store Managers can Edit Sections in their Area' },
-      { app: 'Dash', level: 'Manager', verb: 'Give', thing: 'Reports', reach: 'Team', sentence: 'Store Managers can Give Reports for their Team' }] }],
+      { app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area', sentence: 'Store Managers can Edit Sections in their area',
+        parts: [{ record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Managers' } }, ' can Edit Sections ', { chip: 'in their area' }] },
+      { app: 'Dash', level: 'Manager', verb: 'Give', thing: 'Reports', reach: 'Team', sentence: 'Store Managers can Give Reports for their team',
+        parts: [{ record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Managers' } }, ' can Give Reports ', { chip: 'for their team' }] }],
+      reports: [[{ record: { table: 'dash.report', row: 'vs', name: 'Visit Sales' } }, ' is given to ', { record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Manager' } }, ' ', { chip: 'each in their own area' }]],
+      people: 25, people_from: 'from HR title and by hand', holders: [{ person: 'p1', name: 'Sundar' }] }],
     titles: [{ title: 'Operations Executive', role: null, role_name: null, people: 3, falls_back_to: 'Store Manager', holders: [{ person: 'p1', name: 'Sundar' }] },
       { title: 'Store Manager', role: 'r-sm', role_name: 'Store Manager', people: 4, holders: [] }],
   } }
@@ -249,6 +253,28 @@ describe('Business Roles', () => {
     await click(all('role-open')[0])
     expect(all('grid-row').map(row => [row.querySelector('[data-testid="cell-Edit"]')!.textContent, row.textContent!.includes('Give')]))
       .toEqual([['Area', false], ['—', true]])
+  })
+
+  // #1282 H1–H4: the role said as sentences, each record a link and its reach a chip; its people counted, with where they come from.
+  it('says a role in sentences: a header with its people, its permissions and the reports given to it', async () => {
+    answers = ROLES
+    const { all, click } = await render('roles')
+    expect(all('role-header')[0].textContent).toBe('Business role · 25 people · from HR title and by hand')
+    await click(all('role-people')[0])
+    expect([all('role-holders')[0].textContent, all('role-holders')[0].querySelector('a')!.getAttribute('href')]).toEqual(['Sundar and 24 more', '?view=explain&person=p1'])
+    await click(all('role-open')[0])
+    expect(all('permission-line').map(l => [l.textContent, l.querySelector('[data-testid="sentence-reach"]')!.textContent])).toEqual([
+      ['Store Managers can Edit Sections in their area', 'in their area'], ['Store Managers can Give Reports for their team', 'for their team']])
+    expect(all('report-line').map(l => l.textContent)).toEqual(['Visit Sales is given to Store Manager each in their own area'])
+  })
+
+  it('says a role nobody holds, with no permissions yet, still with the reports given to it', async () => {
+    answers = { business_roles: { ...ROLES.business_roles, roles: [{ ...ROLES.business_roles.roles[0]!, permissions: [], people: 0, people_from: 'nobody yet', holders: [] }] } }
+    const { all, click } = await render('roles')
+    await click(all('role-people')[0])
+    await click(all('role-open')[0])
+    expect([all('role-header')[0].textContent, all('role-holders')[0].textContent, all('report-line').length, all('role-line')[0].textContent!.includes('No permissions yet.')])
+      .toEqual(['Business role · 0 people · nobody yet', 'Nobody holds it yet.', 1, true])
   })
 
   it('says how far a role reaches in plain words', async () => {

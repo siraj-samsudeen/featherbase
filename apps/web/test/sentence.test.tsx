@@ -29,6 +29,12 @@ describe('a sentence', () => {
     expect(screen.getByTestId('sentence')).toHaveTextContent('Store P&L is given to no one')
   })
 
+  test("an app's own link draws each record, where it decides by itself who may open one", () => {
+    render(<Sentence parts={PERMISSION} renderRecord={(r) => <b data-testid="own-link">{r.name}</b>} />)
+    expect(screen.getByTestId('own-link')).toHaveTextContent('Store Managers')
+    expect(within(screen.getByTestId('sentence')).queryByRole('link')).not.toBeInTheDocument()
+  })
+
   test('its plain words, for a tooltip, read the same line', () => {
     expect(sentenceText(PERMISSION)).toBe('Store Managers can Edit Sections in their area')
     expect(sentenceText(GRANT)).toBe('Vendor Sales is given to Store Managers and Cluster Managers each in their own area')

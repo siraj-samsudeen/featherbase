@@ -2,7 +2,7 @@
 // Or Lose Access. #1277: the new side of the comparison is businessAccess (business-access.ts), the very code
 // that decides Dash access when business roles are live, so the comparison predicts exactly what happens.
 // Read as the app, for Report Access Managers and System Managers only.
-import { appsOf, decisionReports, differences, permissionSentence, titleList, SOURCE_WORDS,
+import { appsOf, decisionReports, differences, grantParts, permissionParts, permissionSentence, titleList, SOURCE_WORDS,
   type HeldRole, type Model, type Side, type Spot, type TitleInUse } from './business-roles.ts'
 import { collapseCodes } from './reach-prefixes.ts'
 import { reportsReaching, type AccessRow, type BundleMember, type Receiver } from './report-access.ts'
@@ -362,12 +362,32 @@ export async function businessRoles(context: AccessContext) {
   const inUse = await titlesInUse(world)
   const holdersOf = new Map<string, Set<string>>()
   for (const t of inUse) for (const p of t.people) holdersOf.set(t.title.toLowerCase(), (holdersOf.get(t.title.toLowerCase()) ?? new Set()).add(p))
-  const shown = [...holdersOf.values()].flatMap(set => [...set].slice(0, HOLDERS_SHOWN))
+  // #1282 H4: each role's people: those whose HR title maps to it, and those given it by hand.
+  const titles = titleList(inUse, world.model)
+  const fromTitles = new Map<string, Set<string>>()
+  for (const t of titles) if (t.role) for (const p of holdersOf.get(t.title.toLowerCase()) ?? []) fromTitles.set(t.role, (fromTitles.get(t.role) ?? new Set()).add(p))
+  const byHand = new Map<string, Set<string>>()
+  for (const h of world.hand) if (!h.removed) byHand.set(h.role, (byHand.get(h.role) ?? new Set()).add(h.person))
+  const peopleOf = (role: string) => new Set([...fromTitles.get(role) ?? [], ...byHand.get(role) ?? []])
+  // #1282 H2: each report given to a role, said with every role it is given to.
+  const reports = await reportNames(ctx)
+  const givenTo = new Map<string, string[]>()
+  for (const row of world.grants.rows) if (row.report && row.business_role) givenTo.set(row.report, [...new Set([...givenTo.get(row.report) ?? [], row.business_role])])
+  const sourceWords = (role: string) => {
+    const [title, hand] = [Boolean(fromTitles.get(role)?.size), Boolean(byHand.get(role)?.size)]
+    return title && hand ? 'from HR title and by hand' : title ? 'from HR title' : hand ? 'by hand' : 'nobody yet'
+  }
+  const shown = [...new Set([...holdersOf.values()].flatMap(set => [...set].slice(0, HOLDERS_SHOWN)).concat(roles.flatMap(r => [...peopleOf(r.id)].slice(0, HOLDERS_SHOWN))))]
   const names = await personNames(ctx, shown)
   return {
     roles: roles.sort((a, b) => a.name.localeCompare(b.name)).sort((a, b) => order(a.name) - order(b.name)).map(role => ({
       id: role.id, name: role.name, description: role.description, by_hand_only: role.by_hand_only, reaches: REACHES_WORDS[role.reaches!] ?? 'Not set',
-      permissions: permissions.filter(p => p.role === role.id).map(p => ({ app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach, sentence: permissionSentence(role.name, p) })),
+      permissions: permissions.filter(p => p.role === role.id).map(p => ({ app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach, sentence: permissionSentence(role.name, p), parts: permissionParts(role, p) })),
+      reports: [...givenTo].filter(([key, given]) => given.includes(role.id) && reports.has(key))
+        .map(([key, given]) => grantParts({ key, name: reports.get(key)!.name }, given.flatMap(id => roles.filter(r => r.id === id)))),
+      people: peopleOf(role.id).size,
+      people_from: sourceWords(role.id),
+      holders: [...peopleOf(role.id)].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone' })),
     })),
     titles: titleList(inUse, world.model).map(t => ({ ...t, role_name: nameOf.get(t.role!) ?? null,
       holders: [...holdersOf.get(t.title.toLowerCase()) ?? []].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone' })) })),
