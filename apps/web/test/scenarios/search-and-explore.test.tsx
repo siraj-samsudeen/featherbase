@@ -1,5 +1,5 @@
-// search-and-explore's scenarios (#1070): navigation history, Explore and
-// the relationship map as a person reads them, the real Admin in jsdom
+// search-and-explore's scenarios (#1070): navigation history, Linked to
+// filters (#1276) and the relationship map as a person reads them, the real Admin in jsdom
 // against the in-process server. Each test is one fenced scenario of the
 // effective spec (openspec/specs/search-and-explore and the active change
 // issue-910-relational-navigation), step by step.
@@ -8,7 +8,6 @@ import userEvent from '@testing-library/user-event'
 import { describe, vi } from 'vitest'
 import { rowHref, tableHref } from 'shared'
 import { sql } from 'server/src/db'
-import { patchDoc } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 
@@ -148,7 +147,7 @@ async function history(createUser: (o: { roles: string[] }) => Promise<Client>) 
   return h
 }
 
-// ---- Explore and the map: made-up tables ----
+// ---- Linked to filters and the map: made-up tables ----
 
 const data = (column_name: string, label = 'Title') => ({ column_name, column_type: 'Data', label, in_list_view: true })
 const link = (column_name: string, label: string, reference_table: string) =>
@@ -179,76 +178,65 @@ async function seedPurchasing(admin: Client) {
   ])
 }
 
-class Explore {
+/** A list's Add filter, Linked to… and Not linked to… (#1276). */
+class LinkedList {
   view!: Rendered
-  async open(admin: Client) {
-    this.view = await renderApp('/featherbase/admin/explore', admin)
-    await screen.findByTestId('explore-root')
+  async open(admin: Client, name: string) {
+    this.view = await renderApp(`${tableHref(name)}?filters=${encodeURIComponent('[]')}`, admin)
+    await screen.findByTestId('filter-toggle')
   }
 
-  /** Types into the table search and presses Enter, once the search has narrowed to a match. */
-  async searchAndStart(user: ReturnType<typeof userEvent.setup>, text: string) {
-    await onScreen().fillIn('Find a table', text)
-    // The options read whole, the first by pattern: the DSL reads text, not option lists.
-    await waitFor(() => {
-      const options = within(screen.getByTestId('explore-root')).getAllByRole('option')
-      expect(options[0]!.textContent).toMatch(/^\d+ matching tables?/)
-      expect(options.length).toBeGreaterThan(1)
+  async start(choice: 'Linked to…' | 'Not linked to…') {
+    fireEvent.click(screen.getByTestId('filter-toggle'))
+    const field = await screen.findByTestId('filter-field')
+    await within(field).findByRole('option', { name: choice })
+    fireEvent.change(field, { target: { value: choice === 'Linked to…' ? '__linked_to' : '__not_linked_to' } })
+  }
+
+  /** Step n goes to the Table offered as `label`. */
+  async to(n: number, label: string) {
+    const select = await waitFor(() => {
+      const hit = screen.getAllByTestId('linked-table')[n]
+      expect(within(hit!).getByRole('option', { name: label })).toBeInTheDocument()
+      return hit!
     })
-    await onScreen().pressKey('Enter')
+    fireEvent.change(select, { target: { value: (within(select).getByRole('option', { name: label }) as HTMLOptionElement).value } })
+    await waitFor(() => expect(within(screen.getAllByTestId('linked-step')[n]!).getByTestId('linked-step-count')).toBeInTheDocument())
   }
 
-  async startingTable() {
-    await waitFor(() => expect(location(this.view).href).toMatch(/[?&]root=/))
-    return (screen.getByTestId('explore-root') as HTMLSelectElement).value
+  async linkOn() {
+    fireEvent.click(await screen.findByTestId('linked-link-on'))
   }
 
-  async startFrom(name: string) {
-    // Waits for the table to be offered: selectOption looks for its option once.
-    const root = screen.getByTestId('explore-root') as HTMLSelectElement
-    await waitFor(() => expect(within(root).getAllByRole('option').some((o) => o.textContent === name)).toBe(true))
-    await onScreen().selectOption('Start from', name)
-    await screen.findByTestId('explore-pane1')
-  }
-
-  // Every step picker is labelled "Then", and its option is matched by pattern: both raw.
-  async addStep(n: number, name: string) {
-    const picker = await screen.findByTestId(`explore-step${n}`)
-    const option = await waitFor(() => {
-      const hit = within(picker).getAllByRole<HTMLOptionElement>('option').find((o) => new RegExp(`^${name}\\b`).test(o.textContent ?? ''))
+  async pick(n: number, name: string) {
+    const choice = await waitFor(() => {
+      const hit = within(screen.getAllByTestId('linked-step')[n]!).getAllByTestId('linked-choice').find((c) => c.textContent?.includes(name))
       expect(hit).toBeDefined()
       return hit!
     })
-    fireEvent.change(picker, { target: { value: option.value } })
-    await screen.findByTestId(`explore-pane${n}`)
+    fireEvent.click(within(choice).getByRole('checkbox'))
   }
 
-  rows(n: number) {
-    return within(screen.getByTestId(`explore-pane${n}`)).queryAllByTestId('explore-row')
+  add() {
+    fireEvent.click(screen.getByTestId('linked-add'))
   }
 
-  async clickRow(user: ReturnType<typeof userEvent.setup>, n: number, text: string) {
-    const row = await waitFor(() => {
-      const hit = this.rows(n).find((r) => r.textContent?.includes(text))
-      expect(hit).toBeDefined()
-      return hit!
-    })
-    await user.click(row)
+  /** The list's rows by their names, once they read `names`. */
+  async shows(names: string[]) {
+    await waitFor(() => expect([...document.querySelectorAll('tbody [data-title-cell]')].map((c) => c.textContent).sort()).toEqual(names.slice().sort()))
   }
-
-  /** A pane's count reads exactly this. */
-  counts = (n: number, count: number) => onScreen().within(byTestId(`explore-pane${n}-count`), (c) => c.assertExactText(String(count)))
-  /** A pane's sum shows this. */
-  sums = (n: number, sum: string) => onScreen().within(byTestId(`explore-pane${n}-sum`), (s) => s.assertText(sum))
 }
 
-async function exploreSuppliersAndOrders(admin: Client) {
-  await seedPurchasing(admin)
-  const explore = new Explore()
-  await explore.open(admin)
-  await explore.startFrom('Supplier')
-  await explore.addStep(2, 'Purchase Order')
-  return explore
+async function linesOfAcme(admin: Client) {
+  const list = new LinkedList()
+  await list.open(admin, 'PO Line')
+  await list.start('Linked to…')
+  await list.to(0, 'Purchase Order')
+  await list.linkOn()
+  await list.to(1, 'Supplier')
+  await list.pick(1, 'Acme')
+  list.add()
+  return list
 }
 
 /** Volunteers and the chores assigned to them. */
@@ -372,50 +360,45 @@ describe('search-and-explore', () => {
     await step('both navigation surfaces offer the Person destination', () => h.expectDestination('Person', true))
   })
 
-  // ---- Explore chains tables and narrows them as you click ----
+  // ---- A list follows its links with Linked to filters (#1276) ----
 
-  scenario('Narrow by clicking', async ({ admin }, step) => {
-    const user = userEvent.setup()
-    let explore!: Explore
-    await step('the user starts Explore from Supplier and adds Purchase Order', async () => {
-      explore = await exploreSuppliersAndOrders(admin)
+  scenario("The lines of one supplier's orders", async ({ admin }, step) => {
+    await step('Acme has two purchase orders with lines of 100, 150 and 100, and Bolt Co one order with a line of 999', () => seedPurchasing(admin))
+    let list!: LinkedList
+    await step('the user lists the PO Lines linked to Purchase Orders linked to the supplier Acme', async () => {
+      list = await linesOfAcme(admin)
     })
-    await step('the user clicks one supplier and then adds PO Line', async () => {
-      await explore.clickRow(user, 1, 'Acme')
-      await explore.addStep(3, 'PO Line')
+    await step("the list shows Acme's three lines with a total of 350", async () => {
+      await list.shows(['Bolts', 'Nuts', 'Washers'])
+      await waitFor(() => expect(screen.getByTestId('list-sum')).toHaveTextContent(/Σ Amount: \D*350\b/))
     })
-    await step("Purchase Order narrows to that supplier's orders", async () => {
-      await explore.counts(2, 2)
-      const rows = explore.rows(2).map((r) => r.textContent ?? '')
-      expect(rows.every((r) => r.includes('Acme')), JSON.stringify(rows)).toBe(true)
-    })
-    await step("PO Line narrows to those orders' lines, with an accurate count and sum at every stage", async () => {
-      await explore.counts(1, 2)
-      await explore.counts(2, 2)
-      await explore.counts(3, 3)
-      await explore.sums(3, '350')
+    await step('the Purchase Order step counts 2', async () => {
+      await waitFor(() => expect(within(screen.getByTestId('filter-chip')).getAllByTestId('linked-step-total')[0]).toHaveTextContent(/^2$/))
     })
   })
 
-  scenario('Open a row without leaving Explore', async ({ admin }, step) => {
-    const user = userEvent.setup()
-    let explore!: Explore
-    await step("the user has Explore narrowed to one supplier's orders", async () => {
-      explore = await exploreSuppliersAndOrders(admin)
-      await explore.clickRow(user, 1, 'Acme')
-      await explore.counts(2, 2)
+  scenario('Suppliers with no order', async ({ admin }, step) => {
+    await step('Acme has two purchase orders, Bolt Co one, and Cord Ltd none', async () => {
+      await seedPurchasing(admin)
+      await admin.post('/api/table/Supplier', { row_id: 'sup-cord', title: 'Cord Ltd' })
     })
-    await step('the user opens one of those orders', () => explore.clickRow(user, 2, 'Acme order 1'))
-    await step('it shows in the drill pane', async () => {
-      expect(await screen.findByRole('complementary', { name: /^Acme order 1(?![\w ]*\w)/i })).toBeInTheDocument()
+    const list = new LinkedList()
+    await step('the user lists the Suppliers not linked to any Purchase Order', async () => {
+      await list.open(admin, 'Supplier')
+      await list.start('Not linked to…')
+      await list.to(0, 'Purchase Order')
+      list.add()
     })
-    await step('the supplier stays selected in Explore', () => {
-      const chips = screen.getAllByTestId('explore-chip')
-      expect(chips).toHaveLength(1)
-      expect(chips[0]).toHaveTextContent('Supplier')
-      const selected = screen.getByTestId('explore-pane1').querySelectorAll('[data-testid="explore-row"][data-selected]')
-      expect([...selected].map((r) => r.textContent).join('|')).toContain('Acme')
+    await step('the list shows only Cord Ltd', () => list.shows(['Cord Ltd']))
+  })
+
+  scenario('A shared Explore link', async ({ admin }, step) => {
+    await step('Acme has two purchase orders with lines of 100, 150 and 100, and Bolt Co one order with a line of 999', () => seedPurchasing(admin))
+    await step('the user opens an Explore link from Supplier through Purchase Order to PO Line with Acme picked', async () => {
+      const chain = [{ mode: 'backlink', table: 'Purchase Order', column: 'supplier' }, { mode: 'backlink', table: 'PO Line', column: 'purchase_order' }]
+      await renderApp(`/featherbase/admin/explore?root=Supplier&chain=${encodeURIComponent(JSON.stringify(chain))}&select=${encodeURIComponent('["sup-acme"]')}`, admin)
     })
+    await step("the list of PO Lines shows Acme's three lines", () => new LinkedList().shows(['Bolts', 'Nuts', 'Washers']))
   })
 
   // ---- The relationship map shows one row's neighborhood ----
@@ -454,41 +437,6 @@ describe('search-and-explore', () => {
     })
   })
 
-  // ---- Find the starting table by typing; a linked row reads by its title ----
-
-  scenario('Explore opens on the purchases', async ({ admin }, step) => {
-    const user = userEvent.setup()
-    const explore = new Explore()
-    await step('the user is a System Manager', () => {})
-    await step('a table of suppliers and a table of purchases, each purchase from a supplier', () => seedPurchases(admin))
-    await step(`the user types "purch" in Explore's table search and presses Enter`, async () => {
-      await explore.open(admin)
-      await explore.searchAndStart(user, 'purch')
-    })
-    await step('Explore starts from the purchases', async () => expect(await explore.startingTable()).toBe('Purchase'))
-  })
-
-  scenario('Each purchase shows its supplier "Acme"', async ({ admin }, step) => {
-    const user = userEvent.setup()
-    const explore = new Explore()
-    await step('the user is a System Manager', () => {})
-    await step('a table of suppliers and a table of purchases, each purchase from a supplier', () => seedPurchases(admin))
-    await step('the purchases are from the supplier "Acme"', async () => {
-      const { updated_at } = await admin.get<{ updated_at: string }>('/api/table/Supplier/sup-1')
-      await patchDoc(admin, '/api/table/Supplier/sup-1', { title: 'Acme', updated_at })
-    })
-    await step(`the user types "purch" in Explore's table search and presses Enter`, async () => {
-      await explore.open(admin)
-      await explore.searchAndStart(user, 'purch')
-    })
-    await step('each purchase shows "Acme"', async () => {
-      await waitFor(() => expect(within(screen.getByTestId('explore-pane1')).getAllByText('Acme', { exact: true }).length).toBeGreaterThan(0))
-      const rows = explore.rows(1).map((r) => r.textContent ?? '')
-      expect(rows.length).toBeGreaterThan(0)
-      for (const row of rows) expect(row, `a purchase reads "${row}"`).toContain('Acme')
-    })
-  })
-
   // ---- The relationship map says how each row is related ----
 
   scenario(`A chore's assignee reads "Assigned To"`, async ({ admin }, step) => {
@@ -517,14 +465,6 @@ describe('search-and-explore', () => {
     })
   })
 })
-
-async function seedPurchases(admin: Client) {
-  await table(admin, { name: 'Supplier', id_pattern: 'prompt', title_column: 'title', columns: [data('title')] },
-    [{ row_id: 'sup-1', title: 'Bolt Co' }])
-  await table(admin, { name: 'Purchase', id_pattern: 'prompt', title_column: 'title',
-    columns: [data('title'), { column_name: 'supplier', column_type: 'Reference', reference_table: 'Supplier', in_list_view: true }] },
-    [{ row_id: 'po-1', title: 'First order', supplier: 'sup-1' }])
-}
 
 async function addChore(admin: Client) {
   await admin.post('/api/table/Volunteer', { row_id: 'vol-1', title: 'Asha', phone: '555-0142' })

@@ -34,7 +34,6 @@ export function LinkChip({ label, code, kind, onOpen, onGoThere, onFilter, filte
   filterDisabledReason?: string
   unreadable?: boolean
 }) {
-  const reasonId = useId()
   if (unreadable) return <span className="text-sm italic text-ink-muted">Not visible to you</span>
   const text = nameAndCode(label, code)
   return (
@@ -43,13 +42,29 @@ export function LinkChip({ label, code, kind, onOpen, onGoThere, onFilter, filte
         ? <button type="button" onClick={onOpen} className="min-w-0 text-left text-sm font-medium text-action wrap-anywhere hover:underline focus-visible:outline-2 focus-visible:outline-focus">{text}</button>
         : <span className="min-w-0 text-sm font-medium text-ink wrap-anywhere">{text}</span>}
       {kind && <KindTag>{kind}</KindTag>}
-      {onGoThere && <button type="button" onClick={onGoThere} className={smallActionClasses}>Go there</button>}
-      {(onFilter || filterDisabledReason) && <>
-        <button type="button" onClick={onFilter} disabled={!!filterDisabledReason}
-          title={filterDisabledReason} aria-describedby={filterDisabledReason ? reasonId : undefined}
-          className={smallActionClasses}>Filter</button>
-        {filterDisabledReason && <span id={reasonId} hidden>{filterDisabledReason}</span>}
-      </>}
+      <LinkActions onGoThere={onGoThere} onFilter={onFilter} filterDisabledReason={filterDisabledReason} />
     </span>
   )
+}
+
+/**
+ * A linked value's two actions: Go there (open the linked row) and Filter (narrow
+ * the list by this value). One implementation for a panel's chips and a list's
+ * link cells (#1276). Filter shows disabled, with its reason, where it cannot apply.
+ */
+export function LinkActions({ onGoThere, onFilter, filterDisabledReason }: {
+  onGoThere?: () => void
+  onFilter?: () => void
+  filterDisabledReason?: string
+}) {
+  const reasonId = useId()
+  return <>
+    {onGoThere && <button type="button" onClick={onGoThere} className={smallActionClasses}>Go there</button>}
+    {(onFilter || filterDisabledReason) && <>
+      <button type="button" onClick={onFilter} disabled={!!filterDisabledReason}
+        title={filterDisabledReason} aria-describedby={filterDisabledReason ? reasonId : undefined}
+        className={smallActionClasses}>Filter</button>
+      {filterDisabledReason && <span id={reasonId} hidden>{filterDisabledReason}</span>}
+    </>}
+  </>
 }

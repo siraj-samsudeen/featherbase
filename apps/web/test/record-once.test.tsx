@@ -14,7 +14,7 @@ test('one navigation is recorded once under StrictMode; navigating again records
   localStorage.setItem('fc_user', JSON.stringify({ row_id: 'Administrator', email: 'Administrator', full_name: null }))
   const router = createRouter({
     routeTree,
-    history: createMemoryHistory({ initialEntries: ['/featherbase/admin/explore'] }),
+    history: createMemoryHistory({ initialEntries: ['/featherbase/admin/glossary'] }),
   })
   render(
     <StrictMode>
@@ -24,13 +24,13 @@ test('one navigation is recorded once under StrictMode; navigating again records
     </StrictMode>,
   )
   await screen.findByTestId('admin-sidebar')
-  const visits = () => recentActions('Administrator', 10).find((e) => e.key === 'page:explore')?.visits.length ?? 0
+  const visits = () => recentActions('Administrator', 10).find((e) => e.key === 'page:glossary')?.visits.length ?? 0
   await waitFor(() => expect(visits()).toBeGreaterThan(0))
   await new Promise((r) => setTimeout(r, 100))
   expect(visits()).toBe(1)
 
   await router.navigate({ to: '/featherbase/admin/all-tables' })
-  await router.navigate({ to: '/featherbase/admin/explore', search: { root: undefined, chain: undefined, select: undefined } as never })
+  await router.navigate({ to: '/featherbase/admin/glossary' })
   await waitFor(() => expect(visits()).toBe(2))
   await new Promise((r) => setTimeout(r, 100))
   expect(visits()).toBe(2)

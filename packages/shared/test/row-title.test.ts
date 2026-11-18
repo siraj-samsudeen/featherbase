@@ -97,11 +97,13 @@ test('nothing readable at all: the Table name and the key parts', () => {
 })
 
 test('a fixed admin page path reads as its title, whatever the query or slash', () => {
-  expect(adminPathTitle('/featherbase/admin/explore')).toBe('Explore')
-  expect(adminPathTitle('/featherbase/admin/explore/?root=Task')).toBe('Explore')
+  expect(adminPathTitle('/featherbase/admin/glossary')).toBe('Glossary')
+  expect(adminPathTitle('/featherbase/admin/glossary/?term=Task')).toBe('Glossary')
+  // #1276: Explore is retired; its address only redirects.
+  expect(adminPathTitle('/featherbase/admin/explore')).toBeUndefined()
   expect(adminPathTitle('/featherbase/admin/access-tokens#top')).toBe('Access tokens')
   expect(adminPathTitle('/featherbase/admin/Task')).toBeUndefined()
-  expect(adminPathTitle('/featherbase/admin/explore/extra')).toBeUndefined()
-  expect(adminPathTitle('/junk/featherbase/admin/explore')).toBeUndefined()
+  expect(adminPathTitle('/featherbase/admin/glossary/extra')).toBeUndefined()
+  expect(adminPathTitle('/junk/featherbase/admin/glossary')).toBeUndefined()
   expect(adminPathTitle(null)).toBeUndefined()
 })

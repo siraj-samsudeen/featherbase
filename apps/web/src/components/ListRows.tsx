@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { choiceLabel } from 'shared'
 import { api } from '../lib/api'
 import { LinkedTitle, RowLink } from '../lib/row-name'
@@ -12,7 +12,7 @@ import { useI18n } from '../lib/i18n'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { PrincipalLink, PrincipalName, usePrincipalLabels } from '../lib/people'
 import { OneLine } from './list-one-line'
-import { Button, DataCards, Select, touchLinkClasses, type DataColumn } from '@featherbase/shop-floor'
+import { Button, DataCards, LinkActions, Select, touchLinkClasses, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp } from '@featherbase/shop-floor'
 import { RetiredBadge } from './RowRetirement'
 import { fmtCount } from '@featherbase/shop-floor'
@@ -137,10 +137,11 @@ export function ListRow({
           </td>
         )}
         {columns.map((col, i) => (
-          <td key={col.column_name} data-title-cell={i === 0 ? '' : undefined} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-focus-visible:bg-action-tint ${inPane ? 'bg-action-tint' : 'bg-surface group-hover:bg-subtle'}` : ''}`}>
+          <td key={col.column_name} data-title-cell={i === 0 ? '' : undefined} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-focus-visible:bg-action-tint ${inPane ? 'bg-action-tint' : 'bg-surface group-hover:bg-subtle'}` : 'group/cell relative'}`}>
             <OneLine className={i === 0 ? NAME_CLIP : 'max-w-80'}>
               <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
             </OneLine>
+            {i > 0 && <LinkCellActions row={row} col={col} />}
           </td>
         ))}
         <td aria-hidden className="border-b border-border p-0 group-last:border-b-0" />
@@ -254,6 +255,40 @@ export function ListCell({
 }
 
 const isBlank = (v: unknown) => v == null || String(v).trim() === ''
+
+/** #1276: how a list narrows itself by one link's value, for its link cells'
+ *  Filter. Absent where the list's filters are not the person's to change. */
+export const LinkCellFilter = createContext<((column: string, value: string) => void) | null>(null)
+
+/**
+ * #1276 (B2): a link cell's two hover actions, the same pair the record panel's
+ * chips offer (LinkActions): Go there opens the linked row's own page, as a step
+ * on the walk; Filter narrows this list to rows linked to that same row. A row
+ * the viewer cannot read offers neither.
+ */
+function LinkCellActions({ row, col }: { row: Record<string, unknown>; col: ListColumn }) {
+  const filter = useContext(LinkCellFilter)
+  const nav = useNavigation()
+  const navigate = useNavigate()
+  const value = row[col.column_name]
+  const anyTable = col.table_column ? row[col.table_column] : undefined
+  const target = col.column_type !== 'Reference' || isBlank(value) ? null
+    : col.table_column ? (isBlank(anyTable) ? null : String(anyTable)) : (col.reference_base ?? col.reference_table ?? null)
+  const principal = isPrincipalTable(target)
+  const title = useLinkTitle(target && !principal ? target : undefined, target ? String(value) : undefined)
+  if (!target || (!principal && title.state !== 'read')) return null
+  const rowId = String(value)
+  const goThere = () => {
+    if (nav) nav.push({ screen: 'row', table: target, row: rowId })
+    else void navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table: target, name: rowId }, search: { prefill: undefined } })
+  }
+  return (
+    <span data-testid="link-cell-actions"
+      className="absolute inset-y-0 right-1 hidden items-center gap-1 bg-surface/95 pl-1 group-hover/cell:flex group-focus-within/cell:flex">
+      <LinkActions onGoThere={goThere} onFilter={filter ? () => filter(col.column_name, rowId) : undefined} />
+    </span>
+  )
+}
 
 /** A nested row's link, by its key as before; a row the viewer cannot read
  *  is neutral words with no link (#910 D3). */

@@ -6,18 +6,22 @@ import { NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { useI18n } from '../lib/i18n'
 import { SearchInput, buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
+import { parseChain } from '../lib/linked-filters'
+import { LinkedFilterBuilder, LinkedFilterWords, useLinkOptions } from './LinkedFilter'
 
 export type Filter = [string, string, unknown]
 
-// Deliberately WITHOUT 'related' (NAV-002): the FilterBar's free-text value
-// input cannot author a relationship spec, so offering the operator here
-// could only produce malformed filters. Related filters arrive via links
-// (Connections, Explore) and render as chips like any other filter.
+// Deliberately WITHOUT 'related' (NAV-002): the free-text value input cannot
+// author a relationship spec. Relationship filters are built by Linked to… and
+// Not linked to… (#1276), or arrive via links, and render as chips.
 const OPS = ['=', '!=', 'like', '>', '<', '>=', '<='] as const
 // #1196: no value or empty text; they take no value. Only the platform's own
 // database answers them, so a connected Table's list does not offer them.
 const BLANK_OPS = ['is blank', 'is not blank'] as const
 const isBlankOp = (op: string) => (BLANK_OPS as readonly string[]).includes(op)
+// #1276: the two Add filter choices that follow a link rather than test a column.
+const LINKED = '__linked_to'
+const NOT_LINKED = '__not_linked_to'
 
 // Standard filters (adopted from PR 2's Admin screen): typed per-column
 // inputs for the list's visible columns — Choices become dropdowns, text-ish
@@ -236,6 +240,8 @@ export function filterValueLabel(op: string, value: unknown): string {
 export function FilterWords({ meta, filter }: { meta: import('../lib/meta').TableMeta | undefined; filter: Filter }) {
   const { t } = useI18n()
   const [column, op, value] = filter
+  // #1276: a Linked to chain reads as its steps, each with its count.
+  if (meta && parseChain(filter)) return <LinkedFilterWords meta={meta} filter={filter} />
   const col = meta?.columns.find((c) => c.column_name === column)
   const label = column === 'row_id' ? 'Row ID' : t(col?.label ?? column)
   const linked =
@@ -279,6 +285,10 @@ export function FilterBar({
   const [value, setValue] = useState('')
   const column = meta.columns.find((c) => c.column_name === field)
   const kind = filterBoxKind(column, op)
+  // #1276: the Tables this list links to; a connected Table follows only its own
+  // links within its source, and cannot ask for rows NOT linked.
+  const links = useLinkOptions(builderOpen ? meta.name : undefined)
+  const linked = field === LINKED || field === NOT_LINKED
 
   const ops: readonly string[] = meta.data_source ? OPS : [...OPS, ...BLANK_OPS]
   function add() {
@@ -304,7 +314,14 @@ export function FilterBar({
               {f.label}
             </option>
           ))}
+          {links.options.length > 0 && (
+            <optgroup label="Links">
+              <option value={LINKED}>Linked to…</option>
+              {!meta.data_source && <option value={NOT_LINKED}>Not linked to…</option>}
+            </optgroup>
+          )}
         </select>
+        {!linked && <>
         <select
           value={op}
           onChange={(e) => {
@@ -363,7 +380,20 @@ export function FilterBar({
         >
           Add
         </button>
+        </>}
       </div>}
+      {builderOpen && linked && (
+        <LinkedFilterBuilder
+          key={field}
+          meta={meta}
+          listFilters={filters}
+          negate={field === NOT_LINKED}
+          onAdd={(f) => {
+            onChange([...filters, f])
+            setField('row_id')
+          }}
+        />
+      )}
       {filters.length > 0 && (
         <div className={`flex flex-wrap gap-2 ${builderOpen ? 'mt-2' : ''}`} data-testid="filter-chips">
           {filters.map((f, i) => (

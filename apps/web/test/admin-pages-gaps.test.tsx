@@ -1,5 +1,5 @@
 // Small Admin page paths the merged web coverage report (ADR 0012) showed red:
-// backing out of a column rename, the column editor and Explore for a Table
+// backing out of a column rename, the column editor and an old Explore address for a Table
 // that is not there (or was deleted), Find a person by another identifier and
 // a value the server refuses or a search the network drops. Each refusal is the
 // server's real answer.
@@ -30,11 +30,11 @@ test('the column editor of a Table that is not there says so', async ({ admin })
   expect(screen.queryByTestId('ce-add-go')).not.toBeInTheDocument()
 })
 
-test('Explore of a Table deleted meanwhile says it cannot be loaded', async ({ admin }) => {
+test('an old Explore address of a Table deleted meanwhile opens its list, which says it was deleted', async ({ admin }) => {
   await admin.post('/api/table_def', { name: 'Apg Gone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   await admin.delete(`/api/table_def/${enc('Apg Gone')}`)
   await renderApp(`/featherbase/admin/explore?root=${enc('Apg Gone')}`, admin)
-  expect(await screen.findByText('Cannot load Apg Gone', {}, { timeout: 8000 })).toBeInTheDocument()
+  expect(await screen.findByText(/Table Apg Gone was deleted/, {}, { timeout: 8000 })).toBeInTheDocument()
 })
 
 test('Find a person by mobile phone: a value that is not a phone number is refused with the reason', async ({ admin }) => {
