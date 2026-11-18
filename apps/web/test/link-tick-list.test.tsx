@@ -13,7 +13,7 @@ import { rowHref, tableHref } from 'shared'
 import { sql } from 'server/src/db'
 import { tableRelation } from 'server/src/table-engine'
 import { createUserWithRole } from 'server/test/fixtures'
-import { newRowHref, pluralLabel } from '../src/components/LinkTickList'
+import { newRowHref, pluralLabel, startingValues } from '../src/components/LinkTickList'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect, renderApp } from './pg-test'
 import { SITE, seedSites, type Admin } from './relational-fixture'
@@ -428,4 +428,10 @@ test("a Links view choice that cannot be saved still holds for this visit", asyn
   fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Tree' }))
   expect(await screen.findByRole('tree')).toBeInTheDocument()
   vi.unstubAllGlobals()
+})
+
+test('a new link starts with each field as it would be saved: defaults typed, a yes/no always said', () => {
+  const col = (column_name: string, column_type: string, default_value: string | null) => ({ column_name, column_type, default_value }) as never
+  expect(startingValues([col('confirmed', 'Check', '1'), col('flag', 'Check', null), col('level', 'Choice', 'Reader'),
+    col('weight', 'Int', '2'), col('ends_on', 'Date', 'Today'), col('note', 'Data', '')])).toEqual({ confirmed: true, flag: false, level: 'Reader', weight: 2 })
 })

@@ -337,7 +337,8 @@ function AlsoGiveForm({ choice, fields, onAdd, onCancel, busy }: {
   onCancel: () => void
   busy: boolean
 }) {
-  const [values, setValues] = useState<Row>({})
+  // Each field starts as it would be saved untouched: its default, and a yes/no always said (Codex review).
+  const [values, setValues] = useState<Row>(() => startingValues(fields))
   const set = (name: string, value: unknown) => setValues((v) => ({ ...v, [name]: value }))
   const areas = fields.filter((c) => c.column_type === 'Reference')
   const rest = fields.filter((c) => c.column_type !== 'Reference')
@@ -353,6 +354,19 @@ function AlsoGiveForm({ choice, fields, onAdd, onCancel, busy }: {
         className="px-1 text-action hover:underline focus-visible:outline-2 focus-visible:outline-focus">Cancel</button>
     </div>
   )
+}
+
+/** The values a new link starts with: each field's default, typed; a yes/no is always true or false. */
+export function startingValues(fields: ColumnDef[]): Row {
+  const out: Row = {}
+  for (const c of fields) {
+    const d = c.default_value
+    if (c.column_type === 'Check') out[c.column_name] = d === '1' || d?.toLowerCase() === 'true'
+    // A date's default ("Today") is the server's to work out: the box shows it.
+    else if (d != null && d !== '' && c.column_type !== 'Date' && c.column_type !== 'Datetime' && c.column_type !== 'Reference')
+      out[c.column_name] = ['Int', 'Float', 'Currency', 'Percent'].includes(c.column_type) ? Number(d) : d
+  }
+  return out
 }
 
 const FLD = 'rounded-md border border-border-control bg-surface px-2 py-1 text-[12.5px] text-ink'
@@ -400,7 +414,7 @@ function FormField({ column, value, onChange }: { column: ColumnDef; value: unkn
     const instant = column.column_type === 'Datetime'
     const text = instant ? wall : shown
     // Reads "optional" until it is used, as a date box cannot say so itself.
-    control = <input type={focused || text ? (instant ? 'datetime-local' : 'date') : 'text'} value={text} placeholder={column.reqd ? '' : 'optional'} aria-label={label}
+    control = <input type={focused || text ? (instant ? 'datetime-local' : 'date') : 'text'} value={text} placeholder={column.default_value ? `default: ${column.default_value}` : column.reqd ? '' : 'optional'} aria-label={label}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} className={cx(FLD, 'w-36')}
       onChange={(e) => {
         if (!instant) return onChange(e.target.value)
