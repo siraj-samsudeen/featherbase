@@ -467,3 +467,17 @@ test('the lines join the centre to each box beside it, measured where the boxes 
     vi.unstubAllGlobals()
   }
 })
+
+// A row opened inside the drill pane can still become the page's centre: the
+// pane's Focus here keeps the tab the page is on.
+test("a row opened in the pane from a group becomes the map's centre by Focus here", async ({ admin }) => {
+  await seed(admin)
+  await openMap(admin, 'Rm Customer', 'cust-1')
+  fireEvent.click(await within(await screen.findByTestId('map-group-Rm Order')).findByRole('button', { name: /^Rm Order 2/ }))
+  const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
+  fireEvent.click(await within(pane).findByRole('link', { name: /Second order/ }))
+  const order = await screen.findByRole('complementary', { name: /Second order/ })
+  fireEvent.click(await within(order).findByRole('button', { name: 'Focus here' }))
+  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Second order'))
+  expect(screen.getByRole('tab', { name: 'Map' })).toHaveAttribute('aria-selected', 'true')
+})
