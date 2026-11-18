@@ -296,6 +296,31 @@ describe('a bad feed or a big batch changes nothing', () => {
     expect(await state('TT-1001')).toBe('Working')
   })
 
+  test('a feed day after today is a misdated row, and changes nobody', async ({ admin }) => {
+    await setUp(admin, [crewRow(1)])
+    const ahead = new Date(Date.parse(`${istToday()}T00:00:00Z`) + 30 * 86_400_000).toISOString().slice(0, 10)
+    warehouse([{ key: '7001', active: false, present: istToday() }], ahead)
+    const run = await runRosterLink('stylehr')
+    expect(run.status!.plan!.refused).toMatch(/^the warehouse's latest StyleHR day .* is after today/)
+    expect(await state('TT-1001')).toBe('Working')
+  })
+
+  test('a saved plan is decided again from today’s feed: an exit corrected since changes nobody, and the row is still linked', async ({ admin }) => {
+    await setUp(admin, [crewRow(1)])
+    warehouse([{ key: '7001', exit: PAST }])
+    const plan = (await planRosterLink('stylehr'))!
+    expect(plan.status!.changes).toHaveLength(1)
+    expect(plan.rows).toEqual([])
+    warehouse([{ key: '7001' }])
+
+    const run = await runRosterLink('stylehr', { plan })
+
+    expect(run.status!.changed).toBe(0)
+    expect(await state('TT-1001')).toBe('Working')
+    expect(run.created).toBe(1)
+    expect(await liveLinks()).toEqual(['7001'])
+  })
+
   test('a roster whose record numbers are not the feed’s keys changes nobody', async ({ admin }) => {
     await setUp(admin, [crewRow(1)])
     await sql`update sign_in_method set identifier_system = 'stylehr-employee-code' where row_id = 'stylehr'`

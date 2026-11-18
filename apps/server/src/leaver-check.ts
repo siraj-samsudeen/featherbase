@@ -143,6 +143,8 @@ export function recordVerdict(r: EmployeeRecord, today: string): Verdict {
 /** Why a feed cannot be trusted to change anyone today, or null when it can:
  *  stale, or empty. The roster status sync refuses on the same grounds (#1286). */
 export function feedRefusal(records: EmployeeRecord[], latestFeedDay: string | null, today: string): string | null {
+  // A day after today is a misdated row, not a fresh feed (#1286).
+  if (latestFeedDay && latestFeedDay > today) return `the warehouse's latest StyleHR day ${displayDate(latestFeedDay)} is after today ${displayDate(today)}`
   if (!latestFeedDay || daysBetween(latestFeedDay, today) > MAX_FEED_AGE_DAYS)
     return `the warehouse's StyleHR data is stale (latest day ${latestFeedDay ? displayDate(latestFeedDay) : 'none'}, today ${displayDate(today)})`
   if (!records.length) return 'the warehouse returned no StyleHR employee records'

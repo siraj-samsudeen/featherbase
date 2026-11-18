@@ -416,7 +416,8 @@ async function attempt<T>(run: RosterLinkRun, id: string, fn: () => Promise<T>):
 }
 
 export interface RosterLinkOpts {
-  /** A dry run already made, applied as it stands. */
+  /** A dry run already made: its links and ends are applied as they stand
+   *  only when it expected no status change and none is made now. */
   plan?: RosterLinkPlan
   /** A person's override of a limit, for exactly the count a dry run showed:
    *  status changes, and links ended. Never lifts a stale or empty feed. */
@@ -433,12 +434,14 @@ export async function runRosterLink(methodKey: string, opts: RosterLinkOpts = {}
   const ctx = await context(methodKey)
   if (!ctx) return run
   // The statuses change first, so this same run links a rejoiner and ends a leaver's link.
-  const status = opts.plan ? opts.plan.status : await planRosterStatus(ctx.roster)
-  // A supplied plan whose status changes were refused planned its links on the old statuses.
-  const plannedOnOldStatuses = Boolean(status?.refused)
+  // Status decisions are always made afresh from today's feed, never taken from a saved plan.
+  const status = await planRosterStatus(ctx.roster)
   run.status = await applyRosterStatus(ctx.roster, status, { acceptCount: opts.acceptStatus })
   run.failed.push(...run.status.failed)
-  const plan = opts.plan && !(plannedOnOldStatuses && run.status.changed) ? opts.plan : await planWith(ctx, status)
+  // A saved plan's links stand only when no status change was expected or made;
+  // otherwise its rows and ends were planned on statuses that are not the ones now.
+  const reusable = opts.plan && !opts.plan.status?.changes.length && !run.status.changed
+  const plan = reusable ? opts.plan! : await planWith(ctx, status)
   if (opts.acceptEnds !== undefined) {
     if (plan.ends.length !== opts.acceptEnds) plan.refused ??= `it would end ${plan.ends.length} links, not the ${opts.acceptEnds} accepted`
     else if (plan.refused?.startsWith('it would end')) plan.refused = null
