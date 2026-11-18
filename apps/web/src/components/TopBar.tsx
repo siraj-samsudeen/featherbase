@@ -471,8 +471,8 @@ function ThemeToggle({ labelled = false }: { labelled?: boolean }) {
   )
 }
 
-/** Signing out, the same from every bar. */
-function useSignOut() {
+/** Signing out, the same from every bar (and the command bar's Log out, #1325). */
+export function useSignOut() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   return async () => {
