@@ -80,6 +80,7 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
     queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(row)}`),
   })
   const cnx = useConnections(table, row, doc.isSuccess)
+  const [showEmpty, setShowEmpty] = useState(false)
   const step = nav.step
   // Closing is not a step of its own: the step simply no longer shows a pane.
   const close = () => {
@@ -109,7 +110,10 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
   // is a section of its own beside the fields; the rest are Pointed At By.
   const subtitle = [kind, status, code].filter(Boolean).join(' · ')
   const tickable = groups.filter((g) => plans.get(g.key)?.tick)
-  const chips = groups.filter((g) => !plans.get(g.key)?.tick)
+  // UI owner (#1282): as on the record page, groups with no rows wait behind "Show N empty".
+  const chipGroups = groups.filter((g) => !plans.get(g.key)?.tick)
+  const emptyChips = chipGroups.filter((g) => g.count === 0)
+  const chips = showEmpty ? chipGroups : chipGroups.filter((g) => g.count > 0)
   const levels = peekLevels(nav.path)
   return (
     <RecordFrame kind={subtitle} title={title} place={place} framed={framed} onClose={close}
@@ -141,6 +145,12 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
                     <GroupChip key={g.key} label={g.label} count={g.count} selected={open?.key === g.key}
                       onSelect={() => choose(open?.key === g.key ? undefined : { table: g.connection.table, column: g.connection.column, via: g.connection.via })} />
                   ))}
+                  {emptyChips.length > 0 && (
+                    <button type="button" onClick={() => setShowEmpty((was) => !was)} aria-expanded={showEmpty}
+                      className={touchLinkClasses('text-sm text-ink-muted hover:text-ink hover:underline')}>
+                      {showEmpty ? 'Hide empty' : `Show ${fmtCount(emptyChips.length)} empty`}
+                    </button>
+                  )}
                   {cnx.isPending && <span className="text-sm text-ink-subtle">Loading…</span>}
                   {!cnx.isPending && !groups.length && <span className="text-sm text-ink-muted">No rows point at it</span>}
                 </div>

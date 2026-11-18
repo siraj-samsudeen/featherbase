@@ -278,7 +278,9 @@ test('two links from the same table stay separate groups, each with its own coun
   await select('Enchakkal')
   const site = await pane('Enchakkal')
   expect(await within(site).findByRole('button', { name: `${PLANT} · Site 3` })).toBeInTheDocument()
-  // A group with no rows stays listed.
+  // A group with no rows waits behind Show N empty (#1282, as on the record page), and is still there.
+  expect(within(site).queryByRole('button', { name: `${PLANT} · Backup site 0` })).not.toBeInTheDocument()
+  fireEvent.click(within(site).getByRole('button', { name: /^Show \d+ empty$/ }))
   expect(within(site).getByRole('button', { name: `${PLANT} · Backup site 0` })).toBeInTheDocument()
 })
 
