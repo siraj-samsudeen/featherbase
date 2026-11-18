@@ -11,18 +11,39 @@ import { test, expect, renderApp } from './pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
 
-test('the list shows each person who can still sign in, why, and how; the header says the leaver job is off', async ({ admin, createUser }) => {
+test('the list shows its four sections in order, each person with why and how; the header says the leaver job is off', async ({ admin, createUser }) => {
   const gone = await createUser({ email: 'gone.1271@example.com', fullName: 'Gone Leaver' })
-  await sql`insert into leaver_sign_in (row_id, person, why, ways_in, left_on, source)
-    values ('r1271a', ${gone.user!}, 'Left on 03-Oct-2026', 'Google, Password', '2026-10-03', 'leaver job')`
+  const boss = await createUser({ email: 'boss.1271@example.com', fullName: 'Boss Leaver' })
+  const quiet = await createUser({ email: 'quiet.1271@example.com', fullName: 'Quiet Leaver' })
+  const out = await createUser({ email: 'out.1271b@example.com', fullName: 'Outside Holder' })
+  // Stored out of order: the list follows each row's position, which the rebuild sets section by section.
+  await sql`insert into leaver_sign_in (row_id, position, section, person, why, ways_in, left_on) values
+    ('r1271d', 3, '4. Not an employee, holds a StyleHR link', ${out.user!}, 'Not an employee, holds a StyleHR link', 'StyleHR', null),
+    ('r1271a', 0, '1. Leaver job would disable', ${gone.user!}, 'Exit date 03-Oct-2026 has passed', 'Google, Password', '2026-10-03'),
+    ('r1271c', 2, '3. Left, no StyleHR link', ${quiet.user!}, 'The people app says they have left', 'Google', '2026-09-30'),
+    ('r1271b', 1, '2. System Manager: never disabled by the job', ${boss.user!}, 'Marked inactive in StyleHR', 'Password', null)`
+  await sql`update scheduled_job set last_run_at = now(), last_result = 'The leaver job''s next run would refuse: the warehouse''s StyleHR data is stale'
+    where row_id = 'refresh_leaver_sign_in'`
   await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
   const page = await screen.findByTestId('leavers-who-can-sign-in')
-  expect(await within(page).findByText('Left on 03-Oct-2026')).toBeInTheDocument()
+  expect(await within(page).findByText('Exit date 03-Oct-2026 has passed')).toBeInTheDocument()
   expect(within(page).getByText('Google, Password')).toBeInTheDocument()
   expect(await within(page).findByRole('link', { name: /Gone Leaver/ })).toBeInTheDocument()
+  const sections = within(page).getAllByRole('cell').map((c) => c.textContent ?? '').filter((t) => /^[1-4]\. /.test(t))
+  expect(sections).toEqual([
+    '1. Leaver job would disable',
+    '2. System Manager: never disabled by the job',
+    '3. Left, no StyleHR link',
+    '4. Not an employee, holds a StyleHR link',
+  ])
   expect(await within(page).findByTestId('leaver-job-line')).toHaveTextContent('Leaver job: Off')
   expect(within(page).getByTestId('leaver-job-line')).toHaveTextContent('nobody is disabled while it is off')
-  expect(within(page).getByTestId('leaver-checked')).toHaveTextContent('Checked never')
+  expect(within(page).getByTestId('leaver-checked')).toHaveTextContent("next run would refuse: the warehouse's StyleHR data is stale")
+})
+
+test('a list never rebuilt says it was checked never', async ({ admin }) => {
+  await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
+  expect(await screen.findByTestId('leaver-checked')).toHaveTextContent(/^Checked never$/)
 })
 
 test('Refresh Now queues the rebuild', async ({ admin }) => {

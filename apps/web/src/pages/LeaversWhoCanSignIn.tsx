@@ -10,6 +10,8 @@ import type { Filter } from '../components/ListFilters'
 interface Status {
   leaver_job: { on: boolean; last_run_at: string | null; last_outcome: string | null; last_result: string | null } | null
   checked_at: string | null
+  /** The last rebuild's summary; it names a leaver-job plan that could not be read or would refuse. */
+  checked_result: string | null
 }
 
 export const LEAVER_STATUS_KEY = ['leaver-sign-in-status'] as const
@@ -39,7 +41,12 @@ function StatusLine() {
           {!job?.on && <> · nobody is disabled while it is off</>}
         </span>
       )}
-      {s && <span data-testid="leaver-checked">Checked {at(s.checked_at)}</span>}
+      {s && (
+        <span data-testid="leaver-checked">
+          Checked {at(s.checked_at)}
+          {s.checked_result ? <> · {s.checked_result}</> : null}
+        </span>
+      )}
       <Button variant="secondary" disabled={refresh.isPending} onClick={() => refresh.mutate()} data-testid="leaver-refresh">
         {refresh.isPending || refresh.isSuccess ? 'Refreshing…' : 'Refresh Now'}
       </Button>
@@ -54,7 +61,7 @@ export function LeaversWhoCanSignIn({ filters, onFiltersChange }: { filters: Fil
         table="Leaver Sign In"
         filters={filters}
         onFiltersChange={onFiltersChange}
-        defaultOrderBy="left_on desc"
+        defaultOrderBy="position asc"
         title={adminPageTitle('leavers-who-can-sign-in')}
         breadcrumb={
           <div className="text-xs text-ink-subtle">

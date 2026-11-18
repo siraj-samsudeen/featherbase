@@ -138,6 +138,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   instance_settings_apply: { applied_by: id, environment: code, revision: code, run: code, managed_paths: code, managed_values: code },
   internal_metadata: { '*': code },
   job_execution: { job: code, method: code, outcome: code, error: text, result: text },
+  leaver_sign_in: { person: id, section: code, why: text, ways_in: text },
   letter_head: { '*': text },
   metadata_override: { '*': code },
   migration: { '*': code },

@@ -60,18 +60,39 @@ const password = (person: string) => sql`update person set password_hash = 'x' w
 const googleLink = (person: string, email: string) => sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
   values (${'uid_' + person.slice(-8)}, ${person}, 'google', ${'g-' + person}, ${email}, 'Administrator')`
 
-test("the leaver job's own plan lists its leavers, with the date they left and how they still sign in", async ({ admin }) => {
+test("the leaver job's own plan lists its leavers with the rule that hit them, then the System Managers it never disables", async () => {
   await applySeedPack('jeyarama')
   await configureGoogle({ enabled: true, client_id: 'made-up' })
   const gone = await makePerson({ full_name: 'Gone By Plan' })
+  const inactive = await makePerson({ full_name: 'Inactive By Plan' })
+  const boss = await makePerson({ full_name: 'Boss By Plan' })
   await linkStyleHrRecord(gone, '701')
-  await password(gone)
+  await linkStyleHrRecord(inactive, '702')
+  await linkStyleHrRecord(boss, '703')
+  await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values ('hr_boss_1271', ${boss}, 'Person', 'roles', 'System Manager')`
+  for (const p of [gone, inactive, boss]) await password(p)
   await googleLink(gone, 'gone.plan@gmail.com')
-  warehouse([rec('701', 'C-701', { exit_date: '2026-10-03', movement_active: false })])
-  void admin
-  expect(await leaverSignInRows()).toEqual([
-    { person: gone, why: 'Left on 03-Oct-2026', ways_in: 'Password, Google', left_on: '2026-10-03', source: 'leaver job' },
+  warehouse([
+    rec('701', 'C-701', { exit_date: '2026-10-03', movement_active: false }),
+    rec('702', 'C-702', { movement_active: false }),
+    rec('703', 'C-703', { exit_date: '2026-09-01' }),
   ])
+  expect(await leaverSignInRows()).toEqual({
+    plan_note: null,
+    rows: [
+      { section: '1. Leaver job would disable', person: gone, why: 'Exit date 03-Oct-2026 has passed', ways_in: 'Password, Google', left_on: '2026-10-03' },
+      { section: '1. Leaver job would disable', person: inactive, why: 'Marked inactive in StyleHR', ways_in: 'Password', left_on: null },
+      { section: '2. System Manager: never disabled by the job', person: boss, why: 'Exit date 01-Sep-2026 has passed', ways_in: 'Password', left_on: '2026-09-01' },
+    ],
+  })
+})
+
+test("a plan the leaver job would refuse, or cannot read, is named; the people app's sections still list", async () => {
+  await applySeedPack('jeyarama')
+  _setWarehouseReader(async (q) => q.includes('attendance') ? [['2020-01-01']] : [])
+  expect((await leaverSignInRows()).plan_note).toMatch(/^The leaver job's next run would refuse: the warehouse's StyleHR data is stale/)
+  _setWarehouseReader(async () => { throw new Error('warehouse down') })
+  expect((await leaverSignInRows()).plan_note).toBe("The leaver job's plan could not be read: warehouse down")
 })
 
 test('the people app adds leavers with no StyleHR link, and outsiders who hold one; nobody without a way in', async ({ admin }) => {
@@ -93,9 +114,9 @@ test('the people app adds leavers with no StyleHR link, and outsiders who hold o
     [noWayIn]: { person: noWayIn, status: 'left' },
     [disabled]: { person: disabled, status: 'left' },
   }
-  const rows = await leaverSignInRows()
-  expect(rows).toContainEqual({ person: googleLeaver, why: 'Left on 30-Sep-2026', ways_in: 'Google', left_on: '2026-09-30', source: 'people app' })
-  expect(rows).toContainEqual({ person: outsider, why: 'Not an employee, holds a StyleHR link', ways_in: 'StyleHR', left_on: null, source: 'not an employee' })
+  const { rows } = await leaverSignInRows()
+  expect(rows).toContainEqual({ section: '3. Left, no StyleHR link', person: googleLeaver, why: 'The people app says they have left', ways_in: 'Google', left_on: '2026-09-30' })
+  expect(rows).toContainEqual({ section: '4. Not an employee, holds a StyleHR link', person: outsider, why: 'Not an employee, holds a StyleHR link', ways_in: 'StyleHR', left_on: null })
   expect(rows.map((r) => r.person)).not.toContain(noWayIn)
   expect(rows.map((r) => r.person)).not.toContain(disabled)
 })
@@ -105,9 +126,9 @@ test('a refresh replaces the rows, changes nobody, and the routes are for System
   await configureGoogle({ enabled: true, client_id: 'made-up' })
   const leaver = await makePerson({ full_name: 'Listed Leaver' })
   await googleLink(leaver, 'listed@gmail.com')
-  await sql`insert into leaver_sign_in (row_id, person, why, ways_in, source) values ('old-row-1271', 'Administrator', 'stale', 'Password', 'leaver job')`
+  await sql`insert into leaver_sign_in (row_id, person, why, ways_in, section) values ('old-row-1271', 'Administrator', 'stale', 'Password', '1. Leaver job would disable')`
   globalThis.__standing1271 = { [leaver]: { person: leaver, status: 'left' } }
-  expect(await refreshLeaverSignIn()).toBe(1)
+  expect((await refreshLeaverSignIn()).rows).toHaveLength(1)
   expect((await sql`select person from leaver_sign_in`).map((r) => r.person)).toEqual([leaver])
   expect((await sql`select enabled from person where row_id = ${leaver}`)[0].enabled).toBe(true)
 
