@@ -116,9 +116,9 @@ describe('Feedback on a report (#1240)', () => {
     expect(form.types.map((type: any) => type.key)).toContain('report_feedback')
     const manifest = JSON.parse(await readFile(resolve(TICKETS_DIRECTORY, 'featherbase.json'), 'utf8'))
     expect(manifest.reads.operations.about_report).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
-    // #1236's (0.2.18, the switcher's line), #1248's (0.2.19, the sidebar rail) and #1252's (0.2.20, the ticket page's words) no-op steps, and #1256's relabel (0.2.21), follow it.
-    expect(manifest.migrations.at(-5)).toEqual({ id: 'report_feedback', fromVersion: '0.2.15', toVersion: '0.2.17', operations: [] })
-    expect(TICKETS_VERSION).toBe('0.2.21')
-    expect((await sql`select package_version from installed_app where name = 'tickets'`)[0].package_version).toBe('0.2.21')
+    // #1236's (0.2.18, the switcher's line), #1248's (0.2.19, the sidebar rail) and #1252's (0.2.20, the ticket page's words) no-op steps, and #1256's relabel (0.2.21) and the glossary terms (0.2.22), follow it.
+    expect(manifest.migrations.at(-6)).toEqual({ id: 'report_feedback', fromVersion: '0.2.15', toVersion: '0.2.17', operations: [] })
+    expect(TICKETS_VERSION).toBe('0.2.22')
+    expect((await sql`select package_version from installed_app where name = 'tickets'`)[0].package_version).toBe('0.2.22')
   })
 })

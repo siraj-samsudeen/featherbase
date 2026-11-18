@@ -35,19 +35,19 @@ function rememberRow(user: string, at: number) {
 }
 
 /** What the browser buffer held before #442: a fixed page as a slug-named list. */
-function rememberOldGlossary(user: string, at: number) {
-  recordAction(user, { kind: 'list', key: 'list:glossary?', label: 'glossary', path: '/featherbase/admin/glossary' }, at)
+function rememberOldAllTables(user: string, at: number) {
+  recordAction(user, { kind: 'list', key: 'list:all-tables?', label: 'all-tables', path: '/featherbase/admin/all-tables' }, at)
 }
 
 test('Last view shows an old slug-labelled page by its catalog title, on Home and in Recent', async ({ admin }) => {
-  rememberOldGlossary('Administrator', Date.now() - 1000)
+  rememberOldAllTables('Administrator', Date.now() - 1000)
   await renderApp('/featherbase/admin', admin)
   const tile = await screen.findByTestId('resume-tile-view')
-  expect(within(tile).getByTestId('resume-tile-title')).toHaveTextContent('Glossary')
-  expect(tile).not.toHaveTextContent(/\bglossary\b/)
+  expect(within(tile).getByTestId('resume-tile-title')).toHaveTextContent('All tables')
+  expect(tile).not.toHaveTextContent(/\ball-tables\b/)
   const recent = await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
-  expect(recent).toHaveTextContent('Glossary')
-  expect(recent).not.toHaveTextContent(/\bglossary\b/)
+  expect(recent).toHaveTextContent('All tables')
+  expect(recent).not.toHaveTextContent(/\ball-tables\b/)
 })
 
 test('Last row reads as the row, with its Table beneath — not its internal id', async ({ admin }) => {
@@ -72,13 +72,13 @@ test("a home page's links curated before any card break sit under a heading", as
 
 test('My activity: under a day heading, the kind icon, "You opened …", repeats collapsed, the clock time', async ({ admin }) => {
   const now = Date.now()
-  const glossary = { kind: 'page', key: 'page:glossary', label: 'Words and meanings', path: '/featherbase/admin/glossary' }
-  await admin.post('/api/events', { events: [{ ...glossary, at: now - 3000 }, { ...glossary, at: now - 2000 }] })
+  const allTables = { kind: 'page', key: 'page:all-tables', label: 'Words and meanings', path: '/featherbase/admin/all-tables' }
+  await admin.post('/api/events', { events: [{ ...allTables, at: now - 3000 }, { ...allTables, at: now - 2000 }] })
   await renderApp('/featherbase/admin', admin)
   const feed = await screen.findByTestId('activity-feed')
-  const link = await within(feed).findByRole('button', { name: 'Glossary' })
+  const link = await within(feed).findByRole('button', { name: 'All tables' })
   const row = link.closest('[data-testid="feed-item"]') as HTMLElement
-  expect(within(feed).getAllByTestId('feed-item').filter((r) => r.textContent?.includes('Glossary'))).toHaveLength(1)
+  expect(within(feed).getAllByTestId('feed-item').filter((r) => r.textContent?.includes('All tables'))).toHaveLength(1)
   // The day heading over it.
   const group = row.closest('[data-testid="feed-day-group"]') as HTMLElement
   expect(within(group).getByTestId('feed-day')).toHaveTextContent('Today')
@@ -87,7 +87,7 @@ test('My activity: under a day heading, the kind icon, "You opened …", repeats
   expect(row.firstElementChild).toBe(icon)
   expect(row.textContent).not.toMatch(/\bPAGE\b/)
   // Then the sentence…
-  expect(row.textContent).toMatch(/^You opened Glossary\s*· 2×/)
+  expect(row.textContent).toMatch(/^You opened All tables\s*· 2×/)
   // …and the clock time last.
   expect(row.lastElementChild).toBe(within(row).getByTestId('feed-time'))
   expect(within(row).getByTestId('feed-time').textContent).toMatch(/^\d{2}:\d{2}$/)
@@ -120,7 +120,7 @@ test('Team tab: the same row — kind icon, "<person> changed …", role kept qu
 })
 
 test('Home headings are sentence case, not capitals', async ({ admin }) => {
-  rememberOldGlossary('Administrator', Date.now() - 1000)
+  rememberOldAllTables('Administrator', Date.now() - 1000)
   await renderApp('/featherbase/admin', admin)
   const strip = await screen.findByTestId('resume-strip')
   expect(within(strip).getByText('Continue where you left off')).not.toHaveClass('uppercase')
@@ -128,7 +128,7 @@ test('Home headings are sentence case, not capitals', async ({ admin }) => {
 })
 
 test('the sidebar heads its list "Recently opened", and each item leads with its table\'s coloured tile', async ({ admin }) => {
-  rememberOldGlossary('Administrator', Date.now() - 1000)
+  rememberOldAllTables('Administrator', Date.now() - 1000)
   await renderApp('/featherbase/admin', admin)
   const recent = await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
   const heading = screen.getByTestId('sidebar-recents-heading')

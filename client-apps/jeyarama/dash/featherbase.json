@@ -3083,6 +3083,12 @@
       "fromVersion": "0.13.35",
       "toVersion": "0.13.36",
       "operations": []
+    },
+    {
+      "id": "glossary_terms",
+      "fromVersion": "0.13.36",
+      "toVersion": "0.13.37",
+      "operations": []
     }
   ],
   "baseTables": {
