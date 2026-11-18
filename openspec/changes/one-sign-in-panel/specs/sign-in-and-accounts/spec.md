@@ -38,24 +38,23 @@ or username and a password) sit under the form, one tap away.
 
 ### Requirement: One panel of ways in
 
-Wherever a sign-in is offered (the first sign-in page and the "We couldn't sign
-you in" card), the ways in SHALL be drawn by one panel: Google, Microsoft, each
-connected service, then "Sign in with user name and password", each only when it
-is on, in that order and as the same button, none promoted. A page leaves out
-only the way in whose form it already shows. The card adds only its heading and
-one sentence above the panel.
+Wherever a sign-in is offered, the page SHALL be drawn one way: its open form,
+"or", then one panel of the other ways in (Google, Microsoft, each connected
+service, then "Sign in with user name and password"), each only when it is on,
+in that order and as the same button. The "We couldn't sign you in" card is that
+same page with only its heading and one sentence above it.
 
 #### Scenario: The card after a failed Microsoft sign-in
 
 - **WHEN** a Microsoft sign-in comes back refused, because the account is not set
   up or because the attempt took too long or started in another window
-- **THEN** the card shows "We couldn't sign you in" and one sentence, then
-  "Sign in with Google", "Try another Microsoft account", "Sign in with StyleHR"
-  and "Sign in with user name and password", all the same button, and no
-  "Other ways to sign in" link
+- **THEN** the card shows "We couldn't sign you in" and one sentence, then the
+  first page exactly: StyleHR's form, "or", "Sign in with Google", "Try another
+  Microsoft account" and "Sign in with user name and password", all the same
+  button, and no "Other ways to sign in" link
 
 #### Scenario: The first page offers the same ways in
 
 - **WHEN** someone opens the sign-in page while StyleHR is connected
 - **THEN** StyleHR's form comes first, and under it the panel offers Google,
-  Microsoft and user name and password, in the same order and button as the card
+  Microsoft and user name and password, exactly as the card shows them

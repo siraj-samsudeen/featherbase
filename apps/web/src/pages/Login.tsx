@@ -391,13 +391,13 @@ export function LoginPage() {
   )
 
   // #1283: one panel of ways in for every place a sign-in is offered.
-  const panel = (p: { failed?: 'google' | 'microsoft'; without?: string | null }) => (
+  const panel = (p: { without?: string | null }) => (
     <SignInPanel
       google={google}
       microsoft={microsoft}
       delegated={delegatedMethods}
       password={passwordOn}
-      failed={p.failed ?? null}
+      failed={panelShowing ? (refusedByMicrosoft ? 'microsoft' : 'google') : null}
       without={p.without ?? null}
       onRedirect={() => rememberLoginNext(next)}
       onDelegated={(key) => switchMode('delegated', key)}
@@ -448,16 +448,17 @@ export function LoginPage() {
               onSignInAgain={signInAgain}
               onUseAnother={() => setUseAnother(true)}
             />
-          ) : panelShowing ? (
-            <div className="space-y-5" data-testid="sign-in-refused-panel">
-              <div className="space-y-2">
-                <h2 className="text-base font-semibold text-ink">We couldn't sign you in</h2>
-                <p className="text-sm text-ink-muted" data-testid="sign-in-refused">{panelRefusal}</p>
-              </div>
-              {/* #1283: the same ways in as the first page; the one that failed reads "Try another … account". */}
-              {panel({ failed: refusedByMicrosoft ? 'microsoft' : 'google' })}
+          ) : (
+          <>
+          {/* #1283 (UI owner, 18-Nov-2026): the card is its message above exactly the first page: the same form,
+              the same "or", the same ways in, the failed one reading "Try another … account". */}
+          {panelShowing && (
+            <div className="mb-5 space-y-2" data-testid="sign-in-refused-panel">
+              <h2 className="text-base font-semibold text-ink">We couldn't sign you in</h2>
+              <p className="text-sm text-ink-muted" data-testid="sign-in-refused">{panelRefusal}</p>
             </div>
-          ) : mode === 'delegated' && delegatedLabel ? (
+          )}
+          {mode === 'delegated' && delegatedLabel ? (
             <>
               <form className="space-y-4" data-testid="delegated-login-form" onSubmit={onDelegatedSubmit}>
                 {errorLine}
@@ -618,6 +619,8 @@ export function LoginPage() {
               </form>
             )}
           </div>
+          </>
+          )}
           </>
           )}
         </div>

@@ -20,7 +20,8 @@ test('a Google account nobody set up reads plainly and offers the connected serv
   await renderApp('/featherbase/login?error=not_provisioned', anonymous)
   // #474: on the panel the service is offered by its own button, so the
   // sentence does not repeat it.
-  const button = await screen.findByTestId('delegated-login-toggle')
+  // #1283: the card shows the first page under its message, StyleHR's form and its own button first.
+  const button = await screen.findByTestId('delegated-login-submit')
   expect(button).toHaveTextContent('Sign in with StyleHR')
   const sentence = screen.getByTestId('sign-in-refused')
   expect(sentence).toHaveTextContent("This Google account isn't set up for")
@@ -165,39 +166,29 @@ const sameButtons = (root: HTMLElement) => {
 // #474's panel, as #1283 (owner, 18-Nov-2026) reshaped it: the card adds only its message above the
 // one shared panel of ways in. The numbers are #1283's spec items.
 describe('the "We couldn\'t sign you in" card (#474, #1283)', () => {
-  test('6: a refusal shows the heading and the plain sentence, and no input until the person chooses', async () => {
+  // #1283 option C (UI owner, 18-Nov-2026): the card is its message above exactly the first page.
+  test('6: a refusal shows the heading and the plain sentence above the first page, StyleHR\'s form first', async () => {
     await configureDelegated()
     await renderApp('/featherbase/login?error=not_provisioned', anonymous)
-    const panel = await screen.findByTestId('sign-in-refused-panel')
-    expect(within(panel).getByRole('heading', { name: "We couldn't sign you in" })).toBeInTheDocument()
-    expect(within(panel).getByTestId('sign-in-refused')).toHaveTextContent("This Google account isn't set up for")
-    await screen.findByTestId('delegated-login-toggle')
-    expect(typeableInputs()).toEqual([])
-    expect(screen.queryByTestId('login-form')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('delegated-login-form')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument()
+    const message = await screen.findByTestId('sign-in-refused-panel')
+    expect(within(message).getByRole('heading', { name: "We couldn't sign you in" })).toBeInTheDocument()
+    expect(within(message).getByTestId('sign-in-refused')).toHaveTextContent("This Google account isn't set up for")
+    // The message adds only a heading and one sentence: no button or link of its own.
+    expect(within(message).queryAllByRole('button')).toEqual([])
+    expect(within(message).queryAllByRole('link')).toEqual([])
+    const form = await screen.findByTestId('delegated-login-form')
+    expect(within(form).getByTestId('delegated-login-submit')).toHaveTextContent('Sign in with StyleHR')
+    expect(message.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  test('3: StyleHR is a button like the others, not promoted, and opens the StyleHR form', async () => {
-    await configureDelegated()
-    await renderApp('/featherbase/login?error=not_provisioned', anonymous)
-    const stylehr = await screen.findByTestId('delegated-login-toggle')
-    expect(stylehr).toHaveTextContent('Sign in with StyleHR')
-    expect(sameButtons(screen.getByTestId('sign-in-refused-panel'))).toBe(1)
-    await userEvent.click(stylehr)
-    expect(await screen.findByTestId('delegated-login-form')).toBeInTheDocument()
-    expect(screen.getByLabelText('StyleHR ID')).toBeInTheDocument()
-    expect(screen.queryByTestId('sign-in-refused-panel')).not.toBeInTheDocument()
-  })
-
-  test('5: "Try another Google account" keeps its place and restarts Google sign-in with the account picker forced', async () => {
+  test('5: "Try another Google account" keeps Google\'s place and restarts Google sign-in with the account picker forced', async () => {
     await configureDelegated()
     await renderApp('/featherbase/login?error=not_provisioned', anonymous)
     const retry = await screen.findByTestId('refused-google-retry')
     expect(retry).toHaveTextContent('Try another Google account')
     expect(retry.tagName).toBe('A')
     expect(retry).toHaveAttribute('href', RETRY_HREF)
-    expect(kinds(screen.getByTestId('sign-in-refused-panel'))[0]).toBe('google')
+    expect(kinds(document.body)[0]).toBe('google')
   })
 
   test('4: user name and password is a button, the same as on the first page, and there is no "Other ways to sign in"', async () => {
@@ -214,15 +205,13 @@ describe('the "We couldn\'t sign you in" card (#474, #1283)', () => {
     expect(screen.getByTestId('sign-in-refused')).toHaveTextContent("This Google account isn't set up for")
   })
 
-  test('3: without StyleHR the Google retry is still an ordinary button', async () => {
+  test('3: the ways in under the form are one button style, none promoted; without StyleHR the card opens on the password form', async () => {
     await removeDelegated()
     await renderApp('/featherbase/login?error=not_provisioned', anonymous)
-    const panel = await screen.findByTestId('sign-in-refused-panel')
-    await within(panel).findByTestId('refused-google-retry')
-    expect(sameButtons(panel)).toBe(1)
-    expect(within(panel).queryByTestId('delegated-login-toggle')).not.toBeInTheDocument()
-    expect(within(panel).queryByText(/StyleHR/)).not.toBeInTheDocument()
-    expect(typeableInputs()).toEqual([])
+    await screen.findByTestId('refused-google-retry')
+    expect(sameButtons(document.body)).toBe(1)
+    expect(screen.getByTestId('login-form')).toBeInTheDocument()
+    expect(screen.queryByText(/StyleHR/)).not.toBeInTheDocument()
   })
 
   test('7: unknown and hostile codes get the card with the generic message, and nothing of the code', async () => {
@@ -236,54 +225,54 @@ describe('the "We couldn\'t sign you in" card (#474, #1283)', () => {
     }
   })
 
-  test('8: the first page and both error variants offer the same ways in, in the same order; only the message differs', async () => {
+  test('1, 2, 7, 8: the first page and both error variants draw the same form and ways in, in the same order; only the message differs', async () => {
     await configureDelegated()
     await configureMicrosoft({ enabled: true, client_id: 'made-up' })
-    // The first page opens on StyleHR's form; its panel offers the rest, in the shared order.
-    const first = await renderApp('/featherbase/login', anonymous)
-    await screen.findByTestId('delegated-login-form')
-    await screen.findByTestId('microsoft-login')
-    expect(kinds(document.body)).toEqual(['google', 'microsoft', 'password'])
-    expect(sameButtons(document.body)).toBe(1)
-    first.unmount()
-    const seen: { kinds: string[]; texts: string[] }[] = []
-    for (const variant of ['error=not_provisioned&via=microsoft', 'error=expired&via=microsoft']) {
-      const view = await renderApp(`/featherbase/login?${variant}`, anonymous)
-      const card = await screen.findByTestId('sign-in-refused-panel')
-      await within(card).findByTestId('refused-microsoft-retry')
-      expect(sameButtons(card)).toBe(1)
-      seen.push({ kinds: kinds(card), texts: Array.from(within(card).getByTestId('sign-in-panel').querySelectorAll('a, button')).map((el) => el.textContent ?? '') })
+    /** Everything in the card under its message: the form, then the ways in, as text and as kinds. */
+    const page = async (path: string) => {
+      const view = await renderApp(path, anonymous)
+      await screen.findByTestId('delegated-login-form')
+      await waitFor(() => expect(within(screen.getByTestId('sign-in-panel')).getAllByRole('link').length).toBe(2))
+      const seen = {
+        form: within(screen.getByTestId('delegated-login-form')).getByTestId('delegated-login-submit').textContent,
+        divider: Boolean(screen.queryByTestId('sign-in-divider')),
+        kinds: kinds(document.body),
+        texts: Array.from(screen.getByTestId('sign-in-panel').querySelectorAll('a, button')).map((el) => el.textContent ?? ''),
+        styles: sameButtons(document.body),
+        message: screen.queryByTestId('sign-in-refused')?.textContent ?? null,
+      }
       view.unmount()
+      return seen
     }
-    // The card shows every way in, with StyleHR in the place its form takes on the first page.
-    expect(seen[0].kinds).toEqual(['google', 'microsoft', 'stylehr', 'password'])
-    expect(seen[1]).toEqual(seen[0])
-    expect(seen[0].texts).toEqual(['Sign in with Google', 'Try another Microsoft account', 'Sign in with StyleHR', 'Sign in with user name and password'])
+    const first = await page('/featherbase/login')
+    const refused = await page('/featherbase/login?error=not_provisioned&via=microsoft')
+    const expired = await page('/featherbase/login?error=expired&via=microsoft')
+    expect(first).toEqual({ form: 'Sign in with StyleHR', divider: true, kinds: ['google', 'microsoft', 'password'], styles: 1, message: null,
+      texts: ['Sign in with Google', 'Sign in with Microsoft', 'Sign in with user name and password'] })
+    for (const card of [refused, expired])
+      expect({ ...card, message: null }).toEqual({ ...first, texts: ['Sign in with Google', 'Try another Microsoft account', 'Sign in with user name and password'] })
+    expect(refused.message).toMatch(/This Microsoft account isn't set up/)
+    expect(expired.message).toMatch(/took too long or was started in another window/)
   })
 
   test('the card heading replaces the subtitle, which comes back once the person chooses', async () => {
-    await configureDelegated()
+    await removeDelegated()
     await renderApp('/featherbase/login?error=not_provisioned', anonymous)
-    await screen.findByTestId('delegated-login-toggle')
+    await screen.findByTestId('sign-in-refused-panel')
     expect(screen.queryByText('Sign in to your account')).not.toBeInTheDocument()
-    await userEvent.click(screen.getByTestId('password-login-toggle'))
-    expect(screen.getByText('Sign in to your account')).toBeInTheDocument()
   })
 
-  test('choosing a way in drops the error from the address, so a reload does not bring the card back', async () => {
+  test('choosing another way in drops the error from the address, so a reload does not bring the card back', async () => {
     await configureDelegated()
     const path = '/featherbase/login?error=not_provisioned&next=%2Ffeatherbase%2Fadmin'
-    for (const choice of ['password-login-toggle', 'delegated-login-toggle']) {
-      // The test router keeps its own history; a browser's address bar holds
-      // the same URL, so put it there as the browser would.
-      window.history.replaceState(null, '', path)
-      const view = await renderApp(path, anonymous)
-      await userEvent.click(await screen.findByTestId(choice))
-      expect(new URLSearchParams(window.location.search).get('error')).toBeNull()
-      expect(new URLSearchParams(window.location.search).get('next')).toBe('/featherbase/admin')
-      expect(window.location.pathname).toBe('/featherbase/login')
-      view.unmount()
-    }
+    // The test router keeps its own history; a browser's address bar holds the same URL, so put it there as the browser would.
+    window.history.replaceState(null, '', path)
+    const view = await renderApp(path, anonymous)
+    await userEvent.click(await screen.findByTestId('password-login-toggle'))
+    expect(new URLSearchParams(window.location.search).get('error')).toBeNull()
+    expect(new URLSearchParams(window.location.search).get('next')).toBe('/featherbase/admin')
+    expect(window.location.pathname).toBe('/featherbase/login')
+    view.unmount()
   })
 
   test('no refusal code, no card: the usual methods show straight away', async () => {
