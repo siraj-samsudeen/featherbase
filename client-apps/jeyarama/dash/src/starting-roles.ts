@@ -1,31 +1,40 @@
-// #1218 (D3, D4, D9, D8): Jeyarama's business roles as first offered, written once into the Tables on
-// a System Manager's or Report Access Manager's click and edited there afterwards. Nothing reads this
-// list to decide anything: the rows do.
+// #1218 (D3, D4, D9, D8): Jeyarama's business roles as first offered, written into the Tables only on a System
+// Manager's Add The Starting Roles click and edited there afterwards. Nothing reads this list to decide anything:
+// the rows do. Owner, 18-Nov-2026 (#1277): managers see their team's tickets; Edit Section names and subcategories;
+// Head Office has no Dash by default; Master Data Manager (not Steward). External people (consultants) get no role
+// by title: they are given roles by hand.
 import type { Reach, Reaches } from './business-roles.ts'
 
 type Grant = [app: string, level: string, verb: string, thing: string, reach: Reach]
 const TICKETS: Grant = ['Tickets', 'User', 'Raise', 'Tickets', 'Own']
+/** Owner, 18-Nov-2026: every manager sees their team's tickets. */
+const TEAM_TICKETS: Grant = ['Tickets', 'Manager', 'View', 'Tickets', 'Team']
 const OWN_TASKS: Grant = ['Tasker', 'User', 'Edit', 'Tasks', 'Own']
 const TEAM_TASKS: Grant = ['Tasker', 'Manager', 'Edit', 'Tasks', 'Team']
 const REPORTS_IN_AREA: Grant = ['Dash', 'Reader', 'View', 'Reports', 'Area']
-const SECTIONS: Grant = ['Dash', 'Manager', 'Edit', 'Sections', 'Area']
+/** Owner, 18-Nov-2026: a section's name and which subcategories sit under it, within the role's area. */
+export const SECTIONS_THING = 'Section names and subcategories'
+const SECTIONS: Grant = ['Dash', 'Manager', 'Edit', SECTIONS_THING, 'Area']
 const GIVE_TO_TEAM: Grant = ['Dash', 'Manager', 'Give', 'Reports', 'Team']
 const EVERY_REPORT: Grant = ['Dash', 'Reader', 'View', 'Reports', 'All']
+/** The Master Data app at its manager level: read, add and edit every master table, delete none. */
+const MASTER_DATA = (verb: string): Grant => ['Master Data', 'Manager', verb, 'Master Tables', 'All']
 
 export interface StartingRole { name: string; description: string; reaches: Reaches; by_hand_only?: boolean; grants: Grant[] }
 export const STARTING_ROLES: StartingRole[] = [
   { name: 'Staff', reaches: 'Section', description: 'Works in a section. Tasker and Tickets for their own work; no Dash yet.', grants: [OWN_TASKS, TICKETS] },
-  { name: 'Team Leader', reaches: 'Section', description: 'Leads a section.', grants: [REPORTS_IN_AREA, ['Dash', 'Reader', 'Edit', 'Sections', 'Area'], TEAM_TASKS, TICKETS] },
-  { name: 'Floor Manager', reaches: 'Floor', description: 'Runs a floor of a store.', grants: [REPORTS_IN_AREA, SECTIONS, TEAM_TASKS, TICKETS] },
-  { name: 'Department Manager', reaches: 'Department', description: 'Runs a department of a store.', grants: [REPORTS_IN_AREA, SECTIONS, TEAM_TASKS, TICKETS] },
-  { name: 'Store Manager', reaches: 'Store', description: 'Runs a store.', grants: [REPORTS_IN_AREA, SECTIONS, GIVE_TO_TEAM, TEAM_TASKS, TICKETS] },
-  { name: 'Cluster Manager', reaches: 'Cluster', description: 'Looks after the stores of a cluster.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, TEAM_TASKS, TICKETS] },
+  { name: 'Team Leader', reaches: 'Section', description: 'Leads a section.', grants: [REPORTS_IN_AREA, ['Dash', 'Reader', 'Edit', SECTIONS_THING, 'Area'], TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Floor Manager', reaches: 'Floor', description: 'Runs a floor of a store.', grants: [REPORTS_IN_AREA, SECTIONS, TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Department Manager', reaches: 'Department', description: 'Runs a department of a store.', grants: [REPORTS_IN_AREA, SECTIONS, TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Store Manager', reaches: 'Store', description: 'Runs a store.', grants: [REPORTS_IN_AREA, SECTIONS, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Cluster Manager', reaches: 'Cluster', description: 'Looks after the stores of a cluster.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
   { name: 'Buyer', reaches: 'Merchandise', description: 'Buys subcategories for a region.', grants: [REPORTS_IN_AREA, OWN_TASKS, TICKETS] },
-  { name: 'Category Head', reaches: 'Merchandise', description: 'Heads the buyers of a category, subdivision or division.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, ['Dash', 'Manager', 'Edit', 'Buyer Sections', 'Area'], TEAM_TASKS, TICKETS] },
-  { name: 'Head Office', reaches: 'Whole company', description: 'Works at head office; reaches the whole company.', grants: [EVERY_REPORT, OWN_TASKS, TICKETS] },
-  { name: 'Leadership', reaches: 'Whole company', description: 'Directors and the chief operating officer; reaches the whole company.', grants: [EVERY_REPORT, GIVE_TO_TEAM, TEAM_TASKS, TICKETS] },
-  { name: 'Master Data Steward', reaches: 'Whole company', description: 'Keeps the master tables right: reads, adds and edits them everywhere, and deletes none.', by_hand_only: true,
-    grants: [['Master Data', 'Steward', 'View', 'Master Tables', 'All'], ['Master Data', 'Steward', 'Add', 'Master Tables', 'All'], ['Master Data', 'Steward', 'Edit', 'Master Tables', 'All']] },
+  { name: 'Category Head', reaches: 'Merchandise', description: 'Heads the buyers of a category, subdivision or division.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, ['Dash', 'Manager', 'Edit', 'Buyer Sections', 'Area'], TEAM_TASKS, TEAM_TICKETS] },
+  // Owner, 18-Nov-2026: no reports and no Dash by default; head office staff get reports through a role given by hand or a grant.
+  { name: 'Head Office', reaches: 'Whole company', description: 'Works at head office. No Dash by default: reports come from a role given by hand or a report given to them.', grants: [OWN_TASKS, TICKETS] },
+  { name: 'Leadership', reaches: 'Whole company', description: 'Directors and the chief operating officer; reaches the whole company.', grants: [EVERY_REPORT, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Master Data Manager', reaches: 'Whole company', description: 'Keeps the master tables right: reads, adds and edits them everywhere, and deletes none.', by_hand_only: true,
+    grants: [MASTER_DATA('View'), MASTER_DATA('Add'), MASTER_DATA('Edit')] },
   { name: 'Vendor', reaches: 'Given place', description: 'An outside supplier, given by hand: sees only their own supplier\'s articles once the supplier area is set up.', by_hand_only: true, grants: [REPORTS_IN_AREA] },
 ]
 

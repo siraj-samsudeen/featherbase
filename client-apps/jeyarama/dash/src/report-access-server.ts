@@ -123,8 +123,7 @@ async function scopeOf(ctx: AccessContext, on: string): Promise<Scope> {
   const roles = ctx.roles!
   // What they can open themselves: given to them, and not shut by their own reach, as Dash offers it to them.
   // Opening a report takes a Dash reader role too (the manifest's report and embed_session readRoles; Codex adversarial round 2).
-  // #1277: under business roles a report opens without a reader role (the manifest's readRoles are everyone's).
-  const opensReports = roles.some(role => role === 'Dash Reader' || role === ALL_STORES_ROLE) || await accessSource(ctx.baseTables as Base) === BUSINESS_ROLES
+  const opensReports = roles.some(role => role === 'Dash Reader' || role === ALL_STORES_ROLE)
   const reports = (await names(ctx)).reports
   const reach = ctx.reach ? await ctx.reach(ctx.user, roles) : { any: false, wholeStore: false }
   const holds = new Set(!opensReports ? [] : [...(await reportsGivenNow(ctx.baseTables as Base, ctx.user, roles, on)).keys()]

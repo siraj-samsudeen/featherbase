@@ -11,7 +11,7 @@ import { EMPLOYEE_STATUS, checked, exact, holdsOn, text } from './values.ts'
 import { istToday } from './report.ts'
 import { STARTING_ROLES } from './starting-roles.ts'
 import { opensDashFor, readableByRoles, offered } from './report-eligibility.ts'
-import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
+import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
 import { businessReports, businessRolesOpen, opensDashByBusinessRoles } from './business-reports.ts'
 import { ensureStartingRoles, logger } from './switch-over.ts'
 
@@ -49,7 +49,8 @@ export function memoryDocuments(base: Base, designations: boolean): Base & { row
   const loaded = new Map<string, Promise<Row[]>>()
   const fields: Record<string, string[]> = { ...FIELDS, 'Job Assignment': [...FIELDS['Job Assignment'], ...(designations ? ['designation'] : [])] }
   const rows = (table: string) => {
-    if (!loaded.has(table)) loaded.set(table, all(base, table, fields[table] ?? []))
+    // As the scope provider reads them: retired rows included.
+    if (!loaded.has(table)) loaded.set(table, everyRow(base, table, fields[table] ?? []))
     return loaded.get(table)!
   }
   return { rows, available: table => base.available(table), list: async (table, args) => page(await rows(table), args) }
@@ -98,7 +99,7 @@ export async function shadowWorld(base: Base, today: string = istToday()): Promi
   const designations = await readsDesignations(base)
   const docs = memoryDocuments(base, designations)
   const { model, hand } = await businessModel(base, today)
-  const designationNames = new Map((designations ? await all(base, DESIGNATION, ['designation']) : []).map(row => [exact(row.row_id), text(row.designation)]))
+  const designationNames = new Map((designations ? await everyRow(base, DESIGNATION, ['designation']) : []).map(row => [exact(row.row_id), text(row.designation)]))
   const every = (await docs.rows('Subcategory')).map(r => exact(r.row_id))
   const names = async (table: string, column = 'name') => new Map((await docs.rows(table)).map(r => [exact(r.row_id), text(r[column])]))
   return { docs, model, hand, designations, designationNames, every, grants: await grantRows(base), today, names }

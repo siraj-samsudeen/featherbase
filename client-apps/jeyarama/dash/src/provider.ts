@@ -9,7 +9,7 @@ type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
 /** The platform's document reads, and an app's base Table reads, as far as this file uses them. */
 export interface Documents {
-  list(table: string, args: { fields: string[]; filters?: Filter[]; order_by?: string; limit_start?: number; limit_page_length?: number }): Promise<Row[]>
+  list(table: string, args: { fields: string[]; filters?: Filter[]; order_by?: string; limit_start?: number; limit_page_length?: number; with_retired?: boolean }): Promise<Row[]>
   /** featherbase #1247: whether a Table can be read now; absent on an older platform (then: no). */
   available?(table: string): Promise<boolean>
 }

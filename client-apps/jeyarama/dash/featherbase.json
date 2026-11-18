@@ -648,7 +648,7 @@
           "label": "Given by hand only",
           "column_type": "Check",
           "in_list_view": true,
-          "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Steward or Vendor."
+          "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Manager or Vendor."
         },
         {
           "column_name": "reaches",
@@ -858,10 +858,10 @@
           "column_name": "outcome",
           "label": "Outcome",
           "column_type": "Choice",
-          "choices": "Added\nNot converted",
+          "choices": "Added\nAlready given\nNot converted",
           "reqd": true,
           "in_list_view": true,
-          "description": "Added: written by the step. Not converted: an old grant with no matching business role, left as it was; it gives nothing while business roles decide."
+          "description": "Added: written by the step. Already given: the business role had it already. Not converted: an old grant with no matching business role, left as it was; it gives nothing while business roles decide. An old grant given to a role once is never given again, even if the role's grant is later removed."
         },
         {
           "column_name": "detail",
@@ -2961,10 +2961,10 @@
                 "column_name": "outcome",
                 "label": "Outcome",
                 "column_type": "Choice",
-                "choices": "Added\nNot converted",
+                "choices": "Added\nAlready given\nNot converted",
                 "reqd": true,
                 "in_list_view": true,
-                "description": "Added: written by the step. Not converted: an old grant with no matching business role, left as it was; it gives nothing while business roles decide."
+                "description": "Added: written by the step. Already given: the business role had it already. Not converted: an old grant with no matching business role, left as it was; it gives nothing while business roles decide. An old grant given to a role once is never given again, even if the role's grant is later removed."
               },
               {
                 "column_name": "detail",
@@ -2988,6 +2988,17 @@
                 "in_list_view": true
               }
             ]
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.business_role",
+          "column": "by_hand_only",
+          "from": {
+            "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Steward or Vendor."
+          },
+          "to": {
+            "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Manager or Vendor."
           }
         }
       ]

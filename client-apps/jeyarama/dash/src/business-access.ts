@@ -19,11 +19,15 @@ export const DESIGNATION = 'Designation'
 export type Base = Documents & { available(table: string): Promise<boolean> }
 
 const PAGE = 500
-/** Every row of a list, 500 a call in row_id order; reads one at a time, as the scope provider requires. */
+/**
+ * Every row of a list, 500 a call in row_id order; reads one at a time, as the scope provider requires. Retired rows
+ * too: the scope provider always sees them (retiring never changes reach), so every reader of access rules must, or
+ * the provider and the reads would disagree (Codex standard round 1 on #1277).
+ */
 export async function every(documents: Documents, table: string, fields: string[], filters: Filter[] = []): Promise<Row[]> {
   const rows: Row[] = []
   for (;;) {
-    const page = await documents.list(table, { fields: ['row_id', ...fields], filters, order_by: 'row_id asc', limit_start: rows.length, limit_page_length: PAGE })
+    const page = await documents.list(table, { fields: ['row_id', ...fields], filters, order_by: 'row_id asc', limit_start: rows.length, limit_page_length: PAGE, with_retired: true })
     rows.push(...page)
     if (page.length < PAGE) return rows
   }

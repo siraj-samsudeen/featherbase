@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { areasFor, authorityRows, inArea, jobInArea, mayMove, movableIn, sectionAreaOf, type Area } from './areas.ts'
 import { context, today } from './fake-context.test-support.ts'
+import { ensureStartingRoles } from './switch-over.ts'
 
 const sectionArea: Area = { kind: 'section', job: 'J1', site: 'LKS', floor: null, sections: new Set(['S1']), department: null }
 
@@ -38,5 +39,40 @@ describe('an area', () => {
     const { ctx } = context({ Employee: [{ row_id: 'E1', person: 'sm', status: 'Current' }] })
     expect(await mayMove(ctx, 'sm', { row_id: 'J1', employee: 'E1' }, { row_id: 'S1', site: 'LKS' }, today)).toBe(false)
     expect(await sectionAreaOf(ctx, 'sm', undefined, today)).toBeUndefined()
+  })
+})
+
+// #1277 (owner, 18-Nov-2026): under business roles, a manager edits a section's name and subcategories only where a
+// role of theirs holding Edit Section names and subcategories comes from that very job.
+describe('who may edit sections when business roles decide', () => {
+  async function store(source: 'business_roles' | 'legacy' | null, hand: Record<string, unknown>[] = []) {
+    const tables: Record<string, Record<string, unknown>[]> = {
+      Employee: [{ row_id: 'E1', person: 'sm', status: 'Current' }],
+      'Job Assignment': [{ row_id: 'J1', employee: 'E1', job: 'Store Manager', site: 'LKS', starts_on: '2026-01-01', ends_on: null }],
+      'dash.business_role': [], 'dash.business_role_permission': [], 'dash.title_map': [], 'dash.role_assignment': hand,
+      'dash.access_source': source ? [{ row_id: 'x', source }] : [],
+    }
+    let n = 0
+    await ensureStartingRoles(context(tables).ctx.baseTables as never, { create: async (table: string, row: Record<string, unknown>) => { const saved = { row_id: `${table}-${++n}`, ...row }; tables[table].push(saved); return saved } })
+    return { tables, ctx: context(tables).ctx, roleId: (name: string) => String(tables['dash.business_role'].find(r => r.role_name === name)!.row_id) }
+  }
+  const section = { row_id: 'S1', site: 'LKS', floor: 'F1' }
+
+  it('lets a Store Manager by title edit their store\'s sections, under either rules', async () => {
+    for (const source of ['business_roles', 'legacy', null] as const) expect((await sectionAreaOf((await store(source)).ctx, 'sm', section, today))?.kind).toBe('store')
+  })
+
+  it('takes it away when their role is corrected to one without the permission, only once business roles decide', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Staff') })
+    expect(await sectionAreaOf(ctx, 'sm', section, today)).toBeUndefined()
+    tables['dash.access_source'][0].source = 'legacy'
+    expect((await sectionAreaOf(ctx, 'sm', section, today))?.kind).toBe('store')
+  })
+
+  it('gives nothing at their own store when the role is corrected to apply at another store', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Store Manager'), site: 'HIL' })
+    expect(await sectionAreaOf(ctx, 'sm', section, today)).toBeUndefined()
   })
 })

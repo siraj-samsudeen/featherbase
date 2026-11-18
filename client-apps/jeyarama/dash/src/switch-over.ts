@@ -17,7 +17,7 @@ type Row = Record<string, unknown>
 export const SWITCH_OVER_LOG = 'dash.switch_over_log'
 export const ACCESS = 'dash.report_access'
 export type Step = 'Starting role' | 'Title map' | 'Report grant'
-export type Outcome = 'Added' | 'Not converted'
+export type Outcome = 'Added' | 'Already given' | 'Not converted'
 export interface Writer { create(table: string, values: Row): Promise<Row> }
 export interface LogLine { step: Step; outcome: Outcome; detail: string; business_role?: string | null; source_grant?: string | null }
 
@@ -72,6 +72,10 @@ export function rolesForOldRole(role: string, model: Pick<Model, 'roles' | 'perm
 export async function convertGrants(read: Documents, write: Writer, model: Model, log: (line: LogLine) => Promise<boolean>): Promise<{ added: number; notConverted: number }> {
   const rows = (await every(read, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'business_role', 'removed'])).filter(r => !checked(r.removed))
   const live = new Set(rows.map(r => accessKey(r)).flatMap(k => ('key' in k ? [k.key] : [])))
+  // Each old grant given to a role once, ever: a later removal or change of that role grant is the owner's decision,
+  // and running this again must not undo it (Codex adversarial round 1). The log is the record of what was given.
+  const given = new Set((await every(read, SWITCH_OVER_LOG, ['step', 'outcome', 'source_grant', 'business_role']))
+    .filter(l => text(l.step) === 'Report grant' && ['Added', 'Already given'].includes(text(l.outcome))).map(l => `${exact(l.source_grant)}/${exact(l.business_role)}`))
   const roleName = new Map(model.roles.map(r => [r.id, r.name]))
   let added = 0
   let notConverted = 0
@@ -91,7 +95,13 @@ export async function convertGrants(read: Documents, write: Writer, model: Model
     }
     for (const role of targets) {
       const found = accessKey({ ...gives, business_role: role })
-      if (!('key' in found) || live.has(found.key)) continue
+      if (!('key' in found) || given.has(`${exact(row.row_id)}/${role}`)) continue
+      given.add(`${exact(row.row_id)}/${role}`)
+      if (live.has(found.key)) {
+        await log({ step: 'Report grant', outcome: 'Already given', source_grant: exact(row.row_id), business_role: role,
+          detail: `${roleName.get(role)} already had ${what}, as it was given to the ${old.kind} ${old.name}` })
+        continue
+      }
       await write.create(ACCESS, { ...gives, business_role: role, given_by_name: 'Switch-over to business roles' })
       live.add(found.key)
       added++

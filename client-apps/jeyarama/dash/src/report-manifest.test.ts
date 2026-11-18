@@ -324,7 +324,7 @@ describe('the version step for Dash All-Stores Reader', () => {
       // #1218: business roles in shadow, four Tables that decide no one's access yet
       ['business_roles_shadow', '0.13.27', '0.13.28', 4],
       // #1277: business roles decide Dash access: four Tables marked as deciding scope, grants to business roles, the switch and its log
-      ['business_roles_live', '0.13.28', '0.13.30', 7],
+      ['business_roles_live', '0.13.28', '0.13.30', 8],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')

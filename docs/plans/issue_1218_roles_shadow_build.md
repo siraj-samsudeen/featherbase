@@ -8,7 +8,7 @@ The design is `issue_1218_jobs_and_roles.md` (D1–D9) in this folder.
 
 1. **Business roles as data (D1, D5).** A **Business Role** row holds a name, a description and whether it is given by hand only.
    - Its permissions are rows of Business Role × app × thing × verb × reach (Own / Team / Area / All, D2).
-   - It is seeded with Jeyarama's roles: Staff, Team Leader, Floor Manager, Department Manager, Store Manager, Cluster Manager, Buyer, Category Head, Head Office, Leadership, Master Data Steward (D9) and Vendor (D8). The contents follow D3, D4 and D9: Basic is Tasker and Tickets, and Dash comes from Team Leader up.
+   - It is seeded with Jeyarama's roles: Staff, Team Leader, Floor Manager, Department Manager, Store Manager, Cluster Manager, Buyer, Category Head, Head Office, Leadership, Master Data Manager (D9; renamed from Master Data Steward, owner 18-Nov-2026) and Vendor (D8). The contents follow D3, D4 and D9: Basic is Tasker and Tickets, and Dash comes from Team Leader up.
    - These are rows an admin edits, never code.
 2. **Title Map (D7 wording; designation → business role).**
    - It is prefilled from today's job values. Each of the ten jobs maps to its business role, and a designation with no mapping falls back to its job.

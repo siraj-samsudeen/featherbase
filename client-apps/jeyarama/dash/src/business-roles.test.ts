@@ -7,7 +7,7 @@ const ROLES: BusinessRole[] = [
   { id: 'r-staff', name: 'Staff', reaches: 'Section' }, { id: 'r-tl', name: 'Team Leader', reaches: 'Section' }, { id: 'r-sm', name: 'Store Manager', reaches: 'Store' },
   { id: 'r-cm', name: 'Cluster Manager', reaches: 'Cluster' }, { id: 'r-buyer', name: 'Buyer', reaches: 'Merchandise' }, { id: 'r-head', name: 'Category Head', reaches: 'Merchandise' },
   { id: 'r-ho', name: 'Head Office', reaches: 'Whole company' }, { id: 'r-lead', name: 'Leadership', reaches: 'Whole company' },
-  { id: 'r-mds', name: 'Master Data Steward', by_hand_only: true, reaches: 'Whole company' },
+  { id: 'r-mds', name: 'Master Data Manager', by_hand_only: true, reaches: 'Whole company' },
 ]
 const PERMISSIONS: Permission[] = [
   { role: 'r-staff', app: 'Tasker', level: 'User', verb: 'Edit', thing: 'Tasks', reach: 'Own' },
@@ -16,7 +16,7 @@ const PERMISSIONS: Permission[] = [
   { role: 'r-sm', app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area' },
   { role: 'r-sm', app: 'Tasker', level: 'Manager', verb: 'Edit', thing: 'Tasks', reach: 'Team' },
   { role: 'r-buyer', app: 'Dash', level: 'Reader', verb: 'View', thing: 'Reports', reach: 'Area' },
-  { role: 'r-mds', app: 'Master Data', level: 'Steward', verb: 'Edit', thing: 'Master Tables', reach: 'All' },
+  { role: 'r-mds', app: 'Master Data', level: 'Manager', verb: 'Edit', thing: 'Master Tables', reach: 'All' },
 ]
 const RULES: TitleRule[] = [
   { title: 'Staff', role: 'r-staff' }, { title: 'Team Leader', role: 'r-tl' }, { title: 'Store Manager', role: 'r-sm' },

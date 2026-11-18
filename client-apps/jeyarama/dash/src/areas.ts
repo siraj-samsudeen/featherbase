@@ -7,6 +7,10 @@
 //   Team Leader         their own sections; they move Staff only
 import { EMPLOYEE_STATUS, exact, holdsOn, text } from './values.ts'
 import { JOB_FIELDS, SECTION_FIELDS, T, all, list, type Row } from './my-sections.ts'
+import { BUSINESS_ROLES, accessSource, liveBusinessAccess } from './access-source.ts'
+import type { Base } from './business-access.ts'
+import { DASH_APP } from './business-roles.ts'
+import { SECTIONS_THING } from './starting-roles.ts'
 
 type Ctx = Parameters<typeof list>[0]
 export const DEPARTMENT = 'Department'
@@ -75,7 +79,30 @@ export async function areasFor(ctx: Ctx, employees: Row[], today: string): Promi
   for (const job of jobs.filter(j => text(j.job) === 'Team Leader' && exact(j.section) && exact(j.site))) bySite.set(exact(job.site), [...(bySite.get(exact(job.site)) ?? []), job])
   for (const [site, held] of bySite)
     areas.push({ kind: 'section', job: exact(held[0].row_id), site, floor: null, sections: new Set(held.map(j => exact(j.section))), department: null })
-  return areas
+  return businessRolesAllow(ctx, employees, today, areas, jobs)
+}
+
+/**
+ * #1277 (owner, 18-Nov-2026): when business roles decide, a manager edits a section's name and which subcategories
+ * sit under it only where a business role of theirs with the Dash permission Edit Section names and subcategories
+ * applies: an area stays only when a role holding that permission comes from the very job the area comes from
+ * (from their HR title, or corrected or also given by hand at that job). This only ever narrows the areas jobs give;
+ * a role given at another place adds none. Under the old rules, the jobs alone decide, as before.
+ */
+async function businessRolesAllow(ctx: Ctx, employees: Row[], today: string, areas: Area[], jobs: Row[]): Promise<Area[]> {
+  if (!areas.length) return areas
+  const base = ctx.baseTables as unknown as Base
+  if (await accessSource(base) !== BUSINESS_ROLES) return areas
+  const person = exact(employees[0]?.person)
+  if (!person) return []
+  const { access, model } = await liveBusinessAccess(base, person, today)
+  const edits = new Set(model.permissions.filter(p => p.app === DASH_APP && p.verb === 'Edit' && p.thing === SECTIONS_THING).map(p => p.role))
+  const siteOf = new Map(jobs.map(j => [exact(j.row_id), exact(j.site)]))
+  // A hand change naming another store puts the role there, not at the job's own store: that job's area doesn't count.
+  const allowedJobs = new Set(access.held.flatMap(h => (edits.has(h.role) && h.spot.kind === 'job' && (!h.spot.site || h.spot.site === siteOf.get(h.spot.job)) ? [h.spot.job] : [])))
+  // A Team Leader's area stands for every section job at that store; any one of them carrying the permission keeps it.
+  const jobsOf = (area: Area) => area.kind === 'section' ? jobs.filter(j => text(j.job) === 'Team Leader' && exact(j.site) === area.site).map(j => exact(j.row_id)) : [area.job]
+  return areas.filter(area => jobsOf(area).some(job => allowedJobs.has(job)))
 }
 
 /** The current staff rows of a person, by their person id. */

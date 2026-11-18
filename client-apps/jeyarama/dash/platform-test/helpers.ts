@@ -73,6 +73,9 @@ export function revertBusinessRolesLive(manifest: Revertable) {
     for (const table of manifest.tables) {
       if (SHADOW_TABLES.includes(table.name)) delete table.decides_scope
       if (table.name === 'dash.report_access') table.columns = table.columns!.filter(c => c.column_name !== 'business_role')
+      // #1277's step renames Master Data Steward in the column's description.
+      for (const column of (table.columns ?? []) as { column_name: string; description?: string }[])
+        if (table.name === 'dash.business_role' && column.column_name === 'by_hand_only') column.description = column.description!.replace('Master Data Manager', 'Master Data Steward')
     }
   }
   if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !LIVE_TABLES.includes(p.table))
