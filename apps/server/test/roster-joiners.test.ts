@@ -250,6 +250,17 @@ describe('a team that joins together', () => {
     expect(await codes()).toEqual([])
   })
 
+  test('a report whose manager joins but is held waits with them, and both join once the feed is fixed', async ({ admin }) => {
+    await setUp(admin)
+    warehouse([{ key: '8001', name: null }, { key: '8002', manager: 'TT-8001' }])
+    const plan = (await planRosterLink('stylehr'))!.joiners!
+    expect(plan.joiners).toEqual([])
+    expect(plan.held.map((h) => [h.record, h.reason])).toEqual([['8001', 'no_name'], ['8002', 'manager_held']])
+    warehouse([{ key: '8001' }, { key: '8002', manager: 'TT-8001' }])
+    await runRosterLink('stylehr')
+    expect((await jobsOf('ZZ-TT-8002'))[0]).toMatchObject({ boss: 'ZZ-TT-8001' })
+  })
+
   test('a sign-in ID with spaces around it is the same ID', async ({ admin }) => {
     await setUp(admin, [crewRow(1, { crew_no: 'TT-8001' })])
     warehouse([{ key: '7001', code: 'TT-8001' }, { key: '8001', code: ' tt-8001 ', region: 'YY' }, { key: '8002', code: ' TT-5 ' }, { key: '8003', code: 'tt-5', region: 'XX' }])
@@ -289,6 +300,7 @@ describe('who is never added', () => {
       { key: '8004', payroll: false, joined: daysAgo(3) }, // a recent joiner not yet paid: added
       { key: '8005', exit: PAST, present: today(), active: false }, // the rule holds them at work, but they are no plain joiner
       { key: '8006', payroll: null, joined: '2005-01-01' }, // payroll unknown: no evidence they are paid
+      { key: '8007', payroll: false, joined: '2999-01-01' }, // joins on a later day: not current yet
     ])
     const run = await runRosterLink('stylehr')
     expect(run.joiners).toMatchObject({ added: 1 })

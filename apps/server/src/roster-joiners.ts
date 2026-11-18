@@ -177,7 +177,7 @@ export interface JoinerFacts {
   jobIds: Set<string>
 }
 
-export type JoinerHeld = 'no_code' | 'code_taken' | 'no_name' | 'sign_in_id_taken' | 'sign_in_id_shared' | 'conflicting_records'
+export type JoinerHeld = 'no_code' | 'code_taken' | 'no_name' | 'sign_in_id_taken' | 'sign_in_id_shared' | 'conflicting_records' | 'manager_held'
 export type JobHeld = 'no_site' | 'id_taken'
 
 export interface PlannedJoiner {
@@ -217,6 +217,8 @@ const sectionKey = (site: string, name: string) => `${site}\u0000${name.trim().t
 export function isJoinerRecord(r: EmployeeRecord, today: string, feedDay: string | null): boolean {
   const v = recordVerdict(r, today, feedDay)
   // Positive evidence only: active, and on the payroll or a recent joiner. An unknown payroll is neither.
+  // Someone joining on a later day is not current yet.
+  if (r.date_of_joining && r.date_of_joining > today) return false
   return !v.leaver && !v.atWork && r.movement_active === true && (r.payroll_active === true || v.recentJoiner)
 }
 
@@ -341,6 +343,13 @@ export function planJoinerAdds(
       if (existing && !incoming) j.manager = { row: existing }
       else if (incoming && !facts.managers.has(m) && incoming !== j.record) j.manager = { record: incoming }
     }
+    // A report whose manager joins but is held this run waits with them, so its
+    // job is never saved without the manager it should name.
+    const heldRecords = new Set(plan.held.map((h) => h.record))
+    const heldManagers = new Set(candidates.filter(({ record }) => heldRecords.has(record)).map(({ r }) => signInOf(r)).filter(Boolean))
+    const waiting = plan.joiners.filter((j) => j.job && !j.manager && heldManagers.has(managerOf.get(j.record) ?? ''))
+    for (const j of waiting) plan.held.push({ record: j.record, reason: 'manager_held' })
+    plan.joiners = plan.joiners.filter((j) => !waiting.includes(j))
   }
   if (plan.joiners.length > plan.limit)
     plan.refused = `it would add ${plan.joiners.length} new joiners to ${facts.current} current rows, more than the limit of ${plan.limit}`
