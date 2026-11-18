@@ -87,7 +87,8 @@ const RELATED_KEYS = ['table', 'via', 'column', 'parentfield', 'filters'] as con
 function readRelated(v: unknown, depth: number): Obj | null {
   if (!isObj(v) || !onlyKeys(v, RELATED_KEYS) || !isId(v.table)) return null
   for (const k of ['via', 'column', 'parentfield'] as const) if (v[k] !== undefined && !isId(v[k])) return null
-  if ((v.via === undefined) !== (v.column === undefined)) return null
+  // A via needs its column; a column alone is a back-link (#1276).
+  if (v.via !== undefined && v.column === undefined) return null
   if (v.parentfield !== undefined && v.via === undefined) return null
   const out: Obj = { table: v.table }
   for (const k of ['via', 'column', 'parentfield'] as const) if (v[k] !== undefined) out[k] = v[k]

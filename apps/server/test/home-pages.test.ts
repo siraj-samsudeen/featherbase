@@ -304,12 +304,12 @@ describe('System membership comes from the current catalogue', () => {
 
   test('missing placement hints fall back to one name-ordered Platform card', async ({ admin }) => {
     await sql`delete from home_page_link where parent = 'system' and parenttype = 'Home Page'`
-    const catalogue = await sql`select name from table_def where system and kind != 'sub_table'`
-    const names = catalogue.map((t) => String(t.name)).sort()
+    const catalogue = await sql`select name, label from table_def where system and kind != 'sub_table'`
+    // Each link reads as its Table's label, or its name where it has none (#1271's Leaver Sign In has one).
+    const links = catalogue.map((t) => ({ label: String(t.label || t.name), link_to: String(t.name) }))
+      .sort((a, b) => (a.link_to < b.link_to ? -1 : a.link_to > b.link_to ? 1 : 0))
     const system = (await pages(admin)).find((p) => p.row_id === 'system')!
-    expect(system.cards).toEqual([
-      { label: 'Platform', links: names.map((name) => ({ label: name, link_to: name })) },
-    ])
+    expect(system.cards).toEqual([{ label: 'Platform', links }])
   })
 
   test('placement hints cannot change eligible membership', async ({ admin }) => {

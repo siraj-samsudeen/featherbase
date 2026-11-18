@@ -1959,7 +1959,7 @@ app.get('/api/home_pages', async (c) => {
 })
 
 // NAV-001 (#102 review): the tables the caller may actually read, for
-// navigation pickers like Explore's root select. Reading the metadata
+// navigation pickers. Reading the metadata
 // `Table` table requires its own permission most users don't have — this
 // filters by each candidate table's read permission instead, the same
 // posture as the Home Pages endpoint.

@@ -201,7 +201,7 @@ describe('external-data-sources', () => {
   scenario('An empty upstream search shows no floors', async ({ admin }, step) => {
     let result: Awaited<ReturnType<typeof floors>>
     await step('a connected Postgres source has North with two floors, South with one floor and Empty with none', () => exploreSource(admin, EXPLORE))
-    await step('the user explores floors for stores matching "Missing" without selecting a store', async () => {
+    await step('the user lists the floors linked to stores matching "Missing"', async () => {
       result = await floors(admin, { filters: JSON.stringify([['store', 'related', { table: EXPLORE_STORE, filters: [['label', '=', 'Missing']] }]]) })
     })
     await step('the connected result has no floors with a total of zero', () => {
@@ -216,7 +216,7 @@ describe('external-data-sources', () => {
       await exploreSource(admin, EXPLORE)
       await manyStores(EXPLORE)
     })
-    await step('the user explores floors without selecting a store from that source', async () => {
+    await step('the user lists the floors linked to any store of that source', async () => {
       result = await floors(admin, { fields: '["row_id"]', filters: JSON.stringify([['store', 'related', { table: EXPLORE_STORE, filters: [] }]]), order_by: 'row_id asc' })
     })
     await step('floors linked to stores beyond the displayed page contribute to the exact result', () => {

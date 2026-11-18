@@ -144,6 +144,16 @@ describe('encodePath / decodePath', () => {
     expect(decodePath(encodePath(path))).toEqual(path)
   })
 
+  it('round-trips a Not linked to filter through a link Table (#1276)', () => {
+    const notLinked: NavStep = {
+      screen: 'list',
+      table: 'Employee',
+      filters: [['row_id', 'not related', { table: 'Job Assignment', column: 'employee', filters: [['role', 'related', { table: 'Role', filters: [['row_id', 'in', ['r-1']]] }]] }]],
+    }
+    const path = walk(sites, notLinked)
+    expect(decodePath(encodePath(path))).toEqual(path)
+  })
+
   it('round-trips a filter on a number', () => {
     const path = walk(sites, { screen: 'list', table: 'Site', filters: [['plants', '>', 3]] })
     expect(decodePath(encodePath(path))).toEqual(path)

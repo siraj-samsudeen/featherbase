@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { actions, asDecider, BASE_TABLES, fewNames, reads, type ActionContext, type ReadContext } from './my-sections.ts'
 import { istToday } from './report.ts'
+import { ensureStartingRoles } from './switch-over.ts'
 
 type Row = Record<string, unknown>
 const today = istToday()
@@ -516,5 +517,37 @@ describe('what Not in any section reads', () => {
     const { ctx, asked } = spy(tables, {})
     expect((await reads.unplaced(ctx) as { rows: { removed_by: unknown }[] }).rows.map(r => r.removed_by)).toEqual([null])
     expect(asked).toEqual([{ states: ['Not yet reviewed'], limit: 500, start: 0 }])
+  })
+})
+
+// #1277: when business roles decide, Your sections' own changes need a role from that job that may edit sections, and
+// an approval re-checks it.
+describe('Your sections under business roles', () => {
+  async function decided(correctTo: string | null) {
+    const tables = world({ Plant: [{ row_id: '9901', site: 'LKS', plant_type: 'Store' }], 'dash.access_source': [{ row_id: 'x', source: 'business_roles' }],
+      'dash.business_role': [], 'dash.business_role_permission': [], 'dash.title_map': [], 'dash.role_assignment': [] })
+    let n = 0
+    const writer = { create: async (table: string, row: Row) => { const saved = { row_id: `${table}-${++n}`, ...row }; tables[table].push(saved); return saved } }
+    const probe = context(tables).ctx as unknown as { baseTables: Record<string, unknown> }
+    const withAvailable = (ctx: unknown) => { const c = ctx as { baseTables: Record<string, unknown> }; c.baseTables.available = async (t: string) => t in tables; return ctx }
+    withAvailable(probe)
+    await ensureStartingRoles(probe.baseTables as never, writer)
+    if (correctTo) tables['dash.role_assignment'].push({ row_id: 'h1', person: 'asha', change: 'Correct', business_role: String(tables['dash.business_role'].find(r => r.role_name === correctTo)!.row_id) })
+    return { tables, ctx: (over: Parameters<typeof context>[1]) => { const made = context(tables, over); withAvailable(made.ctx); return made } }
+  }
+
+  it('lets a Team Leader by title send their changes, and refuses one corrected to Staff', async () => {
+    const ok = await decided(null)
+    expect(await actions.propose_adds(ok.ctx({ payload: { job: 'J1', subcategories: ['C2'] } }).ctx)).toHaveLength(1)
+    const staff = await decided('Staff')
+    await expect(actions.propose_removal(staff.ctx({ payload: { job: 'J1', placement: 'P1' } }).ctx)).rejects.toThrow('Your business role does not let you')
+    await expect(actions.propose_adds(staff.ctx({ payload: { job: 'J1', subcategories: ['C2'] } }).ctx)).rejects.toThrow('Your business role does not let you')
+  })
+
+  it('sends a waiting change for a fresh review once the asker may no longer edit the section', async () => {
+    const staff = await decided('Staff')
+    const { ctx, sent } = staff.ctx({ user: 'mani', proposals: [proposal(add)], payload: { proposal: 'PR', decision: 'approve' } })
+    await actions.decide(ctx)
+    expect(sent[0].call).toBe('needsFreshReview')
   })
 })

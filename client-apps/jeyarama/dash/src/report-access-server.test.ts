@@ -247,7 +247,11 @@ describe('giving, removing and bundles', () => {
   it('gives one thing to one receiver, stamping who gave it, and refuses a repeat', async () => {
     const ctx = context({ payload: { report: 'sales', person: 'asha', role: '' } })
     expect(await giveReport(ctx)).toEqual({ id: 'new' })
-    expect(ctx.written).toEqual([['dash.report_access', { report: 'sales', report_bundle: null, person: 'asha', role: null, job: null, given_by_name: 'Meera' }]])
+    expect(ctx.written).toEqual([['dash.report_access', { report: 'sales', report_bundle: null, person: 'asha', role: null, job: null, business_role: null, given_by_name: 'Meera' }]])
+    // #1277 (D4): a report can be given to a business role.
+    const toRole = context({ payload: { report: 'sales', business_role: 'r-sm' } })
+    await giveReport(toRole)
+    expect(toRole.written[0][1]).toMatchObject({ report: 'sales', business_role: 'r-sm', person: null, role: null, job: null })
     const unnamed = context({ payload: { report: 'sales', person: 'asha' }, userName: '' })
     await giveReport(unnamed)
     expect(unnamed.written[0][1].given_by_name).toBeNull()
@@ -288,11 +292,15 @@ describe('the save rules', () => {
   it('keys a given row, clears blanks, and keys a removed one with nothing', () => {
     const row: Row = { report: 'sales', report_bundle: ' ', person: 'asha', role: '', job: null }
     validators['dash.report_access']({ ...manager, row, reject })
-    expect(row).toEqual({ report: 'sales', report_bundle: null, person: 'asha', role: null, job: null, access_key: 'report:sales/person:asha' })
+    expect(row).toEqual({ report: 'sales', report_bundle: null, person: 'asha', role: null, job: null, business_role: null, access_key: 'report:sales/person:asha' })
+    const toRole: Row = { report: 'sales', business_role: 'r-sm' }
+    validators['dash.report_access']({ ...manager, row: toRole, reject })
+    expect(toRole.access_key).toBe('report:sales/business_role:r-sm')
     const removed: Row = { report: 'sales', person: 'asha', removed: '1' }
     validators['dash.report_access']({ ...manager, row: removed, reject })
     expect(removed.access_key).toBeNull()
-    expect(() => validators['dash.report_access']({ ...manager, row: { report: 'sales', person: 'asha', job: 'Team Leader' }, reject })).toThrow('Give it to exactly one person, one role or one job')
+    expect(() => validators['dash.report_access']({ ...manager, row: { report: 'sales', person: 'asha', job: 'Team Leader' }, reject })).toThrow('Give it to exactly one person, one role, one job or one business role')
+    expect(() => validators['dash.report_access']({ ...manager, row: { report: 'sales', business_role: 'r-sm', role: 'Dash Reader' }, reject })).toThrow('exactly one person')
   })
 
   // #1217: a Team Report Manager's save is taken only as the one save Dash's action checked.

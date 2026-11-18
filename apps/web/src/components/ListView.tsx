@@ -11,7 +11,7 @@ import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, isView, t
 import { SaveAsView, ViewBanner } from './TableViews'
 import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, listLeader, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
-import { useSettings } from '../lib/settings'
+import { formatValue, useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
@@ -20,7 +20,7 @@ import { ChevronDown } from '@featherbase/shop-floor'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
 import { GlossaryHelp } from './GlossaryHelp'
-import { fmtCount } from '@featherbase/shop-floor'
+import { fmtCount, fmtINR } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
@@ -32,8 +32,7 @@ import { SavedViewsBar } from './SavedViewsBar'
 import { LayoutSwitch } from './LayoutSwitch'
 import { RecordCards } from './RecordCards'
 import { RecentStrip } from './RecentStrip'
-import { ExploreSplitButton } from './ExploreSplitButton'
-import { ListRow, NAME_CLIP, PhoneList, cell, isFigure } from './ListRows'
+import { LinkCellFilter, ListRow, NAME_CLIP, PhoneList, cell, isFigure } from './ListRows'
 import { usePageTitle } from '../lib/page-title'
 
 const PAGE = 20
@@ -169,6 +168,12 @@ export function ListView({
   useFitToWindow(tableScroll)
   // #1017: the Add filter row waits until it's asked for.
   const [addFilterOpen, setAddFilterOpen] = useState(false)
+  // #1276 (B2): a link cell's Filter narrows the list to rows linked to that same
+  // row, in place of any exact filter on that column.
+  const cellFilter = onFiltersChange
+    ? (exact: Filter[]) =>
+        onFiltersChange([...filters.filter((f) => !(f[1] === '=' && exact.some((e) => e[0] === f[0]))), ...exact])
+    : null
   const [colPickerOpen, setColPickerOpen] = useState(false)
   // #738: the Show columns menu grows into the space below its button and no
   // further, so it ends on screen; it scrolls inside only when that is short.
@@ -358,6 +363,8 @@ export function ListView({
       ? `${metaSortColumn || (boundNoRevision ? 'row_id' : 'updated_at')} ${meta.data.sort_order || 'desc'}`
       : undefined)
 
+  // #1276: the column a list totals, as Explore's panes did: money first, then other measures.
+  const sumColumn = ['Currency', 'Float', 'Int'].map((t) => columns.find((c) => c.column_type === t)).find(Boolean)
   const list = useQuery({
     queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey, withRetired],
     enabled: Boolean(meta.data),
@@ -670,6 +677,11 @@ export function ListView({
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>
+          {/* #1276: Explore's totals live on the list: the exact sum of its money
+              (or other measure) column over every row the filters keep. */}
+          {sumColumn && !withRetired && (
+            <ListSum table={table} filters={[...(baseFilters ?? []), ...filters]} column={sumColumn} refreshedAt={list.dataUpdatedAt} />
+          )}
           {meta.data?.data_source && (
             <span
               className={pillClasses('text-xs')}
@@ -925,7 +937,7 @@ export function ListView({
           </label>
         )}
         <div className="ml-auto flex flex-wrap items-end gap-2" data-testid="list-view-tools">
-          {/* #1242 (admin-lists 2-3): the other ways to see this Table, Explore among them. */}
+          {/* #1242 (admin-lists 2-3): the other ways to see this Table. */}
           <ActionDisclosure label="View">
           <Link
             to="/featherbase/admin/table/$table/view/report"
@@ -971,7 +983,6 @@ export function ListView({
           {/* Checklist needs a Sub-table whose row table has a Check column —
               the component renders nothing when the shape is absent. */}
           <ChecklistSwitch table={table} meta={meta.data} />
-          <ExploreSplitButton table={table} />
           </ActionDisclosure>
           <div className="relative">
             <button
@@ -1040,7 +1051,7 @@ export function ListView({
         </div>
       </div>
       {onFiltersChange && meta.data && (addFilterOpen || filters.length > 0) && (
-        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} builderOpen={addFilterOpen} />
+        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} builderOpen={addFilterOpen} onLinkedAdded={() => setAddFilterOpen(false)} />
       )}
       {selected.size > 0 && !isRowsReadOnly(meta.data) && (
         <div
@@ -1175,6 +1186,7 @@ export function ListView({
       )}
       <div className={cardClasses('featherbase-scroll overflow-auto')} ref={setTableScroll} data-testid="list-table-scroll">
         {/* Separate borders: a collapsed one stays behind when its sticky cell scrolls. */}
+        <LinkCellFilter.Provider value={cellFilter}>
         <table className="w-full border-separate border-spacing-0 text-sm">
           {/* #1249: the header row stays in view while the rows scroll under it. */}
           <thead className="sticky top-0 z-[2] bg-subtle text-left">
@@ -1254,6 +1266,7 @@ export function ListView({
             )}
           </tbody>
         </table>
+        </LinkCellFilter.Provider>
       </div>
       {moreToTheRight && <MoreColumnsHint box={tableScroll} />}
       </div>
@@ -1284,5 +1297,35 @@ export function ListView({
         </>}
       </div>
     </div>
+  )
+}
+
+/** #1276: the exact total of one column over a list's filters, from the server's
+ *  scoped aggregate, never a sum of the page that happened to load. */
+function ListSum({ table, filters, column, refreshedAt }: {
+  table: string
+  filters: Filter[]
+  column: { column_name: string; label: string; column_type: string }
+  /** When the list's rows last arrived: the sum follows every refresh of them. */
+  refreshedAt: number
+}) {
+  const settings = useSettings()
+  const filterKey = JSON.stringify(filters)
+  const sum = useQuery({
+    // Keyed to the list's last refresh, so an edit, a delete or realtime refreshes the sum
+    // too, without anything that awaits the list's refresh also waiting for it.
+    queryKey: ['list-sum', table, filterKey, column.column_name, refreshedAt],
+    placeholderData: keepPreviousData,
+    retry: false,
+    queryFn: () => api.get<{ count: number; sum: string | null }>(
+      `/api/table/${encodeURIComponent(table)}:aggregate?filters=${encodeURIComponent(filterKey)}&sum=${encodeURIComponent(column.column_name)}`),
+  })
+  if (sum.data?.sum == null) return null
+  return (
+    <span className="text-xs text-ink-muted" data-testid="list-sum">
+      {/* A total answers "how big is this?": Indian grouping, the readable ₹ ladder for money (ADR 750). */}
+      Σ {column.label}: {column.column_type !== 'Currency' ? fmtCount(Number(sum.data.sum), column.column_type === 'Int' ? 0 : settings.float_precision)
+        : settings.currency === 'INR' ? fmtINR(Number(sum.data.sum)) : formatValue('Currency', Number(sum.data.sum), settings)}
+    </span>
   )
 }

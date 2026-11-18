@@ -2,7 +2,11 @@
 // is structural: this module imports nothing from the platform. Reads are declared in
 // featherbase.json under "reads". A report is a row of `dash.report`; nothing here knows one Dive.
 import { checked } from './values.ts'
-import { ALL_STORES_ROLE, orgChartProvider, reachOf, type Documents, type Place } from './provider.ts'
+import { ALL_STORES_ROLE, type Documents, type Place } from './provider.ts'
+import { BUSINESS_ROLES, accessSource, dashScopeProvider, liveReach, placesSource } from './access-source.ts'
+import { businessAccessSummary, giveOldGrantsAction, switchOverLog } from './switch-over-server.ts'
+import { opensDashByBusinessRoles } from './business-reports.ts'
+import type { Base } from './business-access.ts'
 import { diveFilters, storesOfReport, storesReached, type ReportRecord } from './dive-filters.ts'
 import { MONTH_CHOICES, buildReport, dayLabel, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
@@ -11,7 +15,7 @@ import { storeActions, storeReads } from './my-store.ts'
 import { buyerSectionActions, buyerSectionReads } from './buyer-sections.ts'
 import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
-import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenNow, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
 import { viewAsPeople } from './view-as-people.ts'
 import { describePeople } from './people-describe.ts'
@@ -21,8 +25,8 @@ import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
 
-/** The places each person covers, from the core Tables. */
-export const scopeProviders = { org_chart: orgChartProvider() }
+/** The places each person covers: by business roles, or by the old rules, as dash.access_source says (#1277). */
+export const scopeProviders = { org_chart: dashScopeProvider() }
 
 /** The cached dataset the report reads (featherbase.json's `datasets`). */
 export const SALES_DATASET = 'sales_to_date'
@@ -81,6 +85,10 @@ export function setEmbedFetch(f: typeof fetch | null) {
 
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
+/** #1277: what decides Dash access for this request. */
+const sourceOf = (ctx: ScopedContext) => accessSource(ctx.baseTables as Base)
+
+
 /** #1218: the Dash Tables whose records open on a page only a company-wide manager may open. */
 const MANAGERS_PAGES = new Set(['dash.business_role', 'dash.report_bundle'])
 
@@ -97,7 +105,13 @@ const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', '
  */
 export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
   let given: Set<string>
-  try { given = new Set((await reportsGivenTo(ctx.baseTables, ctx.user, ctx.roles ?? [], istToday())).keys()) } catch { return [] }
+  try {
+    // One reading of the switch for the whole read; places worked out under the other rules give nothing.
+    const source = await sourceOf(ctx)
+    const placedBy = placesSource(ctx.authorization?.places ?? [])
+    if (placedBy && placedBy !== source) return []
+    given = new Set((await reportsGivenNow(ctx.baseTables as Base, ctx.user, ctx.roles ?? [], istToday(), source)).keys())
+  } catch { return [] }
   if (!given.size) return []
   const rows = await ctx.documents.list('dash.report', { fields: REPORT_FIELDS, order_by: 'report_name asc', limit_page_length: 200 })
   const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal), pickers_in_dive: checked(row.pickers_in_dive) }) as unknown as ReportRecord).filter(report => given.has(report.report_key))
@@ -119,13 +133,13 @@ async function offeredReports(ctx: ScopedContext): Promise<ReportRecord[]> {
 /** The reader's places: a person_scope read's, else worked out from the core Tables. Unreadable means none. */
 async function placesHeld(ctx: ScopedContext): Promise<readonly Place[]> {
   if (ctx.authorization?.places?.length) return ctx.authorization.places
-  try { return (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).places } catch { return [] }
+  try { return (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles, istToday())).places } catch { return [] }
 }
 
 /** A person_scope read already holds the reader's places; any other read works them out. Unreadable means nothing. */
 async function reachesSomething(ctx: ScopedContext): Promise<boolean> {
   if (ctx.authorization?.places?.length) return true
-  try { return (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).places.length > 0 } catch { return false }
+  try { return (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles, istToday())).places.length > 0 } catch { return false }
 }
 
 /** The report the read is for: the one the payload names, or the reader's first. Undefined when it isn't one of theirs. */
@@ -343,7 +357,7 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null, everyCo
 /** What a person reaches today, for Report access: any store, and a whole store. Unreadable means nothing. */
 const reachFor = (context: AccessContext) => async (person: string, roles: readonly string[]) => {
   try {
-    const { places } = await reachOf((context as unknown as ScopedContext).baseTables, person, istToday(), roles)
+    const { places } = await liveReach((context as unknown as ScopedContext).baseTables as Base, person, roles, istToday())
     return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
   } catch { return { any: false, wholeStore: false } }
 }
@@ -367,6 +381,8 @@ export const actions = {
   remove_role: (context: AccessContext) => removeRole(context),
   map_title: (context: AccessContext) => mapTitle(context),
   add_starting_roles: (context: AccessContext) => addStartingRoles(context),
+  /** #1277 (J3): the old grants given to business roles, logged, only when a System Manager asks; rerunning adds nothing. */
+  give_old_grants_to_roles: (context: AccessContext) => giveOldGrantsAction(context),
 }
 
 export const reads = {
@@ -403,8 +419,16 @@ export const reads = {
    */
   async can_open(context: ReadContext) {
     const ctx = context as ScopedContext
+    const roles = ctx.roles ?? []
+    const source = await sourceOf(ctx)
+    if (source === BUSINESS_ROLES) {
+      // #1277 (D3): behind the platform's door (a Dash role), a business role holding a Dash permission opens it, as does a role that manages access.
+      if (opensDashByBusinessRoles(roles, false, 0)) return true
+      const { access } = await liveReach(ctx.baseTables as Base, ctx.user, roles, istToday(), source)
+      return opensDashByBusinessRoles(roles, !!access?.opens, access?.opens ? 0 : (await offeredReports(ctx)).length)
+    }
     // Asked first without reports: a Dash role opens it with no read of reach.
-    return opensDashFor(ctx.roles ?? [], 0) || opensDashFor(ctx.roles ?? [], (await offeredReports(ctx)).length)
+    return opensDashFor(roles, 0) || opensDashFor(roles, (await offeredReports(ctx)).length)
   },
 
   /** Whether this person manages report access, company-wide or for their team (#1217), for the sidebar's link. */
@@ -418,6 +442,9 @@ export const reads = {
   business_roles: (context: ReadContext) => businessRoles(context as AccessContext),
   explain_person: (context: ReadContext) => explainPerson(context as AccessContext),
   access_changes: (context: ReadContext) => accessChanges(context as AccessContext),
+  /** #1277: what decides Dash access now, and the business roles log. Company-wide managers only. */
+  access_source: (context: ReadContext) => businessAccessSummary(context as AccessContext),
+  switch_over_log: (context: ReadContext) => switchOverLog(context as AccessContext),
 
   /** The Report access page (#1046). Managers only. */
   access_page: (context: ReadContext) => accessPage(withReach(context as AccessContext)),
@@ -450,7 +477,7 @@ export const reads = {
   /** Why this person's job reaches nothing, for the page's message. */
   async reach_problem(context: ReadContext) {
     const ctx = context as ScopedContext
-    return { problems: (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).problems }
+    return { problems: (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles, istToday())).problems }
   },
 
   /** The bar's store picker on the chosen report: the reader's stores by name, none on a report taking no store. */

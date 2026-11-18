@@ -178,6 +178,25 @@ describe('Business Roles', () => {
       { title: 'Store Manager', role: 'r-sm', role_name: 'Store Manager', people: 4, holders: [] }],
   } }
 
+  // #1277: which rules decide, the old grants given to business roles only when a System Manager asks, and what was done.
+  it('says the old rules decide, and gives the old grants to business roles only on a System Manager\'s click', async () => {
+    answers = { ...ROLES, access_source: { source: 'legacy', switch_rows: [], can_switch: true }, give_old_grants_to_roles: { grants_added: 0 } }
+    const { all, click } = await render('roles')
+    expect(all('access-source-line')[0].textContent).toContain('decided by the old rules')
+    expect(calls.filter(c => c.kind === 'actions')).toEqual([])
+    await click(all('give-old-grants')[0])
+    expect(calls.filter(c => c.kind === 'actions').map(c => c.name)).toEqual(['give_old_grants_to_roles'])
+  })
+
+  it('says business roles decide once switched, offers nothing to someone who is not a System Manager, and lists what was done', async () => {
+    answers = { ...ROLES, access_source: { source: 'business_roles', switch_rows: [{ id: 's1', source: 'business_roles' }], can_switch: false },
+      switch_over_log: [{ id: 'l1', step: 'Report grant', outcome: 'Added', detail: 'Gave report vs to Store Manager, as it was given to the job Store Manager' }] }
+    const { all, click } = await render('roles')
+    expect([all('access-source-line')[0].textContent!.includes('decided by business roles'), all('give-old-grants').length]).toEqual([true, 0])
+    await click(all('switch-over-log-toggle')[0])
+    expect(all('switch-over-log')[0].textContent).toContain('Gave report vs to Store Manager')
+  })
+
   it('opens a role as a grid: things as rows, a reach chip under its verb, other verbs on the row', async () => {
     answers = ROLES
     const { all, click } = await render('roles')
@@ -216,6 +235,16 @@ describe('Who Would Gain Or Lose Access', () => {
     const { all } = await render('changes')
     expect([all('changed-name').map(a => [a.textContent, a.getAttribute('href')]), all('group-loses_dash-count')[0].textContent])
       .toEqual([[['Siva', '?view=explain&person=st']], '1'])
+  })
+
+  // #1277: a role viewing every report is said in plain words, not report by report.
+  it('says every report, through Owner Director, instead of listing each report gained', async () => {
+    const report = (name: string) => ({ name, table: 'dash.report', id: name })
+    answers = { access_changes: { people: 1, changed: 1, groups: [
+      { kind: 'reports', people: [{ person: 'od', name: 'Omana', who: null, kinds: ['reports'], roles: ['Owner Director'], stores_gained: [], stores_lost: [], stores_changed: [],
+        gained: [report('Sales'), report('Stock')], lost: [], decisions: [], every_report: ['Owner Director'] }] }] } }
+    const { all } = await render('changes')
+    expect(all('change-fact').map(f => f.textContent)).toEqual(['Would get every report, through Owner Director'])
   })
 })
 

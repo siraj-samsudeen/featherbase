@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
  *  - `recommended`: warn when missing outside development and test;
  *  - `optional`: never checked;
  *  - `forbidden-in-production`: refuse release and server start while it is
- *    switched on, except in development, test and staging;
+ *    switched on, except in development, test, dev and staging;
  *  - `{ when }`: required while the instance's stored settings turn a feature
  *    on (refused outside development and test, warned inside them). */
 export type Requirement =
@@ -61,19 +61,20 @@ export interface Variable {
 /** Where a release refuses nothing that has a working local default. */
 export const DEV_ENVIRONMENTS: readonly string[] = ['development', 'test']
 /** Where the `forbidden-in-production` switches may be on: development, test,
- *  and `staging` (a hosted trial instance, production in every other respect). */
-export const TEST_MODE_ENVIRONMENTS = ['development', 'test', 'staging'] as const
+ *  and `dev` and `staging` (hosted trial instances, production in every other
+ *  respect; #1278). */
+export const TEST_MODE_ENVIRONMENTS = ['development', 'test', 'dev', 'staging'] as const
 
 export const TEST_MODE_PHRASE = 'trust-any-password'
 
 const ON_FORBIDDEN =
-  'It is allowed only where FEATHERBASE_ENV (or NODE_ENV) is development, test or staging (a hosted trial instance).'
+  'It is allowed only where FEATHERBASE_ENV (or NODE_ENV) is development, test, dev or staging (a hosted trial instance).'
 
 export const VARIABLES = [
   // ---- Identity of the process
   { name: 'FEATHERBASE_ENV', secret: false, required: 'optional', default: '`NODE_ENV`, then `development`',
     docsRequired: '**yes**, this or `NODE_ENV`, for a release',
-    purpose: 'which environment this process is: `production`, `staging`, `development` or `test`; it wins over `NODE_ENV`. The release (and `cli boot-check`) refuses when neither is set (#430). Only `development` and `test` allow zero-setup Administrator credentials' },
+    purpose: 'which environment this process is: `production`, `dev` or `staging` (hosted trial instances), `development` or `test`; it wins over `NODE_ENV`. The release (and `cli boot-check`) refuses when neither is set (#430). Only `development` and `test` allow zero-setup Administrator credentials' },
   { name: 'NODE_ENV', secret: false, required: 'optional', default: '`development`',
     purpose: 'read only when `FEATHERBASE_ENV` is unset (Vitest sets it to `test`)' },
   // ---- Database and HTTP
@@ -143,7 +144,7 @@ export const VARIABLES = [
   { name: 'DELEGATED_LOGIN_TEST_MODE', secret: false, required: 'forbidden-in-production',
     active: (v) => v.trim() === TEST_MODE_PHRASE,
     purpose: '`trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored',
-    fix: `Test mode lets anyone sign in as a linked person without a password, so it runs only where FEATHERBASE_ENV (or NODE_ENV) is development, test or staging (a hosted trial instance). Unset it, or set FEATHERBASE_ENV=staging on a trial instance (see docs/DEPLOY.md, "Environments and the database stamp").` },
+    fix: `Test mode lets anyone sign in as a linked person without a password, so it runs only where FEATHERBASE_ENV (or NODE_ENV) is development, test, dev or staging (a hosted trial instance). Unset it, or set FEATHERBASE_ENV=dev on a trial instance (see docs/DEPLOY.md, "Environments and the database stamp").` },
   { name: 'ALLOW_MOCK_OAUTH', secret: false, required: 'forbidden-in-production',
     active: (v) => v === '1', allowedIn: DEV_ENVIRONMENTS,
     docsRequired: '**never outside development and test**',
@@ -155,10 +156,10 @@ export const VARIABLES = [
     fix: 'The stand-in replaces the real warehouse, so it is allowed only where FEATHERBASE_ENV (or NODE_ENV) is development or test. Unset it.' },
   { name: 'PREVIEW_LOGIN_KEY', secret: true, required: 'forbidden-in-production',
     purpose: 'preview deployments: the one-link sign-in\'s secret, 32+ characters. See [PREVIEW.md](PREVIEW.md)',
-    fix: `Preview sign-in is a one-link login. ${ON_FORBIDDEN} Unset it, or run the preview as staging.` },
+    fix: `Preview sign-in is a one-link login. ${ON_FORBIDDEN} Unset it, or run the preview as dev.` },
   { name: 'PREVIEW_LOGIN_USER', secret: false, required: 'forbidden-in-production',
     purpose: 'preview deployments: the account the link signs in as (never Administrator)',
-    fix: `Preview sign-in is a one-link login. ${ON_FORBIDDEN} Unset it, or run the preview as staging.` },
+    fix: `Preview sign-in is a one-link login. ${ON_FORBIDDEN} Unset it, or run the preview as dev.` },
   { name: 'PREVIEW_USER_NAME', secret: false, required: 'optional',
     purpose: 'preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`)' },
   // ---- Break-glass and tooling

@@ -249,6 +249,40 @@ describe('relabelTable', () => {
   })
 })
 
+// #1277: an app Table its scope provider comes to read is marked as deciding scope.
+describe('markDecidesScope', () => {
+  test('a mark replays both ways', () => {
+    expect(() => validateMigrations('shop', '0.2.0', [item(), { ...supplier, decides_scope: true }],
+      [step([{ kind: 'markDecidesScope', table: 'shop.supplier' }])])).not.toThrow()
+  })
+
+  test('a Table already marked is refused', () => {
+    expect(refusal(() => replayForward('shop', [{ ...supplier, decides_scope: true }], [{ kind: 'markDecidesScope', table: 'shop.supplier' }])))
+      .toMatch(/markDecidesScope shop\.supplier: the Table already decides scope/)
+  })
+
+  test('the version must declare the Table marked', () => {
+    expect(refusal(() => validateMigrations('shop', '0.2.0', [item(), supplier], [step([{ kind: 'markDecidesScope', table: 'shop.supplier' }])])))
+      .toMatch(/markDecidesScope shop\.supplier: the Table as declared after it does not decide scope/)
+  })
+
+  test('marking a Table outside the app is refused', () => {
+    expect(refusal(() => replayForward('shop', [supplier], [{ kind: 'markDecidesScope', table: 'other.supplier' }])))
+      .toMatch(/only its own Tables/)
+  })
+
+  test('a Table stored elsewhere, or a view, is refused: only a stored Table decides scope', () => {
+    // The Table type admits no 'view' kind; a stored manifest can still carry one.
+    for (const table of [{ ...supplier, data_source: 'warehouse' }, { ...supplier, kind: 'view' } as unknown as typeof supplier])
+      expect(refusal(() => replayForward('shop', [table], [{ kind: 'markDecidesScope', table: 'shop.supplier' }])))
+        .toMatch(/markDecidesScope shop\.supplier: only a stored Table decides scope/)
+  })
+
+  test('a Table whose kind says table is marked', () => {
+    expect(() => replayForward('shop', [{ ...supplier, kind: 'table' }], [{ kind: 'markDecidesScope', table: 'shop.supplier' }])).not.toThrow()
+  })
+})
+
 describe('history', () => {
   test('a history that stops short of the version is refused', () => {
     expect(refusal(() => validateMigrations('shop', '0.3.0', [item()], [step([])])))

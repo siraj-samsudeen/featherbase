@@ -1,5 +1,5 @@
 // #910 checklist 20: headers read in sentence case, never all capitals, on
-// the list, the drill pane, the row page and Explore.
+// the list, the drill pane, the row page and the Linked to filter (#1276).
 import { configure, fireEvent, screen, within } from '@testing-library/react'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
@@ -19,9 +19,13 @@ test('a list and its drill pane set nothing in capitals', async ({ admin }) => {
   expect(capitals()).toEqual([])
 })
 
-test('Explore sets nothing in capitals', async ({ admin }) => {
+test('the Linked to filter sets nothing in capitals', async ({ admin }) => {
   await seedSites(admin)
-  await renderApp(`/featherbase/admin/explore?root=${encodeURIComponent(SITE)}`, admin)
-  await screen.findByTestId('explore-pane1')
+  await renderApp(tableHref(SITE), admin)
+  fireEvent.click(await screen.findByTestId('filter-toggle'))
+  const field = await screen.findByTestId('filter-field')
+  await within(field).findByRole('option', { name: 'Linked to…' })
+  fireEvent.change(field, { target: { value: '__linked_to' } })
+  await screen.findByTestId('linked-step')
   expect(capitals()).toEqual([])
 })

@@ -207,7 +207,7 @@ test("a module's tooltip is its name alone, not its initials too", async ({ admi
 test('New Table and Import Data are links in the Data group, also in the rail', async ({ admin }) => {
   const { router } = await renderApp('/featherbase/admin/all-tables', admin)
   const data = await screen.findByTestId('sidebar-group-data', {}, T)
-  expect(within(data).getAllByRole('link').map((a) => a.textContent?.trim())).toEqual(['Explore', 'All Tables', 'New Table', 'Import Data', 'Glossary', 'Past Imports'])
+  expect(within(data).getAllByRole('link').map((a) => a.textContent?.trim())).toEqual(['All Tables', 'New Table', 'Import Data', 'Glossary', 'Past Imports'])
   expect(screen.queryByTestId('sidebar-new')).not.toBeInTheDocument()
   await userEvent.click(screen.getByTestId('sidebar-collapse'))
   await userEvent.click(within(screen.getByTestId('sidebar-group-data')).getByRole('link', { name: 'New Table' }))
