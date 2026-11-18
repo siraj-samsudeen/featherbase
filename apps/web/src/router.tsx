@@ -727,6 +727,26 @@ const accountRoute = createRoute({
   component: AccountLayout,
 })
 
+// The glossary of one app, for anyone who can use that app (18-Nov-2026): a
+// platform page in the same frame as the account pages, opened from the app's
+// Help menu. It is the only glossary page; the Admin has none.
+const glossaryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/glossary',
+  beforeLoad: ({ location }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
+  },
+  component: AccountLayout,
+})
+const appGlossaryRoute = createRoute({
+  getParentRoute: () => glossaryRoute,
+  path: '$app',
+  component: function AppGlossaryPage() {
+    const { app } = appGlossaryRoute.useParams()
+    return <GlossaryPage app={app} />
+  },
+})
+
 // person-identities (#275): the signed-in person's sign-in methods.
 const signInMethodsRoute = createRoute({
   getParentRoute: () => accountRoute,
@@ -825,12 +845,6 @@ const appsRoute = createRoute({
   component: () => <ManageOnly><Apps /></ManageOnly>,
 })
 
-// #629: the glossary (everyone signed in; static segment, before $table).
-const glossaryRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: 'glossary',
-  component: GlossaryPage,
-})
 
 // #465 D9: first-run setup (the built-in Administrator only; the page itself
 // sends anyone else home).
@@ -1138,6 +1152,7 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
+  glossaryRoute.addChildren([appGlossaryRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, instanceHealthRoute, appsRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

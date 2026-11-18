@@ -1083,9 +1083,11 @@
       "toVersion": "3.3.3",
       "operations": []
     },
-    {"id": "switcher_summary", "fromVersion": "3.3.3", "toVersion": "3.3.4", "operations": []}
+    {"id": "switcher_summary", "fromVersion": "3.3.3", "toVersion": "3.3.4", "operations": []},
+    {"id": "glossary_terms", "fromVersion": "3.3.4", "toVersion": "3.3.5", "operations": []}
   ],
   "releaseNotes": [
+    {"version": "3.3.5", "changes": ["Tasker has a glossary of its own words, opened from the Help menu"]},
     {"version": "3.3.4", "changes": ["The app switcher shows what this app is for, with its icon"]},
     {
       "version": "3.3.3",
@@ -2097,5 +2099,314 @@
         ]
       }
     }
-  ]
+  ],
+  "glossary": {
+    "version": 1,
+    "terms": [
+      {
+        "term": "Inbox",
+        "definition": "Where the tasks you capture privately wait until you organise them. It holds only your own captures; you can keep a task on your personal list or move it into a shared project.",
+        "examples": [
+          "Typing a title and pressing Enter captures a task that only you can see in your Inbox."
+        ],
+        "describes": [
+          {
+            "table": "tasker.task"
+          }
+        ]
+      },
+      {
+        "term": "Personal task",
+        "definition": "A task that only its creator can see or change, with its subtasks, discussion and history. Even an administrator cannot open it. Nobody else can be made responsible for it until it is shared.",
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "personal_tasks_owner"
+          }
+        ]
+      },
+      {
+        "term": "Sharing a task",
+        "definition": "Moving a personal task into a shared project shares it, with its description, subtasks, discussion and history, immediately and without a confirmation. It can never be made private again.",
+        "examples": [
+          "Moving a private task into Warehouse review makes it visible to members; moving it back is refused."
+        ],
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "shared"
+          }
+        ]
+      },
+      {
+        "term": "Responsible person",
+        "definition": "The one teammate who has taken a task on. A task has at most one, and anyone can assign, reassign or take it. It is separate from progress and urgency, so changing one does not change the others.",
+        "avoid": [
+          {
+            "word": "Owner",
+            "reason": "Tasks use responsible person (assigned to); owner is the word used for an issue."
+          }
+        ],
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "assigned_to"
+          }
+        ]
+      },
+      {
+        "term": "Task state",
+        "definition": "How far along a task is: Not started, In progress, Blocked, On hold, Submitted for verification, Done or Cancelled. Ticking a task marks it Done and unticking restores the state it had just before; only Done shows as ticked.",
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "task_state"
+          }
+        ]
+      },
+      {
+        "term": "Urgent",
+        "definition": "One flag, shared by the whole team, that marks a task as urgent or not. Changing it does not change who is responsible or anyone's My Focus.",
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "urgent"
+          }
+        ]
+      },
+      {
+        "term": "My Focus",
+        "definition": "Your own private, ordered shortlist of tasks, which can include tasks you are not responsible for. Starring a task into it changes nothing for anyone else."
+      },
+      {
+        "term": "My Work",
+        "definition": "Your own page: conversations needing your attention first, then your My Focus shortlist, then other tasks you are responsible for. A task in both groups shows once, in the shortlist."
+      },
+      {
+        "term": "Together",
+        "definition": "The team view of active work: shared tasks that are not Done or Cancelled, grouped by responsible person, with unassigned work together. Private tasks never appear in it.",
+        "describes": [
+          {
+            "table": "tasker.task"
+          }
+        ]
+      },
+      {
+        "term": "Verifier",
+        "definition": "The Tasker member, other than the person doing the task, who checks the work before it can close. A project can name a default verifier that new tasks in it take.",
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "verifier"
+          },
+          {
+            "table": "tasker.project",
+            "column": "default_verifier"
+          }
+        ]
+      },
+      {
+        "term": "Verified closure",
+        "definition": "A task with a verifier cannot be ticked Done. The person doing it submits it with a note on what was done and it becomes Submitted for verification. Only the verifier accepts it (which marks it Done and records who verified it and when) or returns it with a reason, which puts it back In progress.",
+        "examples": [
+          "Ravi submits Fix the billing counter lights with a note; it shows Waiting for Meena to verify and appears on Meena's To verify page."
+        ],
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "task_state"
+          },
+          {
+            "table": "tasker.task",
+            "column": "evidence_note"
+          },
+          {
+            "table": "tasker.task",
+            "column": "return_count"
+          }
+        ]
+      },
+      {
+        "term": "Acknowledged",
+        "definition": "When a task is assigned to someone else it shows Not acknowledged by that person until they acknowledge it. A task you assign to yourself counts as acknowledged, and only the assignee can acknowledge.",
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "acknowledged_at"
+          }
+        ]
+      },
+      {
+        "term": "Extended due date",
+        "definition": "Once a task has a due date, changing it needs a reason. Tasker keeps the first due date and the number of times it was moved, and shows both.",
+        "examples": [
+          "was 07-Nov-2026 · extended 1 time"
+        ],
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "original_due_date"
+          },
+          {
+            "table": "tasker.task",
+            "column": "extension_count"
+          }
+        ]
+      },
+      {
+        "term": "Overdue, Due today, Scheduled",
+        "definition": "An unfinished task is Overdue when today is past its due date, Due today on its due date, and Scheduled while its start date is still to come. Done or Cancelled tasks carry none of these marks.",
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "due_date"
+          },
+          {
+            "table": "tasker.task",
+            "column": "start_date"
+          }
+        ]
+      },
+      {
+        "term": "Store summary counts",
+        "definition": "The store summary has one row per store, a row for tasks with no store and a total row. Each counted task falls in exactly one of Completed, Overdue, Scheduled or Ongoing; cancelled tasks are not counted.",
+        "examples": [
+          "A store with one done, one overdue, one scheduled and two other open tasks shows Total 5, Completed 1, Overdue 1, Scheduled 1, Ongoing 2."
+        ],
+        "describes": [
+          {
+            "table": "tasker.store"
+          },
+          {
+            "table": "tasker.task",
+            "column": "store"
+          }
+        ]
+      },
+      {
+        "term": "Recurring task",
+        "definition": "A task that repeats on a daily, weekly or monthly schedule, or a set interval after completion. Only one occurrence is unfinished at a time and missed slots are skipped, not piled up. Each new occurrence has fresh unchecked subtasks and does not copy the old discussion. Cancelling the active occurrence pauses the series until a member resumes it.",
+        "examples": [
+          "A task completed on Wednesday that repeats 7 days after completion is next due the following Wednesday."
+        ],
+        "describes": [
+          {
+            "table": "tasker.recurrence"
+          }
+        ]
+      },
+      {
+        "term": "Subtask",
+        "definition": "A smaller piece of work under a task, with its own responsible person, status and discussion. Subtasks cannot have subtasks and take the parent's visibility and store. A parent can be marked Done only when every subtask is Done or Cancelled; finishing the last one does not finish the parent.",
+        "describes": [
+          {
+            "table": "tasker.task",
+            "column": "parent_task"
+          }
+        ]
+      },
+      {
+        "term": "Question (in a discussion)",
+        "definition": "A message under a task addressed to one team member or to anyone. It waits for a reply, then needs the asker's review once answered, and only the asker marks it resolved or reopens it. Updates need no resolution. Replies stay grouped under the original message.",
+        "describes": [
+          {
+            "table": "tasker.discussion"
+          }
+        ]
+      },
+      {
+        "term": "Needs your attention",
+        "definition": "The list of questions directed to you and answers waiting for your review, with unread activity marked. Your own messages are not unread for you.",
+        "describes": [
+          {
+            "table": "tasker.discussion"
+          }
+        ]
+      },
+      {
+        "term": "Saved view",
+        "definition": "A named search plus filters that belongs to you alone, saved for one list (such as a project) or across all tasks. It changes only when you update it, and opening it never changes tasks."
+      },
+      {
+        "term": "Issue",
+        "definition": "A problem raised in a store, such as a chiller fault, with a category, severity, store, at most one owner, a response deadline and a fix deadline. Tasks can link to it as corrective work. It moves through Open, Acknowledged, Submitted for verification and Closed.",
+        "avoid": [
+          {
+            "word": "Task",
+            "reason": "An issue is a separate record from a task; tasks only link to it."
+          }
+        ],
+        "describes": [
+          {
+            "table": "tasker.issue"
+          }
+        ]
+      },
+      {
+        "term": "SLA rule",
+        "definition": "The rule that gives an issue its response time, fix time and clock, chosen by severity or by a category's own rule when one exists. It can also name a director and the minutes past breach after which the director is told.",
+        "describes": [
+          {
+            "table": "tasker.sla_rule"
+          }
+        ]
+      },
+      {
+        "term": "Store hours clock",
+        "definition": "One of two clock choices on an SLA rule (Round the clock or Store hours). Store hours counts only the store's opening hours. The clock stops while an approved pause lasts and once the issue is submitted.",
+        "examples": [
+          "A High issue raised at 21:00 with a 1-day fix time in store hours 09:00-22:00 has 2 hours on the clock at 10:00 next morning."
+        ],
+        "describes": [
+          {
+            "table": "tasker.sla_rule",
+            "column": "clock"
+          },
+          {
+            "table": "tasker.issue",
+            "column": "clock"
+          }
+        ]
+      },
+      {
+        "term": "Breach",
+        "definition": "An issue whose fix time has passed without submission. The store manager and the function head are told once, the director after the configured time for a Critical breach, and the breach stays recorded after closure. At 75% of the fix time the owner gets a reminder.",
+        "describes": [
+          {
+            "table": "tasker.issue",
+            "column": "fix_breached"
+          }
+        ]
+      },
+      {
+        "term": "Function head",
+        "definition": "The person named as head of one of the owning functions (Store operations, Facilities, IT, Finance, Supply chain, HR). Tasker tells the function head, with the store manager, when an issue owned by that function is breached.",
+        "describes": [
+          {
+            "table": "tasker.function_head"
+          }
+        ]
+      },
+      {
+        "term": "Needs an owner",
+        "definition": "Label on an issue that has no owner, or no one to escalate to. These issues are listed so someone takes them.",
+        "describes": [
+          {
+            "table": "tasker.issue",
+            "column": "needs_owner"
+          }
+        ]
+      },
+      {
+        "term": "Pausing an issue",
+        "definition": "An owner can ask to pause an issue with a reason and a next review date. The clock keeps running until the store manager approves the pause.",
+        "describes": [
+          {
+            "table": "tasker.issue",
+            "column": "paused"
+          }
+        ]
+      }
+    ]
+  }
 }

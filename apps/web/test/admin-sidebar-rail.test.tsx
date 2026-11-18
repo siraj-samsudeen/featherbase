@@ -99,13 +99,13 @@ test("the sidebar's top and foot hold the switcher, the command field and the ac
 test('in the rail a link is named at once by a tooltip; open, it is not', async ({ admin }) => {
   await renderApp('/featherbase/admin/all-tables', admin)
   await screen.findByTestId('sidebar-collapse', {}, T)
-  const link = within(aside()).getByRole('link', { name: 'Glossary' })
+  const link = within(aside()).getByRole('link', { name: 'All Tables' })
   fireEvent.pointerOver(link)
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
 
   await userEvent.click(screen.getByTestId('sidebar-collapse'))
   fireEvent.pointerOver(link)
-  expect(screen.getByRole('tooltip')).toHaveTextContent('Glossary')
+  expect(screen.getByRole('tooltip')).toHaveTextContent('All Tables')
   fireEvent.pointerOut(link)
   await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument())
 })
@@ -207,7 +207,7 @@ test("a module's tooltip is its name alone, not its initials too", async ({ admi
 test('New Table and Import Data are links in the Data group, also in the rail', async ({ admin }) => {
   const { router } = await renderApp('/featherbase/admin/all-tables', admin)
   const data = await screen.findByTestId('sidebar-group-data', {}, T)
-  expect(within(data).getAllByRole('link').map((a) => a.textContent?.trim())).toEqual(['All Tables', 'New Table', 'Import Data', 'Glossary', 'Past Imports'])
+  expect(within(data).getAllByRole('link').map((a) => a.textContent?.trim())).toEqual(['All Tables', 'New Table', 'Import Data', 'Past Imports'])
   expect(screen.queryByTestId('sidebar-new')).not.toBeInTheDocument()
   await userEvent.click(screen.getByTestId('sidebar-collapse'))
   await userEvent.click(within(screen.getByTestId('sidebar-group-data')).getByRole('link', { name: 'New Table' }))

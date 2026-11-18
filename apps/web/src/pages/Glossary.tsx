@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminPageTitle } from 'shared'
-import { api } from '../lib/api'
+import { useWhoAmI } from '../lib/session'
+import { api, ApiError } from '../lib/api'
 import { GLOSSARY_QUERY_KEY, GLOSSARY_TABLE, groupTerms, termAnchor, termMatches, useGlossary, type GlossaryTerm } from '../lib/glossary'
 import { Button, Card, EmptyState, Notice, SearchInput, Skeleton, StatusPill, buttonClasses, labelClasses } from '@featherbase/shop-floor'
 import { BookOpen, Pencil, Plus } from '@featherbase/shop-floor'
+
+// The server's refusal for an app the person cannot use (apps/server/src/glossary.ts).
+const APP_REFUSED = 'Not permitted to read this glossary'
 
 // #629: the glossary. Everyone signed in reads it: the words this instance's
 // apps use, grouped by app, then the instance's own. An editor (a write grant
@@ -117,8 +120,9 @@ function TermCard({ term, canEdit }: { term: GlossaryTerm; canEdit: boolean }) {
   )
 }
 
-export function GlossaryPage() {
-  const glossary = useGlossary()
+export function GlossaryPage({ app }: { app: string }) {
+  const glossary = useGlossary(app)
+  const title = useWhoAmI().data?.apps?.find((entry) => entry.name === app)?.title ?? app
   const [query, setQuery] = useState('')
   const hash = useRouterState({ select: (s) => s.location.hash })
   const data = glossary.data
@@ -133,8 +137,8 @@ export function GlossaryPage() {
     <div className="space-y-4" data-testid="glossary-page">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-ink">{adminPageTitle('glossary')}</h1>
-          <p className="text-sm text-ink-muted">The words this instance's apps use, and what they mean.</p>
+          <h1 className="text-lg font-semibold text-ink">Glossary</h1>
+          <p className="text-sm text-ink-muted">The words {title} uses, and the words every app here shares, and what they mean.</p>
         </div>
         {data?.canAdd && (
           <Link
@@ -154,14 +158,19 @@ export function GlossaryPage() {
         <SearchInput id="glossary-search" value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
       {glossary.isPending && <Skeleton label="Loading the glossary" className="w-full" />}
-      {glossary.isError && !data && (
+      {glossary.isError && !data && glossary.error instanceof ApiError && glossary.error.message === APP_REFUSED && (
+        <Notice tone="negative">
+          <p>You cannot read this glossary, because you cannot use this app.</p>
+        </Notice>
+      )}
+      {glossary.isError && !data && !(glossary.error instanceof ApiError && glossary.error.message === APP_REFUSED) && (
         <Notice tone="negative">
           <p>The glossary could not be loaded.</p>
           <Button variant="secondary" className="mt-2" onClick={() => void glossary.refetch()}>Try again</Button>
         </Notice>
       )}
       {data && data.terms.length === 0 && (
-        <EmptyState icon={BookOpen} title="No terms yet." body="Terms appear here when an app that brings them is installed, or when someone adds one." />
+        <EmptyState icon={BookOpen} title="No terms yet." body="Terms appear here when the app brings some, or when someone adds one for every app." />
       )}
       {data && data.terms.length > 0 && shown.length === 0 && (
         <EmptyState icon={BookOpen} title={`No term matches "${query.trim()}".`} body="Try another word, or part of a word." />

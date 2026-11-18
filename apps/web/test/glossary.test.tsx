@@ -19,6 +19,13 @@ async function installShelves(admin: TestClient) {
   await admin.post('/api/install_app', { name: 'shelves' })
 }
 
+// An app that ships no terms, open to everyone: its glossary is the instance's own terms.
+const tasker = resolve(process.cwd(), '../..', 'test-apps/fixtures/tasker-v1')
+async function installTasker(admin: TestClient) {
+  expect(await discoverPackages([tasker])).toEqual([])
+  await admin.post('/api/install_app', { name: 'tasker' })
+}
+
 const addTerm = (admin: TestClient, row: Record<string, unknown>) =>
   admin.post<{ row_id: string }>('/api/save_row', { table: 'Glossary Term', row })
 
@@ -41,12 +48,12 @@ const cards = (scope: HTMLElement) => within(scope).getAllByTestId('glossary-ter
 test('terms are grouped by app, A to Z, with the instance\'s own last (items 2, 4, 5)', async ({ admin }) => {
   await installShelves(admin)
   await addTerm(admin, { term: 'Planogram', definition: 'The drawing of what goes on each shelf.' })
-  await renderApp('/featherbase/admin/glossary', admin)
+  await renderApp('/featherbase/glossary/shelves', admin)
   const page = await screen.findByTestId('glossary-page')
   expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent('Glossary')
-  expect(page).toHaveTextContent('The words this instance\'s apps use, and what they mean.')
+  expect(page).toHaveTextContent('The words shelves uses, and the words every app here shares, and what they mean.')
   await waitFor(() => expect(groups()).toHaveLength(2))
-  expect(groups().map((g) => within(g).getByRole('heading', { level: 2 }).textContent)).toEqual(['Shelves', 'This instance'])
+  expect(groups().map((g) => within(g).getByRole('heading', { level: 2 }).textContent)).toEqual(['Shelves', 'Shared across apps'])
   const [coverage, lead] = cards(groups()[0])
   expect(within(coverage).getByRole('heading', { level: 3 })).toHaveTextContent('Coverage')
   expect(coverage).toHaveTextContent('The aisles a person looks after.')
@@ -59,7 +66,7 @@ test('terms are grouped by app, A to Z, with the instance\'s own last (items 2, 
 
 test('search matches a term\'s name, avoid words and definition, and says when nothing matches (items 3, 9)', async ({ admin }) => {
   await installShelves(admin)
-  await renderApp('/featherbase/admin/glossary', admin)
+  await renderApp('/featherbase/glossary/shelves', admin)
   const user = userEvent.setup()
   const search = await screen.findByLabelText('Search terms')
   await waitFor(() => expect(screen.getAllByTestId('glossary-term')).toHaveLength(2))
@@ -78,17 +85,19 @@ test('search matches a term\'s name, avoid words and definition, and says when n
 })
 
 test('with no terms, the page says so (item 9)', async ({ admin }) => {
-  await renderApp('/featherbase/admin/glossary', admin)
+  await installTasker(admin)
+  await renderApp('/featherbase/glossary/tasker', admin)
   expect(await screen.findByText('No terms yet.')).toBeInTheDocument()
 })
 
 test('a failed glossary read can be retried after access is restored without leaving the page', async ({ admin, createUser }) => {
+  await installTasker(admin)
   await addTerm(admin, { term: 'Planogram', definition: 'The drawing of what goes on each shelf.' })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Retry Reader' } })
   await grantRole(admin, { table: 'Person', role: 'Glossary Retry Reader', can_read: true })
   const reader = await createUser({ email: 'glossary-retry@example.test', roles: ['Glossary Retry Reader'] })
   await sql`delete from permission where ref_table = 'Glossary Term' and operation = 'read'`
-  await renderApp('/featherbase/admin/glossary', reader)
+  await renderApp('/featherbase/glossary/tasker', reader)
   expect(await screen.findByText('The glossary could not be loaded.')).toBeInTheDocument()
   await grantRole(admin, { table: 'Glossary Term', role: 'Glossary Retry Reader', can_read: true })
   await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
@@ -97,18 +106,25 @@ test('a failed glossary read can be retried after access is restored without lea
   expect(screen.queryByText('The glossary could not be loaded.')).not.toBeInTheDocument()
 })
 
+test('a glossary of an app the person cannot use says so, with nothing to retry', async ({ createUser }) => {
+  const reader = await createUser({ email: 'glossary-nobody@example.test' })
+  await renderApp('/featherbase/glossary/not-an-app', reader)
+  expect(await screen.findByText('You cannot read this glossary, because you cannot use this app.')).toBeInTheDocument()
+  expect(screen.queryByText('The glossary could not be loaded.')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+})
+
 test('an editor can add and edit terms; a reader cannot (items 1, 8)', async ({ admin, createUser }) => {
   await installShelves(admin)
-  const { unmount } = await renderApp('/featherbase/admin/glossary', admin)
+  const { unmount } = await renderApp('/featherbase/glossary/shelves', admin)
   expect(await screen.findByRole('link', { name: 'Add a term' })).toHaveAttribute('href', '/featherbase/admin/table/glossary-term/new')
   await waitFor(() => expect(screen.getAllByRole('link', { name: /^Edit / })).toHaveLength(2))
-  expect(screen.getByTestId('glossary-link')).toHaveAttribute('href', '/featherbase/admin/glossary')
   unmount()
   // A person with any grant of their own enters the Admin (#410); none on Glossary Term.
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Reader' } })
   await grantRole(admin, { table: 'Person', role: 'Glossary Reader', can_read: true })
   const reader = await createUser({ email: 'reader@example.test', roles: ['Glossary Reader'] })
-  await renderApp('/featherbase/admin/glossary', reader)
+  await renderApp('/featherbase/glossary/shelves', reader)
   await waitFor(() => expect(screen.getAllByTestId('glossary-term')).toHaveLength(2))
   expect(screen.queryByRole('link', { name: 'Add a term' })).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: /^Edit / })).not.toBeInTheDocument()
@@ -117,7 +133,7 @@ test('an editor can add and edit terms; a reader cannot (items 1, 8)', async ({ 
 test('a reworded term shows Edited here; new app wording can be taken back (items 6, 7)', async ({ admin }) => {
   await installShelves(admin)
   await sql`update glossary_term set definition = 'The aisles you answer for.', app_wording_changed = true where app_key = 'Coverage'`
-  await renderApp('/featherbase/admin/glossary', admin)
+  await renderApp('/featherbase/glossary/shelves', admin)
   await waitFor(() => expect(screen.getAllByTestId('glossary-term')).toHaveLength(2))
   const [coverage, lead] = screen.getAllByTestId('glossary-term')
   expect(coverage).toHaveTextContent('Edited here')
@@ -154,7 +170,8 @@ test('a described field opens its term in place, and Escape closes it back to th
   expect(panel).toHaveTextContent('Avoid: auditor (sounds like finance)')
   expect(panel).toHaveTextContent('census taker')
   expect(panel).not.toHaveTextContent(/census taker\s*\(/)
-  expect(within(panel).getByRole('link', { name: 'Open in the glossary' }).getAttribute('href')).toMatch(/^\/featherbase\/admin\/glossary#term-/)
+  // An instance's own term has no glossary page of its own: it is in every app's.
+  expect(within(panel).queryByRole('link', { name: 'Open in the glossary' })).not.toBeInTheDocument()
   expect(counted).not.toHaveFocus()
   await user.keyboard('{ArrowRight}')
   expect(panel).toBeInTheDocument()
@@ -172,23 +189,24 @@ test('a described field opens its term in place, and Escape closes it back to th
 })
 
 test('a term saved elsewhere shows when the glossary is opened again (Codex review on #685)', async ({ admin }) => {
-  await renderApp('/featherbase/admin/glossary', admin)
+  await installTasker(admin)
+  const { router } = await renderApp('/featherbase/glossary/tasker', admin)
   expect(await screen.findByText('No terms yet.')).toBeInTheDocument()
-  const user = userEvent.setup()
-  await user.click(screen.getByTestId('all-tables-link'))
+  await router.navigate({ to: '/featherbase/admin/all-tables' })
   await addTerm(admin, { term: 'Planogram', definition: 'The drawing of what goes on each shelf.' })
-  await user.click(await screen.findByTestId('glossary-link'))
+  await router.navigate({ to: '/featherbase/glossary/tasker' })
   expect(await screen.findByRole('heading', { level: 3, name: 'Planogram' })).toBeInTheDocument()
 })
 
 // #1037: a term may carry a picture. Checklist in #1037's first comment.
 test('a term\'s picture shows under its definition and opens full size; a term without one shows none (items 2, 3, 4, 5)', async ({ admin, createUser }) => {
+  await installTasker(admin)
   await addTerm(admin, { term: 'Site', definition: 'A place the business works from.', picture: '/files/sites.png' })
   await addTerm(admin, { term: 'Plant', definition: 'A SAP plant.' })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Reader' } })
   await grantRole(admin, { table: 'Person', role: 'Glossary Reader', can_read: true })
   const reader = await createUser({ email: 'reader@example.test', roles: ['Glossary Reader'] })
-  await renderApp('/featherbase/admin/glossary', reader)
+  await renderApp('/featherbase/glossary/tasker', reader)
   await waitFor(() => expect(screen.getAllByTestId('glossary-term')).toHaveLength(2))
   const [plant, site] = screen.getAllByTestId('glossary-term')
   const picture = within(site).getByRole('img', { name: 'Picture for Site' })
@@ -212,22 +230,22 @@ test('the term form offers a Picture right after the definition (item 1)', async
 // scroll itself is stood in for: what is checked is that the page asks for
 // the chosen term, the one the address names, to be brought into view.
 test('in-place help opens its term in the glossary, closing the help and bringing that term into view', async ({ admin }) => {
-  await stockCount(admin)
+  await installShelves(admin)
   const scrolled: Element[] = []
   Element.prototype.scrollIntoView = vi.fn(function (this: Element) { scrolled.push(this) })
   try {
-    const { router } = await renderApp('/featherbase/admin/table/stock-count', admin)
+    const { router } = await renderApp('/featherbase/admin/table/shelves.aisle', admin)
     const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: 'What is Stock count?' }))
+    await user.click(await screen.findByRole('button', { name: 'What is Coverage?' }))
     await user.click(within(await screen.findByRole('dialog')).getByRole('link', { name: 'Open in the glossary' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Glossary' })).toBeInTheDocument()
     const location = (router as { state: { location: { pathname: string; hash: string } } }).state.location
-    expect(location.pathname).toBe('/featherbase/admin/glossary')
+    expect(location.pathname).toBe('/featherbase/glossary/shelves')
     expect(location.hash).toMatch(/^term-/)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    const chosen = screen.getAllByTestId('glossary-term').find((t) => within(t).queryByRole('heading', { name: 'Stock count' }))!
-    expect(chosen).toHaveTextContent('One walk along an aisle, counting what is on the shelves.')
+    const chosen = (await screen.findAllByTestId('glossary-term')).find((t) => within(t).queryByRole('heading', { name: 'Coverage' }))!
+    expect(chosen).toHaveTextContent('The aisles a person looks after.')
     expect(chosen.id).toBe(location.hash)
     await waitFor(() => expect(scrolled).toContain(chosen))
   } finally {

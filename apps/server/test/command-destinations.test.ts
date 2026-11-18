@@ -40,7 +40,7 @@ describe('#737 command destinations', () => {
     const dashboardNames = Array.from({ length: 501 }, (_, i) => `Inventory board ${i}`)
     await sql`insert into dashboard ${sql(dashboardNames.map((row_id) => ({ row_id, config: '{}' })))}`
     const { pages } = await admin.get<Inventory>(PATH)
-    for (const slug of ['access-tokens', 'jobs', 'instance-health', 'all-tables', 'import', 'imports', 'apps', 'glossary'])
+    for (const slug of ['access-tokens', 'jobs', 'instance-health', 'all-tables', 'import', 'imports', 'apps'])
       expect(pages.map((p) => p.href)).toContain(`/featherbase/admin/${slug}`)
     expect(pages.filter((p) => p.label.startsWith('Inventory board '))).toHaveLength(501)
     expect(pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
@@ -94,7 +94,7 @@ describe('#737 command destinations', () => {
     for (const slug of ['jobs', 'instance-health', 'apps', 'import', 'imports', 'waiting-for-access', 'setup', 'setup/person', 'find-person'])
       expect(inventory.pages.map((p) => p.href)).not.toContain(`/featherbase/admin/${slug}`)
     expect(inventory.pages.map((p) => p.label)).not.toContain('Secret inventory page')
-    expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/glossary')
+    expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/all-tables')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
     expect(inventory.pages).toContainEqual({ label: 'Connected apps', href: '/featherbase/account/connected-apps', kind: 'Account' })
     expect(inventory.pages).toContainEqual({ label: 'Dash', href: '/featherbase/sales-target', kind: 'Report' })

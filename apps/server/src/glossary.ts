@@ -20,6 +20,7 @@ import { canonical } from './runtime-migrations'
 
 const text = z.string().trim().min(1)
 
+
 export const glossaryDeclaration = z.object({
   version: z.literal(1),
   terms: z.array(z.object({
@@ -153,27 +154,48 @@ export async function settleAppWordingMark(id: string, tx: typeof sql) {
     await tx`update glossary_term set app_wording_changed = false where row_id = ${id}`
 }
 
-/** Everything the glossary shows `user`: the terms of every installed,
- *  turned-on app that still declares them, by app title, then the instance's
- *  own; each in term order. */
-export async function readGlossary(user: string) {
-  if (!(await hasPermission(user, 'Glossary Term', 'read')))
-    throw new AppError('PermissionError', 'Not permitted to read the glossary')
-  const apps = new Map((await sql`select name, manifest from installed_app
+/** The installed, turned-on apps, and the terms each still declares: what
+ *  every app's glossary starts from. */
+async function activeAppTerms(db: typeof sql = sql) {
+  const apps = new Map((await db`select name, manifest from installed_app
       where enabled and not activation_pending`)
     .filter(row => activeApps.has(String(row.name)))
     .map(row => {
       const manifest = (row.manifest ?? {}) as { title?: string; glossary?: Declaration }
       return [String(row.name), { title: manifest.title ?? String(row.name), keys: new Set((manifest.glossary?.terms ?? []).map(t => t.term)) }] as const
     }))
+  const rows = (await db`select row_id, app, app_key from glossary_term where app is not null`)
+    .filter(row => apps.get(String(row.app))?.keys.has(String(row.app_key)))
+  return { apps, rows }
+}
+
+/** Where a person may read glossaries. */
+export interface GlossaryScope {
+  /** The apps this person can use. */
+  usable: ReadonlySet<string>
+  /** Every app, for someone who manages the instance. */
+  all: boolean
+}
+
+/** What the glossary shows `user`. With `only`, that app's glossary: its
+ *  terms, then the instance's own, a repeated word shown under each. Without,
+ *  the terms of every app the person can use, which in-place help draws from. */
+export async function readGlossary(user: string, scope: GlossaryScope, only?: string) {
+  if (!(await hasPermission(user, 'Glossary Term', 'read')))
+    throw new AppError('PermissionError', 'Not permitted to read the glossary')
+  const visible = (name: string) => scope.all || scope.usable.has(name)
+  const { apps, rows: declared } = await activeAppTerms()
+  if (only !== undefined && !(apps.has(only) && visible(only)))
+    throw new AppError('PermissionError', 'Not permitted to read this glossary')
+  const shown = new Set(declared.filter(row => (only === undefined ? visible(String(row.app)) : row.app === only)).map(row => String(row.row_id)))
   const rows = (await sql`select row_id, app, app_key, app_wording, app_wording_changed, picture from glossary_term`)
-    .filter(row => row.app == null || apps.get(String(row.app))?.keys.has(String(row.app_key)))
+    .filter(row => row.app == null || shown.has(String(row.row_id)))
   const wordings = await wordingsOf(rows.map(row => String(row.row_id)))
   // A described column is shown by its label, as forms show it.
   const tables = [...new Set([...wordings.values()].flatMap(w => w.describes.filter(d => d.column).map(d => d.table)))]
   const labels = new Map((tables.length ? await sql`select parent, column_name, label from column_def where parent in ${sql(tables)}` : [])
     .map(c => [`${String(c.parent)}\u0000${String(c.column_name)}`, c.label == null ? null : String(c.label)]))
-  const terms = rows.map((row) => {
+  const everything = rows.map((row) => {
     const wording = wordings.get(String(row.row_id))!
     const app = row.app == null ? null : String(row.app)
     const editedHere = app !== null && canonical(wording) !== canonical(row.app_wording)
@@ -184,7 +206,9 @@ export async function readGlossary(user: string) {
     return { id: String(row.row_id), ...wording, describes, picture, app, appTitle: app && apps.get(app)!.title,
       editedHere, appWordingChanged: editedHere && row.app_wording_changed === true }
   })
-  // The instance's own terms come after every app's.
+  // The same word in an app and in the instance shows twice, each under where
+  // it comes from. The instance's own terms come after every app's.
+  const terms = everything
   terms.sort((a, b) => Number(a.appTitle === null) - Number(b.appTitle === null) ||
     (a.appTitle ?? '').localeCompare(b.appTitle ?? '') || a.term.localeCompare(b.term))
   return { canEdit: await hasPermission(user, 'Glossary Term', 'write'), canAdd: await hasPermission(user, 'Glossary Term', 'create'), terms }

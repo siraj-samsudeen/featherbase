@@ -1,4 +1,4 @@
-import { Outlet } from '@tanstack/react-router'
+import { Outlet, useParams } from '@tanstack/react-router'
 import { PagePickerSlot, TopBar, useOnAppAddress } from '../components/TopBar'
 import { useShellKind } from '../lib/session'
 import { AccountSidebarGroup, AdminShell, PAGE_PANEL, SidebarAside } from './AdminLayout'
@@ -23,12 +23,14 @@ export function AccountLayout() {
 function AccountFrame() {
   const kind = useShellKind()
   const onAppAddress = useOnAppAddress()
+  // An app's glossary page belongs to that app, on every address.
+  const { app } = useParams({ strict: false }) as { app?: string }
   if (kind === 'admin' && onAppAddress === false) return <AdminShell fillHeight={false} account />
   // The page waits for the frame: swapping frames under it would remount it.
   const deciding = kind === 'loading' || onAppAddress === undefined
   return (
     <div className="flex h-screen flex-col bg-canvas" data-testid="account-layout">
-      <TopBar forPerson />
+      <TopBar forPerson home={app} />
       {/* #1235 item 7: the shared sidebar with the Account group, and the page at
           the shared x (32px from the sidebar, left-aligned, at most 880px). */}
       <div className="relative flex min-h-0 flex-1">

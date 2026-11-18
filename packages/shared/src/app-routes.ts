@@ -86,7 +86,6 @@ export const ADMIN_PAGES: readonly { slug: string; title: string; manage?: true;
   { slug: 'imports', title: 'Imports', manage: true },
   { slug: 'access-tokens', title: 'Access tokens' },
   { slug: 'find-person', title: 'Find a person by identifier' },
-  { slug: 'glossary', title: 'Glossary' },
   { slug: 'waiting-for-access', title: 'Waiting for access', manage: true },
   // #1271: people who have left, or are not employees, and can still sign in.
   { slug: 'leavers-who-can-sign-in', title: 'Leavers Who Can Still Sign In', manage: true },
