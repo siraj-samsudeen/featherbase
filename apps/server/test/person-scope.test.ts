@@ -881,7 +881,7 @@ describe('what a scope provider may ask of its Tables', () => {
 // #1247: a provider asks whether a Table is installed before reading it. A missing Table contributes
 // nothing: `available` is false, and a read of it still refuses the person's scope (never full access).
 describe('a scope provider checking whether a Table is installed', () => {
-  type Docs = { available(table: string, columns?: string[]): Promise<boolean>; list(table: string, args?: object): Promise<Record<string, unknown>[]> }
+  type Docs = { available(table: string, columns?: string[]): Promise<boolean>; get(table: string, rowId: string): Promise<Record<string, unknown>>; list(table: string, args?: object): Promise<Record<string, unknown>[]> }
   async function bind(admin: TestClient, createUser: CreateUserFn, provide: (documents: Docs) => Promise<unknown>, more: Partial<ScopeProviderBinding> = {}) {
     const { user } = await setup(admin, createUser)
     const binding = (await findScopeProvider())!
@@ -945,6 +945,26 @@ describe('a scope provider checking whether a Table is installed', () => {
       const rows = await documents.list('Buyer Desk', { fields: kind ? ['store', 'kind'] : ['store'], order_by: kind ? 'kind asc' : undefined })
       return [{ label: 'Desk', filters: { store: rows.map(r => `${String(r.store)}:${String(r.kind)}`) } }]
     }))).toEqual([{ label: 'Desk', filters: { store: ['N2:Store'] } }])
+    // A whole-row get holds every optional column: refused unchecked, read once confirmed (Codex round 5).
+    const { data: [desk] } = await admin.get<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent('Buyer Desk')}?fields=${encodeURIComponent(JSON.stringify(['row_id']))}`)
+    await expect(resolvePersonScope(user.user!, providing(async documents => {
+      await documents.get('Buyer Desk', String(desk.row_id))
+      return place
+    }))).rejects.toMatchObject({ reason: 'provider' })
+    expect(await resolvePersonScope(user.user!, providing(async documents => {
+      await documents.available('Buyer Desk', ['kind'])
+      const row = await documents.get('Buyer Desk', String(desk.row_id))
+      return [{ label: 'Desk', filters: { store: [String(row.kind)] } }]
+    }))).toEqual([{ label: 'Desk', filters: { store: ['Store'] } }])
+    // A confirmation lasts one run: the next run must check again.
+    let runs = 0
+    const twice = providing(async documents => {
+      if (++runs === 1) await documents.available('Buyer Desk', ['kind'])
+      await documents.list('Buyer Desk', { fields: ['kind'] })
+      return place
+    })
+    expect(await resolvePersonScope(user.user!, twice)).toEqual(place)
+    await expect(resolvePersonScope(user.user!, twice)).rejects.toMatchObject({ reason: 'provider' })
   })
 
   test('a Table the provider did not declare, or may not read unmarked, is not available', async ({ admin, createUser }) => {

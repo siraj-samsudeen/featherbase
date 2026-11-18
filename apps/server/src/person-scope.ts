@@ -173,6 +173,9 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
     }),
     get: (table, rowId) => read(table, () => {
       if (typeof rowId !== 'string' || !rowId) throw new Error('A row ID is required')
+      // #1280 (Codex round 5): a whole row holds every optional column, so each must be confirmed first.
+      const unchecked = (binding.optionalColumns?.[table] ?? []).find((column) => !confirmed.has(`${table}.${column}`))
+      if (unchecked) throw new Error(`Scope provider read optional column ${table}.${unchecked} without checking it is there (documents.available)`)
       return getDoc(table, rowId)
     }),
     list: (table, args = {}) => read(table, async () => {
