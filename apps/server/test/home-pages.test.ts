@@ -268,13 +268,17 @@ describe('auto-membership: a built table never vanishes from navigation', () => 
 })
 
 describe('module pages never collide with the System page', () => {
-  test('a user module named System gets its own page, not the platform one', async ({ admin }) => {
-    await makeTable(admin, 'HP Sys Thing', 'System')
+  // A module whose page name is already taken gets a page of its own. ("System" itself is reserved, #1287.)
+  test("a user module whose page name is taken gets its own page, not the other one", async ({ admin }) => {
+    await makeTable(admin, 'HP Core Thing', 'Core')
+    await makeTable(admin, 'HP Home Thing', 'Home!')
     const all = await pages(admin)
-    const mine = all.find((p) => p.module === 'System')!
-    expect(mine.row_id).not.toBe('system')
-    expect(mine.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Sys Thing')
-    expect(all.find((p) => p.row_id === 'system')!.module).toBeNull()
+    const mine = all.find((p) => p.module === 'Home!')!
+    expect(mine.label).toBe('Home!')
+    expect(mine.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Home Thing')
+    const core = all.find((p) => p.module === 'Core')
+    expect(core?.cards.flatMap((c) => c.links.map((l) => l.link_to)) ?? []).not.toContain('HP Home Thing')
+    expect(await sql`select row_id from home_page where module = 'Home!'`).toEqual([{ row_id: 'home-2' }])
   })
 
   test('a home page whose shortcuts are unreadable still opens, with no shortcuts', async ({ admin }) => {
