@@ -93,7 +93,7 @@ Given each cost centre names a supplying plant and a billing plant
 And Enchakkal Supermarket supplies 8 cost centres and bills none
 When the user opens Enchakkal Supermarket in the drill pane
 Then a group of 8 cost centres by supplying plant shows
-And a group of 0 cost centres by billing plant shows, quieter than the other
+And a group of 0 cost centres by billing plant shows, quieter than the other, once the user shows the empty groups
 ```
 
 ### Requirement: A group lists its rows by what they point to

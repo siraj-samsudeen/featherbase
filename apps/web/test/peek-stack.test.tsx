@@ -94,3 +94,21 @@ test('a group in the pane shows its first 4 rows, then + N more', async ({ admin
   await waitFor(() => expect(within(panel()).getAllByTestId('linked-row')).toHaveLength(4))
   expect(within(panel()).getByRole('link', { name: '+ 3 more' })).toHaveAttribute('href', expect.stringContaining(tableHref('Pk Order')))
 })
+
+// UI owner's polish: the pane's Pointed At By shows only groups with rows; the empty ones wait behind Show N empty.
+test("the pane's empty groups wait behind Show N empty, as on the record page", async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', {
+    name: 'Pk Note', id_pattern: 'prompt', title_column: 'title',
+    columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'rep', column_type: 'Reference', reference_table: 'Pk Rep' }],
+  })
+  await peekFromLinks(admin)
+  fireEvent.click(await within(panel()).findByRole('link', { name: /Anu Rep/ }))
+  await screen.findByRole('complementary', { name: /Anu Rep/ })
+  expect(await within(panel()).findByRole('button', { name: /^Pk Order/ })).toBeInTheDocument()
+  expect(within(panel()).queryByRole('button', { name: /^Pk Note/ })).not.toBeInTheDocument()
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Show 1 empty' }))
+  expect(within(panel()).getByRole('button', { name: /^Pk Note/ })).toBeInTheDocument()
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Hide empty' }))
+  expect(within(panel()).queryByRole('button', { name: /^Pk Note/ })).not.toBeInTheDocument()
+})
