@@ -56,26 +56,27 @@ async function mountAdmin(as: Client, theme = 'device') {
   await waitFor(() => expect(queryClient.getQueryData(['whoami'])).toMatchObject({ theme }))
 }
 
-/** #1253: the theme control sits at the sidebar's foot; its menu holds the three choices. */
-async function themeToggle() {
-  if (!screen.queryByTestId('theme-toggle')) (await screen.findByTestId('theme-button')).click()
-  return screen.findByTestId('theme-toggle')
+/** #1253: the theme control sits at the sidebar's foot; its menu holds the three choices
+ *  (since 18-Nov, a short list with a tick on the one in use: the owner's option A). */
+async function themeMenu() {
+  if (!screen.queryByTestId('theme-choice')) (await screen.findByTestId('theme-button')).click()
+  return screen.findByTestId('theme-choice')
 }
 
-/** Choose a theme from the sidebar's theme menu and wait for the server to own it. */
+const NAME = { light: 'Light', dark: 'Dark', device: 'Same as device' } as const
+
+/** Choose a theme from the sidebar's theme menu (choosing closes it) and wait for the server to own it. */
 async function choose(as: Client, theme: 'light' | 'dark' | 'device') {
-  await themeToggle()
-  const option = await screen.findByTestId(`theme-${theme}`)
-  option.click()
-  await waitFor(() => expect(option).toHaveAttribute('aria-checked', 'true'))
+  await themeMenu()
+  ;(await screen.findByTestId(`theme-${theme}`)).click()
+  await waitFor(() => expect(screen.getByTestId('theme-button')).toHaveAccessibleName(`Theme: ${NAME[theme]}`))
   await waitFor(async () => expect(await serverTheme(as)).toBe(theme))
 }
 
 test("the sidebar's theme control offers light, dark and same-as-device, with the current one checked", async ({ admin }) => {
   await mountAdmin(admin)
-  const toggle = await themeToggle()
-  // The menu's words: Light, Dark, and "Device", named Same as device.
-  expect(within(toggle).getAllByRole('radio').map((r) => r.getAttribute('aria-label') ?? r.textContent)).toEqual(['Light', 'Dark', 'Same as device'])
+  const menu = await themeMenu()
+  expect(within(menu).getAllByRole('menuitemradio').map((r) => r.textContent)).toEqual(['Light', 'Dark', 'Same as device'])
   expect(screen.getByTestId('theme-device')).toHaveAttribute('aria-checked', 'true')
 })
 
@@ -90,7 +91,7 @@ test('choosing dark marks the document root dark, then light again', async ({ ad
 test('without media-query support the Admin remains usable and device theme falls back to light', async ({ admin }) => {
   vi.stubGlobal('matchMedia', undefined)
   await mountAdmin(admin)
-  expect(await themeToggle()).toBeInTheDocument()
+  expect(await themeMenu()).toBeInTheDocument()
   expect(document.documentElement.dataset.theme).toBe('light')
   await choose(admin, 'dark')
   expect(document.documentElement.dataset.theme).toBe('dark')
