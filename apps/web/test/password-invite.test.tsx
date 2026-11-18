@@ -126,14 +126,21 @@ test('#1257: saving a new email on the Person shows the invite as cancelled with
   expect(await openLine(panel, 'password-invite')).toHaveTextContent('Emails nina.changed@partner.test')
 })
 
+// #1307: under a busy runner this edited the Email box while the page's reads were still landing, and saved
+// before the box held the new address. It now waits on each condition, never on the clock.
 test('#1257: the notice from a send does not outlive the address it names', async ({ admin, createUser }) => {
   const lena = await createUser({ email: 'lena@partner.test', fullName: 'Lena Fourth' })
-  const panel = await openPerson(admin, lena.user!)
+  const { queryClient } = await renderApp(rowHref('Person', lena.user!), admin)
+  const panel = await screen.findByTestId('user-sign-in-methods', {}, { timeout: 8000 })
   await userEvent.click(within(await openLine(panel, 'password-invite')).getByRole('button', { name: 'Send Invite' }))
   expect(await within(panel).findByTestId('user-method-notice')).toHaveTextContent('for lena@partner.test')
+  // The page has settled: nothing it reads is still on its way.
+  await waitFor(() => expect(queryClient.isFetching()).toBe(0))
   const email = await screen.findByLabelText('Email')
   await userEvent.clear(email)
   await userEvent.type(email, 'lena.changed@partner.test')
+  // The box holds the new address before it is saved.
+  await waitFor(() => expect(screen.getByLabelText('Email')).toHaveValue('lena.changed@partner.test'))
   await userEvent.click(screen.getByRole('button', { name: 'Save' }))
   await waitFor(() => expect(within(panel).getByTestId('password-invite')).toHaveTextContent('cancelled'), { timeout: 8000 })
   expect(within(panel).queryByTestId('user-method-notice')).not.toBeInTheDocument()
