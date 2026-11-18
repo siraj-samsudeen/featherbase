@@ -27,7 +27,8 @@ export function listOf(entry: Pick<RecentEntry, 'key'>): { table: string; view?:
 export function RecentSub({ entry }: { entry: RecentEntry }) {
   const list = listOf(entry)
   const meta = useMeta(list?.table ?? '', Boolean(list?.filters.length))
-  if (!list?.filters.length) return <>{displayEntry(entry).sub}</>
+  // Until its Table's columns are known (or where they cannot be read), the words stored with the visit stand.
+  if (!list?.filters.length || !meta.data) return <>{displayEntry(entry).sub}</>
   return (
     <>
       {list.view && <>{list.view} · </>}
