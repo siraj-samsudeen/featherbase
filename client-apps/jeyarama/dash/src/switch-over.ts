@@ -69,7 +69,10 @@ export function rolesForOldRole(role: string, model: Pick<Model, 'roles' | 'perm
 }
 
 /** J3: each live grant to a job or an old role, given also to its business roles. A grant to one person stays as it is (D4). */
-export async function convertGrants(read: Documents, write: Writer, model: Model, log: (line: LogLine) => Promise<boolean>): Promise<{ added: number; notConverted: number }> {
+export async function convertGrants(read: Documents, write: Writer, model: Model, log: (line: LogLine) => Promise<boolean>,
+  reportNames: ReadonlyMap<string, string> = new Map()): Promise<{ added: number; notConverted: number }> {
+  // The log names reports and bundles by name, never by key.
+  const bundleNames = new Map((await every(read, 'dash.report_bundle', ['bundle_name'])).map(b => [exact(b.row_id), text(b.bundle_name)]))
   const rows = (await every(read, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'business_role', 'removed'])).filter(r => !checked(r.removed))
   const live = new Set(rows.map(r => accessKey(r)).flatMap(k => ('key' in k ? [k.key] : [])))
   // Each old grant given to a role once, ever: a later removal or change of that role grant is the owner's decision,
@@ -83,7 +86,7 @@ export async function convertGrants(read: Documents, write: Writer, model: Model
     const old = exact(row.job) ? { kind: 'job', name: exact(row.job) } : exact(row.role) ? { kind: 'role', name: exact(row.role) } : null
     if (!old || exact(row.business_role) || exact(row.person)) continue
     const gives = exact(row.report) ? { report: exact(row.report) } : { report_bundle: exact(row.report_bundle) }
-    const what = 'report' in gives ? `report ${gives.report}` : `bundle ${gives.report_bundle}`
+    const what = 'report' in gives ? `the report ${reportNames.get(gives.report!) || 'no longer listed'}` : `the bundle ${bundleNames.get(gives.report_bundle!) || 'no longer listed'}`
     const nullRow = { report: null, report_bundle: null, person: null, role: null, job: null, business_role: null }
     const receiver = old.kind === 'job' ? shadowReceiver({ ...nullRow, ...gives, job: old.name }, model) : null
     const targets = old.kind === 'job' ? (receiver?.kind === 'role' ? [receiver.role] : []) : rolesForOldRole(old.name, model)
@@ -113,8 +116,8 @@ export async function convertGrants(read: Documents, write: Writer, model: Model
 }
 
 /** J3, when asked: the old grants given to business roles, logged. It changes no switch and adds no role. */
-export async function giveOldGrantsToRoles(read: Documents, write: Writer, today: string = istToday()) {
+export async function giveOldGrantsToRoles(read: Documents, write: Writer, today: string = istToday(), reportNames: ReadonlyMap<string, string> = new Map()) {
   const { model } = await businessModel(read, today)
-  const grants = await convertGrants(read, write, model, await logger(read, write))
+  const grants = await convertGrants(read, write, model, await logger(read, write), reportNames)
   return { grants_added: grants.added, grants_not_converted: grants.notConverted }
 }
