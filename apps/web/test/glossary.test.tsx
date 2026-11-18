@@ -106,6 +106,14 @@ test('a failed glossary read can be retried after access is restored without lea
   expect(screen.queryByText('The glossary could not be loaded.')).not.toBeInTheDocument()
 })
 
+test('a glossary of an app the person cannot use says so, with nothing to retry', async ({ createUser }) => {
+  const reader = await createUser({ email: 'glossary-nobody@example.test' })
+  await renderApp('/featherbase/glossary/not-an-app', reader)
+  expect(await screen.findByText('You cannot read this glossary, because you cannot use this app.')).toBeInTheDocument()
+  expect(screen.queryByText('The glossary could not be loaded.')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+})
+
 test('an editor can add and edit terms; a reader cannot (items 1, 8)', async ({ admin, createUser }) => {
   await installShelves(admin)
   const { unmount } = await renderApp('/featherbase/glossary/shelves', admin)
