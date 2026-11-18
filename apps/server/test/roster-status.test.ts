@@ -10,7 +10,9 @@ import { saveDoc } from '../src/document'
 import { rosterFrom } from '../src/delegated-login'
 import { _setWarehouseReader, istToday } from '../src/leaver-check'
 import { planRosterLink, runRosterLink, formatRosterLink, ROSTER_LINK_JOB } from '../src/roster-link'
-import { planStatusChanges } from '../src/roster-status'
+import { applyRosterStatus, planRosterStatus, planStatusChanges } from '../src/roster-status'
+import { getSignInMethod } from '../src/identities'
+import { usableRoster } from '../src/roster-first-sign-in'
 import { enqueue, loadJobs, runOneJob } from '../src/jobs'
 import { main } from '../src/cli'
 import { runMain } from './command-io'
@@ -405,6 +407,22 @@ describe('a bad feed or a big batch changes nothing', () => {
     expect(await state('TT-1001')).toBe('Working')
   })
 
+  test('a row changed between the plan and its save, under the row’s lock, is left as it was made', async ({ admin }) => {
+    await setUp(admin, [crewRow(1), crewRow(2)])
+    warehouse([{ key: '7001', exit: PAST }, { key: '7002', exit: PAST }])
+    const roster = (await usableRoster((await getSignInMethod('stylehr'))!))!
+    const plan = await planRosterStatus(roster)
+    const one = await crew('TT-1001')
+    await saveDoc(TABLE, { row_id: one.row_id, updated_at: one.updated_at, crew_state: 'Test record' }, 'Administrator')
+    const two = await crew('TT-1002')
+    await saveDoc(TABLE, { row_id: two.row_id, updated_at: two.updated_at, hr_record: '7099' }, 'Administrator')
+
+    const run = await applyRosterStatus(roster, plan)
+
+    expect(run).toMatchObject({ changed: 0, failed: [] })
+    expect(await states()).toEqual({ 'TT-1001': 'Test record', 'TT-1002': 'Working' })
+  })
+
   test('a status the Table will not take fails that row only, and the run names it', async ({ admin }) => {
     await setUp(admin, [crewRow(1), crewRow(2)], ROSTER, 'Working\nTest record')
     warehouse([{ key: '7001', exit: PAST }, { key: '7002' }])
@@ -423,7 +441,7 @@ describe('the pure plan', () => {
     employee_key: key, employee_code: `C-${key}`, payroll_active: true, movement_active: true, date_of_joining: '2015-01-01', exit_date: null, ...over,
   })
   test('the same rule as the leaver check: an off-payroll director is never a leaver', () => {
-    const plan = planStatusChanges('T', [{ row_id: 'r1', record: '1', status: 'Working' }], [rec('1', { payroll_active: false, date_of_joining: '2001-01-01' })], '2026-11-18', S, '2026-11-18')
+    const plan = planStatusChanges('T', [{ row_id: 'r1', record: '1', status: 'Working' }, { row_id: 'r2', record: '1', status: 'Test record' }], [rec('1', { payroll_active: false, date_of_joining: '2001-01-01' })], '2026-11-18', S, '2026-11-18')
     expect(plan.changes).toEqual([])
     expect(plan.covered).toBe(1)
   })
