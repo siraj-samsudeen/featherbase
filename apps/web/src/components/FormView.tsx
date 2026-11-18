@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-router'
 import { idFromColumn, namingColumn, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
@@ -40,7 +40,8 @@ import { RowConnections } from './RowPane'
 import { OpenInApp } from './OpenInApp'
 import { RecordNav } from './RecordNav'
 import { RowMap } from './RowMap'
-import { RowTree } from './RowTree'
+import { LinksViewMenu, RecordLinks, useLinksPreference } from './RecordLinks'
+import { LinkSaveContext } from './LinkTickList'
 import { useNavigation } from '../lib/navigation'
 import { GlossaryHelp } from './GlossaryHelp'
 import { ReadingPresentation } from './ReadingPresentation'
@@ -77,8 +78,11 @@ function parseTypedJson(columns: ColumnDef[], values: Row, typed: ReadonlySet<st
   return { values: out, errors }
 }
 
-const VIEW_TAB = { form: 'Form', map: 'Map', tree: 'Tree', collaboration: 'Collaboration', activity: 'Activity' } as const
-const TAB_VIEW: Record<string, keyof typeof VIEW_TAB | undefined> = { Form: 'form', Map: 'map', Tree: 'tree', Collaboration: 'collaboration', Activity: 'activity' }
+// #1273 (D1): Form · Links · Map · Activity. The Tree is the Links tab's other
+// layout; Collaboration's people, tags and files are a section of Activity.
+const VIEW_TAB = { form: 'Form', links: 'Links', map: 'Map', activity: 'Activity' } as const
+const TAB_VIEW: Record<string, keyof typeof VIEW_TAB | undefined> = { Form: 'form', Links: 'links', Map: 'map', Activity: 'activity' }
+const tabOf = (view: string | undefined) => VIEW_TAB[(view && view in VIEW_TAB ? view : 'form') as keyof typeof VIEW_TAB]
 
 // UI-004/UI-005: ONE form component renders and saves every Table from
 // its metadata. Layout columns group into sections/columns (UI-008 refines).
@@ -174,8 +178,19 @@ export function FormView({
   const nav = useNavigation()
   const rowNav = nav?.step.screen === 'row' && nav.step.table === table && nav.step.row === name ? nav : null
   const pathView = rowNav?.step.view
-  const [area, setLocalArea] = useState<string>(VIEW_TAB[pathView ?? 'form'])
-  useEffect(() => { if (pathView) setLocalArea(VIEW_TAB[pathView]) }, [pathView])
+  // #1273 (A1): a record page opens on Form.
+  const [area, setLocalArea] = useState<string>(tabOf(pathView))
+  useEffect(() => { if (pathView) setLocalArea(tabOf(pathView)) }, [pathView])
+  // #1273 (A3, D3): how the Links tab reads, and the group a title chip jumps to.
+  const linksPref = useLinksPreference(table, rowNav?.step.linksAs)
+  const [jumpTo, setJumpTo] = useState<string | null>(null)
+  const jumped = useCallback(() => setJumpTo(null), [])
+  // C9: a tick saved on the Links tab shows in the record's one save state.
+  const linkSave = useMemo(() => ({ saved: () => { setBanner('Saved'); setSavedAt(new Date()) } }), [])
+  const setLinksAs = (as: 'sections' | 'tree') => {
+    linksPref.setAs(as)
+    if (rowNav) rowNav.replace({ ...rowNav.step, view: 'links', linksAs: as })
+  }
   const setArea = (tab: string) => {
     setLocalArea(tab)
     const view = TAB_VIEW[tab]
@@ -809,7 +824,8 @@ export function FormView({
           )}
         </div>
       </div>
-      {!isNew && !personPage && <RowConnections table={table} row={name} values={doc.data} />}
+      {!isNew && !personPage && <RowConnections table={table} row={name} values={doc.data}
+        onGroup={(key) => { setArea('Links'); setJumpTo(key) }} />}
       {storage && (
         <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
           <span className="font-medium">Storage</span>
@@ -1047,22 +1063,31 @@ export function FormView({
             <ViewMenu mode={arrangement.mode} columns={arrangement.columns}
               onMode={arrangement.setMode} onColumns={arrangement.setColumns} />
           )}
+          {area === 'Links' && <LinksViewMenu pref={linksPref} onAs={setLinksAs} />}
         </>}
         tabs={[
         { id: 'Form', label: 'Form', content: work },
+        { id: 'Links', label: 'Links', content: (
+          <LinkSaveContext.Provider value={linkSave}>
+            <RecordLinks table={table} name={name} values={doc.data} pref={linksPref} focusGroup={jumpTo} onFocused={jumped} />
+          </LinkSaveContext.Provider>
+        ) },
         { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },
-        { id: 'Tree', label: 'Tree', content: <RowTree table={table} name={name} /> },
-        { id: 'Collaboration', label: 'Collaboration', content: <>
-          <p className="mb-4 text-sm text-ink-muted">People, tags and files for this record. Disabled features show existing content read-only.</p>
-          <div className="grid max-w-5xl grid-cols-1 items-start gap-4 lg:grid-cols-3">
-            <Assignments table={table} name={name} readOnly={!m.enable_assignments || !access.data?.assign} />
-            <Tags table={table} name={name} readOnly={!m.enable_tags || !access.data?.tag} />
-            <Attachments table={table} name={name} readOnly={!m.enable_files} canUpload={Boolean(access.data?.upload)} />
+        { id: 'Activity', label: 'Activity', content: <div className="max-w-5xl space-y-6">
+          <div className="max-w-3xl space-y-4">
+            <ActivityTimeline table={table} name={name} />
+            {m.enable_discussion && access.data?.comment && <Comments table={table} name={name} />}
           </div>
-        </> },
-        { id: 'Activity', label: 'Activity', content: <div className="max-w-3xl space-y-4">
-          <ActivityTimeline table={table} name={name} />
-          {m.enable_discussion && access.data?.comment && <Comments table={table} name={name} />}
+          {/* #1273: what the Collaboration tab held, as a section of Activity. */}
+          <section aria-labelledby="people-tags-files" data-testid="activity-collaboration" className="space-y-3">
+            <h3 id="people-tags-files" className="text-sm font-semibold text-ink">People, Tags And Files</h3>
+            <p className="text-sm text-ink-muted">People, tags and files for this record. Disabled features show existing content read-only.</p>
+            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+              <Assignments table={table} name={name} readOnly={!m.enable_assignments || !access.data?.assign} />
+              <Tags table={table} name={name} readOnly={!m.enable_tags || !access.data?.tag} />
+              <Attachments table={table} name={name} readOnly={!m.enable_files} canUpload={Boolean(access.data?.upload)} />
+            </div>
+          </section>
         </div> },
       ]} />}
       </RawDetails>

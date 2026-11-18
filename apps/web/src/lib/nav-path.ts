@@ -28,6 +28,10 @@ export interface NavGroup {
   via?: string | null
 }
 
+/** #1273: the Links tab as sections (tick lists, lists) or as the tree. */
+export const LINKS_LAYOUTS = ['sections', 'tree'] as const
+export type LinksLayout = (typeof LINKS_LAYOUTS)[number]
+
 export interface NavPane {
   table: string
   row: string
@@ -42,8 +46,11 @@ export interface NavStep {
   row?: string
   filters?: ListFilter[]
   pane?: NavPane
-  // #1267: a record page's tab, Collaboration and Activity included, is kept in the walk.
-  view?: 'form' | 'map' | 'tree' | 'collaboration' | 'activity'
+  // #1267: a record page's tab is kept in the walk. #1273: Form, Links, Map, Activity;
+  // a list's Tree of all is 'tree'.
+  view?: 'form' | 'links' | 'map' | 'activity' | 'tree'
+  // #1273: how the Links tab shows them (its View ▾ choice), kept while the walk goes on from it
+  linksAs?: LinksLayout
   // tree node ids unfolded
   expanded?: string[]
   place?: 'auto' | 'right' | 'bottom'
@@ -143,7 +150,7 @@ function readPane(v: unknown): NavPane | null {
   return pane
 }
 
-const STEP_KEYS = ['screen', 'table', 'row', 'filters', 'pane', 'view', 'expanded', 'place', 'compact', 'layout'] as const
+const STEP_KEYS = ['screen', 'table', 'row', 'filters', 'pane', 'view', 'linksAs', 'expanded', 'place', 'compact', 'layout'] as const
 
 // A valid step, rebuilt in a fixed key order (so equal steps encode the
 // same), or null.
@@ -166,8 +173,12 @@ function readStep(v: unknown): NavStep | null {
     step.pane = pane
   }
   if (v.view !== undefined) {
-    if (!oneOf(v.view, ['form', 'map', 'tree', 'collaboration', 'activity'] as const)) return null
+    if (!oneOf(v.view, ['form', 'links', 'map', 'activity', 'tree'] as const)) return null
     step.view = v.view
+  }
+  if (v.linksAs !== undefined) {
+    if (!oneOf(v.linksAs, LINKS_LAYOUTS)) return null
+    step.linksAs = v.linksAs
   }
   if (v.expanded !== undefined) {
     if (!Array.isArray(v.expanded) || v.expanded.length > MAX_LIST || !v.expanded.every(isId)) return null

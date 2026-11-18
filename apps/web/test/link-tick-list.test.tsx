@@ -1,0 +1,318 @@
+// #1273 (relational navigation slice 2): a record's Links tab and record panel.
+// A relationship the user may change is a tick list (C5): every choice listed,
+// ticked first with its area and end date and a source chip (C6), a feed's link
+// locked with Correct where its Table names a correction path (C7), ticking
+// through an inline form (C8), unticking a hand-given link (C9). An empty group
+// stays greyed with + New (C4); Open as grid only for small pairs (C12); long
+// lists fold after ten (C13). The page opens on Form; its Links view choice is
+// remembered per person and Table (A1, A3, D1–D3).
+import { cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe } from 'vitest'
+import { rowHref, tableHref } from 'shared'
+import { sql } from 'server/src/db'
+import { tableRelation } from 'server/src/table-engine'
+import { createUserWithRole } from 'server/test/fixtures'
+import { scenarioFor } from 'server/test/scenario'
+import { test, expect, renderApp } from './pg-test'
+import { SITE, seedSites, type Admin } from './relational-fixture'
+
+configure({ asyncUtilTimeout: 10_000 })
+const scenario = scenarioFor(test, 'relational-navigation')
+
+const MEMBER = 'Lt Member'
+const ROLE = 'Lt Role'
+const PLACE = 'Lt Place'
+const GIVEN = 'Lt Role Given'
+const NOTE = 'Lt Note'
+const ROLES = ['Floor Lead', 'Buyer', 'Team Leader', 'Store Lead', 'Category Head', 'Head Office', 'Data Steward']
+
+async function seed(admin: Admin, opts: { roles?: number; correctionPath?: boolean } = {}) {
+  await admin.post('/api/table_def', { name: MEMBER, id_pattern: 'prompt', title_column: 'member_name',
+    columns: [{ column_name: 'member_name', column_type: 'Data', label: 'Member name', in_list_view: true }] })
+  await admin.post('/api/table_def', { name: ROLE, id_pattern: 'prompt', title_column: 'role_name',
+    columns: [{ column_name: 'role_name', column_type: 'Data', label: 'Role name', in_list_view: true }] })
+  await admin.post('/api/table_def', { name: PLACE, id_pattern: 'prompt', title_column: 'place_name',
+    columns: [{ column_name: 'place_name', column_type: 'Data', label: 'Place name', in_list_view: true }] })
+  // Rows that only link: a member, a role, where it applies, until when and why.
+  await admin.post('/api/table_def', { name: GIVEN, id_pattern: 'hash',
+    ...(opts.correctionPath ? { correction_path: '/fix?member={member}' } : {}),
+    columns: [
+      { column_name: 'member', column_type: 'Reference', reference_table: MEMBER, label: 'Member', in_list_view: true },
+      { column_name: 'role', column_type: 'Reference', reference_table: ROLE, label: 'Role', in_list_view: true },
+      { column_name: 'place', column_type: 'Reference', reference_table: PLACE, label: 'Area' },
+      { column_name: 'ends_on', column_type: 'Date', label: 'Ends' },
+      { column_name: 'reason', column_type: 'Text', label: 'Reason' },
+    ] })
+  await admin.post('/api/table_def', { name: NOTE, id_pattern: 'hash', title_column: 'note_text',
+    columns: [
+      { column_name: 'note_text', column_type: 'Data', label: 'Note', in_list_view: true },
+      { column_name: 'member', column_type: 'Reference', reference_table: MEMBER, label: 'Member', in_list_view: true },
+    ] })
+  for (const [row_id, member_name] of [['M1', 'Mira Member'], ['M2', 'Omar Member']])
+    await admin.post('/api/save_row', { table: MEMBER, row: { row_id, member_name } })
+  const names = [...ROLES, ...Array.from({ length: Math.max(0, (opts.roles ?? 7) - ROLES.length) }, (_, i) => `Extra Role ${String(i + 1).padStart(2, '0')}`)]
+  for (const [i, role_name] of names.slice(0, opts.roles ?? 7).entries())
+    await admin.post('/api/save_row', { table: ROLE, row: { row_id: `R${String(i + 1).padStart(2, '0')}`, role_name } })
+  for (const [row_id, place_name] of [['P1', 'Lakeside Store · First floor'], ['P2', 'Hill Road Store']])
+    await admin.post('/api/save_row', { table: PLACE, row: { row_id, place_name } })
+  const feed = await admin.post<{ row_id: string }>('/api/save_row', { table: GIVEN, row: { member: 'M1', role: 'R01', place: 'P1' } })
+  await admin.post('/api/save_row', { table: GIVEN, row: { member: 'M1', role: 'R02', place: 'P2', ends_on: '2027-03-31', reason: 'Covers kids wear' } })
+  // Floor Lead came from the HR feed: a service account wrote it.
+  const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-lt-people', roles: [] })
+  await admin.fetch(`/api/service_accounts/${account.row_id}`, {
+    method: 'PATCH', body: JSON.stringify({ display_name: 'HR feed' }), headers: { 'content-type': 'application/json' } })
+  await sql`update ${sql(await tableRelation(GIVEN))} set created_by = ${account.row_id} where row_id = ${feed.row_id}`
+}
+
+async function openLinks(as: Admin, table = MEMBER, row = 'M1') {
+  const view = await renderApp(rowHref(table, row), as)
+  fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
+  await screen.findByTestId('record-links')
+  return view
+}
+const roles = () => screen.findByRole('region', { name: 'Lt Roles' })
+const lineOf = async (name: string) => {
+  const list = await roles()
+  return waitFor(() => within(list).getAllByTestId('tick-line').find((l) => within(l).queryByText(name))
+    ?? Promise.reject(new Error(`no line for ${name}`)))
+}
+const heldBy = async (admin: Admin, member: string) =>
+  (await admin.get<{ data: { role: string; reason: string | null }[] }>(
+    `/api/table/${encodeURIComponent(GIVEN)}?filters=${encodeURIComponent(JSON.stringify([['member', '=', member]]))}&fields=${encodeURIComponent(JSON.stringify(['role', 'reason']))}`)).data
+
+describe('relational-navigation', () => {
+  scenario("A member's roles as ticks", async ({ admin }, step) => {
+    await step('a member holds two of seven roles, and the user may add and remove roles', () => seed(admin))
+    await step("the user opens the member's Links tab", () => openLinks(admin))
+    await step('the roles read "2 of 7", the two held first, each with its area and end date', async () => {
+      const list = await roles()
+      await waitFor(() => expect(within(list).getByTestId('tick-count')).toHaveTextContent('2 of 7'))
+      const lines = await waitFor(() => {
+        const found = within(list).getAllByTestId('tick-line')
+        expect(found).toHaveLength(7)
+        return found
+      })
+      expect(lines.slice(0, 2).map((l) => l.dataset.ticked)).toEqual(['true', 'true'])
+      // The choices read in name order, as the far side's list does.
+      expect(lines[0]).toHaveTextContent('Buyer')
+      await waitFor(() => expect(within(lines[0]!).getByTestId('tick-meta')).toHaveTextContent(/Hill Road Store · until 31-Mar-2027/))
+      expect(lines[1]).toHaveTextContent('Floor Lead')
+      await waitFor(() => expect(within(lines[1]!).getByTestId('tick-meta')).toHaveTextContent('Lakeside Store · First floor'))
+    })
+    await step('the five others follow, greyed', async () => {
+      const lines = within(await roles()).getAllByTestId('tick-line')
+      expect(lines.slice(2).map((l) => l.dataset.ticked)).toEqual(Array(5).fill('false'))
+      expect(within(lines[2]!).getByRole('link')).toHaveClass('!text-ink-muted')
+    })
+  })
+
+  scenario('Someone who may not change roles reads them as a list', async ({ admin, createUser }, step) => {
+    let reader!: Admin
+    await step('a member holds two of seven roles, and the user may only read them', async () => {
+      await seed(admin)
+      reader = await createUserWithRole(admin, createUser, { role: 'Lt Reader', table: [MEMBER, ROLE, PLACE, GIVEN, NOTE], can_read: true })
+    })
+    await step("the user opens the member's Links tab", () => openLinks(reader))
+    await step('the roles held show as a list, with no tick', async () => {
+      const group = await screen.findByRole('region', { name: GIVEN })
+      await waitFor(() => expect(within(group).getAllByTestId('linked-row')).toHaveLength(2))
+      expect(screen.queryByTestId('tick-list')).not.toBeInTheDocument()
+      expect(screen.queryAllByTestId('tick-box')).toHaveLength(0)
+    })
+  })
+
+  scenario('A role from the HR feed is locked', async ({ admin }, step) => {
+    await step("the HR feed gave a member the role Floor Lead, and the roles' Table says where to correct them", () => seed(admin, { correctionPath: true }))
+    await step("the user opens the member's Links tab", () => openLinks(admin))
+    await step('Floor Lead reads "from HR" with a locked tick and Correct beside it', async () => {
+      const line = await lineOf('Floor Lead')
+      await waitFor(() => expect(within(line).getByTestId('source-chip')).toHaveTextContent('from HR'))
+      expect(within(line).getByTestId('tick-locked')).toBeInTheDocument()
+      expect(within(line).queryByRole('button', { name: 'Untick Floor Lead' })).not.toBeInTheDocument()
+      expect(within(line).getByRole('link', { name: 'Correct' })).toHaveAttribute('href', '/fix?member=M1')
+    })
+    await step('a role given by hand reads "given by hand" and can be unticked', async () => {
+      const line = await lineOf('Buyer')
+      expect(within(line).getByTestId('source-chip')).toHaveTextContent('given by hand')
+      expect(within(line).getByRole('button', { name: 'Untick Buyer' })).toBeEnabled()
+      expect(within(line).queryByRole('link', { name: 'Correct' })).not.toBeInTheDocument()
+    })
+  })
+
+  scenario('Also give Team Leader', async ({ admin }, step) => {
+    await step('a member does not hold the role Team Leader', () => seed(admin))
+    await step('the user ticks Team Leader', async () => {
+      await openLinks(admin)
+      fireEvent.click(within(await lineOf('Team Leader')).getByRole('button', { name: 'Tick Team Leader' }))
+    })
+    await step('a form asks for its area, end date and reason, and nothing is saved yet', async () => {
+      const form = await screen.findByTestId('also-give-form')
+      expect(form).toHaveTextContent(/^Also give Team Leader/)
+      expect(within(form).getByTestId('area-pick')).toHaveTextContent('Pick on the trees ▸')
+      expect(within(form).getByRole('textbox', { name: 'Ends' })).toHaveAttribute('placeholder', 'optional')
+      expect(within(form).getByRole('textbox', { name: 'Reason' })).toBeInTheDocument()
+      expect((await heldBy(admin, 'M1')).map((r) => r.role).sort()).toEqual(['R01', 'R02'])
+    })
+    await step('the user fills in the reason and adds it', async () => {
+      const form = screen.getByTestId('also-give-form')
+      await userEvent.type(within(form).getByRole('textbox', { name: 'Reason' }), 'Covers the evening shift')
+      fireEvent.click(within(form).getByRole('button', { name: 'Add' }))
+    })
+    await step('the member holds Team Leader, given by hand', async () => {
+      await waitFor(() => expect(within(screen.getByRole('region', { name: 'Lt Roles' })).getByTestId('tick-count')).toHaveTextContent('3 of 7'))
+      const line = await lineOf('Team Leader')
+      expect(line.dataset.ticked).toBe('true')
+      await waitFor(() => expect(within(line).getByTestId('source-chip')).toHaveTextContent('given by hand'))
+      expect(screen.queryByTestId('also-give-form')).not.toBeInTheDocument()
+      expect(await heldBy(admin, 'M1')).toEqual(expect.arrayContaining([{ role: 'R03', reason: 'Covers the evening shift' }]))
+    })
+  })
+
+  scenario('Untick a role given by hand', async ({ admin }, step) => {
+    await step('a member was given the role Buyer by hand', () => seed(admin))
+    await step('the user unticks Buyer', async () => {
+      await openLinks(admin)
+      const line = await lineOf('Buyer')
+      fireEvent.click(await within(line).findByRole('button', { name: 'Untick Buyer' }))
+    })
+    await step('the member no longer holds Buyer, and the page says it is saved', async () => {
+      await waitFor(() => expect(within(screen.getByRole('region', { name: 'Lt Roles' })).getByTestId('tick-count')).toHaveTextContent('1 of 7'))
+      expect((await heldBy(admin, 'M1')).map((r) => r.role)).toEqual(['R01'])
+      expect(screen.getByTestId('tick-status')).toHaveTextContent('✓ Saved')
+      expect(screen.getByTestId('save-state')).toHaveTextContent('Saved')
+    })
+  })
+
+  scenario('A first note for a member', async ({ admin }, step) => {
+    await step('a member has no notes, and the user may add notes', () => seed(admin))
+    await step("the user opens the member's Links tab", () => openLinks(admin))
+    await step('the notes group shows greyed with + New', async () => {
+      const notes = await screen.findByRole('region', { name: NOTE })
+      expect(within(notes).getByRole('heading')).toHaveAttribute('data-empty', 'true')
+      expect(await within(notes).findByRole('link', { name: '+ New' })).toBeInTheDocument()
+    })
+    await step('+ New opens a new note already linked to the member', async () => {
+      const href = within(screen.getByRole('region', { name: NOTE })).getByRole('link', { name: '+ New' }).getAttribute('href')!
+      const url = new URL(href, 'http://x')
+      expect(url.pathname).toBe(`${tableHref(NOTE)}/new`)
+      expect(JSON.parse(url.searchParams.get('prefill')!)).toEqual({ member: 'M1' })
+    })
+  })
+
+  scenario('Roles of a small team', async ({ admin }, step) => {
+    await step('a team of members and a set of roles, each 40 or fewer', () => seed(admin))
+    await step("the user opens a member's Links tab", () => openLinks(admin))
+    await step("the roles' header offers Open as grid", async () => {
+      expect(await within(await roles()).findByRole('link', { name: 'Open as grid' })).toHaveAttribute('href', expect.stringContaining(tableHref(GIVEN)))
+    })
+    await step('the team grows past 40', async () => {
+      for (let i = 3; i <= 41; i++) await admin.post('/api/save_row', { table: MEMBER, row: { row_id: `M${i}`, member_name: `Member ${i}` } })
+      cleanup()
+      await openLinks(admin)
+    })
+    await step("the roles' header no longer offers it", async () => {
+      await waitFor(() => expect(within(screen.getByRole('region', { name: 'Lt Roles' })).getByTestId('tick-count')).toHaveTextContent('2 of 7'))
+      expect(within(await roles()).queryByRole('link', { name: 'Open as grid' })).not.toBeInTheDocument()
+    })
+  })
+
+  scenario("Enchakkal's page opens on its form", async ({ admin }, step) => {
+    await step("the user has never opened a site's Links as the tree", () => seedSites(admin))
+    await step("the user opens Enchakkal's page", () => renderApp(`${tableHref(SITE)}/row/ENK`, admin))
+    await step('its tabs are Form, Links, Map and Activity, and Form is open', async () => {
+      const tabs = await screen.findByRole('tablist', { name: 'Record workspace' })
+      expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Form', 'Links', 'Map', 'Activity'])
+      expect(within(tabs).getByRole('tab', { name: 'Form' })).toHaveAttribute('aria-selected', 'true')
+    })
+    await step("the user shows Enchakkal's links as the tree and opens another site's Links tab", async () => {
+      fireEvent.click(screen.getByRole('tab', { name: 'Links' }))
+      expect(await screen.findByTestId('record-links')).toBeInTheDocument()
+      fireEvent.click(await screen.findByTestId('view-menu-button'))
+      fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Tree' }))
+      await screen.findByRole('tree')
+      await waitFor(async () => expect((await admin.get<{ settings: { links?: { as?: string } } }>(`/api/user_settings/${encodeURIComponent(SITE)}`)).settings.links?.as).toBe('tree'))
+      cleanup()
+      await renderApp(`${tableHref(SITE)}/row/TCR`, admin)
+      fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
+    })
+    await step("that site's links show as the tree too", async () => {
+      expect(await screen.findByRole('tree')).toBeInTheDocument()
+      expect(screen.queryByTestId('record-links')).not.toBeInTheDocument()
+    })
+  })
+})
+
+test('the record panel puts a tick list beside the fields, and the other groups under Pointed At By', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(tableHref(MEMBER), admin)
+  const link = await screen.findByRole('link', { name: 'Mira Member' })
+  fireEvent.click(within(link.closest('tr')!).getAllByRole('cell').at(-1)!)
+  const panel = await screen.findByRole('complementary', { name: 'Mira Member · M1' })
+  const ticks = await within(panel).findByRole('region', { name: 'Lt Roles' })
+  await waitFor(() => expect(within(ticks).getByTestId('tick-count')).toHaveTextContent('2 of 7'))
+  const pointed = within(panel).getByRole('heading', { name: 'Pointed At By' }).parentElement!
+  expect(await within(pointed).findByRole('button', { name: `${NOTE} 0` })).toBeInTheDocument()
+  expect(within(pointed).queryByRole('button', { name: new RegExp(`^${GIVEN}`) })).not.toBeInTheDocument()
+  // C1: the header reads the record's name, then its Table and its code.
+  expect(within(panel).getByTestId('record-panel-kind')).toHaveTextContent(`${MEMBER} · M1`)
+})
+
+test('a long tick list folds after ten, with Show all', async ({ admin }) => {
+  await seed(admin, { roles: 12 })
+  await openLinks(admin)
+  const list = await roles()
+  await waitFor(() => expect(within(list).getAllByTestId('tick-line')).toHaveLength(10))
+  fireEvent.click(within(list).getByRole('button', { name: 'Show all 12' }))
+  expect(within(list).getAllByTestId('tick-line')).toHaveLength(12)
+  fireEvent.click(within(list).getByRole('button', { name: 'Show fewer' }))
+  expect(within(list).getAllByTestId('tick-line')).toHaveLength(10)
+})
+
+test('roles past 40 are no tick list: the group lists the roles held', async ({ admin }) => {
+  await seed(admin, { roles: 41 })
+  await openLinks(admin)
+  const group = await screen.findByRole('region', { name: GIVEN })
+  await waitFor(() => expect(within(group).getAllByTestId('linked-row')).toHaveLength(2))
+  expect(screen.queryByTestId('tick-list')).not.toBeInTheDocument()
+})
+
+test('Cancel closes the inline form and saves nothing; a refused Add says why and keeps it open', async ({ admin }) => {
+  await seed(admin)
+  await openLinks(admin)
+  fireEvent.click(within(await lineOf('Store Lead')).getByRole('button', { name: 'Tick Store Lead' }))
+  fireEvent.click(within(await screen.findByTestId('also-give-form')).getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByTestId('also-give-form')).not.toBeInTheDocument()
+  // A column the Table now requires makes the server refuse the Add.
+  await admin.put(`/api/table_def/${encodeURIComponent(GIVEN)}`, { columns: [
+    { column_name: 'member', column_type: 'Reference', reference_table: MEMBER },
+    { column_name: 'role', column_type: 'Reference', reference_table: ROLE },
+    { column_name: 'place', column_type: 'Reference', reference_table: PLACE, label: 'Area' },
+    { column_name: 'ends_on', column_type: 'Date', label: 'Ends' },
+    { column_name: 'reason', column_type: 'Text', label: 'Reason', reqd: true },
+  ] })
+  fireEvent.click(within(await lineOf('Store Lead')).getByRole('button', { name: 'Tick Store Lead' }))
+  fireEvent.click(within(await screen.findByTestId('also-give-form')).getByRole('button', { name: 'Add' }))
+  expect(await screen.findByRole('alert')).toBeInTheDocument()
+  expect(screen.getByTestId('also-give-form')).toBeInTheDocument()
+  expect((await heldBy(admin, 'M1')).map((r) => r.role).sort()).toEqual(['R01', 'R02'])
+})
+
+test('the area is picked from the link Table\'s other link, and saved with the role', async ({ admin }) => {
+  await seed(admin)
+  await openLinks(admin)
+  fireEvent.click(within(await lineOf('Head Office')).getByRole('button', { name: 'Tick Head Office' }))
+  const form = await screen.findByTestId('also-give-form')
+  fireEvent.click(within(form).getByTestId('area-pick'))
+  const box = within(form).getByRole('combobox', { name: 'Area' })
+  fireEvent.focus(box)
+  fireEvent.change(box, { target: { value: 'Hill' } })
+  const options = await screen.findByTestId('link-options-place')
+  fireEvent.mouseDown(await within(options).findByText(/Hill Road Store/))
+  fireEvent.click(within(form).getByRole('button', { name: 'Done' }))
+  await waitFor(() => expect(within(form).getByTestId('area-pick')).toHaveTextContent('Hill Road Store ▸'))
+  fireEvent.click(within(form).getByRole('button', { name: 'Add' }))
+  await waitFor(async () => expect((await admin.get<{ data: { role: string; place: string }[] }>(
+    `/api/table/${encodeURIComponent(GIVEN)}?filters=${encodeURIComponent(JSON.stringify([['role', '=', 'R06']]))}&fields=${encodeURIComponent(JSON.stringify(['role', 'place']))}`)).data)
+    .toEqual([{ role: 'R06', place: 'P2' }]))
+})

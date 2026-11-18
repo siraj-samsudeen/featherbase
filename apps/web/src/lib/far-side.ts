@@ -55,6 +55,13 @@ export function farSides(meta: TableMeta, row: Row, opts: { backLink?: string; r
   return sides
 }
 
+/** A Table whose rows only link others (#1273): its title is its own id, or it
+ *  has no title at all. Such a group can tick its far side; only a link Table's
+ *  rows are also read by it (farSides). */
+export function linksOnly(meta: TableMeta): boolean {
+  return isLinkTable(meta) || !titleListColumn(meta)
+}
+
 /** The one Table the group's rows point to, when every row has exactly one far
  *  side and all are in that Table; else none (the group keeps its own name). */
 export function farSideTable(rows: FarSide[][]): string | undefined {

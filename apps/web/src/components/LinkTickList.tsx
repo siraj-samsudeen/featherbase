@@ -1,0 +1,410 @@
+import { createContext, useContext, useState, type ReactNode } from 'react'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { choiceLabel, rowDisplayTitle, tableHref, type ListFilter } from 'shared'
+import { RecordLink, cx, fmtCount } from '@featherbase/shop-floor'
+import { ApiError, api, listResource } from '../lib/api'
+import { forwardLinks, ALL_ROWS, useRowName, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
+import { linkRowsTable, metaQuery, tableLabel, type ColumnDef, type TableMeta } from '../lib/meta'
+import { titleListColumn } from '../lib/list-view-columns'
+import { useCapabilities } from '../lib/session'
+import { formatValue, useSettings } from '../lib/settings'
+import { useI18n } from '../lib/i18n'
+import type { NavPane } from '../lib/nav-path'
+import {
+  FOLD_AFTER, SMALL_SIDE, correctionHref, formColumns, gridOffered, isUntil, mayTick, newLinkRow, tickColumn, tickCount, tickLines,
+  useRowSources, type Choice, type TickedLine,
+} from '../lib/link-ticks'
+import { LinkControl } from './LinkControl'
+
+type Row = Record<string, unknown>
+
+/**
+ * #1273: what one group of rows pointing at a record can offer. `column` is the
+ * far side the group ticks or reads by (its link Table's column); `tick` says
+ * whether it is a tick list here: the viewer may add and delete its rows and
+ * the far side has at most 40 choices, all listed in `choices`. `grid` says
+ * whether both sides are small enough for Open as grid.
+ */
+export interface GroupPlan {
+  state: 'loading' | 'ready'
+  linkMeta?: TableMeta
+  column?: ColumnDef
+  farTable?: string
+  farMeta?: TableMeta
+  choices?: Choice[]
+  tick: boolean
+  grid: boolean
+}
+
+const LOADING: GroupPlan = { state: 'loading', tick: false, grid: false }
+
+/** A Table's first rows, counted: its total, and up to `limit` rows by name. */
+function sideQuery(table: string, meta: TableMeta | undefined, limit: number) {
+  const title = meta ? titleListColumn(meta)?.column_name : undefined
+  return {
+    queryKey: ['side', table, limit, title ?? null],
+    enabled: Boolean(meta),
+    staleTime: 60_000,
+    queryFn: () => listResource(table, { fields: ['row_id', ...(title ? [title] : [])], order_by: title ? `${title} asc` : undefined, limit_page_length: limit }),
+  }
+}
+
+/** The plan of each group of a record (keyed by the group's key). */
+export function useGroupPlans(table: string, record: string, groups: BacklinkGroup[]): Map<string, GroupPlan> {
+  const caps = useCapabilities()
+  const recordMeta = useQuery(metaQuery(table)).data
+  const doc = useQuery({
+    queryKey: ['doc', table, record],
+    retry: false,
+    queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(record)}`),
+  }).data
+  const linkTables = [...new Set(groups.map((g) => g.connection.table))]
+  const linkMetas = useQueries({ queries: linkTables.map((t) => metaQuery(t)) })
+  const own = recordMeta && doc ? forwardLinks(recordMeta, doc).map((l) => l.table) : undefined
+  const columnOf = (g: BacklinkGroup) => {
+    const meta = linkMetas[linkTables.indexOf(g.connection.table)]?.data
+    return meta && own ? tickColumn(meta, g.connection, { table, own }) : undefined
+  }
+  const farTables = [...new Set(groups.map(columnOf).map((c) => (c ? linkRowsTable(c) : null)).filter((t): t is string => Boolean(t)))]
+  const farMetas = useQueries({ queries: farTables.map((t) => metaQuery(t)) })
+  const farSides = useQueries({ queries: farTables.map((t, i) => sideQuery(t, farMetas[i]?.data, SMALL_SIDE + 1)) })
+  // The record's own Table counted, for the grid (A2).
+  const recordSide = useQuery(sideQuery(table, recordMeta, 1))
+  const plans = new Map<string, GroupPlan>()
+  for (const g of groups) {
+    const linkMeta = linkMetas[linkTables.indexOf(g.connection.table)]?.data
+    if (!linkMeta || !own) { plans.set(g.key, LOADING); continue }
+    const column = columnOf(g)
+    const farTable = column ? linkRowsTable(column) ?? undefined : undefined
+    if (!column || !farTable) { plans.set(g.key, { state: 'ready', linkMeta, tick: false, grid: false }); continue }
+    const i = farTables.indexOf(farTable)
+    const farMeta = farMetas[i]?.data
+    const side = farSides[i]?.data
+    if (!farMeta || !side) { plans.set(g.key, { ...LOADING, linkMeta, column, farTable }); continue }
+    const choices = side.data.map((r) => ({ id: String(r.row_id), title: rowDisplayTitle(farMeta, r, String(r.row_id)) }))
+    plans.set(g.key, {
+      state: 'ready', linkMeta, column, farTable, farMeta, choices,
+      tick: side.total <= SMALL_SIDE && mayTick(caps, linkMeta),
+      grid: gridOffered(recordSide.data?.total, side.total),
+    })
+  }
+  return plans
+}
+
+/** The plan of one group. */
+export function useGroupPlan(table: string, record: string, group: BacklinkGroup): GroupPlan {
+  return useGroupPlans(table, record, [group]).get(group.key) ?? LOADING
+}
+
+/** "Business Role" as a heading over many: "Business Roles". */
+export function pluralLabel(label: string): string {
+  if (/s$/i.test(label)) return label
+  if (/[^aeiou]y$/i.test(label)) return `${label.slice(0, -1)}ies`
+  return `${label}s`
+}
+
+/** #1273: a record page tells its one save state when a tick saves (C9). */
+export const LinkSaveContext = createContext<{ saved: () => void } | null>(null)
+
+const SRC = 'inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-[7px] py-px font-mono text-[10.5px]'
+const BOX = 'grid size-4 shrink-0 place-items-center rounded-[4px] border-[1.5px] text-[11px] leading-none'
+
+/**
+ * #1273 C5–C9, C12, C13: a relationship the viewer may change, as a tick list.
+ * Its header reads "Business Roles 2 of 7"; every choice is listed, ticked ones
+ * first with their area and end date and a source chip, unticked ones greyed.
+ * A feed's link is locked (a tinted tick) and offers Correct where its Table
+ * names a correction path. Ticking an unticked choice opens the inline form
+ * under it; nothing is saved until Add. Unticking a hand-given link removes it.
+ */
+export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
+  table: string
+  record: string
+  group: BacklinkGroup
+  plan: GroupPlan & { linkMeta: TableMeta; column: ColumnDef; farTable: string; farMeta: TableMeta; choices: Choice[] }
+  onOpen?: (pane: NavPane) => void
+  /** Open as grid: the group's list, until the grid comes (C12). */
+  gridHref?: string
+}) {
+  const { connection } = group
+  const { linkMeta, column, farTable, farMeta, choices } = plan
+  const backLink = connection.column
+  const fields = formColumns(linkMeta, [backLink, column.column_name])
+  const otherLinks = fields.filter((c) => c.column_type === 'Reference')
+  const dates = fields.filter((c) => c.column_type === 'Date' || c.column_type === 'Datetime')
+  const queryClient = useQueryClient()
+  const saveState = useContext(LinkSaveContext)
+  const rows = useQuery({
+    queryKey: ['group-rows', connection.table, JSON.stringify(connection.filters), 'ticks'],
+    queryFn: () => listResource(connection.table, {
+      filters: connection.filters,
+      fields: [...new Set(['row_id', 'updated_at', 'created_by', backLink, column.column_name, ...fields.map((c) => c.column_name)])],
+      limit_page_length: ALL_ROWS,
+    }),
+  })
+  const data = rows.data?.data ?? []
+  const sources = useRowSources(connection.table, data.map((r) => String(r.row_id)), rows.isSuccess)
+  const [opened, setOpened] = useState<string | null>(null)
+  const [all, setAll] = useState(false)
+  const [status, setStatus] = useState<'saving' | 'saved' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const lines = tickLines(choices, data, column.column_name)
+  const total = lines.ticked.length + lines.unticked.length
+  const farLabel = pluralLabel(tableLabel(farTable, farMeta))
+
+  const refresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['group-rows', connection.table] }),
+      queryClient.invalidateQueries({ queryKey: ['connections'] }),
+      queryClient.invalidateQueries({ queryKey: ['row-sources', connection.table] }),
+      queryClient.invalidateQueries({ queryKey: ['list', connection.table] }),
+    ])
+  }
+  const change = async (work: () => Promise<unknown>) => {
+    setError(null)
+    setStatus('saving')
+    try {
+      await work()
+      await refresh()
+      setStatus('saved')
+      saveState?.saved()
+      return true
+    } catch (err) {
+      setStatus(null)
+      setError(err instanceof ApiError ? err.message : 'That did not save. Try again.')
+      return false
+    }
+  }
+  const untick = (row: Row) => change(() => {
+    const stamp = row.updated_at == null ? '' : `?updated_at=${encodeURIComponent(String(row.updated_at))}`
+    return api.delete(`/api/table/${encodeURIComponent(connection.table)}/${encodeURIComponent(String(row.row_id))}${stamp}`)
+  })
+  const add = (choice: Choice, values: Row) => change(() =>
+    api.post(`/api/table/${encodeURIComponent(connection.table)}`, newLinkRow(backLink, record, column.column_name, choice.id, values)))
+    .then((ok) => { if (ok) setOpened(null) })
+
+  const shown: ({ kind: 'ticked'; line: TickedLine } | { kind: 'unticked'; choice: Choice })[] = [
+    ...lines.ticked.map((line) => ({ kind: 'ticked' as const, line })),
+    ...lines.unticked.map((choice) => ({ kind: 'unticked' as const, choice })),
+  ]
+  const visible = all ? shown : shown.slice(0, FOLD_AFTER)
+  return (
+    <section aria-label={farLabel} data-testid="tick-list" data-group={group.key} className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <h4 className="text-sm font-semibold text-ink">{farLabel}</h4>
+        <span className="text-[12.5px] text-ink-muted" data-testid="tick-count">{rows.isSuccess ? tickCount(lines, choices) : ''}</span>
+        <span role="status" aria-live="polite" className={cx('text-xs', status === 'saved' ? 'text-positive' : 'text-ink-muted')} data-testid="tick-status">
+          {status === 'saving' ? 'Saving…' : status === 'saved' ? '✓ Saved' : ''}
+        </span>
+        <span className="flex-1" />
+        {plan.grid && gridHref && <GridButton href={gridHref} />}
+      </div>
+      {error && <p role="alert" className="text-xs text-negative">{error}</p>}
+      {rows.isPending ? <p className="text-sm text-ink-subtle">Loading…</p> : (
+        <ul className="grid gap-0.5">
+          {visible.map((item) => item.kind === 'ticked'
+            ? <TickedLineView key={String(item.line.row.row_id)} line={item.line} farTable={farTable} linkMeta={linkMeta}
+                otherLinks={otherLinks} dates={dates} source={sources.data?.sources[String(item.line.row.row_id)]}
+                sourceKnown={sources.isSuccess} onUntick={() => untick(item.line.row)} onOpen={onOpen} busy={status === 'saving'} />
+            : <UntickedLineView key={item.choice.id} choice={item.choice} farTable={farTable} open={opened === item.choice.id}
+                onTick={() => setOpened(opened === item.choice.id ? null : item.choice.id)} onCancel={() => setOpened(null)}
+                fields={fields} onAdd={(values) => add(item.choice, values)} busy={status === 'saving'} />)}
+        </ul>
+      )}
+      {total > FOLD_AFTER && (
+        <button type="button" onClick={() => setAll(!all)} data-testid="tick-fold"
+          className="self-start px-2 text-sm font-medium text-action underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus">
+          {all ? 'Show fewer' : `Show all ${fmtCount(total)}`}
+        </button>
+      )}
+    </section>
+  )
+}
+
+/** Open as grid (C12): offered where both sides are small; the group's list for now. */
+export function GridButton({ href }: { href: string }) {
+  return (
+    <a href={href} data-testid="open-as-grid"
+      className="shrink-0 rounded-[7px] border border-border-control bg-surface px-2.5 py-1 text-[12.5px] text-ink hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus">
+      Open as grid
+    </a>
+  )
+}
+
+function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, sourceKnown, onUntick, onOpen, busy }: {
+  line: TickedLine
+  farTable: string
+  linkMeta: TableMeta
+  otherLinks: ColumnDef[]
+  dates: ColumnDef[]
+  /** The feed's name; null: given by hand; undefined: not known (yet). */
+  source: string | null | undefined
+  sourceKnown: boolean
+  onUntick: () => void
+  onOpen?: (pane: NavPane) => void
+  busy: boolean
+}) {
+  const settings = useSettings()
+  const { row, choice } = line
+  const name = useRowName(farTable, choice.id)
+  const fromFeed = typeof source === 'string'
+  const correct = fromFeed ? correctionHref(linkMeta.correction_path, row) : undefined
+  const title = name.state === 'read' ? name.title : choice.title || UNSEEN_ROW
+  const areas = otherLinks.filter((c) => row[c.column_name] != null && row[c.column_name] !== '')
+  const facts = dates.filter((c) => row[c.column_name] != null && row[c.column_name] !== '')
+  return (
+    <li className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-subtle" data-testid="tick-line" data-ticked="true">
+      {/* A feed's link is locked: it changes only through Correct (C7). Undecided while its source loads. */}
+      {fromFeed || !sourceKnown
+        ? <span className={cx(BOX, 'cursor-not-allowed border-caution bg-caution-tint text-caution')} title={fromFeed ? `From ${source}: change it with Correct` : undefined}
+            role="img" aria-label={`${title}, from ${source ?? 'a feed'}, locked`} data-testid="tick-locked">✓</span>
+        : <button type="button" onClick={onUntick} disabled={busy} aria-label={`Untick ${title}`} data-testid="tick-box"
+            className={cx(BOX, 'cursor-pointer border-action bg-action text-surface focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-60')}>✓</button>}
+      <span className="flex min-w-0 flex-col">
+        {name.state === 'unreadable'
+          ? <RecordLink table={farTable} rowId={choice.id} name={UNSEEN_ROW} canOpen={false} />
+          : <RecordLink table={farTable} rowId={choice.id} name={title} className="self-start"
+              onNavigate={onOpen ? () => onOpen({ table: farTable, row: choice.id }) : undefined} />}
+        {(areas.length > 0 || facts.length > 0) && (
+          <span className="text-xs text-ink-muted" data-testid="tick-meta">
+            {areas.map((c, i) => <span key={c.column_name}>{i > 0 && ' · '}<AreaName column={c} value={String(row[c.column_name])} /></span>)}
+            {facts.map((c, i) => <span key={c.column_name}>{(i > 0 || areas.length > 0) && ' · '}{isUntil(c) ? 'until ' : ''}{formatValue(c.column_type, row[c.column_name], settings) || String(row[c.column_name])}</span>)}
+          </span>
+        )}
+      </span>
+      <span className="flex items-center gap-1">
+        {sourceKnown && (fromFeed
+          ? <span className={cx(SRC, 'bg-action-tint text-action')} data-testid="source-chip">from {source}</span>
+          : <span className={cx(SRC, 'bg-caution-tint text-caution')} data-testid="source-chip">given by hand</span>)}
+        {correct && <a href={correct} data-testid="correct-link" className="px-1 text-xs text-action hover:underline focus-visible:outline-2 focus-visible:outline-focus">Correct</a>}
+      </span>
+    </li>
+  )
+}
+
+function AreaName({ column, value }: { column: ColumnDef; value: string }) {
+  const table = linkRowsTable(column)!
+  const name = useRowName(table, value)
+  if (name.state === 'loading') return <>…</>
+  return <RecordLink table={table} rowId={value} name={name.state === 'read' ? name.title : UNSEEN_ROW} canOpen={name.state === 'read'} className="text-ink-muted" />
+}
+
+function UntickedLineView({ choice, farTable, open, onTick, onCancel, fields, onAdd, busy }: {
+  choice: Choice
+  farTable: string
+  open: boolean
+  onTick: () => void
+  onCancel: () => void
+  fields: ColumnDef[]
+  onAdd: (values: Row) => void
+  busy: boolean
+}) {
+  return (
+    <li className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-subtle" data-testid="tick-line" data-ticked="false">
+      <button type="button" onClick={onTick} aria-label={`Tick ${choice.title}`} aria-expanded={open} data-testid="tick-box"
+        className={cx(BOX, 'cursor-pointer border-border-control bg-surface focus-visible:outline-2 focus-visible:outline-focus')} />
+      {/* Unticked choices are greyed: the name still opens its record. */}
+      <RecordLink table={farTable} rowId={choice.id} name={choice.title} className="self-start !font-normal !text-ink-muted" />
+      <span />
+      {open && <AlsoGiveForm choice={choice} fields={fields} onAdd={onAdd} onCancel={onCancel} busy={busy} />}
+    </li>
+  )
+}
+
+/** C8: "Also give Team Leader · Area [Pick on the trees ▸] · Ends [optional] · Reason […] · Add · Cancel". */
+function AlsoGiveForm({ choice, fields, onAdd, onCancel, busy }: {
+  choice: Choice
+  fields: ColumnDef[]
+  onAdd: (values: Row) => void
+  onCancel: () => void
+  busy: boolean
+}) {
+  const [values, setValues] = useState<Row>({})
+  const set = (name: string, value: unknown) => setValues((v) => ({ ...v, [name]: value }))
+  const areas = fields.filter((c) => c.column_type === 'Reference')
+  const rest = fields.filter((c) => c.column_type !== 'Reference')
+  return (
+    <div className="col-start-2 col-end-4 flex flex-wrap items-center gap-2 rounded-lg bg-action-tint px-2.5 py-2 text-[12.5px] text-ink" data-testid="also-give-form"
+      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onCancel() } }}>
+      <span>Also give <b className="font-semibold">{choice.title}</b></span>
+      {areas.length > 0 && <AreaPicker columns={areas} values={values} set={set} />}
+      {rest.map((c) => <FormField key={c.column_name} column={c} value={values[c.column_name]} onChange={(v) => set(c.column_name, v)} />)}
+      <button type="button" onClick={() => onAdd(values)} disabled={busy} data-testid="also-give-add"
+        className="rounded-[7px] bg-surface px-2.5 py-1 font-medium text-action hover:underline focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-60">Add</button>
+      <button type="button" onClick={onCancel} data-testid="also-give-cancel"
+        className="px-1 text-action hover:underline focus-visible:outline-2 focus-visible:outline-focus">Cancel</button>
+    </div>
+  )
+}
+
+const FLD = 'rounded-md border border-border-control bg-surface px-2 py-1 text-[12.5px] text-ink'
+
+/** Area: "Pick on the trees ▸". For now a plain picker of the link Table's other links. */
+function AreaPicker({ columns, values, set }: { columns: ColumnDef[]; values: Row; set: (name: string, value: unknown) => void }) {
+  const [picking, setPicking] = useState(false)
+  const picked = columns.filter((c) => values[c.column_name])
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span>· Area</span>
+      {!picking && (
+        <button type="button" onClick={() => setPicking(true)} data-testid="area-pick" className={cx(FLD, 'hover:bg-subtle')}>
+          {picked.length ? picked.map((c) => <PickedName key={c.column_name} column={c} value={String(values[c.column_name])} />) : 'Pick on the trees'} ▸
+        </button>
+      )}
+      {picking && columns.map((c) => (
+        <span key={c.column_name} className="inline-flex items-center gap-1" data-testid="area-picker">
+          {columns.length > 1 && <span className="text-ink-muted">{c.label ?? c.column_name}</span>}
+          <span className="w-44">
+            <LinkControl field={c} value={values[c.column_name] ?? ''} onChange={(v) => set(c.column_name, v)}
+              className={FLD} common={{ 'aria-label': c.label ?? c.column_name }} />
+          </span>
+        </span>
+      ))}
+      {picking && <button type="button" onClick={() => setPicking(false)} className="px-1 text-action hover:underline">Done</button>}
+    </span>
+  )
+}
+
+function PickedName({ column, value }: { column: ColumnDef; value: string }) {
+  const name = useRowName(linkRowsTable(column)!, value)
+  return <>{name.state === 'read' ? name.title : '…'}</>
+}
+
+function FormField({ column, value, onChange }: { column: ColumnDef; value: unknown; onChange: (value: unknown) => void }) {
+  const { t } = useI18n()
+  const [focused, setFocused] = useState(false)
+  const label = column.label ?? column.column_name
+  const shown = String(value ?? '')
+  let control: ReactNode
+  if (column.column_type === 'Date' || column.column_type === 'Datetime') {
+    const type = column.column_type === 'Date' ? 'date' : 'datetime-local'
+    // Reads "optional" until it is used, as a date box cannot say so itself.
+    control = <input type={focused || shown ? type : 'text'} value={shown} placeholder={column.reqd ? '' : 'optional'} aria-label={label}
+      onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onChange={(e) => onChange(e.target.value)} className={cx(FLD, 'w-36')} />
+  } else if (column.column_type === 'Check') {
+    control = <input type="checkbox" checked={value === true} aria-label={label} onChange={(e) => onChange(e.target.checked)} />
+  } else if (column.column_type === 'Choice') {
+    control = (
+      <select value={shown} aria-label={label} onChange={(e) => onChange(e.target.value)} className={FLD}>
+        <option value="">{column.reqd ? 'Choose' : 'optional'}</option>
+        {(column.choices ?? '').split('\n').filter(Boolean).map((c) => <option key={c} value={c}>{choiceLabel(c, column.choice_labels, t)}</option>)}
+      </select>
+    )
+  } else {
+    const numeric = ['Int', 'Float', 'Currency', 'Percent'].includes(column.column_type)
+    control = <input type={numeric ? 'number' : 'text'} value={shown} placeholder="…" aria-label={label}
+      onChange={(e) => onChange(numeric && e.target.value !== '' ? Number(e.target.value) : e.target.value)} className={cx(FLD, numeric ? 'w-24' : 'w-40')} />
+  }
+  return <span className="inline-flex items-center gap-1.5"><span>· {label}</span>{control}</span>
+}
+
+/** C4: a new row of the group's Table, already linked back to this record. */
+export function newRowHref(group: BacklinkGroup, record: string): string | undefined {
+  if (group.connection.via) return undefined
+  return `${tableHref(group.connection.table)}/new?prefill=${encodeURIComponent(JSON.stringify({ [group.connection.column]: record }))}`
+}
+
+/** The group's Table filtered to the record, as a list. */
+export function groupListHref(group: BacklinkGroup): string {
+  return `${tableHref(group.connection.table)}?filters=${encodeURIComponent(JSON.stringify(group.connection.filters as ListFilter[]))}`
+}

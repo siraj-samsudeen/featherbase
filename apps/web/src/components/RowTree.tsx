@@ -5,7 +5,7 @@ import { useConnections } from '../lib/connections'
 import { RowRelationTree, defaultExpansion } from './RelationTree'
 
 /**
- * #910 checklist 18: the row page's Tree tab — "Links to" above the row,
+ * #910 checklist 18 (#1273: the Links tab as the tree): the row page's tree — "Links to" above the row,
  * "Linked from" groups below, unfolding in place, two levels deep to begin
  * with. What is unfolded is part of the path, so a step (and the Form tab and
  * back) brings it back. A line opens in the drill pane; Focus here re-centres.
@@ -29,6 +29,6 @@ export function RowTree({ table, name }: { table: string; name: string }) {
         if (rowNav) rowNav.setExpanded([...next])
       }}
       onOpen={(pane) => nav?.push({ ...nav.step, pane })}
-      onFocus={nav ? (pane) => nav.push({ screen: 'row', table: pane.table, row: pane.row, view: 'tree' }) : undefined} />
+      onFocus={nav ? (pane) => nav.push({ screen: 'row', table: pane.table, row: pane.row, view: 'links', linksAs: 'tree' }) : undefined} />
   )
 }

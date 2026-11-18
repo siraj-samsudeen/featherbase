@@ -19,6 +19,7 @@ import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './For
 import { useI18n } from '../lib/i18n'
 import { ActivityTimeline } from './ActivityTimeline'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
+import { useGroupPlans } from './LinkTickList'
 import { managedBySignIn } from './PersonSignInMethods'
 
 // #910 checklist 4–10: the drill pane. One row of any Table, beside or below
@@ -93,6 +94,7 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
   // Two links from one Table are told apart by the link column's label.
   const groups = useBacklinkGroups(cnx.data?.connections)
   const open = pane.group ? groups.find((g) => g.key === groupKey(pane.group!)) : undefined
+  const plans = useGroupPlans(table, row, groups)
 
   // A row the viewer cannot read offers no way to it (checklist 22), not even
   // while that is still being found out.
@@ -102,8 +104,14 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
   const code = name.state === 'read' && name.code ? name.code : undefined
   const status = readable && doc.data && !isEmpty(doc.data.status) ? String(doc.data.status) : undefined
 
+  // #1273 (C1): the header reads "Priya S.  Person · Employee · Floor Manager":
+  // its Table, its status and its code. A relationship the viewer may change
+  // is a section of its own beside the fields; the rest are Pointed At By.
+  const subtitle = [kind, status, code].filter(Boolean).join(' · ')
+  const tickable = groups.filter((g) => plans.get(g.key)?.tick)
+  const chips = groups.filter((g) => !plans.get(g.key)?.tick)
   return (
-    <RecordFrame kind={code ? `${kind} · ${code}` : kind} title={title} place={place} framed={framed} onClose={close}
+    <RecordFrame kind={subtitle} title={title} place={place} framed={framed} onClose={close}
       actions={readable ? <>
         {onFocus && !(step.screen === 'row' && step.table === table && step.row === row) &&
           <button type="button" onClick={() => onFocus(pane)} className={buttonClasses({ variant: 'quiet' })}>Focus here</button>}
@@ -115,26 +123,44 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
       ) : !meta.data || !doc.data ? (
         <p className="text-sm text-ink-subtle">Loading…</p>
       ) : <>
-        <PointsAt links={forwardLinks(meta.data, doc.data)} nav={nav} onOpen={drill} status={status} editHref={pageHref} />
-        <PaneSection title="Fields">
-          <PaneFields meta={meta.data} row={doc.data} onOpen={drill} />
-        </PaneSection>
-        <PaneSection title="Pointed At By">
-          <div className="flex flex-wrap gap-2">
-            {groups.map((g) => (
-              <GroupChip key={g.key} label={g.label} count={g.count} selected={open?.key === g.key}
-                onSelect={() => choose(open?.key === g.key ? undefined : { table: g.connection.table, column: g.connection.column, via: g.connection.via })} />
-            ))}
-            {cnx.isPending && <span className="text-sm text-ink-subtle">Loading…</span>}
-            {!cnx.isPending && !groups.length && <span className="text-sm text-ink-muted">No rows point at it</span>}
+        <PointsAt links={forwardLinks(meta.data, doc.data)} nav={nav} onOpen={drill} editHref={pageHref} />
+        {/* Two columns when the panel is wide, one when narrow (C1). */}
+        <div className="@container" data-testid="record-panel-body">
+          <div className="grid gap-5 @2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
+            <PaneSection title="Fields">
+              <PaneFields meta={meta.data} row={doc.data} onOpen={drill} />
+            </PaneSection>
+            <div className="flex min-w-0 flex-col gap-5">
+              {tickable.map((g) => <LinkedRowsGroup key={g.key} table={table} record={row} group={g} onOpen={drill} editable
+                showAllHref={groupListHref(g, nav)} />)}
+              <PaneSection title="Pointed At By">
+                <div className="flex flex-wrap gap-2">
+                  {chips.map((g) => (
+                    <GroupChip key={g.key} label={g.label} count={g.count} selected={open?.key === g.key}
+                      onSelect={() => choose(open?.key === g.key ? undefined : { table: g.connection.table, column: g.connection.column, via: g.connection.via })} />
+                  ))}
+                  {cnx.isPending && <span className="text-sm text-ink-subtle">Loading…</span>}
+                  {!cnx.isPending && !groups.length && <span className="text-sm text-ink-muted">No rows point at it</span>}
+                </div>
+                {open && !tickable.includes(open) && <PanelGroup key={open.key} table={table} row={row} group={open} nav={nav} onOpen={drill} />}
+              </PaneSection>
+            </div>
           </div>
-          {open && <PanelGroup key={open.key} table={table} row={row} group={open} nav={nav} onOpen={drill} />}
-        </PaneSection>
+        </div>
         {/* The timeline heads itself "Activity". */}
         <ActivityTimeline table={table} name={row} bare />
       </>}
     </RecordFrame>
   )
+}
+
+/** A group's rows as a list, on the path when the panel is on one. */
+function groupListHref(group: BacklinkGroup, nav: Navigation): string {
+  const { connection } = group
+  const listStep: NavStep = { screen: 'list', table: connection.table, filters: connection.filters as ListFilter[] }
+  return nav.addressed
+    ? nav.href(push(nav.path, listStep))
+    : `${tableHref(connection.table)}?filters=${encodeURIComponent(JSON.stringify(connection.filters))}`
 }
 
 /**
@@ -165,9 +191,9 @@ function RecordFrame({ kind, title, onClose, actions, children, place, framed }:
         framed ? 'h-full rounded-xl shadow-lg' : place === 'right' ? 'h-full' : '')}
     >
       <header className="flex shrink-0 items-start gap-3 px-5 pb-2 pt-4">
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3.5 gap-y-0.5">
           <h2 className="break-words text-xl font-semibold text-ink">{title}</h2>
-          <span className="text-sm text-ink-muted">{kind}</span>
+          <span className="text-sm text-ink-muted" data-testid="record-panel-kind">{kind}</span>
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
         <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={iconButtonClasses('shrink-0 bg-canvas')}>
@@ -302,13 +328,8 @@ function PaneLink({ table, rowId, onOpen, goThere = false, onFilter, filterDisab
 
 /** #1218 slice 1: an opened group, its rows by what they point to (LinkedRowsGroup). */
 function PanelGroup({ table, row, group, nav, onOpen }: { table: string; row: string; group: BacklinkGroup; nav: Navigation; onOpen: (pane: NavPane) => void }) {
-  const { connection } = group
-  const listStep: NavStep = { screen: 'list', table: connection.table, filters: connection.filters as ListFilter[] }
-  const showAllHref = nav.addressed
-    ? nav.href(push(nav.path, listStep))
-    : `${tableHref(connection.table)}?filters=${encodeURIComponent(JSON.stringify(connection.filters))}`
   // Opened from its chip, right above: the chip already names it (verifier, 17-Nov).
-  return <LinkedRowsGroup table={table} record={row} group={group} showAllHref={showAllHref} onOpen={onOpen} heading={false} />
+  return <LinkedRowsGroup table={table} record={row} group={group} showAllHref={groupListHref(group, nav)} onOpen={onOpen} heading={false} />
 }
 
 // ---------- fields ----------
@@ -316,7 +337,7 @@ function PanelGroup({ table, row, group, nav, onOpen }: { table: string; row: st
 const LONG = new Set(['Text', 'Long Text', 'JSON'])
 
 /** The row's fields as its form arranges them for this person (#795), read only. */
-function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; onOpen: (pane: NavPane) => void }) {
+export function PaneFields({ meta, row, onOpen }: { meta: TableMeta; row: Row; onOpen: (pane: NavPane) => void }) {
   const settings = useSettings()
   const { t } = useI18n()
   const arrangement = useFormArrangement(meta.name, meta.columns.some((c) => c.column_type === 'Section Break'))
@@ -365,10 +386,12 @@ function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: u
  * rows it points at and the counted groups that point at it, the same chips
  * as the drill pane. Opening one shows it in the pane.
  */
-export function RowConnections({ table, row, values, layout = 'chips' }: {
+export function RowConnections({ table, row, values, layout = 'chips', onGroup }: {
   table: string; row: string; values: Row | undefined
   /** #1267: 'list' is a Person page's right column, one group per line with its count. */
   layout?: 'chips' | 'list'
+  /** #1273 (D3): a group's chip jumps to its section on the Links tab, by the group's key. */
+  onGroup?: (key: string) => void
 }) {
   const nav = useNavigation()
   const meta = useMeta(table)
@@ -385,8 +408,8 @@ export function RowConnections({ table, row, values, layout = 'chips' }: {
   const full = groups.filter((g) => g.count > 0)
   const empty = groups.filter((g) => g.count === 0)
   const shown = showEmpty ? [...full, ...empty] : full
-  const choose = (g: BacklinkGroup) => open({ table, row, group: { table: g.connection.table, column: g.connection.column, via: g.connection.via } })
-  const isChosen = (g: BacklinkGroup) => (chosen ? groupKey(chosen) === g.key : false)
+  const choose = (g: BacklinkGroup) => onGroup ? onGroup(g.key) : open({ table, row, group: { table: g.connection.table, column: g.connection.column, via: g.connection.via } })
+  const isChosen = (g: BacklinkGroup) => (!onGroup && chosen ? groupKey(chosen) === g.key : false)
   const emptyToggle = empty.length > 0 && (
     <button type="button" onClick={() => setShowEmpty((was) => !was)} aria-expanded={showEmpty} data-testid="connections-show-empty"
       className={touchLinkClasses('text-sm text-ink-muted hover:text-ink hover:underline')}>

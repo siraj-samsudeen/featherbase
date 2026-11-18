@@ -61,6 +61,8 @@ export interface TableMeta {
   enable_discussion?: boolean
   /** #1259: a queue's lists open on cards (List And Record) until a person chooses. */
   queue?: boolean
+  /** #1273: where a feed row is corrected: an address in the instance, {column} for the row's value. */
+  correction_path?: string | null
   description: string | null
   custom: boolean
   // #74: platform tables created by the migration chain — grouped under the

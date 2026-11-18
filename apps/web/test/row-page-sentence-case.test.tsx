@@ -20,7 +20,7 @@ async function openTab(admin: Admin, tab: string) {
 
 const capitalised = () => [...document.querySelectorAll('.uppercase')].map((el) => el.textContent)
 
-for (const tab of ['Activity', 'Collaboration'])
+for (const tab of ['Activity', 'Links'])
   test(`the ${tab} tab draws no heading in capitals`, async ({ admin }) => {
     await openTab(admin, tab)
     await screen.findByRole('tabpanel')
