@@ -14,6 +14,13 @@ const cell = (row: HTMLElement, field: string) =>
   row.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-rowfield=${field}]`)!
 
 describe('Build a table by describing its columns', () => {
+  test('the Table name and Module boxes are named by the labels above them', async ({ admin }) => {
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder')
+    expect(screen.getByRole('textbox', { name: 'Table name' })).toBe(screen.getByTestId('dt-name'))
+    expect(screen.getByRole('textbox', { name: 'Module' })).toBe(screen.getByTestId('dt-module'))
+  })
+
   test('every control in a column row is named by its column heading and its row', async ({ admin }) => {
     await renderApp('/featherbase/admin/new-table', admin)
     await screen.findByTestId('table-builder')
