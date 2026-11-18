@@ -80,9 +80,9 @@ export function AreaPicker({ axes, holds, load, onUse, onCancel }: {
       )}
       {/* On a phone, one column at a time with a way back (G5). */}
       {picked.length > 0 && (
-        <button type="button" onClick={back} aria-label="Back one level" className="self-start rounded px-1 text-sm text-ink-muted hover:text-ink @2xl:hidden">← {axis.levels[last]!.label}</button>
+        <button type="button" onClick={back} aria-label="Back one level" className="self-start rounded px-1 text-sm text-ink-muted hover:text-ink @lg:hidden">← {axis.levels[last]!.label}</button>
       )}
-      <div className="grid min-w-0 gap-3 @2xl:auto-cols-[minmax(10rem,1fr)] @2xl:grid-flow-col">
+      <div className="grid min-w-0 gap-3 @lg:auto-cols-[minmax(9rem,1fr)] @lg:grid-flow-col">
         {axis.levels.slice(0, shownLevels).map((level, i) => (
           <AreaColumn key={`${axis.name}:${i}:${picked[i - 1]?.id ?? ''}`} axis={axis} level={i} parent={picked[i - 1] ?? null}
             chosen={picked[i]?.id} onPick={(row) => pick(i, row)} load={load}
@@ -133,7 +133,7 @@ function AreaColumn({ axis, level, parent, chosen, onPick, load, narrowHidden }:
   const here = axis.levels[level]!
   const below = axis.levels[level + 1]
   return (
-    <section aria-label={here.label} data-testid="area-column" className={cx('flex min-w-0 flex-col gap-1', narrowHidden && 'hidden @2xl:flex')}>
+    <section aria-label={here.label} data-testid="area-column" className={cx('flex min-w-0 flex-col gap-1', narrowHidden && 'hidden @lg:flex')}>
       <h3 className="px-2 text-xs font-semibold text-ink-muted">{here.label}</h3>
       {rows === null ? <p className="px-2 text-sm text-ink-subtle">Loading…</p>
         : !rows.length ? <p className="px-2 text-sm text-ink-muted">None</p>
