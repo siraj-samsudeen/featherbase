@@ -7,7 +7,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { hideRetired, scopedWhere } from './query'
 import { getMeta } from './meta'
-import { assertPermission, getRoles } from './permissions'
+import { assertPermission, getRolesMany } from './permissions'
 import { serviceAccountName } from './actor-names'
 
 const MAX_NAMES = 500
@@ -174,11 +174,11 @@ export async function tableMembers(table: string, viewer: string) {
   if (!meta.access_policy) throw new AppError('PermissionError', 'This Table has no member directory')
   await assertPermission(viewer, table, 'read')
   const people = await sql`select row_id, full_name, username from person where enabled and replaced_by is null`
-  const members: { row_id: string; full_name: string }[] = []
-  for (const person of people) {
-    const roles = await getRoles(String(person.row_id))
-    if (meta.access_policy.roles.some(role => roles.includes(role)))
-      members.push({ row_id: String(person.row_id), full_name: displayName(person) })
-  }
+  // #1298: everyone's roles in one query, exactly as getRoles gives each one.
+  const held = await getRolesMany(people.map((person) => String(person.row_id)))
+  const policy = meta.access_policy
+  const members = people
+    .filter((person) => policy.roles.some((role) => held.get(String(person.row_id))?.includes(role)))
+    .map((person) => ({ row_id: String(person.row_id), full_name: displayName(person) }))
   return members.sort((a, b) => a.full_name.localeCompare(b.full_name) || a.row_id.localeCompare(b.row_id))
 }
