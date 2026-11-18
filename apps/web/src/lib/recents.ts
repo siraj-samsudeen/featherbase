@@ -1,6 +1,6 @@
 // Per-user warm history cache, reconciled with the server on app load.
 
-import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
+import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, RELATED_OPS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
 import { viewedPerson } from './viewing-as'
 import type { ColumnDef } from './meta'
 
@@ -317,6 +317,21 @@ export function recentSearches(user: string, query: string, limit: number): Rece
     .slice(0, limit)
 }
 
+/** "Linked to Subcategory › Category": each step's Table, following the first related filter inside it. */
+function linkedWords(op: string, spec: unknown, t: (text: string) => string): string {
+  const tables: string[] = []
+  let at = spec
+  while (at && typeof at === 'object' && typeof (at as { table?: unknown }).table === 'string') {
+    const step = at as { table: string; filters?: unknown }
+    tables.push(t(step.table))
+    const inner = Array.isArray(step.filters)
+      ? step.filters.find((f): f is [string, string, unknown] => Array.isArray(f) && RELATED_OPS.includes(f[1]))
+      : undefined
+    at = inner?.[2]
+  }
+  return [t(op === 'not related' ? 'Not linked to' : 'Linked to'), tables.join(' › ')].filter(Boolean).join(' ')
+}
+
 /** "status = Overdue · region = South" from the list route's JSON filters. */
 export function describeFilters(
   filtersJson: string | undefined,
@@ -330,6 +345,8 @@ export function describeFilters(
     const parts = filters
       .filter((f): f is [string, string, unknown] => Array.isArray(f) && f.length >= 3)
       .map((f) => {
+        // #1285: a Linked to filter's value is a spec, named by the Tables its chain walks.
+        if (RELATED_OPS.includes(f[1] as (typeof RELATED_OPS)[number])) return linkedWords(f[1], f[2], t)
         const column = columns.find(c => c.column_name === f[0])
         const value = column?.column_type === 'Choice' && ['=', '!='].includes(f[1])
           ? choiceLabel(String(f[2]), column.choice_labels, t)
