@@ -313,6 +313,20 @@ describe('a feature\'s secret is required while the feature is on (D7)', () => {
     expect(await snapshot()).toEqual(before)
   })
 
+  // #1278: the owner keeps the Microsoft secret off dev, so dev must not turn it on.
+  test('the Feather Dash file needs no Microsoft secret on dev, and does on production', async () => {
+    const file = JSON.parse(readFileSync(new URL('../../../client-apps/jeyarama/instances/dash/instance-settings.json', import.meta.url), 'utf8'))
+    const signIn = (section: string) => ({
+      settings: { 'Sign In Method': file.settings['Sign In Method'].filter((m: { row_id: string }) => m.row_id === 'microsoft') },
+      environments: { [section]: { settings: { 'Sign In Method': file.environments[section].settings['Sign In Method'].filter((m: { row_id: string }) => m.row_id === 'microsoft') } } },
+    })
+    vi.stubEnv('MICROSOFT_CLIENT_SECRET', '')
+    const dev = await applyInstanceSettings(signIn('dev'), { by: 'Administrator', environment: 'dev', serverEnvironment: 'dev', dryRun: true })
+    expect(dev.warnings).toEqual([])
+    const err = await problemsOf(applyInstanceSettings(signIn('prod'), { by: 'Administrator', environment: 'prod', serverEnvironment: 'production', dryRun: true }))
+    expect(Object.keys(err.fields ?? {})).toEqual(['MICROSOFT_CLIENT_SECRET'])
+  })
+
   test('with the secret set, it applies', async () => {
     vi.stubEnv('GOOGLE_CLIENT_SECRET', 'a-google-secret')
     await sql`update sign_in_method set enabled = false, client_id = null where row_id = 'google'`

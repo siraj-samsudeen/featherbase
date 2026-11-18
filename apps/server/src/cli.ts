@@ -45,7 +45,7 @@
 //                                     put environments' variable reports (one key, one run) side by
 //                                     side; exits 1 while a rule is broken or a required variable is
 //                                     set on some environments only
-//   cli repin-apps                    on a development or dev (staging) database, re-pin each installed app
+//   cli repin-apps                    on a development or dev (or staging) database, re-pin each installed app
 //                                     whose files changed under the same version and manifest; never on production
 //   cli install-app <name>            install an app this server ships (a registered app or a package on
 //                                     FEATHERBASE_APP_PATHS). Already installed: says so and succeeds; on a
@@ -581,7 +581,7 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       // Read-only. Exactly these, with the target's real variables:
       //  1. the server's start-up refusal (index.ts): the variable registry
       //     (env.ts) — a missing required variable, or a switch on that only
-      //     development, test or staging may have;
+      //     development, test or dev (or staging) may have;
       //  2. the release preflight (release-preflight.ts): the same registry
       //     with the settings-dependent variables, the database's environment
       //     stamp, its label for test mode, and the access configuration;

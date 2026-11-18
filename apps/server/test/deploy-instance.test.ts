@@ -89,7 +89,8 @@ afterAll(() => {
 })
 
 describe('which instance and which section', () => {
-  it('staging applies dev, production applies prod, and nothing else is hosted', () => {
+  it('dev (or its older name staging) applies dev, production applies prod, and nothing else is hosted', () => {
+    expect(settingsSection('dev')).toBe('dev')
     expect(settingsSection('staging')).toBe('dev')
     expect(settingsSection('production')).toBe('prod')
     expect(() => settingsSection('development')).toThrow(/pnpm dev/)
@@ -101,16 +102,29 @@ describe('which instance and which section', () => {
     expect(() => instanceFolder('../../etc', root)).toThrow(/holds no instance/)
   })
 
-  it('a staging or production server on its own database follows files', () => {
+  it('a dev, staging or production server on its own database follows files', () => {
+    expect(followsAppFiles('dev', 'dev')).toBe(true)
+    expect(followsAppFiles('dev', 'staging')).toBe(false)
+    expect(followsAppFiles('staging', 'dev')).toBe(false)
     expect(followsAppFiles('staging', 'staging')).toBe(true)
     expect(followsAppFiles('production', 'production')).toBe(true)
     expect(followsAppFiles('production', 'staging')).toBe(false)
     expect(followsAppFiles('staging', 'production')).toBe(false)
     expect(followsAppFiles('development', 'development')).toBe(false)
+    // Only the hosted names: an inherited key is not an environment.
+    expect(followsAppFiles('toString', 'toString')).toBe(false)
   })
 })
 
 describe('a fresh deploy', () => {
+  test('a dev server installs the apps, applies the dev section, and a second run changes nothing (#1278)', async () => {
+    await pretendTo('dev')
+    const first = await deploy()
+    expect(first).toContain(`installed ${name}`)
+    expect(first).toContain('app_name')
+    expect(await deploy()).toContain('nothing changed')
+  })
+
   test('installs the apps, applies the section, and a second run changes nothing', async () => {
     await pretendTo('staging')
     const first = await deploy()

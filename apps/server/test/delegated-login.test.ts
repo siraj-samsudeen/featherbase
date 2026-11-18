@@ -516,8 +516,9 @@ describe('delegated sign-in test mode', () => {
       }
     }
     expect(refusal('production')).toMatch(/DELEGATED_LOGIN_TEST_MODE is set on a "production" server/)
-    expect(refusal('production')).toMatch(/development, test or staging/)
+    expect(refusal('production')).toMatch(/development, test, or dev or staging/)
     // Any other refusal a bare test environment has is not about test mode.
+    expect(refusal('dev')).not.toContain('DELEGATED_LOGIN_TEST_MODE')
     expect(refusal('staging')).not.toContain('DELEGATED_LOGIN_TEST_MODE')
     expect(refusal('development')).not.toContain('DELEGATED_LOGIN_TEST_MODE')
     expect(refusal('test')).not.toContain('DELEGATED_LOGIN_TEST_MODE')
@@ -530,6 +531,8 @@ describe('delegated sign-in test mode', () => {
     vi.stubEnv('ADMIN_PASSWORD', '')
     await sql`update person set password_hash = null where row_id = 'Administrator'`
     await bootstrapAdministrator('staging')
+    expect(await sql`select password_hash from person where row_id = 'Administrator'`).toEqual([{ password_hash: null }])
+    await bootstrapAdministrator('dev')
     expect(await sql`select password_hash from person where row_id = 'Administrator'`).toEqual([{ password_hash: null }])
     await bootstrapAdministrator('development')
     expect((await sql`select password_hash from person where row_id = 'Administrator'`)[0].password_hash).not.toBeNull()
