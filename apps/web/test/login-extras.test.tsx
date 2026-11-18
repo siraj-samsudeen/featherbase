@@ -82,7 +82,7 @@ test('with site data blocked, a refused Google sign-in still reads plainly and a
   })
   const { router } = await renderApp('/featherbase/login?error=not_provisioned', anonymous)
   expect(await screen.findByTestId('sign-in-refused', {}, { timeout: 8000 })).toBeInTheDocument()
-  await userEvent.click(screen.getByTestId('refused-other-ways'))
+  await userEvent.click(screen.getByTestId('password-login-toggle'))
   await signIn('blocked.storage@example.com', 'blocked-pw-1')
   await waitFor(() => expect((router as Router).state.location.pathname).toBe('/featherbase/admin'))
 })

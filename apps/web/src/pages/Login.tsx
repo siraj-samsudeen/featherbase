@@ -7,6 +7,7 @@ import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClas
 import { Logo } from '../components/Logo'
 import { AccountChooser, useBrowserAccounts } from '../components/AccountChooser'
 import { pageLoad } from '../lib/page-load'
+import { SignInPanel, hasOtherWays } from '../components/SignInPanel'
 import type { BrowserAccount } from '../lib/api'
 
 export function safeLoginNext(
@@ -48,8 +49,6 @@ const REFUSALS: Record<string, (p: { appName: string; provider: string; service:
 // #474: "Try another Google account" restarts Google sign-in with the account
 // picker forced, so the account just refused is never silently reused. Each
 // redirect sign-in already asks Microsoft to show its account picker too.
-const GOOGLE_RETRY_HREF = '/api/oauth/google/login?prompt=select_account'
-const MICROSOFT_LOGIN_HREF = '/api/oauth/microsoft/login'
 
 const SIGN_IN_FAILED = 'Sign-in failed. Please try again.'
 // Server messages a person may read as they are: refusals the server already
@@ -214,7 +213,6 @@ export function LoginPage() {
   const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google')
   // Microsoft only when the brand names it: it is offered once it is set up.
   const microsoft = methods?.find((m) => m.kind === 'microsoft')
-  const redirectMethods = Boolean(google || microsoft)
   // Until the brand answers, and if it cannot, the password form stays.
   const passwordOn = methods === null || methods.some((m) => m.kind === 'password')
   const [error, setError] = useState<string | null>(null)
@@ -392,6 +390,21 @@ export function LoginPage() {
     </div>
   )
 
+  // #1283: one panel of ways in for every place a sign-in is offered.
+  const panel = (p: { failed?: 'google' | 'microsoft'; without?: string | null }) => (
+    <SignInPanel
+      google={google}
+      microsoft={microsoft}
+      delegated={delegatedMethods}
+      password={passwordOn}
+      failed={p.failed ?? null}
+      without={p.without ?? null}
+      onRedirect={() => rememberLoginNext(next)}
+      onDelegated={(key) => switchMode('delegated', key)}
+      onPassword={() => switchMode('password')}
+    />
+  )
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <div className="w-full max-w-sm">
@@ -441,45 +454,8 @@ export function LoginPage() {
                 <h2 className="text-base font-semibold text-ink">We couldn't sign you in</h2>
                 <p className="text-sm text-ink-muted" data-testid="sign-in-refused">{panelRefusal}</p>
               </div>
-              <div className="space-y-3">
-                {delegatedMethods[0] && (
-                  <button
-                    type="button"
-                    data-testid="refused-delegated"
-                    className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}
-                    onClick={() => switchMode('delegated', delegatedMethods[0].key)}
-                  >
-                    Sign in with {delegatedMethods[0].label}
-                  </button>
-                )}
-                {/* A full-page navigation, as the ordinary Google button is. */}
-                {refusedByMicrosoft && microsoft && (
-                  <a
-                    href={MICROSOFT_LOGIN_HREF}
-                    data-testid="refused-microsoft-retry"
-                    className={buttonClasses({ variant: delegatedMethods[0] ? 'secondary' : 'primary', className: 'w-full justify-center py-2' })}
-                  >
-                    Try another {microsoft.label} account
-                  </a>
-                )}
-                {!refusedByMicrosoft && google && (
-                  <a
-                    href={GOOGLE_RETRY_HREF}
-                    data-testid="refused-google-retry"
-                    className={buttonClasses({ variant: delegatedMethods[0] ? 'secondary' : 'primary', className: 'w-full justify-center py-2' })}
-                  >
-                    Try another {google.label} account
-                  </a>
-                )}
-              </div>
-              <button
-                type="button"
-                data-testid="refused-other-ways"
-                className="inline-flex min-h-control items-center text-sm text-action hover:underline"
-                onClick={() => switchMode('password')}
-              >
-                Other ways to sign in
-              </button>
+              {/* #1283: the same ways in as the first page; the one that failed reads "Try another … account". */}
+              {panel({ failed: refusedByMicrosoft ? 'microsoft' : 'google' })}
             </div>
           ) : mode === 'delegated' && delegatedLabel ? (
             <>
@@ -547,50 +523,9 @@ export function LoginPage() {
                   {busy ? 'Signing in…' : `Sign in with ${delegatedLabel}`}
                 </button>
               </form>
-              {(redirectMethods || delegatedMethods.length > 1) && orDivider}
-              {/* The other ways in, one tap away under the service's form. */}
-              {google && (
-                <a
-                  href="/api/oauth/google/login"
-                  onClick={() => rememberLoginNext(next)}
-                  data-testid="google-login"
-                  className={buttonClasses({ className: 'flex w-full justify-center py-2' })}
-                >
-                  Sign in with {google.label}
-                </a>
-              )}
-              {microsoft && (
-                <a
-                  href={MICROSOFT_LOGIN_HREF}
-                  onClick={() => rememberLoginNext(next)}
-                  data-testid="microsoft-login"
-                  className={buttonClasses({ className: `${google ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
-                >
-                  Sign in with {microsoft.label}
-                </a>
-              )}
-              {delegatedMethods.filter((m) => m.key !== delegated?.key).map((m) => (
-                <button
-                  key={m.key}
-                  type="button"
-                  data-testid={`delegated-login-toggle-${m.key}`}
-                  className={buttonClasses({ className: `${redirectMethods ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
-                  onClick={() => switchMode('delegated', m.key)}
-                >
-                  Sign in with {m.label}
-                </button>
-              ))}
-              {/* #1258: a full button like the other ways in, under them (was a quiet link, #1235 item 5). */}
-              {passwordOn && (
-                <button
-                  type="button"
-                  data-testid="password-login-toggle"
-                  className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
-                  onClick={() => switchMode('password')}
-                >
-                  Use email and password instead
-                </button>
-              )}
+              {hasOtherWays({ google, microsoft, delegated: delegatedMethods, password: passwordOn, without: delegated?.key }) && orDivider}
+              {/* The other ways in, one tap away under the service's form (#1283: the one shared panel). */}
+              {panel({ without: delegated?.key ?? null })}
             </>
           ) : mode === 'signup' && signUpOpen ? (
             <>
@@ -646,44 +581,9 @@ export function LoginPage() {
             </button>
           </form>
           )}
-          {passwordOn && (redirectMethods || delegatedMethods.length > 0) && orDivider}
-          {/* PLAT-006: social login. A full-page navigation (not fetch) so the
-              server's OAuth redirects drive the browser. Offered only when
-              the Google sign-in method is on. */}
-          {google && (
-            <a
-              href="/api/oauth/google/login"
-              onClick={() => rememberLoginNext(next)}
-              data-testid="google-login"
-              className={buttonClasses({ className: 'flex w-full justify-center py-2' })}
-            >
-              Sign in with {google.label}
-            </a>
-          )}
-          {/* microsoft-sign-in: the same kind of button, offered once it is set up. */}
-          {microsoft && (
-            <a
-              href={MICROSOFT_LOGIN_HREF}
-              onClick={() => rememberLoginNext(next)}
-              data-testid="microsoft-login"
-              className={buttonClasses({ className: `${google ? 'mt-3 ' : ''}flex w-full justify-center py-2` })}
-            >
-              Sign in with {microsoft.label}
-            </a>
-          )}
-          {/* Delegated sign-in: one button per connected service (a Sign In
-              Method row of kind delegated_password). */}
-          {delegatedMethods.map((m) => (
-            <button
-              key={m.key}
-              type="button"
-              data-testid={delegatedMethods.length === 1 ? 'delegated-login-toggle' : `delegated-login-toggle-${m.key}`}
-              className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
-              onClick={() => switchMode('delegated', m.key)}
-            >
-              Sign in with {m.label}
-            </button>
-          ))}
+          {passwordOn && hasOtherWays({ google, microsoft, delegated: delegatedMethods, password: passwordOn, without: 'password' }) && orDivider}
+          {/* #1283: the one shared panel of ways in, less the password form shown above it. */}
+          {panel({ without: passwordOn ? 'password' : null })}
           {signUpOpen && (
             <Button variant="quiet" className="mt-3" data-testid="sign-up-toggle" onClick={() => switchMode('signup')}>
               Create an account

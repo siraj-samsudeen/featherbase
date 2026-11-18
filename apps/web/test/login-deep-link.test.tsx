@@ -62,7 +62,7 @@ test('after a Google refusal, a password sign-in still lands on the saved deep l
   await screen.findByTestId('sign-in-refused-panel')
   // The destination is back in the address bar, beside the refusal.
   await waitFor(() => expect(new URLSearchParams(window.location.search).get('next')).toBe(DEEP))
-  await userEvent.click(screen.getByTestId('refused-other-ways'))
+  await userEvent.click(screen.getByTestId('password-login-toggle'))
   // Choosing clears `error` and keeps `next`.
   expect(new URLSearchParams(window.location.search).get('error')).toBeNull()
   expect(new URLSearchParams(window.location.search).get('next')).toBe(DEEP)
