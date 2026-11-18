@@ -169,5 +169,191 @@
     {"table": "tickets.type_field", "role": "All", "can_read": true},
     {"table": "tickets.type_field", "role": "System Manager", "can_read": true, "can_write": true, "can_create": true, "can_delete": true},
     {"table": "tickets.data_quality_rule", "role": "All", "can_read": true, "can_create": true, "can_delete": true}
-  ]
+  ],
+  "glossary": {
+    "version": 1,
+    "terms": [
+      {
+        "term": "Ticket",
+        "definition": "A request for help or a change that a person raises in Tickets and follows to done. It has a public summary, a requester, a type, a state, an assignee and an optional public update.",
+        "describes": [
+          {
+            "table": "tickets.ticket"
+          }
+        ]
+      },
+      {
+        "term": "Assignee",
+        "definition": "The person a ticket is assigned to. Only support assigns, from the ticket's header after a confirm step, and the person assigned is emailed. Everyone else sees the assignee as plain text.",
+        "examples": [
+          "Picking Colleague asks 'Assign to Colleague and email them?' with Assign and Cancel; nothing is saved until Assign."
+        ],
+        "describes": [
+          {
+            "table": "tickets.ticket",
+            "column": "assigned_to"
+          }
+        ]
+      },
+      {
+        "term": "Assignable person",
+        "definition": "Someone listed in Tickets' assignees setting so that tickets can be assigned to them. Being listed gives no support rights; it only puts the person in the assign picker, even before they have used Tickets."
+      },
+      {
+        "term": "Support",
+        "definition": "The people with Tickets support rights (role Tickets Support, plus those listed in Tickets' support users setting). Support triages tickets, assigns them, publishes progress, and reads the full history of private tickets."
+      },
+      {
+        "term": "Ticket type",
+        "definition": "A kind of ticket, such as Access request or Data Quality Issue, set up as data. A type names its states, which states are done, the state a reopened ticket returns to, its transitions, who reads its details, and its own fields.",
+        "examples": [
+          "Built-in types: General request, Access request, Stale / missing data, Wrong data / reconciliation, Report / export, New source, New column / model, Pipeline failure, Backfill, Feedback on a report."
+        ],
+        "describes": [
+          {
+            "table": "tickets.ticket_type"
+          },
+          {
+            "table": "tickets.ticket",
+            "column": "kind"
+          }
+        ]
+      },
+      {
+        "term": "Ticket type field",
+        "definition": "A question a ticket type asks when a ticket is raised, such as a date, a choice or a person. Each field has a key, a label, a field type (text, long text, choice, date, person, link), whether it is required and its order.",
+        "describes": [
+          {
+            "table": "tickets.type_field"
+          }
+        ]
+      },
+      {
+        "term": "Ticket state",
+        "definition": "Where a ticket is in its life, shown on the queue and the ticket. A new ticket starts in the first state its type lists; a ticket in a done state counts as resolved and leaves the open queue.",
+        "examples": [
+          "Built-in states: New, Needs verification, Awaiting approval, Approved, Rejected, Policy review, In progress, Resolved."
+        ],
+        "describes": [
+          {
+            "table": "tickets.ticket",
+            "column": "ticket_state"
+          },
+          {
+            "table": "tickets.ticket_type",
+            "column": "states"
+          },
+          {
+            "table": "tickets.ticket_type",
+            "column": "done_states"
+          }
+        ]
+      },
+      {
+        "term": "Transition",
+        "definition": "An action a ticket type lists that moves a ticket from one state to another. It names who may take it (the assignee, the raiser, anyone involved, or holders of a role) and what they must write down. When a type lists transitions, the server refuses every other change of state.",
+        "examples": [
+          "Bala confirms a raised issue with what will be fixed, where, and a target date; the ticket moves to 'Fix planned'."
+        ],
+        "describes": [
+          {
+            "table": "tickets.ticket_type",
+            "column": "transitions"
+          }
+        ]
+      },
+      {
+        "term": "Private request",
+        "definition": "The original message and structured details of a ticket whose type keeps its details private. Only the raiser, support and the people the ticket names (its assignee and the person it is raised for) read it. All built-in types are private.",
+        "describes": [
+          {
+            "table": "tickets.request"
+          }
+        ]
+      },
+      {
+        "term": "Open request",
+        "definition": "The original message and details of a ticket whose type is not private. Everyone who can see the ticket can read them.",
+        "describes": [
+          {
+            "table": "tickets.open_request"
+          }
+        ]
+      },
+      {
+        "term": "Support event",
+        "definition": "One entry in the history of a private ticket: who did what and when, such as an assignment, a transition, a change of raiser or a removed rule. On a private ticket only support reads the full history; everyone else sees only which actions were taken.",
+        "describes": [
+          {
+            "table": "tickets.event"
+          }
+        ]
+      },
+      {
+        "term": "Open history",
+        "definition": "The history of a ticket whose type is not private, readable by everyone who can see the ticket. It is the open counterpart of the Support event record.",
+        "describes": [
+          {
+            "table": "tickets.open_event"
+          }
+        ]
+      },
+      {
+        "term": "Details visible to",
+        "definition": "A setting on a ticket type: everyone (all who can see the ticket read its details and history) or private (only the raiser, support and the people the ticket names). A ticket raised while its type was private stays private until support opens it.",
+        "describes": [
+          {
+            "table": "tickets.ticket_type",
+            "column": "details_visible_to"
+          }
+        ]
+      },
+      {
+        "term": "Data quality rule",
+        "definition": "A filter on one linked Table, kept on a ticket, that describes a gap in master data, such as every buyer whose person is blank. It has a severity (High, Medium or Low), an owner and how to fix it, and shows a live count of rows still to fix, or all clear when none are. A rule is removed only with a reason, and changed by removing it and adding a new one.",
+        "examples": [
+          "'Buyer is blank' on Buyer Assignment: 3 of 3 rows left, then 2 of 3 as people are filled in."
+        ],
+        "describes": [
+          {
+            "table": "tickets.data_quality_rule"
+          }
+        ]
+      },
+      {
+        "term": "Rows left",
+        "definition": "How many rows a data quality rule matches now, shown against how many matched when the rule was added ('3 of 3 rows left'). The count only shows to a reader who may read the rule's Table; others see only the count from when it was raised.",
+        "describes": [
+          {
+            "table": "tickets.data_quality_rule",
+            "column": "rows_when_raised"
+          }
+        ]
+      },
+      {
+        "term": "Severity",
+        "definition": "How serious a data quality rule is: High, Medium or Low. Open rules are listed first, then by severity.",
+        "describes": [
+          {
+            "table": "tickets.data_quality_rule",
+            "column": "severity"
+          }
+        ]
+      },
+      {
+        "term": "Linked Table",
+        "definition": "A Table the Tickets administrators list in Tickets' linked tables setting. Data quality rules and link-type ticket fields can only point at linked Tables, and Data Quality Row must be listed for a ticket to show the rows it covers.",
+        "describes": [
+          {
+            "table": "tickets.type_field",
+            "column": "link_table"
+          }
+        ]
+      },
+      {
+        "term": "Feedback on a report",
+        "definition": "A ticket type raised from a report by the person themselves, never from the New ticket form. Its details are private to the raiser and support, and the ticket starts New with nobody assigned."
+      }
+    ]
+  }
 }

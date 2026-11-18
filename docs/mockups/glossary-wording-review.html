@@ -1,0 +1,571 @@
+<title>Glossary Wording Review</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one reading column; app sections jump from a sticky strip; each term a card with its source. */
+:root{--bg:#f6f7f9;--surface:#fff;--ink:#111827;--muted:#4b5563;--line:#e5e7eb;--accent:#1d4ed8;--tint:#eff6ff;--ok:#15803d;--okt:#f0fdf4;--warn:#a35200;--warnt:#fff7ed;--font:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans',sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1220;--surface:#131c2e;--ink:#f1f5f9;--muted:#a8b3c4;--line:#24314a;--accent:#60a5fa;--tint:#16264a;--ok:#4ade80;--okt:#0f2e1c;--warn:#fbbf24;--warnt:#3a2a0c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0b1220;--surface:#131c2e;--ink:#f1f5f9;--muted:#a8b3c4;--line:#24314a;--accent:#60a5fa;--tint:#16264a;--ok:#4ade80;--okt:#0f2e1c;--warn:#fbbf24;--warnt:#3a2a0c;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--font);margin:0}
+.wrap{max-width:1100px;margin:0 auto;padding-block:24px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:24px;margin:0 0 6px;text-wrap:balance}
+h2{font-size:20px;margin:36px 0 2px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.count{font-size:13px;font-weight:500;color:var(--muted)}
+.sub{color:var(--muted);margin:0 0 14px}
+.lead{color:var(--muted);max-width:70ch}
+.nav{position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);display:flex;gap:8px;flex-wrap:wrap;padding:10px 0;z-index:2;border-bottom:1px solid var(--line)}
+.nav a{border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;border-radius:999px;padding:4px 12px;font-size:14px}
+.nav a:focus-visible,.nav a:hover{border-color:var(--accent);color:var(--accent)}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin-top:16px}
+.box ul{margin:8px 0 0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.chip{display:inline-block;font-size:12px;font-weight:600;color:var(--accent);background:var(--tint);border-radius:999px;padding:0 8px;margin-right:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,470px),1fr));gap:12px}
+.term{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 16px;min-width:0}
+.term header{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.term h3{font-size:16px;margin:0;overflow-wrap:anywhere}
+.def{margin:6px 0 8px;overflow-wrap:anywhere}
+.lab{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+.term ul{margin:2px 0 0;padding-left:18px;color:var(--muted)}
+.term p{margin:2px 0}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 5px;overflow-wrap:anywhere}
+.src{font-size:12px;color:var(--muted);margin-top:8px!important;overflow-wrap:anywhere}
+.badge{font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.badge.stated{color:var(--ok);background:var(--okt)}
+.badge.computed-in-code{color:var(--accent);background:var(--tint)}
+.badge.inferred{color:var(--warn);background:var(--warnt)}
+</style>
+<div class="wrap">
+<h1>Glossary wording for Dash, Tasker and Tickets</h1>
+<p class="lead">75 drafted terms, 3 apps. Each is drawn from the app's own specs or code, and each card names its source. Nothing is committed to the apps' final wording until you approve it. Words the instance already defines (its 40 terms) are left out, so every app's glossary shows its own terms plus those 40.</p>
+<nav class="nav" aria-label="Sections"><a href="#questions">Questions for you</a><a href="#dash">Dash (28)</a><a href="#tasker">Tasker (27)</a><a href="#tickets">Tickets (20)</a></nav>
+<div class="box" id="questions"><b>Questions for you</b> (17). These words are used by the apps but no source defines them, so I did not invent a meaning.<ul><li><span class="chip">Dash</span> Buyer Section: shown on screens, moves go to the master data team, but nothing defines it. What is it?</li><li><span class="chip">Dash</span> Merchandise Assignment and Category head: visible only in code. Do you want them in the glossary, and with what meaning?</li><li><span class="chip">Dash</span> Area (Sales, Inventory, Buying, Operations, HR, Finance) on the Report access page: how should it be explained?</li><li><span class="chip">Dash</span> Cached: how often is the stored copy refreshed?</li><li><span class="chip">Dash</span> Unnamed subcategory: why does it happen and what should the reader do?</li><li><span class="chip">Dash</span> Dash Reader: left out. Its meaning is only read from its grants, not stated anywhere. Please give the wording.</li><li><span class="chip">Tasker</span> Director: who is the director, and what does the role mean?</li><li><span class="chip">Tasker</span> Owner function (Store operations, Facilities, IT, Finance, Supply chain, HR), issue category and issue severity: please define them.</li><li><span class="chip">Tasker</span> Containment (&quot;Done right away&quot;): what counts?</li><li><span class="chip">Tasker</span> Evidence photo: when is it required?</li><li><span class="chip">Tasker</span> Blocked versus On hold: what is the difference?</li><li><span class="chip">Tasker</span> Tasker's own Store list (a place of work marked Store or Warehouse, with a manager and opening times) is not the instance's Store. Is that intended? Both will show side by side.</li><li><span class="chip">Tickets</span> Which word for the person who raised a ticket: &quot;Requester&quot; (the column label) or &quot;Raiser&quot; (the specs)? The glossary says Raiser for now.</li><li><span class="chip">Tickets</span> Which word for support's updates: &quot;Public progress&quot; or &quot;Public update&quot;? The glossary says Public progress for now.</li><li><span class="chip">Tickets</span> Data Quality Issue: used as a ticket type but never defined. How does it relate to the instance's &quot;Data quality ticket&quot;?</li><li><span class="chip">Tickets</span> Routing, Evidence / Link work, Wording, and the built-in states Needs verification, Awaiting approval and Policy review: not defined anywhere. Wording needed.</li><li><span class="chip">Tickets</span> &quot;State&quot; is renamed &quot;Ticket state&quot;, because the instance already has a term &quot;State&quot; (an Indian state, with its GST code).</li></ul></div>
+<section id="dash"><h2>Dash <span class="count">28 terms</span></h2><p class="sub">Sales to store staff against their targets.</p>
+  <div class="grid"><article class="term" id="dash-report">
+    <header><h3>Report</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">One of the sales or stock pages Dash opens for you, listed by name in the left pane. You see only the reports you have been given and that your job can be narrowed for.</p>
+    <div class="lab">Examples</div><ul><li>A Team Leader of one section is offered the sales report and the vendor report, not the whole-stores report.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>dash.report.report_name</code></p>
+    <p class="src">Source: openspec/specs/dash-reports/spec.md:9-15; client-apps/jeyarama/dash/featherbase.json dash.report.report_name (&quot;What people read in the sidebar&quot;)</p>
+  </article><article class="term" id="dash-dive">
+    <header><h3>Dive</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A live report built and saved in MotherDuck. Dash opens each report's latest saved version, so saving a Dive there is what releases it to readers.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>dash.report.dive_id</code></p>
+    <p class="src">Source: client-apps/jeyarama/dash/README.md:3,14-31 (&quot;opens each Dive's latest saved version&quot;); openspec/specs/dash-reports/spec.md:5</p>
+  </article><article class="term" id="dash-reach">
+    <header><h3>Reach</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">What your current job lets you see in Dash: your section's subcategories, your floor's sections, your whole store, your cluster's stores, or every store. Dash never shows a report wider than your reach.</p>
+    <div class="lab">Examples</div><ul><li>A Floor Manager of Lakeside's first floor sees the subcategories of that floor's sections at Lakeside, and nothing else.</li></ul>
+    
+    
+    <p class="src">Source: openspec/specs/dash-reports/spec.md:33-39; client-apps/jeyarama/dash/README.md:162-171 (job-to-reach table)</p>
+  </article><article class="term" id="dash-why-you-see-this-store">
+    <header><h3>Why you see this store</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The sentence under the page heading that says why this store's figures are shown to you, for example because you are its manager, because you lead certain sections, or because you hold the all-stores role.</p>
+    <div class="lab">Examples</div><ul><li>&quot;You see every store because you hold Dash All-Stores Reader.&quot;</li></ul>
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/page.ts whyLine (lines 516-545); openspec/specs/dash-reports/spec.md:74</p>
+  </article><article class="term" id="dash-target">
+    <header><h3>Target</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The sales goal the warehouse holds for a subcategory in the month shown. A dash instead of a figure means no target was recorded, not a target of zero.</p>
+    <div class="lab">Examples</div><ul><li>When targets for a month have not arrived, the page says &quot;Targets for this month aren't available yet; sales are shown.&quot;</li></ul>
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/page.ts blankNote (line 174), src/app.tsx QuickView table header and &quot;Targets for ... aren't available yet&quot; line</p>
+  </article><article class="term" id="dash-sales">
+    <header><h3>Sales</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">What was sold in the period shown, before tax and net of returns. The page states this under the heading.</p>
+    <div class="lab">Examples</div><ul><li>Header line: &quot;Sales before tax, net of returns&quot;.</li></ul>
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/page.ts MEASURE_LINE (line 445), shown in the page header</p>
+  </article><article class="term" id="dash-gap">
+    <header><h3>Gap</h3><span class="badge computed-in-code">Worked out from the code</span></header>
+    <p class="def">Sales minus target for a subcategory, section or the whole table. A negative gap (shown in red) means sales are below target. It is shown only where both a target and sales were recorded.</p>
+    <div class="lab">Examples</div><ul><li>Sales 90 against target 100 gives a gap of minus 10.</li></ul>
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/report.ts totalOf (gap = actual - target, rounded to 2 places); src/app.tsx RowFigures (negative styled, shown only when both recorded)</p>
+  </article><article class="term" id="dash-achieved">
+    <header><h3>Achieved</h3><span class="badge computed-in-code">Worked out from the code</span></header>
+    <p class="def">Sales as a percentage of target. It is left blank when there is no target to measure against.</p>
+    <div class="lab">Examples</div><ul><li>Sales 90 against target 100 is 90% achieved.</li></ul>
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/report.ts totalOf (achievement = 100 * actual / target, null when target is 0 or missing); src/app.tsx column header &quot;Achieved&quot;</p>
+  </article><article class="term" id="dash-total-and-section-total">
+    <header><h3>Total and section total</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Each section's total row, and the Total at the foot, add every target and every sale in the rows above, including subcategories that have only one of the two. So a total can differ from the sum of the gaps shown.</p>
+    
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/page.ts TOTALS_NOTE (line 268) and subtotalLabel; src/app.tsx totals-note</p>
+  </article><article class="term" id="dash-a-dash-in-a-figure">
+    <header><h3>A dash in a figure</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Nothing was recorded for that figure. It never means ₹0.00.</p>
+    <div class="lab">Examples</div><ul><li>&quot;2 subcategories have no target or no sales recorded this month: — means nothing was recorded, never ₹0.00.&quot;</li></ul>
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/page.ts blankNote (line 174-176)</p>
+  </article><article class="term" id="dash-no-target-and-no-sales-hidden-rows-">
+    <header><h3>No target and no sales (hidden rows)</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Subcategories with a ₹0 target and ₹0 sales are hidden from the table by default. The link under the table shows or hides them, with their count.</p>
+    <div class="lab">Examples</div><ul><li>&quot;Show 3 with no target and no sales&quot;.</li></ul>
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/report.ts ReportRow.noTargetNoSale (&quot;the old report's rule: hidden by default&quot;); src/app.tsx toggle-quiet</p>
+  </article><article class="term" id="dash-this-month-last-month">
+    <header><h3>This month / Last month</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The month picker. This month runs from the first of the month up to today; Last month is the whole of the previous month. A link to a report keeps meaning &quot;last month&quot; as time passes.</p>
+    <div class="lab">Examples</div><ul><li>Labelled &quot;This month · Nov'26&quot; and &quot;Last month · Oct'26&quot;.</li></ul>
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/README.md:201-205; src/report.ts periodOf (this = first of month through today IST, last = first through last day of previous month)</p>
+  </article><article class="term" id="dash-data-to-refreshed">
+    <header><h3>Data to / refreshed</h3><span class="badge computed-in-code">Worked out from the code</span></header>
+    <p class="def">The line on the quick view that says the last day the warehouse has sales for, and the time (India Standard Time) the stored copy of the figures was made.</p>
+    <div class="lab">Examples</div><ul><li>&quot;Data to 17-Nov-2026 · refreshed 06:30 IST&quot; (format; figures illustrative).</li></ul>
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/page.ts dataLine (lines ~330-335): shortDay(data_through) and istTime(refreshed_at)</p>
+  </article><article class="term" id="dash-quick-view">
+    <header><h3>Quick view</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A built-in table of target against sales, shown from a stored copy when a report's live Dive can't open. It is labelled &quot;Cached · the full report couldn't open&quot;. A report with no quick view says &quot;This report couldn't open&quot; with a Try again button instead.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>dash.report.quick_view</code></p>
+    <p class="src">Source: openspec/specs/dash-reports/spec.md:57-63; client-apps/jeyarama/dash/README.md:24-31; featherbase.json dash.report.quick_view; src/app.tsx quick-label</p>
+  </article><article class="term" id="dash-report-filters">
+    <header><h3>Report filters</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">How a report narrows what you see: one store and subcategories, whole stores, stores and subcategories, or no filter. A report that can't be narrowed to your reach does not open for you rather than show you more.</p>
+    <div class="lab">Examples</div><ul><li>A Team Leader opening the whole-stores report is told it covers whole stores, so it isn't available for their job.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>dash.report.filter_shape</code></p>
+    <p class="src">Source: openspec/specs/dash-reports/spec.md:25-31; featherbase.json dash.report.filter_shape choices and description</p>
+  </article><article class="term" id="dash-report-an-issue">
+    <header><h3>Report an issue</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A button on every report (where Tickets runs) to tell the team something is wrong. You choose Data looks wrong, Stock missing, Item ran out, Target too high or too low, or Something else; Dash sends the report, store and month on show, your reach and job with it. Pressing Send again never raises a second ticket.</p>
+    <div class="lab">Examples</div><ul><li>A Team Leader chooses &quot;Target too high or too low&quot; and names &quot;Kanchipuram silk target&quot;; a ticket is raised as theirs and listed under their open reports on this report.</li></ul>
+    
+    
+    <p class="src">Source: openspec/specs/dash-reports/spec.md:94-112; client-apps/jeyarama/dash/src/report-issue-panel.tsx (&quot;Report an issue&quot;, &quot;Sent with your report&quot;, &quot;Your open reports on this report&quot;)</p>
+  </article><article class="term" id="dash-your-sections">
+    <header><h3>Your sections</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The Dash page that shows what is set against you, and where you propose a correction (a subcategory to add, one that is not yours, or your job's section). Your manager decides each proposal.</p>
+    <div class="lab">Examples</div><ul><li>Staff with no section are told they aren't set against a section yet, with a way to open Your sections.</li></ul>
+    
+    
+    <p class="src">Source: openspec/specs/dash-reports/spec.md:41-47; client-apps/jeyarama/dash/src/my-sections.ts header (&quot;A person sees what is mapped to them and proposes a correction; their manager decides&quot;); featherbase.json approvalTypes titles</p>
+  </article><article class="term" id="dash-waiting-for-your-approval">
+    <header><h3>Waiting for your approval</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The list of corrections other people have proposed that you are asked to decide. Nothing changes until you approve; some changes apply at once and are listed as &quot;Already done&quot; for you to confirm or undo.</p>
+    
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/sections-page.tsx lines 573-575 (headings &quot;Waiting for your approval · nothing changes until you approve&quot; and &quot;Already done · check and confirm, or undo&quot;)</p>
+  </article><article class="term" id="dash-department-set-up">
+    <header><h3>Department set-up</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A Department Manager's group of sections. Until it is set up, Dash doesn't know the department's sections and shows no report; the manager picks the sections and names the department, then their own manager reviews it.</p>
+    <div class="lab">Examples</div><ul><li>The page says &quot;Set up your department to open your report&quot; until it is done.</li></ul>
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/page.ts reachMessage (lines ~560-570); src/department-setup.ts header comment; README.md:167 (&quot;nothing until departments are filled&quot;)</p>
+  </article><article class="term" id="dash-report-bundle">
+    <header><h3>Report bundle</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A named group of reports given together, for example a Team leader pack. Taking a report out of a bundle removes it for everyone given that bundle.</p>
+    <div class="lab">Examples</div><ul><li>Team leader pack.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>dash.report_bundle.bundle_name</code> <code>dash.report_bundle_member</code></p>
+    <p class="src">Source: featherbase.json dash.report_bundle and dash.report_bundle_member descriptions; access-page.tsx placeholder &quot;For example, Team leader pack&quot;</p>
+  </article><article class="term" id="dash-report-access">
+    <header><h3>Report access</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Giving a report or a bundle to one person, to everyone holding a role, or to everyone in a job. A person sees every report given to them by any of these routes; with none given, they have no report.</p>
+    <div class="lab">Examples</div><ul><li>Someone with no report at all is told they have none yet, and to ask the person who gives Dash reports.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>dash.report_access.person</code> <code>dash.report_access.role</code> <code>dash.report_access.job</code></p>
+    <p class="src">Source: featherbase.json dash.report_access description and column descriptions; openspec/specs/dash-reports/spec.md:41-47; src/app.tsx no-report notice</p>
+  </article><article class="term" id="dash-report-access-manager">
+    <header><h3>Report Access Manager</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A role for people who give reports across the company, make bundles, and add Dives as reports.</p>
+    <div class="lab">Examples</div><ul><li>A Report Access Manager pastes a Dive's link, names it &quot;Floor stock&quot; and adds it; it can be given straight away.</li></ul>
+    
+    
+    <p class="src">Source: openspec/specs/dash-reports/spec.md:81-92; openspec/specs/report-access/spec.md:4</p>
+  </article><article class="term" id="dash-team-report-manager">
+    <header><h3>Team Report Manager</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A role that lets you give reports only to the people who report to you, and only reports you can open yourself. You cannot make or change bundles.</p>
+    
+    
+    
+    <p class="src">Source: openspec/specs/report-access/spec.md:4-12,31-40,52</p>
+  </article><article class="term" id="dash-dash-all-stores-reader">
+    <header><h3>Dash All-Stores Reader</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A role that lets you see every store in Dash, as a director's job does, even if your own job is in head office. Holding it alone opens Dash.</p>
+    <div class="lab">Examples</div><ul><li>&quot;You see every store because you hold Dash All-Stores Reader.&quot;</li></ul>
+    
+    
+    <p class="src">Source: openspec/specs/dash-reports/spec.md:73-79; README.md:174</p>
+  </article><article class="term" id="dash-view-as-tester">
+    <header><h3>View As Tester</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A role that lets you look at Dash as another person sees it, picking them by name, employee code, job or site. While viewing as someone else, nothing you do saves.</p>
+    
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/featherbase.json viewAs (role View As Tester, people read); src/view-as-people.ts header (&quot;it keeps the state and refuses every write while viewing&quot;)</p>
+  </article><article class="term" id="dash-add-a-dive">
+    <header><h3>Add a Dive</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">How a Report Access Manager turns a Dive saved in MotherDuck into a Dash report, by searching its title or owner or pasting its link. An added report takes no filter, so everyone given it sees everything the Dive shows.</p>
+    <div class="lab">Examples</div><ul><li>Dash refuses a Dive that is already a report, naming the report that opens it.</li></ul>
+    
+    
+    <p class="src">Source: openspec/specs/dash-reports/spec.md:81-92; src/add-dive-page.tsx &quot;Add a Dive&quot;</p>
+  </article><article class="term" id="dash-acting">
+    <header><h3>Acting</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Covering someone else's job on top of your own. It takes no share of your time, and it can give you places to see in Dash, shown as &quot;Acting&quot; beside the reason.</p>
+    <div class="lab">Examples</div><ul><li>&quot;Acting Staff job assignment&quot; from 6 Aug 2026 on Silk Sarees.</li></ul>
+    
+    
+    <p class="src">Source: openspec/specs/feather-dash-people/spec.md:52-62 (&quot;Acting cover is on top of a person's own job and takes no share&quot;) and 98-113</p>
+  </article><article class="term" id="dash-reports-to">
+    <header><h3>Reports to</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The person a job assignment answers to. It decides who your manager is for approvals and who counts as someone's team for giving reports.</p>
+    
+    
+    
+    <p class="src">Source: client-apps/jeyarama/dash/src/team-access.ts teamOf header (&quot;one of whose current Job Assignments reports to one of me's...&quot;); my-store-page.tsx &quot;Reports to&quot; column</p>
+  </article></div></section><section id="tasker"><h2>Tasker <span class="count">27 terms</span></h2><p class="sub">Tasks, projects, issues and their verification.</p>
+  <div class="grid"><article class="term" id="tasker-inbox">
+    <header><h3>Inbox</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Where the tasks you capture privately wait until you organise them. It holds only your own captures; you can keep a task on your personal list or move it into a shared project.</p>
+    <div class="lab">Examples</div><ul><li>Typing a title and pressing Enter captures a task that only you can see in your Inbox.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tasker.task</code></p>
+    <p class="src">Source: openspec/specs/tasker-process-inbox-items/spec.md (What the Inbox holds); tasker-quick-task-capture/spec.md</p>
+  </article><article class="term" id="tasker-personal-task">
+    <header><h3>Personal task</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A task that only its creator can see or change, with its subtasks, discussion and history. Even an administrator cannot open it. Nobody else can be made responsible for it until it is shared.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.task.personal_tasks_owner</code></p>
+    <p class="src">Source: openspec/specs/tasker-shared-team-work/spec.md (Personal work is creator-only); tasker-process-inbox-items/spec.md</p>
+  </article><article class="term" id="tasker-sharing-a-task">
+    <header><h3>Sharing a task</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Moving a personal task into a shared project shares it, with its description, subtasks, discussion and history, immediately and without a confirmation. It can never be made private again.</p>
+    <div class="lab">Examples</div><ul><li>Moving a private task into Warehouse review makes it visible to members; moving it back is refused.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tasker.task.shared</code></p>
+    <p class="src">Source: openspec/specs/tasker-shared-team-work/spec.md (Sharing is deliberate and permanent)</p>
+  </article><article class="term" id="tasker-responsible-person">
+    <header><h3>Responsible person</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The one teammate who has taken a task on. A task has at most one, and anyone can assign, reassign or take it. It is separate from progress and urgency, so changing one does not change the others.</p>
+    
+    <div class="lab">Words to avoid</div><ul><li><b>Owner</b>: Tasks use responsible person (assigned to); owner is the word used for an issue.</li></ul>
+    <div class="lab">Describes</div><p><code>tasker.task.assigned_to</code></p>
+    <p class="src">Source: openspec/specs/tasker-responsibility-and-progress/spec.md (One responsible person)</p>
+  </article><article class="term" id="tasker-task-state">
+    <header><h3>Task state</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">How far along a task is: Not started, In progress, Blocked, On hold, Submitted for verification, Done or Cancelled. Ticking a task marks it Done and unticking restores the state it had just before; only Done shows as ticked.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.task.task_state</code></p>
+    <p class="src">Source: openspec/specs/tasker-responsibility-and-progress/spec.md (Ticking done can be undone); example-apps/tasker/featherbase.json task_state choices</p>
+  </article><article class="term" id="tasker-urgent">
+    <header><h3>Urgent</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">One flag, shared by the whole team, that marks a task as urgent or not. Changing it does not change who is responsible or anyone's My Focus.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.task.urgent</code></p>
+    <p class="src">Source: openspec/specs/tasker-responsibility-and-progress/spec.md (Urgent is one shared flag)</p>
+  </article><article class="term" id="tasker-my-focus">
+    <header><h3>My Focus</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Your own private, ordered shortlist of tasks, which can include tasks you are not responsible for. Starring a task into it changes nothing for anyone else.</p>
+    
+    
+    
+    <p class="src">Source: openspec/specs/tasker-plan-my-work/spec.md (My Focus is private and ordered)</p>
+  </article><article class="term" id="tasker-my-work">
+    <header><h3>My Work</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Your own page: conversations needing your attention first, then your My Focus shortlist, then other tasks you are responsible for. A task in both groups shows once, in the shortlist.</p>
+    
+    
+    
+    <p class="src">Source: openspec/specs/tasker-plan-my-work/spec.md (My Work shows each task once)</p>
+  </article><article class="term" id="tasker-together">
+    <header><h3>Together</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The team view of active work: shared tasks that are not Done or Cancelled, grouped by responsible person, with unassigned work together. Private tasks never appear in it.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.task</code></p>
+    <p class="src">Source: openspec/specs/tasker-review-team-workload/spec.md; screen label Together in example-apps/tasker/src/TaskManagement.tsx</p>
+  </article><article class="term" id="tasker-verifier">
+    <header><h3>Verifier</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The Tasker member, other than the person doing the task, who checks the work before it can close. A project can name a default verifier that new tasks in it take.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.task.verifier</code> <code>tasker.project.default_verifier</code></p>
+    <p class="src">Source: openspec/specs/tasker-verified-closure/spec.md (Name who verifies a task)</p>
+  </article><article class="term" id="tasker-verified-closure">
+    <header><h3>Verified closure</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A task with a verifier cannot be ticked Done. The person doing it submits it with a note on what was done and it becomes Submitted for verification. Only the verifier accepts it (which marks it Done and records who verified it and when) or returns it with a reason, which puts it back In progress.</p>
+    <div class="lab">Examples</div><ul><li>Ravi submits Fix the billing counter lights with a note; it shows Waiting for Meena to verify and appears on Meena's To verify page.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tasker.task.task_state</code> <code>tasker.task.evidence_note</code> <code>tasker.task.return_count</code></p>
+    <p class="src">Source: openspec/specs/tasker-verified-closure/spec.md (Close a verified task only through its verifier; Return a submitted task with a reason)</p>
+  </article><article class="term" id="tasker-acknowledged">
+    <header><h3>Acknowledged</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">When a task is assigned to someone else it shows Not acknowledged by that person until they acknowledge it. A task you assign to yourself counts as acknowledged, and only the assignee can acknowledge.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.task.acknowledged_at</code></p>
+    <p class="src">Source: openspec/specs/tasker-verified-closure/spec.md (Acknowledge an assigned task)</p>
+  </article><article class="term" id="tasker-extended-due-date">
+    <header><h3>Extended due date</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Once a task has a due date, changing it needs a reason. Tasker keeps the first due date and the number of times it was moved, and shows both.</p>
+    <div class="lab">Examples</div><ul><li>was 07-Nov-2026 · extended 1 time</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tasker.task.original_due_date</code> <code>tasker.task.extension_count</code></p>
+    <p class="src">Source: openspec/specs/tasker-verified-closure/spec.md (Move a due date only with a reason)</p>
+  </article><article class="term" id="tasker-overdue-due-today-scheduled">
+    <header><h3>Overdue, Due today, Scheduled</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">An unfinished task is Overdue when today is past its due date, Due today on its due date, and Scheduled while its start date is still to come. Done or Cancelled tasks carry none of these marks.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.task.due_date</code> <code>tasker.task.start_date</code></p>
+    <p class="src">Source: openspec/specs/tasker-due-dates/spec.md (See which tasks are late, due today or scheduled)</p>
+  </article><article class="term" id="tasker-store-summary-counts">
+    <header><h3>Store summary counts</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The store summary has one row per store, a row for tasks with no store and a total row. Each counted task falls in exactly one of Completed, Overdue, Scheduled or Ongoing; cancelled tasks are not counted.</p>
+    <div class="lab">Examples</div><ul><li>A store with one done, one overdue, one scheduled and two other open tasks shows Total 5, Completed 1, Overdue 1, Scheduled 1, Ongoing 2.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tasker.store</code> <code>tasker.task.store</code></p>
+    <p class="src">Source: openspec/specs/tasker-stores/spec.md (See each store's work at a glance); Stores.tsx bucket labels</p>
+  </article><article class="term" id="tasker-recurring-task">
+    <header><h3>Recurring task</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A task that repeats on a daily, weekly or monthly schedule, or a set interval after completion. Only one occurrence is unfinished at a time and missed slots are skipped, not piled up. Each new occurrence has fresh unchecked subtasks and does not copy the old discussion. Cancelling the active occurrence pauses the series until a member resumes it.</p>
+    <div class="lab">Examples</div><ul><li>A task completed on Wednesday that repeats 7 days after completion is next due the following Wednesday.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tasker.recurrence</code></p>
+    <p class="src">Source: openspec/specs/tasker-recurring-tasks/spec.md</p>
+  </article><article class="term" id="tasker-subtask">
+    <header><h3>Subtask</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A smaller piece of work under a task, with its own responsible person, status and discussion. Subtasks cannot have subtasks and take the parent's visibility and store. A parent can be marked Done only when every subtask is Done or Cancelled; finishing the last one does not finish the parent.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.task.parent_task</code></p>
+    <p class="src">Source: openspec/specs/tasker-subtasks/spec.md; tasker-stores/spec.md (Tie a task to a store)</p>
+  </article><article class="term" id="tasker-question-in-a-discussion-">
+    <header><h3>Question (in a discussion)</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A message under a task addressed to one team member or to anyone. It waits for a reply, then needs the asker's review once answered, and only the asker marks it resolved or reopens it. Updates need no resolution. Replies stay grouped under the original message.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.discussion</code></p>
+    <p class="src">Source: openspec/specs/tasker-discussions/spec.md; labels Waiting for reply, Needs asker's review, Resolved in Discussion.tsx</p>
+  </article><article class="term" id="tasker-needs-your-attention">
+    <header><h3>Needs your attention</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The list of questions directed to you and answers waiting for your review, with unread activity marked. Your own messages are not unread for you.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.discussion</code></p>
+    <p class="src">Source: openspec/specs/tasker-discussions/spec.md (Attention shows the next action); Attention.tsx</p>
+  </article><article class="term" id="tasker-saved-view">
+    <header><h3>Saved view</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A named search plus filters that belongs to you alone, saved for one list (such as a project) or across all tasks. It changes only when you update it, and opening it never changes tasks.</p>
+    
+    
+    
+    <p class="src">Source: openspec/specs/tasker-find-and-reuse-task-view/spec.md (Saved views are private)</p>
+  </article><article class="term" id="tasker-issue">
+    <header><h3>Issue</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A problem raised in a store, such as a chiller fault, with a category, severity, store, at most one owner, a response deadline and a fix deadline. Tasks can link to it as corrective work. It moves through Open, Acknowledged, Submitted for verification and Closed.</p>
+    
+    <div class="lab">Words to avoid</div><ul><li><b>Task</b>: An issue is a separate record from a task; tasks only link to it.</li></ul>
+    <div class="lab">Describes</div><p><code>tasker.issue</code></p>
+    <p class="src">Source: openspec/specs/tasker-issues/spec.md (Raise an issue); featherbase.json issue_state choices</p>
+  </article><article class="term" id="tasker-sla-rule">
+    <header><h3>SLA rule</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The rule that gives an issue its response time, fix time and clock, chosen by severity or by a category's own rule when one exists. It can also name a director and the minutes past breach after which the director is told.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.sla_rule</code></p>
+    <p class="src">Source: openspec/specs/tasker-issues/spec.md (Clock an issue by its SLA rule); featherbase.json tasker.sla_rule</p>
+  </article><article class="term" id="tasker-store-hours-clock">
+    <header><h3>Store hours clock</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">One of two clock choices on an SLA rule (Round the clock or Store hours). Store hours counts only the store's opening hours. The clock stops while an approved pause lasts and once the issue is submitted.</p>
+    <div class="lab">Examples</div><ul><li>A High issue raised at 21:00 with a 1-day fix time in store hours 09:00-22:00 has 2 hours on the clock at 10:00 next morning.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tasker.sla_rule.clock</code> <code>tasker.issue.clock</code></p>
+    <p class="src">Source: openspec/specs/tasker-issues/spec.md (Clock an issue by its SLA rule)</p>
+  </article><article class="term" id="tasker-breach">
+    <header><h3>Breach</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">An issue whose fix time has passed without submission. The store manager and the function head are told once, the director after the configured time for a Critical breach, and the breach stays recorded after closure. At 75% of the fix time the owner gets a reminder.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.issue.fix_breached</code></p>
+    <p class="src">Source: openspec/specs/tasker-issues/spec.md (Escalate an issue on time; Close an issue with verification)</p>
+  </article><article class="term" id="tasker-function-head">
+    <header><h3>Function head</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The person named as head of one of the owning functions (Store operations, Facilities, IT, Finance, Supply chain, HR). Tasker tells the function head, with the store manager, when an issue owned by that function is breached.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.function_head</code></p>
+    <p class="src">Source: openspec/specs/tasker-issues/spec.md (Escalate an issue on time); featherbase.json tasker.function_head; Issues.tsx Function heads table</p>
+  </article><article class="term" id="tasker-needs-an-owner">
+    <header><h3>Needs an owner</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Label on an issue that has no owner, or no one to escalate to. These issues are listed so someone takes them.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.issue.needs_owner</code></p>
+    <p class="src">Source: openspec/specs/tasker-issues/spec.md (Escalate an issue on time); Issues.tsx ownerNote</p>
+  </article><article class="term" id="tasker-pausing-an-issue">
+    <header><h3>Pausing an issue</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">An owner can ask to pause an issue with a reason and a next review date. The clock keeps running until the store manager approves the pause.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tasker.issue.paused</code></p>
+    <p class="src">Source: openspec/specs/tasker-issues/spec.md (Pause only with approval)</p>
+  </article></div></section><section id="tickets"><h2>Tickets <span class="count">20 terms</span></h2><p class="sub">Support requests and data-quality tickets.</p>
+  <div class="grid"><article class="term" id="tickets-ticket">
+    <header><h3>Ticket</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A request for help or a change that a person raises in Tickets and follows to done. It has a public summary, a requester, a type, a state, an assignee and an optional public update.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.ticket</code></p>
+    <p class="src">Source: example-apps/tickets/featherbase.json (summary 'Ask for help or a change, and follow it to done'; tickets.ticket columns)</p>
+  </article><article class="term" id="tickets-raiser">
+    <header><h3>Raiser</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The person who raised a ticket. The raiser holds the steps only the raiser may take, such as answering a question, and reads a private ticket's details. Only a System Manager can name a different raiser, with a reason, and the change is kept in the ticket's history.</p>
+    <div class="lab">Examples</div><ul><li>A System Manager changes the raiser to Colleague because 'Anjali only keyed it in'; Colleague may then answer the question and Anjali may not.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tickets.ticket.owner</code></p>
+    <p class="src">Source: openspec/specs/tickets-raiser/spec.md:5,10,32</p>
+  </article><article class="term" id="tickets-assignee">
+    <header><h3>Assignee</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The person a ticket is assigned to. Only support assigns, from the ticket's header after a confirm step, and the person assigned is emailed. Everyone else sees the assignee as plain text.</p>
+    <div class="lab">Examples</div><ul><li>Picking Colleague asks 'Assign to Colleague and email them?' with Assign and Cancel; nothing is saved until Assign.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tickets.ticket.assigned_to</code></p>
+    <p class="src">Source: openspec/specs/tickets-assignment-email/spec.md:9,77-78,110-111</p>
+  </article><article class="term" id="tickets-assignable-person">
+    <header><h3>Assignable person</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Someone listed in Tickets' assignees setting so that tickets can be assigned to them. Being listed gives no support rights; it only puts the person in the assign picker, even before they have used Tickets.</p>
+    
+    
+    
+    <p class="src">Source: openspec/specs/tickets-assignees/spec.md:1-9,27-28</p>
+  </article><article class="term" id="tickets-support">
+    <header><h3>Support</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The people with Tickets support rights (role Tickets Support, plus those listed in Tickets' support users setting). Support triages tickets, assigns them, publishes progress, and reads the full history of private tickets.</p>
+    
+    
+    
+    <p class="src">Source: openspec/specs/tickets-assignees/spec.md:1-9; openspec/specs/tickets-type-transitions/spec.md:65-66; featherbase.json roles</p>
+  </article><article class="term" id="tickets-ticket-type">
+    <header><h3>Ticket type</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A kind of ticket, such as Access request or Data Quality Issue, set up as data. A type names its states, which states are done, the state a reopened ticket returns to, its transitions, who reads its details, and its own fields.</p>
+    <div class="lab">Examples</div><ul><li>Built-in types: General request, Access request, Stale / missing data, Wrong data / reconciliation, Report / export, New source, New column / model, Pipeline failure, Backfill, Feedback on a report.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tickets.ticket_type</code> <code>tickets.ticket.kind</code></p>
+    <p class="src">Source: featherbase.json tickets.ticket_type; example-apps/tickets/src/ticket-words.ts kinds</p>
+  </article><article class="term" id="tickets-ticket-type-field">
+    <header><h3>Ticket type field</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A question a ticket type asks when a ticket is raised, such as a date, a choice or a person. Each field has a key, a label, a field type (text, long text, choice, date, person, link), whether it is required and its order.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.type_field</code></p>
+    <p class="src">Source: featherbase.json tickets.type_field</p>
+  </article><article class="term" id="tickets-ticket-state">
+    <header><h3>Ticket state</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">Where a ticket is in its life, shown on the queue and the ticket. A new ticket starts in the first state its type lists; a ticket in a done state counts as resolved and leaves the open queue.</p>
+    <div class="lab">Examples</div><ul><li>Built-in states: New, Needs verification, Awaiting approval, Approved, Rejected, Policy review, In progress, Resolved.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tickets.ticket.ticket_state</code> <code>tickets.ticket_type.states</code> <code>tickets.ticket_type.done_states</code></p>
+    <p class="src">Source: featherbase.json (states, done_states labels); example-apps/tickets/src/main.tsx:47; CaseFile.tsx:414</p>
+  </article><article class="term" id="tickets-transition">
+    <header><h3>Transition</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">An action a ticket type lists that moves a ticket from one state to another. It names who may take it (the assignee, the raiser, anyone involved, or holders of a role) and what they must write down. When a type lists transitions, the server refuses every other change of state.</p>
+    <div class="lab">Examples</div><ul><li>Bala confirms a raised issue with what will be fixed, where, and a target date; the ticket moves to 'Fix planned'.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tickets.ticket_type.transitions</code></p>
+    <p class="src">Source: openspec/specs/tickets-type-transitions/spec.md:5-14,38-40</p>
+  </article><article class="term" id="tickets-private-request">
+    <header><h3>Private request</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">The original message and structured details of a ticket whose type keeps its details private. Only the raiser, support and the people the ticket names (its assignee and the person it is raised for) read it. All built-in types are private.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.request</code></p>
+    <p class="src">Source: openspec/specs/tickets-type-transitions/spec.md:63-68,87-89; example-apps/tickets/src/server.ts:303-310</p>
+  </article><article class="term" id="tickets-open-request">
+    <header><h3>Open request</h3><span class="badge computed-in-code">Worked out from the code</span></header>
+    <p class="def">The original message and details of a ticket whose type is not private. Everyone who can see the ticket can read them.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.open_request</code></p>
+    <p class="src">Source: example-apps/tickets/src/server.ts:303-310; openspec/specs/tickets-type-transitions/spec.md:63-65</p>
+  </article><article class="term" id="tickets-support-event">
+    <header><h3>Support event</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">One entry in the history of a private ticket: who did what and when, such as an assignment, a transition, a change of raiser or a removed rule. On a private ticket only support reads the full history; everyone else sees only which actions were taken.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.event</code></p>
+    <p class="src">Source: openspec/specs/tickets-type-transitions/spec.md:63-67; openspec/specs/tickets-raiser/spec.md:70-71; server.ts:308</p>
+  </article><article class="term" id="tickets-open-history">
+    <header><h3>Open history</h3><span class="badge computed-in-code">Worked out from the code</span></header>
+    <p class="def">The history of a ticket whose type is not private, readable by everyone who can see the ticket. It is the open counterpart of the Support event record.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.open_event</code></p>
+    <p class="src">Source: example-apps/tickets/src/server.ts:303-310; openspec/specs/tickets-type-transitions/spec.md:63-65</p>
+  </article><article class="term" id="tickets-public-progress">
+    <header><h3>Public progress</h3><span class="badge computed-in-code">Worked out from the code</span></header>
+    <p class="def">The updates support publishes on a ticket for everyone who can see it to read. Support writes a public update in the Edit request form, and each transition also adds a line saying which action was taken. It is shown on the Request tab and in Activity.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.progress</code> <code>tickets.ticket.public_update</code></p>
+    <p class="src">Source: example-apps/tickets/src/CaseFile.tsx:696,733; server.ts:612-614,750; spec tickets-type-transitions:52-53</p>
+  </article><article class="term" id="tickets-details-visible-to">
+    <header><h3>Details visible to</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A setting on a ticket type: everyone (all who can see the ticket read its details and history) or private (only the raiser, support and the people the ticket names). A ticket raised while its type was private stays private until support opens it.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.ticket_type.details_visible_to</code></p>
+    <p class="src">Source: openspec/specs/tickets-type-transitions/spec.md:63-68</p>
+  </article><article class="term" id="tickets-data-quality-rule">
+    <header><h3>Data quality rule</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A filter on one linked Table, kept on a ticket, that describes a gap in master data, such as every buyer whose person is blank. It has a severity (High, Medium or Low), an owner and how to fix it, and shows a live count of rows still to fix, or all clear when none are. A rule is removed only with a reason, and changed by removing it and adding a new one.</p>
+    <div class="lab">Examples</div><ul><li>'Buyer is blank' on Buyer Assignment: 3 of 3 rows left, then 2 of 3 as people are filled in.</li></ul>
+    
+    <div class="lab">Describes</div><p><code>tickets.data_quality_rule</code></p>
+    <p class="src">Source: openspec/specs/tickets-data-quality-rules/spec.md:4-14,56-59,94-96</p>
+  </article><article class="term" id="tickets-rows-left">
+    <header><h3>Rows left</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">How many rows a data quality rule matches now, shown against how many matched when the rule was added ('3 of 3 rows left'). The count only shows to a reader who may read the rule's Table; others see only the count from when it was raised.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.data_quality_rule.rows_when_raised</code></p>
+    <p class="src">Source: openspec/specs/tickets-data-quality-rules/spec.md:10-14,42-45</p>
+  </article><article class="term" id="tickets-severity">
+    <header><h3>Severity</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">How serious a data quality rule is: High, Medium or Low. Open rules are listed first, then by severity.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.data_quality_rule.severity</code></p>
+    <p class="src">Source: openspec/specs/tickets-data-quality-rules/spec.md:10-11,107-108; featherbase.json</p>
+  </article><article class="term" id="tickets-linked-table">
+    <header><h3>Linked Table</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A Table the Tickets administrators list in Tickets' linked tables setting. Data quality rules and link-type ticket fields can only point at linked Tables, and Data Quality Row must be listed for a ticket to show the rows it covers.</p>
+    
+    
+    <div class="lab">Describes</div><p><code>tickets.type_field.link_table</code></p>
+    <p class="src">Source: openspec/specs/tickets-data-quality-rules/spec.md:56-59,183-186; featherbase.json</p>
+  </article><article class="term" id="tickets-feedback-on-a-report">
+    <header><h3>Feedback on a report</h3><span class="badge stated">Stated in the app</span></header>
+    <p class="def">A ticket type raised from a report by the person themselves, never from the New ticket form. Its details are private to the raiser and support, and the ticket starts New with nobody assigned.</p>
+    
+    
+    
+    <p class="src">Source: openspec/specs/tickets-workspace/spec.md:67-68; ticket-words.ts report_feedback</p>
+  </article></div></section>
+</div>

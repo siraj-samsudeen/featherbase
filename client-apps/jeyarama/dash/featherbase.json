@@ -3561,5 +3561,232 @@
         }
       }
     }
+  },
+  "glossary": {
+    "version": 1,
+    "terms": [
+      {
+        "term": "Report",
+        "definition": "One of the sales or stock pages Dash opens for you, listed by name in the left pane. You see only the reports you have been given and that your job can be narrowed for.",
+        "examples": [
+          "A Team Leader of one section is offered the sales report and the vendor report, not the whole-stores report."
+        ],
+        "describes": [
+          {
+            "table": "dash.report",
+            "column": "report_name"
+          }
+        ]
+      },
+      {
+        "term": "Dive",
+        "definition": "A live report built and saved in MotherDuck. Dash opens each report's latest saved version, so saving a Dive there is what releases it to readers.",
+        "describes": [
+          {
+            "table": "dash.report",
+            "column": "dive_id"
+          }
+        ]
+      },
+      {
+        "term": "Reach",
+        "definition": "What your current job lets you see in Dash: your section's subcategories, your floor's sections, your whole store, your cluster's stores, or every store. Dash never shows a report wider than your reach.",
+        "examples": [
+          "A Floor Manager of Lakeside's first floor sees the subcategories of that floor's sections at Lakeside, and nothing else."
+        ]
+      },
+      {
+        "term": "Why you see this store",
+        "definition": "The sentence under the page heading that says why this store's figures are shown to you, for example because you are its manager, because you lead certain sections, or because you hold the all-stores role.",
+        "examples": [
+          "\"You see every store because you hold Dash All-Stores Reader.\""
+        ]
+      },
+      {
+        "term": "Target",
+        "definition": "The sales goal the warehouse holds for a subcategory in the month shown. A dash instead of a figure means no target was recorded, not a target of zero.",
+        "examples": [
+          "When targets for a month have not arrived, the page says \"Targets for this month aren't available yet; sales are shown.\""
+        ]
+      },
+      {
+        "term": "Sales",
+        "definition": "What was sold in the period shown, before tax and net of returns. The page states this under the heading.",
+        "examples": [
+          "Header line: \"Sales before tax, net of returns\"."
+        ]
+      },
+      {
+        "term": "Gap",
+        "definition": "Sales minus target for a subcategory, section or the whole table. A negative gap (shown in red) means sales are below target. It is shown only where both a target and sales were recorded.",
+        "examples": [
+          "Sales 90 against target 100 gives a gap of minus 10."
+        ]
+      },
+      {
+        "term": "Achieved",
+        "definition": "Sales as a percentage of target. It is left blank when there is no target to measure against.",
+        "examples": [
+          "Sales 90 against target 100 is 90% achieved."
+        ]
+      },
+      {
+        "term": "Total and section total",
+        "definition": "Each section's total row, and the Total at the foot, add every target and every sale in the rows above, including subcategories that have only one of the two. So a total can differ from the sum of the gaps shown."
+      },
+      {
+        "term": "A dash in a figure",
+        "definition": "Nothing was recorded for that figure. It never means ₹0.00.",
+        "examples": [
+          "\"2 subcategories have no target or no sales recorded this month: — means nothing was recorded, never ₹0.00.\""
+        ]
+      },
+      {
+        "term": "No target and no sales (hidden rows)",
+        "definition": "Subcategories with a ₹0 target and ₹0 sales are hidden from the table by default. The link under the table shows or hides them, with their count.",
+        "examples": [
+          "\"Show 3 with no target and no sales\"."
+        ]
+      },
+      {
+        "term": "This month / Last month",
+        "definition": "The month picker. This month runs from the first of the month up to today; Last month is the whole of the previous month. A link to a report keeps meaning \"last month\" as time passes.",
+        "examples": [
+          "Labelled \"This month · Nov'26\" and \"Last month · Oct'26\"."
+        ]
+      },
+      {
+        "term": "Data to / refreshed",
+        "definition": "The line on the quick view that says the last day the warehouse has sales for, and the time (India Standard Time) the stored copy of the figures was made.",
+        "examples": [
+          "\"Data to 17-Nov-2026 · refreshed 06:30 IST\" (format; figures illustrative)."
+        ]
+      },
+      {
+        "term": "Quick view",
+        "definition": "A built-in table of target against sales, shown from a stored copy when a report's live Dive can't open. It is labelled \"Cached · the full report couldn't open\". A report with no quick view says \"This report couldn't open\" with a Try again button instead.",
+        "describes": [
+          {
+            "table": "dash.report",
+            "column": "quick_view"
+          }
+        ]
+      },
+      {
+        "term": "Report filters",
+        "definition": "How a report narrows what you see: one store and subcategories, whole stores, stores and subcategories, or no filter. A report that can't be narrowed to your reach does not open for you rather than show you more.",
+        "examples": [
+          "A Team Leader opening the whole-stores report is told it covers whole stores, so it isn't available for their job."
+        ],
+        "describes": [
+          {
+            "table": "dash.report",
+            "column": "filter_shape"
+          }
+        ]
+      },
+      {
+        "term": "Report an issue",
+        "definition": "A button on every report (where Tickets runs) to tell the team something is wrong. You choose Data looks wrong, Stock missing, Item ran out, Target too high or too low, or Something else; Dash sends the report, store and month on show, your reach and job with it. Pressing Send again never raises a second ticket.",
+        "examples": [
+          "A Team Leader chooses \"Target too high or too low\" and names \"Kanchipuram silk target\"; a ticket is raised as theirs and listed under their open reports on this report."
+        ]
+      },
+      {
+        "term": "Your sections",
+        "definition": "The Dash page that shows what is set against you, and where you propose a correction (a subcategory to add, one that is not yours, or your job's section). Your manager decides each proposal.",
+        "examples": [
+          "Staff with no section are told they aren't set against a section yet, with a way to open Your sections."
+        ]
+      },
+      {
+        "term": "Waiting for your approval",
+        "definition": "The list of corrections other people have proposed that you are asked to decide. Nothing changes until you approve; some changes apply at once and are listed as \"Already done\" for you to confirm or undo."
+      },
+      {
+        "term": "Department set-up",
+        "definition": "A Department Manager's group of sections. Until it is set up, Dash doesn't know the department's sections and shows no report; the manager picks the sections and names the department, then their own manager reviews it.",
+        "examples": [
+          "The page says \"Set up your department to open your report\" until it is done."
+        ]
+      },
+      {
+        "term": "Report bundle",
+        "definition": "A named group of reports given together, for example a Team leader pack. Taking a report out of a bundle removes it for everyone given that bundle.",
+        "examples": [
+          "Team leader pack."
+        ],
+        "describes": [
+          {
+            "table": "dash.report_bundle",
+            "column": "bundle_name"
+          },
+          {
+            "table": "dash.report_bundle_member"
+          }
+        ]
+      },
+      {
+        "term": "Report access",
+        "definition": "Giving a report or a bundle to one person, to everyone holding a role, or to everyone in a job. A person sees every report given to them by any of these routes; with none given, they have no report.",
+        "examples": [
+          "Someone with no report at all is told they have none yet, and to ask the person who gives Dash reports."
+        ],
+        "describes": [
+          {
+            "table": "dash.report_access",
+            "column": "person"
+          },
+          {
+            "table": "dash.report_access",
+            "column": "role"
+          },
+          {
+            "table": "dash.report_access",
+            "column": "job"
+          }
+        ]
+      },
+      {
+        "term": "Report Access Manager",
+        "definition": "A role for people who give reports across the company, make bundles, and add Dives as reports.",
+        "examples": [
+          "A Report Access Manager pastes a Dive's link, names it \"Floor stock\" and adds it; it can be given straight away."
+        ]
+      },
+      {
+        "term": "Team Report Manager",
+        "definition": "A role that lets you give reports only to the people who report to you, and only reports you can open yourself. You cannot make or change bundles."
+      },
+      {
+        "term": "Dash All-Stores Reader",
+        "definition": "A role that lets you see every store in Dash, as a director's job does, even if your own job is in head office. Holding it alone opens Dash.",
+        "examples": [
+          "\"You see every store because you hold Dash All-Stores Reader.\""
+        ]
+      },
+      {
+        "term": "View As Tester",
+        "definition": "A role that lets you look at Dash as another person sees it, picking them by name, employee code, job or site. While viewing as someone else, nothing you do saves."
+      },
+      {
+        "term": "Add a Dive",
+        "definition": "How a Report Access Manager turns a Dive saved in MotherDuck into a Dash report, by searching its title or owner or pasting its link. An added report takes no filter, so everyone given it sees everything the Dive shows.",
+        "examples": [
+          "Dash refuses a Dive that is already a report, naming the report that opens it."
+        ]
+      },
+      {
+        "term": "Acting",
+        "definition": "Covering someone else's job on top of your own. It takes no share of your time, and it can give you places to see in Dash, shown as \"Acting\" beside the reason.",
+        "examples": [
+          "\"Acting Staff job assignment\" from 6 Aug 2026 on Silk Sarees."
+        ]
+      },
+      {
+        "term": "Reports to",
+        "definition": "The person a job assignment answers to. It decides who your manager is for approvals and who counts as someone's team for giving reports."
+      }
+    ]
   }
 }
