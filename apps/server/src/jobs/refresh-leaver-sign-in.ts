@@ -5,7 +5,7 @@ import { LEAVER_SIGN_IN_JOB, refreshLeaverSignIn } from '../leaver-sign-in'
 // migration 0170), after each leaver check and roster sync, and on Refresh Now.
 // It changes nobody.
 registerJob(LEAVER_SIGN_IN_JOB, async (_payload, ctx) => {
-  const { rows, plan_note } = await refreshLeaverSignIn()
+  const { rows, notes } = await refreshLeaverSignIn()
   const n = rows.length
-  ctx.setResult([`${n} ${n === 1 ? 'person' : 'people'} can still sign in`, plan_note].filter(Boolean).join('. '))
+  ctx.setResult([`${n} ${n === 1 ? 'person' : 'people'} can still sign in`, ...notes].join('. '))
 })

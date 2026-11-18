@@ -356,7 +356,7 @@ describe('the check on a live instance', () => {
 })
 
 describe('the leaver plan as printed for logs', () => {
-  const leaver = (person: string, basis: 'exit date' | 'inactive' | 'not on payroll') => ({ person, full_name: person, reason: 'x', basis })
+  const leaver = (person: string, basis: 'exit date' | 'inactive' | 'not on payroll') => ({ person, full_name: person, reason: 'x', basis, left_on: null })
   const plan = {
     today: '2026-10-24',
     latest_feed_day: '2026-10-23',

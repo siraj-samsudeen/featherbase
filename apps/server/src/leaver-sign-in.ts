@@ -10,7 +10,8 @@
 import { createHash } from 'node:crypto'
 import { sql, withTransaction } from './db'
 import { LEAVER_CHECK_JOB, planLeaverCheck, type Leaver, type LeaverPlan } from './leaver-check'
-import { describePeople } from './person-standing'
+import { describePeople, peopleDescriberState } from './person-standing'
+import { EXPECTS_COLUMN, REDIRECT_KINDS, methodUsable } from './identities'
 import { errorMessage } from './errors'
 
 export const LEAVER_SIGN_IN_JOB = 'refresh_leaver_sign_in'
@@ -20,41 +21,63 @@ const BATCH = 200
 export const SECTIONS = [
   '1. Leaver job would disable',
   '2. System Manager: never disabled by the job',
-  '3. Left, no StyleHR link',
+  "3. Left, not on the leaver job's list",
   '4. Not an employee, holds a StyleHR link',
 ] as const
 export type Section = (typeof SECTIONS)[number]
 export interface LeaverSignInRow { section: Section; person: string; why: string; ways_in: string; left_on: string | null }
 export interface LeaverSignInReport {
   rows: LeaverSignInRow[]
-  /** Set when the leaver job's plan could not be read, or its next run would refuse. */
-  plan_note: string | null
+  /** What this rebuild could not check: a leaver-job plan that could not be read
+   *  or would refuse, or people the people app could not describe. Empty when complete. */
+  notes: string[]
 }
 
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-interface WaysIn { ways: string[]; styleHr: string[] }
+interface WaysIn {
+  ways: string[]
+  /** Live links on a StyleHR (delegated) method. */
+  styleHr: string[]
+  /** Live links on any method only employees should hold: StyleHR, or one marked employees-only. */
+  employeesOnly: string[]
+}
 
-/** Every enabled person who can still sign in, with how: a password, and each
- *  live link or pending invite on a switched-on method. `styleHr` names the
- *  live links that only employees should hold: a delegated (StyleHR) method or
- *  one marked employees-only. */
+/** Every enabled person who can still sign in, with how: a password, each
+ *  live link or pending invite, and each expected first Google or Microsoft
+ *  sign-in, on a method that can sign anyone in now (methodUsable, the rule
+ *  every way-in count shares). */
 async function waysIn(): Promise<Map<string, WaysIn>> {
+  const methods = (await sql`select row_id, label, kind, enabled, client_id, employees_only from sign_in_method order by label`)
+    .filter((m) => methodUsable({ kind: String(m.kind), enabled: m.enabled === true, client_id: m.client_id as string | null }))
   const out = new Map<string, WaysIn>()
-  const of = (person: string) => out.get(person) ?? out.set(person, { ways: [], styleHr: [] }).get(person)!
-  for (const r of await sql`select row_id from person where enabled and password_hash is not null`) of(String(r.row_id)).ways.push('Password')
+  const of = (person: string) => out.get(person) ?? out.set(person, { ways: [], styleHr: [], employeesOnly: [] }).get(person)!
+  const add = (w: WaysIn, way: string) => { if (!w.ways.includes(way)) w.ways.push(way) }
+  const people = await sql`select row_id, (password_hash is not null) as has_password, expects_google_sign_in, expects_microsoft_sign_in
+    from person where enabled order by row_id`
+  for (const p of people) {
+    const person = String(p.row_id)
+    if (p.has_password && methods.some((m) => m.kind === 'password')) add(of(person), 'Password')
+    for (const kind of REDIRECT_KINDS) {
+      const m = methods.find((x) => x.kind === kind)
+      if (m && p[EXPECTS_COLUMN[kind]] === true) add(of(person), `${String(m.label || kind)} (first sign-in expected)`)
+    }
+  }
+  const usable = new Map(methods.map((m) => [String(m.row_id), m]))
   const links = await sql`
-    select i.person_id, m.label, m.kind, m.employees_only, (i.subject is null) as invited
-    from sign_in_identity i join sign_in_method m on m.row_id = i.method
-    join person p on p.row_id = i.person_id
-    where i.ended_at is null and m.enabled and p.enabled
-    order by m.label`
+    select i.person_id, i.method, (i.subject is null) as invited
+    from sign_in_identity i join person p on p.row_id = i.person_id
+    where i.ended_at is null and p.enabled
+    order by i.person_id, i.method`
   for (const l of links) {
+    const m = usable.get(String(l.method))
+    if (!m) continue
     const w = of(String(l.person_id))
-    const label = String(l.label || l.kind)
-    const way = l.invited ? `${label} (invited)` : label
-    if (!w.ways.includes(way)) w.ways.push(way)
-    if (!l.invited && (l.kind === 'delegated_password' || l.employees_only === true) && !w.styleHr.includes(label)) w.styleHr.push(label)
+    const label = String(m.label || m.kind)
+    add(w, l.invited ? `${label} (invited)` : label)
+    if (l.invited) continue
+    if (m.kind === 'delegated_password' && !w.styleHr.includes(label)) w.styleHr.push(label)
+    if ((m.kind === 'delegated_password' || m.employees_only === true) && !w.employeesOnly.includes(label)) w.employeesOnly.push(label)
   }
   return out
 }
@@ -66,20 +89,22 @@ function ordered(rows: LeaverSignInRow[]): LeaverSignInRow[] {
     || a.person.localeCompare(b.person))
 }
 
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
 /** What the report holds now, worked out afresh. Pure of side effects. */
 export async function leaverSignInRows(): Promise<LeaverSignInReport> {
   const ways = await waysIn()
   const rows = new Map<string, LeaverSignInRow>()
+  const notes: string[] = []
   const listed = (person: string) => ways.get(person)?.ways.join(', ')
   // The leaver job's own plan, the same one its next run would act on.
   let plan: LeaverPlan | null = null
-  let plan_note: string | null = null
   try {
     const read = await planLeaverCheck()
     plan = read
-    if (read?.refused) plan_note = `The leaver job's next run would refuse: ${read.refused}`
+    if (read?.refused) notes.push(`The leaver job's next run would refuse: ${read.refused}`)
   } catch (e) {
-    plan_note = `The leaver job's plan could not be read: ${errorMessage(e)}`
+    notes.push(`The leaver job's plan could not be read: ${errorMessage(e)}`)
   }
   const fromPlan = (section: Section, leavers: Leaver[]) => {
     for (const l of leavers) {
@@ -90,24 +115,39 @@ export async function leaverSignInRows(): Promise<LeaverSignInReport> {
   fromPlan(SECTIONS[0], plan?.to_disable ?? [])
   fromPlan(SECTIONS[1], plan?.privileged_leavers ?? [])
   // Everyone else who can sign in, as the people app sees them.
+  const describer = await peopleDescriberState()
+  if (describer === 'none') {
+    notes.push('No app says who people are, so sections 3 and 4 are not checked')
+    return { rows: ordered([...rows.values()]), notes }
+  }
   const rest = [...ways.keys()].filter((p) => !rows.has(p) && p !== 'Administrator')
+  let unknown = 0
   for (let i = 0; i < rest.length; i += BATCH) {
     const said = await describePeople(rest.slice(i, i + BATCH))
     for (const [person, standing] of said) {
       const w = ways.get(person)!
-      if (standing.status === 'left' && !w.styleHr.length)
-        rows.set(person, { section: SECTIONS[2], person, why: 'The people app says they have left', ways_in: w.ways.join(', '), left_on: standing.left_on ?? null })
-      else if (standing.status === 'none' && w.styleHr.length)
-        rows.set(person, { section: SECTIONS[3], person, why: `Not an employee, holds a ${w.styleHr.join(' and ')} link`, ways_in: w.ways.join(', '), left_on: null })
+      if (standing.status === 'unknown') unknown++
+      else if (standing.status === 'left')
+        rows.set(person, {
+          section: SECTIONS[2], person, ways_in: w.ways.join(', '), left_on: standing.left_on ?? null,
+          why: w.styleHr.length
+            ? `The people app says they have left; the leaver job did not match their ${w.styleHr.join(' and ')} link`
+            : 'The people app says they have left; with no StyleHR link the leaver job never sees them',
+        })
+      else if (standing.status === 'none' && w.employeesOnly.length)
+        rows.set(person, { section: SECTIONS[3], person, why: `Not an employee, holds a ${w.employeesOnly.join(' and ')} link`, ways_in: w.ways.join(', '), left_on: null })
     }
   }
-  return { rows: ordered([...rows.values()]), plan_note }
+  if (unknown) notes.push(`The people app could not say who ${count(unknown, 'person is', 'people are')}, so they are not checked`)
+  return { rows: ordered([...rows.values()]), notes }
 }
 
 /** Rebuild the report in one go: readers see the old rows or the new, never half. */
 export async function refreshLeaverSignIn(): Promise<LeaverSignInReport> {
   const report = await leaverSignInRows()
   await withTransaction(async () => {
+    // One rebuild replaces the rows at a time, so two at once never mix their reports.
+    await sql`select pg_advisory_xact_lock(hashtext('refresh_leaver_sign_in'))`
     await sql`delete from leaver_sign_in`
     for (const [position, r] of report.rows.entries())
       await sql`insert into leaver_sign_in ${sql({
@@ -126,7 +166,7 @@ export async function leaverSignInStatus() {
   return {
     leaver_job: job ? { on: job.enabled === true, last_run_at: job.last_run_at ?? null, last_outcome: job.last_outcome ?? null, last_result: job.last_result ?? null } : null,
     checked_at: report?.last_run_at ?? null,
-    /** The last rebuild's own summary, which names a plan that could not be read or would refuse. */
+    /** The last rebuild's own summary, which names whatever it could not check. */
     checked_result: report?.last_result ?? null,
   }
 }

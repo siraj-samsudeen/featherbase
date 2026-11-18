@@ -20,7 +20,7 @@ test('the list shows its four sections in order, each person with why and how; t
   await sql`insert into leaver_sign_in (row_id, position, section, person, why, ways_in, left_on) values
     ('r1271d', 3, '4. Not an employee, holds a StyleHR link', ${out.user!}, 'Not an employee, holds a StyleHR link', 'StyleHR', null),
     ('r1271a', 0, '1. Leaver job would disable', ${gone.user!}, 'Exit date 03-Oct-2026 has passed', 'Google, Password', '2026-10-03'),
-    ('r1271c', 2, '3. Left, no StyleHR link', ${quiet.user!}, 'The people app says they have left', 'Google', '2026-09-30'),
+    ('r1271c', 2, '3. Left, not on the leaver job''s list', ${quiet.user!}, 'The people app says they have left', 'Google', '2026-09-30'),
     ('r1271b', 1, '2. System Manager: never disabled by the job', ${boss.user!}, 'Marked inactive in StyleHR', 'Password', null)`
   await sql`update scheduled_job set last_run_at = now(), last_result = 'The leaver job''s next run would refuse: the warehouse''s StyleHR data is stale'
     where row_id = 'refresh_leaver_sign_in'`
@@ -33,7 +33,7 @@ test('the list shows its four sections in order, each person with why and how; t
   expect(sections).toEqual([
     '1. Leaver job would disable',
     '2. System Manager: never disabled by the job',
-    '3. Left, no StyleHR link',
+    "3. Left, not on the leaver job's list",
     '4. Not an employee, holds a StyleHR link',
   ])
   expect(await within(page).findByTestId('leaver-job-line')).toHaveTextContent('Leaver job: Off')
@@ -46,11 +46,19 @@ test('a list never rebuilt says it was checked never', async ({ admin }) => {
   expect(await screen.findByTestId('leaver-checked')).toHaveTextContent(/^Checked never$/)
 })
 
-test('Refresh Now queues the rebuild', async ({ admin }) => {
+test('Refresh Now queues the rebuild and shows its rows once it has run', async ({ admin, createUser }) => {
   await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
+  await screen.findByTestId('leaver-checked')
   await userEvent.click(await screen.findByTestId('leaver-refresh'))
   await waitFor(() => expect(screen.getByTestId('leaver-refresh')).toHaveTextContent('Refreshing…'))
   await waitFor(async () => expect(await sql`select 1 from background_job where method = 'refresh_leaver_sign_in'`).not.toHaveLength(0))
+  // The rebuild finishes (as the job would): a row and a new "Checked" time.
+  const late = await createUser({ email: 'late.1271@example.com', fullName: 'Late Leaver' })
+  await sql`insert into leaver_sign_in (row_id, position, section, person, why, ways_in) values
+    ('r1271late', 0, '1. Leaver job would disable', ${late.user!}, 'Marked inactive in StyleHR', 'Password')`
+  await sql`update scheduled_job set last_run_at = now(), last_result = '1 person can still sign in' where row_id = 'refresh_leaver_sign_in'`
+  expect(await screen.findByRole('link', { name: /Late Leaver/ }, { timeout: 10_000 })).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('leaver-refresh')).toHaveTextContent('Refresh Now'))
 })
 
 test('a System Manager is offered the list under People and access', async ({ admin }) => {

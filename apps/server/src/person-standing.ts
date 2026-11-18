@@ -66,6 +66,13 @@ async function describer(): Promise<{ app: string; describe: string } | 'none' |
   return 'unavailable'
 }
 
+/** Whether any app can say who people are now: 'none' (no app describes people),
+ *  'unavailable' (one does but cannot answer now) or 'ready'. */
+export async function peopleDescriberState(): Promise<'none' | 'unavailable' | 'ready'> {
+  const app = await describer()
+  return typeof app === 'string' ? app : 'ready'
+}
+
 /** Each person's standing as the app says it, unfiltered. Internal: callers that
  *  show it to someone go through `standingFor`, which filters by the viewer. */
 export async function describePeople(persons: string[]): Promise<Map<string, Standing>> {

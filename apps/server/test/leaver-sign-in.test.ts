@@ -1,7 +1,7 @@
 // #1271: Leavers Who Can Still Sign In, rebuilt by the server from the leaver job's own plan and
 // the people app. It changes nobody. Fixtures: the leaver check's stub warehouse, and a copy of
 // test-apps/fixtures/bar-proof that describes people (as person-standing.test.ts).
-import { afterEach, expect } from 'vitest'
+import { afterEach, expect, vi } from 'vitest'
 import { resolve } from 'node:path'
 import { appendFile, cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import type { TestClient } from 'feather-testing-postgres'
@@ -26,6 +26,7 @@ declare global {
 afterEach(async () => {
   _setWarehouseReader(null)
   globalThis.__standing1271 = undefined
+  vi.unstubAllEnvs()
   for (const d of directories.splice(0)) await rm(d, { recursive: true, force: true })
 })
 
@@ -77,22 +78,79 @@ test("the leaver job's own plan lists its leavers with the rule that hit them, t
     rec('702', 'C-702', { movement_active: false }),
     rec('703', 'C-703', { exit_date: '2026-09-01' }),
   ])
-  expect(await leaverSignInRows()).toEqual({
-    plan_note: null,
-    rows: [
+  const report = await leaverSignInRows()
+  expect(report.notes).toEqual(['No app says who people are, so sections 3 and 4 are not checked'])
+  expect(report.rows).toEqual(
+    [
       { section: '1. Leaver job would disable', person: gone, why: 'Exit date 03-Oct-2026 has passed', ways_in: 'Password, Google', left_on: '2026-10-03' },
       { section: '1. Leaver job would disable', person: inactive, why: 'Marked inactive in StyleHR', ways_in: 'Password', left_on: null },
       { section: '2. System Manager: never disabled by the job', person: boss, why: 'Exit date 01-Sep-2026 has passed', ways_in: 'Password', left_on: '2026-09-01' },
-    ],
-  })
+    ])
 })
 
-test("a plan the leaver job would refuse, or cannot read, is named; the people app's sections still list", async () => {
+test("a plan the leaver job would refuse, or cannot read, is named; a StyleHR leaver it misses is still listed from the people app", async ({ admin }) => {
   await applySeedPack('jeyarama')
+  await installDescriber(admin)
+  await configureDelegated()
+  const linked = await makePerson({ full_name: 'Linked Leaver' })
+  await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by) values ('uid_linked1271', ${linked}, 'stylehr', 'RR-72', 'lnk', 'Administrator')`
+  globalThis.__standing1271 = { [linked]: { person: linked, status: 'left', left_on: '2026-08-01' } }
   _setWarehouseReader(async (q) => q.includes('attendance') ? [['2020-01-01']] : [])
-  expect((await leaverSignInRows()).plan_note).toMatch(/^The leaver job's next run would refuse: the warehouse's StyleHR data is stale/)
+  const stale = await leaverSignInRows()
+  expect(stale.notes).toEqual([expect.stringMatching(/^The leaver job's next run would refuse: the warehouse's StyleHR data is stale/)])
+  expect(stale.rows).toContainEqual({
+    section: "3. Left, not on the leaver job's list", person: linked, ways_in: 'StyleHR', left_on: '2026-08-01',
+    why: 'The people app says they have left; the leaver job did not match their StyleHR link',
+  })
   _setWarehouseReader(async () => { throw new Error('warehouse down') })
-  expect((await leaverSignInRows()).plan_note).toBe("The leaver job's plan could not be read: warehouse down")
+  expect((await leaverSignInRows()).notes).toEqual(["The leaver job's plan could not be read: warehouse down"])
+})
+
+test('people the people app cannot describe are counted as not checked, never left out silently', async ({ admin }) => {
+  await installDescriber(admin)
+  const a = await makePerson({ full_name: 'Unknown One' })
+  await password(a)
+  globalThis.__standing1271 = { [a]: { person: a, status: 'bogus' } }
+  const report = await leaverSignInRows()
+  expect(report.rows.map((r) => r.person)).not.toContain(a)
+  expect(report.notes).toContainEqual(expect.stringMatching(/^The people app could not say who \d+ (person is|people are), so they are not checked$/))
+})
+
+test('only ways in that can work now count: a switched-off password, an unconfigured Google; an expected first sign-in counts', async ({ admin }) => {
+  await installDescriber(admin)
+  const pw = await makePerson({ full_name: 'Password Only' })
+  const g = await makePerson({ full_name: 'Google Unset' })
+  const expected = await makePerson({ full_name: 'Google Expected' })
+  await password(pw)
+  await configureGoogle({ enabled: true, client_id: '' })
+  await googleLink(g, 'g.unset@gmail.com')
+  await sql`update person set expects_google_sign_in = true where row_id = ${expected}`
+  globalThis.__standing1271 = Object.fromEntries([pw, g, expected].map((p) => [p, { person: p, status: 'left' }]))
+  await sql`update sign_in_method set enabled = false where kind = 'password'`
+  // The tests run with the mock Google sign-in on, which makes any Google method usable.
+  vi.stubEnv('ALLOW_MOCK_OAUTH', '0')
+  let persons = (await leaverSignInRows()).rows.map((r) => r.person)
+  expect(persons).not.toContain(pw)
+  expect(persons).not.toContain(g)
+  expect(persons).not.toContain(expected)
+  await configureGoogle({ client_id: 'made-up' })
+  const rows = (await leaverSignInRows()).rows
+  persons = rows.map((r) => r.person)
+  expect(persons).toContain(g)
+  expect(rows.find((r) => r.person === expected)?.ways_in).toBe('Google (first sign-in expected)')
+})
+
+test('a second rebuild replaces the first; it never adds to it', async ({ admin }) => {
+  // Rebuilds take a lock first, so two at once replace in turn. The test runs in
+  // one transaction, so it can show only that each rebuild replaces the rows.
+  await installDescriber(admin)
+  await configureGoogle({ enabled: true, client_id: 'made-up' })
+  const leaver = await makePerson({ full_name: 'Twice Leaver' })
+  await googleLink(leaver, 'twice@gmail.com')
+  globalThis.__standing1271 = { [leaver]: { person: leaver, status: 'left' } }
+  await refreshLeaverSignIn()
+  await refreshLeaverSignIn()
+  expect((await sql`select person from leaver_sign_in`).map((r) => r.person)).toEqual([leaver])
 })
 
 test('the people app adds leavers with no StyleHR link, and outsiders who hold one; nobody without a way in', async ({ admin }) => {
@@ -115,7 +173,7 @@ test('the people app adds leavers with no StyleHR link, and outsiders who hold o
     [disabled]: { person: disabled, status: 'left' },
   }
   const { rows } = await leaverSignInRows()
-  expect(rows).toContainEqual({ section: '3. Left, no StyleHR link', person: googleLeaver, why: 'The people app says they have left', ways_in: 'Google', left_on: '2026-09-30' })
+  expect(rows).toContainEqual({ section: "3. Left, not on the leaver job's list", person: googleLeaver, why: 'The people app says they have left; with no StyleHR link the leaver job never sees them', ways_in: 'Google', left_on: '2026-09-30' })
   expect(rows).toContainEqual({ section: '4. Not an employee, holds a StyleHR link', person: outsider, why: 'Not an employee, holds a StyleHR link', ways_in: 'StyleHR', left_on: null })
   expect(rows.map((r) => r.person)).not.toContain(noWayIn)
   expect(rows.map((r) => r.person)).not.toContain(disabled)

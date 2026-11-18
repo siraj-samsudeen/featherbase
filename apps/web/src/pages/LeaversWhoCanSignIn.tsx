@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, fmtDateTime } from '@featherbase/shop-floor'
@@ -19,15 +20,26 @@ export const LEAVER_STATUS_KEY = ['leaver-sign-in-status'] as const
 /** The list header's line: whether the leaver job disables anyone, its last run, and when the list was checked. */
 function StatusLine() {
   const qc = useQueryClient()
-  const status = useQuery({ queryKey: LEAVER_STATUS_KEY, queryFn: () => api.get<Status>('/api/leaver_sign_in/status') })
+  // While a requested rebuild runs: the "Checked" time it started from. The
+  // line is read again until that time moves on, then the list is read again.
+  const [waitingSince, setWaitingSince] = useState<string | null | undefined>(undefined)
+  const waiting = waitingSince !== undefined
+  const status = useQuery({
+    queryKey: LEAVER_STATUS_KEY,
+    queryFn: () => api.get<Status>('/api/leaver_sign_in/status'),
+    refetchInterval: waiting ? 1500 : false,
+  })
   const refresh = useMutation({
     mutationFn: () => api.post('/api/leaver_sign_in/refresh', {}),
-    // The rebuild runs as a job; read the list and the line again shortly.
-    onSuccess: () => setTimeout(() => {
-      void qc.invalidateQueries({ queryKey: LEAVER_STATUS_KEY })
-      void qc.invalidateQueries({ queryKey: ['list', 'Leaver Sign In'] })
-    }, 1500),
+    onMutate: () => setWaitingSince(status.data?.checked_at ?? null),
+    onError: () => setWaitingSince(undefined),
   })
+  const checkedAt = status.data?.checked_at ?? null
+  useEffect(() => {
+    if (!waiting || checkedAt === waitingSince) return
+    setWaitingSince(undefined)
+    void qc.invalidateQueries({ queryKey: ['list', 'Leaver Sign In'] })
+  }, [waiting, waitingSince, checkedAt, qc])
   const s = status.data
   const job = s?.leaver_job
   const at = (iso: string | null) => (iso ? fmtDateTime(new Date(iso)) : 'never')
@@ -47,8 +59,8 @@ function StatusLine() {
           {s.checked_result ? <> · {s.checked_result}</> : null}
         </span>
       )}
-      <Button variant="secondary" disabled={refresh.isPending} onClick={() => refresh.mutate()} data-testid="leaver-refresh">
-        {refresh.isPending || refresh.isSuccess ? 'Refreshing…' : 'Refresh Now'}
+      <Button variant="secondary" disabled={waiting} onClick={() => refresh.mutate()} data-testid="leaver-refresh">
+        {waiting ? 'Refreshing…' : 'Refresh Now'}
       </Button>
     </div>
   )
@@ -70,7 +82,7 @@ export function LeaversWhoCanSignIn({ filters, onFiltersChange }: { filters: Fil
           </div>
         }
         subtitle={<StatusLine />}
-        empty={<p className="text-sm text-ink-muted">Nobody who has left, or who is not an employee, can still sign in.</p>}
+        empty={<p className="text-sm text-ink-muted">Nobody is listed. The line above says if anything could not be checked.</p>}
       />
     </div>
   )
