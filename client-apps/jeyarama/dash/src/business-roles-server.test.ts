@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle } from './business-roles-server'
 import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
+import { convertGrants } from './switch-over'
+import { scopeProviders } from './server'
+import { personShadow, placesByStore, shadowWorld } from './business-roles-server'
+import { businessModel } from './business-access'
 import { istToday } from './report'
 
 type Row = Record<string, unknown>
@@ -75,6 +79,13 @@ async function seeded() {
   await addStartingRoles(context(tables) as never)
   return tables
 }
+/** #1277: the old grants also given to business roles, as the switch-over gives them (without setting the switch). */
+async function converted(tables: Record<string, Row[]>) {
+  const ctx = context(tables)
+  const { model } = await businessModel(ctx.baseTables as never, today)
+  await convertGrants(ctx.baseTables as never, ctx.documents as never, model, async () => true)
+  return tables
+}
 const roleId = (tables: Record<string, Row[]>, name: string) => String(tables['dash.business_role'].find(r => r.role_name === name)!.row_id)
 
 describe('the starting roles', () => {
@@ -83,9 +94,12 @@ describe('the starting roles', () => {
     expect(tables['dash.business_role'].map(r => r.role_name)).toEqual(STARTING_ROLES.map(r => r.name))
   })
 
-  it('refuses to write them again', async () => {
+  // #1277: the button is harmless once the roles are there: a second click adds nothing and changes nothing.
+  it('adds nothing the second time', async () => {
     const tables = await seeded()
-    await expect(addStartingRoles(context(tables) as never)).rejects.toThrow('There are business roles already')
+    const before = JSON.stringify(tables)
+    expect(await addStartingRoles(context(tables) as never)).toEqual({ roles: 0, titles: 0 })
+    expect(JSON.stringify(tables)).toBe(before)
   })
 })
 
@@ -116,9 +130,10 @@ describe('Explain a person', () => {
     expect(answer.apps.map(a => `${a.app} · ${a.level}`)).toEqual(['Dash · Manager', 'Dash · Reader', 'Tasker · Manager', 'Tickets · User'])
   })
 
-  it('gives a report given to their job, saying why', async () => {
-    const answer = await explainPerson(context(await seeded(), { payload: { person: 'sm' } }) as never)
-    expect(answer.reports).toEqual([{ key: 'vs', name: 'Vendor Sales', why: ['Given to Store Manager, for Lakeside'] }])
+  it('gives a report given to their job, once the switch-over has given it to the role, saying why', async () => {
+    const answer = await explainPerson(context(await converted(await seeded()), { payload: { person: 'sm' } }) as never)
+    // Sales was given to Dash Reader: the switch-over gives it to every role that opens Dash, Store Manager among them.
+    expect(answer.reports).toEqual([{ key: 'sales', name: 'Sales', why: ['Given to Store Manager, for Lakeside'] }, { key: 'vs', name: 'Vendor Sales', why: ['Given to Store Manager, for Lakeside'] }])
   })
 
   it('reads a category head\'s area as the category and region of their merchandise assignment', async () => {
@@ -165,8 +180,17 @@ describe('who would gain or lose access', () => {
   it('leaves out a store manager whose access stays the same', async () => {
     const tables = await seeded()
     tables['dash.report_access'] = [{ row_id: 'a1', report: 'vs', job: 'Store Manager' }]
+    await converted(tables)
     const answer = await accessChanges(context(tables) as never)
     expect(answer.groups.flatMap(g => g.people).map(p => p.person)).not.toContain('sm')
+  })
+
+  // #1277: before the switch-over, a grant to a job gives nothing under business roles, and the comparison says so.
+  it('shows a report given to a job as lost until the switch-over gives it to the role', async () => {
+    const tables = await seeded()
+    tables['dash.report_access'] = [{ row_id: 'a1', report: 'vs', job: 'Store Manager' }]
+    const sm = (await accessChanges(context(tables) as never)).groups.flatMap(g => g.people).find(p => p.person === 'sm')!
+    expect(sm.lost.map(r => r.name)).toEqual(['Vendor Sales'])
   })
 
   it('shows a report given only through Dash Reader as needing a decision', async () => {
@@ -174,7 +198,11 @@ describe('who would gain or lose access', () => {
     tables['Section Subcategory'].push({ row_id: 'P2', store: 'LKS', section: 'S1', subcategory: '010101002', starts_on: '2026-01-01' })
     const answer = await accessChanges(context(tables) as never)
     const sm = answer.groups.flatMap(g => g.people).find(p => p.person === 'sm')!
-    expect([sm.kind, sm.decisions.map(d => d.name), sm.lost]).toEqual(['decision', ['Sales'], []])
+    expect([sm.kinds.includes('decision'), sm.decisions.map(d => d.name), sm.lost.map(r => r.name)]).toEqual([true, ['Sales'], ['Vendor Sales']])
+    // Once the switch-over has given Dash Reader's report to the roles that open Dash, nothing waits on a decision.
+    await converted(tables)
+    const after = (await accessChanges(context(tables) as never)).groups.flatMap(g => g.people).find(p => p.person === 'sm')
+    expect(after?.decisions ?? []).toEqual([])
   })
 })
 
@@ -291,9 +319,10 @@ describe('someone outside the staff list', () => {
     expect((await outsider()).reports).toEqual([{ key: 'open', name: 'Company notices', why: ['Given to them directly, through Store pack'] }])
   })
 
-  it('opens Dash today by that report alone, and has no name or employee code', async () => {
+  // #1277: a report alone opens no door: the platform lets into Dash only someone holding one of its roles, on either side.
+  it('opens Dash on neither side by that report alone, and has no name or employee code', async () => {
     const answer = await outsider()
-    expect([answer.today.opens, answer.next.opens, answer.name, answer.employee]).toEqual([true, true, 'This person', null])
+    expect([answer.today.opens, answer.next.opens, answer.name, answer.employee]).toEqual([false, false, 'This person', null])
   })
 })
 
@@ -311,7 +340,7 @@ describe('Who would gain or lose access, on every route', () => {
 
   it('finds a store manager who also leads a section waiting only on a decision', async () => {
     const answer = await accessChanges(richContext(await richWorld(), { peopleRoles: { mix: ['Dash Reader'] } }) as never)
-    expect(answer.groups.flatMap(g => g.people).find(p => p.person === 'mix')?.kind).toBe('decision')
+    expect(answer.groups.flatMap(g => g.people).find(p => p.person === 'mix')?.kinds).toContain('decision')
   })
 })
 
@@ -423,13 +452,14 @@ describe('both sides judged by the live rules (Codex adversarial round 1)', () =
   }
   const kindOf = async (ctx: unknown, person: string) => (await accessChanges(ctx as never)).groups.flatMap(g => g.people).find(p => p.person === person)?.kind ?? null
 
-  it('finds a section-only Team Leader given a whole-stores report, closed today, gaining Dash by their role', async () => {
+  it('finds a section-only Team Leader with no Dash role, whose business role would open Dash, needing a Dash role', async () => {
     const { ctx } = await withWholeReport({ row_id: 'g', report: 'whole', person: 'tl' })
-    expect(await kindOf(ctx, 'tl')).toBe('gains_dash')
+    expect(await kindOf(ctx, 'tl')).toBe('needs_dash_role')
   })
 
   it('leaves out a store manager given a whole-stores report through their job, the same in both', async () => {
-    const { ctx } = await withWholeReport({ row_id: 'g', report: 'whole', job: 'Store Manager' })
+    const { ctx, tables } = await withWholeReport({ row_id: 'g', report: 'whole', job: 'Store Manager' })
+    await converted(tables)
     expect(await kindOf(ctx, 'sm')).toBeNull()
   })
 
@@ -460,11 +490,16 @@ describe('one comparison per person, drawn by both pages (verifier round 1)', ()
 
   it('never lists a report both as Would Get and as Needs A Decision, before or after a Correct', async () => {
     const tables = await seeded()
+    const overlap = (answer: Awaited<ReturnType<typeof explainPerson>>) => answer.reports.filter(r => answer.change.decisions.some(d => d.name === r.name))
     const before = await explainPerson(context(tables, { payload: { person: 'st' } }) as never)
     await giveRole(context(tables, { payload: { person: 'st', change: 'Correct', role: roleId(tables, 'Store Manager'), site: 'LKS' } }) as never)
     const after = await explainPerson(context(tables, { payload: { person: 'st' } }) as never)
-    expect([before.change.decisions.map(d => d.name), after.reports.map(r => r.name), after.change.decisions.map(d => d.name), after.roles[0].area.parts.map(p => p.name)])
-      .toEqual([['Sales'], ['Vendor Sales'], ['Sales'], ['Lakeside']])
+    await converted(tables)
+    const switched = await explainPerson(context(tables, { payload: { person: 'st' } }) as never)
+    expect([before.change.decisions.map(d => d.name), after.change.decisions.map(d => d.name), after.roles[0].area.parts.map(p => p.name), overlap(before), overlap(after)])
+      .toEqual([['Sales'], ['Sales'], ['Lakeside'], [], []])
+    // After the switch-over gives the old grants to roles, the corrected Store Manager gets both, and nothing waits on a decision.
+    expect([switched.reports.map(r => r.name), switched.change.decisions]).toEqual([['Sales', 'Vendor Sales'], []])
   })
 
   it('puts someone in every group that applies', async () => {
@@ -483,9 +518,10 @@ describe('one comparison per person, drawn by both pages (verifier round 1)', ()
 })
 
 describe('Codex adversarial round 2 and standard review on 296fa29fc', () => {
-  it('finds a Store Manager holding Report Access Manager but no reader role gaining their job\'s reports', async () => {
-    expect((await accessChanges(context(await seeded(), { peopleRoles: { sm: ['Report Access Manager'] } }) as never)).groups.find(g => g.kind === 'reports')!.people.map(p => [p.person, p.gained.map(r => r.name)]))
-      .toContainEqual(['sm', ['Vendor Sales']])
+  // #1277: on both sides a filtered report also needs a reader role, which the platform asks on the report reads.
+  it('gives a Store Manager holding Report Access Manager but no reader role no filtered report on either side', async () => {
+    expect((await accessChanges(context(await converted(await seeded()), { peopleRoles: { sm: ['Report Access Manager'] } }) as never)).groups.find(g => g.kind === 'reports')!.people.map(p => p.person))
+      .not.toContain('sm')
   })
 
   it('leaves out floor staff with no Dash on either side', async () => {
@@ -575,15 +611,15 @@ describe('Codex adversarial round 4 on 1233e3d8c', () => {
     return tables
   }
 
-  it('gives someone outside the staff list holding Leadership every store and a filtered report given to them, in Explain', async () => {
-    const explained = await explainPerson(context(await leader(), { payload: { person: 'ext' }, peopleRoles: { ext: [] } }) as never)
+  it('gives someone outside the staff list holding Leadership and Dash Reader every store and a filtered report given to them, in Explain', async () => {
+    const explained = await explainPerson(context(await leader(), { payload: { person: 'ext' }, peopleRoles: { ext: ['Dash Reader'] } }) as never)
     expect([explained.next, explained.reports.map(r => r.name), explained.change.stores_gained.map(s => s.name)])
       .toEqual([{ opens: true, reports: 1, stores: 1 }, ['Vendor Sales'], ['Lakeside']])
   })
 
-  it('lists the same person gaining Dash, every store and the report, on the comparison', async () => {
+  it('lists the same person, holding no Dash role, as needing one on the comparison', async () => {
     const row = (await accessChanges(context(await leader(), { peopleRoles: { ext: [] } }) as never)).groups.flatMap(g => g.people).find(p => p.person === 'ext')!
-    expect([row.kinds, row.stores_gained.map(s => s.name), row.gained.map(r => r.name)]).toEqual([['gains_dash', 'stores', 'reports'], ['Lakeside'], ['Vendor Sales']])
+    expect(row.kinds).toEqual(['needs_dash_role'])
   })
 })
 
@@ -598,6 +634,7 @@ describe('reach as data on the role (Codex standard review round 4 on 1233e3d8c)
   it('keeps a renamed store manager out of the comparison, as before the rename', async () => {
     const tables = await seeded()
     tables['dash.report_access'] = [{ row_id: 'a1', report: 'vs', job: 'Store Manager' }]
+    await converted(tables)
     tables['dash.business_role'].find(r => r.role_name === 'Store Manager')!.role_name = 'Store Head'
     expect((await accessChanges(context(tables) as never)).groups.flatMap(g => g.people).map(p => p.person)).not.toContain('sm')
   })
@@ -722,5 +759,134 @@ describe('a hand change with nowhere to apply', () => {
     const ctx = { ...context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Team Leader') } }), userName: undefined }
     await giveRole(ctx as never)
     expect(tables['dash.role_assignment'].at(-1)!.given_by_name).toBeNull()
+  })
+})
+
+// ---------- #1277: the switch-over, and business roles deciding ----------
+
+const REPORT_ROWS = [{ row_id: 'vs', report_key: 'vs', report_name: 'Vendor Sales', filter_shape: 'Stores and subcategories' },
+  { row_id: 'sales', report_key: 'sales', report_name: 'Sales', filter_shape: 'One store and subcategories' }, { ...OPEN, row_id: 'open' }]
+
+/** The rich world switched to business roles as the owner would: starting roles added (seeded), old grants given to roles, then the switch set by hand. */
+async function switched(tables?: Record<string, Row[]>) {
+  const world = tables ?? await richWorld()
+  world['dash.report'] = REPORT_ROWS
+  const ctx = context(world, { roles: ['System Manager'] })
+  const result = await actions.give_old_grants_to_roles(ctx as never)
+  world['dash.access_source'] = [{ row_id: 's1', source: 'business_roles' }]
+  return { tables: world, result }
+}
+/** A reader's context as the platform hands a read: their roles, and no places (worked out from the core Tables). */
+const readerOf = (tables: Record<string, Row[]>, user: string, roles: string[] = []) => ({ ...context(tables, { user, roles }), authorization: { places: [] }, datasets: { active: async () => null } })
+const scopeOf = async (tables: Record<string, Row[]>, person: string, roles: string[] = []) =>
+  placesByStore(await scopeProviders.org_chart({ person: { id: person, email: null, roles }, documents: context(tables).baseTables } as never))
+
+describe('the steps towards business roles run only when asked (#1277 J1, J3, J5)', () => {
+  it('adds no role, gives no grant and sets no switch by itself: a new instance stays on the old rules', async () => {
+    const tables = world()
+    expect([tables['dash.business_role'].length, tables['dash.access_source'] ?? [], await scopeOf(tables, 'st', ['Dash Reader'])]).toEqual([0, [], { 9901: ['010101001'] }])
+  })
+
+  it('adds the starting roles only on the button, logging each, and nothing on a second click', async () => {
+    const tables = await seeded()
+    expect(tables['dash.switch_over_log'].filter(l => l.step === 'Starting role').length).toBe(12)
+    expect(await addStartingRoles(context(tables) as never)).toEqual({ roles: 0, titles: 0 })
+    expect(tables['dash.switch_over_log'].filter(l => l.step === 'Starting role').length).toBe(12)
+  })
+
+  it('gives a grant to a job to its business role, and one to Dash Reader to every role that opens Dash, logging each, and sets no switch', async () => {
+    const tables = await seeded()
+    tables['dash.report'] = REPORT_ROWS
+    const result = await actions.give_old_grants_to_roles(context(tables, { roles: ['System Manager'] }) as never)
+    const given = tables['dash.report_access'].filter(r => r.business_role).map(r => [r.report, tables['dash.business_role'].find(b => b.row_id === r.business_role)!.role_name])
+    const dashRoles = STARTING_ROLES.filter(r => !r.by_hand_only && r.grants.some(g => g[0] === 'Dash')).map(r => r.name)
+    const sorted = (pairs: unknown[][]) => pairs.map(p => p.join(' → ')).sort()
+    expect(sorted(given)).toEqual(sorted([['vs', 'Store Manager'], ...dashRoles.map(name => ['sales', name])]))
+    expect([result, tables['dash.switch_over_log'].filter(l => l.step === 'Report grant').length, tables['dash.access_source'] ?? []])
+      .toEqual([{ grants_added: 1 + dashRoles.length, grants_not_converted: 0 }, 1 + dashRoles.length, []])
+    // The old grants stay, so the old rules keep working.
+    expect(tables['dash.report_access'].filter(r => r.job || r.role).map(r => r.row_id)).toEqual(['a1', 'a2'])
+  })
+
+  it('leaves a grant to a person as it is, and logs a grant to a role with no business role once', async () => {
+    const tables = await seeded()
+    tables['dash.report_access'].push({ row_id: 'a5', report: 'vs', person: 'st' }, { row_id: 'a6', report: 'vs', role: 'Report Access Manager' })
+    await switched(tables)
+    await switched(tables)
+    expect(tables['dash.report_access'].filter(r => r.person).length).toBe(1)
+    expect(tables['dash.switch_over_log'].filter(l => l.outcome === 'Not converted').map(l => l.source_grant)).toEqual(['a6'])
+  })
+
+  it('adds nothing when run again, and never changes a role someone edited', async () => {
+    const { tables } = await switched(await seeded())
+    const role = tables['dash.business_role'].find(r => r.role_name === 'Store Manager')!
+    role.description = 'Edited by the owner'
+    tables['dash.business_role_permission'] = tables['dash.business_role_permission'].filter(p => p.business_role !== role.row_id || p.app !== 'Tickets')
+    const before = JSON.stringify(tables)
+    expect(await actions.give_old_grants_to_roles(context(tables, { roles: ['System Manager'] }) as never)).toEqual({ grants_added: 0, grants_not_converted: 0 })
+    expect(await addStartingRoles(context(tables) as never)).toEqual({ roles: 0, titles: 0 })
+    expect(JSON.stringify(tables)).toBe(before)
+  })
+
+  it('is refused to anyone but a System Manager', async () => {
+    const tables = await seeded()
+    await expect(actions.give_old_grants_to_roles(context(tables) as never)).rejects.toThrow('Only a System Manager')
+  })
+})
+
+describe('business roles decide Dash access (#1277 J2)', () => {
+  it('gives a store manager their store, a buyer their subcategories, head office every store, and floor staff nothing', async () => {
+    const { tables } = await switched()
+    expect([await scopeOf(tables, 'sm'), await scopeOf(tables, 'b'), await scopeOf(tables, 'ho'), await scopeOf(tables, 'st')])
+      .toEqual([{ 9901: null }, { 9901: ['010101001'] }, { 9901: null }, {}])
+  })
+
+  it('opens Dash for a store manager holding Dash Reader, and shuts it for staff holding only Dash Reader', async () => {
+    const { tables } = await switched()
+    expect([await reads.can_open(readerOf(tables, 'sm', ['Dash Reader']) as never), await reads.can_open(readerOf(tables, 'st', ['Dash Reader']) as never)]).toEqual([true, false])
+  })
+
+  it('lists someone business roles would let in but who holds no Dash role as needing one', async () => {
+    const { tables } = await switched()
+    const sm = (await accessChanges(context(tables, { peopleRoles: { sm: [] } }) as never)).groups.find(g => g.kind === 'needs_dash_role')!.people.map(p => p.person)
+    expect(sm).toContain('sm')
+  })
+
+  it('gives a store manager the reports given to their role and to them, and no Dash All-Stores Reader reach', async () => {
+    const { tables } = await switched()
+    expect((await reportsFor(readerOf(tables, 'sm', ['Dash Reader']) as never)).map(r => r.report_key).sort()).toEqual(['sales', 'vs'])
+    expect(await scopeOf(tables, 'st', ['Dash All-Stores Reader'])).toEqual({})
+  })
+
+  it('predicts in the comparison exactly what each person now reaches and is offered', async () => {
+    const { tables } = await switched()
+    const ctx = context(tables)
+    const world = await shadowWorld(ctx.baseTables as never, today)
+    const shapes = new Map(REPORT_ROWS.map(r => [r.report_key, r.filter_shape]))
+    for (const person of ['sm', 'st', 'ho', 'buy', 'b', 'fm', 'dm', 'cm', 'ch', 'tl', 'mix', 'all']) {
+      const shadow = await personShadow(world, person, ['Dash Reader'], shapes)
+      const live = readerOf(tables, person, ['Dash Reader'])
+      const offered = (await reads.reports(live as never) as { key: string }[]).map(r => r.key).sort()
+      expect([person, shadow.next.places, shadow.next.reports, shadow.next.opens])
+        .toEqual([person, await scopeOf(tables, person), offered, await reads.can_open(live as never)])
+    }
+  })
+})
+
+describe('one switch puts the old rules back (#1277 J5)', () => {
+  it('restores the old reach, front door and reports when set to the old rules, and business roles when set back', async () => {
+    const { tables } = await switched()
+    tables['dash.access_source'][0].source = 'legacy'
+    const old = [await scopeOf(tables, 'st', ['Dash Reader']), await reads.can_open(readerOf(tables, 'st', ['Dash Reader']) as never), await scopeOf(tables, 'ho', ['Dash All-Stores Reader'])]
+    expect(old).toEqual([{ 9901: ['010101001'] }, true, { 9901: null }])
+    tables['dash.access_source'][0].source = 'business_roles'
+    expect([await scopeOf(tables, 'st', ['Dash Reader']), await reads.can_open(readerOf(tables, 'st', ['Dash Reader']) as never)]).toEqual([{}, false])
+  })
+
+  it('reads no switch row, or one saying anything else, as the old rules', async () => {
+    const tables = await seeded()
+    expect(await scopeOf(tables, 'st', ['Dash Reader'])).toEqual({ 9901: ['010101001'] })
+    tables['dash.access_source'] = [{ row_id: 's1', source: 'business_roles' }, { row_id: 's2', source: 'something else' }]
+    expect(await scopeOf(tables, 'st', ['Dash Reader'])).toEqual({ 9901: ['010101001'] })
   })
 })

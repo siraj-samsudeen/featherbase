@@ -60,9 +60,37 @@ export const withoutTeamManager = <T extends Grant | { create?: string }>(list: 
 export const SHADOW_TABLES = ['dash.business_role', 'dash.business_role_permission', 'dash.title_map', 'dash.role_assignment']
 /** #1218's grants, which this version brings too: the upgrade tests of earlier steps compare without them. */
 export const withoutBusinessRoles = <T,>(list: T[]) =>
-  list.filter(entry => !SHADOW_TABLES.includes(((entry as Grant & { grant?: { table?: string } }).grant as { table?: string } | undefined)?.table ?? ''))
-export function revertBusinessRoles(manifest: { migrations: { id: string }[]; tables?: { name: string }[]; permissions?: { table: string }[];
-  baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] } }) {
+  list.filter(entry => ![...SHADOW_TABLES, 'dash.access_source', 'dash.switch_over_log'].includes(((entry as Grant & { grant?: { table?: string } }).grant as { table?: string } | undefined)?.table ?? ''))
+/** #1277's switch and its log, which 0.13.30 brings. */
+export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
+type Revertable = { migrations: { id: string }[]; tables?: { name: string; decides_scope?: boolean; columns?: { column_name: string }[] }[]; permissions?: { table: string }[];
+  baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[] } }
+/** #1277's 0.13.30 taken out of a manifest: business roles decide nothing, no switch. */
+export function revertBusinessRolesLive(manifest: Revertable) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_live', fromVersion: '0.13.28' })
+  if (manifest.tables) {
+    manifest.tables = manifest.tables.filter(t => !LIVE_TABLES.includes(t.name))
+    for (const table of manifest.tables) {
+      if (SHADOW_TABLES.includes(table.name)) delete table.decides_scope
+      if (table.name === 'dash.report_access') table.columns = table.columns!.filter(c => c.column_name !== 'business_role')
+    }
+  }
+  if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !LIVE_TABLES.includes(p.table))
+  if (manifest.actions) manifest.actions.tables = manifest.actions.tables.filter(t => !LIVE_TABLES.includes(t))
+  const read = manifest.baseTables?.read
+  if (read) {
+    for (const table of LIVE_TABLES) delete read[table]
+    read['dash.report_access'] = read['dash.report_access'].filter(c => c !== 'business_role')
+  }
+  const provider = manifest.scopeProvider
+  if (provider) {
+    provider.tables = provider.tables.filter(t => ![...SHADOW_TABLES, 'dash.access_source', 'Designation'].includes(t))
+    provider.unmarkedTables = provider.unmarkedTables?.filter(t => t !== 'Designation')
+    provider.optionalTables = provider.optionalTables?.filter(t => t !== 'Designation')
+  }
+}
+export function revertBusinessRoles(manifest: Revertable) {
+  revertBusinessRolesLive(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_shadow', fromVersion: '0.13.27' })
   if (manifest.tables) manifest.tables = manifest.tables.filter(t => !SHADOW_TABLES.includes(t.name))
   if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !SHADOW_TABLES.includes(p.table))

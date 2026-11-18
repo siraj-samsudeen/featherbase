@@ -1,6 +1,6 @@
 // #1218: business roles in shadow (option A). Made-up roles, titles and people.
 import { describe, expect, it } from 'vitest'
-import { fit, appsOf, areaPrefixes, decisionReports, differences, permissionSentence, rolesOf, shadowReceiver, newModelReports, titleList, opensDash, type BusinessRole, type Permission, type Spot, type TitleRule } from './business-roles'
+import { fit, appsOf, areaPrefixes, decisionReports, differences, permissionSentence, rolesOf, shadowReceiver, titleList, opensDash, type BusinessRole, type Permission, type Spot, type TitleRule } from './business-roles'
 
 const ON = '2026-11-17'
 const ROLES: BusinessRole[] = [
@@ -240,17 +240,6 @@ describe('report grants in the new shape', () => {
     expect(shadowReceiver({ report: 'vs', report_bundle: null, person: null, role: null, job: null }, model)).toBeNull()
   })
 
-  it('gives nothing through a row that names both a report and a bundle, or another person', () => {
-    const rows = [{ report: 'vs', report_bundle: 'b1', person: 'p1', role: null, job: null }, { report: 'st', report_bundle: null, person: 'p2', role: null, job: null },
-      { report: 'mine', report_bundle: null, person: 'p1', role: null, job: null }]
-    expect([...newModelReports('p1', [], rows, [], model)]).toEqual([['mine', [{ person: true, bundle: null }]]])
-  })
-
-  it('gives a report through a bundle to everyone holding the role, saying why', () => {
-    const rows = [{ report: null, report_bundle: 'b1', person: null, role: null, job: 'Store Manager' }]
-    const got = newModelReports('p1', ['r-sm'], rows, [{ report_bundle: 'b1', report: 'vs' }, { report_bundle: 'b2', report: 'other' }], model)
-    expect([...got]).toEqual([['vs', [{ role: 'r-sm', bundle: 'b1' }]]])
-  })
 })
 
 describe('reports needing a decision', () => {

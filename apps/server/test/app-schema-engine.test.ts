@@ -364,6 +364,22 @@ describe('relabelTable', () => {
   })
 })
 
+// #1277: the mark is written to the definition and no row is touched.
+describe('markDecidesScope', () => {
+  shopTest('the Table records the mark and keeps its rows', async () => {
+    await registered()
+    const rows = await sql`select row_id, ctid::text as at from shop.supplier order by row_id`
+    await run({ kind: 'markDecidesScope', table: 'shop.supplier' })
+    expect(await sql`select decides_scope from table_def where name = 'shop.supplier'`).toEqual([{ decides_scope: true }])
+    expect(await sql`select row_id, ctid::text as at from shop.supplier order by row_id`).toEqual(rows)
+  })
+
+  shopTest('it counts no losses', async () => {
+    await registered()
+    expect(await countLosses('shop', [step([{ kind: 'markDecidesScope', table: 'shop.supplier' }])])).toEqual([])
+  })
+})
+
 // #663 review round 1: a required column can hold empty rows (written before
 // it became required, or straight into storage). A step that changes only
 // what people read leaves them as they are: no fill, no required-value check.

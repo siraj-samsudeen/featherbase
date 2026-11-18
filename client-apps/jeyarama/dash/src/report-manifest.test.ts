@@ -12,6 +12,9 @@ import { BASE_TABLES } from './my-sections.ts'
 import { BUYER_TABLES } from './buyers.ts'
 import { DESIGNATION, SHADOW_TABLES } from './business-roles-server.ts'
 import { READ_ROLES } from './report-eligibility.ts'
+import { ACCESS_SOURCE } from './access-source.ts'
+import { SWITCH_OVER_LOG } from './switch-over.ts'
+import { OPTIONAL_PROVIDER_TABLES } from './provider.ts'
 import { REACHES_CHOICES } from './business-roles.ts'
 
 type Dataset = { name: string; source: string; query: string; columns: { name: string; type: string }[]; keys: string[]; filters: Record<string, string>
@@ -152,11 +155,13 @@ describe("last month's datasets", () => {
 describe('what Dash owns and what it reads', () => {
   it('owns its list of Dives, its entry Table, and the report access Tables (#1046)', () => {
     expect([manifest.entryTable, manifest.tables.map(table => table.name)])
-      .toEqual(['dash.report', ['dash.report', 'dash.report_bundle', 'dash.report_bundle_member', 'dash.report_access', ...SHADOW_TABLES]])
+      .toEqual(['dash.report', ['dash.report', 'dash.report_bundle', 'dash.report_bundle_member', 'dash.report_access', ...SHADOW_TABLES, ACCESS_SOURCE, SWITCH_OVER_LOG]])
   })
 
-  it('decides scope with none of its own Tables, so role grants decide who gives reports', () => {
-    expect(manifest.tables.filter(table => (table as { decides_scope?: boolean }).decides_scope)).toEqual([])
+  // #1277: the business role Tables and the switch decide who reaches what, so only a System Manager writes them; the
+  // report access Tables stay ordinary, so role grants decide who gives reports.
+  it('decides scope with the business role Tables and the switch, and nothing else of its own', () => {
+    expect(manifest.tables.filter(table => (table as { decides_scope?: boolean }).decides_scope).map(table => table.name)).toEqual([...SHADOW_TABLES, ACCESS_SOURCE])
   })
 
   it("declares a read of every Table its scope provider and Your sections read, and of nothing else", () => {
@@ -164,11 +169,16 @@ describe('what Dash owns and what it reads', () => {
     expect(Object.keys(manifest.baseTables.read).sort()).toEqual([...new Set([...PROVIDER_TABLES, ...BASE_TABLES, ...BUYER_TABLES,
       'dash.report_access', 'dash.report_bundle', 'dash.report_bundle_member',
       // #1218: the business roles in shadow, and the HR title they map from.
-      ...SHADOW_TABLES, DESIGNATION])].sort())
+      ...SHADOW_TABLES, DESIGNATION,
+      // #1277: the switch and the switch-over's log.
+      ACCESS_SOURCE, SWITCH_OVER_LOG])].sort())
   })
 
+  // #1277: and the business role Tables, the switch and HR's titles, which business roles read.
   it('declares the Tables the scope provider reads, as the provider lists them', () => {
-    expect(manifest.scopeProvider.tables).toEqual(PROVIDER_TABLES)
+    expect(manifest.scopeProvider.tables).toEqual([...PROVIDER_TABLES, ...SHADOW_TABLES, ACCESS_SOURCE, DESIGNATION])
+    expect(manifest.scopeProvider.unmarkedTables).toEqual([...PROVIDER_TABLES, DESIGNATION])
+    expect(manifest.scopeProvider.optionalTables).toEqual([...OPTIONAL_PROVIDER_TABLES, DESIGNATION])
   })
 
   it('asks for every column the provider reads', () => {
@@ -313,11 +323,13 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['people_describe', '0.13.26', '0.13.27', 0],
       // #1218: business roles in shadow, four Tables that decide no one's access yet
       ['business_roles_shadow', '0.13.27', '0.13.28', 4],
+      // #1277: business roles decide Dash access: four Tables marked as deciding scope, grants to business roles, the switch and its log
+      ['business_roles_live', '0.13.28', '0.13.30', 7],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
-    expect(pkg.version).toBe('0.13.28')
+    expect(pkg.version).toBe('0.13.30')
   })
 })

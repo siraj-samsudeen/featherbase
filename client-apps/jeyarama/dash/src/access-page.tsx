@@ -18,10 +18,10 @@ import { RECORD, RecordLink } from './record-link'
 import { AREAS, areaCounts, bundleAreas, inArea, reportAreas, type Area } from './area-tags'
 import { PeopleLayoutProvider, PeopleLayoutToggle, PersonName, personWithCode, usePeopleLayout, type Who } from './person-identity'
 
-type Kind = 'Person' | 'Role' | 'Job'
+type Kind = 'Person' | 'Role' | 'Job' | 'Business role'
 /** #1225: `gives.id`, `to.id` and `given_by_id` are the records the names link to (a report key, a bundle id, an Employee, a Role, a Job). */
 interface Row { id: string; updated_at: string; gives: { kind: 'Report' | 'Bundle'; name: string; id?: string }; to: { kind: Kind; name: string; who?: Who; id?: string }; given_by: string; given_by_id?: string | null; given_on: string; removable?: boolean }
-const KIND_OF: Record<Kind | 'Report' | 'Bundle', string> = { Person: RECORD.employee, Role: RECORD.role, Job: RECORD.job, Report: RECORD.report, Bundle: RECORD.bundle }
+const KIND_OF: Record<Kind | 'Report' | 'Bundle', string> = { Person: RECORD.employee, Role: RECORD.role, Job: RECORD.job, 'Business role': RECORD.businessRole, Report: RECORD.report, Bundle: RECORD.bundle }
 /** A grant's receiver: a person with their identity, or a role or a job, each a link to its record. */
 function Receiver({ to }: { to: Row['to'] }) {
   return to.kind === 'Person' ? <PersonName name={to.name} who={to.who} id={to.id} /> : <RecordLink table={KIND_OF[to.kind]} id={to.id}>{to.name}</RecordLink>
@@ -46,6 +46,8 @@ interface Page {
   bundles: { id: string; name: string; reports: { member: string; updated_at: string; key: string; name: string }[] }[]
   roles: string[]
   jobs: string[]
+  /** #1277 (D4): the business roles a report can be given to. */
+  business_roles?: { id: string; name: string }[]
   rows: Row[]
   waiting: { person: string; name: string; asked_on: string; who?: Who }[]
 }
@@ -597,8 +599,9 @@ function GiveBar({ page, onGiven, team, start = '', startPerson = null, onClose 
     setError(null)
     setDone(null)
     try {
-      await act('give_report', { [what === 'report' ? 'report' : 'report_bundle']: id, [kind.toLowerCase()]: to })
-      setDone(`${chosenName()} is given to ${kind === 'Person' && person ? personWithCode(person.name, person) : receiver}.`)
+      await act('give_report', { [what === 'report' ? 'report' : 'report_bundle']: id, [kind === 'Business role' ? 'business_role' : kind.toLowerCase()]: to })
+      const roleName = page.business_roles?.find(role => role.id === receiver)?.name
+      setDone(`${chosenName()} is given to ${kind === 'Person' && person ? personWithCode(person.name, person) : kind === 'Business role' ? roleName : receiver}.`)
       setReceiver('')
       setPerson(null)
       await onGiven()
@@ -628,6 +631,7 @@ function GiveBar({ page, onGiven, team, start = '', startPerson = null, onClose 
           {!team && <Field label="To" className="w-40">
             <Select value={kind} onChange={event => { setKind(event.target.value as Kind); setReceiver(''); setPerson(null) }} data-testid="give-kind">
               <option value="Person">A person</option>
+              {(page.business_roles?.length ?? 0) > 0 && <option value="Business role">A business role</option>}
               <option value="Role">A role</option>
               <option value="Job">A job</option>
             </Select>
@@ -640,6 +644,14 @@ function GiveBar({ page, onGiven, team, start = '', startPerson = null, onClose 
               <Select value={receiver} onChange={event => setReceiver(event.target.value)} data-testid="give-role">
                 <option value="">Choose a role</option>
                 {page.roles.map(role => <option key={role} value={role}>{role} · Role</option>)}
+              </Select>
+            </Field>
+          )}
+          {kind === 'Business role' && (
+            <Field label="Business role" className="min-w-56 flex-1">
+              <Select value={receiver} onChange={event => setReceiver(event.target.value)} data-testid="give-business-role">
+                <option value="">Choose a business role</option>
+                {(page.business_roles ?? []).map(role => <option key={role.id} value={role.id}>{role.name} · Business role</option>)}
               </Select>
             </Field>
           )}

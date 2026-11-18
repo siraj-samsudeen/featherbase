@@ -287,8 +287,9 @@ describe('the core Tables the provider reads stay ordinary Tables', () => {
   test('the manifest names all of them as read unmarked', async ({ admin, createUser }) => {
     await setup(admin, createUser)
     const bound = await binding()
-    expect(bound.tables).toEqual(SCOPE_TABLES)
-    expect(bound.unmarkedTables).toEqual(SCOPE_TABLES)
+    // #1277: and, marked as deciding scope, the business role Tables and the switch; HR's titles, unmarked and optional.
+    expect(bound.tables).toEqual([...SCOPE_TABLES, 'dash.business_role', 'dash.business_role_permission', 'dash.title_map', 'dash.role_assignment', 'dash.access_source', 'Designation'])
+    expect(bound.unmarkedTables).toEqual([...SCOPE_TABLES, 'Designation'])
   })
 
   test('role grants decide who edits them: a granted editor saves, anyone else is refused', async ({ admin, createUser }) => {
