@@ -57,7 +57,7 @@ function siteAwareFields(base: Base, designations: boolean): (table: string) => 
   const fields = fieldsFor(designations)
   let siteFields: Promise<string[]> | undefined
   return async table => table === 'Site'
-    ? await (siteFields ??= siteStoreFields(siteKindRead(base)).then(more => [...new Set([...(fields.Site ?? []), ...more])]))
+    ? await (siteFields ??= siteStoreFields(siteKindRead(base)).then(more => [...new Set([...fields.Site!, ...more])]))
     : fields[table]!
 }
 
