@@ -185,6 +185,18 @@ describe('the org_chart scope provider on the platform, per job (#967)', () => {
     expect(stores(await resolvePersonScope(await reader([{ job: 'Director', site: 'HOF' }]), await binding()))).toEqual(['9901', '9902', '9903', '9907'])
   })
 
+  test("a Store Manager or a section's staff at a site that is no open store reach none of its plants", async ({ admin, createUser }) => {
+    const { reader, save } = await setup(admin, createUser)
+    for (const [code, plant, row] of [['PLN', '9904', { site_kind: 'Store', status: 'Planned' }], ['GHO', '9906', { site_kind: 'Group' }]] as const) {
+      await save('Site', { code, name: `Made-up ${code}`, is_store: true, ...row })
+      await save('Plant', { plant_code: plant, plant_type: 'Store', site: code })
+      await save('Section', { row_id: `${code}-S1`, name: `${code} Sarees`, site: code, status: 'Active' })
+      await save('Section Subcategory', { section_subcategory_id: `${code}-P1`, store: code, subcategory: SARI[0], section: `${code}-S1`, starts_on: '2026-01-01' })
+    }
+    for (const job of [{ job: 'Store Manager', site: 'PLN' }, { job: 'Store Manager', site: 'GHO' }, { job: 'Staff', site: 'PLN', section: 'PLN-S1' }, { job: 'Staff', site: 'GHO', section: 'GHO-S1' }])
+      await expect(resolvePersonScope(await reader([job]), await binding())).rejects.toMatchObject(new NoPersonScope('scope'))
+  })
+
   test('on an instance whose Site has no site_kind or status yet, is_store alone decides and nothing fails', async ({ admin, createUser }) => {
     const { reader, save } = await setup(admin, createUser, { withoutSiteKind: true })
     await save('Site', { code: 'OLD', name: 'Made-up OLD', is_store: true })

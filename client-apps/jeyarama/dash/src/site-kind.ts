@@ -22,6 +22,12 @@ export function openStore(row: Row): boolean {
   return kind ? kind === 'Store' : checked(row.is_store)
 }
 
+/** Whether the instance's Site has site_kind and status, asked the one way every reader asks it: naming
+ *  the columns, so a scope provider's read (which checks only what it is asked) and an app's read agree. */
+export async function siteKindRead(docs: { available?(table: string, columns?: readonly string[]): Promise<boolean> }): Promise<boolean> {
+  return !!docs.available && await docs.available('Site', SITE_KIND_FIELDS)
+}
+
 /** The Site columns to read for openStore: site_kind and status too where the instance's Site has them. */
 export async function siteStoreFields(hasKind: boolean | Promise<boolean>): Promise<string[]> {
   return (await hasKind) ? ['is_store', ...SITE_KIND_FIELDS] : ['is_store']

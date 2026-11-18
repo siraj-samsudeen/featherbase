@@ -4,7 +4,7 @@
 // no access. Who sees what is #967's table; `reachOf` is the one place it is written.
 import { EMPLOYEE_STATUS, checked, day, exact, holdsOn, text } from './values.ts'
 import { NO_BUYER_SECTIONS, buyerSectionsCovering, type BuyerSections } from './buyers.ts'
-import { SITE_KIND_FIELDS, openStore } from './site-kind.ts'
+import { SITE_KIND_FIELDS, openStore, siteKindRead } from './site-kind.ts'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -160,8 +160,7 @@ export async function reachOf(documents: Documents, person: string, on: string, 
   if (!jobs.length && !assignments.length && !myBuyerSections.length && !everyStore && !clustersHeaded.length) return { places: [], problems: ['no_job'] }
 
   // #1280: a site's kind and status decide whether it is an open store, where the instance's Site has them.
-  const kindRead = !!documents.available && await documents.available(T.site, SITE_KIND_FIELDS)
-  const sites = await all(documents, T.site, [], kindRead ? SITE_KIND_FIELDS : [])
+  const sites = await all(documents, T.site, [], await siteKindRead(documents) ? SITE_KIND_FIELDS : [])
   const stores = sites.filter(openStore)
   const siteOf = new Map(sites.map(site => [id(site), site]))
   // #1155 (owner, 10-Nov-2026): a site's readers reach every plant on it that sells: Store,
@@ -172,8 +171,9 @@ export async function reachOf(documents: Documents, person: string, on: string, 
   for (const plant of await all(documents, T.plant, [['plant_type', 'in', SOLD_THROUGH]]))
     plantsOf.set(exact(plant.site), [...(plantsOf.get(exact(plant.site)) ?? []), id(plant)])
 
-  /** A site's selling plants; none for a site that sells through none. */
-  const sellingPlants = (site: Row) => plantsOf.get(id(site)) ?? []
+  /** A site's selling plants; none for a site that sells through none, or that is no open store (#1280:
+   *  a Planned or Closed store, a Group or any other kind gives no store reach, whoever's job is there). */
+  const sellingPlants = (site: Row | undefined) => (site && openStore(site) ? plantsOf.get(id(site)) ?? [] : [])
   const places = new Places()
   const problems: NoReach[] = []
   if (everyStore)
@@ -257,7 +257,7 @@ export async function reachOf(documents: Documents, person: string, on: string, 
     let reached = false
     for (const section of sections) {
       // A section on another site's job row reaches nothing: the store on the job decides.
-      const plants = plantsOf.get(exact(section.site)) ?? []
+      const plants = sellingPlants(siteOf.get(exact(section.site)))
       if (!plants.length || exact(section.site) !== exact(job.site)) continue
       const codes = (await all(documents, T.placement, [['section', '=', id(section)]]))
         .filter(row => holdsOn(row, on) && exact(row.store) === exact(section.site)).map(row => exact(row.subcategory))

@@ -62,7 +62,8 @@ function context(tables: Record<string, Row[]>, { user = 'mgr', roles = ['Report
   return {
     user, roles, payload, userName: 'Manju Manager',
     reject(message: string): never { throw new Error(message) },
-    baseTables: { list, available: async (table: string) => table in tables },
+    // A column is there when a row carries it, as the instance's Table has it or not (#1280).
+    baseTables: { list, available: async (table: string, columns: readonly string[] = []) => table in tables && columns.every(c => tables[table].some(row => c in row)) },
     documents: {
       list: async (table: string, args: { filters?: [string, string, unknown][] }) => table === 'dash.report'
         ? [{ report_key: 'vs', report_name: 'Vendor Sales', filter_shape: 'Stores and subcategories' }, { report_key: 'sales', report_name: 'Sales', filter_shape: 'One store and subcategories' }] : list(table, args),
@@ -1008,6 +1009,45 @@ describe('one reading of the switch per read', () => {
     const places = await scopeProviders.org_chart({ person: { id: 'sm', email: null, roles: ['Dash Reader'] }, documents: context(tables).baseTables } as never)
     tables['dash.access_source'][0].source = 'business_roles'
     expect(await reportsFor({ ...readerOf(tables, 'sm', ['Dash Reader']), authorization: { places } } as never)).toEqual([])
+  })
+})
+
+// #1280 (owner, 18-Nov-2026): with Site's kind and status, a Planned or Closed store, a Group or any other kind is no store,
+// for business roles too: the role's own reader asks the instance about Site, as the provider and the comparison do.
+describe('site kind and status under business roles', () => {
+  async function kinds() {
+    const { tables } = await switched()
+    for (const site of tables.Site) Object.assign(site, { site_kind: site.is_store ? 'Store' : 'Head Office', status: 'Open' })
+    tables.Site.push(
+      { row_id: 'PLN', name: 'Planned', is_store: true, operating_region: 'East', site_kind: 'Store', status: 'Planned' },
+      { row_id: 'CLS', name: 'Closed', is_store: true, operating_region: 'East', site_kind: 'Store', status: 'Closed' },
+      { row_id: 'GHO', name: 'Group HO', is_store: true, operating_region: 'East', site_kind: 'Group', status: 'Open' },
+      { row_id: 'HIL', name: 'Hillview', is_store: false, operating_region: 'East', site_kind: 'Store', status: 'Open' })
+    for (const [plant, site] of [['9904', 'PLN'], ['9905', 'CLS'], ['9906', 'GHO'], ['9902', 'HIL']]) tables.Plant.push({ row_id: plant, site, plant_type: 'Store' })
+    return tables
+  }
+
+  it('gives a company-wide role and a region role only the open stores, and the comparison counts the same', async () => {
+    const tables = await kinds()
+    await giveRole(context(tables, { payload: { person: 'od', change: 'Also give', role: roleId(tables, 'Owner Director') } }) as never)
+    await giveRole(context(tables, { payload: { person: 'sm', change: 'Correct', role: roleId(tables, 'Regional Head') } }) as never)
+    expect(await scopeOf(tables, 'od')).toEqual({ 9901: null, 9902: null })
+    expect(await scopeOf(tables, 'sm')).toEqual({ 9901: null, 9902: null })
+    const explained = await explainPerson(context(tables, { payload: { person: 'sm' }, peopleRoles: { sm: ['Dash Reader'] } }) as never)
+    expect(explained.roles.map(r => [r.name, r.area.stores])).toEqual([['Regional Head', 2]])
+  })
+
+  it('refuses to place a role at a site that is no open store', async () => {
+    const tables = await kinds()
+    for (const site of ['PLN', 'GHO'])
+      await expect(giveRole(context(tables, { payload: { person: 'sm', change: 'Also give', role: roleId(tables, 'Tester'), site } }) as never)).rejects.toThrow('Choose a store')
+  })
+
+  it('without the columns on the instance, is_store alone decides', async () => {
+    const tables = await kinds()
+    for (const site of tables.Site) { delete site.site_kind; delete site.status }
+    await giveRole(context(tables, { payload: { person: 'od', change: 'Also give', role: roleId(tables, 'Owner Director') } }) as never)
+    expect(Object.keys(await scopeOf(tables, 'od')).sort()).toEqual(['9901', '9904', '9905', '9906'])
   })
 })
 

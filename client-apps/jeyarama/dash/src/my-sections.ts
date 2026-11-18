@@ -6,7 +6,7 @@ import { istToday } from './report.ts'
 import { DEPARTMENT, DEPARTMENT_SECTION, authorityRows, mayEditOwnSection, mayMove, sectionAreaOf } from './areas.ts'
 import { EMPLOYEE_STATUS, SECTION_STATUS, day, exact, holdsOn, text } from './values.ts'
 import { whoIs, type Who } from './report-access-server.ts'
-import { openStore, siteStoreFields } from './site-kind.ts'
+import { openStore, siteKindRead, siteStoreFields } from './site-kind.ts'
 
 export type Row = Record<string, unknown>
 // The platform's helpers, structurally: this module imports nothing from the platform.
@@ -371,7 +371,7 @@ export const reads = {
     const jobs = await myJobs(ctx, employees, today)
     const sites = unique(jobs.map(job => exact(job.site)))
     const held = unique(jobs.map(job => exact(job.section)))
-    const siteRows = sites.length ? byId(await list(ctx, T.site, ['name', ...await siteStoreFields(ctx.baseTables.available?.(T.site) ?? false)], [['row_id', 'in', sites]])) : new Map<string, Row>()
+    const siteRows = sites.length ? byId(await list(ctx, T.site, ['name', ...await siteStoreFields(siteKindRead(ctx.baseTables))], [['row_id', 'in', sites]])) : new Map<string, Row>()
     const sections = sites.length ? await all(ctx, T.section, SECTION_FIELDS, [['site', 'in', sites]]) : []
     const sectionsById = byId(sections)
     const floors = sites.length ? byId(await all(ctx, T.floor, ['name', 'site'], [['site', 'in', sites]])) : new Map<string, Row>()

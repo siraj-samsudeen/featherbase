@@ -13,7 +13,7 @@ import { istToday } from './report.ts'
 import { STARTING_ROLES } from './starting-roles.ts'
 import { opensDashFor, readableByRoles, offered } from './report-eligibility.ts'
 import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, isStore, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
-import { openStore, siteStoreFields } from './site-kind.ts'
+import { openStore, siteKindRead, siteStoreFields } from './site-kind.ts'
 import { businessReports, businessRolesOpen, opensDashByBusinessRoles } from './business-reports.ts'
 import { ensureStartingRoles, logger } from './switch-over.ts'
 
@@ -53,11 +53,11 @@ export function memoryDocuments(base: Base, designations: boolean): Base & { row
   const rows = (table: string) => {
     // As the scope provider reads them: retired rows included, and Site's kind and status where it has them (#1280).
     if (!loaded.has(table)) loaded.set(table, (async () => everyRow(base, table, table === 'Site'
-      ? [...new Set([...(fields.Site ?? []), ...await siteStoreFields(base.available('Site'))])]
+      ? [...new Set([...(fields.Site ?? []), ...await siteStoreFields(siteKindRead(base))])]
       : fields[table] ?? []))())
     return loaded.get(table)!
   }
-  return { rows, available: table => base.available(table), list: async (table, args) => page(await rows(table), args) }
+  return { rows, available: (table, columns) => base.available(table, columns), list: async (table, args) => page(await rows(table), args) }
 }
 
 /** How much one Reaches covers, for the sentence an unresolved area reads as. Unset reads as such. */
