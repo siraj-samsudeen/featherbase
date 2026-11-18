@@ -171,8 +171,8 @@ export function ListView({
   // #1276 (B2): a link cell's Filter narrows the list to rows linked to that same
   // row, in place of any exact filter on that column.
   const cellFilter = onFiltersChange
-    ? (column: string, value: string) =>
-        onFiltersChange([...filters.filter((f) => !(f[0] === column && f[1] === '=')), [column, '=', value]])
+    ? (exact: Filter[]) =>
+        onFiltersChange([...filters.filter((f) => !(f[1] === '=' && exact.some((e) => e[0] === f[0]))), ...exact])
     : null
   const [colPickerOpen, setColPickerOpen] = useState(false)
   // #738: the Show columns menu grows into the space below its button and no

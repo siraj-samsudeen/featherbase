@@ -39,6 +39,7 @@ export function useLinkOptions(table: string | undefined): { options: LinkOption
       names.add(b.table)
       if (b.via) names.add(b.via)
     }
+    for (const h of backlinks.data?.holders ?? []) names.add(h)
     return [...names]
   }, [meta.data, backlinks.data])
   const metas = useQueries({ queries: related.map((t) => ({ ...metaQuery(t), retry: false })) })
@@ -57,7 +58,7 @@ export function useLinkOptions(table: string | undefined): { options: LinkOption
   const ready = Boolean(meta.data && backlinks.data && !pending)
   const names = [...related, ...second]
   const metaOf = (t: string) => (t === table ? meta.data : all[names.indexOf(t)]?.data)
-  const options = ready && meta.data ? linkOptions(meta.data, backlinks.data!.backlinks, metaOf) : []
+  const options = ready && meta.data ? linkOptions(meta.data, backlinks.data!.backlinks, metaOf, backlinks.data!.holders) : []
   return { options, ready }
 }
 

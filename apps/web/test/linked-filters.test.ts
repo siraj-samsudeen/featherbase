@@ -69,6 +69,15 @@ describe('linkOptions', () => {
     ])
   })
 
+  test('a sub-table offers the Tables holding its rows, by parent', () => {
+    expect(linkOptions(LINE, [], metaOf, ['Order']).map((o) => [o.label, o.link])).toEqual([
+      ['Item', { kind: 'forward', column: 'item' }],
+      ['Order', { kind: 'forward', column: 'parent' }],
+    ])
+    const steps: ChainStep[] = [{ table: 'Order', link: { kind: 'forward', column: 'parent' }, picked: ['O-1'] }]
+    expect(parseChain(chainFilter(steps))).toEqual({ negate: false, steps })
+  })
+
   test('a Table pointed at by sub-table rows offers the Tables holding them', () => {
     expect(linkOptions(ITEM, [{ table: 'Order', column: 'item', via: 'Order Line' }], metaOf)[0])
       .toMatchObject({ label: 'Order · via Order Line', table: 'Order', link: { kind: 'through', link: 'Order Line', back: 'item', column: 'parent' } })

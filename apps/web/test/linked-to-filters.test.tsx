@@ -143,6 +143,25 @@ test('a link cell offers Filter and Go there on hover', async ({ admin }) => {
   await waitFor(() => expect(searchOf(r).pathname).toBe(`/featherbase/admin/table/${tableSlug(VEHICLE)}/row/${v2}`))
 })
 
+test('Filter on a link to a row of any Table keeps its Table too, since an id may repeat across Tables', async ({ admin }) => {
+  for (const name of ['Xe Plant', 'Xe Unit']) {
+    await admin.post('/api/table_def', { name, id_pattern: 'prompt', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/save_row', { table: name, row: { row_id: 'R1', title: `${name} one` } })
+  }
+  await admin.post('/api/table_def', { name: 'Xe Decision', title_column: 'title', columns: [
+    { column_name: 'title', column_type: 'Data', in_list_view: true },
+    { column_name: 'shapes_table', column_type: 'Reference', reference_table: 'Table' },
+    { column_name: 'shapes', label: 'Shapes', column_type: 'Reference', table_column: 'shapes_table', choices: 'Xe Plant\nXe Unit', in_list_view: true },
+  ] })
+  await admin.post('/api/save_row', { table: 'Xe Decision', row: { title: 'Close plant', shapes_table: 'Xe Plant', shapes: 'R1' } })
+  await admin.post('/api/save_row', { table: 'Xe Decision', row: { title: 'Merge unit', shapes_table: 'Xe Unit', shapes: 'R1' } })
+  const r = await renderApp(listPath('Xe Decision'), admin)
+  const cell = within((await screen.findByText('Close plant')).closest('tr')!).getByTestId('cell-shapes').closest('td')!
+  await userEvent.click(await within(cell).findByRole('button', { name: 'Filter' }))
+  await waitFor(() => expect(rowTitles()).toEqual(['Close plant']))
+  expect(addressFilters(r)).toEqual([['shapes_table', '=', 'Xe Plant'], ['shapes', '=', 'R1']])
+})
+
 test('an old Explore address opens the matching filtered list', async ({ admin }) => {
   const { v1 } = await seed(admin)
   const chain = enc(JSON.stringify([

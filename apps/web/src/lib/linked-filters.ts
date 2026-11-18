@@ -51,7 +51,8 @@ export const linkDepth = (link: Link) => (link.kind === 'through' ? 2 : 1)
  * Every Table a row of `meta` can be linked to: its links (forward), the
  * Tables linking to it (back), the far side of each link Table pointing at it
  * (through), the Tables its own sub-table rows point at (via), its own
- * sub-tables, and the Tables holding sub-table rows that point at it. A Table
+ * sub-tables, the Tables holding sub-table rows that point at it, and (for a
+ * sub-table) the Tables holding its rows. A Table
  * on a Data Source offers only its links within that source, which is all its
  * server can follow.
  */
@@ -59,6 +60,8 @@ export function linkOptions(
   meta: TableMeta,
   backlinks: Backlink[],
   metaOf: (table: string) => TableMeta | undefined,
+  /** The Tables holding this one's rows as a sub-table. */
+  holders: string[] = [],
 ): LinkOption[] {
   const label = (t: string) => tableLabel(t, metaOf(t))
   const options: LinkOption[] = []
@@ -75,6 +78,9 @@ export function linkOptions(
     add(target, twice ? `${label(target)} · ${c.label ?? c.column_name}` : label(target), { kind: 'forward', column: c.column_name })
   }
   if (meta.data_source) return options
+  // A sub-table's rows link to the row holding them, by `parent`.
+  if (meta.kind === 'sub_table')
+    for (const holder of holders) add(holder, label(holder), { kind: 'forward', column: 'parent' })
   const direct = backlinks.filter((b) => !b.via)
   for (const b of direct) {
     const twice = direct.filter((x) => x.table === b.table).length > 1

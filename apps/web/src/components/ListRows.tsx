@@ -12,7 +12,7 @@ import { useI18n } from '../lib/i18n'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { PrincipalLink, PrincipalName, usePrincipalLabels } from '../lib/people'
 import { OneLine } from './list-one-line'
-import { Button, DataCards, LinkActions, Select, touchLinkClasses, type DataColumn } from '@featherbase/shop-floor'
+import { Button, DataCards, LinkActions, Select, touchLinkClasses, useRecordHref, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp } from '@featherbase/shop-floor'
 import { RetiredBadge } from './RowRetirement'
 import { fmtCount } from '@featherbase/shop-floor'
@@ -258,7 +258,7 @@ const isBlank = (v: unknown) => v == null || String(v).trim() === ''
 
 /** #1276: how a list narrows itself by one link's value, for its link cells'
  *  Filter. Absent where the list's filters are not the person's to change. */
-export const LinkCellFilter = createContext<((column: string, value: string) => void) | null>(null)
+export const LinkCellFilter = createContext<((filters: [string, string, unknown][]) => void) | null>(null)
 
 /**
  * #1276 (B2): a link cell's two hover actions, floated just past the cell so
@@ -277,16 +277,21 @@ function LinkCellActions({ row, col }: { row: Record<string, unknown>; col: List
     : col.table_column ? (isBlank(anyTable) ? null : String(anyTable)) : (col.reference_base ?? col.reference_table ?? null)
   const principal = isPrincipalTable(target)
   const title = useLinkTitle(target && !principal ? target : undefined, target ? String(value) : undefined)
+  const href = useRecordHref(target ?? '', target ? String(value) : '')
   if (!target || (!principal && title.state !== 'read')) return null
   const rowId = String(value)
   const goThere = () => {
     if (nav) nav.push({ screen: 'row', table: target, row: rowId })
-    else void navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table: target, name: rowId }, search: { prefill: undefined } })
+    else void navigate({ href })
   }
   return (
     <span data-testid="link-cell-actions"
       className="absolute left-full top-1/2 z-[3] -ml-1 hidden -translate-y-1/2 items-center gap-1 rounded-control bg-surface p-1 shadow-md group-hover/cell:flex group-focus-within/cell:flex">
-      <LinkActions onGoThere={goThere} onFilter={filter ? () => filter(col.column_name, rowId) : undefined} />
+      <LinkActions onGoThere={goThere} onFilter={filter ? () => filter([
+        // A link to a row of any Table names its Table too: an id alone may repeat across Tables.
+        ...(col.table_column ? [[col.table_column, '=', target] as [string, string, unknown]] : []),
+        [col.column_name, '=', rowId],
+      ]) : undefined} />
     </span>
   )
 }

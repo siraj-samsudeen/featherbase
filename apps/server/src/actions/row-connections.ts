@@ -40,7 +40,7 @@ interface Connection {
 // backlink tables only, same posture as :connections.
 registerCollectionAction('backlinks', {
   effect: 'read',
-  description: 'Tables whose Reference columns point at this table (no per-row counts).',
+  description: 'Tables whose Reference columns point at this table, and Tables holding it as a sub-table (no per-row counts).',
   handler: async ({ table: name, user }) => {
     // #1021: a view's rows are its base's, and so are the links to them.
     const table = await storedTable(name)
@@ -49,7 +49,13 @@ registerCollectionAction('backlinks', {
     const backlinks = []
     for (const bl of await getBacklinks(table))
       if ((await permissionScope(user.row_id, bl.table, 'read')) !== 'none') backlinks.push(bl)
-    return { backlinks }
+    // #1276: the readable Tables holding this one's rows as a sub-table (their
+    // `parent`), so a list of those rows can be Linked to them.
+    const holders: string[] = []
+    for (const h of await sql`select distinct parent as holder from column_def
+        where column_type = 'Sub-table' and row_table = ${table} order by 1`)
+      if ((await permissionScope(user.row_id, String(h.holder), 'read')) !== 'none') holders.push(String(h.holder))
+    return { backlinks, holders }
   },
 })
 
