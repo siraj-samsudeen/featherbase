@@ -299,10 +299,18 @@ describe('actionForLocation', () => {
   it('maps a filtered list URL to a list action that keeps the filters', () => {
     const filters = '[["status","=","Open"]]'
     const action = actionForLocation('/featherbase/admin/table/task', { filters }, 'Task')
-    expect(action).toMatchObject({ kind: 'list', label: 'Task', sub: 'status = Open' })
+    expect(action).toMatchObject({ kind: 'list', label: 'Task', sub: 'status: Open' })
     expect(action?.path).toBe(`/featherbase/admin/table/task?filters=${encodeURIComponent(filters)}`)
     // A different filter set is a different remembered view.
     expect(action?.key).not.toBe(actionForLocation('/featherbase/admin/table/task', {}, 'Task')?.key)
+  })
+
+  // #1288 (verifier): a walk is its own Recently Opened entry; the page's own entry opens the page itself.
+  it('a page visited inside a walk is remembered without the walk', () => {
+    const walk = encodeURIComponent('{"steps":[],"at":0}')
+    expect(actionForLocation('/featherbase/admin/table/task', { path: '{"steps":[],"at":0}' }, 'Task')?.path).toBe('/featherbase/admin/table/task')
+    expect(actionForLocation('/featherbase/admin/table/task', {}, 'Task', `/featherbase/admin/table/task?path=${walk}&filters=%5B%5D`)?.path).toBe('/featherbase/admin/table/task?filters=%5B%5D')
+    expect(actionForLocation('/featherbase/admin/table/task', {}, 'Task', '/featherbase/admin/table/task?filters=%5B%5D')?.path).toBe('/featherbase/admin/table/task?filters=%5B%5D')
   })
 
   it('treats list view modes as lists and reports/dashboards as pages', () => {
@@ -430,8 +438,13 @@ describe('a long queue', () => {
 describe('helpers', () => {
   it('describeFilters renders a readable summary and survives junk', () => {
     expect(describeFilters('[["status","=","Open"],["region","=","South"]]')).toBe(
-      'status = Open · region = South',
+      'status: Open · region: South',
     )
+    // #1288: worded as the chips are.
+    expect(describeFilters(JSON.stringify([['name', 'like', '%a%'], ['name', 'not like', '%b%'], ['n', '>', 2]]))).toBe('name contains a · name does not contain b · n > 2')
+    const typed = [{ column_name: 'on', label: 'Enabled', column_type: 'Check' }, { column_name: 'day', label: 'Day', column_type: 'Date' }]
+    expect(describeFilters(JSON.stringify([['on', '=', 1], ['on', 'in', ['0', true]], ['day', '>', '2026-01-05']]), typed as never))
+      .toBe('Enabled: Yes · Enabled in No, Yes · Day > 05-Jan-2026')
     expect(describeFilters('not json')).toBeUndefined()
     expect(describeFilters(undefined)).toBeUndefined()
     const columns = [{ column_name: 'policy', label: 'Policy', column_type: 'Choice', choice_labels: { raw_policy: 'Use this policy' } }]
@@ -439,7 +452,7 @@ describe('helpers', () => {
     const path = '/featherbase/admin/table/contacts'
     const original = actionForLocation(path, { filters }, 'Contacts')!
     const readable = actionForLocation(path, { filters }, 'Contacts', undefined, columns)!
-    expect(readable.sub).toBe('Policy = Use this policy')
+    expect(readable.sub).toBe('Policy: Use this policy')
     expect(readable.key).toBe(original.key)
     expect(readable.path).toBe(original.path)
   })
@@ -450,7 +463,7 @@ describe('helpers', () => {
     expect(describeFilters(JSON.stringify(chain))).toBe('Linked to Subcategory › Category')
     const columns = [{ column_name: 'site', label: 'Store', column_type: 'Reference' }]
     expect(describeFilters(JSON.stringify([['site', 'not related', { table: 'Site', filters: [] }], ['status', '=', 'Open']]), columns))
-      .toBe('Not linked to Site · status = Open')
+      .toBe('Not linked to Site · status: Open')
     expect(describeFilters(JSON.stringify([['site', 'related', 'junk']]))).toBe('Linked to')
   })
 

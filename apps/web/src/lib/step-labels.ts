@@ -73,6 +73,28 @@ export function filterText(table: string, meta: TableMeta | undefined, filter: L
 
 /** One label per step, in order. */
 export function useStepLabels(steps: NavStep[]): string[] {
+  return useStepNaming(steps).labels
+}
+
+/**
+ * #1288: a walk's short name for the sidebar's Recently Opened: each record by its name alone, without its
+ * code, and each further step only for what it adds ("Bayside › Section Subcategory › Section: Toys"), never
+ * restating a name said before. The path bar keeps the full step labels.
+ */
+export function useCompactWalkLabels(walks: NavStep[][]): string[] {
+  const naming = useStepNaming(walks.flat())
+  return walks.map((steps) => {
+    const said = new Set<string>()
+    const parts: string[] = []
+    for (const step of steps) {
+      const words = naming.compact(step, said)
+      if (words && words !== parts[parts.length - 1]) parts.push(words)
+    }
+    return parts.join(' › ')
+  })
+}
+
+function useStepNaming(steps: NavStep[]) {
   // A Linked to chain names its own steps' Tables too.
   const chains = steps.flatMap((s) => (s.filters ?? []).map((f) => parseChain(f)?.steps ?? []))
   const tables = [...new Set([...steps.map((s) => s.table), ...chains.flatMap(chainTables)])]
@@ -91,7 +113,25 @@ export function useStepLabels(steps: NavStep[]): string[] {
   // A filter names its rows by title, as its chip does ("Site: Bayside"); a row step adds its code.
   const filterName = (r: Ref) => filterRowName(nameOf.get(keyOf(r)))
   const filterLabel = (step: NavStep) => step.filters!.map((f) => filterText(step.table, metaOf(step.table), f, filterName, metaOf)).join(', ')
-  return steps.map((step, i) => {
+  const tableName = (t: string) => tableLabel(t, metaOf(t))
+  /** A step's short words given what the walk has already said (`said`: the names said so far, which it adds to). */
+  const compact = (step: NavStep, said: Set<string>): string => {
+    const kind = stepKind(step)
+    const row = kind === 'row' ? { table: step.table, row_id: step.row! } : kind === 'pane' || kind === 'group' ? { table: step.pane!.table, row_id: step.pane!.row } : undefined
+    const filters = step.filters ?? []
+    const fresh = filters.filter((f) => {
+      const refs = filterRefs(step.table, metaOf(step.table), f)
+      return !refs.length || refs.some((r) => !said.has(keyOf(r)))
+    })
+    for (const f of filters) for (const r of filterRefs(step.table, metaOf(step.table), f)) said.add(keyOf(r))
+    if (row && !(kind !== 'row' && filters.length)) {
+      said.add(keyOf(row))
+      return filterName(row)
+    }
+    if (fresh.length) return fresh.map((f) => filterText(step.table, metaOf(step.table), f, filterName, metaOf)).join(', ')
+    return tableName(step.table)
+  }
+  const labels = steps.map((step, i) => {
     const kind = stepKind(step)
     // A filter added with a row in the pane is named by the filter, not again by the row.
     const before = steps[i - 1]
@@ -102,4 +142,5 @@ export function useStepLabels(steps: NavStep[]): string[] {
     if (kind === 'filter') return filterLabel(step)
     return step.table
   })
+  return { labels, compact }
 }
