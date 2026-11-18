@@ -205,6 +205,8 @@ export interface JoinerRun {
   plan: JoinerPlan | null
   added: number
   jobs: number
+  /** Joiners left for a later run because the manager this run planned to add was not saved. */
+  waiting: number
   failed: string[]
 }
 
@@ -246,7 +248,7 @@ function fieldsOf(r: EmployeeRecord, today: string): Fields {
   const put = (k: string, v: string | null | undefined) => {
     if (v) f[k] = v
   }
-  put('employee_code', r.employee_code)
+  put('employee_code', r.employee_code?.trim())
   put('date_of_joining', r.date_of_joining)
   put('full_name', j.full_name)
   put('region', j.region)
@@ -273,6 +275,8 @@ export function planJoinerAdds(
     const record = String(r.employee_key).trim()
     if (record && !facts.records.has(record)) byRecord.set(record, [...(byRecord.get(record) ?? []), r])
   }
+  /** One spelling of a sign-in ID everywhere: trimmed, lower case, as sign-in matches it. */
+  const signInOf = (r: EmployeeRecord) => r.employee_code?.trim().toLowerCase() || null
   const signature = (r: EmployeeRecord) => JSON.stringify([r.employee_code, r.joiner, r.payroll_active, r.movement_active, r.date_of_joining])
   const candidates: { record: string; r: EmployeeRecord }[] = []
   for (const [record, copies] of byRecord) {
@@ -285,12 +289,16 @@ export function planJoinerAdds(
   }
   // A sign-in ID two joiners share is not guessed between, as the link pass would not.
   const idCount = new Map<string, number>()
-  for (const { r } of candidates) if (r.employee_code) idCount.set(r.employee_code.toLowerCase(), (idCount.get(r.employee_code.toLowerCase()) ?? 0) + 1)
+  for (const { r } of candidates) {
+    const id = signInOf(r)
+    if (id) idCount.set(id, (idCount.get(id) ?? 0) + 1)
+  }
   const batchByCode = new Map<string, string | null>()
   for (const { record, r } of candidates) {
     const fields = fieldsOf(r, today)
     const code = fill(settings.code, fields)
-    if (!code || !r.employee_code) {
+    const signIn = signInOf(r)
+    if (!code || !signIn) {
       plan.held.push({ record, reason: 'no_code' })
       continue
     }
@@ -298,7 +306,6 @@ export function planJoinerAdds(
       plan.held.push({ record, reason: 'no_name' })
       continue
     }
-    const signIn = r.employee_code.toLowerCase()
     if (facts.signInIds.has(signIn)) {
       plan.held.push({ record, reason: 'sign_in_id_taken' })
       continue
@@ -314,7 +321,7 @@ export function planJoinerAdds(
     const row = {
       ...fillAll(settings.values, { ...fields, code }),
       [link.record_number_column]: record,
-      [link.sign_in_id_column]: r.employee_code,
+      [link.sign_in_id_column]: r.employee_code!.trim(),
       [link.name_column]: r.joiner.full_name,
       [link.status_column]: link.current_status,
     }
@@ -325,7 +332,7 @@ export function planJoinerAdds(
   // Managers: an existing current row, or a joiner this run adds; never one two share.
   const managerColumn = settings.job?.manager_column
   if (settings.job?.reports_to_column && managerColumn) {
-    const managerOf = new Map(candidates.map(({ record, r }) => [record, r.joiner?.manager_code?.toLowerCase() ?? null]))
+    const managerOf = new Map(candidates.map(({ record, r }) => [record, r.joiner?.manager_code?.trim().toLowerCase() || null]))
     for (const j of plan.joiners) {
       const m = managerOf.get(j.record)
       if (!m) continue
@@ -423,9 +430,9 @@ export async function planJoiners(roster: Roster, feed: { records: EmployeeRecor
 /** Add one joiner and their job in one transaction, under locks on their
  *  record and sign-in ID, checked again. The job names the saved row's id,
  *  and a manager this run added by theirs. */
-async function addOne(roster: Roster, settings: JoinerSettings, j: PlannedJoiner, added: Map<string, string>): Promise<{ row: string | null; job: boolean }> {
+async function addOne(roster: Roster, settings: JoinerSettings, j: PlannedJoiner, added: Map<string, string>): Promise<{ row: string | null; job: boolean; waiting?: boolean }> {
   const { link } = roster
-  const signIn = String(j.row[link.sign_in_id_column]).toLowerCase()
+  const signIn = String(j.row[link.sign_in_id_column]).trim().toLowerCase()
   return withTransaction(async () => {
     for (const key of [`record:${j.record}`, `sign-in:${signIn}`].sort())
       await sql`select pg_advisory_xact_lock(hashtext(${`roster-joiner:${link.table}:${key}`}))`
@@ -434,11 +441,22 @@ async function addOne(roster: Roster, settings: JoinerSettings, j: PlannedJoiner
       where trim(${sql(link.record_number_column)}::text) = ${j.record} or lower(${sql(settings.code_column)}::text) = ${j.code.toLowerCase()}
         or lower(trim(${sql(link.sign_in_id_column)}::text)) = ${signIn} limit 1`
     if (taken) return { row: null, job: false }
+    // A manager this run planned to add must exist first; if not, this joiner waits for a later run,
+    // so their job is never saved without the manager it should name.
+    let manager = j.manager && 'row' in j.manager ? j.manager.row : null
+    if (j.job && settings.job && j.manager && 'record' in j.manager) {
+      manager = added.get(j.manager.record) ?? null
+      if (!manager) {
+        const [m] = await sql`select row_id from ${sql(rel)} where trim(${sql(link.record_number_column)}::text) = ${j.manager.record}
+          and trim(${sql(link.status_column)}::text) = ${link.current_status} and retired_at is null`
+        if (!m) return { row: null, job: false, waiting: true }
+        manager = String(m.row_id)
+      }
+    }
     const saved = await runAsSystemActor(ACTOR, () => saveDoc(link.table, { ...j.row, [settings.code_column]: j.code }, ACTOR, 'insert'))
     const row = String(saved.row_id)
     const job = settings.job
     if (!j.job || !job) return { row, job: false }
-    const manager = j.manager && ('row' in j.manager ? j.manager.row : added.get(j.manager.record))
     await runAsSystemActor(ACTOR, () =>
       saveDoc(job.table, { ...j.job, [job.employee_column]: row, ...(job.reports_to_column && manager ? { [job.reports_to_column]: manager } : {}) }, ACTOR, 'insert'))
     return { row, job: true }
@@ -467,7 +485,7 @@ function managersFirst(joiners: PlannedJoiner[]): PlannedJoiner[] {
 /** Act on a plan unless it refuses. `acceptCount` lifts the size limit for
  *  exactly the count a dry run showed; it never lifts a bad feed. */
 export async function applyJoiners(roster: Roster, plan: JoinerPlan | null, opts: { acceptCount?: number } = {}): Promise<JoinerRun> {
-  const run: JoinerRun = { plan, added: 0, jobs: 0, failed: [] }
+  const run: JoinerRun = { plan, added: 0, jobs: 0, waiting: 0, failed: [] }
   if (!plan) return run
   if (opts.acceptCount !== undefined) {
     if (plan.joiners.length !== opts.acceptCount) plan.refused ??= `it would add ${plan.joiners.length} new joiners, not the ${opts.acceptCount} accepted`
@@ -488,6 +506,7 @@ export async function applyJoiners(roster: Roster, plan: JoinerPlan | null, opts
         await logActivity(ACTOR, `roster_joiner_added ${plan.table} ${j.code}${done.job ? ' with a job' : j.job_held ? `; job held: ${j.job_held}` : ''}`.slice(0, 140))
       }
       if (done.job) run.jobs++
+      if (done.waiting) run.waiting++
     } catch (err) {
       run.failed.push(`${j.code}: ${errorMessage(err)}`)
     }
@@ -505,7 +524,7 @@ export function formatJoiners(plan: JoinerPlan | null, run?: JoinerRun): string[
   const heldBy = [...reasons].map(([r, n]) => `${r} ${n}`).join(', ') || 'none'
   const lines = [
     run
-      ? `roster joiners ${plan.table}: added ${run.added}, with a job ${run.jobs}${run.failed.length ? `; FAILED ${run.failed.length}` : ''}`
+      ? `roster joiners ${plan.table}: added ${run.added}, with a job ${run.jobs}${run.waiting ? `; waiting for their manager ${run.waiting}` : ''}${run.failed.length ? `; FAILED ${run.failed.length}` : ''}`
       : `roster joiners ${plan.table}: would add ${plan.joiners.length} (with a job ${withJob}, of them with a manager ${withManager}, job held ${jobHeld}); held ${plan.held.length} (${heldBy}); limit ${plan.limit}`,
   ]
   if (plan.refused) lines.push(`roster joiners ${plan.table}: ADDED NONE — ${plan.refused}`)

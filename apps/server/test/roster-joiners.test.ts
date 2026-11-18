@@ -219,6 +219,44 @@ describe('a team that joins together', () => {
     expect((await jobsOf('ZZ-TT-8001'))[0]).toMatchObject({ boss: null, role: 'Boss' })
   })
 
+  test('a report whose manager could not be saved waits, and joins with them on the next run', async ({ admin }) => {
+    await setUp(admin)
+    // The manager's job is a value the job Table refuses this run.
+    warehouse([{ key: '8001', title: 'Deck Boss' }, { key: '8002', manager: 'TT-8001' }])
+    await sql`update featherbase.column_def set column_type = 'Choice', choices = ${'Hand\nLead\nOffice hand'} where parent = 'Crew Job' and column_name = 'role'`
+    invalidateMeta('Crew Job')
+    const first = await runRosterLink('stylehr')
+    expect(first.joiners).toMatchObject({ added: 0, waiting: 1 })
+    expect(first.joiners!.failed).toHaveLength(1)
+    expect(await codes()).toEqual([])
+    await sql`update featherbase.column_def set choices = ${'Hand\nLead\nOffice hand\nBoss'} where parent = 'Crew Job' and column_name = 'role'`
+    invalidateMeta('Crew Job')
+    const second = await runRosterLink('stylehr')
+    expect(second.joiners).toMatchObject({ added: 2, jobs: 2, failed: [] })
+    expect((await jobsOf('ZZ-TT-8002'))[0]).toMatchObject({ boss: 'ZZ-TT-8001' })
+  })
+
+  test('a report whose planned manager is missing when it is saved is not added without them', async ({ admin }) => {
+    await setUp(admin)
+    warehouse([{ key: '8001' }, { key: '8002', manager: 'TT-8001' }])
+    const plan = (await planRosterLink('stylehr'))!.joiners!
+    const report = plan.joiners.find((j) => j.record === '8002')!
+    const { applyJoiners } = await import('../src/roster-joiners')
+    const { usableRoster } = await import('../src/roster-first-sign-in')
+    const { getSignInMethod } = await import('../src/identities')
+    const roster = (await usableRoster((await getSignInMethod('stylehr'))!))!
+    const run = await applyJoiners(roster, { ...plan, joiners: [report] })
+    expect(run).toMatchObject({ added: 0, waiting: 1 })
+    expect(await codes()).toEqual([])
+  })
+
+  test('a sign-in ID with spaces around it is the same ID', async ({ admin }) => {
+    await setUp(admin, [crewRow(1, { crew_no: 'TT-8001' })])
+    warehouse([{ key: '7001', code: 'TT-8001' }, { key: '8001', code: ' tt-8001 ', region: 'YY' }, { key: '8002', code: ' TT-5 ' }, { key: '8003', code: 'tt-5', region: 'XX' }])
+    const plan = (await planRosterLink('stylehr'))!.joiners!
+    expect(plan.held.map((h) => [h.record, h.reason])).toEqual([['8001', 'sign_in_id_taken'], ['8002', 'sign_in_id_shared'], ['8003', 'sign_in_id_shared']])
+  })
+
   test('a manager already on the roster is found by their sign-in ID', async ({ admin }) => {
     await setUp(admin, [crewRow(1, { crew_no: 'TT-8001' })])
     warehouse([{ key: '7001', code: 'TT-8001' }, { key: '8002', manager: 'TT-8001' }])
@@ -363,7 +401,7 @@ describe('a bad feed or a big batch adds nobody', () => {
     await setUp(admin, [], plain)
     const reads = warehouse([{ key: '8001' }])
     const run = await runRosterLink('stylehr')
-    expect(run.joiners).toEqual({ plan: null, added: 0, jobs: 0, failed: [] })
+    expect(run.joiners).toEqual({ plan: null, added: 0, jobs: 0, waiting: 0, failed: [] })
     expect(reads).toEqual([])
     expect(formatRosterLink(run.plan, run)).not.toContain('roster joiners')
   })
