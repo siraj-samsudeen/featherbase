@@ -411,8 +411,9 @@ export function TableBuilder() {
 
       <div className="mb-4 flex flex-wrap gap-4">
         <div>
-          <label className={labelClasses()}>Table name</label>
+          <label className={labelClasses()} htmlFor="dt-name">Table name</label>
           <input
+            id="dt-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             data-testid="dt-name"
@@ -421,8 +422,9 @@ export function TableBuilder() {
           />
         </div>
         <div>
-          <label className={labelClasses()}>Module</label>
+          <label className={labelClasses()} htmlFor="dt-module">Module</label>
           <input
+            id="dt-module"
             value={module}
             onChange={(e) => setModule(e.target.value)}
             data-testid="dt-module"
