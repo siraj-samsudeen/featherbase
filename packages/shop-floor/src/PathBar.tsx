@@ -66,7 +66,7 @@ function HiddenSteps({ label, items, onStep }: {
  * full name kept as its name and title. On a bar narrower than a wide window
  * the path has a line of its own under the buttons.
  */
-export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink, recent }: {
+export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink, recent, besideCurrent }: {
   steps: PathStep[]
   current: number
   onStep: (index: number) => void
@@ -75,6 +75,8 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
   /** Copies the link; a rejected promise means it was not copied. */
   onCopyLink: () => void | Promise<unknown>
   recent?: ReactNode
+  /** #1282 I1: drawn right after the current step (its sideways ▾). */
+  besideCurrent?: ReactNode
 }) {
   const [copied, setCopied] = useState(false)
   const [shown, setShown] = useState<Shown>({ from: 0, to: steps.length - 1 })
@@ -161,6 +163,7 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
               <li key={step.key} className="flex min-w-0 shrink-0 items-center gap-1">
                 {index > from && <ChevronRight aria-hidden size={14} className="text-ink-subtle" />}
                 {stepButton(step, index, index === current ? shown.short : undefined)}
+                {index === current && besideCurrent}
               </li>
             ))}
           </ol>

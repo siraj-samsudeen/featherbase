@@ -4,6 +4,7 @@ import { encodePath, type NavPath } from '../lib/nav-path'
 import { usePageNavigation } from '../lib/navigation'
 import { useNavigationSettings } from '../lib/nav-settings'
 import { useCompactWalkLabels, useStepLabels } from '../lib/step-labels'
+import { SidewaysMenu } from './SidewaysMenu'
 
 // #910 checklist 11–14: the path bar of a list or row page. Its steps are
 // named per viewer; Back, Forward and each step move along the path (each a
@@ -36,6 +37,8 @@ export function NavPathBar() {
         onForward={() => nav.go(path.at + 1)}
         onCopyLink={() => navigator.clipboard.writeText(new URL(nav.href(path), window.location.origin).href)}
         recent={<RecentWalks paths={settings.recent} onPick={nav.open} />}
+        // #1282 I1: the other rows of the list the last step came from, on the last step only.
+        besideCurrent={path.at === path.steps.length - 1 ? <SidewaysMenu nav={nav} /> : undefined}
       />
     </div>
   )
