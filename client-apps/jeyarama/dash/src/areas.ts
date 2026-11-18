@@ -112,6 +112,8 @@ export async function sectionEditingJobs(ctx: Ctx, person: string, today: string
   for (const h of access.held) {
     // A hand change naming another store puts the role there, not at the job's own store: that job's area doesn't count.
     if (!edits.has(h.role) || h.spot.kind !== 'job' || (h.spot.site && h.spot.site !== siteOf.get(h.spot.job))) continue
+    // A role that resolves to no place (a non-store site, a floor-less job) gives no section to edit (Codex round 9).
+    if (!h.places.length) continue
     allowed.set(h.spot.job, (allowed.get(h.spot.job) ?? new Set<string>()).add(reaches.get(h.role)!))
   }
   return allowed

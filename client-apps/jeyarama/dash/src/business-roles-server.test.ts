@@ -5,7 +5,7 @@ import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
 import { convertGrants } from './switch-over'
 import { whoIs } from './report-access-server'
-import { isStore } from './business-access'
+import { SITE_STORE_FIELDS, openStore } from './business-access'
 import { scopeProviders } from './server'
 import { personShadow, placesByStore, shadowWorld } from './business-roles-server'
 import { businessModel } from './business-access'
@@ -1027,24 +1027,16 @@ describe('head office sites and people off payroll', () => {
     expect([before, (await whoIs(context(tables).baseTables as never, ['od'], today)).get('od')!.staff]).toEqual(['left', 'none'])
   })
 
-  // #1280's site_kind, read defensively: classified, it decides; empty or absent, is_store does.
-  it('reads a site as a store by its site_kind when classified, else by is_store, never failing on an empty kind', async () => {
-    const site = (row: Record<string, unknown>) => ({ list: async () => [{ row_id: 'X', is_store: row.is_store }], available: async () => true, get: async () => ({ row_id: 'X', ...row }) })
-    expect(await Promise.all([
-      isStore(site({ is_store: true, site_kind: 'Head Office' }) as never, 'X'),
-      isStore(site({ is_store: false, site_kind: 'Store' }) as never, 'X'),
-      isStore(site({ is_store: true, site_kind: '' }) as never, 'X'),
-      isStore(site({ is_store: false, site_kind: null }) as never, 'X'),
-      isStore(site({ is_store: true }) as never, 'X'),
-      isStore({ list: async () => [{ row_id: 'X', is_store: true }], available: async () => true } as never, 'X'),
-      isStore({ list: async () => [], available: async () => true, get: async () => { throw new Error('no row') } } as never, 'X'),
-      isStore(site({ is_store: true, site_kind: 'Collection Centre' }) as never, 'X'),
-      isStore(site({ is_store: true, site_kind: 'A kind added later' }) as never, 'X'),
-      isStore(site({ is_store: true, site_kind: 'Store', status: 'Planned' }) as never, 'X'),
-      isStore(site({ is_store: true, site_kind: 'Store', status: 'Closed' }) as never, 'X'),
-      isStore(site({ is_store: false, site_kind: 'Store', status: 'Open' }) as never, 'X'),
-      isStore(site({ is_store: true, site_kind: '', status: '' }) as never, 'X'),
-    ])).toEqual([false, true, true, false, true, true, false, false, false, false, false, true, true])
+  // #1280's site_kind and the Site's status: the rule, ready for when every instance has the columns; is_store until then.
+  it('reads a site as an open store by its status, then its site_kind, then is_store', () => {
+    expect([
+      openStore({ is_store: true, site_kind: 'Head Office' }), openStore({ is_store: false, site_kind: 'Store' }),
+      openStore({ is_store: true, site_kind: '' }), openStore({ is_store: false, site_kind: null }), openStore({ is_store: true }),
+      openStore({ is_store: true, site_kind: 'Collection Centre' }), openStore({ is_store: true, site_kind: 'A kind added later' }),
+      openStore({ is_store: true, site_kind: 'Store', status: 'Planned' }), openStore({ is_store: true, site_kind: 'Store', status: 'Closed' }),
+      openStore({ is_store: false, site_kind: 'Store', status: 'Open' }), openStore({ is_store: true, status: '' }),
+    ]).toEqual([false, true, true, false, true, false, false, false, false, true, true])
+    expect(SITE_STORE_FIELDS).toEqual(['is_store'])
   })
 
   // Codex round 8: a role placed by hand, with no job at all, reaches no store at a head office site either.

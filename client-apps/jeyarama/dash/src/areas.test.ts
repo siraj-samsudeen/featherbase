@@ -49,6 +49,8 @@ describe('who may edit sections when business roles decide', () => {
     const tables: Record<string, Record<string, unknown>[]> = {
       Employee: [{ row_id: 'E1', person: 'sm', status: 'Current' }],
       Section: [{ row_id: 'S1', site: 'LKS', floor: 'F1', name: 'Sarees' }, { row_id: 'S2', site: 'LKS', floor: 'F2', name: 'Silk' }],
+      Site: [{ row_id: 'LKS', name: 'Lakeside', is_store: true }], Plant: [{ row_id: '9901', site: 'LKS', plant_type: 'Store' }],
+      'Section Subcategory': [{ row_id: 'P1', store: 'LKS', section: 'S1', subcategory: '010101001', starts_on: '2026-01-01' }, { row_id: 'P2', store: 'LKS', section: 'S2', subcategory: '010101002', starts_on: '2026-01-01' }],
       'Job Assignment': [{ row_id: 'J1', employee: 'E1', job: 'Store Manager', site: 'LKS', starts_on: '2026-01-01', ends_on: null }],
       'dash.business_role': [], 'dash.business_role_permission': [], 'dash.title_map': [], 'dash.role_assignment': hand,
       'dash.access_source': source ? [{ row_id: 'x', source }] : [],
@@ -148,6 +150,13 @@ describe('who may edit sections when business roles decide', () => {
     tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], floor: 'F1' }
     tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Floor Manager') })
     expect([(await sectionAreaOf(ctx, 'sm', section, today))?.kind, await sectionAreaOf(ctx, 'sm', { row_id: 'S2', site: 'LKS', floor: 'F2' }, today)]).toEqual(['floor', undefined])
+  })
+
+  // Codex round 9: a role resolving to no place gives no section to edit, even where the job is a manager's.
+  it('gives a Store Manager at a site that is no store no section to edit', async () => {
+    const { tables, ctx } = await store('business_roles')
+    tables.Site[0].is_store = false
+    expect(await sectionAreaOf(ctx, 'sm', section, today)).toBeUndefined()
   })
 })
 
