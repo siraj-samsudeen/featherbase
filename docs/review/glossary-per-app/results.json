@@ -1,0 +1,140 @@
+[
+  {
+    "id": "S1",
+    "what": "Dash reader sees Help in the sidebar",
+    "ok": true,
+    "detail": "help buttons: 1"
+  },
+  {
+    "id": "S1",
+    "what": "Help menu offers the Glossary",
+    "ok": true,
+    "detail": "href=/featherbase/glossary/dash"
+  },
+  {
+    "id": "S1",
+    "what": "Clicking Glossary opens Dash's glossary",
+    "ok": true,
+    "detail": "http://localhost:5324/featherbase/glossary/dash"
+  },
+  {
+    "id": "S2",
+    "what": "Dash glossary lists Dash terms and the instance terms",
+    "ok": true,
+    "detail": "33 terms on the page (28 Dash + 5 instance)"
+  },
+  {
+    "id": "S2",
+    "what": "Dash term \"Gap\" is shown",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S2",
+    "what": "Dash term \"Achieved\" is shown",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S2",
+    "what": "Dash term \"A dash in a figure\" is shown",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S2",
+    "what": "Dash term \"Dive\" is shown",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S2",
+    "what": "An instance term (Store) is shown",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S2",
+    "what": "Heading names the app",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S3",
+    "what": "Search narrows the list",
+    "ok": true,
+    "detail": "7 match \"target\""
+  },
+  {
+    "id": "S3",
+    "what": "Gap shows twice, once per source",
+    "ok": true,
+    "detail": "two cards titled Gap: one under Dash, one under Shared across apps"
+  },
+  {
+    "id": "S4",
+    "what": "Dash reader opening the tasker glossary",
+    "ok": true,
+    "detail": "API 403; page shows: Glossary The words tasker uses, and the words every app here shares, and what they mean. Search terms You cannot read"
+  },
+  {
+    "id": "S4",
+    "what": "Dash reader opening the tickets glossary",
+    "ok": true,
+    "detail": "API 200; page shows: Glossary The words Tickets uses, and the words every app here shares, and what they mean. Search terms Tickets Assigna"
+  },
+  {
+    "id": "S5",
+    "what": "The old Admin glossary page is gone",
+    "ok": true,
+    "detail": "url http://localhost:5324/dash/"
+  },
+  {
+    "id": "S6",
+    "what": "Dark theme renders the glossary",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S7",
+    "what": "Admin sidebar has no Glossary link",
+    "ok": true,
+    "detail": "links named Glossary: 0"
+  },
+  {
+    "id": "S7",
+    "what": "Admin Help menu has no Glossary item",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S8",
+    "what": "Administrator reads the dash glossary",
+    "ok": true,
+    "detail": "33 terms"
+  },
+  {
+    "id": "S8",
+    "what": "Administrator reads the tasker glossary",
+    "ok": true,
+    "detail": "32 terms"
+  },
+  {
+    "id": "S9",
+    "what": "Tasker's Store and the instance's Store show side by side with their sources",
+    "ok": true,
+    "detail": "\"Store\" appears 7 times"
+  },
+  {
+    "id": "S8",
+    "what": "Administrator reads the tickets glossary",
+    "ok": true,
+    "detail": "23 terms"
+  },
+  {
+    "id": "S10",
+    "what": "An unknown app has no glossary",
+    "ok": true,
+    "detail": "API 403"
+  }
+]
