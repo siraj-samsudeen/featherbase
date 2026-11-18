@@ -13,6 +13,8 @@ interface Status {
   checked_at: string | null
   /** The last rebuild's summary; it names a leaver-job plan that could not be read or would refuse. */
   checked_result: string | null
+  /** The latest rebuild attempt, when it failed after the last success: the rows shown are older. */
+  last_failed: { at: string; error: string | null } | null
 }
 
 export const LEAVER_STATUS_KEY = ['leaver-sign-in-status'] as const
@@ -22,7 +24,7 @@ function StatusLine() {
   const qc = useQueryClient()
   // While a requested rebuild runs: the "Checked" time it started from. The
   // line is read again until that time moves on, then the list is read again.
-  const [waitingSince, setWaitingSince] = useState<string | null | undefined>(undefined)
+  const [waitingSince, setWaitingSince] = useState<{ checked: string | null; failed: string | null } | undefined>(undefined)
   const waiting = waitingSince !== undefined
   const status = useQuery({
     queryKey: LEAVER_STATUS_KEY,
@@ -31,15 +33,17 @@ function StatusLine() {
   })
   const refresh = useMutation({
     mutationFn: () => api.post('/api/leaver_sign_in/refresh', {}),
-    onMutate: () => setWaitingSince(status.data?.checked_at ?? null),
+    onMutate: () => setWaitingSince({ checked: status.data?.checked_at ?? null, failed: status.data?.last_failed?.at ?? null }),
     onError: () => setWaitingSince(undefined),
   })
   const checkedAt = status.data?.checked_at ?? null
+  const failedAt = status.data?.last_failed?.at ?? null
   useEffect(() => {
-    if (!waiting || checkedAt === waitingSince) return
+    // Done when a rebuild succeeded (a new Checked time) or a new attempt failed.
+    if (!waitingSince || (checkedAt === waitingSince.checked && failedAt === waitingSince.failed)) return
     setWaitingSince(undefined)
     void qc.invalidateQueries({ queryKey: ['list', 'Leaver Sign In'] })
-  }, [waiting, waitingSince, checkedAt, qc])
+  }, [waitingSince, checkedAt, failedAt, qc])
   const s = status.data
   const job = s?.leaver_job
   const at = (iso: string | null) => (iso ? fmtDateTime(new Date(iso)) : 'never')
@@ -57,6 +61,11 @@ function StatusLine() {
         <span data-testid="leaver-checked">
           Checked {at(s.checked_at)}
           {s.checked_result ? <> · {s.checked_result}</> : null}
+        </span>
+      )}
+      {s?.last_failed && (
+        <span className="text-caution" data-testid="leaver-refresh-failed">
+          The rebuild at {at(s.last_failed.at)} failed{s.last_failed.error ? `: ${s.last_failed.error}` : ''}. These rows are from the last one that worked.
         </span>
       )}
       <Button variant="secondary" disabled={waiting} onClick={() => refresh.mutate()} data-testid="leaver-refresh">

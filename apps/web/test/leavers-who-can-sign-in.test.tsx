@@ -22,8 +22,8 @@ test('the list shows its four sections in order, each person with why and how; t
     ('r1271a', 0, '1. Leaver job would disable', ${gone.user!}, 'Exit date 03-Oct-2026 has passed', 'Google, Password', '2026-10-03'),
     ('r1271c', 2, '3. Left, not on the leaver job''s list', ${quiet.user!}, 'The people app says they have left', 'Google', '2026-09-30'),
     ('r1271b', 1, '2. System Manager: never disabled by the job', ${boss.user!}, 'Marked inactive in StyleHR', 'Password', null)`
-  await sql`update scheduled_job set last_run_at = now(), last_result = 'The leaver job''s next run would refuse: the warehouse''s StyleHR data is stale'
-    where row_id = 'refresh_leaver_sign_in'`
+  await sql`insert into job_execution (row_id, job, method, attempt, outcome, result, started_at, duration_ms)
+    values ('je_' || md5(random()::text), 'x', 'refresh_leaver_sign_in', 1, 'success', 'The leaver job''s next run would refuse: the warehouse''s StyleHR data is stale', now(), 5)`
   await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
   const page = await screen.findByTestId('leavers-who-can-sign-in')
   expect(await within(page).findByText('Exit date 03-Oct-2026 has passed')).toBeInTheDocument()
@@ -56,9 +56,18 @@ test('Refresh Now queues the rebuild and shows its rows once it has run', async 
   const late = await createUser({ email: 'late.1271@example.com', fullName: 'Late Leaver' })
   await sql`insert into leaver_sign_in (row_id, position, section, person, why, ways_in) values
     ('r1271late', 0, '1. Leaver job would disable', ${late.user!}, 'Marked inactive in StyleHR', 'Password')`
-  await sql`update scheduled_job set last_run_at = now(), last_result = '1 person can still sign in' where row_id = 'refresh_leaver_sign_in'`
+  await sql`insert into job_execution (row_id, job, method, attempt, outcome, result, started_at, duration_ms)
+    values ('je_' || md5(random()::text), 'x', 'refresh_leaver_sign_in', 1, 'success', '1 person can still sign in', now(), 5)`
   expect(await screen.findByRole('link', { name: /Late Leaver/ }, { timeout: 10_000 })).toBeInTheDocument()
   await waitFor(() => expect(screen.getByTestId('leaver-refresh')).toHaveTextContent('Refresh Now'))
+})
+
+test('a rebuild that failed after the last good one is named, and the rows are said to be older', async ({ admin }) => {
+  await sql`insert into job_execution (row_id, job, method, attempt, outcome, result, started_at, duration_ms)
+    values ('je_ok_1271', 'x', 'refresh_leaver_sign_in', 1, 'success', '0 people can still sign in', now() - interval '1 hour', 5)`
+  await sql`update scheduled_job set last_run_at = now(), last_outcome = 'error', last_result = 'warehouse down' where row_id = 'refresh_leaver_sign_in'`
+  await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
+  expect(await screen.findByTestId('leaver-refresh-failed')).toHaveTextContent(/failed: warehouse down\. These rows are from the last one that worked\./)
 })
 
 test('a System Manager is offered the list under People and access', async ({ admin }) => {

@@ -140,6 +140,46 @@ test('only ways in that can work now count: a switched-off password, an unconfig
   expect(rows.find((r) => r.person === expected)?.ways_in).toBe('Google (first sign-in expected)')
 })
 
+test('a live password invitation is a way in; a used, voided, unsent or expired one is not', async ({ admin }) => {
+  await installDescriber(admin)
+  const live = await makePerson({ full_name: 'Invited Leaver' })
+  const used = await makePerson({ full_name: 'Used Invite' })
+  const voided = await makePerson({ full_name: 'Voided Invite' })
+  const unsent = await makePerson({ full_name: 'Unsent Invite' })
+  const expired = await makePerson({ full_name: 'Expired Invite' })
+  const invite = (person: string, over: string) => sql.unsafe(`insert into password_invite (id, person, token_hash, invited_by, email, expires_at, sent_at, used_at, voided_at)
+    values ('pi_' || md5('${person}'), '${person}', md5('t${person}'), 'Administrator', 'x@example.test', ${over})`)
+  await invite(live, `now() + interval '1 day', now(), null, null`)
+  await invite(used, `now() + interval '1 day', now(), now(), null`)
+  await invite(voided, `now() + interval '1 day', now(), null, now()`)
+  await invite(unsent, `now() + interval '1 day', null, null, null`)
+  await invite(expired, `now() - interval '1 minute', now(), null, null`)
+  globalThis.__standing1271 = Object.fromEntries([live, used, voided, unsent, expired].map((p) => [p, { person: p, status: 'left' }]))
+  const rows = (await leaverSignInRows()).rows
+  expect(rows.filter((r) => [live, used, voided, unsent, expired].includes(r.person)).map((r) => [r.person, r.ways_in])).toEqual([[live, 'Password (invited)']])
+})
+
+test("a link sign-in would refuse is not a way in: a System Manager's StyleHR link", async ({ admin }) => {
+  await installDescriber(admin)
+  await configureDelegated()
+  const boss = await makePerson({ full_name: 'Boss With StyleHR' })
+  await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values ('hr_boss2_1271', ${boss}, 'Person', 'roles', 'System Manager')`
+  await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by) values ('uid_boss1271', ${boss}, 'stylehr', 'RR-73', 'boss', 'Administrator')`
+  globalThis.__standing1271 = { [boss]: { person: boss, status: 'left' } }
+  expect((await leaverSignInRows()).rows.map((r) => r.person)).not.toContain(boss)
+})
+
+test('the status reads the last successful rebuild, and names a later one that failed', async ({ admin }) => {
+  await sql`insert into job_execution (row_id, job, method, attempt, outcome, result, started_at, duration_ms)
+    values ('je_ok2_1271', 'x', 'refresh_leaver_sign_in', 1, 'success', '2 people can still sign in', now() - interval '1 hour', 5)`
+  await sql`update scheduled_job set last_run_at = now(), last_outcome = 'error', last_result = 'warehouse down' where row_id = 'refresh_leaver_sign_in'`
+  const status = await admin.get<{ checked_result: string; last_failed: { error: string } | null }>('/api/leaver_sign_in/status')
+  expect(status.checked_result).toBe('2 people can still sign in')
+  expect(status.last_failed?.error).toBe('warehouse down')
+  await sql`update scheduled_job set last_outcome = 'success' where row_id = 'refresh_leaver_sign_in'`
+  expect((await admin.get<{ last_failed: unknown }>('/api/leaver_sign_in/status')).last_failed).toBeNull()
+})
+
 test('a second rebuild replaces the first; it never adds to it', async ({ admin }) => {
   // Rebuilds take a lock first, so two at once replace in turn. The test runs in
   // one transaction, so it can show only that each rebuild replaces the rows.

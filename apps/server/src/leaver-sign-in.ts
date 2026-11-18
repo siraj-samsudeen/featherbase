@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto'
 import { sql, withTransaction } from './db'
 import { LEAVER_CHECK_JOB, planLeaverCheck, type Leaver, type LeaverPlan } from './leaver-check'
 import { describePeople, peopleDescriberState } from './person-standing'
-import { EXPECTS_COLUMN, REDIRECT_KINDS, methodUsable } from './identities'
+import { EXPECTS_COLUMN, REDIRECT_KINDS, methodUsable, workingLinkIds } from './identities'
 import { errorMessage } from './errors'
 
 export const LEAVER_SIGN_IN_JOB = 'refresh_leaver_sign_in'
@@ -44,7 +44,7 @@ interface WaysIn {
 }
 
 /** Every enabled person who can still sign in, with how: a password, each
- *  live link or pending invite, and each expected first Google or Microsoft
+ *  live link or pending invite (a password invitation too), and each expected first Google or Microsoft
  *  sign-in, on a method that can sign anyone in now (methodUsable, the rule
  *  every way-in count shares). */
 async function waysIn(): Promise<Map<string, WaysIn>> {
@@ -53,25 +53,32 @@ async function waysIn(): Promise<Map<string, WaysIn>> {
   const out = new Map<string, WaysIn>()
   const of = (person: string) => out.get(person) ?? out.set(person, { ways: [], styleHr: [], employeesOnly: [] }).get(person)!
   const add = (w: WaysIn, way: string) => { if (!w.ways.includes(way)) w.ways.push(way) }
-  const people = await sql`select row_id, (password_hash is not null) as has_password, expects_google_sign_in, expects_microsoft_sign_in
+  const passwordOn = methods.some((m) => m.kind === 'password')
+  // A live password invitation lets them set a password and sign in: as checkPasswordInvite reads it.
+  const people = await sql`select row_id, (password_hash is not null) as has_password, expects_google_sign_in, expects_microsoft_sign_in,
+      exists (select 1 from password_invite i where i.person = person.row_id and i.used_at is null and i.voided_at is null
+        and i.sent_at is not null and i.expires_at > now()) as invited
     from person where enabled order by row_id`
   for (const p of people) {
     const person = String(p.row_id)
-    if (p.has_password && methods.some((m) => m.kind === 'password')) add(of(person), 'Password')
+    if (p.has_password && passwordOn) add(of(person), 'Password')
+    else if (p.invited && passwordOn) add(of(person), 'Password (invited)')
     for (const kind of REDIRECT_KINDS) {
       const m = methods.find((x) => x.kind === kind)
       if (m && p[EXPECTS_COLUMN[kind]] === true) add(of(person), `${String(m.label || kind)} (first sign-in expected)`)
     }
   }
   const usable = new Map(methods.map((m) => [String(m.row_id), m]))
+  // A live link counts only where sign-in would accept it (its domain, tenant, and no StyleHR for a System Manager).
+  const working = await workingLinkIds()
   const links = await sql`
-    select i.person_id, i.method, (i.subject is null) as invited
+    select i.id, i.person_id, i.method, (i.subject is null) as invited
     from sign_in_identity i join person p on p.row_id = i.person_id
     where i.ended_at is null and p.enabled
     order by i.person_id, i.method`
   for (const l of links) {
     const m = usable.get(String(l.method))
-    if (!m) continue
+    if (!m || (!l.invited && !working.has(String(l.id)))) continue
     const w = of(String(l.person_id))
     const label = String(m.label || m.kind)
     add(w, l.invited ? `${label} (invited)` : label)
@@ -158,15 +165,23 @@ export async function refreshLeaverSignIn(): Promise<LeaverSignInReport> {
   return report
 }
 
-/** The list header's line: the leaver job on or off, its last run, and when this report was checked. */
+/** The list header's line: the leaver job on or off and its last run; when
+ *  this report was last rebuilt successfully, and a later attempt that failed. */
 export async function leaverSignInStatus() {
   const jobs = await sql`select row_id, enabled, last_run_at, last_outcome, last_result from scheduled_job where row_id in (${LEAVER_CHECK_JOB}, ${LEAVER_SIGN_IN_JOB})`
   const job = jobs.find((j) => j.row_id === LEAVER_CHECK_JOB)
   const report = jobs.find((j) => j.row_id === LEAVER_SIGN_IN_JOB)
+  // The rows on show are the last successful rebuild's: a failed one leaves them as they were.
+  const [ok] = await sql`select started_at, result from job_execution
+    where method = ${LEAVER_SIGN_IN_JOB} and outcome = 'success' order by started_at desc limit 1`
+  const failed = report?.last_run_at && report.last_outcome !== 'success'
+    && (!ok || new Date(report.last_run_at as string) > new Date(ok.started_at as string))
   return {
     leaver_job: job ? { on: job.enabled === true, last_run_at: job.last_run_at ?? null, last_outcome: job.last_outcome ?? null, last_result: job.last_result ?? null } : null,
-    checked_at: report?.last_run_at ?? null,
-    /** The last rebuild's own summary, which names whatever it could not check. */
-    checked_result: report?.last_result ?? null,
+    checked_at: ok?.started_at ?? null,
+    /** The last successful rebuild's own summary, which names whatever it could not check. */
+    checked_result: ok?.result ?? null,
+    /** The latest rebuild attempt, when it failed after the last success. */
+    last_failed: failed ? { at: report.last_run_at, error: report.last_result ?? null } : null,
   }
 }
