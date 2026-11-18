@@ -78,7 +78,7 @@ test('an address outside the Admin that matches nothing says so under the top ba
   const page = await screen.findByTestId('problem-not-found', {}, T)
   expect(within(page).getByRole('heading')).toHaveTextContent('Page not found')
   expect(within(page).getByRole('link', { name: 'Go to Featherbase' })).toHaveAttribute('href', '/')
-  expect(screen.getByTestId('identity')).toBeInTheDocument()
+  expect(await screen.findByTestId('top-bar', {}, T)).toBeInTheDocument()
 })
 
 test('a report reader who opens an Admin link is told the Admin is not part of their account, and offered their report', async ({ admin, createUser }) => {

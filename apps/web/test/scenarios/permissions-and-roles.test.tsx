@@ -96,7 +96,7 @@ describe('permissions-and-roles', () => {
       await renderApp('/featherbase/admin/table/back-office', clerk)
     })
     await step("the user sees a message that they can't read it", async () => {
-      const refusal = await screen.findByRole('alert', {}, { timeout: 10_000 })
+      const refusal = await screen.findByTestId('problem-no-access', {}, { timeout: 10_000 })
       expect(refusal).toHaveTextContent(/don't have read permission on Back Office/i)
     })
     await step('the user does not see an empty list', () => {
@@ -115,11 +115,14 @@ describe('permissions-and-roles', () => {
     await step('the user opens an administration address', async () => {
       urls = recordCalls()
       ;({ router } = await renderApp('/featherbase/admin/home/home', tl))
-      await screen.findByTestId('identity')
+      await screen.findByTestId('problem-no-access', {}, { timeout: 8000 })
     })
-    await step('the user is taken to the Sales Target report', async () => {
-      await waitFor(() => expect(pathOf(router)).toMatch(/sales-target/))
-      expect(screen.getByTestId('identity')).toBeInTheDocument()
+    await step('the user is told the administration is not part of their account, and offered the report', async () => {
+      // #1327 (audit F08): told, never moved; the address they asked for stays.
+      const page = screen.getByTestId('problem-no-access')
+      expect(page).toHaveTextContent('The Admin isn’t part of your account')
+      expect(within(page).getByRole('link', { name: 'Open your report' })).toHaveAttribute('href', '/featherbase/sales-target')
+      expect(pathOf(router)).toBe('/featherbase/admin/home/home')
     })
     await step('no administration menu appears', () => {
       for (const id of ['new-table-link', 'import-data-link', 'past-imports-link', 'all-tables-link', 'admin-sidebar'])

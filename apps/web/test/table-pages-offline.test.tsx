@@ -37,7 +37,8 @@ test("a Table's page whose details the network drops on first opening says why i
   await seed(admin)
   networkDown()
   await renderApp(tableHref(TABLE), admin)
-  expect(await screen.findByRole('alert', {}, T)).toHaveTextContent('Failed to fetch')
+  // #1327: the shared Couldn't open page, in words a person can act on.
+  expect(await screen.findByRole('alert', {}, T)).toHaveTextContent('This Table couldn’t be openedThe server didn’t answer.')
 })
 
 test("with no connection, a list whose own details have not come yet makes no view everyone's default", async ({ admin }) => {
