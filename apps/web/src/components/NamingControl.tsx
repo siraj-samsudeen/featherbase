@@ -93,6 +93,7 @@ export function NamingControl({
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <select
           value={selected}
+          aria-label="How rows are named"
           onChange={(e) => {
             const v = e.target.value
             // A series prefix is not carried into a column rule; another
@@ -137,10 +138,12 @@ export function NamingControl({
               onChange={(e) => set({ prefix: e.target.value })}
               data-testid={`${idPrefix}-naming-prefix`}
               placeholder="Prefix, e.g. ZONE-"
+              aria-label="Series prefix"
               className={inputClasses('w-40')}
             />
             <select
               value={p.digits}
+              aria-label="Series digits"
               onChange={(e) => set({ digits: Number(e.target.value) })}
               data-testid={`${idPrefix}-naming-digits`}
               className={inputClasses('w-32')}

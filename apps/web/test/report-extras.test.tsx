@@ -267,3 +267,12 @@ test('columns stored with no label are offered under their column names', async 
   expect(screen.getByRole('checkbox', { name: 'note' })).toBeInTheDocument()
   expect(within(screen.getByTestId('report-groupby')).getByRole('option', { name: 'region' })).toBeInTheDocument()
 })
+
+test('the saved-report and dashboard selects are named for what they choose', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: 'Report', row: { row_id: 'Rex Named', ref_table: T, config: { columns: ['region', 'amount'] } } })
+  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(T))}/view/report?report=${encodeURIComponent('Rex Named')}`, admin)
+  const picker = await screen.findByRole('combobox', { name: 'Saved reports' }, { timeout: 8000 })
+  expect(picker).toBe(screen.getByTestId('saved-report-picker'))
+  expect(await screen.findByRole('combobox', { name: 'Dashboard' })).toBe(screen.getByTestId('pin-dashboard'))
+})

@@ -523,6 +523,7 @@ export function ReportView({
         {/* RPT-002: saved report picker + save */}
         <select
           value={report ?? ''}
+          aria-label="Saved reports"
           onChange={(e) => onReportChange?.(e.target.value || undefined)}
           className={inputClasses('w-48')}
           data-testid="saved-report-picker"
@@ -664,6 +665,7 @@ export function ReportView({
             )}
             <select
               value={pinDashboard}
+              aria-label="Dashboard"
               onChange={(e) => setPinDashboard(e.target.value)}
               className={inputClasses('w-40')}
               data-testid="pin-dashboard"

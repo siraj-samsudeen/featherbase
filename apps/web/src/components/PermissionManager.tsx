@@ -125,6 +125,7 @@ export function PermissionManager({ table }: { table: string }) {
                     <label className="cursor-pointer justify-center">
                       <input
                         type="checkbox"
+                        aria-label={`${role}: ${f.label}`}
                         data-testid={`perm-${role}-${f.key}`}
                         checked={matrix[role]?.[f.key] ?? false}
                         onChange={() => toggle(role, f.key)}

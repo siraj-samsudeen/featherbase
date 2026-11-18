@@ -2,7 +2,7 @@
 // and the grid are React-side; creating the table goes through the real
 // in-process server, so what lands is checked against its metadata.
 
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { tableSlug } from 'shared'
 import userEvent from '@testing-library/user-event'
 import { describe } from 'vitest'
@@ -14,6 +14,21 @@ const cell = (row: HTMLElement, field: string) =>
   row.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-rowfield=${field}]`)!
 
 describe('Build a table by describing its columns', () => {
+  test('every control in a column row is named by its column heading and its row', async ({ admin }) => {
+    await renderApp('/featherbase/admin/new-table', admin)
+    await screen.findByTestId('table-builder')
+    const row = gridRows()[0]!
+    for (const [field, name] of [
+      ['label', 'Column 1: Field label'],
+      ['in_list_view', 'Column 1: List'],
+      ['column_name', 'Column 1: Database name'],
+      ['column_type', 'Column 1: Type'],
+      ['target', 'Column 1: Details'],
+      ['reqd', 'Column 1: Reqd'],
+    ] as const)
+      expect(within(row).getByRole(field === 'column_type' ? 'combobox' : field === 'in_list_view' || field === 'reqd' ? 'checkbox' : 'textbox', { name })).toBe(cell(row, field))
+  })
+
   test('a pasted header line becomes one column per name, each typed from the sample values below it', async ({
     admin,
   }) => {
