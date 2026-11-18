@@ -1080,7 +1080,7 @@ export function ListView({
         </div>
       </div>
       {onFiltersChange && meta.data && addFilterOpen && (
-        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} builderOpen onLinkedAdded={() => setAddFilterOpen(false)} chips={false} />
+        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} onLinkedAdded={() => setAddFilterOpen(false)} chips={false} />
       )}
       {selected.size > 0 && !isRowsReadOnly(meta.data) && (
         <div

@@ -354,15 +354,12 @@ export function FilterBar({
   meta,
   filters,
   onChange,
-  builderOpen = true,
   onLinkedAdded,
   chips = true,
 }: {
   meta: import('../lib/meta').TableMeta
   filters: Filter[]
   onChange: (filters: Filter[]) => void
-  /** False leaves only the chips of the filters already applied (#1017). */
-  builderOpen?: boolean
   /** #1276: a Linked to filter was added; the list closes its Add filter row. */
   onLinkedAdded?: () => void
   /** #1289: false when the page shows the chips in its own filter row. */
@@ -382,7 +379,7 @@ export function FilterBar({
   const kind = filterBoxKind(column, op)
   // #1276: the Tables this list links to; a connected Table follows only its own
   // links within its source, and cannot ask for rows NOT linked.
-  const links = useLinkOptions(builderOpen ? meta.name : undefined)
+  const links = useLinkOptions(meta.name)
   const linked = field === LINKED || field === NOT_LINKED
 
   const ops: readonly string[] = meta.data_source ? OPS : [...OPS, ...BLANK_OPS]
@@ -396,7 +393,7 @@ export function FilterBar({
 
   return (
     <div className="mb-3">
-      {builderOpen && <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <select
           value={field}
           onChange={(e) => { setField(e.target.value); setValue('') }}
@@ -476,8 +473,8 @@ export function FilterBar({
           Add
         </button>
         </>}
-      </div>}
-      {builderOpen && linked && (
+      </div>
+      {linked && (
         <LinkedFilterBuilder
           key={field}
           meta={meta}
@@ -490,7 +487,7 @@ export function FilterBar({
           }}
         />
       )}
-      {chips && <FilterChips meta={meta} filters={filters} onChange={onChange} className={builderOpen ? 'mt-2' : undefined} />}
+      {chips && <FilterChips meta={meta} filters={filters} onChange={onChange} className="mt-2" />}
     </div>
   )
 }
