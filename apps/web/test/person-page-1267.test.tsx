@@ -9,6 +9,7 @@ import { sql } from 'server/src/db'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
 import { configureMicrosoft } from 'server/test/microsoft-mock'
 import { rowHref, tableHref } from 'shared'
+import { fmtDateTime } from '@featherbase/shop-floor'
 import { test, expect, renderApp } from './pg-test'
 import { PLANT, SITE, seedSites } from './relational-fixture'
 import { openLine, showEnded } from './sign-in-lines'
@@ -129,7 +130,8 @@ test("hovering the save state on load names the row's last change and who made i
   const state = await screen.findByTestId('save-state')
   await userEvent.hover(state)
   const detail = await screen.findByTestId('save-state-detail')
-  expect(detail).toHaveTextContent('Last changed 17-Nov-2026 14:02 by Administrator')
+  // In the reader's own clock, whatever zone the machine is in.
+  expect(detail).toHaveTextContent(`Last changed ${fmtDateTime(new Date('2026-11-17T08:32:00Z'))} by Administrator`)
   expect(within(detail).getByRole('link', { name: 'Administrator' })).toBeInTheDocument()
   await userEvent.unhover(state)
   await waitFor(() => expect(screen.queryByTestId('save-state-detail')).not.toBeInTheDocument())

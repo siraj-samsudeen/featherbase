@@ -60,7 +60,8 @@ const on = (typeColumn: string): ColumnSpec => ({ class: 'conditional-id', typeC
 const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   person: {
     row_id: id, email: code, username: code, full_name: text, password_hash: code, language: code,
-    user_image: code, theme: code,
+    // #1267: a fixed choice (Consultant, Vendor), never free text.
+    user_image: code, theme: code, external_label: code,
   },
   service_account: { row_id: id, label: text, display_name: text },
   person_id_map: { '*': code },
