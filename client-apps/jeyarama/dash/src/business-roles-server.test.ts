@@ -165,12 +165,14 @@ describe("Why on the platform's Map", () => {
     expect(can.filter(b => b.reach).length).toBeGreaterThan(0)
     // Codex round 3: each report is its record, so the Map draws it as a link to it.
     expect(can.filter(b => b.detail === 'Report').map(b => [b.name, b.record])).toEqual([['Sales', { table: 'dash.report', row: 'sales' }], ['Vendor Sales', { table: 'dash.report', row: 'vs' }]])
-    expect(why.edges).toEqual(expect.arrayContaining([['person', 'role:0'], ['role:0', 'role:0:app:Dash:Reader']]))
+    expect(why.edges).toEqual(expect.arrayContaining([['person', 'role:0'], ['role:0', 'app:Dash:Reader']]))
+    // Each App · Level names the roles that give it.
+    expect(why.columns[2]!.boxes.find(b => b.name === 'Dash · Reader')).toMatchObject({ detail: 'Store Manager' })
     // Verifier: every edge leads to the very next column, so no line runs behind another column's boxes.
     const columnOf = new Map(why.columns.flatMap((c, i) => c.boxes.map(b => [b.id, i] as const)))
     for (const [from, to] of why.edges) expect(columnOf.get(to)! - columnOf.get(from)!).toBe(1)
     // A report comes through its role's Dash box.
-    expect(why.edges.filter(([, to]) => to === 'report:vs').every(([from]) => from.startsWith('role:0:app:Dash:'))).toBe(true)
+    expect(why.edges.filter(([, to]) => to === 'report:vs').every(([from]) => from.startsWith('app:Dash:'))).toBe(true)
   })
 
   it("keeps within the platform's limits: long words are cut, a long column ends in '+ N more', an empty area says nothing", async () => {
@@ -192,7 +194,7 @@ describe("Why on the platform's Map", () => {
   })
 
   // Codex round 1: the same role held twice is two boxes, and a permission is lit only from the role that grants it.
-  it('keeps each role held its own box, and joins a permission only to the roles that grant it, as one box', async () => {
+  it('keeps each role held its own box, and draws each App · Level once, from every role that reaches it (UI owner)', async () => {
     const tables = await seeded()
     // Staff from the HR title, and Staff again by hand: the same role held twice.
     await giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Staff'), ends_on: '2999-03-31', reason: 'Covering' } }) as never)
@@ -201,14 +203,21 @@ describe("Why on the platform's Map", () => {
     expect(why.columns[1]!.boxes.filter(b => b.name === 'Staff')).toHaveLength(2)
     const ids = why.columns.flatMap(c => c.boxes.map(b => b.id))
     expect(new Set(ids).size).toBe(ids.length)
-    // Each permission box once; each edge into it from an App · Level whose role grants exactly it.
+    const appNames = why.columns[2]!.boxes.map(b => b.name)
+    expect(new Set(appNames).size).toBe(appNames.length)
     const explained = await explainPerson(context(tables, { payload: { person: 'st' } }) as never)
     const roleOfHolder = (holder: string) => explained.roles[Number(holder.split(':')[1])]!.role
-    for (const [from, to] of why.edges.filter(([, to]) => to.startsWith('can:'))) {
-      const [, app, level, verb, thing, reach] = to.split(':')
-      expect(explained.permissions.some(p => p.role === roleOfHolder(from) && p.app === app && p.level === level && p.verb === verb && p.thing === thing && p.reach === reach)).toBe(true)
-      expect(from).toBe(`${from.split(':app:')[0]}:app:${app}:${level}`)
+    for (const box of why.columns[2]!.boxes) {
+      const [, app, level] = String(box.id).split(':')
+      const from = why.edges.filter(([, to]) => to === box.id).map(([f]) => f)
+      // Every role that reaches this App · Level is joined to it, and only those.
+      const reaching = explained.roles.flatMap((r, i) => explained.permissions.some(p => p.role === r.role && p.app === app && p.level === level) ? [`role:${i}`] : [])
+      expect(from.sort()).toEqual(reaching.sort())
+      expect(String(box.detail)).toBe([...new Set(from.map(f => explained.roles[Number(f.split(':')[1])]!.name))].join(' · '))
+      expect(from.every(f => explained.permissions.some(p => p.role === roleOfHolder(f) && p.app === app))).toBe(true)
     }
+    // Each permission comes from its own App · Level.
+    for (const [from, to] of why.edges.filter(([, to]) => to.startsWith('can:'))) expect(to.startsWith(`can:${from.slice(4)}:`)).toBe(true)
   })
 
   // Codex adversarial round 3: an area's words that name a record without saying which never reach the Map.
@@ -220,6 +229,15 @@ describe("Why on the platform's Map", () => {
     const parts = (sm.columns[1]!.boxes[0] as { detailParts: { record?: unknown }[] }).detailParts
     expect(parts.length).toBeGreaterThan(0)
     expect(parts.every(p => p.record)).toBe(true)
+  })
+
+  it('says "both roles" under an App · Level that both of a two-role person\'s roles reach', async () => {
+    const tables = await seeded()
+    await giveRole(context(tables, { payload: { person: 'sm', change: 'Also give', role: roleId(tables, 'Team Leader'), ends_on: '2999-03-31', reason: 'Covering' } }) as never)
+    const why = await whyAccess(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never)
+    const reached = why.columns[2]!.boxes.filter(b => why.edges.filter(([, to]) => to === b.id).length === 2)
+    expect(reached.length).toBeGreaterThan(0)
+    expect(reached.every(b => b.detail === 'both roles')).toBe(true)
   })
 
   it('says a role given by hand is by hand', async () => {

@@ -339,12 +339,14 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['division_head_and_visual_merchandising', '0.13.33', '0.13.34', 0],
       // #1282: the platform Map's Why for a Person, with no Table change.
       ['why_on_the_map', '0.13.34', '0.13.35', 0],
+      // #1282: the Map's Why draws each App · Level once (UI owner), with no Table change.
+      ['why_app_levels_merged', '0.13.35', '0.13.36', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
-    expect(pkg.version).toBe('0.13.35')
+    expect(pkg.version).toBe('0.13.36')
   })
 })

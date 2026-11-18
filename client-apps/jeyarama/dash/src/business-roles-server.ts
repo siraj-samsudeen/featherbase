@@ -617,42 +617,48 @@ export async function whyAccess(context: AccessContext) {
   if (!mayExplainAccess(context)) context.reject!(ONLY_MANAGERS)
   const person = String((context.payload as { row: string }).row)
   const e = await explainPerson({ ...context, payload: { person } } as AccessContext)
-  // Verifier: the chain runs Person → each role held → that role's App · Level → what it allows and the reports it
-  // gives, so App · Level is on every chain and no line skips a column. A permission is one box, reached from every
-  // App · Level whose role grants it (two routes to one thing); a report from its role's Dash box, or from Given To
-  // Them Directly. Codex: one box per role held, and nothing lit for a role that does not grant it.
+  // Verifier and UI owner: the chain runs Person → each role held → App · Level → what it allows and the reports it
+  // gives, so App · Level is on every chain and no line skips a column. Each App · Level is one box, naming the roles
+  // that give it ("both roles", or their names), reached from each of them; lighting what it allows lights every role
+  // that reaches it (UI owner, 18-Nov-2026). A permission is one box; a report comes from its role's Dash box, or
+  // from Given To Them Directly. Codex: one box per role held.
   const capped = <T>(items: T[], box: (item: T) => Record<string, unknown>, more: string) =>
     items.length <= WHY_COLUMN ? items.map(box)
       : [...items.slice(0, WHY_COLUMN - 1).map(box), { id: `${more}:more`, name: `+ ${items.length - WHY_COLUMN + 1} more` }]
   const direct = e.reports.filter(r => r.direct)
-  const holders = [...e.roles.map((r, i) => ({ id: `role:${i}`, role: r.role, r })), ...(direct.length ? [{ id: 'direct', role: null, r: null }] : [])]
-  const levels = [...new Map(e.permissions.map(p => [`${p.app}·${p.level}`, { app: p.app, level: p.level }])).values()]
-  // Each holder's App · Level boxes: the levels its role's permissions give; Dash for a report given directly.
-  const appsOf = (h: (typeof holders)[number]) => h.role === null ? [{ id: `${h.id}:app:Dash`, name: 'Dash · Reports Given To Them', app: 'Dash', level: '' }]
-    : levels.filter(l => e.permissions.some(p => p.role === h.role && p.app === l.app && p.level === l.level))
-      .map(l => ({ id: `${h.id}:app:${l.app}:${l.level}`, name: clip(`${l.app} · ${l.level}`), app: l.app, level: l.level }))
-  const apps = holders.flatMap(h => appsOf(h).map(a => ({ ...a, holder: h })))
+  const holders = [...e.roles.map((r, i) => ({ id: `role:${i}`, role: r.role as string | null, name: r.name })),
+    ...(direct.length ? [{ id: 'direct', role: null, name: 'Given To Them Directly' }] : [])]
+  const appId = (app: string, level: string) => `app:${app}:${level}`
+  const levels = [...new Map(e.permissions.map(p => [appId(p.app, p.level), { app: p.app, level: p.level }])).values()]
+  const reaching = (l: { app: string; level: string }) => holders.filter(h => h.role !== null && e.permissions.some(p => p.role === h.role && p.app === l.app && p.level === l.level))
+  const roleCount = e.roles.length
+  const givenBy = (hs: { name: string }[]) => hs.length === 2 && roleCount === 2 ? 'both roles' : clip([...new Set(hs.map(h => h.name))].join(' · '))
+  const apps = [
+    ...levels.map(l => ({ id: appId(l.app, l.level), name: clip(`${l.app} · ${l.level}`), app: l.app, level: l.level, from: reaching(l) })),
+    ...(direct.length ? [{ id: 'direct:app:Dash', name: 'Dash · Reports Given To Them', app: 'Dash', level: '', from: holders.filter(h => h.role === null) }] : []),
+  ]
   const permKey = (p: { app: string; level: string; verb: string; thing: string; reach: string }) => `can:${p.app}:${p.level}:${p.verb}:${p.thing}:${p.reach}`
   const allowed = [...new Map(e.permissions.map(p => [permKey(p), p])).values()]
-  const roleBoxes = capped(holders, h => h.r ? {
-    id: h.id, name: clip(h.r.name), record: { table: ROLE, row: h.r.role }, ...areaParts(h.r.area.parts),
-    source: BY_HAND.has(h.r.kind) ? 'hand' : 'hr',
-  } : { id: h.id, name: 'Given To Them Directly' }, 'role')
-  const appBoxes = capped(apps, a => ({ id: a.id, name: a.name }), 'app')
+  const roleBoxes = capped(holders, h => {
+    const r = h.role === null ? undefined : e.roles[Number(h.id.split(':')[1])]
+    return r ? { id: h.id, name: clip(r.name), record: { table: ROLE, row: r.role }, ...areaParts(r.area.parts), source: BY_HAND.has(r.kind) ? 'hand' : 'hr' }
+      : { id: h.id, name: h.name }
+  }, 'role')
+  const appBoxes = capped(apps, a => ({ id: a.id, name: a.name, ...(a.from.length && a.level ? { detail: givenBy(a.from) } : {}) }), 'app')
   const can = capped([
     ...allowed.map(p => ({ id: permKey(p), name: clip(`${p.verb} ${p.thing}`), detail: clip(`${p.app} · ${p.level}`), reach: p.reach })),
     ...e.reports.map(r => ({ id: `report:${r.key}`, name: clip(r.name), detail: 'Report', record: { table: 'dash.report', row: r.key } })),
   ], box => box, 'can')
   const shown = new Set(['person', ...[...roleBoxes, ...appBoxes, ...can].map(b => String(b.id))])
-  const dashBox = (holder: string) => apps.find(a => a.holder.id === holder && (a.holder.role === null || a.app === 'Dash'))?.id
+  // A report comes through the Dash box its role reaches (else straight from the role).
+  const dashOf = (h: { id: string; role: string | null }) => apps.find(a => (h.role === null ? a.id === 'direct:app:Dash' : a.app === 'Dash' && a.from.some(f => f.id === h.id)))?.id
   const edges = ([
     ...holders.map(h => ['person', h.id]),
-    ...apps.map(a => [a.holder.id, a.id]),
-    ...apps.flatMap(a => a.holder.role === null ? [] : e.permissions
-      .filter(p => p.role === a.holder.role && p.app === a.app && p.level === a.level).map(p => [a.id, permKey(p)])),
+    ...apps.flatMap(a => a.from.map(h => [h.id, a.id])),
+    ...allowed.map(p => [appId(p.app, p.level), permKey(p)]),
     ...e.reports.flatMap(r => [
-      ...r.roles.flatMap(role => holders.filter(h => h.role === role).map(h => [dashBox(h.id) ?? h.id, `report:${r.key}`])),
-      ...(r.direct ? [[dashBox('direct')!, `report:${r.key}`]] : []),
+      ...r.roles.flatMap(role => holders.filter(h => h.role === role).map(h => [dashOf(h) ?? h.id, `report:${r.key}`])),
+      ...(r.direct ? [['direct:app:Dash', `report:${r.key}`]] : []),
     ]),
   ] as [string, string][]).filter(([from, to]) => shown.has(from) && shown.has(to))
   const unique = [...new Map(edges.map(edge => [edge.join('→'), edge])).values()].slice(0, WHY_EDGES)
