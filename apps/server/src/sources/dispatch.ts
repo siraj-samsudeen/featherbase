@@ -236,7 +236,7 @@ async function mapFilters(
       if (++budget.hops > MAX_RELATED_HOPS)
         throw new AppError('ValidationError', `At most ${MAX_RELATED_HOPS} 'related' hops per request`)
       const spec = parseRelatedSpec(value)
-      if (bind.source.engine !== 'postgres' || spec.via !== undefined || field === 'parent')
+      if (bind.source.engine !== 'postgres' || spec.via !== undefined || spec.column !== undefined || field === 'parent')
         throw new AppError('ValidationError', 'Source related filters support only direct References within one PostgreSQL Data Source')
       const column = requireSourceColumn(bind, field, 'filter')
       if (!meta.columns.some((c) => c.column_name === field && c.column_type === 'Reference' && c.reference_table === spec.table))

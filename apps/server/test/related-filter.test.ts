@@ -98,12 +98,84 @@ describe('NAV-002: related filters', () => {
     expect(names).toEqual(['O-2'])
   })
 
-  test("'not related' takes only the sub-table shape", async ({ admin }) => {
+  // #1276: "Not linked to…" on any link. A row with the link empty is not linked.
+  test('not related, reference column: rows not pointing at a matching target, empty ones included', async ({ admin }) => {
     await setup(admin)
-    const res = await admin.fetch(`/api/table/${encodeURIComponent(ORDER)}?filters=${encodeURIComponent(JSON.stringify([
+    await admin.post('/api/save_row', { table: ORDER, row: { row_id: 'O-5', total: 5 } })
+    const { names } = await list(admin, ORDER, [
       ['supplier', 'not related', { table: SUP, filters: [['city', '=', 'Chennai']] }],
-    ]))}`)
-    await expectStatus(res, 417)
+    ])
+    expect(names).toEqual(['O-3', 'O-5'])
+  })
+
+  // #1276: a back-link, "Suppliers linked to Orders over 200": rows of this
+  // Table that the target's Reference column points at.
+  test('back-link: rows a matching target row points at', async ({ admin }) => {
+    await setup(admin)
+    const { names } = await list(admin, SUP, [
+      ['row_id', 'related', { table: ORDER, column: 'supplier', filters: [['total', '>', 200]] }],
+    ])
+    expect(names).toEqual(['S-A'])
+  })
+
+  test('not related, back-link: rows no matching target row points at', async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/save_row', { table: ORDER, row: { row_id: 'O-5', total: 5 } }) // no supplier
+    const { names } = await list(admin, SUP, [
+      ['row_id', 'not related', { table: ORDER, column: 'supplier', filters: [['total', '>', 200]] }],
+    ])
+    expect(names).toEqual(['S-B'])
+  })
+
+  test('back-link to a sub-table: rows owning a matching child row', async ({ admin }) => {
+    await setup(admin)
+    const { names } = await list(admin, ORDER, [
+      ['row_id', 'related', { table: LINE, column: 'parent', filters: [['part', '=', 'P-2']] }],
+    ])
+    expect(names).toEqual(['O-2'])
+  })
+
+  test('a back-link must name a Reference to this Table, from row_id', async ({ admin }) => {
+    await setup(admin)
+    for (const filters of [
+      [['row_id', 'related', { table: ORDER, column: 'total' }]], // not a Reference
+      [['row_id', 'related', { table: ORDER, column: 'supplier' }]].map(([f, o, v]) => [f, o, v]), // valid on SUP, not on PART
+    ])
+      await expect(list(admin, PART, filters)).rejects.toMatchObject({ status: 417 })
+    await expect(list(admin, SUP, [['row_id', 'related', { table: PART, column: 'parent' }]]))
+      .rejects.toMatchObject({ status: 417 }) // PART is no sub-table of SUP
+  })
+
+  // A row the reader may not read never makes another row match: own-rows
+  // orders the reader did not create link no supplier for them.
+  test('a back-link counts only target rows the reader may read', async ({ admin, createUser }) => {
+    await setup(admin)
+    const ROLE = 'Rel Back Role'
+    await grantRole(admin, { table: SUP, role: ROLE, can_read: true })
+    await grantRole(admin, { table: ORDER, role: ROLE, can_read: true, own_rows_only: true })
+    const user = await createUser({ roles: [ROLE] })
+    const linked = [['row_id', 'related', { table: ORDER, column: 'supplier', filters: [] }]]
+    expect((await list(admin, SUP, linked)).names).toEqual(['S-A', 'S-B'])
+    expect((await list(user, SUP, linked)).names).toEqual([])
+    const notLinked = [['row_id', 'not related', { table: ORDER, column: 'supplier', filters: [] }]]
+    expect((await list(user, SUP, notLinked)).names).toEqual(['S-A', 'S-B'])
+  })
+
+  // A hidden relationship must not shape the answer (#917's rule, for back-links).
+  test('a back-link through a column the reader may not read is refused', async ({ admin, createUser }) => {
+    await setup(admin)
+    const AUDIT = 'Rel Audit'
+    await admin.post('/api/table_def', {
+      name: AUDIT,
+      columns: [{ column_name: 'checked', column_type: 'Reference', reference_table: SUP, tier: 'restricted' }],
+    })
+    await admin.post('/api/save_row', { table: AUDIT, row: { checked: 'S-B' } })
+    const ROLE = 'Rel Hidden Column Role'
+    await grantRole(admin, { table: [SUP, AUDIT], role: ROLE, can_read: true })
+    const user = await createUser({ roles: [ROLE] })
+    const filters = [['row_id', 'related', { table: AUDIT, column: 'checked', filters: [] }]]
+    expect((await list(admin, SUP, filters)).names).toEqual(['S-B'])
+    await expect(list(user, SUP, filters)).rejects.toMatchObject({ status: 417 })
   })
 
   test('parent: child rows whose owning row matches', async ({ admin }) => {

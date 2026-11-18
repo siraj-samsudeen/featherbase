@@ -215,11 +215,12 @@ export async function scopedWhere(
     // #835: rows holding NONE of a sub-table's matching rows ("people with no
     // role of their own"). Only the via shape: negating a Reference match
     // would also have to decide what an empty reference means.
+    // #835, #1276: rows linked to NONE of the matching rows ("Not linked to…").
+    // A row whose link is empty is not linked, so it is kept: an IN over an
+    // empty link is null, which `coalesce` reads as "not linked".
     else if (op === 'not related') {
-      const spec = parseRelatedSpec(value)
-      if (!spec.via) throw new AppError('ValidationError', `'not related' needs a sub-table { via, column, table }`)
       const { frag } = await relatedCond(field, value)
-      condition = { frag: sql`not ${frag}` }
+      condition = { frag: sql`not coalesce(${frag}, false)` }
     } else condition = { frag: plainCond(field, op, value) }
     return { frag: creatorColumns.has(field)
       ? sql`(${sql(tbl)}.created_by = ${user} and ${condition.frag})`
@@ -336,6 +337,42 @@ export async function scopedWhere(
                 select 1 from ${sql(await tableRelation(spec.via))} ${v}
                 where ${v}.parent = ${owner} and ${v}.parenttype = ${meta.name}
                   and ${v}.parentfield in ${sql(grids)} and ${inTarget})`,
+      }
+    }
+
+    // #1276: a back-link, "Suppliers linked to these Orders": rows of this
+    // Table the target's Reference column points at, or (`parent`) the rows
+    // holding matching sub-table rows. The column must be one the reader may
+    // read on the target, so a hidden relationship never shapes the answer.
+    if (spec.column !== undefined) {
+      if (field !== ROW_KEY)
+        throw new AppError('ValidationError', `A back-link related filter applies to '${ROW_KEY}'`)
+      const own = sql`${sql(tbl)}.${sql(meta.row_key)}`
+      if (spec.column === 'parent') {
+        if (target.meta.kind !== 'sub_table')
+          throw new AppError('ValidationError', `${spec.table} rows are not held by ${meta.name}`)
+        const holding = meta.columns.filter((f) => f.column_type === 'Sub-table' && f.row_table === target.meta.name)
+        if (!holding.length)
+          throw new AppError('ValidationError', `${spec.table} rows are not held by ${meta.name}`)
+        const reach = scope === 'own_rows' ? await permittedColumns(user, table, 'read') : unrestricted
+        const grids = holding.filter((f) => includesColumn(reach, f)).map((f) => f.column_name)
+        if (!grids.length)
+          throw new AppError('PermissionError', `No read permission on ${meta.name}'s ${spec.table} rows`)
+        return {
+          frag: sql`${own} in (select parent from ${sql(target.table)}
+            where parenttype = ${meta.name} and parentfield in ${sql(grids)} and ${target.where})`,
+        }
+      }
+      assertColumn(target.cols, spec.column, 'filter')
+      const backCol = target.meta.columns.find((f) => f.column_name === spec.column && f.column_type === 'Reference')
+      if (!backCol || !((!!backCol.reference_table && linkBase(backCol) === meta.name) ||
+        (!!backCol.table_column && linksTo(backCol.choices, meta.name))))
+        throw new AppError('ValidationError', `${spec.table}.${spec.column} is not a Reference to ${meta.name}`)
+      const pointed = target.readExpression(spec.column)
+      const ofThisTable = backCol.table_column ? sql` and ${sql(backCol.table_column)} = ${meta.name}` : sql``
+      return {
+        frag: sql`${own} in (select ${pointed} from ${sql(target.table)}
+          where ${target.where} and ${pointed} is not null${ofThisTable})`,
       }
     }
 
