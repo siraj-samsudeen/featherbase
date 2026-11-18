@@ -57,6 +57,7 @@ import './actions/motherduck-actions'
 import './actions/copy-refresh-actions'
 import './actions/master-sync-actions'
 import './actions/row-connections'
+import './actions/row-sources'
 import './actions/collection-aggregate'
 import './actions/collection-summary'
 import './actions/collection-purge'
@@ -967,10 +968,13 @@ app.get('/api/whoami', async (c) => {
   // Table list itself, so none are sent here.
   const manage = user.row_id === 'Administrator' || roles.includes('System Manager')
   const access = manage
-    ? { readable: [] as string[], creatable: [] as string[], ownGrant: true, admin: true }
+    ? { readable: [] as string[], creatable: [] as string[], deletable: [] as string[], ownGrant: true, admin: true }
     : await tableAccessFor(user.row_id, roles)
   // #1222: while viewing as someone, the shell offers no new rows.
-  if (c.get('viewingAs')) access.creatable = []
+  if (c.get('viewingAs')) {
+    access.creatable = []
+    access.deletable = []
+  }
   // #905: archived Tables the person can read, so the shell lists them apart
   // and keeps them out of the pickers.
   const archived = (await sql`select name from table_def where archived_at is not null order by name`)
@@ -979,7 +983,7 @@ app.get('/api/whoami', async (c) => {
   return c.json({
     ...user,
     roles,
-    capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable, archived },
+    capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable, deletable: access.deletable, archived },
     // #671: the installed apps this person can open, so the shared top bar can
     // lead to and name them without asking an Admin endpoint.
     apps: (await appCatalog(user.row_id)).map(({ name, title }) => ({ name, title })),

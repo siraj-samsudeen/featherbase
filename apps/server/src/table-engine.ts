@@ -201,6 +201,10 @@ export const tableDefSchema = z.object({
   scope_required: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
   // #1259: a queue's lists open on cards (List And Record). Kept when an update leaves it out.
   queue: z.boolean().nullish().transform((v) => v ?? undefined).optional(),
+  // #1273: where a feed row of this Table is corrected (an address in the
+  // instance, {column} for the row's value). Kept when an update leaves it out;
+  // null or empty clears it.
+  correction_path: z.string().nullish(),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
   // updateTable never touches these. A bound Table gets no DDL and no RLS
   // (BV1): its rows live on the source.
@@ -273,6 +277,16 @@ function targetOf(f: TableDef['columns'][number]): string | undefined {
   return undefined
 }
 
+/** #1273: a correction path is an address inside this instance ("/dash?view=explain&person={person}"):
+ *  it starts with one slash, never two or a backslash (no other site), and each {name} is a column. */
+export function correctionPathProblem(path: string, columns: string[]): string | null {
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\') || /\s/.test(path))
+    return 'The correction path must be an address inside this instance, starting with one /'
+  for (const [, name] of path.matchAll(/\{([^}]*)\}/g))
+    if (!columns.includes(name) && name !== 'row_id') return `{${name}} is not a column of this Table`
+  return null
+}
+
 function validateDef(def: TableDef) {
   const errs: Record<string, string> = {}
   if (def.access_policy) {
@@ -287,6 +301,10 @@ function validateDef(def: TableDef) {
     if (bad) errs.scope_on = `${bad} is not a Reference column of this Table`
   }
   if (def.scope_required && !def.scope_on?.length) errs.scope_required = 'Name the columns it is scoped on first'
+  if (def.correction_path) {
+    const problem = correctionPathProblem(def.correction_path, def.columns.map((c) => c.column_name))
+    if (problem) errs.correction_path = problem
+  }
   const reading = def.reading_presentation
   if (reading) {
     const columns = new Set(def.columns.filter(f => !['Section Break', 'Column Break', 'Sub-table'].includes(f.column_type)).map(f => f.column_name))
@@ -569,6 +587,7 @@ export async function updateTable(
   if (def.scope_on === undefined) def.scope_on = existing.scope_on
   if (def.scope_required === undefined) def.scope_required = existing.scope_required
   if (def.queue === undefined) def.queue = existing.queue
+  if (def.correction_path === undefined) def.correction_path = existing.correction_path
   validateDef(def)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
@@ -654,6 +673,7 @@ export async function updateTable(
       ...(def.scope_on !== undefined ? { scope_on: def.scope_on?.length ? def.scope_on : null } : {}),
       ...(def.scope_required !== undefined ? { scope_required: def.scope_required } : {}),
       ...(def.queue !== undefined ? { queue: def.queue } : {}),
+      ...(def.correction_path !== undefined ? { correction_path: def.correction_path || null } : {}),
       ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
@@ -1044,6 +1064,7 @@ export async function createTable(
     if (def.scope_on?.length) tableRow.scope_on = def.scope_on
     if (def.scope_required) tableRow.scope_required = true
     if (def.queue) tableRow.queue = true
+    if (def.correction_path) tableRow.correction_path = def.correction_path
     if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]
