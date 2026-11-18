@@ -12,7 +12,7 @@ export const PASSED_FILTERS: readonly PassedFilter[] = [
   { key: 'plant_code', passes: 'Their store, for a person with one store', example: '"1501"', group: 'one' },
   { key: 'material_groups', passes: 'Their subcategories in that store', example: '["101010101", "101010102"]', group: 'one' },
   { key: 'whole_store', passes: 'Whether they see the whole store or only part of it', example: 'true', group: 'one' },
-  { key: 'reach', passes: 'Their stores and subcategories, for a person with several', example: '{ "1501": null, "1502": ["101010101"] }', group: 'many' },
+  { key: 'reach', passes: 'Their stores and subcategories, for a person with several', example: '{ "1501": null, "1502": ["02", "101010101"] }', group: 'many' },
   { key: 'store', passes: 'The store to open on, among their stores', example: '"1501"', group: 'many' },
   { key: 'month', passes: 'The month to open on', example: '"this" or "last"', group: 'month' },
 ]
@@ -73,7 +73,7 @@ export function ownerInstruction(title: string, link: string): string {
     `Dive: ${link}`,
     '',
     'Dash sends these, set on the server when it opens the Dive:',
-    '- reach: the reader\'s stores. { "1501": null, "1502": ["101010101"] } — null is the whole store, a list is only those subcategories.',
+    '- reach: the reader\'s stores. { "1501": null, "1502": ["02", "101010101"] } — null is the whole store, a list is only those subcategories: each is a subcategory code or the start of one ("02" is every subcategory code starting 02), so match with starts_with.',
     '- store: the store to open on, always one of reach\'s.',
     '- month: "this" or "last".',
     '',

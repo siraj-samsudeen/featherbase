@@ -372,6 +372,14 @@ describe('the checks (5.1)', () => {
     expect(both.message).not.toMatch(/Role (is|are) not installed/)
   })
 
+  // #1277: a standard column (updated_at, created_by) every Table has is never named as missing.
+  test("a scope provider reading a Table's standard columns is not named as missing them", async () => {
+    const manifest = { name: 'healthscopestandard', title: 'Health scope standard', scopeProvider: { name: 'org', tables: ['Role'] },
+      baseTables: { read: { Role: ['updated_at', 'created_by'] } } }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('healthscopestandard', ${sql.json(manifest)}, true, true)`
+    expect(byKey(await runHealthChecks({ environment: 'production' }), 'scope-provider-tables:healthscopestandard')).toMatchObject({ ok: true, fix: null })
+  })
+
   test('every check names why it matters, and a failing one says how to fix it', async () => {
     await sql`delete from instance_settings_apply`
     for (const check of await runHealthChecks()) {

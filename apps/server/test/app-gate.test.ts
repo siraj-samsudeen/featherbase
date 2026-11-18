@@ -32,7 +32,7 @@ async function gated(access: Record<string, unknown>, roles: string[] | null = [
   if (roles) manifest.roles = roles
   else delete manifest.roles
   manifest.reads.operations = { ...manifest.reads.operations, yes: tableRead, no_note: tableRead, waiting_list: tableRead, approver: tableRead,
-    roles_of: tableRead, role_names: tableRead, own_notes: tableRead }
+    roles_of: tableRead, roles_of_many: tableRead, role_names: tableRead, own_notes: tableRead }
   manifest.baseTables = { read: { 'barproof.note': ['body'] } }
   manifest.access = access
   await writeFile(file, JSON.stringify(manifest))
@@ -42,6 +42,7 @@ reads.no_note = async ({ documents }) => (await documents.list('barproof.note', 
 reads.waiting_list = ({ people }) => people.waitingForAccess()
 reads.approver = ({ roles }) => roles.includes('Bar Approver')
 reads.roles_of = ({ people, payload }) => people.rolesOf(payload.person)
+reads.roles_of_many = ({ people, payload }) => people.rolesOfMany(payload.persons)
 reads.role_names = ({ people }) => people.roleNames()
 reads.own_notes = ({ baseTables }) => baseTables.list('barproof.note', { fields: ['body'] })
 `)
@@ -140,6 +141,19 @@ describe('an app gate: who opens the app', () => {
     expect((await appRead(admin, 'roles_of', { person: 42 })).result).toEqual([])
     await sql`update person set enabled = false where row_id = ${reader.user!}`
     expect((await appRead(admin, 'roles_of', { person: reader.user })).result).toEqual([])
+  })
+
+  // #1277: many people's roles in one ask, each exactly as rolesOf gives it.
+  test('an app asks many people\'s roles at once, each as rolesOf gives them', async ({ admin, createUser }) => {
+    const reader = await install(admin, createUser, { gate: 'yes' })
+    const persons = [reader.user!, admin.user!, 'nobody@example.test', reader.user!, '', 42]
+    const many = (await appRead(admin, 'roles_of_many', { persons })).result as Record<string, string[]>
+    const one = async (person: unknown) => (await appRead(admin, 'roles_of', { person })).result
+    expect(many).toEqual({ [reader.user!]: await one(reader.user), [admin.user!]: await one(admin.user), 'nobody@example.test': [] })
+    expect(many[reader.user!]).toEqual(expect.arrayContaining(['Bar Reader']))
+    await sql`update person set enabled = false where row_id = ${reader.user!}`
+    expect((await appRead(admin, 'roles_of_many', { persons: [reader.user] })).result).toEqual({ [reader.user!]: [] })
+    expect((await appRead(admin, 'roles_of_many', { persons: 'not a list' })).result).toEqual({})
   })
 
   test('an app lists the roles it may give, without the platform\'s own', async ({ admin, createUser }) => {

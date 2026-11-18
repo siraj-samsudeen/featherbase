@@ -52,6 +52,15 @@ describe('release preflight', () => {
     await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/DELEGATED_LOGIN_TEST_MODE is set on a "production" server/)
   })
 
+  test('test mode on a database labelled dev is allowed: dev is the hosted trial instance (#1278)', async () => {
+    mockOAuth(false)
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
+    vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
+    await sql`update internal_metadata set value = 'dev' where key = 'environment'`
+    const outcome = await preflightRelease({ environment: 'dev' }).then((passed) => passed.join('\n'), (err: Error) => err.message)
+    expect(outcome).not.toContain('DELEGATED_LOGIN_TEST_MODE')
+  })
+
   test('test mode against a database labelled production refuses, even for a staging process', async () => {
     // A hosted staging trial never runs the mock Google provider this suite turns on (env.ts).
     mockOAuth(false)

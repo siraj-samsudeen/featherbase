@@ -3,7 +3,7 @@
 // Tables: Dash keeps no copy. These reads run as the app, so each answer here is limited to what
 // this person may see, by this code.
 import { istToday } from './report.ts'
-import { DEPARTMENT, DEPARTMENT_SECTION, authorityRows, mayMove, sectionAreaOf } from './areas.ts'
+import { DEPARTMENT, DEPARTMENT_SECTION, authorityRows, mayEditOwnSection, mayMove, sectionAreaOf } from './areas.ts'
 import { EMPLOYEE_STATUS, SECTION_STATUS, day, exact, holdsOn, text } from './values.ts'
 import { whoIs, type Who } from './report-access-server.ts'
 
@@ -137,6 +137,9 @@ export async function myJobs(ctx: BaseContext, employees: Row[], today: string):
   if (!employees.length) return []
   return (await list(ctx, T.job, JOB_FIELDS, [['employee', 'in', employees.map(e => exact(e.row_id))]])).filter(job => inForce(job, today))
 }
+
+/** #1277: under business roles, Your sections' changes need a role that may edit sections. */
+const NO_EDIT = 'Your business role does not let you change which subcategories sit in your section'
 
 /** The caller's job by id, current and theirs, or a refusal. */
 async function myJob(ctx: ActionContext, id: unknown, today: string) {
@@ -651,6 +654,7 @@ export const actions = {
     const payload = payloadOf(ctx)
     const today = istToday()
     const { job, employee } = await myJob(ctx, payload.job, today)
+    if (!(await mayEditOwnSection(ctx, ctx.user, job, today))) ctx.reject(NO_EDIT)
     const from = await heldSection(ctx, job)
     if (!isActive(from)) ctx.reject('Your section is no longer open. Say which section is yours first')
     // Held from before it is checked until the proposal has recorded it, so what is checked is what is reviewed.
@@ -676,6 +680,7 @@ export const actions = {
       ctx.reject('Pick the subcategories to add')
     const today = istToday()
     const { job, employee } = await myJob(ctx, payload.job, today)
+    if (!(await mayEditOwnSection(ctx, ctx.user, job, today))) ctx.reject(NO_EDIT)
     const section = await heldSection(ctx, job)
     if (!isActive(section)) ctx.reject('Your section is no longer open')
     // In code order, so two people asking at once lock the same rows in the same order.
@@ -864,6 +869,8 @@ async function whyStale(ctx: ActionContext, proposal: ChangeProposal, a: About, 
       if (!(await sectionAreaOf(ctx, proposal.maker, section, today, a.kind === 'add' && a.from_section ? (from ? [from] : [{}]) : []))) return 'The manager who asked no longer manages that section.'
     }
   } else if (exact(employee?.person) !== proposal.maker || exact(employee?.[EMPLOYEE_STATUS]) !== 'Current') return 'The person who asked no longer holds this job.'
+  // #1277: under business roles, the asker's own section change also needs a role from this job that may edit sections.
+  if (!a.by_manager && a.kind !== 'section' && !(await mayEditOwnSection(ctx, proposal.maker, job, today))) return 'The person who asked may no longer change their section\'s subcategories.'
   if (a.kind !== 'removal') {
     const [to] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', destination]])
     if (!isActive(to) || exact(to?.site) !== a.site) return 'The section it would go to is no longer open.'

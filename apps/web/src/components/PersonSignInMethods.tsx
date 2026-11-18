@@ -313,6 +313,10 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
                 <span className="block">{kindOf(i) === 'microsoft' ? 'Microsoft account ID' : 'Google account number'}: {i.subject}</span>
               </details>
             )}
+            {/* #1271: a link that predates the employees-only rule, on someone who isn't an employee. */}
+            {!invited && standing.data?.status === 'none' && data!.methods.some((m) => m.key === i.method && m.employees_only) && (
+              <span className="block text-xs text-ink-subtle" data-testid={`sign-in-leftover-${i.id}`}>Not an employee: remove this link.</span>
+            )}
             {invited && i.invitation_sent_at && (
               <span className="block" data-testid={`invitation-sent-${i.id}`}>
                 {toSink ? 'invitation saved to the Email Sink' : 'invitation emailed'} {fmtInstantIST(i.invitation_sent_at)}

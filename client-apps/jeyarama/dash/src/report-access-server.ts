@@ -3,12 +3,14 @@
 // app (`baseTables`), so an ordinary reader needs no grant on them and can't list them; the
 // page writes as the signed-in person, through the platform's save path, so every change runs
 // the save rules and lands in version history.
-import { reportsReaching, type AccessRow, type Because, type BundleMember } from './report-access.ts'
+import { businessReportsReaching, reportsReaching, type AccessRow, type Because, type BundleMember } from './report-access.ts'
 import { EMPLOYEE_STATUS, exact, holdsOn, text } from './values.ts'
 import { diveIdIn, reportKeyFor, type DiveChoice } from './add-dive.ts'
 import { istToday } from './report.ts'
 import { TEAM_MANAGER, checkedFor, checkedSave, givableBundles, teamOf } from './team-access.ts'
 import { ALL_STORES_ROLE, type Documents } from './provider.ts'
+import { BUSINESS_ROLES, accessSource, liveBusinessAccess } from './access-source.ts'
+import type { Base } from './business-access.ts'
 
 type Row = Record<string, unknown>
 
@@ -34,6 +36,8 @@ export interface AccessContext {
   people?: {
     names(ids: string[]): Promise<Record<string, string | null>>
     rolesOf?(person: string): Promise<readonly string[]>
+    /** featherbase #1277: the roles of many people at once, as rolesOf gives each; absent on an older platform. */
+    rolesOfMany?(persons: string[]): Promise<Readonly<Record<string, readonly string[]>>>
     roleNames?(): Promise<readonly string[]>
     waitingForAccess?(): Promise<readonly { person: string; name?: string | null; asked_at: string }[]>
   }
@@ -66,9 +70,9 @@ export async function jobsOf(base: Documents, person: string, on: string): Promi
 
 /** Every access row and bundle member, as the app reads them. */
 async function grants(base: Documents): Promise<{ rows: (AccessRow & { row_id: string })[]; members: BundleMember[] }> {
-  const rows = (await all(base, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'removed'])).filter(row => !ticked(row.removed)).map(row => ({
+  const rows = (await all(base, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'business_role', 'removed'])).filter(row => !ticked(row.removed)).map(row => ({
     row_id: exact(row.row_id), report: nullable(row.report), report_bundle: nullable(row.report_bundle),
-    person: nullable(row.person), role: nullable(row.role), job: nullable(row.job),
+    person: nullable(row.person), role: nullable(row.role), job: nullable(row.job), business_role: nullable(row.business_role),
   }))
   const members = (await all(base, MEMBER, ['report_bundle', 'report', 'removed'])).filter(row => !ticked(row.removed)).map(row => ({ report_bundle: exact(row.report_bundle), report: exact(row.report) }))
   return { rows, members }
@@ -82,6 +86,22 @@ async function grants(base: Documents): Promise<{ rows: (AccessRow & { row_id: s
 export async function reportsGivenTo(base: Documents, person: string, roles: readonly string[], on: string): Promise<Map<string, Because[]>> {
   const { rows, members } = await grants(base)
   return reportsReaching({ person, roles, jobs: await jobsOf(base, person, on) }, rows, members)
+}
+
+/**
+ * #1277: the reports given to `person` by whichever rules decide now (access-source.ts): under business roles,
+ * those given to them or to a business role they hold; under the old rules, reportsGivenTo.
+ */
+export async function reportsGivenNow(base: Base, person: string, roles: readonly string[], on: string, source?: string): Promise<Map<string, Because[]>> {
+  if ((source ?? await accessSource(base)) !== BUSINESS_ROLES) return reportsGivenTo(base, person, roles, on)
+  const { access, model } = await liveBusinessAccess(base, person, on)
+  const { rows, members } = await grants(base)
+  const roleName = new Map(model.roles.map(r => [r.id, r.name]))
+  // A role viewing every report gives every report the instance has; the reports are read only for its holders.
+  const every = access.everyReport.length ? (await all(base, REPORT, ['report_key'])).map(row => exact(row.report_key)).filter(Boolean) : []
+  return new Map([...businessReportsReaching({ person, roles: access.roles, everyReport: access.everyReport }, rows, members, every)].map(([key, whys]) =>
+    [key, whys.map((why): Because => why.person ? { kind: 'person', receiver: person, bundle: why.bundle }
+      : { kind: 'business_role', receiver: roleName.get(why.role!)!, bundle: why.bundle, ...(why.every ? { every: true as const } : {}) })]))
 }
 
 /** Does the caller manage report access for the whole company? */
@@ -111,7 +131,7 @@ async function scopeOf(ctx: AccessContext, on: string): Promise<Scope> {
   const opensReports = roles.some(role => role === 'Dash Reader' || role === ALL_STORES_ROLE)
   const reports = (await names(ctx)).reports
   const reach = ctx.reach ? await ctx.reach(ctx.user, roles) : { any: false, wholeStore: false }
-  const holds = new Set(!opensReports ? [] : [...(await reportsGivenTo(ctx.baseTables!, ctx.user, roles, on)).keys()]
+  const holds = new Set(!opensReports ? [] : [...(await reportsGivenNow(ctx.baseTables as Base, ctx.user, roles, on)).keys()]
     .filter(key => reports.has(key) && closedBecause(reports.get(key), reach) === null))
   return { kind: 'team', team, holds }
 }
@@ -144,12 +164,13 @@ export async function personNames(ctx: AccessContext, ids: string[]): Promise<Ma
 
 /** One `because`, as the person lookup says it: "Job Team Leader, through Team leader pack". */
 export function becauseLine(because: Because, bundleName: (id: string) => string): string {
-  const route = because.kind === 'person' ? 'Given directly' : `${because.kind === 'role' ? 'Role' : 'Job'} ${because.receiver}`
+  if (because.every) return `Every report, through ${because.receiver}`
+  const route = because.kind === 'person' ? 'Given directly' : `${({ role: 'Role', job: 'Job', business_role: 'Business role' } as const)[because.kind]} ${because.receiver}`
   return because.bundle ? `${route}, through ${bundleName(because.bundle)}` : route
 }
 
 export type Gives = { kind: 'Report' | 'Bundle'; name: string }
-export type To = { kind: 'Person' | 'Role' | 'Job'; name: string; who?: Who }
+export type To = { kind: 'Person' | 'Role' | 'Job' | 'Business role'; name: string; who?: Who; id?: string }
 
 /** The Report access page: who has what, what can be given, and who is waiting. Managers only. */
 export async function accessPage(ctx: AccessContext, on: string = istToday()) {
@@ -159,13 +180,14 @@ export async function accessPage(ctx: AccessContext, on: string = istToday()) {
   // A Team Report Manager sees only what may be given, and only grants to their team, as a person.
   // The full name maps describe existing grants; only what may be given narrows (Codex standard round 1).
   const givable = { reports: new Set(team ? [...named.reports.keys()].filter(key => team.holds.has(key)) : named.reports.keys()), bundles: new Set(named.bundles.keys()) }
-  const access = (await all(ctx.baseTables!, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'updated_at', 'created_by', 'given_by_name', 'removed']))
+  const access = (await all(ctx.baseTables!, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'business_role', 'updated_at', 'created_by', 'given_by_name', 'removed']))
     .filter(row => !ticked(row.removed) && (!team || team.team.has(exact(row.person))))
   const members = (await all(ctx.baseTables!, MEMBER, ['report_bundle', 'report', 'updated_at', 'removed'])).filter(row => !ticked(row.removed))
   if (team) {
     givable.bundles = givableBundles([...named.bundles.keys()], members.map(m => ({ report_bundle: exact(m.report_bundle), report: exact(m.report) })), team.holds)
   }
   const jobs = team ? [] : await all(ctx.baseTables!, 'Job Assignment', ['job'])
+  const businessRoles = new Map((await all(ctx.baseTables!, 'dash.business_role', ['role_name'])).map(row => [exact(row.row_id), text(row.role_name)]))
   const waiting = team ? [] : (await ctx.people!.waitingForAccess?.()) ?? []
   const people = await personNames(ctx, [...access.map(row => exact(row.person)), ...access.map(row => exact(row.created_by)), ...waiting.map(w => w.person)])
   const who = await whoIs(ctx.baseTables!, [...access.map(row => exact(row.person)), ...waiting.map(w => w.person)], on)
@@ -174,7 +196,8 @@ export async function accessPage(ctx: AccessContext, on: string = istToday()) {
     const gives: Gives | null = nullable(row.report) ? { kind: 'Report', name: named.reports.get(exact(row.report))?.name ?? 'A report no longer listed' }
       : nullable(row.report_bundle) ? { kind: 'Bundle', name: named.bundles.get(exact(row.report_bundle)) ?? 'A bundle no longer listed' } : null
     const to: To | null = nullable(row.person) ? { kind: 'Person', name: people.get(exact(row.person)) ?? 'Someone you can’t see', who: who.get(exact(row.person)) }
-      : nullable(row.role) ? { kind: 'Role', name: exact(row.role) } : nullable(row.job) ? { kind: 'Job', name: exact(row.job) } : null
+      : nullable(row.role) ? { kind: 'Role', name: exact(row.role) } : nullable(row.job) ? { kind: 'Job', name: exact(row.job) }
+        : nullable(row.business_role) ? { kind: 'Business role', name: businessRoles.get(exact(row.business_role)) ?? 'A business role no longer listed', id: exact(row.business_role) } : null
     // A Team Report Manager takes away only what they gave someone in their team.
     const removable = !team || exact(row.created_by) === ctx.user
     return { id: exact(row.row_id), updated_at: exact(row.updated_at), gives, to, removable, given_by: text(row.given_by_name) || people.get(exact(row.created_by)) || (exact(row.created_by) === 'Administrator' ? 'Administrator' : 'Someone'),
@@ -192,6 +215,8 @@ export async function accessPage(ctx: AccessContext, on: string = istToday()) {
         .sort((a, b) => a.name.localeCompare(b.name)) }))
       .sort((a, b) => a.name.localeCompare(b.name)),
     roles: team ? [] : [...((await ctx.people!.roleNames?.()) ?? [])],
+    // #1277 (D4): the business roles a report can be given to.
+    business_roles: team ? [] : [...businessRoles].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
     jobs: [...new Set(jobs.map(row => exact(row.job)).filter(Boolean))].sort(),
     rows,
     waiting: waiting.map(w => ({ person: w.person, name: w.name || people.get(w.person) || 'Someone', asked_on: w.asked_at.slice(0, 10), who: who.get(w.person) })),
@@ -220,6 +245,10 @@ export async function whoIs(base: Documents, persons: string[], on: string, opts
     .sort((a, b) => exact(a.employee_code).localeCompare(exact(b.employee_code)))
   const current = employees.filter(row => text(row[EMPLOYEE_STATUS]) === 'Current')
   const jobs = current.length ? (await all(base, 'Job Assignment', ['employee', 'job', 'site', 'starts_on', 'ends_on'], [['employee', 'in', current.map(row => exact(row.row_id))]])).filter(row => holdsOn(row, on) && exact(row.job)) : []
+  // #1277 (owner, 18-Nov-2026): someone given a business role by hand that is in force is with the company even when
+  // payroll no longer lists them as current (owner-directors): never shown as having left.
+  const handGiven = new Set((await all(base, 'dash.role_assignment', ['person', 'ends_on', 'removed'], [['person', 'in', wanted]]))
+    .filter(row => !ticked(row.removed) && (!exact(row.ends_on) || exact(row.ends_on).slice(0, 10) >= on)).map(row => exact(row.person)))
   const siteIds = [...new Set(jobs.map(row => exact(row.site)).filter(Boolean))]
   const sites = new Map(siteIds.length ? (await all(base, 'Site', ['name'], [['row_id', 'in', siteIds]])).map(row => [exact(row.row_id), text(row.name)]) : [])
   for (const person of wanted) {
@@ -235,7 +264,7 @@ export async function whoIs(base: Documents, persons: string[], on: string, opts
       }
       const lines = [...held.keys()].sort()
       found.set(person, { code: nullable(mine[0].employee_code), jobs: lines, staff: 'current', ...(opts.sites ? { held: lines.map(l => held.get(l)!) } : {}) })
-    } else if (left) found.set(person, { code: nullable(left.employee_code), jobs: [], staff: 'left', ...(opts.sites ? { held: [] } : {}) })
+    } else if (left && !handGiven.has(person)) found.set(person, { code: nullable(left.employee_code), jobs: [], staff: 'left', ...(opts.sites ? { held: [] } : {}) })
   }
   return found
 }
@@ -292,7 +321,7 @@ export async function personLookup(ctx: AccessContext, on: string, reaches: (per
   if (scope.kind === 'team' && !scope.team.has(person)) ctx.reject!(NOT_IN_TEAM)
   const named = await names(ctx)
   const roles = (await ctx.people!.rolesOf?.(person)) ?? []
-  const given = await reportsGivenTo(ctx.baseTables!, person, roles, on)
+  const given = await reportsGivenNow(ctx.baseTables as Base, person, roles, on)
   const reach = await reaches(person, roles)
   const name = (await personNames(ctx, [person])).get(person) ?? 'This person'
   const reports = [...given].map(([key, because]) => {
@@ -304,11 +333,11 @@ export async function personLookup(ctx: AccessContext, on: string, reaches: (per
 }
 
 /** The one thing a row gives and the one receiver, or a plain refusal. */
-export function accessKey(row: { report?: unknown; report_bundle?: unknown; person?: unknown; role?: unknown; job?: unknown }): { key: string } | { problem: string } {
+export function accessKey(row: { report?: unknown; report_bundle?: unknown; person?: unknown; role?: unknown; job?: unknown; business_role?: unknown }): { key: string } | { problem: string } {
   const gives = (['report', 'report_bundle'] as const).filter(column => exact(row[column]))
-  const to = (['person', 'role', 'job'] as const).filter(column => exact(row[column]))
+  const to = (['person', 'role', 'job', 'business_role'] as const).filter(column => exact(row[column]))
   if (gives.length !== 1) return { problem: 'Give exactly one report or one bundle' }
-  if (to.length !== 1) return { problem: 'Give it to exactly one person, one role or one job' }
+  if (to.length !== 1) return { problem: 'Give it to exactly one person, one role, one job or one business role' }
   return { key: `${gives[0]}:${exact(row[gives[0]])}/${to[0]}:${exact(row[to[0]])}` }
 }
 
@@ -316,7 +345,7 @@ export function accessKey(row: { report?: unknown; report_bundle?: unknown; pers
 export async function giveReport(ctx: AccessContext, on: string = istToday()) {
   const scope = await scopeOf(ctx, on)
   const payload = (ctx.payload ?? {}) as Record<string, unknown>
-  const values = Object.fromEntries((['report', 'report_bundle', 'person', 'role', 'job'] as const).map(column => [column, nullable(payload[column])]))
+  const values = Object.fromEntries((['report', 'report_bundle', 'person', 'role', 'job', 'business_role'] as const).map(column => [column, nullable(payload[column])]))
   const checked = accessKey(values)
   if ('problem' in checked) ctx.reject!(checked.problem)
   const key = (checked as { key: string }).key
@@ -403,7 +432,7 @@ export async function addToBundle(ctx: AccessContext) {
 }
 
 /** Save rules for the access Tables: one thing to one receiver, and keys that refuse duplicates. */
-const GIVES = ['report', 'report_bundle', 'person', 'role', 'job'] as const
+const GIVES = ['report', 'report_bundle', 'person', 'role', 'job', 'business_role'] as const
 
 /**
  * #1217: a writer who doesn't manage access company-wide (a Team Report Manager) saves an access
@@ -489,10 +518,14 @@ export async function grantOptions(ctx: AccessContext, on: string) {
         if (text(row[EMPLOYEE_STATUS]) === 'Current' && exact(row.person) && exact(row.person) !== person) peers.add(exact(row.person))
   }
   const roles = (await ctx.people!.rolesOf?.(person)) ?? []
-  const reaching = await reportsGivenTo(base, person, roles, on)
+  // #1277: by whichever rules decide now; a bundle is marked given when any of its reports reaches them.
+  const source = await accessSource(base as Base)
+  const reaching = await reportsGivenNow(base as Base, person, roles, on, source)
   const { rows } = await grants(base)
-  const bundleReaches = (bundle: string) => rows.some(row => row.report_bundle === bundle
-    && (row.person === person || (row.role !== null && roles.includes(row.role)) || (row.job !== null && jobs.includes(row.job))))
+  const bundleReaches = (bundle: string) => source === BUSINESS_ROLES
+    ? [...reaching.values()].some(why => why.some(b => b.bundle === bundle || b.every))
+    : rows.some(row => row.report_bundle === bundle
+      && (row.person === person || (row.role !== null && roles.includes(row.role)) || (row.job !== null && jobs.includes(row.job))))
   const named = await names(ctx)
   const choices = [
     ...[...named.bundles].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => ({ id: `bundle:${id}`, label: name, group: 'Bundle', given: bundleReaches(id), payload: { report_bundle: id } })),

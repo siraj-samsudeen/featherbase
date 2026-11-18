@@ -643,6 +643,22 @@ export async function updateIdentity(
 const usableWhere = (mock: boolean) =>
   sql`m.enabled and (m.kind <> all(${[...REDIRECT_KINDS]}::text[]) or coalesce(m.client_id, '') <> '' or ${mock}::boolean)`
 
+/** #1271: each live link that may still sign its person in, judged exactly as
+ *  waysInEach judges a link ('possible': a link not yet proven to keep its
+ *  domain still counts). Pending invites are not links yet; callers judge them. */
+export async function workingLinkIds(): Promise<Set<string>> {
+  const mock = mockOAuthEnabled()
+  const lists = await domainListsJson(sql)
+  const rows = await sql`
+    select i.id from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
+    where i.subject is not null and i.ended_at is null
+      and not (m.kind = 'delegated_password' and (i.person_id = 'Administrator' or exists (
+        select 1 from has_role r where r.parent = i.person_id and r.role in ('System Manager', 'Administrator'))))
+      and ${keepsDomain(lists, 'possible')}
+      and ${tenantKept(sql`m.settings->>'tenant'`)}`
+  return new Set(rows.map((r) => String(r.id)))
+}
+
 /** How many working ways in a person has right now. Pending invites never
  *  count. `excluding` leaves one identity id (or 'password') out. */
 async function waysIn(user: string, db: Sql | TxSql, excluding?: string, proof: WayInProof = 'proven'): Promise<number> {

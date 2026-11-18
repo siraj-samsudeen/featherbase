@@ -26,11 +26,16 @@ const VENDORS = { report_key: 'vendors', report_name: 'Vendor sales by city', di
 /** The platform's table reads: the filters and paging `list` is given, over in-memory rows. */
 function reader(tables: Record<string, Row[]>, throws: boolean | string[] = false) {
   return {
-    async list(table: string, args: { filters?: [string, string, unknown][]; order_by?: string; limit_start?: number; limit_page_length?: number }) {
+    async list(table: string, args: { filters?: [string, string, unknown][]; order_by?: string; limit_start?: number; limit_page_length?: number; with_retired?: boolean }) {
       if (throws === true || (Array.isArray(throws) && throws.includes(table))) throw new Error('not set up')
-      const found = (tables[table] ?? []).filter(r => (args.filters ?? []).every(([column, op, value]) => (op === 'in' ? (value as unknown[]).includes(r[column]) : op === 'like' ? String(r[column]).includes(String(value).replaceAll('%', '')) : r[column] === value)))
+      // As the platform: a retired row only when asked for.
+      const found = (tables[table] ?? []).filter(r => args.with_retired || !r.retired_at).filter(r => (args.filters ?? []).every(([column, op, value]) => (op === 'in' ? (value as unknown[]).includes(r[column]) : op === 'like' ? String(r[column]).includes(String(value).replaceAll('%', '')) : r[column] === value)))
       const start = args.limit_start ?? 0
       return found.slice(start, start + (args.limit_page_length ?? 500))
+    },
+    /** As the platform's: whether the Table can be read, never a failure. */
+    async available(table: string) {
+      return table in tables && throws !== true && !(Array.isArray(throws) && throws.includes(table))
     },
   }
 }
@@ -845,6 +850,77 @@ describe('the embed_session read', () => {
         const s = await state({ places: mixed, payload: { store: '9902' } })
         expect([s.whole_store, s.material_groups]).toEqual([true, undefined])
       })
+    })
+  })
+
+  // #1269: a reach Dive gets each store's subcategories as the shortest code prefixes the reader wholly holds.
+  describe("a reach Dive's subcategories", () => {
+    const LINE = ['920101001', '920101002', '920201001']
+    const OTHER = ['930101001', '930101002']
+    const SUBCATEGORIES = [...LINE, ...OTHER].map(row_id => ({ row_id }))
+    const head = [place('9901 / Assigned subcategories', '9901', LINE), place('9902 / Assigned subcategories', '9902', [...LINE, OTHER[0]])]
+    const reach = async (options: Options) => {
+      const calls = upstream(ok)
+      vi.spyOn(console, 'info').mockImplementation(() => {})
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      await embedSession(context({ reports: [VENDORS], payload: { report: 'vendors' }, places: head, ...options }).ctx)
+      return sentBody(calls).initial_state.reach
+    }
+
+    it('sends a wholly held line as its prefix, and a line short of one code as its codes', async () => {
+      expect(await reach({ core: { ...STORES, Subcategory: SUBCATEGORIES } })).toEqual({ 9901: ['92'], 9902: ['92', '930101001'] })
+    })
+
+    it('never sends a prefix over a code of another type the reader does not hold', async () => {
+      const service = { row_id: '920199001' }
+      expect(await reach({ core: { ...STORES, Subcategory: [...SUBCATEGORIES, service] } })).toEqual({ 9901: ['920101', '9202'], 9902: ['920101', '9202', '930101001'] })
+    })
+
+    it('never sends a prefix over a retired code the reader does not hold', async () => {
+      const retired = { row_id: '920201009', retired_at: '2026-01-01T00:00:00Z' }
+      expect(await reach({ core: { ...STORES, Subcategory: [...SUBCATEGORIES, retired] } })).toEqual({ 9901: ['9201', '920201001'], 9902: ['9201', '920201001', '930101001'] })
+    })
+
+    it('sends the codes themselves when the hierarchy cannot be read', async () => {
+      expect(await reach({ core: { ...STORES, Subcategory: SUBCATEGORIES }, coreThrows: ['Subcategory'] }))
+        .toEqual({ 9901: LINE, 9902: [...LINE, OTHER[0]] })
+      expect(await reach({ core: STORES })).toEqual({ 9901: LINE, 9902: [...LINE, OTHER[0]] })
+    })
+
+    it('reads the hierarchy page by page, and fails the read rather than collapse on a list cut short', async () => {
+      const many = Array.from({ length: 600 }, (_, i) => ({ row_id: `94${String(i).padStart(7, '0')}` }))
+      const held = [place('9901 / Assigned subcategories', '9901', many.map(r => r.row_id))]
+      expect(await reach({ places: held, core: { ...STORES, Subcategory: many } })).toEqual({ 9901: ['94'] })
+      const { ctx } = context({ reports: [VENDORS], payload: { report: 'vendors' }, places: held, core: { ...STORES, Subcategory: many } })
+      const list = ctx.baseTables.list
+      ctx.baseTables.list = async (table, args) => {
+        if (table === 'Subcategory' && args.limit_start) throw new Error('connection lost')
+        return list(table, args)
+      }
+      const calls = upstream(ok)
+      await expect(embedSession(ctx)).rejects.toThrow('connection lost')
+      expect(calls).toEqual([])
+    })
+
+    it('logs the size of every request it sends', async () => {
+      const calls = upstream(ok)
+      const logged = vi.spyOn(console, 'info').mockImplementation(() => {})
+      await embedSession(context({ reports: [VENDORS], payload: { report: 'vendors' }, places: head, core: { ...STORES, Subcategory: SUBCATEGORIES } }).ctx)
+      expect(JSON.parse(String(logged.mock.calls[0][0]))).toEqual({ event: 'dash_embed_session_opened', person: 'psn_103',
+        bytes: new TextEncoder().encode(String(calls[0].init.body)).length })
+    })
+
+    it('says the reach is too large when MotherDuck answers 413, and logs its size', async () => {
+      upstream(() => Promise.resolve(new Response('{"message":"too large"}', { status: 413 })))
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const { ctx } = context({ reports: [VENDORS], payload: { report: 'vendors' }, places: head })
+      expect(await embedSession(ctx)).toEqual({ too_large: true })
+      expect(JSON.parse(String(logged.mock.calls[0][0]))).toMatchObject({ event: 'dash_embed_session_failed', message: 'embed API answered HTTP 413', bytes: expect.any(Number) })
+    })
+
+    it('reads no hierarchy for a Dive that takes one store', async () => {
+      const { ctx } = context({ payload: { store: '9901' } })
+      expect(await reads.embed_session.prepare(ctx)).toEqual({ report: expect.objectContaining({ report_key: 'sales' }) })
     })
   })
 })

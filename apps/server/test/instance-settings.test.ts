@@ -313,6 +313,34 @@ describe('a feature\'s secret is required while the feature is on (D7)', () => {
     expect(await snapshot()).toEqual(before)
   })
 
+  // #1278: every section of the Feather Dash file must apply on the server it is
+  // for. A hosted one has no mock provider, so a sign-in method left on needs its
+  // client id; dev runs without the Microsoft secret, so it must leave Microsoft off.
+  describe('each section of the Feather Dash file applies its sign-in methods', () => {
+    const file = JSON.parse(readFileSync(new URL('../../../client-apps/jeyarama/instances/dash/instance-settings.json', import.meta.url), 'utf8'))
+    const server: Record<string, string> = { local: 'development', dev: 'dev', staging: 'staging', prod: 'production' }
+    const onlySignIn = (section: string) => ({
+      settings: { 'Sign In Method': file.settings['Sign In Method'] },
+      environments: { [section]: { settings: { 'Sign In Method': file.environments[section].settings['Sign In Method'] ?? [] } } },
+    })
+
+    test('every section names its server', () => {
+      expect(Object.keys(file.environments)).toEqual(Object.keys(server))
+    })
+
+    test.each(Object.keys(server))('%s', async (section) => {
+      vi.stubEnv('ALLOW_MOCK_OAUTH', section === 'local' ? '1' : '')
+      vi.stubEnv('GOOGLE_CLIENT_SECRET', 'a-google-secret')
+      vi.stubEnv('MICROSOFT_CLIENT_SECRET', 'a-microsoft-secret')
+      const options = { by: 'Administrator', environment: section, serverEnvironment: server[section], dryRun: true }
+      await applyInstanceSettings(onlySignIn(section), options)
+      // Which secrets it needs: without the Microsoft one, only dev and local still apply.
+      vi.stubEnv('MICROSOFT_CLIENT_SECRET', '')
+      const withoutMicrosoft = await applyInstanceSettings(onlySignIn(section), options).then(() => null, (err: AppError) => Object.keys(err.fields ?? {}))
+      expect(withoutMicrosoft).toEqual(['dev', 'local'].includes(section) ? null : ['MICROSOFT_CLIENT_SECRET'])
+    })
+  })
+
   test('with the secret set, it applies', async () => {
     vi.stubEnv('GOOGLE_CLIENT_SECRET', 'a-google-secret')
     await sql`update sign_in_method set enabled = false, client_id = null where row_id = 'google'`
