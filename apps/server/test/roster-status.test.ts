@@ -10,7 +10,7 @@ import { saveDoc } from '../src/document'
 import { rosterFrom } from '../src/delegated-login'
 import { _setWarehouseReader, istToday } from '../src/leaver-check'
 import { planRosterLink, runRosterLink, formatRosterLink, ROSTER_LINK_JOB } from '../src/roster-link'
-import { applyRosterStatus, planRosterStatus, planStatusChanges } from '../src/roster-status'
+import { applyRosterStatus, formatRosterStatus, planRosterStatus, planStatusChanges } from '../src/roster-status'
 import { getSignInMethod } from '../src/identities'
 import { usableRoster } from '../src/roster-first-sign-in'
 import { enqueue, loadJobs, runOneJob } from '../src/jobs'
@@ -537,10 +537,19 @@ describe('the pure plan: undoing its own batch', () => {
     expect(undone.changes).toHaveLength(50)
   })
 
-  test('undoing more of its own marks than that is refused', () => {
+  test('more of its own marks than that are undone over the next runs, never refused', () => {
     const day = '2026-11-18'
-    const plan = planStatusChanges('T', rows(11, 'Gone', true), recs(11), day, S, day)
-    expect(plan.refused).toBe('it would undo 11 of its own Gone marks, more than the limit of 10')
+    // Two allowed batches of 50 and 40 among 1,000 rows, then HR corrects all 90.
+    const own = rows(90, 'Gone', true)
+    const rest = rows(910, 'Working').map((r, i) => ({ ...r, row_id: `s${i}`, record: String(90 + i) }))
+    const first = planStatusChanges('T', [...own, ...rest], recs(1000), day, S, day)
+    expect(first).toMatchObject({ refused: null, undo_limit: 50, undo_deferred: 40 })
+    expect(first.changes).toHaveLength(50)
+    const undone = new Set(first.changes.map((c) => c.row_id))
+    const second = planStatusChanges('T', [...own.map((r) => (undone.has(r.row_id) ? { ...r, status: 'Working', own_left: false } : r)), ...rest], recs(1000), day, S, day)
+    expect(second).toMatchObject({ refused: null, undo_deferred: 0 })
+    expect(second.changes).toHaveLength(40)
+    expect(formatRosterStatus(first).join('\n')).toContain('40 more of its own left marks to undo on the next runs')
   })
 })
 

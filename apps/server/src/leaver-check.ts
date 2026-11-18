@@ -254,6 +254,11 @@ async function linkedPeople(): Promise<LinkedPerson[]> {
       union
       select person_id, 'record', subject from sign_in_identity
       where method = 'stylehr' and ended_at is null and subject is not null
+      -- #1286: a link the roster job ended as left still names the person's
+      -- record, so ending it never hides them from this check.
+      union
+      select person_id, 'record', subject from sign_in_identity
+      where method = 'stylehr' and ended_reason = 'left' and subject is not null
     )
     select p.row_id, p.full_name, p.updated_at,
       (p.row_id = 'Administrator' or exists (

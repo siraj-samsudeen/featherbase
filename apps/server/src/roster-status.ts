@@ -62,10 +62,12 @@ export interface RosterStatusPlan {
   changes: StatusChange[]
   limit: number
   back_limit: number
-  /** Undoing this job's own lefts: as wide as the allowance that could have
-   *  set them (one in twenty of every covered row), so a batch it was allowed
-   *  to make can always be undone once the feed is corrected. */
+  /** Undoing this job's own lefts, per run: as wide as the allowance that
+   *  could have set them (one in twenty of every covered row). More are undone
+   *  on the next runs, never refused, so a corrected feed always converges. */
   undo_limit: number
+  /** This job's own lefts the feed no longer supports, left for the next run. */
+  undo_deferred: number
   refused: string | null
 }
 
@@ -137,20 +139,24 @@ export function planStatusChanges(
   plan.limit = limitOf(plan.covered_current)
   plan.back_limit = limitOf(plan.covered_left)
   plan.undo_limit = limitOf(plan.covered)
+  const undos = plan.changes.filter((c) => c.basis === 'set left by this job')
+  plan.undo_deferred = Math.max(0, undos.length - plan.undo_limit)
+  if (plan.undo_deferred) {
+    const deferred = new Set(undos.slice(plan.undo_limit))
+    plan.changes = plan.changes.filter((c) => !deferred.has(c))
+  }
   const leaving = plan.changes.filter((c) => c.to === s.left).length
-  const undo = plan.changes.filter((c) => c.basis === 'set left by this job').length
+  const undo = Math.min(undos.length, plan.undo_limit)
   const back = plan.changes.length - leaving - undo
   if (leaving > plan.limit)
     plan.refused = `it would change the status of ${leaving} of ${plan.covered_current} ${s.current} rows to ${s.left}, more than the limit of ${plan.limit}`
   else if (back > plan.back_limit)
     plan.refused = `it would change the status of ${back} of ${plan.covered_left} ${s.left} rows to ${s.current}, more than the limit of ${plan.back_limit}`
-  else if (undo > plan.undo_limit)
-    plan.refused = `it would undo ${undo} of its own ${s.left} marks, more than the limit of ${plan.undo_limit}`
   return plan
 }
 
 function emptyPlan(table: string, today: string, refused: string | null): RosterStatusPlan {
-  return { table, today, latest_feed_day: null, covered: 0, covered_current: 0, covered_left: 0, not_in_feed: 0, held_at_work: [], changes: [], limit: MIN_CHANGE_LIMIT, back_limit: MIN_CHANGE_LIMIT, undo_limit: MIN_CHANGE_LIMIT, refused }
+  return { table, today, latest_feed_day: null, covered: 0, covered_current: 0, covered_left: 0, not_in_feed: 0, held_at_work: [], changes: [], limit: MIN_CHANGE_LIMIT, back_limit: MIN_CHANGE_LIMIT, undo_limit: MIN_CHANGE_LIMIT, undo_deferred: 0, refused }
 }
 
 const statusesOf = (roster: Roster): Statuses | null =>
@@ -242,6 +248,7 @@ export function formatRosterStatus(plan: RosterStatusPlan | null, run?: RosterSt
       ? `roster status ${plan.table}: changed ${run.changed}${run.failed.length ? `; FAILED ${run.failed.length}` : ''}`
       : `roster status ${plan.table}: would mark ${n('left')} as left (exit date ${by('exit date')}, inactive ${by('inactive')}) and ${n('back')} as current again`,
   ]
+  if (plan.undo_deferred) lines.push(`roster status ${plan.table}: ${plan.undo_deferred} more of its own left marks to undo on the next runs`)
   if (plan.held_at_work.length) lines.push(`roster status ${plan.table}: held ${plan.held_at_work.length} the rule calls left whom attendance shows at work since; not changed`)
   if (plan.refused) lines.push(`roster status ${plan.table}: CHANGED NONE — ${plan.refused}`)
   return lines

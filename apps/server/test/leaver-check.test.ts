@@ -5,6 +5,7 @@ import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { expectStatus, makePerson } from './fixtures'
+import { configureDelegated } from './identity-fixtures'
 import { applySeedPack } from '../src/seed-packs'
 import { issueSession } from '../src/auth'
 import { newIdentifierId } from '../src/person-identifiers'
@@ -440,6 +441,17 @@ describe('someone attendance shows at work is held, not disabled', () => {
       { person: 'week', full_name: null, reason: 'marked inactive in StyleHR, but attendance shows them at work on 20-Oct-2026' },
       { person: 'boss', full_name: null, reason: 'exit date 05-Sep-2026 has passed, but attendance shows them at work on 22-Oct-2026' },
     ])
+  })
+
+  test('someone whose StyleHR link the roster job ended as left is still checked, and disabled', async () => {
+    await applySeedPack('jeyarama')
+    await configureDelegated()
+    const p = await makePerson({ full_name: 'Link Ended' })
+    await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by, ended_at, ended_reason)
+      values ('uid_ended1286', ${p}, 'stylehr', '802', 'ended-1286', 'roster-link', now(), 'left')`
+    warehouse(TODAY, [rec('802', 'C-802', { exit_date: '2026-10-01' }), ...crowdRecords(60)])
+    const run = await runLeaverCheck({ today: TODAY })
+    expect(run.disabled.map((l) => l.person)).toEqual([p])
   })
 
   test('the daily check reads attendance with the records and leaves a held person enabled', async () => {
