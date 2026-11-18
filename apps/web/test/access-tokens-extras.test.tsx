@@ -82,7 +82,10 @@ test('a revoke the network drops says it failed and leaves the token active', as
   await openPage(admin)
   dropNetwork('DELETE', '/api/access_tokens/')
   await userEvent.click(screen.getByTestId(`revoke-${tok.id}`))
-  expect(await screen.findByText('Failed to fetch', {}, T)).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('confirm-action'))
+  // #1323: the confirmation stays open and says why.
+  expect(await screen.findByTestId('confirm-error', {}, T)).toHaveTextContent('Failed to fetch')
+  expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
   expect(screen.getByTestId(`token-state-${tok.id}`)).toHaveTextContent('active')
 })
 
@@ -94,7 +97,9 @@ test('turning a service account off when the network drops says it failed and le
   const toggle = await screen.findByTestId(`sa-toggle-${svc.row_id}`, {}, T)
   dropNetwork('PATCH', '/api/service_accounts/')
   await user.click(toggle)
-  expect(await screen.findByText('Failed to fetch', {}, T)).toBeInTheDocument()
+  await user.click(screen.getByTestId('confirm-action'))
+  expect(await screen.findByTestId('confirm-error', {}, T)).toHaveTextContent('Failed to fetch')
+  expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
   expect(screen.getByTestId(`sa-toggle-${svc.row_id}`)).toHaveTextContent('Disable')
 })
 
