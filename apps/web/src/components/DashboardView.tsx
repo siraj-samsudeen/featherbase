@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
+import { CannotShow } from './CannotShow'
 import { cardClasses } from '@featherbase/shop-floor'
 import { fmtAsStored, fmtCount } from '@featherbase/shop-floor'
 
@@ -106,8 +107,8 @@ export function DashboardView({ name }: { name: string }) {
 
   if (dash.isError)
     return (
-      <div className={cardClasses('p-4 text-sm text-negative')} data-testid="dashboard-error">
-        {dash.error instanceof ApiError ? dash.error.message : 'Dashboard not found'}
+      <div data-testid="dashboard-error">
+        <CannotShow error={dash.error} what="dashboard" named={name} onRetry={() => void dash.refetch()} />
       </div>
     )
   if (!dash.data) return <div className="p-4 text-ink-subtle">Loading…</div>

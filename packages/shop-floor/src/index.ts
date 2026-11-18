@@ -4,6 +4,7 @@ export { Button, buttonClasses, iconButtonClasses, touchLinkClasses, touchRowCla
 export { Card, cardClasses } from './Card'
 export { cx, recipe } from './cx'
 export { EmptyState } from './EmptyState'
+export { ProblemPage, type ProblemKind } from './ProblemPage'
 export { Field, inputClasses, labelClasses, PasswordInput, SearchInput, Select, TextInput } from './Field'
 export { Notice } from './Notice'
 export { Skeleton } from './Skeleton'

@@ -19,7 +19,9 @@ import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
 import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
-import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-floor'
+import { Card, EmptyState, Notice, ProblemPage, buttonClasses, fmtDate } from '@featherbase/shop-floor'
+import { AdminHomeLink, CannotShow } from './components/CannotShow'
+import { TopBar } from './components/TopBar'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
 import { isListLayout, useListLayout } from './lib/list-layout'
@@ -80,6 +82,7 @@ import type { NavStep } from './lib/nav-path'
 // server set for the page it shows. Checked on every navigation.
 const rootRoute = createRootRoute({
   component: Outlet,
+  notFoundComponent: () => <PageNotFound />,
   beforeLoad: ({ location }) => {
     if (crossesFramePolicy(location.pathname)) throw redirect({ href: location.href, reloadDocument: true })
   },
@@ -162,7 +165,10 @@ function TableAddressError({ error }: { error: unknown }) {
         />
       </div>
     )
-  return <p role="alert" className="p-4 text-negative">{error instanceof Error ? error.message : 'Could not open this Table'}</p>
+  // #1327: a deleted Table, a refusal or a failure, said on the shared page.
+  if (error instanceof ApiError && error.status === 404)
+    return <ProblemPage kind="not-found" title="This Table isn’t here" body={error.message} action={<AdminHomeLink />} />
+  return <CannotShow error={error} what="Table" onRetry={() => window.location.reload()} />
 }
 
 /** Where the root sends someone: sign in, or their landing. Found on staging and production
@@ -310,11 +316,26 @@ function AdminRouteLayout() {
 function AdminPageNotFound() {
   return (
     <div data-testid="page-not-found">
-      <EmptyState
-        title="Page not found"
-        body="There is no page at this address in the Admin."
-        action={<Link to="/featherbase/admin" className={buttonClasses()}>Go to the Admin home</Link>}
-      />
+      <ProblemPage kind="not-found" title="Page not found" body="There is no page at this address in the Admin." action={<AdminHomeLink />} />
+    </div>
+  )
+}
+
+/** #1327 (audit F07): an address outside the Admin that matches nothing, under the shared top bar. */
+function PageNotFound() {
+  return (
+    <div className="flex min-h-screen flex-col bg-canvas">
+      <TopBar forPerson />
+      <main className="flex flex-1 items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <ProblemPage
+            kind="not-found"
+            title="Page not found"
+            body="There is no page at this address in Featherbase."
+            action={<a href="/" className={buttonClasses()}>Go to Featherbase</a>}
+          />
+        </Card>
+      </main>
     </div>
   )
 }
