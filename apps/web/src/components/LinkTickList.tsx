@@ -188,6 +188,9 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
     } catch (err) {
       setStatus(null)
       setError(err instanceof ApiError ? err.message : 'That did not save. Try again.')
+      // A save whose answer was lost may still have landed: read the links again, so a choice
+      // it ticked shows ticked rather than inviting a second Add (Codex review).
+      await refresh()
       return false
     }
   }
