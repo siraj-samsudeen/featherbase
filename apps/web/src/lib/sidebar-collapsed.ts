@@ -23,7 +23,7 @@ export const SIDEBAR_DRAWER_QUERY = '(width < 48rem)'
 
 /** The open sidebar's width (the owner, 17-Nov: "a little adjustable"): its
  *  edge drags it from MIN to MAX; DEFAULT is the width it always had. */
-export const SIDEBAR_WIDTH = { MIN: 200, DEFAULT: 240, MAX: 360 } as const
+export const SIDEBAR_WIDTH = { MIN: 200, DEFAULT: 240, MAX: 360, RAIL: 56 } as const
 const widthKey = (user: string) => `fc-sidebar-width:${user}`
 const clampWidth = (px: number) => Math.round(Math.min(SIDEBAR_WIDTH.MAX, Math.max(SIDEBAR_WIDTH.MIN, px)))
 
@@ -128,11 +128,14 @@ export function attachSidebarEdge(edge: HTMLElement, { frame, widthVar }: {
   function onDown(event: PointerEvent) {
     // A drag let go away from the edge sends it no click: each press starts afresh.
     dragged = false
-    if (event.button !== 0 || stateFor().collapsed) return
+    if (event.button !== 0) return
     event.preventDefault()
     stop?.()
     const startX = event.clientX
-    const startWidth = state.width
+    // The owner (18-Nov): the rail's edge drags too. Pulled out of the rail, the
+    // sidebar opens and follows the pointer from the rail's own width.
+    const fromRail = stateFor().collapsed
+    const startWidth = fromRail ? SIDEBAR_WIDTH.RAIL : state.width
     // Smoothness (the owner, 18-Nov): while dragging, the width is written
     // straight onto the sidebar, once per frame the screen draws, and nothing
     // re-renders; the store, the other readers and the kept width get it once,
@@ -141,15 +144,22 @@ export function attachSidebarEdge(edge: HTMLElement, { frame, widthVar }: {
     let frameRequest = 0
     const draw = () => { frameRequest = 0; frame().style.setProperty(widthVar, `${width}px`) }
     const move = (e: PointerEvent) => {
-      if (!dragged && Math.abs(e.clientX - startX) < DRAG_SLOP) return
+      // From the rail only a pull outward is a drag; anything else stays a click.
+      if (!dragged && (fromRail ? e.clientX - startX : Math.abs(e.clientX - startX)) < DRAG_SLOP) return
+      width = clampWidth(startWidth + e.clientX - startX)
       if (!dragged) {
         dragged = true
         document.documentElement.style.setProperty('cursor', 'col-resize')
         document.documentElement.style.setProperty('user-select', 'none')
         // The width transition is off while the width follows the pointer.
         set({ resizing: true })
+        if (fromRail) {
+          // Opened at the pointer's width, not the kept one: drawn before it opens.
+          draw()
+          toggleSidebarCollapsed()
+          return
+        }
       }
-      width = clampWidth(startWidth + e.clientX - startX)
       if (!frameRequest) frameRequest = requestAnimationFrame(draw)
     }
     const up = () => {

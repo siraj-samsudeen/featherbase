@@ -275,10 +275,20 @@ test("dragging the edge sets the open sidebar's width, from 200 to 360px, kept f
 
   await userEvent.click(edge())
   expect(collapsed()).toBe(true)
-  // In the rail the edge only reopens it, at the kept width.
-  drag(edge(), 56, 400)
+  // The owner (18-Nov): the rail's edge drags too. Pulled out, the sidebar opens at the pointer's width.
+  drag(edge(), 56, 186)
   expect(collapsed()).toBe(false)
   expect(width()).toBe('200px')
+  await userEvent.click(edge())
+  drag(edge(), 56, 356)
+  expect(collapsed()).toBe(false)
+  expect(width()).toBe('356px')
+  expect(localStorage.getItem(`fc-sidebar-width:${admin.user}`)).toBe('356')
+  // A pull inward from the rail is no drag: the click that ends it opens the sidebar, as a click does.
+  await userEvent.click(edge())
+  drag(edge(), 56, 20)
+  expect(collapsed()).toBe(false)
+  expect(width()).toBe('356px')
 })
 
 test('a page with no sidebar has no sidebar controls, and Ctrl/Cmd+B is left alone', async ({ admin }) => {

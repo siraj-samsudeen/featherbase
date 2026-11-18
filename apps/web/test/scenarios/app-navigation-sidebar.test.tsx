@@ -120,6 +120,11 @@ describe('app-navigation: the shared sidebar', () => {
     await step("Tasker's sidebar is 360 pixels wide too", () => expect(width()).toBe('360px'))
     await step("the user clicks the sidebar's edge", () => userEvent.click(edge()))
     await step("Tasker's navigation shows only its icons", () => expect(iconsOnly()).toBe(true))
+    await step("the user pulls the rail's edge 200 pixels to the right", () => drag(200))
+    await step("Tasker's navigation is shown in full, 256 pixels wide", () => {
+      expect(iconsOnly()).toBe(false)
+      expect(width()).toBe('256px')
+    })
   })
 
   scenario('The collapse control names its key on hover', async ({ admin }, step) => {

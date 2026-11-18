@@ -336,7 +336,8 @@ export class FeatherbaseSidebar extends HTMLElement {
     const open = drawer && state.drawerOpen
     this.toggleAttribute('data-collapsed', collapsed)
     this.toggleAttribute('data-open', open)
-    this.style.setProperty('--featherbase-sidebar-width', `${state.width}px`)
+    // While the edge is dragged the drag writes the width itself, each frame.
+    if (!state.resizing) this.style.setProperty('--featherbase-sidebar-width', `${state.width}px`)
     this.toggleAttribute('data-resizing', state.resizing)
     const hidden = drawer && !open
     this.inert = hidden

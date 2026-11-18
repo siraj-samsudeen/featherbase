@@ -105,7 +105,7 @@ And the person viewed still has no choice of their own
 
 ### Requirement: The sidebar is as wide as the person makes it
 
-Open, the sidebar's edge SHALL drag its width between 200 and 360 pixels, remembered for the person in that browser across applications as the collapsed choice is. A click on the edge SHALL fold it.
+Open, the sidebar's edge SHALL drag its width between 200 and 360 pixels, remembered for the person in that browser across applications as the collapsed choice is. A click on the edge SHALL fold it. Folded, pulling the edge out of the rail SHALL open the sidebar at the width it is pulled to.
 
 #### Scenario: The sidebar is as wide as the person makes it
 
@@ -119,6 +119,8 @@ When the user opens Tasker
 Then Tasker's sidebar is 360 pixels wide too
 When the user clicks the sidebar's edge
 Then Tasker's navigation shows only its icons
+When the user pulls the rail's edge 200 pixels to the right
+Then Tasker's navigation is shown in full, 256 pixels wide
 ```
 
 ### Requirement: The rail keeps every control, each named on hover
