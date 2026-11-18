@@ -184,16 +184,17 @@ export function RowMap({ table, name }: { table: string; name: string }) {
 
   return (
     <section ref={frame} data-testid="relation-map" aria-label={`Relationship map for ${centreTitle}`}
-      className="relative" onKeyDown={spaceFollowsLinks}>
-      {/* The lines join the centre to each box; they sit behind the boxes, drawn where they fall. */}
+      className="@container relative" onKeyDown={spaceFollowsLinks}>
+      {/* The lines join the centre to each box; they sit behind the boxes, drawn where they fall.
+          The columns follow the map's own width, not the window's, so they still fit beside the drill pane. */}
       <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" data-testid="map-edges">
         {edges.map((p, i) => <path key={i} d={p} fill="none" stroke="var(--color-border)" strokeWidth={1.5} />)}
       </svg>
-      <div className="relative grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(11rem,15rem)_minmax(10rem,13rem)_minmax(14rem,18rem)] lg:gap-x-16">
-        <div className="flex min-w-0 flex-col gap-3 lg:self-center">
+      <div className="relative grid grid-cols-1 items-start gap-4 @2xl:grid-cols-[minmax(9rem,15rem)_minmax(8rem,13rem)_minmax(12rem,18rem)] @2xl:gap-x-12">
+        <div className="flex min-w-0 flex-col gap-3 @2xl:self-center">
           {forward.map((f, i) => <ForwardBox key={i} link={f} walk={walk} />)}
         </div>
-        <div data-testid="map-center" data-map-centre="" className="order-first min-w-0 rounded-lg border border-action bg-action-tint px-3 py-2.5 lg:order-none lg:self-center">
+        <div data-testid="map-center" data-map-centre="" className="order-first min-w-0 rounded-lg border border-action bg-action-tint px-3 py-2.5 @2xl:order-none @2xl:self-center">
           <div className="text-xs text-ink-muted">{tableWords}</div>
           <div className="break-words text-sm font-semibold text-ink">{centreTitle}</div>
         </div>
