@@ -6,14 +6,14 @@ The glossary is for the people who use an app's words, but its only page sits in
 
 - Each app has its own glossary page: the app's terms, then the instance's own terms. Anyone who can use the app reads it and searches it; nobody reads the glossary of an app they cannot use.
 - The way in is the Help menu of the app's sidebar, beside Keyboard shortcuts. The Admin's glossary page and its sidebar link are removed; the app's page is the only glossary page.
-- One word has one meaning in a glossary. An instance term cannot take the name of an app's term (the editor rewords the app's term in that app instead), and two instance terms cannot share a name. When an app that arrives later ships a word the instance already has, the app's meaning shows in that app and the instance's term is hidden there; the instance's term still shows in every other app. The instance never overwrites an app's term.
+- An app's glossary is the whole instance plus the app. A word that both have is shown twice, each marked with where it comes from (the app, or shared across apps); nothing is refused or hidden because of a repeated word.
 - Out of this change, decided with the owner and still to come: how a word's meaning shows on an app's own pages (Dash), and Dash's own terms, whose wording the owner approves first.
 
 ## Capabilities
 
 ### Modified Capabilities
 
-- `glossary`: reading is per app; the instance's own terms show in every app's glossary; one meaning per word; the Help menu opens it.
+- `glossary`: reading is per app; the instance's own terms show in every app's glossary; a repeated word shows where each meaning comes from; the Help menu opens it.
 
 ## Impact
 

@@ -49,33 +49,18 @@ People allowed to edit the glossary SHALL be able to add the instance's own term
 
 ## ADDED Requirements
 
-### Requirement: One meaning per word
+### Requirement: A repeated word shows where each meaning comes from
 
-A glossary SHALL give each word one meaning. An instance term SHALL be refused when an app's term already has its name, and when another instance term has it; the refusal names the app, and the editor rewords the app's term in that app instead. A word that differs only in capitals or spaces counts as the same word. An app SHALL never be refused because of an instance term.
+When an app and the instance both have a term with the same name, an app's glossary SHALL show both, each under where it comes from: the app, or the instance's own terms shared by every app.
 
-#### Scenario: The instance cannot take an app's word
+#### Scenario: One word, two sources
 
 ```gherkin
 Given a shelf-planning app defines "Shelf Lead"
-When a System Manager adds an instance term "shelf lead"
-Then it is refused, and the reason names the shelf-planning app
-```
-
-#### Scenario: Two instance terms cannot share a name
-
-```gherkin
-Given the instance has a term "Cluster"
-When a System Manager adds another instance term "CLUSTER"
-Then it is refused
-```
-
-#### Scenario: An app that arrives later keeps its own meaning
-
-```gherkin
-Given the instance has a term "Shelf Lead"
-When a shelf-planning app that defines "Shelf Lead" is installed
-Then the install goes through
-And the shelf-planning glossary shows the app's "Shelf Lead" and not the instance's
+And the instance has its own term "Shelf Lead"
+When the user opens the shelf-planning glossary
+Then "Shelf Lead" is listed twice
+And one is marked as coming from the shelf-planning app and the other as shared across apps
 ```
 
 ### Requirement: Help opens the app's glossary

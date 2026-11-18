@@ -10,7 +10,6 @@
 // never stored either: an app's term shows while its app is installed,
 // turned on, and still declares it, so a removed app's terms (and the
 // instance's rewording of them) come back with the app.
-import { AsyncLocalStorage } from 'node:async_hooks'
 import { z } from 'zod'
 import { sql, withTransaction } from './db'
 import { saveDoc } from './document'
@@ -21,13 +20,6 @@ import { canonical } from './runtime-migrations'
 
 const text = z.string().trim().min(1)
 
-/** Two words are the same word when they differ only in capitals and spaces. */
-export const sameWord = (word: unknown) => String(word ?? '').trim().replace(/\s+/g, ' ').toLocaleLowerCase()
-
-// An app's install or upgrade writes its terms through the ordinary save; the
-// naming rules below are for people adding and renaming the instance's own.
-const syncing = new AsyncLocalStorage<true>()
-export const isSyncingAppTerms = () => syncing.getStore() === true
 
 export const glossaryDeclaration = z.object({
   version: z.literal(1),
@@ -123,10 +115,6 @@ async function wordingsOf(ids: string[], db: typeof sql = sql): Promise<Map<stri
 export async function syncAppGlossary(app: string, glossary: Declaration | undefined, actor: string) {
   const declared = glossary?.terms ?? []
   if (!declared.length) return
-  return syncing.run(true, () => writeAppTerms(app, declared, actor))
-}
-
-async function writeAppTerms(app: string, declared: DeclaredTerm[], actor: string) {
   const existing = await sql`select row_id, app_key, app_wording, updated_at from glossary_term where app = ${app}`
   const current = await wordingsOf(existing.map(row => String(row.row_id)))
   for (const term of declared) {
@@ -181,21 +169,6 @@ async function activeAppTerms(db: typeof sql = sql) {
   return { apps, rows }
 }
 
-/** The naming rules for a person adding or renaming an instance term: one
- *  word has one meaning in a glossary, and an instance term never takes an
- *  app term's word (the editor rewords the app's term in that app instead). */
-export async function refuseTakenName(name: string, ownId: string | null, tx: typeof sql) {
-  const word = sameWord(name)
-  if (!word) return
-  const { apps, rows } = await activeAppTerms(tx)
-  const taken = rows.find(row => sameWord(row.app_key) === word)
-  if (taken)
-    throw new AppError('ValidationError', `${name.trim()} is already a term in ${apps.get(String(taken.app))!.title}. To change its meaning, reword it in that app's glossary.`, { term: 'taken by an app' })
-  const others = await tx`select term from glossary_term where app is null and row_id <> ${ownId ?? ''}`
-  if (others.some(other => sameWord(other.term) === word))
-    throw new AppError('ValidationError', `${name.trim()} is already a term of this instance`, { term: 'taken' })
-}
-
 /** Where a person may read glossaries. */
 export interface GlossaryScope {
   /** The apps this person can use. */
@@ -205,8 +178,7 @@ export interface GlossaryScope {
 }
 
 /** What the glossary shows `user`. With `only`, that app's glossary: its
- *  terms, then the instance's own, each word once (the app's meaning wins in
- *  its app; the instance's term of the same word is hidden there). Without,
+ *  terms, then the instance's own, a repeated word shown under each. Without,
  *  the terms of every app the person can use, which in-place help draws from. */
 export async function readGlossary(user: string, scope: GlossaryScope, only?: string) {
   if (!(await hasPermission(user, 'Glossary Term', 'read')))
@@ -234,10 +206,9 @@ export async function readGlossary(user: string, scope: GlossaryScope, only?: st
     return { id: String(row.row_id), ...wording, describes, picture, app, appTitle: app && apps.get(app)!.title,
       editedHere, appWordingChanged: editedHere && row.app_wording_changed === true }
   })
-  // An instance term an app also has a term for is hidden: the app's meaning wins.
-  const taken = new Set(everything.filter(t => t.app !== null).map(t => sameWord(t.term)))
-  const terms = everything.filter(t => t.app !== null || !taken.has(sameWord(t.term)))
-  // The instance's own terms come after every app's.
+  // The same word in an app and in the instance shows twice, each under where
+  // it comes from. The instance's own terms come after every app's.
+  const terms = everything
   terms.sort((a, b) => Number(a.appTitle === null) - Number(b.appTitle === null) ||
     (a.appTitle ?? '').localeCompare(b.appTitle ?? '') || a.term.localeCompare(b.term))
   return { canEdit: await hasPermission(user, 'Glossary Term', 'write'), canAdd: await hasPermission(user, 'Glossary Term', 'create'), terms }
