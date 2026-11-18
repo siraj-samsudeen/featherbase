@@ -23,14 +23,15 @@ afterEach(async () => {
 const tableRead = { policy: { kind: 'table' }, authorization: { kind: 'generic' } }
 
 /** bar-proof with `why` and the reads behind it. `explain` answers `hooks.answer`, which a test sets. */
-async function explaining(why: unknown, { action = false }: { action?: boolean } = {}) {
+async function explaining(why: unknown, { action = false, gate }: { action?: boolean; gate?: string } = {}) {
   const directory = await mkdtemp(resolve('test/.why-1282-'))
   directories.push(directory)
   await cp(BAR_PROOF, directory, { recursive: true })
   const file = resolve(directory, 'featherbase.json')
   const manifest = JSON.parse(await readFile(file, 'utf8'))
   manifest.roles = ['Bar Reader', 'Bar Explainer']
-  manifest.reads.operations = { ...manifest.reads.operations, may_explain: tableRead, explain: tableRead }
+  manifest.reads.operations = { ...manifest.reads.operations, may_explain: tableRead, explain: tableRead, closed: tableRead }
+  if (gate) manifest.access = { gate }
   if (action) manifest.actions = { version: 2, tables: [NOTE], operations: { change_note: tableRead } }
   manifest.why = why
   await writeFile(file, JSON.stringify(manifest))
@@ -38,6 +39,7 @@ async function explaining(why: unknown, { action = false }: { action?: boolean }
 const why = (globalThis.__why1282 ??= { answer: null, asked: [] })
 reads.may_explain = ({ roles, payload }) => { why.asked.push(payload); if (why.mayFails) throw new Error('down'); return roles.includes('Bar Explainer') }
 reads.explain = ({ payload }) => { why.asked.push(payload); return why.answer ?? answerFor(payload) }
+reads.closed = () => false
 ${action ? 'export const actions = { change_note: () => true }' : ''}
 function answerFor({ table, row }) {
   return {
@@ -118,6 +120,15 @@ describe('Why: who is offered it', () => {
     await install(admin)
     const [, explainer] = await people(createUser)
     hook().mayFails = true
+    expect(await (await offer(explainer)).json()).toEqual({ offer: null })
+    await expectStatus(await explain(explainer), 403)
+  })
+
+  test("someone the app's own gate keeps out is offered no Why, even where may would say yes", async ({ admin, createUser }) => {
+    expect(await discoverPackages([await explaining(declared, { gate: 'closed' })])).toEqual([])
+    await admin.post('/api/install_app', { name: 'barproof' })
+    await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'n1', body: 'kept' } })
+    const [, explainer] = await people(createUser)
     expect(await (await offer(explainer)).json()).toEqual({ offer: null })
     await expectStatus(await explain(explainer), 403)
   })
