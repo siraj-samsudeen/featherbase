@@ -61,7 +61,8 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
     yield { done: true }
     return
   }
-  const like = '%' + q.replace(/[\\%_]/g, (c) => `\\${c}`) + '%'
+  const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`)
+  const pattern = { exact: q, prefix: escaped + '%', like: '%' + escaped + '%' }
 
   // Source-bound Tables are excluded: they have no physical table here (the
   // old query 500'd the whole search the moment one existed), and fanning a
@@ -96,7 +97,7 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
     while (!halted() && running < AT_ONCE && queue.length) {
       const t = queue.shift()!
       running++
-      const one: Promise<void> = searchOne(t, user, like)
+      const one: Promise<void> = searchOne(t, user, pattern)
         .then((hits) => { finished.push({ table: String(t.name), hits }) })
         .catch((error: unknown) => { failure ??= error })
         .finally(() => { running--; started.delete(one); launch(); wake?.() })
@@ -125,7 +126,10 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   }
 }
 
-async function searchOne(t: Record<string, unknown>, user: string, like: string): Promise<SearchHit[]> {
+/** What was typed: as typed, and as `ilike` patterns for "starts with" and "contains". */
+interface Pattern { exact: string; prefix: string; like: string }
+
+async function searchOne(t: Record<string, unknown>, user: string, { exact, prefix, like }: Pattern): Promise<SearchHit[]> {
   // #648: an app's Tables answer only while it is available to this
   // request: switched on, not awaiting activation, and the version the
   // client last loaded. When one refuses, search skips that Table instead
@@ -154,6 +158,10 @@ async function searchOne(t: Record<string, unknown>, user: string, like: string)
     select ${key} as row_id, ${shown} as title from ${sql(table)}
     where ${where} ${live} and (${key} ilike ${like}${title ? sql` or ${readExpression(title)} ilike ${like}` : sql``})
       and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID} ${named}
+    order by
+      case when lower(${key}::text) = lower(${exact}) or lower(${shown}::text) = lower(${exact}) then 0
+           when ${key}::text ilike ${prefix} or ${shown}::text ilike ${prefix} then 1 else 2 end,
+      length(coalesce(${shown}::text, ${key}::text)), coalesce(${shown}::text, ${key}::text)
     limit ${PER_TABLE}`
   return rows
     .map((row) => ({
