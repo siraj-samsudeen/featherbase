@@ -1,4 +1,4 @@
-import { whyAnswerSchema, type WhyAnswer, type WhyExplained, type WhyOffer } from 'shared'
+import { whyAnswerSchema, type WhyAnswer, type WhyBox, type WhyExplained, type WhyOffer } from 'shared'
 import { withAppIdentity } from './app-lifecycle'
 import { getDoc } from './document'
 import { AppError } from './errors'
@@ -63,15 +63,17 @@ export async function explainRecord(table: string, row: string, user: string): P
  */
 async function scrubbed(answer: WhyAnswer, user: string): Promise<WhyAnswer> {
   const boxes = answer.columns.flatMap((c) => c.boxes)
-  const refs = boxes.flatMap((b) => [...(b.record ? [b.record] : []), ...(b.detailRecords ?? [])]).map((r) => ({ table: r.table, row_id: r.row }))
-  const readable = new Set((await rowTitles(user, refs)).map((t) => `${t.table}\u0000${t.row_id}`))
+  const named = (b: WhyBox) => [...(b.record ? [b.record] : []), ...(b.detailParts ?? []).flatMap((p) => p.record ? [p.record] : [])]
+  const readable = new Set((await rowTitles(user, boxes.flatMap(named).map((r) => ({ table: r.table, row_id: r.row }))))
+    .map((t) => `${t.table}\u0000${t.row_id}`))
   const reads = (r: { table: string; row: string }) => readable.has(`${r.table}\u0000${r.row}`)
   const opaque = new Map(boxes.map((b, i) => [b.id, `b${i + 1}`]))
-  // Codex adversarial round 2: a detail naming a record the viewer may not read (an area's store) is left out.
-  const box = ({ detailRecords, ...b }: WhyAnswer['columns'][number]['boxes'][number]) => {
+  // Codex adversarial round 2, verifier: an area naming a record the viewer may not read is left out whole;
+  // one they may read keeps each named part a link.
+  const box = ({ detailParts, ...b }: WhyBox): WhyBox => {
     if (b.record && !reads(b.record)) return { id: opaque.get(b.id)!, name: UNSEEN_ROW }
-    const { detail, ...rest } = b
-    return { ...rest, id: opaque.get(b.id)!, ...(detail && (detailRecords ?? []).every(reads) ? { detail } : {}) }
+    const parts = detailParts && detailParts.every((p) => !p.record || reads(p.record)) ? { detailParts } : {}
+    return { ...b, id: opaque.get(b.id)!, ...parts }
   }
   return {
     version: answer.version,

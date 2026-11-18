@@ -19,6 +19,7 @@ describe('a Why answer', () => {
     ['an edge leading left', answer([['a'], ['b']], [['b', 'a']])],
     ['a version the platform does not know', { ...answer([['a']]), version: 2 }],
     ['a field the shape does not have', { ...answer([['a']]), html: '<b>' }],
+    ['a box with both a detail and detail parts', { version: 1, edges: [], columns: [{ heading: 'A', boxes: [{ id: 'a', name: 'A', detail: 'x', detailParts: [{ name: 'Lakeside' }] }] }] }],
   ] as const)('%s is refused', ([, value]) => {
     expect(whyAnswerSchema.safeParse(value).success).toBe(false)
   })

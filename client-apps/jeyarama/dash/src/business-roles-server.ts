@@ -586,19 +586,18 @@ const WHY_EDGES = 200
 const PLAIN_AREAS = new Set(['Whole company', 'No area yet'])
 
 /**
- * A role box's area for the Map's Why: only parts that name their own record (the platform shows the detail only to
- * someone who may read every one of them), at most 10, and the plain words above. Text that names a record without
- * saying which (an unresolved area's message) is left out (Codex adversarial, round 3).
+ * A role box's area for the Map's Why, part by part: each part naming a record carries it (a link, shown only to
+ * someone who may read every one), at most 10, and the plain words above. Text naming a record without saying which
+ * (an unresolved area's message) is left out (Codex adversarial, round 3).
  */
-function areaDetail(parts: Part[]): { detail?: string; detailRecords?: { table: string; row: string }[] } {
-  const named = parts.filter(p => p.table && p.id).slice(0, 10)
-  const shown = [...parts.filter(p => !p.table && PLAIN_AREAS.has(p.name)), ...named]
-  if (!shown.length) return {}
-  return { detail: clip(shown.map(p => p.name).join(' · ')), ...(named.length ? { detailRecords: named.map(p => ({ table: p.table!, row: p.id! })) } : {}) }
+function areaParts(parts: Part[]): { detailParts?: { name: string; record?: { table: string; row: string } }[] } {
+  const shown = parts.flatMap(p => p.table && p.id ? [{ name: clip(p.name, 80), record: { table: p.table, row: p.id } }]
+    : PLAIN_AREAS.has(p.name) ? [{ name: p.name }] : []).slice(0, 10)
+  return shown.length ? { detailParts: shown } : {}
 }
 
 /** A name or a detail on a Why box, within the platform's 120 characters. */
-const clip = (words: string) => words.length > 120 ? `${words.slice(0, 119)}…` : words
+const clip = (words: string, most = 120) => words.length > most ? `${words.slice(0, most - 1)}…` : words
 
 /**
  * #1282 Why mode: whether the platform's Map may explain this record for this viewer: a Person, for company-wide
@@ -618,36 +617,50 @@ export async function whyAccess(context: AccessContext) {
   if (!mayExplainAccess(context)) context.reject!(ONLY_MANAGERS)
   const person = String((context.payload as { row: string }).row)
   const e = await explainPerson({ ...context, payload: { person } } as AccessContext)
-  const capped = <T>(items: T[], box: (item: T, i: number) => Record<string, unknown>, more: string) =>
+  // Verifier: the chain runs Person → each role held → that role's App · Level → what it allows and the reports it
+  // gives, so App · Level is on every chain and no line skips a column. A permission is one box, reached from every
+  // App · Level whose role grants it (two routes to one thing); a report from its role's Dash box, or from Given To
+  // Them Directly. Codex: one box per role held, and nothing lit for a role that does not grant it.
+  const capped = <T>(items: T[], box: (item: T) => Record<string, unknown>, more: string) =>
     items.length <= WHY_COLUMN ? items.map(box)
       : [...items.slice(0, WHY_COLUMN - 1).map(box), { id: `${more}:more`, name: `+ ${items.length - WHY_COLUMN + 1} more` }]
-  // Codex: one box per role held (the same role at two places is two boxes), and each edge from the occurrences of
-  // the role that gives it, so a permission is never lit for a role that does not grant it.
-  const held = (match: (r: (typeof e.roles)[number]) => boolean) => e.roles.flatMap((r, i) => match(r) ? [`role:${i}`] : [])
-  const appId = (app: string, level: string) => `app:${app}:${level}`
-  const roles = capped(e.roles, (r, i) => ({
-    id: `role:${i}`, name: clip(r.name), record: { table: ROLE, row: r.role },
-    ...areaDetail(r.area.parts),
-    source: BY_HAND.has(r.kind) ? 'hand' : 'hr',
-  }), 'role')
-  const apps = capped(e.apps, a => ({ id: appId(a.app, a.level), name: clip(`${a.app} · ${a.level}`) }), 'app')
-  const can = capped(e.permissions, (p, i) => ({ id: `can:${i}`, name: clip(`${p.verb} ${p.thing}`), detail: clip(`${p.app} · ${p.level}`), reach: p.reach }), 'can')
-  const reports = capped(e.reports, r => ({ id: `report:${r.key}`, name: clip(r.name), record: { table: 'dash.report', row: r.key } }), 'report')
-  const shown = new Set(['person', ...[...roles, ...apps, ...can, ...reports].map(b => String(b.id))])
+  const direct = e.reports.filter(r => r.direct)
+  const holders = [...e.roles.map((r, i) => ({ id: `role:${i}`, role: r.role, r })), ...(direct.length ? [{ id: 'direct', role: null, r: null }] : [])]
+  const levels = [...new Map(e.permissions.map(p => [`${p.app}·${p.level}`, { app: p.app, level: p.level }])).values()]
+  // Each holder's App · Level boxes: the levels its role's permissions give; Dash for a report given directly.
+  const appsOf = (h: (typeof holders)[number]) => h.role === null ? [{ id: `${h.id}:app:Dash`, name: 'Dash · Reports Given To Them', app: 'Dash', level: '' }]
+    : levels.filter(l => e.permissions.some(p => p.role === h.role && p.app === l.app && p.level === l.level))
+      .map(l => ({ id: `${h.id}:app:${l.app}:${l.level}`, name: clip(`${l.app} · ${l.level}`), app: l.app, level: l.level }))
+  const apps = holders.flatMap(h => appsOf(h).map(a => ({ ...a, holder: h })))
+  const permKey = (p: { app: string; level: string; verb: string; thing: string; reach: string }) => `can:${p.app}:${p.level}:${p.verb}:${p.thing}:${p.reach}`
+  const allowed = [...new Map(e.permissions.map(p => [permKey(p), p])).values()]
+  const roleBoxes = capped(holders, h => h.r ? {
+    id: h.id, name: clip(h.r.name), record: { table: ROLE, row: h.r.role }, ...areaParts(h.r.area.parts),
+    source: BY_HAND.has(h.r.kind) ? 'hand' : 'hr',
+  } : { id: h.id, name: 'Given To Them Directly' }, 'role')
+  const appBoxes = capped(apps, a => ({ id: a.id, name: a.name }), 'app')
+  const can = capped([
+    ...allowed.map(p => ({ id: permKey(p), name: clip(`${p.verb} ${p.thing}`), detail: clip(`${p.app} · ${p.level}`), reach: p.reach })),
+    ...e.reports.map(r => ({ id: `report:${r.key}`, name: clip(r.name), detail: 'Report', record: { table: 'dash.report', row: r.key } })),
+  ], box => box, 'can')
+  const shown = new Set(['person', ...[...roleBoxes, ...appBoxes, ...can].map(b => String(b.id))])
+  const dashBox = (holder: string) => apps.find(a => a.holder.id === holder && (a.holder.role === null || a.app === 'Dash'))?.id
   const edges = ([
-    ...e.roles.map((_, i) => ['person', `role:${i}`]),
-    ...e.apps.flatMap(a => a.via.flatMap(name => held(r => r.name === name).map(id => [id, appId(a.app, a.level)]))),
-    ...e.permissions.flatMap((p, i) => held(r => r.role === p.role).map(id => [id, `can:${i}`])),
-    ...e.reports.flatMap(r => r.roles.flatMap(role => held(h => h.role === role).map(id => [id, `report:${r.key}`]))),
-    // Codex round 2: a report given to them directly leads straight from them.
-    ...e.reports.flatMap(r => r.direct ? [['person', `report:${r.key}`]] : []),
-  ] as [string, string][]).filter(([from, to]) => shown.has(from) && shown.has(to)).slice(0, WHY_EDGES)
+    ...holders.map(h => ['person', h.id]),
+    ...apps.map(a => [a.holder.id, a.id]),
+    ...apps.flatMap(a => a.holder.role === null ? [] : e.permissions
+      .filter(p => p.role === a.holder.role && p.app === a.app && p.level === a.level).map(p => [a.id, permKey(p)])),
+    ...e.reports.flatMap(r => [
+      ...r.roles.flatMap(role => holders.filter(h => h.role === role).map(h => [dashBox(h.id) ?? h.id, `report:${r.key}`])),
+      ...(r.direct ? [[dashBox('direct')!, `report:${r.key}`]] : []),
+    ]),
+  ] as [string, string][]).filter(([from, to]) => shown.has(from) && shown.has(to))
+  const unique = [...new Map(edges.map(edge => [edge.join('→'), edge])).values()].slice(0, WHY_EDGES)
   const columns = [
     { heading: 'Person', boxes: [{ id: 'person', name: clip(e.name), record: { table: 'Person', row: person } }] },
-    { heading: 'Business Role · Area', boxes: roles },
-    { heading: 'App · Level', boxes: apps },
+    { heading: 'Business Role · Area', boxes: roleBoxes },
+    { heading: 'App · Level', boxes: appBoxes },
     { heading: 'What They Can Do', boxes: can },
-    { heading: 'Reports They See', boxes: reports },
   ].filter(c => c.boxes.length)
-  return { version: 1, columns, edges }
+  return { version: 1, columns, edges: unique }
 }

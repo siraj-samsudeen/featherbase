@@ -7,7 +7,7 @@ import { configure, fireEvent, screen, waitFor, within } from '@testing-library/
 import { vi } from 'vitest'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
-import { hook, installWhy as install, openWhyRecordMap as openMap } from './why-fixture'
+import { NOTE, hook, installWhy as install, openWhyRecordMap as openMap } from './why-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -120,5 +120,45 @@ test('the chain lines join each box to the next, measured where the boxes fall, 
   } finally {
     placed.mockRestore()
     vi.unstubAllGlobals()
+  }
+})
+
+// #1282 item 12 (verifier): an area's parts that name a record are links to it.
+test("a role's area names each of its records as a link, with HR or by hand after it", async ({ admin }) => {
+  await install(admin)
+  hook().answer = {
+    version: 1,
+    columns: [
+      { heading: 'Person', boxes: [{ id: 'p', name: 'The note', record: { table: NOTE, row: 'n1' } }] },
+      { heading: 'Business Role · Area', boxes: [{ id: 'fm', name: 'Floor Manager', source: 'hr', detailParts: [{ name: 'First floor' }, { name: 'Lakeside', record: { table: NOTE, row: 'n1' } }] }] },
+    ],
+    edges: [['p', 'fm']],
+  }
+  await openMap(admin)
+  await showWhy()
+  await waitFor(() => expect(screen.getAllByTestId('why-box')).toHaveLength(2))
+  const detail = within(boxNamed('Floor Manager')).getByTestId('why-detail')
+  expect(detail).toHaveTextContent('First floor · Lakeside · HR')
+  expect(within(detail).getByRole('link', { name: 'Lakeside' })).toHaveAttribute('href', expect.stringContaining('/row/n1'))
+  expect(within(detail).queryByRole('link', { name: 'First floor' })).not.toBeInTheDocument()
+})
+
+// Verifier: the Map checks the answer itself too, so a malformed one never draws half a map.
+test("an answer that reaches the browser malformed shows Can't explain this right now", async ({ admin }) => {
+  await install(admin)
+  const real = globalThis.fetch
+  const faked = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input instanceof Request ? input.url : input).includes('/explain'))
+      return new Response(JSON.stringify({ label: 'Why: Access', answer: { version: 1, columns: [{ heading: 'A', boxes: [{ id: 'a', name: 'A' }] }], edges: [['a', 'b99']] } }),
+        { status: 200, headers: { 'content-type': 'application/json' } })
+    return real(input, init)
+  })
+  try {
+    await openMap(admin)
+    await showWhy()
+    expect(await screen.findByText("Can't explain this right now")).toBeInTheDocument()
+    expect(screen.queryAllByTestId('why-box')).toHaveLength(0)
+  } finally {
+    faked.mockRestore()
   }
 })

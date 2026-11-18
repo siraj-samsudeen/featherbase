@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { WhyAnswer, WhyBox, WhyExplained, WhyOffer } from 'shared'
+import { whyAnswerSchema, type WhyAnswer, type WhyBox, type WhyExplained, type WhyOffer } from 'shared'
 import { RecordLink } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 
@@ -48,7 +48,9 @@ export function WhyMap({ table, row }: { table: string; row: string }) {
   })
   const [hot, setHot] = useState<string | null>(null)
   const frame = useRef<HTMLDivElement>(null)
-  const answer = explained.data?.answer
+  // Verifier: checked here too, against the same shape, so nothing the server did not pass is ever half drawn.
+  const checked = explained.data ? whyAnswerSchema.safeParse(explained.data.answer) : undefined
+  const answer = checked?.success ? checked.data : undefined
   const lit = answer ? litChains(answer, hot) : { boxes: new Set<string>(), edges: new Set<number>() }
   const lines = useWhyLines(frame, answer)
 
@@ -87,7 +89,9 @@ function Box({ box, first, lit, pressed, onToggle }: { box: WhyBox; first: boole
   const onClick = (event: MouseEvent) => {
     if (!(event.target as Element).closest('a,button')) onToggle()
   }
-  const detail = [box.detail, box.source === 'hr' ? 'HR' : box.source === 'hand' ? 'by hand' : undefined].filter(Boolean).join(' · ')
+  const source = box.source === 'hr' ? 'HR' : box.source === 'hand' ? 'by hand' : undefined
+  // An area's parts each name their record: a link (#1282 item 12), else plain words.
+  const parts = (box.detailParts ?? (box.detail ? [{ name: box.detail }] : [])).concat(source ? [{ name: source }] : [])
   return (
     <div data-testid="why-box" data-why-box={box.id} data-lit={lit ? 'true' : undefined} onClick={onClick}
       className={`min-w-0 cursor-pointer rounded-lg border px-3 py-2 text-sm ${lit ? 'border-action bg-action-tint' : first ? 'border-action bg-surface' : 'border-border bg-surface'}`}>
@@ -97,7 +101,15 @@ function Box({ box, first, lit, pressed, onToggle }: { box: WhyBox; first: boole
         </span>
         {box.reach && <span className="shrink-0 rounded-full bg-subtle px-2 text-xs text-ink-muted" data-testid="why-reach">{box.reach}</span>}
       </div>
-      {detail && <div className="text-xs text-ink-muted">{detail}</div>}
+      {parts.length > 0 && (
+        <div className="text-xs text-ink-muted" data-testid="why-detail">
+          {parts.map((part, i) => (
+            <span key={i}>{i > 0 && ' · '}{'record' in part && part.record
+              ? <RecordLink table={part.record.table} rowId={part.record.row} name={part.name} />
+              : part.name}</span>
+          ))}
+        </div>
+      )}
       <button type="button" onClick={onToggle} aria-pressed={pressed} aria-label={`${pressed ? 'Hide' : 'Show'} the chain to ${box.name}`}
         className="mt-1 rounded px-1 text-xs text-ink-muted hover:text-action focus-visible:outline-2 focus-visible:outline-focus">
         {pressed ? 'Hide Chain' : 'Show Chain'}

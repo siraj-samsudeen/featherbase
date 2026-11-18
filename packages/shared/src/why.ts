@@ -27,10 +27,13 @@ export const whyBoxSchema = z.object({
   reach: words(20).optional(),
   /** The record the box names, opened by its link. */
   record: z.object({ table: words(200), row: words(200) }).strict().optional(),
-  /** The records its detail names (an area's store, section or cluster): the detail is shown only to someone who
-   *  may read every one of them. The platform keeps this list to itself. */
-  detailRecords: z.array(z.object({ table: words(200), row: words(200) }).strict()).max(10).optional(),
-}).strict()
+  /** A detail that names records (an area: "Sarees · Lakeside"), part by part, each record a link. The platform
+   *  shows it only to someone who may read every record in it. A box has a detail or detail parts, not both. */
+  detailParts: z.array(z.object({
+    name: words(80),
+    record: z.object({ table: words(200), row: words(200) }).strict().optional(),
+  }).strict()).min(1).max(10).optional(),
+}).strict().refine((b) => !(b.detail && b.detailParts), { message: 'A box has a detail or detail parts, not both' })
 
 export const whyAnswerSchema = z.object({
   version: z.literal(1),
