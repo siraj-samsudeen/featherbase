@@ -80,15 +80,17 @@ async function filterEquals(page: Page, column: string, value: string): Promise<
   if ((await input.evaluate((el) => el.tagName)) === 'SELECT') await input.selectOption(value)
   else await input.fill(value)
   await page.getByTestId('filter-add').click()
-  await expect(page.getByTestId('filter-chip').last()).toContainText(value)
+  // #1289: a filter shows once: in its own box above the list (with its ✕) when the column has one, else as a chip.
+  await expect(page.getByTestId('filter-chip').filter({ hasText: value }).or(page.getByTestId(`std-filter-clear-${column}`)).first()).toBeVisible()
 }
 
 async function clearFilters(page: Page): Promise<void> {
-  const chips = page.getByTestId('filter-chip')
-  while ((await chips.count()) > 0) {
-    const n = await chips.count()
-    await chips.last().getByRole('button').click()
-    await expect(chips).toHaveCount(n - 1)
+  // #1289: each filter has one ✕: a chip's, or the box's that shows it (the search box's included).
+  const removers = page.locator('[data-testid="filter-chip"] button, [data-testid^="std-filter-clear-"], [data-testid="list-search-clear"]')
+  while ((await removers.count()) > 0) {
+    const n = await removers.count()
+    await removers.last().click()
+    await expect(removers).toHaveCount(n - 1)
   }
 }
 
