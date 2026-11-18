@@ -74,13 +74,29 @@ export function action(name: string, payload: object) {
     payload,
   })
 }
-export async function canManageApps(): Promise<boolean> {
+type Capabilities = { manage?: boolean; tables?: string[] }
+let capabilities: { token: string | null; answer: Promise<Capabilities> } | undefined
+/** The platform's whoami capabilities for this person, asked once per signed-in session; none when it can't answer. */
+function platformCapabilities(): Promise<Capabilities> {
   const token = localStorage.getItem('fc_token')
-  const response = await fetch('/api/whoami', {
-    credentials: 'same-origin',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  }).catch(() => null)
-  if (!response?.ok) return false
-  const user = (await response.json()) as { capabilities?: { manage?: boolean } }
-  return user.capabilities?.manage === true
+  if (capabilities?.token === token) return capabilities.answer
+  const answer = (async () => {
+    const response = await fetch('/api/whoami', {
+      credentials: 'same-origin',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).catch(() => null)
+    if (!response?.ok) return {}
+    return ((await response.json()) as { capabilities?: Capabilities }).capabilities ?? {}
+  })()
+  capabilities = { token, answer }
+  return answer
+}
+export async function canManageApps(): Promise<boolean> {
+  return (await platformCapabilities()).manage === true
+}
+/** #1301: whether whoami says this person may read the Table at all (a System Manager reads every one).
+ *  Display only: the platform still decides every read. */
+export async function mayReadTable(table: string): Promise<boolean> {
+  const can = await platformCapabilities()
+  return can.manage === true || (can.tables ?? []).includes(table)
 }
