@@ -116,12 +116,22 @@ A report or a bundle SHALL be givable to one business role, as to a person, a ro
 - **THEN** one grant names Vendor Sales and Store Manager, and every Store Manager gets it for their own area
 
 ### Requirement: Old grants are given to business roles only when asked
-Only when a System Manager asks SHALL Dash give each live grant to a job also to the business role its title maps to, and each grant to Dash Reader to every business role holding a Dash permission that is not given by hand only (to Dash All-Stores Reader, those reaching the whole company). Grants to a person stay as they are; old grants are never removed. Each addition, and each old grant with no matching role, is logged once, and running it again adds nothing.
+Only when a System Manager asks SHALL Dash give each live grant to Dash Reader also to the manager roles that open Dash and are not given by hand only. Every other old grant (to a job, to Dash All-Stores Reader, to any other role) stays where it is and is added on request. Grants to a person stay as they are; old grants are never removed. Each addition, and each grant not carried over, is logged once; running it again adds nothing.
 
 #### Scenario: Running it twice
 
 - **WHEN** a System Manager gives the old grants to business roles twice
 - **THEN** the second run adds no grant and no log line
+
+#### Scenario: Store Reports for All Dash Users
+
+- **WHEN** the bundle Store Reports for All Dash Users is given to Dash Reader and a System Manager gives the old grants to business roles
+- **THEN** Team Leader, Floor Manager, Department Manager, Store Manager, Cluster Manager, Regional Head, Buyer, Category Head and Division Head get it, and no visual merchandising, Staff, Head Office or hand-only role does
+
+#### Scenario: A grant to a job
+
+- **WHEN** Vendor Sales is given to the job Store Manager and a System Manager gives the old grants to business roles
+- **THEN** it is not given to any business role, is logged as not carried over, and Who Would Gain Or Lose Access lists it as not carried over, add on request, with Selvi among those who would lose it
 
 #### Scenario: A grant with no matching role
 
@@ -143,6 +153,24 @@ The starting roles SHALL be as the owner reviewed them on 18-Nov-2026: manager r
 
 - **WHEN** a System Manager clicks Add The Starting Roles on an instance with none
 - **THEN** Owner Director, Tester and Supplier are given by hand only, and no HR title maps to Owner Director or Regional Head
+
+### Requirement: Division Head and the visual merchandising roles
+The starting roles SHALL include Division Head, with a Category Head's permissions over the division their merchandise assignment names in its region, and two visual merchandising roles: Visual Merchandising Manager reaching the open stores of their region, and Visual Merchandiser their own store, each with nothing to give or edit. Merchandiser, the buying side, is not visual merchandising.
+
+#### Scenario: A division head
+
+- **WHEN** Devika's merchandise assignment as Division head names the division Home in the East, and business roles decide
+- **THEN** she reaches every merchandise subcategory of Home at every open store in the East, and none in the West
+
+#### Scenario: Visual merchandising
+
+- **WHEN** Vimala's HR title is Manager - visual merchandising at a store in the East, and Vasu's is Visual merchandiser at Hillview
+- **THEN** Vimala reaches every open store in the East, Vasu reaches Hillview only, and neither may give reports or edit sections
+
+#### Scenario: New starting roles on an instance that has the others
+
+- **WHEN** Add The Starting Roles is clicked on an instance whose starting roles were added before Division Head and the visual merchandising roles existed, and whose Category Head the owner has edited
+- **THEN** only those three roles and their titles are added, and Category Head is unchanged
 
 ### Requirement: Only an open store gives store reach
 A role placed at a site SHALL reach a store there only when the site is an open store: not Planned or Closed, of site kind Store where classified, else marked as a store. The Site is read alike on every path. Someone given a business role by hand is never shown as having left.

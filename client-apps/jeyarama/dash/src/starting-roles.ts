@@ -15,23 +15,31 @@ const REPORTS_IN_AREA: Grant = ['Dash', 'Reader', 'View', 'Reports', 'Area']
 /** Owner, 18-Nov-2026: a section's name and which subcategories sit under it, within the role's area. */
 export const SECTIONS_THING = 'Section names and subcategories'
 const SECTIONS: Grant = ['Dash', 'Manager', 'Edit', SECTIONS_THING, 'Area']
+/** A head's Buyer Sections: moving subcategories between those they head, for the master data team to decide (#1246). */
+const BUYER_SECTIONS: Grant = ['Dash', 'Manager', 'Edit', 'Buyer Sections', 'Area']
 const GIVE_TO_TEAM: Grant = ['Dash', 'Manager', 'Give', 'Reports', 'Team']
 const EVERY_REPORT: Grant = ['Dash', 'Reader', 'View', 'Reports', 'All']
 /** The Master Data app at its manager level: read, add and edit every master table, delete none. */
 const MASTER_DATA = (verb: string): Grant => ['Master Data', 'Manager', verb, 'Master Tables', 'All']
 
-export interface StartingRole { name: string; description: string; reaches: Reaches; by_hand_only?: boolean; grants: Grant[] }
+/** `dash_reader_grants`: Give Old Grants To Business Roles gives this role each report given to Dash Reader (decision 7). */
+export interface StartingRole { name: string; description: string; reaches: Reaches; by_hand_only?: boolean; dash_reader_grants?: true; grants: Grant[] }
 export const STARTING_ROLES: StartingRole[] = [
   { name: 'Staff', reaches: 'Section', description: 'Works in a section. Tasker and Tickets for their own work; no Dash yet.', grants: [OWN_TASKS, TICKETS] },
-  { name: 'Team Leader', reaches: 'Section', description: 'Leads a section.', grants: [REPORTS_IN_AREA, ['Dash', 'Reader', 'Edit', SECTIONS_THING, 'Area'], TEAM_TASKS, TEAM_TICKETS] },
-  { name: 'Floor Manager', reaches: 'Floor', description: 'Runs a floor of a store.', grants: [REPORTS_IN_AREA, SECTIONS, TEAM_TASKS, TEAM_TICKETS] },
-  { name: 'Department Manager', reaches: 'Department', description: 'Runs a department of a store.', grants: [REPORTS_IN_AREA, SECTIONS, TEAM_TASKS, TEAM_TICKETS] },
-  { name: 'Store Manager', reaches: 'Store', description: 'Runs a store.', grants: [REPORTS_IN_AREA, SECTIONS, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
-  { name: 'Cluster Manager', reaches: 'Cluster', description: 'Looks after the stores of a cluster.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Team Leader', dash_reader_grants: true, reaches: 'Section', description: 'Leads a section.', grants: [REPORTS_IN_AREA, ['Dash', 'Reader', 'Edit', SECTIONS_THING, 'Area'], TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Floor Manager', dash_reader_grants: true, reaches: 'Floor', description: 'Runs a floor of a store.', grants: [REPORTS_IN_AREA, SECTIONS, TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Department Manager', dash_reader_grants: true, reaches: 'Department', description: 'Runs a department of a store.', grants: [REPORTS_IN_AREA, SECTIONS, TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Store Manager', dash_reader_grants: true, reaches: 'Store', description: 'Runs a store.', grants: [REPORTS_IN_AREA, SECTIONS, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Cluster Manager', dash_reader_grants: true, reaches: 'Cluster', description: 'Looks after the stores of a cluster.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
   // Owner, 18-Nov-2026: no HR title maps to it yet; the owner decides which do.
-  { name: 'Regional Head', reaches: 'Region', description: 'Looks after the stores of a region, read from each site\'s region.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
-  { name: 'Buyer', reaches: 'Merchandise', description: 'Buys subcategories for a region.', grants: [REPORTS_IN_AREA, OWN_TASKS, TICKETS] },
-  { name: 'Category Head', reaches: 'Merchandise', description: 'Heads the buyers of a category, subdivision or division.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, ['Dash', 'Manager', 'Edit', 'Buyer Sections', 'Area'], TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Regional Head', dash_reader_grants: true, reaches: 'Region', description: 'Looks after the stores of a region, read from each site\'s region.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Buyer', dash_reader_grants: true, reaches: 'Merchandise', description: 'Buys subcategories for a region.', grants: [REPORTS_IN_AREA, OWN_TASKS, TICKETS] },
+  { name: 'Category Head', dash_reader_grants: true, reaches: 'Merchandise', description: 'Heads the buyers of a category, subdivision or division.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, BUYER_SECTIONS, TEAM_TASKS, TEAM_TICKETS] },
+  // Owner, 18-Nov-2026 (decision 5): a Category Head's permissions over the division their merchandise assignment names, in its region.
+  { name: 'Division Head', dash_reader_grants: true, reaches: 'Merchandise', description: 'Heads a division, such as Grocery or Home, in the stores of their region.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, BUYER_SECTIONS, TEAM_TASKS, TEAM_TICKETS] },
+  // Owner, 18-Nov-2026: visual merchandising, one role per reach; reads and team work only, nothing to give or edit.
+  { name: 'Visual Merchandising Manager', reaches: 'Region', description: 'Looks after visual merchandising in the stores of a region, read from each site\'s region.', grants: [REPORTS_IN_AREA, TEAM_TASKS, TEAM_TICKETS] },
+  { name: 'Visual Merchandiser', reaches: 'Store', description: 'Does visual merchandising in a store.', grants: [REPORTS_IN_AREA, TEAM_TASKS, TEAM_TICKETS] },
   // Owner, 18-Nov-2026: no reports and no Dash by default; head office staff get reports through a role given by hand or a grant.
   { name: 'Head Office', reaches: 'Whole company', description: 'Works at head office. No Dash by default: reports come from a role given by hand or a report given to them.', grants: [OWN_TASKS, TICKETS] },
   // Owner, 18-Nov-2026: the owner names them by hand; no HR title maps to it (a COO of a region is a Regional Head).
@@ -49,6 +57,15 @@ export const STARTING_ROLES: StartingRole[] = [
  *  Chief Operating Officer map to nothing (owner, 18-Nov-2026): Owner Directors are named by hand. */
 export const STARTING_TITLES: [title: string, role: string][] = [
   ['Staff', 'Staff'], ['Team Leader', 'Team Leader'], ['Floor Manager', 'Floor Manager'], ['Department Manager', 'Department Manager'],
-  ['Store Manager', 'Store Manager'], ['Cluster Manager', 'Cluster Manager'], 
-  ['Head office staff', 'Head Office'], ['Buyer', 'Buyer'], ['Category head', 'Category Head'],
+  ['Store Manager', 'Store Manager'], ['Cluster Manager', 'Cluster Manager'],
+  ['Head office staff', 'Head Office'], ['Buyer', 'Buyer'], ['Category head', 'Category Head'], ['Division head', 'Division Head'],
+  // Owner, 18-Nov-2026. Merchandiser, the buying side, is not visual merchandising: it stays as it maps.
+  ['Manager - visual merchandising', 'Visual Merchandising Manager'], ['Visual merchandiser', 'Visual Merchandiser'],
 ]
+
+/**
+ * Owner, 18-Nov-2026 (decision 7: start narrow; add on request): the roles a report given to Dash Reader is carried to, by
+ * name. The manager roles that open Dash; never visual merchandising, a role given by hand only, or one with no Dash.
+ * Starting data, not a column on the role: a role renamed or added later gets no old grant, and anything wider is given by hand.
+ */
+export const DASH_READER_GRANT_ROLES: readonly string[] = STARTING_ROLES.filter(r => r.dash_reader_grants).map(r => r.name)

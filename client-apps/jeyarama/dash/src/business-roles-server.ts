@@ -5,7 +5,7 @@
 import { appsOf, decisionReports, differences, permissionSentence, titleList, SOURCE_WORDS,
   type HeldRole, type Model, type Side, type Spot, type TitleInUse } from './business-roles.ts'
 import { collapseCodes } from './reach-prefixes.ts'
-import { reportsReaching, type AccessRow, type BundleMember } from './report-access.ts'
+import { reportsReaching, type AccessRow, type BundleMember, type Receiver } from './report-access.ts'
 import { ACCESS, MEMBER, all, jobsOf, managesAccess, personNames, whoIs, type AccessContext } from './report-access-server.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
 import { EMPLOYEE_STATUS, checked, exact, holdsOn, text } from './values.ts'
@@ -15,7 +15,7 @@ import { opensDashFor, readableByRoles, offered } from './report-eligibility.ts'
 import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, isStore, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
 import { openStore, siteKindRead, siteStoreFields } from './site-kind.ts'
 import { businessReports, businessRolesOpen, opensDashByBusinessRoles } from './business-reports.ts'
-import { ensureStartingRoles, logger } from './switch-over.ts'
+import { carriedOver, ensureStartingRoles, logger } from './switch-over.ts'
 
 export { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, type Base }
 type Row = Record<string, unknown>
@@ -208,6 +208,8 @@ export interface PersonShadow {
   nextWhy: Map<string, { role?: string; person?: true; bundle: string | null; every?: true }[]>
   /** The roles they hold that would give them every report (viewsEveryReport). */
   everyReport: string[]
+  /** Who they are to the old rules' report grants: their platform roles and their jobs. */
+  receiver: Receiver
 }
 
 /** Places by store: null for a whole store, else its subcategory codes. */
@@ -253,6 +255,7 @@ export async function personShadow(world: ShadowWorld, person: string, roles: re
     decisions: decisionReports({ person, roles, jobs: jobNames }, rows, members),
     nextWhy: next.why,
     everyReport: access.everyReport,
+    receiver: { person, roles, jobs: jobNames },
   }
 }
 
@@ -474,15 +477,42 @@ export async function accessChanges(context: AccessContext) {
   const platformRoles = await platformRolesOf(ctx.people, people)
   const roleName = new Map(world.model.roles.map(r => [r.id, r.name]))
   const changed = []
+  const losing: { receiver: Receiver; lost: string[] }[] = []
   for (const person of people) {
     const { shadow, found } = await comparePerson(world, platformRoles.get(person)!, person, shapes)
     if (!found.kind) continue
+    // Every report they get today and would not under business roles, whether lost or awaiting a decision.
+    losing.push({ receiver: shadow.receiver, lost: shadow.today.reports.filter(k => !shadow.next.reports.includes(k)) })
     changed.push({ person, kind: found.kind, roles: [...new Set(shadow.held.map(h => roleName.get(h.role)!))].sort(), ...await changeWords(world, reports, found, shadow.everyReport) })
   }
   const names = await personNames(ctx, changed.map(c => c.person))
   const who = await whoIs(ctx.baseTables, changed.map(c => c.person), world.today)
   const rows = changed.map(c => ({ ...c, name: names.get(c.person) ?? 'Someone', who: who.get(c.person)! })).sort((a, b) => a.name.localeCompare(b.name))
-  return { people: people.length, changed: rows.length, groups: GROUPS.map(kind => ({ kind, people: rows.filter(r => r.kinds.includes(kind)) })) }
+  return { people: people.length, changed: rows.length, groups: GROUPS.map(kind => ({ kind, people: rows.filter(r => r.kinds.includes(kind)) })),
+    not_carried_over: await notCarriedOver(ctx, world, reports, losing, names) }
+}
+
+/**
+ * #1277 (owner, 18-Nov-2026, decision 7: start narrow; add on request): each live grant that Give Old Grants To Business
+ * Roles leaves where it is (one to a job, to Dash All-Stores Reader, to any role but Dash Reader), with each person who
+ * would lose a report of it under business roles. `losing`: each changed person's old receiver and the reports they would lose.
+ */
+async function notCarriedOver(ctx: Ctx, world: ShadowWorld, reports: Map<string, { name: string }>, losing: { receiver: Receiver; lost: string[] }[], names: Map<string, string>) {
+  const rows = (await all(ctx.baseTables, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'business_role', 'removed'])).filter(r => !checked(r.removed))
+  const bundleNames = new Map((await all(ctx.baseTables, 'dash.report_bundle', ['bundle_name'])).map(r => [exact(r.row_id), text(r.bundle_name)]))
+  const reportPart = (k: string) => ({ name: reports.get(k)?.name ?? 'No longer listed', table: 'dash.report', id: k })
+  const out = []
+  for (const row of rows) {
+    const carried = carriedOver(row, world.model)
+    if (!carried || carried.roles.length) continue
+    const given = exact(row.report) ? [exact(row.report)] : world.grants.members.filter(m => m.report_bundle === exact(row.report_bundle)).map(m => m.report)
+    const people = losing.filter(({ receiver }) => (carried.old.kind === 'job' ? receiver.jobs : receiver.roles).includes(carried.old.name))
+      .map(({ receiver, lost }) => ({ person: receiver.person, name: names.get(receiver.person) ?? 'Someone', reports: given.filter(k => lost.includes(k)).sort().map(reportPart) }))
+      .filter(p => p.reports.length).sort((a, b) => a.name.localeCompare(b.name) || a.person.localeCompare(b.person))
+    out.push({ grant: exact(row.row_id), gives: exact(row.report) ? reportPart(exact(row.report)) : { name: text(bundleNames.get(exact(row.report_bundle))) || 'No longer listed', table: 'dash.report_bundle', id: exact(row.report_bundle) },
+      receiver: carried.old, note: 'Not carried over: add on request', people })
+  }
+  return out.sort((a, b) => a.gives.name.localeCompare(b.gives.name) || a.receiver.name.localeCompare(b.receiver.name) || a.grant.localeCompare(b.grant))
 }
 
 const CHANGES = ['Correct', 'Also give']

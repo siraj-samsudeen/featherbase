@@ -3037,7 +3037,8 @@
       "toVersion": "0.13.32",
       "operations": []
     },
-    {"id": "site_kind", "fromVersion": "0.13.32", "toVersion": "0.13.33", "operations": []}
+    {"id": "site_kind", "fromVersion": "0.13.32", "toVersion": "0.13.33", "operations": []},
+    {"id": "division_head_and_visual_merchandising", "fromVersion": "0.13.33", "toVersion": "0.13.34", "operations": []}
   ],
   "baseTables": {
     "read": {
