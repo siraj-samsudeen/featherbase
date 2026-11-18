@@ -202,12 +202,12 @@ describe('a bad feed or a big batch changes nothing', () => {
 
     const run = await runRosterLink('stylehr')
 
-    expect(run.status!.plan!.refused).toBe('it would change the status of 11 of 11 rows, more than the limit of 10')
+    expect(run.status!.plan!.refused).toBe('it would change the status of 11 of 11 Working rows to Gone, more than the limit of 10')
     expect(run.status!.changed).toBe(0)
     expect(Object.values(await states())).toEqual(Array(11).fill('Working'))
     expect(run.created).toBe(11)
     const [log] = await sql`select operation from activity_log where operation like 'roster_status_refused %'`
-    expect(String(log.operation)).toContain('it would change the status of 11 of 11 rows')
+    expect(String(log.operation)).toContain('it would change the status of 11 of 11 Working rows to Gone')
   })
 
   test('the limit is one in twenty of the rows on the record, when that is more than ten', async ({ admin }) => {
@@ -215,7 +215,25 @@ describe('a bad feed or a big batch changes nothing', () => {
     warehouse([...steadyFeed(240), { key: '7001', exit: PAST }])
     const plan = (await planRosterLink('stylehr'))!.status!
     expect(plan).toMatchObject({ covered: 241, limit: 13, refused: null })
-    expect(plan.changes).toEqual([{ row_id: expect.any(String), from: 'Working', to: 'Gone', basis: 'exit date' }])
+    expect(plan.changes).toEqual([{ row_id: expect.any(String), record: '7001', from: 'Working', to: 'Gone', basis: 'exit date' }])
+  })
+
+  test('many old leavers never widen the allowance for marking current staff as left', async ({ admin }) => {
+    const gone = Array.from({ length: 400 }, (_, i) => crewRow(200 + i, { crew_state: 'Gone' }))
+    const working = Array.from({ length: 11 }, (_, i) => crewRow(i + 1))
+    await setUp(admin, [...gone, ...working])
+    warehouse([...gone.map((r) => ({ key: String(r.hr_record), exit: PAST })), ...working.map((r) => ({ key: String(r.hr_record), active: false }))])
+    const plan = (await planRosterLink('stylehr'))!.status!
+    expect(plan).toMatchObject({ covered: 411, covered_current: 11, covered_left: 400, limit: 10, back_limit: 20 })
+    expect(plan.refused).toBe('it would change the status of 11 of 11 Working rows to Gone, more than the limit of 10')
+  })
+
+  test('bringing back more left rows than their own limit is refused too', async ({ admin }) => {
+    const gone = Array.from({ length: 11 }, (_, i) => crewRow(i + 1, { crew_state: 'Gone' }))
+    await setUp(admin, [...steady(300), ...gone])
+    warehouse([...steadyFeed(300), ...gone.map((r) => ({ key: String(r.hr_record) }))])
+    const plan = (await planRosterLink('stylehr'))!.status!
+    expect(plan.refused).toBe('it would change the status of 11 of 11 Gone rows to Working, more than the limit of 10')
   })
 
   test('a person may lift the limit for exactly the count the dry run showed, never another', async ({ admin }) => {
@@ -224,7 +242,7 @@ describe('a bad feed or a big batch changes nothing', () => {
     warehouse(rows.map((r) => ({ key: String(r.hr_record), exit: PAST })))
 
     const wrong = await runRosterLink('stylehr', { acceptStatus: 12 })
-    expect(wrong.status!.plan!.refused).toBe('it would change the status of 11 of 11 rows, more than the limit of 10')
+    expect(wrong.status!.plan!.refused).toBe('it would change the status of 11 of 11 Working rows to Gone, more than the limit of 10')
     expect(wrong.status!.changed).toBe(0)
 
     const right = await runRosterLink('stylehr', { acceptStatus: 11 })
@@ -308,6 +326,19 @@ describe('a bad feed or a big batch changes nothing', () => {
     expect(await state('TT-1001')).toBe('Test record')
   })
 
+  test('a row whose HR record number was corrected after the plan is not changed on the old record’s say', async ({ admin }) => {
+    await setUp(admin, [crewRow(1)])
+    warehouse([{ key: '7001', exit: PAST }, { key: '7099' }])
+    const plan = (await planRosterLink('stylehr'))!
+    const row = await crew('TT-1001')
+    await saveDoc(TABLE, { row_id: row.row_id, updated_at: row.updated_at, hr_record: '7099' }, 'Administrator')
+
+    const run = await runRosterLink('stylehr', { plan })
+
+    expect(run.status!.changed).toBe(0)
+    expect(await state('TT-1001')).toBe('Working')
+  })
+
   test('a status the Table will not take fails that row only, and the run names it', async ({ admin }) => {
     await setUp(admin, [crewRow(1), crewRow(2)], ROSTER, 'Working\nTest record')
     warehouse([{ key: '7001', exit: PAST }, { key: '7002' }])
@@ -356,7 +387,7 @@ describe('where a person sees it', () => {
     await saveDoc(TABLE, { row_id: (await crew('TT-1001')).row_id, updated_at: (await crew('TT-1001')).updated_at, crew_state: 'Working' }, 'Administrator')
     exec = await runJob()
     expect(exec.outcome).toBe('refused')
-    expect(exec.result).toContain('changed no statuses: it would change the status of 11 of 11 rows')
+    expect(exec.result).toContain('changed no statuses: it would change the status of 11 of 11 Working rows to Gone')
   })
 
   test('the dry run counts by reason; the CLI lifts a limit only on --apply, with a count', async ({ admin }) => {
@@ -365,7 +396,7 @@ describe('where a person sees it', () => {
     warehouse([...rows.map((r) => ({ key: String(r.hr_record), exit: PAST, active: r.hr_record === '7002' ? true : false })), { key: '7020' }])
 
     const dry = await runMain(main, ['roster:link', 'stylehr'])
-    expect(dry.stdout).toContain(`roster status ${TABLE}: 12 rows on the StyleHR record, 0 not on it (left alone); limit 10`)
+    expect(dry.stdout).toContain(`roster status ${TABLE}: 12 rows on the StyleHR record (11 current, 1 left), 0 not on it (left alone); limits 10 to left, 10 back`)
     expect(dry.stdout).toContain(`roster status ${TABLE}: would mark 11 as left (exit date 11, inactive 0) and 1 as current again`)
     expect(dry.stdout).toContain('CHANGED NONE')
 

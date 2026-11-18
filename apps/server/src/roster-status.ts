@@ -23,13 +23,17 @@ import type { Roster } from './roster-first-sign-in'
 import { errorMessage } from './errors'
 
 const ACTOR = ROSTER_LINK_ACTOR
-/** A run may change at most this share of the rows the feed covers... */
+/** A run may move at most this share of the covered rows in a status out of
+ *  it (each direction on its own, so many old leavers never widen the allowance
+ *  for marking current staff as left)... */
 const MAX_CHANGE_SHARE = 0.05
 /** ...or this many, whichever is more. */
 const MIN_CHANGE_LIMIT = 10
 
 export interface StatusChange {
   row_id: string
+  /** The HR record the decision was made on: rechecked under the row's lock. */
+  record: string
   from: string
   to: string
   /** Why, in words safe for a log: no name, code or value. */
@@ -42,10 +46,15 @@ export interface RosterStatusPlan {
   latest_feed_day: string | null
   /** Rows in the current or left status whose record the feed has. */
   covered: number
+  /** Of those, in the current status; their changes are held to `limit`. */
+  covered_current: number
+  /** Of those, in the left status; their changes are held to `back_limit`. */
+  covered_left: number
   /** Rows in those statuses whose record the feed does not have: left alone. */
   not_in_feed: number
   changes: StatusChange[]
   limit: number
+  back_limit: number
   refused: string | null
 }
 
@@ -70,11 +79,11 @@ interface Statuses {
 /** What the rule says this record's row should be, or null to leave it. */
 function wanted(r: EmployeeRecord, row: StatusRow, s: Statuses, today: string): StatusChange | null {
   const v = recordVerdict(r, today)
-  if (row.status === s.current && v.leaver) return { row_id: row.row_id, from: s.current, to: s.left, basis: v.basis }
+  if (row.status === s.current && v.leaver) return { row_id: row.row_id, record: row.record, from: s.current, to: s.left, basis: v.basis }
   // Back only on plain evidence: a rejoiner is active and paid again. Off the
   // payroll (an owner-director, a joiner not yet paid) is no evidence either way.
   if (row.status === s.left && !v.leaver && r.movement_active === true && r.payroll_active === true)
-    return { row_id: row.row_id, from: s.left, to: s.current, basis: 'current again' }
+    return { row_id: row.row_id, record: row.record, from: s.left, to: s.current, basis: 'current again' }
   return null
 }
 
@@ -88,7 +97,7 @@ export function planStatusChanges(
   today: string,
 ): RosterStatusPlan {
   const byKey = new Map(records.map((r) => [String(r.employee_key).trim(), r]))
-  const plan: RosterStatusPlan = { table, today, latest_feed_day: latestFeedDay, covered: 0, not_in_feed: 0, changes: [], limit: MIN_CHANGE_LIMIT, refused: null }
+  const plan: RosterStatusPlan = { ...emptyPlan(table, today, null), latest_feed_day: latestFeedDay }
   plan.refused = feedRefusal(records, latestFeedDay, today)
   if (plan.refused) return plan
   for (const row of rows) {
@@ -99,13 +108,25 @@ export function planStatusChanges(
       continue
     }
     plan.covered++
+    if (row.status === s.current) plan.covered_current++
+    else plan.covered_left++
     const change = wanted(r, row, s, today)
     if (change) plan.changes.push(change)
   }
-  plan.limit = Math.max(MIN_CHANGE_LIMIT, Math.ceil(plan.covered * MAX_CHANGE_SHARE))
-  if (plan.changes.length > plan.limit)
-    plan.refused = `it would change the status of ${plan.changes.length} of ${plan.covered} rows, more than the limit of ${plan.limit}`
+  const limitOf = (n: number) => Math.max(MIN_CHANGE_LIMIT, Math.ceil(n * MAX_CHANGE_SHARE))
+  plan.limit = limitOf(plan.covered_current)
+  plan.back_limit = limitOf(plan.covered_left)
+  const leaving = plan.changes.filter((c) => c.to === s.left).length
+  const back = plan.changes.length - leaving
+  if (leaving > plan.limit)
+    plan.refused = `it would change the status of ${leaving} of ${plan.covered_current} ${s.current} rows to ${s.left}, more than the limit of ${plan.limit}`
+  else if (back > plan.back_limit)
+    plan.refused = `it would change the status of ${back} of ${plan.covered_left} ${s.left} rows to ${s.current}, more than the limit of ${plan.back_limit}`
   return plan
+}
+
+function emptyPlan(table: string, today: string, refused: string | null): RosterStatusPlan {
+  return { table, today, latest_feed_day: null, covered: 0, covered_current: 0, covered_left: 0, not_in_feed: 0, changes: [], limit: MIN_CHANGE_LIMIT, back_limit: MIN_CHANGE_LIMIT, refused }
 }
 
 const statusesOf = (roster: Roster): Statuses | null =>
@@ -128,7 +149,7 @@ async function statusRows(roster: Roster, s: Statuses, rowId?: string): Promise<
 export async function planRosterStatus(roster: Roster, today = istToday()): Promise<RosterStatusPlan | null> {
   const s = statusesOf(roster)
   if (!s) return null
-  const empty = (refused: string): RosterStatusPlan => ({ table: roster.link.table, today, latest_feed_day: null, covered: 0, not_in_feed: 0, changes: [], limit: MIN_CHANGE_LIMIT, refused })
+  const empty = (refused: string) => emptyPlan(roster.link.table, today, refused)
   // The feed is keyed by this system's values; any other record number would match the wrong people.
   if (roster.recordSystem !== FEED_RECORD_SYSTEM) return empty(`its record numbers are ${roster.recordSystem}, not the feed's ${FEED_RECORD_SYSTEM}`)
   let feed
@@ -140,11 +161,12 @@ export async function planRosterStatus(roster: Roster, today = istToday()): Prom
   return planStatusChanges(roster.link.table, await statusRows(roster, s), feed.records, feed.latestFeedDay, s, today)
 }
 
-/** One row, under its lock: changed only if it still holds the status planned. */
+/** One row, under its lock: changed only if it still holds the status and
+ *  the HR record the decision was made on. */
 async function changeOne(roster: Roster, s: Statuses, c: StatusChange): Promise<boolean> {
   return withTransaction(async () => {
     const [row] = await statusRows(roster, s, c.row_id)
-    if (!row || row.status !== c.from) return false
+    if (!row || row.status !== c.from || row.record !== c.record) return false
     await runAsSystemActor(ACTOR, () => saveDoc(roster.link.table, { row_id: row.row_id, updated_at: row.updated_at, [roster.link.status_column]: c.to }, ACTOR))
     return true
   })
@@ -182,7 +204,7 @@ export function formatRosterStatus(plan: RosterStatusPlan | null, run?: RosterSt
   const n = (to: 'left' | 'back') => plan.changes.filter((c) => (to === 'back') === (c.basis === 'current again')).length
   const by = (basis: StatusChange['basis']) => plan.changes.filter((c) => c.basis === basis).length
   const lines = [
-    `roster status ${plan.table}: ${plan.covered} rows on the StyleHR record, ${plan.not_in_feed} not on it (left alone); limit ${plan.limit}`,
+    `roster status ${plan.table}: ${plan.covered} rows on the StyleHR record (${plan.covered_current} current, ${plan.covered_left} left), ${plan.not_in_feed} not on it (left alone); limits ${plan.limit} to left, ${plan.back_limit} back`,
     run
       ? `roster status ${plan.table}: changed ${run.changed}${run.failed.length ? `; FAILED ${run.failed.length}` : ''}`
       : `roster status ${plan.table}: would mark ${n('left')} as left (exit date ${by('exit date')}, inactive ${by('inactive')}) and ${n('back')} as current again`,
