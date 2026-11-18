@@ -400,6 +400,15 @@ test('a group through a sub-table offers no + New: there is no column of its own
   expect(newRowHref(group, 'X1')).toBeUndefined()
 })
 
+test('+ New on a link to a row of any Table names its Table too', () => {
+  const group = { key: 'k', label: 'Decisions', count: 0, connection: { table: 'Lt Decision', column: 'shapes', via: null, count: 0,
+    filters: [['shapes_table', '=', 'Lt Member'], ['shapes', '=', 'M1']] as [string, string, unknown][] } }
+  const href = newRowHref(group, 'M1')!
+  expect(JSON.parse(new URL(href, 'http://x').searchParams.get('prefill')!)).toEqual({ shapes_table: 'Lt Member', shapes: 'M1' })
+  const bare = { ...group, connection: { ...group.connection, filters: [] } }
+  expect(JSON.parse(new URL(newRowHref(bare, 'M1')!, 'http://x').searchParams.get('prefill')!)).toEqual({ shapes: 'M1' })
+})
+
 test("a Links view choice that cannot be saved still holds for this visit", async ({ admin }) => {
   await seed(admin)
   const bridged = globalThis.fetch

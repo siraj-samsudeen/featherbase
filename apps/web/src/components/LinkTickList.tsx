@@ -419,7 +419,10 @@ function FormField({ column, value, onChange }: { column: ColumnDef; value: unkn
 /** C4: a new row of the group's Table, already linked back to this record. */
 export function newRowHref(group: BacklinkGroup, record: string): string | undefined {
   if (group.connection.via) return undefined
-  return `${tableHref(group.connection.table)}/new?prefill=${encodeURIComponent(JSON.stringify({ [group.connection.column]: record }))}`
+  // Every equality the group is read by: a link to a row of any Table names its Table too (Codex review).
+  const prefill = Object.fromEntries(group.connection.filters.filter((f) => f[1] === '=').map((f) => [f[0], f[2]]))
+  if (!Object.keys(prefill).length) prefill[group.connection.column] = record
+  return `${tableHref(group.connection.table)}/new?prefill=${encodeURIComponent(JSON.stringify(prefill))}`
 }
 
 /** The group's Table filtered to the record, as a list. */

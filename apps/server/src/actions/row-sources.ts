@@ -56,10 +56,11 @@ export async function rowSources(viewer: string, name: string, rawIds: unknown):
   }
   if (!ids.length) {
     // Still a read of the Table: one the caller may not read is refused, not answered empty.
-    await scopedWhere(table, viewer, [])
+    await scopedWhere(name, viewer, [])
     return out
   }
-  const scoped = await scopedWhere(table, viewer, [[ROW_KEY, 'in', ids]])
+  // Read through the name asked for: a view keeps its own filters (Codex review).
+  const scoped = await scopedWhere(name, viewer, [[ROW_KEY, 'in', ids]])
   const rows = await sql<{ id: string; created_by: string | null }[]>`
     select ${sql(meta.row_key)}::text as id, created_by from ${sql(scoped.table)}
     where ${scoped.where as ReturnType<typeof sql>}`
