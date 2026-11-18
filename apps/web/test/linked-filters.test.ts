@@ -142,6 +142,17 @@ describe('chain filters', () => {
     expect(parseChain(chainFilter(steps, true))).toEqual({ negate: true, steps })
   })
 
+  test.each([
+    ['a parentfield', ['x', 'related', { table: 'T', parentfield: 'p' }]],
+    ['filters that are not filters', ['x', 'related', { table: 'T', filters: [1] }]],
+    ['a via read from a column', ['x', 'related', { via: 'V', column: 'c', table: 'T' }]],
+    ['a via without its column', ['row_id', 'related', { table: 'T', via: 'V' }]],
+    ['a far side whose filters are not filters', ['row_id', 'related', { table: 'L', column: 'e', filters: [['r', 'related', { table: 'R', filters: 'bad' }]] }]],
+    ['a next step that is not one', ['x', 'related', { table: 'T', filters: [['y', 'related', 'bad']] }]],
+  ] as [string, [string, string, unknown]][])('%s is not a chain', (_, filter) => {
+    expect(parseChain(filter)).toBeNull()
+  })
+
   test('a filter that is not a chain reads as none', () => {
     expect(parseChain(['status', '=', 'Open'])).toBeNull()
     expect(parseChain(['x', 'related', 'nope'])).toBeNull()
@@ -199,6 +210,14 @@ describe('old Explore addresses', () => {
       table: 'PO Line', filters: [['parentfield', '=', 'lines'], ['parent', 'related', { table: 'Purchase Order', filters: [] }]],
     }]])
     expect(exploreToList({ root: 'Ghost', chain }, known)).toBeNull()
+  })
+
+  test('steps that are not Explore steps are left out, and a step whose Table is gone ends the chain', () => {
+    // An address holds at most two steps.
+    expect(exploreTables({ root: 'Supplier', chain: JSON.stringify([null, { mode: 'backlink', table: 'X', column: 'c', via: 'v' }]) })).toEqual(['Supplier'])
+    expect(exploreTables({ root: 'Supplier', chain: JSON.stringify([{ mode: 'child', table: 1, column: 'c' }]) })).toEqual(['Supplier'])
+    expect(exploreToList({ root: 'Supplier', chain: JSON.stringify([{ mode: 'backlink', table: 'Ghost', column: 'supplier' }]) }, known))
+      .toEqual({ table: 'Supplier', filters: [] })
   })
 
   test('a malformed address keeps what reads, and no root is no list', () => {

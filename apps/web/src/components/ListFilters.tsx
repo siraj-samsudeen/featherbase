@@ -241,7 +241,8 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   const { t } = useI18n()
   const [column, op, value] = filter
   // #1276: a Linked to chain reads as its steps, each with its count.
-  if (meta && parseChain(filter)) return <LinkedFilterWords meta={meta} filter={filter} />
+  const chain = meta && parseChain(filter)
+  if (chain) return <LinkedFilterWords meta={meta} chain={chain} />
   const col = meta?.columns.find((c) => c.column_name === column)
   const label = column === 'row_id' ? 'Row ID' : t(col?.label ?? column)
   const linked =

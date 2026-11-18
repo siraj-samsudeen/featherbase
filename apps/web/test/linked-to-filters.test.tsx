@@ -197,6 +197,31 @@ test('Filter on a link to a row of any Table keeps its Table too, since an id ma
   expect(addressFilters(r)).toEqual([['shapes_table', '=', 'Xe Plant'], ['shapes', '=', 'R1']])
 })
 
+/** Orders holding lines that point at items: a sub-table both ways. */
+async function seedLines(admin: Admin) {
+  await admin.post('/api/table_def', { name: 'Xe Item', id_pattern: 'prompt', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/table_def', { name: 'Xe Order Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Reference', reference_table: 'Xe Item', in_list_view: true }] })
+  await admin.post('/api/table_def', { name: 'Xe Order', id_pattern: 'prompt', title_column: 'title', columns: [
+    { column_name: 'title', column_type: 'Data', in_list_view: true }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Xe Order Line' },
+  ] })
+}
+
+test('an item links to the orders whose lines point at it, via those lines', async ({ admin }) => {
+  await seedLines(admin)
+  await admin.post('/api/save_row', { table: 'Xe Item', row: { row_id: 'I-1', title: 'Bolt' } })
+  await renderApp(listPath('Xe Item'), admin)
+  await screen.findByText('Bolt')
+  await openLinked('Linked to…')
+  await chooseTable(0, 'Xe Order · via Xe Order Line')
+})
+
+test('a sub-table’s list links to the rows holding it', async ({ admin }) => {
+  await seedLines(admin)
+  await renderApp(listPath('Xe Order Line'), admin)
+  await openLinked('Linked to…')
+  await chooseTable(0, 'Xe Order')
+})
+
 test('an old Explore address opens the matching filtered list', async ({ admin }) => {
   const { v1 } = await seed(admin)
   const chain = enc(JSON.stringify([

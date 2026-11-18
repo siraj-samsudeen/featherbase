@@ -271,12 +271,10 @@ function StepRows({ from, fromFilters, option, picked, search, next, onPick, onS
   )
 }
 
-/** A Linked to filter as its chip reads: "Linked to Accident (2) › linked to
+/** A Linked to chain as its chip reads: "Linked to Accident (2) › linked to
  *  Vehicle: Truck 1 (1)", each step with how many of its rows the viewer may
- *  read match. None when the filter is not a chain. */
-export function LinkedFilterWords({ meta, filter }: { meta: TableMeta | undefined; filter: Filter }) {
-  const chain = parseChain(filter)
-  if (!chain || !meta) return null
+ *  read match. */
+export function LinkedFilterWords({ meta, chain }: { meta: TableMeta; chain: NonNullable<ReturnType<typeof parseChain>> }) {
   return (
     <span data-testid="linked-words">
       {chain.steps.map((step, i) => (
