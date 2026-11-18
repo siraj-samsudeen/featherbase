@@ -51,6 +51,15 @@ describe('#1273: where a link row came from', () => {
     expect((await sourcesOf(admin, ['G1'])).sources).toEqual({ G1: 'Area roles' })
   })
 
+  test('an import before the row was made says nothing about it: an id can be used again', async ({ admin }) => {
+    await seed(admin)
+    await sql`insert into featherbase.import_log (row_id, ref_table, file_name, run_id, touched, created_at)
+      values ('rs-log-old', ${GIVEN}, 'Old roles.csv', 'rs-run-old', ${sql.json([{ row_id: 'G1', action: 'inserted' }])}, now() - interval '1 day')`
+    await sql`insert into featherbase.import_source (row_id, ref_table, ref_name, run_id, created_at)
+      values ('rs-src-old', ${GIVEN}, 'G1', 'rs-run-old', now() - interval '1 day')`
+    expect((await sourcesOf(admin, ['G1'])).sources).toEqual({ G1: null })
+  })
+
   test('a row the caller may not read is left out, never named', async ({ admin, createUser }) => {
     await seed(admin)
     const reader = await createUserWithRole(admin, createUser, { role: 'Rs Own Rows', table: GIVEN, can_read: true, can_create: true, own_rows_only: true })

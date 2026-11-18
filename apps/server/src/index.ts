@@ -2017,7 +2017,10 @@ app.get('/api/table/:table', async (c) => {
     // #738: the caller's readable levels ride beside the cached meta, never
     // inside it — the meta object is shared by every caller.
     const readable = await permittedColumns(user.row_id, stored, 'read')
-    return c.json({ ...meta, readable_columns: meta.columns.filter((column) => includesColumn(readable, column)).map((column) => column.column_name), storage_identity: await tableStorageIdentity(meta) })
+    // #1273: the columns a new row may be given, so a tick list offers only what Add can save.
+    const creatable = await permittedColumns(user.row_id, stored, 'create')
+    const names = (selection: ReadonlySet<string>) => meta.columns.filter((column) => includesColumn(selection, column)).map((column) => column.column_name)
+    return c.json({ ...meta, readable_columns: names(readable), creatable_columns: names(creatable), storage_identity: await tableStorageIdentity(meta) })
   }
   if (suffix === 'count') {
     const filters = c.req.query('filters')

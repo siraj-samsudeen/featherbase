@@ -48,6 +48,7 @@ async function seed(admin: Admin, opts: { roles?: number; correctionPath?: boole
         { column_name: 'confirmed', column_type: 'Check', label: 'Confirmed' },
         { column_name: 'level', column_type: 'Choice', label: 'Level', choices: 'Reader\nManager' },
         { column_name: 'weight', column_type: 'Int', label: 'Weight' },
+        { column_name: 'starts_at', column_type: 'Datetime', label: 'Starts at' },
       ] : []),
     ] })
   await admin.post('/api/table_def', { name: NOTE, id_pattern: 'hash', title_column: 'note_text',
@@ -369,10 +370,16 @@ test('the inline form asks for each kind of field, and Escape closes it', async 
   fireEvent.click(within(form).getByRole('checkbox', { name: 'Confirmed' }))
   fireEvent.change(within(form).getByRole('combobox', { name: 'Level' }), { target: { value: 'Manager' } })
   fireEvent.change(within(form).getByRole('spinbutton', { name: 'Weight' }), { target: { value: '3' } })
+  fireEvent.focus(within(form).getByRole('textbox', { name: 'Starts at' }))
+  fireEvent.change(within(form).getByLabelText('Starts at'), { target: { value: '2027-01-31T12:00' } })
+  fireEvent.change(within(form).getByLabelText('Starts at'), { target: { value: '' } })
+  fireEvent.change(within(form).getByLabelText('Starts at'), { target: { value: '2027-01-31T12:00' } })
   fireEvent.click(within(form).getByRole('button', { name: 'Add' }))
   await waitFor(async () => expect((await admin.get<{ data: Record<string, unknown>[] }>(
-    `/api/table/${encodeURIComponent(GIVEN)}?filters=${encodeURIComponent(JSON.stringify([['role', '=', 'R07']]))}&fields=${encodeURIComponent(JSON.stringify(['ends_on', 'confirmed', 'level', 'weight']))}`)).data)
-    .toEqual([expect.objectContaining({ ends_on: expect.stringMatching(/^2027-01-31/), confirmed: true, level: 'Manager', weight: 3 })]))
+    `/api/table/${encodeURIComponent(GIVEN)}?filters=${encodeURIComponent(JSON.stringify([['role', '=', 'R07']]))}&fields=${encodeURIComponent(JSON.stringify(['ends_on', 'confirmed', 'level', 'weight', 'starts_at']))}`)).data)
+    .toEqual([expect.objectContaining({ ends_on: expect.stringMatching(/^2027-01-31/), confirmed: true, level: 'Manager', weight: 3,
+      // The wall time typed is the viewer's own: saved as that instant, whatever the database's zone.
+      starts_at: new Date('2027-01-31T12:00').toISOString() })]))
   fireEvent.click(within(await lineOf('Store Lead')).getByRole('button', { name: 'Tick Store Lead' }))
   fireEvent.keyDown(within(await screen.findByTestId('also-give-form')).getByRole('textbox', { name: 'Reason' }), { key: 'Escape' })
   expect(screen.queryByTestId('also-give-form')).not.toBeInTheDocument()

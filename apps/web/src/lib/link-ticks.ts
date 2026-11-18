@@ -31,11 +31,16 @@ export function tickColumn(meta: TableMeta, connection: Pick<Connection, 'column
   if (connection.via || !linksOnly(meta)) return undefined
   const skip = new Set([record.table, ...record.own])
   const back = meta.columns.find((c) => c.column_name === connection.column)
-  // Ticking writes both links: a read-only one would be dropped on save (Codex review).
+  // Ticking writes both links: one read-only, or one the caller may not give a new row, is refused (Codex review).
   // A link to a row of any Table also names its Table: such a group lists, never ticks (Codex review).
-  if (!back || back.column_type !== 'Reference' || back.read_only || back.table_column) return undefined
+  if (!back || back.column_type !== 'Reference' || !givable(meta, back) || back.table_column) return undefined
   const far = readableLinks(meta).find((c) => c.column_name !== connection.column && !skip.has(linkRowsTable(c) ?? ''))
-  return far && !far.read_only ? far : undefined
+  return far && givable(meta, far) ? far : undefined
+}
+
+/** A column a new row may be given: not read-only, and within the caller's create grant (when the server said). */
+function givable(meta: TableMeta, c: ColumnDef): boolean {
+  return !c.read_only && (!meta.creatable_columns || meta.creatable_columns.includes(c.column_name))
 }
 
 const BOOKKEEPING = /^(created|updated|modified|deleted)_(on|at|by|by_id|date)$/i
@@ -47,7 +52,7 @@ const ORDER: Record<string, number> = { Reference: 0, Date: 1, Datetime: 1 }
  *  then the rest (a reason). */
 export function formColumns(meta: TableMeta, links: string[]): ColumnDef[] {
   return dataColumns(meta)
-    .filter((c) => !links.includes(c.column_name) && !c.read_only && !NO_COLUMN_TYPES.has(c.column_type)
+    .filter((c) => !links.includes(c.column_name) && givable(meta, c) && !NO_COLUMN_TYPES.has(c.column_type)
       && !NOT_IN_FORM.has(c.column_type) && !BOOKKEEPING.test(c.column_name) && !(c.column_type === 'Reference' && !c.reference_table))
     .sort((a, b) => (ORDER[a.column_type] ?? 2) - (ORDER[b.column_type] ?? 2))
 }

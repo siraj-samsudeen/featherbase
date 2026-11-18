@@ -100,6 +100,8 @@ export interface TableMeta {
   columns: ColumnDef[]
   /** Column names the caller may read; served per request beside cached metadata. */
   readable_columns?: string[]
+  /** #1273: the columns the caller may give a new row; served per request like readable_columns. */
+  creatable_columns?: string[]
   /** Server-resolved storage, never inferred from a display label. */
   storage_identity?: {
     schema: string

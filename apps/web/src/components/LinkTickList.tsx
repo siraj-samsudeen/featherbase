@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { choiceLabel, rowDisplayTitle, tableHref, type ListFilter } from 'shared'
+import { choiceLabel, rowDisplayTitle, tableHref, wallTimeToInstant, type ListFilter } from 'shared'
 import { RecordLink, cx, fmtCount } from '@featherbase/shop-floor'
 import { ApiError, api, listResource } from '../lib/api'
 import { forwardLinks, ALL_ROWS, useRowName, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
@@ -391,14 +391,22 @@ function PickedName({ column, value }: { column: ColumnDef; value: string }) {
 function FormField({ column, value, onChange }: { column: ColumnDef; value: unknown; onChange: (value: unknown) => void }) {
   const { t } = useI18n()
   const [focused, setFocused] = useState(false)
+  // A date and time is typed as the viewer's wall time and saved as that instant (Codex review).
+  const [wall, setWall] = useState('')
   const label = column.label ?? column.column_name
   const shown = String(value ?? '')
   let control: ReactNode
   if (column.column_type === 'Date' || column.column_type === 'Datetime') {
-    const type = column.column_type === 'Date' ? 'date' : 'datetime-local'
+    const instant = column.column_type === 'Datetime'
+    const text = instant ? wall : shown
     // Reads "optional" until it is used, as a date box cannot say so itself.
-    control = <input type={focused || shown ? type : 'text'} value={shown} placeholder={column.reqd ? '' : 'optional'} aria-label={label}
-      onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onChange={(e) => onChange(e.target.value)} className={cx(FLD, 'w-36')} />
+    control = <input type={focused || text ? (instant ? 'datetime-local' : 'date') : 'text'} value={text} placeholder={column.reqd ? '' : 'optional'} aria-label={label}
+      onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} className={cx(FLD, 'w-36')}
+      onChange={(e) => {
+        if (!instant) return onChange(e.target.value)
+        setWall(e.target.value)
+        onChange(e.target.value ? wallTimeToInstant(e.target.value) : '')
+      }} />
   } else if (column.column_type === 'Check') {
     control = <input type="checkbox" checked={value === true} aria-label={label} onChange={(e) => onChange(e.target.checked)} />
   } else if (column.column_type === 'Choice') {

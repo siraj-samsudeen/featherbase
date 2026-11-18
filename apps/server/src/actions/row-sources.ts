@@ -20,6 +20,7 @@ import { storedTable } from '../views'
 //   → { sources: { a: "HR", b: null } }   (null: given by hand)
 
 const MAX_IDS = 500
+const IMPORT_GRACE_MS = 10 * 60_000
 
 /** A source as a reader says it after "from": the name without the words that
  *  only say it is a feed ("HR feed" → "HR"), a file's extension, or the
@@ -61,8 +62,8 @@ export async function rowSources(viewer: string, name: string, rawIds: unknown):
   }
   // Read through the name asked for: a view keeps its own filters (Codex review).
   const scoped = await scopedWhere(name, viewer, [[ROW_KEY, 'in', ids]])
-  const rows = await sql<{ id: string; created_by: string | null }[]>`
-    select ${sql(meta.row_key)}::text as id, created_by from ${sql(scoped.table)}
+  const rows = await sql<{ id: string; created_by: string | null; created_at: Date }[]>`
+    select ${sql(meta.row_key)}::text as id, created_by, created_at from ${sql(scoped.table)}
     where ${scoped.where as ReturnType<typeof sql>}`
   const found = rows.map((r) => r.id)
   // Who made each row, when that is no person: a service account or a platform step.
@@ -72,24 +73,29 @@ export async function rowSources(viewer: string, name: string, rawIds: unknown):
   if (svc.length)
     for (const a of await sql`select row_id, label, display_name from featherbase.service_account where row_id = any(${svc})`)
       accounts.set(String(a.row_id), serviceAccountName(a))
-  // A row a spreadsheet import wrote (a run not undone), by the file's name.
+  // A row a spreadsheet import wrote (a run not undone), by the file's name; only history
+  // since the row itself was made counts, as an id can be used again (Codex review).
+  const born = new Map(rows.map((r) => [r.id, new Date(r.created_at).getTime()]))
   const imported = new Map<string, string>()
+  // An import's own records are stamped when its transaction began, which can be before the
+  // rows it made: ten minutes of grace keep those, and still pass over an older run.
+  const since = (id: string, at: unknown) => new Date(at as string).getTime() >= (born.get(id) ?? 0) - IMPORT_GRACE_MS
   if (found.length)
     for (const r of await sql`
-      select distinct on (s.ref_name) s.ref_name, l.file_name from featherbase.import_source s
+      select distinct on (s.ref_name) s.ref_name, l.file_name, s.created_at from featherbase.import_source s
       join featherbase.import_log l on l.ref_table = s.ref_table and l.run_id = s.run_id and l.reverted_at is null
       where s.ref_table = ${table} and s.ref_name = any(${found}) and l.file_name is not null
       order by s.ref_name, s.created_at desc`)
-      imported.set(String(r.ref_name), String(r.file_name))
+      if (since(String(r.ref_name), r.created_at)) imported.set(String(r.ref_name), String(r.file_name))
   // A Table that keeps no import observations still lists each run's rows in its log (Codex review).
   const unnamed = found.filter((id) => !imported.has(id))
   if (unnamed.length)
     for (const r of await sql`
-      select distinct on (t.row_id) t.row_id, l.file_name from featherbase.import_log l
+      select distinct on (t.row_id) t.row_id, l.file_name, l.created_at from featherbase.import_log l
       cross join lateral jsonb_to_recordset(case when jsonb_typeof(l.touched) = 'array' then l.touched else '[]'::jsonb end) as t(row_id text)
       where l.ref_table = ${table} and l.reverted_at is null and l.file_name is not null and t.row_id = any(${unnamed})
       order by t.row_id, l.created_at desc`)
-      imported.set(String(r.row_id), String(r.file_name))
+      if (since(String(r.row_id), r.created_at)) imported.set(String(r.row_id), String(r.file_name))
   for (const r of rows) {
     const by = r.created_by ?? ''
     const maker = accounts.get(by) ?? (by !== 'Administrator' ? ACTOR_LABELS[by] : undefined)
