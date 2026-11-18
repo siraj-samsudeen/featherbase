@@ -65,7 +65,8 @@ function StatusLine() {
       )}
       {s?.last_failed && (
         <span className="text-caution" data-testid="leaver-refresh-failed">
-          The rebuild at {at(s.last_failed.at)} failed{s.last_failed.error ? `: ${s.last_failed.error}` : ''}. These rows are from the last one that worked.
+          The rebuild at {at(s.last_failed.at)} failed{s.last_failed.error ? `: ${s.last_failed.error}` : ''}.
+          {s.checked_at ? ' These rows are from the last one that worked.' : ' No rebuild has worked yet.'}
         </span>
       )}
       <Button variant="secondary" disabled={waiting} onClick={() => refresh.mutate()} data-testid="leaver-refresh">

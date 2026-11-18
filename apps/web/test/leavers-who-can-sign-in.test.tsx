@@ -28,7 +28,8 @@ test('the list shows its four sections in order, each person with why and how; t
   const page = await screen.findByTestId('leavers-who-can-sign-in')
   expect(await within(page).findByText('Exit date 03-Oct-2026 has passed')).toBeInTheDocument()
   expect(within(page).getByText('Google, Password')).toBeInTheDocument()
-  expect(await within(page).findByRole('link', { name: /Gone Leaver/ })).toBeInTheDocument()
+  // The person opens their own Person page, not the report row.
+  expect(await within(page).findByRole('link', { name: /Gone Leaver/ })).toHaveAttribute('href', rowHref('Person', gone.user!))
   const sections = within(page).getAllByRole('cell').map((c) => c.textContent ?? '').filter((t) => /^[1-4]\. /.test(t))
   expect(sections).toEqual([
     '1. Leaver job would disable',
@@ -67,6 +68,12 @@ test('a rebuild that failed after the last good one is named, and the rows are s
   await sql`update scheduled_job set last_run_at = now(), last_outcome = 'error', last_result = 'warehouse down' where row_id = 'refresh_leaver_sign_in'`
   await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
   expect(await screen.findByTestId('leaver-refresh-failed')).toHaveTextContent(/failed: warehouse down\. These rows are from the last one that worked\./)
+})
+
+test('a rebuild that failed before any worked says so', async ({ admin }) => {
+  await sql`update scheduled_job set last_run_at = now(), last_outcome = 'error', last_result = 'warehouse down' where row_id = 'refresh_leaver_sign_in'`
+  await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
+  expect(await screen.findByTestId('leaver-refresh-failed')).toHaveTextContent(/failed: warehouse down\. No rebuild has worked yet\.$/)
 })
 
 test('a System Manager is offered the list under People and access', async ({ admin }) => {

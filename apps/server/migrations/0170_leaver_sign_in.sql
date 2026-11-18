@@ -36,7 +36,7 @@ do $$ begin
 end $$;
 
 insert into featherbase.table_def ("name", "module", "kind", "is_submittable", "id_pattern", "title_column", "sort_column", "sort_order", "track_changes", "description", "custom", "system", "created_by", "updated_by", "submission_status", "position", "label", "system_written", "decides_scope")
-values ('Leaver Sign In', 'Core', 'table', false, 'hash', 'person', 'position', 'asc', false,
+values ('Leaver Sign In', 'Core', 'table', false, 'hash', 'section', 'position', 'asc', false,
         'Someone who has left, or is not an employee, but can still sign in, in four sections. Rebuilt by the server; it changes nobody.',
         false, true, 'Administrator', 'Administrator', 'draft', 0, 'Leavers Who Can Still Sign In', true, false)
 on conflict ("name") do nothing;
