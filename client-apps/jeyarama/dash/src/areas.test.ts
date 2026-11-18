@@ -158,5 +158,13 @@ describe('who may edit sections when business roles decide', () => {
     tables.Site[0].is_store = false
     expect(await sectionAreaOf(ctx, 'sm', section, today)).toBeUndefined()
   })
+
+  // Codex round 10: a Team Leader fills an empty section.
+  it('lets a Team Leader add the first subcategory to an empty section of theirs', async () => {
+    const { tables, ctx } = await store('business_roles')
+    tables['Section Subcategory'] = []
+    tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], job: 'Team Leader', section: 'S1' }
+    expect(await mayEditOwnSection(ctx, 'sm', tables['Job Assignment'][0], today)).toBe(true)
+  })
 })
 

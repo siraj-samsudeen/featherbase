@@ -8,7 +8,7 @@
 import { EMPLOYEE_STATUS, exact, holdsOn, text } from './values.ts'
 import { JOB_FIELDS, SECTION_FIELDS, T, all, list, type Row } from './my-sections.ts'
 import { BUSINESS_ROLES, accessSource, liveBusinessAccess } from './access-source.ts'
-import type { Base } from './business-access.ts'
+import { isStore, type Base } from './business-access.ts'
 import { DASH_APP } from './business-roles.ts'
 import { SECTIONS_THING } from './starting-roles.ts'
 
@@ -112,8 +112,9 @@ export async function sectionEditingJobs(ctx: Ctx, person: string, today: string
   for (const h of access.held) {
     // A hand change naming another store puts the role there, not at the job's own store: that job's area doesn't count.
     if (!edits.has(h.role) || h.spot.kind !== 'job' || (h.spot.site && h.spot.site !== siteOf.get(h.spot.job))) continue
-    // A role that resolves to no place (a non-store site, a floor-less job) gives no section to edit (Codex round 9).
-    if (!h.places.length) continue
+    // At a site that is no open store, a role gives no section to edit (Codex round 9); an empty section still can be
+    // filled (round 10): the area is the job's structure, resolved below, not its populated report scope.
+    if (!(await isStore(base, siteOf.get(h.spot.job) ?? ''))) continue
     allowed.set(h.spot.job, (allowed.get(h.spot.job) ?? new Set<string>()).add(reaches.get(h.role)!))
   }
   return allowed
