@@ -43,7 +43,8 @@ test('the title line: <Module> / <label>, the label and its total, then New <thi
   expect(view.queryByTestId('open-explore')).not.toBeInTheDocument()
 })
 
-test('Search finds rows by their title, as a remembered filter chip; an empty search takes it off', async ({ admin }) => {
+// #1289: the search box shows its own filter, so no chip repeats it.
+test('Search finds rows by their title, as a remembered filter shown in the box; an empty search takes it off', async ({ admin }) => {
   await seed(admin)
   await renderApp(tableHref(DEPT), admin)
   await waitFor(() => expect(rows()).toHaveLength(3), T)
@@ -51,7 +52,8 @@ test('Search finds rows by their title, as a remembered filter chip; an empty se
   await userEvent.type(search, 'silk{Enter}')
   await waitFor(() => expect(rows()).toHaveLength(1), T)
   expect(rows()[0]).toHaveTextContent('Bags & Silk')
-  expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
+  expect(search).toHaveValue('silk')
+  expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0)
   await waitFor(async () => expect((await admin.get<{ settings: { filters?: unknown } }>(`/api/user_settings/${encodeURIComponent(DEPT)}`)).settings.filters)
     .toEqual([['dept_name', 'like', '%silk%']]), T)
 
@@ -61,11 +63,11 @@ test('Search finds rows by their title, as a remembered filter chip; an empty se
   expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0)
 })
 
-test('Show retired is a toggle chip in the toolbar', async ({ admin }) => {
+test('Show Retired is a toggle chip in the toolbar', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/retire_row', { table: DEPT, name: 'D2', reason: 'Merged into Silk' }).catch(() => undefined)
   await renderApp(tableHref(DEPT), admin)
-  const chip = await screen.findByRole('checkbox', { name: 'Show retired' }, T)
+  const chip = await screen.findByRole('checkbox', { name: 'Show Retired' }, T)
   expect(chip).not.toBeChecked()
   // In the toolbar, not on the title's line.
   expect(within(screen.getByTestId('list-toolbar')).queryByTestId('list-show-retired-toggle')).toBeNull()
@@ -94,8 +96,8 @@ test('an empty Table shows the way forward: New and Import data', async ({ admin
 
 // Codex review, round 9: the box follows the search the list has, so Enter never
 // brings back words that were taken off elsewhere.
-// #1289: with one filter on, its chip's ✕ takes it off (Clear All Filters shows only with more than one).
-test("taking the search's chip off empties the search box as well", async ({ admin }) => {
+// #1289: the search box's own ✕ takes the search off and empties the box.
+test("the search box's ✕ takes the search off and empties the box", async ({ admin }) => {
   await seed(admin)
   await renderApp(tableHref(DEPT), admin)
   await waitFor(() => expect(rows()).toHaveLength(3), T)
@@ -103,9 +105,10 @@ test("taking the search's chip off empties the search box as well", async ({ adm
   await userEvent.type(search, 'silk{Enter}')
   await waitFor(() => expect(rows()).toHaveLength(1), T)
   expect(screen.queryByTestId('filter-clear-all')).not.toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: /^Remove .+ filter$/ }))
+  await userEvent.click(screen.getByRole('button', { name: 'Clear the search filter' }))
   await waitFor(() => expect(rows()).toHaveLength(3), T)
   expect(search).toHaveValue('')
+  expect(screen.queryByRole('button', { name: 'Clear the search filter' })).not.toBeInTheDocument()
   await userEvent.type(search, '{Enter}')
   await waitFor(() => expect(rows()).toHaveLength(3), T)
   expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0)

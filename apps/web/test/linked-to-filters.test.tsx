@@ -182,7 +182,9 @@ test('a link cell offers Filter and Go there on hover', async ({ admin }) => {
   await waitFor(() => expect(filterButton).toHaveAttribute('tabindex', '-1'))
   await userEvent.click(filterButton)
   await waitFor(() => expect(rowTitles()).toEqual(['Windshield']))
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Vehicle: Truck 2')
+  // #1289: the list has a Vehicle box, so the box shows the filter and no chip repeats it.
+  await waitFor(() => expect(screen.getByTestId('std-filter-vehicle')).toHaveValue('Truck 2'))
+  expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0)
   // Filter again on the same link replaces its filter rather than adding a second.
   await userEvent.click(await within(await vehicleCell()).findByRole('button', { name: 'Filter' }))
   await waitFor(() => expect(addressFilters(r)).toEqual([['vehicle', '=', v2]]))

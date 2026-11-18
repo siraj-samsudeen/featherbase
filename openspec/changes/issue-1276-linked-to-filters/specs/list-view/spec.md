@@ -24,7 +24,8 @@ not read SHALL offer neither.
 Once a linked row is picked, its quick filter SHALL show that row's name, not
 its id, and so SHALL the filter as shown in use and in the list's recent
 filters. An exact filter SHALL read as the path bar names it, its column then
-the row's name: "Site: Bayside" (#1276).
+the row's name: "Site: Bayside" (#1276). A filter its quick filter shows SHALL
+NOT be shown again as a chip; any other filter is a chip (#1289).
 
 #### Scenario: The customer filter reads "Globex Ltd"
 
@@ -33,6 +34,7 @@ Given the user is a System Manager
 And orders from the customers "Globex Ltd" and "Initech"
 When the user opens a link to the orders list filtered to the customer "Globex Ltd"
 Then the user sees the quick customer filter reading "Globex Ltd"
+And no filter chip repeats it
 ```
 
 #### Scenario: The filter in use names Globex Ltd
@@ -40,8 +42,8 @@ Then the user sees the quick customer filter reading "Globex Ltd"
 ```gherkin
 Given the user is a System Manager
 And orders from the customers "Globex Ltd" and "Initech"
-When the user opens a link to the orders list filtered to the customer "Globex Ltd"
-Then the user sees the filter in use reading "Customer: Globex Ltd"
+When the user opens a link to the orders list that leaves out the customer "Globex Ltd"
+Then the user sees the filter in use reading "Customer != Globex Ltd"
 ```
 
 #### Scenario: The recent filter names Globex Ltd

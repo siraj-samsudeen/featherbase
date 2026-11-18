@@ -93,7 +93,7 @@ describe('row-retirement', () => {
     await step('"Sample plant" is retired because "Not a real location"', () => retire(admin, 'Sample plant', 'Not a real location'))
     await step('the user opens the list of plants and asks to see retired rows', async () => {
       const { session } = await openList(admin)
-      await session.check('Show retired')
+      await session.check('Show Retired')
     })
     await step('the list shows "Riverside" and "Sample plant"', async () =>
       expect((await shownPlants(2)).sort()).toEqual(['Riverside', 'Sample plant']))

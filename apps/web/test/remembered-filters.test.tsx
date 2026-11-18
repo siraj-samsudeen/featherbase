@@ -18,7 +18,8 @@ const DEPT = 'Rf Department'
 const T = { timeout: 10_000 }
 const withFilters = (filters: unknown[]) => `${tableHref(DEPT)}?filters=${encodeURIComponent(JSON.stringify(filters))}`
 const ATK = ['store', '=', 'Attakulangara']
-const KIDS = ['dept_name', 'like', '%Kids%']
+// Neither is one a box shows (#1289: a box shows only its own kind of filter), so both read as chips.
+const KIDS = ['dept_name', 'like', 'Kids%']
 
 async function seed(admin: Admin) {
   await admin.post('/api/table_def', {

@@ -166,7 +166,8 @@ test('Sort by any column: clicking a heading sorts, clicking it again reverses t
   await sortSettled(admin, 'Lv Sorted', { field: 'rank', dir: 'desc' })
 })
 
-test('Narrow the list with filters: a filter narrows the rows, shows as its own chip, and removing it brings every row back', async ({ admin }) => {
+// #1289: a filter on a column with a box shows in that box (with its ✕); any other filter is a chip.
+test('Narrow the list with filters: a filter narrows the rows, shows in its box or as its own chip, and removing it brings every row back', async ({ admin }) => {
   await seedTickets(admin, 'Lv Filtered', 4, { Open: 'Awaiting response' })
   await openList(admin, 'Lv Filtered')
   await waitFor(() => expect(cellTexts('title')).toHaveLength(4))
@@ -177,8 +178,8 @@ test('Narrow the list with filters: a filter narrows the rows, shows as its own 
   fireEvent.change(screen.getByTestId('filter-value'), { target: { value: 'Open' } })
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-03', 'row-01']))
-  expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Stage: Awaiting response')
+  expect(screen.getByTestId('std-filter-stage')).toHaveValue('Open')
+  expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0)
 
   // A second filter narrows further, and each chip can go on its own.
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'rank' } })
@@ -186,12 +187,13 @@ test('Narrow the list with filters: a filter narrows the rows, shows as its own 
   fireEvent.change(screen.getByTestId('filter-value'), { target: { value: '1' } })
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-03']))
-  expect(screen.getAllByTestId('filter-chip')).toHaveLength(2)
+  expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
 
-  fireEvent.click(within(screen.getAllByTestId('filter-chip')[1]).getByRole('button', { name: /^Remove .+ filter$/ }))
+  fireEvent.click(within(screen.getByTestId('filter-chip')).getByRole('button', { name: /^Remove .+ filter$/ }))
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-03', 'row-01']))
-  fireEvent.click(within(screen.getAllByTestId('filter-chip')[0]).getByRole('button', { name: /^Remove .+ filter$/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Clear the Stage filter' }))
   await waitFor(() => expect(cellTexts('title')).toHaveLength(4))
+  expect(screen.getByTestId('std-filter-stage')).toHaveValue('')
   expect(screen.queryByTestId('filter-chip')).not.toBeInTheDocument()
 })
 
@@ -211,7 +213,7 @@ test('Filters live in the page address: opening an address that carries filters 
   const filters = JSON.stringify([['stage', '=', 'Closed']])
   const app = await openList(admin, 'Lv Address', `?filters=${enc(filters)}`)
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-04', 'row-02']))
-  expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
+  expect(screen.getByTestId('std-filter-stage')).toHaveValue('Closed')
   expect(screen.getByTestId('list-total')).toHaveTextContent('2 total')
   // #87: the parameter stays in the address, not silently stripped.
   expect(filtersIn(app)).toEqual([['stage', '=', 'Closed']])
@@ -244,7 +246,8 @@ test('Filters live in the page address: filters added in the list are written in
   await renderApp(href, admin)
   await screen.findByTestId('list-rows')
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-04']))
-  expect(screen.getAllByTestId('filter-chip')).toHaveLength(2)
+  expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
+  expect(screen.getByTestId('std-filter-stage')).toHaveValue('Closed')
   expect(screen.getByTestId('list-total')).toHaveTextContent('1 total')
 })
 

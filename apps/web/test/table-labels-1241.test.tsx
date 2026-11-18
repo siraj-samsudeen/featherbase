@@ -52,7 +52,7 @@ test('the Map names the row, its links and what points back by Table labels', as
 test("Tree of all is headed and tagged by the Table's label", async ({ admin, db }) => {
   await seed(admin, db)
   await renderApp(tableHref('Tl Customer'), admin)
-  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of All' }))
   const tree = await screen.findByRole('tree', { name: 'Every Client row' })
   await waitFor(() => expect(within(tree).getAllByRole('treeitem')[0]).toHaveTextContent('Client'))
   expect(tree).not.toHaveTextContent('Tl Customer')

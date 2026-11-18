@@ -98,6 +98,6 @@ test('Controls are clearly named: no two controls in a Table\'s list toolbar sha
   const names = [toolbar, tools].flatMap((root) => Array.from(root.querySelectorAll('button, a[href]')))
     .map((el) => el.getAttribute('aria-label') ?? el.textContent?.trim() ?? '')
   expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([])
-  expect(within(tools).getByRole('button', { name: 'Show columns' })).toBeInTheDocument()
+  expect(within(tools).getByRole('button', { name: 'Show Columns' })).toBeInTheDocument()
   expect(within(toolbar).getByRole('link', { name: 'Edit columns' })).toBeInTheDocument()
 })

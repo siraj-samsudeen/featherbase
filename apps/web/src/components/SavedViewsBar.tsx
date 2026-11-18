@@ -27,8 +27,13 @@ export function SavedViewsBar({
   filters,
   layout,
   onApply,
+  naming,
+  onNamingChange,
 }: {
   table: string
+  /** #1289: the list's View menu asked for a name (Save View…): the bar shows the form. */
+  naming: boolean
+  onNamingChange: (naming: boolean) => void
   filters: Filter[]
   /** #1259: the list's view now, kept with a view saved from here. */
   layout?: ListLayout
@@ -40,7 +45,7 @@ export function SavedViewsBar({
   const [nudgeGone, setNudgeGone] = useState(false)
   const [applyCount, setApplyCount] = useState(0)
   const [nudgeName, setNudgeName] = useState('')
-  const [naming, setNaming] = useState(false)
+  const setNaming = onNamingChange
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -147,7 +152,7 @@ export function SavedViewsBar({
     setNudgeGone(true)
   }
 
-  if (list.length === 0 && !sig) return null
+  if (list.length === 0 && !showForm) return null
 
   return (
     <div className="mb-3" data-testid="saved-views-bar">
@@ -232,11 +237,7 @@ export function SavedViewsBar({
           })}
         </div>
       )}
-      {sig && !showForm && (
-        <button type="button" onClick={() => setNaming(true)} data-testid="save-view-open" className={buttonClasses({ className: 'mt-2' })}>
-          Save view
-        </button>
-      )}
+      {/* #1289: no lone Save view row: the list's View menu starts with Save View…, which opens the form below. */}
       {showForm && (
         <form
           onSubmit={(event) => { event.preventDefault(); void saveView() }}
@@ -254,6 +255,7 @@ export function SavedViewsBar({
               value={nudgeName}
               onChange={(e) => setNudgeName(e.target.value)}
               placeholder={`${table} view`}
+              autoFocus={naming}
               data-testid="nudge-name"
               disabled={saving}
               className={inputClasses('w-44 max-w-full')}
