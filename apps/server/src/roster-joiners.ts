@@ -358,7 +358,6 @@ export function planJoinerAdds(
 
 async function relationOf(table: string, columns: string[]): Promise<string> {
   const meta = await getMeta(table)
-  if (meta.data_source) throw new Error(`${table} lives in an outside source`)
   const have = new Set(meta.columns.map((c) => c.column_name))
   const missing = columns.filter((c) => c !== 'row_id' && !have.has(c))
   if (missing.length) throw new Error(`${table} has no column ${missing.join(', ')}`)

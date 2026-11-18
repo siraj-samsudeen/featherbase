@@ -133,6 +133,7 @@ async function setUp(admin: TestClient, existing: Record<string, unknown>[] = []
   await saveDoc('Crew Corner', { corner_code: 'SHOP1-TOYS', corner_name: 'Toys', place: 'SHOP1' }, 'Administrator', 'insert')
   await saveDoc('Crew Corner', { corner_code: 'SHOP1-GF-SHOES', corner_name: 'Shoes', place: 'SHOP1' }, 'Administrator', 'insert')
   await saveDoc('Crew Corner', { corner_code: 'SHOP1-1F-SHOES', corner_name: 'Shoes', place: 'SHOP1' }, 'Administrator', 'insert')
+  await saveDoc('Crew Corner', { corner_code: 'NOWHERE', corner_name: 'Toys' }, 'Administrator', 'insert')
   await sql`update sign_in_method set new_person = 'create_if_on_roster', settings = ${sql.json({ provider_record_key: 'employee_id', roster })} where row_id = 'stylehr'`
   for (const row of existing) await saveDoc(TABLE, row, 'Administrator', 'insert')
 }
@@ -261,6 +262,20 @@ describe('a team that joins together', () => {
     expect((await jobsOf('ZZ-TT-8002'))[0]).toMatchObject({ boss: 'ZZ-TT-8001' })
   })
 
+  test('a planned manager another run has added since is found and named', async ({ admin }) => {
+    await setUp(admin)
+    warehouse([{ key: '8001' }, { key: '8002', manager: 'TT-8001' }])
+    const plan = (await planRosterLink('stylehr'))!.joiners!
+    await saveDoc(TABLE, crewRow(9, { crew_code: 'ZZ-TT-8001', crew_no: 'TT-8001', hr_record: '8001' }), 'Administrator', 'insert')
+    const { applyJoiners } = await import('../src/roster-joiners')
+    const { usableRoster } = await import('../src/roster-first-sign-in')
+    const { getSignInMethod } = await import('../src/identities')
+    const roster = (await usableRoster((await getSignInMethod('stylehr'))!))!
+    const run = await applyJoiners(roster, { ...plan, joiners: plan.joiners.filter((j) => j.record === '8002') })
+    expect(run).toMatchObject({ added: 1, jobs: 1 })
+    expect((await jobsOf('ZZ-TT-8002'))[0]).toMatchObject({ boss: 'ZZ-TT-8001' })
+  })
+
   test('a sign-in ID with spaces around it is the same ID', async ({ admin }) => {
     await setUp(admin, [crewRow(1, { crew_no: 'TT-8001' })])
     warehouse([{ key: '7001', code: 'TT-8001' }, { key: '8001', code: ' tt-8001 ', region: 'YY' }, { key: '8002', code: ' TT-5 ' }, { key: '8003', code: 'tt-5', region: 'XX' }])
@@ -313,6 +328,7 @@ describe('who is never added', () => {
     const plan = (await planRosterLink('stylehr'))!.joiners!
     expect(plan.joiners).toEqual([])
     expect(plan.held).toEqual([{ record: '8001', reason: 'code_taken' }, { record: '8002', reason: 'no_code' }, { record: '8003', reason: 'no_name' }])
+    expect(formatRosterLink((await planRosterLink('stylehr'))!)).toContain('held 3 (code_taken 1, no_code 1, no_name 1)')
   })
 
   test('a record the feed holds twice must agree with itself and qualify every time', async ({ admin }) => {
@@ -405,6 +421,9 @@ describe('a bad feed or a big batch adds nobody', () => {
     await sql`update sign_in_method set settings = ${sql.json({ provider_record_key: 'employee_id', roster: { ...ROSTER, joiners: { ...JOINERS, job: { ...JOB, table: 'No Such Table' } } } })} where row_id = 'stylehr'`
     run = await runRosterLink('stylehr')
     expect(run.joiners!.plan!.refused).toMatch(/^its Tables could not be read: /)
+    await sql`update sign_in_method set settings = ${sql.json({ provider_record_key: 'employee_id', roster: { ...ROSTER, joiners: { ...JOINERS, job: { ...JOB, job_column: 'no_such_column' } } } })} where row_id = 'stylehr'`
+    run = await runRosterLink('stylehr')
+    expect(run.joiners!.plan!.refused).toBe('its Tables could not be read: Crew Job has no column no_such_column')
     expect(await codes()).toEqual(['ZZ-TT-7001'])
   })
 
