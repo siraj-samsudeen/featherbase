@@ -149,13 +149,14 @@ test('Show here opens the linked row in the pane', async ({ admin }) => {
   expect(await pane('Kerala · KL')).toHaveTextContent(REGION)
 })
 
-test('Filter narrows the list underneath to the same value, as a removable chip', async ({ admin }) => {
+// #1289: the list has a Region box, so the box shows the filter (with its own ✕) and no chip repeats it.
+test('Filter narrows the list underneath to the same value, shown in its Region box with a ✕', async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
   fireEvent.click(await within(site).findByRole('button', { name: 'Filter' }))
   await waitFor(() => expect(listed()).toBe(2))
-  const chip = screen.getByTestId('filter-chip')
-  await waitFor(() => expect(chip).toHaveTextContent('Kerala'))
-  expect(within(chip).getByRole('button', { name: 'Remove filter' })).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('std-filter-region')).toHaveValue('Kerala'))
+  expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0)
+  expect(screen.getByRole('button', { name: 'Clear the Region filter' })).toBeInTheDocument()
   expect(await pane('Enchakkal')).toBeInTheDocument()
 })
 

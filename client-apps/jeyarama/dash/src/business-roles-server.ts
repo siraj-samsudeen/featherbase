@@ -5,16 +5,17 @@
 import { appsOf, decisionReports, differences, permissionSentence, titleList, SOURCE_WORDS,
   type HeldRole, type Model, type Side, type Spot, type TitleInUse } from './business-roles.ts'
 import { collapseCodes } from './reach-prefixes.ts'
-import { reportsReaching, type AccessRow, type BundleMember } from './report-access.ts'
+import { reportsReaching, type AccessRow, type BundleMember, type Receiver } from './report-access.ts'
 import { ACCESS, MEMBER, all, jobsOf, managesAccess, personNames, whoIs, type AccessContext } from './report-access-server.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
 import { EMPLOYEE_STATUS, checked, exact, holdsOn, text } from './values.ts'
 import { istToday } from './report.ts'
 import { STARTING_ROLES } from './starting-roles.ts'
 import { opensDashFor, readableByRoles, offered } from './report-eligibility.ts'
-import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
+import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, isStore, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
+import { openStore, siteKindRead, siteStoreFields } from './site-kind.ts'
 import { businessReports, businessRolesOpen, opensDashByBusinessRoles } from './business-reports.ts'
-import { ensureStartingRoles, logger } from './switch-over.ts'
+import { carriedOver, ensureStartingRoles, logger } from './switch-over.ts'
 
 export { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, type Base }
 type Row = Record<string, unknown>
@@ -50,13 +51,23 @@ export type WorldDocuments = Base & { rows(table: string): Promise<Row[]> }
  * first column, so a person's reads cost what they find, not the size of the Table. `withRetired`: as the scope
  * provider reads them (retired rows included), or as the app's own reads do (the old rules' report grants, by job).
  */
+/** The columns each comparison reader reads, Table by Table: Site's kind and status too where the instance's Site has
+ *  them (#1280), asked once as every reader asks it. One home, so the bulk comparison and Explain never differ. */
+function siteAwareFields(base: Base, designations: boolean): (table: string) => Promise<string[]> {
+  const fields = fieldsFor(designations)
+  let siteFields: Promise<string[]> | undefined
+  return async table => table === 'Site'
+    ? await (siteFields ??= siteStoreFields(siteKindRead(base)).then(more => [...new Set([...fields.Site!, ...more])]))
+    : fields[table]!
+}
+
 export function memoryDocuments(base: Base, designations: boolean, { withRetired = true }: { withRetired?: boolean } = {}): WorldDocuments {
   const loaded = new Map<string, Promise<Row[]>>()
   const indexes = new Map<string, Map<string, Row[]>>()
   const availability = new Map<string, Promise<boolean>>()
-  const fields = fieldsFor(designations)
+  const fieldsOf = siteAwareFields(base, designations)
   const rows = (table: string) => {
-    if (!loaded.has(table)) loaded.set(table, withRetired ? everyRow(base, table, fields[table]!) : all(base, table, fields[table]!))
+    if (!loaded.has(table)) loaded.set(table, fieldsOf(table).then(f => (withRetired ? everyRow(base, table, f) : all(base, table, f))))
     return loaded.get(table)!
   }
   const indexOf = async (table: string, column: string) => {
@@ -92,9 +103,11 @@ export function memoryDocuments(base: Base, designations: boolean, { withRetired
   }
   return {
     rows,
-    available: table => {
-      if (!availability.has(table)) availability.set(table, base.available(table))
-      return availability.get(table)!
+    // With columns (#1280), the instance is asked about them too; each question is asked once.
+    available: (table, columns) => {
+      const key = [table, ...(columns ?? [])].join('\u0000')
+      if (!availability.has(key)) availability.set(key, base.available(table, columns))
+      return availability.get(key)!
     },
     // Every read through here names its page length.
     list: async (table, args) => {
@@ -110,14 +123,14 @@ export function memoryDocuments(base: Base, designations: boolean, { withRetired
  */
 export function directDocuments(base: Base, designations: boolean): WorldDocuments {
   const loaded = new Map<string, Promise<Row[]>>()
-  const fields = fieldsFor(designations)
+  const fieldsOf = siteAwareFields(base, designations)
   return {
     rows: table => {
-      if (!loaded.has(table)) loaded.set(table, everyRow(base, table, fields[table]!))
+      if (!loaded.has(table)) loaded.set(table, fieldsOf(table).then(f => everyRow(base, table, f)))
       return loaded.get(table)!
     },
-    available: table => base.available(table),
-    list: (table, args) => base.list(table, { ...args, fields: [...new Set([...args.fields, ...fields[table]!])], with_retired: true }),
+    available: (table, columns) => base.available(table, columns),
+    list: async (table, args) => base.list(table, { ...args, fields: [...new Set([...args.fields, ...await fieldsOf(table)])], with_retired: true }),
   }
 }
 
@@ -195,6 +208,8 @@ export interface PersonShadow {
   nextWhy: Map<string, { role?: string; person?: true; bundle: string | null; every?: true }[]>
   /** The roles they hold that would give them every report (viewsEveryReport). */
   everyReport: string[]
+  /** Who they are to the old rules' report grants: their platform roles and their jobs. */
+  receiver: Receiver
 }
 
 /** Places by store: null for a whole store, else its subcategory codes. */
@@ -240,6 +255,7 @@ export async function personShadow(world: ShadowWorld, person: string, roles: re
     decisions: decisionReports({ person, roles, jobs: jobNames }, rows, members),
     nextWhy: next.why,
     everyReport: access.everyReport,
+    receiver: { person, roles, jobs: jobNames },
   }
 }
 
@@ -392,7 +408,7 @@ export async function explainPerson(context: AccessContext) {
     `${w.person ? 'Given to them directly' : `Given to ${roleName(w.role!)}, for ${areaWords(w.role!)}`}${w.bundle ? `, through ${text(bundleNames.get(w.bundle))}` : ''}`
   const plants = new Map((await world.docs.rows('Plant')).map(p => [exact(p.row_id), exact(p.site)]))
   const sites = await world.names('Site')
-  const stores = (await world.docs.rows('Site')).filter(s => checked(s.is_store)).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((a, b) => a.name.localeCompare(b.name))
+  const stores = (await world.docs.rows('Site')).filter(openStore).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((a, b) => a.name.localeCompare(b.name))
   const employees = new Map((await world.docs.rows('Employee')).map(e => [exact(e.row_id), e]))
   const jobs = (await world.docs.list('Job Assignment', { fields: ['site', 'reports_to', 'job', 'starts_on', 'ends_on'], filters: [['employee', 'in', shadow.employees.map(e => exact(e.row_id))]], limit_page_length: 10_000 })).filter(j => holdsOn(j, world.today))
   const employeePart = (id: string) => ({ name: text(employees.get(id)?.name), table: 'Employee', id, code: id })
@@ -461,15 +477,44 @@ export async function accessChanges(context: AccessContext) {
   const platformRoles = await platformRolesOf(ctx.people, people)
   const roleName = new Map(world.model.roles.map(r => [r.id, r.name]))
   const changed = []
+  const losing: { receiver: Receiver; lost: string[] }[] = []
   for (const person of people) {
     const { shadow, found } = await comparePerson(world, platformRoles.get(person)!, person, shapes)
     if (!found.kind) continue
+    // Every report they get today and would not under business roles, whether lost or awaiting a decision.
+    losing.push({ receiver: shadow.receiver, lost: shadow.today.reports.filter(k => !shadow.next.reports.includes(k)) })
     changed.push({ person, kind: found.kind, roles: [...new Set(shadow.held.map(h => roleName.get(h.role)!))].sort(), ...await changeWords(world, reports, found, shadow.everyReport) })
   }
   const names = await personNames(ctx, changed.map(c => c.person))
   const who = await whoIs(ctx.baseTables, changed.map(c => c.person), world.today)
   const rows = changed.map(c => ({ ...c, name: names.get(c.person) ?? 'Someone', who: who.get(c.person)! })).sort((a, b) => a.name.localeCompare(b.name))
-  return { people: people.length, changed: rows.length, groups: GROUPS.map(kind => ({ kind, people: rows.filter(r => r.kinds.includes(kind)) })) }
+  return { people: people.length, changed: rows.length, groups: GROUPS.map(kind => ({ kind, people: rows.filter(r => r.kinds.includes(kind)) })),
+    not_carried_over: await notCarriedOver(ctx, world, reports, losing, new Map(rows.map(r => [r.person, r.name]))) }
+}
+
+/**
+ * #1277 (owner, 18-Nov-2026, decision 7: start narrow; add on request): each live grant that Give Old Grants To Business
+ * Roles leaves where it is (one to a job, to Dash All-Stores Reader, to any role but Dash Reader), with each person who
+ * would lose a report of it under business roles. `losing`: each changed person's old receiver and the reports they would lose.
+ */
+async function notCarriedOver(ctx: Ctx, world: ShadowWorld, reports: Map<string, { name: string }>, losing: { receiver: Receiver; lost: string[] }[], names: Map<string, string>) {
+  const rows = (await all(ctx.baseTables, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'business_role', 'removed'])).filter(r => !checked(r.removed))
+  const bundleNames = new Map((await all(ctx.baseTables, 'dash.report_bundle', ['bundle_name'])).map(r => [exact(r.row_id), text(r.bundle_name)]))
+  const reportPart = (k: string) => ({ name: reports.get(k)?.name ?? 'No longer listed', table: 'dash.report', id: k })
+  const out = []
+  for (const row of rows) {
+    const carried = carriedOver(row, world.model)
+    if (!carried || carried.roles.length) continue
+    const given = exact(row.report) ? [exact(row.report)] : world.grants.members.filter(m => m.report_bundle === exact(row.report_bundle)).map(m => m.report)
+    const people = losing.filter(({ receiver }) => (carried.old.kind === 'job' ? receiver.jobs : receiver.roles).includes(carried.old.name))
+      // Everyone losing a report is a changed person, so the page has already named them.
+      .map(({ receiver, lost }) => ({ person: receiver.person, name: names.get(receiver.person)!, reports: given.filter(k => lost.includes(k)).sort().map(reportPart) }))
+      .filter(p => p.reports.length).sort((a, b) => `${a.name}\u0000${a.person}`.localeCompare(`${b.name}\u0000${b.person}`))
+    out.push({ grant: exact(row.row_id), gives: exact(row.report) ? reportPart(exact(row.report)) : { name: text(bundleNames.get(exact(row.report_bundle))) || 'No longer listed', table: 'dash.report_bundle', id: exact(row.report_bundle) },
+      receiver: carried.old, note: 'Not carried over: add on request', people })
+  }
+  const order = (g: { gives: { name: string }; receiver: { name: string }; grant: string }) => `${g.gives.name}\u0000${g.receiver.name}\u0000${g.grant}`
+  return out.sort((a, b) => order(a).localeCompare(order(b)))
 }
 
 const CHANGES = ['Correct', 'Also give']
@@ -483,7 +528,7 @@ export async function giveRole(context: AccessContext) {
   if (!person) ctx.reject!('Choose a person')
   if (!CHANGES.includes(change)) ctx.reject!('Choose Correct or Also give')
   if (!(await roleExists(ctx, role))) ctx.reject!('Choose a business role')
-  if (site && !(await all(ctx.baseTables, 'Site', ['is_store'], [['row_id', '=', site]])).some(r => checked(r.is_store))) ctx.reject!('Choose a store')
+  if (site && !(await isStore(ctx.baseTables, site))) ctx.reject!('Choose a store')
   if (ends && !/^\d{4}-\d{2}-\d{2}$/.test(ends)) ctx.reject!('The end date is a day, such as 31-Mar-2027')
   if (ends && ends < istToday()) ctx.reject!('The end date has passed')
   const saved = await ctx.documents!.create!(ROLE_ASSIGNMENT, { person, change, business_role: role, site: site || null, ends_on: ends || null, reason: reason || null, given_by_name: text(ctx.userName) || null })

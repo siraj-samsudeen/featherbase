@@ -733,6 +733,13 @@ describe('declaring a scope provider', () => {
     ['naming an optional Table it does not read', (m: Record<string, any>, s: string) =>
       [{ ...m, scopeProvider: { ...m.scopeProvider, optionalTables: ['Somewhere Else'] } }, s],
       "A scope provider's optional Table Somewhere Else is not one of the Tables it reads"],
+    // #1280: an optional column is on a Table the provider reads, and one the app declares reading.
+    ['naming optional columns of a Table it does not read', (m: Record<string, any>, s: string) =>
+      [{ ...m, scopeProvider: { ...m.scopeProvider, optionalColumns: { 'Somewhere Else': ['kind'] } } }, s],
+      "A scope provider's optional columns of Somewhere Else are not on one of the Tables it reads"],
+    ['naming an optional column the app does not declare reading', (m: Record<string, any>, s: string) =>
+      [{ ...m, scopeProvider: { ...m.scopeProvider, optionalColumns: { [m.scopeProvider.tables[0]]: ['undeclared_1280'] } } }, s],
+      `A scope provider's optional column placeroster.position.undeclared_1280 is not one the app declares reading`],
     ['naming one of its own Tables as optional', (m: Record<string, any>, s: string) =>
       [{ ...m, scopeProvider: { ...m.scopeProvider, optionalTables: [m.scopeProvider.tables[0]] } }, s],
       "A scope provider's own Table placeroster.position is installed with the app; it cannot be optional"],
@@ -874,7 +881,7 @@ describe('what a scope provider may ask of its Tables', () => {
 // #1247: a provider asks whether a Table is installed before reading it. A missing Table contributes
 // nothing: `available` is false, and a read of it still refuses the person's scope (never full access).
 describe('a scope provider checking whether a Table is installed', () => {
-  type Docs = { available(table: string): Promise<boolean>; list(table: string, args?: object): Promise<Record<string, unknown>[]> }
+  type Docs = { available(table: string, columns?: string[]): Promise<boolean>; get(table: string, rowId: string): Promise<Record<string, unknown>>; list(table: string, args?: object): Promise<Record<string, unknown>[]> }
   async function bind(admin: TestClient, createUser: CreateUserFn, provide: (documents: Docs) => Promise<unknown>, more: Partial<ScopeProviderBinding> = {}) {
     const { user } = await setup(admin, createUser)
     const binding = (await findScopeProvider())!
@@ -901,6 +908,78 @@ describe('a scope provider checking whether a Table is installed', () => {
       return [{ label: 'Desk', filters: { store: rows.map(r => String(r.store)) } }]
     }, { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: ['Buyer Desk'] })
     expect(await resolvePersonScope(user.user!, binding)).toEqual([{ label: 'Desk', filters: { store: ['N2'] } }])
+  })
+
+  // #1280: a provider may ask for columns too, to read one an instance may not have yet without failing everyone's scope.
+  test('with columns named, a Table is available only where it has every one of them', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }, { column_name: 'kind', column_type: 'Data' }] })
+    const seen: boolean[] = []
+    const { user, binding } = await bind(admin, createUser, async documents => {
+      seen.push(await documents.available('Buyer Desk', []), await documents.available('Buyer Desk', ['store', 'kind']),
+        await documents.available('Buyer Desk', ['store', 'status']), await documents.available('Buyer Desk', [42 as never]))
+      return place
+    }, { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: ['Buyer Desk'] })
+    expect(await resolvePersonScope(user.user!, binding)).toEqual(place)
+    expect(seen).toEqual([true, true, false, false])
+  })
+
+  // Codex round 4 on #1280: an optional column is read only after the run confirmed it, so marking a column
+  // optional can never hide a read that would fail on an instance without it.
+  test('an optional column read without checking it first refuses the scope, even where it exists; checked first, it reads', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }, { column_name: 'kind', column_type: 'Data' }] })
+    await admin.post('/api/save_row', { table: 'Buyer Desk', row: { store: 'N2', kind: 'Store' } })
+    const more = { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: ['Buyer Desk'], optionalColumns: { 'Buyer Desk': ['kind'] } }
+    const { user, binding } = await bind(admin, createUser, async () => place, more)
+    const providing = (provide: (documents: Docs) => Promise<unknown>) => ({ ...binding, provide: (async ({ documents }: { documents: Docs }) => provide(documents)) as never })
+    await expect(resolvePersonScope(user.user!, providing(async documents => {
+      await documents.list('Buyer Desk', { fields: ['store', 'kind'] })
+      return place
+    }))).rejects.toMatchObject({ reason: 'provider' })
+    // A filter on it counts as reading it too.
+    await expect(resolvePersonScope(user.user!, providing(async documents => {
+      await documents.list('Buyer Desk', { fields: ['store'], filters: [['kind', '=', 'Store']] })
+      return place
+    }))).rejects.toMatchObject({ reason: 'provider' })
+    expect(await resolvePersonScope(user.user!, providing(async documents => {
+      const kind = await documents.available('Buyer Desk', ['kind'])
+      const rows = await documents.list('Buyer Desk', { fields: kind ? ['store', 'kind'] : ['store'], order_by: kind ? 'kind asc' : undefined })
+      return [{ label: 'Desk', filters: { store: rows.map(r => `${String(r.store)}:${String(r.kind)}`) } }]
+    }))).toEqual([{ label: 'Desk', filters: { store: ['N2:Store'] } }])
+    // A whole-row get holds every optional column: refused unchecked, read once confirmed (Codex round 5).
+    const { data: [desk] } = await admin.get<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent('Buyer Desk')}?fields=${encodeURIComponent(JSON.stringify(['row_id']))}`)
+    await expect(resolvePersonScope(user.user!, providing(async documents => {
+      await documents.get('Buyer Desk', String(desk.row_id))
+      return place
+    }))).rejects.toMatchObject({ reason: 'provider' })
+    expect(await resolvePersonScope(user.user!, providing(async documents => {
+      await documents.available('Buyer Desk', ['kind'])
+      const row = await documents.get('Buyer Desk', String(desk.row_id))
+      return [{ label: 'Desk', filters: { store: [String(row.kind)] } }]
+    }))).toEqual([{ label: 'Desk', filters: { store: ['Store'] } }])
+    // With no order_by the Table's own sort column orders the rows: an optional one is read too (Codex round 6).
+    await sql`update table_def set sort_column = 'kind', sort_order = 'asc' where name = 'Buyer Desk'`
+    invalidateMeta('Buyer Desk')
+    await expect(resolvePersonScope(user.user!, providing(async documents => {
+      await documents.list('Buyer Desk', { fields: ['store'] })
+      return place
+    }))).rejects.toMatchObject({ reason: 'provider' })
+    expect(await resolvePersonScope(user.user!, providing(async documents => {
+      await documents.list('Buyer Desk', { fields: ['store'], order_by: 'store asc' })
+      await documents.available('Buyer Desk', ['kind'])
+      await documents.list('Buyer Desk', { fields: ['store'] })
+      return place
+    }))).toEqual(place)
+    await sql`update table_def set sort_column = 'updated_at' where name = 'Buyer Desk'`
+    invalidateMeta('Buyer Desk')
+    // A confirmation lasts one run: the next run must check again.
+    let runs = 0
+    const twice = providing(async documents => {
+      if (++runs === 1) await documents.available('Buyer Desk', ['kind'])
+      await documents.list('Buyer Desk', { fields: ['kind'] })
+      return place
+    })
+    expect(await resolvePersonScope(user.user!, twice)).toEqual(place)
+    await expect(resolvePersonScope(user.user!, twice)).rejects.toMatchObject({ reason: 'provider' })
   })
 
   test('a Table the provider did not declare, or may not read unmarked, is not available', async ({ admin, createUser }) => {

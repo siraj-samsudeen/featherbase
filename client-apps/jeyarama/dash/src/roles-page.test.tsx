@@ -246,6 +246,20 @@ describe('Who Would Gain Or Lose Access', () => {
     const { all } = await render('changes')
     expect(all('change-fact').map(f => f.textContent)).toEqual(['Would get every report, through Owner Director'])
   })
+
+  // #1277 (decision 7): each old grant left where it is, with who would lose its reports.
+  it('lists each grant not carried over, with the people who would lose its reports, each a link', async () => {
+    const vs = { name: 'Vendor Sales', table: 'dash.report', id: 'vs' }
+    answers = { access_changes: { people: 2, changed: 1, groups: [], not_carried_over: [
+      { grant: 'a1', gives: vs, receiver: { kind: 'job', name: 'Store Manager' }, note: 'Not carried over: add on request', people: [{ person: 'sm', name: 'Selvi', reports: [vs] }] },
+      { grant: 'a8', gives: { name: 'Store pack', table: 'dash.report_bundle', id: 'b1' }, receiver: { kind: 'role', name: 'Dash All-Stores Reader' }, note: 'Not carried over: add on request', people: [] }] } }
+    const { all } = await render('changes')
+    expect([all('not-carried-over-count')[0].textContent, all('not-carried-grant').map(l => l.textContent), all('not-carried-person').map(a => [a.textContent, a.getAttribute('href')])]).toEqual([
+      '2',
+      ['Vendor Sales · to the job Store Manager', 'Store pack · to the role Dash All-Stores Reader'],
+      [['Selvi', '?view=explain&person=sm']]])
+    expect(all('not-carried-people').map(p => p.textContent)).toEqual(['Not carried over: add on request. Would lose Vendor Sales: Selvi', 'Not carried over: add on request. Nobody would lose a report'])
+  })
 })
 
 describe('a bundle\'s record link', () => {

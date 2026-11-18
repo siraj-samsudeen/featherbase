@@ -29,9 +29,9 @@ const LEHENGA = ['010101003']
 const BELTS = ['010404001']
 
 /** The app installed, the core Tables created, and a made-up org chart. */
-async function setup(admin: TestClient, createUser: (o: { email: string }) => Promise<TestClient>, { without = [] as string[] } = {}) {
+async function setup(admin: TestClient, createUser: (o: { email: string }) => Promise<TestClient>, { without = [] as string[], withoutSiteKind = false } = {}) {
   await installApp(admin)
-  await createCoreTables(admin, { without })
+  await createCoreTables(admin, { without, withoutSiteKind })
   const save = (table: string, row: Record<string, unknown>) => saveRow(admin, table, row)
   for (const [code, name] of [['NORTH', 'North'], ['SOUTH', 'South']]) await save('Cluster', { code, name })
   for (const region of ['East', 'West']) await save('Operating Region', { region })
@@ -168,6 +168,40 @@ describe('the org_chart scope provider on the platform, per job (#967)', () => {
     const { reader } = await setup(admin, createUser)
     for (const job of ['Director', 'Managing Director', 'Chief Operating Officer'])
       expect(stores(await resolvePersonScope(await reader([{ job, site: 'HOF' }]), await binding()))).toEqual(['9901', '9902', '9903'])
+  })
+
+  // #1280 (owner, 18-Nov-2026): a site's status, then its kind, decides whether it is an open store; is_store only where neither is set.
+  test('a Planned or Closed store, and a site of another kind, are never stores; a Store by kind is', async ({ admin, createUser }) => {
+    const { reader, save } = await setup(admin, createUser)
+    const site = async (code: string, plant_code: string, row: Record<string, unknown>) => {
+      await save('Site', { code, name: `Made-up ${code}`, ...row })
+      await save('Plant', { plant_code, plant_type: 'Store', site: code })
+    }
+    await site('PLN', '9904', { is_store: true, site_kind: 'Store', status: 'Planned' })
+    await site('CLS', '9905', { is_store: true, status: 'Closed' })
+    // A Group is virtual: even marked is_store, it is no store.
+    await site('GHO', '9906', { is_store: true, site_kind: 'Group' })
+    await site('NEW', '9907', { is_store: false, site_kind: 'Store', status: 'Open' })
+    expect(stores(await resolvePersonScope(await reader([{ job: 'Director', site: 'HOF' }]), await binding()))).toEqual(['9901', '9902', '9903', '9907'])
+  })
+
+  test("a Store Manager or a section's staff at a site that is no open store reach none of its plants", async ({ admin, createUser }) => {
+    const { reader, save } = await setup(admin, createUser)
+    for (const [code, plant, row] of [['PLN', '9904', { site_kind: 'Store', status: 'Planned' }], ['GHO', '9906', { site_kind: 'Group' }]] as const) {
+      await save('Site', { code, name: `Made-up ${code}`, is_store: true, ...row })
+      await save('Plant', { plant_code: plant, plant_type: 'Store', site: code })
+      await save('Section', { row_id: `${code}-S1`, name: `${code} Sarees`, site: code, status: 'Active' })
+      await save('Section Subcategory', { section_subcategory_id: `${code}-P1`, store: code, subcategory: SARI[0], section: `${code}-S1`, starts_on: '2026-01-01' })
+    }
+    for (const job of [{ job: 'Store Manager', site: 'PLN' }, { job: 'Store Manager', site: 'GHO' }, { job: 'Staff', site: 'PLN', section: 'PLN-S1' }, { job: 'Staff', site: 'GHO', section: 'GHO-S1' }])
+      await expect(resolvePersonScope(await reader([job]), await binding())).rejects.toMatchObject(new NoPersonScope('scope'))
+  })
+
+  test('on an instance whose Site has no site_kind or status yet, is_store alone decides and nothing fails', async ({ admin, createUser }) => {
+    const { reader, save } = await setup(admin, createUser, { withoutSiteKind: true })
+    await save('Site', { code: 'OLD', name: 'Made-up OLD', is_store: true })
+    await save('Plant', { plant_code: '9904', plant_type: 'Store', site: 'OLD' })
+    expect(stores(await resolvePersonScope(await reader([{ job: 'Director', site: 'HOF' }]), await binding()))).toEqual(['9901', '9902', '9903', '9904'])
   })
 
   test('Head office staff reach nothing', async ({ admin, createUser }) => {
