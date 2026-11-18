@@ -11,7 +11,7 @@ import { every, mergePlaces } from './business-access'
 import { businessAccessSummary, switchOverLog } from './switch-over-server'
 import { rolesForOldRole } from './switch-over'
 import { scopeProviders } from './server'
-import { personShadow, placesByStore, shadowWorld } from './business-roles-server'
+import { directDocuments, memoryDocuments, personShadow, placesByStore, shadowWorld } from './business-roles-server'
 import { businessModel } from './business-access'
 import { istToday } from './report'
 
@@ -1042,6 +1042,21 @@ describe('site kind and status under business roles', () => {
     expect(await scopeOf(tables, 'sm')).toEqual({ 9901: null, 9902: null })
     const explained = await explainPerson(context(tables, { payload: { person: 'sm' }, peopleRoles: { sm: ['Dash Reader'] } }) as never)
     expect(explained.roles.map(r => [r.name, r.area.stores])).toEqual([['Regional Head', 2]])
+  })
+
+  // Codex round 2: the bulk comparison read Site without its kind, so it disagreed with Explain and live reach.
+  it('reads Site the same way in the bulk comparison and in Explain, with its kind and status where the instance has them', async () => {
+    const tables = await kinds()
+    const base = context(tables).baseTables as never
+    const bulk = await memoryDocuments(base, false).rows('Site')
+    const explain = await directDocuments(base, false).rows('Site')
+    expect(bulk).toEqual(explain)
+    expect(bulk.find(r => r.row_id === 'CLS')).toMatchObject({ site_kind: 'Store', status: 'Closed' })
+    expect(bulk.filter(openStore).map(r => r.row_id).sort()).toEqual(['HIL', 'LKS'])
+    for (const site of tables.Site) { delete site.site_kind; delete site.status }
+    const [bulkOld, explainOld] = [await memoryDocuments(base, false).rows('Site'), await directDocuments(base, false).rows('Site')]
+    expect(bulkOld).toEqual(explainOld)
+    expect(bulkOld.some(r => 'site_kind' in r)).toBe(false)
   })
 
   it('refuses to place a role at a site that is no open store', async () => {

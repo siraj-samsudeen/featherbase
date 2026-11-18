@@ -51,13 +51,23 @@ export type WorldDocuments = Base & { rows(table: string): Promise<Row[]> }
  * first column, so a person's reads cost what they find, not the size of the Table. `withRetired`: as the scope
  * provider reads them (retired rows included), or as the app's own reads do (the old rules' report grants, by job).
  */
+/** The columns each comparison reader reads, Table by Table: Site's kind and status too where the instance's Site has
+ *  them (#1280), asked once as every reader asks it. One home, so the bulk comparison and Explain never differ. */
+function siteAwareFields(base: Base, designations: boolean): (table: string) => Promise<string[]> {
+  const fields = fieldsFor(designations)
+  let siteFields: Promise<string[]> | undefined
+  return async table => table === 'Site'
+    ? await (siteFields ??= siteStoreFields(siteKindRead(base)).then(more => [...new Set([...(fields.Site ?? []), ...more])]))
+    : fields[table]!
+}
+
 export function memoryDocuments(base: Base, designations: boolean, { withRetired = true }: { withRetired?: boolean } = {}): WorldDocuments {
   const loaded = new Map<string, Promise<Row[]>>()
   const indexes = new Map<string, Map<string, Row[]>>()
   const availability = new Map<string, Promise<boolean>>()
-  const fields = fieldsFor(designations)
+  const fieldsOf = siteAwareFields(base, designations)
   const rows = (table: string) => {
-    if (!loaded.has(table)) loaded.set(table, withRetired ? everyRow(base, table, fields[table]!) : all(base, table, fields[table]!))
+    if (!loaded.has(table)) loaded.set(table, fieldsOf(table).then(f => (withRetired ? everyRow(base, table, f) : all(base, table, f))))
     return loaded.get(table)!
   }
   const indexOf = async (table: string, column: string) => {
@@ -93,9 +103,11 @@ export function memoryDocuments(base: Base, designations: boolean, { withRetired
   }
   return {
     rows,
-    available: table => {
-      if (!availability.has(table)) availability.set(table, base.available(table))
-      return availability.get(table)!
+    // With columns (#1280), the instance is asked about them too; each question is asked once.
+    available: (table, columns) => {
+      const key = [table, ...(columns ?? [])].join('\u0000')
+      if (!availability.has(key)) availability.set(key, base.available(table, columns))
+      return availability.get(key)!
     },
     // Every read through here names its page length.
     list: async (table, args) => {
@@ -111,12 +123,7 @@ export function memoryDocuments(base: Base, designations: boolean, { withRetired
  */
 export function directDocuments(base: Base, designations: boolean): WorldDocuments {
   const loaded = new Map<string, Promise<Row[]>>()
-  const fields = fieldsFor(designations)
-  // #1280: Site's kind and status too, where the instance's Site has them, asked once as every reader asks it.
-  let siteFields: Promise<string[]> | undefined
-  const fieldsOf = async (table: string) => table === 'Site'
-    ? await (siteFields ??= siteStoreFields(siteKindRead(base)).then(more => [...new Set([...(fields.Site ?? []), ...more])]))
-    : fields[table]!
+  const fieldsOf = siteAwareFields(base, designations)
   return {
     rows: table => {
       if (!loaded.has(table)) loaded.set(table, fieldsOf(table).then(f => everyRow(base, table, f)))
