@@ -21,8 +21,8 @@ export function SignInPanel({
   microsoft,
   delegated,
   password,
-  failed = null,
-  without = null,
+  failed,
+  without,
   onRedirect,
   onDelegated,
   onPassword,
@@ -34,9 +34,9 @@ export function SignInPanel({
   /** Whether user name and password is switched on. */
   password: boolean
   /** The redirect sign-in that just failed: it keeps its place, as "Try another … account". */
-  failed?: 'google' | 'microsoft' | null
+  failed: 'google' | 'microsoft' | null
   /** The way in whose form the page already shows: 'password', or a connected service's key. */
-  without?: string | null
+  without: string | null
   /** Before leaving for Google or Microsoft (the page remembers where to return). */
   onRedirect?: () => void
   onDelegated: (key: string) => void
