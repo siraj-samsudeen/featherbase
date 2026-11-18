@@ -126,15 +126,27 @@ export async function rolePlaces(docs: Base, person: string, today: string, held
       // A hand change naming a place puts the job there ("treat as Store Manager at Lakeside"). fit() lets only a location reach here.
       const job: Row = { ...mine.jobs.find(j => exact(j.row_id) === spot.job)!, ...(spot.site ? { site: spot.site } : {}) }
       // #1277 (owner, 18-Nov-2026): a head office or group site is no store: a role placed there reaches no store of it.
-      // The Site master's is_store says so (#1280's site_kind keeps it in step; read here once every instance has it).
-      if (reaches !== 'Cluster') {
-        const [here] = await every(docs, 'Site', ['is_store'], [['row_id', '=', exact(job.site)]])
-        if (!checked(here?.is_store)) return []
-      }
+      if (reaches !== 'Cluster' && !(await isStore(docs, exact(job.site)))) return []
       return reach({ jobs: [{ ...job, job: AS_JOB[reaches!]!, acting: false }] })
     }
     default: return []
   }
+}
+
+/**
+ * Whether a site is a store: its site_kind where the instance has the column and the site is classified (#1280), else
+ * its is_store flag. An empty site_kind (not classified yet) means the flag decides, never an error. The column is
+ * looked for on the whole row (documents.get, the scope provider's), so an instance without it reads the flag alone;
+ * reads without a whole-row get (the app's base Tables) read the flag, which #1280 keeps in step.
+ */
+export async function isStore(docs: Base & { get?(table: string, id: string): Promise<Row> }, site: string): Promise<boolean> {
+  if (!site) return false
+  // Found first by a list, so the whole-row read never meets a missing row (a failed read fails the person's whole scope).
+  const [listed] = await every(docs, 'Site', ['is_store'], [['row_id', '=', site]])
+  if (!listed) return false
+  const row = docs.get ? await docs.get('Site', site) : listed
+  const kind = text(row.site_kind)
+  return kind ? kind === 'Store' : checked(row.is_store)
 }
 
 /** What business roles give one person: each held role with its places, the Dash places, and whether a role opens Dash. */

@@ -48,6 +48,7 @@ describe('who may edit sections when business roles decide', () => {
   async function store(source: 'business_roles' | 'legacy' | null, hand: Record<string, unknown>[] = []) {
     const tables: Record<string, Record<string, unknown>[]> = {
       Employee: [{ row_id: 'E1', person: 'sm', status: 'Current' }],
+      Section: [{ row_id: 'S1', site: 'LKS', floor: 'F1', name: 'Sarees' }, { row_id: 'S2', site: 'LKS', floor: 'F2', name: 'Silk' }],
       'Job Assignment': [{ row_id: 'J1', employee: 'E1', job: 'Store Manager', site: 'LKS', starts_on: '2026-01-01', ends_on: null }],
       'dash.business_role': [], 'dash.business_role_permission': [], 'dash.title_map': [], 'dash.role_assignment': hand,
       'dash.access_source': source ? [{ row_id: 'x', source }] : [],
@@ -86,6 +87,7 @@ describe('who may edit sections when business roles decide', () => {
   // Codex round 2: Your sections' own changes ask the same permission.
   it('lets a job change its own section\'s subcategories only with a role that may edit sections, once business roles decide', async () => {
     const { tables, ctx, roleId } = await store('business_roles')
+    tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], job: 'Team Leader', section: 'S1' }
     const job = tables['Job Assignment'][0]
     expect(await mayEditOwnSection(ctx, 'sm', job, today)).toBe(true)
     tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Staff') })
@@ -125,6 +127,27 @@ describe('who may edit sections when business roles decide', () => {
     ]
     const areas = await sectionEditingAreas(ctx, tables.Employee, today)
     expect(areas.map(a => [a.kind, [...a.sections!]])).toEqual([['section', ['S1']]])
+  })
+
+  // Codex round 7: the role's own resolved area decides, not only its kind.
+  it('gives a Team Leader corrected to Floor Manager, whose job names no floor, no section to edit', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], job: 'Team Leader', section: 'S1' }
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Floor Manager') })
+    expect(await mayEditOwnSection(ctx, 'sm', tables['Job Assignment'][0], today)).toBe(false)
+  })
+
+  it('gives a Store Manager corrected to Department Manager, managing no department, no section', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Department Manager') })
+    expect(await sectionAreaOf(ctx, 'sm', section, today)).toBeUndefined()
+  })
+
+  it('narrows a Store Manager corrected to Floor Manager, whose job names floor F1, to that floor', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], floor: 'F1' }
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Floor Manager') })
+    expect([(await sectionAreaOf(ctx, 'sm', section, today))?.kind, await sectionAreaOf(ctx, 'sm', { row_id: 'S2', site: 'LKS', floor: 'F2' }, today)]).toEqual(['floor', undefined])
   })
 })
 

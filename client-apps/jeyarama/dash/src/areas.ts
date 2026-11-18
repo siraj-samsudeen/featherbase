@@ -57,6 +57,11 @@ export async function areasFor(ctx: Ctx, employees: Row[], today: string): Promi
   const ids = employees.map(e => exact(e.row_id))
   if (!ids.length) return []
   const jobs = (await all(ctx, T.job, JOB_FIELDS, [['employee', 'in', ids]])).filter(j => holdsOn(j, today))
+  return areasOfJobs(ctx, ids, jobs, today)
+}
+
+/** The areas these in-force jobs of one person's staff rows (`ids`) give. */
+async function areasOfJobs(ctx: Ctx, ids: string[], jobs: Row[], today: string): Promise<Area[]> {
   const areas: Area[] = []
   const base = (job: Row) => ({ job: exact(job.row_id), site: exact(job.site), floor: null, sections: null, department: null })
   for (const job of jobs.filter(j => exact(j.site))) {
@@ -82,15 +87,18 @@ export async function areasFor(ctx: Ctx, employees: Row[], today: string): Promi
   return areas
 }
 
-/** The Reaches a role editing sections must have for an area of each kind its job gives: never wider than the role's own
- *  axis (a Floor role keeps no department area, nor the other way round). */
-const COVERS: Record<Area['kind'], readonly string[]> = { section: ['Section', 'Floor', 'Department', 'Store'], floor: ['Floor', 'Store'], department: ['Department', 'Store'], store: ['Store'] }
+/** The kind of area a role reaching this far gives from a job, as the job of that kind there would. */
+const ROLE_AREA: Record<string, { kind: Area['kind']; job: string }> = {
+  Section: { kind: 'section', job: 'Team Leader' }, Floor: { kind: 'floor', job: 'Floor Manager' },
+  Department: { kind: 'department', job: 'Department Manager' }, Store: { kind: 'store', job: 'Store Manager' },
+}
+const RANK: Record<Area['kind'], number> = { section: 1, floor: 2, department: 2, store: 3 }
 
 /**
- * #1277 (owner, 18-Nov-2026): when business roles decide, the jobs from which a person may edit a section's name and
- * which subcategories sit under it, each with how wide the widest such role reaches: a role holding the Dash
- * permission Edit Section names and subcategories, coming from that very job (from their HR title, or corrected or
- * also given by hand at that job, at its own store). Null under the old rules: the jobs alone decide.
+ * #1277 (owner, 18-Nov-2026): when business roles decide, the reaches from which a person may edit a section's name and
+ * which subcategories sit under it, job by job: each role holding the Dash permission Edit Section names and
+ * subcategories, coming from that very job (from their HR title, or corrected or also given by hand at that job, at
+ * its own store). Null under the old rules: the jobs alone decide.
  */
 export async function sectionEditingJobs(ctx: Ctx, person: string, today: string, jobs: Row[]): Promise<Map<string, Set<string>> | null> {
   const base = ctx.baseTables as unknown as Base
@@ -109,32 +117,49 @@ export async function sectionEditingJobs(ctx: Ctx, person: string, today: string
   return allowed
 }
 
-const covers = (allowed: Map<string, Set<string>>, job: string, kind: Area['kind']) => [...allowed.get(job) ?? []].some(reach => COVERS[kind].includes(reach))
-
 /**
- * The areas in which a person may edit sections: under business roles, an area stays only when a role from its job may
- * edit sections and reaches that kind of area (a Store Manager corrected to Floor Manager keeps no store-wide area);
- * a Team Leader's area keeps only the sections of their jobs that qualify. This only narrows the job areas, and only
- * for editing sections: moving staff and the manager pages still follow the jobs (owner decision in #1277's plan).
+ * The areas in which a person may edit sections. Under business roles, for each job and each role from it that may
+ * edit sections: the area the role itself resolves to from that job (a Floor role needs the job's floor, a Department
+ * role a department they manage there, a Section role the job's section), never wider than the area the job gives,
+ * and none across axes (Floor against Department). One area per job. This only narrows, and only for editing
+ * sections: moving staff and the manager pages still follow the jobs (Codex rounds 2, 3 and 7).
  */
 export async function sectionEditingAreas(ctx: Ctx, employees: Row[], today: string): Promise<Area[]> {
   const areas = await areasFor(ctx, employees, today)
-  if (!areas.length) return areas
   const ids = employees.map(e => exact(e.row_id))
+  if (!ids.length) return areas
   const jobs = (await all(ctx, T.job, JOB_FIELDS, [['employee', 'in', ids]])).filter(j => holdsOn(j, today))
   const allowed = await sectionEditingJobs(ctx, exact(employees[0]?.person), today, jobs)
   if (!allowed) return areas
-  return areas.flatMap(area => {
-    if (area.kind !== 'section') return covers(allowed, area.job, area.kind) ? [area] : []
-    const sections = new Set(jobs.filter(j => text(j.job) === 'Team Leader' && exact(j.site) === area.site && covers(allowed, exact(j.row_id), 'section')).map(j => exact(j.section)))
-    return sections.size ? [{ ...area, sections }] : []
-  })
+  const out: Area[] = []
+  for (const job of jobs.filter(j => allowed.has(exact(j.row_id)))) {
+    const jobAreas = await areasOfJobs(ctx, ids, [job], today)
+    for (const reach of allowed.get(exact(job.row_id))!) {
+      const role = ROLE_AREA[reach]
+      if (!role) continue
+      const roleAreas = await areasOfJobs(ctx, ids, [{ ...job, job: role.job }], today)
+      for (const jobArea of jobAreas) for (const roleArea of roleAreas) {
+        if (RANK[role.kind] > RANK[jobArea.kind]) { out.push(jobArea); continue }
+        if (RANK[role.kind] === RANK[jobArea.kind]) { if (role.kind === jobArea.kind) out.push(jobArea); continue }
+        // Narrower: the role's area, only where every section of it lies in the job's area.
+        if (roleArea.sections && jobArea.kind !== 'store') {
+          const rows = await list(ctx, T.section, SECTION_FIELDS, [['row_id', 'in', [...roleArea.sections]]])
+          if (!roleArea.sections.size || ![...roleArea.sections].every(id => inArea(jobArea, rows.find(r => exact(r.row_id) === id)))) continue
+        } else if (roleArea.site !== jobArea.site || (jobArea.kind !== 'store' && roleArea.kind === 'floor')) continue
+        out.push(roleArea)
+      }
+    }
+  }
+  return out
 }
 
 /** Under business roles, whether this job of theirs lets the person change their own section's subcategories (Your sections). */
 export async function mayEditOwnSection(ctx: Ctx, person: string, job: Row, today: string): Promise<boolean> {
   const allowed = await sectionEditingJobs(ctx, person, today, [job])
-  return !allowed || covers(allowed, exact(job.row_id), 'section')
+  if (!allowed) return true
+  if (!allowed.has(exact(job.row_id)) || !exact(job.section)) return false
+  const [section] = await list(ctx, T.section, SECTION_FIELDS, [['row_id', '=', exact(job.section)]])
+  return (await sectionEditingAreas(ctx, await staffRowsOf(ctx, person), today)).some(area => exact(area.job) === exact(job.row_id) && inArea(area, section))
 }
 
 /** The current staff rows of a person, by their person id. */
