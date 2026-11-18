@@ -205,6 +205,12 @@ export function Dash() {
           <button type="button" className="fd-button" onClick={tryAgain}>Try again</button>
         </Notice>
       )}
+      {/* #1269: trying again can't help; whoever runs Dash can, and the log says how large it was. */}
+      {view.kind === 'too_large' && (
+        <Notice testid="too-large">
+          This report can't open for you: you cover more stores and subcategories than it can be sent at once. Please tell whoever runs Dash.
+        </Notice>
+      )}
     </main>
     </div>
   )

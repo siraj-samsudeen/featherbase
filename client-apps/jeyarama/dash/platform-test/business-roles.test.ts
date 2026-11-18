@@ -9,7 +9,7 @@ import { test as pgTest } from '../pg-test'
 import { sql } from '../../src/db'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
-import { APP_DIR, SHADOW_TABLES, VERSION, createCoreTables, pinned, revertBusinessRoles, saveRow } from './helpers'
+import { APP_DIR, SHADOW_TABLES, VERSION, createCoreTables, pinned, revertBusinessRoles, revertReachPrefixes, saveRow } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -22,6 +22,7 @@ async function previousVersion(): Promise<string> {
   const directory = await mkdtemp(resolve(APP_DIR, '..', 'dash-0.13.27-'))
   await cp(APP_DIR, directory, { recursive: true })
   const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
+  revertReachPrefixes(manifest)
   revertBusinessRoles(manifest)
   const pkg = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'))
   await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(manifest, null, 2))
@@ -38,7 +39,7 @@ describe('business roles in shadow', () => {
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'reach_prefixes'])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()

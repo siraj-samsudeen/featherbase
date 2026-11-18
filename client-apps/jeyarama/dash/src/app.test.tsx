@@ -542,6 +542,16 @@ describe('a report on the rendered page', () => {
     await unmount()
   })
 
+  // #1269: MotherDuck refused the reach as too large: trying again can't help, so no Try again.
+  it('says the reader covers too much for the report to open, with no Try again, when MotherDuck refuses the reach as too large', async () => {
+    const { answer, container, unmount } = await open('?report=whole')
+    await answer('report', plain)
+    await answer('embed_session', { too_large: true })
+    expect([container.querySelector('[data-testid=too-large]')?.textContent, container.querySelector('[data-testid=failed]')])
+      .toEqual(["This report can't open for you: you cover more stores and subcategories than it can be sent at once. Please tell whoever runs Dash.", null])
+    await unmount()
+  })
+
   describe('for someone whose job reaches nothing', () => {
     const refusing = async (problems: string[]) => {
       reportsAnswer = []

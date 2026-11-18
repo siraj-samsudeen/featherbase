@@ -2,7 +2,8 @@
 // where a role applies is reachOf's (provider.ts), run over only the assignment that gives the role.
 // Read as the app, for Report Access Managers and System Managers only. Nothing here is read by
 // reportsFor, can_open, the scope provider or reachOf: today's access is decided as before.
-import { appsOf, decisionReports, differences, newModelReports, opensDash, permissionSentence, rolesOf, titleList, SOURCE_WORDS, areaPrefixes,
+import { collapseCodes } from './reach-prefixes.ts'
+import { appsOf, decisionReports, differences, newModelReports, opensDash, permissionSentence, rolesOf, titleList, SOURCE_WORDS,
   type BusinessRole, type HandChange, type Reaches, type HeldRole, type Model, type Permission, type Reach, type Side, type Spot, type TitleInUse, type TitleRule } from './business-roles.ts'
 import { reportsReaching, type AccessRow, type BundleMember } from './report-access.ts'
 import { ACCESS, MEMBER, all, managesAccess, personNames, whoIs, type AccessContext } from './report-access-server.ts'
@@ -247,7 +248,7 @@ async function areaOf(world: ShadowWorld, person: string, held: HeldRole, mine: 
   const whole = Object.values(byStore).includes(null)
   const plants = await world.docs.list('Plant', { fields: [], filters: [['row_id', 'in', Object.keys(byStore)]], limit_page_length: 10_000 })
   // A job with no site or section names nothing there: its part is left out rather than shown blank.
-  return { places, area: { parts: parts.filter(p => p.name), stores: new Set(plants.map(p => exact(p.site))).size, subcategories: whole ? null : new Set(codes).size, prefixes: whole ? [] : areaPrefixes(codes, world.every) } }
+  return { places, area: { parts: parts.filter(p => p.name), stores: new Set(plants.map(p => exact(p.site))).size, subcategories: whole ? null : new Set(codes).size, prefixes: whole ? [] : collapseCodes(codes, world.every) } }
 }
 
 // ---------- reads and actions ----------
