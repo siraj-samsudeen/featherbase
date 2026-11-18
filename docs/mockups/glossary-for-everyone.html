@@ -125,7 +125,7 @@ table.dash .num { text-align:right }
 <div class="wrap">
   <header>
     <h1>The Glossary for everyone signed in</h1>
-    <p>Settled: each app has its own glossary, readable by anyone who can open that app; the instance's own terms are common and show in every app's glossary as "Shared across apps"; the Help menu is the way in. Decided: 1, 2 and 4. Still yours to decide: tab 3 (the sign on a word) and tab 5 (Dash's first words). Pick a decision, then click an option to see it in Dash. Definitions shown are placeholders: Dash's real wording is drafted from its code and specs and comes to you for approval.</p>
+    <p>Settled: each app has its own glossary, readable by anyone who can open that app; the instance's own terms are common and show in every app's glossary as "Shared across apps"; the Help menu is the way in. Decided: 1, 2 and 4 (show both, each marked with its source). Still yours to decide: tab 3 (the sign on a word) and tab 5 (Dash's first words). Pick a decision, then click an option to see it in Dash. Definitions shown are placeholders: Dash's real wording is drafted from its code and specs and comes to you for approval.</p>
   </header>
   <div class="tabs" role="tablist" id="tabs"></div>
   <div class="grid">
@@ -196,13 +196,12 @@ const DECISIONS = [
  
 { key:'order', tab:'4 · Same word twice',
    q:'What if an app and the instance both define the same word?',
-   ctx:'DECIDED: option A (the owner asked Claude to decide from the current structure). Say Dash defines "Target" and someone also adds an instance term "Target". Shown in Dash.',
-   rec:'A', why:'The app is more specific than the instance, so in that app its own meaning wins and the instance term stays hidden there (still shown in other apps). Nothing is refused and nobody sees two answers to one word.',
+   ctx:'DECIDED (the owner): show both, each marked with where it comes from. An app\'s glossary is the whole instance plus the app. Nothing is refused or hidden. Shown in Dash.',
+   rec:'A', why:'Simplest and nothing is lost: no rule to learn, no install or save is ever refused, and the reader sees both meanings with their source.',
    opts:[
-    {l:'A', n:'The app\'s meaning wins inside that app', pro:['One answer per word in an app','Instance term still works in other apps','Nothing to refuse or fix'], con:['The hidden instance term is easy to forget; the page notes it']},
-    {l:'B', n:'Show both, side by side', pro:['Nothing hidden'], con:['Two meanings for one word in one place','Defeats having a glossary']},
-    {l:'C', n:'Refuse the second at save', pro:['No duplicates exist'], con:['An editor can\'t add an instance word an app already uses, even for other apps','Breaks when an app upgrade adds a word the instance already has']},
+    {l:'A', n:'Show both, each marked with where it comes from', pro:['Nothing refused, hidden or overwritten','Each meaning says whose it is'], con:['A reader may see two meanings of one word; the source tells them apart']},
    ]},
+
  { key:'wording', tab:'5 · Dash\'s first words',
    q:'Is this the wording for Dash\'s first glossary terms?',
    ctx:'Drafted from Dash\'s own code and pages, not from business knowledge. Each draft shows where it comes from. Section, Store Manager, Team Leader and Cluster are left for you to word: I will not guess what they mean in the business.',
@@ -321,9 +320,8 @@ function render() {
   }
   if (D.key === 'order') {
     addr = '/dash/glossary';
-    const mode = { A:'appWins', B:'both', C:'refuse' }[pick] || 'appWins';
-    html = frame({ side:{ active:'' }, main:`<h3>Glossary</h3><p class="sub">Dash</p>${searchBox}${glossaryList(mode)}` });
-    cap = { A:'Inside Dash the app\'s Target wins; the shared Target is hidden and the page says so.', B:'Both Targets show, so a reader sees two meanings.', C:'The editor adding a shared "Target" is refused because Dash uses the word.' }[pick] || '';
+    html = frame({ side:{ active:'' }, main:'<h3>Glossary</h3><p class="sub">Dash</p>' + searchBox + glossaryList('both') });
+    cap = 'Both Targets show: Dash\'s under Dash, the instance\'s under Shared across apps.';
   }
   if (D.key === 'wording') {
     addr = '/dash/glossary';
