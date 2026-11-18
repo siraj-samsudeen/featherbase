@@ -52,6 +52,11 @@ describe('tickColumn', () => {
     expect(tickColumn(lockedFar, { column: 'person', via: null }, { table: 'Person', own: ['Rg Site'] })).toBeUndefined()
   })
 
+  it('never ticks through a link to a row of any Table, which names its Table too', () => {
+    const any = { ...roleGiven, columns: roleGiven.columns.map((c) => (c.column_name === 'person' ? { ...c, reference_table: null, table_column: 'person_table' } : c)) } as TableMeta
+    expect(tickColumn(any, { column: 'person', via: null }, { table: 'Person', own: ['Rg Site'] })).toBeUndefined()
+  })
+
   it('never ticks back into the record\'s own Table', () => {
     const reports = { ...roleGiven, columns: [link('person', 'Person'), link('reports_to', 'Person')] } as unknown as TableMeta
     expect(tickColumn(reports, { column: 'person', via: null }, { table: 'Person', own: [] })).toBeUndefined()

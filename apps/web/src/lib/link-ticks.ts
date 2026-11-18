@@ -32,7 +32,8 @@ export function tickColumn(meta: TableMeta, connection: Pick<Connection, 'column
   const skip = new Set([record.table, ...record.own])
   const back = meta.columns.find((c) => c.column_name === connection.column)
   // Ticking writes both links: a read-only one would be dropped on save (Codex review).
-  if (!back || back.column_type !== 'Reference' || back.read_only) return undefined
+  // A link to a row of any Table also names its Table: such a group lists, never ticks (Codex review).
+  if (!back || back.column_type !== 'Reference' || back.read_only || back.table_column) return undefined
   const far = readableLinks(meta).find((c) => c.column_name !== connection.column && !skip.has(linkRowsTable(c) ?? ''))
   return far && !far.read_only ? far : undefined
 }
