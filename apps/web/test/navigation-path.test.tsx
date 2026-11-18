@@ -10,6 +10,7 @@ import { encodePath, type NavPath } from '../src/lib/nav-path'
 import { PLANT, REGION, SITE, seedSites } from './relational-fixture'
 import { recordAction } from '../src/lib/recents'
 import { listOf } from '../src/components/RecentSub'
+import { pathHref } from '../src/lib/navigation'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -281,4 +282,20 @@ test('a walk that starts on a record reads by names alone in Recently Opened, sa
   // Opened, the path bar still names each step in full.
   fireEvent.click(screen.getByTestId('sidebar-walk'))
   await waitFor(() => expect(pathNav()).toHaveTextContent('Enchakkal · ENK'))
+})
+
+// #910 / #1288: on a page with a path, the bar's own Recent paths still opens another remembered walk.
+test("the path bar's Recent paths opens another remembered walk", async ({ admin }) => {
+  await seedSites(admin)
+  const walk = (region: string): NavPath => ({ at: 1, steps: [
+    { screen: 'list', table: SITE },
+    { screen: 'list', table: SITE, filters: [['region', '=', region]] },
+  ] })
+  const keys = [encodePath(walk('KL')), encodePath(walk('TN'))]
+  await admin.put('/api/user_settings/__navigation', { recentPaths: keys, recentPathTimes: { [keys[0]]: Date.now(), [keys[1]]: Date.now() - 1000 } })
+  await renderApp(pathHref(walk('TN')), admin)
+  await waitFor(() => expect(current()).toHaveTextContent('Region: Tamil Nadu'))
+  fireEvent.click(screen.getByRole('button', { name: 'Recent paths' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala` }))
+  await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
 })

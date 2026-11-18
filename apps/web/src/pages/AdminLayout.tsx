@@ -442,6 +442,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
       ].sort((a, b) => b.at - a.at).slice(0, sidebarFrequent.length ? recentSlots.length : SIDEBAR_RECENT_CAP)
     : [])
   const openWalk = (path: NavPath) => router.history.push(pathHref(path))
+  // The rail's one menu lists the recents, then Frequent.
+  const railRecents: SidebarRecentItem[] = [...sidebarRecent, ...sidebarFrequent.map((entry) => ({ kind: 'entry' as const, entry, at: 0 }))]
   // Two rows of one name (a list under two filters) each say what sets them apart.
   const sharedRecentNames = sharedNames([...sidebarEntries, ...sidebarFrequent])
 
@@ -893,7 +895,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
               buffer the command bar reads. */}
           {rail && (sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
             <RailFold label="Recently Opened" icon={Clock} testid="sidebar-recents" tone="slate">
-              {(close) => [...sidebarRecent, ...sidebarFrequent.map((entry) => ({ kind: 'entry' as const, entry, at: 0 }))].map((item) => item.kind === 'walk' ? (
+              {(close) => railRecents.map((item) => item.kind === 'walk' ? (
                 <RailMenuItem key={`walk:${encodePath(item.path)}`} close={close} onSelect={() => openWalk(item.path)}>
                   <span className="truncate" data-testid="sidebar-walk">{item.label}</span>
                 </RailMenuItem>
