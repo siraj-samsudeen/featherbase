@@ -62,6 +62,10 @@ export interface RosterStatusPlan {
   changes: StatusChange[]
   limit: number
   back_limit: number
+  /** Undoing this job's own lefts: as wide as the allowance that could have
+   *  set them (one in twenty of every covered row), so a batch it was allowed
+   *  to make can always be undone once the feed is corrected. */
+  undo_limit: number
   refused: string | null
 }
 
@@ -132,17 +136,21 @@ export function planStatusChanges(
   const limitOf = (n: number) => Math.max(MIN_CHANGE_LIMIT, Math.ceil(n * MAX_CHANGE_SHARE))
   plan.limit = limitOf(plan.covered_current)
   plan.back_limit = limitOf(plan.covered_left)
+  plan.undo_limit = limitOf(plan.covered)
   const leaving = plan.changes.filter((c) => c.to === s.left).length
-  const back = plan.changes.length - leaving
+  const undo = plan.changes.filter((c) => c.basis === 'set left by this job').length
+  const back = plan.changes.length - leaving - undo
   if (leaving > plan.limit)
     plan.refused = `it would change the status of ${leaving} of ${plan.covered_current} ${s.current} rows to ${s.left}, more than the limit of ${plan.limit}`
   else if (back > plan.back_limit)
     plan.refused = `it would change the status of ${back} of ${plan.covered_left} ${s.left} rows to ${s.current}, more than the limit of ${plan.back_limit}`
+  else if (undo > plan.undo_limit)
+    plan.refused = `it would undo ${undo} of its own ${s.left} marks, more than the limit of ${plan.undo_limit}`
   return plan
 }
 
 function emptyPlan(table: string, today: string, refused: string | null): RosterStatusPlan {
-  return { table, today, latest_feed_day: null, covered: 0, covered_current: 0, covered_left: 0, not_in_feed: 0, held_at_work: [], changes: [], limit: MIN_CHANGE_LIMIT, back_limit: MIN_CHANGE_LIMIT, refused }
+  return { table, today, latest_feed_day: null, covered: 0, covered_current: 0, covered_left: 0, not_in_feed: 0, held_at_work: [], changes: [], limit: MIN_CHANGE_LIMIT, back_limit: MIN_CHANGE_LIMIT, undo_limit: MIN_CHANGE_LIMIT, refused }
 }
 
 const statusesOf = (roster: Roster): Statuses | null =>
@@ -229,7 +237,7 @@ export function formatRosterStatus(plan: RosterStatusPlan | null, run?: RosterSt
   const n = (to: 'left' | 'back') => plan.changes.filter((c) => (to === 'back') === back(c)).length
   const by = (basis: StatusChange['basis']) => plan.changes.filter((c) => c.basis === basis).length
   const lines = [
-    `roster status ${plan.table}: ${plan.covered} rows on the StyleHR record (${plan.covered_current} current, ${plan.covered_left} left), ${plan.not_in_feed} not on it (left alone); limits ${plan.limit} to left, ${plan.back_limit} back`,
+    `roster status ${plan.table}: ${plan.covered} rows on the StyleHR record (${plan.covered_current} current, ${plan.covered_left} left), ${plan.not_in_feed} not on it (left alone); limits ${plan.limit} to left, ${plan.back_limit} back, ${plan.undo_limit} to undo its own`,
     run
       ? `roster status ${plan.table}: changed ${run.changed}${run.failed.length ? `; FAILED ${run.failed.length}` : ''}`
       : `roster status ${plan.table}: would mark ${n('left')} as left (exit date ${by('exit date')}, inactive ${by('inactive')}) and ${n('back')} as current again`,

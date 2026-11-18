@@ -517,6 +517,33 @@ describe('the pure plan', () => {
   })
 })
 
+describe('the pure plan: undoing its own batch', () => {
+  const S = { current: 'Working', left: 'Gone' }
+  const rec = (key: string, over: Record<string, unknown> = {}) => ({
+    employee_key: key, employee_code: `C-${key}`, payroll_active: true, movement_active: true, date_of_joining: '2015-01-01', exit_date: null, ...over,
+  })
+  const rows = (n: number, status: string, own = false) => Array.from({ length: n }, (_, i) => ({ row_id: `r${i}`, record: String(i), status, own_left: own }))
+  const recs = (n: number, over: Record<string, unknown> = {}) => Array.from({ length: n }, (_, i) => rec(String(i), over))
+
+  test('a batch it was allowed to make can be undone in one run once the feed is corrected', () => {
+    const day = '2026-11-18'
+    const forward = planStatusChanges('T', [...rows(50, 'Working'), ...rows(950, 'Working').map((r, i) => ({ ...r, row_id: `s${i}`, record: String(50 + i) }))],
+      [...recs(50, { movement_active: false }), ...recs(1000).slice(50)], day, S, day)
+    expect(forward).toMatchObject({ limit: 50, refused: null })
+    expect(forward.changes).toHaveLength(50)
+    const undone = planStatusChanges('T', [...rows(50, 'Gone', true), ...rows(950, 'Working').map((r, i) => ({ ...r, row_id: `s${i}`, record: String(50 + i) }))],
+      recs(1000), day, S, day)
+    expect(undone).toMatchObject({ back_limit: 10, undo_limit: 50, refused: null })
+    expect(undone.changes).toHaveLength(50)
+  })
+
+  test('undoing more of its own marks than that is refused', () => {
+    const day = '2026-11-18'
+    const plan = planStatusChanges('T', rows(11, 'Gone', true), recs(11), day, S, day)
+    expect(plan.refused).toBe('it would undo 11 of its own Gone marks, more than the limit of 10')
+  })
+})
+
 describe('where a person sees it', () => {
   const runJob = async () => {
     await loadJobs()
@@ -550,7 +577,7 @@ describe('where a person sees it', () => {
     warehouse([...rows.map((r) => ({ key: String(r.hr_record), exit: PAST, active: r.hr_record === '7002' ? true : false })), { key: '7020' }])
 
     const dry = await runMain(main, ['roster:link', 'stylehr'])
-    expect(dry.stdout).toContain(`roster status ${TABLE}: 12 rows on the StyleHR record (11 current, 1 left), 0 not on it (left alone); limits 10 to left, 10 back`)
+    expect(dry.stdout).toContain(`roster status ${TABLE}: 12 rows on the StyleHR record (11 current, 1 left), 0 not on it (left alone); limits 10 to left, 10 back, 10 to undo its own`)
     expect(dry.stdout).toContain(`roster status ${TABLE}: would mark 11 as left (exit date 11, inactive 0) and 1 as current again`)
     expect(dry.stdout).toContain('CHANGED NONE')
 
