@@ -171,12 +171,9 @@ export function RowMap({ table, name }: { table: string; name: string }) {
   const focusHref = nav ? (t: string, r: string) => nav.href(pushStep(nav.path, focusStep(t, r))) : undefined
   // A collection opens on the centre row in the pane; child rows have no
   // group there, so the centre row's own fields show.
-  function openGroup(g: GroupNode) {
-    if (!nav) return
-    nav.push({ ...nav.step, pane: g.cnx
-      ? { table, row: name, group: { table: g.cnx.table, column: g.cnx.column, via: g.cnx.via } }
-      : { table, row: name } })
-  }
+  const openGroup = nav ? (g: GroupNode) => nav.push({ ...nav.step, pane: g.cnx
+    ? { table, row: name, group: { table: g.cnx.table, column: g.cnx.column, via: g.cnx.via } }
+    : { table, row: name } }) : undefined
 
   const frame = useRef<HTMLElement>(null)
   const edges = useEdges(frame)
@@ -200,7 +197,7 @@ export function RowMap({ table, name }: { table: string; name: string }) {
         </div>
         <div className="flex min-w-0 flex-col gap-3">
           {groups.map((g, i) => (
-            <GroupBox key={i} group={g} chosen={chosen === groupId(g)} onOpen={nav ? () => openGroup(g) : undefined} walk={walk} />
+            <GroupBox key={i} group={g} chosen={chosen === groupId(g)} onOpen={openGroup && (() => openGroup(g))} walk={walk} />
           ))}
         </div>
       </div>
@@ -338,8 +335,8 @@ function Line({ name, focus, children }: { name: string; focus?: () => void; chi
 function useEdges(frame: RefObject<HTMLElement | null>): string[] {
   const [paths, setPaths] = useState<string[]>([])
   useLayoutEffect(() => {
-    const el = frame.current
-    if (!el) return
+    // The section is always drawn, so a layout effect always finds it.
+    const el = frame.current!
     const draw = () => {
       const box = el.getBoundingClientRect()
       const c = el.querySelector('[data-map-centre]')?.getBoundingClientRect()

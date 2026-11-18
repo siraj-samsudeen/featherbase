@@ -428,3 +428,42 @@ test('a group of a Table with no title reads as its far side, through itself', a
   expect(within(box).getByRole('button', { name: 'Rm Rep 1' })).toBeInTheDocument()
   expect(await within(box).findByRole('link', { name: 'Anu' })).toBeInTheDocument()
 })
+
+// #1282 item 14: the lines are measured where the boxes fall (jsdom lays nothing
+// out, so the boxes are given their places here): a curve from each link box into
+// the centre, and from the centre to the header of each group box beside it.
+test('the lines join the centre to each box beside it, measured where the boxes fall', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', {
+    name: 'Rm Note', id_pattern: 'prompt', title_column: 'title',
+    columns: [
+      { column_name: 'title', column_type: 'Data', in_list_view: true },
+      { column_name: 'order', column_type: 'Reference', reference_table: 'Rm Order' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Rm Note', row: { row_id: 'note-1', title: 'Call back', order: 'ord-1' } })
+  const rect = (left: number, top: number, width: number, height: number) =>
+    ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect
+  const placed = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    if (this.hasAttribute('data-map-centre')) return rect(400, 100, 200, 50)
+    if (this.hasAttribute('data-map-from')) return rect(0, 90, 220, 46)
+    if (this.hasAttribute('data-map-to')) return rect(700, 20, 240, 120)
+    return rect(0, 0, 1000, 300)
+  })
+  const watched: Element[] = []
+  vi.stubGlobal('ResizeObserver', class { observe(el: Element) { watched.push(el) } disconnect() {} })
+  try {
+    await openMap(admin, 'Rm Order', 'ord-1')
+    await screen.findByTestId('map-group-Rm Note')
+    await waitFor(() => expect([...screen.getByTestId('map-edges').querySelectorAll('path')].map((p) => p.getAttribute('d'))).toEqual([
+      'M220 113 C 310 113, 310 125, 400 125',
+      'M600 125 C 650 125, 650 38, 700 38',
+    ]))
+    // It redraws when the map or any box changes size.
+    expect(watched).toContain(screen.getByTestId('relation-map'))
+    expect(watched).toContain(screen.getByTestId('map-center'))
+  } finally {
+    placed.mockRestore()
+    vi.unstubAllGlobals()
+  }
+})
