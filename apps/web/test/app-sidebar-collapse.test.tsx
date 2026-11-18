@@ -218,6 +218,25 @@ test("in the rail the sidebar's own top and foot controls are named by a tooltip
   expect(sidebar().shadowRoot!.querySelector('[role=tooltip]')).toBeNull()
 })
 
+// The owner (18-Nov, option A): the Theme menu is a short list, an icon and a
+// name on each row and a tick on the one in use; choosing closes it.
+test('the Theme menu is a list with a tick on the theme in use, and choosing closes it', async ({ admin }) => {
+  openAppPage(admin, APPS[0])
+  await signedIn()
+  const shadow = within(sidebar().shadowRoot as unknown as HTMLElement)
+  await userEvent.click(shadow.getByTestId('theme-button'))
+  const menu = shadow.getByRole('menu', { name: 'Theme' })
+  const rows = within(menu).getAllByRole('menuitemradio')
+  expect(rows.map((row) => row.textContent)).toEqual(['Light', 'Dark', 'Same as device'])
+  expect(rows.filter((row) => row.getAttribute('aria-checked') === 'true')).toHaveLength(1)
+
+  await userEvent.click(within(menu).getByRole('menuitemradio', { name: 'Dark' }))
+  expect(shadow.queryByRole('menu', { name: 'Theme' })).toBeNull()
+  expect(shadow.getByTestId('theme-button')).toHaveAccessibleName('Theme: Dark')
+  await userEvent.click(shadow.getByTestId('theme-button'))
+  expect(within(shadow.getByRole('menu', { name: 'Theme' })).getByRole('menuitemradio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
+})
+
 /** A drag on the sidebar's edge, as a mouse does it: down on the edge, moved,
  *  let go, and the click the browser then sends to the edge. */
 function drag(edge: HTMLElement, from: number, to: number) {

@@ -27,6 +27,21 @@
   .featherbase-scroll { scrollbar-width: auto; scrollbar-color: var(--color-border-control) var(--color-subtle); }
 }
 
+/* The owner (18-Nov): a sidebar's links list, taller than the window, showed its
+   last icon sliced by its edge (the Glossary in the Admin's rail). Where there is
+   more to scroll, that edge fades (lib/sidebar-rail.ts sets the marks), so a part
+   shown reads as "more this way". In the rail, 56px wide, no scroll bar is drawn
+   (the wheel and touch still scroll it); open, a thin one. The mask uses only
+   alpha: any opaque token does. */
+[data-sidebar-scroll] { scrollbar-width: thin; }
+[data-sidebar-scroll][data-rail] { scrollbar-width: none; }
+[data-sidebar-scroll][data-rail]::-webkit-scrollbar { display: none; }
+[data-sidebar-scroll][data-more-below] { mask-image: linear-gradient(to bottom, var(--color-ink) calc(100% - 28px), transparent); }
+[data-sidebar-scroll][data-more-above] { mask-image: linear-gradient(to top, var(--color-ink) calc(100% - 28px), transparent); }
+[data-sidebar-scroll][data-more-above][data-more-below] {
+  mask-image: linear-gradient(to bottom, transparent, var(--color-ink) 28px, var(--color-ink) calc(100% - 28px), transparent);
+}
+
 /* #1265: the command bar's progress line runs while the search does; under
    reduced motion it is hidden and the "Searching…" words stay. */
 @keyframes search-progress-run {

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { GROUP_TONE, RAIL_ROW, ROW_IDLE, ROW_SELECTED, RailFold, RailMenuItem, RailRule, SIDEBAR_HEADING, SidebarRailContext, TableTile, useSidebarRail, type GroupTone } from '../components/SidebarRail'
-import { attachRailTips, railMark, sidebarWords } from '../lib/sidebar-rail'
+import { attachRailTips, attachScrollEdges, railMark, sidebarWords } from '../lib/sidebar-rail'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
@@ -1073,6 +1073,9 @@ export function SidebarAside({ testid, children }: { testid: string; children: R
   const aside = useRef<HTMLElement>(null)
   const top = useRef<HTMLDivElement>(null)
   const foot = useRef<HTMLDivElement>(null)
+  // The owner (18-Nov): the list's edges fade where there is more to scroll.
+  const links = useRef<HTMLDivElement>(null)
+  useEffect(() => attachScrollEdges(links.current!), [])
   const railRef = useRef(collapsed)
   railRef.current = collapsed
   useEffect(() => {
@@ -1113,7 +1116,7 @@ export function SidebarAside({ testid, children }: { testid: string; children: R
           drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div ref={top} className="shrink-0" data-testid="sidebar-slot-top" />
-        <div className={`min-h-0 flex-1 overflow-y-auto${collapsed ? ' md:overflow-x-hidden' : ''}`} data-testid="sidebar-links">
+        <div ref={links} data-rail={collapsed ? '' : undefined} className={`min-h-0 flex-1 overflow-y-auto${collapsed ? ' md:overflow-x-hidden' : ''}`} data-testid="sidebar-links">
           {children}
         </div>
         <div className="shrink-0 p-2">

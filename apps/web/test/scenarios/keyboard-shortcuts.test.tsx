@@ -1,7 +1,8 @@
 // keyboard-shortcuts' fenced scenarios (#1251), on the real Admin in jsdom
 // against the in-process server. Each test is one scenario of
-// openspec/specs/keyboard-shortcuts/spec.md, step by step. Collapsing the
-// sidebar is the shortcut they teach: it is on every Admin page.
+// openspec/specs/keyboard-shortcuts/spec.md, step by step. Opening search
+// (the sidebar's search field, Ctrl/Cmd+K) is the shortcut they teach: it is on
+// every Admin page. The sidebar's own key teaches no tip (the owner, 18-Nov).
 //
 // What only a real browser can witness (where the tip lands, that it covers no
 // header button) is the e2e test's.
@@ -34,6 +35,14 @@ async function clickSidebar(times: number) {
   const control = await screen.findByTestId('sidebar-collapse', {}, WAIT)
   for (let i = 0; i < times; i++) await userEvent.click(control)
 }
+const searchRow = (list: HTMLElement) => within(list).getByText('Search or Command').closest('[data-shortcut-row]') as HTMLElement
+/** Opens search from the sidebar's field, by mouse, and closes it again, `times` times. */
+async function clickSearch(times: number) {
+  for (let i = 0; i < times; i++) {
+    await userEvent.click(await screen.findByTestId('command-field', {}, WAIT))
+    await userEvent.keyboard('{Escape}')
+  }
+}
 const seed = (admin: Admin, learning: unknown) => admin.put(`/api/user_settings/${SHORTCUT_SETTINGS}`, learning)
 
 describe('keyboard-shortcuts', () => {
@@ -52,32 +61,47 @@ describe('keyboard-shortcuts', () => {
     })
   })
 
-  scenario('Collapsing the sidebar by mouse three times', async ({ admin }, step) => {
-    await step('the user has never collapsed the sidebar with its key', () => openAdmin(admin))
-    await step('the user collapses or expands the sidebar with the mouse three times in a row', async () => {
-      await clickSidebar(2)
+  scenario('Opening search by mouse three times', async ({ admin }, step) => {
+    await step('the user has never opened search with its key', () => openAdmin(admin))
+    await step("the user opens search from the sidebar's search field three times in a row", async () => {
+      await clickSearch(2)
       expect(screen.queryByRole('status', { name: 'Tip' })).toBeNull()
-      await clickSidebar(1)
+      await clickSearch(1)
     })
-    await step('a tip names the key for collapsing the sidebar', async () => {
+    await step('a tip names the key for opening search', async () => {
       const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
-      expect(tip).toHaveTextContent(/Press (⌘B|Ctrl\+B) to collapse or expand the sidebar\./)
+      expect(tip).toHaveTextContent(/Press (⌘K|Ctrl\+K) to search or run a command from anywhere\./)
     })
   })
 
   scenario('Going back to the mouse a day later', async ({ admin }, step) => {
-    await step('the user collapsed the sidebar with its key two days ago', async () => {
-      await seed(admin, { use: { sidebar: { keys: 1, mouse: 0, shown: 0, lastKey: Date.now() - 2 * DAY_MS } } })
+    await step('the user opened search with its key two days ago', async () => {
+      await seed(admin, { use: { command: { keys: 1, mouse: 0, shown: 0, lastKey: Date.now() - 2 * DAY_MS } } })
       await openAdmin(admin)
     })
-    await step('the user collapses or expands the sidebar with the mouse three times in a row', () => clickSidebar(3))
+    await step("the user opens search from the sidebar's search field three times in a row", () => clickSearch(3))
     await step('a reminder says they have used the mouse three times since they last used the key', async () => {
       const reminder = await screen.findByRole('status', { name: 'Reminder' }, WAIT)
-      expect(reminder).toHaveTextContent(/You've done this by mouse 3 times since you last used (⌘B|Ctrl\+B)\./)
+      expect(reminder).toHaveTextContent(/You've done this by mouse 3 times since you last used (⌘K|Ctrl\+K)\./)
     })
-    await step('the list of shortcuts shows collapsing the sidebar as slipping', async () => {
+    await step('the list of shortcuts shows opening search as slipping', async () => {
       const list = await openList()
-      expect(sidebarRow(list)).toHaveTextContent('Slipping · mouse 3× since')
+      expect(searchRow(list)).toHaveTextContent('Slipping · mouse 3× since')
+    })
+  })
+
+  scenario('Collapsing the sidebar by mouse brings no tip', async ({ admin }, step) => {
+    await step('the user has never collapsed the sidebar with its key', () => openAdmin(admin))
+    await step('the user collapses or expands the sidebar with the mouse three times in a row', () => clickSidebar(3))
+    await step('no tip appears', async () => {
+      // A tip would come at once (the tip scenario's own wait shows it does); give it the time anyway.
+      await new Promise((r) => setTimeout(r, 300))
+      expect(screen.queryByRole('status', { name: 'Tip' })).toBeNull()
+      expect(screen.queryByRole('status', { name: 'Reminder' })).toBeNull()
+    })
+    await step('the list of shortcuts shows collapsing the sidebar as not tried yet', async () => {
+      const list = await openList()
+      expect(sidebarRow(list)).toHaveTextContent('Not Tried Yet')
     })
   })
 
@@ -91,7 +115,7 @@ describe('keyboard-shortcuts', () => {
       await openAdmin(admin)
     })
     await step('the user quiets tips from a tip on 17-Nov-2026', async () => {
-      await clickSidebar(3)
+      await clickSearch(3)
       const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
       await userEvent.click(within(tip).getByRole('button', { name: 'Quiet Tips For A Month' }))
     })
@@ -100,7 +124,7 @@ describe('keyboard-shortcuts', () => {
       expect(await screen.findByText(`Tips are quiet until ${until}. They come back after that.`)).toBeInTheDocument()
       vi.useFakeTimers({ toFake: ['Date'] })
       vi.setSystemTime(today + 29 * DAY_MS)
-      await clickSidebar(12)
+      await clickSearch(12)
       expect(screen.queryByRole('status', { name: 'Tip' })).toBeNull()
     })
   })

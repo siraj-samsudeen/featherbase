@@ -4,6 +4,31 @@
 // tooltip itself, and the menu a folded group opens. Each sidebar draws its own
 // frame; these work on whatever rows it holds.
 
+/** The owner (18-Nov): a sidebar's links list marks the edges it can still scroll
+ *  past (`data-more-above`, `data-more-below`), so the stylesheet fades them
+ *  (index.css, `[data-sidebar-scroll]`) instead of showing an icon sliced in half.
+ *  It follows scrolling, the window's size and the rows changing. Returns the
+ *  detaching. */
+export function attachScrollEdges(list: HTMLElement): () => void {
+  list.setAttribute('data-sidebar-scroll', '')
+  const mark = () => {
+    // 1px of slack: a fractional scroll position never leaves a fade on at the end.
+    list.toggleAttribute('data-more-above', list.scrollTop > 1)
+    list.toggleAttribute('data-more-below', list.scrollHeight - list.clientHeight - list.scrollTop > 1)
+  }
+  mark()
+  list.addEventListener('scroll', mark, { passive: true })
+  const resized = typeof ResizeObserver === 'function' ? new ResizeObserver(mark) : undefined
+  resized?.observe(list)
+  const changed = new MutationObserver(mark)
+  changed.observe(list, { childList: true, subtree: true })
+  return () => {
+    list.removeEventListener('scroll', mark)
+    resized?.disconnect()
+    changed.disconnect()
+  }
+}
+
 /** "Repair jobs" → "RJ", "System" → "Sy": the rail's mark for a row without an icon. */
 export function railMark(label: string): string {
   const words = label.trim().split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word))

@@ -18,7 +18,7 @@ import { Logo } from './Logo'
 import { KeyboardShortcutsItem, ShortcutTeachingHost } from './ShortcutTeaching'
 import { ViewAsBanner, ViewAsButton } from './ViewAs'
 import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
+import { Check, CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useRailUntilWidened, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
@@ -679,7 +679,8 @@ function FootMenu({ label, icon: Icon, testid, rail = false, children }: {
   testid: string
   /** In the rail the card opens beside it, as the avatar's does; open, it opens upward. */
   rail?: boolean
-  children: ReactNode
+  /** The card's content; a function gets the card's closing, for a choice that closes it. */
+  children: ReactNode | ((close: () => void) => ReactNode)
 }) {
   const [open, setOpen] = useState(false)
   const wrapper = useRef<HTMLDivElement>(null)
@@ -720,21 +721,46 @@ function FootMenu({ label, icon: Icon, testid, rail = false, children }: {
         <Icon aria-hidden size={16} />
       </button>
       {open && (
-        <div id={menuId} className={cardClasses(`absolute ${rail ? 'bottom-0 left-full ml-4' : 'bottom-full left-0 mb-1'} z-40 w-60 overflow-hidden py-1 shadow-lg`)} data-testid={`${testid}-menu`}>
-          {children}
+        <div id={menuId} className={cardClasses(`absolute ${rail ? 'bottom-0 left-full ml-4' : 'bottom-full left-0 mb-1'} z-40 w-max min-w-52 overflow-hidden p-1 shadow-lg`)} data-testid={`${testid}-menu`}>
+          {typeof children === 'function' ? children(() => { setOpen(false); button.current?.focus() }) : children}
         </div>
       )}
     </div>
   )
 }
 
-/** The theme control at the sidebar's foot: its icon is the theme chosen now. */
+/** The theme control at the sidebar's foot: its icon is the theme chosen now.
+ *  The owner (18-Nov, option A): its menu is a short list, an icon and a name
+ *  on each row and a tick on the one in use, like the app switcher's and the
+ *  account's; choosing closes it. */
 function ThemeMenu({ rail }: { rail: boolean }) {
-  const { theme } = useThemeChoice()
+  const { theme, set } = useThemeChoice()
   const { t } = useI18n()
   return (
     <FootMenu label={`${t('Theme')}: ${t(THEME_LABEL[theme])}`} icon={THEME_ICON[theme]} testid="theme-button" rail={rail}>
-      <ThemeToggle labelled />
+      {(close) => (
+        <div role="menu" aria-label={t('Theme')} data-testid="theme-choice">
+          {THEMES.map((choice) => {
+            const Icon = THEME_ICON[choice]
+            const chosen = theme === choice
+            return (
+              <button
+                key={choice}
+                type="button"
+                role="menuitemradio"
+                aria-checked={chosen}
+                onClick={() => { set(choice); close() }}
+                data-testid={`theme-${choice}`}
+                className={`${MENU_ITEM} gap-2.5 whitespace-nowrap rounded-md hover:bg-subtle${chosen ? ' font-medium' : ''}`}
+              >
+                <Icon aria-hidden size={16} className="shrink-0 text-ink-muted" />
+                <span className="flex-1">{t(THEME_LABEL[choice])}</span>
+                <Check aria-hidden size={16} className={`ml-4 shrink-0 text-action${chosen ? '' : ' invisible'}`} />
+              </button>
+            )
+          })}
+        </div>
+      )}
     </FootMenu>
   )
 }
@@ -745,7 +771,7 @@ function ThemeMenu({ rail }: { rail: boolean }) {
 function HelpMenu({ rail }: { rail: boolean }) {
   return (
     <FootMenu label="Help" icon={CircleHelp} testid="help-button" rail={rail}>
-      <KeyboardShortcutsItem className={MENU_ITEM} />
+      <KeyboardShortcutsItem className={`${MENU_ITEM} rounded-md`} />
     </FootMenu>
   )
 }
