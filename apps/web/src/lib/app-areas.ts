@@ -61,8 +61,9 @@ export function areaLoader(levels: Map<string, DeclaredLevel>) {
       const id = String(row.row_id)
       const name = String(row[here.title] ?? '').trim() || id
       if (!next) return { id, name }
-      const { total } = await listResource(next.table, { filters: narrowed(next, id), fields: ['row_id'], limit_page_length: 1 })
-      return { id, name, count: total }
+      // A count the viewer may not read is left off, and its row stays to pick (Codex standard round 2).
+      const total = await listResource(next.table, { filters: narrowed(next, id), fields: ['row_id'], limit_page_length: 1 }).then((r) => r.total, () => undefined)
+      return total === undefined ? { id, name } : { id, name, count: total }
     }))
   }
 }

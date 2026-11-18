@@ -42,6 +42,17 @@ describe("the picker's stores", () => {
     expect(calls.filter(c => c.endsWith(':meta'))).toHaveLength(1)
   })
 
+  it('keeps a store to pick when the floors under it may not be read, leaving its count off', async () => {
+    serve(['is_store', 'site_kind', 'status'])
+    const inner = (fetch as unknown as ReturnType<typeof vi.fn>).getMockImplementation() as (url: string) => Promise<Response>
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (url.includes('Store%20Floor') ? new Response('', { status: 403 }) : inner(url))))
+    expect(await loadDashArea(LOCATION, 1, { id: 'c1', name: 'South' })).toEqual([{ id: 's1', name: 'Open Store' }])
+  })
+
+  it('is the hierarchy featherbase.json declares, in a staff screen\'s words', () => {
+    expect(DASH_AREAS.map(a => [a.name, a.levels.map(l => l.label)])).toEqual([['Location', ['Cluster', 'Store', 'Floor']], ['Merchandise', ['Division', 'Subdivision', 'Category', 'Subcategory']]])
+  })
+
   it('reads none of them when Site cannot be described, offering nothing it cannot check', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => (url.endsWith(':meta') ? new Response('', { status: 403 })
       : new Response(JSON.stringify({ data: SITES.map(({ row_id, name }) => ({ row_id, name })), total: 3 })))))

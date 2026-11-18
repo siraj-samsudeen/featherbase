@@ -62,7 +62,8 @@ export async function switchOverLog(context: AccessContext) {
   const roles = new Map((await every(context.baseTables!, 'dash.business_role', ['role_name'])).map(r => [exact(r.row_id), text(r.role_name)]))
   const grants = new Map((await every(context.baseTables!, 'dash.report_access', ['report', 'report_bundle'])).map(r => [exact(r.row_id), r]))
   const reports = new Map((await context.documents!.list('dash.report', { fields: ['report_key', 'report_name'], limit_page_length: 500 })).map(r => [exact(r.report_key), text(r.report_name)]))
-  const bundles = new Map((await every(context.baseTables!, 'dash.report_bundle', ['bundle_name'])).map(r => [exact(r.row_id), text(r.bundle_name)]))
+  // As the caller may read them (Codex adversarial round 2): a bundle they may not read is neither linked nor named by id.
+  const bundles = new Map((await context.documents!.list('dash.report_bundle', { fields: ['row_id', 'bundle_name'], limit_page_length: 500 })).map(r => [exact(r.row_id), text(r.bundle_name)]))
   return rows.map(r => {
     const role = exact(r.business_role)
     const grant = grants.get(exact(r.source_grant))

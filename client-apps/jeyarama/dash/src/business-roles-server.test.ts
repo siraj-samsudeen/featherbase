@@ -1418,6 +1418,11 @@ describe('business roles at their edges', () => {
     expect([added.parts.map(p => (typeof p === 'string' ? p : p.record.name)).join(''), added.parts.flatMap(p => (typeof p === 'string' ? [] : [p.record.table])).sort()])
       .toEqual([added.detail, ['dash.business_role', 'dash.report']])
     expect(log.some(l => l.parts.some(p => typeof p !== 'string' && p.record.table === 'dash.report_bundle'))).toBe(true)
+    // Codex adversarial round 2: a bundle the caller may not read is not linked, nor its id given.
+    const blind = context(tables)
+    const list = blind.documents.list
+    blind.documents.list = (async (table: string, args: never) => (table === 'dash.report_bundle' ? [] : list(table, args))) as typeof list
+    expect(JSON.stringify((await switchOverLog(blind as never)).map(l => l.parts))).not.toContain('b-x')
     expect((await reads.access_source(context(tables) as never)).source).toBe('business_roles')
     await expect(switchOverLog(context(tables, { roles: ['Dash Reader'] }) as never)).rejects.toThrow('Only a Report Access Manager')
     await expect(businessAccessSummary(context(tables, { roles: ['Dash Reader'] }) as never)).rejects.toThrow('Only a Report Access Manager')
