@@ -182,18 +182,28 @@ async function statusRows(roster: Roster, s: Statuses, rowId?: string): Promise<
 
 /** What the sync would change, changing nothing. Null when the roster names no
  *  left status: then its status is only ever read. */
-export async function planRosterStatus(roster: Roster, today = istToday()): Promise<RosterStatusPlan | null> {
+export type RosterFeed = { records: EmployeeRecord[]; latestFeedDay: string | null } | { refused: string }
+
+/** The HR feed for this roster, read once per run and shared by the status
+ *  sync and the joiners (#1297), or why it cannot be used. */
+export async function readRosterFeed(roster: Roster): Promise<RosterFeed> {
+  // The feed is keyed by this system's values; any other record number would match the wrong people.
+  if (roster.recordSystem !== FEED_RECORD_SYSTEM) return { refused: `its record numbers are ${roster.recordSystem}, not the feed's ${FEED_RECORD_SYSTEM}` }
+  try {
+    return await readWarehouse()
+  } catch (err) {
+    return { refused: `the warehouse could not be read: ${errorMessage(err)}` }
+  }
+}
+
+/** Does this roster use the HR feed at all? */
+export const usesFeed = (roster: Roster) => Boolean(roster.link.left_status || roster.link.joiners)
+
+export async function planRosterStatus(roster: Roster, today = istToday(), given?: RosterFeed): Promise<RosterStatusPlan | null> {
   const s = statusesOf(roster)
   if (!s) return null
-  const empty = (refused: string) => emptyPlan(roster.link.table, today, refused)
-  // The feed is keyed by this system's values; any other record number would match the wrong people.
-  if (roster.recordSystem !== FEED_RECORD_SYSTEM) return empty(`its record numbers are ${roster.recordSystem}, not the feed's ${FEED_RECORD_SYSTEM}`)
-  let feed
-  try {
-    feed = await readWarehouse()
-  } catch (err) {
-    return empty(`the warehouse could not be read: ${errorMessage(err)}`)
-  }
+  const feed = given ?? (await readRosterFeed(roster))
+  if ('refused' in feed) return emptyPlan(roster.link.table, today, feed.refused)
   return planStatusChanges(roster.link.table, await statusRows(roster, s), feed.records, feed.latestFeedDay, s, today)
 }
 

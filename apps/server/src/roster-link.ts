@@ -28,7 +28,9 @@ import { addIdentifier, closeRow, endIdentityIdentifiers, writeThroughIdentity }
 import { normaliseValue, type IdentifierKind, type NormaliseRule } from './identifiers'
 import { rowOf, usableRoster, type Roster, type RosterRow } from './roster-first-sign-in'
 import { errorMessage } from './errors'
-import { applyRosterStatus, formatRosterStatus, planRosterStatus, type RosterStatusPlan, type RosterStatusRun, type StatusChange } from './roster-status'
+import { applyRosterStatus, formatRosterStatus, planRosterStatus, readRosterFeed, usesFeed, type RosterFeed, type RosterStatusPlan, type RosterStatusRun, type StatusChange } from './roster-status'
+import { applyJoiners, formatJoiners, planJoiners, type JoinerPlan, type JoinerRun } from './roster-joiners'
+import { istToday } from './leaver-check'
 
 export const ROSTER_LINK_JOB = 'link_roster'
 const ACTOR = ROSTER_LINK_ACTOR
@@ -91,6 +93,9 @@ export interface RosterLinkPlan {
   /** #1286: the status changes the HR record calls for, made before linking;
    *  null when the roster names no left status. */
   status: RosterStatusPlan | null
+  /** #1297: the new joiners the run adds before linking; null when the
+   *  roster names no joiners. */
+  joiners: JoinerPlan | null
 }
 
 export interface RosterLinkRun {
@@ -104,6 +109,7 @@ export interface RosterLinkRun {
   refused: string | null
   failed: string[]
   status: RosterStatusRun | null
+  joiners: JoinerRun | null
 }
 
 interface Ctx {
@@ -307,7 +313,7 @@ async function leavers(ctx: Ctx, identity?: string, pending?: Pending): Promise<
 }
 
 /** `pending`: plan as if the status plan's changes were already made (a dry run). */
-async function planWith(ctx: Ctx, status: RosterStatusPlan | null, pending?: Pending): Promise<RosterLinkPlan> {
+async function planWith(ctx: Ctx, status: RosterStatusPlan | null, pending?: Pending, joiners: JoinerPlan | null = null): Promise<RosterLinkPlan> {
   const rows = await currentRows(ctx, undefined, pending)
   const facts = await loadFacts(ctx, rows)
   const planned = rows.map((row) => {
@@ -326,16 +332,21 @@ async function planWith(ctx: Ctx, status: RosterStatusPlan | null, pending?: Pen
     ...rules.map((r) => `email rule ${r.row_id} (${r.ref_table}, ${r.event})`),
     ...hooks.map((h) => `webhook ${h.row_id} (${h.webhook_table}, ${h.webhook_event})`),
   ]
-  return { method: ctx.method.key, table: ctx.roster.link.table, rows: planned, ends, live_links: live, end_limit: limit, refused, side_effects, status }
+  return { method: ctx.method.key, table: ctx.roster.link.table, rows: planned, ends, live_links: live, end_limit: limit, refused, side_effects, status, joiners }
 }
 
 /** What a run would do, changing nothing. Null when the method has no usable roster. */
 export async function planRosterLink(methodKey: string): Promise<RosterLinkPlan | null> {
   const ctx = await context(methodKey)
   if (!ctx) return null
-  const status = await planRosterStatus(ctx.roster)
-  return planWith(ctx, status, pendingOf(status))
+  const today = istToday()
+  const feed = await feedFor(ctx)
+  const status = await planRosterStatus(ctx.roster, today, feed)
+  return planWith(ctx, status, pendingOf(status), feed && (await planJoiners(ctx.roster, feed, today)))
 }
+
+/** The HR feed, read once per run, when the roster uses it. */
+const feedFor = async (ctx: Ctx): Promise<RosterFeed | undefined> => (usesFeed(ctx.roster) ? readRosterFeed(ctx.roster) : undefined)
 
 /** Once per method, row and reason, so a nightly run cannot flood the log. */
 async function hold(method: string, rowId: string, reason: HeldReason) {
@@ -425,6 +436,7 @@ export interface RosterLinkOpts {
    *  status changes, and links ended. Never lifts a stale or empty feed. */
   acceptStatus?: number
   acceptEnds?: number
+  acceptJoiners?: number
 }
 
 /** Bring the roster's status in line with the HR record, then link every
@@ -432,18 +444,24 @@ export interface RosterLinkOpts {
  *  made; every row is decided again under its lock either way. One row's
  *  failure never stops the rest. */
 export async function runRosterLink(methodKey: string, opts: RosterLinkOpts = {}): Promise<RosterLinkRun> {
-  const run: RosterLinkRun = { plan: null, created: 0, linked: 0, completed: 0, unchanged: 0, held: 0, ended: 0, refused: null, failed: [], status: null }
+  const run: RosterLinkRun = { plan: null, created: 0, linked: 0, completed: 0, unchanged: 0, held: 0, ended: 0, refused: null, failed: [], status: null, joiners: null }
   const ctx = await context(methodKey)
   if (!ctx) return run
   // The statuses change first, so this same run links a rejoiner and ends a leaver's link.
   // Status decisions are always made afresh from today's feed, never taken from a saved plan.
-  const status = await planRosterStatus(ctx.roster)
+  const today = istToday()
+  const feed = await feedFor(ctx)
+  const status = await planRosterStatus(ctx.roster, today, feed)
   run.status = await applyRosterStatus(ctx.roster, status, { acceptCount: opts.acceptStatus })
   run.failed.push(...run.status.failed)
-  // A saved plan's links stand only when no status change was expected or made;
-  // otherwise its rows and ends were planned on statuses that are not the ones now.
-  const reusable = opts.plan && !opts.plan.status?.changes.length && !run.status.changed
-  const plan = reusable ? opts.plan! : await planWith(ctx, status)
+  // #1297: new joiners next, from the same feed, so this run links them too.
+  const joiners = feed ? await planJoiners(ctx.roster, feed, today) : null
+  run.joiners = await applyJoiners(ctx.roster, joiners, { acceptCount: opts.acceptJoiners })
+  run.failed.push(...run.joiners.failed)
+  // A saved plan's links stand only when no status change or joiner was expected
+  // or made; otherwise its rows and ends were planned on a roster that is not the one now.
+  const reusable = opts.plan && !opts.plan.status?.changes.length && !opts.plan.joiners?.joiners.length && !run.status.changed && !run.joiners.added
+  const plan = reusable ? opts.plan! : await planWith(ctx, status, undefined, joiners)
   if (opts.acceptEnds !== undefined) {
     if (plan.ends.length !== opts.acceptEnds) plan.refused ??= `it would end ${plan.ends.length} links, not the ${opts.acceptEnds} accepted`
     else if (plan.refused?.startsWith('it would end')) plan.refused = null
@@ -486,6 +504,7 @@ export function formatRosterLink(plan: RosterLinkPlan | null, run?: RosterLinkRu
       `roster link ${plan.method}: would end ${plan.ends.length} (limit ${plan.end_limit})`,
     )
   lines.push(...formatRosterStatus(plan.status, run?.status ?? undefined))
+  lines.push(...formatJoiners(plan.joiners, run?.joiners ?? undefined))
   if (plan.side_effects.length) lines.push(`roster link ${plan.method}: its saves set off ${plan.side_effects.join('; ')}`)
   if (plan.refused) lines.push(`roster link ${plan.method}: ENDED NONE — ${plan.refused}`)
   return lines.join('\n')

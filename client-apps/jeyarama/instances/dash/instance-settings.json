@@ -58,6 +58,49 @@
             "status_column": "status",
             "current_status": "Current",
             "left_status": "Left",
+            "joiners": {
+              "code_column": "employee_code",
+              "code": "{region}-{employee_code}",
+              "values": {
+                "source_system": "StyleHR",
+                "source_key": "employee {employee_key}"
+              },
+              "job": {
+                "table": "Job Assignment",
+                "id_column": "assignment_id",
+                "id": "{code}-{site}-1",
+                "employee_column": "employee",
+                "site_column": "site",
+                "job_column": "job",
+                "jobs": {
+                  "team leader": "Team Leader",
+                  "department manager": "Department Manager",
+                  "floor manager": "Floor Manager",
+                  "store manager": "Store Manager",
+                  "chief operating officer": "Chief Operating Officer",
+                  "director": "Director",
+                  "managing director": "Managing Director"
+                },
+                "default_job": "Staff",
+                "off_store_job": "Head office staff",
+                "site_of_store": { "table": "Plant", "site_column": "site" },
+                "store_site": { "table": "Site", "column": "site_kind", "value": "Store" },
+                "designation_column": "designation",
+                "designation": { "table": "Designation", "spellings_column": "source_names" },
+                "section_column": "section",
+                "section": { "table": "Section", "site_column": "site", "name_column": "name" },
+                "section_jobs": ["Staff", "Team Leader"],
+                "reports_to_column": "reports_to",
+                "manager_column": "employee_code_stylehr",
+                "values": {
+                  "assignment_type": "Primary",
+                  "percentage": 100,
+                  "source_system": "StyleHR",
+                  "starts_on": "{date_of_joining}",
+                  "source_key": "new joiner, employee {employee_key}"
+                }
+              }
+            },
             "provider_record_key": "employee_id",
             "identifiers": {
               "stylehr-employee-code": "employee_code_stylehr"

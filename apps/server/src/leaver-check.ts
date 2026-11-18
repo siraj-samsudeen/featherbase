@@ -48,6 +48,18 @@ export interface EmployeeRecord {
   /** The last day attendance shows them present, read from the same fresh
    *  table the feed day is (#1286); absent where nothing reads it. */
   last_present_day?: string | null
+  /** #1297: what a new joiner's roster row and job are made from. */
+  joiner?: JoinerFeed
+}
+
+/** #1297: the feed's fields a roster may build a new joiner's rows from. */
+export interface JoinerFeed {
+  full_name: string | null
+  region: string | null
+  designation: string | null
+  store_code: string | null
+  manager_code: string | null
+  section_name: string | null
 }
 
 /** One enabled person with at least one StyleHR link. */
@@ -288,10 +300,12 @@ async function linkedPeople(): Promise<LinkedPerson[]> {
 // (#1286). The feed day rides on every row; with no records there is still one
 // row, carrying only it.
 const RECORDS_SQL = `
-  with a as (select employee_key, max(date) as last_present from "gold"."hr"."attendance" where is_present group by 1),
+  with a as (select employee_key, max(date) as last_present, arg_max(section_name, date) as section_name
+    from "gold"."hr"."attendance" where is_present group by 1),
   f as (select max(last_present) as feed_day from a)
   select e.employee_key, e.employee_code, e.payroll_active, e.movement_active, e.date_of_joining, x.exit_date,
-    a.last_present, f.feed_day
+    a.last_present, f.feed_day,
+    e.full_name, e.region, e.designation, e.store_code, e.manager_employee_code, a.section_name
   from f
   left join "gold"."hr"."employee" e on true
   left join "gold"."hr"."employee_exit" x on x.employee_key = e.employee_key and x.is_leaver
@@ -314,11 +328,21 @@ const recordOf = (r: unknown[]): EmployeeRecord => ({
 })
 
 /** The feed's records, each with its last day at work, and the feed day. */
+const text = (v: unknown) => (v == null || String(v).trim() === '' ? null : String(v).trim())
+const joinerOf = (r: unknown[]): JoinerFeed => ({
+  full_name: text(r[8]),
+  region: text(r[9]),
+  designation: text(r[10]),
+  store_code: text(r[11]),
+  manager_code: text(r[12]),
+  section_name: text(r[13]),
+})
+
 export async function readWarehouse(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
   const rows = await read(RECORDS_SQL)
   return {
     latestFeedDay: rows.length ? isoDay(rows[0][7]) : null,
-    records: rows.filter((r) => r[0] != null).map((r) => ({ ...recordOf(r), last_present_day: isoDay(r[6]) })),
+    records: rows.filter((r) => r[0] != null).map((r) => ({ ...recordOf(r), last_present_day: isoDay(r[6]), joiner: joinerOf(r) })),
   }
 }
 

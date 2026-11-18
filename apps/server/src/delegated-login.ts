@@ -113,6 +113,9 @@ export interface RosterLink {
   /** #1286: the status a row gets when the HR record shows its person has
    *  left. Absent: the roster's status is only read, never written. */
   left_status?: string
+  /** #1297: how a new joiner's row and job are built (roster-joiners.ts);
+   *  absent: the roster never gains a row. Checked where it is used. */
+  joiners?: unknown
   provider_record_key: string
   identifiers: Record<string, string>
 }
@@ -154,6 +157,7 @@ export function rosterFrom(settings: Record<string, unknown> | null): RosterLink
     status_column: text('status_column'),
     current_status: text('current_status'),
     ...(left !== undefined ? { left_status: left } : {}),
+    ...(raw.joiners !== undefined && raw.joiners !== null ? { joiners: raw.joiners } : {}),
     provider_record_key: text('provider_record_key').toLowerCase(),
     identifiers: identifiers as Record<string, string>,
   }

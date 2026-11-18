@@ -20,6 +20,7 @@ registerJob(ROSTER_LINK_JOB, async (_payload, ctx) => {
   if (failed.length) throw new Error(`roster link could not finish ${failed.length} rows: ${failed.slice(0, 10).join('; ')}`)
   const refused = [
     ...runs.map((r) => r.status?.plan?.refused).filter(Boolean).map((why) => `changed no statuses: ${why}`),
+    ...runs.map((r) => r.joiners?.plan?.refused).filter(Boolean).map((why) => `added no joiners: ${why}`),
     ...runs.map((r) => r.refused).filter(Boolean).map((why) => `ended no links: ${why}`),
   ]
   if (refused.length) ctx.refuse(refused.join('; '))

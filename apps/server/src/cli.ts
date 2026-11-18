@@ -54,12 +54,13 @@
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
-//   cli roster:link <method> [--apply [--accept-status <n>] [--accept-ends <n>]]
-//                                     keep the roster's status in step with the HR record (#1286), link
+//   cli roster:link <method> [--apply [--accept-status <n>] [--accept-ends <n>] [--accept-joiners <n>]]
+//                                     keep the roster's status in step with the HR record (#1286), add
+//                                     new joiners and their jobs (#1297), link
 //                                     every current staff-roster row before they sign in, and end
 //                                     leavers' links (roster-link.ts, #1157): with no flag a dry run that
 //                                     changes nothing and prints counts only; --apply acts on it;
-//                                     --accept-status / --accept-ends lift a size limit for exactly the
+//                                     --accept-status / --accept-ends / --accept-joiners lift a size limit for exactly the
 //                                     count the dry run reported, never a stale feed
 //   cli leavers:check [--apply [--accept <n>]]
 //                                     the daily warehouse exit-date check (leaver-check.ts): with no flag a
@@ -656,15 +657,15 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
     }
     case 'roster:link': {
       const [method] = positional
-      if (!method) throw new Error('usage: cli roster:link <method> [--apply [--accept-status <n>] [--accept-ends <n>]]')
+      if (!method) throw new Error('usage: cli roster:link <method> [--apply [--accept-status <n>] [--accept-ends <n>] [--accept-joiners <n>]]')
       const { formatRosterLink, planRosterLink, runRosterLink } = await import('./roster-link')
       if (!rest.includes('--apply')) {
-        if (flags['accept-status'] !== undefined || flags['accept-ends'] !== undefined) throw new Error('--accept-status and --accept-ends only mean something with --apply')
+        if (['accept-status', 'accept-ends', 'accept-joiners'].some((f) => flags[f] !== undefined)) throw new Error('--accept-status, --accept-ends and --accept-joiners only mean something with --apply')
         io.out(formatRosterLink(await planRosterLink(method)))
         io.out('roster link: dry run; nothing was changed')
         break
       }
-      const count = (flag: 'accept-status' | 'accept-ends') => {
+      const count = (flag: 'accept-status' | 'accept-ends' | 'accept-joiners') => {
         const v = flags[flag]
         if (v === undefined) return undefined
         // A bare flag parses as `true`; Number(true) is 1, so demand digits.
@@ -673,9 +674,10 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       }
       const acceptStatus = count('accept-status')
       const acceptEnds = count('accept-ends')
+      const acceptJoiners = count('accept-joiners')
       const { assertDatabaseEnvironment } = await import('./db-environment')
       await assertDatabaseEnvironment()
-      const run = await runRosterLink(method, { acceptStatus, acceptEnds })
+      const run = await runRosterLink(method, { acceptStatus, acceptEnds, acceptJoiners })
       io.out(formatRosterLink(run.plan, run))
       break
     }
