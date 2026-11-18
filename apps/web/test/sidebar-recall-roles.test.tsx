@@ -87,11 +87,12 @@ for (const repeats of [0, 1, 2]) {
     await waitFor(() => {
       const recent = screen.getAllByTestId('sidebar-recent')
       const frequent = screen.queryAllByTestId('sidebar-frequent')
-      expect(recent).toHaveLength(repeats ? 3 : 5)
+      // #1288 (UI owner): five recents whether or not Frequent shows, since walks share them.
+      expect(recent).toHaveLength(5)
       expect(frequent).toHaveLength(repeats)
       for (let i = 0; i < repeats; i++) expect(frequent[i]).toHaveTextContent(`Frequent${i}`)
       const destinations = [...recent, ...frequent].map((e) => e.getAttribute('href'))
-      expect(new Set(destinations).size).toBe(repeats ? 3 + repeats : 5)
+      expect(new Set(destinations).size).toBe(5 + repeats)
     })
   }, TEST_TIMEOUT)
 }

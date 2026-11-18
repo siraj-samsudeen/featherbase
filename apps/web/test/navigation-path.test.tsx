@@ -8,6 +8,9 @@ import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { encodePath, type NavPath } from '../src/lib/nav-path'
 import { PLANT, REGION, SITE, seedSites } from './relational-fixture'
+import { recordAction } from '../src/lib/recents'
+import { listOf } from '../src/components/RecentSub'
+import { pathHref } from '../src/lib/navigation'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -179,7 +182,8 @@ test('Copy link in a browser with no clipboard does not say Copied', async ({ ad
   expect(within(screen.getByRole('button', { name: 'Copy link' }).parentElement!).getByRole('status')).not.toHaveTextContent('Copied')
 })
 
-test('a walk is listed under Recent paths by its names after signing in again', async ({ admin }) => {
+// #1288: a remembered walk is an entry in the sidebar's Recently Opened, not a lone Recent paths button.
+test("a walk is listed in the sidebar's Recently Opened by its names after signing in again, and opens whole", async ({ admin }) => {
   await seedSites(admin)
   const first = await renderApp(tableHref(SITE), admin)
   await addRegionFilter()
@@ -191,14 +195,20 @@ test('a walk is listed under Recent paths by its names after signing in again', 
   })
   first.unmount()
 
-  // #1013: a plain list shows no bar, only the way back to remembered walks.
+  // #1013, #1288: a plain list shows no bar and no Recent paths button; the walk is in Recently Opened.
   await renderApp(tableHref(SITE), admin)
-  const recent = await screen.findByRole('button', { name: 'Recent paths' })
+  await screen.findAllByTestId('row-check')
   expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
-  fireEvent.click(recent)
-  const item = await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala` })
-  fireEvent.click(item)
+  expect(screen.queryByRole('button', { name: 'Recent paths' })).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('sidebar-walk')).toHaveTextContent(`${SITE} › Region: Kerala`), { timeout: 10_000 })
+  expect(within(screen.getByTestId('sidebar-walk')).getByTestId('walk-tile')).toBeInTheDocument()
+  // A modified click (new tab, new window) is the browser's: the page stays.
+  expect(fireEvent.click(screen.getByTestId('sidebar-walk'), { ctrlKey: true })).toBe(true)
+  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('sidebar-walk'))
   await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
+  // The whole walk comes back: the bar names both steps.
+  expect(screen.getByRole('navigation', { name: 'Path' })).toHaveTextContent(SITE)
   await waitFor(() => expect(screen.getAllByTestId('row-check')).toHaveLength(2))
 })
 
@@ -207,4 +217,88 @@ test("a row page's path bar names the row", async ({ admin }) => {
   const path: NavPath = { steps: [{ screen: 'list', table: PLANT }, { screen: 'row', table: PLANT, row: '1503' }], at: 1 }
   await renderApp(`${tableHref(PLANT)}/row/1503?path=${encodeURIComponent(encodePath(path))}`, admin)
   await waitFor(() => expect(current()).toHaveTextContent('Enchakkal Supermarket · 1503'))
+})
+
+// #1288: a walk is one entry among recent pages and records, in time order; in the rail it is in the same menu.
+test('a walk sits among the recents by when it was taken, and the rail opens it too', async ({ admin }) => {
+  await seedSites(admin)
+  const first = await renderApp(tableHref(SITE), admin)
+  await addRegionFilter()
+  await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
+  await waitFor(async () => {
+    const { settings } = await admin.get<{ settings: { recentPathTimes?: Record<string, number> } | null }>('/api/user_settings/__navigation')
+    expect(Object.values(settings?.recentPathTimes ?? {})).toHaveLength(1)
+  })
+  first.unmount()
+  // A record opened after the walk, and a page opened long before it.
+  recordAction('Administrator', { kind: 'row', key: 'row:Later Row/L-1', label: 'Later Row', path: '/featherbase/admin/table/later-row/row/L-1' }, Date.now() + 60_000)
+  recordAction('Administrator', { kind: 'page', key: 'page:all-tables', label: 'All tables', path: '/featherbase/admin/all-tables' }, Date.now() - 3_600_000)
+
+  const { router } = await renderApp('/featherbase/admin/all-tables', admin)
+  const recents = await screen.findByTestId('sidebar-recents')
+  await waitFor(() => expect(within(recents).getByTestId('sidebar-walk')).toHaveTextContent(`${SITE} › Region: Kerala`))
+  // Newest first: the later record, the walk, and the page opened an hour before (the Site list the walk began on is its own entry too).
+  const order = [...recents.querySelectorAll('[data-testid="sidebar-recent"], [data-testid="sidebar-walk"]')].map((r) => r.getAttribute('data-testid') === 'sidebar-walk' ? 'walk' : r.textContent ?? '')
+  expect(order[0]).toContain('Later Row')
+  expect(order.indexOf('walk')).toBeGreaterThan(0)
+  expect(order.indexOf('walk')).toBeLessThan(order.findIndex((r) => r.includes('All tables')))
+
+  fireEvent.click(screen.getByTestId('sidebar-collapse'))
+  fireEvent.click(screen.getByRole('button', { name: 'Recently Opened' }))
+  fireEvent.click(within(screen.getByRole('menu', { name: 'Recently Opened' })).getByRole('menuitem', { name: `${SITE} › Region: Kerala` }))
+  await waitFor(() => expect(pathParam(router as never)).toBeTruthy())
+  await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
+})
+
+// #1288: a filtered recent reads as its list's chips do, never "like %a%" or a row id.
+test("two recents of one list say what sets them apart in the chips' words", async ({ admin }) => {
+  await seedSites(admin)
+  for (const [filters, at] of [[[['site_name', 'like', '%a%']], 2], [[['region', '=', 'KL']], 1]] as const) {
+    const json = JSON.stringify(filters)
+    recordAction('Administrator', { kind: 'list', key: `list:${SITE}?${json}`, label: SITE, sub: 'stored words', path: `${tableHref(SITE)}?filters=${encodeURIComponent(json)}` }, Date.now() - at * 1000)
+  }
+  await renderApp('/featherbase/admin/all-tables', admin)
+  await waitFor(() => expect(screen.getAllByTestId('recent-differs').map((d) => d.textContent)).toEqual(['Region: Kerala', 'Site name contains a']))
+})
+
+test("a recent whose key is not a filtered list keeps its stored words", () => {
+  expect(listOf({ key: 'list:Site?not json' })).toBeNull()
+  expect(listOf({ key: 'row:Site/S-1' })).toBeNull()
+  expect(listOf({ key: 'list:Site/kanban?[]' })).toEqual({ table: 'Site', view: 'kanban', filters: [] })
+})
+
+// #1288 (UI owner): the sidebar names a walk briefly: a record by its name without its code, and each
+// further step only for what it adds. The path bar keeps its fuller words.
+test('a walk that starts on a record reads by names alone in Recently Opened, saying nothing twice', async ({ admin }) => {
+  await seedSites(admin)
+  const walk: NavPath = { at: 2, steps: [
+    { screen: 'row', table: SITE, row: 'ENK' },
+    { screen: 'list', table: PLANT, filters: [['site', '=', 'ENK']] },
+    { screen: 'list', table: PLANT, filters: [['site', '=', 'ENK'], ['plant_name', 'like', '%Super%']] },
+  ] }
+  const key = encodePath(walk)
+  await admin.put('/api/user_settings/__navigation', { recentPaths: [key], recentPathTimes: { [key]: Date.now() } })
+  recordAction('Administrator', { kind: 'page', key: 'page:all-tables', label: 'All tables', path: '/featherbase/admin/all-tables' }, Date.now() - 60_000)
+  await renderApp('/featherbase/admin/all-tables', admin)
+  await waitFor(() => expect(screen.getByTestId('sidebar-walk')).toHaveTextContent(new RegExp(`^Enchakkal › ${PLANT} › Plant name: Super`)))
+  expect(screen.getByTestId('sidebar-walk')).not.toHaveTextContent('ENK')
+  // Opened, the path bar still names each step in full.
+  fireEvent.click(screen.getByTestId('sidebar-walk'))
+  await waitFor(() => expect(pathNav()).toHaveTextContent('Enchakkal · ENK'))
+})
+
+// #910 / #1288: on a page with a path, the bar's own Recent paths still opens another remembered walk.
+test("the path bar's Recent paths opens another remembered walk", async ({ admin }) => {
+  await seedSites(admin)
+  const walk = (region: string): NavPath => ({ at: 1, steps: [
+    { screen: 'list', table: SITE },
+    { screen: 'list', table: SITE, filters: [['region', '=', region]] },
+  ] })
+  const keys = [encodePath(walk('KL')), encodePath(walk('TN'))]
+  await admin.put('/api/user_settings/__navigation', { recentPaths: keys, recentPathTimes: { [keys[0]]: Date.now(), [keys[1]]: Date.now() - 1000 } })
+  await renderApp(pathHref(walk('TN')), admin)
+  await waitFor(() => expect(current()).toHaveTextContent('Region: Tamil Nadu'))
+  fireEvent.click(screen.getByRole('button', { name: 'Recent paths' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: `${SITE} › Region: Kerala` }))
+  await waitFor(() => expect(current()).toHaveTextContent('Region: Kerala'))
 })

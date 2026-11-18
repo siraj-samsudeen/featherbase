@@ -48,6 +48,8 @@ interface GroupNode {
   count: number
   /** The line under its name: "through Job Assignment", "via Assigned To". */
   via?: string
+  /** The link that joins it, in words ("Reports To"). */
+  link?: string
   field?: ColumnDef // child: the Sub-table column on the center's meta
   cnx?: Connection
   /** The first rows, once read; undefined while loading. */
@@ -141,13 +143,12 @@ export function RowMap({ table, name }: { table: string; name: string }) {
     const read = groupRows[i]?.data?.data
     // A group linked through a sub-table has no column of its own pointing back.
     const backLink = c.via ? undefined : c.column
+    const link = linkWords(holderMetas[holders.indexOf(c.via ?? c.table)]?.data?.columns.find((col) => col.column_name === c.column)
+      ?? { column_name: c.column })
     groups.push({
-      kind: 'cnx', label: c.table, table: c.table, count: c.count, cnx: c,
+      kind: 'cnx', label: c.table, table: c.table, count: c.count, cnx: c, link,
       // The link that joins it, only where its Table points here by more than one.
-      via: linksPerTable.get(c.table)! > 1 ? linkWords(
-        holderMetas[holders.indexOf(c.via ?? c.table)]?.data?.columns.find((col) => col.column_name === c.column)
-          ?? { column_name: c.column },
-      ) : undefined,
+      via: linksPerTable.get(c.table)! > 1 ? link : undefined,
       rows: !c.count ? [] : gm && read ? read.slice(0, MAP_ROWS).map((r) => ({ ...ownRow(gm, r), far: farSides(gm, r, { backLink, record, own }) })) : undefined,
     })
   })
@@ -157,9 +158,17 @@ export function RowMap({ table, name }: { table: string; name: string }) {
   for (const f of forward) f.tableLabel = labelOf(f.table)
   groups.filter((g) => g.kind === 'cnx').forEach((g, i) => {
     const far = farTables[i]
-    const words = groupBoxWords({ group: labelOf(g.table), farSide: far ? labelOf(far) : undefined, via: g.via })
-    g.label = words.title
-    g.via = words.detail
+    if (far) {
+      const words = groupBoxWords({ group: labelOf(g.table), farSide: labelOf(far), via: g.via })
+      g.label = words.title
+      g.via = words.detail
+      return
+    }
+    // #1282 (UI owner): a group pointing back is named from this record's side, as a
+    // sentence with no grammar to derive: "Person · Reports To Priya S.". It needs no
+    // "via" line, and two links from one Table never share a name.
+    g.label = `${labelOf(g.table)} · ${g.link} ${centreTitle}`
+    g.via = undefined
   })
   const tableWords = labelOf(table)
 

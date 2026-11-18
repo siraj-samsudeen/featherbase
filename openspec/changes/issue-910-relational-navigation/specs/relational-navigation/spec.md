@@ -310,6 +310,20 @@ When the user goes back to Enchakkal on the path
 Then the map is centred on Enchakkal again
 ```
 
+### Requirement: A group on the map is named from the row's side
+
+A group on the map SHALL be named by its Table, the link that joins it and the row's name, so it
+reads how its rows relate to the row. A group of rows that only link the row to one other Table
+SHALL be named by that Table, through the group.
+
+#### Scenario: The plants whose site is Enchakkal
+
+```gherkin
+Given the site Enchakkal has three plants
+When the user opens Enchakkal's map
+Then the plants' box is named "Plant · Site Enchakkal" with its count 3
+```
+
 ### Requirement: The tree unfolds links in both directions
 
 The tree SHALL show what the row links to above it and the groups that link to it below, each

@@ -499,13 +499,13 @@ describe('relational-navigation', () => {
     await step('the user signs in today and looks at their recent paths', async () => {
       signInAfresh()
       await openList(user, SITE)
-      fireEvent.click(await screen.findByRole('button', { name: 'Recent paths' }))
-      items = await screen.findAllByRole('menuitem')
+      // #1288: remembered walks are in the sidebar's Recently Opened.
+      items = await screen.findAllByTestId('sidebar-walk', {}, { timeout: 10_000 })
     })
     await step('that path is listed by its names', async () => {
-      // The names arrive after the menu opens; an ellipsis stands in until then.
+      // The names arrive after the sidebar draws; an ellipsis stands in until then.
       await waitFor(() => {
-        items = screen.getAllByRole('menuitem')
+        items = screen.getAllByTestId('sidebar-walk')
         expect(items.map((i) => (i.textContent ?? '').replace(/\s+/g, ' '))).toEqual(expect.arrayContaining([expect.stringContaining('Enchakkal Supermarket')]))
       })
     })
@@ -631,6 +631,19 @@ describe('relational-navigation', () => {
     })
   })
 
+  scenario('The plants whose site is Enchakkal', async ({ admin }, step) => {
+    let org!: OrgIds
+    await step('the site Enchakkal has three plants', async () => { org = await seedOrganisation(admin) })
+    await step("the user opens Enchakkal's map", async () => {
+      await openRowPage(admin, SITE, org[SITE]!.Enchakkal!)
+      await showTab('Map')
+    })
+    await step(`the plants' box is named "Plant · Site Enchakkal" with its count 3`, async () => {
+      const box = await screen.findByTestId('map-group-Plant')
+      expect(await within(box).findByRole('button', { name: 'Plant · Site Enchakkal 3' })).toBeVisible()
+    })
+  })
+
   scenario('The first 4 of 40 profit centres on the map', async ({ admin }, step) => {
     let box!: HTMLElement
     await step('Enchakkal Supermarket has 40 profit centres', () => seedOrganisation(admin))
@@ -715,7 +728,8 @@ describe('relational-navigation', () => {
       await showTab('Map')
       const plants = await screen.findByTestId('map-group-Plant')
       await waitFor(() => expect(within(plants).getAllByTestId('map-row')).toHaveLength(2))
-      seen.mapCount = countOf(within(plants).getByRole('button', { name: groupNamed('Plant') }))
+      // #1282: a map group is named from Enchakkal's side ("Plant · Site Enchakkal 2"): the count is its last number.
+      seen.mapCount = Number(within(plants).getByRole('button', { name: /^Plant · .+ \d+$/ }).getAttribute('aria-label')!.match(/(\d+)$/)![1])
       seen.mapText = document.body.textContent ?? ''
     })
     await step('the group of plants counts 2', () => {

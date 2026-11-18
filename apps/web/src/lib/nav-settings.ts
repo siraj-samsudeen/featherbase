@@ -15,6 +15,8 @@ export { NAVIGATION_SETTINGS }
 interface Stored {
   panePlace?: PanePlaceValue
   recentPaths?: unknown[]
+  /** #1288: when each remembered walk was last taken (epoch ms), keyed by the walk's encoding. */
+  recentPathTimes?: Record<string, unknown>
   /** #1229: others' shared saved views this person put in their sidebar. */
   starredViews?: string[]
 }
@@ -40,6 +42,7 @@ const KEY = ['user-settings', NAVIGATION_SETTINGS]
 // cannot land after a newer one and bring back an older walk.
 let settingsWrite: Promise<unknown> = Promise.resolve()
 const PLACES: PanePlaceValue[] = ['auto', 'right', 'bottom']
+const MINUTE = 60_000
 
 export function useNavigationSettings() {
   const queryClient = useQueryClient()
@@ -66,6 +69,12 @@ export function useNavigationSettings() {
       .catch(() => {})
   }
   const recent = decodeRecent(settings.recentPaths)
+  const times = settings.recentPathTimes && typeof settings.recentPathTimes === 'object' ? settings.recentPathTimes : {}
+  // #1288: a walk remembered before walks had times sorts as the oldest.
+  const takenAt = (path: NavPath) => {
+    const at = times[encodePath(path)]
+    return typeof at === 'number' && Number.isFinite(at) ? at : 0
+  }
   const starredViews = Array.isArray(settings.starredViews) ? settings.starredViews.filter((id) => typeof id === 'string') : []
   return {
     starredViews,
@@ -85,11 +94,18 @@ export function useNavigationSettings() {
     panePlace: PLACES.includes(settings.panePlace as PanePlaceValue) ? settings.panePlace! : 'auto',
     setPanePlace: (panePlace: PanePlaceValue) => save({ panePlace }),
     recent,
+    /** #1288: the remembered walks with when each was last taken, newest first, for Recently Opened. */
+    walks: recent.map((path) => ({ path, at: takenAt(path) })),
     /** Remembers the walk the person is on; unchanged walks are not saved again. */
-    remember: (path: NavPath) => {
+    remember: (path: NavPath, now = Date.now()) => {
       const next = rememberWalk(recent, path)
       const encoded = next.map(encodePath)
-      if (JSON.stringify(encoded) !== JSON.stringify(recent.map(encodePath))) save({ recentPaths: encoded })
+      const unchanged = JSON.stringify(encoded) === JSON.stringify(recent.map(encodePath))
+      // The newest walk taken again moves up Recently Opened; at most once a minute, so stepping along it saves nothing.
+      if (unchanged && !(next.length && encodePath(next[0]) === encodePath(path.steps.length > 1 ? { steps: path.steps.slice(0, path.at + 1), at: path.at } : path) && now - takenAt(next[0]) > MINUTE)) return
+      // The walk at the head was just taken; the others keep their times.
+      const kept = Object.fromEntries(encoded.map((key, i) => [key, i === 0 ? now : takenAt(next[i])]))
+      save({ recentPaths: encoded, recentPathTimes: kept })
     },
   }
 }

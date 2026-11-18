@@ -155,7 +155,7 @@ And no related-row creation is offered
 
 ### Requirement: The path bar shows only for a real path
 
-A list or row page SHALL show the path bar, with its Back, Forward, Copy link and Recent paths, only when the address holds two or more steps. With one step the bar SHALL NOT show, since it would only repeat the page's heading; a person with remembered paths SHALL still see Recent paths alone, so a walk can be reopened after signing in.
+A list or row page SHALL show the path bar, with its Back, Forward, Copy link and Recent paths, only when the address holds two or more steps. With one step the bar SHALL NOT show, since it would only repeat the page's heading, and nothing else shows in its place. A person's remembered walks SHALL be offered in the sidebar's Recently Opened, so a walk can be reopened after signing in (#1288).
 
 #### Scenario: A plain list
 
@@ -165,7 +165,12 @@ A list or row page SHALL show the path bar, with its Back, Forward, Copy link an
 #### Scenario: A plain list with a remembered walk
 
 - **WHEN** a person who took a walk signs in again and opens a list with no related rows followed
-- **THEN** no path bar shows, and Recent paths alone offers the walk
+- **THEN** no path bar and no Recent paths button show, and the sidebar's Recently Opened offers the walk by its steps' names
+
+#### Scenario: A walk reopened from Recently Opened
+
+- **WHEN** a person opens a remembered walk from the sidebar's Recently Opened
+- **THEN** the page opens at the walk's last step, and the path bar shows every step of it
 
 #### Scenario: A walk
 

@@ -1,6 +1,7 @@
 // Per-user warm history cache, reconciled with the server on app load.
 
 import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, RELATED_OPS, adminPageTitle, adminPathTitle, choiceLabel } from 'shared'
+import { fmtDate } from '@featherbase/shop-floor'
 import { viewedPerson } from './viewing-as'
 import type { ColumnDef } from './meta'
 
@@ -332,7 +333,7 @@ function linkedWords(op: string, spec: unknown, t: (text: string) => string): st
   return [t(op === 'not related' ? 'Not linked to' : 'Linked to'), tables.join(' › ')].filter(Boolean).join(' ')
 }
 
-/** "status = Overdue · region = South" from the list route's JSON filters. */
+/** "Status: Overdue · Region: South" from the list route's JSON filters, worded as the chips are (#1288). */
 export function describeFilters(
   filtersJson: string | undefined,
   columns: Pick<ColumnDef, 'column_name' | 'label' | 'column_type' | 'choice_labels'>[] = [],
@@ -348,16 +349,32 @@ export function describeFilters(
         // #1285: a Linked to filter's value is a spec, named by the Tables its chain walks.
         if (RELATED_OPS.includes(f[1] as (typeof RELATED_OPS)[number])) return linkedWords(f[1], f[2], t)
         const column = columns.find(c => c.column_name === f[0])
-        const value = column?.column_type === 'Choice' && ['=', '!='].includes(f[1])
-          ? choiceLabel(String(f[2]), column.choice_labels, t)
-          : String(f[2])
+        const label = t(column?.label ?? f[0])
         // #1196: is blank / is not blank take no value.
-        return f[1].includes('blank') ? `${t(column?.label ?? f[0])} ${f[1]}` : `${t(column?.label ?? f[0])} ${f[1]} ${value}`
+        if (f[1].includes('blank')) return `${label} ${f[1]}`
+        // #1288: worded as the list's chips are: "Full Name contains a", "Status: Open", "Enabled: Yes".
+        if ((f[1] === 'like' || f[1] === 'not like') && typeof f[2] === 'string' && /^%[^%_]+%$/.test(f[2]))
+          return `${label} ${f[1] === 'like' ? 'contains' : 'does not contain'} ${f[2].slice(1, -1)}`
+        const one = (v: unknown) => column?.column_type === 'Choice' && ['=', '!='].includes(f[1]) ? choiceLabel(String(v), column.choice_labels, t)
+          : column?.column_type === 'Check' ? (v === true || ['1', 'true', 'yes'].includes(String(v).toLowerCase()) ? 'Yes' : 'No')
+          : column?.column_type === 'Date' && /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? fmtDate(String(v).slice(0, 10))
+          : String(v)
+        const value = Array.isArray(f[2]) ? f[2].map(one).join(', ') : one(f[2])
+        return f[1] === '=' ? `${label}: ${value}` : `${label} ${f[1]} ${value}`
       })
     return parts.length ? parts.join(' · ') : undefined
   } catch {
     return undefined
   }
+}
+
+/** The address parameter that holds a walk's steps (#910). */
+const WALK_PARAM = 'path'
+function withoutWalk(href: string): string {
+  const url = new URL(href, 'http://x')
+  if (!url.searchParams.has(WALK_PARAM)) return href
+  url.searchParams.delete(WALK_PARAM)
+  return url.pathname + url.search + url.hash
 }
 
 // Admin first segments that are not Tables come from the shared catalog
@@ -405,11 +422,12 @@ export function actionForLocation(
   const table = canonicalTable
   // An empty filter list (#1228 settles a bare open to `filters=[]`) is the unfiltered list.
   const filtersJson = typeof search.filters === 'string' && !noFilters(search.filters) ? search.filters : undefined
+  // #1288: a page's own recent opens the page itself; a walk through it is its own entry (the walk's `path`).
   const query = Object.entries(search)
-    .filter(([, value]) => value !== undefined && value !== null)
+    .filter(([key, value]) => key !== WALK_PARAM && value !== undefined && value !== null)
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(typeof value === 'string' ? value : JSON.stringify(value))}`)
     .join('&')
-  const href = navigatedPath ?? (query ? `${pathname}?${query}` : pathname)
+  const href = navigatedPath ? withoutWalk(navigatedPath) : query ? `${pathname}?${query}` : pathname
   if (segs.length === 2 || (segs.length === 4 && segs[2] === 'view')) {
     const mode = segs[2] === 'view' ? segs[3] : undefined
     const sub = [mode, describeFilters(filtersJson, columns, t)].filter(Boolean).join(' · ') || undefined
