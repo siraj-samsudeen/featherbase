@@ -210,22 +210,23 @@ function RecordFrame({ kind, title, onClose, actions, children, place, framed, l
       className={cx('flex min-h-0 min-w-0 flex-col bg-surface focus:outline-none',
         framed ? 'h-full rounded-xl shadow-lg' : place === 'right' ? 'h-full' : '')}
     >
-      <header className="flex shrink-0 items-start gap-3 px-5 pb-2 pt-4">
-        <button type="button" aria-label="Back one level" title="Back one level" disabled={!levels.back} onClick={levels.back}
-          className={iconButtonClasses('shrink-0 bg-canvas disabled:opacity-40')}>
-          <span aria-hidden>←</span>
-        </button>
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="text-xs text-ink-muted" data-testid="peek-level">Level {levels.at} of {levels.of}</span>
+      {/* #1282 C14: "← · Level N of N · … · Open Full Page · ✕" on one line, the title under it at full width. */}
+      <header className="flex shrink-0 flex-col gap-1.5 px-5 pb-2 pt-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <button type="button" aria-label="Back one level" title="Back one level" disabled={!levels.back} onClick={levels.back}
+            className={iconButtonClasses('shrink-0 bg-canvas disabled:opacity-40')}>
+            <span aria-hidden>←</span>
+          </button>
+          <span className="flex-1 text-xs text-ink-muted" data-testid="peek-level">Level {levels.at} of {levels.of}</span>
+          {actions && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
+          <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={iconButtonClasses('shrink-0 bg-canvas')}>
+            <X aria-hidden size={16} />
+          </button>
+        </div>
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3.5 gap-y-0.5">
           <h2 className="break-words text-xl font-semibold text-ink">{title}</h2>
           <span className="text-sm text-ink-muted" data-testid="record-panel-kind">{kind}</span>
         </div>
-        </div>
-        {actions && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
-        <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={iconButtonClasses('shrink-0 bg-canvas')}>
-          <X aria-hidden size={16} />
-        </button>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pb-5">{children}</div>
     </aside>
