@@ -62,7 +62,8 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
     return
   }
   const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`)
-  const pattern = { exact: q, prefix: escaped + '%', like: '%' + escaped + '%' }
+  // As typed (case aside), starting with it, containing it: see searchOne.
+  const tiers = [escaped, escaped + '%', '%' + escaped + '%']
 
   // Source-bound Tables are excluded: they have no physical table here (the
   // old query 500'd the whole search the moment one existed), and fanning a
@@ -97,7 +98,7 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
     while (!halted() && running < AT_ONCE && queue.length) {
       const t = queue.shift()!
       running++
-      const one: Promise<void> = searchOne(t, user, pattern)
+      const one: Promise<void> = searchOne(t, user, tiers)
         .then((hits) => { finished.push({ table: String(t.name), hits }) })
         .catch((error: unknown) => { failure ??= error })
         .finally(() => { running--; started.delete(one); launch(); wake?.() })
@@ -126,10 +127,7 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   }
 }
 
-/** What was typed: as typed, and as `ilike` patterns for "starts with" and "contains". */
-interface Pattern { exact: string; prefix: string; like: string }
-
-async function searchOne(t: Record<string, unknown>, user: string, { exact, prefix, like }: Pattern): Promise<SearchHit[]> {
+async function searchOne(t: Record<string, unknown>, user: string, tiers: string[]): Promise<SearchHit[]> {
   // #648: an app's Tables answer only while it is available to this
   // request: switched on, not awaiting activation, and the version the
   // client last loaded. When one refuses, search skips that Table instead
@@ -154,15 +152,25 @@ async function searchOne(t: Record<string, unknown>, user: string, { exact, pref
   // A row of machine-made keys with no title of its own (empty, or hidden from
   // this viewer) would read as its key: it is no hit either (Codex round 4).
   const named = machine ? sql`and nullif(trim(${shown}::text), '') is not null` : sql``
-  const rows = await sql`
-    select ${key} as row_id, ${shown} as title from ${sql(table)}
-    where ${where} ${live} and (${key} ilike ${like}${title ? sql` or ${readExpression(title)} ilike ${like}` : sql``})
-      and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID} ${named}
-    order by
-      case when lower(${key}::text) = lower(${exact}) or lower(${shown}::text) = lower(${exact}) then 0
-           when ${key}::text ilike ${prefix} or ${shown}::text ilike ${prefix} then 1 else 2 end,
-      length(coalesce(${shown}::text, ${key}::text)), coalesce(${shown}::text, ${key}::text)
-    limit ${PER_TABLE}`
+  // #1311: matches in three tiers, each its own LIMIT so the database stops at
+  // the first few rows: named or coded exactly as typed, then starting with it,
+  // then containing it. An exact match is never crowded out, and no tier sorts
+  // every match a Table holds (Codex adversarial: a common query on a large Table).
+  const rows: { row_id: unknown; title: unknown }[] = []
+  for (const pattern of tiers) {
+    const room = PER_TABLE - rows.length
+    if (room <= 0) break
+    const seen = rows.map((r) => String(r.row_id))
+    const found = await sql<{ row_id: unknown; title: unknown }[]>`
+      select ${key} as row_id, ${shown} as title from ${sql(table)}
+      where ${where} ${live} and (${key} ilike ${pattern}${title ? sql` or ${readExpression(title)} ilike ${pattern}` : sql``})
+        and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID} ${named}
+        ${seen.length ? sql`and ${key}::text not in ${sql(seen)}` : sql``}
+      limit ${room}`
+    // Within a tier, the shortest name first, so the order does not depend on the scan.
+    const label = (r: { row_id: unknown; title: unknown }) => String(r.title ?? r.row_id)
+    rows.push(...[...found].sort((a, b) => label(a).length - label(b).length || label(a).localeCompare(label(b))))
+  }
   return rows
     .map((row) => ({
       table: meta.name,

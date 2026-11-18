@@ -114,14 +114,16 @@ test('searchHits rejects a search that ended in an error line', async ({ admin }
   await expect(searchHits(admin, 'anything')).rejects.toThrow('search did not finish')
 })
 
-// #1311: each Table answers its best three: a row named or coded exactly as typed, then
-// one starting with it, then the shortest, so an exact match is never left out.
+// #1311: each Table answers its best three: rows named or coded exactly as typed, then
+// ones starting with it, then ones containing it, so an exact match is never left out.
 test('an exact match by name or by code is never crowded out by rows that only contain the text', async ({ admin }) => {
   await admin.post('/api/table_def', { name: 'Ss Staff', id_pattern: 'prompt', title_column: 'full_name', columns: [{ column_name: 'full_name', column_type: 'Data' }] })
   for (const [row_id, full_name] of [['S-1', 'Rekha C S'], ['S-2', 'Rekha V S'], ['S-3', 'Rekha C'], ['S-4', 'Surekha M'], ['S-5', 'Rekha']])
     await admin.post('/api/save_row', { table: 'Ss Staff', row: { row_id, full_name } })
   const staff = (await searchLines(admin, 'rekha')).find((l) => l.table === 'Ss Staff') as { hits: { title: string }[] }
-  expect(staff.hits.map((h) => h.title)).toEqual(['Rekha', 'Rekha C', 'Rekha C S'])
+  // The exact name first, then two that start with it; one that only contains it waits.
+  expect(staff.hits[0].title).toBe('Rekha')
+  expect(staff.hits.slice(1).map((h) => h.title.startsWith('Rekha '))).toEqual([true, true])
 
   await admin.post('/api/table_def', { name: 'Ss Site', id_pattern: 'prompt', title_column: 'site_name', columns: [{ column_name: 'site_name', column_type: 'Data' }] })
   for (const [row_id, site_name] of [['ATK-CAR-PARK', 'Car park'], ['ATK-HOSTEL', 'Hostel'], ['ATK-STORE', 'Store building'], ['ATK', 'Attakulangara']])
