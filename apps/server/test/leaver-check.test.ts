@@ -174,12 +174,15 @@ async function link(person: string, system: string, value: string) {
     values (${newIdentifierId()}, ${person}, ${system}, '', ${value}, daterange('2024-01-01'::date, null::date, '[)'), true, false, 'test', 'test')`
 }
 
-/** A stub warehouse: the feed day, then the records, in the order the check reads them. */
+/** The warehouse's one read: each record with its last day at work, and the
+ *  feed day on every row (one row of only the feed day when there are none). */
+const feedRows = (feedDay: unknown, rows: unknown[][]) =>
+  rows.length ? rows.map((r) => [...r.slice(0, 6), r[6] ?? null, feedDay]) : [[null, null, null, null, null, null, null, feedDay]]
+
+/** A stub warehouse holding these records on this feed day. */
 function warehouse(feedDay: string, records: EmployeeRecord[]) {
-  _setWarehouseReader(async (q) =>
-    q.includes('attendance')
-      ? [[feedDay]]
-      : records.map((r) => [r.employee_key, r.employee_code, r.payroll_active, r.movement_active, r.date_of_joining, r.exit_date]),
+  _setWarehouseReader(async () =>
+    feedRows(feedDay, records.map((r) => [r.employee_key, r.employee_code, r.payroll_active, r.movement_active, r.date_of_joining, r.exit_date, r.last_present_day ?? null])),
   )
 }
 
@@ -390,6 +393,7 @@ describe('the leaver plan as printed for logs', () => {
     not_found: ['p1', 'p2'],
     recent_joiners: ['p3'],
     not_on_payroll: [{ person: 'p4', full_name: null }],
+    held_at_work: [{ person: 'p5', full_name: null, reason: 'exit date 01-Oct-2026 has passed, but attendance shows them at work on 20-Oct-2026' }],
   }
 
   test('a plan is summarised by counts and basis, with no names', async () => {
@@ -401,6 +405,7 @@ describe('the leaver plan as printed for logs', () => {
       'leaver check: System Managers who have left, not disabled: 1',
       'leaver check: no StyleHR record found: 2; recent joiners not yet on payroll: 1',
       'leaver check: not on payroll but no exit date, listed for review only: 1',
+      'leaver check: left by the record but at work since, held for review only: 1',
     ])
   })
 
@@ -415,14 +420,47 @@ describe('the leaver plan as printed for logs', () => {
   })
 })
 
+// #1286: one rule with the roster status sync. Attendance after the exit date
+// (or, marked only inactive, in the week before the feed day) says they have not left.
+describe('someone attendance shows at work is held, not disabled', () => {
+  test('at work after the exit date, or this week when only inactive: held for review; otherwise a leaver', async () => {
+    const people = ['after', 'on', 'week', 'month', 'boss'].map((p, i) => who(p, { record_ids: [String(i + 1)], privileged: p === 'boss' }))
+    const records = [
+      rec('1', 'C-1', { exit_date: '2026-09-05', movement_active: false, last_present_day: '2026-10-22' }),
+      rec('2', 'C-2', { exit_date: '2026-09-05', last_present_day: '2026-09-05' }),
+      rec('3', 'C-3', { movement_active: false, last_present_day: '2026-10-20' }),
+      rec('4', 'C-4', { movement_active: false, last_present_day: '2026-09-20' }),
+      rec('5', 'C-5', { exit_date: '2026-09-05', last_present_day: '2026-10-22' }),
+    ]
+    const plan = planLeavers([...people, ...crowd(60)], [...records, ...crowdRecords(60)], '2026-10-23', TODAY)
+    expect(plan.to_disable.map((l) => l.person)).toEqual(['on', 'month'])
+    expect(plan.privileged_leavers).toEqual([])
+    expect(plan.held_at_work).toEqual([
+      { person: 'after', full_name: null, reason: 'exit date 05-Sep-2026 has passed, but attendance shows them at work on 22-Oct-2026' },
+      { person: 'week', full_name: null, reason: 'marked inactive in StyleHR, but attendance shows them at work on 20-Oct-2026' },
+      { person: 'boss', full_name: null, reason: 'exit date 05-Sep-2026 has passed, but attendance shows them at work on 22-Oct-2026' },
+    ])
+  })
+
+  test('the daily check reads attendance with the records and leaves a held person enabled', async () => {
+    await applySeedPack('jeyarama')
+    const p = await makePerson({ full_name: 'Still Working' })
+    await link(p, 'stylehr-employee-id', '801')
+    warehouse(TODAY, [rec('801', 'C-801', { exit_date: '2026-09-05', last_present_day: '2026-10-23' })])
+    const run = await runLeaverCheck({ today: TODAY })
+    expect(run.disabled).toEqual([])
+    expect(run.plan!.held_at_work.map((h) => h.person)).toEqual([p])
+    expect(await enabled(p)).toBe(true)
+  })
+})
+
 describe('the check meets the world as it is', () => {
   test('dates the warehouse hands back as Date values are read as days', async () => {
     await applySeedPack('jeyarama')
     const p = await makePerson({ full_name: 'Dated Leaver' })
     await link(p, 'stylehr-employee-id', '601')
-    _setWarehouseReader(async (q) => q.includes('attendance')
-      ? [[new Date(`${TODAY}T00:00:00Z`)]]
-      : [['601', 'C-601', true, false, new Date('2024-01-01T00:00:00Z'), new Date('2026-10-20T00:00:00Z')]])
+    _setWarehouseReader(async () => feedRows(new Date(`${TODAY}T00:00:00Z`),
+      [['601', 'C-601', true, false, new Date('2024-01-01T00:00:00Z'), new Date('2026-10-20T00:00:00Z')]]))
     const run = await runLeaverCheck({ today: TODAY })
     expect(run.disabled.map((l) => [l.person, l.reason])).toEqual([[p, 'exit date 20-Oct-2026 has passed']])
   })
@@ -431,9 +469,7 @@ describe('the check meets the world as it is', () => {
     await applySeedPack('jeyarama')
     const p = await makePerson({ full_name: 'Blank Record' })
     await link(p, 'stylehr-employee-id', '611')
-    _setWarehouseReader(async (q) => q.includes('attendance')
-      ? [[TODAY]]
-      : [['611', null, null, 'false', 'not a day', null]])
+    _setWarehouseReader(async () => feedRows(TODAY, [['611', null, null, 'false', 'not a day', null]]))
     const run = await runLeaverCheck({ today: TODAY })
     expect(run.disabled.map((l) => [l.person, l.basis])).toEqual([[p, 'inactive']])
   })
@@ -443,7 +479,7 @@ describe('the check meets the world as it is', () => {
     await createUser({ email: 'mgr.noday@example.com', roles: ['System Manager'] })
     const p = await makePerson({ full_name: 'Gone Person' })
     await link(p, 'stylehr-employee-id', '621')
-    _setWarehouseReader(async (q) => q.includes('attendance') ? [] : [['621', 'C-621', true, false, '2024-01-01', null]])
+    _setWarehouseReader(async () => feedRows(null, [['621', 'C-621', true, false, '2024-01-01', null]]))
     const sent: MailMessage[] = []
     _setLeaverSummarySender(async (m) => sent.push(m))
     const run = await runLeaverCheck({ today: TODAY, acceptCount: 1 })
@@ -456,10 +492,9 @@ describe('the check meets the world as it is', () => {
     await applySeedPack('jeyarama')
     const p = await makePerson({ full_name: 'Already Gone' })
     await link(p, 'stylehr-employee-id', '701')
-    _setWarehouseReader(async (q) => {
-      if (q.includes('attendance')) return [[TODAY]]
+    _setWarehouseReader(async () => {
       await sql`update person set enabled = false where row_id = ${p}`
-      return [['701', 'C-701', true, false, '2024-01-01', '2026-10-20']]
+      return feedRows(TODAY, [['701', 'C-701', true, false, '2024-01-01', '2026-10-20']])
     })
     const run = await runLeaverCheck({ today: TODAY })
     expect(run.disabled).toEqual([])

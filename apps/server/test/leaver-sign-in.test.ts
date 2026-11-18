@@ -13,6 +13,9 @@ import { newIdentifierId } from '../src/person-identifiers'
 import { discoverPackages } from '../src/runtime-packages'
 import { configureDelegated, configureGoogle } from './identity-fixtures'
 import { _setWarehouseReader, type EmployeeRecord } from '../src/leaver-check'
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const displayDay = (iso: string) => `${iso.slice(8, 10)}-${MONTHS[Number(iso.slice(5, 7)) - 1]}-${iso.slice(0, 4)}`
 import { leaverSignInRows, rebuildSummary, refreshLeaverSignIn } from '../src/leaver-sign-in'
 
 /** Today in India, as the leaver check reckons it. */
@@ -49,9 +52,11 @@ reads.describe = ({ payload }) => payload.persons.map((person) => globalThis.__s
 const rec = (key: string, code: string, over: Partial<EmployeeRecord> = {}): EmployeeRecord => ({
   employee_key: key, employee_code: code, payroll_active: true, movement_active: true, date_of_joining: '2024-01-01', exit_date: null, ...over,
 })
-function warehouse(records: EmployeeRecord[]) {
-  _setWarehouseReader(async (q) => q.includes('attendance') ? [[istToday()]]
-    : records.map((r) => [r.employee_key, r.employee_code, r.payroll_active, r.movement_active, r.date_of_joining, r.exit_date]))
+function warehouse(records: EmployeeRecord[], feedDay: string = istToday()) {
+  // The warehouse's one read: each record, its last day at work and the feed day.
+  _setWarehouseReader(async () => records.length
+    ? records.map((r) => [r.employee_key, r.employee_code, r.payroll_active, r.movement_active, r.date_of_joining, r.exit_date, r.last_present_day ?? null, feedDay])
+    : [[null, null, null, null, null, null, null, feedDay]])
 }
 async function linkStyleHrRecord(person: string, id: string) {
   await sql`insert into person_identifier (id, person_id, system, assigner, value, valid, verified, one_holder, source, recorded_by)
@@ -105,6 +110,20 @@ test('someone off the payroll with no exit date is listed in section 5 for revie
   expect(rebuildSummary(report)).toBe('1 person can still sign in. 1 person off the payroll with no exit date, for review. No app says who people are, so sections 3 and 4 are not checked')
 })
 
+// #1286: the leaver rule holds someone attendance shows at work after their exit date.
+test('someone StyleHR says left but attendance shows at work is listed in section 6 for review, outside the leaver count', async () => {
+  await applySeedPack('jeyarama')
+  const working = await makePerson({ full_name: 'Still At Work' })
+  await linkStyleHrRecord(working, '811')
+  await password(working)
+  warehouse([rec('811', 'C-811', { exit_date: '2026-09-05', movement_active: false, last_present_day: istToday() })])
+  const report = await leaverSignInRows()
+  expect(report.rows).toEqual([
+    { section: '6. At work, though StyleHR says they left', person: working, why: `Exit date 05-Sep-2026 has passed, but attendance shows them at work on ${displayDay(istToday())}`, ways_in: 'Password', left_on: null },
+  ])
+  expect(rebuildSummary(report)).toMatch(/^0 people can still sign in\. 1 person at work though StyleHR says they left, for review/)
+})
+
 test("a plan the leaver job would refuse, or cannot read, is named; a StyleHR leaver it misses is still listed from the people app", async ({ admin }) => {
   await applySeedPack('jeyarama')
   await installDescriber(admin)
@@ -112,7 +131,7 @@ test("a plan the leaver job would refuse, or cannot read, is named; a StyleHR le
   const linked = await makePerson({ full_name: 'Linked Leaver' })
   await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by) values ('uid_linked1271', ${linked}, 'stylehr', 'RR-72', 'lnk', 'Administrator')`
   globalThis.__standing1271 = { [linked]: { person: linked, status: 'left', left_on: '2026-08-01' } }
-  _setWarehouseReader(async (q) => q.includes('attendance') ? [['2020-01-01']] : [])
+  warehouse([], '2020-01-01')
   const stale = await leaverSignInRows()
   expect(stale.notes).toEqual([expect.stringMatching(/^The leaver job's next run would refuse: the warehouse's StyleHR data is stale/)])
   expect(stale.rows).toContainEqual({

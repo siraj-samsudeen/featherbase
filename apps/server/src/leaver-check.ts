@@ -85,6 +85,9 @@ export interface LeaverPlan {
   /** #1271: off the latest payroll with no exit date passed and not marked
    *  inactive. Listed for review only: never a leaver, never disabled. */
   not_on_payroll: { person: string; full_name: string | null }[]
+  /** #1286: the rule says they left, but attendance shows them at work since.
+   *  Listed for review only: never a leaver, never disabled. */
+  held_at_work: { person: string; full_name: string | null; reason: string }[]
 }
 
 // ------------------------------------------------------------- dates
@@ -124,12 +127,31 @@ const normCode = (c: string) => c.trim().toUpperCase()
 
 export type Verdict =
   | { leaver: true; basis: Leaver['basis']; reason: string; rank: number }
-  | { leaver: false; recentJoiner: boolean; offPayroll: boolean }
+  | { leaver: false; recentJoiner: boolean; offPayroll: boolean; atWork?: string }
+
+/** Attendance after this many days before the feed day says someone marked
+ *  only inactive is still at work (#1286). */
+const PRESENT_WINDOW_DAYS = 7
+
+function addDays(iso: string, n: number): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+}
 
 /** Has this one record left, as of `today`? Only an exit date that has passed,
  *  then an inactive status, says so. Being off the payroll alone never does
- *  (#1271: owner-directors are off payroll); it is only marked for review. */
-export function recordVerdict(r: EmployeeRecord, today: string): Verdict {
+ *  (#1271: owner-directors are off payroll); it is only marked for review.
+ *  #1286: when attendance shows them at work after the exit date (or, marked
+ *  only inactive, in the week before the feed day), they have not left: the
+ *  HR record may be stale or wrong, so the verdict is held for review. */
+export function recordVerdict(r: EmployeeRecord, today: string, feedDay: string | null = null): Verdict {
+  const v = leftVerdict(r, today)
+  if (!v.leaver || !r.last_present_day || !feedDay) return v
+  const since = v.basis === 'exit date' && r.exit_date ? r.exit_date : addDays(feedDay, -PRESENT_WINDOW_DAYS)
+  if (r.last_present_day <= since) return v
+  return { leaver: false, recentJoiner: false, offPayroll: false, atWork: `${v.reason}, but attendance shows them at work on ${displayDate(r.last_present_day)}` }
+}
+
+function leftVerdict(r: EmployeeRecord, today: string): Verdict {
   if (r.exit_date && r.exit_date <= today)
     return { leaver: true, basis: 'exit date', reason: `exit date ${displayDate(r.exit_date)} has passed`, rank: 0 }
   if (r.movement_active === false) return { leaver: true, basis: 'inactive', reason: 'marked inactive in StyleHR', rank: 1 }
@@ -180,6 +202,7 @@ export function planLeavers(
     not_found: [],
     recent_joiners: [],
     not_on_payroll: [],
+    held_at_work: [],
   }
   plan.refused = feedRefusal(records, latestFeedDay, today)
   if (plan.refused) return plan
@@ -192,11 +215,13 @@ export function planLeavers(
       plan.not_found.push(p.person)
       continue
     }
-    const verdicts = mine.map((r) => recordVerdict(r, today))
+    const verdicts = mine.map((r) => recordVerdict(r, today, latestFeedDay))
     const left = verdicts.filter((v): v is Extract<Verdict, { leaver: true }> => v.leaver)
     if (left.length !== verdicts.length) {
       const staying = verdicts.filter((v): v is Extract<Verdict, { leaver: false }> => !v.leaver)
-      if (staying.every((v) => v.recentJoiner)) plan.recent_joiners.push(p.person)
+      const atWork = staying.find((v) => v.atWork)?.atWork
+      if (atWork) plan.held_at_work.push({ person: p.person, full_name: p.full_name, reason: atWork })
+      else if (staying.every((v) => v.recentJoiner)) plan.recent_joiners.push(p.person)
       // Off the payroll on every record that has not left: listed for review, never disabled.
       else if (staying.every((v) => v.offPayroll)) plan.not_on_payroll.push({ person: p.person, full_name: p.full_name })
       continue
@@ -252,22 +277,20 @@ async function linkedPeople(): Promise<LinkedPerson[]> {
 }
 
 // The whole roster is small (tens of thousands of rows), so it is read in full:
-// no person data is ever written into warehouse SQL.
+// no person data is ever written into warehouse SQL. The records, each one's
+// last day at work and the feed day (a day with people present is a day StyleHR
+// loaded and the warehouse built) come in ONE statement, so from one snapshot
+// (#1286). The feed day rides on every row; with no records there is still one
+// row, carrying only it.
 const RECORDS_SQL = `
-  select e.employee_key, e.employee_code, e.payroll_active, e.movement_active, e.date_of_joining, x.exit_date
-  from "gold"."hr"."employee" e
-  left join "gold"."hr"."employee_exit" x on x.employee_key = e.employee_key and x.is_leaver`
-// #1286: the records, each one's last day at work and the feed day, in ONE
-// statement, so all three come from the same warehouse snapshot.
-const RECORDS_WITH_PRESENCE_SQL = `
-  with a as (select employee_key, max(date) as last_present from "gold"."hr"."attendance" where is_present group by 1)
+  with a as (select employee_key, max(date) as last_present from "gold"."hr"."attendance" where is_present group by 1),
+  f as (select max(last_present) as feed_day from a)
   select e.employee_key, e.employee_code, e.payroll_active, e.movement_active, e.date_of_joining, x.exit_date,
-    a.last_present, (select max(last_present) from a) as feed_day
-  from "gold"."hr"."employee" e
+    a.last_present, f.feed_day
+  from f
+  left join "gold"."hr"."employee" e on true
   left join "gold"."hr"."employee_exit" x on x.employee_key = e.employee_key and x.is_leaver
   left join a on a.employee_key = e.employee_key`
-// A day with people present is a day StyleHR loaded and the warehouse built.
-const FEED_DAY_SQL = `select max(date) from "gold"."hr"."attendance" where is_present`
 
 let reader: WarehouseReader | null = null
 /** Test seam: drive the check without MotherDuck. */
@@ -285,18 +308,12 @@ const recordOf = (r: unknown[]): EmployeeRecord => ({
   exit_date: isoDay(r[5]),
 })
 
-async function readWarehouse(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
-  const [feed] = await read(FEED_DAY_SQL)
+/** The feed's records, each with its last day at work, and the feed day. */
+export async function readWarehouse(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
   const rows = await read(RECORDS_SQL)
-  return { latestFeedDay: isoDay(feed?.[0]), records: rows.map(recordOf) }
-}
-
-/** The feed's records with each one's last day at work (#1286). */
-export async function readWarehouseWithPresence(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
-  const rows = await read(RECORDS_WITH_PRESENCE_SQL)
   return {
     latestFeedDay: rows.length ? isoDay(rows[0][7]) : null,
-    records: rows.map((r) => ({ ...recordOf(r), last_present_day: isoDay(r[6]) })),
+    records: rows.filter((r) => r[0] != null).map((r) => ({ ...recordOf(r), last_present_day: isoDay(r[6]) })),
   }
 }
 
@@ -434,5 +451,6 @@ export function formatLeaverPlan(plan: LeaverPlan | null, opts: { applied?: Leav
     `leaver check: System Managers who have left, not disabled: ${plan.privileged_leavers.length}`,
     `leaver check: no StyleHR record found: ${plan.not_found.length}; recent joiners not yet on payroll: ${plan.recent_joiners.length}`,
     `leaver check: not on payroll but no exit date, listed for review only: ${plan.not_on_payroll.length}`,
+    `leaver check: left by the record but at work since, held for review only: ${plan.held_at_work.length}`,
   ].join('\n')
 }

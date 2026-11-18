@@ -3,10 +3,11 @@
 ### Requirement: The roster's status follows the HR record
 
 When the roster names a left status, each roster run SHALL first set a current
-row to left when its HR record has an exit date that has passed or is marked
-inactive (the leaver check's rule), and a left row to current when its record
-is active and on the payroll. Nothing else SHALL change a row's status, and
-each change SHALL show in the row's Activity as the roster link's.
+row to left when the leaver check's rule says its HR record has left, and a
+left row to current when its record is active and on the payroll, or, for a
+left the roster link set, once the rule no longer says left. Nothing else
+SHALL change a row's status, and each change SHALL show in the row's Activity
+as the roster link's.
 
 #### Scenario: An employee whose exit date has passed is marked as left
 
@@ -33,6 +34,13 @@ each change SHALL show in the row's Activity as the roster link's.
 - **WHEN** a left row's HR record is active and on the payroll again
 - **THEN** the row becomes current and the same run links it
 
+#### Scenario: A left the roster link set is undone when the record is corrected
+
+- **WHEN** the roster link marked an off-payroll director left on a wrong
+  inactive mark, and the HR record no longer has it
+- **THEN** the next run makes the row current again; a left a person set, or
+  changed after the roster link set it, stays as they made it
+
 #### Scenario: A row the feed does not cover is left alone
 
 - **WHEN** a row's record is not in the HR feed, or the row is in another
@@ -54,12 +62,19 @@ each change SHALL show in the row's Activity as the roster link's.
 
 ### Requirement: People who have left lose access
 
-Once a day, Featherbase SHALL disable every person linked to a StyleHR employee record that shows they have left: an exit date that has passed, or an inactive status. Being off the latest payroll alone SHALL never disable anyone. A disabled person's sessions end at once. The check SHALL never re-enable anyone and SHALL never disable a System Manager; it reports them instead.
+Once a day, Featherbase SHALL disable every person linked to a StyleHR employee record that shows they have left: an exit date that has passed, or an inactive status. Being off the latest payroll alone, or a record attendance contradicts, SHALL never disable anyone. A disabled person's sessions end at once. The check SHALL never re-enable anyone and SHALL never disable a System Manager; it reports them instead.
 
 #### Scenario: A leaver is turned away
 
 - **WHEN** the StyleHR record of a signed-in store employee shows an exit date that passed yesterday
 - **THEN** after the next daily check their next request asks them to sign in, signing in is refused, and the activity log says they were disabled because their exit date had passed
+
+#### Scenario: Someone still at work is not disabled
+
+- **WHEN** a store employee's StyleHR record shows an exit date that has
+  passed, but attendance shows them at work after it
+- **THEN** the check leaves them enabled and lists them for review in Leavers
+  Who Can Still Sign In, outside the leaver count
 
 #### Scenario: A System Manager is reported, not disabled
 

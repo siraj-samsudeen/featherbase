@@ -28,7 +28,7 @@ import { addIdentifier, closeRow, endIdentityIdentifiers, writeThroughIdentity }
 import { normaliseValue, type IdentifierKind, type NormaliseRule } from './identifiers'
 import { rowOf, usableRoster, type Roster, type RosterRow } from './roster-first-sign-in'
 import { errorMessage } from './errors'
-import { applyRosterStatus, formatRosterStatus, planRosterStatus, type RosterStatusPlan, type RosterStatusRun } from './roster-status'
+import { applyRosterStatus, formatRosterStatus, planRosterStatus, type RosterStatusPlan, type RosterStatusRun, type StatusChange } from './roster-status'
 
 export const ROSTER_LINK_JOB = 'link_roster'
 const ACTOR = ROSTER_LINK_ACTOR
@@ -169,9 +169,11 @@ interface Pending {
   returning: string[]
 }
 
+const leaves = (c: StatusChange) => c.basis === 'exit date' || c.basis === 'inactive'
+
 const pendingOf = (status: RosterStatusPlan | null): Pending | undefined =>
   status && !status.refused && status.changes.length
-    ? { leaving: status.changes.filter((c) => c.basis !== 'current again').map((c) => c.row_id), returning: status.changes.filter((c) => c.basis === 'current again').map((c) => c.row_id) }
+    ? { leaving: status.changes.filter(leaves).map((c) => c.row_id), returning: status.changes.filter((c) => !leaves(c)).map((c) => c.row_id) }
     : undefined
 
 /** "This row is current", for a row aliased `r` or unaliased. */

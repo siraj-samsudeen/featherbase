@@ -26,8 +26,9 @@ export const SECTIONS = [
   "3. Left, not on the leaver job's list",
   '4. Not an employee, holds a StyleHR link',
   '5. Not on payroll, but no exit date',
+  '6. At work, though StyleHR says they left',
 ] as const
-/** The sections of people who have left, or are not employees. Section 5 is for review only. */
+/** The sections of people who have left, or are not employees. Sections 5 and 6 are for review only. */
 const LEAVER_SECTIONS: readonly Section[] = SECTIONS.slice(0, 4)
 export type Section = (typeof SECTIONS)[number]
 export interface LeaverSignInRow { section: Section; person: string; why: string; ways_in: string; left_on: string | null }
@@ -143,6 +144,11 @@ export async function leaverSignInRows(): Promise<LeaverSignInReport> {
     if (how && !rows.has(o.person))
       rows.set(o.person, { section: SECTIONS[4], person: o.person, why: 'Off the latest payroll, but no exit date has passed and StyleHR does not mark them inactive', ways_in: how, left_on: null })
   }
+  // #1286: the record says they left, attendance says they are at work. For review only.
+  for (const h of plan?.held_at_work ?? []) {
+    const how = listed(h.person)
+    if (how && !rows.has(h.person)) rows.set(h.person, { section: SECTIONS[5], person: h.person, why: sentence(h.reason), ways_in: how, left_on: null })
+  }
   return { rows: ordered([...rows.values()]), notes }
 }
 
@@ -170,12 +176,14 @@ async function fromPeopleApp(rest: string[], ways: Map<string, WaysIn>, rows: Ma
 
 /** The rebuild's one-line summary: how many can still sign in, and whatever it could not check. */
 export function rebuildSummary(report: LeaverSignInReport): string {
-  // Section 5 is for review only: never in the leaver count.
+  // Sections 5 and 6 are for review only: never in the leaver count.
   const n = report.rows.filter((r) => LEAVER_SECTIONS.includes(r.section)).length
-  const review = report.rows.length - n
+  const offPayroll = report.rows.filter((r) => r.section === SECTIONS[4]).length
+  const atWork = report.rows.filter((r) => r.section === SECTIONS[5]).length
   return [
     `${n} ${n === 1 ? 'person' : 'people'} can still sign in`,
-    ...(review ? [`${count(review, 'person', 'people')} off the payroll with no exit date, for review`] : []),
+    ...(offPayroll ? [`${count(offPayroll, 'person', 'people')} off the payroll with no exit date, for review`] : []),
+    ...(atWork ? [`${count(atWork, 'person', 'people')} at work though StyleHR says they left, for review`] : []),
     ...report.notes,
   ].join('. ')
 }

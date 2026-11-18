@@ -51,7 +51,7 @@ function warehouse(records: Feed[], latestDay: string | null = istToday()) {
   const reads: string[] = []
   _setWarehouseReader(async (q) => {
     reads.push(q)
-    return records.map((f) => [...feedRow(f), f.present ?? null, latestDay])
+    return records.length ? records.map((f) => [...feedRow(f), f.present ?? null, latestDay]) : [[null, null, null, null, null, null, null, latestDay]]
   })
   return reads
 }
@@ -134,6 +134,55 @@ describe('the roster’s status follows the HR record', () => {
     await runRosterLink('stylehr')
 
     expect(await states()).toEqual({ 'TT-1001': 'Working', 'TT-1002': 'Gone', 'TT-1003': 'Gone', 'TT-1004': 'Gone' })
+  })
+
+  test('a left this job set is undone as soon as the record no longer says left, on the payroll or not', async ({ admin }) => {
+    await setUp(admin, [crewRow(1), crewRow(2)])
+    // An off-payroll director wrongly marked inactive, and someone wrongly given an exit date.
+    warehouse([{ key: '7001', payroll: false, joined: '2005-01-01', active: false }, { key: '7002', payroll: false, joined: '2005-01-01', exit: PAST }])
+    await runRosterLink('stylehr')
+    expect(await states()).toEqual({ 'TT-1001': 'Gone', 'TT-1002': 'Gone' })
+    // HR corrects the first; the second still has its exit date.
+    warehouse([{ key: '7001', payroll: false, joined: '2005-01-01' }, { key: '7002', payroll: false, joined: '2005-01-01', exit: PAST }])
+
+    const run = await runRosterLink('stylehr')
+
+    expect(await states()).toEqual({ 'TT-1001': 'Working', 'TT-1002': 'Gone' })
+    expect(run.status!.plan!.changes).toEqual([expect.objectContaining({ from: 'Gone', to: 'Working', basis: 'set left by this job' })])
+    expect(formatRosterLink(run.plan, run)).toContain('changed 1')
+  })
+
+  test('a left a person set, or changed since this job set it, is theirs: off the payroll it stays', async ({ admin }) => {
+    await setUp(admin, [crewRow(1), crewRow(2, { crew_state: 'Gone' })])
+    warehouse([{ key: '7001', payroll: false, joined: '2005-01-01', active: false }, { key: '7002', payroll: false, joined: '2005-01-01' }])
+    await runRosterLink('stylehr')
+    expect(await state('TT-1001')).toBe('Gone')
+    const row = await crew('TT-1001')
+    await saveDoc(TABLE, { row_id: row.row_id, updated_at: row.updated_at, crew_state: 'Working' }, 'Administrator')
+    const again = await crew('TT-1001')
+    await saveDoc(TABLE, { row_id: again.row_id, updated_at: again.updated_at, crew_state: 'Gone' }, 'Administrator')
+    warehouse([{ key: '7001', payroll: false, joined: '2005-01-01' }, { key: '7002', payroll: false, joined: '2005-01-01' }])
+
+    await runRosterLink('stylehr')
+
+    expect(await states()).toEqual({ 'TT-1001': 'Gone', 'TT-1002': 'Gone' })
+  })
+
+  test('an undo planned before a person changed the row is not made', async ({ admin }) => {
+    await setUp(admin, [crewRow(1)])
+    warehouse([{ key: '7001', payroll: false, joined: '2005-01-01', active: false }])
+    await runRosterLink('stylehr')
+    warehouse([{ key: '7001', payroll: false, joined: '2005-01-01' }])
+    const roster = (await usableRoster((await getSignInMethod('stylehr'))!))!
+    const plan = await planRosterStatus(roster)
+    expect(plan!.changes).toHaveLength(1)
+    const row = await crew('TT-1001')
+    await saveDoc(TABLE, { row_id: row.row_id, updated_at: row.updated_at, crew_state: 'Working' }, 'Administrator')
+    const again = await crew('TT-1001')
+    await saveDoc(TABLE, { row_id: again.row_id, updated_at: again.updated_at, crew_state: 'Gone' }, 'Administrator')
+
+    expect(await applyRosterStatus(roster, plan)).toMatchObject({ changed: 0 })
+    expect(await state('TT-1001')).toBe('Gone')
   })
 
   test('a leaver’s link ends in the same run, and a rejoiner is linked in it', async ({ admin }) => {
@@ -287,7 +336,7 @@ describe('a bad feed or a big batch changes nothing', () => {
 
     warehouse([])
     run = await runRosterLink('stylehr')
-    expect(run.status!.plan!.refused).toContain('latest day none')
+    expect(run.status!.plan!.refused).toBe('the warehouse returned no StyleHR employee records')
 
     _setWarehouseReader(async () => {
       throw new Error('warehouse down')
