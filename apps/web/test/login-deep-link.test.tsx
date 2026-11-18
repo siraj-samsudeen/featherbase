@@ -62,7 +62,8 @@ test('after a Google refusal, a password sign-in still lands on the saved deep l
   await screen.findByTestId('sign-in-refused-panel')
   // The destination is back in the address bar, beside the refusal.
   await waitFor(() => expect(new URLSearchParams(window.location.search).get('next')).toBe(DEEP))
-  // #1283: the card opens on the password form under its message, as the first page does.
+  // #1283: the card opens on the password form under its message, as the first page does. Signing in
+  // with it answers the refusal: `error` leaves the address, `next` stays (Codex adversarial, #1283).
   await userEvent.type(await screen.findByLabelText('Email or username'), 'refused.then.password@example.com')
   await userEvent.type(screen.getByLabelText('Password'), 'refusal-pw-1')
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))

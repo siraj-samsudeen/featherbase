@@ -269,6 +269,7 @@ export function LoginPage() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    answerRefusal()
     // Read from the form, not from React state, so values the browser's
     // autofill wrote into the boxes are what is sent.
     const form = new FormData(e.currentTarget)
@@ -284,6 +285,7 @@ export function LoginPage() {
 
   async function onDelegatedSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    answerRefusal()
     const form = new FormData(e.currentTarget)
     const id = String(form.get('delegated_id')).trim()
     const password = String(form.get('delegated_password'))
@@ -317,18 +319,23 @@ export function LoginPage() {
     await signIn(() => signUp(String(form.get('username')).trim(), String(form.get('password'))), 'Choose a username and a password.', true)
   }
 
-  function switchMode(next: 'password' | 'delegated' | 'signup', key: string | null = null) {
-    setError(null)
-    setDelegatedKey(key)
-    setMode(next)
+  /** The person has answered the refusal: by choosing a way in, or (#1283, as the card now shows the
+   *  first page's form) by signing in with the form already open. A reload must not bring the card back:
+   *  drop `error` from the address bar, keeping everything else (#474). */
+  function answerRefusal() {
     if (refusal && !refusalAnswered) {
-      // Once the person has chosen, a reload must not bring the panel back:
-      // drop `error` from the address bar, keeping everything else (#474).
       const url = new URL(window.location.href)
       url.searchParams.delete('error')
       window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
     }
     setRefusalAnswered(true)
+  }
+
+  function switchMode(next: 'password' | 'delegated' | 'signup', key: string | null = null) {
+    setError(null)
+    setDelegatedKey(key)
+    setMode(next)
+    answerRefusal()
   }
 
   // #1255: continuing as a held account loads the page afresh, so nothing of

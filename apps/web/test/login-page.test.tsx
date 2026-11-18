@@ -275,6 +275,23 @@ describe('the "We couldn\'t sign you in" card (#474, #1283)', () => {
     view.unmount()
   })
 
+  // Codex adversarial on #1283: signing in with the form the card already shows answers the refusal too.
+  test('a failed sign-in with the open form answers the refusal: error leaves the address, next stays, the card does not come back', async () => {
+    await removeDelegated()
+    const path = '/featherbase/login?error=not_provisioned&next=%2Ffeatherbase%2Fadmin'
+    window.history.replaceState(null, '', path)
+    const view = await renderApp(path, anonymous)
+    await screen.findByTestId('sign-in-refused-panel')
+    await userEvent.type(screen.getByLabelText('Email or username'), 'nobody.1283@example.com')
+    await userEvent.type(screen.getByLabelText('Password'), 'wrong-pw')
+    await userEvent.click(screen.getByTestId('login-submit'))
+    expect(await screen.findByTestId('login-error')).toBeInTheDocument()
+    expect(new URLSearchParams(window.location.search).get('error')).toBeNull()
+    expect(new URLSearchParams(window.location.search).get('next')).toBe('/featherbase/admin')
+    expect(screen.queryByTestId('sign-in-refused-panel')).not.toBeInTheDocument()
+    view.unmount()
+  })
+
   test('no refusal code, no card: the usual methods show straight away', async () => {
     await renderApp('/featherbase/login', anonymous)
     await screen.findByTestId('login-form')
