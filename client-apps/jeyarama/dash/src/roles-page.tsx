@@ -47,10 +47,11 @@ export function StaffBadge({ who }: { who: Who | null | undefined }) {
 }
 
 /** One quiet line: the name, its muted facts below, and chips or actions on the right. */
-function Line({ name, meta, side, testid, children }: { name: ReactNode; meta?: ReactNode; side?: ReactNode; testid?: string; children?: ReactNode }) {
+/** One line of a list. `stack`: on a phone (under 30rem) its side drops under the name, so a long chip leaves the name whole. */
+function Line({ name, meta, side, testid, children, stack }: { name: ReactNode; meta?: ReactNode; side?: ReactNode; testid?: string; children?: ReactNode; stack?: boolean }) {
   return (
     <li className="rounded-control px-2 py-1.5 hover:bg-subtle" data-testid={testid}>
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+      <div className={`flex flex-wrap items-start gap-x-3 gap-y-1${stack ? ' max-[30rem]:flex-col' : ''}`} data-testid="line-body">
         <div className="min-w-0 flex-1">
           <div className="text-sm">{name}</div>
           {meta && <div className="text-[13px] text-ink-muted">{meta}</div>}
@@ -435,7 +436,7 @@ function Explanation({ answer, onChanged }: { answer: Explained; onChanged: () =
 function WhyLine({ name, meta, chip, why, testid }: { name: ReactNode; meta?: ReactNode; chip?: string; why: string; testid: string }) {
   const [open, setOpen] = useState(false)
   return (
-    <Line testid={testid} name={name} meta={meta}
+    <Line testid={testid} name={name} meta={meta} stack
       side={<>{chip && <Chip>{chip}</Chip>}<button type="button" className={linkClasses} aria-expanded={open} onClick={() => setOpen(!open)} data-testid="why-toggle">{open ? 'Hide why' : 'Why?'}</button></>}>
       {open && <p className="mt-1 text-[13px] text-ink-muted" data-testid="why-line">{why}</p>}
     </Line>

@@ -123,7 +123,9 @@ test('beside the trees, the Site can still be picked directly', async ({ admin }
   fireEvent.click(within(line).getByRole('button', { name: 'Tick Team Leader' }))
   const form = await screen.findByTestId('also-give-form')
   fireEvent.click(within(form).getByTestId('area-pick'))
+  // One line under the columns, in the level's own name, never one per column.
   const direct = await within(form).findByTestId('area-direct')
-  expect(direct).toHaveTextContent('Or pick the Area')
-  expect(within(direct).getByRole('combobox', { name: 'Area' })).toBeInTheDocument()
+  expect(within(form).getAllByTestId('area-direct')).toHaveLength(1)
+  expect(direct).toHaveTextContent('Or choose the Site from a list')
+  expect(within(direct).getByRole('combobox', { name: 'Site' })).toBeInTheDocument()
 })

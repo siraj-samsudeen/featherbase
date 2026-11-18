@@ -107,6 +107,13 @@ describe('Explain A Person', () => {
     expect([before, all('explain-report')[0].querySelector('[data-testid="why-line"]')!.textContent]).toEqual([0, 'Given to Store Manager, for Lakeside'])
   })
 
+  // UI owner (#1282): on a phone a Why line's chip drops under the name, so "Dash at level Manager" stays whole.
+  it('stacks a Why line\'s chip under its name on a phone', async () => {
+    const { all } = await render('explain')
+    expect(all('explain-report')[0].querySelector('[data-testid="line-body"]')!.className).toContain('max-[30rem]:flex-col')
+    expect(all('explain-role')[0].querySelector('[data-testid="line-body"]')!.className).not.toContain('max-[30rem]:flex-col')
+  })
+
   it('reads the designation as the HR title, with Employee and Site chips in the header', async () => {
     const { all } = await render('explain')
     expect([all('hr-title')[0].textContent, all('header-chip').map(c => c.textContent)]).toEqual(['Operations Executive', ['Employee Selvi 3005', 'Site Lakeside']])

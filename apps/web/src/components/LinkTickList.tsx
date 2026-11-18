@@ -388,6 +388,8 @@ function AreaPicker({ columns, values, set }: { columns: ColumnDef[]; values: Ro
   const holds = onTrees.map((c) => linkRowsTable(c)!)
   const axes = areas.axes.filter((a) => a.levels.some((l) => holds.includes(l.table)))
   const plain = columns.filter((c) => !onTrees.includes(c))
+  // The level's own name, as an admin screen says it ("Site").
+  const levelName = (c: ColumnDef) => { const l = areas.levels.get(linkRowsTable(c) ?? '')!; return l.adminLabel ?? l.label }
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       <span>· Area</span>
@@ -402,17 +404,28 @@ function AreaPicker({ columns, values, set }: { columns: ColumnDef[]; values: Ro
             onUse={(area) => { set(onTrees.find((c) => linkRowsTable(c) === area.table)!.column_name, area.row.id); setPicking(false) }} />
         </span>
       )}
-      {/* Every column keeps its plain picker too (Codex standard round 3): a viewer who may not read the levels above, or a
-          row with no parent, still picks it directly. */}
-      {picking && columns.map((c) => (
-        <span key={c.column_name} className="inline-flex items-center gap-1" data-testid={plain.includes(c) ? 'area-picker' : 'area-direct'}>
-          {(columns.length > 1 || !plain.includes(c)) && <span className="text-ink-muted">{plain.includes(c) ? (c.label ?? c.column_name) : `Or pick the ${c.label ?? c.column_name}`}</span>}
+      {picking && plain.map((c) => (
+        <span key={c.column_name} className="inline-flex items-center gap-1" data-testid="area-picker">
+          {columns.length > 1 && <span className="text-ink-muted">{c.label ?? c.column_name}</span>}
           <span className="w-60 min-w-0">
             <LinkControl field={c} value={values[c.column_name] ?? ''} onChange={(v) => set(c.column_name, v)} pickOnly
               className={FLD} common={{ 'aria-label': c.label ?? c.column_name }} />
           </span>
         </span>
       ))}
+      {/* Codex standard round 3: the trees never take the plain picker away. One line under the columns, so a viewer who
+          may not read the levels above, or a row with no parent, still chooses it from a list. */}
+      {picking && axes.length > 0 && (
+        <span className="inline-flex basis-full flex-wrap items-center gap-1.5" data-testid="area-direct">
+          <span className="text-ink-muted">Or choose the {onTrees.map((c) => levelName(c)).join(' or ')} from a list</span>
+          {onTrees.map((c) => (
+            <span key={c.column_name} className="w-60 min-w-0">
+              <LinkControl field={c} value={values[c.column_name] ?? ''} onChange={(v) => set(c.column_name, v)} pickOnly
+                className={FLD} common={{ 'aria-label': levelName(c) }} />
+            </span>
+          ))}
+        </span>
+      )}
       {picking && plain.length > 0 && <button type="button" onClick={() => setPicking(false)} className="px-1 text-action hover:underline">Done</button>}
     </span>
   )
