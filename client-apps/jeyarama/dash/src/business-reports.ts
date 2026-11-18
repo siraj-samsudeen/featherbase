@@ -9,9 +9,9 @@ import type { Place } from './provider.ts'
 export { businessReportsReaching, type NewWhy }
 
 /** The reports offered to one person under business roles, with why each reaches them. `shapes`: report key to filter shape. */
-export function businessReports(person: string, access: { roles: readonly string[]; places: readonly Place[] }, rows: readonly AccessRow[],
+export function businessReports(person: string, access: { roles: readonly string[]; everyReport: readonly string[]; places: readonly Place[] }, rows: readonly AccessRow[],
   members: readonly BundleMember[], shapes: ReadonlyMap<string, string>): { offered: string[]; why: Map<string, NewWhy[]> } {
-  const why = businessReportsReaching({ person, roles: access.roles }, rows, members)
+  const why = businessReportsReaching({ person, roles: access.roles, everyReport: access.everyReport }, rows, members, [...shapes.keys()])
   return { offered: [...why.keys()].filter(key => shapes.has(key) && offered(shapes.get(key)!, access.places)).sort(), why }
 }
 

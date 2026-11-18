@@ -15,7 +15,9 @@ export interface BundleMember { report_bundle: string; report: string }
 /** Who is asking, as read fresh for this request. */
 export interface Receiver { person: string; roles: readonly string[]; jobs: readonly string[] }
 /** One route by which a report reaches a person. */
-export interface Because { kind: 'person' | 'role' | 'job' | 'business_role'; receiver: string; bundle: string | null }
+export interface Because { kind: 'person' | 'role' | 'job' | 'business_role'; receiver: string; bundle: string | null
+  /** #1277: every report, through a business role that views every report. */
+  every?: true }
 
 function routeOf(row: AccessRow, who: Receiver): Omit<Because, 'bundle'> | null {
   // #1277: a grant to a business role is not one of the old rules' routes, whatever else the row names.
@@ -43,11 +45,15 @@ export function reportsReaching(who: Receiver, rows: readonly AccessRow[], membe
 }
 
 // #1277 (D4): the reports business roles give.
-export interface NewWhy { role?: string; person?: true; bundle: string | null }
+export interface NewWhy { role?: string; person?: true; bundle: string | null; every?: true }
 const RECEIVERS = ['person', 'role', 'job', 'business_role'] as const
 
-/** Report key to why it reaches this person under business roles: given to them, or to a business role they hold. */
-export function businessReportsReaching(who: { person: string; roles: readonly string[] }, rows: readonly AccessRow[], members: readonly BundleMember[]): Map<string, NewWhy[]> {
+/**
+ * Report key to why it reaches this person under business roles: given to them, or to a business role they hold. A role
+ * they hold that views every report (`everyReport`, business-roles.ts) gives every one of `reports`, the instance's reports.
+ */
+export function businessReportsReaching(who: { person: string; roles: readonly string[]; everyReport: readonly string[] }, rows: readonly AccessRow[], members: readonly BundleMember[],
+  reports: readonly string[]): Map<string, NewWhy[]> {
   const got = new Map<string, NewWhy[]>()
   const add = (report: string, why: NewWhy) => got.set(report, [...(got.get(report) ?? []), why])
   for (const row of rows) {
@@ -61,5 +67,6 @@ export function businessReportsReaching(who: { person: string; roles: readonly s
     if (row.report) add(row.report, { ...why, bundle: null })
     else for (const m of members) if (m.report_bundle === row.report_bundle) add(m.report, { ...why, bundle: m.report_bundle })
   }
+  for (const role of who.everyReport.filter(role => who.roles.includes(role))) for (const report of reports) add(report, { role, every: true, bundle: null })
   return got
 }

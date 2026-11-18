@@ -72,7 +72,8 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[] } }
 /** #1277's 0.13.30 taken out of a manifest: business roles decide nothing, no switch. */
 export function revertBusinessRolesLive(manifest: Revertable) {
-  // 0.13.31 changes no Table, role or read; it comes off first.
+  // 0.13.32 and 0.13.31 change no Table, role or read; they come off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'every_report_and_bulk_comparison', fromVersion: '0.13.31', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'old_grants_one_receiver', fromVersion: '0.13.30', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_live', fromVersion: '0.13.29' })
   if (manifest.tables) {

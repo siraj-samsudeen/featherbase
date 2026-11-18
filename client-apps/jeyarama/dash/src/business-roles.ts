@@ -142,6 +142,16 @@ export const DASH_APP = 'Dash'
 export const opensDash = (held: HeldRole[], model: Pick<Model, 'permissions'>) =>
   held.some(h => model.permissions.some(p => p.role === h.role && p.app === DASH_APP))
 
+/**
+ * #1277 (owner, 18-Nov-2026): a role allowed to View Reports at reach All (Owner Director, or any role an admin gives that
+ * permission) is offered every report the instance has, at every store. Any other reach gives only the reports given.
+ */
+export const viewsEveryReport = (p: Pick<Permission, 'app' | 'verb' | 'thing' | 'reach'>) =>
+  p.app === DASH_APP && key(p.verb) === 'view' && key(p.thing) === 'reports' && p.reach === 'All'
+/** The held roles that view every report, each once. */
+export const everyReportRoles = (held: readonly HeldRole[], model: Pick<Model, 'permissions'>): string[] =>
+  [...new Set(held.map(h => h.role).filter(role => model.permissions.some(p => p.role === role && viewsEveryReport(p))))].sort()
+
 const COLLECTIVE = new Set(['staff', 'leadership', 'head office'])
 const REACH_WORDS: Record<Reach, string> = { Own: 'they own', Team: 'for their Team', Area: 'in their Area', All: 'across the company' }
 /** "Store Managers can Edit Sections in their Area". */

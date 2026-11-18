@@ -2,7 +2,7 @@
 // and the Who Would Gain Or Lose Access comparison all call businessAccess, so the comparison predicts
 // exactly what the live rules do. The role rules are business-roles.ts; where a role applies is reachOf's
 // (provider.ts), run over only the assignment that gives the role.
-import { BUYER_TITLE, DASH_APP, opensDash, rolesOf, type BusinessRole, type HandChange, type HeldRole, type Model, type Permission, type Reach, type Reaches, type TitleRule } from './business-roles.ts'
+import { BUYER_TITLE, DASH_APP, everyReportRoles, opensDash, rolesOf, type BusinessRole, type HandChange, type HeldRole, type Model, type Permission, type Reach, type Reaches, type TitleRule } from './business-roles.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
 import { EMPLOYEE_STATUS, checked, day, exact, holdsOn, text } from './values.ts'
 
@@ -168,6 +168,8 @@ export interface BusinessAccess {
   opens: boolean
   /** Every business role they hold, for report grants to roles (D4). */
   roles: string[]
+  /** The roles they hold that view every report (viewsEveryReport): every report, at every store. */
+  everyReport: string[]
   mine: Mine
 }
 
@@ -191,8 +193,12 @@ export async function businessAccess(docs: Base, person: string, today: string,
   const withPlaces = []
   for (const role of held) withPlaces.push({ ...role, places: await rolePlaces(docs, person, today, role, reachesOf.get(role.role), mine) })
   const dash = new Set(model.permissions.filter(p => p.app === DASH_APP).map(p => p.role))
-  return { held: withPlaces, unmapped, places: mergePlaces(withPlaces.filter(r => dash.has(r.role)).flatMap(r => r.places)),
-    opens: opensDash(held, model), roles: [...new Set(held.map(h => h.role))].sort(), mine }
+  const everyReport = everyReportRoles(held, model)
+  // A role viewing every report does so at every store, wherever its own area lies; its own area stays as it is.
+  const everyStore = everyReport.length
+    ? await rolePlaces(docs, person, today, { role: everyReport[0], source: 'also_given', title: null, spot: { kind: 'company' } }, 'Whole company', mine) : []
+  return { held: withPlaces, unmapped, places: mergePlaces([...withPlaces.filter(r => dash.has(r.role)).flatMap(r => r.places), ...everyStore]),
+    opens: opensDash(held, model), roles: [...new Set(held.map(h => h.role))].sort(), everyReport, mine }
 }
 
 /**

@@ -4,7 +4,7 @@ import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole
 import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
 import { convertGrants } from './switch-over'
-import { accessPage, grantOptions, whoIs } from './report-access-server'
+import { accessPage, grantOptions, personLookup, whoIs } from './report-access-server'
 import { liveReach } from './access-source'
 import { SITE_STORE_FIELDS, every, mergePlaces, openStore } from './business-access'
 import { businessAccessSummary, switchOverLog } from './switch-over-server'
@@ -620,10 +620,11 @@ describe('Codex adversarial round 4 on 1233e3d8c', () => {
     return tables
   }
 
-  it('gives someone outside the staff list holding Owner Director and Dash Reader every store and a filtered report given to them, in Explain', async () => {
+  // #1277: Owner Director views every report (View Reports at reach All), not only the one given to them.
+  it('gives someone outside the staff list holding Owner Director and Dash Reader every store and every report, in Explain', async () => {
     const explained = await explainPerson(context(await leader(), { payload: { person: 'ext' }, peopleRoles: { ext: ['Dash Reader'] } }) as never)
     expect([explained.next, explained.reports.map(r => r.name), explained.change.stores_gained.map(s => s.name)])
-      .toEqual([{ opens: true, reports: 1, stores: 1 }, ['Vendor Sales'], ['Lakeside']])
+      .toEqual([{ opens: true, reports: 2, stores: 1 }, ['Sales', 'Vendor Sales'], ['Lakeside']])
   })
 
   it('lists the same person, holding no Dash role, as needing one on the comparison', async () => {
@@ -1185,3 +1186,72 @@ describe('reading every row', () => {
   })
 })
 
+
+// #1277 (owner, 18-Nov-2026): Owner Director holds View Reports at reach All: "the whole company and every report".
+describe('a role viewing every report', () => {
+  /** A second store, Riverside, so every store is more than one; Owner Director given by hand to someone with no grant. */
+  async function withOwnerDirector(tables?: Record<string, Row[]>) {
+    const world = tables ?? await seeded()
+    world.Site.push({ row_id: 'RVS', name: 'Riverside', is_store: true, cluster: null, operating_region: 'West' })
+    world.Plant.push({ row_id: '9902', site: 'RVS', plant_type: 'Store' })
+    world.Employee.push({ row_id: 'E-OD', name: 'Omana', employee_code: 'E-OD', status: 'Current', person: 'od' })
+    await giveRole(context(world, { payload: { person: 'od', change: 'Also give', role: roleId(world, 'Owner Director') } }) as never)
+    return world
+  }
+  /** A role an admin adds later: reaches one store, and views every report. */
+  function auditor(tables: Record<string, Row[]>, reach: 'All' | 'Area', over: Partial<Row> = {}) {
+    tables['dash.business_role'].push({ row_id: 'r-aud', role_name: 'Auditor', reaches: 'Store', by_hand_only: true })
+    tables['dash.business_role_permission'].push({ row_id: 'p-aud', business_role: 'r-aud', app: 'Dash', level: 'Reader', verb: 'View', thing: 'Reports', reach, ...over })
+  }
+
+  it('offers every report on Explain, at every store, saying why in plain words', async () => {
+    const explained = await explainPerson(context(await withOwnerDirector(), { payload: { person: 'od' } }) as never)
+    expect([explained.reports.map(r => [r.name, r.why]), explained.next.stores, explained.change.every_report])
+      .toEqual([[['Sales', ['Every report, through Owner Director']], ['Vendor Sales', ['Every report, through Owner Director']]], 2, ['Owner Director']])
+  })
+
+  it('says so on the comparison', async () => {
+    const row = (await accessChanges(context(await withOwnerDirector(), { peopleRoles: { od: ['Dash Reader'] } }) as never)).groups.flatMap(g => g.people).find(p => p.person === 'od')!
+    expect([row.every_report, row.gained.map(r => r.name), row.stores_gained.map(s => s.name)]).toEqual([['Owner Director'], ['Sales', 'Vendor Sales'], ['Lakeside', 'Riverside']])
+  })
+
+  it('opens every report and every store live, once business roles decide', async () => {
+    const { tables } = await switched(await withOwnerDirector())
+    const reader = readerOf(tables, 'od', ['Dash Reader'])
+    expect([(await reportsFor(reader as never)).map(r => r.report_key).sort(), await scopeOf(tables, 'od')]).toEqual([['sales', 'vs'], { 9901: null, 9902: null }])
+    const looked = await personLookup(context(tables, { payload: { person: 'od' }, peopleRoles: { od: ['Dash Reader'] } }) as never, today, async () => ({ any: true, wholeStore: true }))
+    expect(looked.reports.map(r => r.because)).toEqual([['Every report, through Owner Director'], ['Every report, through Owner Director']])
+  })
+
+  it('marks every bundle as given', async () => {
+    const { tables } = await switched(await withOwnerDirector())
+    tables['dash.report_bundle'].push({ row_id: 'b2', bundle_name: 'Other pack' })
+    const options = await grantOptions(context(tables, { payload: { person: 'od' } }) as never, today)
+    expect(options.choices.filter(c => c.group === 'Bundle').map(c => c.given)).toEqual([true])
+  })
+
+  it('holds for any role an admin gives View Reports at reach All, wherever the role reaches', async () => {
+    const tables = await seeded()
+    tables.Site.push({ row_id: 'RVS', name: 'Riverside', is_store: true, cluster: null, operating_region: 'West' })
+    tables.Plant.push({ row_id: '9902', site: 'RVS', plant_type: 'Store' })
+    auditor(tables, 'All', { verb: ' view ', thing: 'REPORTS' })
+    await giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: 'r-aud', site: 'LKS' } }) as never)
+    const explained = await explainPerson(context(tables, { payload: { person: 'st' } }) as never)
+    expect([explained.reports.map(r => r.why), explained.next.stores]).toEqual([[['Every report, through Auditor'], ['Every report, through Auditor']], 2])
+  })
+
+  it('gives nothing more to a role viewing reports at any narrower reach, nor through another app, verb or thing', async () => {
+    for (const over of [{ reach: 'Area' }, { app: 'Tasker' }, { verb: 'Give' }, { thing: 'Sections' }]) {
+      const tables = await seeded()
+      auditor(tables, 'All', over)
+      await giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: 'r-aud', site: 'LKS' } }) as never)
+      const explained = await explainPerson(context(tables, { payload: { person: 'st' } }) as never)
+      expect([over, explained.reports, explained.change.every_report]).toEqual([over, [], []])
+    }
+  })
+
+  it('leaves a store manager with only the reports given, live', async () => {
+    const { tables } = await switched(await withOwnerDirector())
+    expect((await reportsFor(readerOf(tables, 'sm', ['Dash Reader']) as never)).map(r => r.report_key).sort()).toEqual(['sales', 'vs'])
+  })
+})

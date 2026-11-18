@@ -36,6 +36,8 @@ export interface AccessContext {
   people?: {
     names(ids: string[]): Promise<Record<string, string | null>>
     rolesOf?(person: string): Promise<readonly string[]>
+    /** featherbase #1277: the roles of many people at once, as rolesOf gives each; absent on an older platform. */
+    rolesOfMany?(persons: string[]): Promise<Readonly<Record<string, readonly string[]>>>
     roleNames?(): Promise<readonly string[]>
     waitingForAccess?(): Promise<readonly { person: string; name?: string | null; asked_at: string }[]>
   }
@@ -95,8 +97,11 @@ export async function reportsGivenNow(base: Base, person: string, roles: readonl
   const { access, model } = await liveBusinessAccess(base, person, on)
   const { rows, members } = await grants(base)
   const roleName = new Map(model.roles.map(r => [r.id, r.name]))
-  return new Map([...businessReportsReaching({ person, roles: access.roles }, rows, members)].map(([key, whys]) =>
-    [key, whys.map((why): Because => why.person ? { kind: 'person', receiver: person, bundle: why.bundle } : { kind: 'business_role', receiver: roleName.get(why.role!)!, bundle: why.bundle })]))
+  // A role viewing every report gives every report the instance has; the reports are read only for its holders.
+  const every = access.everyReport.length ? (await all(base, REPORT, ['report_key'])).map(row => exact(row.report_key)).filter(Boolean) : []
+  return new Map([...businessReportsReaching({ person, roles: access.roles, everyReport: access.everyReport }, rows, members, every)].map(([key, whys]) =>
+    [key, whys.map((why): Because => why.person ? { kind: 'person', receiver: person, bundle: why.bundle }
+      : { kind: 'business_role', receiver: roleName.get(why.role!)!, bundle: why.bundle, ...(why.every ? { every: true as const } : {}) })]))
 }
 
 /** Does the caller manage report access for the whole company? */
@@ -159,6 +164,7 @@ export async function personNames(ctx: AccessContext, ids: string[]): Promise<Ma
 
 /** One `because`, as the person lookup says it: "Job Team Leader, through Team leader pack". */
 export function becauseLine(because: Because, bundleName: (id: string) => string): string {
+  if (because.every) return `Every report, through ${because.receiver}`
   const route = because.kind === 'person' ? 'Given directly' : `${({ role: 'Role', job: 'Job', business_role: 'Business role' } as const)[because.kind]} ${because.receiver}`
   return because.bundle ? `${route}, through ${bundleName(because.bundle)}` : route
 }
@@ -517,7 +523,7 @@ export async function grantOptions(ctx: AccessContext, on: string) {
   const reaching = await reportsGivenNow(base as Base, person, roles, on, source)
   const { rows } = await grants(base)
   const bundleReaches = (bundle: string) => source === BUSINESS_ROLES
-    ? [...reaching.values()].some(why => why.some(b => b.bundle === bundle))
+    ? [...reaching.values()].some(why => why.some(b => b.bundle === bundle || b.every))
     : rows.some(row => row.report_bundle === bundle
       && (row.person === person || (row.role !== null && roles.includes(row.role)) || (row.job !== null && jobs.includes(row.job))))
   const named = await names(ctx)

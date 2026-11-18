@@ -3027,6 +3027,12 @@
       "fromVersion": "0.13.30",
       "toVersion": "0.13.31",
       "operations": []
+    },
+    {
+      "id": "every_report_and_bulk_comparison",
+      "fromVersion": "0.13.31",
+      "toVersion": "0.13.32",
+      "operations": []
     }
   ],
   "baseTables": {

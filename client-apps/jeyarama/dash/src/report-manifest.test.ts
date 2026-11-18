@@ -331,11 +331,13 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['business_roles_live', '0.13.29', '0.13.30', 9],
       // #1277: an old grant naming more than one thing is given to no role; no Table change.
       ['old_grants_one_receiver', '0.13.30', '0.13.31', 0],
+      // #1277: a role viewing every report gets every report; the comparison reads the company once. No Table change.
+      ['every_report_and_bulk_comparison', '0.13.31', '0.13.32', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
-    expect(pkg.version).toBe('0.13.31')
+    expect(pkg.version).toBe('0.13.32')
   })
 })
