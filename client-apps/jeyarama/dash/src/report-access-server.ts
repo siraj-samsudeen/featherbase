@@ -12,6 +12,9 @@ import { ALL_STORES_ROLE, type Documents } from './provider.ts'
 import { BUSINESS_ROLES, accessSource, liveBusinessAccess } from './access-source.ts'
 import type { Base } from './business-access.ts'
 
+/** #1313: the day in India of a timestamp ('' for none): after midnight IST is already the next day here. */
+const dayInIndia = (at: string) => (at ? istToday(Date.parse(at)) : '')
+
 type Row = Record<string, unknown>
 
 /** The role that manages report access. System Managers manage it too. */
@@ -201,7 +204,7 @@ export async function accessPage(ctx: AccessContext, on: string = istToday()) {
     // A Team Report Manager takes away only what they gave someone in their team.
     const removable = !team || exact(row.created_by) === ctx.user
     return { id: exact(row.row_id), updated_at: exact(row.updated_at), gives, to, removable, given_by: text(row.given_by_name) || people.get(exact(row.created_by)) || (exact(row.created_by) === 'Administrator' ? 'Administrator' : 'Someone'),
-      given_on: exact(row.updated_at).slice(0, 10) }
+      given_on: dayInIndia(exact(row.updated_at)) }
   }).filter(row => row.gives && row.to)
     .sort((a, b) => a.gives!.name.localeCompare(b.gives!.name) || a.to!.name.localeCompare(b.to!.name))
   return {
@@ -219,7 +222,7 @@ export async function accessPage(ctx: AccessContext, on: string = istToday()) {
     business_roles: team ? [] : [...businessRoles].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
     jobs: [...new Set(jobs.map(row => exact(row.job)).filter(Boolean))].sort(),
     rows,
-    waiting: waiting.map(w => ({ person: w.person, name: w.name || people.get(w.person) || 'Someone', asked_on: w.asked_at.slice(0, 10), who: who.get(w.person) })),
+    waiting: waiting.map(w => ({ person: w.person, name: w.name || people.get(w.person) || 'Someone', asked_on: dayInIndia(w.asked_at), who: who.get(w.person) })),
   }
 }
 
