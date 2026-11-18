@@ -49,8 +49,7 @@ function warehouse(records: Feed[], latestDay: string | null = istToday()) {
   const reads: string[] = []
   _setWarehouseReader(async (q) => {
     reads.push(q)
-    if (q.includes('as last_present')) return records.filter((f) => f.present).map((f) => [f.key, f.present])
-    return q.includes('attendance') ? [[latestDay]] : records.map(feedRow)
+    return records.map((f) => [...feedRow(f), f.present ?? null, latestDay])
   })
   return reads
 }
@@ -286,7 +285,7 @@ describe('a bad feed or a big batch changes nothing', () => {
 
     warehouse([])
     run = await runRosterLink('stylehr')
-    expect(run.status!.plan!.refused).toBe('the warehouse returned no StyleHR employee records')
+    expect(run.status!.plan!.refused).toContain('latest day none')
 
     _setWarehouseReader(async () => {
       throw new Error('warehouse down')
@@ -294,6 +293,14 @@ describe('a bad feed or a big batch changes nothing', () => {
     run = await runRosterLink('stylehr')
     expect(run.status!.plan!.refused).toBe('the warehouse could not be read: warehouse down')
     expect(await state('TT-1001')).toBe('Working')
+  })
+
+  test('the records, each one’s last day at work and the feed day come from one read, so one snapshot', async ({ admin }) => {
+    await setUp(admin, [crewRow(1)])
+    const reads = warehouse([{ key: '7001', exit: PAST, present: istToday() }])
+    const run = await runRosterLink('stylehr')
+    expect(reads).toHaveLength(1)
+    expect(run.status!.plan!.held_at_work).toHaveLength(1)
   })
 
   test('a feed day after today is a misdated row, and changes nobody', async ({ admin }) => {

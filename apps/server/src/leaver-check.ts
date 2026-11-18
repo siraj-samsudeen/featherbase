@@ -257,8 +257,15 @@ const RECORDS_SQL = `
   select e.employee_key, e.employee_code, e.payroll_active, e.movement_active, e.date_of_joining, x.exit_date
   from "gold"."hr"."employee" e
   left join "gold"."hr"."employee_exit" x on x.employee_key = e.employee_key and x.is_leaver`
-// #1286: each record's last day at work, from the table the feed day is judged by.
-const LAST_PRESENT_SQL = `select employee_key, max(date) as last_present from "gold"."hr"."attendance" where is_present group by 1`
+// #1286: the records, each one's last day at work and the feed day, in ONE
+// statement, so all three come from the same warehouse snapshot.
+const RECORDS_WITH_PRESENCE_SQL = `
+  with a as (select employee_key, max(date) as last_present from "gold"."hr"."attendance" where is_present group by 1)
+  select e.employee_key, e.employee_code, e.payroll_active, e.movement_active, e.date_of_joining, x.exit_date,
+    a.last_present, (select max(last_present) from a) as feed_day
+  from "gold"."hr"."employee" e
+  left join "gold"."hr"."employee_exit" x on x.employee_key = e.employee_key and x.is_leaver
+  left join a on a.employee_key = e.employee_key`
 // A day with people present is a day StyleHR loaded and the warehouse built.
 const FEED_DAY_SQL = `select max(date) from "gold"."hr"."attendance" where is_present`
 
@@ -269,27 +276,28 @@ export function _setWarehouseReader(r: WarehouseReader | null): void {
 }
 const read: WarehouseReader = (q) => (reader ? reader(q) : readMotherDuck(q, 'run the leaver check', ['gold']))
 
-export async function readWarehouse(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
+const recordOf = (r: unknown[]): EmployeeRecord => ({
+  employee_key: String(r[0]),
+  employee_code: r[1] == null ? null : String(r[1]),
+  payroll_active: bool(r[2]),
+  movement_active: bool(r[3]),
+  date_of_joining: isoDay(r[4]),
+  exit_date: isoDay(r[5]),
+})
+
+async function readWarehouse(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
   const [feed] = await read(FEED_DAY_SQL)
   const rows = await read(RECORDS_SQL)
-  return {
-    latestFeedDay: isoDay(feed?.[0]),
-    records: rows.map((r) => ({
-      employee_key: String(r[0]),
-      employee_code: r[1] == null ? null : String(r[1]),
-      payroll_active: bool(r[2]),
-      movement_active: bool(r[3]),
-      date_of_joining: isoDay(r[4]),
-      exit_date: isoDay(r[5]),
-    })),
-  }
+  return { latestFeedDay: isoDay(feed?.[0]), records: rows.map(recordOf) }
 }
 
 /** The feed's records with each one's last day at work (#1286). */
 export async function readWarehouseWithPresence(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
-  const feed = await readWarehouse()
-  const last = new Map((await read(LAST_PRESENT_SQL)).map((r) => [String(r[0]), isoDay(r[1])]))
-  return { ...feed, records: feed.records.map((r) => ({ ...r, last_present_day: last.get(r.employee_key) ?? null })) }
+  const rows = await read(RECORDS_WITH_PRESENCE_SQL)
+  return {
+    latestFeedDay: rows.length ? isoDay(rows[0][7]) : null,
+    records: rows.map((r) => ({ ...recordOf(r), last_present_day: isoDay(r[6]) })),
+  }
 }
 
 /** Nothing to check on an instance with no StyleHR identifier system. */
