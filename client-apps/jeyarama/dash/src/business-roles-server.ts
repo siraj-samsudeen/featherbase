@@ -12,7 +12,8 @@ import { EMPLOYEE_STATUS, checked, exact, holdsOn, text } from './values.ts'
 import { istToday } from './report.ts'
 import { STARTING_ROLES } from './starting-roles.ts'
 import { opensDashFor, readableByRoles, offered } from './report-eligibility.ts'
-import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
+import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, isStore, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
+import { openStore, siteKindRead, siteStoreFields } from './site-kind.ts'
 import { businessReports, businessRolesOpen, opensDashByBusinessRoles } from './business-reports.ts'
 import { ensureStartingRoles, logger } from './switch-over.ts'
 
@@ -50,13 +51,23 @@ export type WorldDocuments = Base & { rows(table: string): Promise<Row[]> }
  * first column, so a person's reads cost what they find, not the size of the Table. `withRetired`: as the scope
  * provider reads them (retired rows included), or as the app's own reads do (the old rules' report grants, by job).
  */
+/** The columns each comparison reader reads, Table by Table: Site's kind and status too where the instance's Site has
+ *  them (#1280), asked once as every reader asks it. One home, so the bulk comparison and Explain never differ. */
+function siteAwareFields(base: Base, designations: boolean): (table: string) => Promise<string[]> {
+  const fields = fieldsFor(designations)
+  let siteFields: Promise<string[]> | undefined
+  return async table => table === 'Site'
+    ? await (siteFields ??= siteStoreFields(siteKindRead(base)).then(more => [...new Set([...fields.Site!, ...more])]))
+    : fields[table]!
+}
+
 export function memoryDocuments(base: Base, designations: boolean, { withRetired = true }: { withRetired?: boolean } = {}): WorldDocuments {
   const loaded = new Map<string, Promise<Row[]>>()
   const indexes = new Map<string, Map<string, Row[]>>()
   const availability = new Map<string, Promise<boolean>>()
-  const fields = fieldsFor(designations)
+  const fieldsOf = siteAwareFields(base, designations)
   const rows = (table: string) => {
-    if (!loaded.has(table)) loaded.set(table, withRetired ? everyRow(base, table, fields[table]!) : all(base, table, fields[table]!))
+    if (!loaded.has(table)) loaded.set(table, fieldsOf(table).then(f => (withRetired ? everyRow(base, table, f) : all(base, table, f))))
     return loaded.get(table)!
   }
   const indexOf = async (table: string, column: string) => {
@@ -92,9 +103,11 @@ export function memoryDocuments(base: Base, designations: boolean, { withRetired
   }
   return {
     rows,
-    available: table => {
-      if (!availability.has(table)) availability.set(table, base.available(table))
-      return availability.get(table)!
+    // With columns (#1280), the instance is asked about them too; each question is asked once.
+    available: (table, columns) => {
+      const key = [table, ...(columns ?? [])].join('\u0000')
+      if (!availability.has(key)) availability.set(key, base.available(table, columns))
+      return availability.get(key)!
     },
     // Every read through here names its page length.
     list: async (table, args) => {
@@ -110,14 +123,14 @@ export function memoryDocuments(base: Base, designations: boolean, { withRetired
  */
 export function directDocuments(base: Base, designations: boolean): WorldDocuments {
   const loaded = new Map<string, Promise<Row[]>>()
-  const fields = fieldsFor(designations)
+  const fieldsOf = siteAwareFields(base, designations)
   return {
     rows: table => {
-      if (!loaded.has(table)) loaded.set(table, everyRow(base, table, fields[table]!))
+      if (!loaded.has(table)) loaded.set(table, fieldsOf(table).then(f => everyRow(base, table, f)))
       return loaded.get(table)!
     },
-    available: table => base.available(table),
-    list: (table, args) => base.list(table, { ...args, fields: [...new Set([...args.fields, ...fields[table]!])], with_retired: true }),
+    available: (table, columns) => base.available(table, columns),
+    list: async (table, args) => base.list(table, { ...args, fields: [...new Set([...args.fields, ...await fieldsOf(table)])], with_retired: true }),
   }
 }
 
@@ -392,7 +405,7 @@ export async function explainPerson(context: AccessContext) {
     `${w.person ? 'Given to them directly' : `Given to ${roleName(w.role!)}, for ${areaWords(w.role!)}`}${w.bundle ? `, through ${text(bundleNames.get(w.bundle))}` : ''}`
   const plants = new Map((await world.docs.rows('Plant')).map(p => [exact(p.row_id), exact(p.site)]))
   const sites = await world.names('Site')
-  const stores = (await world.docs.rows('Site')).filter(s => checked(s.is_store)).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((a, b) => a.name.localeCompare(b.name))
+  const stores = (await world.docs.rows('Site')).filter(openStore).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((a, b) => a.name.localeCompare(b.name))
   const employees = new Map((await world.docs.rows('Employee')).map(e => [exact(e.row_id), e]))
   const jobs = (await world.docs.list('Job Assignment', { fields: ['site', 'reports_to', 'job', 'starts_on', 'ends_on'], filters: [['employee', 'in', shadow.employees.map(e => exact(e.row_id))]], limit_page_length: 10_000 })).filter(j => holdsOn(j, world.today))
   const employeePart = (id: string) => ({ name: text(employees.get(id)?.name), table: 'Employee', id, code: id })
@@ -483,7 +496,7 @@ export async function giveRole(context: AccessContext) {
   if (!person) ctx.reject!('Choose a person')
   if (!CHANGES.includes(change)) ctx.reject!('Choose Correct or Also give')
   if (!(await roleExists(ctx, role))) ctx.reject!('Choose a business role')
-  if (site && !(await all(ctx.baseTables, 'Site', ['is_store'], [['row_id', '=', site]])).some(r => checked(r.is_store))) ctx.reject!('Choose a store')
+  if (site && !(await isStore(ctx.baseTables, site))) ctx.reject!('Choose a store')
   if (ends && !/^\d{4}-\d{2}-\d{2}$/.test(ends)) ctx.reject!('The end date is a day, such as 31-Mar-2027')
   if (ends && ends < istToday()) ctx.reject!('The end date has passed')
   const saved = await ctx.documents!.create!(ROLE_ASSIGNMENT, { person, change, business_role: role, site: site || null, ends_on: ends || null, reason: reason || null, given_by_name: text(ctx.userName) || null })

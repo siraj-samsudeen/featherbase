@@ -85,7 +85,7 @@ const area = (name: string) => userEvent.click(screen.getByRole('tab', { name })
 
 async function tagPlant(as: Client) {
   await openRow(as)
-  await area('Collaboration')
+  await area('Activity')
   await userEvent.type(await screen.findByTestId('tag-input'), 'priority')
   await onScreen().clickButton('Add')
   await onScreen().within(byTestId('tag-chip'), (el) => el.assertText('priority'))
@@ -117,11 +117,11 @@ describe('record-workspace', () => {
       await onScreen().pressKey('Escape')
       expect(actions).toHaveFocus()
       expect(screen.queryByTestId('form-print')).not.toBeInTheDocument()
-      // #910: related navigation is the row's Map and Tree tabs.
+      // #910, #1273: related navigation is the row's Links and Map tabs.
       await onScreen().clickButton('Map')
       expect(await screen.findByTestId('relation-map')).toBeVisible()
-      await onScreen().clickButton('Tree')
-      expect(await screen.findByRole('tree')).toBeVisible()
+      await onScreen().clickButton('Links')
+      expect(await screen.findByTestId('record-links')).toBeVisible()
     })
   })
 
@@ -187,7 +187,7 @@ describe('record-workspace', () => {
       await onScreen().pressKey('Escape')
     })
     await step('assigning, uploading and composing discussion are absent', async () => {
-      await onScreen().clickButton('Collaboration')
+      await onScreen().clickButton('Activity')
       await screen.findByTestId('tags-panel')
       for (const id of ['assign-to', 'attach-file', 'attachment-delete']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
       await onScreen().clickButton('Activity')
@@ -208,7 +208,7 @@ describe('record-workspace', () => {
     await step('Tenkasi has an assignment, a tag, a file and a discussion', () => collaborate(admin))
     await step('the user opens Tenkasi with collaboration disabled', () => openRow(admin))
     await step('the existing collaboration is readable without collaboration mutation controls', async () => {
-      await onScreen().clickButton('Collaboration')
+      await onScreen().clickButton('Activity')
       const me = await admin.get<{ full_name: string }>(`/api/table/Person/${encodeURIComponent(admin.user!)}`)
       await onScreen().within(byTestId('assignments-panel'), (el) => el.assertText(me.full_name))
       await onScreen().within(byTestId('tags-panel'), (el) => el.assertText('priority'))

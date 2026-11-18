@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { choiceLabel, rowDisplayTitle, tableHref } from 'shared'
+import { choiceLabel, rowDisplayTitle } from 'shared'
 import type { ReactNode } from 'react'
 import { RecordLink, fmtCount } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
@@ -10,6 +10,9 @@ import type { NavPane } from '../lib/nav-path'
 import { UNSEEN_ROW, forwardLinks, groupOrder, shownCode, useGroupRows, useRowName, type BacklinkGroup } from '../lib/relations'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useI18n } from '../lib/i18n'
+import { useCapabilities } from '../lib/session'
+import { isRowsReadOnly } from '../lib/meta'
+import { GridButton, LinkTickList, groupListHref, newRowHref, useGroupPlan, type GroupPlan } from './LinkTickList'
 
 type Row = Record<string, unknown>
 
@@ -23,7 +26,7 @@ type Row = Record<string, unknown>
  * list read is permission-scoped). The record panel draws it; later slices
  * (the Links tab, a person's linked records, tick editing) reuse it.
  */
-export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, showAllHref, onOpen, editable: _editable = false, heading = true }: {
+export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, showAllHref, onOpen, editable = false, heading = true }: {
   /** The record's Table and id: what the group's rows point at. */
   table: string
   record: string
@@ -33,10 +36,31 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
   showAllHref?: string
   /** Opens a row in place (the record panel's drill); otherwise each link goes to its page. */
   onOpen?: (pane: NavPane) => void
-  /** Reserved for tick editing (a later slice); not used yet. */
+  /** #1273: a relationship the viewer may change reads as a tick list (C5), and
+   *  the header offers Open as grid where both sides are small (C12). */
   editable?: boolean
   /** Draws the group's name and count above the rows. */
   heading?: boolean
+}) {
+  const plan = useGroupPlan(table, record, group)
+  const href = showAllHref ?? groupListHref(group)
+  if (editable && plan.tick && plan.linkMeta && plan.column && plan.farTable && plan.farMeta && plan.choices)
+    return <LinkTickList table={table} record={record} group={group} onOpen={onOpen} gridHref={href}
+      plan={plan as Parameters<typeof LinkTickList>[0]['plan']} />
+  return <LinkedRowsList table={table} record={record} group={group} maxRows={maxRows} href={href} onOpen={onOpen}
+    heading={heading} plan={editable ? plan : undefined} />
+}
+
+/** The slice-1 list of a group; with a plan (on the Links tab), Open as grid and + New. */
+function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, plan }: {
+  table: string
+  record: string
+  group: BacklinkGroup
+  maxRows: number
+  href: string
+  onOpen?: (pane: NavPane) => void
+  heading: boolean
+  plan?: GroupPlan
 }) {
   const { connection } = group
   const meta = useMeta(connection.table)
@@ -55,17 +79,26 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
   const own = recordMeta.data && doc.data ? forwardLinks(recordMeta.data, doc.data) : []
   const data = rows.data?.data ?? []
   const total = rows.data?.total ?? group.count
-  const href = showAllHref ?? `${tableHref(connection.table)}?filters=${encodeURIComponent(JSON.stringify(connection.filters))}`
+  const caps = useCapabilities()
+  // C4: an empty group stays, greyed, and offers + New: a row already linked here.
+  const canAdd = Boolean(caps && meta.data && !isRowsReadOnly(meta.data) && !connection.system_written
+    && (caps.manage || caps.creatable.includes(connection.table)))
+  const newHref = canAdd ? newRowHref(group, record) : undefined
   // A group linked through a sub-table has no column of its own pointing back.
   const backLink = connection.via ? undefined : connection.column
   return (
     <section aria-label={group.label} data-testid="linked-rows-group" className="flex min-w-0 flex-col gap-3">
       {heading && (
-        <h4 className={total ? 'text-sm font-semibold text-ink' : 'text-sm font-semibold text-ink-muted'}>
-          {group.label} <span className="font-normal text-ink-muted">{fmtCount(total)}</span>
-        </h4>
+        <div className="flex min-w-0 items-center gap-2">
+          <h4 className={total ? 'text-sm font-semibold text-ink' : 'text-sm font-semibold text-ink-muted'} data-empty={total ? undefined : 'true'}>
+            {group.label} <span className="font-normal text-ink-muted">{fmtCount(total)}</span>
+          </h4>
+          <span className="flex-1" />
+          {plan?.grid && <GridButton href={href} />}
+        </div>
       )}
-      {!total ? <p className="text-sm text-ink-muted">No rows</p>
+      {!total ? <p className="flex items-center gap-3 text-sm text-ink-muted">No rows
+          {newHref && <ListLink href={newHref} quiet={false}>+ New</ListLink>}</p>
         : rows.isPending || !meta.data || doc.isPending ? <p className="text-sm text-ink-subtle">Loading…</p>
         : (
           <ul className="flex min-w-0 flex-col gap-0.5">

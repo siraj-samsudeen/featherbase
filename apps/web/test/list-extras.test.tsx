@@ -22,6 +22,8 @@ async function seed(admin: Parameters<typeof renderApp>[1]) {
   await admin.post('/api/table_def', {
     name: T, id_pattern: 'prompt',
     columns: [
+      // Search looks in the first text column, which then has no field box (#1289); Customer keeps its box.
+      { column_name: 'note', column_type: 'Data', label: 'Note' },
       { column_name: 'customer', column_type: 'Data', label: 'Customer', in_list_view: true, reqd: true },
       { column_name: 'lines', column_type: 'Sub-table', label: 'Lines', row_table: 'Lx Line' },
     ],

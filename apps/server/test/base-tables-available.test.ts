@@ -26,6 +26,15 @@ describe('whether a base Table is available (#1230)', () => {
     expect(await reader(['Covered Rows']).available('Covered Rows')).toBe(true)
   })
 
+  // #1280: asked about named columns, every one must be among those the app declared it reads.
+  test('with named columns: true only when each is declared and the Table has them all', async ({ admin }) => {
+    await makeTable(admin, { name: 'Covered Rows', columns: ['store', 'person'] })
+    const helper = baseTablesReader('someapp', { read: { 'Covered Rows': ['store', 'person'] }, propose: {} } as never, ['Covered Rows']).helper
+    expect(await helper.available('Covered Rows', ['store'])).toBe(true)
+    expect(await helper.available('Covered Rows', ['store', 'person'])).toBe(true)
+    expect(await helper.available('Covered Rows', ['store', 'undeclared'])).toBe(false)
+  })
+
   test('any other failure is not hidden as unavailable', async () => {
     const helper = baseTablesReader('someapp', { read: { 'Broken Read': ['x'] }, propose: {} } as never, ['Broken Read']).helper
     await expect(helper.available('Broken Read')).rejects.toThrow('The database went away')

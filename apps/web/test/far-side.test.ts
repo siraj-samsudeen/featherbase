@@ -131,10 +131,12 @@ describe('farSides', () => {
       .toEqual([])
   })
 
-  it('keeps a Table with no title by its own name', () => {
+  // #1273 (verifier): a Table with no title has no name of its own to read by, so its
+  // rows read by their far side, as its tick list does; slice 1 kept them by their own name.
+  it('reads a Table with no title by its far side, as its tick list does', () => {
     const posting = { ...jobAssignment, id_pattern: 'hash', title_column: null } as unknown as TableMeta
-    expect(farSides(posting, { row_id: 'ja1', section: 'KL-RR-S13039', employee: 'E1001' }, { backLink: 'section', record: section.record, own: [] }))
-      .toEqual([])
+    expect(cols(farSides(posting, { row_id: 'ja1', section: 'KL-RR-S13039', employee: 'E1001' }, { backLink: 'section', record: section.record, own: [] })))
+      .toEqual(['employee'])
   })
 
   it('never names a row by a link the viewer may not read', () => {

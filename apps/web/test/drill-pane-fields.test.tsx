@@ -159,7 +159,8 @@ test('Filter from the pane keeps the filters the list already had', async ({ adm
   await select('Hinges')
   const hinges = await pane(/^Hinges/)
   fireEvent.click(await within(hinges).findByRole('button', { name: 'Filter' }, T))
-  await waitFor(() => expect(screen.getAllByTestId('filter-chip')).toHaveLength(2))
+  // #1289: each filter shows once, as a chip or in its box, each with one ✕.
+  await waitFor(() => expect(screen.getAllByRole('button', { name: /^(Remove .+ filter|Clear the .+ filter)$/ })).toHaveLength(2))
   await waitFor(() => expect(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')).toHaveLength(1))
   expect(within(screen.getByTestId('list-rows')).getByRole('link', { name: 'Hinges' })).toBeInTheDocument()
 })

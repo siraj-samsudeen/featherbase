@@ -24,7 +24,7 @@ test('FILE-002: two attached files are listed and served, and removing one delet
   const { row_id } = await admin.post<{ row_id: string }>('/api/save_row', { table: DT, row: { title: 'with files' } })
 
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${row_id}`, admin)
-  await userEvent.click(await screen.findByRole('tab', { name: 'Collaboration' }))
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
   const panel = await screen.findByTestId('attachments-panel')
   await waitFor(() => expect(panel).toHaveTextContent('No attachments'))
 
@@ -64,7 +64,7 @@ async function openNote(admin: Parameters<typeof renderApp>[1]) {
     row_id,
     open: async () => {
       await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${row_id}`, admin)
-      await userEvent.click(await screen.findByRole('tab', { name: 'Collaboration' }))
+      await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
       return screen.findByTestId('attachments-panel')
     },
   }

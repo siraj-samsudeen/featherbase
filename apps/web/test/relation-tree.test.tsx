@@ -22,7 +22,10 @@ const unfold = (item: HTMLElement) => fireEvent.keyDown(item, { key: 'ArrowRight
 
 async function openTree(admin: Admin, table: string, row: string) {
   const view = await renderApp(`${tableHref(table)}/row/${row}`, admin)
-  fireEvent.click(await screen.findByRole('tab', { name: 'Tree' }))
+  fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
+  // #1273: the tree is the Links tab's other layout, chosen in View ▾.
+  fireEvent.click(await screen.findByTestId('view-menu-button'))
+  fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Tree' }))
   await tree()
   return view
 }
@@ -100,7 +103,7 @@ test('Focus here centres the tree on the chosen line', async ({ admin }) => {
   fireEvent.click(focus)
   await screen.findByRole('tree', { name: 'Around Enchakkal Supermarket' })
   expect(await line(`${PROFIT} 2`)).toHaveAttribute('aria-expanded', 'true')
-  expect(screen.getByRole('tab', { name: 'Tree' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true')
 })
 
 test('what is unfolded survives a look at the form', async ({ admin }) => {
@@ -109,7 +112,7 @@ test('what is unfolded survives a look at the form', async ({ admin }) => {
   unfold(await line('Enchakkal Supermarket · 1503'))
   await line(`${PROFIT} 2`)
   fireEvent.click(screen.getByRole('tab', { name: 'Form' }))
-  fireEvent.click(screen.getByRole('tab', { name: 'Tree' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Links' }))
   expect(await line('Enchakkal Supermarket · 1503')).toHaveAttribute('aria-expanded', 'true')
 })
 
@@ -129,7 +132,7 @@ test("a viewer who can't read Enchakkal's other plants sees a count of 2 on the 
 test('Tree of all shows every site as a folded line, unfolding into its region and its plants', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(tableHref(SITE), admin)
-  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of All' }))
   const t = await tree()
   await waitFor(() => expect(topLines(t)).toHaveLength(3))
   for (const item of topLines(t)) expect(item).toHaveAttribute('aria-expanded', 'false')
@@ -142,7 +145,7 @@ test('Tree of all shows every site as a folded line, unfolding into its region a
 test('Tree of all shows 20 rows at a time, with Show more', async ({ admin }) => {
   await seedSites(admin, { profitCentres: 25 })
   await renderApp(tableHref(PROFIT), admin)
-  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of All' }))
   const t = await tree()
   await waitFor(() => expect(topLines(t)).toHaveLength(20))
   fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
@@ -157,7 +160,7 @@ test('Show more reveals rows past one read\'s cap of 500, then goes away', async
      select 'pc-' || lpad(n::text, 3, '0'), 'Centre ' || lpad(n::text, 3, '0'), '1503' from generate_series(1, 510) n`,
   )
   await renderApp(tableHref(PROFIT), admin)
-  fireEvent.click(await screen.findByRole('button', { name: 'Tree of all' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Tree of All' }))
   const t = await tree()
   await waitFor(() => expect(topLines(t)).toHaveLength(20))
   for (let shown = 20; shown < 510; shown += 20) {

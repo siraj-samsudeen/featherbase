@@ -58,6 +58,17 @@ export const isBookkeeping = (f: ColumnDef) =>
   BOOKKEEPING.test(f.column_name) || BOOKKEEPING.test((f.label ?? '').trim().replace(/\s+/g, '_'))
 
 interface StoredForm { mode?: Arrangement; columns?: Columns }
+
+/** One person's settings for one Table (the form's arrangement, the list's
+ *  columns, #1273's Links view), one query shared by every reader. */
+export function userSettingsQuery(table: string) {
+  return {
+    queryKey: ['user-settings', table],
+    queryFn: () => api.get<{ settings: Record<string, unknown> & { form?: StoredForm } | null }>(`/api/user_settings/${encodeURIComponent(table)}`),
+    retry: false,
+    staleTime: Infinity,
+  }
+}
 const MODES = new Set(ARRANGEMENTS.map(([m]) => m))
 
 /** This person's arrangement for one Table, from their settings. A Table laid
@@ -65,13 +76,8 @@ const MODES = new Set(ARRANGEMENTS.map(([m]) => m))
  *  other Table starts by importance. */
 export function useFormArrangement(table: string, designed: boolean) {
   const queryClient = useQueryClient()
-  const key = ['user-settings', table]
-  const stored = useQuery({
-    queryKey: key,
-    queryFn: () => api.get<{ settings: { form?: StoredForm } | null }>(`/api/user_settings/${encodeURIComponent(table)}`),
-    retry: false,
-    staleTime: Infinity,
-  })
+  const { queryKey: key } = userSettingsQuery(table)
+  const stored = useQuery(userSettingsQuery(table))
   const [chosen, setChosen] = useState<StoredForm>({})
   const saved = stored.data?.settings?.form ?? {}
   const mode = chosen.mode ?? (saved.mode && MODES.has(saved.mode) ? saved.mode : designed ? 'source' : 'importance')
@@ -100,6 +106,57 @@ const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]:not([tab
 export function ViewMenu({ mode, columns, onMode, onColumns }: {
   mode: Arrangement; columns: Columns; onMode: (m: Arrangement) => void; onColumns: (c: Columns) => void
 }) {
+  const on = 'bg-action-tint text-action'
+  return (
+    <MenuShell>
+      {(close) => <>
+        <div role="group" aria-label="Arrange Fields">
+          <p aria-hidden className="px-2 pb-1 pt-1 text-xs text-ink-subtle">Arrange Fields</p>
+          {ARRANGEMENTS.map(([m, label]) => (
+            <button key={m} type="button" role="menuitemradio" aria-checked={mode === m} tabIndex={-1}
+              onClick={() => { onMode(m); close() }} data-testid={`arrange-${m}`}
+              className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none ${mode === m ? 'font-medium text-ink' : 'text-ink'}`}>
+              {label}{mode === m && <span aria-hidden>✓</span>}
+            </button>
+          ))}
+        </div>
+        <div role="group" aria-label="Columns" className="mt-1 flex items-center justify-between px-2 pb-1 pt-1.5">
+          <span aria-hidden className="text-xs text-ink-subtle">Columns</span>
+          <span className="inline-flex gap-0.5 rounded-md bg-subtle p-0.5">
+            {([1, 2] as const).map((c) => (
+              <button key={c} type="button" role="menuitemradio" aria-checked={columns === c} tabIndex={-1}
+                aria-label={c === 1 ? 'One column' : 'Two columns'}
+                onClick={() => { onColumns(c); close() }} data-testid={`arrange-columns-${c}`}
+                className={`min-w-8 rounded px-2 py-0.5 text-xs ${columns === c ? `${on} font-medium` : 'text-ink-muted'}`}>{c}</button>
+            ))}
+          </span>
+        </div>
+      </>}
+    </MenuShell>
+  )
+}
+
+/** #1273 (A3): one choice group of a View ▾ menu, as radio items. */
+export function MenuChoices<T extends string>({ label, options, value, onChange, close }: {
+  label: string; options: readonly (readonly [T, string])[]; value: T; onChange: (v: T) => void; close: () => void
+}) {
+  return (
+    <div role="group" aria-label={label}>
+      <p aria-hidden className="px-2 pb-1 pt-1 text-xs text-ink-subtle">{label}</p>
+      {options.map(([v, words]) => (
+        <button key={v} type="button" role="menuitemradio" aria-checked={value === v} tabIndex={-1}
+          onClick={() => { onChange(v); close() }} data-testid={`view-choice-${v}`}
+          className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm text-ink hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none ${value === v ? 'font-medium' : ''}`}>
+          {words}{value === v && <span aria-hidden>✓</span>}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** The View ▾ button and its menu: fixed to the button, closed by Escape, a
+ *  click outside or the page moving; arrows walk its choices. */
+export function MenuShell({ children }: { children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false)
   // #1267: fixed to the button's place, so a short record's scrolling area never clips the menu.
   const [at, setAt] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
@@ -134,7 +191,6 @@ export function ViewMenu({ mode, columns, onMode, onColumns }: {
     setOpen((was) => !was)
   }
   const close = () => { setOpen(false); button.current?.focus() }
-  const on = 'bg-action-tint text-action'
   return (
     <div className="relative">
       <button ref={button} type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
@@ -152,27 +208,7 @@ export function ViewMenu({ mode, columns, onMode, onColumns }: {
           }}
           style={{ top: at.top, right: at.right }}
           className={cardClasses('fixed z-30 w-60 p-1.5 shadow-lg')}>
-          <div role="group" aria-label="Arrange Fields">
-            <p aria-hidden className="px-2 pb-1 pt-1 text-xs text-ink-subtle">Arrange Fields</p>
-            {ARRANGEMENTS.map(([m, label]) => (
-              <button key={m} type="button" role="menuitemradio" aria-checked={mode === m} tabIndex={-1}
-                onClick={() => { onMode(m); close() }} data-testid={`arrange-${m}`}
-                className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none ${mode === m ? 'font-medium text-ink' : 'text-ink'}`}>
-                {label}{mode === m && <span aria-hidden>✓</span>}
-              </button>
-            ))}
-          </div>
-          <div role="group" aria-label="Columns" className="mt-1 flex items-center justify-between px-2 pb-1 pt-1.5">
-            <span aria-hidden className="text-xs text-ink-subtle">Columns</span>
-            <span className="inline-flex gap-0.5 rounded-md bg-subtle p-0.5">
-              {([1, 2] as const).map((c) => (
-                <button key={c} type="button" role="menuitemradio" aria-checked={columns === c} tabIndex={-1}
-                  aria-label={c === 1 ? 'One column' : 'Two columns'}
-                  onClick={() => { onColumns(c); close() }} data-testid={`arrange-columns-${c}`}
-                  className={`min-w-8 rounded px-2 py-0.5 text-xs ${columns === c ? `${on} font-medium` : 'text-ink-muted'}`}>{c}</button>
-              ))}
-            </span>
-          </div>
+          {children(close)}
         </div>
       )}
     </div>
