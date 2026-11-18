@@ -391,8 +391,9 @@ export async function businessRoles(context: AccessContext) {
   ])
   const givenTo = new Map<string, string[]>()
   for (const row of world.grants.rows) {
-    const what = row.report ? `dash.report|${row.report}` : row.report_bundle ? `dash.report_bundle|${row.report_bundle}` : ''
-    if (what && row.business_role) givenTo.set(what, [...new Set([...givenTo.get(what) ?? [], row.business_role])])
+    // A grant gives a report or a bundle; only one of those named here gets a line.
+    const what = row.report ? `dash.report|${row.report}` : `dash.report_bundle|${row.report_bundle}`
+    if (row.business_role) givenTo.set(what, [...new Set([...givenTo.get(what) ?? [], row.business_role])])
   }
   const shown = [...new Set([...holdersOf.values()].flatMap(set => [...set].slice(0, HOLDERS_SHOWN)).concat(roles.flatMap(r => [...peopleOf.get(r.id) ?? []].slice(0, HOLDERS_SHOWN))))]
   const names = await personNames(ctx, shown)
