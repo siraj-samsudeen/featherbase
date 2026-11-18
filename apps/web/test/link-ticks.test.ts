@@ -45,6 +45,13 @@ describe('tickColumn', () => {
     expect(tickColumn(roleGiven, { column: 'reason', via: null }, { table: 'Person', own: [] })).toBeUndefined()
   })
 
+  it('never ticks through a link that takes no value: a read-only link back or far side', () => {
+    const lockedBack = { ...roleGiven, columns: roleGiven.columns.map((c) => (c.column_name === 'person' ? { ...c, read_only: true } : c)) } as TableMeta
+    expect(tickColumn(lockedBack, { column: 'person', via: null }, { table: 'Person', own: ['Rg Site'] })).toBeUndefined()
+    const lockedFar = { ...roleGiven, columns: roleGiven.columns.map((c) => (c.column_name === 'role' ? { ...c, read_only: true } : c)) } as TableMeta
+    expect(tickColumn(lockedFar, { column: 'person', via: null }, { table: 'Person', own: ['Rg Site'] })).toBeUndefined()
+  })
+
   it('never ticks back into the record\'s own Table', () => {
     const reports = { ...roleGiven, columns: [link('person', 'Person'), link('reports_to', 'Person')] } as unknown as TableMeta
     expect(tickColumn(reports, { column: 'person', via: null }, { table: 'Person', own: [] })).toBeUndefined()
@@ -99,6 +106,8 @@ describe('mayTick', () => {
     expect(mayTick(manage, { ...roleGiven, archived_at: '2026-11-01' })).toBe(false)
     expect(mayTick(manage, { ...roleGiven, data_source: 'Payroll', source_writable: false })).toBe(false)
     expect(mayTick(manage, { ...roleGiven, data_source: 'Payroll', source_writable: true })).toBe(false)
+    // A Table whose row ids are typed by hand: the inline form has no box for one.
+    expect(mayTick(manage, { ...roleGiven, id_pattern: 'prompt' })).toBe(false)
   })
 })
 

@@ -31,8 +31,10 @@ export function tickColumn(meta: TableMeta, connection: Pick<Connection, 'column
   if (connection.via || !linksOnly(meta)) return undefined
   const skip = new Set([record.table, ...record.own])
   const back = meta.columns.find((c) => c.column_name === connection.column)
-  if (!back || back.column_type !== 'Reference') return undefined
-  return readableLinks(meta).find((c) => c.column_name !== connection.column && !skip.has(linkRowsTable(c) ?? ''))
+  // Ticking writes both links: a read-only one would be dropped on save (Codex review).
+  if (!back || back.column_type !== 'Reference' || back.read_only) return undefined
+  const far = readableLinks(meta).find((c) => c.column_name !== connection.column && !skip.has(linkRowsTable(c) ?? ''))
+  return far && !far.read_only ? far : undefined
 }
 
 const BOOKKEEPING = /^(created|updated|modified|deleted)_(on|at|by|by_id|date)$/i
@@ -85,6 +87,8 @@ export function mayTick(caps: Pick<Capabilities, 'manage' | 'creatable'> & { del
   if (!caps) return false
   // A source-bound Table's rows carry no maker or revision here: it lists, never ticks.
   if (meta.system_written || meta.archived_at || meta.data_source || meta.kind !== 'table') return false
+  // A row whose id its maker types has no box for it here: such a Table lists (Codex review).
+  if (meta.id_pattern === 'prompt') return false
   return caps.manage || (caps.creatable.includes(meta.name) && Boolean(caps.deletable?.includes(meta.name)))
 }
 
