@@ -54,6 +54,10 @@ export const scopeProviderDeclaration = z.object({ name, tables: z.array(text).m
   /** #1247: of `tables`, those an instance may not have yet: the provider checks documents.available()
    *  before reading one, and the health check names a missing one without failing. */
   optionalTables: z.array(text).refine(distinct).optional(),
+  /** #1280: per Table, columns an instance may not have yet: the provider reads them only once
+   *  documents.available(table, columns) says they are there, and the health check names a missing one
+   *  without failing. Each must be one the app declares reading under `baseTables.read`. */
+  optionalColumns: z.record(text, z.array(text).min(1).refine(distinct)).optional(),
   identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional() }).strict()
 export const readDeclaration = z.object({ version: z.literal(1), tables: z.array(text).refine(distinct),
   operations: z.record(name, operationSchema).refine(o => Object.keys(o).length > 0),

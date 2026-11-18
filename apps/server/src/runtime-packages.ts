@@ -431,6 +431,11 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     // An app's own Table is installed with the app, so it is never optional.
     const ownOptional = provider.optionalTables?.find(table => manifest.tables.some(t => t.name === table))
     if (ownOptional) throw new Error(`A scope provider's own Table ${ownOptional} is installed with the app; it cannot be optional`)
+    for (const [table, columns] of Object.entries(provider.optionalColumns ?? {})) {
+      if (!provider.tables.includes(table)) throw new Error(`A scope provider's optional columns of ${table} are not on one of the Tables it reads`)
+      const undeclared = columns.find(column => !manifest.baseTables?.read?.[table]?.includes(column))
+      if (undeclared) throw new Error(`A scope provider's optional column ${table}.${undeclared} is not one the app declares reading`)
+    }
     const ownUnmarked = provider.unmarkedTables?.find(table => manifest.tables.some(t => t.name === table))
     if (ownUnmarked) throw new Error(`A scope provider's own Table ${ownUnmarked} must be marked decides_scope`)
     for (const table of provider.tables) {

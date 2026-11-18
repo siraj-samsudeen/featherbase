@@ -930,7 +930,10 @@
       "Buyer Section",
       "Buyer Section Subcategory",
       "Designation"
-    ]
+    ],
+    "optionalColumns": {
+      "Site": ["site_kind", "status"]
+    }
   },
   "permissions": [
     {

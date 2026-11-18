@@ -372,6 +372,21 @@ describe('the checks (5.1)', () => {
     expect(both.message).not.toMatch(/Role (is|are) not installed/)
   })
 
+  // #1280: a column the provider reads only once it is there (optionalColumns) is named when missing, never a fault.
+  test("a scope provider's missing optional column is named but passes; a missing required column still fails", async () => {
+    const manifest = { name: 'healthscopecolumn', title: 'Health scope column', scopeProvider: { name: 'org', tables: ['Person'], optionalColumns: { Person: ['kind_1280'] } },
+      baseTables: { read: { Person: ['full_name', 'kind_1280'] } } }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('healthscopecolumn', ${sql.json(manifest)}, true, true)`
+    const check = byKey(await runHealthChecks({ environment: 'production' }), 'scope-provider-tables:healthscopecolumn')
+    expect(check).toMatchObject({ ok: true, fix: null })
+    expect(check.message).toContain('Column Person.kind_1280 is not there yet; Health scope column reads it only once it exists.')
+    await sql`update installed_app set manifest = ${sql.json({ ...manifest, baseTables: { read: { Person: ['full_name', 'kind_1280', 'missing_1280'] } } })} where name = 'healthscopecolumn'`
+    const failing = byKey(await runHealthChecks({ environment: 'production' }), 'scope-provider-tables:healthscopecolumn')
+    expect(failing.ok).toBe(false)
+    expect(failing.message).toContain('column Person.missing_1280')
+    expect(failing.message).not.toContain('column Person.kind_1280')
+  })
+
   // #1277: a standard column (updated_at, created_by) every Table has is never named as missing.
   test("a scope provider reading a Table's standard columns is not named as missing them", async () => {
     const manifest = { name: 'healthscopestandard', title: 'Health scope standard', scopeProvider: { name: 'org', tables: ['Role'] },

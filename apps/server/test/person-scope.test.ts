@@ -733,6 +733,13 @@ describe('declaring a scope provider', () => {
     ['naming an optional Table it does not read', (m: Record<string, any>, s: string) =>
       [{ ...m, scopeProvider: { ...m.scopeProvider, optionalTables: ['Somewhere Else'] } }, s],
       "A scope provider's optional Table Somewhere Else is not one of the Tables it reads"],
+    // #1280: an optional column is on a Table the provider reads, and one the app declares reading.
+    ['naming optional columns of a Table it does not read', (m: Record<string, any>, s: string) =>
+      [{ ...m, scopeProvider: { ...m.scopeProvider, optionalColumns: { 'Somewhere Else': ['kind'] } } }, s],
+      "A scope provider's optional columns of Somewhere Else are not on one of the Tables it reads"],
+    ['naming an optional column the app does not declare reading', (m: Record<string, any>, s: string) =>
+      [{ ...m, scopeProvider: { ...m.scopeProvider, optionalColumns: { [m.scopeProvider.tables[0]]: ['undeclared_1280'] } } }, s],
+      `A scope provider's optional column placeroster.position.undeclared_1280 is not one the app declares reading`],
     ['naming one of its own Tables as optional', (m: Record<string, any>, s: string) =>
       [{ ...m, scopeProvider: { ...m.scopeProvider, optionalTables: [m.scopeProvider.tables[0]] } }, s],
       "A scope provider's own Table placeroster.position is installed with the app; it cannot be optional"],
