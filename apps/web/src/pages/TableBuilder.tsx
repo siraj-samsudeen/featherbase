@@ -542,6 +542,7 @@ export function TableBuilder() {
                   <tr key={i} className="border-t border-border align-top" data-columnrow="">
                     <td className="px-3 py-2">
                       <input
+                        aria-label={`Column ${i + 1}: Field label`}
                         value={c.label}
                         onChange={(e) => setColumnLabel(i, e.target.value)}
                         onBlur={() => markTouched(i)}
@@ -554,6 +555,7 @@ export function TableBuilder() {
                       <label className={`cursor-pointer ${PHONE_TICK}`}>
                         <input
                           type="checkbox"
+                          aria-label={`Column ${i + 1}: List`}
                           checked={c.in_list_view}
                           onChange={(e) => setColumn(i, { in_list_view: e.target.checked })}
                           data-rowfield="in_list_view"
@@ -563,6 +565,7 @@ export function TableBuilder() {
                     </td>
                     <td className="px-2 py-2">
                       <input
+                        aria-label={`Column ${i + 1}: Database name`}
                         value={c.column_name}
                         onChange={(e) => setColumn(i, { column_name: e.target.value, name_touched: true })}
                         onBlur={() => markTouched(i)}
@@ -600,6 +603,7 @@ export function TableBuilder() {
                     </td>
                     <td className="px-2 py-2">
                       <select
+                        aria-label={`Column ${i + 1}: Type`}
                         value={c.column_type}
                         onChange={(e) => setColumn(i, { column_type: e.target.value })}
                         data-rowfield="column_type"
@@ -614,6 +618,7 @@ export function TableBuilder() {
                     </td>
                     <td className="px-2 py-2">
                       <input
+                        aria-label={`Column ${i + 1}: Details`}
                         value={c.target}
                         onChange={(e) => setColumn(i, { target: e.target.value })}
                         onBlur={() => markTouched(i)}
@@ -635,6 +640,7 @@ export function TableBuilder() {
                       <label className={`cursor-pointer ${PHONE_TICK}`}>
                         <input
                           type="checkbox"
+                          aria-label={`Column ${i + 1}: Reqd`}
                           checked={c.reqd}
                           onChange={(e) => setColumn(i, { reqd: e.target.checked })}
                           data-rowfield="reqd"
