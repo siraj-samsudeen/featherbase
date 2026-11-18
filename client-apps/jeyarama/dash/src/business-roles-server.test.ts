@@ -987,3 +987,24 @@ describe('Region and Tester', () => {
   })
 })
 
+// Codex adversarial round 6: a read never mixes places from one rules with report grants from the other.
+describe('one reading of the switch per read', () => {
+  it('marks every place from business roles, and gives no report when the switch has moved since the places were worked out', async () => {
+    const { tables } = await switched()
+    const places = await scopeProviders.org_chart({ person: { id: 'sm', email: null, roles: ['Dash Reader'] }, documents: context(tables).baseTables } as never)
+    expect(places.every(p => (p.basis ?? '').split(', ').includes('business_roles'))).toBe(true)
+    const reader = { ...readerOf(tables, 'sm', ['Dash Reader']), authorization: { places } }
+    expect((await reportsFor(reader as never)).length).toBeGreaterThan(0)
+    tables['dash.access_source'][0].source = 'legacy'
+    expect(await reportsFor(reader as never)).toEqual([])
+  })
+
+  it('gives no report under business roles to places the old rules worked out', async () => {
+    const { tables } = await switched()
+    tables['dash.access_source'][0].source = 'legacy'
+    const places = await scopeProviders.org_chart({ person: { id: 'sm', email: null, roles: ['Dash Reader'] }, documents: context(tables).baseTables } as never)
+    tables['dash.access_source'][0].source = 'business_roles'
+    expect(await reportsFor({ ...readerOf(tables, 'sm', ['Dash Reader']), authorization: { places } } as never)).toEqual([])
+  })
+})
+

@@ -3,7 +3,7 @@
 // featherbase.json under "reads". A report is a row of `dash.report`; nothing here knows one Dive.
 import { checked } from './values.ts'
 import { ALL_STORES_ROLE, type Documents, type Place } from './provider.ts'
-import { BUSINESS_ROLES, accessSource, dashScopeProvider, liveReach } from './access-source.ts'
+import { BUSINESS_ROLES, accessSource, dashScopeProvider, liveReach, placesSource } from './access-source.ts'
 import { businessAccessSummary, giveOldGrantsAction, switchOverLog } from './switch-over-server.ts'
 import { opensDashByBusinessRoles } from './business-reports.ts'
 import type { Base } from './business-access.ts'
@@ -105,7 +105,13 @@ const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', '
  */
 export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
   let given: Set<string>
-  try { given = new Set((await reportsGivenNow(ctx.baseTables as Base, ctx.user, ctx.roles ?? [], istToday())).keys()) } catch { return [] }
+  try {
+    // One reading of the switch for the whole read; places worked out under the other rules give nothing.
+    const source = await sourceOf(ctx)
+    const placedBy = placesSource(ctx.authorization?.places ?? [])
+    if (placedBy && placedBy !== source) return []
+    given = new Set((await reportsGivenNow(ctx.baseTables as Base, ctx.user, ctx.roles ?? [], istToday(), source)).keys())
+  } catch { return [] }
   if (!given.size) return []
   const rows = await ctx.documents.list('dash.report', { fields: REPORT_FIELDS, order_by: 'report_name asc', limit_page_length: 200 })
   const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal), pickers_in_dive: checked(row.pickers_in_dive) }) as unknown as ReportRecord).filter(report => given.has(report.report_key))
@@ -414,10 +420,11 @@ export const reads = {
   async can_open(context: ReadContext) {
     const ctx = context as ScopedContext
     const roles = ctx.roles ?? []
-    if (await sourceOf(ctx) === BUSINESS_ROLES) {
+    const source = await sourceOf(ctx)
+    if (source === BUSINESS_ROLES) {
       // #1277 (D3): behind the platform's door (a Dash role), a business role holding a Dash permission opens it, as does a role that manages access.
       if (opensDashByBusinessRoles(roles, false, 0)) return true
-      const { access } = await liveReach(ctx.baseTables as Base, ctx.user, roles, istToday())
+      const { access } = await liveReach(ctx.baseTables as Base, ctx.user, roles, istToday(), source)
       return opensDashByBusinessRoles(roles, !!access?.opens, access?.opens ? 0 : (await offeredReports(ctx)).length)
     }
     // Asked first without reports: a Dash role opens it with no read of reach.

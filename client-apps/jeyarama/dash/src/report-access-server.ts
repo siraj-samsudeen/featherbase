@@ -90,8 +90,8 @@ export async function reportsGivenTo(base: Documents, person: string, roles: rea
  * #1277: the reports given to `person` by whichever rules decide now (access-source.ts): under business roles,
  * those given to them or to a business role they hold; under the old rules, reportsGivenTo.
  */
-export async function reportsGivenNow(base: Base, person: string, roles: readonly string[], on: string): Promise<Map<string, Because[]>> {
-  if (await accessSource(base) !== BUSINESS_ROLES) return reportsGivenTo(base, person, roles, on)
+export async function reportsGivenNow(base: Base, person: string, roles: readonly string[], on: string, source?: string): Promise<Map<string, Because[]>> {
+  if ((source ?? await accessSource(base)) !== BUSINESS_ROLES) return reportsGivenTo(base, person, roles, on)
   const { access, model } = await liveBusinessAccess(base, person, on)
   const { rows, members } = await grants(base)
   const roleName = new Map(model.roles.map(r => [r.id, r.name]))
@@ -508,10 +508,14 @@ export async function grantOptions(ctx: AccessContext, on: string) {
         if (text(row[EMPLOYEE_STATUS]) === 'Current' && exact(row.person) && exact(row.person) !== person) peers.add(exact(row.person))
   }
   const roles = (await ctx.people!.rolesOf?.(person)) ?? []
-  const reaching = await reportsGivenTo(base, person, roles, on)
+  // #1277: by whichever rules decide now; a bundle is marked given when any of its reports reaches them.
+  const source = await accessSource(base as Base)
+  const reaching = await reportsGivenNow(base as Base, person, roles, on, source)
   const { rows } = await grants(base)
-  const bundleReaches = (bundle: string) => rows.some(row => row.report_bundle === bundle
-    && (row.person === person || (row.role !== null && roles.includes(row.role)) || (row.job !== null && jobs.includes(row.job))))
+  const bundleReaches = (bundle: string) => source === BUSINESS_ROLES
+    ? [...reaching.values()].some(why => why.some(b => b.bundle === bundle))
+    : rows.some(row => row.report_bundle === bundle
+      && (row.person === person || (row.role !== null && roles.includes(row.role)) || (row.job !== null && jobs.includes(row.job))))
   const named = await names(ctx)
   const choices = [
     ...[...named.bundles].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => ({ id: `bundle:${id}`, label: name, group: 'Bundle', given: bundleReaches(id), payload: { report_bundle: id } })),
