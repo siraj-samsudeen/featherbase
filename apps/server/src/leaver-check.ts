@@ -34,6 +34,9 @@ const MAX_FEED_AGE_DAYS = 1
 /** Someone who joined this recently may not be on a payroll run yet. */
 const JOINER_GRACE_DAYS = 62
 
+/** The identifier system whose values are the feed's `employee_key`. */
+export const FEED_RECORD_SYSTEM = 'stylehr-employee-id'
+
 /** One StyleHR employee record, as the warehouse holds it. */
 export interface EmployeeRecord {
   employee_key: string
@@ -92,7 +95,7 @@ function displayDate(iso: string): string {
 }
 
 /** Today in India, as an ISO day. */
-function istToday(now: Date = new Date()): string {
+export function istToday(now: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
 }
 
@@ -116,14 +119,14 @@ const normCode = (c: string) => c.trim().toUpperCase()
 
 // ------------------------------------------------------------- the rule
 
-type Verdict =
+export type Verdict =
   | { leaver: true; basis: Leaver['basis']; reason: string; rank: number }
   | { leaver: false; recentJoiner: boolean; offPayroll: boolean }
 
 /** Has this one record left, as of `today`? Only an exit date that has passed,
  *  then an inactive status, says so. Being off the payroll alone never does
  *  (#1271: owner-directors are off payroll); it is only marked for review. */
-function recordVerdict(r: EmployeeRecord, today: string): Verdict {
+export function recordVerdict(r: EmployeeRecord, today: string): Verdict {
   if (r.exit_date && r.exit_date <= today)
     return { leaver: true, basis: 'exit date', reason: `exit date ${displayDate(r.exit_date)} has passed`, rank: 0 }
   if (r.movement_active === false) return { leaver: true, basis: 'inactive', reason: 'marked inactive in StyleHR', rank: 1 }
@@ -132,6 +135,15 @@ function recordVerdict(r: EmployeeRecord, today: string): Verdict {
     return { leaver: false, recentJoiner: false, offPayroll: true }
   }
   return { leaver: false, recentJoiner: false, offPayroll: false }
+}
+
+/** Why a feed cannot be trusted to change anyone today, or null when it can:
+ *  stale, or empty. The roster status sync refuses on the same grounds (#1286). */
+export function feedRefusal(records: EmployeeRecord[], latestFeedDay: string | null, today: string): string | null {
+  if (!latestFeedDay || daysBetween(latestFeedDay, today) > MAX_FEED_AGE_DAYS)
+    return `the warehouse's StyleHR data is stale (latest day ${latestFeedDay ? displayDate(latestFeedDay) : 'none'}, today ${displayDate(today)})`
+  if (!records.length) return 'the warehouse returned no StyleHR employee records'
+  return null
 }
 
 /** Pure: who this run would disable, and whether it must refuse. */
@@ -164,14 +176,8 @@ export function planLeavers(
     recent_joiners: [],
     not_on_payroll: [],
   }
-  if (!latestFeedDay || daysBetween(latestFeedDay, today) > MAX_FEED_AGE_DAYS) {
-    plan.refused = `the warehouse's StyleHR data is stale (latest day ${latestFeedDay ? displayDate(latestFeedDay) : 'none'}, today ${displayDate(today)})`
-    return plan
-  }
-  if (!records.length) {
-    plan.refused = 'the warehouse returned no StyleHR employee records'
-    return plan
-  }
+  plan.refused = feedRefusal(records, latestFeedDay, today)
+  if (plan.refused) return plan
   for (const p of people) {
     // A record number names exactly one record; a code may name several.
     const mine = p.record_ids.length
@@ -211,7 +217,7 @@ async function linkedPeople(): Promise<LinkedPerson[]> {
   const rows = await sql`
     with links as (
       select person_id, 'record' as kind, value from person_identifier
-      where system = 'stylehr-employee-id' and upper_inf(valid) and value is not null
+      where system = ${FEED_RECORD_SYSTEM} and upper_inf(valid) and value is not null
       union
       select person_id, 'code', value from person_identifier
       where system = 'stylehr-employee-code' and upper_inf(valid) and value is not null
@@ -256,7 +262,7 @@ export function _setWarehouseReader(r: WarehouseReader | null): void {
 }
 const read: WarehouseReader = (q) => (reader ? reader(q) : readMotherDuck(q, 'run the leaver check', ['gold']))
 
-async function readWarehouse(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
+export async function readWarehouse(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
   const [feed] = await read(FEED_DAY_SQL)
   const rows = await read(RECORDS_SQL)
   return {
