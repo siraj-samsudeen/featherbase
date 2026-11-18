@@ -162,11 +162,34 @@ function valuesOf(ctx: Ctx, row: RosterRow): [string, string][] | null {
   return out
 }
 
-async function currentRows(ctx: Ctx, rowId?: string): Promise<RosterRow[]> {
+/** Status changes a dry run expects to make first (#1286): the plan links and
+ *  ends as if they were made. A run plans after making them, with none. */
+interface Pending {
+  leaving: string[]
+  returning: string[]
+}
+
+const pendingOf = (status: RosterStatusPlan | null): Pending | undefined =>
+  status && !status.refused && status.changes.length
+    ? { leaving: status.changes.filter((c) => c.basis !== 'current again').map((c) => c.row_id), returning: status.changes.filter((c) => c.basis === 'current again').map((c) => c.row_id) }
+    : undefined
+
+/** "This row is current", for a row aliased `r` or unaliased. */
+function isCurrent(ctx: Ctx, pending: Pending | undefined, alias?: string) {
+  const { link } = ctx.roster
+  const col = (c: string) => (alias ? sql`${sql(alias)}.${sql(c)}` : sql`${sql(c)}`)
+  const base = sql`trim(${col(link.status_column)}::text) = ${link.current_status}`
+  const status = pending
+    ? sql`((${base} and not (${col('row_id')} = any(${pending.leaving}))) or ${col('row_id')} = any(${pending.returning}))`
+    : base
+  return sql`${status} and ${col('retired_at')} is null`
+}
+
+async function currentRows(ctx: Ctx, rowId?: string, pending?: Pending): Promise<RosterRow[]> {
   const { link, relation } = ctx.roster
   const rows = await sql`
     select * from ${sql(relation)}
-    where trim(${sql(link.status_column)}::text) = ${link.current_status} and retired_at is null
+    where ${isCurrent(ctx, pending)}
       ${rowId ? sql`and row_id = ${rowId}` : sql``}
     order by row_id
     ${rowId ? sql`for update` : sql``}`
@@ -267,7 +290,7 @@ function decide(ctx: Ctx, facts: Facts, row: RosterRow): Decision {
 }
 
 /** Live links on the method whose record is on the roster, but on no current row. */
-async function leavers(ctx: Ctx, identity?: string): Promise<PlannedEnd[]> {
+async function leavers(ctx: Ctx, identity?: string, pending?: Pending): Promise<PlannedEnd[]> {
   const { link, relation } = ctx.roster
   const rec = sql`trim(r.${sql(link.record_number_column)}::text)`
   const rows = await sql`
@@ -275,21 +298,21 @@ async function leavers(ctx: Ctx, identity?: string): Promise<PlannedEnd[]> {
     where i.method = ${ctx.method.key} and i.ended_at is null and i.subject is not null
       ${identity ? sql`and i.id = ${identity}` : sql``}
       and exists (select 1 from ${sql(relation)} r where ${rec} = i.subject)
-      and not exists (select 1 from ${sql(relation)} r where ${rec} = i.subject
-        and trim(r.${sql(link.status_column)}::text) = ${link.current_status} and r.retired_at is null)
+      and not exists (select 1 from ${sql(relation)} r where ${rec} = i.subject and ${isCurrent(ctx, pending, 'r')})
     order by i.id
     ${identity ? sql`for update of i` : sql``}`
   return rows.map((r) => ({ identity: String(r.id), person: String(r.person_id), record: String(r.subject) }))
 }
 
-async function planWith(ctx: Ctx, status: RosterStatusPlan | null): Promise<RosterLinkPlan> {
-  const rows = await currentRows(ctx)
+/** `pending`: plan as if the status plan's changes were already made (a dry run). */
+async function planWith(ctx: Ctx, status: RosterStatusPlan | null, pending?: Pending): Promise<RosterLinkPlan> {
+  const rows = await currentRows(ctx, undefined, pending)
   const facts = await loadFacts(ctx, rows)
   const planned = rows.map((row) => {
     const d = decide(ctx, facts, row)
     return { row_id: row.row_id, sign_in_id: row.sign_in_id, record: row.record, name: row.name, action: d.action, person: d.person, ...(d.action === 'held' ? { reason: d.reason } : {}) }
   })
-  const ends = await leavers(ctx)
+  const ends = await leavers(ctx, undefined, pending)
   const [{ n }] = await sql`select count(*)::int as n from sign_in_identity where method = ${ctx.method.key} and ended_at is null and subject is not null`
   const live = Number(n)
   const limit = Math.max(MIN_END_LIMIT, Math.ceil(live * MAX_END_SHARE))
@@ -307,7 +330,9 @@ async function planWith(ctx: Ctx, status: RosterStatusPlan | null): Promise<Rost
 /** What a run would do, changing nothing. Null when the method has no usable roster. */
 export async function planRosterLink(methodKey: string): Promise<RosterLinkPlan | null> {
   const ctx = await context(methodKey)
-  return ctx ? planWith(ctx, await planRosterStatus(ctx.roster)) : null
+  if (!ctx) return null
+  const status = await planRosterStatus(ctx.roster)
+  return planWith(ctx, status, pendingOf(status))
 }
 
 /** Once per method, row and reason, so a nightly run cannot flood the log. */

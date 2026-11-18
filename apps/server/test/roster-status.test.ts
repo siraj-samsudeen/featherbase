@@ -268,6 +268,33 @@ describe('a bad feed or a big batch changes nothing', () => {
     expect(reads).toEqual([])
   })
 
+  test('a dry run counts the links the status changes will end and make, and applying it does both', async ({ admin }) => {
+    await setUp(admin, [crewRow(1), crewRow(2, { crew_state: 'Gone' })])
+    warehouse([{ key: '7001' }, { key: '7002', payroll: false, joined: '2005-01-01' }])
+    await runRosterLink('stylehr')
+    warehouse([{ key: '7001', exit: PAST }, { key: '7002' }])
+
+    const plan = (await planRosterLink('stylehr'))!
+    expect(plan.ends.map((e) => e.record)).toEqual(['7001'])
+    expect(plan.rows.map((r) => [r.record, r.action])).toEqual([['7002', 'create']])
+    expect(await states()).toEqual({ 'TT-1001': 'Working', 'TT-1002': 'Gone' })
+
+    const run = await runRosterLink('stylehr', { plan })
+    expect(run).toMatchObject({ ended: 1, created: 1 })
+    expect(await liveLinks()).toEqual(['7002'])
+  })
+
+  test('a dry run whose status changes are refused plans links as the statuses stand', async ({ admin }) => {
+    const rows = Array.from({ length: 11 }, (_, i) => crewRow(i + 1))
+    await setUp(admin, rows)
+    warehouse(rows.map((r) => ({ key: String(r.hr_record) })))
+    await runRosterLink('stylehr')
+    warehouse(rows.map((r) => ({ key: String(r.hr_record), exit: PAST })))
+    const plan = (await planRosterLink('stylehr'))!
+    expect(plan.status!.refused).toContain('more than the limit')
+    expect(plan.ends).toEqual([])
+  })
+
   test('a row changed by someone after the plan is left as they made it', async ({ admin }) => {
     await setUp(admin, [crewRow(1)])
     warehouse([{ key: '7001', exit: PAST }])
