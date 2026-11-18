@@ -244,16 +244,16 @@ function readStep(field: string, value: unknown): ChainStep[] | null {
 
 /**
  * A chain as every surface reads it, the chip, the path bar and the list an
- * old Explore link opens: "Linked to Subcategory › Division: Kids · KDS". A
+ * old Explore link opens: "Linked to Subcategory › Division: Kids". A
  * step reads by its Table; one reached through a link Table holding two links
  * into that Table names which ("Employee (Reports To)"). Picked rows read by
- * their name and code; a search reads `matching "…"`.
+ * their titles, as every filter's rows do; a search reads `matching "…"`.
  */
 export function chainText(
   chain: { negate: boolean; steps: ChainStep[] },
   tableName: (table: string) => string,
   rowName: (ref: { table: string; row_id: string }) => string,
-  metaOf: (table: string) => TableMeta | undefined = () => undefined,
+  metaOf: (table: string) => TableMeta | undefined,
 ): string {
   const words = chain.steps.map((s) => {
     let name = tableName(s.table)
