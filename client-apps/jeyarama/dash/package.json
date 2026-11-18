@@ -1,6 +1,6 @@
 {
   "name": "@jeyarama/dash",
-  "version": "0.13.33",
+  "version": "0.13.34",
   "private": true,
   "type": "module",
   "featherbase": "featherbase.json",

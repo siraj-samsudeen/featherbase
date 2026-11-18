@@ -188,7 +188,7 @@ function AccessSource({ onSwitched }: { onSwitched: () => Promise<unknown> | voi
         {source.answer.can_switch && (
           <div className="flex flex-wrap items-center gap-3">
             <Button loading={busy} onClick={run} data-testid="give-old-grants">Give Old Grants To Business Roles</Button>
-            <span className="text-[13px] text-ink-muted">Gives each report given to a job, Dash Reader or Dash All-Stores Reader also to its business roles. Changes no switch; running it again adds nothing.</span>
+            <span className="text-[13px] text-ink-muted">Gives each report given to Dash Reader also to the manager roles that open Dash. A report given to a job or to another role stays where it is: give it to a business role on request. Changes no switch; running it again adds nothing.</span>
           </div>
         )}
         {lines.length > 0 && (
@@ -497,7 +497,9 @@ function HandForm({ change, person, choices, places, onDone, onCancel }: { chang
 // ---------- Who Would Gain Or Lose Access ----------
 
 interface Changed extends Change { person: string; name: string; who: Who | null; roles: string[] }
-interface ChangesAnswer { people: number; changed: number; groups: { kind: Kind; people: Changed[] }[] }
+/** #1277 (decision 7): an old grant Give Old Grants To Business Roles leaves where it is, and who would lose its reports. */
+interface NotCarried { grant: string; gives: Part; receiver: { kind: 'job' | 'role'; name: string }; note: string; people: { person: string; name: string; reports: Part[] }[] }
+interface ChangesAnswer { people: number; changed: number; groups: { kind: Kind; people: Changed[] }[]; not_carried_over?: NotCarried[] }
 const GROUP_TITLES: Record<Kind, string> = {
   loses_dash: 'Would Lose Dash', gains_dash: 'Would Gain Dash', stores: 'Different Stores', reports: 'Different Reports', decision: 'Needs A Decision', needs_dash_role: 'Needs A Dash Role',
 }
@@ -527,9 +529,27 @@ export function AccessChangesPage() {
             ))}
           </ul>
           {answer.groups.filter(g => g.people.length).map(g => <ChangeGroup key={g.kind} kind={g.kind} people={g.people} />)}
+          {!!answer.not_carried_over?.length && <NotCarriedOver grants={answer.not_carried_over} />}
         </>
       )}
     </Shell>
+  )
+}
+
+function NotCarriedOver({ grants }: { grants: NotCarried[] }) {
+  return (
+    <div id="not_carried_over">
+      <Group title="Not Carried Over" count={grants.length.toLocaleString('en-IN')} testid="not-carried-over"
+        note="Old grants that stay where they are and give nothing while business roles decide. Give one to a business role on request.">
+        {grants.map(g => {
+          const reports = [...new Map(g.people.flatMap(p => p.reports).map(r => [r.id, r])).values()]
+          return (
+            <Line key={g.grant} testid="not-carried-line" name={<span data-testid="not-carried-grant"><Named part={g.gives} /> · to the {g.receiver.kind} {g.receiver.name}</span>}
+              meta={<span data-testid="not-carried-people">{g.note}. {g.people.length ? <>Would lose <Parts parts={reports} />: {g.people.map((p, i) => <span key={p.person}>{i ? ', ' : ''}<a href={explainAddress(p.person)} className="text-action hover:underline" data-testid="not-carried-person">{p.name}</a></span>)}</> : 'Nobody would lose a report'}</span>} />
+          )
+        })}
+      </Group>
+    </div>
   )
 }
 
