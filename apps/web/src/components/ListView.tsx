@@ -82,6 +82,8 @@ export function ListView({
   defaultOrderBy,
   empty,
   subtitle,
+  count,
+  actions,
   baseFilters,
   onRowOpen,
   openRow,
@@ -103,6 +105,10 @@ export function ListView({
   empty?: ReactNode
   /** One line under the heading saying what the page lists. */
   subtitle?: ReactNode
+  /** #1271: what the count beside the title says, in place of "N total". */
+  count?: ReactNode
+  /** #1271: the page's own actions, first in the toolbar, with More beside them. */
+  actions?: ReactNode
   /** #1173: filters the page always applies, not shown as chips nor saved in the address. */
   baseFilters?: Filter[]
   /** #1173: a click on a line opens the row in the page's own panel, in place of the drill pane. */
@@ -675,7 +681,7 @@ export function ListView({
           {/* #1259: the three views, right after the title. */}
           {layout && onLayoutChange && <span className="self-center"><LayoutSwitch value={layout} onChange={onLayoutChange} /></span>}
           <span className="text-xs text-ink-muted" data-testid="list-total">
-            {fmtCount(total)} total
+            {count ?? <>{fmtCount(total)} total</>}
           </span>
           {/* #1276: Explore's totals live on the list: the exact sum of its money
               (or other measure) column over every row the filters keep. */}
@@ -698,6 +704,7 @@ export function ListView({
           className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:basis-64 sm:justify-end"
           data-testid="list-toolbar"
         >
+          {actions}
           {/* #1242 (admin-lists 2): one ⋯ More for what is not the page's own action. */}
           {(hasListActions || hasTableAdministration) && <ActionDisclosure label="More">
           {hasListActions && <div role="group" aria-label="List actions" className="flex flex-col items-stretch gap-1">
