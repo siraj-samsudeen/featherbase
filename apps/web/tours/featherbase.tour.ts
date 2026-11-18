@@ -49,8 +49,12 @@ async function setType(page: Page, fileColumn: string, type: string): Promise<vo
   await gridRow(page, fileColumn).locator('[data-rowfield=column_type]').selectOption(type)
 }
 
-const openTree = (page: Page) =>
-  page.getByRole('tab', { name: 'Tree' }).or(page.getByRole('link', { name: 'Tree', exact: true })).or(page.getByRole('button', { name: 'Tree', exact: true })).first().click()
+/** #1273: the tree is the Links tab's other layout, under View ▾ → Tree. */
+async function openTree(page: Page): Promise<void> {
+  await page.getByRole('tab', { name: 'Links', exact: true }).click()
+  await page.getByTestId('view-menu-button').click()
+  await page.getByRole('menuitemradio', { name: 'Tree' }).click()
+}
 
 /** Open a Table from All tables, as someone who doesn't know its address would. */
 async function openTable(page: Page, label: string): Promise<void> {
@@ -76,15 +80,17 @@ async function filterEquals(page: Page, column: string, value: string): Promise<
   if ((await input.evaluate((el) => el.tagName)) === 'SELECT') await input.selectOption(value)
   else await input.fill(value)
   await page.getByTestId('filter-add').click()
-  await expect(page.getByTestId('filter-chip').last()).toContainText(value)
+  // #1289: a filter shows once: in its own box above the list (with its ✕) when the column has one, else as a chip.
+  await expect(page.getByTestId('filter-chip').filter({ hasText: value }).or(page.getByTestId(`std-filter-clear-${column}`)).first()).toBeVisible()
 }
 
 async function clearFilters(page: Page): Promise<void> {
-  const chips = page.getByTestId('filter-chip')
-  while ((await chips.count()) > 0) {
-    const n = await chips.count()
-    await chips.last().getByRole('button').click()
-    await expect(chips).toHaveCount(n - 1)
+  // #1289: each filter has one ✕: a chip's, or the box's that shows it (the search box's included).
+  const removers = page.locator('[data-testid="filter-chip"] button, [data-testid^="std-filter-clear-"], [data-testid="list-search-clear"]')
+  while ((await removers.count()) > 0) {
+    const n = await removers.count()
+    await removers.last().click()
+    await expect(removers).toHaveCount(n - 1)
   }
 }
 
@@ -166,15 +172,16 @@ tour('Featherbase: from a spreadsheet to an app you can navigate', async ({ stor
       await page().getByRole('link', { name: 'T Nagar', exact: true }).first().click()
       await expect(page().getByRole('button', { name: assetsChip }).first()).toBeVisible()
     })
-    await s.step('They open beside the store, without leaving it', async () => {
+    // #1273: the chip leads to the store's own Links tab, where its assets are listed.
+    const assets = () => page().getByRole('tabpanel', { name: 'Links' }).getByRole('region', { name: 'Assets' })
+    await s.step("They list on the store's own page, without leaving it", async () => {
       await page().getByRole('button', { name: assetsChip }).first().click()
-      await expect(page().getByRole('complementary', { name: 'T Nagar' })).toContainText(`Show all ${n(ROWS)}`)
+      await expect(assets()).toContainText(`Show all ${n(ROWS)}`)
     })
     let tag = ''
-    await s.step('One more click drills into an asset; the path keeps the way back', async () => {
-      const pane = page().getByRole('complementary', { name: 'T Nagar' })
+    await s.step('One more click opens an asset beside the store; the path keeps the way back', async () => {
       // #1218: a group's rows are one line each, the name a link that opens the row beside.
-      const first = pane.getByTestId('linked-row').filter({ hasText: /TN-\d{4}/ }).first()
+      const first = assets().getByTestId('linked-row').filter({ hasText: /TN-\d{4}/ }).first()
       tag = /TN-\d{4}/.exec((await first.textContent()) ?? '')![0]
       await first.getByRole('link').first().click()
       const asset = page().getByRole('complementary', { name: tag })
