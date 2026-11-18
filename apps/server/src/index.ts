@@ -90,7 +90,7 @@ import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, isInstalled, installedAppNames } from './apps'
-import { packageTitle, appCatalog, appAsset } from './runtime-packages'
+import { packageTitle, appCatalog, appAsset, appsUsableBy } from './runtime-packages'
 import { discoverAppLibrary } from './app-library'
 import { appPathsFromEnvironment, deliverApp, deliveryKeyMatches } from './app-delivery'
 import { documentActivity } from './document-activity'
@@ -1638,7 +1638,11 @@ app.post('/api/permissions/:table', async (c) => {
 app.route('/', appRoutes)
 // #629: the glossary everyone signed in reads, and an editor's way back to an
 // app's own wording of a term the instance reworded.
-app.get('/api/glossary', async (c) => c.json(await readGlossary(who(c))))
+app.get('/api/glossary', async (c) => {
+  const user = who(c)
+  const all = user === 'Administrator' || (await getRoles(user)).includes('System Manager')
+  return c.json(await readGlossary(user, { usable: await appsUsableBy(user), all }, c.req.query('app')))
+})
 app.post('/api/glossary/take_app_wording', async (c) => {
   const { id } = (await c.req.json().catch(() => ({}))) as { id?: unknown }
   if (typeof id !== 'string') throw new AppError('ValidationError', 'Expected { id }')

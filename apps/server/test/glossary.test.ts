@@ -290,14 +290,14 @@ describe('taking an app\'s wording', () => {
     try {
       await installApp('glossary-code-app')
       await admin.post('/api/save_row', { table: 'Glossary Term', row: { term: 'Plant', definition: 'A store.' } })
-      expect(JSON.stringify(await readGlossary('Administrator'))).toContain('A store.')
+      expect(JSON.stringify(await readGlossary('Administrator', { usable: new Set<string>(), all: true }))).toContain('A store.')
     } finally {
       await uninstallApp('glossary-code-app').catch(() => {})
     }
   })
 
   test('reading the glossary without the grant to read terms is refused', async () => {
-    await expect(readGlossary('Guest')).rejects.toMatchObject({ type: 'PermissionError', message: 'Not permitted to read the glossary' })
+    await expect(readGlossary('Guest', { usable: new Set<string>(), all: false })).rejects.toMatchObject({ type: 'PermissionError', message: 'Not permitted to read the glossary' })
   })
 })
 
@@ -346,3 +346,4 @@ describe('what a term describes', () => {
     } }), 417, 'There is no Table No Such Table')
   })
 })
+

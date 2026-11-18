@@ -151,7 +151,7 @@ test('a System Manager sees Data and People & Access in Title Case, each link wi
   const data = screen.getByTestId('sidebar-group-data')
   expect(within(data).getByTestId('sidebar-group-heading')).toHaveTextContent(/^Data$/)
   expect(within(data).getByTestId('sidebar-group-heading').tagName).toBe('H2')
-  expect(groupLinks('sidebar-group-data')).toEqual(['All Tables', 'New Table', 'Import Data', 'Glossary', 'Past Imports'])
+  expect(groupLinks('sidebar-group-data')).toEqual(['All Tables', 'New Table', 'Import Data', 'Past Imports'])
   const access = screen.getByTestId('sidebar-group-access')
   expect(within(access).getByTestId('sidebar-group-heading')).toHaveTextContent(/^People & Access$/)
   // #489 item 6: Sign-in methods is in the Account menu only.
@@ -169,7 +169,7 @@ test('a person with only a Table grant keeps today’s links, and no management 
   const clerk = await createUser({ email: 'home.clerk@example.com', roles: ['Home Shelf Clerk'] })
   await renderApp('/featherbase/admin', clerk)
   await screen.findByTestId('sidebar-group-data')
-  expect(groupLinks('sidebar-group-data')).toEqual(['All Tables', 'Glossary'])
+  expect(groupLinks('sidebar-group-data')).toEqual(['All Tables'])
   expect(groupLinks('sidebar-group-access')).toEqual(['Access Tokens'])
 })
 

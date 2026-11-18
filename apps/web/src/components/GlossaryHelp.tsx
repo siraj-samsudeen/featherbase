@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from '@tanstack/react-router'
-import { GLOSSARY_PATH, termAnchor, termsDescribing, useGlossary, type GlossaryTerm } from '../lib/glossary'
+import { termAnchor, termsDescribing, useGlossary, type GlossaryTerm } from '../lib/glossary'
 import { cx, iconButtonClasses } from '@featherbase/shop-floor'
 import { CircleHelp } from '@featherbase/shop-floor'
 
@@ -107,14 +107,18 @@ function TermHelp({ term }: { term: GlossaryTerm }) {
               {term.avoid.map((a) => (a.reason ? `${a.word} (${a.reason})` : a.word)).join(', ')}
             </p>
           )}
-          <Link
-            to={GLOSSARY_PATH}
-            hash={termAnchor(term.id)}
-            onClick={() => setOpen(false)}
-            className="mt-2 inline-flex min-h-8 items-center text-action underline underline-offset-2 max-sm:min-h-11"
-          >
-            Open in the glossary
-          </Link>
+          {/* An instance's own term has no glossary page of its own: it is in every app's. */}
+          {term.app && (
+            <Link
+              to="/featherbase/glossary/$app"
+              params={{ app: term.app }}
+              hash={termAnchor(term.id)}
+              onClick={() => setOpen(false)}
+              className="mt-2 inline-flex min-h-8 items-center text-action underline underline-offset-2 max-sm:min-h-11"
+            >
+              Open in the glossary
+            </Link>
+          )}
         </div>,
         document.body,
       )}

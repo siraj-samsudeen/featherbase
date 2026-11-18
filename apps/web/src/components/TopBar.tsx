@@ -288,7 +288,7 @@ export function TopBar({
           // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen.
           <div className={rail ? 'relative flex flex-col items-center gap-1' : 'relative flex min-w-0 items-center gap-0.5'} data-testid="sidebar-account">
             <AccountMenu inSidebar={{ rail, offerAdmin }} />
-            {!rail && <HelpMenu />}
+            {!rail && <HelpMenu glossaryApp={context && context !== ADMIN && apps?.some((entry) => entry.name === context) ? context : undefined} />}
             {!rail && <ThemeMenu />}
           </div>,
           slots.foot,
@@ -736,10 +736,17 @@ function ThemeMenu() {
 /** Help at the sidebar's foot. #1251: its first item opens the Keyboard
  *  Shortcuts panel, which lists the shortcuts on this page and which ones the
  *  person uses; `?` opens it from anywhere. */
-function HelpMenu() {
+function HelpMenu({ glossaryApp }: { glossaryApp?: string }) {
   return (
     <FootMenu label="Help" icon={CircleHelp} testid="help-button">
       <KeyboardShortcutsItem className={MENU_ITEM} />
+      {/* The glossary of the app this sidebar belongs to. A plain link: the bar also
+          stands over an app's own pages, outside the router. */}
+      {glossaryApp && (
+        <a role="menuitem" href={`/featherbase/glossary/${encodeURIComponent(glossaryApp)}`} data-testid="glossary-item" className={MENU_ITEM}>
+          Glossary
+        </a>
+      )}
     </FootMenu>
   )
 }

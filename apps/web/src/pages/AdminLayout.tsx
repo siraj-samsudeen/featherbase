@@ -42,10 +42,9 @@ import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
-import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { Bell, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
 
@@ -941,8 +940,6 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                 { to: '/featherbase/admin/new-table', label: 'New table', icon: Plus, testid: 'new-table-link' },
                 { to: '/featherbase/admin/import', search: { table: undefined }, label: 'Import data', icon: Upload, testid: 'import-data-link' },
               ] : []),
-              // #629: everyone signed in reads the glossary.
-              { to: GLOSSARY_PATH, label: 'Glossary', icon: BookOpen, testid: 'glossary-link' },
               // #206: an import is a thing you did, not just rows that appeared —
               // so it has a place to be found again.
               ...(canManage ? [{ to: '/featherbase/admin/imports', label: 'Past imports', icon: History, testid: 'past-imports-link' }] : []),

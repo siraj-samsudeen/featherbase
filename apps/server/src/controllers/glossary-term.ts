@@ -12,6 +12,15 @@ const controller: TableController = {
       await (await import('../glossary')).settleAppWordingMark(String(row.row_id), tx)
     },
     before_validate: async ({ row, tx }) => {
+      const glossary = await import('../glossary')
+      if (!glossary.isSyncingAppTerms()) {
+        const [stored] = row.row_id ? await tx`select app, term from glossary_term where row_id = ${String(row.row_id)}` : []
+        // An app's term keeps its name; only an instance term is named by a person.
+        if (stored?.app == null) {
+          const name = row.term ?? stored?.term
+          if (name != null) await glossary.refuseTakenName(String(name), stored ? String(row.row_id) : null, tx)
+        }
+      }
       if (!Array.isArray(row.describes)) return
       for (const link of row.describes as Record<string, unknown>[]) {
         const table = String(link.link_table ?? '').trim()

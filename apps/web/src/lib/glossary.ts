@@ -34,13 +34,16 @@ export interface Glossary {
 }
 
 export const GLOSSARY_QUERY_KEY = ['glossary'] as const
-export const GLOSSARY_PATH = '/featherbase/admin/glossary'
 export const GLOSSARY_TABLE = 'Glossary Term'
+/** An app's own glossary page: the only glossary page. */
+export const glossaryPath = (app: string) => `/featherbase/glossary/${encodeURIComponent(app)}`
 
-export function useGlossary() {
+/** `app`: that app's glossary (its terms, then the instance's). None: the
+ *  terms of every app the person can use, which in-place help draws from. */
+export function useGlossary(app?: string) {
   return useQuery({
-    queryKey: GLOSSARY_QUERY_KEY,
-    queryFn: () => api.get<Glossary>('/api/glossary'),
+    queryKey: [...GLOSSARY_QUERY_KEY, app ?? 'all'],
+    queryFn: () => api.get<Glossary>(app ? `/api/glossary?app=${encodeURIComponent(app)}` : '/api/glossary'),
     // Fetched afresh on each page that shows it: a term saved in the
     // ordinary form shows on the next page without any cache to clear.
     retry: false,
@@ -70,7 +73,7 @@ export function groupTerms(terms: readonly GlossaryTerm[]): { key: string; title
     const key = term.app ?? ''
     const group = groups.find((g) => g.key === key)
     if (group) group.terms.push(term)
-    else groups.push({ key, title: term.appTitle ?? 'This instance', terms: [term] })
+    else groups.push({ key, title: term.appTitle ?? 'Shared across apps', terms: [term] })
   }
   return groups
 }

@@ -1011,6 +1011,18 @@ export async function appCatalog(user: string) {
   return result
 }
 
+/** The installed, turned-on apps `user` can use: the entry Table readable and
+ *  the gate passed. Unlike the catalog it includes apps with no pages of their
+ *  own, whose Tables open in the Admin. */
+export async function appsUsableBy(user: string): Promise<Set<string>> {
+  const usable = new Set<string>()
+  for (const item of await listInstalledApps()) {
+    const pkg = packages.get(item.name)
+    if (item.active && pkg && await hasPermission(user, pkg.entryTable, 'read') && await passesGate(pkg, user)) usable.add(item.name)
+  }
+  return usable
+}
+
 /** #1282: the app that explains records of `table` (its manifest's `why`), for
  *  `user`: only an installed, active app the user may open (its entry Table and
  *  its own gate). None when no such app declares one. */
