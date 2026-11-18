@@ -57,6 +57,13 @@ export function formColumns(meta: TableMeta, links: string[]): ColumnDef[] {
     .sort((a, b) => (ORDER[a.column_type] ?? 2) - (ORDER[b.column_type] ?? 2))
 }
 
+/** What a ticked link shows under its name: its readable areas (its other links) and dates,
+ *  whether or not the viewer may give them to a new link. */
+export function shownColumns(meta: TableMeta, links: string[]): ColumnDef[] {
+  return dataColumns(meta).filter((c) => !links.includes(c.column_name) && !BOOKKEEPING.test(c.column_name)
+    && ((c.column_type === 'Reference' && Boolean(c.reference_table)) || c.column_type === 'Date' || c.column_type === 'Datetime'))
+}
+
 /** A date that ends something reads "until 31-Mar-2027" (C5). */
 export function isUntil(c: Pick<ColumnDef, 'column_name' | 'label'>): boolean {
   return /\b(end|ends|ending|ended|until|till|expires?|expiry|valid to)\b/i.test(`${c.label ?? ''} ${c.column_name.replace(/_/g, ' ')}`)

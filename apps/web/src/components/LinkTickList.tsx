@@ -11,7 +11,7 @@ import { formatValue, useSettings } from '../lib/settings'
 import { useI18n } from '../lib/i18n'
 import type { NavPane } from '../lib/nav-path'
 import {
-  FOLD_AFTER, SMALL_SIDE, correctionHref, formColumns, gridOffered, isUntil, mayTick, newLinkRow, tickColumn, tickCount, tickLines,
+  FOLD_AFTER, SMALL_SIDE, correctionHref, formColumns, shownColumns, gridOffered, isUntil, mayTick, newLinkRow, tickColumn, tickCount, tickLines,
   useRowSources, type Choice, type TickedLine,
 } from '../lib/link-ticks'
 import { LinkControl } from './LinkControl'
@@ -141,15 +141,17 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
   const { linkMeta, column, farTable, farMeta, choices } = plan
   const backLink = connection.column
   const fields = formColumns(linkMeta, [backLink, column.column_name])
-  const otherLinks = fields.filter((c) => c.column_type === 'Reference')
-  const dates = fields.filter((c) => c.column_type === 'Date' || c.column_type === 'Datetime')
+  // A ticked link shows every readable area and date, whatever the viewer may give a new one (Codex review).
+  const facts = shownColumns(linkMeta, [backLink, column.column_name])
+  const otherLinks = facts.filter((c) => c.column_type === 'Reference')
+  const dates = facts.filter((c) => c.column_type !== 'Reference')
   const queryClient = useQueryClient()
   const saveState = useContext(LinkSaveContext)
   const rows = useQuery({
     queryKey: ['group-rows', connection.table, JSON.stringify(connection.filters), 'ticks'],
     queryFn: () => listResource(connection.table, {
       filters: connection.filters,
-      fields: [...new Set(['row_id', 'updated_at', 'created_by', backLink, column.column_name, ...fields.map((c) => c.column_name),
+      fields: [...new Set(['row_id', 'updated_at', 'created_by', backLink, column.column_name, ...fields.map((c) => c.column_name), ...facts.map((c) => c.column_name),
         // Correct's address may name any readable column of the row (Codex review).
         ...correctionColumns(linkMeta)])],
       limit_page_length: ALL_ROWS,

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ColumnDef, TableMeta } from '../src/lib/meta'
 import {
-  correctionHref, formColumns, gridOffered, isUntil, mayTick, newLinkRow, tickColumn, tickCount, tickLines,
+  correctionHref, formColumns, shownColumns, gridOffered, isUntil, mayTick, newLinkRow, tickColumn, tickCount, tickLines,
 } from '../src/lib/link-ticks'
 
 function column(column_name: string, extra: Partial<ColumnDef> = {}): ColumnDef {
@@ -73,6 +73,13 @@ describe('tickColumn', () => {
 describe('formColumns', () => {
   it("asks for the link Table's own editable columns beyond its two links: areas first, then dates, then a reason", () => {
     expect(formColumns(roleGiven, ['person', 'role']).map((c) => c.column_name)).toEqual(['site', 'ends_on', 'reason'])
+  })
+})
+
+describe('shownColumns', () => {
+  it('shows every readable area and date of a ticked link, read-only or not', () => {
+    const locked = { ...roleGiven, creatable_columns: ['person', 'role'], columns: roleGiven.columns.map((c) => (c.column_name === 'ends_on' ? { ...c, read_only: true } : c)) } as TableMeta
+    expect(shownColumns(locked, ['person', 'role']).map((c) => c.column_name)).toEqual(['site', 'ends_on'])
   })
 })
 
