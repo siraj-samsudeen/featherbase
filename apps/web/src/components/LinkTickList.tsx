@@ -402,9 +402,11 @@ function AreaPicker({ columns, values, set }: { columns: ColumnDef[]; values: Ro
             onUse={(area) => { set(onTrees.find((c) => linkRowsTable(c) === area.table)!.column_name, area.row.id); setPicking(false) }} />
         </span>
       )}
-      {picking && plain.map((c) => (
-        <span key={c.column_name} className="inline-flex items-center gap-1" data-testid="area-picker">
-          {columns.length > 1 && <span className="text-ink-muted">{c.label ?? c.column_name}</span>}
+      {/* Every column keeps its plain picker too (Codex standard round 3): a viewer who may not read the levels above, or a
+          row with no parent, still picks it directly. */}
+      {picking && columns.map((c) => (
+        <span key={c.column_name} className="inline-flex items-center gap-1" data-testid={plain.includes(c) ? 'area-picker' : 'area-direct'}>
+          {(columns.length > 1 || !plain.includes(c)) && <span className="text-ink-muted">{plain.includes(c) ? (c.label ?? c.column_name) : `Or pick the ${c.label ?? c.column_name}`}</span>}
           <span className="w-60 min-w-0">
             <LinkControl field={c} value={values[c.column_name] ?? ''} onChange={(v) => set(c.column_name, v)} pickOnly
               className={FLD} common={{ 'aria-label': c.label ?? c.column_name }} />

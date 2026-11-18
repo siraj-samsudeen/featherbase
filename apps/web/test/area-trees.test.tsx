@@ -112,3 +112,18 @@ test("an area whose Tables, columns or links are not there is not offered to the
   const catalog = await admin.get<{ name: string; areas?: { name: string }[] }[]>('/api/app_catalog')
   expect(catalog.find((app) => app.name === 'barproof')!.areas!.map((a) => a.name)).toEqual(['Location'])
 })
+
+// Codex standard round 3: the trees never take the plain picker away: a viewer who may not read Cluster, or a Site
+// with no cluster, still picks the Site directly.
+test('beside the trees, the Site can still be picked directly', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(rowHref(MEMBER, 'm1'), admin)
+  fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
+  const line = await waitFor(() => screen.getAllByTestId('tick-line').find((l) => l.textContent?.includes('Team Leader')) ?? Promise.reject(new Error('no line')))
+  fireEvent.click(within(line).getByRole('button', { name: 'Tick Team Leader' }))
+  const form = await screen.findByTestId('also-give-form')
+  fireEvent.click(within(form).getByTestId('area-pick'))
+  const direct = await within(form).findByTestId('area-direct')
+  expect(direct).toHaveTextContent('Or pick the Area')
+  expect(within(direct).getByRole('combobox', { name: 'Area' })).toBeInTheDocument()
+})
