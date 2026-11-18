@@ -67,6 +67,7 @@ export const LIST_OPERATORS: readonly string[] = OPS
 // amplification. MAX_RELATED_HOPS caps the TOTAL specs compiled per
 // request, breadth and depth together.
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
+const NESTED_ROW_COLUMNS: ReadonlySet<string> = new Set(['parent', 'parenttype', 'parentfield'])
 
 // PERM-006: the columns a caller may name in select/filter/order/group.
 // Tier filtering used to apply on detail reads only (filterReadFields), so a
@@ -75,7 +76,8 @@ const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 // disagreeing about the same permission. Passing the permitted tiers closes
 // that for native and (via dispatch.ts) source-bound Tables alike.
 function columnSet(meta: TableMeta, readable?: ReadonlySet<string>): Set<string> {
-  const cols = new Set<string>(STANDARD_COLUMNS)
+  // #1310: only nested rows are stored with their parent's columns.
+  const cols = new Set<string>(meta.kind === 'sub_table' ? STANDARD_COLUMNS : STANDARD_COLUMNS.filter((c) => !NESTED_ROW_COLUMNS.has(c)))
   if (canRetire(meta)) for (const c of RETIREMENT_COLUMNS) cols.add(c)
   for (const f of meta.columns)
     if (

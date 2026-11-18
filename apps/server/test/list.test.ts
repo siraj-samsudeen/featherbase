@@ -97,6 +97,19 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
     })
   })
 
+  // #1310: only nested rows carry parent, parenttype and parentfield; elsewhere
+  // they are unknown columns, refused like any other, never a database error.
+  test('the nested-row columns are unknown on a Table that is not nested rows', async ({ admin }) => {
+    await setup(admin)
+    for (const column of ['parent', 'parenttype', 'parentfield']) {
+      await expectApiError(admin.get(listPath({ filters: JSON.stringify([[column, '=', 'x']]) })), {
+        status: 417, type: 'ValidationError', message: expect.stringContaining('Unknown filter field'),
+      })
+      await expectApiError(admin.get(listPath({ order_by: `${column} asc` })), { status: 417, type: 'ValidationError' })
+      await expectApiError(admin.get(listPath({ fields: JSON.stringify([column]) })), { status: 417, type: 'ValidationError' })
+    }
+  })
+
   test('paginates with stable ordering and reports total', async ({ admin }) => {
     await setup(admin)
     const page1 = await admin.get<{ total: number; data: { title: string }[] }>(
