@@ -132,6 +132,20 @@ jobs:
           run featherbase-platform:ci pnpm --filter server release
           run featherbase-platform:ci pnpm --filter server cli boot-check
 
+      # #1284: a deploy stops the old server with SIGTERM. The image's own
+      # command must let it reach the server, which drains and exits 0; a
+      # signal swallowed on the way ends in docker stop's SIGKILL (exit 137).
+      - name: The platform image's server drains on SIGTERM
+        run: |
+          docker run -d --name drain-check --network host -e FEATHERBASE_ENV -e JWT_SECRET -e INSTANCE_ADDRESSES -e DATABASE_URL featherbase-platform:ci
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8000/api/ping >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8000/api/ping
+          docker stop -t 20 drain-check
+          docker logs drain-check 2>&1 | tail -5
+          docker logs drain-check 2>&1 | grep -q 'SIGTERM: finishing the requests in flight' || { echo 'the server never saw SIGTERM'; exit 1; }
+          code=$(docker inspect drain-check --format '{{.State.ExitCode}}')
+          [ "$code" = 0 ] || { echo "the server exited $code, not 0"; exit 1; }
+
       - name: A client image FROM the platform image discovers its app
         run: |
           context="$RUNNER_TEMP/client-image"
