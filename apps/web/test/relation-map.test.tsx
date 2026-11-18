@@ -203,7 +203,9 @@ test('a large group shows its first 4 rows and the rest in the panel, from one r
   fetches.mockRestore()
   fireEvent.click(within(box).getByRole('button', { name: '+ 2 more in the panel' }))
   const pane = await screen.findByRole('complementary', { name: 'Asha Stores · cust-1' })
-  await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(6))
+  // #1282 C14: the pane is the peek, its groups 4 rows then + N more, the list one click on.
+  await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(4))
+  expect(within(pane).getByRole('link', { name: '+ 2 more' })).toBeInTheDocument()
 })
 
 // #1282 item 5: an empty group stays, greyed.
