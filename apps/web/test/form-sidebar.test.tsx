@@ -36,7 +36,7 @@ async function openCollaboration(admin: Admin, rowId: string) {
   cleanup()
   await renderApp(`/featherbase/admin/table/${tableSlug(DT)}/row/${rowId}`, admin)
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
-  await userEvent.click(await screen.findByRole('tab', { name: 'Collaboration' }))
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
 }
 
 async function attach(file: File) {

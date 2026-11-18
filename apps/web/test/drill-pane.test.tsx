@@ -83,10 +83,14 @@ test('a group of more than 10 shows its first 10, then Show all N', async ({ adm
 const lineWith = (pane: HTMLElement, name: string) =>
   waitFor(() => lines(pane).find((l) => within(l).queryByRole('link', { name })) ?? Promise.reject(new Error(`no line ${name}`)))
 
-test("a group's rows read by what they point to, with at most two of their own facts", async ({ admin }) => {
+/** #1273: someone who reads postings but may not change them sees the group as rows, not ticks. */
+const postingReader = (admin: Parameters<typeof renderApp>[1], createUser: Parameters<typeof createUserWithRole>[1]) =>
+  createUserWithRole(admin, createUser, { role: 'Nv Posting Reader', table: [SITE, REGION, PLANT, 'Nv Posting'], can_read: true })
+
+test("a group's rows read by what they point to, with at most two of their own facts", async ({ admin, createUser }) => {
   await seedSites(admin)
   await seedPostings(admin)
-  await renderApp(tableHref(SITE), admin)
+  await renderApp(tableHref(SITE), await postingReader(admin, createUser))
   await select('Enchakkal')
   const site = await pane('Enchakkal')
   fireEvent.click(await within(site).findByRole('button', { name: 'Nv Posting 2' }))
@@ -100,10 +104,10 @@ test("a group's rows read by what they point to, with at most two of their own f
 
 // Verifier round 2: from the region, a posting has two far sides left, its site
 // and its plant: each its own link, joined by ›, with no code and no posting id.
-test('a row with two far sides reads by both, each its own link', async ({ admin }) => {
+test('a row with two far sides reads by both, each its own link', async ({ admin, createUser }) => {
   await seedSites(admin)
   await seedPostings(admin)
-  await renderApp(tableHref(REGION), admin)
+  await renderApp(tableHref(REGION), await postingReader(admin, createUser))
   await select('Kerala')
   const region = await pane('Kerala')
   fireEvent.click(await within(region).findByRole('button', { name: 'Nv Posting 2' }))
@@ -347,14 +351,16 @@ test("after Filter from the pane, the browser's back button lands on the filter'
   expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala', 'Enchakkal · ENK'])
 })
 
-test("opening a group on the row page's own row changes its step in place, adding no browser history entry", async ({ admin }) => {
+// #1273 (D3): on the row page a group's chip jumps to its section on the Links tab.
+test("opening a group on the row page's own row jumps to its Links section in place, adding no browser history entry", async ({ admin }) => {
   await seedSites(admin)
   const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
   const history = (view.router as unknown as { history: { length: number } }).history
   const group = await screen.findByRole('button', { name: `${PLANT} 3` })
   const before = history.length
   fireEvent.click(group)
-  await pane('Enchakkal')
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
+  expect(await screen.findByTestId('record-links')).toBeInTheDocument()
   // Still one step, so no path bar yet (#1013).
   expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
   expect(history.length).toBe(before)

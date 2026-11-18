@@ -12,6 +12,8 @@ export interface Capabilities {
   own_grant: boolean // holds a Table grant of their own (not only a shared row)
   tables: string[] // Tables the person can read (empty for a System Manager: they read the Table list)
   creatable: string[] // Tables the person can add rows to
+  /** #1273: Tables the person can delete rows of (a tick list unticks by deleting). */
+  deletable?: string[]
   archived: string[] // #905: archived Tables the person can read: listed apart, never offered in a picker
 }
 
