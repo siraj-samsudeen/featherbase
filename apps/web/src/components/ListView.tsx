@@ -680,7 +680,7 @@ export function ListView({
           {/* #1276: Explore's totals live on the list: the exact sum of its money
               (or other measure) column over every row the filters keep. */}
           {sumColumn && !withRetired && (
-            <ListSum table={table} filters={[...(baseFilters ?? []), ...filters]} column={sumColumn} />
+            <ListSum table={table} filters={[...(baseFilters ?? []), ...filters]} column={sumColumn} refreshedAt={list.dataUpdatedAt} />
           )}
           {meta.data?.data_source && (
             <span
@@ -1302,12 +1302,20 @@ export function ListView({
 
 /** #1276: the exact total of one column over a list's filters, from the server's
  *  scoped aggregate, never a sum of the page that happened to load. */
-function ListSum({ table, filters, column }: { table: string; filters: Filter[]; column: { column_name: string; label: string; column_type: string } }) {
+function ListSum({ table, filters, column, refreshedAt }: {
+  table: string
+  filters: Filter[]
+  column: { column_name: string; label: string; column_type: string }
+  /** When the list's rows last arrived: the sum follows every refresh of them. */
+  refreshedAt: number
+}) {
   const settings = useSettings()
   const filterKey = JSON.stringify(filters)
   const sum = useQuery({
-    // Under ['list', table], so whatever refreshes the list (an edit, a delete, realtime) refreshes its sum.
-    queryKey: ['list', table, 'sum', filterKey, column.column_name],
+    // Keyed to the list's last refresh, so an edit, a delete or realtime refreshes the sum
+    // too, without anything that awaits the list's refresh also waiting for it.
+    queryKey: ['list-sum', table, filterKey, column.column_name, refreshedAt],
+    placeholderData: keepPreviousData,
     retry: false,
     queryFn: () => api.get<{ count: number; sum: string | null }>(
       `/api/table/${encodeURIComponent(table)}:aggregate?filters=${encodeURIComponent(filterKey)}&sum=${encodeURIComponent(column.column_name)}`),

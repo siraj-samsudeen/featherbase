@@ -99,6 +99,16 @@ test('with none picked, a step’s search is part of the filter', async ({ admin
   expect(addressFilters(r)).toEqual([['vehicle', 'related', { table: VEHICLE, filters: [['title', 'like', '%Truck 2%']] }]])
 })
 
+test('the list’s sum follows its rows when some are deleted', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(listPath(ACCIDENT), admin)
+  await waitFor(() => expect(screen.getByTestId('list-sum')).toHaveTextContent(/Σ Cost: \D*1,800/))
+  await userEvent.click(within((await screen.findByText('Windshield')).closest('tr')!).getByTestId('row-check'))
+  await userEvent.click(await screen.findByTestId('bulk-delete'))
+  await userEvent.click(await screen.findByTestId('bulk-delete-confirm'))
+  await waitFor(() => expect(screen.getByTestId('list-sum')).toHaveTextContent(/Σ Cost: \D*1,500/))
+})
+
 test('a chain: Claims linked to Accidents linked to one Vehicle, each step with its count', async ({ admin }) => {
   await seed(admin)
   const r = await renderApp(listPath(CLAIM), admin)
