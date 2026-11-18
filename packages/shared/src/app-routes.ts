@@ -86,9 +86,10 @@ export const ADMIN_PAGES: readonly { slug: string; title: string; manage?: true;
   { slug: 'imports', title: 'Imports', manage: true },
   { slug: 'access-tokens', title: 'Access tokens' },
   { slug: 'find-person', title: 'Find a person by identifier' },
-  { slug: 'explore', title: 'Explore' },
   { slug: 'glossary', title: 'Glossary' },
   { slug: 'waiting-for-access', title: 'Waiting for access', manage: true },
+  // #1271: people who have left, or are not employees, and can still sign in.
+  { slug: 'leavers-who-can-sign-in', title: 'Leavers Who Can Still Sign In', manage: true },
   { slug: 'apps', title: 'Apps', manage: true },
   { slug: 'instance-health', title: 'Instance health', manage: true },
   { slug: 'jobs', title: 'Jobs', manage: true, unrecorded: true },
@@ -108,8 +109,9 @@ export function adminPageNeedsManage(slug: string): boolean {
 
 /** Admin first segments that are real pages but not worth remembering
  *  (home, builders, browsers) — never logged as a Table's list. */
+// `explore` only redirects to a filtered list since Explore retired (#1276).
 export const ADMIN_UNRECORDED_ROOTS = [
-  'new-table', 'import', 'jobs', 'setup', 'all-tables', 'naming', 'permissions', 'home', 'source', 'map',
+  'new-table', 'import', 'jobs', 'setup', 'all-tables', 'naming', 'permissions', 'home', 'source', 'map', 'explore',
 ] as const
 
 /** Admin first segments whose second segment names the page (`/dashboard/Sales`). */

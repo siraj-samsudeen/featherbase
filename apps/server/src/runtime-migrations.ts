@@ -71,6 +71,9 @@ export const operationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('renameTable'), from: z.string(), to: ownedTableName }).strict(),
   // #1256: what people call a Table; no row and no storage changes.
   z.object({ kind: z.literal('relabelTable'), table: z.string(), from: tableLabel, to: tableLabel }).strict(),
+  // #1277: an app's own Table its scope provider comes to read is marked as deciding scope, which makes it a
+  // security Table (only a System Manager writes it). No row changes. The mark is never taken off by a step.
+  z.object({ kind: z.literal('markDecidesScope'), table: z.string() }).strict(),
 ])
 export type Operation = z.infer<typeof operationSchema>
 export const migrationSchema = z.object({
@@ -284,6 +287,15 @@ function forward(app: string, state: TableDef[], op: Operation) {
       const table = tableIn(state, op.table, what)
       if (table.label !== op.from) refuse(`${what} does not hold the label ${JSON.stringify(op.from)}`)
       table.label = op.to
+      return
+    }
+    case 'markDecidesScope': {
+      const what = `markDecidesScope ${op.table}`
+      mustOwn(app, op.table)
+      const table = tableIn(state, op.table, what)
+      if (table.decides_scope) refuse(`${what}: the Table already decides scope`)
+      if (table.data_source || (table.kind && table.kind !== 'table')) refuse(`${what}: only a stored Table decides scope`)
+      table.decides_scope = true
     }
   }
 }
@@ -342,6 +354,13 @@ function backward(state: TableDef[], op: Operation) {
       const table = tableIn(state, op.table, what)
       if (table.label !== op.to) refuse(`${what}: the Table as declared after it does not hold the label ${JSON.stringify(op.to)}`)
       table.label = op.from
+      return
+    }
+    case 'markDecidesScope': {
+      const what = `markDecidesScope ${op.table}`
+      const table = tableIn(state, op.table, what)
+      if (!table.decides_scope) refuse(`${what}: the Table as declared after it does not decide scope`)
+      delete table.decides_scope
     }
   }
 }
@@ -626,6 +645,12 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       // The app's own declared label: an Admin relabel is a Metadata
       // Override, kept apart, and still wins over this.
       await sql`update table_def set label = ${op.to}, updated_at = ${new Date()} where name = ${op.table}`
+      invalidateMeta(op.table)
+      return null
+    }
+    case 'markDecidesScope': {
+      await owned(op.table, owner, `markDecidesScope ${op.table}`)
+      await sql`update table_def set decides_scope = true, updated_at = ${new Date()} where name = ${op.table}`
       invalidateMeta(op.table)
       return null
     }

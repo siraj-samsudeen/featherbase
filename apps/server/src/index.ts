@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
+import { SHUTDOWN_DEADLINE_MS, drainServer, exitOnShutdownSignal } from './graceful-shutdown'
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
@@ -1958,7 +1959,7 @@ app.get('/api/home_pages', async (c) => {
 })
 
 // NAV-001 (#102 review): the tables the caller may actually read, for
-// navigation pickers like Explore's root select. Reading the metadata
+// navigation pickers. Reading the metadata
 // `Table` table requires its own permission most users don't have — this
 // filters by each candidate table's read permission instead, the same
 // posture as the Home Pages endpoint.
@@ -2137,8 +2138,8 @@ const webDist = import.meta.url.startsWith('file:') ? path.resolve(path.dirname(
  *  prefix does not claim. Answers whether it mounted anything. */
 export function serveWebDist(target: Hono<Env>, dir: string): boolean {
   if (!dir || !existsSync(dir)) return false
-  // serveStatic resolves `root` against process.cwd() (apps/server under
-  // `pnpm --filter server start`), so the path must be expressed relative
+  // serveStatic resolves `root` against process.cwd() (apps/server, under
+  // `pnpm --filter server start` and the image's command), so the path must be expressed relative
   // to that, not absolute.
   const webRoot = path.relative(process.cwd(), dir)
   target.use('*', serveStatic({ root: webRoot }))
@@ -2157,7 +2158,7 @@ serveWebDist(app, webDist)
 /** Boot this process as the server: refuse a bad configuration, listen on
  *  `port`, attach realtime, run the job worker and sync the recurring jobs.
  *  Resolves once it listens, with the port and a way to stop it again. */
-export async function startServer(port: number = config.port): Promise<{ port: number; stop: () => Promise<void> }> {
+export async function startServer(port: number = config.port): Promise<{ port: number; stop: (deadlineMs?: number) => Promise<'drained' | 'cut'> }> {
   // Refuse to boot on a missing required variable, or with a switch on that
   // production must never have (instance-settings D7; test mode is one, D5).
   const { installedAppsAtStart, settingsRequirements } = await import('./release-preflight')
@@ -2176,7 +2177,8 @@ export async function startServer(port: number = config.port): Promise<{ port: n
   announcePreviewLogin()
   announceDelegatedTestMode()
   // RT-001/002/003: attach the realtime WebSocket server to the HTTP server.
-  attachRealtime(server as unknown as import('node:http').Server)
+  const httpServer = server as unknown as import('node:http').Server
+  const realtime = attachRealtime(httpServer)
   // JOB-001: run the background worker in-process (tests drive the queue
   // directly via runOneJob/drainJobs, so the worker stays off under test).
   startWorker()
@@ -2187,12 +2189,23 @@ export async function startServer(port: number = config.port): Promise<{ port: n
   await syncScheduledJobs()
   return {
     port: listening,
-    stop: async () => {
-      stopWorker()
-      await new Promise<void>((resolve) => server.close(() => resolve()))
+    // #1260: a deploy's SIGTERM. Realtime pages are told to reconnect,
+    // requests in flight finish, the job running now finishes, all within
+    // the deadline; then the caller exits.
+    stop: async (deadlineMs: number = SHUTDOWN_DEADLINE_MS) => {
+      const started = Date.now()
+      const worker = stopWorker()
+      const outcome = await drainServer(httpServer, deadlineMs, realtime)
+      let left: ReturnType<typeof setTimeout> | undefined
+      await Promise.race([worker, new Promise<void>((resolve) => { left = setTimeout(resolve, Math.max(0, deadlineMs - (Date.now() - started))) })])
+      clearTimeout(left)
+      return outcome
     },
   }
 }
 
-/* v8 ignore next -- entry-point guard: the process boots unless Vitest imported it; startServer() itself is driven in-process by test/server-start.test.ts */
-if (readVariable('NODE_ENV') !== 'test') await startServer()
+/* v8 ignore next 4 -- entry-point guard: the process boots unless Vitest imported it; startServer() is driven in-process by test/server-start.test.ts and the signal handling by test/graceful-shutdown.test.ts */
+if (readVariable('NODE_ENV') !== 'test') {
+  const { stop } = await startServer()
+  exitOnShutdownSignal(process, stop)
+}

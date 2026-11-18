@@ -18,10 +18,10 @@ import { RECORD, RecordLink } from './record-link'
 import { AREAS, areaCounts, bundleAreas, inArea, reportAreas, type Area } from './area-tags'
 import { PeopleLayoutProvider, PeopleLayoutToggle, PersonName, personWithCode, usePeopleLayout, type Who } from './person-identity'
 
-type Kind = 'Person' | 'Role' | 'Job'
+type Kind = 'Person' | 'Role' | 'Job' | 'Business role'
 /** #1225: `gives.id`, `to.id` and `given_by_id` are the records the names link to (a report key, a bundle id, an Employee, a Role, a Job). */
 interface Row { id: string; updated_at: string; gives: { kind: 'Report' | 'Bundle'; name: string; id?: string }; to: { kind: Kind; name: string; who?: Who; id?: string }; given_by: string; given_by_id?: string | null; given_on: string; removable?: boolean }
-const KIND_OF: Record<Kind | 'Report' | 'Bundle', string> = { Person: RECORD.employee, Role: RECORD.role, Job: RECORD.job, Report: RECORD.report, Bundle: RECORD.bundle }
+const KIND_OF: Record<Kind | 'Report' | 'Bundle', string> = { Person: RECORD.employee, Role: RECORD.role, Job: RECORD.job, 'Business role': RECORD.businessRole, Report: RECORD.report, Bundle: RECORD.bundle }
 /** A grant's receiver: a person with their identity, or a role or a job, each a link to its record. */
 function Receiver({ to }: { to: Row['to'] }) {
   return to.kind === 'Person' ? <PersonName name={to.name} who={to.who} id={to.id} /> : <RecordLink table={KIND_OF[to.kind]} id={to.id}>{to.name}</RecordLink>
@@ -46,10 +46,12 @@ interface Page {
   bundles: { id: string; name: string; reports: { member: string; updated_at: string; key: string; name: string }[] }[]
   roles: string[]
   jobs: string[]
+  /** #1277 (D4): the business roles a report can be given to. */
+  business_roles?: { id: string; name: string }[]
   rows: Row[]
   waiting: { person: string; name: string; asked_on: string; who?: Who }[]
 }
-interface Found extends Who { person: string; name: string }
+export interface Found extends Who { person: string; name: string }
 interface Lookup { name: string; reports: { key: string; name: string; because: string[]; closed: string | null }[] }
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'That did not go through. Try again.')
@@ -112,6 +114,15 @@ function keepInAddress(name: string, value: string) {
   window.history.replaceState(null, '', url)
 }
 
+/** Brings the bundle the address names (`?bundle=`) into view and marks it, once the page has drawn it. */
+export function showBundleInAddress() {
+  const id = new URLSearchParams(window.location.search).get('bundle')
+  const found = id ? [...document.querySelectorAll('[data-bundle-id]')].find(el => el.getAttribute('data-bundle-id') === id) : undefined
+  if (!found) return
+  found.setAttribute('aria-current', 'true')
+  found.scrollIntoView?.({ block: 'center' })
+}
+
 /** The top of the page, whichever element scrolls it. */
 const toTop = () => { window.scrollTo(0, 0); document.body.scrollTop = 0; document.documentElement.scrollTop = 0 }
 
@@ -156,6 +167,8 @@ function CompanyAccess({ page, onChanged }: { page: Page; onChanged: () => Promi
     ) })
   }
   const [section, setSection] = useState<Section>(() => fromAddress('section', SECTIONS, 'reports'))
+  // #1218: a bundle's record link opens this page on that bundle.
+  useEffect(() => { showBundleInAddress() }, [section, layout])
   // #1225: the area chosen, one for the reports and the bundles, kept in the address (#1228's
   // remembered filters will take it over).
   const [area, setArea] = useState<Area | null>(() => { const chosen = fromAddress('area', [...AREAS, 'all'] as const, 'all'); return chosen === 'all' ? null : chosen })
@@ -586,8 +599,9 @@ function GiveBar({ page, onGiven, team, start = '', startPerson = null, onClose 
     setError(null)
     setDone(null)
     try {
-      await act('give_report', { [what === 'report' ? 'report' : 'report_bundle']: id, [kind.toLowerCase()]: to })
-      setDone(`${chosenName()} is given to ${kind === 'Person' && person ? personWithCode(person.name, person) : receiver}.`)
+      await act('give_report', { [what === 'report' ? 'report' : 'report_bundle']: id, [kind === 'Business role' ? 'business_role' : kind.toLowerCase()]: to })
+      const roleName = page.business_roles?.find(role => role.id === receiver)?.name
+      setDone(`${chosenName()} is given to ${kind === 'Person' && person ? personWithCode(person.name, person) : kind === 'Business role' ? roleName : receiver}.`)
       setReceiver('')
       setPerson(null)
       await onGiven()
@@ -617,6 +631,7 @@ function GiveBar({ page, onGiven, team, start = '', startPerson = null, onClose 
           {!team && <Field label="To" className="w-40">
             <Select value={kind} onChange={event => { setKind(event.target.value as Kind); setReceiver(''); setPerson(null) }} data-testid="give-kind">
               <option value="Person">A person</option>
+              {(page.business_roles?.length ?? 0) > 0 && <option value="Business role">A business role</option>}
               <option value="Role">A role</option>
               <option value="Job">A job</option>
             </Select>
@@ -629,6 +644,14 @@ function GiveBar({ page, onGiven, team, start = '', startPerson = null, onClose 
               <Select value={receiver} onChange={event => setReceiver(event.target.value)} data-testid="give-role">
                 <option value="">Choose a role</option>
                 {page.roles.map(role => <option key={role} value={role}>{role} · Role</option>)}
+              </Select>
+            </Field>
+          )}
+          {kind === 'Business role' && (
+            <Field label="Business role" className="min-w-56 flex-1">
+              <Select value={receiver} onChange={event => setReceiver(event.target.value)} data-testid="give-business-role">
+                <option value="">Choose a business role</option>
+                {(page.business_roles ?? []).map(role => <option key={role.id} value={role.id}>{role.name} · Business role</option>)}
               </Select>
             </Field>
           )}
@@ -650,7 +673,7 @@ function GiveBar({ page, onGiven, team, start = '', startPerson = null, onClose 
 }
 
 /** Finds a person on the staff list by name. */
-function PersonPicker({ chosen, onChoose, label, nobody = 'No one on the staff list matches that' }: { chosen: Found | null; onChoose: (found: Found | null) => void; label: string; nobody?: string }) {
+export function PersonPicker({ chosen, onChoose, label, nobody = 'No one on the staff list matches that' }: { chosen: Found | null; onChoose: (found: Found | null) => void; label: string; nobody?: string }) {
   const [typed, setTyped] = useState('')
   const [found, setFound] = useState<Found[] | null>(null)
   useEffect(() => {
@@ -850,7 +873,7 @@ function Bundles({ page, onChanged, onNew, area, onArea }: { page: Page; onChang
         {page.bundles.filter(bundle => !onArea || !area || bundleAreas(bundle.reports.map(held => held.key), page.reports).includes(area)).map(bundle => {
           const missing = page.reports.filter(report => !bundle.reports.some(held => held.key === report.key))
           return (
-            <div key={bundle.id} className={onNew ? 'flex flex-col gap-2 rounded-control border border-border p-3' : 'flex flex-col gap-2 border-b border-border pb-3'} data-testid="bundle">
+            <div key={bundle.id} className={onNew ? 'flex flex-col gap-2 rounded-control border border-border p-3' : 'flex flex-col gap-2 border-b border-border pb-3'} data-testid="bundle" data-bundle-id={bundle.id}>
               <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="flex flex-wrap items-center gap-2 font-semibold"><RecordLink table={RECORD.bundle} id={bundle.id}>{bundle.name}</RecordLink>{onArea && <AreaLabels areas={bundleAreas(bundle.reports.map(held => held.key), page.reports)} />}
                 <span className="text-sm font-normal text-ink-muted">{bundle.reports.length} report{bundle.reports.length === 1 ? '' : 's'}</span></p>
@@ -938,7 +961,7 @@ function BundleCards({ page, rows, onChanged, onNew, area, onArea, onGiveBundle 
           const missing = page.reports.filter(report => !bundle.reports.some(held => held.key === report.key))
           const givenTo = rows.filter(row => row.gives.kind === 'Bundle' && row.gives.name === bundle.name).length
           return (
-            <section key={bundle.id} className="flex flex-col gap-3 rounded-card border border-border p-4" data-testid="bundle" aria-label={bundle.name}>
+            <section key={bundle.id} className="flex flex-col gap-3 rounded-card border border-border p-4" data-testid="bundle" data-bundle-id={bundle.id} aria-label={bundle.name}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <RecordLink table={RECORD.bundle} id={bundle.id} className="font-semibold">{bundle.name}</RecordLink>
                 <span className="flex flex-wrap gap-1"><AreaLabels areas={areasOfBundle(bundle)} /></span>

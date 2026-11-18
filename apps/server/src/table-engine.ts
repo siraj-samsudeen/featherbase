@@ -169,13 +169,20 @@ export const columnSchema = z.object({
   source_column: optionalString,
 })
 
+/** #1287: "System" is the platform's own module (its built-in System page lists the platform's Tables), so no
+ *  Table may be put in a module of that name, in any case or spacing: the platform would otherwise make a
+ *  second "System" page for it. */
+export const RESERVED_MODULE_MESSAGE = '"System" is the platform\'s own module. Put this Table in another module.'
+export const isReservedModule = (module: string) => module.replace(/\s+/g, '').toLowerCase() === 'system'
+const moduleName = optionalString.refine((module) => !module || !isReservedModule(module), RESERVED_MODULE_MESSAGE)
+
 export const tableDefSchema = z.object({
   access_policy: accessPolicySchema.nullish().transform(value => value ?? undefined).optional(),
   name: z
     .string()
     .regex(/^(?:[A-Za-z][A-Za-z0-9 ]{0,60}|[a-z][a-z0-9_]{0,30}\.[a-z][a-z0-9_]{0,30})$/, 'invalid Table name'),
   label: optionalString,
-  module: optionalString,
+  module: moduleName,
   // Replaces the old istable/issingle booleans: 'table' = normal collection,
   // 'sub_table' = rows only ever nested inside a parent row, 'settings' = a
   // single-row Settings Table (no list, no collection table).
@@ -796,7 +803,7 @@ const viewDefSchema = z.object({
   name: z.string().regex(/^[A-Za-z][A-Za-z0-9 ]{0,60}$/, 'A view name starts with a letter and has only letters, digits and spaces'),
   kind: z.literal('view'),
   label: optionalString,
-  module: optionalString,
+  module: moduleName,
   description: optionalString,
   view_of: z.string().min(1),
   view_filters: z.unknown(),

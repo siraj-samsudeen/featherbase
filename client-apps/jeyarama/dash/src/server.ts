@@ -2,7 +2,11 @@
 // is structural: this module imports nothing from the platform. Reads are declared in
 // featherbase.json under "reads". A report is a row of `dash.report`; nothing here knows one Dive.
 import { checked } from './values.ts'
-import { ALL_STORES_ROLE, orgChartProvider, reachOf, type Documents, type Place } from './provider.ts'
+import { ALL_STORES_ROLE, type Documents, type Place } from './provider.ts'
+import { BUSINESS_ROLES, accessSource, dashScopeProvider, liveReach, placesSource } from './access-source.ts'
+import { businessAccessSummary, giveOldGrantsAction, switchOverLog } from './switch-over-server.ts'
+import { opensDashByBusinessRoles } from './business-reports.ts'
+import type { Base } from './business-access.ts'
 import { diveFilters, storesOfReport, storesReached, type ReportRecord } from './dive-filters.ts'
 import { MONTH_CHOICES, buildReport, dayLabel, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
@@ -11,15 +15,18 @@ import { storeActions, storeReads } from './my-store.ts'
 import { buyerSectionActions, buyerSectionReads } from './buyer-sections.ts'
 import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
-import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenTo, validators as accessValidators, type AccessContext } from './report-access-server.ts'
+import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenNow, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
-import { VIEW_AS_TESTER, viewAsPeople } from './view-as-people.ts'
+import { viewAsPeople } from './view-as-people.ts'
+import { describePeople } from './people-describe.ts'
+import { DASH_ROLES, offeredByPlaces, openableByReach, opensDashFor } from './report-eligibility.ts'
+import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, removeRole } from './business-roles-server.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
 
-/** The places each person covers, from the core Tables. */
-export const scopeProviders = { org_chart: orgChartProvider() }
+/** The places each person covers: by business roles, or by the old rules, as dash.access_source says (#1277). */
+export const scopeProviders = { org_chart: dashScopeProvider() }
 
 /** The cached dataset the report reads (featherbase.json's `datasets`). */
 export const SALES_DATASET = 'sales_to_date'
@@ -78,8 +85,15 @@ export function setEmbedFetch(f: typeof fetch | null) {
 
 const placesOf = (ctx: ScopedContext) => ctx.authorization.places ?? []
 
+/** #1277: what decides Dash access for this request. */
+const sourceOf = (ctx: ScopedContext) => accessSource(ctx.baseTables as Base)
+
+
+/** #1218: the Dash Tables whose records open on a page only a company-wide manager may open. */
+const MANAGERS_PAGES = new Set(['dash.business_role', 'dash.report_bundle'])
+
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
-export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager', TEAM_MANAGER, VIEW_AS_TESTER])
+export { DASH_ROLES }
 
 const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
 
@@ -91,11 +105,18 @@ const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', '
  */
 export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
   let given: Set<string>
-  try { given = new Set((await reportsGivenTo(ctx.baseTables, ctx.user, ctx.roles ?? [], istToday())).keys()) } catch { return [] }
+  try {
+    // One reading of the switch for the whole read; places worked out under the other rules give nothing.
+    const source = await sourceOf(ctx)
+    const placedBy = placesSource(ctx.authorization?.places ?? [])
+    if (placedBy && placedBy !== source) return []
+    given = new Set((await reportsGivenNow(ctx.baseTables as Base, ctx.user, ctx.roles ?? [], istToday(), source)).keys())
+  } catch { return [] }
   if (!given.size) return []
   const rows = await ctx.documents.list('dash.report', { fields: REPORT_FIELDS, order_by: 'report_name asc', limit_page_length: 200 })
   const reports = rows.map(row => ({ ...row, ready_signal: checked(row.ready_signal), pickers_in_dive: checked(row.pickers_in_dive) }) as unknown as ReportRecord).filter(report => given.has(report.report_key))
-  return (await reachesSomething(ctx)) ? reports : reports.filter(report => report.filter_shape === 'No filter')
+  const reaches = await reachesSomething(ctx)
+  return reports.filter(report => openableByReach(report.filter_shape, reaches))
 }
 
 /**
@@ -106,20 +127,19 @@ export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
 async function offeredReports(ctx: ScopedContext): Promise<ReportRecord[]> {
   const reports = await reportsFor(ctx)
   const places = reports.some(report => report.filter_shape === 'Whole stores') ? await placesHeld(ctx) : []
-  const wholeStore = places.some(place => !place.filters.subcategory)
-  return reports.filter(report => report.filter_shape !== 'Whole stores' || wholeStore)
+  return reports.filter(report => offeredByPlaces(report.filter_shape, places))
 }
 
 /** The reader's places: a person_scope read's, else worked out from the core Tables. Unreadable means none. */
 async function placesHeld(ctx: ScopedContext): Promise<readonly Place[]> {
   if (ctx.authorization?.places?.length) return ctx.authorization.places
-  try { return (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).places } catch { return [] }
+  try { return (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles, istToday())).places } catch { return [] }
 }
 
 /** A person_scope read already holds the reader's places; any other read works them out. Unreadable means nothing. */
 async function reachesSomething(ctx: ScopedContext): Promise<boolean> {
   if (ctx.authorization?.places?.length) return true
-  try { return (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).places.length > 0 } catch { return false }
+  try { return (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles, istToday())).places.length > 0 } catch { return false }
 }
 
 /** The report the read is for: the one the payload names, or the reader's first. Undefined when it isn't one of theirs. */
@@ -263,7 +283,31 @@ async function reachInWords(ctx: ScopedContext) {
 type Plain = { state: 'ready'; no_quick_view: true; heading: Heading; period_start?: string; period_end?: string }
 
 /** A fresh MotherDuck embed session for a report's Dive, opening its latest saved version, with only filters in its state. */
-async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
+/** What `embed_session` reads in the transaction: the report, and every Subcategory code when its Dive reads `reach`. */
+interface PreparedDive { report: ReportRecord; everyCode?: string[] }
+
+/** The report's Dive reads `reach`: each store's subcategories, which #1269 collapses to code prefixes. */
+const readsReach = (report: ReportRecord) => report.pickers_in_dive || report.filter_shape === 'Stores and subcategories'
+
+/**
+ * #1269: every Subcategory code, of any type and retired ones too: a retired code still has sales a
+ * prefix would match. Without the Table nothing collapses. A page that fails fails the whole read
+ * (the platform rethrows it when the read ends), so a list cut short never makes a prefix look held.
+ */
+async function everySubcategoryCode(ctx: ScopedContext): Promise<string[] | undefined> {
+  if (!await ctx.baseTables.available?.('Subcategory')) return undefined
+  const codes: string[] = []
+  for (;;) {
+    const page = await ctx.baseTables.list('Subcategory', { fields: ['row_id'], order_by: 'row_id asc', limit_start: codes.length, limit_page_length: 500, with_retired: true })
+    codes.push(...page.map(row => String(row.row_id)))
+    if (page.length < 500) return codes
+  }
+}
+
+/** MotherDuck's answer to an embed request too large to take: the page says so, not "couldn't open". */
+const TOO_LARGE = 413
+
+async function openDive(ctx: ScopedContext, report: ReportRecord | null, everyCode?: readonly string[]) {
   if (!report) return { refused: 'no_access' }
   const { embed_service_account: account } = ctx.settings
   // #1139: its own token. The warehouse token (MOTHERDUCK_TOKEN) is a read-only account's, which
@@ -274,10 +318,13 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
   const month = chosenMonth(ctx)
   const period = periodOf(istToday(), month)
   const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
-  const filters = diveFilters(report, placesOf(ctx), { store, month, periodEnd: period.period_end, appOrigin: origin })
+  const filters = diveFilters(report, placesOf(ctx), { store, month, periodEnd: period.period_end, appOrigin: origin, everyCode })
   if ('refused' in filters) return { refused: filters.refused }
   const body = JSON.stringify({ username: account, initial_state: filters.state })
+  // #1269: the request's size, for whoever runs the instance: the reach is what grows.
+  const bytes = Buffer.byteLength(body)
   let failure: string
+  let tooLarge = false
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), EMBED_API_TIMEOUT_MS)
   try {
@@ -289,10 +336,12 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
     if (response.ok && typeof answered?.session === 'string') {
       // `ready_signal`: the Dive posts { type: 'dash:dive-ready' } once it has drawn, and the
       // page waits for it rather than trusting the frame's load event.
+      console.info(JSON.stringify({ event: 'dash_embed_session_opened', person: ctx.user, bytes }))
       return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(answered.session)}`,
         ...(report.ready_signal ? { ready_signal: true } : {}) }
     }
     failure = `embed API answered HTTP ${response.status}`
+    tooLarge = response.status === TOO_LARGE
   } catch (error) {
     failure = abort.signal.aborted ? `embed API gave no answer in ${EMBED_API_TIMEOUT_MS} ms`
       : `embed API unreachable: ${(error as Error)?.constructor?.name ?? 'error'}`
@@ -300,15 +349,15 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null) {
     clearTimeout(timer)
   }
   // For whoever runs the instance: the person's opaque id and the status, never the token or the upstream text.
-  console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure }))
-  return { unreachable: true }
+  console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure, bytes }))
+  return tooLarge ? { too_large: true } : { unreachable: true }
 }
 
 /** Your sections and its approvals (#975), and giving reports (#1046). */
 /** What a person reaches today, for Report access: any store, and a whole store. Unreadable means nothing. */
 const reachFor = (context: AccessContext) => async (person: string, roles: readonly string[]) => {
   try {
-    const { places } = await reachOf((context as unknown as ScopedContext).baseTables, person, istToday(), roles)
+    const { places } = await liveReach((context as unknown as ScopedContext).baseTables as Base, person, roles, istToday())
     return { any: places.length > 0, wholeStore: places.some(place => !place.filters.subcategory) }
   } catch { return { any: false, wholeStore: false } }
 }
@@ -327,6 +376,13 @@ export const actions = {
   add_to_bundle: (context: AccessContext) => addToBundle(context),
   remove_from_bundle: (context: AccessContext) => removeFromBundle(context),
   add_report: (context: AccessContext) => addReport(context),
+  // #1218: business roles in shadow; they change no one's access.
+  give_role: (context: AccessContext) => giveRole(context),
+  remove_role: (context: AccessContext) => removeRole(context),
+  map_title: (context: AccessContext) => mapTitle(context),
+  add_starting_roles: (context: AccessContext) => addStartingRoles(context),
+  /** #1277 (J3): the old grants given to business roles, logged, only when a System Manager asks; rerunning adds nothing. */
+  give_old_grants_to_roles: (context: AccessContext) => giveOldGrantsAction(context),
 }
 
 export const reads = {
@@ -335,6 +391,21 @@ export const reads = {
   ...storeReads,
   ...buyerSectionReads,
   ...coverageReads,
+
+  /**
+   * Which records this viewer may open on Dash's own pages (record-link.tsx): people, departments and sections by
+   * coverage.ts's rules; #1218: a report they are offered opens as itself, and a business role or a bundle on the
+   * pages that show them, which only a company-wide manager may open.
+   */
+  async dash_pages_open(context: ReadContext) {
+    const answers = await coverageReads.dash_pages_open(context as never) as boolean[]
+    const manager = managesAccess(context as AccessContext)
+    const offered = new Set((await offeredReports(context as ScopedContext)).map(report => report.report_key))
+    return answers.map((answer, i) => {
+      const { table, id } = (context.payload as { refs: { table: unknown; id: unknown }[] }).refs[i]
+      return table === 'dash.report' ? offered.has(String(id)) : MANAGERS_PAGES.has(String(table)) ? manager : answer
+    })
+  },
 
   /** The signed-in person, as the platform knows them. */
   me({ user }: ReadContext) {
@@ -348,13 +419,32 @@ export const reads = {
    */
   async can_open(context: ReadContext) {
     const ctx = context as ScopedContext
-    return managesAccess(ctx) || (ctx.roles ?? []).some(role => DASH_ROLES.has(role)) || (await offeredReports(ctx)).length > 0
+    const roles = ctx.roles ?? []
+    const source = await sourceOf(ctx)
+    if (source === BUSINESS_ROLES) {
+      // #1277 (D3): behind the platform's door (a Dash role), a business role holding a Dash permission opens it, as does a role that manages access.
+      if (opensDashByBusinessRoles(roles, false, 0)) return true
+      const { access } = await liveReach(ctx.baseTables as Base, ctx.user, roles, istToday(), source)
+      return opensDashByBusinessRoles(roles, !!access?.opens, access?.opens ? 0 : (await offeredReports(ctx)).length)
+    }
+    // Asked first without reports: a Dash role opens it with no read of reach.
+    return opensDashFor(roles, 0) || opensDashFor(roles, (await offeredReports(ctx)).length)
   },
 
   /** Whether this person manages report access, company-wide or for their team (#1217), for the sidebar's link. */
   manages_access(context: ReadContext) {
     return managesAccess(context as AccessContext) || managesTeamAccess(context as AccessContext)
   },
+
+  /** #1218: whether this person sees the business roles pages (company-wide managers only), for the sidebar's links. */
+  manages_roles: (context: ReadContext) => managesAccess(context as AccessContext),
+  /** #1218, in shadow: the Business Roles page, Explain a person, and Who would gain or lose access. Company-wide managers only. */
+  business_roles: (context: ReadContext) => businessRoles(context as AccessContext),
+  explain_person: (context: ReadContext) => explainPerson(context as AccessContext),
+  access_changes: (context: ReadContext) => accessChanges(context as AccessContext),
+  /** #1277: what decides Dash access now, and the business roles log. Company-wide managers only. */
+  access_source: (context: ReadContext) => businessAccessSummary(context as AccessContext),
+  switch_over_log: (context: ReadContext) => switchOverLog(context as AccessContext),
 
   /** The Report access page (#1046). Managers only. */
   access_page: (context: ReadContext) => accessPage(withReach(context as AccessContext)),
@@ -372,6 +462,8 @@ export const reads = {
   }),
   /** #1222: View as's people, for the platform's picker; run as the tester. View As Testers only. */
   view_as_people: (context: ReadContext) => viewAsPeople(context as AccessContext),
+  /** #1267: who people are (Employee, Former Employee, External), for the Person page; the platform's actor only. */
+  describe_people: (context: ReadContext) => describePeople(context as AccessContext),
   person_lookup: (context: ReadContext) => personLookup(withReach(context as AccessContext), istToday(), reachFor(context as AccessContext)),
 
   /** The reports this person may open, for the sidebar. */
@@ -385,7 +477,7 @@ export const reads = {
   /** Why this person's job reaches nothing, for the page's message. */
   async reach_problem(context: ReadContext) {
     const ctx = context as ScopedContext
-    return { problems: (await reachOf(ctx.baseTables, ctx.user, istToday(), ctx.roles)).problems }
+    return { problems: (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles, istToday())).problems }
   },
 
   /** The bar's store picker on the chosen report: the reader's stores by name, none on a report taking no store. */
@@ -450,9 +542,16 @@ export const reads = {
    * (outbound: it runs after the platform's transaction has closed, so `prepare` reads the row). The
    * Dive's state carries only filters.
    */
-  embed_session: Object.assign(async (context: ReadContext) => openDive(context as ScopedContext, (context as ScopedContext).prepared as ReportRecord | null), {
-    /** In the transaction: the report's row, which the handler can no longer read. */
-    prepare: async (context: ReadContext) => (await chosenReport(context as ScopedContext)) ?? null,
+  embed_session: Object.assign(async (context: ReadContext) => {
+    const prepared = (context as ScopedContext).prepared as PreparedDive | null
+    return openDive(context as ScopedContext, prepared?.report ?? null, prepared?.everyCode)
+  }, {
+    /** In the transaction: the report's row, and the codes its reach collapses against, which the handler can no longer read. */
+    prepare: async (context: ReadContext): Promise<PreparedDive | null> => {
+      const report = await chosenReport(context as ScopedContext)
+      if (!report) return null
+      return readsReach(report) ? { report, everyCode: await everySubcategoryCode(context as ScopedContext) } : { report }
+    },
   }),
 
   /**

@@ -41,9 +41,12 @@ export function composeRuntimeShell(html: string, app: ShellApp): string {
   const accented = accent ? html.replace(/<html\b([^>]*)>/i, (_match, attributes: string) => `<html${attributes} data-featherbase-accent="${accent}">`) : html
   const rooted = rootRuntimeEntryAssets(accented, app.name)
   const body = /<body(?:\s[^>]*)?>/i
-  const head = /<\/head>/i
+  // #1260: first in the head, so the bar bundle (which also waits out a
+  // deploy's gap for the page's requests) runs before the app's own module
+  // scripts, which run in document order after it.
+  const head = /<head(?:\s[^>]*)?>/i
   if (!body.test(rooted) && !head.test(rooted)) return `${script}${host}${rooted}`
-  const withScript = head.test(rooted) ? rooted.replace(head, `${script}</head>`) : `${script}${rooted}`
+  const withScript = head.test(rooted) ? rooted.replace(head, (match) => `${match}${script}`) : `${script}${rooted}`
   return body.test(withScript)
     ? withScript.replace(body, (match) => `${match}${host}`)
     : withScript.replace(script, `${script}${host}`)

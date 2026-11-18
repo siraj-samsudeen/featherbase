@@ -223,4 +223,26 @@ describe('a column that links to a row of any Table', () => {
     const theirs = (await reader.get<{ connections: Connection[] }>(`${row(PLANT, '8151')}:connections`)).connections
     expect(theirs.filter((c) => c.column === 'shapes')).toEqual([])
   })
+
+  // #1276 (Codex adversarial, round 1): a back-link through an any-table link
+  // reads its Table selector too, so a selector the reader may not read never
+  // decides which rows match, in a list or a count.
+  test('a back-link reads the Table selector only where the reader may read it', async ({ admin, createUser }) => {
+    await setup(admin)
+    await makeTable(admin, { name: `${DECISION} Hidden`, columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'shapes_table', column_type: 'Reference', reference_table: 'Table', tier: 'restricted' },
+      { column_name: 'shapes', column_type: 'Reference', table_column: 'shapes_table', choices: `${PLANT}\n${UNIT}` },
+    ] })
+    await admin.post('/api/save_row', { table: `${DECISION} Hidden`, row: { title: 'Close', shapes_table: PLANT, shapes: '8151' } })
+    const linked = [['row_id', 'related', { table: `${DECISION} Hidden`, column: 'shapes', filters: [] }]]
+    const plants = (client: TestClient) => client.get<{ data: { row_id: string }[] }>(`${url(PLANT)}?filters=${encodeURIComponent(JSON.stringify(linked))}`)
+    expect((await plants(admin)).data.map((r) => r.row_id)).toEqual(['8151'])
+    await grantRole(admin, { table: [PLANT, `${DECISION} Hidden`], role: 'Atl Back Reader', can_read: true })
+    const reader = await createUser({ roles: ['Atl Back Reader'] })
+    await expect(plants(reader)).rejects.toMatchObject({ status: 417 })
+    const count = await reader.fetch('/api/dashboard/count', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ table: PLANT, filters: linked }) })
+    await expectStatus(count, 417)
+  })
 })

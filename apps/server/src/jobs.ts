@@ -440,27 +440,34 @@ export async function drainJobs(limit = 1000): Promise<number> {
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
+// The job the worker is running now, so a stopping server can let it finish.
+let running: Promise<void> | null = null
 export function startWorker(intervalMs = Number(readVariable('JOB_POLL_MS') ?? 500)): void {
   if (timer) return
   let ticking = false
-  timer = setInterval(async () => {
+  timer = setInterval(() => {
     if (ticking) return
     ticking = true
-    try {
-      await runOneJob()
-    } catch {
-      // A worker crash must not kill the interval.
-    } finally {
-      ticking = false
-    }
+    running = (async () => {
+      try {
+        await runOneJob()
+      } catch {
+        // A worker crash must not kill the interval.
+      } finally {
+        ticking = false
+        running = null
+      }
+    })()
   }, intervalMs)
 }
 
-export function stopWorker(): void {
+/** Stop taking jobs; resolves once the job running now (if any) is done. */
+export function stopWorker(): Promise<void> {
   if (timer) {
     clearInterval(timer)
     timer = null
   }
+  return running ?? Promise.resolve()
 }
 
 // Job modules live in src/jobs/*.ts and register handlers at import.

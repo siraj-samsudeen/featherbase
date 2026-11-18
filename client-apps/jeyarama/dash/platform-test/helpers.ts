@@ -55,9 +55,85 @@ type Grant = { grant?: { role: string }; withdraw?: { role: string } }
 export const withoutTeamManager = <T extends Grant | { create?: string }>(list: T[]) =>
   list.filter(entry => ('create' in entry ? entry.create : ((entry as Grant).grant ?? (entry as Grant).withdraw)?.role) !== TEAM_MANAGER)
 
+/** #1269's 0.13.29 taken out of a manifest: it changes no Table, role or read. */
+export function revertReachPrefixes(manifest: { migrations: { id: string }[] }) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'reach_prefixes', fromVersion: '0.13.28', operations: [] })
+}
+
+/** #1218's 0.13.28 taken out of a manifest: no business role Tables, their grants, or the reads of HR titles. Its reads and
+ *  actions stay declared: the earlier version shares this build's server module. */
+export const SHADOW_TABLES = ['dash.business_role', 'dash.business_role_permission', 'dash.title_map', 'dash.role_assignment']
+/** #1218's grants, which this version brings too: the upgrade tests of earlier steps compare without them. */
+export const withoutBusinessRoles = <T,>(list: T[]) =>
+  list.filter(entry => ![...SHADOW_TABLES, 'dash.access_source', 'dash.switch_over_log'].includes(((entry as Grant & { grant?: { table?: string } }).grant as { table?: string } | undefined)?.table ?? ''))
+/** #1277's switch and its log, which 0.13.30 brings. */
+export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
+type Revertable = { migrations: { id: string }[]; tables?: { name: string; decides_scope?: boolean; columns?: { column_name: string }[] }[]; permissions?: { table: string }[];
+  baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[] } }
+/** #1277's 0.13.30 taken out of a manifest: business roles decide nothing, no switch. */
+export function revertBusinessRolesLive(manifest: Revertable) {
+  // 0.13.32 and 0.13.31 change no Table, role or read; they come off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'every_report_and_bulk_comparison', fromVersion: '0.13.31', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'old_grants_one_receiver', fromVersion: '0.13.30', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_live', fromVersion: '0.13.29' })
+  if (manifest.tables) {
+    manifest.tables = manifest.tables.filter(t => !LIVE_TABLES.includes(t.name))
+    for (const table of manifest.tables) {
+      if (SHADOW_TABLES.includes(table.name)) delete table.decides_scope
+      if (table.name === 'dash.report_access') table.columns = table.columns!.filter(c => c.column_name !== 'business_role')
+      // #1277's step renames Master Data Steward in the column's description.
+      for (const column of (table.columns ?? []) as { column_name: string; description?: string }[])
+        if (table.name === 'dash.business_role' && column.column_name === 'by_hand_only') column.description = column.description!.replace('Master Data Manager', 'Master Data Steward').replace('Supplier', 'Vendor')
+      // and adds Region to a role's Reaches.
+      for (const column of (table.columns ?? []) as { column_name: string; choices?: string; description?: string }[])
+        if (table.name === 'dash.business_role' && column.column_name === 'reaches') {
+          column.choices = column.choices!.replace('Cluster\nRegion\n', 'Cluster\n')
+          column.description = column.description!.replace('store, cluster or region,', 'store or cluster,')
+        }
+    }
+  }
+  if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !LIVE_TABLES.includes(p.table))
+  if (manifest.actions) manifest.actions.tables = manifest.actions.tables.filter(t => !LIVE_TABLES.includes(t))
+  const read = manifest.baseTables?.read
+  if (read) {
+    for (const table of LIVE_TABLES) delete read[table]
+    read['dash.report_access'] = read['dash.report_access'].filter(c => c !== 'business_role')
+  }
+  const provider = manifest.scopeProvider
+  if (provider) {
+    provider.tables = provider.tables.filter(t => ![...SHADOW_TABLES, 'dash.access_source', 'Designation'].includes(t))
+    provider.unmarkedTables = provider.unmarkedTables?.filter(t => t !== 'Designation')
+    provider.optionalTables = provider.optionalTables?.filter(t => t !== 'Designation')
+  }
+}
+/** #1277's 0.13.30, then #1269's 0.13.29 under it, then #1218's 0.13.28. */
+export function revertBusinessRoles(manifest: Revertable) {
+  revertBusinessRolesLive(manifest)
+  revertReachPrefixes(manifest)
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_shadow', fromVersion: '0.13.27' })
+  if (manifest.tables) manifest.tables = manifest.tables.filter(t => !SHADOW_TABLES.includes(t.name))
+  if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !SHADOW_TABLES.includes(p.table))
+  if (manifest.actions) manifest.actions.tables = manifest.actions.tables.filter(t => !SHADOW_TABLES.includes(t))
+  const read = manifest.baseTables?.read
+  if (read) {
+    for (const table of [...SHADOW_TABLES, 'Designation']) delete read[table]
+    read['Job Assignment'] = read['Job Assignment'].filter(c => c !== 'designation')
+    read.Cluster = read.Cluster.filter(c => c !== 'name')
+  }
+}
+
+/** #1267's 0.13.27 taken out of a manifest: the platform does not ask who people are. Its read
+ *  stays declared, since the earlier version shares this build's server module. */
+export function revertPeopleDescribe(manifest: { migrations: { id: string }[]; people?: unknown }) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'people_describe', fromVersion: '0.13.26', operations: [] })
+  delete manifest.people
+}
+
 /** #1219's 0.13.26 taken out of a manifest. Its Put back action stays declared: the earlier version
- *  shares this build's server module, and the platform refuses handlers it doesn't declare. */
-export function revertMdeReview(manifest: { migrations: { id: string }[] }) {
+ *  shares this build's server module, and the platform refuses handlers it doesn't declare.
+ *  #1267's 0.13.27 sits on top of it; it comes off first. */
+export function revertMdeReview(manifest: { migrations: { id: string }[]; people?: unknown }) {
+  revertPeopleDescribe(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'mde_review', fromVersion: '0.13.25', operations: [] })
 }
 
@@ -79,7 +155,8 @@ export const withoutViewAsTester = <T extends Grant | { create?: string }>(list:
  */
 export function revertViewAs(manifest: { roles: string[]; permissions: { role: string }[]; migrations: { id: string }[]; viewAs?: unknown }) {
   // #1254's 0.13.23 to 0.13.25 change no Table, role or grant; they come off first.
-  // #1219's 0.13.26 sits on top of #1254's steps; it comes off first.
+  // #1219's 0.13.26 sits on top of #1254's steps, #1267's 0.13.27 on it, #1218's 0.13.28 on that, #1269's 0.13.29 and #1277's 0.13.30 last; they come off first.
+  revertBusinessRoles(manifest as never)
   revertMdeReview(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'deciders_read_together', fromVersion: '0.13.24', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'holders_read_whole', fromVersion: '0.13.23', operations: [] })

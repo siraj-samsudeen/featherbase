@@ -1,7 +1,7 @@
 // What the report page shows, decided from what its two reads answered, and
 // how it writes figures. Kept apart from the React code so it can be tested.
 export type Answer<T> = { ok: true; value: T } | { ok: false; status?: number }
-type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; refused?: string; ready_signal?: boolean }
+type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; too_large?: boolean; refused?: string; ready_signal?: boolean }
 
 /** Where the Dive is served from (featherbase.json's `frameOrigins`), and the message it posts once it has drawn (B7). */
 export const DIVE_ORIGIN = 'https://embed-motherduck.com'
@@ -19,6 +19,8 @@ export type View =
   | { kind: 'no_access' }
   | { kind: 'signed_out' }
   | { kind: 'failed' }
+  /** #1269: MotherDuck refused the reader's reach as too large to open the Dive with. */
+  | { kind: 'too_large' }
 
 const refusedBy = (answer: Answer<unknown> | undefined, status: number) => answer?.ok === false && answer.status === status
 
@@ -50,10 +52,12 @@ export function pageView({ embed, report, frameFailed = false, timedOut = false,
   if (embed?.ok && embed.value.frame && !frameFailed && (!timedOut || diveReady)) return { kind: 'dive', src: embed.value.frame }
   // Past the deadline the session request counts as failed, answered or not.
   if ((!embed && !frameFailed && !timedOut) || !report) return { kind: 'opening' }
-  if (!report.ok) return { kind: 'failed' }
+  // #1269: where the page would say only "couldn't open", it says why when MotherDuck refused the reach as too large.
+  const failed: View = embed?.ok && embed.value.too_large ? { kind: 'too_large' } : { kind: 'failed' }
+  if (!report.ok) return failed
   if (state === 'not_built' || state === 'unconfirmed') return { kind: 'empty', why: 'not_built' }
   // A report with no quick view has nothing to stand in for its Dive.
-  return report.value.no_quick_view ? { kind: 'failed' } : { kind: 'quick' }
+  return report.value.no_quick_view ? failed : { kind: 'quick' }
 }
 
 /** What the platform tells a person about their own rights and this app's setup. */

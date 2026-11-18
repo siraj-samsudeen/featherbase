@@ -29,6 +29,7 @@ import {
   newIdentityId,
   normaliseEmail,
   touchIdentity,
+  assertMethodOpenTo,
   type SignInMethod,
 } from './identities'
 
@@ -109,6 +110,10 @@ export async function assertEligible(method: SignInMethod, user: string): Promis
   const c = await candidate(user)
   if (!c || !c.enabled || (c.privileged && !KINDS[method.kind].admitsPrivileged))
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
+  // #1267 (Codex round 2): employees_only is decided when a link is made, not
+  // here. A sign-in writes its link and person before this point and runs in a
+  // transaction a slow lookup must not hold; StyleHR's own login already
+  // refuses a leaver (delegated-login.ts), and its roster asks for Current.
 }
 
 /** Domain admission (design D4): a verified email on an allowed domain, and a
@@ -379,6 +384,8 @@ export async function completeSignIn(
 export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: VerifiedIdentity): Promise<string> {
   if (!KINDS[method.kind].trustedSubject || !v.subject)
     throw new AppError('PermissionError', 'This sign-in method cannot be linked by its owner')
+  // #1267: the same rule as an administrator's link.
+  await assertMethodOpenTo(method, user)
   // #693: the same domain rule as a first sign-in (verified address, allowed
   // domain, and Google's hosted-domain claim for a company domain), before
   // anything is read or written.

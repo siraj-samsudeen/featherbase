@@ -4,7 +4,7 @@ import { hashPassword } from './auth'
 import { readVariable } from './env'
 
 // The first Administrator's password (migration 0002; #130). Only a
-// developer's own machine or a test run has a knowable default; `staging` (a
+// developer's own machine or a test run has a knowable default; `dev` (a
 // hosted trial instance) is production here. Provisioning never rotates a hash.
 export async function bootstrapAdministrator(env: string = environment) {
   const configured = readVariable('ADMIN_PASSWORD')

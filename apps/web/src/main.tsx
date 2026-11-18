@@ -12,6 +12,11 @@ import './index.css'
 // Paints the theme before anything renders, so even the sign-in page follows
 // the device. No module paints as it loads (lib/theme.ts says why).
 import { paintSavedTheme } from './lib/theme'
+import { installDeployWait } from './lib/deploy-wait'
+
+// #1260: a deploy's few seconds without a server are waited out, with a
+// notice, instead of failing whatever the page was asking for.
+installDeployWait(window, document)
 
 // Client errors (401/403/404/417) are definitive — retrying them just
 // leaves views stuck in loading states.

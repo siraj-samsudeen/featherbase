@@ -5,14 +5,14 @@
 // hold no grant on the Featherbase Tables behind it, so a link would only lead to a refusal.
 import { useEffect, useState, type ReactNode } from 'react'
 import { RecordLink as SharedRecordLink, useRecordHref } from '@featherbase/shop-floor'
-import { read } from './api'
+import { APP_VERSION_HEADERS, read } from './api'
 
 /** The Table names Dash links to, as Featherbase knows them. */
 export const RECORD = {
   site: 'Site', floor: 'Store Floor', section: 'Section', employee: 'Employee', department: 'Department',
   subcategory: 'Subcategory', category: 'Category', region: 'Operating Region', merchandise: 'Merchandise Assignment', buyerSection: 'Buyer Section',
   // #1225: what Report access shows.
-  report: 'dash.report', bundle: 'dash.report_bundle', role: 'Role', job: 'Job',
+  report: 'dash.report', bundle: 'dash.report_bundle', role: 'Role', job: 'Job', businessRole: 'dash.business_role',
 } as const
 
 /** Whether the signed-in person may open a Table's records in Featherbase: its description answers only
@@ -21,7 +21,8 @@ const opens = new Map<string, Promise<boolean>>()
 export function canOpenTable(table: string): Promise<boolean> {
   let answer = opens.get(table)
   if (!answer) {
-    answer = Promise.resolve().then(() => fetch(`/api/table/${encodeURIComponent(table)}:meta`, { credentials: 'same-origin' })).then(r => r.ok, () => false)
+    // The version header: without it the platform refuses a read of Dash's own Tables (409), and every link to a report, bundle or role went plain.
+    answer = Promise.resolve().then(() => fetch(`/api/table/${encodeURIComponent(table)}:meta`, { credentials: 'same-origin', headers: APP_VERSION_HEADERS })).then(r => r.ok, () => false)
     opens.set(table, answer)
   }
   return answer
@@ -65,6 +66,10 @@ export const DASH_PAGES: Readonly<Record<string, (id: string) => string>> = {
   Employee: id => `?view=coverage&employee=${encodeURIComponent(id)}`,
   Department: id => `?view=coverage&department=${encodeURIComponent(id)}`,
   Section: id => `?view=coverage&section=${encodeURIComponent(id)}`,
+  // #1218 verifier: Dash's own records open on the Dash page that shows them, never on an admin row page.
+  'dash.report': id => `?report=${encodeURIComponent(id)}`,
+  'dash.business_role': id => `?view=roles&role=${encodeURIComponent(id)}`,
+  'dash.report_bundle': id => `?view=access&section=bundles&bundle=${encodeURIComponent(id)}`,
 }
 /** For RecordPagesProvider: a Dash page for the record, else undefined (its Featherbase record). */
 export const dashPageFor = (table: string, id: string) => DASH_PAGES[table]?.(id)

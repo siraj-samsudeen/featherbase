@@ -39,6 +39,7 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/admin/table/$table/view/checklist': 'alternative view of a selected Table',
   '/featherbase/admin/script-report/$name': 'readable registered script reports',
   '/featherbase/admin/jobs': 'manager page catalogue',
+  '/featherbase/admin/leavers-who-can-sign-in': 'manager page catalogue',
   '/featherbase/admin/access-tokens': 'page catalogue',
   '/featherbase/admin/find-person': 'page catalogue plus required Table reads',
   '/featherbase/admin/waiting-for-access': 'manager page catalogue',
@@ -55,7 +56,7 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/admin/dashboard/$name': 'scoped readable Dashboards',
   '/featherbase/admin/table/$table/naming': 'requires a selected Table',
   '/featherbase/admin/table/$table/permissions': 'requires a selected Table',
-  '/featherbase/admin/explore': 'page catalogue',
+  '/featherbase/admin/explore': 'retired (#1276): only redirects to the filtered list',
 }
 
 it('#737 every actual router family has a destination provider or a contextual exclusion', () => {
@@ -78,7 +79,7 @@ test('#737 every standalone Admin route is actually supplied to Cmd K', async ({
   const parent = roots.find((r) => r.options.path === '/featherbase/admin')!
   const standalone = Object.values(parent.children ?? [])
     .map((r) => r.options.path)
-    .filter((path): path is string => Boolean(path && path !== '/' && path !== 'new-table' && path !== 'setup/people' && !path.includes('$')))
+    .filter((path): path is string => Boolean(path && path !== '/' && path !== 'new-table' && path !== 'setup/people' && path !== 'explore' && !path.includes('$')))
   const inventory = await admin.get<{ pages: { href: string }[] }>('/api/command_destinations')
   expect(standalone.length).toBeGreaterThan(10)
   for (const path of standalone)

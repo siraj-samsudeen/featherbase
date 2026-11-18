@@ -28,6 +28,7 @@ import { Tags } from './Tags'
 import { Comments } from './Comments'
 import { PersonSignInMethods, managedBySignIn } from './PersonSignInMethods'
 import { SaveState } from './SaveState'
+import { PersonStanding, standingQuery } from './PersonStanding'
 import { PersonIdentifiers } from './PersonIdentifiers'
 import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
@@ -150,6 +151,8 @@ export function FormView({
   const [banner, setBanner] = useState<string | null>(null)
   // #1267: when this page last saved the record, for the save state's tooltip.
   const [savedAt, setSavedAt] = useState<Date | null>(null)
+  // #1267 step 3: a Person's External label is asked only while they are External.
+  const standing = useQuery({ ...standingQuery(name), enabled: table === 'Person' && !isNew })
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
@@ -482,7 +485,8 @@ export function FormView({
   for (const f of m.columns) {
     if (f.column_type === 'Section Break') sections.push([])
     // #1267: a saved Person's Sign-In lines own its "expects … sign-in" switches.
-    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name))) sections[sections.length - 1].push(f)
+    else if (!f.hidden && !(!isNew && managedBySignIn(table, f.column_name)) && !(table === 'Person' && f.column_name === 'external_label' && (isNew || standing.data?.status !== 'none')))
+      sections[sections.length - 1].push(f)
   }
   if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
@@ -608,6 +612,8 @@ export function FormView({
             {tableLabel(table, meta.data)}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
             <GlossaryHelp table={table} className="ml-1" />
           </h1>
+          {/* #1267 step 3: who the person is, their jobs and stores, and their email. */}
+          {personPage && <PersonStanding person={name} email={typeof values.email === 'string' ? values.email : null} />}
           {/* #1267: a saved record says so once, at the tab row's right end; a new one here. */}
           {isNew && (
             <span className="text-xs text-ink-muted" data-testid="form-status">
@@ -1030,7 +1036,9 @@ export function FormView({
       {changeRecord && <ChangeRecord values={values} />}
       <RawDetails data-testid={reading || changeRecord ? 'raw-details' : undefined}>
       {(reading || changeRecord) && <summary className="mb-4 cursor-pointer rounded-md px-1 py-2 text-sm font-medium text-ink-muted focus-visible:outline-2 focus-visible:outline-accent">{t(changeRecord ? 'Raw JSON' : 'Raw details')}</summary>}
-      {isNew ? work : <ContentTabs label="Record workspace" value={area} onChange={setArea}
+      {/* #1267: a new record's fields are locked while its first save is on the way; an edit made
+          then would be lost when the page becomes the record. A failed save unlocks them, as typed. */}
+      {isNew ? <fieldset disabled={saving} aria-busy={saving} className="m-0 min-w-0 border-0 p-0" data-testid="new-record-fields">{work}</fieldset> : <ContentTabs label="Record workspace" value={area} onChange={setArea}
         actions={<>
           {/* #1267: one save state for the record, with the time in its tooltip. */}
           <SaveState dirty={dirty} savedHere={banner === 'Saved'} savedAt={savedAt}

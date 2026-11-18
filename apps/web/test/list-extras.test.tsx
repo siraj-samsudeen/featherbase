@@ -1,14 +1,12 @@
 // ListView paths the merged web coverage report (ADR 0012) showed untaken:
 // a text filter applied by Enter and by leaving the box; a filter-bar value
 // added with Enter; an expanded row's money column totalled; a bulk edit the
-// server refuses; and the Explore button. Each asserts the rows shown or the
-// page reached.
+// server refuses. Each asserts the rows shown or the page reached.
 import { tableSlug } from 'shared'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
-import { openListMenu } from './list-menus'
 
 const T = 'Lx Order'
 const ENC = encodeURIComponent(T)
@@ -116,16 +114,4 @@ test('a bulk edit the server refuses names the field and why, and leaves the row
   expect(await screen.findByTestId('bulk-error')).toHaveTextContent(/Invalid values for Lx Order — Customer: \S/)
   const rows = (await admin.get(`/api/table/${ENC}?fields=${encodeURIComponent('["customer"]')}`)) as { data: { customer: string }[] }
   expect(rows.data.map((r) => r.customer).sort()).toEqual(['Asha', 'Ashok', 'Ravi'])
-})
-
-test('Explore opens the explorer starting from this table', async ({ admin }) => {
-  const user = userEvent.setup()
-  await seed(admin)
-  await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}`, admin)
-  // #1242: Explore sits in the list's View menu.
-  await openListMenu('View', screen, { timeout: 10_000 })
-  await user.click(await screen.findByTestId('open-explore', {}, { timeout: 10_000 }))
-  expect(await screen.findByTestId('explore-view')).toBeInTheDocument()
-  await waitFor(() => expect(screen.getByTestId('explore-root')).toHaveValue(T))
-  expect(await screen.findByTestId('explore-pane1')).toHaveTextContent('Asha')
 })

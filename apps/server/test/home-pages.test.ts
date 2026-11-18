@@ -268,13 +268,17 @@ describe('auto-membership: a built table never vanishes from navigation', () => 
 })
 
 describe('module pages never collide with the System page', () => {
-  test('a user module named System gets its own page, not the platform one', async ({ admin }) => {
-    await makeTable(admin, 'HP Sys Thing', 'System')
+  // A module whose page name is already taken gets a page of its own. ("System" itself is reserved, #1287.)
+  test("a user module whose page name is taken gets its own page, not the other one", async ({ admin }) => {
+    await makeTable(admin, 'HP Core Thing', 'Core')
+    await makeTable(admin, 'HP Home Thing', 'Home!')
     const all = await pages(admin)
-    const mine = all.find((p) => p.module === 'System')!
-    expect(mine.row_id).not.toBe('system')
-    expect(mine.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Sys Thing')
-    expect(all.find((p) => p.row_id === 'system')!.module).toBeNull()
+    const mine = all.find((p) => p.module === 'Home!')!
+    expect(mine.label).toBe('Home!')
+    expect(mine.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Home Thing')
+    const core = all.find((p) => p.module === 'Core')
+    expect(core?.cards.flatMap((c) => c.links.map((l) => l.link_to)) ?? []).not.toContain('HP Home Thing')
+    expect(await sql`select row_id from home_page where module = 'Home!'`).toEqual([{ row_id: 'home-2' }])
   })
 
   test('a home page whose shortcuts are unreadable still opens, with no shortcuts', async ({ admin }) => {
@@ -304,12 +308,12 @@ describe('System membership comes from the current catalogue', () => {
 
   test('missing placement hints fall back to one name-ordered Platform card', async ({ admin }) => {
     await sql`delete from home_page_link where parent = 'system' and parenttype = 'Home Page'`
-    const catalogue = await sql`select name from table_def where system and kind != 'sub_table'`
-    const names = catalogue.map((t) => String(t.name)).sort()
+    const catalogue = await sql`select name, label from table_def where system and kind != 'sub_table'`
+    // Each link reads as its Table's label, or its name where it has none (#1271's Leaver Sign In has one).
+    const links = catalogue.map((t) => ({ label: String(t.label || t.name), link_to: String(t.name) }))
+      .sort((a, b) => (a.link_to < b.link_to ? -1 : a.link_to > b.link_to ? 1 : 0))
     const system = (await pages(admin)).find((p) => p.row_id === 'system')!
-    expect(system.cards).toEqual([
-      { label: 'Platform', links: names.map((name) => ({ label: name, link_to: name })) },
-    ])
+    expect(system.cards).toEqual([{ label: 'Platform', links }])
   })
 
   test('placement hints cannot change eligible membership', async ({ admin }) => {

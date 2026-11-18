@@ -13,7 +13,7 @@ const manifest = JSON.parse(readFileSync(new URL('../featherbase.json', import.m
 // The hosted ones: a developer's machine gets its list from the made-up seed.
 const hosted = Object.keys(file.environments).filter(name => file.environments[name].settings['App Setting'])
 
-it('covers the hosted environments', () => expect(hosted).toEqual(['dev', 'prod']))
+it('covers the hosted environments', () => expect(hosted).toEqual(['dev', 'staging', 'prod']))
 
 describe.each(hosted)('the %s settings', environment => {
   const listed = JSON.parse(file.environments[environment].settings['App Setting']!.find(row => row.row_id === 'dash.linked_tables')!.value) as string[]

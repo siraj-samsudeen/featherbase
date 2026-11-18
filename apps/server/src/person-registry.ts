@@ -60,7 +60,8 @@ const on = (typeColumn: string): ColumnSpec => ({ class: 'conditional-id', typeC
 const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   person: {
     row_id: id, email: code, username: code, full_name: text, password_hash: code, language: code,
-    user_image: code, theme: code,
+    // #1267: a fixed choice (Consultant, Vendor), never free text.
+    user_image: code, theme: code, external_label: code,
   },
   service_account: { row_id: id, label: text, display_name: text },
   person_id_map: { '*': code },
@@ -137,6 +138,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   instance_settings_apply: { applied_by: id, environment: code, revision: code, run: code, managed_paths: code, managed_values: code },
   internal_metadata: { '*': code },
   job_execution: { job: code, method: code, outcome: code, error: text, result: text },
+  leaver_sign_in: { person: id, section: code, why: text, ways_in: text },
+  leaver_sign_in_rebuild: { summary: text },
   letter_head: { '*': text },
   metadata_override: { '*': code },
   migration: { '*': code },

@@ -1,0 +1,378 @@
+// #1276 (relational navigation, slice 5): "Linked to…" and "Not linked to…" on
+// a list's Add filter. A filter is one 'related' (or 'not related') list filter
+// the server compiles to permission-scoped subqueries, so a row the viewer may
+// not read never matches. A chain ("Sections linked to Subcategories linked to
+// the Sarees division") nests one step inside the one before, exactly as
+// Explore's panes did; Explore is retired and its addresses translate here.
+import { MAX_RELATED_DEPTH } from 'shared'
+import type { Backlink } from './connections'
+import { dataColumns, isLinkTable, readableLinks } from './list-view-columns'
+import { linkRowsTable, tableLabel, type TableMeta } from './meta'
+
+export type Filter = [string, string, unknown]
+
+/** How a row of one Table is linked to rows of another. */
+export type Link =
+  /** This Table's Reference column points at the other Table. */
+  | { kind: 'forward'; column: string }
+  /** The other Table's Reference column points here; `parent` when the other
+   *  Table holds this Table's sub-table rows. */
+  | { kind: 'back'; column: string }
+  /** This Table holds sub-table rows (`via`) whose column points at the other Table. */
+  | { kind: 'via'; via: string; column: string }
+  /** A row of a link Table (`link`) points here by `back` and at the other Table by `column`. */
+  | { kind: 'through'; link: string; back: string; column: string }
+
+/** One Table a list can be linked to, as Add filter offers it. */
+export interface LinkOption {
+  key: string
+  /** The Table whose rows are picked. */
+  table: string
+  label: string
+  link: Link
+}
+
+export function linkKey(table: string, link: Link): string {
+  switch (link.kind) {
+    case 'forward':
+    case 'back':
+      return `${link.kind}:${table}:${link.column}`
+    case 'via':
+      return `via:${table}:${link.via}:${link.column}`
+    case 'through':
+      return `through:${table}:${link.link}:${link.back}:${link.column}`
+  }
+}
+
+/** How many nested related levels a step uses: a link table is two hops. */
+export const linkDepth = (link: Link) => (link.kind === 'through' ? 2 : 1)
+
+/**
+ * Every Table a row of `meta` can be linked to: its links (forward), the
+ * Tables linking to it (back), the far side of each link Table pointing at it
+ * (through), the Tables its own sub-table rows point at (via), its own
+ * sub-tables, the Tables holding sub-table rows that point at it, and (for a
+ * sub-table) the Tables holding its rows. A Table
+ * on a Data Source offers only its links within that source, which is all its
+ * server can follow.
+ */
+export function linkOptions(
+  meta: TableMeta,
+  backlinks: Backlink[],
+  metaOf: (table: string) => TableMeta | undefined,
+  /** The Tables holding this one's rows as a sub-table. */
+  holders: string[] = [],
+): LinkOption[] {
+  const label = (t: string) => tableLabel(t, metaOf(t))
+  const options: LinkOption[] = []
+  // The server follows links only through its own Tables, or, on a connected
+  // Table, its direct links within one PostgreSQL source: a step into a
+  // connected Table from a native one cannot be compiled, so it is not offered.
+  const bound = (t: string | undefined) => Boolean(t && metaOf(t)?.data_source)
+  const add = (table: string, text: string, link: Link) => {
+    const key = linkKey(table, link)
+    const between = link.kind === 'via' ? link.via : link.kind === 'through' ? link.link : undefined
+    // Only Tables the viewer may read: a Table whose metadata the server will not
+    // give them (a 403) is one they cannot pick rows of, at any step.
+    if (!metaOf(table) || (between && !metaOf(between))) return
+    if (!meta.data_source && (bound(table) || bound(between))) return
+    if (!options.some((o) => o.key === key)) options.push({ key, table, label: text, link })
+  }
+  if (meta.data_source && meta.source_engine !== 'postgres') return []
+  const refs = dataColumns(meta).filter((c) => c.column_type === 'Reference' && linkRowsTable(c))
+  for (const c of refs) {
+    const target = linkRowsTable(c)!
+    if (meta.data_source && metaOf(target)?.data_source !== meta.data_source) continue
+    // Two links into one Table are told apart by their column.
+    const twice = refs.filter((r) => linkRowsTable(r) === target).length > 1
+    add(target, twice ? `${label(target)} · ${c.label ?? c.column_name}` : label(target), { kind: 'forward', column: c.column_name })
+  }
+  if (meta.data_source) return options
+  // A sub-table's rows link to the row holding them, by `parent`.
+  if (meta.kind === 'sub_table')
+    for (const holder of holders) add(holder, label(holder), { kind: 'forward', column: 'parent' })
+  const direct = backlinks.filter((b) => !b.via)
+  for (const b of direct) {
+    const twice = direct.filter((x) => x.table === b.table).length > 1
+    const by = metaOf(b.table)?.columns.find((c) => c.column_name === b.column)
+    add(b.table, twice ? `${label(b.table)} · ${by?.label ?? b.column}` : label(b.table), { kind: 'back', column: b.column })
+    const linkMeta = metaOf(b.table)
+    if (!linkMeta || !isLinkTable(linkMeta)) continue
+    for (const far of readableLinks(linkMeta)) {
+      if (far.column_name === b.column) continue
+      const target = linkRowsTable(far)!
+      // A link Table's link to a Table this one already links to (a section
+      // subcategory's store, beside the section's own site) is context, not a far side.
+      if (refs.some((r) => linkRowsTable(r) === target)) continue
+      // Two links into one Table (an assignment's Employee and Reports To) are told apart.
+      const twice = readableLinks(linkMeta).filter((x) => x.column_name !== b.column && linkRowsTable(x) === target).length > 1
+      const via = twice ? `${label(target)} (${far.label ?? far.column_name})` : label(target)
+      add(target, `${via} · through ${label(b.table)}`, { kind: 'through', link: b.table, back: b.column, column: far.column_name })
+    }
+  }
+  for (const b of backlinks.filter((x) => x.via))
+    add(b.table, `${label(b.table)} · via ${label(b.via!)}`, { kind: 'through', link: b.via!, back: b.column, column: 'parent' })
+  for (const grid of meta.columns.filter((c) => c.column_type === 'Sub-table' && c.row_table)) {
+    const rows = grid.row_table!
+    add(rows, `${label(rows)} · rows of this ${label(meta.name)}`, { kind: 'back', column: 'parent' })
+    for (const c of readableLinks(metaOf(rows) ?? ({ columns: [] } as unknown as TableMeta)))
+      add(linkRowsTable(c)!, `${label(linkRowsTable(c)!)} · via ${label(rows)}`, { kind: 'via', via: rows, column: c.column_name })
+  }
+  // A Table linked both ways (an employee's manager is an employee) names its
+  // column on each: "Employee · Manager" and "Employee · by their Manager".
+  return options.map((o) => {
+    if (options.filter((x) => x.label === o.label).length < 2 || (o.link.kind !== 'forward' && o.link.kind !== 'back')) return o
+    const by = o.link.kind === 'forward' ? meta : metaOf(o.table)
+    const name = by?.columns.find((c) => c.column_name === o.link.column)?.label ?? o.link.column
+    return { ...o, label: o.link.kind === 'forward' ? `${o.label} · ${name}` : `${o.label} · by their ${name}` }
+  })
+}
+
+/** The one list filter that links a row to rows of `table` matching `inner`. */
+export function linkFilter(link: Link, table: string, inner: Filter[], negate = false): Filter {
+  const op = negate ? 'not related' : 'related'
+  switch (link.kind) {
+    case 'forward':
+      return [link.column, op, { table, filters: inner }]
+    case 'back':
+      return ['row_id', op, { table, column: link.column, filters: inner }]
+    case 'via':
+      return ['row_id', op, { via: link.via, column: link.column, table, filters: inner }]
+    case 'through':
+      return ['row_id', op, { table: link.link, column: link.back, filters: [[link.column, 'related', { table, filters: inner }]] }]
+  }
+}
+
+/** One step of a chain: the Table it goes to, how, and the rows picked there
+ *  (none picked means any row the next step allows). With none picked, a search
+ *  typed in the step narrows it to the rows whose `column` contains `text`. */
+export interface ChainStep {
+  table: string
+  link: Link
+  picked: string[]
+  search?: { column: string; text: string }
+}
+
+/** A step's search as the list filter it sends: "contains", as the list's own Search. */
+const searchFilter = (search: { column: string; text: string }): Filter => [search.column, 'like', `%${search.text}%`]
+
+/** The filters a step's own Table is narrowed by: its picked rows and the next step. */
+export function stepFilters(steps: ChainStep[], at: number): Filter[] {
+  const step = steps[at]
+  const next = steps[at + 1]
+  return [
+    ...(step.picked.length ? [['row_id', 'in', step.picked] as Filter]
+      : step.search?.text ? [searchFilter(step.search)] : []),
+    ...(next ? [linkFilter(next.link, next.table, stepFilters(steps, at + 1))] : []),
+  ]
+}
+
+/** A chain as the one filter the list sends. */
+export function chainFilter(steps: ChainStep[], negate = false): Filter {
+  return linkFilter(steps[0].link, steps[0].table, stepFilters(steps, 0), negate)
+}
+
+/** How many related levels a chain uses; the server takes MAX_RELATED_DEPTH. */
+export const chainDepth = (steps: Pick<ChainStep, 'link'>[]) => steps.reduce((n, s) => n + linkDepth(s.link), 0)
+export const fitsDepth = (steps: Pick<ChainStep, 'link'>[]) => chainDepth(steps) <= MAX_RELATED_DEPTH
+
+type Spec = { table?: unknown; via?: unknown; column?: unknown; parentfield?: unknown; filters?: unknown }
+const isSpec = (v: unknown): v is Spec => !!v && typeof v === 'object' && !Array.isArray(v)
+const isFilter = (f: unknown): f is Filter => Array.isArray(f) && f.length === 3 && typeof f[0] === 'string' && typeof f[1] === 'string'
+
+/** A filter read back as the chain it was built from, or none when it is not one
+ *  (a hand-written relationship filter reads as it is written). */
+export function parseChain(filter: Filter): { negate: boolean; steps: ChainStep[] } | null {
+  const [field, op, value] = filter
+  if (op !== 'related' && op !== 'not related') return null
+  const steps = readStep(field, value)
+  return steps ? { negate: op === 'not related', steps } : null
+}
+
+function readStep(field: string, value: unknown): ChainStep[] | null {
+  if (!isSpec(value) || typeof value.table !== 'string' || value.parentfield !== undefined) return null
+  const inner = value.filters ?? []
+  if (!Array.isArray(inner) || !inner.every(isFilter)) return null
+  let link: Link
+  let table = value.table
+  let rest: Filter[] = inner
+  if (typeof value.via === 'string' && typeof value.column === 'string') {
+    if (field !== 'row_id') return null
+    link = { kind: 'via', via: value.via, column: value.column }
+  } else if (value.via !== undefined) return null
+  else if (typeof value.column === 'string') {
+    if (field !== 'row_id') return null
+    const [only] = inner
+    const far = inner.length === 1 && only[1] === 'related' && only[0] !== 'row_id' && isSpec(only[2]) &&
+      only[2].column === undefined && only[2].via === undefined && typeof only[2].table === 'string' ? only[2] : null
+    if (far) {
+      link = { kind: 'through', link: value.table, back: value.column, column: only[0] }
+      table = far.table as string
+      const farInner = far.filters ?? []
+      if (!Array.isArray(farInner) || !farInner.every(isFilter)) return null
+      rest = farInner
+    } else link = { kind: 'back', column: value.column }
+  } else {
+    if (value.column !== undefined || field === 'row_id') return null
+    link = { kind: 'forward', column: field }
+  }
+  let picked: string[] = []
+  let search: ChainStep['search']
+  let next: ChainStep[] = []
+  for (const f of rest) {
+    if (f[0] === 'row_id' && f[1] === 'in' && Array.isArray(f[2]) && f[2].every((n) => typeof n === 'string') && !picked.length && !search) {
+      picked = f[2] as string[]
+      continue
+    }
+    const contains = f[1] === 'like' && typeof f[2] === 'string' ? /^%([^%_]+)%$/.exec(f[2]) : null
+    if (contains && f[0] !== 'row_id' && !picked.length && !search) {
+      search = { column: f[0], text: contains[1] }
+      continue
+    }
+    if (f[1] === 'related' && !next.length) {
+      const deeper = readStep(f[0], f[2])
+      if (!deeper) return null
+      next = deeper
+      continue
+    }
+    return null
+  }
+  return [{ table, link, picked, ...(search ? { search } : {}) }, ...next]
+}
+
+// ---------- words ----------
+
+/**
+ * A chain as every surface reads it, the chip, the path bar and the list an
+ * old Explore link opens: "Linked to Subcategory › Division: Kids". A
+ * step reads by its Table; one reached through a link Table holding two links
+ * into that Table names which ("Employee (Reports To)"). Picked rows read by
+ * their titles, as every filter's rows do; a search reads `matching "…"`.
+ */
+export function chainText(
+  chain: { negate: boolean; steps: ChainStep[] },
+  tableName: (table: string) => string,
+  rowName: (ref: { table: string; row_id: string }) => string,
+  metaOf: (table: string) => TableMeta | undefined,
+): string {
+  const words = chain.steps.map((s) => {
+    let name = tableName(s.table)
+    if (s.link.kind === 'through') {
+      const links = metaOf(s.link.link) ? readableLinks(metaOf(s.link.link)!) : []
+      const far = links.find((c) => c.column_name === (s.link as { column: string }).column)
+      if (far && links.filter((c) => c !== far && linkRowsTable(c) === s.table && c.column_name !== (s.link as { back: string }).back).length)
+        name += ` (${far.label ?? far.column_name})`
+    }
+    return s.picked.length ? `${name}: ${s.picked.map((id) => rowName({ table: s.table, row_id: id })).join(', ')}`
+      : s.search ? `${name} matching "${s.search.text}"` : name
+  })
+  return `${chain.negate ? 'Not linked to' : 'Linked to'} ${words.join(' › ')}`
+}
+
+/** The Tables whose metadata a chain's words read: its steps' and their link Tables'. */
+export const chainTables = (steps: ChainStep[]) =>
+  [...new Set(steps.flatMap((s) => [s.table, ...(s.link.kind === 'through' ? [s.link.link] : [])]))]
+
+// ---------- counts ----------
+
+/** The grouped count that says, for each row of `step.table`, how many rows of
+ *  `from` (matching `fromFilters`) are linked to it. Every read is the
+ *  server's permission-scoped list read, so an unreadable row is never counted.
+ *  Through a sub-table it counts lines, not distinct rows. */
+export function choiceCountQuery(from: string, fromFilters: Filter[], step: Pick<ChainStep, 'table' | 'link'>): { table: string; group_by: string; filters: Filter[] } {
+  const all = { table: from, filters: fromFilters }
+  const { link } = step
+  switch (link.kind) {
+    case 'forward':
+      // A sub-table's `parent` may name a row of another holding Table with the same id.
+      return { table: from, group_by: link.column, filters: link.column === 'parent' ? [...fromFilters, ['parenttype', '=', step.table]] : fromFilters }
+    case 'back':
+      return { table: step.table, group_by: 'row_id', filters: [[link.column, 'related', all]] }
+    case 'via':
+      return { table: link.via, group_by: link.column, filters: [['parenttype', '=', from], ['parent', 'related', all]] }
+    case 'through':
+      // Through a sub-table's `parent`, its rows may hang on other Tables with the same ids.
+      return { table: link.link, group_by: link.column, filters: [
+        [link.back, 'related', all], ...(link.column === 'parent' ? [['parenttype', '=', step.table] as Filter] : []),
+      ] }
+  }
+}
+
+// ---------- old Explore addresses ----------
+
+/** One step of a retired Explore chain, as its `chain=` address spelled it. */
+export interface ExploreStep {
+  mode: 'backlink' | 'child' | 'viabacklink'
+  table: string
+  column: string
+  via?: string
+}
+
+function isExploreStep(value: unknown): value is ExploreStep {
+  if (typeof value !== 'object' || value === null) return false
+  const s = value as Record<string, unknown>
+  if (s.mode !== 'backlink' && s.mode !== 'child' && s.mode !== 'viabacklink') return false
+  if (typeof s.table !== 'string' || typeof s.column !== 'string') return false
+  if (s.mode === 'viabacklink') return typeof s.via === 'string'
+  return s.via === undefined
+}
+
+function parseJson(raw: string | undefined): unknown {
+  if (!raw) return undefined
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+}
+
+/** The Tables an Explore address names, whose metadata decides how much of it still resolves. */
+export function exploreTables(search: { root?: string; chain?: string }): string[] {
+  const raw = parseJson(search.chain)
+  const steps = (Array.isArray(raw) ? raw.slice(0, 2) : []).filter(isExploreStep)
+  return [...new Set([search.root, ...steps.flatMap((s) => [s.table, s.via])].filter((t): t is string => Boolean(t)))]
+}
+
+/** Whether an Explore step still holds: its Tables and its link are still there. */
+function stepResolves(step: ExploreStep, upstream: string, metaOf: (t: string) => TableMeta | undefined): boolean {
+  const down = metaOf(step.table)
+  if (!down) return false
+  const refersTo = (m: TableMeta | undefined, column: string, to: string) =>
+    Boolean(m?.columns.some((c) => c.column_name === column && c.column_type === 'Reference' && linkRowsTable(c) === to))
+  if (step.mode === 'backlink') return refersTo(down, step.column, upstream)
+  if (step.mode === 'child')
+    return Boolean(metaOf(upstream)?.columns.some((c) => c.column_name === step.column && c.column_type === 'Sub-table' && c.row_table === step.table))
+  return down.columns.some((c) => c.column_type === 'Sub-table' && c.row_table === step.via) && refersTo(metaOf(step.via!), step.column, upstream)
+}
+
+/**
+ * B3: an Explore address as the list it showed last, filtered by the chain
+ * that led there: the last pane's Table, linked to the pane before it, linked
+ * to the first pane's picked rows. An address is user input, and what it names
+ * may since have gone: the chain stops at the last step that still resolves
+ * against the current metadata, and a root that is gone opens no list.
+ */
+export function exploreToList(search: { root?: string; chain?: string; select?: string }, metaOf: (t: string) => TableMeta | undefined): { table: string; filters: Filter[] } | null {
+  if (!search.root || !metaOf(search.root)) return null
+  const rawChain = parseJson(search.chain)
+  const chain: ExploreStep[] = []
+  let at = search.root
+  for (const s of Array.isArray(rawChain) ? rawChain.slice(0, 2) : []) {
+    if (!isExploreStep(s) || !stepResolves(s, at, metaOf)) break
+    chain.push(s)
+    at = s.table
+  }
+  const rawSelect = parseJson(search.select)
+  const select = Array.isArray(rawSelect) && rawSelect.every((n) => typeof n === 'string') ? (rawSelect as string[]) : []
+  let filters: Filter[] = select.length ? [['row_id', 'in', select]] : []
+  let upstream = search.root
+  for (const step of chain) {
+    const spec = { table: upstream, filters }
+    // A child step names its Sub-table column: two of them may hold one row Table (sales and returns).
+    filters = step.mode === 'child' ? [['parentfield', '=', step.column], ['parent', 'related', spec]]
+      : step.mode === 'viabacklink' ? [['row_id', 'related', { via: step.via, column: step.column, ...spec }]]
+      : [[step.column, 'related', spec]]
+    upstream = step.table
+  }
+  return { table: upstream, filters }
+}

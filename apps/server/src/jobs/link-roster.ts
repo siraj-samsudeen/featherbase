@@ -1,4 +1,5 @@
-import { registerJob } from '../jobs'
+import { enqueue, registerJob } from '../jobs'
+import { LEAVER_SIGN_IN_JOB } from '../leaver-sign-in'
 import { ROSTER_LINK_JOB, formatRosterLink, runAllRosterLinks } from '../roster-link'
 
 // #1157: link every current roster row before anyone signs in, and end a
@@ -8,6 +9,8 @@ import { ROSTER_LINK_JOB, formatRosterLink, runAllRosterLinks } from '../roster-
 // links ends none: refused, alerted, and the schedule carries on.
 registerJob(ROSTER_LINK_JOB, async (_payload, ctx) => {
   const runs = await runAllRosterLinks()
+  // #1271: who can still sign in may have changed; the report is rebuilt after every run.
+  await enqueue(LEAVER_SIGN_IN_JOB, {}, { maxAttempts: 1 })
   const summary = runs.map((r) => formatRosterLink(r.plan, r)).join('\n')
   console.log(summary)
   const failed = runs.flatMap((r) => r.failed)

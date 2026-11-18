@@ -2,33 +2,6 @@
 
 ## MODIFIED Requirements
 
-### Requirement: Explore chains tables and narrows them as you click
-
-Explore SHALL let the user start from a Table and add up to two more, each
-connected to the one before by a reference or a child relationship. Clicking
-rows in one selects them, narrowing every table after it to what relates to
-that selection, with an exact count and sum; with nothing selected, a table
-follows everything related to what's above it. Opening a row from Explore
-SHALL show it in the drill pane, rather than leaving Explore.
-
-#### Scenario: Narrow by clicking
-
-```gherkin
-Given the user starts Explore from Supplier and adds Purchase Order
-When the user clicks one supplier and then adds PO Line
-Then Purchase Order narrows to that supplier's orders
-And PO Line narrows to those orders' lines, with an accurate count and sum at every stage
-```
-
-#### Scenario: Open a row without leaving Explore
-
-```gherkin
-Given the user has Explore narrowed to one supplier's orders
-When the user opens one of those orders
-Then it shows in the drill pane
-And the supplier stays selected in Explore
-```
-
 ### Requirement: The relationship map shows one row's neighborhood
 
 A row's page SHALL offer a relationship map: what the row points to and what points back to it,

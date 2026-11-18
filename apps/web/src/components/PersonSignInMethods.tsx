@@ -7,6 +7,7 @@ import { fmtInstantIST } from '@featherbase/shop-floor'
 import { Button, TextInput, cardClasses } from '@featherbase/shop-floor'
 import { PrincipalLink, principalLabel, usePrincipalNameState } from '../lib/people'
 import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
+import { usePersonStanding } from './PersonStanding'
 
 // person-identities (#275, review B-M4): on a Person's form, a System Manager
 // sees how that person signs in — password, linked outside accounts, pending
@@ -94,7 +95,7 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
       api.get<{
         identities: AdminIdentity[]
         has_password: boolean
-        methods: (MethodInfo & { enabled: boolean })[]
+        methods: (MethodInfo & { enabled: boolean; employees_only?: boolean })[]
         /** #833: the Person's own address, whether they expect Google sign-in,
          *  and where mail goes on this instance. */
         email: string | null
@@ -116,6 +117,9 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
   const [notice, setNotice] = useState<ReactNode>(null)
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [showEnded, setShowEnded] = useState(false)
+  // #1267 step 3: a former employee or an external person is offered no employees-only method.
+  // An unknown standing (the people app could not say) offers it, as before.
+  const standing = usePersonStanding(user)
   const heading = useRef<HTMLHeadingElement>(null)
   // The button to return to after an action, placed once the redrawn lines are on the page.
   const refocus = useRef<HTMLElement | null>(null)
@@ -226,11 +230,16 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
     onError: fail,
   })
   // #1267: whether this person is expected to sign in with Google or Microsoft
-  // is a Person column; the details form reads it again.
+  // is a Person column; the details form reads it again. Until that read lands,
+  // the next change goes from this panel's own save, not the page's older
+  // version, which the server would refuse as modified (CI flake, 18-Nov-2026).
+  const ownSave = useRef<{ over: unknown; at: string } | null>(null)
+  const version = ownSave.current && ownSave.current.over === rowUpdatedAt ? ownSave.current.at : rowUpdatedAt
   const expect = useMutation({
     mutationFn: (change: Partial<Record<'expects_google_sign_in' | 'expects_microsoft_sign_in', boolean>>) =>
-      api.patch(`/api/table/Person/${encodeURIComponent(user)}`, { ...change, updated_at: rowUpdatedAt }),
-    onSuccess: () => {
+      api.patch<{ updated_at?: string }>(`/api/table/Person/${encodeURIComponent(user)}`, { ...change, updated_at: version }),
+    onSuccess: (saved) => {
+      if (saved?.updated_at) ownSave.current = { over: rowUpdatedAt, at: saved.updated_at }
       done()
       void qc.invalidateQueries({ queryKey: ['doc', 'Person', user] })
     },
@@ -279,6 +288,8 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
   // Links on a method this instance no longer offers still show, to be turned off.
   const shownKeys = new Set([google?.key, microsoft?.key, ...delegated.map((m) => m.key)])
   const orphans = live.filter((i) => !shownKeys.has(i.method))
+  const outsider = standing.data?.status === 'left' || standing.data?.status === 'none'
+  const closedTo = (m: MethodInfo) => outsider && data.methods.some((x) => x.key === m.key && x.employees_only)
   const noWayIn = data && !data.has_password && !expectsGoogle && !expectsMicrosoft && live.length === 0
 
   /** One linked account or invite: what it is, and its one button. */
@@ -306,6 +317,10 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
                 <summary className="cursor-pointer">Details</summary>
                 <span className="block">{kindOf(i) === 'microsoft' ? 'Microsoft account ID' : 'Google account number'}: {i.subject}</span>
               </details>
+            )}
+            {/* #1271: a link that predates the employees-only rule, on someone who isn't an employee. */}
+            {!invited && standing.data?.status === 'none' && data!.methods.some((m) => m.key === i.method && m.employees_only) && (
+              <span className="block text-xs text-ink-subtle" data-testid={`sign-in-leftover-${i.id}`}>Not an employee: remove this link.</span>
             )}
             {invited && i.invitation_sent_at && (
               <span className="block" data-testid={`invitation-sent-${i.id}`}>
@@ -489,7 +504,11 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
             : 'Not set up'}
           action={expectsMicrosoft ? 'Turn Off' : 'Set Up'} onAction={(el) => open(expectsMicrosoft ? 'microsoft-off' : 'microsoft-on', el)} />
       ))}
-      {data && delegated.map((m) => (liveOf(m).length ? liveOf(m).map((i) => identityLine(i, m.label)) : (
+      {data && delegated.map((m) => (liveOf(m).length ? liveOf(m).map((i) => identityLine(i, m.label)) : closedTo(m) ? (
+        <p key={m.key} className="rounded-lg bg-caution-tint px-3 py-2 text-sm text-ink" data-testid={`sign-in-closed-${m.key}`}>
+          {m.label} sign-in is only for current employees.
+        </p>
+      ) : (
         <MethodLine key={m.key} name={m.label} testid={`sign-in-line-${m.key}`} status="Not linked"
           action="Link" onAction={(el) => open('link', el, undefined, m)} />
       )))}

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isActingSystemActor } from './system-actor'
 import type { AppAuthorizationContext, AppFactDeclaration, AppOperationDeclaration, AppProductAuthorizer, AppScopeFacts, AppScopeResolver, RuntimeActionAuthorization } from 'shared'
 import { sql, withTransaction } from './db'
 import { AppNotRunningError, appOperation, assertAppAvailable } from './app-lifecycle'
@@ -139,7 +140,9 @@ async function currentAccess(request: AccessRequest, declaration: AppOperationDe
   const { user, app, entryTable, kind } = request
   const [enabled] = await sql`select enabled from person where row_id = ${user}
     union all select enabled from service_account where row_id = ${user}`
-  if (!user || user === 'Guest' || !enabled?.enabled) refuseAppAccess('user')
+  // A server actor (runAsSystemActor) is no person; it passes only inside the operation it runs,
+  // which server code alone can start (#1267: the platform asking an app who people are).
+  if (!user || user === 'Guest' || (!enabled?.enabled && !isActingSystemActor(user))) refuseAppAccess('user')
   await assertAppAvailable(`${app}.__access`, true)
   await assertPermission(user, entryTable, 'read')
   const policy = declaration.policy

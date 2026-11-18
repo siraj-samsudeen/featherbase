@@ -134,6 +134,8 @@ if (!granted) for (const table of BASE_TABLES as { name: string }[])
 // #1046: Dash Reader goes to everyone who signs in, and the reports given to each person decide
 // whether Dash opens for them. Local only: on a real instance a System Manager sets this.
 await save('System Settings', { everyone_roles: 'Dash Reader' })
+// #1218: HR's titles some made-up job assignments carry.
+for (const designation of org.designations as string[]) await keep('Designation', designation, { designation })
 // One reader per state of the report page.
 let code = 3000
 for (const reader of org.readers as { key: string; name: string; jobs: [string, string, Record<string, string>][] | null; roles?: string[] }[]) {
@@ -311,6 +313,13 @@ for (const [store, managers] of Object.entries(Object.groupBy(org.prefills as { 
   if (failed.length) throw new Error(`A made-up pre-fill did not take: ${JSON.stringify(failed)}`)
 }
 
+// #1218: the made-up reports given to the job Store Manager too, so a Store Manager's access is the same in both models.
+// #1277: the starting business roles, as a System Manager's Add The Starting Roles click writes them (the Tables
+// decide scope, so a Report Access Manager can't); a rerun adds nothing. Nothing switches Dash to business roles:
+// a made-up instance starts on the old rules, as every instance does.
+await save('dash.report_access', { report_bundle: bundle, job: 'Store Manager' }).catch(() => {})
+await post('/api/app_actions/dash/add_starting_roles', { idempotencyKey: randomUUID(), payload: {} })
+
 // The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
 const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ usr: 'reader-sm@example.test', pwd: PASSWORD }) })
@@ -335,6 +344,9 @@ ${says(org.sectionPeople, 'sections')}
 Report access (/dash/?view=access), same password:
   access-manager@example.test          Report Access Manager: gives reports and bundles, and sees who has what
   sections-categoryhead@example.test   Team Report Manager: gives reports to her own team only, two of them named Vinod Buyer-Two (#1217)
+Business roles (#1218, #1277; the old rules decide until a System Manager sets the Dash access source): /dash/?view=roles, ?view=explain and ?view=changes, as access-manager@example.test:
+  explain reader-sm (Selvi, Store Manager), reader-buyer (Bina, Category head of Sarees, East), reader-opsexec (Sundar, to Correct),
+  reader-staff1 (Siva, who would lose Dash) and reader-office (Omar, Head Office: no Dash until a role is given by hand).
 View as (#1222), same password:
   view-as-tester@example.test          View As Tester: sees Dash as any of the people above, for viewing only
   view-as-manager@example.test         Report Access Manager and View As Tester: "What a person sees" offers View as`)

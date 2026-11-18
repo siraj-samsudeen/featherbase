@@ -4,10 +4,12 @@
 // ones a click away, and a glance at the newest activity.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
 import { configureMicrosoft } from 'server/test/microsoft-mock'
 import { rowHref, tableHref } from 'shared'
+import { fmtDateTime } from '@featherbase/shop-floor'
 import { test, expect, renderApp } from './pg-test'
 import { PLANT, SITE, seedSites } from './relational-fixture'
 import { openLine, showEnded } from './sign-in-lines'
@@ -97,6 +99,34 @@ test('Microsoft is set up and turned off from its line, which sets whether the p
   expect((await sql`select expects_microsoft_sign_in from person where row_id = ${ravi.user!}`)[0].expects_microsoft_sign_in).toBe(false)
 })
 
+// CI's flake on main (cea7e116e, 66bb2a22c): Turn Off clicked before the page had read the Person again after
+// Set Up sent the old version, and the server refused it as modified. The panel goes on from its own save's version.
+test('Turn Off right after Set Up, before the page reads the Person again, still turns it off', async ({ admin, createUser }) => {
+  await configureMicrosoft({ self_link: true })
+  const ravi = await createUser({ email: 'ravi.race.1267@bisquared.example' })
+  const page = `/api/table/Person/${encodeURIComponent(ravi.user!)}`
+  const real = globalThis.fetch
+  let first: Response | undefined
+  // The page's first read of the Person stands for every later one: the read after Set Up has not landed yet.
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    const path = new URL(String(url), 'http://localhost').pathname
+    if (path !== page || (init?.method ?? 'GET') !== 'GET') return real(url, init)
+    if (!first) first = await real(url, init)
+    return first.clone()
+  })
+  try {
+    await renderApp(rowHref('Person', ravi.user!), admin)
+    const panel = await screen.findByTestId('user-sign-in-methods')
+    const setUp = await openLine(panel, 'sign-in-line-microsoft')
+    await userEvent.click(within(setUp).getByRole('button', { name: 'Set Up' }))
+    await within(panel).findByTestId('user-method-expected-microsoft')
+    const off = await openLine(panel, 'user-method-expected-microsoft')
+    await userEvent.click(within(off).getByRole('button', { name: 'Turn Off' }))
+    expect(await within(panel).findByTestId('sign-in-line-microsoft')).toHaveTextContent('Not set up')
+    expect((await sql`select expects_microsoft_sign_in from person where row_id = ${ravi.user!}`)[0].expects_microsoft_sign_in).toBe(false)
+  } finally { spy.mockRestore() }
+})
+
 test("a StyleHR link's Change dialog renames its login ID; ended links wait behind Show N ended", async ({ admin, createUser }) => {
   await configureDelegated()
   const sara = await createUser({ email: 'sara.1267@example.com' })
@@ -128,7 +158,8 @@ test("hovering the save state on load names the row's last change and who made i
   const state = await screen.findByTestId('save-state')
   await userEvent.hover(state)
   const detail = await screen.findByTestId('save-state-detail')
-  expect(detail).toHaveTextContent('Last changed 17-Nov-2026 14:02 by Administrator')
+  // In the reader's own clock, whatever zone the machine is in.
+  expect(detail).toHaveTextContent(`Last changed ${fmtDateTime(new Date('2026-11-17T08:32:00Z'))} by Administrator`)
   expect(within(detail).getByRole('link', { name: 'Administrator' })).toBeInTheDocument()
   await userEvent.unhover(state)
   await waitFor(() => expect(screen.queryByTestId('save-state-detail')).not.toBeInTheDocument())
@@ -288,4 +319,102 @@ test("the record pane leaves out a Person's sign-in switches", async ({ admin, c
   await waitFor(() => expect(pane).toHaveTextContent('Full Name'))
   expect(pane).not.toHaveTextContent('Expects Google sign-in')
   expect(pane).not.toHaveTextContent('Expects Microsoft sign-in')
+})
+
+// ---- step 3: who the person is ----
+
+/** The standing route answers `answer` for every person; any other request goes through. */
+function fakeStanding(answer: Record<string, unknown>) {
+  const real = globalThis.fetch
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    if (/\/api\/people\/[^/]+\/standing/.test(new URL(String(url), 'http://localhost').pathname))
+      return Response.json(answer)
+    return real(url, init)
+  })
+}
+
+test.for([
+  ['current', null, 'Employee', 'Has a current employee record'],
+  ['left', null, 'Former Employee', 'Has only past employee records'],
+  ['none', 'Vendor', 'External · Vendor', 'Has no employee record'],
+] as const)('a person whose standing is %s wears the badge %s', async ([status, label, words, why], { admin, createUser }) => {
+  const spy = fakeStanding({ status, code: null, jobs: [], external_label: label })
+  try {
+    const p = await createUser({ email: `badge-${status}.1267@example.com` })
+    await renderApp(rowHref('Person', p.user!), admin)
+    const badge = await screen.findByTestId('person-standing-badge')
+    expect(badge).toHaveTextContent(words)
+    expect(badge).toHaveAttribute('title', why)
+  } finally { spy.mockRestore() }
+})
+
+test("an employee's jobs show with each store as a link, then the email once", async ({ admin, createUser }) => {
+  const spy = fakeStanding({ status: 'current', code: '2001', external_label: null,
+    jobs: [{ job: 'Team Leader', site: { table: 'Person', id: 'Administrator', name: 'Lakeside' } }, { job: 'Buyer' }] })
+  try {
+    const p = await createUser({ email: 'jobs.1267@example.com' })
+    await renderApp(rowHref('Person', p.user!), admin)
+    const jobs = await screen.findAllByTestId('person-standing-job')
+    expect(jobs.map((j) => j.textContent)).toEqual(['Team Leader · Lakeside', 'Buyer'])
+    expect(within(jobs[0]).getByRole('link', { name: 'Lakeside' })).toBeInTheDocument()
+    expect(screen.getByTestId('person-standing-email')).toHaveTextContent('jobs.1267@example.com')
+  } finally { spy.mockRestore() }
+})
+
+test('an unknown standing shows no badge, and keeps the employees-only line', async ({ admin, createUser }) => {
+  await configureDelegated()
+  await sql`update sign_in_method set employees_only = true where row_id = 'stylehr'`
+  const spy = fakeStanding({ status: 'unknown', code: null, jobs: [], external_label: null })
+  try {
+    const p = await createUser({ email: 'unknown.1267@example.com' })
+    await renderApp(rowHref('Person', p.user!), admin)
+    const panel = await screen.findByTestId('user-sign-in-methods')
+    expect(await within(panel).findByTestId('sign-in-line-stylehr')).toBeInTheDocument()
+    expect(screen.queryByTestId('person-standing-badge')).not.toBeInTheDocument()
+  } finally { spy.mockRestore() }
+})
+
+test.for(['left', 'none'] as const)('a person whose standing is %s is offered no employees-only sign-in', async (status, { admin, createUser }) => {
+  await configureDelegated()
+  await sql`update sign_in_method set employees_only = true where row_id = 'stylehr'`
+  const spy = fakeStanding({ status, code: null, jobs: [], external_label: null })
+  try {
+    const p = await createUser({ email: `closed-${status}.1267@example.com` })
+    await renderApp(rowHref('Person', p.user!), admin)
+    const panel = await screen.findByTestId('user-sign-in-methods')
+    expect(await within(panel).findByTestId('sign-in-closed-stylehr')).toHaveTextContent('StyleHR sign-in is only for current employees.')
+    expect(within(panel).queryByTestId('sign-in-line-stylehr')).not.toBeInTheDocument()
+  } finally { spy.mockRestore() }
+})
+
+test.for([['none', true], ['current', false], ['unknown', false]] as const)('the External label is asked for only while the person is External (%s)', async ([status, shown], { admin, createUser }) => {
+  const spy = fakeStanding({ status, code: null, jobs: [], external_label: null })
+  try {
+    const p = await createUser({ email: `label-${status}.1267@example.com` })
+    await renderApp(rowHref('Person', p.user!), admin)
+    await screen.findByTestId('person-standing')
+    await waitFor(() => expect(screen.getByTestId('form-fields')).toHaveTextContent('Full Name'))
+    if (shown) await waitFor(() => expect(screen.getByTestId('form-fields')).toHaveTextContent('External label'))
+    else expect(screen.getByTestId('form-fields')).not.toHaveTextContent('External label')
+  } finally { spy.mockRestore() }
+})
+
+// one-app-chrome, after the step 3 verifier: a label set straight after creating the person, in
+// the same page session, is saved (a save must never be lost quietly).
+test('a label chosen straight after creating the person is saved', async ({ admin }) => {
+  await renderApp('/featherbase/admin/table/person/new', admin)
+  await userEvent.type(await screen.findByLabelText('Email'), 'fresh.1267@example.com')
+  expect(screen.queryByLabelText('External label')).not.toBeInTheDocument()
+  await userEvent.type(screen.getByLabelText('Full Name'), 'Fresh Outsider')
+  await userEvent.click(screen.getByTestId('form-save'))
+  // A new person has no standing yet, so the label isn't asked for until the page is theirs;
+  // with no people app here they then read as External.
+  await screen.findByTestId('person-standing', {}, { timeout: 10_000 })
+  const label = await screen.findByLabelText('External label', {}, { timeout: 10_000 })
+  await userEvent.selectOptions(label, 'Vendor')
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved')
+  await userEvent.click(screen.getByTestId('form-save'))
+  expect(await screen.findByTestId('form-banner')).toHaveTextContent('Saved')
+  const [row] = await sql`select external_label from person where email = 'fresh.1267@example.com'`
+  expect(row.external_label).toBe('Vendor')
 })

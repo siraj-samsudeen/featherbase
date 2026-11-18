@@ -57,6 +57,7 @@ beforeAll(async () => {
     settings: {},
     environments: {
       dev: { settings: { 'System Settings': { app_name: 'Board on dev' } } },
+      staging: { settings: { 'System Settings': { app_name: 'Board on staging' } } },
       prod: { settings: { 'System Settings': { app_name: 'Board on prod' } } },
     },
   }))
@@ -89,8 +90,9 @@ afterAll(() => {
 })
 
 describe('which instance and which section', () => {
-  it('staging applies dev, production applies prod, and nothing else is hosted', () => {
-    expect(settingsSection('staging')).toBe('dev')
+  it('dev applies dev, staging applies staging, production applies prod, and nothing else is hosted', () => {
+    expect(settingsSection('dev')).toBe('dev')
+    expect(settingsSection('staging')).toBe('staging')
     expect(settingsSection('production')).toBe('prod')
     expect(() => settingsSection('development')).toThrow(/pnpm dev/)
   })
@@ -101,18 +103,29 @@ describe('which instance and which section', () => {
     expect(() => instanceFolder('../../etc', root)).toThrow(/holds no instance/)
   })
 
-  it('a staging or production server on its own database follows files', () => {
+  it('a dev, staging or production server on its own database follows files', () => {
+    expect(followsAppFiles('dev', 'dev')).toBe(true)
+    expect(followsAppFiles('dev', 'staging')).toBe(false)
+    expect(followsAppFiles('staging', 'dev')).toBe(false)
     expect(followsAppFiles('staging', 'staging')).toBe(true)
     expect(followsAppFiles('production', 'production')).toBe(true)
     expect(followsAppFiles('production', 'staging')).toBe(false)
     expect(followsAppFiles('staging', 'production')).toBe(false)
     expect(followsAppFiles('development', 'development')).toBe(false)
+    // Only the hosted names: an inherited key is not an environment.
+    expect(followsAppFiles('toString', 'toString')).toBe(false)
   })
 })
 
 describe('a fresh deploy', () => {
-  test('installs the apps, applies the section, and a second run changes nothing', async () => {
+  test('a staging server applies its own staging section (#1278)', async () => {
     await pretendTo('staging')
+    expect(await deploy()).toContain('Board on staging')
+    expect(await deploy()).toContain('nothing changed')
+  })
+
+  test('installs the apps, applies the section, and a second run changes nothing', async () => {
+    await pretendTo('dev')
     const first = await deploy()
     expect(first).toContain(`installed ${name}`)
     expect(first).toContain('app_name')
@@ -122,7 +135,7 @@ describe('a fresh deploy', () => {
   })
 
   test('a problem with the settings fails the step', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     const out = captureIO()
     const bad = mkdtempSync(join(import.meta.dirname, '.deploy-instance-'))
     try {
@@ -142,21 +155,21 @@ describe('a fresh deploy', () => {
 
 describe('what the step leaves alone or finishes', () => {
   test('a disabled app is left as it is', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     await deploy()
     await sql`update installed_app set enabled = false where name = ${name}`
     expect(await deploy()).toContain(`${name} is disabled; left as it is`)
   })
 
   test('an install with no recorded fingerprint still matches on its manifest', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     await deploy()
     await sql`update installed_app set artifact_digest = null where name = ${name}`
     expect(await deploy()).toContain(`${name} ${version} is already installed`)
   })
 
   test('an upgrade waiting for activation is activated', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     await deploy()
     await sql`update installed_app set activation_pending = true where name = ${name}`
     expect(await deploy()).toContain(`activated ${name} ${version}`)
@@ -165,7 +178,7 @@ describe('what the step leaves alone or finishes', () => {
   })
 
   test('an app folder that is missing, or a version the image lost, fails the step', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([`${root}/no_such_folder/*`]))
     await expect(deploy()).rejects.toThrow(/no_such_folder.*was rejected/)
   })
@@ -178,7 +191,7 @@ describe('what the step leaves alone or finishes', () => {
   })
 
   test('cli repin-apps re-pins on a dev database', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     await deploy()
     writeFileSync(join(app, 'NOTES.md'), 'a file changed\n')
     const { main } = await import('../src/cli')
@@ -190,7 +203,7 @@ describe('what the step leaves alone or finishes', () => {
 
 describe('on a dev instance (staging)', () => {
   test('changed files under the same version and manifest: the release passes and the step re-pins', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     await deploy()
     const before = await digest()
     writeFileSync(join(app, 'NOTES.md'), 'a file changed\n')
@@ -201,7 +214,7 @@ describe('on a dev instance (staging)', () => {
   })
 
   test('a changed manifest with the same version fails, naming the app and saying to bump the version', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     await deploy()
     const before = await digest()
     writeFileSync(manifestFile, JSON.stringify({ ...readJson(manifestFile), title: 'Changed title' }))
@@ -263,7 +276,7 @@ describe('on production', () => {
 
 describe('a newer version in the image', () => {
   test('a settings failure after the upgrade leaves the installed version as it was', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     await deploy()
     const next = join(apps, 'other-next')
     cpSync(app, next, { recursive: true })
@@ -289,7 +302,7 @@ describe('a newer version in the image', () => {
   })
 
   test('upgrades and activates it; a version the image lost is refused with what to do', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     await deploy()
     const next = join(apps, 'other-next')
     cpSync(app, next, { recursive: true })
@@ -311,7 +324,7 @@ describe('a newer version in the image', () => {
   // #1169: an upgrade applies the access its version declares with nobody reviewing it, so the
   // deploy's own output says what it gave.
   test('names each grant an upgrade gives in what the deploy prints', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     await deploy()
     const next = join(apps, 'other-next')
     cpSync(app, next, { recursive: true })
@@ -358,7 +371,7 @@ describe('a newer version in the image', () => {
   // release built it, beside 3.0.3. Upgrading first checked the installed 3.0.2
   // against files it was not pinned to, and every dev deploy failed.
   test('on dev, an installed version whose files changed is re-pinned before it is upgraded', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     await deploy()
     writeFileSync(join(app, 'NOTES.md'), 'a file changed\n')
     const next = join(apps, 'other-next')
@@ -421,7 +434,7 @@ async function waitingForExclusive() {
 
 describe('a live server working while the deploy runs (#943)', () => {
   test('a live job waiting on a row the deploy saves does not hang it', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     const [before] = await sql`select enabled, now() as at from scheduled_job where row_id = 'check_sla'`
     await sql`update scheduled_job set enabled = false where row_id = 'check_sla'`
     const live = mkdtempSync(join(import.meta.dirname, '.deploy-instance-'))
@@ -463,7 +476,7 @@ describe('a live server working while the deploy runs (#943)', () => {
   }, 30_000)
 
   test('a live request that keeps the apps busy fails the deploy after its tries, changing nothing', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     const busy = await sharedHolder()
     const alsoBusy = await sharedHolder()
     const out = captureIO()
@@ -477,7 +490,7 @@ describe('a live server working while the deploy runs (#943)', () => {
   })
 
   test('a deploy tries again by itself and goes ahead once the live request ends', async () => {
-    await pretendTo('staging')
+    await pretendTo('dev')
     const busy = await sharedHolder()
     const out = captureIO()
     const lines: string[] = []

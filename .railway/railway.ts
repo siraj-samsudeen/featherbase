@@ -19,16 +19,27 @@ export const partial = 'featherbase-server'
 // than guessed at. A volume's region and size are stated so an apply keeps them.
 const ENVIRONMENTS: Record<string, {
   service: string
+  /** The branch Railway deploys: production deploys only what is promoted to its release branch. */
+  branch: string
   volume: { name: string, region: string, sizeMB: number }
   watchPatterns?: string[]
+  /** #1260: seconds between SIGTERM and SIGKILL. Absent means Railway's default. */
+  drainingSeconds?: number
 }> = {
   production: {
     service: 'jeyarama-featherbase',
+    branch: 'release/jeyarama-dash-prod',
     volume: { name: 'jeyarama-featherbase-volume', region: 'asia-southeast1-eqsg3a', sizeMB: 50000 },
+    // #1260: longer than the server's 25 s drain (graceful-shutdown.ts).
+    // Siraj, 17-Nov-2026: "ok to do it when we promote to prod next".
+    drainingSeconds: 30,
   },
   staging: {
     service: 'featherbase',
+    branch: 'main',
     volume: { name: 'featherbase-staging-data', region: 'sfo', sizeMB: 50000 },
+    // #1260: longer than the server's 25 s drain (graceful-shutdown.ts).
+    drainingSeconds: 30,
     watchPatterns: [
       'apps/**', 'packages/**', 'pnpm-lock.yaml', 'tools/dev.mjs', 'tools/build-instance-apps.mjs',
       'client-apps/jeyarama/instances/dash/**', 'client-apps/jeyarama/dash/**', 'example-apps/tasker/**',
@@ -43,7 +54,7 @@ export default defineRailway((ctx) => {
 
   const data = volume(env.volume.name, { region: env.volume.region, sizeMB: env.volume.sizeMB })
   const server = service(env.service, {
-    source: github('siraj-samsudeen/featherbase', { branch: 'main' }),
+    source: github('siraj-samsudeen/featherbase', { branch: env.branch }),
     build: {
       builder: 'DOCKERFILE',
       dockerfilePath: 'apps/server/Dockerfile',
@@ -58,7 +69,9 @@ export default defineRailway((ctx) => {
     // On Failure is Railway's default restart policy, and Railway stores a
     // default as empty, so naming it made every plan show a change no apply
     // could settle. Only the retry count differs from the default (10).
-    deploy: { restartPolicyMaxRetries: 5 },
+    // Overlap is not set: with a volume Railway never runs two deployments at
+    // once, so there is nothing to overlap (#1260).
+    deploy: { restartPolicyMaxRetries: 5, ...(env.drainingSeconds ? { drainingSeconds: env.drainingSeconds } : {}) },
     volumeMounts: { '/data': data },
   })
 

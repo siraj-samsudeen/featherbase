@@ -641,6 +641,14 @@ async function assertAccessColumnsUnchanged(
     })
     if (!same || named.size !== stored.size) changed.push(input.columnName)
   }
+  // #1267 (Codex round 3): only a connected service (StyleHR) may be employees
+  // only. Google, Microsoft and a password make links and people on their own
+  // at sign-in, where the question is not asked; a method of theirs can't be marked.
+  if (meta.name === 'Sign In Method' && values.employees_only === true) {
+    const kind = String(values.kind ?? existing?.kind ?? '')
+    if (kind !== 'delegated_password')
+      throw new AppError('ValidationError', 'Only a connected service sign-in can be only for employees', { employees_only: 'only for a connected service' })
+  }
   if (meta.name === 'Person' && 'enabled' in values) {
     // Judged as the database will store it. The driver writes any value that
     // is not `true` as false, so a script's "true" or 1 would read as

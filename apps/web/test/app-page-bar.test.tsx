@@ -219,6 +219,50 @@ test(`choosing a theme in the bar tells the app through ${APP_THEME_ATTRIBUTE} a
   }
 })
 
+// #1260: the bar is first in the app's <head>, so it runs before the app's own
+// module scripts and its first announcement comes before the app listens. It
+// says the theme again once the document's scripts have run (DOMContentLoaded
+// fires after every module script), so an app that only listens still hears it.
+test(`a bar that runs before the app's scripts announces its first theme again once they have run`, async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser)
+  const readyState = vi.spyOn(document, 'readyState', 'get').mockReturnValue('interactive')
+  const heard: unknown[] = []
+  const listen = (event: Event) => heard.push((event as CustomEvent).detail)
+  try {
+    openAppPage(reader)
+    window.addEventListener(THEME_CHANGE_EVENT, listen)
+    expect(heard).toEqual([])
+    document.dispatchEvent(new Event('DOMContentLoaded'))
+    expect(heard).toEqual([{ theme: 'light' }])
+    document.dispatchEvent(new Event('DOMContentLoaded'))
+    expect(heard).toEqual([{ theme: 'light' }])
+  } finally {
+    readyState.mockRestore()
+    window.removeEventListener(THEME_CHANGE_EVENT, listen)
+    document.documentElement.removeAttribute(APP_THEME_ATTRIBUTE)
+  }
+})
+
+test('a bar taken down before the document finishes loading announces nothing more', async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser)
+  const readyState = vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading')
+  const heard: unknown[] = []
+  const listen = (event: Event) => heard.push((event as CustomEvent).detail)
+  try {
+    openAppPage(reader)
+    act(() => mounted?.unmount())
+    mounted?.host.remove()
+    mounted = undefined
+    window.addEventListener(THEME_CHANGE_EVENT, listen)
+    document.dispatchEvent(new Event('DOMContentLoaded'))
+    expect(heard).toEqual([])
+  } finally {
+    readyState.mockRestore()
+    window.removeEventListener(THEME_CHANGE_EVENT, listen)
+    document.documentElement.removeAttribute(APP_THEME_ATTRIBUTE)
+  }
+})
+
 test("the bar's stylesheet lives in its own shadow root, not in the app's page", async ({ admin, createUser }) => {
   const styles = document.querySelectorAll('style, link[rel=stylesheet]').length
   const reader = await readerOf(admin, createUser)
