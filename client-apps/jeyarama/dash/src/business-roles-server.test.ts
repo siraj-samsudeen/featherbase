@@ -139,12 +139,15 @@ describe('the Business Roles page', () => {
   it('says each role as sentences: its name a link, its people counted with where they come from, each report given to it', async () => {
     const tables = onRequest(await converted(await seeded()), 'vs', 'Head Office')
     await giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Team Leader'), ends_on: '2999-03-31', reason: 'Covering' } }) as never)
+    tables['dash.report_bundle'] = [...tables['dash.report_bundle'] ?? [], { row_id: 'bx', bundle_name: 'Store pack' }]
+    tables['dash.report_access'].push({ row_id: 'given-bx', report_bundle: 'bx', business_role: roleId(tables, 'Head Office'), access_key: `bundle:bx/business_role:${roleId(tables, 'Head Office')}` })
     const page = await businessRoles(context(tables) as never)
     const role = (name: string) => page.roles.find(r => r.name === name)!
     expect(role('Store Manager').permissions[0]!.parts[0]).toEqual({ record: { table: 'dash.business_role', row: roleId(tables, 'Store Manager'), name: 'Store Managers' } })
     expect(role('Team Leader')).toMatchObject({ people: 1, people_from: 'by hand' })
     expect(role('Staff').people_from).toBe('from HR title')
     expect(role('Master Data Manager')).toMatchObject({ people: 0, people_from: 'nobody yet', reports: [] })
+    expect(role('Head Office').reports.map(parts => (parts[0] as { record: { name: string } }).record.name)).toContain('Store pack')
     expect(role('Head Office').reports).toContainEqual([{ record: { table: 'dash.report', row: 'vs', name: expect.any(String) } }, ' is given to ', { record: { table: 'dash.business_role', row: roleId(tables, 'Head Office'), name: 'Head Office' } }, ' ', { chip: 'each in their own area' }])
   })
 

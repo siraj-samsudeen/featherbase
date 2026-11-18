@@ -174,8 +174,8 @@ export function permissionParts(role: { id: string; name: string }, p: Pick<Perm
   return [roleRecord(role), ` can ${p.verb} ${p.thing} `, { chip: REACH_CHIP[p.reach] }]
 }
 /** H2: "[Vendor Sales] is given to [Store Managers] and [Cluster Managers] (each in their own area)". */
-export function grantParts(report: { key: string; name: string }, roles: { id: string; name: string }[]): SentencePart[] {
-  return [{ record: { table: 'dash.report', row: report.key, name: report.name } }, ' is given to ', ...listed(roles.map(roleRecord)), ' ', { chip: 'each in their own area' }]
+export function grantParts(given: { table: string; key: string; name: string }, roles: { id: string; name: string }[]): SentencePart[] {
+  return [{ record: { table: given.table, row: given.key, name: given.name } }, ' is given to ', ...listed(roles.map(roleRecord)), ' ', { chip: 'each in their own area' }]
 }
 
 export interface TitleInUse { title: string; people: string[]; job?: string }

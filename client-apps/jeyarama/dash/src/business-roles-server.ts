@@ -371,8 +371,16 @@ export async function businessRoles(context: AccessContext) {
   const peopleOf = (role: string) => new Set([...fromTitles.get(role) ?? [], ...byHand.get(role) ?? []])
   // #1282 H2: each report given to a role, said with every role it is given to.
   const reports = await reportNames(ctx)
+  const bundles = new Map((await everyRow(world.base, 'dash.report_bundle', ['bundle_name'])).map(r => [exact(r.row_id), text(r.bundle_name)]))
+  const named = new Map<string, { table: string; key: string; name: string }>([
+    ...[...reports].map(([key, r]) => [`dash.report|${key}`, { table: 'dash.report', key, name: r.name }] as const),
+    ...[...bundles].map(([key, name]) => [`dash.report_bundle|${key}`, { table: 'dash.report_bundle', key, name }] as const),
+  ])
   const givenTo = new Map<string, string[]>()
-  for (const row of world.grants.rows) if (row.report && row.business_role) givenTo.set(row.report, [...new Set([...givenTo.get(row.report) ?? [], row.business_role])])
+  for (const row of world.grants.rows) {
+    const what = row.report ? `dash.report|${row.report}` : row.report_bundle ? `dash.report_bundle|${row.report_bundle}` : ''
+    if (what && row.business_role) givenTo.set(what, [...new Set([...givenTo.get(what) ?? [], row.business_role])])
+  }
   const sourceWords = (role: string) => {
     const [title, hand] = [Boolean(fromTitles.get(role)?.size), Boolean(byHand.get(role)?.size)]
     return title && hand ? 'from HR title and by hand' : title ? 'from HR title' : hand ? 'by hand' : 'nobody yet'
@@ -383,8 +391,8 @@ export async function businessRoles(context: AccessContext) {
     roles: roles.sort((a, b) => a.name.localeCompare(b.name)).sort((a, b) => order(a.name) - order(b.name)).map(role => ({
       id: role.id, name: role.name, description: role.description, by_hand_only: role.by_hand_only, reaches: REACHES_WORDS[role.reaches!] ?? 'Not set',
       permissions: permissions.filter(p => p.role === role.id).map(p => ({ app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach, sentence: permissionSentence(role.name, p), parts: permissionParts(role, p) })),
-      reports: [...givenTo].filter(([key, given]) => given.includes(role.id) && reports.has(key))
-        .map(([key, given]) => grantParts({ key, name: reports.get(key)!.name }, given.flatMap(id => roles.filter(r => r.id === id)))),
+      reports: [...givenTo].filter(([what, given]) => given.includes(role.id) && named.has(what))
+        .map(([what, given]) => grantParts(named.get(what)!, given.flatMap(id => roles.filter(r => r.id === id)))),
       people: peopleOf(role.id).size,
       people_from: sourceWords(role.id),
       holders: [...peopleOf(role.id)].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone' })),
