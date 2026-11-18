@@ -2,7 +2,7 @@
 // Roles (each role's permissions as a grid of reach chips, and the Title Map), Explain A Person (the
 // Lens tab of issue_1218_relational_navigation.html: header chips, fields beside links, a source chip
 // and a Why? per item) and Who Would Gain Or Lose Access. The rules are the server's.
-import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { AreaPicker, Button, Sentence, type SentencePart, Card, EmptyState, Field, Notice, Select, TextInput, fmtDate, pillClasses } from '@featherbase/shop-floor'
 import { act, read } from './api'
 import { DASH_AREAS, loadDashArea } from './area-axes'
@@ -34,17 +34,9 @@ export function Parts({ parts }: { parts: Part[] }) {
   return <>{parts.map((part, i) => <span key={`${part.name}-${i}`}>{i ? ' · ' : ''}<Named part={part} /></span>)}</>
 }
 
-/** The four reach words, each its own colour from the tokens, as the roles map draws them. */
-const REACH_TONE: Record<string, string> = {
-  Own: 'bg-subtle text-ink-muted', Team: 'bg-action-tint text-action', Area: 'bg-positive-tint text-positive', All: 'bg-negative-tint text-negative',
-}
-export function ReachChip({ reach }: { reach: string }) {
-  return <span className={pillClasses(`font-mono ${REACH_TONE[reach] ?? REACH_TONE.Own}`)} data-testid="reach-chip" data-reach={reach}>{reach}</span>
-}
-
 /** A small chip: where a role came from (action tint; by hand in the caution tint), or a quiet fact. */
 export function Chip({ children, tone = 'quiet', testid }: { children: ReactNode; tone?: 'quiet' | 'source' | 'hand'; testid?: string }) {
-  const colour = tone === 'hand' ? 'bg-caution-tint text-caution' : tone === 'source' ? 'bg-action-tint text-action' : 'bg-subtle text-ink-muted'
+  const colour = tone === 'hand' ? 'bg-caution-tint text-caution' : tone === 'source' ? 'bg-action-tint text-action' : 'bg-tag text-ink-muted'
   return <span className={pillClasses(colour)} data-testid={testid} data-tone={tone}>{children}</span>
 }
 
@@ -143,8 +135,8 @@ export function BusinessRolesPage() {
               <Line key={role.id} testid="role-line"
                 name={<RecordLink table={ROLE_TABLE} id={role.id}>{role.name}</RecordLink>}
                 meta={<>
-                  <span data-testid="role-header">Business role · <button type="button" className={linkClasses} aria-expanded={people === role.id}
-                    onClick={() => setPeople(people === role.id ? null : role.id)} data-testid="role-people">{plural(role.people, 'person', 'people')}</button> · {role.people_from}</span>
+                  <span data-testid="role-header">Business role · {role.people ? <><button type="button" className={linkClasses} aria-expanded={people === role.id}
+                    onClick={() => setPeople(people === role.id ? null : role.id)} data-testid="role-people">{plural(role.people, 'person', 'people')}</button> · {role.people_from}</> : 'nobody yet'}</span>
                   {' · '}<span data-testid="role-reaches">Reaches: {role.reaches}</span>{role.description ? ` · ${role.description}` : ''}
                   {people === role.id && <RolePeople role={role} />}
                 </>}
@@ -155,7 +147,7 @@ export function BusinessRolesPage() {
                     {open === role.id ? 'Hide what it can do' : 'What it can do'}
                   </button>
                 </>}>
-                {open === role.id && <PermissionGrid role={role.name} permissions={role.permissions} reports={role.reports} />}
+                {open === role.id && <PermissionGrid permissions={role.permissions} reports={role.reports} />}
               </Line>
             ))}
           </Group>
@@ -208,7 +200,7 @@ function AccessSource({ onSwitched }: { onSwitched: () => Promise<unknown> | voi
         )}
         {showLog && (
           <ul className="flex flex-col gap-1 text-[13px]" data-testid="switch-over-log">
-            {lines.map(line => <li key={line.id}><Chip tone={line.outcome === 'Added' ? 'source' : 'hand'}>{line.outcome}</Chip> <Sentence parts={line.parts} renderRecord={sentenceRecord} /></li>)}
+            {lines.map(line => <li key={line.id}><Chip tone={line.outcome === 'Not converted' ? 'hand' : 'quiet'} testid="log-outcome">{line.outcome}</Chip> <Sentence parts={line.parts} renderRecord={sentenceRecord} /></li>)}
           </ul>
         )}
         {error && <Notice tone="negative">{error}</Notice>}
@@ -226,56 +218,24 @@ function RolePeople({ role }: { role: RolesAnswer['roles'][number] }) {
     <span className="block" data-testid="role-holders">
       {role.holders.map((h, i) => <span key={h.person}>{i ? ', ' : ''}<a className="text-action hover:underline" href={explainAddress(h.person)}>{h.name}</a></span>)}
       {role.people > role.holders.length && ` and ${(role.people - role.holders.length).toLocaleString('en-IN')} more`}
-      {role.people === 0 && 'Nobody holds it yet.'}
     </span>
   )
 }
 
-const CRUD = ['View', 'Add', 'Edit', 'Delete'] as const
-/** The roles map's grid: each app's things as rows, View / Add / Edit / Delete as columns, a reach chip in each cell; other verbs on the row. */
-function PermissionGrid({ role, permissions, reports }: { role: string; permissions: Permission[]; reports: SentencePart[][] }) {
-  const given = reports.length > 0 && (
-    <ul className="ml-2 flex flex-col text-[13px]" data-testid="report-sentences">
-      {reports.map((parts, i) => <li key={i} data-testid="report-line"><Sentence parts={parts} renderRecord={sentenceRecord} /></li>)}
-    </ul>
-  )
-  if (!permissions.length) return <>{given}<p className="ml-4 mt-1 text-sm text-ink-muted">No permissions yet.</p></>
-  const apps = [...new Set(permissions.map(p => p.app))]
-  const th = 'px-2 py-1.5 text-start font-mono text-[11px] font-medium uppercase text-ink-muted'
+/** A role's permissions and the reports given to it, each said as one sentence (#1282 H1–H4). The cross-role view is the Grid's. */
+function PermissionGrid({ permissions, reports }: { permissions: Permission[]; reports: SentencePart[][] }) {
   return (
     <div className="mt-2 flex flex-col gap-2" data-testid="role-permissions">
-      <ul className="ml-2 flex flex-col text-[13px] text-ink-muted" data-testid="permission-sentences">
-        {permissions.map((p, i) => <li key={i} data-testid="permission-line"><Sentence parts={p.parts} renderRecord={sentenceRecord} /></li>)}
-      </ul>
-      {given}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[36rem] text-sm" data-testid="permission-grid" aria-label={`What ${role} can do`}>
-          <thead><tr><th className={th}>Thing</th>{CRUD.map(v => <th key={v} className={th}>{v}</th>)}<th className={th}>Other</th></tr></thead>
-          <tbody>
-            {apps.map(app => (
-              <Fragment key={app}>
-                <tr><td colSpan={6} className="px-2 pt-2 font-semibold text-ink">{app}</td></tr>
-                {[...new Set(permissions.filter(p => p.app === app).map(p => p.thing))].map(thing => {
-                  const here = permissions.filter(p => p.app === app && p.thing === thing)
-                  return (
-                    <tr key={thing} data-testid="grid-row">
-                      <td className="px-2 py-1">{thing} <span className="text-[12px] text-ink-muted">{[...new Set(here.map(p => p.level))].join(', ')}</span></td>
-                      {CRUD.map(verb => {
-                        const p = here.find(x => x.verb === verb)
-                        return <td key={verb} className="px-2 py-1" data-testid={`cell-${verb}`}>{p ? <ReachChip reach={p.reach} /> : <span className="text-ink-muted">—</span>}</td>
-                      })}
-                      <td className="px-2 py-1">
-                        <span className="inline-flex flex-wrap gap-1">{here.filter(p => !(CRUD as readonly string[]).includes(p.verb)).map(p => (
-                          <span key={p.verb} className="inline-flex items-center gap-1"><span className={pillClasses('bg-subtle text-ink')}>{p.verb}</span><ReachChip reach={p.reach} /></span>))}</span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {permissions.length > 0 ? (
+        <ul className="ml-2 flex flex-col text-[13px] text-ink-muted" data-testid="permission-sentences">
+          {permissions.map((p, i) => <li key={i} data-testid="permission-line"><Sentence parts={p.parts} renderRecord={sentenceRecord} /></li>)}
+        </ul>
+      ) : <p className="ml-4 mt-1 text-sm text-ink-muted">No permissions yet.</p>}
+      {reports.length > 0 && (
+        <ul className="ml-2 flex flex-col text-[13px]" data-testid="report-sentences">
+          {reports.map((parts, i) => <li key={i} data-testid="report-line"><Sentence parts={parts} renderRecord={sentenceRecord} /></li>)}
+        </ul>
+      )}
     </div>
   )
 }

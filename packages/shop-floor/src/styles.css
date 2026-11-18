@@ -22,6 +22,7 @@
   --color-canvas: #f3f4f6; /* page background */
   --color-surface: #ffffff; /* cards, inputs */
   --color-subtle: #f8fafc; /* header rows, hovers */
+  --color-tag: #eef0f3; /* a quiet tag's fill: one step below the canvas, seen on every surface */
   --color-border: #e5e7eb; /* hairlines between content */
   --color-border-control: #6b7280; /* the edge of something you type into or press */
   --color-ink: #111827; /* primary text */
@@ -124,6 +125,7 @@
     --color-canvas: #0b1220;
     --color-surface: #131c2e;
     --color-subtle: #18233a;
+    --color-tag: #24304a;
     --color-border: #24314a;
     --color-border-control: #66768e;
     --color-ink: #f1f5f9;

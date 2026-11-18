@@ -241,20 +241,16 @@ describe('Business Roles', () => {
   it('says business roles decide once switched, offers nothing to someone who is not a System Manager, and lists what was done', async () => {
     answers = { ...ROLES, access_source: { source: 'business_roles', switch_rows: [{ id: 's1', source: 'business_roles' }], can_switch: false },
       switch_over_log: [{ id: 'l1', step: 'Report grant', outcome: 'Added', detail: 'Gave report vs to Store Manager, as it was given to the job Store Manager',
-        parts: ['Gave report vs to ', { record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Manager' } }, ', as it was given to the job Store Manager'] }] }
+        parts: ['Gave report vs to ', { record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Manager' } }, ', as it was given to the job Store Manager'] },
+        { id: 'l2', step: 'Report grant', outcome: 'Not converted', detail: 'The grant of the report vs to the job Buyer is not carried over', parts: ['The grant of the report vs to the job Buyer is not carried over'] }] }
     const { all, click } = await render('roles')
     expect([all('access-source-line')[0].textContent!.includes('decided by business roles'), all('give-old-grants').length]).toEqual([true, 0])
     await click(all('switch-over-log-toggle')[0])
     expect(all('switch-over-log')[0].textContent).toContain('Gave report vs to Store Manager')
+    // Colour only where it needs attention: an Added line is a quiet tag.
+    expect(all('log-outcome').map(c => [c.textContent, c.getAttribute('data-tone')])).toEqual([['Added', 'quiet'], ['Not converted', 'hand']])
   })
 
-  it('opens a role as a grid: things as rows, a reach chip under its verb, other verbs on the row', async () => {
-    answers = ROLES
-    const { all, click } = await render('roles')
-    await click(all('role-open')[0])
-    expect(all('grid-row').map(row => [row.querySelector('[data-testid="cell-Edit"]')!.textContent, row.textContent!.includes('Give')]))
-      .toEqual([['Area', false], ['—', true]])
-  })
 
   // #1282 H1–H4: the role said as sentences, each record a link and its reach a chip; its people counted, with where they come from.
   it('says a role in sentences: a header with its people, its permissions and the reports given to it', async () => {
@@ -267,15 +263,17 @@ describe('Business Roles', () => {
     expect(all('permission-line').map(l => [l.textContent, l.querySelector('[data-testid="sentence-reach"]')!.textContent])).toEqual([
       ['Store Managers can Edit Sections in their area', 'in their area'], ['Store Managers can Give Reports for their team', 'for their team']])
     expect(all('report-line').map(l => l.textContent)).toEqual(['Visit Sales is given to Store Manager each in their own area'])
+    // The sentences say it; the per-role matrix is gone (the cross-role view is the Grid's).
+    expect(all('permission-grid').length).toBe(0)
   })
 
   it('says a role nobody holds, with no permissions yet, still with the reports given to it', async () => {
     answers = { business_roles: { ...ROLES.business_roles, roles: [{ ...ROLES.business_roles.roles[0]!, permissions: [], people: 0, people_from: 'nobody yet', holders: [] }] } }
     const { all, click } = await render('roles')
-    await click(all('role-people')[0])
     await click(all('role-open')[0])
-    expect([all('role-header')[0].textContent, all('role-holders')[0].textContent, all('report-line').length, all('role-line')[0].textContent!.includes('No permissions yet.')])
-      .toEqual(['Business role · 0 people · nobody yet', 'Nobody holds it yet.', 1, true])
+    // At 0 the header says it once, with no link to an empty list.
+    expect([all('role-header')[0].textContent, all('role-people').length, all('report-line').length, all('role-line')[0].textContent!.includes('No permissions yet.')])
+      .toEqual(['Business role · nobody yet', 0, 1, true])
   })
 
   it('says how far a role reaches in plain words', async () => {
@@ -284,12 +282,6 @@ describe('Business Roles', () => {
     expect(all('role-reaches')[0].textContent).toBe('Reaches: their store')
   })
 
-  it('colours each reach by its word', async () => {
-    answers = ROLES
-    const { all, click } = await render('roles')
-    await click(all('role-open')[0])
-    expect(all('reach-chip').map(c => [c.textContent, c.className.includes('positive') || c.className.includes('action')])).toEqual([['Area', true], ['Team', true]])
-  })
 
   it('lists titles not mapped yet first, and opens who holds one', async () => {
     answers = ROLES

@@ -46,7 +46,7 @@ export async function ensureStartingRoles(read: Documents, write: Writer, log?: 
     for (const [app, level, verb, thing, reach] of role.grants)
       await write.create(PERMISSION, { business_role: exact(saved.row_id), app, level, verb, thing, reach })
     roles++
-    await log?.({ step: 'Starting role', outcome: 'Added', business_role: exact(saved.row_id), detail: `Added the starting role ${role.name}, with its ${role.grants.length} permissions` })
+    await log?.({ step: 'Starting role', outcome: 'Added', business_role: exact(saved.row_id), detail: `Added the starting role ${role.name}, with its ${role.grants.length} permission${role.grants.length === 1 ? '' : 's'}` })
   }
   const mapped = new Set((await every(read, TITLE_MAP, ['title'])).map(r => key(text(r.title))))
   let titles = 0
