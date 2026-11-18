@@ -601,25 +601,25 @@ export async function whyAccess(context: AccessContext) {
   const capped = <T>(items: T[], box: (item: T, i: number) => Record<string, unknown>, more: string) =>
     items.length <= WHY_COLUMN ? items.map(box)
       : [...items.slice(0, WHY_COLUMN - 1).map(box), { id: `${more}:more`, name: `+ ${items.length - WHY_COLUMN + 1} more` }]
-  const roleId = (role: string) => `role:${role}`
+  // Codex: one box per role held (the same role at two places is two boxes), and each edge from the occurrences of
+  // the role that gives it, so a permission is never lit for a role that does not grant it.
+  const held = (match: (r: (typeof e.roles)[number]) => boolean) => e.roles.flatMap((r, i) => match(r) ? [`role:${i}`] : [])
   const appId = (app: string, level: string) => `app:${app}:${level}`
-  const roles = capped(e.roles, r => ({
-    id: roleId(r.role), name: clip(r.name), record: { table: ROLE, row: r.role },
+  const roles = capped(e.roles, (r, i) => ({
+    id: `role:${i}`, name: clip(r.name), record: { table: ROLE, row: r.role },
     ...(r.area.parts.length ? { detail: clip(r.area.parts.map(p => p.name).join(' · ')) } : {}),
     source: BY_HAND.has(r.kind) ? 'hand' : 'hr',
   }), 'role')
   const apps = capped(e.apps, a => ({ id: appId(a.app, a.level), name: clip(`${a.app} · ${a.level}`) }), 'app')
-  const can = capped(e.permissions, (p, i) => ({ id: `can:${i}`, name: clip(`${p.verb} ${p.thing}`), detail: clip(p.app), reach: p.reach }), 'can')
+  const can = capped(e.permissions, (p, i) => ({ id: `can:${i}`, name: clip(`${p.verb} ${p.thing}`), detail: clip(`${p.app} · ${p.level}`), reach: p.reach }), 'can')
   const reports = capped(e.reports, r => ({ id: `report:${r.key}`, name: clip(r.name) }), 'report')
   const shown = new Set(['person', ...[...roles, ...apps, ...can, ...reports].map(b => String(b.id))])
-  const edge = (from: string, to: string): [string, string][] => shown.has(from) && shown.has(to) ? [[from, to]] : []
-  const roleByName = new Map(e.roles.map(r => [r.name, r.role]))
-  const edges = [
-    ...e.roles.flatMap(r => edge('person', roleId(r.role))),
-    ...e.apps.flatMap(a => a.via.flatMap(name => edge(roleId(roleByName.get(name)!), appId(a.app, a.level)))),
-    ...e.permissions.flatMap((p, i) => edge(appId(p.app, p.level), `can:${i}`)),
-    ...e.reports.flatMap(r => r.roles.flatMap(role => edge(roleId(role), `report:${r.key}`))),
-  ]
+  const edges = ([
+    ...e.roles.map((_, i) => ['person', `role:${i}`]),
+    ...e.apps.flatMap(a => a.via.flatMap(name => held(r => r.name === name).map(id => [id, appId(a.app, a.level)]))),
+    ...e.permissions.flatMap((p, i) => held(r => r.role === p.role).map(id => [id, `can:${i}`])),
+    ...e.reports.flatMap(r => r.roles.flatMap(role => held(h => h.role === role).map(id => [id, `report:${r.key}`]))),
+  ] as [string, string][]).filter(([from, to]) => shown.has(from) && shown.has(to))
   const columns = [
     { heading: 'Person', boxes: [{ id: 'person', name: clip(e.name), record: { table: 'Person', row: person } }] },
     { heading: 'Business Role · Area', boxes: roles },

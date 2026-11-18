@@ -56,15 +56,23 @@ export async function explainRecord(table: string, row: string, user: string): P
   return { label: declaration.label, answer: await scrubbed(parsed.data, user) }
 }
 
-/** The answer with every record the viewer may not read named neutrally, with no record to open. */
+/**
+ * The answer as the viewer gets it: every record the viewer may not read named neutrally, with no record to
+ * open, and every box known by an opaque id of the platform's own (b1, b2, …), its edges rewritten to match. An
+ * app's ids may carry the very record ids being hidden (Codex adversarial, round 1), so none of them leaves.
+ */
 async function scrubbed(answer: WhyAnswer, user: string): Promise<WhyAnswer> {
   const refs = answer.columns.flatMap((c) => c.boxes.flatMap((b) => b.record ? [{ table: b.record.table, row_id: b.record.row }] : []))
   const readable = new Set((await rowTitles(user, refs)).map((t) => `${t.table}\u0000${t.row_id}`))
+  const opaque = new Map(answer.columns.flatMap((c) => c.boxes).map((b, i) => [b.id, `b${i + 1}`]))
   return {
-    ...answer,
+    version: answer.version,
     columns: answer.columns.map((c) => ({
-      ...c,
-      boxes: c.boxes.map((b) => !b.record || readable.has(`${b.record.table}\u0000${b.record.row}`) ? b : { id: b.id, name: UNSEEN_ROW }),
+      heading: c.heading,
+      boxes: c.boxes.map((b) => !b.record || readable.has(`${b.record.table}\u0000${b.record.row}`)
+        ? { ...b, id: opaque.get(b.id)! }
+        : { id: opaque.get(b.id)!, name: UNSEEN_ROW }),
     })),
+    edges: answer.edges.map(([from, to]) => [opaque.get(from)!, opaque.get(to)!]),
   }
 }

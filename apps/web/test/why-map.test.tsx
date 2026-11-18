@@ -66,14 +66,14 @@ test('clicking a box lights every chain that leads to it, back to the person; cl
   await openMap(admin)
   await showWhy()
   await waitFor(() => expect(screen.getAllByTestId('why-box')).toHaveLength(7))
-  const lit = () => screen.getAllByTestId('why-box').filter((b) => b.dataset.lit === 'true').map((b) => b.dataset.whyBox).sort()
+  // The server gives every box its own opaque id; a box is known here by its name.
+  const lit = () => screen.getAllByTestId('why-box').filter((b) => b.dataset.lit === 'true').map((b) => b.querySelector('span')!.textContent).sort()
   fireEvent.click(boxNamed('Dash · Reader'))
-  expect(lit()).toEqual(['buyer', 'dash', 'fm', 'p'])
+  expect(lit()).toEqual(['Buyer', 'Dash · Reader', 'Floor Manager', 'The note'])
   fireEvent.click(boxNamed('Dash · Reader'))
   expect(lit()).toEqual([])
-  // A click on a record's link opens it rather than lighting.
   fireEvent.click(boxNamed('View reports'))
-  expect(lit()).toEqual(['buyer', 'dash', 'fm', 'p', 'view'])
+  expect(lit()).toEqual(['Buyer', 'Dash · Reader', 'Floor Manager', 'The note', 'View reports'])
 })
 
 test('every box is reached by its Show Chain button, which Enter or Space presses', async ({ admin }) => {
@@ -103,7 +103,8 @@ test('the chain lines join each box to the next, measured where the boxes fall, 
   await install(admin)
   const rect = (left: number, top: number, width: number, height: number) =>
     ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect
-  const columnOf: Record<string, number> = { p: 0, fm: 1, buyer: 1, dash: 2, tasker: 2, view: 3, hidden: 3 }
+  // The server numbers the boxes b1… in column order: b1 | b2 b3 | b4 b5 | b6 b7.
+  const columnOf: Record<string, number> = { b1: 0, b2: 1, b3: 1, b4: 2, b5: 2, b6: 3, b7: 3 }
   const placed = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
     const id = this.getAttribute('data-why-box')
     return id ? rect(columnOf[id]! * 300, 100, 200, 60) : rect(0, 0, 1200, 400)

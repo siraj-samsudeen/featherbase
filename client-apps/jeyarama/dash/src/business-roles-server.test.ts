@@ -157,12 +157,12 @@ describe("Why on the platform's Map", () => {
     expect(why.version).toBe(1)
     expect(why.columns.map(c => c.heading)).toEqual(['Person', 'Business Role · Area', 'App · Level', 'What They Can Do', 'Reports They See'])
     expect(why.columns[0]!.boxes).toEqual([{ id: 'person', name: expect.any(String), record: { table: 'Person', row: 'sm' } }])
-    expect(why.columns[1]!.boxes).toEqual([{ id: `role:${sm}`, name: 'Store Manager', record: { table: 'dash.business_role', row: sm }, detail: 'Lakeside', source: 'hr' }])
+    expect(why.columns[1]!.boxes).toEqual([{ id: 'role:0', name: 'Store Manager', record: { table: 'dash.business_role', row: sm }, detail: 'Lakeside', source: 'hr' }])
     expect(why.columns[2]!.boxes.map(b => b.name)).toEqual(['Dash · Manager', 'Dash · Reader', 'Tasker · Manager', 'Tickets · Manager'])
     expect(why.columns[3]!.boxes.every(b => typeof b.reach === 'string')).toBe(true)
     expect(why.columns[4]!.boxes.map(b => b.name)).toEqual(['Sales', 'Vendor Sales'])
     // Each box is joined back to the person, through the role.
-    expect(why.edges).toEqual(expect.arrayContaining([['person', `role:${sm}`], [`role:${sm}`, 'app:Dash:Reader'], [`role:${sm}`, 'report:vs']]))
+    expect(why.edges).toEqual(expect.arrayContaining([['person', 'role:0'], ['role:0', 'app:Dash:Reader'], ['role:0', 'can:0'], ['role:0', 'report:vs']]))
     const columnOf = new Map(why.columns.flatMap((c, i) => c.boxes.map(b => [b.id, i] as const)))
     for (const [from, to] of why.edges) expect(columnOf.get(from)!).toBeLessThan(columnOf.get(to)!)
   })
@@ -180,6 +180,22 @@ describe("Why on the platform's Map", () => {
     const can = why.columns.find(c => c.heading === 'What They Can Do')!.boxes
     expect(can).toHaveLength(12)
     expect(can.at(-1)).toEqual({ id: 'can:more', name: expect.stringMatching(/^\+ \d+ more$/) })
+  })
+
+  // Codex round 1: the same role held twice is two boxes, and a permission is lit only from the role that grants it.
+  it('keeps each role held its own box, and joins a permission only to the role that grants it', async () => {
+    const tables = await seeded()
+    // Staff from the HR title, and Staff again by hand: the same role held twice.
+    await giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Staff'), ends_on: '2999-03-31', reason: 'Covering' } }) as never)
+    await giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Team Leader'), ends_on: '2999-03-31', reason: 'Covering' } }) as never)
+    const why = await whyAccess(context(tables, { payload: { table: 'Person', row: 'st' } }) as never)
+    expect(why.columns[1]!.boxes.filter(b => b.name === 'Staff')).toHaveLength(2)
+    const ids = why.columns.flatMap(c => c.boxes.map(b => b.id))
+    expect(new Set(ids).size).toBe(ids.length)
+    const roleOf = new Map(why.columns[1]!.boxes.map(b => [b.id, b.record!.row]))
+    const permissions = await explainPerson(context(tables, { payload: { person: 'st' } }) as never)
+    for (const [from, to] of why.edges.filter(([, to]) => to.startsWith('can:')))
+      expect(roleOf.get(from)).toBe(permissions.permissions[Number(to.slice(4))]!.role)
   })
 
   it('says a role given by hand is by hand', async () => {

@@ -145,11 +145,12 @@ describe('Why: the explanation', () => {
       label: 'Why: Who Reads It',
       answer: {
         version: 1,
+        // Every box by the platform's own opaque id, never the app's.
         columns: [
-          { heading: 'Note', boxes: [{ id: 'n', name: 'The note', record: { table: NOTE, row: 'n1' } }] },
-          { heading: 'Reader', boxes: [{ id: 'r', name: 'Bar Reader', detail: 'by hand', source: 'hand', reach: 'All' }] },
+          { heading: 'Note', boxes: [{ id: 'b1', name: 'The note', record: { table: NOTE, row: 'n1' } }] },
+          { heading: 'Reader', boxes: [{ id: 'b2', name: 'Bar Reader', detail: 'by hand', source: 'hand', reach: 'All' }] },
         ],
-        edges: [['n', 'r']],
+        edges: [['b1', 'b2']],
       },
     })
   })
@@ -176,21 +177,25 @@ describe('Why: the explanation', () => {
     expect(JSON.stringify(await response.json())).not.toContain('<b>')
   })
 
-  test('a box naming a record the viewer may not read says "A row you cannot see", with no record to open', async ({ admin, createUser }) => {
+  test('a box naming a record the viewer may not read says "A row you cannot see": no name, no record, and not its id in any box id or edge', async ({ admin, createUser }) => {
     await install(admin)
     const [, explainer] = await people(createUser)
+    const hidden = admin.user!
     answerNext({
       version: 1,
       columns: [
-        { heading: 'Note', boxes: [{ id: 'n', name: 'The note', record: { table: NOTE, row: 'n1' } }] },
-        { heading: 'Person', boxes: [{ id: 'p', name: 'A secret name', detail: 'A secret place', record: { table: 'Person', row: admin.user! } }] },
+        { heading: 'Note', boxes: [{ id: 'note:n1', name: 'The note', record: { table: NOTE, row: 'n1' } }] },
+        { heading: 'Person', boxes: [{ id: `person:${hidden}`, name: 'A secret name', detail: 'A secret place', record: { table: 'Person', row: hidden } }] },
       ],
-      edges: [['n', 'p']],
+      edges: [['note:n1', `person:${hidden}`]],
     })
-    const body = await (await explain(explainer)).json() as { answer: { columns: { boxes: Record<string, unknown>[] }[] } }
-    expect(body.answer.columns[1]!.boxes[0]).toEqual({ id: 'p', name: 'A row you cannot see' })
-    expect(JSON.stringify(body)).not.toContain('secret')
+    const body = await (await explain(explainer)).json() as { answer: { columns: { boxes: Record<string, unknown>[] }[]; edges: string[][] } }
+    expect(body.answer.columns[1]!.boxes[0]).toEqual({ id: 'b2', name: 'A row you cannot see' })
+    expect(body.answer.edges).toEqual([['b1', 'b2']])
+    const sent = JSON.stringify(body)
+    expect(sent).not.toContain('secret')
+    expect(sent).not.toContain(hidden)
     // The record the viewer may read keeps its link.
-    expect(body.answer.columns[0]!.boxes[0]).toEqual({ id: 'n', name: 'The note', record: { table: NOTE, row: 'n1' } })
+    expect(body.answer.columns[0]!.boxes[0]).toEqual({ id: 'b1', name: 'The note', record: { table: NOTE, row: 'n1' } })
   })
 })
