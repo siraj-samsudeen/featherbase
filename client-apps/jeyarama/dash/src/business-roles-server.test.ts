@@ -103,6 +103,8 @@ function onRequest(tables: Record<string, Row[]>, report: string, role: string) 
 describe('the starting roles', () => {
   it('writes the starting business roles once', async () => {
     const tables = await seeded()
+    // A count of one is said in the singular.
+    expect(tables['dash.switch_over_log'].map(l => l.detail)).toEqual(expect.arrayContaining([expect.stringMatching(/, with its 1 permission$/), expect.stringMatching(/, with its \d+ permissions$/)]))
     expect(tables['dash.business_role'].map(r => r.role_name)).toEqual(STARTING_ROLES.map(r => r.name))
   })
 
@@ -142,6 +144,11 @@ describe('the Business Roles page', () => {
     tables['dash.report_bundle'] = [...tables['dash.report_bundle'] ?? [], { row_id: 'bx', bundle_name: 'Store pack' }]
     tables['dash.report_access'].push({ row_id: 'given-bx', report_bundle: 'bx', business_role: roleId(tables, 'Head Office'), access_key: `bundle:bx/business_role:${roleId(tables, 'Head Office')}` })
     const page = await businessRoles(context(tables) as never)
+    // Codex adversarial round 1: a bundle the caller may not read is not named to them (their own documents decide).
+    const blind = context(tables)
+    const list = blind.documents.list
+    blind.documents.list = (async (table: string, args: never) => (table === 'dash.report_bundle' ? [] : list(table, args))) as typeof list
+    expect((await businessRoles(blind as never)).roles.flatMap(r => r.reports).flat().some(p => typeof p !== 'string' && 'record' in p && p.record.name === 'Store pack')).toBe(false)
     const role = (name: string) => page.roles.find(r => r.name === name)!
     expect(role('Store Manager').permissions[0]!.parts[0]).toEqual({ record: { table: 'dash.business_role', row: roleId(tables, 'Store Manager'), name: 'Store Managers' } })
     expect(role('Team Leader')).toMatchObject({ people: 1, people_from: 'by hand' })
@@ -149,6 +156,21 @@ describe('the Business Roles page', () => {
     expect(role('Master Data Manager')).toMatchObject({ people: 0, people_from: 'nobody yet', reports: [] })
     expect(role('Head Office').reports.map(parts => (parts[0] as { record: { name: string } }).record.name)).toContain('Store pack')
     expect(role('Head Office').reports).toContainEqual([{ record: { table: 'dash.report', row: 'vs', name: expect.any(String) } }, ' is given to ', { record: { table: 'dash.business_role', row: roleId(tables, 'Head Office'), name: 'Head Office' } }, ' ', { chip: 'each in their own area' }])
+  })
+
+  // Codex standard round 1: the count agrees with access: a person Corrected counts only under the role they now hold,
+  // and once the correction ends they count under their HR title's role again.
+  it("counts a role's people as access decides: a correction moves them, and an ended one moves them back", async () => {
+    const tables = await seeded()
+    const before = await businessRoles(context(tables) as never)
+    const count = (page: typeof before, name: string) => page.roles.find(r => r.name === name)!.people
+    await giveRole(context(tables, { payload: { person: 'st', change: 'Correct', role: roleId(tables, 'Team Leader'), ends_on: '2999-03-31', reason: 'Acting' } }) as never)
+    const corrected = await businessRoles(context(tables) as never)
+    expect([count(corrected, 'Staff'), count(corrected, 'Team Leader')]).toEqual([count(before, 'Staff') - 1, count(before, 'Team Leader') + 1])
+    expect(corrected.roles.find(r => r.name === 'Team Leader')!.people_from).toContain('by hand')
+    for (const row of tables['dash.role_assignment']) row.ends_on = '2000-01-01'
+    const ended = await businessRoles(context(tables) as never)
+    expect([count(ended, 'Staff'), count(ended, 'Team Leader')]).toEqual([count(before, 'Staff'), count(before, 'Team Leader')])
   })
 
   it('lists a designation nobody has mapped first, with how many hold it', async () => {

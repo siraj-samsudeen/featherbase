@@ -1136,7 +1136,8 @@
   "reads": {
     "version": 1,
     "tables": [
-      "dash.report"
+      "dash.report",
+      "dash.report_bundle"
     ],
     "operations": {
       "manages_roles": {

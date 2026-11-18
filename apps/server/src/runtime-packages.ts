@@ -23,7 +23,7 @@ import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './a
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
-import { invalidateMeta } from './meta'
+import { getMeta, invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, countLosses, describeLoss, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
 
 // Public v1 hook contract is structural: packages never import core classes.
@@ -1014,6 +1014,37 @@ export async function servedApp(name: string): Promise<{ name: string; title: st
   return item?.active && item.ownPages && pkg?.clientRoot ? { name: pkg.name, title: pkg.title } : null
 }
 
+type DeclaredArea = NonNullable<z.infer<typeof manifestSchema>['areas']>[number]
+
+/** #1282 (Codex adversarial round 1): the areas an app declares, as this instance's Tables bear them out. An area's
+ *  Tables are usually the instance's own, not the app's, so they are checked here, where they are served: each level a
+ *  Table with its title and filter columns, and each one below the first linked to the level above by a Reference to
+ *  that level's Table. An area they do not bear out is not offered, so no picker walks a hierarchy that is not there. */
+async function realAreas(app: string, areas: DeclaredArea[]): Promise<DeclaredArea[]> {
+  const real: DeclaredArea[] = []
+  for (const area of areas) {
+    const problem = await areaProblem(area)
+    if (problem) console.warn(`[app ${app}] area ${area.name} is not offered: ${problem}`)
+    else real.push(area)
+  }
+  return real
+}
+
+async function areaProblem(area: DeclaredArea): Promise<string | null> {
+  for (const [i, level] of area.levels.entries()) {
+    const meta = await getMeta(level.table).catch(() => null)
+    if (!meta) return `there is no Table ${level.table}`
+    const column = (name: string) => meta.columns.find(c => c.column_name === name)
+    const missing = [level.title, ...(level.filters ?? []).map(([name]) => name)].find(name => name !== 'row_id' && !column(name))
+    if (missing) return `${level.table} has no column ${missing}`
+    const above = area.levels[i - 1]
+    const link = above && column(level.parent!)
+    if (above && (link?.column_type !== 'Reference' || (link.reference_base ?? link.reference_table) !== above.table))
+      return `${level.table}.${level.parent} does not link to ${above.table}`
+  }
+  return null
+}
+
 export async function appCatalog(user: string) {
   const installed = await listInstalledApps()
   const result = []
@@ -1031,7 +1062,7 @@ export async function appCatalog(user: string) {
         // #1237: where the app shows one of its rows, for the record page's "Open in <App>".
         ...(pkg.manifest.recordPages && { recordPages: pkg.manifest.recordPages }),
         // #1282: the areas its people pick on the trees, for the area picker.
-        ...(pkg.manifest.areas && { areas: pkg.manifest.areas }),
+        ...(pkg.manifest.areas && { areas: await realAreas(pkg.name, pkg.manifest.areas) }),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
       })
   }

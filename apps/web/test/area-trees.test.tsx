@@ -24,7 +24,7 @@ afterEach(async () => {
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true })
 })
 
-async function seed(admin: Client) {
+async function seed(admin: Client, extra: unknown[] = []) {
   const directory = await mkdtemp(resolve('test/.areas-1282-'))
   directories.push(directory)
   await cp(resolve('../..', 'test-apps/fixtures/bar-proof'), directory, { recursive: true })
@@ -36,7 +36,7 @@ async function seed(admin: Client) {
       { table: CLUSTER, title: 'name', label: 'Cluster', plural: 'clusters' },
       { table: SITE, title: 'name', parent: 'cluster', label: 'Store', plural: 'stores', adminLabel: 'Site', adminPlural: 'sites', filters: [['is_store', '=', 1]] },
     ],
-  }]
+  }, ...extra]
   await writeFile(file, JSON.stringify(manifest))
   expect(await discoverPackages([directory])).toEqual([])
   await admin.post('/api/install_app', { name: 'barproof' })
@@ -99,4 +99,16 @@ test('the ✕ closes the picker and leaves the area as it was', async ({ admin }
   fireEvent.click(within(await within(form).findByTestId('area-picker')).getByRole('button', { name: 'Close' }))
   await waitFor(() => expect(within(form).queryByTestId('area-picker')).not.toBeInTheDocument())
   expect(within(form).getByTestId('area-pick')).toHaveTextContent('Pick on the trees ▸')
+})
+
+// Codex adversarial round 1: an area is offered only as the instance's Tables bear it out.
+test("an area whose Tables, columns or links are not there is not offered to the picker", async ({ admin }) => {
+  const level = (table: string, more: object = {}) => ({ table, title: 'name', label: table, plural: `${table}s`, ...more })
+  await seed(admin, [
+    { name: 'No Table', whole: 'All', levels: [level(CLUSTER), level('At Nowhere', { parent: 'cluster' })] },
+    { name: 'No Title', whole: 'All', levels: [level(CLUSTER, { title: 'nickname' })] },
+    { name: 'Not Linked', whole: 'All', levels: [level(CLUSTER), level(SITE, { parent: 'is_store' })] },
+  ])
+  const catalog = await admin.get<{ name: string; areas?: { name: string }[] }[]>('/api/app_catalog')
+  expect(catalog.find((app) => app.name === 'barproof')!.areas!.map((a) => a.name)).toEqual(['Location'])
 })

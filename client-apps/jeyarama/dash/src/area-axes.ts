@@ -1,5 +1,6 @@
 import type { AreaAxis, AreaRow } from '@featherbase/shop-floor'
 import { APP_VERSION_HEADERS } from './api'
+import { SITE_KIND_FIELDS, openStore } from './site-kind'
 
 // #1282 G1–G6: Dash's areas for the shared area picker, on a staff screen (so a Site
 // reads "Store", G6). Each column is the platform's own list read, as the person
@@ -11,13 +12,13 @@ interface LevelSpec {
   title: string
   /** The link to the level above. */
   parent?: string
-  /** Rows the level offers at all: a Site that is a store. */
-  filters?: [string, string, unknown][]
+  /** Rows the level offers at all: for Site, an open store by the server's own rule (openStore). */
+  stores?: true
 }
 
 const LEVELS: Record<string, LevelSpec> = {
   Cluster: { title: 'name' },
-  Site: { title: 'name', parent: 'cluster', filters: [['is_store', '=', 1]] },
+  Site: { title: 'name', parent: 'cluster', stores: true },
   'Store Floor': { title: 'name', parent: 'site' },
   Division: { title: 'division' },
   Subdivision: { title: 'subdivision', parent: 'division' },
@@ -56,18 +57,42 @@ async function list(table: string, filters: unknown[], fields: string[], limit: 
   return response.json() as Promise<{ data: Record<string, unknown>[]; total: number }>
 }
 
-const narrowed = (spec: LevelSpec, parent: string | null) => [...(spec.filters ?? []), ...(parent && spec.parent ? [[spec.parent, '=', parent]] : [])]
+/** The most Sites one count reads: a cluster holds far fewer. */
+const SITE_ROWS = 2000
+
+/** The Site columns openStore reads that this viewer may read here (an instance may not have site_kind or status). */
+let storeColumns: Promise<string[]> | undefined
+function storeFields(): Promise<string[]> {
+  storeColumns ??= fetch('/api/table/Site:meta', { credentials: 'same-origin', headers: APP_VERSION_HEADERS })
+    .then(r => (r.ok ? r.json() as Promise<{ readable_columns?: string[] }> : {}))
+    .then(meta => ['is_store', ...SITE_KIND_FIELDS].filter(c => (meta as { readable_columns?: string[] }).readable_columns?.includes(c)), () => [])
+  return storeColumns
+}
+
+/** A level's rows under a parent; for Site only the open stores, as the server's Correct and Also Give check them (Codex standard round 1). */
+async function rowsOf(table: string, parent: string | null, fields: string[], limit: number, orderBy?: string) {
+  const spec = LEVELS[table]!
+  const filters = parent && spec.parent ? [[spec.parent, '=', parent]] : []
+  if (!spec.stores) return list(table, filters, fields, limit, orderBy)
+  const { data } = await list(table, filters, [...new Set([...fields, ...await storeFields()])], SITE_ROWS, orderBy)
+  const open = data.filter(openStore)
+  return { data: open.slice(0, limit), total: open.length }
+}
 
 /** A column of the picker: the level's rows under the row picked before it, each with how many of the next level it holds. */
 export async function loadDashArea(axis: AreaAxis, level: number, parent: AreaRow | null): Promise<AreaRow[]> {
-  const here = LEVELS[axis.levels[level]!.table]!
-  const { data } = await list(axis.levels[level]!.table, narrowed(here, parent?.id ?? null), ['row_id', here.title], COLUMN_ROWS, `${here.title} asc`)
+  const table = axis.levels[level]!.table
+  const here = LEVELS[table]!
+  const { data } = await rowsOf(table, parent?.id ?? null, ['row_id', here.title], COLUMN_ROWS, `${here.title} asc`)
   const next = axis.levels[level + 1]
   return Promise.all(data.map(async (row) => {
     const id = String(row.row_id)
     const name = String(row[here.title] ?? '').trim() || id
     if (!next) return { id, name }
-    const { total } = await list(next.table, narrowed(LEVELS[next.table]!, id), ['row_id'], 1)
+    const { total } = await rowsOf(next.table, id, ['row_id'], 1)
     return { id, name, count: total }
   }))
 }
+
+/** For tests: forget the Site columns read for this page. */
+export function forgetStoreFields() { storeColumns = undefined }
