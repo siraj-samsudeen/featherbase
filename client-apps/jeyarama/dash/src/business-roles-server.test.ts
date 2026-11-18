@@ -157,7 +157,9 @@ describe("Why on the platform's Map", () => {
     expect(why.version).toBe(1)
     expect(why.columns.map(c => c.heading)).toEqual(['Person', 'Business Role · Area', 'App · Level', 'What They Can Do', 'Reports They See'])
     expect(why.columns[0]!.boxes).toEqual([{ id: 'person', name: expect.any(String), record: { table: 'Person', row: 'sm' } }])
-    expect(why.columns[1]!.boxes).toEqual([{ id: 'role:0', name: 'Store Manager', record: { table: 'dash.business_role', row: sm }, detail: 'Lakeside', source: 'hr' }])
+    // The area names Lakeside, a Site: the platform shows it only to someone who may read that Site.
+    expect(why.columns[1]!.boxes).toEqual([{ id: 'role:0', name: 'Store Manager', record: { table: 'dash.business_role', row: sm }, detail: 'Lakeside', source: 'hr',
+      detailRecords: [{ table: 'Site', row: expect.any(String) }] }])
     expect(why.columns[2]!.boxes.map(b => b.name)).toEqual(['Dash · Manager', 'Dash · Reader', 'Tasker · Manager', 'Tickets · Manager'])
     expect(why.columns[3]!.boxes.every(b => typeof b.reach === 'string')).toBe(true)
     expect(why.columns[4]!.boxes.map(b => b.name)).toEqual(['Sales', 'Vendor Sales'])
@@ -172,14 +174,17 @@ describe("Why on the platform's Map", () => {
     const sm = roleId(tables, 'Store Manager')
     tables['dash.business_role'].find(r => r.row_id === sm)!.role_name = 'Store Manager '.repeat(10).trim()
     tables['Site'].find(r => r.name === 'Lakeside')!.name = ''
-    for (let i = 0; i < 13; i++)
+    for (let i = 0; i < 40; i++)
       tables['dash.business_role_permission'].push({ row_id: `p-many-${i}`, business_role: sm, app: 'Dash', level: 'Reader', verb: 'View', thing: `Report ${i}`, reach: 'Area' })
     const why = await whyAccess(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never)
     const role = why.columns[1]!.boxes[0]!
     expect([String(role.name).length, String(role.name).endsWith('…'), 'detail' in role]).toEqual([120, true, false])
     const can = why.columns.find(c => c.heading === 'What They Can Do')!.boxes
-    expect(can).toHaveLength(12)
+    expect(can).toHaveLength(9)
     expect(can.at(-1)).toEqual({ id: 'can:more', name: expect.stringMatching(/^\+ \d+ more$/) })
+    // Codex round 2: the whole map stays within the platform's 40 boxes and 200 edges.
+    expect(why.columns.flatMap(c => c.boxes).length).toBeLessThanOrEqual(40)
+    expect(why.edges.length).toBeLessThanOrEqual(200)
   })
 
   // Codex round 1: the same role held twice is two boxes, and a permission is lit only from the role that grants it.
@@ -192,7 +197,7 @@ describe("Why on the platform's Map", () => {
     expect(why.columns[1]!.boxes.filter(b => b.name === 'Staff')).toHaveLength(2)
     const ids = why.columns.flatMap(c => c.boxes.map(b => b.id))
     expect(new Set(ids).size).toBe(ids.length)
-    const roleOf = new Map(why.columns[1]!.boxes.map(b => [b.id, b.record!.row]))
+    const roleOf = new Map(why.columns[1]!.boxes.map(b => [b.id, (b.record as { row: string }).row]))
     const permissions = await explainPerson(context(tables, { payload: { person: 'st' } }) as never)
     for (const [from, to] of why.edges.filter(([, to]) => to.startsWith('can:')))
       expect(roleOf.get(from)).toBe(permissions.permissions[Number(to.slice(4))]!.role)
@@ -222,7 +227,7 @@ describe('Explain a person', () => {
     const answer = await explainPerson(context(tables, { payload: { person: 'sm' } }) as never)
     // Sales was given to Dash Reader: the switch-over gives it to every role that opens Dash, Store Manager among them.
     const sm = roleId(tables, 'Store Manager')
-    expect(answer.reports).toEqual([{ key: 'sales', name: 'Sales', why: ['Given to Store Manager, for Lakeside'], roles: [sm] }, { key: 'vs', name: 'Vendor Sales', why: ['Given to Store Manager, for Lakeside'], roles: [sm] }])
+    expect(answer.reports).toEqual([{ key: 'sales', name: 'Sales', why: ['Given to Store Manager, for Lakeside'], roles: [sm], direct: false }, { key: 'vs', name: 'Vendor Sales', why: ['Given to Store Manager, for Lakeside'], roles: [sm], direct: false }])
   })
 
   it('reads a category head\'s area as the category and region of their merchandise assignment', async () => {
@@ -405,7 +410,15 @@ describe('someone outside the staff list', () => {
   })
 
   it('gets a report given to them through a bundle, saying so', async () => {
-    expect((await outsider()).reports).toEqual([{ key: 'open', name: 'Company notices', why: ['Given to them directly, through Store pack'], roles: [] }])
+    expect((await outsider()).reports).toEqual([{ key: 'open', name: 'Company notices', why: ['Given to them directly, through Store pack'], roles: [], direct: true }])
+  })
+
+  // #1282, Codex round 2: on the Map's Why, a report given to them directly leads straight from them.
+  it("joins a report given to them directly straight to them on the Map's Why", async () => {
+    const tables = await richWorld()
+    await giveRole(context(tables, { payload: { person: 'ext', change: 'Also give', role: roleId(tables, 'Master Data Manager') } }) as never)
+    const why = await whyAccess(richContext(tables, { payload: { table: 'Person', row: 'ext' } }) as never)
+    expect(why.edges).toContainEqual(['person', 'report:open'])
   })
 
   // #1277: a report alone opens no door: the platform lets into Dash only someone holding one of its roles, on either side.

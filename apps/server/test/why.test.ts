@@ -198,4 +198,23 @@ describe('Why: the explanation', () => {
     // The record the viewer may read keeps its link.
     expect(body.answer.columns[0]!.boxes[0]).toEqual({ id: 'b1', name: 'The note', record: { table: NOTE, row: 'n1' } })
   })
+
+  test('a detail naming a record the viewer may not read is left out; one naming only readable records stays', async ({ admin, createUser }) => {
+    await install(admin)
+    const [, explainer] = await people(createUser)
+    answerNext({
+      version: 1,
+      columns: [
+        { heading: 'Note', boxes: [{ id: 'n', name: 'The note', detail: 'Its own note', detailRecords: [{ table: NOTE, row: 'n1' }] }] },
+        { heading: 'Role', boxes: [{ id: 'r', name: 'Floor Manager', detail: 'A secret store', detailRecords: [{ table: NOTE, row: 'n1' }, { table: 'Person', row: admin.user! }] }] },
+      ],
+      edges: [['n', 'r']],
+    })
+    const body = await (await explain(explainer)).json() as { answer: { columns: { boxes: Record<string, unknown>[] }[] } }
+    expect(body.answer.columns[0]!.boxes[0]).toEqual({ id: 'b1', name: 'The note', detail: 'Its own note' })
+    expect(body.answer.columns[1]!.boxes[0]).toEqual({ id: 'b2', name: 'Floor Manager' })
+    // The list of records itself never leaves the server.
+    expect(JSON.stringify(body)).not.toContain('detailRecords')
+    expect(JSON.stringify(body)).not.toContain('secret')
+  })
 })

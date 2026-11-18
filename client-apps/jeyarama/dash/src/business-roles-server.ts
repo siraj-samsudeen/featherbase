@@ -429,7 +429,9 @@ export async function explainPerson(context: AccessContext) {
     apps: appsOf(shadow.held, world.model),
     // #1282: the roles each report comes through, and what each held role allows, for the Map's Why.
     reports: shadow.next.reports.map(key => ({ key, name: reports.get(key)!.name, why: shadow.nextWhy.get(key)!.map(why),
-      roles: [...new Set(shadow.nextWhy.get(key)!.flatMap(w => w.role ? [w.role] : []))] })),
+      roles: [...new Set(shadow.nextWhy.get(key)!.flatMap(w => w.role ? [w.role] : []))],
+      // Given to the person themself (directly, or through a bundle given to them).
+      direct: shadow.nextWhy.get(key)!.some(w => w.person === true) })),
     permissions: world.model.permissions.filter(p => shadow.held.some(h => h.role === p.role))
       .map(p => ({ role: p.role, app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach })),
     today: { opens: shadow.today.opens, reports: shadow.today.reports.length, stores: new Set(Object.keys(shadow.today.places).map(s => plants.get(s))).size },
@@ -575,8 +577,11 @@ export async function addStartingRoles(context: AccessContext) {
 /** Where a role came from, as the Why map says it: HR's own facts, or someone's hand. */
 const BY_HAND = new Set(['corrected', 'also_given'])
 
-/** At most this many boxes in one column of the Why map (the platform's limit); the rest is counted. */
-const WHY_COLUMN = 12
+/** At most this many boxes in one column of the Why map; the rest is counted. With the person, four such columns stay
+ *  within the platform's 40 boxes (Codex round 2). */
+const WHY_COLUMN = 9
+/** The platform's most edges in one Why map: past it the rest of the lines are left out rather than the map refused. */
+const WHY_EDGES = 200
 /** A name or a detail on a Why box, within the platform's 120 characters. */
 const clip = (words: string) => words.length > 120 ? `${words.slice(0, 119)}…` : words
 
@@ -608,6 +613,8 @@ export async function whyAccess(context: AccessContext) {
   const roles = capped(e.roles, (r, i) => ({
     id: `role:${i}`, name: clip(r.name), record: { table: ROLE, row: r.role },
     ...(r.area.parts.length ? { detail: clip(r.area.parts.map(p => p.name).join(' · ')) } : {}),
+    // Codex round 2: the records the area names, so the platform shows it only to someone who may read them.
+    ...(r.area.parts.some(p => p.table && p.id) ? { detailRecords: r.area.parts.flatMap(p => p.table && p.id ? [{ table: p.table, row: p.id }] : []).slice(0, 10) } : {}),
     source: BY_HAND.has(r.kind) ? 'hand' : 'hr',
   }), 'role')
   const apps = capped(e.apps, a => ({ id: appId(a.app, a.level), name: clip(`${a.app} · ${a.level}`) }), 'app')
@@ -619,7 +626,9 @@ export async function whyAccess(context: AccessContext) {
     ...e.apps.flatMap(a => a.via.flatMap(name => held(r => r.name === name).map(id => [id, appId(a.app, a.level)]))),
     ...e.permissions.flatMap((p, i) => held(r => r.role === p.role).map(id => [id, `can:${i}`])),
     ...e.reports.flatMap(r => r.roles.flatMap(role => held(h => h.role === role).map(id => [id, `report:${r.key}`]))),
-  ] as [string, string][]).filter(([from, to]) => shown.has(from) && shown.has(to))
+    // Codex round 2: a report given to them directly leads straight from them.
+    ...e.reports.flatMap(r => r.direct ? [['person', `report:${r.key}`]] : []),
+  ] as [string, string][]).filter(([from, to]) => shown.has(from) && shown.has(to)).slice(0, WHY_EDGES)
   const columns = [
     { heading: 'Person', boxes: [{ id: 'person', name: clip(e.name), record: { table: 'Person', row: person } }] },
     { heading: 'Business Role · Area', boxes: roles },

@@ -27,6 +27,9 @@ export const whyBoxSchema = z.object({
   reach: words(20).optional(),
   /** The record the box names, opened by its link. */
   record: z.object({ table: words(200), row: words(200) }).strict().optional(),
+  /** The records its detail names (an area's store, section or cluster): the detail is shown only to someone who
+   *  may read every one of them. The platform keeps this list to itself. */
+  detailRecords: z.array(z.object({ table: words(200), row: words(200) }).strict()).max(10).optional(),
 }).strict()
 
 export const whyAnswerSchema = z.object({

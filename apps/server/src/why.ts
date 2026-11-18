@@ -62,17 +62,20 @@ export async function explainRecord(table: string, row: string, user: string): P
  * app's ids may carry the very record ids being hidden (Codex adversarial, round 1), so none of them leaves.
  */
 async function scrubbed(answer: WhyAnswer, user: string): Promise<WhyAnswer> {
-  const refs = answer.columns.flatMap((c) => c.boxes.flatMap((b) => b.record ? [{ table: b.record.table, row_id: b.record.row }] : []))
+  const boxes = answer.columns.flatMap((c) => c.boxes)
+  const refs = boxes.flatMap((b) => [...(b.record ? [b.record] : []), ...(b.detailRecords ?? [])]).map((r) => ({ table: r.table, row_id: r.row }))
   const readable = new Set((await rowTitles(user, refs)).map((t) => `${t.table}\u0000${t.row_id}`))
-  const opaque = new Map(answer.columns.flatMap((c) => c.boxes).map((b, i) => [b.id, `b${i + 1}`]))
+  const reads = (r: { table: string; row: string }) => readable.has(`${r.table}\u0000${r.row}`)
+  const opaque = new Map(boxes.map((b, i) => [b.id, `b${i + 1}`]))
+  // Codex adversarial round 2: a detail naming a record the viewer may not read (an area's store) is left out.
+  const box = ({ detailRecords, ...b }: WhyAnswer['columns'][number]['boxes'][number]) => {
+    if (b.record && !reads(b.record)) return { id: opaque.get(b.id)!, name: UNSEEN_ROW }
+    const { detail, ...rest } = b
+    return { ...rest, id: opaque.get(b.id)!, ...(detail && (detailRecords ?? []).every(reads) ? { detail } : {}) }
+  }
   return {
     version: answer.version,
-    columns: answer.columns.map((c) => ({
-      heading: c.heading,
-      boxes: c.boxes.map((b) => !b.record || readable.has(`${b.record.table}\u0000${b.record.row}`)
-        ? { ...b, id: opaque.get(b.id)! }
-        : { id: opaque.get(b.id)!, name: UNSEEN_ROW }),
-    })),
+    columns: answer.columns.map((c) => ({ heading: c.heading, boxes: c.boxes.map(box) })),
     edges: answer.edges.map(([from, to]) => [opaque.get(from)!, opaque.get(to)!]),
   }
 }
