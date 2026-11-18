@@ -299,20 +299,20 @@ describe('#101: GET /api/activity_feed', () => {
   // collapsed before the limit so a page never fills with repeats.
   test("'mine' collapses consecutive repeats into one row with a count and the latest time", async ({ admin }) => {
     const now = Date.now()
-    const explore = { kind: 'page', key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore' }
+    const glossary = { kind: 'page', key: 'page:glossary', label: 'Words and meanings', path: '/featherbase/admin/glossary' }
     await admin.post('/api/events', {
       events: [
-        { ...explore, at: now - 5000 },
+        { ...glossary, at: now - 5000 },
         { kind: 'search', key: 'search:acme', label: 'acme', at: now - 4000 },
-        { ...explore, at: now - 3000 },
-        { ...explore, at: now - 2000 },
+        { ...glossary, at: now - 3000 },
+        { ...glossary, at: now - 2000 },
         { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/Task', at: now - 1000 },
       ],
     })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=3')
     expect(feed.items.map((i) => [i.label, i.count])).toEqual([
       ['Task', 1],
-      ['Explore', 2],
+      ['Glossary', 2],
       ['acme', 1],
     ])
     expect(feed.items[1].at).toBe(new Date(now - 2000).toISOString())
@@ -337,10 +337,10 @@ describe('#101: GET /api/activity_feed', () => {
 
   test("'mine' titles an old slug-labelled page from the catalog, query string and all", async ({ admin }) => {
     await admin.post('/api/events', {
-      events: [{ kind: 'list', key: 'list:explore?', label: 'explore', path: '/featherbase/admin/explore?root=Task' }],
+      events: [{ kind: 'list', key: 'list:glossary?', label: 'glossary', path: '/featherbase/admin/glossary?term=Task' }],
     })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
-    expect(feed.items[0]).toMatchObject({ kind: 'page', label: 'Explore' })
+    expect(feed.items[0]).toMatchObject({ kind: 'page', label: 'Glossary' })
   })
 
   test("'team' collapses one person's repeated edits of one row, and keeps distinct rows apart", async ({ admin }) => {
@@ -374,12 +374,12 @@ describe('#101: GET /api/activity_feed', () => {
   test("'mine' counts a run longer than any scan window in full", async ({ admin }) => {
     const now = Date.now()
     const events = Array.from({ length: 25 }, (_, i) => ({
-      kind: 'page', key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore', at: now - i * 1000,
+      kind: 'page', key: 'page:glossary', label: 'Words and meanings', path: '/featherbase/admin/glossary', at: now - i * 1000,
     }))
     await admin.post('/api/events', { events })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=1')
     expect(feed.items).toHaveLength(1)
-    expect(feed.items[0]).toMatchObject({ label: 'Explore', count: 25 })
+    expect(feed.items[0]).toMatchObject({ label: 'Glossary', count: 25 })
   })
 
   test("'mine' still reaches the distinct action before a long run", async ({ admin }) => {
@@ -387,12 +387,12 @@ describe('#101: GET /api/activity_feed', () => {
     const events = [
       { kind: 'search', key: 'search:older', label: 'older', at: now - 60_000 },
       ...Array.from({ length: 45 }, (_, i) => ({
-        kind: 'page', key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore', at: now - i * 1000,
+        kind: 'page', key: 'page:glossary', label: 'Words and meanings', path: '/featherbase/admin/glossary', at: now - i * 1000,
       })),
     ]
     await admin.post('/api/events', { events })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=2')
-    expect(feed.items.map((i) => [i.label, i.count])).toEqual([['Explore', 45], ['older', 1]])
+    expect(feed.items.map((i) => [i.label, i.count])).toEqual([['Glossary', 45], ['older', 1]])
   })
 
   test("'team' counts one person's long run of edits in full, and reaches the change before it", async ({ admin }) => {

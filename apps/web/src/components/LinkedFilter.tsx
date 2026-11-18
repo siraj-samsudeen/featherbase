@@ -86,8 +86,14 @@ export function LinkedFilterBuilder({ meta, listFilters, negate, onAdd }: {
 }) {
   const [steps, setSteps] = useState<DraftStep[]>([{ option: null, picked: [] }])
   const chain = toChain(steps)
+  // A step's new Table makes the steps after it meaningless: they go with it.
+  // A new pick keeps them.
   const update = (at: number, next: DraftStep | null) =>
-    setSteps((was) => (next ? [...was.slice(0, at), next, ...was.slice(at + 1)] : was.slice(0, at)))
+    setSteps((was) => {
+      if (!next) return was.slice(0, at)
+      const sameTable = was[at]?.option?.key === next.option?.key
+      return [...was.slice(0, at), next, ...(sameTable ? was.slice(at + 1) : [])]
+    })
   return (
     <div className="mt-2 flex flex-col gap-2" data-testid="linked-builder">
       {steps.map((step, i) => {
@@ -144,11 +150,11 @@ function LinkedStep({ at, negate, from, fromFilters, room, step, next, onChange,
 }) {
   const { options, ready } = useLinkOptions(from)
   const fits = options.filter((o) => linkDepth(o.link) <= room)
-  const word = at === 0 ? (negate ? 'Not linked to' : 'Linked to') : 'That are linked to'
+  const word = at === 0 ? (negate ? 'Not linked to' : 'Linked to') : 'Linked on to'
   return (
     <div className={cardClasses('flex max-w-xl flex-col gap-2 p-3')} data-testid="linked-step">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 text-sm font-medium text-ink">
+        <label className="flex items-center gap-2 whitespace-nowrap text-sm font-medium text-ink">
           {word}
           <select
             value={step.option?.key ?? ''}
@@ -222,7 +228,7 @@ function StepRows({ from, fromFilters, option, picked, next, onPick }: {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted" data-testid="linked-step-count">
-        <span>{total === undefined ? '…' : `${fmtCount(total)} ${name}`}</span>
+        <span>{total === undefined ? '…' : `${name}: ${fmtCount(total)} match`}</span>
         <span>· {picked.length ? `${fmtCount(picked.length)} picked` : 'none picked: any of them'}</span>
       </div>
       {column && (

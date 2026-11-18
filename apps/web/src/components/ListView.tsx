@@ -1306,7 +1306,8 @@ function ListSum({ table, filters, column }: { table: string; filters: Filter[];
   const settings = useSettings()
   const filterKey = JSON.stringify(filters)
   const sum = useQuery({
-    queryKey: ['list-sum', table, filterKey, column.column_name],
+    // Under ['list', table], so whatever refreshes the list (an edit, a delete, realtime) refreshes its sum.
+    queryKey: ['list', table, 'sum', filterKey, column.column_name],
     retry: false,
     queryFn: () => api.get<{ count: number; sum: string | null }>(
       `/api/table/${encodeURIComponent(table)}:aggregate?filters=${encodeURIComponent(filterKey)}&sum=${encodeURIComponent(column.column_name)}`),

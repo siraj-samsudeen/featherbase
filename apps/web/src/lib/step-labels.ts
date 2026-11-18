@@ -4,6 +4,7 @@ import type { ListFilter } from 'shared'
 import { linkRowsTable, metaQuery, type TableMeta } from './meta'
 import { stepKind, stepRefs, type NavStep } from './nav-path'
 import { rowNameText, useRowNames, type RowName } from './relations'
+import { parseChain } from './linked-filters'
 
 // #910 checklist 11: each step of the path is named for whoever is looking —
 // the list's Table, a filter's column and value, a row's name — through the
@@ -45,6 +46,12 @@ export function filterText(table: string, meta: TableMeta | undefined, filter: L
   const [column, op, value] = filter
   // A relationship filter reads as the rows it relates to: "Nv Site: Enchakkal · ENK".
   const related = relatedTarget(op, value)
+  // #1276: a Linked to chain reads as its steps: "Linked to Subcategory › Division: Accessories".
+  const chain = related && parseChain(filter)
+  if (chain) {
+    const steps = chain.steps.map((s) => `${s.table}${s.picked.length ? `: ${s.picked.map((id) => name({ table: s.table, row_id: id })).join(', ')}` : ''}`)
+    return `${chain.negate ? 'Not linked to' : 'Linked to'} ${steps.join(' › ')}`
+  }
   if (related) {
     const refs = filterRefs(table, meta, filter)
     const named = `${related.table}${refs.length ? `: ${refs.map(name).join(', ')}` : ''}`

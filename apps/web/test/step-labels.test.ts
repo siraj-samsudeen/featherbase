@@ -45,6 +45,13 @@ describe('a filter on an object value', () => {
 })
 
 describe('a filter step', () => {
+  test('a Linked to chain reads as its steps, each with its picked rows (#1276)', () => {
+    const chain: ListFilter = ['row_id', 'not related', { table: 'Nv Link', column: 'visit', filters: [
+      ['site', 'related', { table: 'Nv Site', filters: [['region', 'related', { table: 'Nv Region', filters: [['row_id', 'in', ['KL']]] }]] }],
+    ] }]
+    expect(filterText('Nv Visit', visitMeta, chain, (r) => `${r.table}/${r.row_id}`)).toBe('Not linked to Nv Site › Nv Region: Nv Region/KL')
+  })
+
   test('a relationship filter with no rows of its own reads as the related table alone', () => {
     expect(filterText('Nv Visit', visitMeta, ['row_id', 'related', { table: 'Nv Site' }], () => 'never')).toBe('Nv Site')
   })

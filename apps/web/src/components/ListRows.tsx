@@ -261,7 +261,8 @@ const isBlank = (v: unknown) => v == null || String(v).trim() === ''
 export const LinkCellFilter = createContext<((column: string, value: string) => void) | null>(null)
 
 /**
- * #1276 (B2): a link cell's two hover actions, the same pair the record panel's
+ * #1276 (B2): a link cell's two hover actions, floated just past the cell so
+ * they never hide its value, the same pair the record panel's
  * chips offer (LinkActions): Go there opens the linked row's own page, as a step
  * on the walk; Filter narrows this list to rows linked to that same row. A row
  * the viewer cannot read offers neither.
@@ -284,7 +285,7 @@ function LinkCellActions({ row, col }: { row: Record<string, unknown>; col: List
   }
   return (
     <span data-testid="link-cell-actions"
-      className="absolute inset-y-0 right-1 hidden items-center gap-1 bg-surface/95 pl-1 group-hover/cell:flex group-focus-within/cell:flex">
+      className="absolute left-full top-1/2 z-[3] -ml-1 hidden -translate-y-1/2 items-center gap-1 rounded-control bg-surface p-1 shadow-md group-hover/cell:flex group-focus-within/cell:flex">
       <LinkActions onGoThere={goThere} onFilter={filter ? () => filter(col.column_name, rowId) : undefined} />
     </span>
   )

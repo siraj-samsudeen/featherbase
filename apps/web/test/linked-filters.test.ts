@@ -53,6 +53,15 @@ describe('linkOptions', () => {
     expect(options[3]).toMatchObject({ table: 'Role', link: { kind: 'through', link: 'Job Assignment', back: 'employee', column: 'role' } })
   })
 
+  test('a link Table names which link when two point into one Table, and skips a Table this one links to itself', () => {
+    const job = table('Job', [ref('site', 'Site'), ref('employee', 'Employee'), ref('reports_to', 'Employee', 'Reports To'), ref('section', 'Section')], { id_pattern: 'field:title' })
+    const section = table('Section', [ref('site', 'Site')])
+    const of = (t: string) => (t === 'Job' ? job : t === 'Section' ? section : metaOf(t))
+    expect(linkOptions(section, [{ table: 'Job', column: 'section', via: null }], of).map((o) => o.label)).toEqual([
+      'Site', 'Job', 'Employee (employee) · through Job', 'Employee (Reports To) · through Job',
+    ])
+  })
+
   test('a Table holding sub-table rows offers them and what they point at', () => {
     expect(linkOptions(ORDER, [], metaOf).map((o) => [o.label, o.table, o.link])).toEqual([
       ['Order Line · rows of this Order', 'Order Line', { kind: 'back', column: 'parent' }],

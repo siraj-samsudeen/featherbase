@@ -85,7 +85,13 @@ export function linkOptions(
     for (const far of readableLinks(linkMeta)) {
       if (far.column_name === b.column) continue
       const target = linkRowsTable(far)!
-      add(target, `${label(target)} · through ${label(b.table)}`, { kind: 'through', link: b.table, back: b.column, column: far.column_name })
+      // A link Table's link to a Table this one already links to (a section
+      // subcategory's store, beside the section's own site) is context, not a far side.
+      if (refs.some((r) => linkRowsTable(r) === target)) continue
+      // Two links into one Table (an assignment's Employee and Reports To) are told apart.
+      const twice = readableLinks(linkMeta).filter((x) => x.column_name !== b.column && linkRowsTable(x) === target).length > 1
+      const via = twice ? `${label(target)} (${far.label ?? far.column_name})` : label(target)
+      add(target, `${via} · through ${label(b.table)}`, { kind: 'through', link: b.table, back: b.column, column: far.column_name })
     }
   }
   for (const b of backlinks.filter((x) => x.via))
@@ -185,7 +191,7 @@ function readStep(field: string, value: unknown): ChainStep[] | null {
       rest = farInner
     } else link = { kind: 'back', column: value.column }
   } else {
-    if (value.column !== undefined) return null
+    if (value.column !== undefined || field === 'row_id') return null
     link = { kind: 'forward', column: field }
   }
   let picked: string[] = []

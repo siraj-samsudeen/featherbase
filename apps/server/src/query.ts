@@ -368,8 +368,10 @@ export async function scopedWhere(
       if (!backCol || !((!!backCol.reference_table && linkBase(backCol) === meta.name) ||
         (!!backCol.table_column && linksTo(backCol.choices, meta.name))))
         throw new AppError('ValidationError', `${spec.table}.${spec.column} is not a Reference to ${meta.name}`)
+      // An any-table link names its Table in a second column, read like the first.
+      if (backCol.table_column) assertColumn(target.cols, backCol.table_column, 'filter')
       const pointed = target.readExpression(spec.column)
-      const ofThisTable = backCol.table_column ? sql` and ${sql(backCol.table_column)} = ${meta.name}` : sql``
+      const ofThisTable = backCol.table_column ? sql` and ${target.readExpression(backCol.table_column)} = ${meta.name}` : sql``
       return {
         frag: sql`${own} in (select ${pointed} from ${sql(target.table)}
           where ${target.where} and ${pointed} is not null${ofThisTable})`,
