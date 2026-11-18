@@ -6,7 +6,7 @@ import { STARTING_ROLES } from './starting-roles'
 import { convertGrants } from './switch-over'
 import { whoIs } from './report-access-server'
 import { liveReach } from './access-source'
-import { SITE_STORE_FIELDS, openStore } from './business-access'
+import { SITE_KINDS, openStore, siteStoreFields } from './site-kind'
 import { scopeProviders } from './server'
 import { personShadow, placesByStore, shadowWorld } from './business-roles-server'
 import { businessModel } from './business-access'
@@ -1028,8 +1028,8 @@ describe('head office sites and people off payroll', () => {
     expect([before, (await whoIs(context(tables).baseTables as never, ['od'], today)).get('od')!.staff]).toEqual(['left', 'none'])
   })
 
-  // #1280's site_kind and the Site's status: the rule, ready for when every instance has the columns; is_store until then.
-  it('reads a site as an open store by its status, then its site_kind, then is_store', () => {
+  // #1280's site_kind and the Site's status: the rule, read where the instance's Site has the columns; is_store where not.
+  it('reads a site as an open store by its status, then its site_kind, then is_store', async () => {
     expect([
       openStore({ is_store: true, site_kind: 'Head Office' }), openStore({ is_store: false, site_kind: 'Store' }),
       openStore({ is_store: true, site_kind: '' }), openStore({ is_store: false, site_kind: null }), openStore({ is_store: true }),
@@ -1037,7 +1037,10 @@ describe('head office sites and people off payroll', () => {
       openStore({ is_store: true, site_kind: 'Store', status: 'Planned' }), openStore({ is_store: true, site_kind: 'Store', status: 'Closed' }),
       openStore({ is_store: false, site_kind: 'Store', status: 'Open' }), openStore({ is_store: true, status: '' }),
     ]).toEqual([false, true, true, false, true, false, false, false, false, true, true])
-    expect(SITE_STORE_FIELDS).toEqual(['is_store'])
+    expect(await siteStoreFields(true)).toEqual(['is_store', 'site_kind', 'status'])
+    expect(await siteStoreFields(Promise.resolve(false))).toEqual(['is_store'])
+    // Of the seven kinds only Store is a store, and a Group (virtual) never is.
+    expect(SITE_KINDS.filter(kind => openStore({ is_store: true, site_kind: kind }))).toEqual(['Store'])
   })
 
   // Codex round 8: a role placed by hand, with no job at all, reaches no store at a head office site either.

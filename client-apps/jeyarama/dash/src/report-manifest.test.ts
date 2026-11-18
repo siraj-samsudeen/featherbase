@@ -329,11 +329,14 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['reach_prefixes', '0.13.28', '0.13.29', 0],
       // #1277: business roles decide Dash access: four Tables marked as deciding scope, grants to business roles, the switch and its log
       ['business_roles_live', '0.13.29', '0.13.30', 9],
+      // #1280: Site's kind and status join Dash's reads, used where the instance's Site has them; no Table of Dash's changes.
+      ['site_kind', '0.13.30', '0.13.31', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
-    expect(pkg.version).toBe('0.13.30')
+    expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
+    expect(pkg.version).toBe('0.13.31')
   })
 })

@@ -874,7 +874,7 @@ describe('what a scope provider may ask of its Tables', () => {
 // #1247: a provider asks whether a Table is installed before reading it. A missing Table contributes
 // nothing: `available` is false, and a read of it still refuses the person's scope (never full access).
 describe('a scope provider checking whether a Table is installed', () => {
-  type Docs = { available(table: string): Promise<boolean>; list(table: string, args?: object): Promise<Record<string, unknown>[]> }
+  type Docs = { available(table: string, columns?: string[]): Promise<boolean>; list(table: string, args?: object): Promise<Record<string, unknown>[]> }
   async function bind(admin: TestClient, createUser: CreateUserFn, provide: (documents: Docs) => Promise<unknown>, more: Partial<ScopeProviderBinding> = {}) {
     const { user } = await setup(admin, createUser)
     const binding = (await findScopeProvider())!
@@ -901,6 +901,19 @@ describe('a scope provider checking whether a Table is installed', () => {
       return [{ label: 'Desk', filters: { store: rows.map(r => String(r.store)) } }]
     }, { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: ['Buyer Desk'] })
     expect(await resolvePersonScope(user.user!, binding)).toEqual([{ label: 'Desk', filters: { store: ['N2'] } }])
+  })
+
+  // #1280: a provider may ask for columns too, to read one an instance may not have yet without failing everyone's scope.
+  test('with columns named, a Table is available only where it has every one of them', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }, { column_name: 'kind', column_type: 'Data' }] })
+    const seen: boolean[] = []
+    const { user, binding } = await bind(admin, createUser, async documents => {
+      seen.push(await documents.available('Buyer Desk', []), await documents.available('Buyer Desk', ['store', 'kind']),
+        await documents.available('Buyer Desk', ['store', 'status']), await documents.available('Buyer Desk', [42 as never]))
+      return place
+    }, { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: ['Buyer Desk'] })
+    expect(await resolvePersonScope(user.user!, binding)).toEqual(place)
+    expect(seen).toEqual([true, true, false, false])
   })
 
   test('a Table the provider did not declare, or may not read unmarked, is not available', async ({ admin, createUser }) => {

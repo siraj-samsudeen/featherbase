@@ -31,8 +31,12 @@ const asAdmin = (admin: TestClient) => (path: string, init?: RequestInit) =>
   init?.method === 'PUT' ? admin.fetch(path, init).then(r => r.json()) : admin.get(path)
 
 /** The core Tables created and listed in `dash.linked_tables`. */
-export async function createCoreTables(admin: TestClient, { without = [] as string[] } = {}) {
-  for (const table of BASE_TABLES.filter(t => !without.includes(t.name))) await admin.post('/api/table_def', table)
+export async function createCoreTables(admin: TestClient, { without = [] as string[], withoutSiteKind = false } = {}) {
+  for (const table of BASE_TABLES.filter(t => !without.includes(t.name))) {
+    // #1280: an instance whose Site has no site_kind or status yet.
+    const columns = withoutSiteKind && table.name === 'Site' ? table.columns.filter((c: { column_name: string }) => !['site_kind', 'status'].includes(c.column_name)) : table.columns
+    await admin.post('/api/table_def', { ...table, columns })
+  }
   await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
 }
 
@@ -70,8 +74,15 @@ export const withoutBusinessRoles = <T,>(list: T[]) =>
 export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
 type Revertable = { migrations: { id: string }[]; tables?: { name: string; decides_scope?: boolean; columns?: { column_name: string }[] }[]; permissions?: { table: string }[];
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[] } }
-/** #1277's 0.13.30 taken out of a manifest: business roles decide nothing, no switch. */
+/** #1280's 0.13.31 taken out of a manifest: Dash reads no Site kind or status. */
+export function revertSiteKind(manifest: Revertable) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'site_kind', fromVersion: '0.13.30', operations: [] })
+  const read = manifest.baseTables?.read
+  if (read?.Site) read.Site = read.Site.filter(c => c !== 'site_kind' && c !== 'status')
+}
+/** #1277's 0.13.30 taken out of a manifest: business roles decide nothing, no switch. #1280's 0.13.31 comes off first. */
 export function revertBusinessRolesLive(manifest: Revertable) {
+  revertSiteKind(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_live', fromVersion: '0.13.29' })
   if (manifest.tables) {
     manifest.tables = manifest.tables.filter(t => !LIVE_TABLES.includes(t.name))

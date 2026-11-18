@@ -12,7 +12,8 @@ import { EMPLOYEE_STATUS, checked, exact, holdsOn, text } from './values.ts'
 import { istToday } from './report.ts'
 import { STARTING_ROLES } from './starting-roles.ts'
 import { opensDashFor, readableByRoles, offered } from './report-eligibility.ts'
-import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
+import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, isStore, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
+import { openStore, siteStoreFields } from './site-kind.ts'
 import { businessReports, businessRolesOpen, opensDashByBusinessRoles } from './business-reports.ts'
 import { ensureStartingRoles, logger } from './switch-over.ts'
 
@@ -50,8 +51,10 @@ export function memoryDocuments(base: Base, designations: boolean): Base & { row
   const loaded = new Map<string, Promise<Row[]>>()
   const fields: Record<string, string[]> = { ...FIELDS, 'Job Assignment': [...FIELDS['Job Assignment'], ...(designations ? ['designation'] : [])] }
   const rows = (table: string) => {
-    // As the scope provider reads them: retired rows included.
-    if (!loaded.has(table)) loaded.set(table, everyRow(base, table, fields[table] ?? []))
+    // As the scope provider reads them: retired rows included, and Site's kind and status where it has them (#1280).
+    if (!loaded.has(table)) loaded.set(table, (async () => everyRow(base, table, table === 'Site'
+      ? [...new Set([...(fields.Site ?? []), ...await siteStoreFields(base.available('Site'))])]
+      : fields[table] ?? []))())
     return loaded.get(table)!
   }
   return { rows, available: table => base.available(table), list: async (table, args) => page(await rows(table), args) }
@@ -311,7 +314,7 @@ export async function explainPerson(context: AccessContext) {
     `${w.person ? 'Given to them directly' : `Given to ${roleName(w.role!)}, for ${areaWords(w.role!)}`}${w.bundle ? `, through ${text(bundleNames.get(w.bundle))}` : ''}`
   const plants = new Map((await world.docs.rows('Plant')).map(p => [exact(p.row_id), exact(p.site)]))
   const sites = await world.names('Site')
-  const stores = (await world.docs.rows('Site')).filter(s => checked(s.is_store)).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((a, b) => a.name.localeCompare(b.name))
+  const stores = (await world.docs.rows('Site')).filter(openStore).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((a, b) => a.name.localeCompare(b.name))
   const employees = new Map((await world.docs.rows('Employee')).map(e => [exact(e.row_id), e]))
   const jobs = (await world.docs.list('Job Assignment', { fields: [], filters: [['employee', 'in', shadow.employees.map(e => exact(e.row_id))]], limit_page_length: 10_000 })).filter(j => holdsOn(j, world.today))
   const employeePart = (id: string) => ({ name: text(employees.get(id)?.name), table: 'Employee', id, code: id })
@@ -383,7 +386,7 @@ export async function giveRole(context: AccessContext) {
   if (!person) ctx.reject!('Choose a person')
   if (!CHANGES.includes(change)) ctx.reject!('Choose Correct or Also give')
   if (!(await roleExists(ctx, role))) ctx.reject!('Choose a business role')
-  if (site && !(await all(ctx.baseTables, 'Site', ['is_store'], [['row_id', '=', site]])).some(r => checked(r.is_store))) ctx.reject!('Choose a store')
+  if (site && !(await isStore(ctx.baseTables, site))) ctx.reject!('Choose a store')
   if (ends && !/^\d{4}-\d{2}-\d{2}$/.test(ends)) ctx.reject!('The end date is a day, such as 31-Mar-2027')
   if (ends && ends < istToday()) ctx.reject!('The end date has passed')
   const saved = await ctx.documents!.create!(ROLE_ASSIGNMENT, { person, change, business_role: role, site: site || null, ends_on: ends || null, reason: reason || null, given_by_name: text(ctx.userName) || null })

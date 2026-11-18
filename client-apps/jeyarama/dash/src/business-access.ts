@@ -5,6 +5,7 @@
 import { BUYER_TITLE, DASH_APP, opensDash, rolesOf, type BusinessRole, type HandChange, type HeldRole, type Model, type Permission, type Reach, type Reaches, type TitleRule } from './business-roles.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
 import { EMPLOYEE_STATUS, checked, day, exact, holdsOn, text } from './values.ts'
+import { openStore, siteStoreFields } from './site-kind.ts'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -110,7 +111,7 @@ export async function rolePlaces(docs: Base, person: string, today: string, held
     const region = exact(here?.operating_region)
     if (!region) return []
     const stores = []
-    for (const s of await every(docs, 'Site', SITE_STORE_FIELDS, [['operating_region', '=', region]])) if (openStore(s)) stores.push(s)
+    for (const s of await every(docs, 'Site', await siteStoreFields(docs.available('Site')), [['operating_region', '=', region]])) if (openStore(s)) stores.push(s)
     return reach({ employees: [{ row_id: 'by-region', person, status: 'Current' }],
       jobs: stores.map(s => ({ row_id: `region-${exact(s.row_id)}`, employee: 'by-region', job: 'Store Manager', site: exact(s.row_id), starts_on: today })) })
   }
@@ -136,25 +137,10 @@ export async function rolePlaces(docs: Base, person: string, today: string, held
   }
 }
 
-/**
- * Whether a Site row is an open store (owner, 18-Nov-2026): with a status of Planned or Closed, never; with a site_kind,
- * only Store (any other kind, now or added later, is not); with neither, its is_store flag. Empty means not set.
- */
-export function openStore(row: Row): boolean {
-  if (['planned', 'closed'].includes(text(row.status).toLowerCase())) return false
-  const kind = text(row.site_kind)
-  return kind ? kind === 'Store' : checked(row.is_store)
-}
-
-/** The Site columns read for openStore. #1280's site_kind (and the Site's status) join this list, and every reader with
- *  it, once every instance has them: a read naming a column an instance lacks fails, and one path reading more than
- *  another would make the comparison and the live rules disagree (Codex round 9). Until then is_store decides. */
-export const SITE_STORE_FIELDS = ['is_store']
-
 /** Whether a site is an open store, read alike by the scope provider, the app's reads and the comparison. */
 export async function isStore(docs: Base, site: string): Promise<boolean> {
   if (!site) return false
-  const [row] = await every(docs, 'Site', SITE_STORE_FIELDS, [['row_id', '=', site]])
+  const [row] = await every(docs, 'Site', await siteStoreFields(docs.available('Site')), [['row_id', '=', site]])
   return !!row && openStore(row)
 }
 

@@ -143,13 +143,17 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
   const documents: AppScopeProviderContext['documents'] = Object.freeze({
     // #1247: whether the provider may read a Table now. A Table the instance lacks is not available, and
     // answering so is no failure: it contributes nothing. Reading it anyway is still refused.
-    available: (table: string) => guarded(async () => {
+    available: (table: string, columns?: readonly string[]) => guarded(async () => {
       if (typeof table !== 'string' || !table || !binding.tables.includes(table)) return false
       // Not defined on this instance (its app not installed, or the Table not created yet): not available.
       // A defined Table whose app is turned off still fails, as a read of it would.
       const [defined] = await sql`select 1 from table_def where name = ${table}`
       if (!defined) return false
-      return (await refusal(table)) === null
+      if ((await refusal(table)) !== null) return false
+      // #1280: and, when asked, every named column is there.
+      if (!columns?.length) return true
+      const meta = await getMeta(table)
+      return columns.every((column) => typeof column === 'string' && meta.columns.some((c) => c.column_name === column))
     }),
     get: (table, rowId) => read(table, () => {
       if (typeof rowId !== 'string' || !rowId) throw new Error('A row ID is required')

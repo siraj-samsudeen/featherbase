@@ -3021,7 +3021,8 @@
           }
         }
       ]
-    }
+    },
+    {"id": "site_kind", "fromVersion": "0.13.30", "toVersion": "0.13.31", "operations": []}
   ],
   "baseTables": {
     "read": {
@@ -3100,7 +3101,9 @@
         "name",
         "is_store",
         "cluster",
-        "operating_region"
+        "operating_region",
+        "site_kind",
+        "status"
       ],
       "Plant": [
         "site",
