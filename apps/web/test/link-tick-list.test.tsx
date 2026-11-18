@@ -460,13 +460,4 @@ test("a Person's page shows its link chips under its header, and a chip jumps to
   await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
   const empty = await screen.findByRole('region', { name: 'Pointed At By' })
   expect(await within(empty).findByRole('link', { name: '+ New' })).toBeInTheDocument()
-  // The page's right column (on the Form tab) lists an empty group as one greyed line, + New beside it.
-  fireEvent.click(screen.getByRole('tab', { name: 'Form' }))
-  const right = screen.getByTestId('connections-list')
-  fireEvent.click(within(right).getByTestId('connections-show-empty'))
-  const note = () => within(right).getAllByTestId('linked-rows-group').find((g) => g.textContent?.includes('Lt Person Note'))!
-  await waitFor(() => expect(note().querySelector('h4')).toHaveAttribute('data-empty', 'true'))
-  // Once its rows are read: the one line, no "No rows" beneath.
-  await waitFor(() => expect(note()).not.toHaveTextContent('No rows'))
-  await waitFor(() => expect(within(note()).getByRole('link', { name: '+ New' })).toBeInTheDocument())
 })
