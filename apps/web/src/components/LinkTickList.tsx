@@ -95,7 +95,8 @@ export function useGroupPlans(table: string, record: string, groups: BacklinkGro
     const choices = side.data.map((r) => ({ id: String(r.row_id), title: rowDisplayTitle(farMeta, r, String(r.row_id)) }))
     plans.set(g.key, {
       state: 'ready', linkMeta, column, farTable, farMeta, choices,
-      tick: side.total <= SMALL_SIDE && mayTick(caps, linkMeta),
+      // Every link must be read to say which choices are unticked: past one read's worth it lists (Codex review).
+      tick: side.total <= SMALL_SIDE && g.count <= ALL_ROWS && mayTick(caps, linkMeta),
       grid: gridOffered(recordSide.data?.total, side.total),
     })
   }
