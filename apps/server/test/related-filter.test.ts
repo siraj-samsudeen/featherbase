@@ -135,6 +135,22 @@ describe('NAV-002: related filters', () => {
     expect(names).toEqual(['O-2'])
   })
 
+  test('a back-link to a sub-table needs this Table to hold it, through a grid the reader may read', async ({ admin, createUser }) => {
+    await setup(admin)
+    // Order Lines are held by Orders, not Suppliers.
+    await expect(list(admin, SUP, [['row_id', 'related', { table: LINE, column: 'parent' }]]))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining(`${LINE} rows are not held by ${SUP}`) })
+    const HELD = 'Rel Hidden Lines Order'
+    await admin.post('/api/table_def', { name: HELD, id_pattern: 'prompt', columns: [
+      { column_name: 'lines', column_type: 'Sub-table', row_table: LINE, tier: 'restricted' },
+    ] })
+    const ROLE = 'Rel Hidden Lines Role'
+    await grantRole(admin, { table: [HELD, LINE], role: ROLE, can_read: true })
+    const user = await createUser({ roles: [ROLE] })
+    await expect(list(user, HELD, [['row_id', 'related', { table: LINE, column: 'parent', filters: [] }]]))
+      .rejects.toMatchObject({ status: 403 })
+  })
+
   test('a back-link must name a Reference to this Table, from row_id', async ({ admin }) => {
     await setup(admin)
     for (const filters of [
