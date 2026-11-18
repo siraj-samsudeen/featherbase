@@ -923,6 +923,30 @@ describe('a scope provider checking whether a Table is installed', () => {
     expect(seen).toEqual([true, true, false, false])
   })
 
+  // Codex round 4 on #1280: an optional column is read only after the run confirmed it, so marking a column
+  // optional can never hide a read that would fail on an instance without it.
+  test('an optional column read without checking it first refuses the scope, even where it exists; checked first, it reads', async ({ admin, createUser }) => {
+    await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }, { column_name: 'kind', column_type: 'Data' }] })
+    await admin.post('/api/save_row', { table: 'Buyer Desk', row: { store: 'N2', kind: 'Store' } })
+    const more = { tables: ['placeroster.position', 'Buyer Desk'], unmarkedTables: ['Buyer Desk'], optionalColumns: { 'Buyer Desk': ['kind'] } }
+    const { user, binding } = await bind(admin, createUser, async () => place, more)
+    const providing = (provide: (documents: Docs) => Promise<unknown>) => ({ ...binding, provide: (async ({ documents }: { documents: Docs }) => provide(documents)) as never })
+    await expect(resolvePersonScope(user.user!, providing(async documents => {
+      await documents.list('Buyer Desk', { fields: ['store', 'kind'] })
+      return place
+    }))).rejects.toMatchObject({ reason: 'provider' })
+    // A filter on it counts as reading it too.
+    await expect(resolvePersonScope(user.user!, providing(async documents => {
+      await documents.list('Buyer Desk', { fields: ['store'], filters: [['kind', '=', 'Store']] })
+      return place
+    }))).rejects.toMatchObject({ reason: 'provider' })
+    expect(await resolvePersonScope(user.user!, providing(async documents => {
+      const kind = await documents.available('Buyer Desk', ['kind'])
+      const rows = await documents.list('Buyer Desk', { fields: kind ? ['store', 'kind'] : ['store'], order_by: kind ? 'kind asc' : undefined })
+      return [{ label: 'Desk', filters: { store: rows.map(r => `${String(r.store)}:${String(r.kind)}`) } }]
+    }))).toEqual([{ label: 'Desk', filters: { store: ['N2:Store'] } }])
+  })
+
   test('a Table the provider did not declare, or may not read unmarked, is not available', async ({ admin, createUser }) => {
     await admin.post('/api/table_def', { name: 'Buyer Desk', columns: [{ column_name: 'store', column_type: 'Data' }] })
     const seen: boolean[] = []

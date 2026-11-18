@@ -20,6 +20,10 @@ export interface ScopeProviderBinding {
   unmarkedTables?: readonly string[]
   /** #1247: of `tables`, those the instance may not have yet (checked with documents.available()). */
   optionalTables?: readonly string[]
+  /** #1280: per Table, columns the instance may not have yet. The provider may name one in a read only after
+   *  documents.available(table, columns) said it is there, in the same run: an unchecked read is refused
+   *  everywhere, so marking a column optional never hides an unguarded read. */
+  optionalColumns?: Readonly<Record<string, readonly string[]>>
   /** #660: the identifier systems whose current values the provider gets. */
   identifiers: readonly string[]
   provide: AppScopeProvider
@@ -117,6 +121,16 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
   let open = true
   let pending: Promise<unknown> | undefined
   let failed = false
+  /** #1280: the optional columns this run has confirmed are there, as "Table.column". */
+  const confirmed = new Set<string>()
+  /** An optional column named in a read that this run has not confirmed, or null. */
+  function unconfirmed(table: string, args: NonNullable<Parameters<AppScopeProviderContext['documents']['list']>[1]>): string | null {
+    const optional = binding.optionalColumns?.[table] ?? []
+    if (!optional.length) return null
+    const named = [...(args.fields ?? []), ...(args.filters ?? []).map(([column]) => column),
+      ...String(args.order_by ?? '').split(',').map((part) => part.trim().split(/\s+/)[0]).filter(Boolean)]
+    return named.find((column) => optional.includes(String(column)) && !confirmed.has(`${table}.${String(column)}`)) ?? null
+  }
   /** Why the provider may not read `table`, or null when it may. */
   async function refusal(table: string): Promise<string | null> {
     if (!binding.tables.includes(table)) return 'Scope provider read an undeclared Table'
@@ -150,10 +164,12 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
       const [defined] = await sql`select 1 from table_def where name = ${table}`
       if (!defined) return false
       if ((await refusal(table)) !== null) return false
-      // #1280: and, when asked, every named column is there.
+      // #1280: and, when asked, every named column is there; an optional one is then confirmed for this run.
       if (!columns?.length) return true
       const meta = await getMeta(table)
-      return columns.every((column) => typeof column === 'string' && meta.columns.some((c) => c.column_name === column))
+      const there = columns.every((column) => typeof column === 'string' && meta.columns.some((c) => c.column_name === column))
+      if (there) for (const column of columns) confirmed.add(`${table}.${column}`)
+      return there
     }),
     get: (table, rowId) => read(table, () => {
       if (typeof rowId !== 'string' || !rowId) throw new Error('A row ID is required')
@@ -161,6 +177,8 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
     }),
     list: (table, args = {}) => read(table, async () => {
       if (args.filters?.some(([, operator]) => operator === 'related' || operator === 'not related')) throw new Error('Scope provider lists do not support related filters')
+      const unchecked = unconfirmed(table, args)
+      if (unchecked) throw new Error(`Scope provider read optional column ${table}.${unchecked} without checking it is there (documents.available)`)
       // #859: retiring a row never changes access, so scope sees retired rows.
       return (await getList(table, { ...args, with_retired: true })).data
     }),
