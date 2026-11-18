@@ -28,27 +28,31 @@ async function seed(admin: Parameters<typeof renderApp>[1]) {
   await admin.post('/api/save_row', { table: ENROL, row: { enrolment_id: 'E1', course: 'C1', student: 'S1' } })
 }
 
+/** #1273 (D3): the group's chip under the title jumps to its section on the Links tab. */
+async function enrolmentsOnLinks() {
+  const chips = await screen.findByRole('region', { name: 'Connections' })
+  fireEvent.click(await within(chips).findByRole('button', { name: new RegExp(`^${ENROL}`) }))
+  return screen.findByTestId('record-links')
+}
+
 test("a link table's row reads as its far side, and that name opens the student in the panel", async ({ admin }) => {
   await seed(admin)
   await renderApp(`${tableHref(COURSE)}/row/C1`, admin)
-  const chips = await screen.findByRole('region', { name: 'Connections' })
-  fireEvent.click(await within(chips).findByRole('button', { name: new RegExp(`^${ENROL}`) }))
-  const pane = await screen.findByRole('complementary', { name: /Weaving/ })
-  fireEvent.click(await within(pane).findByRole('link', { name: 'Meena Weaver' }))
+  const links = await enrolmentsOnLinks()
+  fireEvent.click(await within(links).findByRole('link', { name: 'Meena Weaver' }))
   expect(await screen.findByRole('complementary', { name: /Meena Weaver/ })).toBeInTheDocument()
 })
 
 test('only Escape closes the record panel, and a modified click on Edit leaves this page where it is', async ({ admin }) => {
   await seed(admin)
   const { router } = await renderApp(`${tableHref(COURSE)}/row/C1`, admin)
-  const chips = await screen.findByRole('region', { name: 'Connections' })
-  fireEvent.click(await within(chips).findByRole('button', { name: new RegExp(`^${ENROL}`) }))
+  fireEvent.click(await within(await enrolmentsOnLinks()).findByRole('link', { name: 'Meena Weaver' }))
   const panel = await screen.findByTestId('record-panel')
   fireEvent.keyDown(panel, { key: 'a' })
   expect(screen.getByTestId('record-panel')).toBeInTheDocument()
   const here = () => (router.state as { location: { href: string } }).location.href
   const before = here()
-  const edit = within(panel).getByRole('link', { name: 'Edit' })
+  const edit = await within(panel).findByRole('link', { name: 'Edit' })
   fireEvent.click(edit, { ctrlKey: true })
   expect(here()).toBe(before)
   fireEvent.keyDown(panel, { key: 'Escape' })

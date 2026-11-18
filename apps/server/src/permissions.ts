@@ -240,12 +240,14 @@ export async function assertPermission(
 export async function tableAccessFor(
   principal: string,
   roles: string[],
-): Promise<{ readable: string[]; readableByOwnRole: string[]; creatable: string[]; ownGrant: boolean; admin: boolean }> {
+): Promise<{ readable: string[]; readableByOwnRole: string[]; creatable: string[]; deletable: string[]; ownGrant: boolean; admin: boolean }> {
   const rows = await sql`
     select p.ref_table, p.role, (p.operation = 'read') as can_read, p.owner_app,
       -- #432: a grant never makes a system-written Table creatable.
       -- #905: nor an archived one.
-      (p.operation = 'create' and not d.system_written and d.archived_at is null) as can_create
+      (p.operation = 'create' and not d.system_written and d.archived_at is null) as can_create,
+      -- #1273: a link's tick list unticks by deleting its row; the same guards.
+      (p.operation = 'delete' and not d.system_written and d.archived_at is null) as can_delete
     from permission p
     join table_def d on d.name = p.ref_table and d.kind = 'table'
     where p.parent_permission is null and p.requires_permission is null and p.role in ${sql(roles)}
@@ -267,6 +269,7 @@ export async function tableAccessFor(
     // app open to everyone is no one's in particular (the sign-in landing).
     readableByOwnRole: names((r) => r.can_read && r.role !== 'All'),
     creatable: names((r) => r.can_create),
+    deletable: names((r) => r.can_delete),
     ownGrant,
     admin: ownGrant || shared.some((r) => !ownPages.tables.has(String(r.share_table))),
   }

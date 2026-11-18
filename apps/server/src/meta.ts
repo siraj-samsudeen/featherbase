@@ -143,6 +143,8 @@ export interface TableMeta {
   scope_required?: boolean
   /** #1259: a queue's lists open on cards (List And Record) until a person chooses. */
   queue?: boolean
+  /** #1273: where a feed row is corrected: an address in the instance, {column} for the row's value. */
+  correction_path?: string | null
   // #905: archived: readable, never written, out of everyday menus.
   archived_at?: string | Date | null
   archived_by?: string | null
