@@ -1038,7 +1038,13 @@ describe('head office sites and people off payroll', () => {
       isStore(site({ is_store: true }) as never, 'X'),
       isStore({ list: async () => [{ row_id: 'X', is_store: true }], available: async () => true } as never, 'X'),
       isStore({ list: async () => [], available: async () => true, get: async () => { throw new Error('no row') } } as never, 'X'),
-    ])).toEqual([false, true, true, false, true, true, false])
+      isStore(site({ is_store: true, site_kind: 'Collection Centre' }) as never, 'X'),
+      isStore(site({ is_store: true, site_kind: 'A kind added later' }) as never, 'X'),
+      isStore(site({ is_store: true, site_kind: 'Store', status: 'Planned' }) as never, 'X'),
+      isStore(site({ is_store: true, site_kind: 'Store', status: 'Closed' }) as never, 'X'),
+      isStore(site({ is_store: false, site_kind: 'Store', status: 'Open' }) as never, 'X'),
+      isStore(site({ is_store: true, site_kind: '', status: '' }) as never, 'X'),
+    ])).toEqual([false, true, true, false, true, true, false, false, false, false, false, true, true])
   })
 })
 

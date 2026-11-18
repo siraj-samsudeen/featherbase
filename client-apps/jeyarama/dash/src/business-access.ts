@@ -134,8 +134,8 @@ export async function rolePlaces(docs: Base, person: string, today: string, held
 }
 
 /**
- * Whether a site is a store: its site_kind where the instance has the column and the site is classified (#1280), else
- * its is_store flag. An empty site_kind (not classified yet) means the flag decides, never an error. The column is
+ * Whether a site is an open store: its site_kind where the instance has the column and the site is classified (#1280),
+ * else its is_store flag; and, where the Site has a status, not Planned or Closed. An empty site_kind (not classified yet) means the flag decides, never an error. The column is
  * looked for on the whole row (documents.get, the scope provider's), so an instance without it reads the flag alone;
  * reads without a whole-row get (the app's base Tables) read the flag, which #1280 keeps in step.
  */
@@ -145,6 +145,9 @@ export async function isStore(docs: Base & { get?(table: string, id: string): Pr
   const [listed] = await every(docs, 'Site', ['is_store'], [['row_id', '=', site]])
   if (!listed) return false
   const row = docs.get ? await docs.get('Site', site) : listed
+  // Owner, 18-Nov-2026: only an open store reaches. A status of Planned or Closed gives none until it opens; no status
+  // keeps the old reading. Only site_kind Store is a store: any other kind, now or added later, is not.
+  if (['planned', 'closed'].includes(text(row.status).toLowerCase())) return false
   const kind = text(row.site_kind)
   return kind ? kind === 'Store' : checked(row.is_store)
 }
