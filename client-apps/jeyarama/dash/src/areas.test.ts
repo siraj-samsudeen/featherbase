@@ -1,7 +1,7 @@
 // The edges of what a manager's area holds (#1223), on the in-memory stand-in. The main paths run
 // through Your store and Your sections on the real platform.
 import { describe, expect, it } from 'vitest'
-import { areasFor, authorityRows, inArea, jobInArea, mayEditOwnSection, mayMove, movableIn, sectionAreaOf, type Area } from './areas.ts'
+import { areasFor, authorityRows, inArea, jobInArea, mayEditOwnSection, mayMove, movableIn, sectionAreaOf, sectionEditingAreas, type Area } from './areas.ts'
 import { context, today } from './fake-context.test-support.ts'
 import { ensureStartingRoles } from './switch-over.ts'
 
@@ -92,6 +92,39 @@ describe('who may edit sections when business roles decide', () => {
     expect(await mayEditOwnSection(ctx, 'sm', job, today)).toBe(false)
     tables['dash.access_source'][0].source = 'legacy'
     expect(await mayEditOwnSection(ctx, 'sm', job, today)).toBe(true)
+  })
+
+  // Codex round 3: a role on the other axis keeps nothing; moves still follow the job.
+  it('keeps no floor area for a Floor Manager corrected to Department Manager, and still lets them move staff', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], job: 'Floor Manager', floor: 'F1' }
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Department Manager') })
+    expect(await sectionAreaOf(ctx, 'sm', section, today)).toBeUndefined()
+    expect((await areasFor(ctx, tables.Employee, today)).map(a => a.kind)).toEqual(['floor'])
+  })
+
+  it('keeps of a Team Leader\'s sections only those whose job may edit sections', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['Job Assignment'] = [
+      { row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'LKS', section: 'S1', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'J2', employee: 'E1', job: 'Team Leader', site: 'LKS', section: 'S2', starts_on: '2026-01-01', ends_on: null },
+    ]
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Staff'), site: null })
+    // A Correct naming no place applies at each job: both now Staff, so neither section is theirs to edit.
+    expect(await mayEditOwnSection(ctx, 'sm', tables['Job Assignment'][1], today)).toBe(false)
+    tables['dash.role_assignment'].length = 0
+    expect([await mayEditOwnSection(ctx, 'sm', tables['Job Assignment'][0], today), await mayEditOwnSection(ctx, 'sm', tables['Job Assignment'][1], today)]).toEqual([true, true])
+  })
+
+  it('narrows a Team Leader\'s grouped area to the sections of jobs whose title maps to a role that may edit', async () => {
+    const { tables, ctx } = await store('business_roles')
+    tables.Designation = [{ row_id: 'D-ST', designation: 'Staff' }]
+    tables['Job Assignment'] = [
+      { row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'LKS', section: 'S1', starts_on: '2026-01-01', ends_on: null },
+      { row_id: 'J2', employee: 'E1', job: 'Team Leader', designation: 'D-ST', site: 'LKS', section: 'S2', starts_on: '2026-01-01', ends_on: null },
+    ]
+    const areas = await sectionEditingAreas(ctx, tables.Employee, today)
+    expect(areas.map(a => [a.kind, [...a.sections!]])).toEqual([['section', ['S1']]])
   })
 })
 

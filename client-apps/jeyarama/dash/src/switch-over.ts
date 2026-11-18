@@ -9,7 +9,7 @@ import { DASH_APP, shadowReceiver, type Model } from './business-roles.ts'
 import { ROLE, PERMISSION, TITLE_MAP, businessModel, every } from './business-access.ts'
 import { ALL_STORES_ROLE, type Documents } from './provider.ts'
 import { STARTING_ROLES, STARTING_TITLES } from './starting-roles.ts'
-import { accessKey } from './report-access-server.ts'
+import { accessKey, all } from './report-access-server.ts'
 import { checked, exact, text } from './values.ts'
 import { istToday } from './report.ts'
 
@@ -73,7 +73,8 @@ export async function convertGrants(read: Documents, write: Writer, model: Model
   reportNames: ReadonlyMap<string, string> = new Map()): Promise<{ added: number; notConverted: number }> {
   // The log names reports and bundles by name, never by key.
   const bundleNames = new Map((await every(read, 'dash.report_bundle', ['bundle_name'])).map(b => [exact(b.row_id), text(b.bundle_name)]))
-  const rows = (await every(read, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'business_role', 'removed'])).filter(r => !checked(r.removed))
+  // Live grants only, as reportsGivenTo reads them: a retired or removed grant is access already withdrawn (Codex round 3).
+  const rows = (await all(read, ACCESS, ['report', 'report_bundle', 'person', 'role', 'job', 'business_role', 'removed'])).filter(r => !checked(r.removed))
   const live = new Set(rows.map(r => accessKey(r)).flatMap(k => ('key' in k ? [k.key] : [])))
   // Each old grant given to a role once, ever: a later removal or change of that role grant is the owner's decision,
   // and running this again must not undo it (Codex adversarial round 1). The log is the record of what was given.
