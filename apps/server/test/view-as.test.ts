@@ -110,6 +110,9 @@ describe('View as on the platform', () => {
     expect((await tester.get<{ row_id: string }>('/api/whoami')).row_id).toBe(tester.user)
     expect((await status(start(tester, person.user)))[0]).toBe(200)
     expect((await tester.get<{ row_id: string }>('/api/whoami')).row_id).toBe(person.user)
+    // #1222, #1273: while viewing, the shell offers no new rows and no ticking.
+    expect((await tester.get<{ capabilities: { creatable: string[]; deletable: string[] } }>('/api/whoami')).capabilities)
+      .toMatchObject({ creatable: [], deletable: [] })
     const saved = await tester.fetch('/api/save_row', { method: 'POST', headers: json, body: JSON.stringify({ table: 'ToDo', row: { description: 'made while viewing', allocated_to: tester.user } }) })
     expect([saved.status, saved.status === 201 ? '' : await saved.text()]).toEqual([201, ''])
     expect(await sql`select created_by from todo where description = 'made while viewing'`).toEqual([{ created_by: tester.user }])

@@ -22,7 +22,10 @@ const unfold = (item: HTMLElement) => fireEvent.keyDown(item, { key: 'ArrowRight
 
 async function openTree(admin: Admin, table: string, row: string) {
   const view = await renderApp(`${tableHref(table)}/row/${row}`, admin)
-  fireEvent.click(await screen.findByRole('tab', { name: 'Tree' }))
+  fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
+  // #1273: the tree is the Links tab's other layout, chosen in View ▾.
+  fireEvent.click(await screen.findByTestId('view-menu-button'))
+  fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Tree' }))
   await tree()
   return view
 }
@@ -100,7 +103,7 @@ test('Focus here centres the tree on the chosen line', async ({ admin }) => {
   fireEvent.click(focus)
   await screen.findByRole('tree', { name: 'Around Enchakkal Supermarket' })
   expect(await line(`${PROFIT} 2`)).toHaveAttribute('aria-expanded', 'true')
-  expect(screen.getByRole('tab', { name: 'Tree' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true')
 })
 
 test('what is unfolded survives a look at the form', async ({ admin }) => {
@@ -109,7 +112,7 @@ test('what is unfolded survives a look at the form', async ({ admin }) => {
   unfold(await line('Enchakkal Supermarket · 1503'))
   await line(`${PROFIT} 2`)
   fireEvent.click(screen.getByRole('tab', { name: 'Form' }))
-  fireEvent.click(screen.getByRole('tab', { name: 'Tree' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Links' }))
   expect(await line('Enchakkal Supermarket · 1503')).toHaveAttribute('aria-expanded', 'true')
 })
 

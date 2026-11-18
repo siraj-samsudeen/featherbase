@@ -333,11 +333,14 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['old_grants_one_receiver', '0.13.30', '0.13.31', 0],
       // #1277: a role viewing every report gets every report; the comparison reads the company once. No Table change.
       ['every_report_and_bulk_comparison', '0.13.31', '0.13.32', 0],
+      // #1280: Site's kind and status join Dash's reads, used where the instance's Site has them; no Table of Dash's changes.
+      ['site_kind', '0.13.32', '0.13.33', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
-    expect(pkg.version).toBe('0.13.32')
+    expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
+    expect(pkg.version).toBe('0.13.33')
   })
 })

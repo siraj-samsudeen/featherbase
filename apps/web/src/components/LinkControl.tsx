@@ -48,6 +48,7 @@ export function LinkControl({
   className,
   common,
   forFilter = false,
+  pickOnly = false,
   floating = false,
   extraFilters = [],
   anyTable = false,
@@ -59,6 +60,8 @@ export function LinkControl({
   common: Record<string, unknown>
   /** A list filter: it only picks existing rows, never creates one. */
   forFilter?: boolean
+  /** #1273: only picks an existing row: no "+ Create new", typed text not kept, no ◎ ↗. */
+  pickOnly?: boolean
   /** Inside a scrolling frame (a grid of nested rows): the list is placed
    *  over the page under the box, so the frame cannot cut it off. */
   floating?: boolean
@@ -120,7 +123,7 @@ export function LinkControl({
   const nav = useNavigation()
   const navigate = useNavigate()
   // A filter has its own clear control and stays a filter: no pane or open.
-  const hasValue = Boolean(value) && query === null && !forFilter && !(anyTable && targetMeta.isError)
+  const hasValue = Boolean(value) && query === null && !forFilter && !pickOnly && !(anyTable && targetMeta.isError)
 
   // The floating list is drawn beside the box. When the page scrolls or the
   // window resizes it follows the box, and closes only once the box has left the
@@ -287,7 +290,7 @@ export function LinkControl({
       setOpen(false)
       // A filter shows only what it filters by, and a grid cell what will
       // be saved: text typed but never picked goes.
-      if (forFilter || floating) setQuery(null)
+      if (forFilter || floating || pickOnly) setQuery(null)
     }, 150)
   }
 
@@ -374,7 +377,8 @@ export function LinkControl({
           onBlur={leave}
           data-testid={`link-options-${field.column_name}`}
         >
-          <input
+          {/* Pick-only: the field above is the search, so a second box would only echo it. */}
+          {!pickOnly && <input
             ref={searchBox}
             type="search"
             aria-label={`Search ${field.label ?? field.column_name}`}
@@ -389,7 +393,7 @@ export function LinkControl({
             data-testid="link-search"
             className="sticky top-0 block w-full border-b border-border bg-surface px-3 py-1.5 text-sm text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
             {...NOT_A_LOGIN}
-          />
+          />}
           {titleSettled && options.map((o) => (
             <button
               key={o.value}
@@ -423,7 +427,7 @@ export function LinkControl({
           {/* A Table column of a link to any Table picks among Tables; it never makes one (#881). */}
           {/* A view holds no rows to create (#1021). */}
           {/* A new tab keeps what was typed on this form (#1033). */}
-          {!forFilter && !extraFilters.length && !field.reference_base && (
+          {!forFilter && !pickOnly && !extraFilters.length && !field.reference_base && (
             <RouterLink
               to="/featherbase/admin/table/$table/new"
               params={{ table: target }}

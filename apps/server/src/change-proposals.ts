@@ -132,9 +132,9 @@ export function baseTablesReader(app: string, declaration: BaseTablesDeclaration
     }),
     // #1230: an instance Table an app reads optionally may be unlinked, deleted or reshaped since the
     // app was installed. Asking first lets the app leave that part out instead of failing the whole read.
-    available: (table: string) => guard.run(async () => {
+    available: (table: string, named: readonly string[] = []) => guard.run(async () => {
       const columns = declaration?.read[table]
-      if (!columns) return false
+      if (!columns || !named.every(column => columns.includes(column))) return false
       try {
         const meta = await reachable(app, table, true, linked)
         return columns.every(column => meta.columns.some(c => c.column_name === column))

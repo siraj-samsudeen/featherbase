@@ -75,8 +75,9 @@ export interface DecisionApproval {
 export interface BaseTablesHelper {
   list(table: string, args: ActionListArgs & { fields: string[] }): Promise<ActionRow[]>
   /** #1230: whether `list` can read this Table now: declared, reachable, and every declared column there.
-   *  False, never a failure, for a Table not linked, deleted, reshaped or unsupported. */
-  available(table: string): Promise<boolean>
+   *  False, never a failure, for a Table not linked, deleted, reshaped or unsupported. Naming `columns`
+   *  (#1280) also asks that each is one the app declares; they are then there too. */
+  available(table: string, columns?: readonly string[]): Promise<boolean>
   /** featherbase #1219: who last changed a column the app reads, per row, from the row's own history.
    *  Rows with no recorded change of it are left out. At most 500 rows. */
   changedBy(table: string, args: { rows: string[]; column: string }): Promise<Record<string, { by: string; at: string }>>

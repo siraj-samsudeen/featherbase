@@ -29,7 +29,7 @@ async function seedRow(admin: Admin, property: string): Promise<string> {
   return row.row_id
 }
 
-async function openRow(admin: Admin, rowId: string, tab = 'Collaboration') {
+async function openRow(admin: Admin, rowId: string, tab = 'Activity') {
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(decodeURIComponent(ENC)))}/row/${rowId}`, admin)
   await screen.findByTestId('form-view')
   await userEvent.click(await screen.findByRole('tab', { name: tab }))

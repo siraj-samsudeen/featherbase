@@ -337,7 +337,7 @@ async function scopeProviderTables(environment: string): Promise<HealthCheck[]> 
   const providers = await sql`select name, manifest from installed_app
     where runtime_package and enabled and not activation_pending and manifest ? 'scopeProvider' order by name`
   if (providers.length !== 1) return []
-  const [{ name, manifest }] = providers as unknown as { name: string; manifest: { title?: string; scopeProvider: { tables: string[]; optionalTables?: string[] }; baseTables?: { read?: Record<string, string[]> } } }[]
+  const [{ name, manifest }] = providers as unknown as { name: string; manifest: { title?: string; scopeProvider: { tables: string[]; optionalTables?: string[]; optionalColumns?: Record<string, string[]> }; baseTables?: { read?: Record<string, string[]> } } }[]
   const title = manifest.title ?? name
   // #1247: a Table the provider checks with documents.available() before reading may be missing.
   const optional = manifest.scopeProvider.optionalTables ?? []
@@ -347,10 +347,16 @@ async function scopeProviderTables(environment: string): Promise<HealthCheck[]> 
   const read = manifest.baseTables?.read ?? {}
   const have = new Set((await sql`select name from table_def where name in ${sql(tables)}`).map((r) => String(r.name)))
   // #1277: a standard column (updated_at, created_by) is on every Table and never in column_def.
-  const wanted = tables.filter((t) => have.has(t)).flatMap((t) => (read[t] ?? []).filter((column) => !(STANDARD_COLUMNS as readonly string[]).includes(column)).map((column) => [t, column] as const))
-  const columns = wanted.length
-    ? new Set((await sql`select parent, column_name from column_def where parent in ${sql([...new Set(wanted.map(([t]) => t))])}`).map((r) => `${r.parent}.${r.column_name}`))
+  // #1280: a column the provider reads only once it is there is named when missing, never a fault.
+  const optionalColumns = manifest.scopeProvider.optionalColumns ?? {}
+  const isOptional = (t: string, c: string) => (optionalColumns[t] ?? []).includes(c)
+  const declared = tables.filter((t) => have.has(t)).flatMap((t) => (read[t] ?? []).filter((column) => !(STANDARD_COLUMNS as readonly string[]).includes(column)).map((column) => [t, column] as const))
+  const wanted = declared.filter(([t, c]) => !isOptional(t, c))
+  const maybe = declared.filter(([t, c]) => isOptional(t, c))
+  const columns = declared.length
+    ? new Set((await sql`select parent, column_name from column_def where parent in ${sql([...new Set(declared.map(([t]) => t))])}`).map((r) => `${r.parent}.${r.column_name}`))
     : new Set<string>()
+  const columnsNotYet = maybe.filter(([t, c]) => !columns.has(`${t}.${c}`)).map(([t, c]) => `${t}.${c}`)
   const missing = [
     ...tables.filter((t) => !have.has(t)).map((t) => `Table ${t}`),
     ...wanted.filter(([t, c]) => !columns.has(`${t}.${c}`)).map(([t, c]) => `column ${t}.${c}`),
@@ -361,7 +367,8 @@ async function scopeProviderTables(environment: string): Promise<HealthCheck[]> 
     severity: 'error' as const,
     why: 'The scope provider reads these on every request for someone\'s scope; a Table or column the instance lacks makes that read fail, and then no one gets a scope.',
   }
-  const later = notYet.length ? ` ${notYet.join(', ')} ${notYet.length === 1 ? 'is' : 'are'} not installed yet; ${title} reads ${notYet.length === 1 ? 'it' : 'them'} only once ${notYet.length === 1 ? 'it exists' : 'they exist'}.` : ''
+  const later = (notYet.length ? ` ${notYet.join(', ')} ${notYet.length === 1 ? 'is' : 'are'} not installed yet; ${title} reads ${notYet.length === 1 ? 'it' : 'them'} only once ${notYet.length === 1 ? 'it exists' : 'they exist'}.` : '')
+    + (columnsNotYet.length ? ` Column${columnsNotYet.length === 1 ? '' : 's'} ${columnsNotYet.join(', ')} ${columnsNotYet.length === 1 ? 'is' : 'are'} not there yet; ${title} reads ${columnsNotYet.length === 1 ? 'it' : 'them'} only once ${columnsNotYet.length === 1 ? 'it exists' : 'they exist'}.` : '')
   if (!missing.length) return [{ ...base, ok: true, message: `Every Table and column ${title} reads for people's scope exists.${later}`, fix: null }]
   // A developer's machine runs the app before any of a client's core Tables are loaded: named, not a fault.
   if (environment === LOCAL) return [{ ...base, ok: true, missing, fix: null,

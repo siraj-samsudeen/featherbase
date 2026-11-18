@@ -222,7 +222,8 @@ And choosing it brings back Enchakkal Supermarket in the drill pane
 ### Requirement: A row page shows its connections under its name
 
 A row's page SHALL show the rows it points at and the counted groups that point at it directly
-under the row's name, the same as the drill pane does, and opening one shows it in the drill pane.
+under the row's name, the same as the drill pane does. Opening a row it points at shows it in the
+drill pane; opening a group jumps to that group's section on the row's Links tab.
 
 #### Scenario: Enchakkal's page leads with its plants
 
@@ -230,14 +231,26 @@ under the row's name, the same as the drill pane does, and opening one shows it 
 Given the site Enchakkal has three plants
 When the user opens Enchakkal's page
 Then its region Kerala and a group of 3 plants show under its name
-And opening the plants shows them in the drill pane
+And opening the plants shows them in their section on the Links tab
 ```
 
-### Requirement: A row page has a form, a map and a tree
+### Requirement: A row page has a form, links, a map and activity
 
-A row's page SHALL offer three ways to see the row: its form, a map of its links one step out in
-both directions, and a tree. Switching between them SHALL keep the row in the centre and what the
-user had expanded.
+A row's page SHALL offer four tabs: Form, Links, Map and Activity, and SHALL open on Form. Links
+shows the row's fields beside one section per group that points at it; its View menu shows them as
+the tree instead, and that choice SHALL be remembered for the person and the Table. Activity holds
+the row's history and discussion, and its people, tags and files. Switching between tabs SHALL keep
+the row in the centre and what the user had expanded.
+
+#### Scenario: Enchakkal's page opens on its form
+
+```gherkin
+Given the user has never opened a site's Links as the tree
+When the user opens Enchakkal's page
+Then its tabs are Form, Links, Map and Activity, and Form is open
+When the user shows Enchakkal's links as the tree and opens another site's Links tab
+Then that site's links show as the tree too
+```
 
 #### Scenario: Enchakkal's tree survives a look at the form
 
@@ -310,4 +323,97 @@ Given the user may read sites but not one of Enchakkal's three plants
 When the user opens Enchakkal in the drill pane and on its tree
 Then the group of plants counts 2
 And the name of the third plant shows nowhere
+```
+
+### Requirement: A relationship the user may change is a tick list
+
+A group of rows that only link the row to one other Table SHALL read as a tick list where the user
+may both add and delete that group's rows and the other Table has 40 rows or fewer. Its header
+names the other Table and how many of its rows are ticked ("Business Roles 2 of 7"); it lists
+every one of them, ticked ones first with their area and end date, unticked ones greyed. Anywhere
+else the group lists its rows as before. A long list folds after ten.
+
+#### Scenario: A member's roles as ticks
+
+```gherkin
+Given a member holds two of seven roles, and the user may add and remove roles
+When the user opens the member's Links tab
+Then the roles read "2 of 7", the two held first, each with its area and end date
+And the five others follow, greyed
+```
+
+#### Scenario: Someone who may not change roles reads them as a list
+
+```gherkin
+Given a member holds two of seven roles, and the user may only read them
+When the user opens the member's Links tab
+Then the roles held show as a list, with no tick
+```
+
+### Requirement: Every ticked link says where it came from
+
+A ticked link SHALL carry a source chip: "from" the name of the feed, platform step or import that
+wrote it, or "given by hand". A link from a feed SHALL be locked: its tick is tinted and cannot be
+unticked, and Correct shows beside it only where its Table names where corrections are made.
+
+#### Scenario: A role from the HR feed is locked
+
+```gherkin
+Given the HR feed gave a member the role Floor Lead, and the roles' Table says where to correct them
+When the user opens the member's Links tab
+Then Floor Lead reads "from HR" with a locked tick and Correct beside it
+And a role given by hand reads "given by hand" and can be unticked
+```
+
+### Requirement: Ticking asks first, unticking removes
+
+Ticking an unticked choice SHALL open a form under it asking for the link's own fields (its area,
+an end date, a reason); nothing SHALL be saved until Add. Unticking a link given by hand SHALL
+remove it, and the save state SHALL say it is saved.
+
+#### Scenario: Also give Team Leader
+
+```gherkin
+Given a member does not hold the role Team Leader
+When the user ticks Team Leader
+Then a form asks for its area, end date and reason, and nothing is saved yet
+When the user fills in the reason and adds it
+Then the member holds Team Leader, given by hand
+```
+
+#### Scenario: Untick a role given by hand
+
+```gherkin
+Given a member was given the role Buyer by hand
+When the user unticks Buyer
+Then the member no longer holds Buyer, and the page says it is saved
+```
+
+### Requirement: An empty group stays, greyed, and offers a new row
+
+A group with no rows SHALL still show, greyed, and offer + New, which opens a new row already
+linked to the row, to a user who may add rows to its Table.
+
+#### Scenario: A first note for a member
+
+```gherkin
+Given a member has no notes, and the user may add notes
+When the user opens the member's Links tab
+Then the notes group shows greyed with + New
+And + New opens a new note already linked to the member
+```
+
+### Requirement: Open as grid only for small pairs
+
+A group's header SHALL offer Open as grid only where the row's own Table and the other Table each
+have about 40 rows or fewer. Until the grid comes, it opens the group's list.
+
+#### Scenario: Roles of a small team
+
+```gherkin
+Given a team of members and a set of roles, each 40 or fewer
+When the user opens a member's Links tab
+Then the roles' header offers Open as grid
+When the team grows past 40
+Then the roles' header no longer offers it
 ```
