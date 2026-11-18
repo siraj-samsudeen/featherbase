@@ -207,19 +207,20 @@ export function RowMap({ table, name }: { table: string; name: string }) {
     <section ref={frame} data-testid="relation-map" aria-label={`Relationship map for ${centreTitle}`}
       className="@container relative" onKeyDown={spaceFollowsLinks}>
       {/* The lines join the centre to each box; they sit behind the boxes, drawn where they fall.
-          The columns follow the map's own width, not the window's, so they still fit beside the drill pane. */}
+          The columns follow the map's own width, not the window's, so they still fit beside the drill pane;
+          on a wide page the links hug the left, the groups (at most 360px) the right, and the gaps take the rest. */}
       <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" data-testid="map-edges">
         {edges.map((p, i) => <path key={i} d={p} fill="none" stroke="var(--color-border)" strokeWidth={1.5} />)}
       </svg>
-      <div className="relative grid grid-cols-1 items-start gap-4 @2xl:grid-cols-[minmax(9rem,15rem)_minmax(8rem,13rem)_minmax(12rem,18rem)] @2xl:gap-x-12">
-        <div className="flex min-w-0 flex-col gap-3 @2xl:self-center">
+      <div className="relative grid grid-cols-1 items-start gap-4 @2xl:grid-cols-[minmax(9rem,15rem)_minmax(3rem,1fr)_minmax(8rem,13rem)_minmax(3rem,1fr)_minmax(12rem,22.5rem)] @2xl:gap-x-0">
+        <div className="flex min-w-0 flex-col gap-3 @2xl:col-start-1 @2xl:row-start-1 @2xl:self-center">
           {forward.map((f, i) => <ForwardBox key={i} link={f} walk={walk} />)}
         </div>
-        <div data-testid="map-center" data-map-centre="" className="order-first min-w-0 rounded-lg border border-action bg-action-tint px-3 py-2.5 @2xl:order-none @2xl:self-center">
+        <div data-testid="map-center" data-map-centre="" className="order-first min-w-0 rounded-lg border border-action bg-action-tint px-3 py-2.5 @2xl:order-none @2xl:col-start-3 @2xl:row-start-1 @2xl:self-center">
           <div className="text-xs text-ink-muted">{tableWords}</div>
           <div className="break-words text-sm font-semibold text-ink">{centreTitle}</div>
         </div>
-        <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-3 @2xl:col-start-5 @2xl:row-start-1">
           {groups.map((g, i) => (
             <GroupBox key={i} group={g} chosen={chosen === groupId(g)} onOpen={openGroup && (() => openGroup(g))} walk={walk} />
           ))}
