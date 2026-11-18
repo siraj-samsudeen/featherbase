@@ -9,6 +9,7 @@ import { appCatalog, closedApps, appBar, packageFailures, runPackageAction, runP
 import { appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { activeRuntimeVersions, appOperation } from './app-lifecycle'
 import { who, type Env } from './route-context'
+import { explainRecord, whyOffer } from './why'
 
 export const appRoutes = new Hono<Env>()
 
@@ -49,6 +50,15 @@ appRoutes.post('/api/app_actions/:app/:action', async (c) =>
 appRoutes.post('/api/app_reads/:app/:read', async (c) => {
   c.header('Cache-Control', 'no-store')
   return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
+})
+// #1282 Why mode: whether the Map offers Why for a record, and the app's checked explanation.
+appRoutes.get('/api/why/:table/:row', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await whyOffer(c.req.param('table'), c.req.param('row'), who(c)))
+})
+appRoutes.get('/api/why/:table/:row/explain', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await explainRecord(c.req.param('table'), c.req.param('row'), who(c)))
 })
 appRoutes.get('/api/app_reads/:app/:read/access', async (c) => {
   c.header('Cache-Control', 'no-store')

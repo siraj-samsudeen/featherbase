@@ -12,7 +12,7 @@ import { PLATFORM_ROLES, hasPermission } from './permissions'
 import { tableAccessPolicy } from './mandatory-access'
 import { AppError, errorMessage } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
-import { APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
+import { WHY_DEFAULT_LABEL, WHY_LABEL, APP_ACCENTS, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler, type RuntimeJobHandler } from 'shared'
 import { callerDocuments, callerRoles, executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { approvalTypesDeclaration, baseTablesDeclaration } from './change-proposals'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
@@ -125,6 +125,14 @@ const manifestSchema = z.object({
   // with {row} for the row's id ("/tickets/?ticket={row}"). The Featherbase
   // record page of such a row offers "Open in <App>".
   recordPages: z.record(z.string().min(1), z.string().regex(/^\/[^\s]*\{row\}[^\s]*$/, 'a record page is an address of the app with {row} in it')).optional(),
+  // #1282 (Why mode): the app explains a record of a Table on its Map, by two of
+  // its reads, run as the viewer with { table, row }: `may` answers exactly true
+  // when this viewer may have it explained, and `explain` answers the chain.
+  why: z.record(z.string().min(1), z.object({
+    explain: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+    may: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+    label: z.string().max(40).optional(),
+  }).strict()).optional(),
   tables: z.array(tableDefSchema).min(1),
   roles: z.array(z.string().min(1)).optional(),
   permissions: z.array(appPermissionSchema).default([]),
@@ -460,6 +468,15 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       throw new Error(`The app's record page for ${table} is for a Table that is not one of the app's`)
     if (!address.startsWith(appHref(manifest.name)))
       throw new Error(`The app's record page for ${table} is ${address}, which is not one of the app's own pages (${appHref(manifest.name)}…)`)
+  }
+  // #1282: a Why only reads: both its names must be the app's reads, never its actions.
+  for (const [table, why] of Object.entries(manifest.why ?? {})) {
+    if (!Object.hasOwn(readOperations, why.explain))
+      throw new Error(`The app's Why for ${table} is explained by ${why.explain}, which is not one of the app's reads`)
+    if (!Object.hasOwn(readOperations, why.may))
+      throw new Error(`The app's Why for ${table} is offered by ${why.may}, which is not one of the app's reads`)
+    if (why.label !== undefined && !WHY_LABEL.test(why.label))
+      throw new Error(`The app's Why label for ${table} must read "Why: …" in Title Case, like "${WHY_DEFAULT_LABEL}"`)
   }
   if (manifest.access?.gate && !Object.hasOwn(readOperations, manifest.access.gate))
     throw new Error(`The app's gate is its read ${manifest.access.gate}, which is not one of the app's reads`)
@@ -992,6 +1009,20 @@ export async function appCatalog(user: string) {
       })
   }
   return result
+}
+
+/** #1282: the app that explains records of `table` (its manifest's `why`), for
+ *  `user`: only an installed, active app the user may open (its entry Table and
+ *  its own gate). None when no such app declares one. */
+export async function whyDeclarationFor(table: string, user: string): Promise<{ app: string; version: string; explain: string; may: string; label: string } | null> {
+  for (const item of await listInstalledApps()) {
+    const pkg = packages.get(item.name)
+    const why = pkg && Object.hasOwn(pkg.manifest.why ?? {}, table) ? pkg.manifest.why![table]! : undefined
+    if (!item.active || !pkg || !why) continue
+    if (!(await hasPermission(user, pkg.entryTable, 'read')) || !(await passesGate(pkg, user))) return null
+    return { app: pkg.name, version: pkg.version, explain: why.explain, may: why.may, label: why.label ?? WHY_DEFAULT_LABEL }
+  }
+  return null
 }
 
 /** #1046: the app's own gate check, as `user`, failing closed: only an

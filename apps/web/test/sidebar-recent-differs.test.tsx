@@ -23,9 +23,9 @@ test('of two rows of one list, the filtered one reads as its filter; the unfilte
     return found
   })
   // The tile names the Table; the filtered row reads as its filter, the plain one as its name.
-  expect(rows[0]).toContain('Site = Head Office')
+  expect(rows[0]).toContain('Site: Head Office')
   expect(rows[0]).not.toContain(DT)
-  expect(within(recents).getAllByTestId('sidebar-recent')[0]).toHaveAttribute('title', expect.stringContaining(`${DT} · Site = Head Office · opened`))
+  expect(within(recents).getAllByTestId('sidebar-recent')[0]).toHaveAttribute('title', expect.stringContaining(`${DT} · Site: Head Office · opened`))
   expect(rows[1]).toContain(DT)
   expect(rows[1]).not.toContain('Site')
 })
@@ -62,5 +62,5 @@ test("in the rail, the Recently Opened menu says a shared name's filters after i
   fireEvent.click(await screen.findByTestId('sidebar-collapse'))
   fireEvent.click(await screen.findByRole('button', { name: 'Recently Opened' }))
   const menu = await screen.findByRole('menu', { name: 'Recently Opened' })
-  await waitFor(() => expect(within(menu).getByTestId('recent-differs')).toHaveTextContent('· Site = Head Office'))
+  await waitFor(() => expect(within(menu).getByTestId('recent-differs')).toHaveTextContent('· Site: Head Office'))
 })

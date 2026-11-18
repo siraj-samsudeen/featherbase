@@ -18,6 +18,7 @@ import { test, expect, renderApp, onScreen, byTestId } from '../pg-test'
 import {
   add, ENCHAKKAL_PLANTS, PLANTS, SITE, limitRows, listColumns, readerRoles, seedOrganisation, type OrgIds,
 } from '../organisation-fixture'
+import { hook, installWhy, openWhyRecordMap } from '../why-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -499,13 +500,13 @@ describe('relational-navigation', () => {
     await step('the user signs in today and looks at their recent paths', async () => {
       signInAfresh()
       await openList(user, SITE)
-      fireEvent.click(await screen.findByRole('button', { name: 'Recent paths' }))
-      items = await screen.findAllByRole('menuitem')
+      // #1288: remembered walks are in the sidebar's Recently Opened.
+      items = await screen.findAllByTestId('sidebar-walk', {}, { timeout: 10_000 })
     })
     await step('that path is listed by its names', async () => {
-      // The names arrive after the menu opens; an ellipsis stands in until then.
+      // The names arrive after the sidebar draws; an ellipsis stands in until then.
       await waitFor(() => {
-        items = screen.getAllByRole('menuitem')
+        items = screen.getAllByTestId('sidebar-walk')
         expect(items.map((i) => (i.textContent ?? '').replace(/\s+/g, ' '))).toEqual(expect.arrayContaining([expect.stringContaining('Enchakkal Supermarket')]))
       })
     })
@@ -641,6 +642,55 @@ describe('relational-navigation', () => {
     await step(`the plants' box is named "Plant · Site Enchakkal" with its count 3`, async () => {
       const box = await screen.findByTestId('map-group-Plant')
       expect(await within(box).findByRole('button', { name: 'Plant · Site Enchakkal 3' })).toBeVisible()
+    })
+  })
+
+  // ---- #1282: Why mode, an app's explanation on the map ----
+
+  scenario('Why a floor manager reads Dash', async ({ admin }, step) => {
+    const boxNamed = (name: string) => screen.getAllByTestId('why-box').find((b) => b.textContent?.includes(name))!
+    await step("an installed app explains a floor manager's access, and lets the user see it", () => installWhy(admin))
+    await step('the user opens her map and chooses Why: Access', async () => {
+      await openWhyRecordMap(admin)
+      fireEvent.click(within(await screen.findByRole('group', { name: 'Map view' })).getByRole('button', { name: 'Why: Access' }))
+    })
+    await step("the app's columns show, and Floor Manager says HR and Buyer says by hand", async () => {
+      await waitFor(() => expect(screen.getAllByTestId('why-box').length).toBeGreaterThan(0))
+      expect(boxNamed('Floor Manager')).toHaveTextContent(/ · HR(Show|Hide) Chain$/)
+      expect(boxNamed('Buyer')).toHaveTextContent(/ · by hand(Show|Hide) Chain$/)
+    })
+    await step('the user clicks Dash · Reader', () => { fireEvent.click(boxNamed('Dash · Reader')) })
+    await step('every chain that leads to it lights up, back to her', () => {
+      for (const name of ['Dash · Reader', 'Floor Manager', 'Buyer', 'The note']) expect(boxNamed(name)).toHaveAttribute('data-lit', 'true')
+      expect(boxNamed('Tasker · Manager')).not.toHaveAttribute('data-lit')
+    })
+  })
+
+  scenario('No Why for someone the app does not let see it', async ({ admin }, step) => {
+    await step("an installed app explains a floor manager's access, but not to the user", async () => {
+      await installWhy(admin)
+      hook().may = false
+    })
+    await step('the user opens her map', () => openWhyRecordMap(admin))
+    await step('the map shows her neighbours with no Why to choose', async () => {
+      await screen.findByTestId('map-center')
+      await new Promise((r) => setTimeout(r, 300))
+      expect(screen.queryByRole('group', { name: 'Map view' })).not.toBeInTheDocument()
+    })
+  })
+
+  scenario('A broken explanation', async ({ admin }, step) => {
+    await step("an app's explanation of a record joins a box to one that is not there", async () => {
+      await installWhy(admin)
+      hook().answer = { version: 1, columns: [{ heading: 'A', boxes: [{ id: 'a', name: 'A' }] }], edges: [['a', 'missing']] }
+    })
+    await step("the user chooses Why on that record's map", async () => {
+      await openWhyRecordMap(admin)
+      fireEvent.click(within(await screen.findByRole('group', { name: 'Map view' })).getByRole('button', { name: 'Why: Access' }))
+    })
+    await step("the map says it can't explain this right now, and draws none of it", async () => {
+      expect(await screen.findByText("Can't explain this right now")).toBeVisible()
+      expect(screen.queryAllByTestId('why-box')).toHaveLength(0)
     })
   })
 

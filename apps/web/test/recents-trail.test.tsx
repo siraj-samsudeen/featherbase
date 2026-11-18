@@ -66,7 +66,7 @@ test('#101: the empty search bar lists the trail newest first, each visit by its
   expect(row).toHaveTextContent(DOC_TITLE)
   expect(row).not.toHaveTextContent(DOC)
   expect(list).toHaveTextContent(DT)
-  expect(list).toHaveTextContent('Note = searchable')
+  expect(list).toHaveTextContent('Note: searchable')
 })
 
 test('#101: a filtered list chosen from the empty search bar opens with its filters', async ({ admin }) => {
@@ -107,7 +107,7 @@ test('#101 P2: the sidebar\'s filtered-list entry names its filter and opens the
   const sidebar = await screen.findByTestId('sidebar-recents', {}, WAIT)
   const entry = await waitFor(() => {
     // #1253 (style A): one line; the filter is named in the row's tooltip.
-    const found = within(sidebar).getAllByTestId('sidebar-recent').find((e) => e.getAttribute('title')?.includes('Note = searchable'))
+    const found = within(sidebar).getAllByTestId('sidebar-recent').find((e) => e.getAttribute('title')?.includes('Note: searchable'))
     expect(found).toBeDefined()
     return found!
   }, WAIT)
