@@ -8,7 +8,7 @@ import { withStablePermissionReads } from './permission-reads'
 import { appOperation, assertAppAvailable, assertStillServing, servingIdentity } from './app-lifecycle'
 import { canonicalJson, recordAppAccessRefusal, withAppAuthorization, type DeclaredAppOperation } from './app-access'
 import { AppError } from './errors'
-import { PLATFORM_ROLES, assertSystemManager, getRoles } from './permissions'
+import { PLATFORM_ROLES, assertSystemManager, getRoles, getRolesMany } from './permissions'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
@@ -66,6 +66,15 @@ function callerPeople(user: string, app: string, settings: Readonly<Record<strin
       if (typeof person !== 'string' || !person) return Object.freeze([])
       const [live] = await sql`select 1 from person where row_id = ${person} and enabled and replaced_by is null and not coalesce(built_in, false)`
       return Object.freeze(live ? [...new Set(await getRoles(person))].filter((role) => role !== 'All').sort() : [])
+    },
+    // #1277: an app comparing a whole company asks once, not once per person.
+    rolesOfMany: async (persons: string[]) => {
+      const wanted = [...new Set((Array.isArray(persons) ? persons : []).filter((person): person is string => typeof person === 'string' && !!person))]
+      const live = wanted.length ? new Set((await sql`select row_id from person where row_id = any(${wanted}::text[]) and enabled and replaced_by is null and not coalesce(built_in, false)`)
+        .map((r) => String(r.row_id))) : new Set<string>()
+      const held = await getRolesMany([...live])
+      return Object.freeze(Object.fromEntries(wanted.map((person) => [person,
+        Object.freeze(live.has(person) ? [...new Set(held.get(person)!)].filter((role) => role !== 'All').sort() : [])])))
     },
     roleNames: async () => Object.freeze((await sql`select row_id from role where row_id not in ${sql(PLATFORM_ROLES)} order by row_id`).map((r) => String(r.row_id))),
     waitingForAccess: async () => {

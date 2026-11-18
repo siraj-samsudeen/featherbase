@@ -35,7 +35,7 @@ export async function liveBusinessAccess(docs: Base, person: string, on: string)
 }
 
 /** What a person reaches now, by whichever rules decide: their places, and why they reach nothing when they don't. */
-export async function liveReach(docs: Base, person: string, roles: readonly string[], on: string, source?: AccessSource): Promise<{ source: AccessSource; places: Place[]; problems: NoReach[]; access?: BusinessAccess }> {
+export async function liveReach(docs: Base, person: string, roles: readonly string[] | undefined, on: string, source?: AccessSource): Promise<{ source: AccessSource; places: Place[]; problems: NoReach[]; access?: BusinessAccess }> {
   if ((source ?? await accessSource(docs)) === LEGACY) return { source: LEGACY, ...await reachOf(docs, person, on, roles) }
   const { access } = await liveBusinessAccess(docs, person, on)
   // Why someone reaches nothing is the old rules' words; with no Dash role at all, they hold no job that gives Dash.
@@ -57,6 +57,6 @@ export function dashScopeProvider({ today = istToday }: { today?: () => string }
     if (await accessSource(documents) === LEGACY) return (await reachOf(documents, person.id, on, person.roles)).places
     // Each place says it came from business roles, so a read can tell which rules gave it its places (placesSource).
     return (await liveBusinessAccess(documents, exact(person.id), on)).access.places
-      .map(place => ({ ...place, basis: [...new Set([...(place.basis ?? '').split(', ').filter(Boolean), PLACED_BY_BUSINESS_ROLES])].sort().join(', ') }))
+      .map(place => ({ ...place, basis: [...new Set([...place.basis!.split(', '), PLACED_BY_BUSINESS_ROLES])].sort().join(', ') }))
   }
 }

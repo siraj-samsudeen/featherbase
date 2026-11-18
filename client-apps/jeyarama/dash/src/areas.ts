@@ -104,10 +104,9 @@ export async function sectionEditingJobs(ctx: Ctx, person: string, today: string
   const base = ctx.baseTables as unknown as Base
   if (await accessSource(base) !== BUSINESS_ROLES) return null
   const allowed = new Map<string, Set<string>>()
-  if (!person) return allowed
   const { access, model } = await liveBusinessAccess(base, person, today)
   const edits = new Set(model.permissions.filter(p => p.app === DASH_APP && p.verb === 'Edit' && p.thing === SECTIONS_THING).map(p => p.role))
-  const reaches = new Map(model.roles.map(r => [r.id, r.reaches ?? '']))
+  const reaches = new Map(model.roles.map(r => [r.id, r.reaches]))
   const siteOf = new Map(jobs.map(j => [exact(j.row_id), exact(j.site)]))
   for (const h of access.held) {
     // A hand change naming another store puts the role there, not at the job's own store: that job's area doesn't count.
@@ -129,8 +128,8 @@ export async function sectionEditingJobs(ctx: Ctx, person: string, today: string
  */
 export async function sectionEditingAreas(ctx: Ctx, employees: Row[], today: string): Promise<Area[]> {
   const areas = await areasFor(ctx, employees, today)
+  if (!areas.length) return areas
   const ids = employees.map(e => exact(e.row_id))
-  if (!ids.length) return areas
   const jobs = (await all(ctx, T.job, JOB_FIELDS, [['employee', 'in', ids]])).filter(j => holdsOn(j, today))
   const allowed = await sectionEditingJobs(ctx, exact(employees[0]?.person), today, jobs)
   if (!allowed) return areas
@@ -138,12 +137,13 @@ export async function sectionEditingAreas(ctx: Ctx, employees: Row[], today: str
   for (const job of jobs.filter(j => allowed.has(exact(j.row_id)))) {
     const jobAreas = await areasOfJobs(ctx, ids, [job], today)
     for (const reach of allowed.get(exact(job.row_id))!) {
-      const role = ROLE_AREA[reach]
+      const role = ROLE_AREA[reach as string]
+      // A role reaching a cluster, a region or the company edits sections through no job of a store.
       if (!role) continue
       const roleAreas = await areasOfJobs(ctx, ids, [{ ...job, job: role.job }], today)
       // The narrower of the two areas, kept only where it lies wholly inside the wider (Codex rounds 7 and 11).
       for (const jobArea of jobAreas) for (const roleArea of roleAreas) {
-        if (RANK[role.kind] === RANK[jobArea.kind]) { if (role.kind === jobArea.kind && roleArea.site === jobArea.site) out.push(jobArea); continue }
+        if (RANK[role.kind] === RANK[jobArea.kind]) { if (role.kind === jobArea.kind) out.push(jobArea); continue }
         const [inner, outer] = RANK[role.kind] < RANK[jobArea.kind] ? [roleArea, jobArea] : [jobArea, roleArea]
         if (await within(ctx, inner, outer)) out.push(inner)
       }
@@ -154,14 +154,11 @@ export async function sectionEditingAreas(ctx: Ctx, employees: Row[], today: str
 
 /** Whether every part of `inner` lies in `outer`: its sections each in it, or a whole floor in a store. */
 async function within(ctx: Ctx, inner: Area, outer: Area): Promise<boolean> {
-  if (inner.site !== outer.site) return false
+  // Both come from one job, so one store. Narrower than a floor or a department is only a section area.
   if (outer.kind === 'store') return true
-  if (inner.sections) {
-    if (!inner.sections.size) return false
-    const rows = await list(ctx, T.section, SECTION_FIELDS, [['row_id', 'in', [...inner.sections]]])
-    return [...inner.sections].every(id => inArea(outer, rows.find(r => exact(r.row_id) === id)))
-  }
-  return false
+  const sections = [...inner.sections!]
+  const rows = await list(ctx, T.section, SECTION_FIELDS, [['row_id', 'in', sections]])
+  return sections.every(id => inArea(outer, rows.find(r => exact(r.row_id) === id)))
 }
 
 /** Under business roles, whether this job of theirs lets the person change their own section's subcategories (Your sections). */

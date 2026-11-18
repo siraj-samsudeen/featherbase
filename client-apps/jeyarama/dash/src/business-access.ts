@@ -2,7 +2,7 @@
 // and the Who Would Gain Or Lose Access comparison all call businessAccess, so the comparison predicts
 // exactly what the live rules do. The role rules are business-roles.ts; where a role applies is reachOf's
 // (provider.ts), run over only the assignment that gives the role.
-import { BUYER_TITLE, DASH_APP, opensDash, rolesOf, type BusinessRole, type HandChange, type HeldRole, type Model, type Permission, type Reach, type Reaches, type TitleRule } from './business-roles.ts'
+import { BUYER_TITLE, DASH_APP, everyReportRoles, opensDash, rolesOf, type BusinessRole, type HandChange, type HeldRole, type Model, type Permission, type Reach, type Reaches, type TitleRule } from './business-roles.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
 import { EMPLOYEE_STATUS, checked, day, exact, holdsOn, text } from './values.ts'
 import { openStore, siteKindRead, siteStoreFields } from './site-kind.ts'
@@ -76,10 +76,10 @@ export async function mineOf(docs: Base, person: string, today: string, designat
 function onlyThese(docs: Base, rows: { jobs: Row[]; merchandise: Row[]; clusters: Row[]; buyerSections: boolean; employees?: Row[]; notMine?: string[] }): Base {
   const given: Record<string, Row[]> = { 'Job Assignment': rows.jobs, 'Merchandise Assignment': rows.merchandise, Cluster: rows.clusters, ...(rows.employees ? { Employee: rows.employees } : {}) }
   const page = (found: Row[], args: { filters?: Filter[]; limit_start?: number; limit_page_length?: number }) => {
-    const kept = found.filter(row => (args.filters ?? []).every(([column, op, value]) =>
+    const kept = found.filter(row => args.filters!.every(([column, op, value]) =>
       op === 'in' ? (value as unknown[]).map(exact).includes(exact(row[column])) : exact(row[column]) === exact(value)))
-    const start = args.limit_start ?? 0
-    return kept.slice(start, start + (args.limit_page_length ?? 500))
+    // reachOf reads in pages, always naming them.
+    return kept.slice(args.limit_start!, args.limit_start! + args.limit_page_length!)
   }
   return {
     // Only a Buyer's own run reads the Buyer Section Tables. Any other Table, Site's kind above all (#1280), is asked of the
@@ -155,6 +155,8 @@ export interface BusinessAccess {
   opens: boolean
   /** Every business role they hold, for report grants to roles (D4). */
   roles: string[]
+  /** The roles they hold that view every report (viewsEveryReport): every report, at every store. */
+  everyReport: string[]
   mine: Mine
 }
 
@@ -178,8 +180,12 @@ export async function businessAccess(docs: Base, person: string, today: string,
   const withPlaces = []
   for (const role of held) withPlaces.push({ ...role, places: await rolePlaces(docs, person, today, role, reachesOf.get(role.role), mine) })
   const dash = new Set(model.permissions.filter(p => p.app === DASH_APP).map(p => p.role))
-  return { held: withPlaces, unmapped, places: mergePlaces(withPlaces.filter(r => dash.has(r.role)).flatMap(r => r.places)),
-    opens: opensDash(held, model), roles: [...new Set(held.map(h => h.role))].sort(), mine }
+  const everyReport = everyReportRoles(held, model)
+  // A role viewing every report does so at every store, wherever its own area lies; its own area stays as it is.
+  const everyStore = everyReport.length
+    ? await rolePlaces(docs, person, today, { role: everyReport[0], source: 'also_given', title: null, spot: { kind: 'company' } }, 'Whole company', mine) : []
+  return { held: withPlaces, unmapped, places: mergePlaces([...withPlaces.filter(r => dash.has(r.role)).flatMap(r => r.places), ...everyStore]),
+    opens: opensDash(held, model), roles: [...new Set(held.map(h => h.role))].sort(), everyReport, mine }
 }
 
 /**
@@ -195,7 +201,7 @@ export function mergePlaces(places: Place[]): Place[] {
     if (codes) seen.filters.subcategory = codes
     else delete seen.filters.subcategory
     seen.basis = [...new Set([...(seen.basis ?? '').split(', '), ...(place.basis ?? '').split(', ')].filter(Boolean))].sort().join(', ')
-    const reasons = new Map([...(seen.reasons ?? []), ...(place.reasons ?? [])].map(r => [JSON.stringify(r), r]))
+    const reasons = new Map([...seen.reasons!, ...(place.reasons ?? [])].map(r => [JSON.stringify(r), r]))
     seen.reasons = [...reasons].sort(([a], [b]) => a.localeCompare(b)).map(([, r]) => r)
   }
   return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label))

@@ -16,11 +16,6 @@ export interface Documents {
    *  the app declares for the Table, so both answer alike. */
   available?(table: string, columns?: readonly string[]): Promise<boolean>
 }
-interface ProviderContext {
-  /** `roles`: the roles the platform enforces for the person (featherbase #1192). */
-  readonly person: { readonly id: string; readonly email: string | null; readonly roles?: readonly string[] }
-  readonly documents: Documents
-}
 export interface Reason { text: string; since?: string; until?: string }
 
 export interface Place {
@@ -84,11 +79,6 @@ async function all(documents: Documents, table: string, filters: Filter[] = [], 
 }
 
 const id = (row: Row) => exact(row.row_id)
-
-/** Today in India Standard Time. */
-function istToday(): string {
-  return new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
-}
 
 /** The label of a section's place; the report reads a section's name back from it. */
 export const sectionLabel = (store: string, section: string) => `${store} / Section: ${section}`
@@ -272,10 +262,3 @@ export async function reachOf(documents: Documents, person: string, on: string, 
   return { places: list, problems: everyStore && list.length ? [] : [...new Set(problems)] }
 }
 
-export interface ProviderOptions { today?: () => string }
-
-export function orgChartProvider({ today = istToday }: ProviderOptions = {}) {
-  return async function orgChart({ person, documents }: ProviderContext): Promise<Place[]> {
-    return (await reachOf(documents, person.id, today(), person.roles)).places
-  }
-}

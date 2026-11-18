@@ -178,7 +178,7 @@ test('Narrow the list with filters: a filter narrows the rows, shows as its own 
   fireEvent.click(screen.getByTestId('filter-add'))
   await waitFor(() => expect(cellTexts('title')).toEqual(['row-03', 'row-01']))
   expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Stage = Awaiting response')
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Stage: Awaiting response')
 
   // A second filter narrows further, and each chip can go on its own.
   fireEvent.change(screen.getByTestId('filter-field'), { target: { value: 'rank' } })

@@ -4,6 +4,7 @@ import { every, type Base } from './business-access.ts'
 import { managesAccess, type AccessContext } from './report-access-server.ts'
 import { SWITCH_OVER_LOG, giveOldGrantsToRoles, type Writer } from './switch-over.ts'
 import { exact, text } from './values.ts'
+import { istToday } from './report.ts'
 
 const ONLY_SYSTEM_MANAGERS = 'Only a System Manager can give the old grants to business roles'
 const ONLY_MANAGERS = 'Only a Report Access Manager or a System Manager can see what decides Dash access'
@@ -15,7 +16,7 @@ const ONLY_MANAGERS = 'Only a Report Access Manager or a System Manager can see 
 export async function giveOldGrantsAction(context: AccessContext) {
   if (!(context.roles ?? []).includes('System Manager')) context.reject!(ONLY_SYSTEM_MANAGERS)
   const reports = await context.documents!.list('dash.report', { fields: ['report_key', 'report_name'], limit_page_length: 500 })
-  return giveOldGrantsToRoles(context.baseTables!, context.documents as unknown as Writer, undefined, new Map(reports.map(r => [exact(r.report_key), text(r.report_name)])))
+  return giveOldGrantsToRoles(context.baseTables!, context.documents as unknown as Writer, istToday(), new Map(reports.map(r => [exact(r.report_key), text(r.report_name)])))
 }
 
 /** What decides Dash access now, and the switch row a System Manager changes to put the old rules back. */
@@ -24,7 +25,7 @@ export async function businessAccessSummary(context: AccessContext) {
   const base = context.baseTables as Base
   const rows = await every(base, ACCESS_SOURCE, ['source', 'updated_at'])
   return { source: await accessSource(base), switch_rows: rows.map(r => ({ id: exact(r.row_id), source: text(r.source), updated_at: exact(r.updated_at) })),
-    can_switch: (context.roles ?? []).includes('System Manager') }
+    can_switch: context.roles!.includes('System Manager') }
 }
 
 /** The switch-over's log, newest first. */

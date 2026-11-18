@@ -74,15 +74,18 @@ export const withoutBusinessRoles = <T,>(list: T[]) =>
 export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
 type Revertable = { migrations: { id: string }[]; tables?: { name: string; decides_scope?: boolean; columns?: { column_name: string }[] }[]; permissions?: { table: string }[];
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[] } }
-/** #1280's 0.13.31 taken out of a manifest: Dash reads no Site kind or status. */
+/** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. */
 export function revertSiteKind(manifest: Revertable) {
-  expect(manifest.migrations.pop()).toMatchObject({ id: 'site_kind', fromVersion: '0.13.30', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'site_kind', fromVersion: '0.13.32', operations: [] })
   const read = manifest.baseTables?.read
   if (read?.Site) read.Site = read.Site.filter(c => c !== 'site_kind' && c !== 'status')
 }
-/** #1277's 0.13.30 taken out of a manifest: business roles decide nothing, no switch. #1280's 0.13.31 comes off first. */
+/** #1277's 0.13.30 taken out of a manifest: business roles decide nothing, no switch. #1280's 0.13.33 comes off first. */
 export function revertBusinessRolesLive(manifest: Revertable) {
   revertSiteKind(manifest)
+  // 0.13.32 and 0.13.31 change no Table, role or read; they come off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'every_report_and_bulk_comparison', fromVersion: '0.13.31', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'old_grants_one_receiver', fromVersion: '0.13.30', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_live', fromVersion: '0.13.29' })
   if (manifest.tables) {
     manifest.tables = manifest.tables.filter(t => !LIVE_TABLES.includes(t.name))

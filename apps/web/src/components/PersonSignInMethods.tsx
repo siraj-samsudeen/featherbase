@@ -230,11 +230,16 @@ export function PersonSignInMethods({ user, rowUpdatedAt }: {
     onError: fail,
   })
   // #1267: whether this person is expected to sign in with Google or Microsoft
-  // is a Person column; the details form reads it again.
+  // is a Person column; the details form reads it again. Until that read lands,
+  // the next change goes from this panel's own save, not the page's older
+  // version, which the server would refuse as modified (CI flake, 18-Nov-2026).
+  const ownSave = useRef<{ over: unknown; at: string } | null>(null)
+  const version = ownSave.current && ownSave.current.over === rowUpdatedAt ? ownSave.current.at : rowUpdatedAt
   const expect = useMutation({
     mutationFn: (change: Partial<Record<'expects_google_sign_in' | 'expects_microsoft_sign_in', boolean>>) =>
-      api.patch(`/api/table/Person/${encodeURIComponent(user)}`, { ...change, updated_at: rowUpdatedAt }),
-    onSuccess: () => {
+      api.patch<{ updated_at?: string }>(`/api/table/Person/${encodeURIComponent(user)}`, { ...change, updated_at: version }),
+    onSuccess: (saved) => {
+      if (saved?.updated_at) ownSave.current = { over: rowUpdatedAt, at: saved.updated_at }
       done()
       void qc.invalidateQueries({ queryKey: ['doc', 'Person', user] })
     },

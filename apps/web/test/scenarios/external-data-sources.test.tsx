@@ -165,34 +165,31 @@ async function openMap(table: string, id: string, as: TestClient) {
   return screen.findByTestId('map-forward-Shelf', {}, WAIT)
 }
 
-// ---- Exploring a connected source (#786).
+// ---- Following a connected source's links from its list (#786, #1276).
 const EXPLORE = 'scenario_explore_web'
-async function explore(admin: TestClient, selected?: string) {
-  await visit('/featherbase/admin/explore', admin)
+/** The floors' list, filtered Linked to stores: `selected` picked, or any store. */
+async function floorsLinkedToStores(admin: TestClient, selected?: string) {
+  await visit(`${tableHref(EXPLORE_FLOOR)}?filters=${enc('[]')}`, admin)
   const user = userEvent.setup()
-  const root = (await screen.findByTestId('explore-root', {}, WAIT)) as HTMLSelectElement
-  const store = await waitFor(() => {
-    const option = [...root.options].find((o) => o.value === EXPLORE_STORE || o.textContent === EXPLORE_STORE)
-    expect(option, `no ${EXPLORE_STORE} to explore`).toBeDefined()
-    return option!
-  }, WAIT)
-  await user.selectOptions(root, store)
-  await waitFor(() => expect(screen.getByTestId('explore-step2').querySelector(`option[value="backlink:${EXPLORE_FLOOR}:store"]`)).not.toBeNull(), WAIT)
-  await user.selectOptions(screen.getByTestId('explore-step2'), `backlink:${EXPLORE_FLOOR}:store`)
-  // The store's row is a button named by its title; its "show in the pane" control is hidden until hovered.
+  await user.click(await screen.findByTestId('filter-toggle', {}, WAIT))
+  const field = await screen.findByTestId('filter-field', {}, WAIT)
+  await user.selectOptions(field, await within(field).findByRole('option', { name: 'Linked to…' }, WAIT))
+  const table = await screen.findByTestId('linked-table', {}, WAIT)
+  await user.selectOptions(table, await within(table).findByRole('option', { name: EXPLORE_STORE }, WAIT))
   if (selected) await user.click(await waitFor(() => {
-    const row = within(screen.getByTestId('explore-pane1')).getAllByTestId('explore-row').find((r) => r.querySelector('span')?.textContent === selected)
-    expect(row, `no store ${selected} to select`).toBeDefined()
-    return row!
+    const choice = screen.getAllByTestId('linked-choice').find((c) => c.textContent?.includes(selected))
+    expect(choice, `no store ${selected} to pick`).toBeDefined()
+    return within(choice!).getByRole('checkbox')
   }, WAIT))
+  await user.click(screen.getByTestId('linked-add'))
+  await screen.findByTestId('filter-chip', {}, WAIT)
 }
 async function expectFloors(labels: string[], count: number) {
-  const pane = await screen.findByTestId('explore-pane2', {}, WAIT)
   // A failure must not look like an empty result.
-  await waitFor(() => expect(within(pane).getByTestId('explore-pane2-count').textContent).toBe(String(count)), WAIT)
-  const names = within(pane).queryAllByTestId('explore-row').map((row) => row.querySelector('span')!.textContent)
+  await waitFor(() => expect(screen.getByTestId('list-total').textContent).toBe(`${count} total`), WAIT)
+  const names = [...document.querySelectorAll('tbody [data-title-cell]')].map((cell) => cell.textContent)
   expect(names.sort()).toEqual(labels.slice().sort())
-  expect(within(pane).queryByText(/Cannot load/)).toBeNull()
+  expect(screen.queryByText(/Cannot load/)).toBeNull()
 }
 
 // ---- Parcels on racks (#795).
@@ -486,19 +483,19 @@ describe('external-data-sources', () => {
 
   scenario('All connected floors appear before selecting a store', async ({ admin }, step) => {
     await step('a connected Postgres source has North with two floors, South with one floor and Empty with none', () => exploreSource(admin, EXPLORE))
-    await step('the user explores stores followed by floors without selecting a store', () => explore(admin))
+    await step('the user lists the floors linked to any store', () => floorsLinkedToStores(admin))
     await step('the user sees the three linked floors with a total of three', () => expectFloors(['North one', 'North two', 'South only'], 3))
   })
 
   scenario('Selecting a store narrows its floors', async ({ admin }, step) => {
     await step('a connected Postgres source has North with two floors, South with one floor and Empty with none', () => exploreSource(admin, EXPLORE))
-    await step('the user explores floors for North', () => explore(admin, 'North'))
+    await step('the user lists the floors linked to North', () => floorsLinkedToStores(admin, 'North'))
     await step("the user sees only North's two floors with a total of two", () => expectFloors(['North one', 'North two'], 2))
   })
 
   scenario('Selecting an empty store shows no floors', async ({ admin }, step) => {
     await step('a connected Postgres source has North with two floors, South with one floor and Empty with none', () => exploreSource(admin, EXPLORE))
-    await step('the user explores floors for Empty', () => explore(admin, 'Empty'))
+    await step('the user lists the floors linked to Empty', () => floorsLinkedToStores(admin, 'Empty'))
     await step('the user sees no floors with a total of zero', () => expectFloors([], 0))
   })
 

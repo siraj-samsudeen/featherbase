@@ -37,27 +37,94 @@ const FIELDS: Record<string, string[]> = {
 // reachOf filters with = and in only.
 const matches = (row: Row, [column, op, value]: Filter) =>
   op === 'in' ? (value as unknown[]).map(exact).includes(exact(row[column])) : exact(row[column]) === exact(value)
-const page = (rows: Row[], args: { filters?: Filter[]; limit_start?: number; limit_page_length?: number }) => {
-  const found = rows.filter(row => (args.filters ?? []).every(filter => matches(row, filter)))
-  const start = args.limit_start ?? 0
-  return found.slice(start, start + (args.limit_page_length ?? 500))
+
+/** The columns read of each Table, with HR's designation where the instance has it. */
+const fieldsFor = (designations: boolean): Record<string, string[]> =>
+  ({ ...FIELDS, [DESIGNATION]: ['designation'], 'Job Assignment': [...FIELDS['Job Assignment'], ...(designations ? ['designation'] : [])] })
+
+/** Documents a comparison reads through: reads, whole Tables for the names it shows, and whether a Table can be read. */
+export type WorldDocuments = Base & { rows(table: string): Promise<Row[]> }
+
+/**
+ * #1277: the core Tables read whole, once, and answered from memory, for Who Would Gain Or Lose Access: one bulk
+ * read per Table for the whole company, never one per person. Each filtered read is answered from an index on its
+ * first column, so a person's reads cost what they find, not the size of the Table. `withRetired`: as the scope
+ * provider reads them (retired rows included), or as the app's own reads do (the old rules' report grants, by job).
+ */
+export function memoryDocuments(base: Base, designations: boolean, { withRetired = true }: { withRetired?: boolean } = {}): WorldDocuments {
+  const loaded = new Map<string, Promise<Row[]>>()
+  const indexes = new Map<string, Map<string, Row[]>>()
+  const availability = new Map<string, Promise<boolean>>()
+  const fields = fieldsFor(designations)
+  const rows = (table: string) => {
+    if (!loaded.has(table)) loaded.set(table, withRetired ? everyRow(base, table, fields[table]!) : all(base, table, fields[table]!))
+    return loaded.get(table)!
+  }
+  const indexOf = async (table: string, column: string) => {
+    const key = `${table}\u0000${column}`
+    if (!indexes.has(key)) {
+      const index = new Map<string, Row[]>()
+      for (const row of await rows(table)) {
+        const value = exact(row[column])
+        const found = index.get(value)
+        if (found) found.push(row)
+        else index.set(value, [row])
+      }
+      indexes.set(key, index)
+    }
+    return indexes.get(key)!
+  }
+  const position = new Map<string, Map<Row, number>>()
+  const orderOf = async (table: string) => {
+    if (!position.has(table)) position.set(table, new Map((await rows(table)).map((row, i) => [row, i])))
+    return position.get(table)!
+  }
+  const find = async (table: string, filters: Filter[]) => {
+    if (!filters.length) return rows(table)
+    const [[column, op, value], ...rest] = filters
+    const index = await indexOf(table, column)
+    let found: Row[]
+    if (op === 'in') {
+      // In the Table's own order (row_id), as one read of the Table would return them.
+      const order = await orderOf(table)
+      found = [...new Set((value as unknown[]).map(exact))].flatMap(v => index.get(v) ?? []).sort((a, b) => order.get(a)! - order.get(b)!)
+    } else found = index.get(exact(value)) ?? []
+    return rest.length ? found.filter(row => rest.every(filter => matches(row, filter))) : found
+  }
+  return {
+    rows,
+    available: table => {
+      if (!availability.has(table)) availability.set(table, base.available(table))
+      return availability.get(table)!
+    },
+    // Every read through here names its page length.
+    list: async (table, args) => {
+      const start = args.limit_start ?? 0
+      return (await find(table, args.filters ?? [])).slice(start, start + args.limit_page_length!)
+    },
+  }
 }
 
 /**
- * The core Tables read whole, once, and answered from memory: reachOf for every person on the
- * comparison page would otherwise read the same Tables thousands of times.
+ * One person's reads straight from the Tables, for Explain: what the scope provider reads, retired rows included,
+ * each read returning the columns the in-memory one holds. Whole Tables are read only for the names a page shows.
  */
-export function memoryDocuments(base: Base, designations: boolean): Base & { rows(table: string): Promise<Row[]> } {
+export function directDocuments(base: Base, designations: boolean): WorldDocuments {
   const loaded = new Map<string, Promise<Row[]>>()
-  const fields: Record<string, string[]> = { ...FIELDS, 'Job Assignment': [...FIELDS['Job Assignment'], ...(designations ? ['designation'] : [])] }
-  const rows = (table: string) => {
-    // As the scope provider reads them: retired rows included, and Site's kind and status where it has them (#1280).
-    if (!loaded.has(table)) loaded.set(table, (async () => everyRow(base, table, table === 'Site'
-      ? [...new Set([...(fields.Site ?? []), ...await siteStoreFields(siteKindRead(base))])]
-      : fields[table] ?? []))())
-    return loaded.get(table)!
+  const fields = fieldsFor(designations)
+  // #1280: Site's kind and status too, where the instance's Site has them, asked once as every reader asks it.
+  let siteFields: Promise<string[]> | undefined
+  const fieldsOf = async (table: string) => table === 'Site'
+    ? await (siteFields ??= siteStoreFields(siteKindRead(base)).then(more => [...new Set([...(fields.Site ?? []), ...more])]))
+    : fields[table]!
+  return {
+    rows: table => {
+      if (!loaded.has(table)) loaded.set(table, fieldsOf(table).then(f => everyRow(base, table, f)))
+      return loaded.get(table)!
+    },
+    available: (table, columns) => base.available(table, columns),
+    list: async (table, args) => base.list(table, { ...args, fields: [...new Set([...args.fields, ...await fieldsOf(table)])], with_retired: true }),
   }
-  return { rows, available: (table, columns) => base.available(table, columns), list: async (table, args) => page(await rows(table), args) }
 }
 
 /** How much one Reaches covers, for the sentence an unresolved area reads as. Unset reads as such. */
@@ -78,7 +145,9 @@ const LEVEL_TABLE: Record<string, string> = { subcategory: 'Subcategory', catego
 export interface ShadowWorld {
   /** The app's own reads, as the old rules' report grants read jobs (retired rows left out). */
   base: Base
-  docs: ReturnType<typeof memoryDocuments>
+  docs: WorldDocuments
+  /** What the old rules' report grants read a person's jobs from: the app's own reads, retired rows left out. */
+  jobsBase: Documents
   model: Model
   hand: HandRow[]
   designations: boolean
@@ -100,15 +169,23 @@ export async function grantRows(base: Documents): Promise<{ rows: AccessRow[]; m
   return { rows, members }
 }
 
-/** Everything the comparison reads, once per request. */
-export async function shadowWorld(base: Base, today: string = istToday()): Promise<ShadowWorld> {
+/**
+ * Everything the comparison reads, once per request. `bulk`: the whole company is compared, so every Table is read
+ * whole once and each person answered from memory (#1277); otherwise one person's own rows are read as they are asked for.
+ */
+export async function shadowWorld(base: Base, today: string = istToday(), { bulk = false }: { bulk?: boolean } = {}): Promise<ShadowWorld> {
   const designations = await readsDesignations(base)
-  const docs = memoryDocuments(base, designations)
+  const docs = bulk ? memoryDocuments(base, designations) : directDocuments(base, designations)
   const { model, hand } = await businessModel(base, today)
   const designationNames = new Map((designations ? await everyRow(base, DESIGNATION, ['designation']) : []).map(row => [exact(row.row_id), text(row.designation)]))
   const every = (await docs.rows('Subcategory')).map(r => exact(r.row_id))
-  const names = async (table: string, column = 'name') => new Map((await docs.rows(table)).map(r => [exact(r.row_id), text(r[column])]))
-  return { base, docs, model, hand, designations, designationNames, every, grants: await grantRows(base), today, names }
+  const named = new Map<string, Promise<Map<string, string>>>()
+  const names = (table: string, column = 'name') => {
+    const key = `${table}\u0000${column}`
+    if (!named.has(key)) named.set(key, docs.rows(table).then(rows => new Map(rows.map(r => [exact(r.row_id), text(r[column])]))))
+    return named.get(key)!
+  }
+  return { base, docs, jobsBase: bulk ? memoryDocuments(base, designations, { withRetired: false }) : base, model, hand, designations, designationNames, every, grants: await grantRows(base), today, names }
 }
 
 /** A name to show, with the record it names when there is one. */
@@ -121,7 +198,9 @@ export interface PersonShadow {
   today: Side
   next: Side
   decisions: string[]
-  nextWhy: Map<string, { role?: string; person?: true; bundle: string | null }[]>
+  nextWhy: Map<string, { role?: string; person?: true; bundle: string | null; every?: true }[]>
+  /** The roles they hold that would give them every report (viewsEveryReport). */
+  everyReport: string[]
 }
 
 /** Places by store: null for a whole store, else its subcategory codes. */
@@ -148,7 +227,7 @@ export async function personShadow(world: ShadowWorld, person: string, roles: re
   for (const role of access.held) withPlaces.push({ ...role, area: await areaOf(world, role, access.mine) })
   const todayPlaces = (await reachOf(docs, person, today, roles)).places
   // The old rules' report grants read jobs as reportsGivenTo does (Codex adversarial round 2).
-  const jobNames = await jobsOf(world.base, person, today)
+  const jobNames = await jobsOf(world.jobsBase, person, today)
   const { rows, members } = world.grants
   // The old rules (report-eligibility.ts): a filtered report needs a place, a whole-stores one a whole store.
   const opensIn = (keys: string[], places: Place[]) => keys.filter(k => reportShapes.has(k) && offered(reportShapes.get(k)!, places)).sort()
@@ -166,19 +245,21 @@ export async function personShadow(world: ShadowWorld, person: string, roles: re
       needsDashRole: !opensDashFor(roles, 0) && businessRolesOpen(roles, access.opens, next.offered.length) },
     decisions: decisionReports({ person, roles, jobs: jobNames }, rows, members),
     nextWhy: next.why,
+    everyReport: access.everyReport,
   }
 }
 
 /** A site's region in words, as the site carries it, linking to the region's record. */
 async function regionPart(world: ShadowWorld, site: string): Promise<Part> {
-  const region = (await world.names('Site', 'operating_region')).get(site) ?? ''
+  const region = exact((await world.names('Site', 'operating_region')).get(site))
   return region ? { name: region, table: 'Operating Region', id: region } : { name: 'No region on this site' }
 }
 
 /** Where one held role applies, in words: the records its area names, and how many stores and subcategories it reaches. */
 async function areaOf(world: ShadowWorld, held: HeldRole & { places: Place[] }, mine: Mine): Promise<Area> {
   // How far the role reaches is data on the role (Reaches); its name decides nothing.
-  const reaches = world.model.roles.find(r => r.id === held.role)!.reaches ?? ''
+  // Read as text: an unset Reaches is ''.
+  const reaches = world.model.roles.find(r => r.id === held.role)!.reaches as string
   const part = async (table: string, id: unknown): Promise<Part> => ({ name: text((await world.names(table)).get(exact(id))), table, id: exact(id) })
   const spot = held.spot
   let parts: Part[]
@@ -218,7 +299,7 @@ async function areaOf(world: ShadowWorld, held: HeldRole & { places: Place[] }, 
   const byStore = placesByStore(held.places)
   const codes = Object.values(byStore).flatMap(c => c ?? [])
   const whole = Object.values(byStore).includes(null)
-  const plants = await world.docs.list('Plant', { fields: [], filters: [['row_id', 'in', Object.keys(byStore)]], limit_page_length: 10_000 })
+  const plants = await world.docs.list('Plant', { fields: ['site'], filters: [['row_id', 'in', Object.keys(byStore)]], limit_page_length: 10_000 })
   // A job with no site or section names nothing there: its part is left out rather than shown blank.
   return { parts: parts.filter(p => p.name), stores: new Set(plants.map(p => exact(p.site))).size, subcategories: whole ? null : new Set(codes).size, prefixes: whole ? [] : collapseCodes(codes, world.every) }
 }
@@ -227,7 +308,8 @@ async function areaOf(world: ShadowWorld, held: HeldRole & { places: Place[] }, 
 
 const ONLY_MANAGERS = 'Only a Report Access Manager or a System Manager can see business roles'
 /** The context, for a company-wide manager only. The platform always hands base Tables, documents, people and a payload. */
-type Ctx = AccessContext & { baseTables: Base; payload: Record<string, unknown>; people: { rolesOf(person: string): Promise<readonly string[]> } }
+type Ctx = AccessContext & { baseTables: Base; payload: Record<string, unknown>
+  people: { rolesOf(person: string): Promise<readonly string[]>; rolesOfMany?(persons: string[]): Promise<Readonly<Record<string, readonly string[]>>> } }
 function managersOnly(context: AccessContext): Ctx {
   if (!managesAccess(context)) context.reject!(ONLY_MANAGERS)
   return context as Ctx
@@ -283,19 +365,21 @@ export async function businessRoles(context: AccessContext) {
 }
 
 /** One person's comparison: the one computation both pages draw, so Explain and the list never disagree. */
-async function comparePerson(world: ShadowWorld, ctx: Ctx, person: string, shapes: Map<string, string>) {
-  const shadow = await personShadow(world, person, await ctx.people.rolesOf(person), shapes)
+async function comparePerson(world: ShadowWorld, roles: readonly string[], person: string, shapes: Map<string, string>) {
+  const shadow = await personShadow(world, person, roles, shapes)
   return { shadow, found: differences(shadow.today, shadow.next, shadow.decisions) }
 }
 
 /** A comparison's changes as names, each naming its record. */
-async function changeWords(world: ShadowWorld, reports: Map<string, { name: string }>, found: ReturnType<typeof differences>) {
-  const plants = new Map((await world.docs.rows('Plant')).map(p => [exact(p.row_id), exact(p.site)]))
+async function changeWords(world: ShadowWorld, reports: Map<string, { name: string }>, found: ReturnType<typeof differences>, everyReport: string[]) {
+  const plants = await world.names('Plant', 'site')
   const siteNames = await world.names('Site')
   const siteParts = (stores: string[]) => [...new Set(stores.map(s => plants.get(s)!))].map(site => ({ name: text(siteNames.get(site)), table: 'Site', id: site }))
   const reportParts = (keys: string[]) => keys.filter(k => reports.has(k)).map(k => ({ name: reports.get(k)!.name, table: 'dash.report', id: k }))
   return { kinds: found.kinds, stores_gained: siteParts(found.storesGained), stores_lost: siteParts(found.storesLost), stores_changed: siteParts(found.storesChanged),
-    gained: reportParts(found.gained), lost: reportParts(found.lost), decisions: reportParts(found.decisions) }
+    gained: reportParts(found.gained), lost: reportParts(found.lost), decisions: reportParts(found.decisions),
+    // Said in plain words: "every report, through Owner Director".
+    every_report: everyReport.map(id => world.model.roles.find(r => r.id === id)!.name).sort() }
 }
 
 /** Explain a person: their roles with area and source, the apps they would open, the reports they would get, and what changes for them. */
@@ -305,18 +389,18 @@ export async function explainPerson(context: AccessContext) {
   if (!person) ctx.reject!('Choose a person')
   const world = await shadowWorld(ctx.baseTables)
   const reports = await reportNames(ctx)
-  const { shadow, found } = await comparePerson(world, ctx, person, new Map([...reports].map(([k, r]) => [k, r.shape])))
+  const { shadow, found } = await comparePerson(world, await ctx.people.rolesOf(person), person, new Map([...reports].map(([k, r]) => [k, r.shape])))
   const roleName = (id: string) => world.model.roles.find(r => r.id === id)!.name
   const bundleNames = new Map((await all(ctx.baseTables, 'dash.report_bundle', ['bundle_name'])).map(r => [exact(r.row_id), text(r.bundle_name)]))
   const updatedAt = new Map(world.hand.map(h => [h.id, h.updated_at]))
   const areaWords = (role: string) => shadow.held.filter(h => h.role === role).map(h => h.area.parts.map(p => p.name).join(' · ')).join('; ')
-  const why = (w: { role?: string; person?: true; bundle: string | null }) =>
+  const why = (w: { role?: string; person?: true; bundle: string | null; every?: true }) => w.every ? `Every report, through ${roleName(w.role!)}` :
     `${w.person ? 'Given to them directly' : `Given to ${roleName(w.role!)}, for ${areaWords(w.role!)}`}${w.bundle ? `, through ${text(bundleNames.get(w.bundle))}` : ''}`
   const plants = new Map((await world.docs.rows('Plant')).map(p => [exact(p.row_id), exact(p.site)]))
   const sites = await world.names('Site')
   const stores = (await world.docs.rows('Site')).filter(openStore).map(s => ({ id: exact(s.row_id), name: text(s.name) })).sort((a, b) => a.name.localeCompare(b.name))
   const employees = new Map((await world.docs.rows('Employee')).map(e => [exact(e.row_id), e]))
-  const jobs = (await world.docs.list('Job Assignment', { fields: [], filters: [['employee', 'in', shadow.employees.map(e => exact(e.row_id))]], limit_page_length: 10_000 })).filter(j => holdsOn(j, world.today))
+  const jobs = (await world.docs.list('Job Assignment', { fields: ['site', 'reports_to', 'job', 'starts_on', 'ends_on'], filters: [['employee', 'in', shadow.employees.map(e => exact(e.row_id))]], limit_page_length: 10_000 })).filter(j => holdsOn(j, world.today))
   const employeePart = (id: string) => ({ name: text(employees.get(id)?.name), table: 'Employee', id, code: id })
   return {
     person, name: (await personNames(ctx, [person])).get(person) ?? 'This person', who: (await whoIs(ctx.baseTables, [person], world.today)).get(person)!,
@@ -336,7 +420,7 @@ export async function explainPerson(context: AccessContext) {
     reports: shadow.next.reports.map(key => ({ key, name: reports.get(key)!.name, why: shadow.nextWhy.get(key)!.map(why) })),
     today: { opens: shadow.today.opens, reports: shadow.today.reports.length, stores: new Set(Object.keys(shadow.today.places).map(s => plants.get(s))).size },
     next: { opens: shadow.next.opens, reports: shadow.next.reports.length, stores: new Set(Object.keys(shadow.next.places).map(s => plants.get(s))).size },
-    change: await changeWords(world, reports, found),
+    change: await changeWords(world, reports, found, shadow.everyReport),
     choices: world.model.roles.map(r => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name)),
     // The Correct form's places: every store, their job's first.
     places: { stores, default: jobs.map(j => exact(j.site)).find(id => stores.some(s => s.id === id)) ?? null },
@@ -355,19 +439,38 @@ async function population(world: ShadowWorld): Promise<string[]> {
   return [...new Set([...staff, ...world.hand.map(h => h.person), ...world.grants.rows.map(r => r.person ?? '').filter(Boolean)])].sort()
 }
 
-/** Who would gain or lose access: every person whose Dash would differ, in every group that applies. */
+/**
+ * The roles the platform enforces for each person, in one read where the platform offers it (#1277): asking person by
+ * person meant two database round trips for each of thousands of people.
+ */
+export async function platformRolesOf(people: Ctx['people'], persons: string[]): Promise<Map<string, readonly string[]>> {
+  if (people.rolesOfMany) {
+    const found = await people.rolesOfMany(persons)
+    return new Map(persons.map(person => [person, found[person] ?? []]))
+  }
+  const found = new Map<string, readonly string[]>()
+  for (const person of persons) found.set(person, await people.rolesOf(person))
+  return found
+}
+
+/**
+ * Who would gain or lose access: every person whose Dash would differ, in every group that applies. #1277: every Table
+ * is read whole once and every person's roles in one read; each person is then compared in memory, by the same code
+ * Explain runs for one person.
+ */
 export async function accessChanges(context: AccessContext) {
   const ctx = managersOnly(context)
-  const world = await shadowWorld(ctx.baseTables)
+  const world = await shadowWorld(ctx.baseTables, istToday(), { bulk: true })
   const reports = await reportNames(ctx)
   const shapes = new Map([...reports].map(([k, r]) => [k, r.shape]))
   const people = await population(world)
+  const platformRoles = await platformRolesOf(ctx.people, people)
   const roleName = new Map(world.model.roles.map(r => [r.id, r.name]))
   const changed = []
   for (const person of people) {
-    const { shadow, found } = await comparePerson(world, ctx, person, shapes)
+    const { shadow, found } = await comparePerson(world, platformRoles.get(person)!, person, shapes)
     if (!found.kind) continue
-    changed.push({ person, kind: found.kind, roles: [...new Set(shadow.held.map(h => roleName.get(h.role)!))].sort(), ...await changeWords(world, reports, found) })
+    changed.push({ person, kind: found.kind, roles: [...new Set(shadow.held.map(h => roleName.get(h.role)!))].sort(), ...await changeWords(world, reports, found, shadow.everyReport) })
   }
   const names = await personNames(ctx, changed.map(c => c.person))
   const who = await whoIs(ctx.baseTables, changed.map(c => c.person), world.today)

@@ -9,24 +9,24 @@ const row = (over: Record<string, string | null>) => ({ report: null, report_bun
 describe('reports under business roles', () => {
   it('gives a report given to the person, or to a business role they hold', () => {
     const rows = [row({ report: 'mine', person: 'p1' }), row({ report: 'vs', business_role: 'r-sm' }), row({ report: 'other', business_role: 'r-buyer' })]
-    expect([...businessReportsReaching({ person: 'p1', roles: ['r-sm'] }, rows, [])]).toEqual([
+    expect([...businessReportsReaching({ person: 'p1', roles: ['r-sm'], everyReport: [] }, rows, [], [])]).toEqual([
       ['mine', [{ person: true, bundle: null }]], ['vs', [{ role: 'r-sm', bundle: null }]],
     ])
   })
 
   it('gives nothing through a grant to a job or to Dash Reader', () => {
     const rows = [row({ report: 'vs', job: 'Store Manager' }), row({ report: 'st', role: 'Dash Reader' })]
-    expect(businessReportsReaching({ person: 'p1', roles: ['r-sm'] }, rows, []).size).toBe(0)
+    expect(businessReportsReaching({ person: 'p1', roles: ['r-sm'], everyReport: [] }, rows, [], []).size).toBe(0)
   })
 
   it('gives nothing through a row naming two receivers, or a report and a bundle', () => {
     const rows = [row({ report: 'vs', business_role: 'r-sm', role: 'Dash Reader' }), row({ report: 'st', report_bundle: 'b1', person: 'p1' }), row({ report: 'x', person: 'p2' })]
-    expect(businessReportsReaching({ person: 'p1', roles: ['r-sm'] }, rows, []).size).toBe(0)
+    expect(businessReportsReaching({ person: 'p1', roles: ['r-sm'], everyReport: [] }, rows, [], []).size).toBe(0)
   })
 
   it('gives a bundle\'s reports, saying through which bundle', () => {
-    const got = businessReportsReaching({ person: 'p1', roles: ['r-sm'] }, [row({ report_bundle: 'b1', business_role: 'r-sm' })],
-      [{ report_bundle: 'b1', report: 'vs' }, { report_bundle: 'b2', report: 'other' }])
+    const got = businessReportsReaching({ person: 'p1', roles: ['r-sm'], everyReport: [] }, [row({ report_bundle: 'b1', business_role: 'r-sm' })],
+      [{ report_bundle: 'b1', report: 'vs' }, { report_bundle: 'b2', report: 'other' }], [])
     expect([...got]).toEqual([['vs', [{ role: 'r-sm', bundle: 'b1' }]]])
   })
 
@@ -34,9 +34,9 @@ describe('reports under business roles', () => {
     const rows = [row({ report: 'vs', business_role: 'r-sm' }), row({ report: 'whole', business_role: 'r-sm' }), row({ report: 'open', business_role: 'r-sm' })]
     const shapes = new Map([['vs', 'Stores and subcategories'], ['whole', 'Whole stores'], ['open', 'No filter']])
     const part = [{ label: '9901 / Assigned subcategories', filters: { store: ['9901'], subcategory: ['010101001'] } }]
-    expect(businessReports('p1', { roles: ['r-sm'], places: [] }, rows, [], shapes).offered).toEqual(['open'])
-    expect(businessReports('p1', { roles: ['r-sm'], places: part }, rows, [], shapes).offered).toEqual(['open', 'vs'])
-    expect(businessReports('p1', { roles: ['r-sm'], places: [{ label: '9901', filters: { store: ['9901'] } }] }, rows, [], shapes).offered).toEqual(['open', 'vs', 'whole'])
+    expect(businessReports('p1', { roles: ['r-sm'], everyReport: [], places: [] }, rows, [], shapes).offered).toEqual(['open'])
+    expect(businessReports('p1', { roles: ['r-sm'], everyReport: [], places: part }, rows, [], shapes).offered).toEqual(['open', 'vs'])
+    expect(businessReports('p1', { roles: ['r-sm'], everyReport: [], places: [{ label: '9901', filters: { store: ['9901'] } }] }, rows, [], shapes).offered).toEqual(['open', 'vs', 'whole'])
   })
 })
 

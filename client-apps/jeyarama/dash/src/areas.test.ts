@@ -102,6 +102,9 @@ describe('who may edit sections when business roles decide', () => {
   it('keeps no floor area for a Floor Manager corrected to Department Manager, and still lets them move staff', async () => {
     const { tables, ctx, roleId } = await store('business_roles')
     tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], job: 'Floor Manager', floor: 'F1' }
+    // Even managing a department there holding the section: a department role on a floor job keeps nothing.
+    tables.Department = [{ row_id: 'D1', store: 'LKS', name: 'Sarees', manager: 'E1', starts_on: '2026-01-01', ends_on: null }]
+    tables['Department Section'] = [{ row_id: 'L1', store: 'LKS', department: 'D1', section: 'S1', starts_on: '2026-01-01', ends_on: null }]
     tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Department Manager') })
     expect(await sectionAreaOf(ctx, 'sm', section, today)).toBeUndefined()
     expect((await areasFor(ctx, tables.Employee, today)).map(a => a.kind)).toEqual(['floor'])
@@ -186,6 +189,25 @@ describe('who may edit sections when business roles decide', () => {
     tables['Department Section'] = []
     tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Department Manager') })
     expect(await mayEditOwnSection(ctx, 'sm', tables['Job Assignment'][0], today)).toBe(false)
+  })
+
+  // Coverage of the edges, each a rule: no job area, a role reaching past a store, an empty department.
+  it('gives someone whose job gives no area none, and a role reaching a cluster no section of a store', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], job: 'Staff', section: 'S1' }
+    expect(await sectionEditingAreas(ctx, tables.Employee, today)).toEqual([])
+    tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], job: 'Store Manager', section: null }
+    tables['dash.business_role_permission'].push({ row_id: 'p-x', business_role: roleId('Cluster Manager'), app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Section names and subcategories', reach: 'Area' })
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Cluster Manager') })
+    expect(await sectionEditingAreas(ctx, tables.Employee, today)).toEqual([])
+  })
+
+  it('gives a Store Manager corrected to Department Manager of an empty department no section', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables.Department = [{ row_id: 'D1', store: 'LKS', name: 'Silk', manager: 'E1', starts_on: '2026-01-01', ends_on: null }]
+    tables['Department Section'] = []
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Department Manager') })
+    expect(await sectionAreaOf(ctx, 'sm', section, today)).toBeUndefined()
   })
 })
 

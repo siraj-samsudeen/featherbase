@@ -99,6 +99,34 @@ test('Microsoft is set up and turned off from its line, which sets whether the p
   expect((await sql`select expects_microsoft_sign_in from person where row_id = ${ravi.user!}`)[0].expects_microsoft_sign_in).toBe(false)
 })
 
+// CI's flake on main (cea7e116e, 66bb2a22c): Turn Off clicked before the page had read the Person again after
+// Set Up sent the old version, and the server refused it as modified. The panel goes on from its own save's version.
+test('Turn Off right after Set Up, before the page reads the Person again, still turns it off', async ({ admin, createUser }) => {
+  await configureMicrosoft({ self_link: true })
+  const ravi = await createUser({ email: 'ravi.race.1267@bisquared.example' })
+  const page = `/api/table/Person/${encodeURIComponent(ravi.user!)}`
+  const real = globalThis.fetch
+  let first: Response | undefined
+  // The page's first read of the Person stands for every later one: the read after Set Up has not landed yet.
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    const path = new URL(String(url), 'http://localhost').pathname
+    if (path !== page || (init?.method ?? 'GET') !== 'GET') return real(url, init)
+    if (!first) first = await real(url, init)
+    return first.clone()
+  })
+  try {
+    await renderApp(rowHref('Person', ravi.user!), admin)
+    const panel = await screen.findByTestId('user-sign-in-methods')
+    const setUp = await openLine(panel, 'sign-in-line-microsoft')
+    await userEvent.click(within(setUp).getByRole('button', { name: 'Set Up' }))
+    await within(panel).findByTestId('user-method-expected-microsoft')
+    const off = await openLine(panel, 'user-method-expected-microsoft')
+    await userEvent.click(within(off).getByRole('button', { name: 'Turn Off' }))
+    expect(await within(panel).findByTestId('sign-in-line-microsoft')).toHaveTextContent('Not set up')
+    expect((await sql`select expects_microsoft_sign_in from person where row_id = ${ravi.user!}`)[0].expects_microsoft_sign_in).toBe(false)
+  } finally { spy.mockRestore() }
+})
+
 test("a StyleHR link's Change dialog renames its login ID; ended links wait behind Show N ended", async ({ admin, createUser }) => {
   await configureDelegated()
   const sara = await createUser({ email: 'sara.1267@example.com' })

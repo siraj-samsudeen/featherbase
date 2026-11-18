@@ -10,7 +10,7 @@ import {
   useParams,
   useRouter,
 } from '@tanstack/react-router'
-import { parseFilters, tableSlug, type ListLayout } from 'shared'
+import { parseFilters, tableHref, tableSlug, type ListLayout } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { SetPasswordPage } from './pages/SetPassword'
@@ -29,7 +29,7 @@ import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
-import { useMeta, type TableMeta } from './lib/meta'
+import { metaQuery, useMeta, type TableMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
@@ -69,11 +69,10 @@ import { WarehouseBrowser } from './pages/WarehouseBrowser'
 import { CopySetup } from './pages/CopySetup'
 import { CopyBar } from './components/CopyBar'
 import type { BrowseContext } from './lib/warehouse'
-import { ExploreView } from './pages/Explore'
-import { parseChain, parseSelect } from './lib/explore-steps'
+import { exploreTables, exploreToList } from './lib/linked-filters'
 import { NavPathBar } from './components/NavPathBar'
 import { PaneSplit, RecordPanel } from './components/RowPane'
-import { NavigationProvider, useAddressNavigation, useLocalNavigation } from './lib/navigation'
+import { NavigationProvider, useAddressNavigation } from './lib/navigation'
 import type { NavStep } from './lib/nav-path'
 
 // #642 (E4): a page with a frame policy of its own (the Sales Target report)
@@ -1104,54 +1103,27 @@ function NewRowPage() {
   return <div data-testid="doc-page"><FormView key={`${table}/new/${prefill ?? ''}`} table={table} name="" isNew prefill={parsedPrefill} /></div>
 }
 
-// #100 pattern 4: cross-filter Explore — pane chains over reference links,
-// where clicking rows IS the filter (static segment, before $table).
+// #1276 (B3): Explore is retired. An old Explore address opens the list it
+// showed last, filtered by the chain that led there (Linked to filters); one
+// with no starting Table opens All tables.
 const exploreRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'explore',
   validateSearch: (search: Record<string, unknown>) => ({
     root: searchString(search.root),
-    // Entry points (ListView split button, the row page's Map tab) deep-link a whole
-    // workspace: `chain` pre-builds step2/step3, `select` preselects pane 1.
-    // Both are validated the parseFilters way — malformed means absent.
     chain: searchString(search.chain),
     select: searchString(search.select),
   }),
-  component: ExplorePage,
+  beforeLoad: async ({ search }) => {
+    // What the address names is checked against the metadata as it is now: a Table
+    // or link removed since stops the chain there (one the viewer cannot open reads as gone).
+    const names = exploreTables(search)
+    const metas = await Promise.all(names.map((t) => metaQuery(t).queryFn().catch(() => undefined)))
+    const list = exploreToList(search, (t) => metas[names.indexOf(t)])
+    if (!list) throw redirect({ to: '/featherbase/admin/all-tables', replace: true })
+    throw redirect({ href: `${tableHref(list.table)}?filters=${encodeURIComponent(JSON.stringify(list.filters))}`, replace: true })
+  },
 })
-
-function ExplorePage() {
-  const { root, chain, select } = exploreRoute.useSearch()
-  const navigate = exploreRoute.useNavigate()
-  // #910: Explore keeps its own chain; its drill pane walks in memory.
-  const nav = useLocalNavigation({ screen: 'list', table: root || 'Explore' })
-  return (
-    <div data-testid="table-page">
-      <NavigationProvider value={nav}>
-      <PaneSplit>
-      {/* Params initialize state, they are not two-way bound — in-view step
-          and selection changes stay pure state (#87 keeps root shareable;
-          the chain/select params exist for the entry points). The key
-          remounts the workspace when a navigation hands us new params. */}
-      <ExploreView
-        key={`${root ?? ''}|${chain ?? ''}|${select ?? ''}`}
-        root={root}
-        initialChain={parseChain(chain)}
-        initialSelect={parseSelect(select)}
-        onRootChange={(r) =>
-          navigate({
-            // A root change is a fresh workspace — any deep-linked chain and
-            // selection belonged to the old root, so they leave the URL too.
-            search: { root: r || undefined, chain: undefined, select: undefined },
-            replace: true,
-          })
-        }
-      />
-      </PaneSplit>
-      </NavigationProvider>
-    </div>
-  )
-}
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,

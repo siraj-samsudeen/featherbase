@@ -313,7 +313,9 @@ function UnmappedTitle({ title, roles, onSaved }: { title: RolesAnswer['titles']
 // ---------- Explain A Person ----------
 
 type Kind = 'loses_dash' | 'gains_dash' | 'stores' | 'reports' | 'decision' | 'needs_dash_role'
-interface Change { kinds: Kind[]; stores_gained: Part[]; stores_lost: Part[]; stores_changed: Part[]; gained: Part[]; lost: Part[]; decisions: Part[] }
+interface Change { kinds: Kind[]; stores_gained: Part[]; stores_lost: Part[]; stores_changed: Part[]; gained: Part[]; lost: Part[]; decisions: Part[]
+  /** #1277: the roles that would give them every report, said as such rather than report by report. */
+  every_report?: string[] }
 interface Explained {
   person: string; name: string; who?: Who; employee: string | null
   header: { employee: Part[]; sites: Part[]; reports_to: Part[] }
@@ -559,7 +561,8 @@ function ChangeFacts({ change, who }: { change: Change; who?: Who | null }) {
   list('Would reach', change.stores_gained)
   list('Would stop reaching', change.stores_lost)
   list('Other subcategories at', change.stores_changed)
-  list('Would get', change.gained)
+  if (change.gained.length && change.every_report?.length) facts.push(`Would get every report, through ${change.every_report.join(' and ')}`)
+  else list('Would get', change.gained)
   list('Would lose', change.lost)
   list('Needs a decision:', change.decisions)
   const jobs = who?.jobs?.join(', ')

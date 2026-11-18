@@ -136,6 +136,9 @@ export interface RuntimeActionContext {
     /** #1046: the roles an enabled person holds now, read fresh; none for
      *  anyone else. For an app that gives things to roles, to say why. */
     rolesOf(person: string): Promise<readonly string[]>
+    /** #1277: rolesOf for many people at once, in a fixed number of round
+     *  trips: each id asked for, with exactly what rolesOf gives it. */
+    rolesOfMany(persons: string[]): Promise<Readonly<Record<string, readonly string[]>>>
     /** #1046: every role on the instance, platform roles left out. */
     roleNames(): Promise<readonly string[]>
     /** #1046: who is waiting for access to this app, oldest first. Only a

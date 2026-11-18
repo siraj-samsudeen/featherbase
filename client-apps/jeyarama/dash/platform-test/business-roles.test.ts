@@ -38,7 +38,7 @@ describe('business roles in shadow', () => {
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'site_kind'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'old_grants_one_receiver', 'every_report_and_bulk_comparison', 'site_kind'])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()
@@ -79,6 +79,10 @@ describe('business roles in shadow', () => {
       await act('map_title', { title: 'Staff', role: page.roles.find(r => r.name === 'Head Office')!.id })
       const explained = (await manager.post<{ result: { roles: { name: string; source: string }[] } }>('/api/app_reads/dash/explain_person', { payload: { person: reader.user } })).result
       expect(explained.roles.map(r => [r.name, r.source])).toEqual([['Store Manager', 'Corrected by hand'], ['Owner Director', 'Also given by hand']])
+      // #1277: Owner Director views every report; the whole-company comparison, with everyone's roles read at once, agrees.
+      expect((explained as unknown as { reports: { key: string; why: string[] }[] }).reports).toEqual([{ key: 'open', name: 'Company notices', why: ['Every report, through Owner Director'] }])
+      const changes = (await manager.post<{ result: { people: number; changed: number; groups: { people: { person: string }[] }[] } }>('/api/app_reads/dash/access_changes', { payload: {} })).result
+      expect([changes.people, changes.groups.flatMap(g => g.people).map(p => p.person)]).toEqual([1, []])
 
       expect(await todays()).toEqual(before)
       expect(await scope()).toEqual(scopeBefore)

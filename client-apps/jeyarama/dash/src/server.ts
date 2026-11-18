@@ -133,13 +133,13 @@ async function offeredReports(ctx: ScopedContext): Promise<ReportRecord[]> {
 /** The reader's places: a person_scope read's, else worked out from the core Tables. Unreadable means none. */
 async function placesHeld(ctx: ScopedContext): Promise<readonly Place[]> {
   if (ctx.authorization?.places?.length) return ctx.authorization.places
-  try { return (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles ?? [], istToday())).places } catch { return [] }
+  try { return (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles, istToday())).places } catch { return [] }
 }
 
 /** A person_scope read already holds the reader's places; any other read works them out. Unreadable means nothing. */
 async function reachesSomething(ctx: ScopedContext): Promise<boolean> {
   if (ctx.authorization?.places?.length) return true
-  try { return (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles ?? [], istToday())).places.length > 0 } catch { return false }
+  try { return (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles, istToday())).places.length > 0 } catch { return false }
 }
 
 /** The report the read is for: the one the payload names, or the reader's first. Undefined when it isn't one of theirs. */
@@ -477,7 +477,7 @@ export const reads = {
   /** Why this person's job reaches nothing, for the page's message. */
   async reach_problem(context: ReadContext) {
     const ctx = context as ScopedContext
-    return { problems: (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles ?? [], istToday())).problems }
+    return { problems: (await liveReach(ctx.baseTables as Base, ctx.user, ctx.roles, istToday())).problems }
   },
 
   /** The bar's store picker on the chosen report: the reader's stores by name, none on a report taking no store. */

@@ -236,6 +236,16 @@ describe('Who Would Gain Or Lose Access', () => {
     expect([all('changed-name').map(a => [a.textContent, a.getAttribute('href')]), all('group-loses_dash-count')[0].textContent])
       .toEqual([[['Siva', '?view=explain&person=st']], '1'])
   })
+
+  // #1277: a role viewing every report is said in plain words, not report by report.
+  it('says every report, through Owner Director, instead of listing each report gained', async () => {
+    const report = (name: string) => ({ name, table: 'dash.report', id: name })
+    answers = { access_changes: { people: 1, changed: 1, groups: [
+      { kind: 'reports', people: [{ person: 'od', name: 'Omana', who: null, kinds: ['reports'], roles: ['Owner Director'], stores_gained: [], stores_lost: [], stores_changed: [],
+        gained: [report('Sales'), report('Stock')], lost: [], decisions: [], every_report: ['Owner Director'] }] }] } }
+    const { all } = await render('changes')
+    expect(all('change-fact').map(f => f.textContent)).toEqual(['Would get every report, through Owner Director'])
+  })
 })
 
 describe('a bundle\'s record link', () => {

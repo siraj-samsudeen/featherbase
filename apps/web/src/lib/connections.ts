@@ -47,6 +47,6 @@ export function useBacklinks(table: string, enabled: boolean) {
     enabled: enabled && Boolean(table),
     staleTime: 60_000,
     queryFn: () =>
-      api.get<{ backlinks: Backlink[] }>(`/api/table/${encodeURIComponent(table)}:backlinks`),
+      api.get<{ backlinks: Backlink[]; holders?: string[] }>(`/api/table/${encodeURIComponent(table)}:backlinks`),
   })
 }
