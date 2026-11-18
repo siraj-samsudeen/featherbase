@@ -6,11 +6,12 @@ import { STARTING_ROLES } from './starting-roles'
 import { convertGrants } from './switch-over'
 import { accessPage, grantOptions, personLookup, whoIs } from './report-access-server'
 import { liveReach } from './access-source'
-import { SITE_STORE_FIELDS, every, mergePlaces, openStore } from './business-access'
+import { SITE_KINDS, openStore, siteStoreFields } from './site-kind'
+import { every, mergePlaces } from './business-access'
 import { businessAccessSummary, switchOverLog } from './switch-over-server'
 import { rolesForOldRole } from './switch-over'
 import { scopeProviders } from './server'
-import { personShadow, placesByStore, shadowWorld } from './business-roles-server'
+import { directDocuments, memoryDocuments, personShadow, placesByStore, shadowWorld } from './business-roles-server'
 import { businessModel } from './business-access'
 import { istToday } from './report'
 
@@ -64,7 +65,8 @@ function context(tables: Record<string, Row[]>, { user = 'mgr', roles = ['Report
   return {
     user, roles, payload, userName: 'Manju Manager',
     reject(message: string): never { throw new Error(message) },
-    baseTables: { list, available: async (table: string) => table in tables },
+    // A column is there when a row carries it, as the instance's Table has it or not (#1280).
+    baseTables: { list, available: async (table: string, columns: readonly string[] = []) => table in tables && columns.every(c => tables[table].some(row => c in row)) },
     documents: {
       list: async (table: string, args: { filters?: [string, string, unknown][] }) => table === 'dash.report'
         ? [{ report_key: 'vs', report_name: 'Vendor Sales', filter_shape: 'Stores and subcategories' }, { report_key: 'sales', report_name: 'Sales', filter_shape: 'One store and subcategories' }] : list(table, args),
@@ -1017,6 +1019,60 @@ describe('one reading of the switch per read', () => {
   })
 })
 
+// #1280 (owner, 18-Nov-2026): with Site's kind and status, a Planned or Closed store, a Group or any other kind is no store,
+// for business roles too: the role's own reader asks the instance about Site, as the provider and the comparison do.
+describe('site kind and status under business roles', () => {
+  async function kinds() {
+    const { tables } = await switched()
+    for (const site of tables.Site) Object.assign(site, { site_kind: site.is_store ? 'Store' : 'Head Office', status: 'Open' })
+    tables.Site.push(
+      { row_id: 'PLN', name: 'Planned', is_store: true, operating_region: 'East', site_kind: 'Store', status: 'Planned' },
+      { row_id: 'CLS', name: 'Closed', is_store: true, operating_region: 'East', site_kind: 'Store', status: 'Closed' },
+      { row_id: 'GHO', name: 'Group HO', is_store: true, operating_region: 'East', site_kind: 'Group', status: 'Open' },
+      { row_id: 'HIL', name: 'Hillview', is_store: false, operating_region: 'East', site_kind: 'Store', status: 'Open' })
+    for (const [plant, site] of [['9904', 'PLN'], ['9905', 'CLS'], ['9906', 'GHO'], ['9902', 'HIL']]) tables.Plant.push({ row_id: plant, site, plant_type: 'Store' })
+    return tables
+  }
+
+  it('gives a company-wide role and a region role only the open stores, and the comparison counts the same', async () => {
+    const tables = await kinds()
+    await giveRole(context(tables, { payload: { person: 'od', change: 'Also give', role: roleId(tables, 'Owner Director') } }) as never)
+    await giveRole(context(tables, { payload: { person: 'sm', change: 'Correct', role: roleId(tables, 'Regional Head') } }) as never)
+    expect(await scopeOf(tables, 'od')).toEqual({ 9901: null, 9902: null })
+    expect(await scopeOf(tables, 'sm')).toEqual({ 9901: null, 9902: null })
+    const explained = await explainPerson(context(tables, { payload: { person: 'sm' }, peopleRoles: { sm: ['Dash Reader'] } }) as never)
+    expect(explained.roles.map(r => [r.name, r.area.stores])).toEqual([['Regional Head', 2]])
+  })
+
+  // Codex round 2: the bulk comparison read Site without its kind, so it disagreed with Explain and live reach.
+  it('reads Site the same way in the bulk comparison and in Explain, with its kind and status where the instance has them', async () => {
+    const tables = await kinds()
+    const base = context(tables).baseTables as never
+    const bulk = await memoryDocuments(base, false).rows('Site')
+    const explain = await directDocuments(base, false).rows('Site')
+    expect(bulk).toEqual(explain)
+    expect(bulk.find(r => r.row_id === 'CLS')).toMatchObject({ site_kind: 'Store', status: 'Closed' })
+    expect(bulk.filter(openStore).map(r => r.row_id).sort()).toEqual(['HIL', 'LKS'])
+    for (const site of tables.Site) { delete site.site_kind; delete site.status }
+    const [bulkOld, explainOld] = [await memoryDocuments(base, false).rows('Site'), await directDocuments(base, false).rows('Site')]
+    expect(bulkOld).toEqual(explainOld)
+    expect(bulkOld.some(r => 'site_kind' in r)).toBe(false)
+  })
+
+  it('refuses to place a role at a site that is no open store', async () => {
+    const tables = await kinds()
+    for (const site of ['PLN', 'GHO'])
+      await expect(giveRole(context(tables, { payload: { person: 'sm', change: 'Also give', role: roleId(tables, 'Tester'), site } }) as never)).rejects.toThrow('Choose a store')
+  })
+
+  it('without the columns on the instance, is_store alone decides', async () => {
+    const tables = await kinds()
+    for (const site of tables.Site) { delete site.site_kind; delete site.status }
+    await giveRole(context(tables, { payload: { person: 'od', change: 'Also give', role: roleId(tables, 'Owner Director') } }) as never)
+    expect(Object.keys(await scopeOf(tables, 'od')).sort()).toEqual(['9901', '9904', '9905', '9906'])
+  })
+})
+
 // Owner, 18-Nov-2026: a head office site gives no store reach; someone off payroll but given a role by hand has not left.
 describe('head office sites and people off payroll', () => {
   it('gives a role placed at a head office site no store there', async () => {
@@ -1034,8 +1090,8 @@ describe('head office sites and people off payroll', () => {
     expect([before, (await whoIs(context(tables).baseTables as never, ['od'], today)).get('od')!.staff]).toEqual(['left', 'none'])
   })
 
-  // #1280's site_kind and the Site's status: the rule, ready for when every instance has the columns; is_store until then.
-  it('reads a site as an open store by its status, then its site_kind, then is_store', () => {
+  // #1280's site_kind and the Site's status: the rule, read where the instance's Site has the columns; is_store where not.
+  it('reads a site as an open store by its status, then its site_kind, then is_store', async () => {
     expect([
       openStore({ is_store: true, site_kind: 'Head Office' }), openStore({ is_store: false, site_kind: 'Store' }),
       openStore({ is_store: true, site_kind: '' }), openStore({ is_store: false, site_kind: null }), openStore({ is_store: true }),
@@ -1043,7 +1099,10 @@ describe('head office sites and people off payroll', () => {
       openStore({ is_store: true, site_kind: 'Store', status: 'Planned' }), openStore({ is_store: true, site_kind: 'Store', status: 'Closed' }),
       openStore({ is_store: false, site_kind: 'Store', status: 'Open' }), openStore({ is_store: true, status: '' }),
     ]).toEqual([false, true, true, false, true, false, false, false, false, true, true])
-    expect(SITE_STORE_FIELDS).toEqual(['is_store'])
+    expect(await siteStoreFields(true)).toEqual(['is_store', 'site_kind', 'status'])
+    expect(await siteStoreFields(Promise.resolve(false))).toEqual(['is_store'])
+    // Of the seven kinds only Store is a store, and a Group (virtual) never is.
+    expect(SITE_KINDS.filter(kind => openStore({ is_store: true, site_kind: kind }))).toEqual(['Store'])
   })
 
   // Codex round 8: a role placed by hand, with no job at all, reaches no store at a head office site either.

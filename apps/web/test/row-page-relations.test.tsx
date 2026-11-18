@@ -1,6 +1,6 @@
 // #910 checklist 15–16 and #800's record tab set: a row page leads with its
 // connections, as the same chips as the drill pane, directly under its name;
-// its tabs are Form · Map · Tree · Collaboration · Activity, and the tab is
+// its tabs are Form · Links · Map · Activity (#1273), and the tab is
 // part of the path. Unfinished edits survive switching tabs and the pane.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { tableHref } from 'shared'
@@ -14,11 +14,12 @@ const ENK = `${tableHref(SITE)}/row/ENK`
 const connections = () => screen.findByRole('region', { name: 'Connections' })
 const field = (name: string) => document.querySelector<HTMLInputElement>(`[data-field=${name}]`) as HTMLInputElement
 
-test('the row page offers Form, Map, Tree, Collaboration and Activity', async ({ admin }) => {
+test('the row page offers Form, Links, Map and Activity, and opens on Form', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(ENK, admin)
   const tabs = await screen.findByRole('tablist', { name: 'Record workspace' })
-  expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Form', 'Map', 'Tree', 'Collaboration', 'Activity'])
+  expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Form', 'Links', 'Map', 'Activity'])
+  expect(within(tabs).getByRole('tab', { name: 'Form' })).toHaveAttribute('aria-selected', 'true')
 })
 
 test('its region and its counted plants show under its name', async ({ admin }) => {
@@ -29,12 +30,14 @@ test('its region and its counted plants show under its name', async ({ admin }) 
   expect(await within(chips).findByRole('button', { name: `${PLANT} 3` })).toBeInTheDocument()
 })
 
-test('opening the plants shows them in the drill pane', async ({ admin }) => {
+// #1273 (D3): the chip jumps to the group's section on the Links tab, which takes focus.
+test('opening the plants shows them in their section on the Links tab', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(ENK, admin)
   fireEvent.click(await within(await connections()).findByRole('button', { name: `${PLANT} 3` }))
-  const pane = await screen.findByRole('complementary', { name: 'Enchakkal · ENK' })
-  await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(3))
+  const section = await screen.findByRole('region', { name: PLANT })
+  await waitFor(() => expect(within(section).getAllByTestId('linked-row')).toHaveLength(3))
+  await waitFor(() => expect(section.parentElement).toHaveFocus())
 })
 
 test('opening its region shows Kerala in the drill pane', async ({ admin }) => {

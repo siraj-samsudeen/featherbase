@@ -73,13 +73,13 @@ test('Enter on the focused Save button saves the edit, leaving the other fields 
   expect(await admin.get(url)).toMatchObject({ title: 'Northern crates', qty: 83, notes: 'Keep **this** description' })
 })
 
-test('Collaboration holds the attachments and Form the fields, and switching keeps the edit', async ({ admin }) => {
+test('Activity holds the attachments (#1273: Collaboration folded in) and Form the fields, and switching keeps the edit', async ({ admin }) => {
   await seed(admin)
   await open(admin)
   fireEvent.change(field('title'), { target: { value: 'unsaved edit' } })
   expect(screen.getByTestId('form-arranged')).toBeVisible()
   expect(await screen.findByTestId('attachments-panel')).not.toBeVisible()
-  await userEvent.click(screen.getByRole('tab', { name: 'Collaboration' }))
+  await userEvent.click(screen.getByRole('tab', { name: 'Activity' }))
   expect(screen.getByTestId('attachments-panel')).toBeVisible()
   expect(screen.getByTestId('form-arranged')).not.toBeVisible()
   await userEvent.click(screen.getByRole('tab', { name: 'Form' }))
@@ -119,7 +119,7 @@ for (const [status, message] of [
       await gate
       return Response.json({ error: { type: 'PermissionError', message } }, { status })
     }) as typeof fetch)
-    await userEvent.click(screen.getByRole('tab', { name: 'Collaboration' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Activity' }))
     const panel = await screen.findByTestId('attachments-panel')
     fireEvent.change(within(panel).getByTestId('attach-file-input'), { target: { files: [pickedFile('stock.txt', '37 cartons, not 83')] } })
     await waitFor(() => expect(within(panel).getByTestId('attach-file')).toHaveTextContent('Uploading…'))
@@ -134,7 +134,7 @@ test('an attachment uploads, its link serves the file, and removing it takes the
   await seed(admin)
   await useNodeMultipart()
   await open(admin)
-  await userEvent.click(screen.getByRole('tab', { name: 'Collaboration' }))
+  await userEvent.click(screen.getByRole('tab', { name: 'Activity' }))
   const panel = await screen.findByTestId('attachments-panel')
   fireEvent.change(within(panel).getByTestId('attach-file-input'), { target: { files: [pickedFile(fileName, '37 cartons, not 83')] } })
   const row = await waitFor(() => {

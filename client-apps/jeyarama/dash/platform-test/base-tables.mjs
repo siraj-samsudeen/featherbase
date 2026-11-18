@@ -11,7 +11,9 @@ export const JOBS = ['Staff', 'Team Leader', 'Department Manager', 'Floor Manage
 export const BASE_TABLES = [
   { name: 'Cluster', module: 'Organisation', id_pattern: 'field:code', title_column: 'name', columns: [data('code'), data('name'), data('cluster_manager')] },
   { name: 'Operating Region', module: 'Organisation', id_pattern: 'field:region', title_column: 'region', columns: [data('region')] },
-  { name: 'Site', module: 'Organisation', id_pattern: 'field:code', title_column: 'name', columns: [data('code'), data('name'), check('is_store'), ref('cluster', 'Cluster'), ref('operating_region', 'Operating Region')] },
+  { name: 'Site', module: 'Organisation', id_pattern: 'field:code', title_column: 'name', columns: [data('code'), data('name'), check('is_store'), ref('cluster', 'Cluster'), ref('operating_region', 'Operating Region'),
+    // #1280: as production holds them. An instance may lack these two; Dash then reads is_store alone.
+    choice('status', 'Open', 'Planned', 'Closed'), choice('site_kind', 'Store', 'Warehouse', 'Head Office', 'Group', 'Collection Centre', 'Central Kitchen', 'Exhibition')] },
   { name: 'Plant', module: 'Organisation', id_pattern: 'field:plant_code', title_column: 'plant_code', columns: [data('plant_code'), choice('plant_type', 'Store', 'Shop-in-shop', 'Warehouse', 'E-commerce fulfilment'), ref('site', 'Site'), data('plant_name')] },
   { name: 'Division', module: 'Organisation', id_pattern: 'field:division', title_column: 'division', columns: [data('division')] },
   { name: 'Subdivision', module: 'Organisation', id_pattern: 'field:subdivision', title_column: 'subdivision', columns: [data('subdivision'), ref('division', 'Division')] },

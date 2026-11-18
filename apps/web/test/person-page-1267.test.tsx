@@ -29,8 +29,9 @@ test('the details lead the left column with Sign-In and Identifiers under them; 
   const fields = screen.getByTestId('form-fields')
   expect(fields).not.toHaveTextContent('Expects Google sign-in')
   expect(fields).not.toHaveTextContent('Expects Microsoft sign-in')
-  // The chips above the form are gone from a Person's page.
-  expect(screen.queryByRole('region', { name: 'Connections' })).not.toBeInTheDocument()
+  // #1273 (verifier, 18-Nov): a Person's page shows its link chips under its header, as the
+  // relational-navigation design does, so a chip can jump to its section on Links (D3).
+  expect(await screen.findByRole('region', { name: 'Connections' })).toBeInTheDocument()
 })
 
 test('the activity glance shows the three newest events, newest first, and leads to the Activity tab', async ({ admin, createUser }) => {

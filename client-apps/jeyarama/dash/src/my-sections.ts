@@ -6,6 +6,7 @@ import { istToday } from './report.ts'
 import { DEPARTMENT, DEPARTMENT_SECTION, authorityRows, mayEditOwnSection, mayMove, sectionAreaOf } from './areas.ts'
 import { EMPLOYEE_STATUS, SECTION_STATUS, day, exact, holdsOn, text } from './values.ts'
 import { whoIs, type Who } from './report-access-server.ts'
+import { openStore, siteKindRead, siteStoreFields } from './site-kind.ts'
 
 export type Row = Record<string, unknown>
 // The platform's helpers, structurally: this module imports nothing from the platform.
@@ -370,7 +371,7 @@ export const reads = {
     const jobs = await myJobs(ctx, employees, today)
     const sites = unique(jobs.map(job => exact(job.site)))
     const held = unique(jobs.map(job => exact(job.section)))
-    const siteRows = sites.length ? byId(await list(ctx, T.site, ['name', 'is_store'], [['row_id', 'in', sites]])) : new Map<string, Row>()
+    const siteRows = sites.length ? byId(await list(ctx, T.site, ['name', ...await siteStoreFields(siteKindRead(ctx.baseTables))], [['row_id', 'in', sites]])) : new Map<string, Row>()
     const sections = sites.length ? await all(ctx, T.section, SECTION_FIELDS, [['site', 'in', sites]]) : []
     const sectionsById = byId(sections)
     const floors = sites.length ? byId(await all(ctx, T.floor, ['name', 'site'], [['site', 'in', sites]])) : new Map<string, Row>()
@@ -409,7 +410,7 @@ export const reads = {
       const sectionChange = pending.find(p => isApplied(p) && about(p).kind === 'section' && exact(p.result_row) === exact(job.row_id))
       const reviewer = await reviewingNow(ctx, job, ctx.user)
       views.push({
-        id: exact(job.row_id), job: text(job.job), store: text(siteRows.get(site)?.name), store_id: site, reports_to_code: exact(job.reports_to) || null, is_store: siteRows.get(site)?.is_store === true,
+        id: exact(job.row_id), job: text(job.job), store: text(siteRows.get(site)?.name), store_id: site, reports_to_code: exact(job.reports_to) || null, is_store: siteRows.has(site) && openStore(siteRows.get(site)!),
         reports_to: reportsTo,
         waiting_for: reviewer.name,
         // #1219: who reviews this job's changes, with who they are.
@@ -597,7 +598,7 @@ async function sectionInStore(ctx: BaseContext, id: unknown, site: string): Prom
 /** The frozen part of every proposal's description. */
 export async function aboutTheJob(ctx: ActionContext, job: Row, employee: Row): Promise<Pick<About, 'store' | 'site' | 'maker_name' | 'manager_name' | 'job_assignment'>> {
   const site = exact(job.site)
-  const [store] = await list(ctx, T.site, ['name', 'is_store'], [['row_id', '=', site]])
+  const [store] = await list(ctx, T.site, ['name'], [['row_id', '=', site]])
   const { manager } = await approversOf(ctx, job)
   return { store: text(store?.name), site, maker_name: text(employee.name), manager_name: manager, job_assignment: exact(job.row_id) }
 }
