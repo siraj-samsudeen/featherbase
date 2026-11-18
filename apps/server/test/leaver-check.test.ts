@@ -56,7 +56,13 @@ describe('who counts as a leaver', () => {
   test('an exit date that has passed disables, with the date as the reason', async () => {
     const plan = planLeavers([who('a', { record_ids: ['1'] })], [rec('1', 'C-1', { exit_date: '2026-10-09', movement_active: false })], TODAY, TODAY)
     expect(plan.refused).toBeNull()
-    expect(plan.to_disable).toEqual([{ person: 'a', full_name: null, reason: 'exit date 09-Oct-2026 has passed', basis: 'exit date' }])
+    expect(plan.to_disable).toEqual([{ person: 'a', full_name: null, reason: 'exit date 09-Oct-2026 has passed', basis: 'exit date', left_on: '2026-10-09' }])
+  })
+
+  // #1271: the report's leaving date is the latest exit date that has passed, never one still to come.
+  test('a leaver decided another way carries no future exit date as its leaving date', async () => {
+    const plan = planLeavers([who('a', { record_ids: ['1'] })], [rec('1', 'C-1', { exit_date: '2099-01-01', movement_active: false })], TODAY, TODAY)
+    expect(plan.to_disable).toEqual([expect.objectContaining({ person: 'a', basis: 'inactive', left_on: null })])
   })
 
   test('an exit date still in the future does not', async () => {
@@ -64,15 +70,37 @@ describe('who counts as a leaver', () => {
     expect(plan.to_disable).toEqual([])
   })
 
-  test('not being on payroll disables, unless the person joined too recently to have been paid', async () => {
-    const people = [who('old', { record_ids: ['1'] }), who('new', { record_ids: ['2'] })]
+  // #1271: owner-directors are off the payroll and have not left.
+  test('not being on payroll never disables: it is listed for review, and a recent joiner is not even that', async () => {
+    const people = [who('old', { record_ids: ['1'] }), who('new', { record_ids: ['2'] }), who('director', { record_ids: ['3'], privileged: true })]
     const records = [
       rec('1', 'C-1', { payroll_active: false, date_of_joining: '2025-01-01' }),
       rec('2', 'C-2', { payroll_active: false, date_of_joining: '2026-10-01' }),
+      rec('3', 'C-3', { payroll_active: false, date_of_joining: '2010-01-01' }),
     ]
     const plan = planLeavers(people, records, TODAY, TODAY)
-    expect(plan.to_disable.map((l) => [l.person, l.basis])).toEqual([['old', 'not on payroll']])
+    expect(plan.to_disable).toEqual([])
+    expect(plan.privileged_leavers).toEqual([])
+    expect(plan.not_on_payroll).toEqual([{ person: 'old', full_name: null }, { person: 'director', full_name: null }])
     expect(plan.recent_joiners).toEqual(['new'])
+  })
+
+  test('off the payroll with an exit date passed, or marked inactive, is a leaver for that reason', async () => {
+    const people = [who('gone', { record_ids: ['1'] }), who('off', { record_ids: ['2'] })]
+    const records = [
+      rec('1', 'C-1', { payroll_active: false, exit_date: '2026-09-01' }),
+      rec('2', 'C-2', { payroll_active: false, movement_active: false }),
+    ]
+    const plan = planLeavers(people, records, TODAY, TODAY)
+    expect(plan.to_disable.map((l) => [l.person, l.basis])).toEqual([['gone', 'exit date'], ['off', 'inactive']])
+    expect(plan.not_on_payroll).toEqual([])
+  })
+
+  test('one record that has left and another only off the payroll is listed for review, not disabled', async () => {
+    const records = [rec('1', 'C-9', { movement_active: false }), rec('2', 'C-9', { payroll_active: false })]
+    const plan = planLeavers([who('mixed', { codes: ['C-9'] })], records, TODAY, TODAY)
+    expect(plan.to_disable).toEqual([])
+    expect(plan.not_on_payroll.map((o) => o.person)).toEqual(['mixed'])
   })
 
   test('a code shared by several records is a leaver only when every record has left', async () => {
@@ -80,10 +108,10 @@ describe('who counts as a leaver', () => {
       rec('1', 'C-7', { payroll_active: false }),
       rec('2', 'C-7'),
       rec('3', 'C-8', { movement_active: false }),
-      rec('4', 'C-8', { payroll_active: false }),
+      rec('4', 'C-8', { exit_date: '2026-09-01' }),
     ]
     const plan = planLeavers([who('shared-active', { codes: ['C-7'] }), who('shared-gone', { codes: ['c-8 '] })], records, TODAY, TODAY)
-    expect(plan.to_disable.map((l) => [l.person, l.reason])).toEqual([['shared-gone', 'marked inactive in StyleHR']])
+    expect(plan.to_disable.map((l) => [l.person, l.reason])).toEqual([['shared-gone', 'exit date 01-Sep-2026 has passed']])
   })
 
   test('a record number decides over the code', async () => {
@@ -350,7 +378,7 @@ describe('the check on a live instance', () => {
 })
 
 describe('the leaver plan as printed for logs', () => {
-  const leaver = (person: string, basis: 'exit date' | 'inactive' | 'not on payroll') => ({ person, full_name: person, reason: 'x', basis })
+  const leaver = (person: string, basis: 'exit date' | 'inactive') => ({ person, full_name: person, reason: 'x', basis, left_on: null })
   const plan = {
     today: '2026-10-24',
     latest_feed_day: '2026-10-23',
@@ -361,6 +389,7 @@ describe('the leaver plan as printed for logs', () => {
     privileged_leavers: [leaver('boss', 'exit date')],
     not_found: ['p1', 'p2'],
     recent_joiners: ['p3'],
+    not_on_payroll: [{ person: 'p4', full_name: null }],
   }
 
   test('a plan is summarised by counts and basis, with no names', async () => {
@@ -371,6 +400,7 @@ describe('the leaver plan as printed for logs', () => {
       'leaver check: would disable 3 (exit date 2, inactive 1)',
       'leaver check: System Managers who have left, not disabled: 1',
       'leaver check: no StyleHR record found: 2; recent joiners not yet on payroll: 1',
+      'leaver check: not on payroll but no exit date, listed for review only: 1',
     ])
   })
 
