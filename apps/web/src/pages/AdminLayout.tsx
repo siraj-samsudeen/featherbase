@@ -4,7 +4,12 @@ import { attachRailTips, railMark, sidebarWords } from '../lib/sidebar-rail'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
-import { SIDEBAR_VIEWS_KEY } from '../lib/nav-settings'
+import { SIDEBAR_VIEWS_KEY, useNavigationSettings } from '../lib/nav-settings'
+import { pathHref } from '../lib/navigation'
+import { encodePath, type NavPath } from '../lib/nav-path'
+import { useWalkLabels } from '../components/NavPathBar'
+import { RecentSub } from '../components/RecentSub'
+import { Route } from 'lucide-react'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
@@ -426,9 +431,19 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   const sidebarFrequent = historyReady && user
     ? uniqueByDisplay([...recentSlots, ...offered(frequentActions(user.row_id, 12))]).slice(recentSlots.length, recentSlots.length + 2)
     : []
-  const sidebarRecent = sidebarFrequent.length ? recentSlots : sidebarCandidates
+  const sidebarEntries = sidebarFrequent.length ? recentSlots : sidebarCandidates
+  // #1288: a remembered walk is one entry among the recent pages and records, in time order, in the same slots.
+  const navSettings = useNavigationSettings()
+  const walkLabels = useWalkLabels(navSettings.walks.map((w) => w.path))
+  const sidebarRecent: SidebarRecentItem[] = (historyReady && user
+    ? [
+        ...sidebarEntries.map((entry) => ({ kind: 'entry' as const, entry, at: entry.visits[entry.visits.length - 1] ?? 0 })),
+        ...navSettings.walks.map((walk, i) => ({ kind: 'walk' as const, path: walk.path, label: walkLabels[i], at: walk.at })),
+      ].sort((a, b) => b.at - a.at).slice(0, sidebarFrequent.length ? recentSlots.length : SIDEBAR_RECENT_CAP)
+    : [])
+  const openWalk = (path: NavPath) => router.history.push(pathHref(path))
   // Two rows of one name (a list under two filters) each say what sets them apart.
-  const sharedRecentNames = sharedNames([...sidebarRecent, ...sidebarFrequent])
+  const sharedRecentNames = sharedNames([...sidebarEntries, ...sidebarFrequent])
 
   function recordSearch(q: string) {
     if (user && q) recordAction(user.row_id, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
@@ -878,9 +893,13 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
               buffer the command bar reads. */}
           {rail && (sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
             <RailFold label="Recently Opened" icon={Clock} testid="sidebar-recents" tone="slate">
-              {(close) => [...sidebarRecent, ...sidebarFrequent].map((r) => (
-                <RailMenuItem key={r.key} close={close} onSelect={() => openRecent(r)}>
-                  <span className="truncate"><EntryLabel entry={r} /><RecentDiffers entry={r} shared={sharedRecentNames} /></span>
+              {(close) => [...sidebarRecent, ...sidebarFrequent.map((entry) => ({ kind: 'entry' as const, entry, at: 0 }))].map((item) => item.kind === 'walk' ? (
+                <RailMenuItem key={`walk:${encodePath(item.path)}`} close={close} onSelect={() => openWalk(item.path)}>
+                  <span className="truncate" data-testid="sidebar-walk">{item.label}</span>
+                </RailMenuItem>
+              ) : (
+                <RailMenuItem key={item.entry.key} close={close} onSelect={() => openRecent(item.entry)}>
+                  <span className="truncate"><EntryLabel entry={item.entry} /><RecentDiffers entry={item.entry} shared={sharedRecentNames} /></span>
                 </RailMenuItem>
               ))}
             </RailFold>
@@ -889,8 +908,10 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
             <div className="px-2 pt-3" data-testid="sidebar-recents">
               {/* A heading, not a link: small, grey, regular weight (#1253). */}
               <h2 className={SIDEBAR_HEADING} data-testid="sidebar-recents-heading">Recently Opened</h2>
-              {sidebarRecent.map((r) => (
-                <SidebarRecentRow key={r.key} entry={r} shared={sharedRecentNames} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
+              {sidebarRecent.map((item) => item.kind === 'walk' ? (
+                <SidebarWalkRow key={`walk:${encodePath(item.path)}`} label={item.label} at={item.at} href={pathHref(item.path)} onOpen={() => { setSidebarOpen(false); openWalk(item.path) }} />
+              ) : (
+                <SidebarRecentRow key={item.entry.key} entry={item.entry} shared={sharedRecentNames} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
               ))}
               {sidebarFrequent.length > 0 && (
                 <h2 className="px-2 pb-0.5 pt-2 text-xs text-ink-subtle">
@@ -1009,6 +1030,36 @@ const SIDEBAR_LINE = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-l
 
 /** Recently opened holds at most this many items, Frequent included. */
 const SIDEBAR_RECENT_CAP = 5
+
+/** #1288: Recently Opened holds recent pages and records, and the person's remembered walks. */
+type SidebarRecentItem =
+  | { kind: 'entry'; entry: RecentEntry; at: number }
+  | { kind: 'walk'; path: NavPath; label: string; at: number }
+
+/** #1288: a remembered walk in Recently Opened: a path mark in the sidebar's muted tone, the walk by its steps'
+ *  names, and when it was taken. It opens the whole walk, its path bar and every step with it. */
+function SidebarWalkRow({ label, at, href, onOpen }: { label: string; at: number; href: string; onOpen: () => void }) {
+  const when = at ? ago(at) : ''
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+        e.preventDefault()
+        onOpen()
+      }}
+      data-testid="sidebar-walk"
+      title={`${label} · opens the whole walk`}
+      className={touchRowClasses(`${SIDEBAR_LINE} text-ink hover:bg-border/50`)}
+    >
+      <span aria-hidden data-testid="walk-tile" className={`grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-current/15 ${GROUP_TONE.slate}`}>
+        <Route size={14} />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {when && <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{when}</span>}
+    </a>
+  )
+}
 
 export function SidebarGroup({ heading, testid, items, first = false, tone = 'slate' }: {
   heading: string
@@ -1271,7 +1322,7 @@ function differs(entry: RecentEntry, shared: Set<string>): boolean {
  *  (the rail's menu, which has no tile to name the Table). */
 function RecentDiffers({ entry, shared }: { entry: RecentEntry; shared: Set<string> }) {
   if (!differs(entry, shared)) return null
-  return <span className="text-ink-subtle" data-testid="recent-differs">{'\u00a0· '}{displayEntry(entry).sub}</span>
+  return <span className="text-ink-subtle" data-testid="recent-differs">{'\u00a0· '}<RecentSub entry={entry} /></span>
 }
 
 function SidebarRecentRow({
@@ -1319,7 +1370,7 @@ function SidebarRecentRow({
           the tile names the Table, the tooltip says it all. */}
       <span className="min-w-0 flex-1 truncate">
         {differs(entry, shared)
-          ? <span data-testid="recent-differs">{shown.sub}</span>
+          ? <span data-testid="recent-differs"><RecentSub entry={entry} /></span>
           : <EntryLabel entry={entry} />}
       </span>
       {frequent && <span aria-hidden className={`text-xs ${GROUP_TONE.amber}`}>★</span>}
@@ -1353,7 +1404,7 @@ function RecentRow({
       <KindIcon kind={shown.kind} tone="grey" />
       <span className="min-w-0 flex-1 truncate">
         <EntryLabel entry={entry} />
-        {shown.sub && <span className="ml-2 text-xs text-ink-subtle">{shown.sub}</span>}
+        {shown.sub && <span className="ml-2 text-xs text-ink-subtle"><RecentSub entry={entry} /></span>}
       </span>
       <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{ago(last)}</span>
     </button>

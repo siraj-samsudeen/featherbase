@@ -499,13 +499,13 @@ describe('relational-navigation', () => {
     await step('the user signs in today and looks at their recent paths', async () => {
       signInAfresh()
       await openList(user, SITE)
-      fireEvent.click(await screen.findByRole('button', { name: 'Recent paths' }))
-      items = await screen.findAllByRole('menuitem')
+      // #1288: remembered walks are in the sidebar's Recently Opened.
+      items = await screen.findAllByTestId('sidebar-walk', {}, { timeout: 10_000 })
     })
     await step('that path is listed by its names', async () => {
-      // The names arrive after the menu opens; an ellipsis stands in until then.
+      // The names arrive after the sidebar draws; an ellipsis stands in until then.
       await waitFor(() => {
-        items = screen.getAllByRole('menuitem')
+        items = screen.getAllByTestId('sidebar-walk')
         expect(items.map((i) => (i.textContent ?? '').replace(/\s+/g, ' '))).toEqual(expect.arrayContaining([expect.stringContaining('Enchakkal Supermarket')]))
       })
     })

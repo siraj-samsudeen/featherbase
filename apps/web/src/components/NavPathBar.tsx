@@ -8,7 +8,8 @@ import { useStepLabels } from '../lib/step-labels'
 // #910 checklist 11–14: the path bar of a list or row page. Its steps are
 // named per viewer; Back, Forward and each step move along the path (each a
 // browser history entry); Copy link copies this step's address; Recent paths
-// offers the person's last ten walks, remembered in their settings.
+// offers the person's last ten walks, remembered in their settings (and in the
+// sidebar's Recently Opened, #1288).
 
 export function NavPathBar() {
   // Drawn only by the list and row pages, inside their walk's provider.
@@ -23,15 +24,8 @@ export function NavPathBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, settings.ready])
   // #1013: one step is no path, and would only repeat the page's own heading.
-  // Only the way back to remembered walks stays, so they survive signing in.
-  if (path.steps.length < 2) {
-    if (settings.recent.length === 0) return null
-    return (
-      <div className="mb-3 flex justify-end">
-        <RecentWalks paths={settings.recent} onPick={nav.open} />
-      </div>
-    )
-  }
+  // #1288: remembered walks are reopened from the sidebar's Recently Opened, so nothing shows here.
+  if (path.steps.length < 2) return null
   return (
     <div className="mb-3">
       <PathBar
@@ -47,14 +41,19 @@ export function NavPathBar() {
   )
 }
 
-function RecentWalks({ paths, onPick }: { paths: NavPath[]; onPick: (path: NavPath) => void }) {
+/** The walks' names, step by step: "Category › Sarees › Rows" (#1288: the sidebar names them so too). */
+export function useWalkLabels(paths: NavPath[]): string[] {
   const walks = paths.map((p) => p.steps.slice(0, p.at + 1))
   const labels = useStepLabels(walks.flat())
   let offset = 0
-  const items = walks.map((steps, i) => {
+  return walks.map((steps) => {
     const label = labels.slice(offset, offset + steps.length).join(' › ')
     offset += steps.length
-    return { key: String(i), label }
+    return label
   })
+}
+
+function RecentWalks({ paths, onPick }: { paths: NavPath[]; onPick: (path: NavPath) => void }) {
+  const items = useWalkLabels(paths).map((label, i) => ({ key: String(i), label }))
   return <RecentPaths paths={items} onPick={(k) => onPick(paths[Number(k)])} />
 }
