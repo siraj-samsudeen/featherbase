@@ -1324,7 +1324,7 @@ function ListSum({ table, filters, column, refreshedAt }: {
   return (
     <span className="text-xs text-ink-muted" data-testid="list-sum">
       {/* A total answers "how big is this?": Indian grouping, the readable ₹ ladder for money (ADR 750). */}
-      Σ {column.label}: {column.column_type !== 'Currency' ? fmtCount(Number(sum.data.sum), column.column_type === 'Int' ? 0 : 2)
+      Σ {column.label}: {column.column_type !== 'Currency' ? fmtCount(Number(sum.data.sum), column.column_type === 'Int' ? 0 : settings.float_precision)
         : settings.currency === 'INR' ? fmtINR(Number(sum.data.sum)) : formatValue('Currency', Number(sum.data.sum), settings)}
     </span>
   )
