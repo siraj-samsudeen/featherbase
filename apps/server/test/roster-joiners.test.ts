@@ -14,6 +14,7 @@ import { enqueue, loadJobs, runOneJob } from '../src/jobs'
 import { main } from '../src/cli'
 import { runMain } from './command-io'
 import { makeTable } from './fixtures'
+import { invalidateMeta } from '../src/meta'
 import { configureDelegated } from './identity-fixtures'
 
 const TABLE = 'Crew List'
@@ -191,7 +192,7 @@ describe('a new joiner reaches the roster with their job', () => {
     await setUp(admin)
     warehouse([{ key: '8001', depot: '9999' }, { key: '8002', depot: null }])
     const dry = (await planRosterLink('stylehr'))!
-    expect(formatRosterLink(dry)).toContain(`roster joiners ${TABLE}: would add 2 (with a job 0, job held 2); held 0 (none); limit 10`)
+    expect(formatRosterLink(dry)).toContain(`roster joiners ${TABLE}: would add 2 (with a job 0, of them with a manager 0, job held 2); held 0 (none); limit 10`)
     const run = await runRosterLink('stylehr')
     expect(run.joiners).toMatchObject({ added: 2, jobs: 0 })
     expect(await jobsOf('ZZ-TT-8001')).toEqual([])
@@ -207,6 +208,37 @@ describe('a new joiner reaches the roster with their job', () => {
   })
 })
 
+describe('a team that joins together', () => {
+  test('a joiner whose manager joins in the same run reports to them, whichever comes first in the feed', async ({ admin }) => {
+    await setUp(admin)
+    warehouse([{ key: '8002', manager: 'TT-8001' }, { key: '8001', title: 'Deck Boss' }, { key: '8003', manager: 'TT-8001' }])
+    const run = await runRosterLink('stylehr')
+    expect(run.joiners).toMatchObject({ added: 3, jobs: 3 })
+    expect((await jobsOf('ZZ-TT-8002'))[0]).toMatchObject({ boss: 'ZZ-TT-8001' })
+    expect((await jobsOf('ZZ-TT-8003'))[0]).toMatchObject({ boss: 'ZZ-TT-8001' })
+    expect((await jobsOf('ZZ-TT-8001'))[0]).toMatchObject({ boss: null, role: 'Boss' })
+  })
+
+  test('a manager already on the roster is found by their sign-in ID', async ({ admin }) => {
+    await setUp(admin, [crewRow(1, { crew_no: 'TT-8001' })])
+    warehouse([{ key: '7001', code: 'TT-8001' }, { key: '8002', manager: 'TT-8001' }])
+    await runRosterLink('stylehr')
+    expect((await jobsOf('ZZ-TT-8002'))[0]).toMatchObject({ boss: 'ZZ-TT-7001' })
+  })
+
+  test('on a roster whose ids are not its codes, the job names the saved row', async ({ admin }) => {
+    await setUp(admin)
+    await sql`update table_def set id_pattern = 'hash' where name = ${TABLE}`
+    invalidateMeta(TABLE)
+    warehouse([{ key: '8001' }, { key: '8002', manager: 'TT-8001' }])
+    const run = await runRosterLink('stylehr')
+    expect(run.joiners).toMatchObject({ added: 2, jobs: 2, failed: [] })
+    const [boss] = await sql`select row_id from featherbase.crew_list where crew_code = 'ZZ-TT-8001'`
+    const [hand] = await sql`select row_id from featherbase.crew_list where crew_code = 'ZZ-TT-8002'`
+    expect(await sql`select crew, boss from featherbase.crew_job where job_ref = 'ZZ-TT-8002-SHOP1-1'`).toEqual([{ crew: hand.row_id, boss: boss.row_id }])
+  })
+})
+
 describe('who is never added', () => {
   test('a leaver, someone inactive, someone off the payroll who is no recent joiner, and anyone a row already holds', async ({ admin }) => {
     await setUp(admin, [crewRow(1, { crew_state: 'Gone' }), crewRow(2, { crew_state: 'Test record' }), crewRow(3)])
@@ -218,6 +250,7 @@ describe('who is never added', () => {
       { key: '8003', payroll: false, joined: '2005-01-01' }, // off the payroll, long ago: an owner-director with no row
       { key: '8004', payroll: false, joined: daysAgo(3) }, // a recent joiner not yet paid: added
       { key: '8005', exit: PAST, present: today(), active: false }, // the rule holds them at work, but they are no plain joiner
+      { key: '8006', payroll: null, joined: '2005-01-01' }, // payroll unknown: no evidence they are paid
     ])
     const run = await runRosterLink('stylehr')
     expect(run.joiners).toMatchObject({ added: 1 })
@@ -230,6 +263,30 @@ describe('who is never added', () => {
     const plan = (await planRosterLink('stylehr'))!.joiners!
     expect(plan.joiners).toEqual([])
     expect(plan.held).toEqual([{ record: '8001', reason: 'code_taken' }, { record: '8002', reason: 'no_code' }, { record: '8003', reason: 'no_name' }])
+  })
+
+  test('a record the feed holds twice must agree with itself and qualify every time', async ({ admin }) => {
+    await setUp(admin)
+    warehouse([
+      { key: '8001', exit: PAST }, { key: '8001' }, // one copy says left
+      { key: '8002', depot: '9001' }, { key: '8002', depot: '9002' }, // two stores
+      { key: '8003' }, { key: '8003' }, // the same twice
+    ])
+    const plan = (await planRosterLink('stylehr'))!.joiners!
+    expect(plan.joiners.map((j) => j.record)).toEqual(['8003'])
+    expect(plan.held).toEqual([{ record: '8002', reason: 'conflicting_records' }])
+  })
+
+  test('a sign-in ID a row already has, or two joiners share, is held', async ({ admin }) => {
+    await setUp(admin, [crewRow(1, { crew_no: 'TT-8001' })])
+    warehouse([{ key: '7001', code: 'TT-8001' }, { key: '8001', region: 'YY' }, { key: '8002', code: 'TT-9', region: 'AA' }, { key: '8003', code: 'tt-9', region: 'BB' }])
+    const plan = (await planRosterLink('stylehr'))!.joiners!
+    expect(plan.joiners).toEqual([])
+    expect(plan.held).toEqual([
+      { record: '8001', reason: 'sign_in_id_taken' },
+      { record: '8002', reason: 'sign_in_id_shared' },
+      { record: '8003', reason: 'sign_in_id_shared' },
+    ])
   })
 
   test('a second run adds nothing, and a job id already taken is held', async ({ admin }) => {

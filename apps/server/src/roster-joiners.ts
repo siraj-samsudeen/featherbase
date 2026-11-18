@@ -164,6 +164,8 @@ export interface JoinerFacts {
   records: Set<string>
   /** Every roster row's code, in any status. */
   codes: Set<string>
+  /** Every roster row's sign-in ID (lower case), in any status. */
+  signInIds: Set<string>
   /** Current rows: how many, and each manager code's one row (null when shared). */
   current: number
   managers: Map<string, string | null>
@@ -175,7 +177,7 @@ export interface JoinerFacts {
   jobIds: Set<string>
 }
 
-export type JoinerHeld = 'no_code' | 'code_taken' | 'no_name'
+export type JoinerHeld = 'no_code' | 'code_taken' | 'no_name' | 'sign_in_id_taken' | 'sign_in_id_shared' | 'conflicting_records'
 export type JobHeld = 'no_site' | 'id_taken'
 
 export interface PlannedJoiner {
@@ -183,8 +185,12 @@ export interface PlannedJoiner {
   code: string
   /** The roster row's values, without the code column. */
   row: Record<string, unknown>
+  /** The job's values, without the employee and manager: those are the saved
+   *  rows' ids, known only once saved. */
   job: Record<string, unknown> | null
   job_held: JobHeld | null
+  /** Their manager: an existing row, or another joiner this run adds. */
+  manager: { row: string } | { record: string } | null
 }
 
 export interface JoinerPlan {
@@ -208,7 +214,8 @@ const sectionKey = (site: string, name: string) => `${site}\u0000${name.trim().t
  *  on the payroll or a recent joiner not yet on it? */
 export function isJoinerRecord(r: EmployeeRecord, today: string, feedDay: string | null): boolean {
   const v = recordVerdict(r, today, feedDay)
-  return !v.leaver && !v.atWork && !v.offPayroll && r.movement_active === true
+  // Positive evidence only: active, and on the payroll or a recent joiner. An unknown payroll is neither.
+  return !v.leaver && !v.atWork && r.movement_active === true && (r.payroll_active === true || v.recentJoiner)
 }
 
 function jobFor(r: EmployeeRecord, code: string, facts: JoinerFacts, job: JobSettings, today: string): { job: Record<string, unknown> | null; held: JobHeld | null } {
@@ -224,14 +231,12 @@ function jobFor(r: EmployeeRecord, code: string, facts: JoinerFacts, job: JobSet
   const out: Record<string, unknown> = {
     ...fillAll(job.values, fields),
     [job.id_column]: id,
-    [job.employee_column]: code,
     [job.site_column]: site,
     [job.job_column]: title,
   }
   if (job.designation_column && designation) out[job.designation_column] = facts.designations.get(designation) ?? null
   if (job.section_column && j.section_name && job.section_jobs.includes(title))
     out[job.section_column] = facts.sections.get(sectionKey(site, j.section_name)) ?? null
-  if (job.reports_to_column && j.manager_code) out[job.reports_to_column] = facts.managers.get(j.manager_code.toLowerCase()) ?? null
   return { job: out, held: null }
 }
 
@@ -262,11 +267,27 @@ export function planJoinerAdds(
   const plan: JoinerPlan = { table: link.table, joiners: [], held: [], limit: Math.max(MIN_ADD_LIMIT, Math.ceil(facts.current * MAX_ADD_SHARE)), refused: null }
   plan.refused = feedRefusal(records, latestFeedDay, today)
   if (plan.refused) return plan
-  const seen = new Set<string>()
+  // A record the feed holds more than once must agree with itself, and every copy must qualify.
+  const byRecord = new Map<string, EmployeeRecord[]>()
   for (const r of records) {
     const record = String(r.employee_key).trim()
-    if (!record || facts.records.has(record) || seen.has(record) || !isJoinerRecord(r, today, latestFeedDay)) continue
-    seen.add(record)
+    if (record && !facts.records.has(record)) byRecord.set(record, [...(byRecord.get(record) ?? []), r])
+  }
+  const signature = (r: EmployeeRecord) => JSON.stringify([r.employee_code, r.joiner, r.payroll_active, r.movement_active, r.date_of_joining])
+  const candidates: { record: string; r: EmployeeRecord }[] = []
+  for (const [record, copies] of byRecord) {
+    if (!copies.every((r) => isJoinerRecord(r, today, latestFeedDay))) continue
+    if (new Set(copies.map(signature)).size > 1) {
+      plan.held.push({ record, reason: 'conflicting_records' })
+      continue
+    }
+    candidates.push({ record, r: copies[0] })
+  }
+  // A sign-in ID two joiners share is not guessed between, as the link pass would not.
+  const idCount = new Map<string, number>()
+  for (const { r } of candidates) if (r.employee_code) idCount.set(r.employee_code.toLowerCase(), (idCount.get(r.employee_code.toLowerCase()) ?? 0) + 1)
+  const batchByCode = new Map<string, string | null>()
+  for (const { record, r } of candidates) {
     const fields = fieldsOf(r, today)
     const code = fill(settings.code, fields)
     if (!code || !r.employee_code) {
@@ -275,6 +296,15 @@ export function planJoinerAdds(
     }
     if (!r.joiner?.full_name) {
       plan.held.push({ record, reason: 'no_name' })
+      continue
+    }
+    const signIn = r.employee_code.toLowerCase()
+    if (facts.signInIds.has(signIn)) {
+      plan.held.push({ record, reason: 'sign_in_id_taken' })
+      continue
+    }
+    if ((idCount.get(signIn) ?? 0) > 1) {
+      plan.held.push({ record, reason: 'sign_in_id_shared' })
       continue
     }
     if (facts.codes.has(code.toLowerCase())) {
@@ -289,7 +319,21 @@ export function planJoinerAdds(
       [link.status_column]: link.current_status,
     }
     const job = settings.job ? jobFor(r, code, facts, settings.job, today) : { job: null, held: null }
-    plan.joiners.push({ record, code, row, job: job.job, job_held: job.held })
+    plan.joiners.push({ record, code, row, job: job.job, job_held: job.held, manager: null })
+    batchByCode.set(signIn, record)
+  }
+  // Managers: an existing current row, or a joiner this run adds; never one two share.
+  const managerColumn = settings.job?.manager_column
+  if (settings.job?.reports_to_column && managerColumn) {
+    const managerOf = new Map(candidates.map(({ record, r }) => [record, r.joiner?.manager_code?.toLowerCase() ?? null]))
+    for (const j of plan.joiners) {
+      const m = managerOf.get(j.record)
+      if (!m) continue
+      const existing = facts.managers.get(m)
+      const incoming = batchByCode.get(m)
+      if (existing && !incoming) j.manager = { row: existing }
+      else if (incoming && !facts.managers.has(m) && incoming !== j.record) j.manager = { record: incoming }
+    }
   }
   if (plan.joiners.length > plan.limit)
     plan.refused = `it would add ${plan.joiners.length} new joiners to ${facts.current} current rows, more than the limit of ${plan.limit}`
@@ -308,14 +352,16 @@ async function relationOf(table: string, columns: string[]): Promise<string> {
 async function readFacts(roster: Roster, settings: JoinerSettings): Promise<JoinerFacts> {
   const { link } = roster
   const job = settings.job
-  const rosterRel = await relationOf(link.table, [settings.code_column, link.record_number_column, link.status_column, ...(job?.manager_column ? [job.manager_column] : [])])
+  const rosterRel = await relationOf(link.table, [settings.code_column, link.record_number_column, link.sign_in_id_column, link.status_column, ...(job?.manager_column ? [job.manager_column] : [])])
   const rows = await sql`select ${sql(settings.code_column)}::text as code, trim(${sql(link.record_number_column)}::text) as record,
+      lower(trim(${sql(link.sign_in_id_column)}::text)) as sign_in,
       trim(${sql(link.status_column)}::text) = ${link.current_status} and retired_at is null as current
       ${job?.manager_column ? sql`, lower(trim(${sql(job.manager_column)}::text)) as manager, row_id` : sql``}
     from ${sql(rosterRel)}`
   const facts: JoinerFacts = {
     records: new Set(rows.map((r) => String(r.record ?? '')).filter(Boolean)),
     codes: new Set(rows.map((r) => String(r.code ?? '').toLowerCase()).filter(Boolean)),
+    signInIds: new Set(rows.map((r) => String(r.sign_in ?? '')).filter(Boolean)),
     current: rows.filter((r) => r.current).length,
     managers: new Map(),
     siteOfStore: new Map(),
@@ -374,19 +420,48 @@ export async function planJoiners(roster: Roster, feed: { records: EmployeeRecor
 }
 
 /** Add one joiner and their job, under a lock on the record, checked again. */
-async function addOne(roster: Roster, settings: JoinerSettings, j: PlannedJoiner): Promise<{ added: boolean; job: boolean }> {
+/** Add one joiner and their job in one transaction, under locks on their
+ *  record and sign-in ID, checked again. The job names the saved row's id,
+ *  and a manager this run added by theirs. */
+async function addOne(roster: Roster, settings: JoinerSettings, j: PlannedJoiner, added: Map<string, string>): Promise<{ row: string | null; job: boolean }> {
   const { link } = roster
+  const signIn = String(j.row[link.sign_in_id_column]).toLowerCase()
   return withTransaction(async () => {
-    await sql`select pg_advisory_xact_lock(hashtext(${`roster-joiner:${link.table}:${j.record}`}))`
+    for (const key of [`record:${j.record}`, `sign-in:${signIn}`].sort())
+      await sql`select pg_advisory_xact_lock(hashtext(${`roster-joiner:${link.table}:${key}`}))`
     const rel = await tableRelation(link.table)
     const [taken] = await sql`select 1 from ${sql(rel)}
-      where trim(${sql(link.record_number_column)}::text) = ${j.record} or lower(${sql(settings.code_column)}::text) = ${j.code.toLowerCase()} limit 1`
-    if (taken) return { added: false, job: false }
-    await runAsSystemActor(ACTOR, () => saveDoc(link.table, { ...j.row, [settings.code_column]: j.code }, ACTOR, 'insert'))
-    if (!j.job || !settings.job) return { added: true, job: false }
-    await runAsSystemActor(ACTOR, () => saveDoc(settings.job!.table, j.job!, ACTOR, 'insert'))
-    return { added: true, job: true }
+      where trim(${sql(link.record_number_column)}::text) = ${j.record} or lower(${sql(settings.code_column)}::text) = ${j.code.toLowerCase()}
+        or lower(trim(${sql(link.sign_in_id_column)}::text)) = ${signIn} limit 1`
+    if (taken) return { row: null, job: false }
+    const saved = await runAsSystemActor(ACTOR, () => saveDoc(link.table, { ...j.row, [settings.code_column]: j.code }, ACTOR, 'insert'))
+    const row = String(saved.row_id)
+    const job = settings.job
+    if (!j.job || !job) return { row, job: false }
+    const manager = j.manager && ('row' in j.manager ? j.manager.row : added.get(j.manager.record))
+    await runAsSystemActor(ACTOR, () =>
+      saveDoc(job.table, { ...j.job, [job.employee_column]: row, ...(job.reports_to_column && manager ? { [job.reports_to_column]: manager } : {}) }, ACTOR, 'insert'))
+    return { row, job: true }
   })
+}
+
+/** Managers this run adds come before the joiners who report to them. */
+function managersFirst(joiners: PlannedJoiner[]): PlannedJoiner[] {
+  const byRecord = new Map(joiners.map((j) => [j.record, j]))
+  const out: PlannedJoiner[] = []
+  const placed = new Set<string>()
+  const visiting = new Set<string>()
+  const place = (j: PlannedJoiner) => {
+    if (placed.has(j.record) || visiting.has(j.record)) return
+    visiting.add(j.record)
+    const m = j.manager && 'record' in j.manager ? byRecord.get(j.manager.record) : undefined
+    if (m) place(m)
+    visiting.delete(j.record)
+    placed.add(j.record)
+    out.push(j)
+  }
+  joiners.forEach(place)
+  return out
 }
 
 /** Act on a plan unless it refuses. `acceptCount` lifts the size limit for
@@ -403,10 +478,12 @@ export async function applyJoiners(roster: Roster, plan: JoinerPlan | null, opts
     return run
   }
   const settings = joinerSettings(roster.link.joiners)!
-  for (const j of plan.joiners)
+  const added = new Map<string, string>()
+  for (const j of managersFirst(plan.joiners))
     try {
-      const done = await addOne(roster, settings, j)
-      if (done.added) {
+      const done = await addOne(roster, settings, j, added)
+      if (done.row) {
+        added.set(j.record, done.row)
         run.added++
         await logActivity(ACTOR, `roster_joiner_added ${plan.table} ${j.code}${done.job ? ' with a job' : j.job_held ? `; job held: ${j.job_held}` : ''}`.slice(0, 140))
       }
@@ -424,11 +501,12 @@ export function formatJoiners(plan: JoinerPlan | null, run?: JoinerRun): string[
   for (const h of plan.held) reasons.set(h.reason, (reasons.get(h.reason) ?? 0) + 1)
   const jobHeld = plan.joiners.filter((j) => j.job_held).length
   const withJob = plan.joiners.filter((j) => j.job).length
+  const withManager = plan.joiners.filter((j) => j.job && j.manager).length
   const heldBy = [...reasons].map(([r, n]) => `${r} ${n}`).join(', ') || 'none'
   const lines = [
     run
       ? `roster joiners ${plan.table}: added ${run.added}, with a job ${run.jobs}${run.failed.length ? `; FAILED ${run.failed.length}` : ''}`
-      : `roster joiners ${plan.table}: would add ${plan.joiners.length} (with a job ${withJob}, job held ${jobHeld}); held ${plan.held.length} (${heldBy}); limit ${plan.limit}`,
+      : `roster joiners ${plan.table}: would add ${plan.joiners.length} (with a job ${withJob}, of them with a manager ${withManager}, job held ${jobHeld}); held ${plan.held.length} (${heldBy}); limit ${plan.limit}`,
   ]
   if (plan.refused) lines.push(`roster joiners ${plan.table}: ADDED NONE — ${plan.refused}`)
   return lines
