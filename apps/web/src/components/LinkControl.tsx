@@ -377,7 +377,8 @@ export function LinkControl({
           onBlur={leave}
           data-testid={`link-options-${field.column_name}`}
         >
-          <input
+          {/* Pick-only: the field above is the search, so a second box would only echo it. */}
+          {!pickOnly && <input
             ref={searchBox}
             type="search"
             aria-label={`Search ${field.label ?? field.column_name}`}
@@ -392,7 +393,7 @@ export function LinkControl({
             data-testid="link-search"
             className="sticky top-0 block w-full border-b border-border bg-surface px-3 py-1.5 text-sm text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
             {...NOT_A_LOGIN}
-          />
+          />}
           {titleSettled && options.map((o) => (
             <button
               key={o.value}

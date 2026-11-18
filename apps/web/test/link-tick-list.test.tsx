@@ -323,6 +323,8 @@ test('the area is picked from the link Table\'s other link, and saved with the r
   const options = await screen.findByTestId('link-options-place')
   // Pick-only: no new Place is offered from here.
   expect(within(options).queryByTestId('link-create-new')).not.toBeInTheDocument()
+  // The field is the search: the list repeats no second search box with "Hill" in it.
+  expect(within(options).queryByTestId('link-search')).not.toBeInTheDocument()
   fireEvent.mouseDown(await within(options).findByText(/Hill Road Store/))
   fireEvent.click(within(form).getByRole('button', { name: 'Done' }))
   await waitFor(() => expect(within(form).getByTestId('area-pick')).toHaveTextContent('Hill Road Store ▸'))
