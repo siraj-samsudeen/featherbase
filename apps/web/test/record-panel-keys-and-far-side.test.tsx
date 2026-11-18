@@ -52,7 +52,7 @@ test('only Escape closes the record panel, and a modified click on Edit leaves t
   expect(screen.getByTestId('record-panel')).toBeInTheDocument()
   const here = () => (router.state as { location: { href: string } }).location.href
   const before = here()
-  const edit = await within(panel).findByRole('link', { name: 'Edit' })
+  const edit = await within(panel).findByRole('link', { name: 'Open Full Page' })
   fireEvent.click(edit, { ctrlKey: true })
   expect(here()).toBe(before)
   fireEvent.keyDown(panel, { key: 'Escape' })

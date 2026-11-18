@@ -190,7 +190,7 @@ tour('Featherbase: from a spreadsheet to an app you can navigate', async ({ stor
     })
     await s.step("Up: the asset's page names its store", async () => {
       const asset = page().getByRole('complementary', { name: tag })
-      await asset.getByRole('link', { name: 'Edit' }).first().click()
+      await asset.getByRole('link', { name: 'Open Full Page' }).first().click()
       await expect(page().getByRole('heading', { name: `Assets: ${tag}` })).toBeVisible()
       await expect(page().getByText(/^Store\s*T Nagar$/).first()).toBeVisible()
     })
