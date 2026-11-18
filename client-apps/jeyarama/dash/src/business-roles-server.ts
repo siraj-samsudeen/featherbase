@@ -423,11 +423,15 @@ export async function explainPerson(context: AccessContext) {
     },
     // HR's own title: the designation where HR gives one, else the job.
     hr_titles: [...new Set(jobs.map(j => world.designationNames.get(exact(j.designation)) ?? `${text(j.job)} (no designation)`))],
-    roles: shadow.held.map(h => ({ role: h.role, name: roleName(h.role), source: SOURCE_WORDS[h.source], from: h.title, area: h.area, until: h.until ?? null, reason: h.reason ?? null,
+    roles: shadow.held.map(h => ({ role: h.role, name: roleName(h.role), source: SOURCE_WORDS[h.source], kind: h.source, from: h.title, area: h.area, until: h.until ?? null, reason: h.reason ?? null,
       hand: h.hand ?? null, hand_updated_at: h.hand ? updatedAt.get(h.hand)! : null })),
     unmapped: shadow.unmapped,
     apps: appsOf(shadow.held, world.model),
-    reports: shadow.next.reports.map(key => ({ key, name: reports.get(key)!.name, why: shadow.nextWhy.get(key)!.map(why) })),
+    // #1282: the roles each report comes through, and what each held role allows, for the Map's Why.
+    reports: shadow.next.reports.map(key => ({ key, name: reports.get(key)!.name, why: shadow.nextWhy.get(key)!.map(why),
+      roles: [...new Set(shadow.nextWhy.get(key)!.flatMap(w => w.role ? [w.role] : []))] })),
+    permissions: world.model.permissions.filter(p => shadow.held.some(h => h.role === p.role))
+      .map(p => ({ role: p.role, app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach })),
     today: { opens: shadow.today.opens, reports: shadow.today.reports.length, stores: new Set(Object.keys(shadow.today.places).map(s => plants.get(s))).size },
     next: { opens: shadow.next.opens, reports: shadow.next.reports.length, stores: new Set(Object.keys(shadow.next.places).map(s => plants.get(s))).size },
     change: await changeWords(world, reports, found, shadow.everyReport),
@@ -566,4 +570,62 @@ export async function mapTitle(context: AccessContext) {
 export async function addStartingRoles(context: AccessContext) {
   const ctx = managersOnly(context)
   return ensureStartingRoles(ctx.baseTables, ctx.documents as never, await logger(ctx.baseTables, ctx.documents as never))
+}
+
+/** Where a role came from, as the Why map says it: HR's own facts, or someone's hand. */
+const BY_HAND = new Set(['corrected', 'also_given'])
+
+/** At most this many boxes in one column of the Why map (the platform's limit); the rest is counted. */
+const WHY_COLUMN = 12
+/** A name or a detail on a Why box, within the platform's 120 characters. */
+const clip = (words: string) => words.length > 120 ? `${words.slice(0, 119)}…` : words
+
+/**
+ * #1282 Why mode: whether the platform's Map may explain this record for this viewer: a Person, for company-wide
+ * managers only (as Explain a Person).
+ */
+export function mayExplainAccess(context: AccessContext): boolean {
+  // The platform always sends a payload; anything that is not { table, row } names no Person.
+  const { table, row } = Object(context.payload) as { table?: unknown; row?: unknown }
+  return table === 'Person' && typeof row === 'string' && row.length > 0 && managesAccess(context)
+}
+
+/**
+ * #1282 Why mode: a person's access as the platform Map draws it, from Explain a Person's own reasoning: Person →
+ * Business Role · Area (HR or by hand) → App · Level → What They Can Do (with reach), and the reports each role gives.
+ */
+export async function whyAccess(context: AccessContext) {
+  if (!mayExplainAccess(context)) context.reject!(ONLY_MANAGERS)
+  const person = String((context.payload as { row: string }).row)
+  const e = await explainPerson({ ...context, payload: { person } } as AccessContext)
+  const capped = <T>(items: T[], box: (item: T, i: number) => Record<string, unknown>, more: string) =>
+    items.length <= WHY_COLUMN ? items.map(box)
+      : [...items.slice(0, WHY_COLUMN - 1).map(box), { id: `${more}:more`, name: `+ ${items.length - WHY_COLUMN + 1} more` }]
+  const roleId = (role: string) => `role:${role}`
+  const appId = (app: string, level: string) => `app:${app}:${level}`
+  const roles = capped(e.roles, r => ({
+    id: roleId(r.role), name: clip(r.name), record: { table: ROLE, row: r.role },
+    ...(r.area.parts.length ? { detail: clip(r.area.parts.map(p => p.name).join(' · ')) } : {}),
+    source: BY_HAND.has(r.kind) ? 'hand' : 'hr',
+  }), 'role')
+  const apps = capped(e.apps, a => ({ id: appId(a.app, a.level), name: clip(`${a.app} · ${a.level}`) }), 'app')
+  const can = capped(e.permissions, (p, i) => ({ id: `can:${i}`, name: clip(`${p.verb} ${p.thing}`), detail: clip(p.app), reach: p.reach }), 'can')
+  const reports = capped(e.reports, r => ({ id: `report:${r.key}`, name: clip(r.name) }), 'report')
+  const shown = new Set(['person', ...[...roles, ...apps, ...can, ...reports].map(b => String(b.id))])
+  const edge = (from: string, to: string): [string, string][] => shown.has(from) && shown.has(to) ? [[from, to]] : []
+  const roleByName = new Map(e.roles.map(r => [r.name, r.role]))
+  const edges = [
+    ...e.roles.flatMap(r => edge('person', roleId(r.role))),
+    ...e.apps.flatMap(a => a.via.flatMap(name => edge(roleId(roleByName.get(name)!), appId(a.app, a.level)))),
+    ...e.permissions.flatMap((p, i) => edge(appId(p.app, p.level), `can:${i}`)),
+    ...e.reports.flatMap(r => r.roles.flatMap(role => edge(roleId(role), `report:${r.key}`))),
+  ]
+  const columns = [
+    { heading: 'Person', boxes: [{ id: 'person', name: clip(e.name), record: { table: 'Person', row: person } }] },
+    { heading: 'Business Role · Area', boxes: roles },
+    { heading: 'App · Level', boxes: apps },
+    { heading: 'What They Can Do', boxes: can },
+    { heading: 'Reports They See', boxes: reports },
+  ].filter(c => c.boxes.length)
+  return { version: 1, columns, edges }
 }

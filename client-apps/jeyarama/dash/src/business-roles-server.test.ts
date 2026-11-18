@@ -1,6 +1,6 @@
 // #1218: the business roles in shadow, over in-memory Tables. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
-import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle } from './business-roles-server'
+import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, whyAccess } from './business-roles-server'
 import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
 import { convertGrants } from './switch-over'
@@ -134,6 +134,62 @@ describe('the Business Roles page', () => {
   })
 })
 
+// #1282: the platform Map's Why for a Person, from Explain a Person's own reasoning.
+describe("Why on the platform's Map", () => {
+  it('is offered for a Person to a company-wide manager only', async () => {
+    const tables = await seeded()
+    expect(mayExplainAccess(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never)).toBe(true)
+    expect(mayExplainAccess(context(tables, { payload: { table: 'Site', row: 'sm' } }) as never)).toBe(false)
+    expect(mayExplainAccess(context(tables, { payload: { table: 'Person', row: '' } }) as never)).toBe(false)
+    expect(mayExplainAccess(context(tables, { payload: undefined }) as never)).toBe(false)
+    expect(mayExplainAccess(context(tables, { roles: ['Dash Reader'], payload: { table: 'Person', row: 'sm' } }) as never)).toBe(false)
+  })
+
+  it('refuses anyone else, even asked directly', async () => {
+    await expect(whyAccess(context(await seeded(), { roles: ['Dash Reader'], payload: { table: 'Person', row: 'sm' } }) as never))
+      .rejects.toThrow('Only a Report Access Manager or a System Manager')
+  })
+
+  it('draws a store manager: Person → their role at their store, from HR → their apps → what they can do, and their reports', async () => {
+    const tables = onRequest(await converted(await seeded()), 'vs', 'Store Manager')
+    const why = await whyAccess(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never)
+    const sm = roleId(tables, 'Store Manager')
+    expect(why.version).toBe(1)
+    expect(why.columns.map(c => c.heading)).toEqual(['Person', 'Business Role · Area', 'App · Level', 'What They Can Do', 'Reports They See'])
+    expect(why.columns[0]!.boxes).toEqual([{ id: 'person', name: expect.any(String), record: { table: 'Person', row: 'sm' } }])
+    expect(why.columns[1]!.boxes).toEqual([{ id: `role:${sm}`, name: 'Store Manager', record: { table: 'dash.business_role', row: sm }, detail: 'Lakeside', source: 'hr' }])
+    expect(why.columns[2]!.boxes.map(b => b.name)).toEqual(['Dash · Manager', 'Dash · Reader', 'Tasker · Manager', 'Tickets · Manager'])
+    expect(why.columns[3]!.boxes.every(b => typeof b.reach === 'string')).toBe(true)
+    expect(why.columns[4]!.boxes.map(b => b.name)).toEqual(['Sales', 'Vendor Sales'])
+    // Each box is joined back to the person, through the role.
+    expect(why.edges).toEqual(expect.arrayContaining([['person', `role:${sm}`], [`role:${sm}`, 'app:Dash:Reader'], [`role:${sm}`, 'report:vs']]))
+    const columnOf = new Map(why.columns.flatMap((c, i) => c.boxes.map(b => [b.id, i] as const)))
+    for (const [from, to] of why.edges) expect(columnOf.get(from)!).toBeLessThan(columnOf.get(to)!)
+  })
+
+  it("keeps within the platform's limits: long words are cut, a long column ends in '+ N more', an empty area says nothing", async () => {
+    const tables = await seeded()
+    const sm = roleId(tables, 'Store Manager')
+    tables['dash.business_role'].find(r => r.row_id === sm)!.role_name = 'Store Manager '.repeat(10).trim()
+    tables['Site'].find(r => r.name === 'Lakeside')!.name = ''
+    for (let i = 0; i < 13; i++)
+      tables['dash.business_role_permission'].push({ row_id: `p-many-${i}`, business_role: sm, app: 'Dash', level: 'Reader', verb: 'View', thing: `Report ${i}`, reach: 'Area' })
+    const why = await whyAccess(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never)
+    const role = why.columns[1]!.boxes[0]!
+    expect([String(role.name).length, String(role.name).endsWith('…'), 'detail' in role]).toEqual([120, true, false])
+    const can = why.columns.find(c => c.heading === 'What They Can Do')!.boxes
+    expect(can).toHaveLength(12)
+    expect(can.at(-1)).toEqual({ id: 'can:more', name: expect.stringMatching(/^\+ \d+ more$/) })
+  })
+
+  it('says a role given by hand is by hand', async () => {
+    const tables = await seeded()
+    await giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Team Leader'), ends_on: '2999-03-31', reason: 'Covering' } }) as never)
+    const why = await whyAccess(context(tables, { payload: { table: 'Person', row: 'st' } }) as never)
+    expect(why.columns[1]!.boxes.map(b => [b.name, b.source])).toEqual([['Staff', 'hr'], ['Team Leader', 'hand']])
+  })
+})
+
 describe('Explain a person', () => {
   it('gives a store manager whose title is not mapped Store Manager at their store, from the HR title', async () => {
     const answer = await explainPerson(context(await seeded(), { payload: { person: 'sm' } }) as never)
@@ -146,9 +202,11 @@ describe('Explain a person', () => {
   })
 
   it('gives a report given to their job, once it is given to the role on request, saying why', async () => {
-    const answer = await explainPerson(context(onRequest(await converted(await seeded()), 'vs', 'Store Manager'), { payload: { person: 'sm' } }) as never)
+    const tables = onRequest(await converted(await seeded()), 'vs', 'Store Manager')
+    const answer = await explainPerson(context(tables, { payload: { person: 'sm' } }) as never)
     // Sales was given to Dash Reader: the switch-over gives it to every role that opens Dash, Store Manager among them.
-    expect(answer.reports).toEqual([{ key: 'sales', name: 'Sales', why: ['Given to Store Manager, for Lakeside'] }, { key: 'vs', name: 'Vendor Sales', why: ['Given to Store Manager, for Lakeside'] }])
+    const sm = roleId(tables, 'Store Manager')
+    expect(answer.reports).toEqual([{ key: 'sales', name: 'Sales', why: ['Given to Store Manager, for Lakeside'], roles: [sm] }, { key: 'vs', name: 'Vendor Sales', why: ['Given to Store Manager, for Lakeside'], roles: [sm] }])
   })
 
   it('reads a category head\'s area as the category and region of their merchandise assignment', async () => {
@@ -331,7 +389,7 @@ describe('someone outside the staff list', () => {
   })
 
   it('gets a report given to them through a bundle, saying so', async () => {
-    expect((await outsider()).reports).toEqual([{ key: 'open', name: 'Company notices', why: ['Given to them directly, through Store pack'] }])
+    expect((await outsider()).reports).toEqual([{ key: 'open', name: 'Company notices', why: ['Given to them directly, through Store pack'], roles: [] }])
   })
 
   // #1277: a report alone opens no door: the platform lets into Dash only someone holding one of its roles, on either side.
