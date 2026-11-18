@@ -8,7 +8,7 @@ The design is `issue_1218_jobs_and_roles.md` (D1–D9) in this folder.
 
 1. **Business roles as data (D1, D5).** A **Business Role** row holds a name, a description and whether it is given by hand only.
    - Its permissions are rows of Business Role × app × thing × verb × reach (Own / Team / Area / All, D2).
-   - It is seeded with Jeyarama's roles: Staff, Team Leader, Floor Manager, Department Manager, Store Manager, Cluster Manager, Buyer, Category Head, Head Office, Leadership, Master Data Manager (D9; renamed from Master Data Steward, owner 18-Nov-2026) and Vendor (D8). The contents follow D3, D4 and D9: Basic is Tasker and Tickets, and Dash comes from Team Leader up.
+   - It is seeded with Jeyarama's roles: Staff, Team Leader, Floor Manager, Department Manager, Store Manager, Cluster Manager, Buyer, Category Head, Head Office, Owner Director, Master Data Manager (D9; renamed from Master Data Steward, owner 18-Nov-2026) and Vendor (D8). The contents follow D3, D4 and D9: Basic is Tasker and Tickets, and Dash comes from Team Leader up.
    - These are rows an admin edits, never code.
 2. **Title Map (D7 wording; designation → business role).**
    - It is prefilled from today's job values. Each of the ten jobs maps to its business role, and a designation with no mapping falls back to its job.
@@ -17,7 +17,7 @@ The design is `issue_1218_jobs_and_roles.md` (D1–D9) in this folder.
    - Job Assignment: the role from the Title Map, and the area from site, floor, section and cluster, as today's reach does.
    - Merchandise Assignment: Buyer, Category Head and similar roles. The area is the merchandise prefix plus the region, encoded as Dash's code prefixes (2-digit division, 4-digit category, 9-digit subcategory; see the manager note in the plan).
    - **Role Assignment** rows given by hand: Correct (replaces the role from the HR title) or Also give (adds one). Each has an optional end date and a reason.
-   - Head Office and Leadership reach the whole company.
+   - Head Office and Owner Director (given by hand only, owner 18-Nov-2026) reach the whole company.
 4. **Explain a person.** A read-only page. For one person it shows:
    - each role, with its area and source chip;
    - the apps and levels they get;

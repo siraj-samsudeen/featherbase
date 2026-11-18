@@ -34,7 +34,8 @@ export const STARTING_ROLES: StartingRole[] = [
   { name: 'Category Head', reaches: 'Merchandise', description: 'Heads the buyers of a category, subdivision or division.', grants: [REPORTS_IN_AREA, GIVE_TO_TEAM, ['Dash', 'Manager', 'Edit', 'Buyer Sections', 'Area'], TEAM_TASKS, TEAM_TICKETS] },
   // Owner, 18-Nov-2026: no reports and no Dash by default; head office staff get reports through a role given by hand or a grant.
   { name: 'Head Office', reaches: 'Whole company', description: 'Works at head office. No Dash by default: reports come from a role given by hand or a report given to them.', grants: [OWN_TASKS, TICKETS] },
-  { name: 'Leadership', reaches: 'Whole company', description: 'Directors and the chief operating officer; reaches the whole company.', grants: [EVERY_REPORT, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
+  // Owner, 18-Nov-2026: the owner names them by hand; no HR title maps to it (a COO of a region is a Regional Head).
+  { name: 'Owner Director', reaches: 'Whole company', description: 'The group\'s owner-directors: the whole company and every report.', by_hand_only: true, grants: [EVERY_REPORT, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
   { name: 'Master Data Manager', reaches: 'Whole company', description: 'Keeps the master tables right: reads, adds and edits them everywhere, and deletes none.', by_hand_only: true,
     grants: [MASTER_DATA('View'), MASTER_DATA('Add'), MASTER_DATA('Edit')] },
   // Owner, 18-Nov-2026: Supplier (was Vendor), D8's supplier area.
@@ -44,9 +45,10 @@ export const STARTING_ROLES: StartingRole[] = [
   { name: 'Tester', reaches: 'Given place', description: 'Tests the apps, given by hand at the stores it is given for: reads their reports there.', by_hand_only: true, grants: [REPORTS_IN_AREA, OWN_TASKS, TICKETS] },
 ]
 
-/** Today's ten jobs and the two merchandise responsibilities, each mapped to its business role. */
+/** Today's jobs and the two merchandise responsibilities, each mapped to its business role. Director, Managing Director and
+ *  Chief Operating Officer map to nothing (owner, 18-Nov-2026): Owner Directors are named by hand. */
 export const STARTING_TITLES: [title: string, role: string][] = [
   ['Staff', 'Staff'], ['Team Leader', 'Team Leader'], ['Floor Manager', 'Floor Manager'], ['Department Manager', 'Department Manager'],
-  ['Store Manager', 'Store Manager'], ['Cluster Manager', 'Cluster Manager'], ['Chief Operating Officer', 'Leadership'], ['Director', 'Leadership'],
-  ['Managing Director', 'Leadership'], ['Head office staff', 'Head Office'], ['Buyer', 'Buyer'], ['Category head', 'Category Head'],
+  ['Store Manager', 'Store Manager'], ['Cluster Manager', 'Cluster Manager'], 
+  ['Head office staff', 'Head Office'], ['Buyer', 'Buyer'], ['Category head', 'Category Head'],
 ]

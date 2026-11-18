@@ -611,11 +611,11 @@ describe('Codex adversarial round 4 on 1233e3d8c', () => {
   async function leader() {
     const tables = await seeded()
     tables['dash.report_access'] = [{ row_id: 'g', report: 'vs', person: 'ext' }]
-    await giveRole(context(tables, { payload: { person: 'ext', change: 'Also give', role: roleId(tables, 'Leadership') } }) as never)
+    await giveRole(context(tables, { payload: { person: 'ext', change: 'Also give', role: roleId(tables, 'Owner Director') } }) as never)
     return tables
   }
 
-  it('gives someone outside the staff list holding Leadership and Dash Reader every store and a filtered report given to them, in Explain', async () => {
+  it('gives someone outside the staff list holding Owner Director and Dash Reader every store and a filtered report given to them, in Explain', async () => {
     const explained = await explainPerson(context(await leader(), { payload: { person: 'ext' }, peopleRoles: { ext: ['Dash Reader'] } }) as never)
     expect([explained.next, explained.reports.map(r => r.name), explained.change.stores_gained.map(s => s.name)])
       .toEqual([{ opens: true, reports: 1, stores: 1 }, ['Vendor Sales'], ['Lakeside']])
@@ -643,18 +643,18 @@ describe('reach as data on the role (Codex standard review round 4 on 1233e3d8c)
     expect((await accessChanges(context(tables) as never)).groups.flatMap(g => g.people).map(p => p.person)).not.toContain('sm')
   })
 
-  it('gives a category head mapped to Leadership every store', async () => {
+  it('gives a category head mapped to Head Office every store', async () => {
     const tables = await seeded()
-    tables['dash.title_map'].find(r => r.title === 'Category head')!.business_role = roleId(tables, 'Leadership')
+    tables['dash.title_map'].find(r => r.title === 'Category head')!.business_role = roleId(tables, 'Head Office')
     const role = (await explainPerson(context(tables, { payload: { person: 'buy' } }) as never)).roles[0]
-    expect([role.name, role.area.parts.map(p => p.name), role.area.stores, role.area.subcategories]).toEqual(['Leadership', ['Whole company'], 1, null])
+    expect([role.name, role.area.parts.map(p => p.name), role.area.stores, role.area.subcategories]).toEqual(['Head Office', ['Whole company'], 1, null])
   })
 
   it('says in plain words how far each role reaches, and that a role added without it has none set', async () => {
     const tables = await seeded()
     tables['dash.business_role'].push({ row_id: 'r-x', role_name: 'Auditor' })
     const page = await businessRoles(context(tables) as never)
-    expect(['Store Manager', 'Category Head', 'Leadership', 'Supplier', 'Auditor'].map(n => page.roles.find(r => r.name === n)!.reaches))
+    expect(['Store Manager', 'Category Head', 'Owner Director', 'Supplier', 'Auditor'].map(n => page.roles.find(r => r.name === n)!.reaches))
       .toEqual(['their store', 'their merchandise', 'the whole company', 'the place it is given at', 'Not set'])
   })
 })
@@ -668,23 +668,23 @@ describe('every source asks the role\'s Reaches, with stores outside the first a
     tables.Employee.push({ row_id: 'E-X', name: 'Xavier', employee_code: 'E-X', status: 'Current', person: 'x' })
     return tables
   }
-  const remap = (tables: Record<string, Row[]>, title: string) => { tables['dash.title_map'].find(r => r.title === title)!.business_role = roleId(tables, 'Leadership') }
+  const remap = (tables: Record<string, Row[]>, title: string) => { tables['dash.title_map'].find(r => r.title === title)!.business_role = roleId(tables, 'Head Office') }
 
-  it('gives a named head of North every store, Hillview in the South too, when Cluster Manager maps to Leadership', async () => {
+  it('gives a named head of North every store, Hillview in the South too, when Cluster Manager maps to Head Office', async () => {
     const tables = await twoStores()
     tables.Cluster[0].cluster_manager = 'E-X'
     remap(tables, 'Cluster Manager')
     const role = (await explainPerson(context(tables, { payload: { person: 'x' } }) as never)).roles[0]
-    expect([role.name, role.area.parts.map(p => p.name), role.area.stores]).toEqual(['Leadership', ['Whole company'], 2])
+    expect([role.name, role.area.parts.map(p => p.name), role.area.stores]).toEqual(['Head Office', ['Whole company'], 2])
   })
 
-  it('gives a Buyer Section\'s buyer in the East every store, Hillview in the West too, when Buyer maps to Leadership', async () => {
+  it('gives a Buyer Section\'s buyer in the East every store, Hillview in the West too, when Buyer maps to Head Office', async () => {
     const tables = await twoStores()
     tables['Buyer Section'] = [{ row_id: 'BS-1', name: 'Silk section', operating_region: 'East', buyer: 'E-X', starts_on: '2026-01-01' }]
     tables['Buyer Section Subcategory'] = [{ row_id: 'BL-1', buyer_section: 'BS-1', subcategory: '010101001', starts_on: '2026-01-01' }]
     remap(tables, 'Buyer')
     const role = (await explainPerson(context(tables, { payload: { person: 'x' } }) as never)).roles[0]
-    expect([role.name, role.area.parts.map(p => p.name), role.area.stores]).toEqual(['Leadership', ['Whole company'], 2])
+    expect([role.name, role.area.parts.map(p => p.name), role.area.stores]).toEqual(['Head Office', ['Whole company'], 2])
   })
 })
 
@@ -856,19 +856,20 @@ describe('the steps towards business roles run only when asked (#1277 J1, J3, J5
 })
 
 describe('business roles decide Dash access (#1277 J2)', () => {
-  it('gives a store manager their store, a buyer their subcategories, a director every store, and head office and floor staff nothing', async () => {
+  it('gives a store manager their store, a buyer their subcategories, an Owner Director named by hand every store, and a Director by title, head office and floor staff nothing', async () => {
     const { tables } = await switched()
-    tables.Employee.push({ row_id: 'E-DIR', name: 'Dina', employee_code: 'E-DIR', status: 'Current', person: 'dir' })
-    tables['Job Assignment'].push({ row_id: 'J-DIR', employee: 'E-DIR', job: 'Director', site: 'HOF', starts_on: '2026-01-01' })
-    expect([await scopeOf(tables, 'sm'), await scopeOf(tables, 'b'), await scopeOf(tables, 'dir'), await scopeOf(tables, 'ho'), await scopeOf(tables, 'st')])
-      .toEqual([{ 9901: null }, { 9901: ['010101001'] }, { 9901: null }, {}, {}])
+    tables.Employee.push({ row_id: 'E-DIR', name: 'Dina', employee_code: 'E-DIR', status: 'Current', person: 'dir' }, { row_id: 'E-OD', name: 'Omana', employee_code: 'E-OD', status: 'Current', person: 'od' })
+    tables['Job Assignment'].push({ row_id: 'J-DIR', employee: 'E-DIR', job: 'Director', site: 'HOF', starts_on: '2026-01-01' }, { row_id: 'J-OD', employee: 'E-OD', job: 'Director', site: 'HOF', starts_on: '2026-01-01' })
+    await giveRole(context(tables, { payload: { person: 'od', change: 'Also give', role: roleId(tables, 'Owner Director') } }) as never)
+    expect([await scopeOf(tables, 'sm'), await scopeOf(tables, 'b'), await scopeOf(tables, 'od'), await scopeOf(tables, 'dir'), await scopeOf(tables, 'ho'), await scopeOf(tables, 'st')])
+      .toEqual([{ 9901: null }, { 9901: ['010101001'] }, { 9901: null }, {}, {}, {}])
   })
 
   // Owner, 18-Nov-2026: head office staff see reports only through a role given by hand or a grant.
   it('gives head office staff Dash only once a role is given to them by hand', async () => {
     const { tables } = await switched()
     expect(await reads.can_open(readerOf(tables, 'ho', ['Dash Reader']) as never)).toBe(false)
-    await giveRole(context(tables, { payload: { person: 'ho', change: 'Also give', role: roleId(tables, 'Leadership') } }) as never)
+    await giveRole(context(tables, { payload: { person: 'ho', change: 'Also give', role: roleId(tables, 'Owner Director') } }) as never)
     expect([await reads.can_open(readerOf(tables, 'ho', ['Dash Reader']) as never), await scopeOf(tables, 'ho')]).toEqual([true, { 9901: null }])
   })
 

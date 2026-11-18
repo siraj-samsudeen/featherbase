@@ -75,10 +75,10 @@ describe('business roles in shadow', () => {
       const storeManager = page.roles.find(r => r.name === 'Store Manager')!.id
       await act('give_role', { person: reader.user, change: 'Correct', role: storeManager, reason: 'Runs the store' })
       // A role that would reach every store in the new model, and a mapping that changes the reader's title: neither may leak into today.
-      await act('give_role', { person: reader.user, change: 'Also give', role: page.roles.find(r => r.name === 'Leadership')!.id })
+      await act('give_role', { person: reader.user, change: 'Also give', role: page.roles.find(r => r.name === 'Owner Director')!.id })
       await act('map_title', { title: 'Staff', role: page.roles.find(r => r.name === 'Head Office')!.id })
       const explained = (await manager.post<{ result: { roles: { name: string; source: string }[] } }>('/api/app_reads/dash/explain_person', { payload: { person: reader.user } })).result
-      expect(explained.roles.map(r => [r.name, r.source])).toEqual([['Store Manager', 'Corrected by hand'], ['Leadership', 'Also given by hand']])
+      expect(explained.roles.map(r => [r.name, r.source])).toEqual([['Store Manager', 'Corrected by hand'], ['Owner Director', 'Also given by hand']])
 
       expect(await todays()).toEqual(before)
       expect(await scope()).toEqual(scopeBefore)
@@ -125,7 +125,7 @@ describe('business roles in shadow', () => {
       expect(await sql`select 1 from dash.business_role`).toEqual([])
       const systemManager = await createUser({ email: 'live-system-manager@example.test', roles: ['System Manager'] })
       const act = (name: string) => systemManager.post<{ result: Record<string, unknown> }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload: {} }).then(a => a.result)
-      expect(await act('add_starting_roles')).toEqual({ roles: 14, titles: 12 })
+      expect(await act('add_starting_roles')).toEqual({ roles: 14, titles: 9 })
       expect(await act('give_old_grants_to_roles')).toEqual({ grants_added: 1, grants_not_converted: 0 })
       expect(await read(staff, 'can_open')).toBe(true)
       // The owner's yes: a System Manager adds the switch row.

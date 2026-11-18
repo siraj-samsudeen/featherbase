@@ -6,7 +6,7 @@ const ON = '2026-11-17'
 const ROLES: BusinessRole[] = [
   { id: 'r-staff', name: 'Staff', reaches: 'Section' }, { id: 'r-tl', name: 'Team Leader', reaches: 'Section' }, { id: 'r-sm', name: 'Store Manager', reaches: 'Store' },
   { id: 'r-cm', name: 'Cluster Manager', reaches: 'Cluster' }, { id: 'r-buyer', name: 'Buyer', reaches: 'Merchandise' }, { id: 'r-head', name: 'Category Head', reaches: 'Merchandise' },
-  { id: 'r-ho', name: 'Head Office', reaches: 'Whole company' }, { id: 'r-lead', name: 'Leadership', reaches: 'Whole company' },
+  { id: 'r-ho', name: 'Head Office', reaches: 'Whole company' }, { id: 'r-lead', name: 'Owner Director', reaches: 'Whole company' },
   { id: 'r-mds', name: 'Master Data Manager', by_hand_only: true, reaches: 'Whole company' },
 ]
 const PERMISSIONS: Permission[] = [
