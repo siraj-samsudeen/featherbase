@@ -582,6 +582,21 @@ const BY_HAND = new Set(['corrected', 'also_given'])
 const WHY_COLUMN = 9
 /** The platform's most edges in one Why map: past it the rest of the lines are left out rather than the map refused. */
 const WHY_EDGES = 200
+/** Area words that name no record, safe to show anyone who may see the role. */
+const PLAIN_AREAS = new Set(['Whole company', 'No area yet'])
+
+/**
+ * A role box's area for the Map's Why: only parts that name their own record (the platform shows the detail only to
+ * someone who may read every one of them), at most 10, and the plain words above. Text that names a record without
+ * saying which (an unresolved area's message) is left out (Codex adversarial, round 3).
+ */
+function areaDetail(parts: Part[]): { detail?: string; detailRecords?: { table: string; row: string }[] } {
+  const named = parts.filter(p => p.table && p.id).slice(0, 10)
+  const shown = [...parts.filter(p => !p.table && PLAIN_AREAS.has(p.name)), ...named]
+  if (!shown.length) return {}
+  return { detail: clip(shown.map(p => p.name).join(' · ')), ...(named.length ? { detailRecords: named.map(p => ({ table: p.table!, row: p.id! })) } : {}) }
+}
+
 /** A name or a detail on a Why box, within the platform's 120 characters. */
 const clip = (words: string) => words.length > 120 ? `${words.slice(0, 119)}…` : words
 
@@ -612,14 +627,12 @@ export async function whyAccess(context: AccessContext) {
   const appId = (app: string, level: string) => `app:${app}:${level}`
   const roles = capped(e.roles, (r, i) => ({
     id: `role:${i}`, name: clip(r.name), record: { table: ROLE, row: r.role },
-    ...(r.area.parts.length ? { detail: clip(r.area.parts.map(p => p.name).join(' · ')) } : {}),
-    // Codex round 2: the records the area names, so the platform shows it only to someone who may read them.
-    ...(r.area.parts.some(p => p.table && p.id) ? { detailRecords: r.area.parts.flatMap(p => p.table && p.id ? [{ table: p.table, row: p.id }] : []).slice(0, 10) } : {}),
+    ...areaDetail(r.area.parts),
     source: BY_HAND.has(r.kind) ? 'hand' : 'hr',
   }), 'role')
   const apps = capped(e.apps, a => ({ id: appId(a.app, a.level), name: clip(`${a.app} · ${a.level}`) }), 'app')
   const can = capped(e.permissions, (p, i) => ({ id: `can:${i}`, name: clip(`${p.verb} ${p.thing}`), detail: clip(`${p.app} · ${p.level}`), reach: p.reach }), 'can')
-  const reports = capped(e.reports, r => ({ id: `report:${r.key}`, name: clip(r.name) }), 'report')
+  const reports = capped(e.reports, r => ({ id: `report:${r.key}`, name: clip(r.name), record: { table: 'dash.report', row: r.key } }), 'report')
   const shown = new Set(['person', ...[...roles, ...apps, ...can, ...reports].map(b => String(b.id))])
   const edges = ([
     ...e.roles.map((_, i) => ['person', `role:${i}`]),

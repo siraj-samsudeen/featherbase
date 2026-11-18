@@ -163,6 +163,8 @@ describe("Why on the platform's Map", () => {
     expect(why.columns[2]!.boxes.map(b => b.name)).toEqual(['Dash · Manager', 'Dash · Reader', 'Tasker · Manager', 'Tickets · Manager'])
     expect(why.columns[3]!.boxes.every(b => typeof b.reach === 'string')).toBe(true)
     expect(why.columns[4]!.boxes.map(b => b.name)).toEqual(['Sales', 'Vendor Sales'])
+    // Codex round 3: each report is its record, so the Map draws it as a link to it.
+    expect(why.columns[4]!.boxes.map(b => b.record)).toEqual([{ table: 'dash.report', row: 'sales' }, { table: 'dash.report', row: 'vs' }])
     // Each box is joined back to the person, through the role.
     expect(why.edges).toEqual(expect.arrayContaining([['person', 'role:0'], ['role:0', 'app:Dash:Reader'], ['role:0', 'can:0'], ['role:0', 'report:vs']]))
     const columnOf = new Map(why.columns.flatMap((c, i) => c.boxes.map(b => [b.id, i] as const)))
@@ -201,6 +203,17 @@ describe("Why on the platform's Map", () => {
     const permissions = await explainPerson(context(tables, { payload: { person: 'st' } }) as never)
     for (const [from, to] of why.edges.filter(([, to]) => to.startsWith('can:')))
       expect(roleOf.get(from)).toBe(permissions.permissions[Number(to.slice(4))]!.role)
+  })
+
+  // Codex adversarial round 3: an area's words that name a record without saying which never reach the Map.
+  it("shows only area words whose records it declares, and the company's plain words", async () => {
+    const tables = await seeded()
+    const ho = await whyAccess(context(tables, { payload: { table: 'Person', row: 'ho' } }) as never)
+    expect(ho.columns[1]!.boxes[0]).toMatchObject({ detail: 'Whole company' })
+    expect('detailRecords' in ho.columns[1]!.boxes[0]!).toBe(false)
+    const sm = await whyAccess(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never)
+    const box = sm.columns[1]!.boxes[0] as { detail: string; detailRecords: unknown[] }
+    expect(box.detail.split(' · ')).toHaveLength(box.detailRecords.length)
   })
 
   it('says a role given by hand is by hand', async () => {
