@@ -91,12 +91,14 @@ function wanted(r: EmployeeRecord, row: StatusRow, s: Statuses, today: string, f
   const v = recordVerdict(r, today, feedDay)
   if (row.status === s.current && v.leaver) return { row_id: row.row_id, record: row.record, from: s.current, to: s.left, basis: v.basis }
   if (row.status === s.current && !v.leaver && v.atWork) return 'held'
-  if (row.status !== s.left || v.leaver || v.atWork) return null
-  // Back on plain evidence: a rejoiner is active and paid again. Off the payroll
-  // (an owner-director, a joiner not yet paid) is no evidence either way, except
-  // to undo a left this job set itself on evidence that has since gone.
-  if ((r.movement_active === true && r.payroll_active === true) || row.own_left)
-    return { row_id: row.row_id, record: row.record, from: s.left, to: s.current, basis: row.own_left ? 'set left by this job' : 'current again' }
+  if (row.status !== s.left || v.leaver) return null
+  // A left this job set is undone as soon as the rule no longer says left,
+  // attendance overturning it included.
+  if (row.own_left) return { row_id: row.row_id, record: row.record, from: s.left, to: s.current, basis: 'set left by this job' }
+  // Otherwise back only on plain evidence: a rejoiner is active and paid again.
+  // Off the payroll (an owner-director, a joiner not yet paid) is no evidence.
+  if (!v.atWork && r.movement_active === true && r.payroll_active === true)
+    return { row_id: row.row_id, record: row.record, from: s.left, to: s.current, basis: 'current again' }
   return null
 }
 

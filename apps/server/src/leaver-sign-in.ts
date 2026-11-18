@@ -134,6 +134,12 @@ export async function leaverSignInRows(): Promise<LeaverSignInReport> {
   }
   fromPlan(SECTIONS[0], plan?.to_disable ?? [])
   fromPlan(SECTIONS[1], plan?.privileged_leavers ?? [])
+  // #1286: StyleHR says they left, attendance says they are at work. For review
+  // only, and placed before the people app, which may still read them as left.
+  for (const h of plan?.held_at_work ?? []) {
+    const how = listed(h.person)
+    if (how) rows.set(h.person, { section: SECTIONS[5], person: h.person, why: sentence(h.reason), ways_in: how, left_on: null })
+  }
   // Everyone else who can sign in, as the people app sees them.
   const describer = await peopleDescriberState()
   if (describer === 'none') notes.push('No app says who people are, so sections 3 and 4 are not checked')
@@ -146,11 +152,7 @@ export async function leaverSignInRows(): Promise<LeaverSignInReport> {
     if (how && !rows.has(o.person))
       rows.set(o.person, { section: SECTIONS[4], person: o.person, why: 'Off the latest payroll, but no exit date has passed and StyleHR does not mark them inactive', ways_in: how, left_on: null })
   }
-  // #1286: the record says they left, attendance says they are at work. For review only.
-  for (const h of plan?.held_at_work ?? []) {
-    const how = listed(h.person)
-    if (how && !rows.has(h.person)) rows.set(h.person, { section: SECTIONS[5], person: h.person, why: sentence(h.reason), ways_in: how, left_on: null })
-  }
+
   return { rows: ordered([...rows.values()]), notes }
 }
 

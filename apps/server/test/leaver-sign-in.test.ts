@@ -127,6 +127,18 @@ test('someone StyleHR says left but attendance shows at work is listed in sectio
   expect(status.counts).toEqual({ can_sign_in: 0, review: 1 })
 })
 
+test('a held person the people app still reads as left stays in section 6, outside the leaver count', async ({ admin }) => {
+  await applySeedPack('jeyarama')
+  await installDescriber(admin)
+  const working = await makePerson({ full_name: 'Held But Left In App' })
+  await linkStyleHrRecord(working, '812')
+  await password(working)
+  globalThis.__standing1271 = { [working]: { person: working, status: 'left', left_on: '2026-09-05' } }
+  warehouse([rec('812', 'C-812', { exit_date: '2026-09-05', last_present_day: istToday() })])
+  const report = await leaverSignInRows()
+  expect(report.rows.map((r) => [r.person, r.section])).toEqual([[working, '6. At work, though StyleHR says they left']])
+})
+
 // #1271 polish: the header's numbers are the list's own rows, section by section, after a real rebuild.
 test("the header's counts equal the rows in each section, and the rebuild's summary says the same numbers", async ({ admin }) => {
   await applySeedPack('jeyarama')

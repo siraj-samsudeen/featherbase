@@ -152,6 +152,27 @@ describe('the roster’s status follows the HR record', () => {
     expect(formatRosterLink(run.plan, run)).toContain('changed 1')
   })
 
+  test('a left this job set is undone when attendance then shows the person at work', async ({ admin }) => {
+    await setUp(admin, [crewRow(1)])
+    warehouse([{ key: '7001', payroll: false, joined: '2005-01-01', active: false }])
+    await runRosterLink('stylehr')
+    expect(await state('TT-1001')).toBe('Gone')
+    expect(await liveLinks()).toEqual([])
+    warehouse([{ key: '7001', payroll: false, joined: '2005-01-01', active: false, present: istToday() }])
+
+    await runRosterLink('stylehr')
+
+    expect(await state('TT-1001')).toBe('Working')
+    expect(await liveLinks()).toEqual(['7001'])
+  })
+
+  test('a left a person set stays when attendance shows them at work: theirs to decide', async ({ admin }) => {
+    await setUp(admin, [crewRow(1, { crew_state: 'Gone' })])
+    warehouse([{ key: '7001', exit: PAST, present: istToday() }])
+    await runRosterLink('stylehr')
+    expect(await state('TT-1001')).toBe('Gone')
+  })
+
   test('a left a person set, or changed since this job set it, is theirs: off the payroll it stays', async ({ admin }) => {
     await setUp(admin, [crewRow(1), crewRow(2, { crew_state: 'Gone' })])
     warehouse([{ key: '7001', payroll: false, joined: '2005-01-01', active: false }, { key: '7002', payroll: false, joined: '2005-01-01' }])
