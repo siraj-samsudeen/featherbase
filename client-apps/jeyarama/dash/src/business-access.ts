@@ -102,7 +102,8 @@ export async function rolePlaces(docs: Base, person: string, today: string, held
   const spot = held.spot
   // #1277 (owner, 18-Nov-2026): a role reaching a Region covers every store whose site is in the region of the site its
   // job (or the store it is given at) sits at, as a Store Manager of each; regions are the sites' own data.
-  const site = spot.kind === 'job' ? exact(mine.jobs.find(j => exact(j.row_id) === spot.job)?.site) : spot.kind === 'site' ? spot.site : ''
+  // A hand change naming a store places the role there, not at the job's own store (Codex round 5).
+  const site = spot.kind === 'job' ? (spot.site || exact(mine.jobs.find(j => exact(j.row_id) === spot.job)?.site)) : spot.kind === 'site' ? spot.site : ''
   if (reaches === 'Region' && site) {
     const [here] = await every(docs, 'Site', ['operating_region'], [['row_id', '=', site]])
     const region = exact(here?.operating_region)

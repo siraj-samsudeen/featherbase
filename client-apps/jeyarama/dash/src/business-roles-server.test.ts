@@ -969,5 +969,20 @@ describe('Region and Tester', () => {
     tables['dash.title_map'] = tables['dash.title_map'].filter(r => r.title !== 'Buyer')
     expect(Object.keys(await scopeOf(tables, 'buy'))).toEqual(['9901'])
   })
+
+  // Codex round 5: a Region role placed by hand at another store reaches that store's region.
+  it('gives a Regional Head placed by hand at a West store the West, not the region of their own job', async () => {
+    const tables = await regional()
+    await giveRole(context(tables, { payload: { person: 'sm', change: 'Correct', role: roleId(tables, 'Regional Head'), site: 'RIV' } }) as never)
+    expect(await scopeOf(tables, 'sm')).toEqual({ 9903: null })
+    const explained = await explainPerson(context(tables, { payload: { person: 'sm' }, peopleRoles: { sm: ['Dash Reader'] } }) as never)
+    expect(explained.roles.map(r => [r.name, r.area.parts.map(p => p.name)])).toEqual([['Regional Head', ['West']]])
+  })
+
+  it('gives a Supplier no Dash until the supplier area exists', async () => {
+    const tables = await regional()
+    await giveRole(context(tables, { payload: { person: 'supplier', change: 'Also give', role: roleId(tables, 'Supplier'), site: 'LKS' } }) as never)
+    expect([await scopeOf(tables, 'supplier'), await reads.can_open(readerOf(tables, 'supplier', ['Dash Reader']) as never)]).toEqual([{}, false])
+  })
 })
 
