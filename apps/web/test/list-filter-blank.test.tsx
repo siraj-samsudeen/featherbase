@@ -17,14 +17,14 @@ test('is blank takes no value, and its chip reads "is blank" with nothing after 
   expect(screen.queryByTestId('filter-value')).not.toBeInTheDocument()
   fireEvent.click(screen.getByTestId('filter-add'))
   const chip = await screen.findByTestId('filter-chip')
-  await waitFor(() => expect(chip).toHaveTextContent(/^Row ID is blank×$/))
+  await waitFor(() => expect(chip).toHaveTextContent(/^Row ID is blank✕$/))
 })
 
 test('a list opened with is not blank shows it as a chip', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(`${tableHref(SITE)}?filters=${encodeURIComponent(JSON.stringify([['region', 'is not blank', null]]))}`, admin)
   const chip = await screen.findByTestId('filter-chip')
-  expect(chip.textContent).toMatch(/is not blank×$/)
+  expect(chip.textContent).toMatch(/is not blank✕$/)
   expect(chip.textContent).not.toContain('null')
 })
 

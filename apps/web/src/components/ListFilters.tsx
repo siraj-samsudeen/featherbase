@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { choiceLabel } from 'shared'
 import { LinkedTitle } from '../lib/row-name'
+import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
 import { LinkControl } from './LinkControl'
-import { NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, type ColumnDef, type TableMeta } from '../lib/meta'
 import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { useI18n } from '../lib/i18n'
-import { SearchInput, buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
+import { formatValue, useSettings, type Settings } from '../lib/settings'
+import { FilterChip, RecordLink, SearchInput, buttonClasses, inputClasses, pillClasses } from '@featherbase/shop-floor'
 import { parseChain } from '../lib/linked-filters'
 import { LinkedFilterBuilder, LinkedFilterWords, useLinkOptions } from './LinkedFilter'
 
@@ -95,15 +97,77 @@ export function ListSearch({ meta, filters, onChange, label }: {
         onChange(words ? [...rest, [column, SEARCH_OP, `%${words}%`]] : rest)
       }}
     >
-      <SearchInput
-        aria-label={`Search ${label}`}
-        placeholder={`Search ${label}`}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        data-testid="list-search"
-        className="w-56"
-      />
+      <span className="relative block">
+        <SearchInput
+          aria-label={`Search ${label}`}
+          placeholder={`Search ${label}`}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          data-testid="list-search"
+          {...NOT_A_LOGIN}
+          className={active ? 'w-56 pr-9 [&::-webkit-search-cancel-button]:hidden' : 'w-56'}
+        />
+        {active && (
+          <BoxClear name="search" testId="list-search-clear" onClear={() => {
+            setText('')
+            onChange(filters.filter((f) => !(f[0] === column && f[1] === SEARCH_OP)))
+          }} />
+        )}
+      </span>
     </form>
+  )
+}
+
+/** The list's field boxes (up to four of its visible Choice and text-like columns). The column Search looks in
+ *  has none: the search box is its box (#1289: no filter shown twice). */
+function standardColumns(meta: TableMeta) {
+  const search = searchColumn(meta)
+  return meta.columns
+    .filter((f) => f.in_list_view && !f.hidden && f.column_name !== search && (f.column_type === 'Choice' || STANDARD_TEXT_TYPES.has(f.column_type)))
+    .slice(0, 4)
+}
+
+/** #1289: whether the list draws field boxes, whose labels sit above their controls (the view tools line up with the controls). */
+export const hasFieldBoxes = (meta: TableMeta) => standardColumns(meta).length > 0
+
+const CONTAINS = /^%[^%]*%$/
+const scalar = (v: unknown) => (typeof v === 'string' || typeof v === 'number') && String(v) !== ''
+
+/**
+ * #1289: which of the list's filters a visible box already shows (the search box, or a field box), by index.
+ * A box shows only the first filter it can show exactly; any other filter, and every filter added with Add
+ * filter on a column with no box, is a chip. So no filter is shown twice.
+ */
+export function heldByBoxes(meta: TableMeta, filters: Filter[]): Set<number> {
+  const held = new Set<number>()
+  const take = (match: (f: Filter) => boolean) => {
+    const i = filters.findIndex((f, j) => !held.has(j) && match(f))
+    if (i >= 0) held.add(i)
+  }
+  const search = searchColumn(meta)
+  if (search) take(([c, op, v]) => c === search && op === SEARCH_OP && typeof v === 'string' && CONTAINS.test(v))
+  for (const f of standardColumns(meta)) {
+    if ((f.column_type === 'Reference' && f.reference_table) || f.column_type === 'Choice')
+      take(([c, op, v]) => c === f.column_name && op === '=' && scalar(v))
+    else take(([c, op, v]) => c === f.column_name && op === 'like' && typeof v === 'string' && CONTAINS.test(v))
+  }
+  return held
+}
+
+/** #1289: a filled box's own ✕, which takes its filter off. */
+function BoxClear({ name, onClear, testId, beforeArrow = false }: { name: string; onClear: () => void; testId: string
+  /** A select draws its own arrow at the right: the ✕ sits just left of it, never on it. */
+  beforeArrow?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      aria-label={`Clear the ${name} filter`}
+      data-testid={testId}
+      className={`absolute bottom-0 flex h-control items-center ${beforeArrow ? 'right-7' : 'right-1'}`}
+    >
+      <span aria-hidden className="grid size-6 place-items-center rounded-full text-xs text-action hover:bg-action/15">✕</span>
+    </button>
   )
 }
 
@@ -117,14 +181,7 @@ export function StandardFilters({
   onChange: (filters: Filter[]) => void
 }) {
   const { t } = useI18n()
-  const columns = meta.columns
-    .filter(
-      (f) =>
-        f.in_list_view &&
-        !f.hidden &&
-        (f.column_type === 'Choice' || STANDARD_TEXT_TYPES.has(f.column_type)),
-    )
-    .slice(0, 4)
+  const columns = standardColumns(meta)
   // Drafts for the text inputs (applied on Enter/blur); choices apply at once.
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   if (!columns.length) return null
@@ -141,47 +198,53 @@ export function StandardFilters({
     onChange(value ? [...rest, [columnName, op, op === 'like' ? `%${value}%` : value]] : rest)
   }
 
+  function clear(columnName: string, op: string) {
+    setDrafts(({ [columnName]: _, ...d }) => d)
+    apply(columnName, op, '')
+  }
+
+  /** One box: its label over its control, and its ✕ when it holds a filter (outside the label, so the
+   *  control's name stays the column's). */
+  const box = (f: ColumnDef, op: string, control: ReactNode) => (
+    <div key={f.column_name} className={`relative ${FILTER_BOX}`}>
+      <label className="contents">
+        <span className={FILTER_LABEL} title={f.label ?? f.column_name}>
+          {f.label ?? f.column_name}
+        </span>
+        {control}
+      </label>
+      {current(f.column_name, op) && (
+        <BoxClear name={f.label ?? f.column_name} onClear={() => clear(f.column_name, op)} testId={`std-filter-clear-${f.column_name}`}
+          beforeArrow={f.column_type === 'Choice'} />
+      )}
+    </div>
+  )
+  const roomForClear = (op: string, f: ColumnDef, rest = '') => (current(f.column_name, op) ? `pr-9 ${rest}` : rest)
+
   return (
     <div className="flex flex-wrap items-end gap-2" data-testid="standard-filters">
       {columns.map((f) =>
         f.column_type === 'Reference' && f.reference_table ? (
           // #793: a link filters by picking a row by its name, not by typing its id.
-          <label key={f.column_name} className={FILTER_BOX}>
-            <span className={FILTER_LABEL} title={f.label ?? f.column_name}>
-              {f.label ?? f.column_name}
-            </span>
-            <span className="flex items-center gap-1 [&>div]:min-w-0 [&>div]:flex-1">
+          box(f, '=', (
+            <span className="flex items-center [&>div]:min-w-0 [&>div]:flex-1">
               <LinkControl
                 field={f}
                 value={current(f.column_name, '=')}
                 onChange={(v) => apply(f.column_name, '=', String(v ?? ''))}
-                className={inputClasses('text-ellipsis')}
+                className={inputClasses(roomForClear('=', f, 'text-ellipsis'))}
                 common={{ 'data-testid': `std-filter-${f.column_name}` }}
                 forFilter
               />
-              {current(f.column_name, '=') && (
-                <button
-                  type="button"
-                  onClick={() => apply(f.column_name, '=', '')}
-                  aria-label={`Clear the ${f.label ?? f.column_name} filter`}
-                  data-testid={`std-filter-clear-${f.column_name}`}
-                  className="px-1 text-ink-subtle hover:text-action"
-                >
-                  ×
-                </button>
-              )}
             </span>
-          </label>
+          ))
         ) : f.column_type === 'Choice' ? (
-          <label key={f.column_name} className={FILTER_BOX}>
-            <span className={FILTER_LABEL} title={f.label ?? f.column_name}>
-              {f.label ?? f.column_name}
-            </span>
+          box(f, '=', (
             <select
               value={current(f.column_name, '=')}
               onChange={(e) => apply(f.column_name, '=', e.target.value)}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses()}
+              className={inputClasses(current(f.column_name, '=') ? 'pr-14' : undefined)}
             >
               <option value="">All</option>
               {(f.choices ?? '')
@@ -193,12 +256,9 @@ export function StandardFilters({
                   </option>
                 ))}
             </select>
-          </label>
+          ))
         ) : (
-          <label key={f.column_name} className={FILTER_BOX}>
-            <span className={FILTER_LABEL} title={f.label ?? f.column_name}>
-              {f.label ?? f.column_name}
-            </span>
+          box(f, 'like', (
             <input
               value={drafts[f.column_name] ?? current(f.column_name, 'like')}
               onChange={(e) => setDrafts((d) => ({ ...d, [f.column_name]: e.target.value }))}
@@ -211,10 +271,10 @@ export function StandardFilters({
               }}
               placeholder={`Filter ${f.label ?? f.column_name}…`}
               data-testid={`std-filter-${f.column_name}`}
-              className={inputClasses('text-ellipsis')}
+              className={inputClasses(roomForClear('like', f, 'text-ellipsis'))}
               {...NOT_A_LOGIN}
             />
-          </label>
+          ))
         ),
       )}
     </div>
@@ -235,10 +295,34 @@ export function filterValueLabel(op: string, value: unknown): string {
   return String(value)
 }
 
+// #1289: a filter's value reads as the list's cells show it: dates in the instance's format (DD-Mon-YYYY),
+// figures with their precision; a Check reads Yes or No, as a record's page says it.
+const TYPED_VALUES = new Set(['Check', 'Date', 'Datetime', 'Currency', 'Float'])
+const TRUE_WORDS = new Set(['1', 'true', 'yes'])
+function readable(columnType: string, value: unknown, settings: Settings): unknown {
+  if (Array.isArray(value)) return value.map((v) => readable(columnType, v, settings))
+  if (columnType === 'Check') return value === true || TRUE_WORDS.has(String(value).toLowerCase()) ? 'Yes' : 'No'
+  return formatValue(columnType, value, settings) || value
+}
+
+/** #1289: the record a chip names, as a link that opens it; plain words only where the viewer may not open it. */
+function ChipRecord({ table, rowId }: { table: string; rowId: string }) {
+  const title = useLinkTitle(table, rowId)
+  if (title.state === 'loading') return <span className="text-ink-subtle">…</span>
+  if (title.state === 'unreadable') return <RecordLink table={table} rowId={rowId} name={UNSEEN_ROW} canOpen={false} />
+  return <RecordLink table={table} rowId={rowId} name={title.title} />
+}
+
 /** One filter as a person reads it (#792): its column as the list's heading
  *  names it, and a link compared with one row reads as that row's title. */
-export function FilterWords({ meta, filter }: { meta: import('../lib/meta').TableMeta | undefined; filter: Filter }) {
+export function FilterWords({ meta, filter, asLink = false }: {
+  meta: import('../lib/meta').TableMeta | undefined
+  filter: Filter
+  /** #1289: a record it names is a link that opens it (a chip); false inside another control (a Recent button). */
+  asLink?: boolean
+}) {
   const { t } = useI18n()
+  const settings = useSettings()
   const [column, op, value] = filter
   // #1276: a Linked to chain reads as its steps, each with its count.
   const chain = meta && parseChain(filter)
@@ -256,8 +340,11 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   return (
     <>
       {label}{op === '=' ? ': ' : ` ${op}`}{isBlankOp(op) || op === '=' ? null : ' '}
-      {isBlankOp(op) ? null : linked ? <LinkedTitle table={col.reference_base ?? col.reference_table!} rowId={String(value)} />
+      {isBlankOp(op) ? null : linked ? (asLink
+          ? <ChipRecord table={col.reference_base ?? col.reference_table!} rowId={String(value)} />
+          : <LinkedTitle table={col.reference_base ?? col.reference_table!} rowId={String(value)} />)
         : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
+        : col && TYPED_VALUES.has(col.column_type) && !(op === 'like' || op === 'not like') ? filterValueLabel(op, readable(col.column_type, value, settings))
         : filterValueLabel(op, value)}
     </>
   )
@@ -267,16 +354,16 @@ export function FilterBar({
   meta,
   filters,
   onChange,
-  builderOpen = true,
   onLinkedAdded,
+  chips = true,
 }: {
   meta: import('../lib/meta').TableMeta
   filters: Filter[]
   onChange: (filters: Filter[]) => void
-  /** False leaves only the chips of the filters already applied (#1017). */
-  builderOpen?: boolean
   /** #1276: a Linked to filter was added; the list closes its Add filter row. */
   onLinkedAdded?: () => void
+  /** #1289: false when the page shows the chips in its own filter row. */
+  chips?: boolean
 }) {
   const { t } = useI18n()
   const fields = [
@@ -292,7 +379,7 @@ export function FilterBar({
   const kind = filterBoxKind(column, op)
   // #1276: the Tables this list links to; a connected Table follows only its own
   // links within its source, and cannot ask for rows NOT linked.
-  const links = useLinkOptions(builderOpen ? meta.name : undefined)
+  const links = useLinkOptions(meta.name)
   const linked = field === LINKED || field === NOT_LINKED
 
   const ops: readonly string[] = meta.data_source ? OPS : [...OPS, ...BLANK_OPS]
@@ -306,7 +393,7 @@ export function FilterBar({
 
   return (
     <div className="mb-3">
-      {builderOpen && <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <select
           value={field}
           onChange={(e) => { setField(e.target.value); setValue('') }}
@@ -386,8 +473,8 @@ export function FilterBar({
           Add
         </button>
         </>}
-      </div>}
-      {builderOpen && linked && (
+      </div>
+      {linked && (
         <LinkedFilterBuilder
           key={field}
           meta={meta}
@@ -400,34 +487,41 @@ export function FilterBar({
           }}
         />
       )}
-      {filters.length > 0 && (
-        <div className={`flex flex-wrap gap-2 ${builderOpen ? 'mt-2' : ''}`} data-testid="filter-chips">
-          {filters.map((f, i) => (
-            <span
-              key={i}
-              className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
-              data-testid="filter-chip"
-            >
-              <FilterWords meta={meta} filter={f} />
-              <button
-                aria-label="Remove filter"
-                onClick={() => onChange(filters.filter((_, j) => j !== i))}
-                className="text-ink-subtle hover:text-ink"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {/* #1228: filters come back on the next visit, so one control takes them all off. */}
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            data-testid="filter-clear-all"
-            className="text-sm text-action underline-offset-2 hover:underline"
-          >
-            Clear filters
-          </button>
-        </div>
+      {chips && <FilterChips meta={meta} filters={filters} onChange={onChange} className="mt-2" />}
+    </div>
+  )
+}
+
+/** #1289: the list's active filters as big chips, each with a round ✕, then Clear All Filters when more than one
+ *  is on. They sit in the list's one filter row; filters come back on the next visit (#1228), so one control takes
+ *  them all off. */
+export function FilterChips({ meta, filters, onChange, held, className }: {
+  meta: import('../lib/meta').TableMeta
+  filters: Filter[]
+  onChange: (filters: Filter[]) => void
+  /** #1289: the filters a visible box already shows (heldByBoxes): they get no chip. */
+  held?: Set<number>
+  className?: string
+}) {
+  const { t } = useI18n()
+  if (!filters.length) return null
+  const nameOf = ([column]: Filter) => (column === 'row_id' ? 'Row ID' : t(meta.columns.find((c) => c.column_name === column)?.label ?? String(column)))
+  return (
+    <div className={`flex flex-wrap items-center gap-2 ${className ?? ''}`} data-testid="filter-chips">
+      {filters.map((f, i) => held?.has(i) ? null : (
+        <FilterChip key={i} name={nameOf(f)} onRemove={() => onChange(filters.filter((_, j) => j !== i))}>
+          <FilterWords meta={meta} filter={f} asLink />
+        </FilterChip>
+      ))}
+      {filters.length > 1 && (
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          data-testid="filter-clear-all"
+          className="min-h-control text-sm font-medium text-action underline-offset-2 hover:underline"
+        >
+          Clear All Filters
+        </button>
       )}
     </div>
   )

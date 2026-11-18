@@ -10,6 +10,12 @@ import { fireEvent } from '@testing-library/dom'
 import { getToken } from '../src/lib/api'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
+import { openListMenu } from './list-menus'
+
+/** #1289: Save View… is the View menu's first item. */
+async function saveViewOpen() {
+  fireEvent.click((await openListMenu('View')).getByRole('button', { name: 'Save View…' }))
+}
 
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -49,9 +55,9 @@ test('Reopen a saved view: opening it applies its filters in place of the ones a
   fireEvent.click(await screen.findByTestId('saved-view-chip'))
 
   await waitFor(() => expect(cellTexts()).toEqual(['Open', 'Open']))
-  expect(screen.getAllByTestId('filter-chip')).toHaveLength(1)
-  // #792: a filter names its column as the list's heading does.
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Stage: Open')
+  // #1289: the Stage box shows the view's filter, so no chip repeats it.
+  expect(screen.getByTestId('std-filter-stage')).toHaveValue('Open')
+  expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0)
   expect(screen.getByTestId('saved-view-chip')).toHaveAttribute('aria-pressed', 'true')
 })
 
@@ -118,23 +124,23 @@ test('Changing a saved view means saving over it: a view\'s chip offers no renam
   const bar = await screen.findByTestId('saved-views-bar')
   await within(bar).findByTestId('saved-view-chip')
   const controls = within(bar).getAllByRole('button').map((b) => b.getAttribute('data-testid'))
-  expect(controls.sort()).toEqual(['save-view-open', 'saved-view-chip', 'saved-view-delete', 'saved-view-share'])
+  expect(controls.sort()).toEqual(['saved-view-chip', 'saved-view-delete', 'saved-view-share'])
 })
 
 test('first-use filters can be saved, cancelled and reopened after remount without waiting for a nudge', async ({ admin }) => {
   await seed(admin, 'Sv First')
   await open(admin, 'Sv First')
   await waitFor(() => expect(cellTexts()).toHaveLength(3))
-  expect(screen.queryByRole('button', { name: 'Save view' })).not.toBeInTheDocument()
+  expect((await openListMenu('View')).queryByRole('button', { name: 'Save View…' })).not.toBeInTheDocument()
   cleanup()
   await open(admin, 'Sv First', OPEN)
-  fireEvent.click(await screen.findByRole('button', { name: 'Save view' }))
+  await saveViewOpen()
   fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: 'Cancelled' } })
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
   expect(screen.queryByRole('textbox', { name: 'View name' })).not.toBeInTheDocument()
   expect((await admin.get<{ views: unknown[] }>('/api/saved_views?table=Sv%20First')).views).toEqual([])
 
-  fireEvent.click(screen.getByRole('button', { name: 'Save view' }))
+  await saveViewOpen()
   fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: 'First open items' } })
   fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
   expect(await screen.findByTestId('saved-view-chip')).toHaveTextContent('First open items')
@@ -149,7 +155,7 @@ test('first-use filters can be saved, cancelled and reopened after remount witho
 test('an expired session hides its saved-view controls rather than exposing the old person’s state', async ({ admin }) => {
   await seed(admin, 'Sv Expired')
   await open(admin, 'Sv Expired', OPEN)
-  fireEvent.click(await screen.findByRole('button', { name: 'Save view' }))
+  await saveViewOpen()
   fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: 'Private draft' } })
   await admin.post('/api/logout', {})
   fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
@@ -161,7 +167,7 @@ test('an expired session hides its saved-view controls rather than exposing the 
 test('a refused view save stays visible and can be corrected through the same form', async ({ admin }) => {
   await seed(admin, 'Sv Refused')
   await open(admin, 'Sv Refused', OPEN)
-  fireEvent.click(await screen.findByRole('button', { name: 'Save view' }))
+  await saveViewOpen()
   fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: 'x'.repeat(101) } })
   fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
   expect(await screen.findByTestId('saved-view-error')).toHaveAttribute('role', 'alert')
