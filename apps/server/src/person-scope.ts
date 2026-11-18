@@ -124,10 +124,12 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
   /** #1280: the optional columns this run has confirmed are there, as "Table.column". */
   const confirmed = new Set<string>()
   /** An optional column named in a read that this run has not confirmed, or null. */
-  function unconfirmed(table: string, args: NonNullable<Parameters<AppScopeProviderContext['documents']['list']>[1]>): string | null {
+  async function unconfirmed(table: string, args: NonNullable<Parameters<AppScopeProviderContext['documents']['list']>[1]>): Promise<string | null> {
     const optional = binding.optionalColumns?.[table] ?? []
     if (!optional.length) return null
-    const named = [...(args.fields ?? []), ...(args.filters ?? []).map(([column]) => column),
+    // Without an order_by the Table's own sort column orders the rows, so it is read too (Codex round 6).
+    const sort = args.order_by ? [] : [(await getMeta(table)).sort_column].filter(Boolean)
+    const named = [...(args.fields ?? []), ...(args.filters ?? []).map(([column]) => column), ...sort,
       ...String(args.order_by ?? '').split(',').map((part) => part.trim().split(/\s+/)[0]).filter(Boolean)]
     return named.find((column) => optional.includes(String(column)) && !confirmed.has(`${table}.${String(column)}`)) ?? null
   }
@@ -180,7 +182,7 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
     }),
     list: (table, args = {}) => read(table, async () => {
       if (args.filters?.some(([, operator]) => operator === 'related' || operator === 'not related')) throw new Error('Scope provider lists do not support related filters')
-      const unchecked = unconfirmed(table, args)
+      const unchecked = await unconfirmed(table, args)
       if (unchecked) throw new Error(`Scope provider read optional column ${table}.${unchecked} without checking it is there (documents.available)`)
       // #859: retiring a row never changes access, so scope sees retired rows.
       return (await getList(table, { ...args, with_retired: true })).data

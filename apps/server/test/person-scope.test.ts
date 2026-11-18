@@ -956,6 +956,21 @@ describe('a scope provider checking whether a Table is installed', () => {
       const row = await documents.get('Buyer Desk', String(desk.row_id))
       return [{ label: 'Desk', filters: { store: [String(row.kind)] } }]
     }))).toEqual([{ label: 'Desk', filters: { store: ['Store'] } }])
+    // With no order_by the Table's own sort column orders the rows: an optional one is read too (Codex round 6).
+    await sql`update table_def set sort_column = 'kind', sort_order = 'asc' where name = 'Buyer Desk'`
+    invalidateMeta('Buyer Desk')
+    await expect(resolvePersonScope(user.user!, providing(async documents => {
+      await documents.list('Buyer Desk', { fields: ['store'] })
+      return place
+    }))).rejects.toMatchObject({ reason: 'provider' })
+    expect(await resolvePersonScope(user.user!, providing(async documents => {
+      await documents.list('Buyer Desk', { fields: ['store'], order_by: 'store asc' })
+      await documents.available('Buyer Desk', ['kind'])
+      await documents.list('Buyer Desk', { fields: ['store'] })
+      return place
+    }))).toEqual(place)
+    await sql`update table_def set sort_column = 'updated_at' where name = 'Buyer Desk'`
+    invalidateMeta('Buyer Desk')
     // A confirmation lasts one run: the next run must check again.
     let runs = 0
     const twice = providing(async documents => {
