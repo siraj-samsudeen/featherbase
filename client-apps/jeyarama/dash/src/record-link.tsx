@@ -12,7 +12,7 @@ export const RECORD = {
   site: 'Site', floor: 'Store Floor', section: 'Section', employee: 'Employee', department: 'Department',
   subcategory: 'Subcategory', category: 'Category', region: 'Operating Region', merchandise: 'Merchandise Assignment', buyerSection: 'Buyer Section',
   // #1225: what Report access shows.
-  report: 'dash.report', bundle: 'dash.report_bundle', role: 'Role', job: 'Job',
+  report: 'dash.report', bundle: 'dash.report_bundle', role: 'Role', job: 'Job', businessRole: 'dash.business_role',
 } as const
 
 /** Whether the signed-in person may open a Table's records in Featherbase: its description answers only

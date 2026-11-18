@@ -16,15 +16,15 @@ import { currentEnvironment, readVariable } from './env'
 const REPO_ROOT = resolve(import.meta.dirname, '../../..')
 const INSTANCE_NAME = /^[a-z0-9_-]+\/[a-z0-9_-]+$/
 
-/** The settings file's section for each hosted environment. `dev` is the
- *  hosted dev instance's own name; `staging` is its older name, kept working
- *  so an instance not yet renamed still deploys (#1278). */
-const SECTIONS: Record<string, string> = { dev: 'dev', staging: 'dev', production: 'prod' }
+/** The settings file's section for each hosted environment: each hosted
+ *  environment applies its own section, so one can differ from another (#1278:
+ *  dev runs without the Microsoft secret that staging and production have). */
+const SECTIONS: Record<string, string> = { dev: 'dev', staging: 'staging', production: 'prod' }
 
 export function settingsSection(environment = currentEnvironment()): string {
   const section = SECTIONS[environment]
   if (!section)
-    throw new Error(`FEATHERBASE_INSTANCE is set on a "${environment}" server. An instance deploys as dev (or staging, its older name) or production (its prod); on a developer's machine use pnpm dev.`)
+    throw new Error(`FEATHERBASE_INSTANCE is set on a "${environment}" server. An instance deploys as dev, staging or production; on a developer's machine use pnpm dev.`)
   return section
 }
 

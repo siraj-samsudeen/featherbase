@@ -249,6 +249,29 @@ describe('relabelTable', () => {
   })
 })
 
+// #1277: an app Table its scope provider comes to read is marked as deciding scope.
+describe('markDecidesScope', () => {
+  test('a mark replays both ways', () => {
+    expect(() => validateMigrations('shop', '0.2.0', [item(), { ...supplier, decides_scope: true }],
+      [step([{ kind: 'markDecidesScope', table: 'shop.supplier' }])])).not.toThrow()
+  })
+
+  test('a Table already marked is refused', () => {
+    expect(refusal(() => replayForward('shop', [{ ...supplier, decides_scope: true }], [{ kind: 'markDecidesScope', table: 'shop.supplier' }])))
+      .toMatch(/markDecidesScope shop\.supplier: the Table already decides scope/)
+  })
+
+  test('the version must declare the Table marked', () => {
+    expect(refusal(() => validateMigrations('shop', '0.2.0', [item(), supplier], [step([{ kind: 'markDecidesScope', table: 'shop.supplier' }])])))
+      .toMatch(/markDecidesScope shop\.supplier: the Table as declared after it does not decide scope/)
+  })
+
+  test('marking a Table outside the app is refused', () => {
+    expect(refusal(() => replayForward('shop', [supplier], [{ kind: 'markDecidesScope', table: 'other.supplier' }])))
+      .toMatch(/only its own Tables/)
+  })
+})
+
 describe('history', () => {
   test('a history that stops short of the version is refused', () => {
     expect(refusal(() => validateMigrations('shop', '0.3.0', [item()], [step([])])))

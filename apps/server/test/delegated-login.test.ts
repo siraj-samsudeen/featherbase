@@ -516,7 +516,7 @@ describe('delegated sign-in test mode', () => {
       }
     }
     expect(refusal('production')).toMatch(/DELEGATED_LOGIN_TEST_MODE is set on a "production" server/)
-    expect(refusal('production')).toMatch(/development, test, or dev or staging/)
+    expect(refusal('production')).toMatch(/development, test, dev or staging/)
     // Any other refusal a bare test environment has is not about test mode.
     expect(refusal('dev')).not.toContain('DELEGATED_LOGIN_TEST_MODE')
     expect(refusal('staging')).not.toContain('DELEGATED_LOGIN_TEST_MODE')

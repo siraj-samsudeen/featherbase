@@ -15,7 +15,8 @@ export const EXPLAIN_ADDRESS = '?view=explain'
 export const CHANGES_ADDRESS = '?view=changes'
 export const explainAddress = (person: string) => `${EXPLAIN_ADDRESS}&person=${encodeURIComponent(person)}`
 export const ROLE_TABLE = 'dash.business_role'
-const SHADOW_NOTE = 'Worked out beside today\'s access: nothing here changes what anyone sees until the switch-over.'
+// #1277: "today" is the old rules (jobs and Dash roles) and "would" is business roles, whichever of the two decides now.
+const SHADOW_NOTE = 'Compares the old rules (jobs and Dash roles) with business roles. Which of the two decides Dash access now is said at the top of Business Roles.'
 const REFUSED = 'Only a Report Access Manager or System Manager can see this'
 
 interface Part { name: string; table?: string; id?: string; code?: string }
@@ -120,12 +121,12 @@ export function BusinessRolesPage() {
   }
   return (
     <Shell current="roles" testid="business-roles" title="Business Roles" wide>
-      <p className="fd-muted">{SHADOW_NOTE}</p>
+      <AccessSource onSwitched={load} />
       {!answer && !failed && <Loading />}
       {failed && <Failed message={failed} onRetry={load} />}
       {answer && answer.roles.length === 0 && (
         <Card data-testid="no-roles">
-          <EmptyState title="No business roles yet" body="Start from Jeyarama's twelve roles and the Title Map for today's jobs; edit them afterwards."
+          <EmptyState title="No business roles yet" body="Start from Jeyarama's starting roles and the Title Map for today's jobs; edit them afterwards."
             action={<Button variant="primary" loading={busy} onClick={start} data-testid="add-starting-roles">Add The Starting Roles</Button>} />
           {error && <Notice tone="negative">{error}</Notice>}
         </Card>
@@ -152,6 +153,57 @@ export function BusinessRolesPage() {
         </>
       )}
     </Shell>
+  )
+}
+
+// ---------- #1277: what decides Dash access, and giving old grants to business roles ----------
+
+interface SourceAnswer { source: 'business_roles' | 'legacy'; switch_rows: { id: string; source: string }[]; can_switch: boolean }
+interface LogLine { id: string; step: string; outcome: string; detail: string }
+
+/** Which rules decide Dash access now, the old grants given to business roles when a System Manager asks, and what was done. */
+function AccessSource({ onSwitched }: { onSwitched: () => Promise<unknown> | void }) {
+  const source = useRead<SourceAnswer>('access_source', {})
+  const log = useRead<LogLine[]>('switch_over_log', {})
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showLog, setShowLog] = useState(false)
+  const run = async () => {
+    setBusy(true); setError(null)
+    try { await act('give_old_grants_to_roles', {}); await Promise.all([source.load(), log.load(), onSwitched()]) } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
+  }
+  if (!source.answer?.switch_rows) return null
+  const live = source.answer.source === 'business_roles'
+  const switchRow = source.answer.switch_rows[0]
+  const lines = Array.isArray(log.answer) ? log.answer : []
+  return (
+    <Card data-testid="access-source">
+      <div className="flex flex-col gap-2 p-4">
+        <p className="text-sm" data-testid="access-source-line">
+          Dash access is decided by <strong>{live ? 'business roles' : 'the old rules (jobs and Dash roles)'}</strong>.{' '}
+          {live ? 'To put the old rules back, a System Manager sets the Dash access source to Old rules.'
+            : 'To switch, after the owner\'s yes, a System Manager adds a Dash access source saying Business roles.'}
+          {switchRow && <> <RecordLink table="dash.access_source" id={switchRow.id}>Dash access source</RecordLink></>}
+        </p>
+        {source.answer.can_switch && (
+          <div className="flex flex-wrap items-center gap-3">
+            <Button loading={busy} onClick={run} data-testid="give-old-grants">Give Old Grants To Business Roles</Button>
+            <span className="text-[13px] text-ink-muted">Gives each report given to a job, Dash Reader or Dash All-Stores Reader also to its business roles. Changes no switch; running it again adds nothing.</span>
+          </div>
+        )}
+        {lines.length > 0 && (
+          <button type="button" className={`${linkClasses} self-start`} aria-expanded={showLog} onClick={() => setShowLog(!showLog)} data-testid="switch-over-log-toggle">
+            {showLog ? 'Hide what was done' : `What was done (${plural(lines.length, 'line')})`}
+          </button>
+        )}
+        {showLog && (
+          <ul className="flex flex-col gap-1 text-[13px]" data-testid="switch-over-log">
+            {lines.map(line => <li key={line.id}><Chip tone={line.outcome === 'Added' ? 'source' : 'hand'}>{line.outcome}</Chip> {line.detail}</li>)}
+          </ul>
+        )}
+        {error && <Notice tone="negative">{error}</Notice>}
+      </div>
+    </Card>
   )
 }
 
@@ -260,7 +312,7 @@ function UnmappedTitle({ title, roles, onSaved }: { title: RolesAnswer['titles']
 
 // ---------- Explain A Person ----------
 
-type Kind = 'loses_dash' | 'gains_dash' | 'stores' | 'reports' | 'decision'
+type Kind = 'loses_dash' | 'gains_dash' | 'stores' | 'reports' | 'decision' | 'needs_dash_role'
 interface Change { kinds: Kind[]; stores_gained: Part[]; stores_lost: Part[]; stores_changed: Part[]; gained: Part[]; lost: Part[]; decisions: Part[] }
 interface Explained {
   person: string; name: string; who?: Who; employee: string | null
@@ -445,11 +497,12 @@ function HandForm({ change, person, choices, places, onDone, onCancel }: { chang
 interface Changed extends Change { person: string; name: string; who: Who | null; roles: string[] }
 interface ChangesAnswer { people: number; changed: number; groups: { kind: Kind; people: Changed[] }[] }
 const GROUP_TITLES: Record<Kind, string> = {
-  loses_dash: 'Would Lose Dash', gains_dash: 'Would Gain Dash', stores: 'Different Stores', reports: 'Different Reports', decision: 'Needs A Decision',
+  loses_dash: 'Would Lose Dash', gains_dash: 'Would Gain Dash', stores: 'Different Stores', reports: 'Different Reports', decision: 'Needs A Decision', needs_dash_role: 'Needs A Dash Role',
 }
 const GROUP_NOTES: Partial<Record<Kind, string>> = {
   stores: 'They would reach other stores, or other subcategories in the same store.',
   decision: 'Reports they get today only through a role such as Dash Reader. The owner decides which business roles get them.',
+  needs_dash_role: 'Their business roles would open Dash, but Featherbase lets into Dash only someone holding one of its roles, such as Dash Reader. Give them one to let them in.',
 }
 const SHOWN = 10
 
@@ -501,6 +554,7 @@ function ChangeFacts({ change, who }: { change: Change; who?: Who | null }) {
   const facts: ReactNode[] = []
   if (change.kinds.includes('loses_dash')) facts.push('Would lose Dash')
   if (change.kinds.includes('gains_dash')) facts.push('Would gain Dash')
+  if (change.kinds.includes('needs_dash_role')) facts.push('Business roles would open Dash, but they hold no Dash role to let them in')
   const list = (label: string, parts: Part[]) => { if (parts.length) facts.push(<>{label} <Parts parts={parts} /></>) }
   list('Would reach', change.stores_gained)
   list('Would stop reaching', change.stores_lost)

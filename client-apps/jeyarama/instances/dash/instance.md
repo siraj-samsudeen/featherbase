@@ -7,7 +7,7 @@ variables.
 | File | What it is |
 |---|---|
 | `instance.json` | which apps this instance runs: the folders on its app path, each installed |
-| `instance-settings.json` | its non-secret settings: base values plus `local`, `dev` and `prod` sections |
+| `instance-settings.json` | its non-secret settings: base values plus `local`, `dev`, `staging` and `prod` sections |
 | `privacy-notice.md` | the notice served at `/privacy`. The client approved its wording: change it only with a fresh approval |
 | `instance-setup/` | one-off steps, each run at a named moment |
 
@@ -16,15 +16,15 @@ to see the report: `instance.json` names the script that fills it with made-up d
 
 ## Settings
 
-The base applies everywhere. `local`, `dev` and `prod` hold what differs:
+The base applies everywhere. `local`, `dev`, `staging` and `prod` hold what differs:
 
-- **Google sign-in.** The client id is set on dev and prod and empty locally,
+- **Google sign-in.** The client id is set on dev, staging and prod and empty locally,
   so the development mock sign-in serves. The client secret is never in the
   file; it is the `GOOGLE_CLIENT_SECRET` deployment variable.
-- **The Dive.** `SERVICE_ACCOUNT` is read when dev or prod settings are applied and saved into the
+- **The Dive.** `SERVICE_ACCOUNT` is read when dev, staging or prod settings are applied and saved into the
   App Settings; local boots without it. Each Dive's id is on its `dash.report` row. No version is
   pinned: a report opens its Dive's latest saved version, so saving a Dive releases it (#937).
-  Opening a Dive needs the `MOTHERDUCK_EMBED_TOKEN` deployment variable on dev and prod: the token
+  Opening a Dive needs the `MOTHERDUCK_EMBED_TOKEN` deployment variable on dev, staging and prod: the token
   of `motherduck_dive_service_account`, which may create Dive embed sessions (the Admin preset
   role), never the warehouse token. Without it the page shows the quick view (#1139).
 - **Refreshing the cached figures.** Off locally: there is no warehouse to
@@ -54,9 +54,9 @@ its Workspace domain. People can't link a Google account to themselves
 
 **Microsoft.** Bisquared's consultants sign in with their Microsoft work account. The app
 "Featherbase" is registered in Bisquared's Entra tenant (any organisation's work account may
-try; tenant `organizations`); its client id is in the `prod` section only. It is empty locally,
-so the development stand-in serves, and empty on dev, which has no Microsoft secret and so offers
-no Microsoft sign-in (#1278). The client secret is never in the file; it is the
+try; tenant `organizations`); its client id is in the `staging` and `prod` sections. It is empty locally,
+so the development stand-in serves. Dev turns Microsoft sign-in off: it has no Microsoft secret
+(#1278). The client secret is never in the file; it is the
 `MICROSOFT_CLIENT_SECRET` deployment variable, and a deploy is refused while it is missing.
 Nobody is created by a Microsoft sign-in: a System Manager ticks **Expects Microsoft sign-in**
 on the person, whose address must be on `bisquared.com`. Setting it up again:

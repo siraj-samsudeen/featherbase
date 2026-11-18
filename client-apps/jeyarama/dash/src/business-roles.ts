@@ -2,13 +2,14 @@
 // roles are worked out: from the HR title through the Title Map (the designation's mapping, else the
 // job's), merchandise assignments, a cluster naming them its head, and hand changes (Correct replaces
 // the title's role, Also give adds one). Where each role applies is a spot; the server turns a spot
-// into places with reachOf, so the place rules stay in provider.ts. Nothing here decides access today.
+// into places with reachOf, so the place rules stay in provider.ts. #1277: when business roles decide, these rules
+// decide Dash access, through business-access.ts.
 import { reportsReaching, type AccessRow, type BundleMember } from './report-access.ts'
 
 export const REACHES = ['Own', 'Team', 'Area', 'All'] as const
 export type Reach = (typeof REACHES)[number]
 /** How far a role reaches, wherever its holder's assignment sits: data on the role, never read from its name. */
-export const REACHES_CHOICES = ['Section', 'Floor', 'Department', 'Store', 'Cluster', 'Merchandise', 'Whole company', 'Given place'] as const
+export const REACHES_CHOICES = ['Section', 'Floor', 'Department', 'Store', 'Cluster', 'Region', 'Merchandise', 'Whole company', 'Given place'] as const
 export type Reaches = (typeof REACHES_CHOICES)[number]
 export interface BusinessRole { id: string; name: string; description?: string | null; by_hand_only?: boolean; reaches?: Reaches | null }
 export interface Permission { role: string; app: string; level: string; verb: string; thing: string; reach: Reach }
@@ -45,7 +46,7 @@ function mapping(model: Pick<Model, 'rules' | 'roles'>): Map<string, string> {
 const inForce = (hand: HandChange, today: string) => !hand.removed && (!hand.ends_on || hand.ends_on >= today)
 
 /** The location reaches, each covering what a job of its kind covers where the assignment sits. */
-const LOCATION: readonly (Reaches | undefined | null)[] = ['Section', 'Floor', 'Department', 'Store', 'Cluster']
+const LOCATION: readonly (Reaches | undefined | null)[] = ['Section', 'Floor', 'Department', 'Store', 'Cluster', 'Region']
 
 /**
  * The area a source gives, in a shape its role's Reaches allows (Codex rounds 5 and 6). Whole company is the
@@ -56,7 +57,7 @@ const LOCATION: readonly (Reaches | undefined | null)[] = ['Section', 'Floor', '
 export function fit(spot: Spot, reaches: Reaches | null | undefined): Spot {
   if (reaches === 'Whole company') return { kind: 'company' }
   if (spot.kind === 'job' && spot.site && reaches === 'Given place') return { kind: 'site', site: spot.site }
-  const fits = spot.kind === 'none' || (spot.kind === 'job' && LOCATION.includes(reaches)) || (spot.kind === 'site' && (reaches === 'Store' || reaches === 'Given place'))
+  const fits = spot.kind === 'none' || (spot.kind === 'job' && LOCATION.includes(reaches)) || (spot.kind === 'site' && (reaches === 'Store' || reaches === 'Region' || reaches === 'Given place'))
     || (spot.kind === 'cluster' && reaches === 'Cluster') || ((spot.kind === 'merchandise' || spot.kind === 'buyer_sections') && reaches === 'Merchandise')
   return fits ? spot : { kind: 'unresolved', from: spot }
 }
@@ -168,7 +169,7 @@ export function titleList(inUse: TitleInUse[], model: Pick<Model, 'rules' | 'rol
 }
 
 export type ShadowReceiver = { kind: 'person'; person: string } | { kind: 'role'; role: string } | { kind: 'decision'; name: string }
-/** D4 in shadow: a grant to a job goes to its business role; one to an app role (Dash Reader) needs a decision. */
+/** D4: a grant to a job goes to its business role; one to an app role (Dash Reader) needs a decision (Give Old Grants To Business Roles, #1277). */
 export function shadowReceiver(row: AccessRow, model: Pick<Model, 'rules' | 'roles'>): ShadowReceiver | null {
   if (row.person) return { kind: 'person', person: row.person }
   if (row.job) {
@@ -178,31 +179,16 @@ export function shadowReceiver(row: AccessRow, model: Pick<Model, 'rules' | 'rol
   return row.role ? { kind: 'decision', name: row.role } : null
 }
 
-export interface NewWhy { role?: string; person?: true; bundle: string | null }
-/** The reports the new model gives a person: grants to them, and grants to a business role they hold. */
-export function newModelReports(person: string, roles: string[], rows: readonly AccessRow[], members: readonly BundleMember[], model: Pick<Model, 'rules' | 'roles'>): Map<string, NewWhy[]> {
-  const got = new Map<string, NewWhy[]>()
-  const add = (report: string, why: NewWhy) => got.set(report, [...(got.get(report) ?? []), why])
-  for (const row of rows) {
-    if (Boolean(row.report) === Boolean(row.report_bundle)) continue
-    const to = shadowReceiver(row, model)
-    const why: Omit<NewWhy, 'bundle'> | null = to?.kind === 'person' && to.person === person ? { person: true }
-      : to?.kind === 'role' && roles.includes(to.role) ? { role: to.role } : null
-    if (!why) continue
-    if (row.report) add(row.report, { ...why, bundle: null })
-    else for (const m of members) if (m.report_bundle === row.report_bundle) add(m.report, { ...why, bundle: m.report_bundle })
-  }
-  return got
-}
-
 /** Reports that reach someone today only through an app role such as Dash Reader: the owner decides those (D4). */
 export function decisionReports(who: { person: string; roles: readonly string[]; jobs: readonly string[] }, rows: readonly AccessRow[], members: readonly BundleMember[]): string[] {
   return [...reportsReaching(who, rows, members)].filter(([, because]) => because.every(b => b.kind === 'role')).map(([report]) => report).sort()
 }
 
 /** One side of the comparison: Dash opens, the places by store (null: the whole store), the reports. */
-export interface Side { opens: boolean; places: Record<string, string[] | null>; reports: string[] }
-export type ChangeKind = 'loses_dash' | 'gains_dash' | 'stores' | 'reports' | 'decision'
+export interface Side { opens: boolean; places: Record<string, string[] | null>; reports: string[]
+  /** #1277: business roles would open Dash, but the person holds none of Dash's own roles, so the platform keeps them out. */
+  needsDashRole?: boolean }
+export type ChangeKind = 'loses_dash' | 'gains_dash' | 'stores' | 'reports' | 'decision' | 'needs_dash_role'
 export interface Difference { kind: ChangeKind | null; kinds: ChangeKind[]; storesGained: string[]; storesLost: string[]; storesChanged: string[]; gained: string[]; lost: string[]; decisions: string[] }
 
 /** What changes for one person from today to the new model; `decisions` are today's reports given only through an app role. */
@@ -223,7 +209,7 @@ export function differences(today: Side, next: Side, decisions: string[]): Diffe
   // Every kind that applies: someone losing Dash and reaching other stores is listed under both.
   const kinds = ([
     ['loses_dash', today.opens && !next.opens], ['gains_dash', !today.opens && next.opens],
-    ['stores', storesGained.length + storesLost.length + storesChanged.length > 0], ['reports', gained.length + lost.length > 0], ['decision', undecided.length > 0],
+    ['stores', storesGained.length + storesLost.length + storesChanged.length > 0], ['reports', gained.length + lost.length > 0], ['decision', undecided.length > 0], ['needs_dash_role', !next.opens && !!next.needsDashRole],
   ] as [ChangeKind, boolean][]).filter(([, applies]) => applies).map(([kind]) => kind)
   return { kind: kinds[0] ?? null, kinds, storesGained, storesLost, storesChanged, gained, lost, decisions: undecided }
 }

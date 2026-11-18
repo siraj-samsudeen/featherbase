@@ -1,13 +1,13 @@
 // #1218: business roles in shadow (option A). Made-up roles, titles and people.
 import { describe, expect, it } from 'vitest'
-import { fit, appsOf, decisionReports, differences, permissionSentence, rolesOf, shadowReceiver, newModelReports, titleList, opensDash, type BusinessRole, type Permission, type Spot, type TitleRule } from './business-roles'
+import { fit, appsOf, decisionReports, differences, permissionSentence, rolesOf, shadowReceiver, titleList, opensDash, type BusinessRole, type Permission, type Spot, type TitleRule } from './business-roles'
 
 const ON = '2026-11-17'
 const ROLES: BusinessRole[] = [
   { id: 'r-staff', name: 'Staff', reaches: 'Section' }, { id: 'r-tl', name: 'Team Leader', reaches: 'Section' }, { id: 'r-sm', name: 'Store Manager', reaches: 'Store' },
   { id: 'r-cm', name: 'Cluster Manager', reaches: 'Cluster' }, { id: 'r-buyer', name: 'Buyer', reaches: 'Merchandise' }, { id: 'r-head', name: 'Category Head', reaches: 'Merchandise' },
-  { id: 'r-ho', name: 'Head Office', reaches: 'Whole company' }, { id: 'r-lead', name: 'Leadership', reaches: 'Whole company' },
-  { id: 'r-mds', name: 'Master Data Steward', by_hand_only: true, reaches: 'Whole company' },
+  { id: 'r-ho', name: 'Head Office', reaches: 'Whole company' }, { id: 'r-lead', name: 'Owner Director', reaches: 'Whole company' },
+  { id: 'r-mds', name: 'Master Data Manager', by_hand_only: true, reaches: 'Whole company' },
 ]
 const PERMISSIONS: Permission[] = [
   { role: 'r-staff', app: 'Tasker', level: 'User', verb: 'Edit', thing: 'Tasks', reach: 'Own' },
@@ -16,7 +16,7 @@ const PERMISSIONS: Permission[] = [
   { role: 'r-sm', app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area' },
   { role: 'r-sm', app: 'Tasker', level: 'Manager', verb: 'Edit', thing: 'Tasks', reach: 'Team' },
   { role: 'r-buyer', app: 'Dash', level: 'Reader', verb: 'View', thing: 'Reports', reach: 'Area' },
-  { role: 'r-mds', app: 'Master Data', level: 'Steward', verb: 'Edit', thing: 'Master Tables', reach: 'All' },
+  { role: 'r-mds', app: 'Master Data', level: 'Manager', verb: 'Edit', thing: 'Master Tables', reach: 'All' },
 ]
 const RULES: TitleRule[] = [
   { title: 'Staff', role: 'r-staff' }, { title: 'Team Leader', role: 'r-tl' }, { title: 'Store Manager', role: 'r-sm' },
@@ -240,17 +240,6 @@ describe('report grants in the new shape', () => {
     expect(shadowReceiver({ report: 'vs', report_bundle: null, person: null, role: null, job: null }, model)).toBeNull()
   })
 
-  it('gives nothing through a row that names both a report and a bundle, or another person', () => {
-    const rows = [{ report: 'vs', report_bundle: 'b1', person: 'p1', role: null, job: null }, { report: 'st', report_bundle: null, person: 'p2', role: null, job: null },
-      { report: 'mine', report_bundle: null, person: 'p1', role: null, job: null }]
-    expect([...newModelReports('p1', [], rows, [], model)]).toEqual([['mine', [{ person: true, bundle: null }]]])
-  })
-
-  it('gives a report through a bundle to everyone holding the role, saying why', () => {
-    const rows = [{ report: null, report_bundle: 'b1', person: null, role: null, job: 'Store Manager' }]
-    const got = newModelReports('p1', ['r-sm'], rows, [{ report_bundle: 'b1', report: 'vs' }, { report_bundle: 'b2', report: 'other' }], model)
-    expect([...got]).toEqual([['vs', [{ role: 'r-sm', bundle: 'b1' }]]])
-  })
 })
 
 describe('reports needing a decision', () => {
