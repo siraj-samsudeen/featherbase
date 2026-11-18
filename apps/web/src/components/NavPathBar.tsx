@@ -3,7 +3,7 @@ import { PathBar, RecentPaths } from '@featherbase/shop-floor'
 import { encodePath, type NavPath } from '../lib/nav-path'
 import { usePageNavigation } from '../lib/navigation'
 import { useNavigationSettings } from '../lib/nav-settings'
-import { useStepLabels } from '../lib/step-labels'
+import { useCompactWalkLabels, useStepLabels } from '../lib/step-labels'
 
 // #910 checklist 11–14: the path bar of a list or row page. Its steps are
 // named per viewer; Back, Forward and each step move along the path (each a
@@ -41,8 +41,13 @@ export function NavPathBar() {
   )
 }
 
-/** The walks' names, step by step: "Category › Sarees › Rows" (#1288: the sidebar names them so too). */
-export function useWalkLabels(paths: NavPath[]): string[] {
+/** #1288: the walks' short names for the sidebar's Recently Opened: "Bayside › Section Subcategory". */
+export function useSidebarWalkLabels(paths: NavPath[]): string[] {
+  return useCompactWalkLabels(paths.map((p) => p.steps.slice(0, p.at + 1)))
+}
+
+/** The walks' names, step by step, as the path bar names them: "Category › Sarees › Rows". */
+function useWalkLabels(paths: NavPath[]): string[] {
   const walks = paths.map((p) => p.steps.slice(0, p.at + 1))
   const labels = useStepLabels(walks.flat())
   let offset = 0

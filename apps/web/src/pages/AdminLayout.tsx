@@ -7,7 +7,7 @@ import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_
 import { SIDEBAR_VIEWS_KEY, useNavigationSettings } from '../lib/nav-settings'
 import { pathHref } from '../lib/navigation'
 import { encodePath, type NavPath } from '../lib/nav-path'
-import { useWalkLabels } from '../components/NavPathBar'
+import { useSidebarWalkLabels } from '../components/NavPathBar'
 import { RecentSub } from '../components/RecentSub'
 import { Route } from 'lucide-react'
 import { ApiError, api, getSessionUser } from '../lib/api'
@@ -427,14 +427,14 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   const sidebarCandidates = historyReady && user
     ? uniqueByDisplay(offered(recentActions(user.row_id, 20)).filter((e) => e.kind !== 'search')).slice(0, SIDEBAR_RECENT_CAP)
     : []
-  const recentSlots = sidebarCandidates.slice(0, 3)
+  const recentSlots = sidebarCandidates.slice(0, SIDEBAR_RECENT_CAP)
   const sidebarFrequent = historyReady && user
     ? uniqueByDisplay([...recentSlots, ...offered(frequentActions(user.row_id, 12))]).slice(recentSlots.length, recentSlots.length + 2)
     : []
   const sidebarEntries = sidebarFrequent.length ? recentSlots : sidebarCandidates
   // #1288: a remembered walk is one entry among the recent pages and records, in time order, in the same slots.
   const navSettings = useNavigationSettings()
-  const walkLabels = useWalkLabels(navSettings.walks.map((w) => w.path))
+  const walkLabels = useSidebarWalkLabels(navSettings.walks.map((w) => w.path))
   const sidebarRecent: SidebarRecentItem[] = (historyReady && user
     ? [
         ...sidebarEntries.map((entry) => ({ kind: 'entry' as const, entry, at: entry.visits[entry.visits.length - 1] ?? 0 })),

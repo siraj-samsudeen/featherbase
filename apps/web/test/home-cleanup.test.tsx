@@ -187,15 +187,16 @@ test('Team: a sign-in reads "<person> signed in", the verb styled like every oth
   expect(verb).not.toHaveClass('text-xs')
 })
 
-test('Recently opened holds at most five items, Frequent included', async ({ admin }) => {
+// #1288 (UI owner, 18-Nov): five recents, then at most two Frequent, since walks share the recents.
+test('Recently opened holds five recents and at most two Frequent', async ({ admin }) => {
   const now = Date.now()
   for (let i = 0; i < 8; i++)
     for (const back of [3, 2, 1])
       recordAction('Administrator', { kind: 'list', key: `list:T${i}?`, label: `T${i}`, path: `/featherbase/admin/table/t${i}` }, now - i * 10_000 - back * 1000)
   await renderApp('/featherbase/admin', admin)
   await screen.findAllByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
-  const items = [...screen.queryAllByTestId('sidebar-recent'), ...screen.queryAllByTestId('sidebar-frequent')]
-  expect(items).toHaveLength(5)
+  expect(screen.queryAllByTestId('sidebar-recent')).toHaveLength(5)
+  expect(screen.queryAllByTestId('sidebar-frequent').length).toBeLessThanOrEqual(2)
 })
 
 // #489 items 2 and 9 replace #476's phone label ("Home"): the selector's

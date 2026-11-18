@@ -262,3 +262,23 @@ test("a recent whose key is not a filtered list keeps its stored words", () => {
   expect(listOf({ key: 'row:Site/S-1' })).toBeNull()
   expect(listOf({ key: 'list:Site/kanban?[]' })).toEqual({ table: 'Site', view: 'kanban', filters: [] })
 })
+
+// #1288 (UI owner): the sidebar names a walk briefly: a record by its name without its code, and each
+// further step only for what it adds. The path bar keeps its fuller words.
+test('a walk that starts on a record reads by names alone in Recently Opened, saying nothing twice', async ({ admin }) => {
+  await seedSites(admin)
+  const walk: NavPath = { at: 2, steps: [
+    { screen: 'row', table: SITE, row: 'ENK' },
+    { screen: 'list', table: PLANT, filters: [['site', '=', 'ENK']] },
+    { screen: 'list', table: PLANT, filters: [['site', '=', 'ENK'], ['plant_name', 'like', '%Super%']] },
+  ] }
+  const key = encodePath(walk)
+  await admin.put('/api/user_settings/__navigation', { recentPaths: [key], recentPathTimes: { [key]: Date.now() } })
+  recordAction('Administrator', { kind: 'page', key: 'page:all-tables', label: 'All tables', path: '/featherbase/admin/all-tables' }, Date.now() - 60_000)
+  await renderApp('/featherbase/admin/all-tables', admin)
+  await waitFor(() => expect(screen.getByTestId('sidebar-walk')).toHaveTextContent(new RegExp(`^Enchakkal › ${PLANT} › Plant name: Super`)))
+  expect(screen.getByTestId('sidebar-walk')).not.toHaveTextContent('ENK')
+  // Opened, the path bar still names each step in full.
+  fireEvent.click(screen.getByTestId('sidebar-walk'))
+  await waitFor(() => expect(pathNav()).toHaveTextContent('Enchakkal · ENK'))
+})
