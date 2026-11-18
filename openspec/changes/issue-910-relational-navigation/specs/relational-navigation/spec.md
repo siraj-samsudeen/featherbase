@@ -95,6 +95,21 @@ search the rest. Choosing a row SHALL replace the step in place, adding none.
 - **THEN** that order shows in its place, the path has the same number of steps, and orders of
   other customers are not offered
 
+### Requirement: Pick an area on the trees
+
+Where an installed app declares an area's levels (Location, Merchandise), picking a link's area
+SHALL offer the area picker: one column per level, each row with how many rows of the next level the
+viewer may see under it, picking clearing the columns to its right, and the area named as links. A
+level the field cannot hold yet SHALL stay walkable, with Use this area off and saying which level
+can be given.
+
+#### Scenario: A store in Chennai South
+
+- **WHEN** the user gives a member a role and picks its area on the trees, the cluster Chennai South
+  and then its Store E
+- **THEN** Chennai South counts only its stores, using Chennai South itself is not offered yet, and
+  Store E becomes the role's area
+
 ### Requirement: Two links from the same table stay separate groups
 
 When one table links to the row in two ways, the drill pane SHALL show each way as its own group

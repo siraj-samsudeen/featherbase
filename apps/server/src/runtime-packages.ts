@@ -133,6 +133,23 @@ const manifestSchema = z.object({
     may: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
     label: z.string().max(40).optional(),
   }).strict()).optional(),
+  // #1282 G1–G6: the areas people pick on the trees: each axis a list of levels,
+  // each a Table read by its title and linked to the level above by `parent`,
+  // with the words a staff screen says and, where an admin screen says other ones, those.
+  areas: z.array(z.object({
+    name: z.string().min(1).max(40),
+    whole: z.string().min(1).max(40),
+    levels: z.array(z.object({
+      table: z.string().min(1),
+      title: z.string().min(1),
+      parent: z.string().min(1).optional(),
+      label: z.string().min(1).max(40),
+      plural: z.string().min(1).max(40),
+      adminLabel: z.string().min(1).max(40).optional(),
+      adminPlural: z.string().min(1).max(40).optional(),
+      filters: z.array(z.tuple([z.string().min(1), z.literal('='), z.union([z.string(), z.number(), z.boolean()])])).max(4).optional(),
+    }).strict()).min(1).max(6),
+  }).strict()).max(4).optional(),
   tables: z.array(tableDefSchema).min(1),
   roles: z.array(z.string().min(1)).optional(),
   permissions: z.array(appPermissionSchema).default([]),
@@ -468,6 +485,14 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       throw new Error(`The app's record page for ${table} is for a Table that is not one of the app's`)
     if (!address.startsWith(appHref(manifest.name)))
       throw new Error(`The app's record page for ${table} is ${address}, which is not one of the app's own pages (${appHref(manifest.name)}…)`)
+  }
+  // #1282 G1–G6: each level of an area hangs from the one above it, and the first from none.
+  for (const area of manifest.areas ?? []) {
+    const [first, ...below] = area.levels
+    if (first!.parent) throw new Error(`The app's area ${area.name} starts at ${first!.table}, which has no level above it to link to`)
+    below.forEach((level, i) => {
+      if (!level.parent) throw new Error(`The app's area ${area.name} names ${level.table} under ${area.levels[i]!.table} without the link to it`)
+    })
   }
   // #1282: a Why only reads: both its names must be the app's reads, never its actions.
   for (const [table, why] of Object.entries(manifest.why ?? {})) {
@@ -1005,6 +1030,8 @@ export async function appCatalog(user: string) {
         ...(pkg.manifest.accent && { accent: pkg.manifest.accent }),
         // #1237: where the app shows one of its rows, for the record page's "Open in <App>".
         ...(pkg.manifest.recordPages && { recordPages: pkg.manifest.recordPages }),
+        // #1282: the areas its people pick on the trees, for the area picker.
+        ...(pkg.manifest.areas && { areas: pkg.manifest.areas }),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
       })
   }
