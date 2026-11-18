@@ -166,5 +166,26 @@ describe('who may edit sections when business roles decide', () => {
     tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], job: 'Team Leader', section: 'S1' }
     expect(await mayEditOwnSection(ctx, 'sm', tables['Job Assignment'][0], today)).toBe(true)
   })
+
+  // Codex round 11: a wider role holds a narrower job's section only where its own area contains it.
+  it('gives a Team Leader of S1 whose title maps to a department role managing only S2 no edit of S1', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], job: 'Team Leader', section: 'S1' }
+    tables.Department = [{ row_id: 'D1', store: 'LKS', name: 'Silk', manager: 'E1', starts_on: '2026-01-01', ends_on: null }]
+    tables['Department Section'] = [{ row_id: 'L1', store: 'LKS', department: 'D1', section: 'S2', starts_on: '2026-01-01', ends_on: null }]
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Department Manager') })
+    expect(await mayEditOwnSection(ctx, 'sm', tables['Job Assignment'][0], today)).toBe(false)
+    tables['Department Section'].push({ row_id: 'L2', store: 'LKS', department: 'D1', section: 'S1', starts_on: '2026-01-01', ends_on: null })
+    expect(await mayEditOwnSection(ctx, 'sm', tables['Job Assignment'][0], today)).toBe(true)
+  })
+
+  it('gives a Team Leader whose department role manages an empty department no edit', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['Job Assignment'][0] = { ...tables['Job Assignment'][0], job: 'Team Leader', section: 'S1' }
+    tables.Department = [{ row_id: 'D1', store: 'LKS', name: 'Silk', manager: 'E1', starts_on: '2026-01-01', ends_on: null }]
+    tables['Department Section'] = []
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Department Manager') })
+    expect(await mayEditOwnSection(ctx, 'sm', tables['Job Assignment'][0], today)).toBe(false)
+  })
 })
 

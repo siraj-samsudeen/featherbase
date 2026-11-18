@@ -141,19 +141,27 @@ export async function sectionEditingAreas(ctx: Ctx, employees: Row[], today: str
       const role = ROLE_AREA[reach]
       if (!role) continue
       const roleAreas = await areasOfJobs(ctx, ids, [{ ...job, job: role.job }], today)
+      // The narrower of the two areas, kept only where it lies wholly inside the wider (Codex rounds 7 and 11).
       for (const jobArea of jobAreas) for (const roleArea of roleAreas) {
-        if (RANK[role.kind] > RANK[jobArea.kind]) { out.push(jobArea); continue }
-        if (RANK[role.kind] === RANK[jobArea.kind]) { if (role.kind === jobArea.kind) out.push(jobArea); continue }
-        // Narrower: the role's area, only where every section of it lies in the job's area.
-        if (roleArea.sections && jobArea.kind !== 'store') {
-          const rows = await list(ctx, T.section, SECTION_FIELDS, [['row_id', 'in', [...roleArea.sections]]])
-          if (!roleArea.sections.size || ![...roleArea.sections].every(id => inArea(jobArea, rows.find(r => exact(r.row_id) === id)))) continue
-        } else if (roleArea.site !== jobArea.site || (jobArea.kind !== 'store' && roleArea.kind === 'floor')) continue
-        out.push(roleArea)
+        if (RANK[role.kind] === RANK[jobArea.kind]) { if (role.kind === jobArea.kind && roleArea.site === jobArea.site) out.push(jobArea); continue }
+        const [inner, outer] = RANK[role.kind] < RANK[jobArea.kind] ? [roleArea, jobArea] : [jobArea, roleArea]
+        if (await within(ctx, inner, outer)) out.push(inner)
       }
     }
   }
   return out
+}
+
+/** Whether every part of `inner` lies in `outer`: its sections each in it, or a whole floor in a store. */
+async function within(ctx: Ctx, inner: Area, outer: Area): Promise<boolean> {
+  if (inner.site !== outer.site) return false
+  if (outer.kind === 'store') return true
+  if (inner.sections) {
+    if (!inner.sections.size) return false
+    const rows = await list(ctx, T.section, SECTION_FIELDS, [['row_id', 'in', [...inner.sections]]])
+    return [...inner.sections].every(id => inArea(outer, rows.find(r => exact(r.row_id) === id)))
+  }
+  return false
 }
 
 /** Under business roles, whether this job of theirs lets the person change their own section's subcategories (Your sections). */
