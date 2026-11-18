@@ -426,10 +426,8 @@ describe('search-and-explore', () => {
       await map.open(admin, SITE, org.site.Enchakkal!)
     })
     await step('the user chooses to centre the map on the region Kerala', async () => {
-      fireEvent.click(await map.linkedRow('Region'))
-      // The drill pane's "Focus here" re-centres the map.
-      const focus = await screen.findAllByRole('button', { name: /^(Centre|Center|Focus)( here| on| the map)?/i })
-      fireEvent.click(focus[0]!)
+      // #1282: Kerala's name on the map re-centres it there.
+      fireEvent.click(await within(await map.linkedRow('Region')).findByRole('link', { name: 'Kerala' }))
     })
     await step('the map re-centres on Kerala, showing what it in turn points to and back from', async () => {
       await map.centredOn('Kerala')

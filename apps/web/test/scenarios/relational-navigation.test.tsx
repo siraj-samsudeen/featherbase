@@ -557,27 +557,6 @@ describe('relational-navigation', () => {
     })
   })
 
-  scenario('Kerala in the pane, Enchakkal in the middle', async ({ admin }, step) => {
-    await step("the user is looking at Enchakkal's map", async () => {
-      const org = await seedOrganisation(admin)
-      await openRowPage(admin, SITE, org[SITE]!.Enchakkal!)
-      await showTab('Map')
-      await onScreen().within(byTestId('map-center'), (el) => el.assertText('Enchakkal'))
-    })
-    await step('the user clicks the region Kerala on the map', async () => {
-      fireEvent.click(await screen.findByTestId('map-forward-Region'))
-    })
-    await step('Kerala shows in the drill pane', () => pane('Kerala'))
-    await step('the map is still centred on Enchakkal', () => onScreen().within(byTestId('map-center'), (el) => el.assertText('Enchakkal')))
-    await step('choosing to centre on Kerala redraws the map around Kerala', async () => {
-      // #910 checklist 17: the drill pane's "Focus here" re-centres the map.
-      fireEvent.click(await within(await pane('Kerala')).findByRole('button', { name: 'Focus here' }))
-      // Raw: the redraw replaces the centre, so its text is read afresh on each try.
-      await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Kerala'))
-      expect(await screen.findByTestId(`map-group-${SITE}`)).toBeVisible()
-    })
-  })
-
   scenario('A cost centre from the tree', async ({ admin }, step) => {
     let org!: OrgIds
     let view!: View
@@ -621,6 +600,75 @@ describe('relational-navigation', () => {
     })
   })
 
+  // ---- #1282: the map can be walked, one record at a time ----
+
+  scenario("Enchakkal's map lists its plants", async ({ admin }, step) => {
+    let org!: OrgIds
+    await step('the site Enchakkal has three plants', async () => { org = await seedOrganisation(admin) })
+    await step("the user opens Enchakkal's map", async () => {
+      await openRowPage(admin, SITE, org[SITE]!.Enchakkal!)
+      await showTab('Map')
+    })
+    await step('the region Kerala shows on its left', async () => {
+      const region = await screen.findByTestId('map-forward-Region')
+      expect(await within(region).findByRole('link', { name: 'Kerala' })).toBeVisible()
+    })
+    await step("the plants' box lists Enchakkal's three plants by name, each with Focus", async () => {
+      const box = await screen.findByTestId('map-group-Plant')
+      await waitFor(() => expect(within(box).getAllByTestId('map-row')).toHaveLength(3))
+      for (const plant of ENCHAKKAL_PLANTS) {
+        expect(within(box).getByRole('link', { name: named(plant) })).toBeVisible()
+        expect(within(box).getByRole('button', { name: `Focus on ${plant}` })).toBeVisible()
+      }
+    })
+  })
+
+  scenario('The first 4 of 40 profit centres on the map', async ({ admin }, step) => {
+    let box!: HTMLElement
+    await step('Enchakkal Supermarket has 40 profit centres', () => seedOrganisation(admin))
+    await step("the user opens Enchakkal Supermarket's map", async () => {
+      await openRowPage(admin, 'Plant', '1503')
+      await showTab('Map')
+    })
+    await step("the profit centres' box lists 4 of them and says 36 more are in the panel", async () => {
+      box = await screen.findByTestId('map-group-Profit Centre')
+      await waitFor(() => expect(within(box).getAllByTestId('map-row')).toHaveLength(4))
+      expect(within(box).getByRole('button', { name: '+ 36 more in the panel' })).toBeVisible()
+    })
+    await step('clicking that shows the profit centres in the drill pane', async () => {
+      fireEvent.click(within(box).getByRole('button', { name: '+ 36 more in the panel' }))
+      await waitFor(async () => expect(await group('Enchakkal Supermarket', 'Profit Centre')).toHaveAttribute('aria-pressed', 'true'))
+    })
+  })
+
+  scenario('From Enchakkal to Kerala and back on the map', async ({ admin }, step) => {
+    const pathSteps = () => within(screen.getByRole('navigation', { name: 'Path' })).getAllByRole('button')
+      .map((b) => (b.textContent ?? '').trim()).filter(Boolean)
+    await step("the user is looking at Enchakkal's map", async () => {
+      const org = await seedOrganisation(admin)
+      await openRowPage(admin, SITE, org[SITE]!.Enchakkal!)
+      await showTab('Map')
+      await onScreen().within(byTestId('map-center'), (el) => el.assertText('Enchakkal'))
+    })
+    await step('the user clicks the region Kerala on the map', async () => {
+      fireEvent.click(await within(await screen.findByTestId('map-forward-Region')).findByRole('link', { name: 'Kerala' }))
+    })
+    await step('the map is centred on Kerala and the path ends at Kerala', async () => {
+      // Raw: the redraw replaces the centre, so its text is read afresh on each try.
+      await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Kerala'))
+      await waitFor(() => expect(pathSteps().at(-1)).toMatch(/Kerala$/))
+      expect(await screen.findByTestId(`map-group-${SITE}`)).toBeVisible()
+    })
+    await step('the user goes back to Enchakkal on the path', () => {
+      const path = screen.getByRole('navigation', { name: 'Path' })
+      fireEvent.click(within(path).getAllByRole('button', { name: /(^|\s)Enchakkal$/ })[0]!)
+    })
+    await step('the map is centred on Enchakkal again', async () => {
+      await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Enchakkal'))
+      expect(screen.getByRole('tab', { name: 'Map' })).toHaveAttribute('aria-selected', 'true')
+    })
+  })
+
   scenario('The first 10 of 40 profit centres', async ({ admin }, step) => {
     let centres!: HTMLElement
     await step('Enchakkal Supermarket has 40 profit centres', () => seedOrganisation(admin))
@@ -638,13 +686,13 @@ describe('relational-navigation', () => {
     const hidden = 'Enchakkal Hardware'
     let user!: Client
     let org!: OrgIds
-    const seen: { paneCount?: number; paneText?: string; treeCount?: number; treeText?: string } = {}
+    const seen: { paneCount?: number; paneText?: string; treeCount?: number; treeText?: string; mapCount?: number; mapText?: string } = {}
     await step("the user may read sites but not one of Enchakkal's three plants", async () => {
       org = await seedOrganisation(admin)
       user = await (createUser as CreateUser)({ email: 'limited@example.com', roles: await readerRoles(admin) })
       await limitRows(admin, user.user!, 'Plant', PLANTS.filter((p) => p.name !== hidden).map((p) => p.row_id))
     })
-    await step('the user opens Enchakkal in the drill pane and on its tree', async () => {
+    await step('the user opens Enchakkal in the drill pane, on its tree and on its map', async () => {
       await selectInSites(user, 'Enchakkal')
       seen.paneCount = countOf(await group('Enchakkal', 'Plant'))
       await openGroup('Enchakkal', 'Plant')
@@ -656,14 +704,21 @@ describe('relational-navigation', () => {
       await unfoldGroup('Plant')
       expect(await line('Enchakkal Supermarket')).toBeVisible()
       seen.treeText = document.body.textContent ?? ''
+      await showTab('Map')
+      const plants = await screen.findByTestId('map-group-Plant')
+      await waitFor(() => expect(within(plants).getAllByTestId('map-row')).toHaveLength(2))
+      seen.mapCount = countOf(within(plants).getByRole('button', { name: groupNamed('Plant') }))
+      seen.mapText = document.body.textContent ?? ''
     })
     await step('the group of plants counts 2', () => {
       expect(seen.paneCount, 'the drill pane counts the plant the user may not read').toBe(2)
       expect(seen.treeCount, 'the tree counts the plant the user may not read').toBe(2)
+      expect(seen.mapCount, 'the map counts the plant the user may not read').toBe(2)
     })
     await step('the name of the third plant shows nowhere', () => {
       expect(seen.paneText).not.toContain(hidden)
       expect(seen.treeText).not.toContain(hidden)
+      expect(seen.mapText).not.toContain(hidden)
     })
   })
 })

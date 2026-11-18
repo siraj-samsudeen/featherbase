@@ -260,20 +260,10 @@ When the user switches to the form and back to the tree
 Then Enchakkal's plants are still expanded
 ```
 
-### Requirement: The map and the tree show a row without moving away from it
+### Requirement: The tree shows a row without moving away from it
 
-Clicking a row on the map or the tree SHALL show it in the drill pane while the view stays centred
-where it was; the user can choose to centre the view on that row instead.
-
-#### Scenario: Kerala in the pane, Enchakkal in the middle
-
-```gherkin
-Given the user is looking at Enchakkal's map
-When the user clicks the region Kerala on the map
-Then Kerala shows in the drill pane
-And the map is still centred on Enchakkal
-And choosing to centre on Kerala redraws the map around Kerala
-```
+Clicking a row on the tree SHALL show it in the drill pane while the tree stays centred where it
+was.
 
 #### Scenario: A cost centre from the tree
 
@@ -282,6 +272,42 @@ Given the user unfolded Enchakkal's tree down to the cost centre EKL-Marketing
 When the user clicks EKL-Marketing on the tree
 Then EKL-Marketing shows in the drill pane
 And the tree is still centred on Enchakkal
+```
+
+### Requirement: The map can be walked, one record at a time
+
+A row's map SHALL show that one row in the middle, the rows it points to on the left, and on the
+right one box per group that points at it, with the group's count and its first 4 rows by name,
+then how many more the drill pane holds. An empty group SHALL stay, greyed. Each row the user may
+open SHALL read as a link with Focus beside it; clicking it, or its Focus, SHALL centre the map on
+that row and add it to the path, so the user can walk back along the path.
+
+#### Scenario: Enchakkal's map lists its plants
+
+```gherkin
+Given the site Enchakkal has three plants
+When the user opens Enchakkal's map
+Then the region Kerala shows on its left
+And the plants' box lists Enchakkal's three plants by name, each with Focus
+```
+
+#### Scenario: The first 4 of 40 profit centres on the map
+
+```gherkin
+Given Enchakkal Supermarket has 40 profit centres
+When the user opens Enchakkal Supermarket's map
+Then the profit centres' box lists 4 of them and says 36 more are in the panel
+And clicking that shows the profit centres in the drill pane
+```
+
+#### Scenario: From Enchakkal to Kerala and back on the map
+
+```gherkin
+Given the user is looking at Enchakkal's map
+When the user clicks the region Kerala on the map
+Then the map is centred on Kerala and the path ends at Kerala
+When the user goes back to Enchakkal on the path
+Then the map is centred on Enchakkal again
 ```
 
 ### Requirement: The tree unfolds links in both directions
@@ -320,7 +346,7 @@ allowed to read, nor count it in a group.
 
 ```gherkin
 Given the user may read sites but not one of Enchakkal's three plants
-When the user opens Enchakkal in the drill pane and on its tree
+When the user opens Enchakkal in the drill pane, on its tree and on its map
 Then the group of plants counts 2
 And the name of the third plant shows nowhere
 ```
