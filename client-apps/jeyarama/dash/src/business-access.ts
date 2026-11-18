@@ -75,10 +75,10 @@ export async function mineOf(docs: Base, person: string, today: string, designat
 function onlyThese(docs: Base, rows: { jobs: Row[]; merchandise: Row[]; clusters: Row[]; buyerSections: boolean; employees?: Row[]; notMine?: string[] }): Base {
   const given: Record<string, Row[]> = { 'Job Assignment': rows.jobs, 'Merchandise Assignment': rows.merchandise, Cluster: rows.clusters, ...(rows.employees ? { Employee: rows.employees } : {}) }
   const page = (found: Row[], args: { filters?: Filter[]; limit_start?: number; limit_page_length?: number }) => {
-    const kept = found.filter(row => (args.filters ?? []).every(([column, op, value]) =>
+    const kept = found.filter(row => args.filters!.every(([column, op, value]) =>
       op === 'in' ? (value as unknown[]).map(exact).includes(exact(row[column])) : exact(row[column]) === exact(value)))
-    const start = args.limit_start ?? 0
-    return kept.slice(start, start + (args.limit_page_length ?? 500))
+    // reachOf reads in pages, always naming them.
+    return kept.slice(args.limit_start!, args.limit_start! + args.limit_page_length!)
   }
   return {
     // reachOf asks only about the Buyer Section Tables, which only a Buyer's own run reads.
@@ -208,7 +208,7 @@ export function mergePlaces(places: Place[]): Place[] {
     if (codes) seen.filters.subcategory = codes
     else delete seen.filters.subcategory
     seen.basis = [...new Set([...(seen.basis ?? '').split(', '), ...(place.basis ?? '').split(', ')].filter(Boolean))].sort().join(', ')
-    const reasons = new Map([...(seen.reasons ?? []), ...(place.reasons ?? [])].map(r => [JSON.stringify(r), r]))
+    const reasons = new Map([...seen.reasons!, ...(place.reasons ?? [])].map(r => [JSON.stringify(r), r]))
     seen.reasons = [...reasons].sort(([a], [b]) => a.localeCompare(b)).map(([, r]) => r)
   }
   return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label))

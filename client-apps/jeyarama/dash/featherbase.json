@@ -3021,6 +3021,12 @@
           }
         }
       ]
+    },
+    {
+      "id": "old_grants_one_receiver",
+      "fromVersion": "0.13.30",
+      "toVersion": "0.13.31",
+      "operations": []
     }
   ],
   "baseTables": {

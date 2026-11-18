@@ -11,7 +11,6 @@ import { ALL_STORES_ROLE, type Documents } from './provider.ts'
 import { STARTING_ROLES, STARTING_TITLES } from './starting-roles.ts'
 import { accessKey, all } from './report-access-server.ts'
 import { checked, exact, text } from './values.ts'
-import { istToday } from './report.ts'
 
 type Row = Record<string, unknown>
 export const SWITCH_OVER_LOG = 'dash.switch_over_log'
@@ -85,7 +84,8 @@ export async function convertGrants(read: Documents, write: Writer, model: Model
   let notConverted = 0
   for (const row of rows) {
     const old = exact(row.job) ? { kind: 'job', name: exact(row.job) } : exact(row.role) ? { kind: 'role', name: exact(row.role) } : null
-    if (!old || exact(row.business_role) || exact(row.person)) continue
+    // A row that is not one thing to one receiver gives nothing under the old rules, so it gives nothing to a role either.
+    if (!old || !('key' in accessKey(row))) continue
     const gives = exact(row.report) ? { report: exact(row.report) } : { report_bundle: exact(row.report_bundle) }
     const what = 'report' in gives ? `the report ${reportNames.get(gives.report!) || 'no longer listed'}` : `the bundle ${bundleNames.get(gives.report_bundle!) || 'no longer listed'}`
     const nullRow = { report: null, report_bundle: null, person: null, role: null, job: null, business_role: null }
@@ -117,7 +117,7 @@ export async function convertGrants(read: Documents, write: Writer, model: Model
 }
 
 /** J3, when asked: the old grants given to business roles, logged. It changes no switch and adds no role. */
-export async function giveOldGrantsToRoles(read: Documents, write: Writer, today: string = istToday(), reportNames: ReadonlyMap<string, string> = new Map()) {
+export async function giveOldGrantsToRoles(read: Documents, write: Writer, today: string, reportNames: ReadonlyMap<string, string>) {
   const { model } = await businessModel(read, today)
   const grants = await convertGrants(read, write, model, await logger(read, write), reportNames)
   return { grants_added: grants.added, grants_not_converted: grants.notConverted }

@@ -96,7 +96,7 @@ export async function reportsGivenNow(base: Base, person: string, roles: readonl
   const { rows, members } = await grants(base)
   const roleName = new Map(model.roles.map(r => [r.id, r.name]))
   return new Map([...businessReportsReaching({ person, roles: access.roles }, rows, members)].map(([key, whys]) =>
-    [key, whys.map((why): Because => why.person ? { kind: 'person', receiver: person, bundle: why.bundle } : { kind: 'business_role', receiver: roleName.get(why.role!) ?? 'a business role', bundle: why.bundle })]))
+    [key, whys.map((why): Because => why.person ? { kind: 'person', receiver: person, bundle: why.bundle } : { kind: 'business_role', receiver: roleName.get(why.role!)!, bundle: why.bundle })]))
 }
 
 /** Does the caller manage report access for the whole company? */

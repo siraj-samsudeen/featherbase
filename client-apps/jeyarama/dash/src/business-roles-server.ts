@@ -37,9 +37,10 @@ const FIELDS: Record<string, string[]> = {
 const matches = (row: Row, [column, op, value]: Filter) =>
   op === 'in' ? (value as unknown[]).map(exact).includes(exact(row[column])) : exact(row[column]) === exact(value)
 const page = (rows: Row[], args: { filters?: Filter[]; limit_start?: number; limit_page_length?: number }) => {
-  const found = rows.filter(row => (args.filters ?? []).every(filter => matches(row, filter)))
+  const found = rows.filter(row => args.filters!.every(filter => matches(row, filter)))
   const start = args.limit_start ?? 0
-  return found.slice(start, start + (args.limit_page_length ?? 500))
+  // Every read through here names its page length.
+  return found.slice(start, start + args.limit_page_length!)
 }
 
 /**
@@ -51,7 +52,7 @@ export function memoryDocuments(base: Base, designations: boolean): Base & { row
   const fields: Record<string, string[]> = { ...FIELDS, 'Job Assignment': [...FIELDS['Job Assignment'], ...(designations ? ['designation'] : [])] }
   const rows = (table: string) => {
     // As the scope provider reads them: retired rows included.
-    if (!loaded.has(table)) loaded.set(table, everyRow(base, table, fields[table] ?? []))
+    if (!loaded.has(table)) loaded.set(table, everyRow(base, table, fields[table]!))
     return loaded.get(table)!
   }
   return { rows, available: table => base.available(table), list: async (table, args) => page(await rows(table), args) }
@@ -168,14 +169,15 @@ export async function personShadow(world: ShadowWorld, person: string, roles: re
 
 /** A site's region in words, as the site carries it, linking to the region's record. */
 async function regionPart(world: ShadowWorld, site: string): Promise<Part> {
-  const region = (await world.names('Site', 'operating_region')).get(site) ?? ''
+  const region = exact((await world.names('Site', 'operating_region')).get(site))
   return region ? { name: region, table: 'Operating Region', id: region } : { name: 'No region on this site' }
 }
 
 /** Where one held role applies, in words: the records its area names, and how many stores and subcategories it reaches. */
 async function areaOf(world: ShadowWorld, held: HeldRole & { places: Place[] }, mine: Mine): Promise<Area> {
   // How far the role reaches is data on the role (Reaches); its name decides nothing.
-  const reaches = world.model.roles.find(r => r.id === held.role)!.reaches ?? ''
+  // Read as text: an unset Reaches is ''.
+  const reaches = world.model.roles.find(r => r.id === held.role)!.reaches as string
   const part = async (table: string, id: unknown): Promise<Part> => ({ name: text((await world.names(table)).get(exact(id))), table, id: exact(id) })
   const spot = held.spot
   let parts: Part[]
