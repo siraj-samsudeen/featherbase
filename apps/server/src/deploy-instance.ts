@@ -16,13 +16,15 @@ import { currentEnvironment, readVariable } from './env'
 const REPO_ROOT = resolve(import.meta.dirname, '../../..')
 const INSTANCE_NAME = /^[a-z0-9_-]+\/[a-z0-9_-]+$/
 
-/** The settings file's section for a hosted environment. */
-const SECTIONS: Record<string, string> = { staging: 'dev', production: 'prod' }
+/** The settings file's section for each hosted environment. `dev` is the
+ *  hosted dev instance's own name; `staging` is its older name, kept working
+ *  so an instance not yet renamed still deploys (#1278). */
+const SECTIONS: Record<string, string> = { dev: 'dev', staging: 'dev', production: 'prod' }
 
 export function settingsSection(environment = currentEnvironment()): string {
   const section = SECTIONS[environment]
   if (!section)
-    throw new Error(`FEATHERBASE_INSTANCE is set on a "${environment}" server. An instance deploys as staging (its dev) or production (its prod); on a developer's machine use pnpm dev.`)
+    throw new Error(`FEATHERBASE_INSTANCE is set on a "${environment}" server. An instance deploys as dev (or staging, its older name) or production (its prod); on a developer's machine use pnpm dev.`)
   return section
 }
 
@@ -39,14 +41,14 @@ export function instanceFolder(instance: string, root = REPO_ROOT) {
  *  declaration (#1178, D3): a code-only fix needs no new version. Both the
  *  server and the database must say which environment it is. */
 export function followsAppFiles(environment: string, stamp: string | null): boolean {
-  return (environment === 'staging' || environment === 'production') && stamp === environment
+  return Object.hasOwn(SECTIONS, environment) && stamp === environment
 }
 
 export function unshippedRefusal(name: string, version: string, reason: 'files' | 'manifest' | 'upgraded' | 'absent'): string {
   if (reason === 'manifest')
     return `App ${name} version ${version}: its manifest (featherbase.json) changed, but its version did not. Bump the version, with a migration from ${version}, and deploy again.`
   if (reason === 'files')
-    return `App ${name} version ${version}: its files changed, but its version did not, and this server does not follow app files. Deploy it as staging or production, or bump the version.`
+    return `App ${name} version ${version}: its files changed, but its version did not, and this server does not follow app files. Deploy it as dev, staging or production, or bump the version.`
   return `App ${name} version ${version} is installed and enabled, but this release does not ship it or a newer version. Add the app to the instance's instance.json, or disable it before releasing.`
 }
 

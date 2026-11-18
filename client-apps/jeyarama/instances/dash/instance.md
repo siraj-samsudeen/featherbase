@@ -54,8 +54,9 @@ its Workspace domain. People can't link a Google account to themselves
 
 **Microsoft.** Bisquared's consultants sign in with their Microsoft work account. The app
 "Featherbase" is registered in Bisquared's Entra tenant (any organisation's work account may
-try; tenant `organizations`); its client id is in the `dev` and `prod` sections, and empty
-locally so the development stand-in serves. The client secret is never in the file; it is the
+try; tenant `organizations`); its client id is in the `prod` section only. It is empty locally,
+so the development stand-in serves, and empty on dev, which has no Microsoft secret and so offers
+no Microsoft sign-in (#1278). The client secret is never in the file; it is the
 `MICROSOFT_CLIENT_SECRET` deployment variable, and a deploy is refused while it is missing.
 Nobody is created by a Microsoft sign-in: a System Manager ticks **Expects Microsoft sign-in**
 on the person, whose address must be on `bisquared.com`. Setting it up again:
