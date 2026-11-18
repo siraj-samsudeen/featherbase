@@ -84,7 +84,7 @@ describe.each(APPS)("$title's sidebar", (page) => {
     // #1248: the bar has no control for it on a wide window.
     expect(bar.queryByTestId('sidebar-collapse')).not.toBeInTheDocument()
     expect(control()).toHaveAccessibleName('Collapse sidebar')
-    expect(control().title).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
+    expect(control()).not.toHaveAttribute('title')
 
     await userEvent.click(control())
     expect(collapsed()).toBe(true)
@@ -170,6 +170,52 @@ test("viewing as someone, the sidebar and its foot keep the tester's own choice 
   expect(collapsed()).toBe(true)
   expect(stacked()).toBe(true)
   expect(localStorage.getItem(`fc-sidebar-collapsed:${person.user}`)).toBeNull()
+})
+
+// The owner (18-Nov): the key (Ctrl+B) is in the hover tooltip only, never on the row.
+test('the Collapse row names its key only in its hover tooltip; in the rail, one tooltip names it', async ({ admin }) => {
+  openAppPage(admin, APPS[0])
+  await signedIn()
+  expect(control().querySelector('kbd')).toBeNull()
+  expect(control()).toHaveTextContent(/^Collapse$/)
+  expect(control()).not.toHaveAttribute('title')
+  // Its menus and tooltips are drawn above the app's page (a report's pinned table header,
+  // the pickers' strip): the frame has a layer of its own. Pixels are the verifier's.
+  expect(sidebar().shadowRoot!.querySelector('style')!.textContent).toMatch(/\.sidebar-frame \{ position:sticky; z-index:30;/)
+  // Open, the sidebar's own tooltip names it and its key, at once.
+  fireEvent.pointerOver(control(), { composed: true })
+  expect(sidebar().shadowRoot!.querySelector('[role=tooltip]')?.textContent).toMatch(/^Collapse sidebar · (⌘B|Ctrl\+B)$/)
+  fireEvent.pointerOut(control(), { composed: true })
+
+  await userEvent.click(control())
+  expect(collapsed()).toBe(true)
+  // The rail's tooltip, at once; no browser tooltip as well.
+  expect(control()).not.toHaveAttribute('title')
+  // A real pointer's events cross the shadow boundary (composed).
+  fireEvent.pointerOver(control(), { composed: true })
+  const tip = sidebar().shadowRoot!.querySelector('[role=tooltip]')
+  expect(tip?.textContent).toMatch(/^Expand sidebar · (⌘B|Ctrl\+B)$/)
+})
+
+// The owner (18-Nov): in the rail every control names itself on hover, the
+// sidebar's own top and foot as well as the app's rows, as in the Admin.
+test("in the rail the sidebar's own top and foot controls are named by a tooltip on hover", async ({ admin }) => {
+  localStorage.setItem(`fc-sidebar-collapsed:${admin.user}`, '1')
+  openAppPage(admin, APPS[0])
+  await signedIn()
+  const shadow = within(sidebar().shadowRoot as unknown as HTMLElement)
+  const tipFor = (el: HTMLElement) => {
+    fireEvent.pointerOver(el, { composed: true })
+    return sidebar().shadowRoot!.querySelector('[role=tooltip]')?.textContent
+  }
+  expect(tipFor(await shadow.findByTestId('top-bar-name'))).toMatch(/^Switch application: /)
+  expect(tipFor(shadow.getByTestId('help-button'))).toBe('Help')
+  expect(tipFor(shadow.getByTestId('theme-button'))).toMatch(/^Theme: /)
+  // Not an open menu's own items.
+  await userEvent.click(shadow.getByTestId('theme-button'))
+  fireEvent.pointerOut(shadow.getByTestId('theme-button'), { composed: true })
+  fireEvent.pointerOver(shadow.getByTestId('theme-dark'), { composed: true })
+  expect(sidebar().shadowRoot!.querySelector('[role=tooltip]')).toBeNull()
 })
 
 /** A drag on the sidebar's edge, as a mouse does it: down on the edge, moved,

@@ -1068,7 +1068,7 @@ export function SidebarAside({ testid, children }: { testid: string; children: R
   const collapsed = choice && !isDrawer
   // The edge: a click folds the sidebar, a drag sets its width (the same in every app).
   const edge = useRef<HTMLDivElement>(null)
-  useEffect(() => attachSidebarEdge(edge.current!), [])
+  useEffect(() => attachSidebarEdge(edge.current!, { frame: () => aside.current!, widthVar: '--sidebar-width' }), [])
   // #1248: in the rail each row is named at once by a tooltip beside it.
   const aside = useRef<HTMLElement>(null)
   const top = useRef<HTMLDivElement>(null)
@@ -1079,10 +1079,11 @@ export function SidebarAside({ testid, children }: { testid: string; children: R
     // The aside is always drawn by the time this runs.
     const root = aside.current!
     return attachRailTips({
+      drawer: () => typeof window.matchMedia === 'function' && window.matchMedia(SIDEBAR_DRAWER_QUERY).matches,
       root, layer: document.body,
       active: () => railRef.current,
-      // A row of an open menu (the switcher's, the account's) needs no tooltip.
-      rowOf: (target) => (target instanceof Element && !target.closest('[role="menu"]') ? target.closest<HTMLElement>('a, button') : null) ?? null,
+      // A row of an open menu (the switcher's, the account's, the foot's Help and Theme) needs no tooltip.
+      rowOf: (target) => (target instanceof Element && !target.closest('[role="menu"], [data-testid$="-menu"]') ? target.closest<HTMLElement>('a, button') : null) ?? null,
     })
   }, [])
   // Offered before the first paint, so the page never shows a top bar first.
@@ -1127,12 +1128,12 @@ export function SidebarAside({ testid, children }: { testid: string; children: R
             data-shortcut-key={SIDEBAR_SHORTCUT}
             aria-label={words}
             aria-keyshortcuts="Meta+B Control+B"
-            title={`${words.replace('sidebar', 'Sidebar')} · ${SIDEBAR_SHORTCUT}`}
+            // The owner (18-Nov): the key shows only in the hover tooltip ("Collapse sidebar · Ctrl+B"), the
+            // sidebar's own, open or in the rail (lib/sidebar-rail), never on the row, and no browser tooltip too.
             className={`max-md:hidden ${collapsed ? `${RAIL_ROW} ${ROW_IDLE}` : touchRowClasses(`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm ${ROW_IDLE}`)}`}
           >
             {collapsed ? <ChevronsRight aria-hidden size={18} className="text-ink-muted" /> : <ChevronsLeft aria-hidden size={16} className="shrink-0 text-ink-muted" />}
             {!collapsed && <span className="flex-1 text-left text-ink-muted">Collapse</span>}
-            {!collapsed && <kbd className="font-mono text-xs text-ink-subtle">{SIDEBAR_SHORTCUT}</kbd>}
           </button>
         </div>
       </aside>

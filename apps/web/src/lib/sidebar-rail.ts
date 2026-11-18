@@ -38,15 +38,21 @@ export function rowLabel(row: Element): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
-/** The tooltip's words: the name, and the count where there is one. */
+/** The tooltip's words: the name, the count where there is one, and the key. */
 export function railTip(row: Element): string {
   const count = rowCount(row)
-  return count ? `${rowLabel(row)} · ${count}` : rowLabel(row)
+  // The owner (18-Nov): a control's key shows on hover, not on the row itself.
+  const key = row.getAttribute('data-shortcut-key')
+  const words = count ? `${rowLabel(row)} · ${count}` : rowLabel(row)
+  return key ? `${words} · ${key}` : words
 }
+
+/** The controls named on hover in the open sidebar as well: Collapse, and the foot's icons. */
+const OPEN_TIPS = '[data-testid=sidebar-collapse], [data-testid=help-button], [data-testid=theme-button]'
 
 /** A floating layer beside a rail: one tooltip at a time, drawn fixed so no
  *  scrolling box clips it, to the right of the row, at once. */
-export function attachRailTips({ root, layer, active, rowOf }: {
+export function attachRailTips({ root, layer, active, rowOf, drawer }: {
   /** Where pointer and focus events arrive from the rows. */
   root: HTMLElement
   /** Where the tooltip is drawn (a shadow root, or the document body). */
@@ -55,13 +61,18 @@ export function attachRailTips({ root, layer, active, rowOf }: {
   active: () => boolean
   /** The row an event's target belongs to, if any. */
   rowOf: (target: EventTarget | null) => HTMLElement | null
+  /** Whether the sidebar is a drawer, where nothing is named on hover (a touch screen). */
+  drawer?: () => boolean
 }): () => void {
   let tip: HTMLElement | null = null
   let shownFor: HTMLElement | null = null
   const hide = () => { tip?.remove(); tip = null; shownFor = null }
   const show = (row: HTMLElement) => {
     // A row whose own menu is open (the avatar's Account menu) needs no tooltip over it.
-    if (!active() || row.getAttribute('aria-expanded') === 'true') return hide()
+    // The owner (18-Nov): the open sidebar's Collapse row and icon-only buttons (Help,
+    // Theme) are named on hover too, with the key where they have one, as in the rail.
+    const named = active() || (!drawer?.() && row.matches(OPEN_TIPS))
+    if (!named || row.getAttribute('aria-expanded') === 'true') return hide()
     const words = railTip(row)
     if (!words) return hide()
     tip ??= Object.assign(document.createElement('div'), { role: 'tooltip' })
@@ -74,7 +85,8 @@ export function attachRailTips({ root, layer, active, rowOf }: {
     if (!tip.isConnected) layer.append(tip)
     shownFor = row
   }
-  const over = (event: Event) => { const row = rowOf(event.target); if (row) show(row) }
+  // The innermost target: inside an app's sidebar (a shadow root) the event's own target is the host.
+  const over = (event: Event) => { const row = rowOf(event.composedPath()[0] ?? event.target); if (row) show(row) }
   const out = (event: Event) => {
     const to = (event as PointerEvent | FocusEvent).relatedTarget
     if (shownFor && to instanceof Node && shownFor.contains(to)) return

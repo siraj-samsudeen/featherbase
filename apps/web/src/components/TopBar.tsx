@@ -575,7 +575,7 @@ function AccountMenu({ inMenu, inSidebar }: {
   const extras = inMenu ?? (inSidebar ? { offerAdmin: inSidebar.offerAdmin, theme: false } : undefined)
   const place = !inSidebar
     ? 'right-0 top-full mt-1'
-    : inSidebar.rail ? 'bottom-0 left-full ml-2' : 'bottom-full left-0 mb-1'
+    : inSidebar.rail ? 'bottom-0 left-full ml-4' : 'bottom-full left-0 mb-1'
   return (
     <div className={named ? 'relative min-w-0 flex-1' : 'relative'} ref={wrapper}>
       <button
@@ -604,7 +604,7 @@ function AccountMenu({ inMenu, inSidebar }: {
         <span className="sr-only">{t('Account')}: {shown}</span>
       </button>
       {open && (
-        <div id={menuId} className={cardClasses(`absolute ${place} z-40 w-64 overflow-hidden py-1`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
+        <div id={menuId} className={cardClasses(`absolute ${place} z-40 w-64 overflow-hidden py-1 shadow-lg`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
           <div className="border-b border-border px-3 py-2 text-sm" data-testid="account-identity">
             {/* #1227: a record shown is a RecordLink — the person's own Person record, for
                 someone who may open it (a System Manager, or a reader of Person). */}
@@ -711,7 +711,7 @@ function FootMenu({ label, icon: Icon, testid, rail = false, children }: {
         type="button"
         onClick={() => setOpen((was) => !was)}
         aria-label={label}
-        title={label}
+        // Named on hover by the sidebar's own tooltip (lib/sidebar-rail), open or in the rail; no browser tooltip too.
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         data-testid={testid}
@@ -720,7 +720,7 @@ function FootMenu({ label, icon: Icon, testid, rail = false, children }: {
         <Icon aria-hidden size={16} />
       </button>
       {open && (
-        <div id={menuId} className={cardClasses(`absolute ${rail ? 'bottom-0 left-full ml-2' : 'bottom-full left-0 mb-1'} z-40 w-60 overflow-hidden py-1`)} data-testid={`${testid}-menu`}>
+        <div id={menuId} className={cardClasses(`absolute ${rail ? 'bottom-0 left-full ml-4' : 'bottom-full left-0 mb-1'} z-40 w-60 overflow-hidden py-1 shadow-lg`)} data-testid={`${testid}-menu`}>
           {children}
         </div>
       )}

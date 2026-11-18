@@ -118,7 +118,11 @@ const DRAG_SLOP = 3
  *  the same in the Admin and in every app. A click folds the sidebar to the
  *  rail and back; on the open sidebar a drag sets its width (SIDEBAR_WIDTH),
  *  kept for the signed-in person when it is let go. Returns the detaching. */
-export function attachSidebarEdge(edge: HTMLElement): () => void {
+export function attachSidebarEdge(edge: HTMLElement, { frame, widthVar }: {
+  /** The element whose width the drag sets, and the CSS variable it reads its width from. */
+  frame: () => HTMLElement
+  widthVar: string
+}): () => void {
   let dragged = false
   let stop: (() => void) | undefined
   function onDown(event: PointerEvent) {
@@ -129,24 +133,36 @@ export function attachSidebarEdge(edge: HTMLElement): () => void {
     stop?.()
     const startX = event.clientX
     const startWidth = state.width
+    // Smoothness (the owner, 18-Nov): while dragging, the width is written
+    // straight onto the sidebar, once per frame the screen draws, and nothing
+    // re-renders; the store, the other readers and the kept width get it once,
+    // when the edge is let go.
+    let width = startWidth
+    let frameRequest = 0
+    const draw = () => { frameRequest = 0; frame().style.setProperty(widthVar, `${width}px`) }
     const move = (e: PointerEvent) => {
       if (!dragged && Math.abs(e.clientX - startX) < DRAG_SLOP) return
       if (!dragged) {
         dragged = true
         document.documentElement.style.setProperty('cursor', 'col-resize')
         document.documentElement.style.setProperty('user-select', 'none')
+        // The width transition is off while the width follows the pointer.
+        set({ resizing: true })
       }
-      const width = clampWidth(startWidth + e.clientX - startX)
-      if (width !== state.width || !state.resizing) set({ width, resizing: true })
+      width = clampWidth(startWidth + e.clientX - startX)
+      if (!frameRequest) frameRequest = requestAnimationFrame(draw)
     }
     const up = () => {
       stop?.()
       if (dragged) {
-        saveWidth(keeper(), state.width)
-        set({ resizing: false })
+        draw()
+        saveWidth(keeper(), width)
+        set({ width, resizing: false })
       }
     }
     stop = () => {
+      if (frameRequest) cancelAnimationFrame(frameRequest)
+      frameRequest = 0
       document.removeEventListener('pointermove', move)
       document.removeEventListener('pointerup', up)
       document.removeEventListener('pointercancel', up)

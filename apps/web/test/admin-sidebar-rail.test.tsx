@@ -65,6 +65,32 @@ test("dragging the edge sets the open sidebar's width, kept for the person; a cl
   expect(collapsed()).toBe(true)
 })
 
+// The owner (18-Nov): the key (Ctrl+B) is in the hover tooltip only, never on the row.
+test('the Collapse row names its key only in its hover tooltip; in the rail, one tooltip names it', async ({ admin }) => {
+  await renderApp('/featherbase/admin/all-tables', admin)
+  const control = await screen.findByTestId('sidebar-collapse', {}, T)
+  expect(control.querySelector('kbd')).toBeNull()
+  expect(control).toHaveTextContent(/^Collapse$/)
+  expect(control).not.toHaveAttribute('title')
+  // Open, the sidebar's own tooltip names it and its key, at once; so are Help and Theme.
+  fireEvent.pointerOver(control)
+  expect(screen.getByRole('tooltip').textContent).toMatch(/^Collapse sidebar · (⌘B|Ctrl\+B)$/)
+  fireEvent.pointerOut(control)
+  fireEvent.pointerOver(screen.getByTestId('help-button'))
+  expect(screen.getByRole('tooltip')).toHaveTextContent(/^Help$/)
+  fireEvent.pointerOut(screen.getByTestId('help-button'))
+  // A link of the open sidebar shows its name already: no tooltip.
+  fireEvent.pointerOver(within(aside()).getByRole('link', { name: 'All Tables' }))
+  expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+  await userEvent.click(control)
+  expect(control.querySelector('kbd')).toBeNull()
+  // The rail's tooltip, at once; no browser tooltip as well.
+  expect(control).not.toHaveAttribute('title')
+  fireEvent.pointerOver(control)
+  expect(screen.getByRole('tooltip').textContent).toMatch(/^Expand sidebar · (⌘B|Ctrl\+B)$/)
+})
+
 // #1253 (the frame Siraj agreed on 17-Nov-2026): the switcher and the bell lead
 // the sidebar, then the "Search or Command" field; the account, help and theme
 // sit at its foot, above the Collapse row. In the rail: the logo, a magnifier

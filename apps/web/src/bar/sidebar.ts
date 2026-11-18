@@ -118,7 +118,10 @@ export class FeatherbaseSidebar extends HTMLElement {
       .sidebar-backdrop { display:none; }
       /* #1253 (Quiet Canvas): no fill and no border; it sits on the grey canvas, as
          tall as the window, its links scrolling between the top and the foot. */
-      .sidebar-frame { position:sticky; top:var(--featherbase-bar-height, 0px); display:flex; flex-direction:column;
+      /* Its own layer, above the app's page (the owner, 18-Nov: the app switcher's, the
+         account's and the theme's menus, and the rail's tooltips, were drawn under a
+         report's pinned table header). The pickers' strip is below it (20). */
+      .sidebar-frame { position:sticky; z-index:30; top:var(--featherbase-bar-height, 0px); display:flex; flex-direction:column;
         height:calc(100dvh - var(--featherbase-bar-height, 0px)); box-sizing:border-box;
         color:var(--color-ink); font:14px/1.45 var(--font-sans); }
       .sidebar-links { flex:1; min-height:0; overflow-y:auto; padding:4px 8px; display:flex; flex-direction:column; }
@@ -153,9 +156,8 @@ export class FeatherbaseSidebar extends HTMLElement {
         border:0; border-radius:var(--radius-control); background:transparent; color:var(--color-ink-muted); font:inherit; cursor:pointer; text-align:left; }
       .sidebar-collapse:hover { background:color-mix(in srgb, var(--color-border) 50%, transparent); color:var(--color-ink); }
       .sidebar-collapse:focus-visible { outline:2px solid var(--color-focus); outline-offset:1px; }
-      .sidebar-collapse kbd { margin-left:auto; font:12px var(--font-mono, ui-monospace, monospace); color:var(--color-ink-subtle); }
       :host([data-collapsed]) .sidebar-collapse { width:40px; justify-content:center; padding:0; margin:0 auto; }
-      :host([data-collapsed]) .sidebar-collapse .words, :host([data-collapsed]) .sidebar-collapse kbd { display:none; }
+      :host([data-collapsed]) .sidebar-collapse .words { display:none; }
       .sidebar-edge { position:absolute; top:0; bottom:0; right:-5px; width:10px; cursor:col-resize; z-index:2; }
       .sidebar-edge::after { content:""; position:absolute; top:0; bottom:0; left:4px; width:2px; background:transparent; transition:background 120ms; }
       .sidebar-edge:hover::after { background:var(--color-action); }
@@ -213,7 +215,7 @@ export class FeatherbaseSidebar extends HTMLElement {
     edge.dataset.testid = 'sidebar-edge'
     edge.setAttribute('aria-hidden', 'true')
     this.unedge?.()
-    this.unedge = attachSidebarEdge(edge)
+    this.unedge = attachSidebarEdge(edge, { frame: () => this, widthVar: '--featherbase-sidebar-width' })
     const layer = document.createElement('div')
     layer.className = 'rail-layer'
     nav.append(foot, edge, layer)
@@ -239,7 +241,9 @@ export class FeatherbaseSidebar extends HTMLElement {
       const pickerShadow = host.attachShadow({ mode: 'open' })
       const pickerStyle = document.createElement('style')
       pickerStyle.textContent = `${shadowCss(platformCss)}
-        :host { display:block; }
+        /* Pinned at the panel's top like the bar's host, but under the sidebar's menus (30),
+           not at the bar's topmost layer, which drew it over them (the owner, 18-Nov). */
+        :host { display:block; z-index:20; }
         .pickers-root { color:var(--color-ink); font:14px/1.45 var(--font-sans); }
         .pickers-root:empty { display:none; }
         .pickers-root:not(:empty) { padding:12px 16px 0; }`
@@ -268,9 +272,16 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.addEventListener('keydown', this.onKey)
     this.untips?.()
     this.untips = attachRailTips({
+      drawer: () => Boolean(this.drawerWidth?.matches),
       root: this, layer,
       active: () => this.rail,
       rowOf: (target) => {
+        // The sidebar's own controls, in its shadow: the top's (the switcher, View as, the search), the
+        // foot's icons and the expand button, as in the Admin's rail; never an open menu's items.
+        if (target instanceof Element && target.getRootNode() === this.shadowRoot) {
+          const own = target.closest<HTMLElement>('a, button')
+          return own && !own.closest('[role="menu"], [data-testid$="-menu"]') ? own : null
+        }
         const row = target instanceof Element ? target.closest('featherbase-sidebar > *') as HTMLElement | null : null
         return row && row.parentElement === this && (row.matches('button, a') || row.hasAttribute('data-rail-fold')) && !this.menu ? row : null
       },
@@ -334,9 +345,9 @@ export class FeatherbaseSidebar extends HTMLElement {
     if (this.control) {
       const words = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
       this.control.setAttribute('aria-label', words)
-      // #1251: hover text in Title Case, the key after " · ".
-      this.control.title = `${collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'} · ${SIDEBAR_SHORTCUT}`
-      this.control.innerHTML = collapsed ? EXPAND_ICON : `${COLLAPSE_ICON}<span class="words">Collapse</span><kbd>${SIDEBAR_SHORTCUT}</kbd>`
+      // The owner (18-Nov): the key shows only in the hover tooltip ("Collapse sidebar · Ctrl+B"), the
+      // sidebar's own, open or in the rail (lib/sidebar-rail), never on the row, and no browser tooltip too.
+      this.control.innerHTML = collapsed ? EXPAND_ICON : `${COLLAPSE_ICON}<span class="words">Collapse</span>`
     }
     if (this.rail !== collapsed) {
       this.rail = collapsed
