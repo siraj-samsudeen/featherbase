@@ -380,12 +380,8 @@ export async function scopedWhere(
       }
     }
 
+    // Only nested rows have a parent column: elsewhere assertColumn has refused it (#1310).
     if (field === 'parent') {
-      if (meta.kind !== 'sub_table')
-        throw new AppError(
-          'ValidationError',
-          `A 'parent' related filter applies to sub-table rows only`,
-        )
       const owns = target.meta.columns.some(
         (f) => f.column_type === 'Sub-table' && f.row_table === meta.name,
       )
