@@ -227,22 +227,3 @@ export function differences(today: Side, next: Side, decisions: string[]): Diffe
   ] as [ChangeKind, boolean][]).filter(([, applies]) => applies).map(([kind]) => kind)
   return { kind: kinds[0] ?? null, kinds, storesGained, storesLost, storesChanged, gained, lost, decisions: undecided }
 }
-
-/** Subcategory codes are SAP's levels: 2 digits the line of business, 4 the main category, 6 the category. */
-const PREFIX_LENGTHS = [2, 4, 6] as const
-/**
- * A merchandise area as Dash's code prefixes (the encoding #1269 sends to Dives): the shortest prefix
- * of which every known code is held, else the code itself. Never wider than the codes held.
- */
-export function areaPrefixes(held: Iterable<string>, every: readonly string[]): string[] {
-  const holds = new Set(held)
-  const partial = new Map<number, Set<string>>(PREFIX_LENGTHS.map(length => [length, new Set<string>()]))
-  for (const code of every) if (!holds.has(code)) for (const length of PREFIX_LENGTHS) partial.get(length)!.add(code.slice(0, length))
-  const known = new Set(every)
-  const sent = new Set<string>()
-  for (const code of holds) {
-    const length = known.has(code) ? PREFIX_LENGTHS.find(at => code.length > at && !partial.get(at)!.has(code.slice(0, at))) : undefined
-    sent.add(length === undefined ? code : code.slice(0, length))
-  }
-  return [...sent].sort()
-}
