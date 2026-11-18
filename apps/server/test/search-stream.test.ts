@@ -127,6 +127,8 @@ test('an exact match by name or by code is never crowded out by rows that only c
   await admin.post('/api/table_def', { name: 'Ss Site', id_pattern: 'prompt', title_column: 'site_name', columns: [{ column_name: 'site_name', column_type: 'Data' }] })
   for (const [row_id, site_name] of [['ATK-CAR-PARK', 'Car park'], ['ATK-HOSTEL', 'Hostel'], ['ATK-STORE', 'Store building'], ['ATK', 'Attakulangara']])
     await admin.post('/api/save_row', { table: 'Ss Site', row: { row_id, site_name } })
+  // Three rows named exactly ATK do not push out the row coded ATK (Codex round 3).
+  for (const row_id of ['N-1', 'N-2', 'N-3']) await admin.post('/api/save_row', { table: 'Ss Site', row: { row_id, site_name: 'ATK' } })
   const sites = (await searchLines(admin, 'ATK')).find((l) => l.table === 'Ss Site') as { hits: { row_id: string }[] }
   expect(sites.hits[0].row_id).toBe('ATK')
 })

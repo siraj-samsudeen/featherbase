@@ -160,7 +160,7 @@ async function searchOne(t: Record<string, unknown>, user: string, { exact, pref
   // code is exactly the text (a primary-key lookup), so the database still stops
   // early on a common query and an exact code is never crowded out. (Codex:
   // round 1 flagged sorting every match, round 2 sequential scans and limiting
-  // before ranking.)
+  // before ranking; round 3: the exact code comes before exact names.)
   const match = (pattern: string) => sql`(${key} ilike ${pattern}${title ? sql` or ${readExpression(title)} ilike ${pattern}` : sql``})`
   const found = sql`${where} ${live} and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID} ${named}`
   const rows = await sql<{ row_id: unknown; title: unknown }[]>`
@@ -170,8 +170,9 @@ async function searchOne(t: Record<string, unknown>, user: string, { exact, pref
       (select ${key} as row_id, ${shown} as title from ${sql(table)} where ${found} and ${key} = ${exact})
     ) candidate
     order by
-      case when lower(row_id::text) = lower(${exact}) or lower(title::text) = lower(${exact}) then 0
-           when row_id::text ilike ${prefix} or title::text ilike ${prefix} then 1 else 2 end,
+      case when row_id::text = ${exact} then 0
+           when lower(row_id::text) = lower(${exact}) or lower(title::text) = lower(${exact}) then 1
+           when row_id::text ilike ${prefix} or title::text ilike ${prefix} then 2 else 3 end,
       length(coalesce(title::text, row_id::text)), coalesce(title::text, row_id::text), row_id::text
     limit ${PER_TABLE}`
   return rows
