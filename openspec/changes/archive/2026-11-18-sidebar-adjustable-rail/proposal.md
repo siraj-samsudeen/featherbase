@@ -1,6 +1,6 @@
 ## Why
 
-Testing Dash on staging while viewing as a Store Manager (17/18-Nov-2026), the owner found the shared sidebar letting them down: in the rail its foot drew Help and Theme outside it, Collapse did not always stick, its menus were drawn under a report's table header, and an icon at the end of a long list looked sliced off. The owner also wants the sidebar adjustable, like Claude's, and the collapse key named on hover rather than taught by a pop-up tip.
+Testing Dash on staging while viewing as a Store Manager (17/18-Nov-2026), the owner found the shared sidebar letting them down: in the rail its foot drew Help and Theme outside it, Collapse did not always stick, its menus were drawn under a report's table header. The owner also wants the sidebar adjustable, like Claude's, and the collapse key named on hover rather than taught by a pop-up tip.
 
 ## What Changes
 
@@ -8,7 +8,6 @@ Testing Dash on staging while viewing as a Store Manager (17/18-Nov-2026), the o
 - Open, the sidebar's edge drags its width from 200 to 360 pixels, kept for the person like the collapsed choice; a click on the edge still folds it.
 - In the rail every control of the sidebar's top and foot stays (the avatar, Help and Theme stacked), each named on hover; the Collapse control names its key there, open or folded. The key is no longer drawn on the Collapse row.
 - The sidebar's menus and hover labels show above the page, whatever the page draws.
-- A links list taller than the window fades at the edge it can scroll past; the rail draws no scroll bar.
 - The Theme menu is a short list, an icon and a name on each row and a tick on the one in use.
 - Collapsing the sidebar by mouse no longer pops up a tip. Other shortcuts (Ctrl+K) still teach theirs.
 

@@ -2,7 +2,7 @@ import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
 import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, SIDEBAR_WIDTH, attachSidebarEdge, offerPickerSlot, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
-import { attachRailTips, attachScrollEdges, railMark, railMenuPlace, rowCount, rowLabel } from '../lib/sidebar-rail'
+import { attachRailTips, railMark, railMenuPlace, rowCount, rowLabel } from '../lib/sidebar-rail'
 
 /** Admin's sidebar widths (AdminLayout: the person's width, SIDEBAR_WIDTH; the rail md:w-14, a w-64 drawer), for every app (#1227, #1248). */
 const RAIL = 56
@@ -76,8 +76,6 @@ export class FeatherbaseSidebar extends HTMLElement {
   private untips?: () => void
   private unslot?: () => void
   private unedge?: () => void
-  private unscroll?: () => void
-  private links?: HTMLElement
   private unpickers?: () => void
   private pickers?: HTMLElement
   private pickersRoot?: HTMLElement
@@ -195,10 +193,6 @@ export class FeatherbaseSidebar extends HTMLElement {
     top.dataset.testid = 'sidebar-slot-top'
     const links = document.createElement('div')
     links.className = 'sidebar-links'
-    // The owner (18-Nov): its edges fade where there is more to scroll; no scroll bar in the rail.
-    this.links = links
-    this.unscroll?.()
-    this.unscroll = attachScrollEdges(links)
     links.append(document.createElement('slot'))
     const account = document.createElement('div')
     account.dataset.testid = 'sidebar-slot-foot'
@@ -344,7 +338,6 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.toggleAttribute('data-open', open)
     this.style.setProperty('--featherbase-sidebar-width', `${state.width}px`)
     this.toggleAttribute('data-resizing', state.resizing)
-    this.links?.toggleAttribute('data-rail', collapsed)
     const hidden = drawer && !open
     this.inert = hidden
     if (hidden) this.setAttribute('aria-hidden', 'true')
@@ -479,8 +472,6 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.untips = undefined
     this.unedge?.()
     this.unedge = undefined
-    this.unscroll?.()
-    this.unscroll = undefined
     this.unslot?.()
     this.unslot = undefined
     this.unpickers?.()

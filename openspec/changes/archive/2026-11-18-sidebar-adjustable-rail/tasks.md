@@ -5,7 +5,6 @@
 - [x] 1.3 The rail keeps the avatar, Help and Theme, stacked; the open row waits until the sidebar has widened. Verify `app-sidebar-collapse.test.tsx`, `admin-sidebar-rail.test.tsx`.
 - [x] 1.4 Hover labels: Collapse with its key, Help, Theme, open or folded; every rail control in an app named too; no key on the row, no browser tooltip. Verify `scenarios/app-navigation-sidebar.test.tsx` ("The collapse control names its key on hover"), `sidebar-collapse.test.tsx`, `app-sidebar-rail.test.tsx`.
 - [x] 1.5 The app sidebar's frame is drawn above the page; the pickers' strip under it. Verify `app-sidebar-collapse.test.tsx`; headless measure in Dash with a report (every menu 100% visible).
-- [x] 1.6 A links list taller than the window fades at the edge it can scroll past; no scroll bar in the rail. Verify headless screenshot at a 580px-high window.
 - [x] 1.7 The Theme menu is a short list with a tick. Verify `app-sidebar-collapse.test.tsx`.
 
 ## 2. Keyboard shortcuts
