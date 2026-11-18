@@ -240,7 +240,8 @@ describe('Business Roles', () => {
 
   it('says business roles decide once switched, offers nothing to someone who is not a System Manager, and lists what was done', async () => {
     answers = { ...ROLES, access_source: { source: 'business_roles', switch_rows: [{ id: 's1', source: 'business_roles' }], can_switch: false },
-      switch_over_log: [{ id: 'l1', step: 'Report grant', outcome: 'Added', detail: 'Gave report vs to Store Manager, as it was given to the job Store Manager' }] }
+      switch_over_log: [{ id: 'l1', step: 'Report grant', outcome: 'Added', detail: 'Gave report vs to Store Manager, as it was given to the job Store Manager',
+        parts: ['Gave report vs to ', { record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Manager' } }, ', as it was given to the job Store Manager'] }] }
     const { all, click } = await render('roles')
     expect([all('access-source-line')[0].textContent!.includes('decided by business roles'), all('give-old-grants').length]).toEqual([true, 0])
     await click(all('switch-over-log-toggle')[0])

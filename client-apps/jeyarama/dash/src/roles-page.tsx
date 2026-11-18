@@ -169,7 +169,7 @@ export function BusinessRolesPage() {
 // ---------- #1277: what decides Dash access, and giving old grants to business roles ----------
 
 interface SourceAnswer { source: 'business_roles' | 'legacy'; switch_rows: { id: string; source: string }[]; can_switch: boolean }
-interface LogLine { id: string; step: string; outcome: string; detail: string }
+interface LogLine { id: string; step: string; outcome: string; detail: string; parts: SentencePart[] }
 
 /** Which rules decide Dash access now, the old grants given to business roles when a System Manager asks, and what was done. */
 function AccessSource({ onSwitched }: { onSwitched: () => Promise<unknown> | void }) {
@@ -208,7 +208,7 @@ function AccessSource({ onSwitched }: { onSwitched: () => Promise<unknown> | voi
         )}
         {showLog && (
           <ul className="flex flex-col gap-1 text-[13px]" data-testid="switch-over-log">
-            {lines.map(line => <li key={line.id}><Chip tone={line.outcome === 'Added' ? 'source' : 'hand'}>{line.outcome}</Chip> {line.detail}</li>)}
+            {lines.map(line => <li key={line.id}><Chip tone={line.outcome === 'Added' ? 'source' : 'hand'}>{line.outcome}</Chip> <Sentence parts={line.parts} renderRecord={sentenceRecord} /></li>)}
           </ul>
         )}
         {error && <Notice tone="negative">{error}</Notice>}

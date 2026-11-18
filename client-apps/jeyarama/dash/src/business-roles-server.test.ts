@@ -8,7 +8,7 @@ import { accessPage, grantOptions, personLookup, whoIs } from './report-access-s
 import { liveReach } from './access-source'
 import { SITE_KINDS, openStore, siteStoreFields } from './site-kind'
 import { every, mergePlaces } from './business-access'
-import { businessAccessSummary, switchOverLog } from './switch-over-server'
+import { businessAccessSummary, linked, switchOverLog } from './switch-over-server'
 import { rolesForOldRole } from './switch-over'
 import { scopeProviders } from './server'
 import { directDocuments, memoryDocuments, personShadow, placesByStore, shadowWorld } from './business-roles-server'
@@ -112,6 +112,14 @@ describe('the starting roles', () => {
     const before = JSON.stringify(tables)
     expect(await addStartingRoles(context(tables) as never)).toEqual({ roles: 0, titles: 0 })
     expect(JSON.stringify(tables)).toBe(before)
+  })
+})
+
+describe('a log line as a sentence', () => {
+  it('links each named record in its own words, and leaves a name no longer in them as words', () => {
+    const role = { table: 'dash.business_role', row: 'r1', name: 'Store Manager' }
+    expect(linked('Gave the report Vendor Sales to Store Manager, as before', [role, { table: 'dash.report', row: 'vs', name: 'Vendor Sales' }, { table: 'dash.report', row: 'x', name: 'Renamed' }, { table: 'dash.report', row: 'y', name: '' }]))
+      .toEqual(['Gave the report ', { record: { table: 'dash.report', row: 'vs', name: 'Vendor Sales' } }, ' to ', { record: role }, ', as before'])
   })
 })
 
@@ -1374,6 +1382,10 @@ describe('business roles at their edges', () => {
     const log = await reads.switch_over_log(context(tables) as never)
     expect([log.length > 0, log.every((l, i) => i === 0 || `${log[i - 1].at}${log[i - 1].id}` >= `${l.at}${l.id}`)]).toEqual([true, true])
     expect(log.find(l => l.outcome === 'Not converted')).toMatchObject({ business_role: null, source_grant: 'g-n' })
+    // #1282 H1–H4: a line given to a role names the role and the report as links, in its own words.
+    const added = log.find(l => l.outcome === 'Added' && l.parts.some(p => typeof p !== 'string' && p.record.table === 'dash.report'))!
+    expect([added.parts.map(p => (typeof p === 'string' ? p : p.record.name)).join(''), added.parts.flatMap(p => (typeof p === 'string' ? [] : [p.record.table])).sort()])
+      .toEqual([added.detail, ['dash.business_role', 'dash.report']])
     expect((await reads.access_source(context(tables) as never)).source).toBe('business_roles')
     await expect(switchOverLog(context(tables, { roles: ['Dash Reader'] }) as never)).rejects.toThrow('Only a Report Access Manager')
     await expect(businessAccessSummary(context(tables, { roles: ['Dash Reader'] }) as never)).rejects.toThrow('Only a Report Access Manager')
