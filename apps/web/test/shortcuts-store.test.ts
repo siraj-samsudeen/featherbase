@@ -118,20 +118,21 @@ test('the quiet notice leaves after five seconds', async ({ admin }) => {
   page.unmount()
 })
 
+// Search's tip: the sidebar's key teaches none (the owner, 18-Nov), so search is the example.
 test('a key used while the learning is still arriving takes back the tip it would have shown', async ({ admin }) => {
   setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
   await admin.put(`/api/user_settings/${SHORTCUT_SETTINGS}`, { use: {}, quietUntil: 0, quiets: 0, lastTip: 0 })
-  const remove = addShortcut(SIDEBAR_SHORTCUT_DEF)
+  const remove = addShortcut(COMMAND_SHORTCUT_DEF)
   const page = renderHook(() => {
     useShortcutTeaching()
     return useShortcutState()
   })
   // Before the read answers: three mouse uses (a tip is due), then the key.
   act(() => {
-    for (let i = 0; i < 3; i++) noteShortcutUse('sidebar', 'mouse')
+    for (let i = 0; i < 3; i++) noteShortcutUse('command', 'mouse')
   })
-  act(() => noteShortcutUse('sidebar', 'key'))
-  await waitFor(() => expect(page.result.current.learning.use.sidebar?.keys).toBe(1))
+  act(() => noteShortcutUse('command', 'key'))
+  await waitFor(() => expect(page.result.current.learning.use.command?.keys).toBe(1))
   expect(page.result.current.tip).toBeNull()
   remove()
   page.unmount()
