@@ -51,7 +51,7 @@ test('Tree of all on Waiting for access lists each request as a line', async ({ 
   await renderApp('/featherbase/admin/waiting-for-access', admin)
   const page = await screen.findByTestId('waiting-for-access')
   await waitFor(() => expect(within(page).getByTestId('list-total')).toHaveTextContent('2 total'))
-  await userEvent.click(within(page).getByRole('button', { name: 'Tree of all' }))
+  await userEvent.click(within(page).getByRole('button', { name: 'Tree of All' }))
   const tree = await within(page).findByRole('tree')
   await waitFor(() => expect(within(tree).getAllByRole('treeitem').filter((i) => i.getAttribute('aria-level') === '1')).toHaveLength(2))
 })

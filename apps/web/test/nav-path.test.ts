@@ -118,7 +118,8 @@ describe('encodePath / decodePath', () => {
       row: 'site-1',
       filters: [['state', 'in', ['KL', 'TN']], ['open', '=', true]],
       pane: { table: 'Plant', row: 'plant-7', group: { table: 'Machine', column: 'plant', via: 'lines' }, tab: 'fields' },
-      view: 'tree',
+      view: 'links',
+      linksAs: 'tree',
       expanded: ['site-1', 'plant-7'],
       place: 'bottom',
       compact: true,
@@ -131,6 +132,18 @@ describe('encodePath / decodePath', () => {
   it("#1259: a step whose list view is not one of the three is refused, like any malformed step", () => {
     const step = { screen: 'list', table: 'Site', layout: 'kanban' }
     expect(decodePath(JSON.stringify({ steps: [step], at: 0 }))).toBeNull()
+  })
+
+  it('#1273: a step whose Links layout is not sections or the tree is refused', () => {
+    const step = { screen: 'row', table: 'Site', row: 'ENK', view: 'links', linksAs: 'grid' }
+    expect(decodePath(JSON.stringify({ steps: [step], at: 0 }))).toBeNull()
+  })
+
+  it('#1273: a walk saved before Links keeps its place: Collaboration opens Activity, a row page\'s Tree opens Links as the tree', () => {
+    const at = (step: object) => decodePath(JSON.stringify({ steps: [step], at: 0 }))?.steps[0]
+    expect(at({ screen: 'row', table: 'Site', row: 'ENK', view: 'collaboration' })).toMatchObject({ view: 'activity' })
+    expect(at({ screen: 'row', table: 'Site', row: 'ENK', view: 'tree' })).toMatchObject({ view: 'links', linksAs: 'tree' })
+    expect(at({ screen: 'list', table: 'Site', view: 'tree' })).toMatchObject({ view: 'tree' })
   })
 
   it("round-trips a group's relationship filter through a sub-table", () => {

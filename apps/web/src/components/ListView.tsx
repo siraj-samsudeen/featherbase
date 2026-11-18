@@ -17,6 +17,7 @@ import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
 import { Button, EmptyState, NARROW_QUERY, Notice, PageHeader, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { ChevronDown } from '@featherbase/shop-floor'
+import { Columns3, ListTree, Rows4 } from 'lucide-react'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
 import { GlossaryHelp } from './GlossaryHelp'
@@ -27,7 +28,7 @@ import { ActionDisclosure } from './ActionDisclosure'
 import { RenameTable } from './RenameTable'
 import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
 import { rememberListPlace } from './RecordNav'
-import { FilterBar, ListSearch, StandardFilters, type Filter } from './ListFilters'
+import { FilterBar, FilterChips, ListSearch, StandardFilters, hasFieldBoxes, heldByBoxes, type Filter } from './ListFilters'
 import { SavedViewsBar } from './SavedViewsBar'
 import { LayoutSwitch } from './LayoutSwitch'
 import { RecordCards } from './RecordCards'
@@ -36,6 +37,9 @@ import { LinkCellFilter, ListRow, NAME_CLIP, PhoneList, cell, isFigure } from '.
 import { usePageTitle } from '../lib/page-title'
 
 const PAGE = 20
+/** #1289: a square icon toggle, tinted while on. */
+const iconToggle = (on: boolean) => `w-control justify-center px-0 ${on ? 'border-action bg-action-tint text-action' : ''}`
+
 // #738: a Show columns row is thumb-sized at phone width even under a mouse
 // (a narrowed window still draws the phone layout), as on any touch screen.
 const PHONE_ROW = 'max-sm:min-h-touch'
@@ -168,6 +172,9 @@ export function ListView({
   const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
   // #910 checklist 1: Compact shows each row's name and two key values.
   const [compact, setCompact] = useState(false)
+  // #1289: Save View… in the View menu opens the saved views' name form.
+  const [namingView, setNamingView] = useState(false)
+  const [viewMenuOpen, setViewMenuOpen] = useState(false)
   const [tableScroll, setTableScroll] = useState<HTMLDivElement | null>(null)
   const moreToTheRight = useMoreToTheRight(tableScroll)
   // #1249: the table fits the window, so its scroll bar and the pager stay in view.
@@ -905,10 +912,12 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? onFiltersChange} />}
+      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? onFiltersChange} naming={namingView} onNamingChange={setNamingView} />}
       {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
       {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
-      <div className="mb-2 flex flex-wrap items-end gap-2">
+      {/* #1289: the filters (and their chips) wrap inside the left part, so the view tools keep the first line. */}
+      <div className="mb-2 flex items-start gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
         {onFiltersChange && meta.data && (
           <>
             <ListSearch meta={meta.data} filters={filters} onChange={onFiltersChange} label={label} />
@@ -917,28 +926,45 @@ export function ListView({
               Add filter
               <ChevronDown aria-hidden data-chevron size={18} />
             </Button>
+            {/* #1289: the active filters as big chips, in this same row. */}
+            <FilterChips meta={meta.data} filters={filters} onChange={onFiltersChange} held={heldByBoxes(meta.data, filters)} />
           </>
         )}
-        {/* #859, #1242 (admin-lists 3): retired rows, as a chip in the toolbar. */}
-        {retirable && (
-          // A real checkbox, drawn as a chip: what it is stays plain to everyone.
-          <label className={pillClasses(`min-h-control cursor-pointer gap-1.5 border px-3 text-sm has-focus-visible:outline-2 has-focus-visible:outline-focus ${showRetired ? 'border-action bg-action-tint text-action' : 'border-border-control bg-surface text-ink-muted hover:bg-subtle'}`)}>
-            <input
-              type="checkbox"
-              checked={showRetired}
-              onChange={(e) => {
-                setShowRetired(e.target.checked)
-                setStart(0)
-              }}
-              data-testid="list-show-retired-toggle"
-              className="size-3.5 accent-action"
-            />
-            Show retired
-          </label>
-        )}
-        <div className="ml-auto flex flex-wrap items-end gap-2" data-testid="list-view-tools">
+        </div>
+        {/* Level with the boxes' controls, below their labels (a text-xs line and gap-0.5). */}
+        <div className={`ml-auto flex flex-none items-end gap-2 ${onFiltersChange && meta.data && hasFieldBoxes(meta.data) ? 'mt-[1.125rem]' : ''}`} data-testid="list-view-tools">
+          {/* #859, #1242, #1289: Show Retired leads the right end of the filter row. */}
+          {retirable && (
+            // A real checkbox, drawn as a chip: what it is stays plain to everyone.
+            <label className={pillClasses(`min-h-control cursor-pointer gap-1.5 border px-3 text-sm has-focus-visible:outline-2 has-focus-visible:outline-focus ${showRetired ? 'border-action bg-action-tint text-action' : 'border-border-control bg-surface text-ink-muted hover:bg-subtle'}`)}>
+              <input
+                type="checkbox"
+                checked={showRetired}
+                onChange={(e) => {
+                  setShowRetired(e.target.checked)
+                  setStart(0)
+                }}
+                data-testid="list-show-retired-toggle"
+                className="size-3.5 accent-action"
+              />
+              Show Retired
+            </label>
+          )}
           {/* #1242 (admin-lists 2-3): the other ways to see this Table. */}
-          <ActionDisclosure label="View">
+          <ActionDisclosure label="View" open={viewMenuOpen} onOpenChange={setViewMenuOpen}>
+          {onFiltersChange && filters.length > 0 && (
+            <button
+              type="button"
+              className={buttonClasses()}
+              data-testid="save-view-open"
+              onClick={() => {
+                setViewMenuOpen(false)
+                setNamingView(true)
+              }}
+            >
+              Save View…
+            </button>
+          )}
           <Link
             to="/featherbase/admin/table/$table/view/report"
             params={{ table }}
@@ -985,14 +1011,17 @@ export function ListView({
           <ChecklistSwitch table={table} meta={meta.data} />
           </ActionDisclosure>
           <div className="relative">
+            {/* #1289: the view controls are icons, each named in full for a tooltip and a screen reader. */}
             <button
               onClick={() => setColPickerOpen((o) => !o)}
-              className={buttonClasses()}
+              className={buttonClasses({ className: 'gap-0.5 px-2' })}
               aria-expanded={colPickerOpen}
+              aria-label="Show Columns"
+              title="Show Columns"
               data-testid="list-columns"
             >
-              Show columns
-              <ChevronDown aria-hidden data-chevron size={18} />
+              <Columns3 aria-hidden size={18} />
+              <ChevronDown aria-hidden data-chevron size={16} />
             </button>
             {colPickerOpen && (
               <div
@@ -1042,16 +1071,16 @@ export function ListView({
             )}
           </div>
           {/* #1259: density is one on/off button, so "Table" names only the view. */}
-          <Button aria-pressed={compact} data-testid="compact-rows" onClick={() => {
+          <Button aria-pressed={compact} aria-label="Compact Rows" title="Compact Rows" data-testid="compact-rows" onClick={() => {
             setCompact(!compact)
             persist({ compact: !compact })
-          }} className={compact ? 'border-action bg-action-tint text-action' : undefined}>Compact Rows</Button>
-          <Button aria-pressed={treeOn} onClick={() => setTree(!treeOn)}
-            className={treeOn ? 'border-action bg-action-tint text-action' : undefined}>Tree of all</Button>
+          }} className={iconToggle(compact)}><Rows4 aria-hidden size={18} /></Button>
+          <Button aria-pressed={treeOn} aria-label="Tree of All" title="Tree of All" data-testid="tree-of-all" onClick={() => setTree(!treeOn)}
+            className={iconToggle(treeOn)}><ListTree aria-hidden size={18} /></Button>
         </div>
       </div>
-      {onFiltersChange && meta.data && (addFilterOpen || filters.length > 0) && (
-        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} builderOpen={addFilterOpen} onLinkedAdded={() => setAddFilterOpen(false)} />
+      {onFiltersChange && meta.data && addFilterOpen && (
+        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} onLinkedAdded={() => setAddFilterOpen(false)} chips={false} />
       )}
       {selected.size > 0 && !isRowsReadOnly(meta.data) && (
         <div

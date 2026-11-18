@@ -42,7 +42,15 @@ const history = (view: View) => (view.router as unknown as { history: { back: ()
 
 const listRows = () => [...screen.getByTestId('list-rows').querySelectorAll('tr')]
 const rowTexts = () => listRows().map((r) => r.textContent ?? '')
-const filterWords = () => screen.queryAllByTestId('filter-chip').map((c) => (c.textContent ?? '').replace('×', '').trim())
+/** The filters the list shows, in words: its chips, and its filled field boxes (#1289: a box shows its own filter, no chip). */
+const filterWords = () => [
+  ...screen.queryAllByTestId('filter-chip').map((c) => (c.textContent ?? '').replace('✕', '').trim()),
+  ...[...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-testid="standard-filters"] :is(input, select)')]
+    .filter((box) => box.value)
+    .map((box) => `${box.closest('label')?.querySelector('span')?.textContent ?? ''}: ${box.value}`),
+]
+/** A filter's remove control: a chip's ✕, or a filled box's own ✕. */
+const REMOVE_FILTER = /^(Remove .+ filter|Clear the .+ filter)$/
 
 /** The list's line whose name (a link or button) is `name`. */
 function rowNamed(name: string) {
@@ -152,7 +160,7 @@ function signInAfresh() {
   sessionStorage.clear()
 }
 
-// ---- a row page: Form · Map · Tree ----
+// ---- a row page: Form · Links · Map · Activity (#1273: the tree is the Links tab's other layout) ----
 
 async function openRowPage(as: Client, table: string, row: string) {
   const view = await renderApp(rowHref(table, row), as)
@@ -184,7 +192,9 @@ const treeGroupCount = async (table: string, scope?: HTMLElement) => countOf(awa
 
 async function openTree(as: Client, table: string, row: string) {
   const view = await openRowPage(as, table, row)
-  await showTab('Tree')
+  await showTab('Links')
+  fireEvent.click(await screen.findByTestId('view-menu-button'))
+  fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Tree' }))
   await tree()
   return view
 }
@@ -383,7 +393,7 @@ describe('relational-navigation', () => {
     })
     await step("the filter shows as one of the list's filters, which the user can remove", () => {
       expect(filterWords().some((w) => w.includes('Kerala'))).toBe(true)
-      expect(within(screen.getAllByTestId('filter-chip')[0]!).getByRole('button', { name: 'Remove filter' })).toBeVisible()
+      expect(screen.getAllByRole('button', { name: REMOVE_FILTER })[0]).toBeVisible()
     })
   })
 
@@ -525,11 +535,14 @@ describe('relational-navigation', () => {
       expect(countOf(plants)).toBe(3)
       expect(follows(heading(), plants)).toBe(true)
     })
-    await step('opening the plants shows them in the drill pane', async () => {
+    await step('opening the plants shows them in their section on the Links tab', async () => {
       fireEvent.click(screen.getByRole('button', { name: groupNamed('Plant') }))
-      await pane('Enchakkal')
-      const rows = (await groupRows('Enchakkal')).map((r) => r.textContent ?? '')
-      for (const name of ENCHAKKAL_PLANTS) expect(rows.some((r) => r.includes(name)), `${name} is in the drill pane`).toBe(true)
+      await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
+      const section = await screen.findByRole('region', { name: /^Plants?$/ })
+      await waitFor(() => {
+        const rows = within(section).getAllByTestId('linked-row').map((r) => r.textContent ?? '')
+        for (const name of ENCHAKKAL_PLANTS) expect(rows.some((r) => r.includes(name)), `${name} is on the Links tab`).toBe(true)
+      })
     })
   })
 
@@ -543,7 +556,7 @@ describe('relational-navigation', () => {
     })
     await step('the user switches to the form and back to the tree', async () => {
       await showTab('Form')
-      await showTab('Tree')
+      await showTab('Links')
     })
     await step("Enchakkal's plants are still expanded", async () => {
       expect(await line(groupNamed('Plant'))).toHaveAttribute('aria-expanded', 'true')

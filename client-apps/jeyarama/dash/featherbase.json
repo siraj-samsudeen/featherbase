@@ -930,7 +930,10 @@
       "Buyer Section",
       "Buyer Section Subcategory",
       "Designation"
-    ]
+    ],
+    "optionalColumns": {
+      "Site": ["site_kind", "status"]
+    }
   },
   "permissions": [
     {
@@ -3033,7 +3036,8 @@
       "fromVersion": "0.13.31",
       "toVersion": "0.13.32",
       "operations": []
-    }
+    },
+    {"id": "site_kind", "fromVersion": "0.13.32", "toVersion": "0.13.33", "operations": []}
   ],
   "baseTables": {
     "read": {
@@ -3112,7 +3116,9 @@
         "name",
         "is_store",
         "cluster",
-        "operating_region"
+        "operating_region",
+        "site_kind",
+        "status"
       ],
       "Plant": [
         "site",

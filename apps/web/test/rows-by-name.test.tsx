@@ -79,7 +79,9 @@ test('a link filter names its column and the picked row, in use and in Recent', 
     kind: 'list', key: `list:${ORDER}?${filters}`, label: ORDER, sub: 'customer = cust-1', path: `${path}?filters=${enc(filters)}`,
   }, Date.now() - 1000)
   await renderApp(`${path}?filters=${enc(filters)}`, admin)
-  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent('Customer: Globex Ltd'))
+  // #1289: in use, the Customer box shows the picked row by name, and no chip repeats it.
+  await waitFor(() => expect(screen.getByTestId('std-filter-customer')).toHaveValue('Globex Ltd'))
+  expect(screen.queryAllByTestId('filter-chip')).toHaveLength(0)
   await waitFor(() => expect(screen.getByTestId('recent-strip-view')).toHaveTextContent('Customer: Globex Ltd'))
   expect(screen.getByTestId('recent-strip-view')).not.toHaveTextContent('cust-1')
 })

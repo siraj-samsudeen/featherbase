@@ -28,9 +28,8 @@ export function useLinkOptions(table: string | undefined): { options: LinkOption
   const meta = useMeta(table ?? '', Boolean(table))
   const backlinks = useBacklinks(table ?? '', Boolean(table))
   const related = useMemo(() => {
-    if (!meta.data) return []
     const names = new Set<string>()
-    for (const c of meta.data.columns) {
+    for (const c of meta.data?.columns ?? []) {
       const to = c.column_type === 'Reference' ? linkRowsTable(c) : c.column_type === 'Sub-table' ? c.row_table : null
       if (to) names.add(to)
     }

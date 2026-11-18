@@ -37,7 +37,7 @@ async function seed(admin: Admin): Promise<string> {
 async function openCollaboration(as: Admin, rowId: string) {
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}/row/${rowId}`, as)
   await screen.findByTestId('form-view')
-  await userEvent.click(await screen.findByRole('tab', { name: 'Collaboration' }))
+  await userEvent.click(await screen.findByRole('tab', { name: 'Activity' }))
 }
 
 test('a reader who may read only this Table sees no errors for assignments and attachments, and the page never asks for them', async ({ admin, createUser }) => {
