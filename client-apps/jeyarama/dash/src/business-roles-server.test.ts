@@ -1,6 +1,6 @@
 // #1218: the business roles in shadow, over in-memory Tables. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
-import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, whyAccess } from './business-roles-server'
+import { accessChanges, addStartingRoles, areaParts, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, whyAccess } from './business-roles-server'
 import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
 import { convertGrants } from './switch-over'
@@ -238,6 +238,21 @@ describe("Why on the platform's Map", () => {
     const reached = why.columns[2]!.boxes.filter(b => why.edges.filter(([, to]) => to === b.id).length === 2)
     expect(reached.length).toBeGreaterThan(0)
     expect(reached.every(b => b.detail === 'both roles')).toBe(true)
+  })
+
+  it("leaves out area words that name a record without saying which, and keeps the company's plain words", () => {
+    expect(areaParts([{ name: 'No area: Store Manager reaches one store, and this person is named only at Lakeside' }])).toEqual({})
+    expect(areaParts([{ name: 'Whole company' }, { name: 'Lakeside', table: 'Site', id: 'LKS' }]))
+      .toEqual({ detailParts: [{ name: 'Whole company' }, { name: 'Lakeside', record: { table: 'Site', row: 'LKS' } }] })
+  })
+
+  it("joins a report straight to its role when that role opens no Dash level of its own", async () => {
+    // Store Manager opens Dash; Head Office, also given by hand, does not, yet a report is given to it.
+    const tables = onRequest(await converted(await seeded()), 'vs', 'Head Office')
+    await giveRole(context(tables, { payload: { person: 'sm', change: 'Also give', role: roleId(tables, 'Head Office'), ends_on: '2999-03-31', reason: 'Covering' } }) as never)
+    const why = await whyAccess(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never)
+    const ho = why.columns[1]!.boxes.find(b => b.name === 'Head Office')!.id
+    expect(why.edges).toContainEqual([ho, 'report:vs'])
   })
 
   it('says a role given by hand is by hand', async () => {
