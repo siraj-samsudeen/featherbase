@@ -39,6 +39,58 @@ test("Enter on a page's name opens that page", async ({ admin }) => {
   await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/instance-health'))
 })
 
+/** A Table with one findable row, so a search has a record to offer. */
+async function aRecord(admin: Admin, rowId: string) {
+  const table = 'Cbp Probe'
+  await admin.post('/api/table_def', { name: table, id_pattern: 'prompt', columns: [{ column_name: 'note', column_type: 'Data' }] }).catch(() => {})
+  await admin.post(`/api/table/${encodeURIComponent(table)}`, { row_id: rowId, note: 'probe' })
+}
+
+// #1325 (audit F39): with nothing chosen, Enter opens what the list shows first: a page before a record.
+test('Enter with no exact name opens the first result shown, a page before a record', async ({ admin }) => {
+  await aRecord(admin, 'cbp-health-probe')
+  const { app, bar } = await openBar(admin)
+  fireEvent.change(bar, { target: { value: 'health' } })
+  await screen.findByTestId('awesomebar-doc', {}, T)
+  expect(screen.getAllByTestId('awesomebar-page')[0]).toHaveTextContent('Instance health')
+  fireEvent.submit(screen.getByTestId('awesomebar'))
+  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/instance-health'))
+})
+
+test('Enter pressed before the results arrive waits for them and opens the first one', async ({ admin }) => {
+  await aRecord(admin, 'cbp-qzx-only')
+  const { app, bar } = await openBar(admin)
+  fireEvent.change(bar, { target: { value: 'qzx-only' } })
+  // Nothing is listed yet: the records are still on their way.
+  expect(screen.queryByRole('option')).not.toBeInTheDocument()
+  fireEvent.submit(screen.getByTestId('awesomebar'))
+  await waitFor(() => expect(pathOf(app)).toMatch(/\/row\/cbp-qzx-only$/), T)
+})
+
+test('"What you can see" opens your own access page', async ({ admin }) => {
+  const { app, bar } = await openBar(admin)
+  fireEvent.change(bar, { target: { value: 'What you can see' } })
+  await screen.findByTestId('awesomebar-page', {}, T)
+  fireEvent.submit(screen.getByTestId('awesomebar'))
+  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/account/access/Administrator'))
+})
+
+test('"Service accounts" opens Access tokens on its Service accounts tab', async ({ admin }) => {
+  const { app, bar } = await openBar(admin)
+  fireEvent.change(bar, { target: { value: 'Service accounts' } })
+  await screen.findByTestId('awesomebar-page', {}, T)
+  fireEvent.submit(screen.getByTestId('awesomebar'))
+  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/access-tokens'))
+  expect(await screen.findByRole('tab', { name: 'Service accounts', selected: true }, T)).toBeInTheDocument()
+})
+
+test('"Log out" is a command that signs out', async ({ admin }) => {
+  const { app, bar } = await openBar(admin)
+  fireEvent.change(bar, { target: { value: 'Log out' } })
+  fireEvent.click(await screen.findByTestId('awesomebar-cmd-logout', {}, T))
+  await waitFor(() => expect(pathOf(app)).toBe('/featherbase/login'), T)
+})
+
 test('an arrow key with nothing in the bar to walk is left to the box', async ({ admin }) => {
   const { bar } = await openBar(admin)
   fireEvent.change(bar, { target: { value: 'Cbp nothing matches this' } })
