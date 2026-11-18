@@ -62,6 +62,14 @@ describe('the page', () => {
   it("shows the plain message with Try again when the quick view can't load either", () => {
     expect(pageView({ embed: { ok: true, value: { unreachable: true } }, report: { ok: false, status: 500 } })).toEqual({ kind: 'failed' })
   })
+
+  // #1269: MotherDuck refused the reader's reach as too large.
+  it('says the reach is too large where it would say only "couldn\'t open"', () => {
+    const tooLarge = { ok: true as const, value: { too_large: true } }
+    expect([pageView({ embed: tooLarge, report: { ok: true, value: { state: 'ready', no_quick_view: true } } }),
+      pageView({ embed: tooLarge, report: { ok: false, status: 500 } }), pageView({ embed: tooLarge, report: report('ready') })])
+      .toEqual([{ kind: 'too_large' }, { kind: 'too_large' }, { kind: 'quick' }])
+  })
 })
 
 describe("the Dive's frame", () => {

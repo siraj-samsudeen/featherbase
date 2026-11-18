@@ -46,6 +46,7 @@ import { AgentConnectPage } from './pages/AgentConnect'
 import { ConnectedApps } from './pages/ConnectedApps'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
+import { LeaversWhoCanSignIn } from './pages/LeaversWhoCanSignIn'
 import { InstanceHealth } from './pages/InstanceHealth'
 import { Apps } from './pages/Apps'
 import { GlossaryPage } from './pages/Glossary'
@@ -773,6 +774,25 @@ const waitingForAccessRoute = createRoute({
   component: WaitingForAccessPage,
 })
 
+// #1271: people who have left, or are not employees, and can still sign in (System Manager only).
+const leaversRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'leavers-who-can-sign-in',
+  validateSearch: (search: Record<string, unknown>) => ({ filters: searchString(search.filters) }),
+  component: LeaversPage,
+})
+
+function LeaversPage() {
+  const { filters } = leaversRoute.useSearch()
+  const navigate = leaversRoute.useNavigate()
+  return (
+    <ManageOnly>
+      <LeaversWhoCanSignIn filters={parseFilters(filters)}
+        onFiltersChange={(next) => navigate({ search: { filters: next.length ? JSON.stringify(next) : undefined }, replace: true })} />
+    </ManageOnly>
+  )
+}
+
 function WaitingForAccessPage() {
   const { filters, view } = waitingForAccessRoute.useSearch()
   const navigate = waitingForAccessRoute.useNavigate()
@@ -1119,5 +1139,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

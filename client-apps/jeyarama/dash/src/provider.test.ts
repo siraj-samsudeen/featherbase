@@ -1,6 +1,7 @@
 // Who sees what (#967's table), from the core Tables. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
-import { PROVIDER_TABLES, orgChartProvider, reachOf, type Documents } from './provider'
+import { PROVIDER_TABLES, reachOf, type Documents } from './provider'
+import { dashScopeProvider } from './access-source'
 import { planBuyerSections } from './buyer-sections-plan'
 
 type Row = Record<string, unknown>
@@ -49,6 +50,8 @@ function fake(jobs: Row[], { employee = { row_id: 'E1', person: 'me', status: 'C
     Department: departments.map((row, i) => ({ row_id: `D${i}`, store: 'AAA', manager: 'E1', starts_on: '2026-01-01', ends_on: null, ...row })),
     'Department Section': departmentSections.map((row, i) => ({ row_id: `DS${i}`, store: 'AAA', starts_on: '2026-01-01', ends_on: null, ...row })),
     Cluster: ['North', 'South'].map(row_id => ({ row_id, cluster_manager: clusterHeads[row_id] ?? null })),
+    // #1277: no switch row, so Dash's scope provider follows the old rules.
+    'dash.access_source': [],
     // #1246: the Buyer Section Tables exist only when a test gives Buyer Sections.
     ...(buyerSections ? { 'Buyer Section': buyerSections.map(row => ({ starts_on: '2026-01-01', ends_on: null, buyer: 'E1', ...row })),
       'Buyer Section Subcategory': links.map((row, i) => ({ row_id: `L${i}`, starts_on: '2026-01-01', ends_on: null, ...row })) } : {}),
@@ -322,16 +325,17 @@ describe('the Dash All-Stores Reader role', () => {
   })
 })
 
+// #1277: Dash's scope provider, with no switch row: the old rules.
 describe('the provider', () => {
   it("reaches every store for a holder of Dash All-Stores Reader, from the roles the platform hands it", async () => {
-    const provide = orgChartProvider({ today: () => ON })
-    const places = await provide({ person: { id: 'me', email: null, roles: ['All', 'Dash All-Stores Reader'] }, documents: fake([]) })
+    const provide = dashScopeProvider({ today: () => ON })
+    const places = await provide({ person: { id: 'me', email: null, roles: ['All', 'Dash All-Stores Reader'] }, documents: fake([]) } as never)
     expect(places.map(place => place.filters)).toEqual(['9901', '9902', '9903', '9904'].map(store => ({ store: [store] })))
   })
 
   it('answers the person\'s places on today\'s date', async () => {
-    const provide = orgChartProvider({ today: () => ON })
-    const places = await provide({ person: { id: 'me', email: null }, documents: fake([{ job: 'Store Manager', site: 'AAA' }]) })
+    const provide = dashScopeProvider({ today: () => ON })
+    const places = await provide({ person: { id: 'me', email: null }, documents: fake([{ job: 'Store Manager', site: 'AAA' }]) } as never)
     expect(places.map(place => place.filters)).toEqual([{ store: ['9901'] }])
   })
 

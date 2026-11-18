@@ -16,6 +16,8 @@ import { passwordInviteState, sendPasswordInvite } from './password-invite'
 import { requestHost } from './instance-addresses'
 import { getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { standingFor } from './person-standing'
+import { LEAVER_SIGN_IN_JOB, leaverSignInStatus } from './leaver-sign-in'
+import { enqueue } from './jobs'
 import { assertSystemManager, getRoles } from './permissions'
 import { mailTransport } from './email'
 import { who, type Env } from './route-context'
@@ -53,6 +55,19 @@ peopleRoutes.get('/api/people/:id/identities', async (c) => {
 // Person row; each job's store only where the viewer may open it.
 peopleRoutes.get('/api/people/:id/standing', async (c) => {
   return c.json(await standingFor(c.req.param('id'), who(c)))
+})
+
+// #1271: Leavers Who Can Still Sign In. Its rows are the "Leaver Sign In" Table
+// (System Managers only, read like any Table); these give its header line and
+// its Refresh Now, which queues the rebuild job (it changes nobody).
+peopleRoutes.get('/api/leaver_sign_in/status', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await leaverSignInStatus())
+})
+peopleRoutes.post('/api/leaver_sign_in/refresh', async (c) => {
+  await assertSystemManager(who(c))
+  await enqueue(LEAVER_SIGN_IN_JOB, {}, { maxAttempts: 1 })
+  return c.json({ queued: true }, 202)
 })
 
 // #1257: send (or send again) a password invite to a person with no way in.

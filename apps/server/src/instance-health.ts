@@ -14,6 +14,7 @@ import { checkVariables, DEV_ENVIRONMENTS, readVariable } from './env'
 import { lastApply } from './managed-settings'
 import { systemManagerEmails } from './system-notice'
 import { appSetupState } from './app-settings'
+import { STANDARD_COLUMNS } from './table-engine'
 
 export const HEALTH_CHECK_JOB = 'check_instance_health'
 
@@ -345,7 +346,8 @@ async function scopeProviderTables(environment: string): Promise<HealthCheck[]> 
   const tables = manifest.scopeProvider.tables.filter((t) => !notYet.includes(t))
   const read = manifest.baseTables?.read ?? {}
   const have = new Set((await sql`select name from table_def where name in ${sql(tables)}`).map((r) => String(r.name)))
-  const wanted = tables.filter((t) => have.has(t)).flatMap((t) => (read[t] ?? []).map((column) => [t, column] as const))
+  // #1277: a standard column (updated_at, created_by) is on every Table and never in column_def.
+  const wanted = tables.filter((t) => have.has(t)).flatMap((t) => (read[t] ?? []).filter((column) => !(STANDARD_COLUMNS as readonly string[]).includes(column)).map((column) => [t, column] as const))
   const columns = wanted.length
     ? new Set((await sql`select parent, column_name from column_def where parent in ${sql([...new Set(wanted.map(([t]) => t))])}`).map((r) => `${r.parent}.${r.column_name}`))
     : new Set<string>()

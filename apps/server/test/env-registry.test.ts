@@ -56,6 +56,7 @@ describe('required variables', () => {
     production({ JWT_SECRET: '' })
     expect(() => assertVariables({ environment: 'production' })).toThrow(/JWT_SECRET is not set on a "production" server/)
     expect(() => assertVariables({ environment: 'staging' })).toThrow(/JWT_SECRET is not set on a "staging" server/)
+    expect(() => assertVariables({ environment: 'dev' })).toThrow(/JWT_SECRET is not set on a "dev" server/)
   })
 
   it('development and test pass without it: their defaults are for a checkout', () => {
@@ -108,6 +109,7 @@ describe('switches production must never have', () => {
     production({ ALLOW_MOCK_OAUTH: '1' })
     expect(() => assertVariables({ environment: 'production' })).toThrow(/^ALLOW_MOCK_OAUTH is set on a "production" server/)
     expect(() => assertVariables({ environment: 'staging' })).toThrow(/^ALLOW_MOCK_OAUTH is set on a "staging" server/)
+    expect(() => assertVariables({ environment: 'dev' })).toThrow(/^ALLOW_MOCK_OAUTH is set on a "dev" server/)
     for (const environment of ['development', 'test'])
       expect(assertVariables({ environment })).toContain(`ALLOW_MOCK_OAUTH on, allowed on a "${environment}" server`)
   })
@@ -116,10 +118,10 @@ describe('switches production must never have', () => {
     ['DELEGATED_LOGIN_TEST_MODE', 'trust-any-password'],
     ['PREVIEW_LOGIN_KEY', 'k'.repeat(40)],
     ['PREVIEW_LOGIN_USER', 'preview@example.test'],
-  ])('%s on refuses in production, and is allowed in development, test and staging', (name, value) => {
+  ])('%s on refuses in production, and is allowed in development, test, dev and staging', (name, value) => {
     production({ [name]: value })
     expect(() => assertVariables({ environment: 'production' })).toThrow(new RegExp(`^${name} is set on a "production" server`))
-    for (const environment of ['development', 'test', 'staging'])
+    for (const environment of ['development', 'test', 'dev', 'staging'])
       expect(assertVariables({ environment })).toContain(`${name} on, allowed on a "${environment}" server`)
   })
 

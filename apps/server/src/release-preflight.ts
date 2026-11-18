@@ -45,7 +45,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   //    below (INSTANCE_ADDRESSES among them). A local dev server never runs this.
   if (!opts.environment && !environmentDeclared())
     throw new Error(
-      'Neither FEATHERBASE_ENV nor NODE_ENV is set. A release must declare its environment (FEATHERBASE_ENV=production, staging, …) rather than default to development (docs/DEPLOY.md, "Configuration").',
+      'Neither FEATHERBASE_ENV nor NODE_ENV is set. A release must declare its environment (FEATHERBASE_ENV=production, dev, …) rather than default to development (docs/DEPLOY.md, "Configuration").',
     )
   const environment = opts.environment ?? config.environment
   const passed: string[] = []
@@ -68,7 +68,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
     const stamped = await storedEnvironment()
     if (stamped !== null && !(TEST_MODE_ENVIRONMENTS as readonly string[]).includes(stamped))
       throw new Error(
-        `DELEGATED_LOGIN_TEST_MODE is set, but this database is labelled "${stamped}". Test mode runs only on a development, test or staging database. Unset it, or re-stamp a trial database as staging first (docs/DEPLOY.md, "Environments and the database stamp").`,
+        `DELEGATED_LOGIN_TEST_MODE is set, but this database is labelled "${stamped}". Test mode runs only on a development, test, dev or staging database. Unset it, or re-stamp a trial database as dev first (docs/DEPLOY.md, "Environments and the database stamp").`,
       )
   }
   passed.push(`test mode ${delegatedTestMode() ? 'on, allowed here' : 'off'}`)

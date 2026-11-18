@@ -948,7 +948,9 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                         </span>
                       </StatusPill>
                     ),
-                  }]
+                  },
+                  // #1271: who has left, or is not an employee, and can still sign in.
+                  { to: '/featherbase/admin/leavers-who-can-sign-in', label: 'Leavers who can still sign in', icon: LogIn, testid: 'leavers-link' }]
                 : []),
             ]}
           />
