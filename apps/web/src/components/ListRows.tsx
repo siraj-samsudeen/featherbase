@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import { LinkedTitle, RowLink } from '../lib/row-name'
 import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
 import { useNavigation } from '../lib/navigation'
+import { push } from '../lib/nav-path'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import type { ListColumn } from '../lib/list-view-columns'
 import { useI18n } from '../lib/i18n'
@@ -280,10 +281,8 @@ function LinkCellActions({ row, col }: { row: Record<string, unknown>; col: List
   const href = useRecordHref(target ?? '', target ? String(value) : '')
   if (!target || (!principal && title.state !== 'read')) return null
   const rowId = String(value)
-  const goThere = () => {
-    if (nav) nav.push({ screen: 'row', table: target, row: rowId })
-    else void navigate({ href })
-  }
+  // On a walk, the row is the walk's next step, so the path bar and Back follow it.
+  const goThere = () => void navigate({ href: nav ? nav.href(push(nav.path, { screen: 'row', table: target, row: rowId })) : href })
   return (
     <span data-testid="link-cell-actions"
       className="absolute left-full top-1/2 z-[3] -ml-1 hidden -translate-y-1/2 items-center gap-1 rounded-control bg-surface p-1 shadow-md group-hover/cell:flex group-focus-within/cell:flex">

@@ -100,6 +100,11 @@ describe('linkOptions', () => {
     expect(linkOptions(visit, [], (t) => (t === 'Store' ? store : metaOf(t))).map((o) => o.label)).toEqual(['Division'])
   })
 
+  test('a count via sub-table rows counts their lines on rows of this Table', () => {
+    expect(choiceCountQuery('Order', [], { table: 'Item', link: { kind: 'via', via: 'Order Line', column: 'item' } }))
+      .toEqual({ table: 'Order Line', group_by: 'item', filters: [['parenttype', '=', 'Order'], ['parent', 'related', { table: 'Order', filters: [] }]] })
+  })
+
   test('a sub-table’s parent counts keep to the holding Table', () => {
     expect(choiceCountQuery('Order Line', [], { table: 'Order', link: { kind: 'forward', column: 'parent' } }))
       .toEqual({ table: 'Order Line', group_by: 'parent', filters: [['parenttype', '=', 'Order']] })
