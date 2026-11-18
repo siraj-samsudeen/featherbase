@@ -2138,8 +2138,8 @@ const webDist = import.meta.url.startsWith('file:') ? path.resolve(path.dirname(
  *  prefix does not claim. Answers whether it mounted anything. */
 export function serveWebDist(target: Hono<Env>, dir: string): boolean {
   if (!dir || !existsSync(dir)) return false
-  // serveStatic resolves `root` against process.cwd() (apps/server under
-  // `pnpm --filter server start`), so the path must be expressed relative
+  // serveStatic resolves `root` against process.cwd() (apps/server, under
+  // `pnpm --filter server start` and the image's command), so the path must be expressed relative
   // to that, not absolute.
   const webRoot = path.relative(process.cwd(), dir)
   target.use('*', serveStatic({ root: webRoot }))

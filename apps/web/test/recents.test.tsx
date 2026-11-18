@@ -444,6 +444,16 @@ describe('helpers', () => {
     expect(readable.path).toBe(original.path)
   })
 
+  // #1285: a Linked to filter's value is a spec object; the feed once read "related [object Object]".
+  it('describeFilters names a Linked to chain by its Tables, never [object Object]', () => {
+    const chain = [['subcategory', 'related', { table: 'Subcategory', filters: [['category', 'related', { table: 'Category', filters: [['row_id', 'in', ['C-1']]] }]] }]]
+    expect(describeFilters(JSON.stringify(chain))).toBe('Linked to Subcategory › Category')
+    const columns = [{ column_name: 'site', label: 'Store', column_type: 'Reference' }]
+    expect(describeFilters(JSON.stringify([['site', 'not related', { table: 'Site', filters: [] }], ['status', '=', 'Open']]), columns))
+      .toBe('Not linked to Site · status = Open')
+    expect(describeFilters(JSON.stringify([['site', 'related', 'junk']]))).toBe('Linked to')
+  })
+
   it('ago compresses to m/h/d', () => {
     expect(ago(NOW - 30_000, NOW)).toBe('now')
     expect(ago(NOW - 5 * 60_000, NOW)).toBe('5m')
