@@ -33,6 +33,8 @@ export const registryLabel = (name: string): string | undefined =>
   Object.hasOwn(REGISTRY_LABELS, name) ? REGISTRY_LABELS[name] : undefined
 
 const PER_TABLE = 3
+/** #1311: how many rows containing the text each Table ranks for its best three. */
+const CANDIDATES = 500
 /** How many Tables are searched at once (#1265). */
 const AT_ONCE = 6
 /** #1265: a person's or service account's opaque id names no one (Postgres pattern). */
@@ -61,7 +63,9 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
     yield { done: true }
     return
   }
-  const like = '%' + q.replace(/[\\%_]/g, (c) => `\\${c}`) + '%'
+  const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`)
+  // As typed, starting with it, containing it: see searchOne.
+  const pattern = { exact: q, prefix: escaped + '%', like: '%' + escaped + '%' }
 
   // Source-bound Tables are excluded: they have no physical table here (the
   // old query 500'd the whole search the moment one existed), and fanning a
@@ -96,7 +100,7 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
     while (!halted() && running < AT_ONCE && queue.length) {
       const t = queue.shift()!
       running++
-      const one: Promise<void> = searchOne(t, user, like)
+      const one: Promise<void> = searchOne(t, user, pattern)
         .then((hits) => { finished.push({ table: String(t.name), hits }) })
         .catch((error: unknown) => { failure ??= error })
         .finally(() => { running--; started.delete(one); launch(); wake?.() })
@@ -125,7 +129,7 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   }
 }
 
-async function searchOne(t: Record<string, unknown>, user: string, like: string): Promise<SearchHit[]> {
+async function searchOne(t: Record<string, unknown>, user: string, { exact, prefix, like }: { exact: string; prefix: string; like: string }): Promise<SearchHit[]> {
   // #648: an app's Tables answer only while it is available to this
   // request: switched on, not awaiting activation, and the version the
   // client last loaded. When one refuses, search skips that Table instead
@@ -150,10 +154,26 @@ async function searchOne(t: Record<string, unknown>, user: string, like: string)
   // A row of machine-made keys with no title of its own (empty, or hidden from
   // this viewer) would read as its key: it is no hit either (Codex round 4).
   const named = machine ? sql`and nullif(trim(${shown}::text), '') is not null` : sql``
-  const rows = await sql`
-    select ${key} as row_id, ${shown} as title from ${sql(table)}
-    where ${where} ${live} and (${key} ilike ${like}${title ? sql` or ${readExpression(title)} ilike ${like}` : sql``})
-      and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID} ${named}
+  // #1311: each Table answers its best three: named or coded exactly as typed,
+  // then starting with it, then the shortest. Ranking runs over a bounded set of
+  // candidates, the first CANDIDATES rows containing the text plus the row whose
+  // code is exactly the text (a primary-key lookup), so the database still stops
+  // early on a common query and an exact code is never crowded out. (Codex:
+  // round 1 flagged sorting every match, round 2 sequential scans and limiting
+  // before ranking; round 3: the exact code comes before exact names.)
+  const match = (pattern: string) => sql`(${key} ilike ${pattern}${title ? sql` or ${readExpression(title)} ilike ${pattern}` : sql``})`
+  const found = sql`${where} ${live} and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID} ${named}`
+  const rows = await sql<{ row_id: unknown; title: unknown }[]>`
+    select row_id, title from (
+      (select ${key} as row_id, ${shown} as title from ${sql(table)} where ${found} and ${match(like)} limit ${CANDIDATES})
+      union
+      (select ${key} as row_id, ${shown} as title from ${sql(table)} where ${found} and ${key} = ${exact})
+    ) candidate
+    order by
+      case when row_id::text = ${exact} then 0
+           when lower(row_id::text) = lower(${exact}) or lower(title::text) = lower(${exact}) then 1
+           when row_id::text ilike ${prefix} or title::text ilike ${prefix} then 2 else 3 end,
+      length(coalesce(title::text, row_id::text)), coalesce(title::text, row_id::text), row_id::text
     limit ${PER_TABLE}`
   return rows
     .map((row) => ({

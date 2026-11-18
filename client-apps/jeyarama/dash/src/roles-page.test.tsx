@@ -137,6 +137,19 @@ describe('Explain A Person', () => {
     expect([all('refused')[0].textContent!.includes('Only a Report Access Manager or System Manager can see this'), all('person-search').length]).toEqual([true, 0])
   })
 
+  // #1316: with no person chosen there is no explanation to refuse; the page asks first whether this viewer may use it.
+  it('refuses plainly before anyone is chosen, to someone who may not use it', async () => {
+    window.history.replaceState(null, '', '/dash/?view=explain')
+    try {
+      answers = { manages_roles: false }
+      const refused = await render('explain')
+      expect([refused.all('refused').length, refused.all('person-search').length]).toEqual([1, 0])
+      answers = { manages_roles: true }
+      const allowed = await render('explain')
+      expect([allowed.all('refused').length, allowed.all('person-search').length]).toEqual([0, 1])
+    } finally { window.history.replaceState(null, '', '/dash/?view=explain&person=sm') }
+  })
+
   it('reads No current job as the HR title of someone with none', async () => {
     answers.explain_person = { ...SELVI, hr_titles: [] }
     const { all } = await render('explain')
