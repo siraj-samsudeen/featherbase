@@ -305,6 +305,14 @@ describe('actionForLocation', () => {
     expect(action?.key).not.toBe(actionForLocation('/featherbase/admin/table/task', {}, 'Task')?.key)
   })
 
+  // #1288 (verifier): a walk is its own Recently Opened entry; the page's own entry opens the page itself.
+  it('a page visited inside a walk is remembered without the walk', () => {
+    const walk = encodeURIComponent('{"steps":[],"at":0}')
+    expect(actionForLocation('/featherbase/admin/table/task', { path: '{"steps":[],"at":0}' }, 'Task')?.path).toBe('/featherbase/admin/table/task')
+    expect(actionForLocation('/featherbase/admin/table/task', {}, 'Task', `/featherbase/admin/table/task?path=${walk}&filters=%5B%5D`)?.path).toBe('/featherbase/admin/table/task?filters=%5B%5D')
+    expect(actionForLocation('/featherbase/admin/table/task', {}, 'Task', '/featherbase/admin/table/task?filters=%5B%5D')?.path).toBe('/featherbase/admin/table/task?filters=%5B%5D')
+  })
+
   it('treats list view modes as lists and reports/dashboards as pages', () => {
     expect(actionForLocation('/featherbase/admin/table/task/view/kanban', {}, 'Task')).toMatchObject({ kind: 'list', sub: 'kanban' })
     expect(actionForLocation('/featherbase/admin/script-report/Sales%20Register', {})).toMatchObject({

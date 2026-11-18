@@ -368,6 +368,15 @@ export function describeFilters(
   }
 }
 
+/** The address parameter that holds a walk's steps (#910). */
+const WALK_PARAM = 'path'
+function withoutWalk(href: string): string {
+  const url = new URL(href, 'http://x')
+  if (!url.searchParams.has(WALK_PARAM)) return href
+  url.searchParams.delete(WALK_PARAM)
+  return url.pathname + url.search + url.hash
+}
+
 // Admin first segments that are not Tables come from the shared catalog
 // (packages/shared/src/app-routes.ts): titled static pages are remembered as
 // pages; the unrecorded roots (home, builders, browsers) are not remembered.
@@ -413,11 +422,12 @@ export function actionForLocation(
   const table = canonicalTable
   // An empty filter list (#1228 settles a bare open to `filters=[]`) is the unfiltered list.
   const filtersJson = typeof search.filters === 'string' && !noFilters(search.filters) ? search.filters : undefined
+  // #1288: a page's own recent opens the page itself; a walk through it is its own entry (the walk's `path`).
   const query = Object.entries(search)
-    .filter(([, value]) => value !== undefined && value !== null)
+    .filter(([key, value]) => key !== WALK_PARAM && value !== undefined && value !== null)
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(typeof value === 'string' ? value : JSON.stringify(value))}`)
     .join('&')
-  const href = navigatedPath ?? (query ? `${pathname}?${query}` : pathname)
+  const href = navigatedPath ? withoutWalk(navigatedPath) : query ? `${pathname}?${query}` : pathname
   if (segs.length === 2 || (segs.length === 4 && segs[2] === 'view')) {
     const mode = segs[2] === 'view' ? segs[3] : undefined
     const sub = [mode, describeFilters(filtersJson, columns, t)].filter(Boolean).join(' · ') || undefined
