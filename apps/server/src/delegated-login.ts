@@ -110,6 +110,9 @@ export interface RosterLink {
   name_column: string
   status_column: string
   current_status: string
+  /** #1286: the status a row gets when the HR record shows its person has
+   *  left. Absent: the roster's status is only read, never written. */
+  left_status?: string
   provider_record_key: string
   identifiers: Record<string, string>
 }
@@ -137,6 +140,8 @@ export function rosterFrom(settings: Record<string, unknown> | null): RosterLink
   }
   for (const key of ROSTER_COLUMNS)
     if (!COLUMN_NAME.test(text(key))) throw new Error(`settings.roster.${key} must be a column name`)
+  const left = raw.left_status === undefined || raw.left_status === null ? undefined : text('left_status')
+  if (left !== undefined && left === text('current_status')) throw new Error('settings.roster.left_status must differ from current_status')
   const identifiers = raw.identifiers ?? {}
   if (!isObj(identifiers) || !Object.values(identifiers).every((c) => typeof c === 'string' && COLUMN_NAME.test(c)))
     throw new Error('settings.roster.identifiers must map an identifier system to a column name')
@@ -148,6 +153,7 @@ export function rosterFrom(settings: Record<string, unknown> | null): RosterLink
     name_column: text('name_column'),
     status_column: text('status_column'),
     current_status: text('current_status'),
+    ...(left !== undefined ? { left_status: left } : {}),
     provider_record_key: text('provider_record_key').toLowerCase(),
     identifiers: identifiers as Record<string, string>,
   }

@@ -57,6 +57,7 @@
             "name_column": "name",
             "status_column": "status",
             "current_status": "Current",
+            "left_status": "Left",
             "provider_record_key": "employee_id",
             "identifiers": {
               "stylehr-employee-code": "employee_code_stylehr"
