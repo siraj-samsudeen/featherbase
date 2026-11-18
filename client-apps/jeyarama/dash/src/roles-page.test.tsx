@@ -10,6 +10,12 @@ vi.mock('../../../../packages/shop-floor/node_modules/lucide-react', async impor
 
 type Call = { kind: string; name: string; payload: Record<string, unknown> }
 const calls: Call[] = []
+/** #1282: made-up places, as the platform's list read answers them. */
+const TABLES: Record<string, Record<string, unknown>[]> = {
+  Cluster: [{ row_id: 'cs', name: 'Chennai South' }, { row_id: 'no', name: 'North' }],
+  Site: [{ row_id: 'SE', name: 'Store E', cluster: 'cs', is_store: 1 }, { row_id: 'SF', name: 'Store F', cluster: 'cs', is_store: 1 }, { row_id: 'WH', name: 'Warehouse', cluster: 'cs', is_store: 0 }],
+  'Store Floor': [{ row_id: 'SE1', name: 'First floor', site: 'SE' }],
+}
 let answers: Record<string, unknown> = {}
 let teardown: () => void = () => {}
 let dom: { window: Record<string, unknown> & { close(): void } }
@@ -29,6 +35,14 @@ beforeAll(() => {
     Object.defineProperty(globalThis, key, { configurable: true, get: () => (key === 'window' ? dom.window : dom.window[key]) })
   ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
   ;(globalThis as Record<string, unknown>).fetch = async (url: string, init: RequestInit) => {
+    // #1282: the platform's list read, for the area picker's columns.
+    const listed = /\/api\/table\/([^?]+)\?(.*)$/.exec(String(url))
+    if (listed) {
+      const query = new URLSearchParams(listed[2])
+      const filters = JSON.parse(query.get('filters') ?? '[]') as [string, string, unknown][]
+      const rows = (TABLES[decodeURIComponent(listed[1]!)] ?? []).filter(r => filters.every(([c, , v]) => r[c] === v))
+      return new Response(JSON.stringify({ data: rows.slice(0, Number(query.get('limit_page_length') ?? 500)), total: rows.length }), { status: 200 })
+    }
     const match = /app_(reads|actions)\/dash\/(.+)$/.exec(String(url))
     if (!match) return new Response('{}', { status: 404 })
     calls.push({ kind: match[1], name: match[2], payload: JSON.parse(String(init.body)).payload })
@@ -116,6 +130,25 @@ describe('Explain A Person', () => {
     await click(all('hand-save')[0])
     expect([calls.find(c => c.name === 'give_role')?.payload, calls.filter(c => c.name === 'explain_person').length])
       .toEqual([{ person: 'sm', change: 'Also give', role: 'r-tl', site: 'LKS', ends_on: '2027-03-31', reason: '' }, 2])
+  })
+
+  // #1282 G1: the place picked on the trees, a store; a cluster shows but cannot be given yet.
+  it('picks the place on the trees: a cluster walks to its stores, and a store becomes the place', async () => {
+    const { all, click, set } = await render('explain')
+    await click(all('also-give-button')[0])
+    await set(all('hand-role')[0] as HTMLSelectElement, 'r-tl')
+    await click(all('hand-pick-area')[0])
+    const button = (text: string) => [...document.querySelectorAll('[data-testid="area-picker"] button')].find(b => b.textContent?.startsWith(text))!
+    // Two stores under Chennai South: its warehouse is no store.
+    expect(button('Chennai South').textContent).toBe('Chennai South2 stores')
+    await click(button('Chennai South'))
+    expect(all('area-not-yet')[0].textContent).toBe('Can be given at Store level for now')
+    expect((button('Use this area') as HTMLButtonElement).disabled).toBe(true)
+    await click(button('Store E'))
+    await click(button('Use this area'))
+    expect([all('area-picker').length, all('hand-sentence')[0].textContent]).toEqual([0, 'Also give: treat as Team Leader at Store E.'])
+    await click(all('hand-save')[0])
+    expect(calls.find(c => c.name === 'give_role')?.payload).toMatchObject({ site: 'SE' })
   })
 
   it('offers the job\'s place by default in a Correct, said as a sentence', async () => {

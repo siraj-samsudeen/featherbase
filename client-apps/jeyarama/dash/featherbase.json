@@ -3089,6 +3089,12 @@
       "fromVersion": "0.13.36",
       "toVersion": "0.13.37",
       "operations": []
+    },
+    {
+      "id": "area_picker",
+      "fromVersion": "0.13.37",
+      "toVersion": "0.13.38",
+      "operations": []
     }
   ],
   "baseTables": {

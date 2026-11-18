@@ -3,8 +3,9 @@
 // Lens tab of issue_1218_relational_navigation.html: header chips, fields beside links, a source chip
 // and a Why? per item) and Who Would Gain Or Lose Access. The rules are the server's.
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Button, Card, EmptyState, Field, Notice, Select, TextInput, fmtDate, pillClasses } from '@featherbase/shop-floor'
+import { AreaPicker, Button, Card, EmptyState, Field, Notice, Select, TextInput, fmtDate, pillClasses } from '@featherbase/shop-floor'
 import { act, read } from './api'
+import { DASH_AREAS, loadDashArea } from './area-axes'
 import { LoadFailed, Loading, Shell } from './sections-page'
 import { RecordLink } from './record-link'
 import { PersonPicker, type Found } from './access-page'
@@ -455,6 +456,10 @@ function WhyLine({ name, meta, chip, why, testid }: { name: ReactNode; meta?: Re
 function HandForm({ change, person, choices, places, onDone, onCancel }: { change: 'Correct' | 'Also give'; person: string; choices: Explained['choices']; places: Explained['places']; onDone: () => Promise<void>; onCancel: () => void }) {
   const [role, setRole] = useState('')
   const [site, setSite] = useState(places.default ?? '')
+  // #1282 G1: a store picked on the trees, offered beside the list of stores from then on.
+  const [picking, setPicking] = useState(false)
+  const [pickedStores, setPickedStores] = useState<{ id: string; name: string }[]>([])
+  const stores = [...places.stores, ...pickedStores.filter(p => !places.stores.some(s => s.id === p.id))]
   const [ends, setEnds] = useState('')
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -464,7 +469,7 @@ function HandForm({ change, person, choices, places, onDone, onCancel }: { chang
     try { await act('give_role', { person, change, role, site, ends_on: ends || null, reason }); await onDone() } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
   }
   const roleName = choices.find(c => c.id === role)?.name ?? 'the role'
-  const siteName = places.stores.find(s => s.id === site)?.name
+  const siteName = stores.find(s => s.id === site)?.name
   return (
     <li className="mx-2 mt-2 flex flex-col gap-3 rounded-control bg-action-tint p-3" data-testid="hand-form">
       <p className="text-sm" data-testid="hand-sentence">{change === 'Correct' ? 'Correct' : 'Also give'}: treat as <b>{roleName}</b>{siteName ? <> at <b>{siteName}</b></> : ' at the place of their job'}.</p>
@@ -478,9 +483,10 @@ function HandForm({ change, person, choices, places, onDone, onCancel }: { chang
         <Field label="Place" className="min-w-48">
           <Select value={site} onChange={e => setSite(e.target.value)} data-testid="hand-site">
             <option value="">The place of their job</option>
-            {places.stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </Select>
         </Field>
+        <Button variant="quiet" onClick={() => setPicking(true)} data-testid="hand-pick-area">Pick on the trees ▸</Button>
         <Field label="Ends on (optional)">
           <TextInput type="date" value={ends} onChange={e => setEnds(e.target.value)} data-testid="hand-ends" />
         </Field>
@@ -488,6 +494,10 @@ function HandForm({ change, person, choices, places, onDone, onCancel }: { chang
           <TextInput value={reason} onChange={e => setReason(e.target.value)} placeholder="Why, in a few words" data-testid="hand-reason" />
         </Field>
       </div>
+      {picking && (
+        <AreaPicker axes={DASH_AREAS} holds={['Site']} load={loadDashArea} onCancel={() => setPicking(false)}
+          onUse={(area) => { setPickedStores(was => [...was, { id: area.row.id, name: area.row.name }]); setSite(area.row.id); setPicking(false) }} />
+      )}
       {error && <Notice tone="negative">{error}</Notice>}
       <div className="flex gap-2">
         <Button variant="primary" disabled={!role} loading={busy} onClick={save} data-testid="hand-save">{change === 'Correct' ? 'Correct' : 'Also Give'}</Button>
