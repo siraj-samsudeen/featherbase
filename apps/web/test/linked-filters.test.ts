@@ -84,11 +84,25 @@ describe('linkOptions', () => {
       .toMatchObject({ label: 'Order · via Order Line', table: 'Order', link: { kind: 'through', link: 'Order Line', back: 'item', column: 'parent' } })
   })
 
-  test('a connected Table offers only its links within the same source', () => {
-    const store = table('Store', [], { data_source: 'Shop DB' } as Partial<TableMeta>)
-    const floor = table('Floor', [ref('store', 'Store'), ref('division', 'Division')], { data_source: 'Shop DB' } as Partial<TableMeta>)
-    expect(linkOptions(floor, [{ table: 'Section', column: 'x', via: null }], (t) => (t === 'Store' ? store : metaOf(t))).map((o) => o.label))
-      .toEqual(['Store'])
+  test('a connected Table offers only its links within the same PostgreSQL source', () => {
+    const shop = { data_source: 'Shop DB', source_engine: 'postgres' } as Partial<TableMeta>
+    const store = table('Store', [], shop)
+    const floor = table('Floor', [ref('store', 'Store'), ref('division', 'Division')], shop)
+    const of = (t: string) => (t === 'Store' ? store : metaOf(t))
+    expect(linkOptions(floor, [{ table: 'Section', column: 'x', via: null }], of).map((o) => o.label)).toEqual(['Store'])
+    const duck = table('Floor', [ref('store', 'Store')], { data_source: 'Shop DB', source_engine: 'duckdb' } as Partial<TableMeta>)
+    expect(linkOptions(duck, [], of)).toEqual([])
+  })
+
+  test('a native Table offers no step into a connected Table', () => {
+    const store = table('Store', [], { data_source: 'Shop DB', source_engine: 'postgres' } as Partial<TableMeta>)
+    const visit = table('Visit', [ref('store', 'Store'), ref('division', 'Division')])
+    expect(linkOptions(visit, [], (t) => (t === 'Store' ? store : metaOf(t))).map((o) => o.label)).toEqual(['Division'])
+  })
+
+  test('a count through a sub-table’s parent keeps to the holding Table', () => {
+    expect(choiceCountQuery('Item', [], { table: 'Order', link: { kind: 'through', link: 'Order Line', back: 'item', column: 'parent' } }).filters)
+      .toEqual([['item', 'related', { table: 'Item', filters: [] }], ['parenttype', '=', 'Order']])
   })
 })
 

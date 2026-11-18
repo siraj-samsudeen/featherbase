@@ -65,10 +65,16 @@ export function linkOptions(
 ): LinkOption[] {
   const label = (t: string) => tableLabel(t, metaOf(t))
   const options: LinkOption[] = []
+  // The server follows links only through its own Tables, or, on a connected
+  // Table, its direct links within one PostgreSQL source: a step into a
+  // connected Table from a native one cannot be compiled, so it is not offered.
+  const bound = (t: string | undefined) => Boolean(t && metaOf(t)?.data_source)
   const add = (table: string, text: string, link: Link) => {
     const key = linkKey(table, link)
+    if (!meta.data_source && (bound(table) || bound(link.kind === 'via' ? link.via : link.kind === 'through' ? link.link : undefined))) return
     if (!options.some((o) => o.key === key)) options.push({ key, table, label: text, link })
   }
+  if (meta.data_source && meta.source_engine !== 'postgres') return []
   const refs = dataColumns(meta).filter((c) => c.column_type === 'Reference' && linkRowsTable(c))
   for (const c of refs) {
     const target = linkRowsTable(c)!
@@ -247,7 +253,10 @@ export function choiceCountQuery(from: string, fromFilters: Filter[], step: Pick
     case 'via':
       return { table: link.via, group_by: link.column, filters: [['parenttype', '=', from], ['parent', 'related', all]] }
     case 'through':
-      return { table: link.link, group_by: link.column, filters: [[link.back, 'related', all]] }
+      // Through a sub-table's `parent`, its rows may hang on other Tables with the same ids.
+      return { table: link.link, group_by: link.column, filters: [
+        [link.back, 'related', all], ...(link.column === 'parent' ? [['parenttype', '=', step.table] as Filter] : []),
+      ] }
   }
 }
 
