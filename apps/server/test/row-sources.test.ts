@@ -72,6 +72,7 @@ describe('#1273: where a link row came from', () => {
     const stranger = await createUser({ email: 'rs.stranger@example.com' })
     await expectRefused(stranger.fetch(`/api/table/${encodeURIComponent(GIVEN)}:row_sources?ids=${encodeURIComponent('["G1"]')}`), 403)
     await expectRefused(stranger.fetch(`/api/table/${encodeURIComponent(GIVEN)}:row_sources?ids=${encodeURIComponent('[]')}`), 403)
+    expect((await sourcesOf(admin, [])).sources).toEqual({})
     const bad = await admin.fetch(`/api/table/${encodeURIComponent(GIVEN)}:row_sources?ids=G1`)
     expect(bad.status).toBe(417)
   })

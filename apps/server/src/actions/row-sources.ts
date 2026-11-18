@@ -5,7 +5,6 @@ import { ROW_KEY, getMeta } from '../meta'
 import { permissionScope } from '../permissions'
 import { permissionRefusal } from '../refusals'
 import { scopedWhere } from '../query'
-import { isBound } from '../sources/dispatch'
 import { ACTOR_LABELS, serviceAccountName } from '../actor-names'
 import { storedTable } from '../views'
 
@@ -49,17 +48,10 @@ export async function rowSources(viewer: string, name: string, rawIds: unknown):
   const table = await storedTable(name)
   const meta = await getMeta(table)
   const out: Record<string, string | null> = {}
-  if (isBound(meta)) {
-    // A bound Table's rows are read on its source, under its own scope rules; this
-    // answers none of them (Codex review): such a Table lists its links, never ticks them.
-    if ((await permissionScope(viewer, table, 'read')) === 'none') throw await permissionRefusal(viewer, name, 'read')
-    return out
-  }
-  if (!ids.length) {
-    // Still a read of the Table: one the caller may not read is refused, not answered empty.
-    await scopedWhere(name, viewer, [])
-    return out
-  }
+  // A Table the caller may not read is refused, whatever was asked of it. A source-bound
+  // Table's rows live on its source: the scoped read below refuses it (it lists, never ticks).
+  if ((await permissionScope(viewer, table, 'read')) === 'none') throw await permissionRefusal(viewer, name, 'read')
+  if (!ids.length) return out
   // Read through the name asked for: a view keeps its own filters (Codex review).
   const scoped = await scopedWhere(name, viewer, [[ROW_KEY, 'in', ids]])
   const rows = await sql<{ id: string; created_by: string | null; created_at: Date }[]>`
