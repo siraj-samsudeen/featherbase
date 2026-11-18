@@ -465,8 +465,8 @@ describe('list-view', () => {
     await step('orders from the customers "Globex Ltd" and "Initech"', () => ordersFromCustomers(admin))
     await step('the user opens a link to the orders list filtered to the customer "Globex Ltd"', () =>
       openList(admin, ORDERS, customerFilter('Globex Ltd')))
-    await step('the user sees the filter in use reading "Customer = Globex Ltd"', () =>
-      waitFor(() => expect((screen.getAllByTestId('filter-chip')[0]!.textContent ?? '').replace('×', '').trim()).toBe('Customer = Globex Ltd')))
+    await step('the user sees the filter in use reading "Customer: Globex Ltd"', () =>
+      waitFor(() => expect((screen.getAllByTestId('filter-chip')[0]!.textContent ?? '').replace('×', '').trim()).toBe('Customer: Globex Ltd')))
   })
 
   scenario('The recent filter names Globex Ltd', async ({ admin }, step) => {
@@ -480,8 +480,8 @@ describe('list-view', () => {
       await openList(admin, ORDERS)
       await ordersShown(['Widgets', 'Sprockets', 'Gears'])
     })
-    await step('the user sees a recent filter reading "Customer = Globex Ltd"', () =>
-      waitFor(() => expect(screen.getAllByTestId('recent-strip-view').map((v) => (v.textContent ?? '').trim())).toContain('Customer = Globex Ltd')))
+    await step('the user sees a recent filter reading "Customer: Globex Ltd"', () =>
+      waitFor(() => expect(screen.getAllByTestId('recent-strip-view').map((v) => (v.textContent ?? '').trim())).toContain('Customer: Globex Ltd')))
   })
 
   scenario("Both customers' orders show again", async ({ admin }, step) => {
@@ -502,8 +502,8 @@ describe('list-view', () => {
     await step('orders from the customers "Globex Ltd" and "Initech"', () => ordersFromCustomers(admin))
     await step('the user opens a link to the orders list filtered to the item "Widgets"', () =>
       openList(admin, ORDERS, `?filters=${enc(JSON.stringify([['item', '=', 'Widgets']]))}`))
-    await step('the user sees the filter in use reading "Item = Widgets"', () =>
-      waitFor(() => expect((screen.getAllByTestId('filter-chip')[0]!.textContent ?? '').replace('×', '').trim()).toBe('Item = Widgets')))
+    await step('the user sees the filter in use reading "Item: Widgets"', () =>
+      waitFor(() => expect((screen.getAllByTestId('filter-chip')[0]!.textContent ?? '').replace('×', '').trim()).toBe('Item: Widgets')))
   })
 
   scenario('The Widgets order\'s customer reads "Globex Ltd"', async ({ admin }, step) => {

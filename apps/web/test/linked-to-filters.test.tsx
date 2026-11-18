@@ -6,6 +6,8 @@
 import { configure, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableSlug } from 'shared'
+import { vi } from 'vitest'
+import { grantRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
 import { decodePath } from '../src/lib/nav-path'
 
@@ -73,7 +75,7 @@ test('Linked to a Table, picking rows of it with how many rows each links to', a
   await waitFor(() => expect(screen.getByTestId('list-sum')).toHaveTextContent(/Σ Cost: \D*1,800/))
   await openLinked('Linked to…')
   await chooseTable(0, VEHICLE)
-  await waitFor(() => expect(within(stepCard(0)).getByTestId('linked-step-count')).toHaveTextContent(`${VEHICLE}: 2 match`))
+  await waitFor(() => expect(within(stepCard(0)).getByTestId('linked-step-count')).toHaveTextContent(`2 ${VEHICLE} to choose from`))
   await waitFor(async () => expect(within(await choice(0, 'Truck 1')).getByTestId('linked-choice-count')).toHaveTextContent('2'))
   expect(within(await choice(0, 'Truck 2')).getByTestId('linked-choice-count')).toHaveTextContent('1')
   // A tick taken back is no longer picked.
@@ -82,11 +84,14 @@ test('Linked to a Table, picking rows of it with how many rows each links to', a
   await userEvent.click(within(await choice(0, 'Truck 1')).getByRole('checkbox'))
   await userEvent.click(within(await choice(0, 'Truck 2')).getByRole('checkbox'))
   await userEvent.click(screen.getByTestId('linked-add'))
+  // Adding it closes the Add filter row.
+  expect(screen.getByTestId('filter-toggle')).toHaveAttribute('aria-expanded', 'false')
   await waitFor(() => expect(rowTitles()).toEqual(['Windshield']))
   await waitFor(() => expect(screen.getByTestId('list-sum')).toHaveTextContent(/Σ Cost: \D*300/))
   const chip = screen.getByTestId('filter-chip')
   await waitFor(() => expect(chip).toHaveTextContent(`Linked to ${VEHICLE}: Truck 2`))
-  await waitFor(() => expect(within(chip).getByTestId('linked-step-total')).toHaveTextContent('1'))
+  // How many rows each step holds is the chip's tooltip; its words are the path bar's.
+  await waitFor(() => expect(within(chip).getByTestId('linked-words')).toHaveAttribute('title', `${VEHICLE}: 1 linked`))
 })
 
 test('with none picked, a step’s search is part of the filter', async ({ admin }) => {
@@ -96,7 +101,7 @@ test('with none picked, a step’s search is part of the filter', async ({ admin
   await openLinked('Linked to…')
   await chooseTable(0, VEHICLE)
   await userEvent.type(await screen.findByTestId('linked-search'), 'Truck 2')
-  await waitFor(() => expect(within(stepCard(0)).getByTestId('linked-step-count')).toHaveTextContent(`${VEHICLE}: 1 match· none picked: those matching "Truck 2"`))
+  await waitFor(() => expect(within(stepCard(0)).getByTestId('linked-step-count')).toHaveTextContent(`1 ${VEHICLE} to choose from· none picked: those matching "Truck 2"`))
   await userEvent.click(screen.getByTestId('linked-add'))
   await waitFor(() => expect(rowTitles()).toEqual(['Windshield']))
   expect(screen.getByTestId('filter-chip')).toHaveTextContent(`Linked to ${VEHICLE} matching "Truck 2"`)
@@ -123,10 +128,10 @@ test('a chain: Claims linked to Accidents linked to one Vehicle, each step with 
   await chooseTable(1, VEHICLE)
   await userEvent.click(within(await choice(1, 'Truck 2')).getByRole('checkbox'))
   // The step before narrows to the accidents of the picked vehicle.
-  await waitFor(() => expect(within(stepCard(0)).getByTestId('linked-step-count')).toHaveTextContent(`${ACCIDENT}: 1 match`))
+  await waitFor(() => expect(within(stepCard(0)).getByTestId('linked-step-count')).toHaveTextContent(`1 ${ACCIDENT} to choose from`))
   await userEvent.click(screen.getByTestId('linked-add'))
   await waitFor(() => expect(screen.queryByText('Claim rear bump')).not.toBeInTheDocument())
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent(new RegExp(`Linked to ${ACCIDENT}\\d* › linked to ${VEHICLE}: Truck 2`))
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent(`Linked to ${ACCIDENT} › ${VEHICLE}: Truck 2`)
   // The filter lives in the address, as every filter does.
   expect(addressFilters(r)).toEqual([['accident', 'related', {
     table: ACCIDENT, filters: [['vehicle', 'related', { table: VEHICLE, filters: [['row_id', 'in', [expect.any(String)]]] }]],
@@ -157,7 +162,7 @@ test('Not linked to a Table that links back: vehicles never serviced', async ({ 
   await screen.findByText('Truck 2')
   await openLinked('Not linked to…')
   await chooseTable(0, SERVICE)
-  await waitFor(() => expect(within(stepCard(0)).getByTestId('linked-step-count')).toHaveTextContent(`${SERVICE}: 1 match`))
+  await waitFor(() => expect(within(stepCard(0)).getByTestId('linked-step-count')).toHaveTextContent(`1 ${SERVICE} to choose from`))
   await userEvent.click(screen.getByTestId('linked-add'))
   await waitFor(() => expect(rowTitles()).toEqual(['Truck 2']))
   expect(screen.getByTestId('filter-chip')).toHaveTextContent(`Not linked to ${SERVICE}`)
@@ -168,9 +173,16 @@ test('a link cell offers Filter and Go there on hover', async ({ admin }) => {
   const { v2 } = await seed(admin)
   const r = await renderApp(listPath(ACCIDENT), admin)
   const vehicleCell = async () => within((await screen.findByText('Windshield')).closest('tr')!).getByTestId('cell-vehicle').closest('td')!
-  await userEvent.click(await within(await vehicleCell()).findByRole('button', { name: 'Filter' }))
+  // Out of the Tab order until focus is in the cell.
+  const filterButton = await within(await vehicleCell()).findByRole('button', { name: 'Filter' })
+  expect(filterButton).toHaveAttribute('tabindex', '-1')
+  within(await vehicleCell()).getByRole('link').focus()
+  await waitFor(() => expect(filterButton).toHaveAttribute('tabindex', '0'))
+  ;(document.activeElement as HTMLElement).blur()
+  await waitFor(() => expect(filterButton).toHaveAttribute('tabindex', '-1'))
+  await userEvent.click(filterButton)
   await waitFor(() => expect(rowTitles()).toEqual(['Windshield']))
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Vehicle = Truck 2')
+  expect(screen.getByTestId('filter-chip')).toHaveTextContent('Vehicle: Truck 2')
   // Filter again on the same link replaces its filter rather than adding a second.
   await userEvent.click(await within(await vehicleCell()).findByRole('button', { name: 'Filter' }))
   await waitFor(() => expect(addressFilters(r)).toEqual([['vehicle', '=', v2]]))
@@ -222,6 +234,37 @@ test('a sub-table’s list links to the rows holding it', async ({ admin }) => {
   await chooseTable(0, 'Xe Order')
 })
 
+// Verifier FAIL (A2): a reader who may read Claims and Accidents but not
+// Vehicles is offered no step into Vehicles, at any step.
+test('Linked to offers only the Tables the viewer may read', async ({ admin, createUser }) => {
+  await seed(admin)
+  await grantRole(admin, { table: [CLAIM, ACCIDENT], role: 'Xe Claims Reader', can_read: true })
+  const reader = await createUser({ roles: ['Xe Claims Reader'] })
+  await renderApp(listPath(CLAIM), reader)
+  await screen.findByText('Claim rear bump')
+  await openLinked('Linked to…')
+  await chooseTable(0, ACCIDENT)
+  await userEvent.click(await screen.findByTestId('linked-link-on'))
+  const second = (await screen.findAllByTestId('linked-table'))[1]
+  await waitFor(() => expect(within(second).getByRole('option', { name: CLAIM })).toBeInTheDocument())
+  expect(within(second).queryByRole('option', { name: VEHICLE })).not.toBeInTheDocument()
+})
+
+test('a step whose rows cannot be read says so instead of waiting', async ({ admin }) => {
+  await seed(admin)
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+    return url.includes(`/api/table/${enc(VEHICLE)}?`) ? Promise.resolve(new Response(JSON.stringify({ error: { type: 'PermissionError', message: 'No' } }), { status: 403 })) : real(input, init)
+  })
+  await renderApp(listPath(ACCIDENT), admin)
+  await screen.findByText('Windshield')
+  await openLinked('Linked to…')
+  await chooseTable(0, VEHICLE)
+  expect(await screen.findByTestId('linked-step-error', {}, { timeout: 10_000 })).toHaveTextContent(`You cannot pick rows of ${VEHICLE} here.`)
+  vi.restoreAllMocks()
+})
+
 test('an old Explore address opens the matching filtered list', async ({ admin }) => {
   const { v1 } = await seed(admin)
   const chain = enc(JSON.stringify([
@@ -231,7 +274,7 @@ test('an old Explore address opens the matching filtered list', async ({ admin }
   const r = await renderApp(`/featherbase/admin/explore?root=${enc(VEHICLE)}&chain=${chain}&select=${enc(JSON.stringify([v1]))}`, admin)
   await waitFor(() => expect(searchOf(r).pathname).toBe(`/featherbase/admin/table/${tableSlug(CLAIM)}`))
   await screen.findByText('Claim rear bump')
-  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent(new RegExp(`Linked to ${ACCIDENT}\\d* › linked to ${VEHICLE}: Truck 1`)))
+  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent(`Linked to ${ACCIDENT} › ${VEHICLE}: Truck 1`))
 })
 
 test('Explore is gone from the sidebar and the list’s View menu', async ({ admin }) => {

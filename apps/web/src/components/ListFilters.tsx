@@ -242,7 +242,7 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   const [column, op, value] = filter
   // #1276: a Linked to chain reads as its steps, each with its count.
   const chain = meta && parseChain(filter)
-  if (chain) return <LinkedFilterWords meta={meta} chain={chain} />
+  if (chain) return <LinkedFilterWords chain={chain} />
   const col = meta?.columns.find((c) => c.column_name === column)
   const label = column === 'row_id' ? 'Row ID' : t(col?.label ?? column)
   const linked =
@@ -252,9 +252,10 @@ export function FilterWords({ meta, filter }: { meta: import('../lib/meta').Tabl
   // "contains words" rather than its wildcards; other patterns stay as written.
   const contains = (op === 'like' || op === 'not like') && typeof value === 'string' && /^%[^%_]+%$/.test(value)
   if (contains) return <>{label} {op === 'like' ? 'contains' : 'does not contain'} {(value as string).slice(1, -1)}</>
+  // #1276: an exact match reads as the path bar names it, "Site: Bayside".
   return (
     <>
-      {label} {op}{isBlankOp(op) ? null : ' '}
+      {label}{op === '=' ? ': ' : ` ${op}`}{isBlankOp(op) || op === '=' ? null : ' '}
       {isBlankOp(op) ? null : linked ? <LinkedTitle table={col.reference_base ?? col.reference_table!} rowId={String(value)} />
         : (op === '=' || op === '!=') && col?.column_type === 'Choice' ? choiceLabel(String(value), col.choice_labels, t)
         : filterValueLabel(op, value)}
@@ -267,12 +268,15 @@ export function FilterBar({
   filters,
   onChange,
   builderOpen = true,
+  onLinkedAdded,
 }: {
   meta: import('../lib/meta').TableMeta
   filters: Filter[]
   onChange: (filters: Filter[]) => void
   /** False leaves only the chips of the filters already applied (#1017). */
   builderOpen?: boolean
+  /** #1276: a Linked to filter was added; the list closes its Add filter row. */
+  onLinkedAdded?: () => void
 }) {
   const { t } = useI18n()
   const fields = [
@@ -392,6 +396,7 @@ export function FilterBar({
           onAdd={(f) => {
             onChange([...filters, f])
             setField('row_id')
+            onLinkedAdded?.()
           }}
         />
       )}

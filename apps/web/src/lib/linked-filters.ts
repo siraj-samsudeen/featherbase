@@ -71,7 +71,11 @@ export function linkOptions(
   const bound = (t: string | undefined) => Boolean(t && metaOf(t)?.data_source)
   const add = (table: string, text: string, link: Link) => {
     const key = linkKey(table, link)
-    if (!meta.data_source && (bound(table) || bound(link.kind === 'via' ? link.via : link.kind === 'through' ? link.link : undefined))) return
+    const between = link.kind === 'via' ? link.via : link.kind === 'through' ? link.link : undefined
+    // Only Tables the viewer may read: a Table whose metadata the server will not
+    // give them (a 403) is one they cannot pick rows of, at any step.
+    if (!metaOf(table) || (between && !metaOf(between))) return
+    if (!meta.data_source && (bound(table) || bound(between))) return
     if (!options.some((o) => o.key === key)) options.push({ key, table, label: text, link })
   }
   if (meta.data_source && meta.source_engine !== 'postgres') return []
@@ -235,6 +239,39 @@ function readStep(field: string, value: unknown): ChainStep[] | null {
   }
   return [{ table, link, picked, ...(search ? { search } : {}) }, ...next]
 }
+
+// ---------- words ----------
+
+/**
+ * A chain as every surface reads it, the chip, the path bar and the list an
+ * old Explore link opens: "Linked to Subcategory › Division: Kids · KDS". A
+ * step reads by its Table; one reached through a link Table holding two links
+ * into that Table names which ("Employee (Reports To)"). Picked rows read by
+ * their name and code; a search reads `matching "…"`.
+ */
+export function chainText(
+  chain: { negate: boolean; steps: ChainStep[] },
+  tableName: (table: string) => string,
+  rowName: (ref: { table: string; row_id: string }) => string,
+  metaOf: (table: string) => TableMeta | undefined = () => undefined,
+): string {
+  const words = chain.steps.map((s) => {
+    let name = tableName(s.table)
+    if (s.link.kind === 'through') {
+      const links = metaOf(s.link.link) ? readableLinks(metaOf(s.link.link)!) : []
+      const far = links.find((c) => c.column_name === (s.link as { column: string }).column)
+      if (far && links.filter((c) => c !== far && linkRowsTable(c) === s.table && c.column_name !== (s.link as { back: string }).back).length)
+        name += ` (${far.label ?? far.column_name})`
+    }
+    return s.picked.length ? `${name}: ${s.picked.map((id) => rowName({ table: s.table, row_id: id })).join(', ')}`
+      : s.search ? `${name} matching "${s.search.text}"` : name
+  })
+  return `${chain.negate ? 'Not linked to' : 'Linked to'} ${words.join(' › ')}`
+}
+
+/** The Tables whose metadata a chain's words read: its steps' and their link Tables'. */
+export const chainTables = (steps: ChainStep[]) =>
+  [...new Set(steps.flatMap((s) => [s.table, ...(s.link.kind === 'through' ? [s.link.link] : [])]))]
 
 // ---------- counts ----------
 

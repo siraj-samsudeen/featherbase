@@ -4,12 +4,11 @@ import { MAX_RELATED_DEPTH } from 'shared'
 import { api, listResource } from '../lib/api'
 import { useBacklinks } from '../lib/connections'
 import {
-  chainDepth, chainFilter, choiceCountQuery, linkDepth, linkFilter, linkKey, linkOptions, parseChain, stepFilters,
+  chainDepth, chainFilter, chainTables, chainText, choiceCountQuery, linkDepth, linkFilter, linkOptions, parseChain, stepFilters,
   type ChainStep, type Filter, type LinkOption,
 } from '../lib/linked-filters'
-import { linkRowsTable, metaQuery, tableLabel, useMeta, type TableMeta } from '../lib/meta'
-import { groupOrder } from '../lib/relations'
-import { LinkedTitle } from '../lib/row-name'
+import { linkRowsTable, metaQuery, tableLabel, useMeta, useTableLabel, type TableMeta } from '../lib/meta'
+import { filterRowName, groupOrder, rowNameText, useRowName, useRowNames } from '../lib/relations'
 import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { searchColumn } from './ListFilters'
 import { Button, SearchInput, X, cardClasses, fmtCount, inputClasses } from '@featherbase/shop-floor'
@@ -198,6 +197,14 @@ function LinkedStep({ at, negate, from, fromFilters, room, step, next, onChange,
   )
 }
 
+/** A choice by its name and, as in a list's cells, its code (" · LKS"), so two
+ *  rows of one name are told apart. */
+function ChoiceName({ table, rowId }: { table: string; rowId: string }) {
+  const name = useRowName(table, rowId)
+  if (name.state !== 'read') return <>{rowNameText(name)}</>
+  return <>{name.title}{name.code && <span className="text-ink-muted"> · {name.code}</span>}</>
+}
+
 /** A step's rows: those the steps after it allow, searchable, each with how many
  *  rows of the Table before it link to it. None picked means any of them. */
 function StepRows({ from, fromFilters, option, picked, search, next, onPick, onSearch }: {
@@ -230,13 +237,18 @@ function StepRows({ from, fromFilters, option, picked, search, next, onPick, onS
   })
   const countOf = (id: string) => counts.data?.data.find((g) => g.label === id)?.value ?? 0
   const name = tableLabel(option.table, meta.data)
+  const fromName = useTableLabel(from)
   const total = rows.data?.total
+  // A Table the viewer may not read (or that has gone) says so, never a spinner that never stops.
+  if (meta.isError || rows.isError)
+    return <p className="text-sm text-ink-muted" data-testid="linked-step-error">You cannot pick rows of {name} here.</p>
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted" data-testid="linked-step-count">
-        <span>{total === undefined ? '…' : `${name}: ${fmtCount(total)} match`}</span>
+        <span>{total === undefined ? '…' : `${fmtCount(total)} ${name} to choose from`}</span>
         <span>· {picked.length ? `${fmtCount(picked.length)} picked`
           : search.trim() ? `none picked: those matching "${search.trim()}"` : 'none picked: any of them'}</span>
+        {counts.data && <span className="ml-auto">{fromName} linked to each</span>}
       </div>
       {column && (
         <SearchInput
@@ -257,7 +269,7 @@ function StepRows({ from, fromFilters, option, picked, search, next, onPick, onS
             <label key={id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-surface" data-testid="linked-choice">
               <input type="checkbox" checked={on} className="accent-action"
                 onChange={() => onPick(on ? picked.filter((p) => p !== id) : [...picked, id])} />
-              <span className="min-w-0 flex-1 truncate"><LinkedTitle table={option.table} rowId={id} /></span>
+              <span className="min-w-0 flex-1 truncate"><ChoiceName table={option.table} rowId={id} /></span>
               {counts.data && <span className="text-xs tabular-nums text-ink-muted" data-testid="linked-choice-count">{fmtCount(countOf(id))}</span>}
             </label>
           )
@@ -271,40 +283,29 @@ function StepRows({ from, fromFilters, option, picked, search, next, onPick, onS
   )
 }
 
-/** A Linked to chain as its chip reads: "Linked to Accident (2) › linked to
- *  Vehicle: Truck 1 (1)", each step with how many of its rows the viewer may
- *  read match. */
-export function LinkedFilterWords({ meta, chain }: { meta: TableMeta; chain: NonNullable<ReturnType<typeof parseChain>> }) {
-  return (
-    <span data-testid="linked-words">
-      {chain.steps.map((step, i) => (
-        <ChipStep key={i} at={i} negate={chain.negate} from={i === 0 ? meta.name : chain.steps[i - 1].table} steps={chain.steps} />
-      ))}
-    </span>
-  )
-}
-
-function ChipStep({ at, negate, from, steps }: { at: number; negate: boolean; from: string; steps: ChainStep[] }) {
-  const step = steps[at]
-  const { options } = useLinkOptions(from)
-  const meta = useMeta(step.table)
-  const label = options.find((o) => o.key === linkKey(step.table, step.link))?.label ?? tableLabel(step.table, meta.data)
-  const own = stepFilters(steps, at)
-  const count = useQuery({
-    queryKey: ['linked-chip-count', step.table, JSON.stringify(own)],
-    retry: false,
-    queryFn: () => api.post<{ count: number }>('/api/dashboard/count', { table: step.table, filters: own }),
+/** A Linked to chain as its chip reads, in the same words as the path bar
+ *  (chainText). How many rows each step holds for this viewer is its tooltip. */
+export function LinkedFilterWords({ chain }: { chain: NonNullable<ReturnType<typeof parseChain>> }) {
+  const tables = chainTables(chain.steps)
+  const metas = useQueries({ queries: tables.map((t) => ({ ...metaQuery(t), retry: false })) })
+  const metaOf = (t: string) => metas[tables.indexOf(t)]?.data
+  const refs = chain.steps.flatMap((s) => s.picked.map((row_id) => ({ table: s.table, row_id })))
+  const names = useRowNames(refs)
+  // A filter names its rows by their titles, as every filter does (#792): never an id.
+  const nameOf = (r: { table: string; row_id: string }) => filterRowName(names[refs.findIndex((x) => x.table === r.table && x.row_id === r.row_id)])
+  const counts = useQueries({
+    queries: chain.steps.map((step, i) => ({
+      queryKey: ['linked-chip-count', step.table, JSON.stringify(stepFilters(chain.steps, i))],
+      retry: false,
+      queryFn: () => api.post<{ count: number }>('/api/dashboard/count', { table: step.table, filters: stepFilters(chain.steps, i) }),
+    })),
   })
-  const shown = step.picked.slice(0, 3)
+  const tip = chain.steps.every((_, i) => counts[i]?.data)
+    ? chain.steps.map((s, i) => `${tableLabel(s.table, metaOf(s.table))}: ${fmtCount(counts[i]!.data!.count)} linked`).join(' · ')
+    : undefined
   return (
-    <>
-      {at === 0 ? (negate ? 'Not linked to ' : 'Linked to ') : ' › linked to '}
-      {label}
-      {shown.length > 0 && <>: {shown.map((id, i) => <span key={id}>{i ? ', ' : ''}<LinkedTitle table={step.table} rowId={id} /></span>)}
-        {step.picked.length > shown.length && ` +${step.picked.length - shown.length}`}</>}
-      {!shown.length && step.search && ` matching "${step.search.text}"`}
-      {count.data && <span className="ml-1 rounded-full bg-canvas px-1.5 text-xs tabular-nums text-ink-muted" data-testid="linked-step-total"
-        title={`${fmtCount(count.data.count)} ${tableLabel(step.table, meta.data)} match`}>{fmtCount(count.data.count)}</span>}
-    </>
+    <span data-testid="linked-words" title={tip}>
+      {chainText(chain, (t) => tableLabel(t, metaOf(t)), nameOf, metaOf)}
+    </span>
   )
 }

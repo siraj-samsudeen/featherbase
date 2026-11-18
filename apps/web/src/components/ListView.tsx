@@ -11,7 +11,7 @@ import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, isView, t
 import { SaveAsView, ViewBanner } from './TableViews'
 import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, listLeader, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { useRealtime } from '../lib/realtime'
-import { formatValue, useSettings } from '../lib/settings'
+import { useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
@@ -20,7 +20,7 @@ import { ChevronDown } from '@featherbase/shop-floor'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
 import { GlossaryHelp } from './GlossaryHelp'
-import { fmtCount } from '@featherbase/shop-floor'
+import { fmtCount, fmtINR } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
@@ -1051,7 +1051,7 @@ export function ListView({
         </div>
       </div>
       {onFiltersChange && meta.data && (addFilterOpen || filters.length > 0) && (
-        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} builderOpen={addFilterOpen} />
+        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} builderOpen={addFilterOpen} onLinkedAdded={() => setAddFilterOpen(false)} />
       )}
       {selected.size > 0 && !isRowsReadOnly(meta.data) && (
         <div
@@ -1309,7 +1309,6 @@ function ListSum({ table, filters, column, refreshedAt }: {
   /** When the list's rows last arrived: the sum follows every refresh of them. */
   refreshedAt: number
 }) {
-  const settings = useSettings()
   const filterKey = JSON.stringify(filters)
   const sum = useQuery({
     // Keyed to the list's last refresh, so an edit, a delete or realtime refreshes the sum
@@ -1323,7 +1322,8 @@ function ListSum({ table, filters, column, refreshedAt }: {
   if (sum.data?.sum == null) return null
   return (
     <span className="text-xs text-ink-muted" data-testid="list-sum">
-      Σ {column.label}: {formatValue(column.column_type, Number(sum.data.sum), settings)}
+      {/* A total answers "how big is this?": Indian grouping, the readable ₹ ladder for money (ADR 750). */}
+      Σ {column.label}: {column.column_type === 'Currency' ? fmtINR(Number(sum.data.sum)) : fmtCount(Number(sum.data.sum), column.column_type === 'Int' ? 0 : 2)}
     </span>
   )
 }

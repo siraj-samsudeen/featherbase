@@ -35,8 +35,8 @@ interface Connection {
   system_written: boolean
 }
 
-// Table-level shape of the same map, no counts — what a pane-chain picker
-// (Explore) or a relationship map needs before any row is chosen. Readable
+// Table-level shape of the same map, no counts — what the list's Linked to
+// filter or a relationship map needs before any row is chosen. Readable
 // backlink tables only, same posture as :connections.
 registerCollectionAction('backlinks', {
   effect: 'read',

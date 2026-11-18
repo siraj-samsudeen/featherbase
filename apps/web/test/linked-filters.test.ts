@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   chainFilter,
+  chainText,
   choiceCountQuery,
   exploreTables,
   exploreToList,
@@ -33,7 +34,8 @@ const ROLE = table('Role', [])
 const LINE = table('Order Line', [ref('item', 'Item')], { kind: 'sub_table', title_column: null })
 const ORDER = table('Order', [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Order Line' }])
 const ITEM = table('Item', [])
-const metas = Object.fromEntries([DIVISION, SUBCATEGORY, SECTION, EMPLOYEE, ASSIGNMENT, ROLE, LINE, ORDER, ITEM].map((m) => [m.name, m]))
+const SITE = table('Site', [])
+const metas = Object.fromEntries([DIVISION, SUBCATEGORY, SECTION, EMPLOYEE, ASSIGNMENT, ROLE, LINE, ORDER, ITEM, SITE].map((m) => [m.name, m]))
 const metaOf = (t: string) => metas[t]
 
 describe('linkOptions', () => {
@@ -82,6 +84,22 @@ describe('linkOptions', () => {
   test('a Table pointed at by sub-table rows offers the Tables holding them', () => {
     expect(linkOptions(ITEM, [{ table: 'Order', column: 'item', via: 'Order Line' }], metaOf)[0])
       .toMatchObject({ label: 'Order · via Order Line', table: 'Order', link: { kind: 'through', link: 'Order Line', back: 'item', column: 'parent' } })
+  })
+
+  test('a Table the viewer may not read is never offered (its metadata is refused)', () => {
+    const readable = (t: string) => (t === 'Division' ? undefined : metaOf(t))
+    expect(linkOptions(SUBCATEGORY, [{ table: 'Section', column: 'subcategory', via: null }], readable).map((o) => o.label)).toEqual(['Section'])
+  })
+
+  test('a chain reads in the same words everywhere', () => {
+    const chain = { negate: false, steps: [
+      { table: 'Role', link: { kind: 'through', link: 'Job Assignment', back: 'employee', column: 'role' }, picked: [] },
+      { table: 'Division', link: { kind: 'forward', column: 'division' }, picked: ['D1'] },
+    ] as ChainStep[] }
+    expect(chainText(chain, (t) => t, (r) => `${r.row_id} name`, metaOf)).toBe('Linked to Role › Division: D1 name')
+    const twice = table('Job', [ref('section', 'Section'), ref('employee', 'Employee'), ref('reports_to', 'Employee', 'Reports To')], { id_pattern: 'field:title' })
+    const through = { negate: true, steps: [{ table: 'Employee', link: { kind: 'through', link: 'Job', back: 'section', column: 'reports_to' }, picked: [], search: { column: 'title', text: 'Ram' } }] as ChainStep[] }
+    expect(chainText(through, (t) => t, () => '', (t) => (t === 'Job' ? twice : metaOf(t)))).toBe('Not linked to Employee (Reports To) matching "Ram"')
   })
 
   test('a connected Table offers only its links within the same PostgreSQL source', () => {

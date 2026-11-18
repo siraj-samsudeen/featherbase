@@ -52,16 +52,18 @@ export function LinkChip({ label, code, kind, onOpen, onGoThere, onFilter, filte
  * the list by this value). One implementation for a panel's chips and a list's
  * link cells (#1276). Filter shows disabled, with its reason, where it cannot apply.
  */
-export function LinkActions({ onGoThere, onFilter, filterDisabledReason }: {
+export function LinkActions({ onGoThere, onFilter, filterDisabledReason, tabIndex }: {
   onGoThere?: () => void
   onFilter?: () => void
   filterDisabledReason?: string
+  /** -1 keeps the pair out of the Tab order (a list's cells, until one is focused). */
+  tabIndex?: number
 }) {
   const reasonId = useId()
   return <>
-    {onGoThere && <button type="button" onClick={onGoThere} className={smallActionClasses}>Go there</button>}
+    {onGoThere && <button type="button" onClick={onGoThere} tabIndex={tabIndex} className={smallActionClasses}>Go there</button>}
     {(onFilter || filterDisabledReason) && <>
-      <button type="button" onClick={onFilter} disabled={!!filterDisabledReason}
+      <button type="button" onClick={onFilter} disabled={!!filterDisabledReason} tabIndex={tabIndex}
         title={filterDisabledReason} aria-describedby={filterDisabledReason ? reasonId : undefined}
         className={smallActionClasses}>Filter</button>
       {filterDisabledReason && <span id={reasonId} hidden>{filterDisabledReason}</span>}

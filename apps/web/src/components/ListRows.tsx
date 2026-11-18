@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { choiceLabel } from 'shared'
@@ -279,14 +279,30 @@ function LinkCellActions({ row, col }: { row: Record<string, unknown>; col: List
   const principal = isPrincipalTable(target)
   const title = useLinkTitle(target && !principal ? target : undefined, target ? String(value) : undefined)
   const href = useRecordHref(target ?? '', target ? String(value) : '')
+  // Roving focus: the pair joins the Tab order only while focus is in its cell,
+  // so a list does not gain two Tab stops per link cell.
+  const [box, setBox] = useState<HTMLElement | null>(null)
+  const [inCell, setInCell] = useState(false)
+  useEffect(() => {
+    const cell = box?.parentElement
+    if (!cell) return
+    const enter = () => setInCell(true)
+    const leave = (e: FocusEvent) => { if (!cell.contains(e.relatedTarget as Node | null)) setInCell(false) }
+    cell.addEventListener('focusin', enter)
+    cell.addEventListener('focusout', leave)
+    return () => {
+      cell.removeEventListener('focusin', enter)
+      cell.removeEventListener('focusout', leave)
+    }
+  }, [box])
   if (!target || (!principal && title.state !== 'read')) return null
   const rowId = String(value)
   // On a walk, the row is the walk's next step, so the path bar and Back follow it.
   const goThere = () => void navigate({ href: nav ? nav.href(push(nav.path, { screen: 'row', table: target, row: rowId })) : href })
   return (
-    <span data-testid="link-cell-actions"
+    <span data-testid="link-cell-actions" ref={setBox}
       className="absolute left-full top-1/2 z-[3] -ml-1 hidden -translate-y-1/2 items-center gap-1 rounded-control bg-surface p-1 shadow-md group-hover/cell:flex group-focus-within/cell:flex">
-      <LinkActions onGoThere={goThere} onFilter={filter ? () => filter([
+      <LinkActions tabIndex={inCell ? 0 : -1} onGoThere={goThere} onFilter={filter ? () => filter([
         // A link to a row of any Table names its Table too: an id alone may repeat across Tables.
         ...(col.table_column ? [[col.table_column, '=', target] as [string, string, unknown]] : []),
         [col.column_name, '=', rowId],

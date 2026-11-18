@@ -373,7 +373,7 @@ describe('search-and-explore', () => {
       await waitFor(() => expect(screen.getByTestId('list-sum')).toHaveTextContent(/Σ Amount: \D*350\b/))
     })
     await step('the Purchase Order step counts 2', async () => {
-      await waitFor(() => expect(within(screen.getByTestId('filter-chip')).getAllByTestId('linked-step-total')[0]).toHaveTextContent(/^2$/))
+      await waitFor(() => expect(within(screen.getByTestId('filter-chip')).getByTestId('linked-words').getAttribute('title')).toMatch(/^Purchase Order: 2 linked/))
     })
   })
 
