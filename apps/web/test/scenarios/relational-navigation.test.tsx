@@ -42,7 +42,15 @@ const history = (view: View) => (view.router as unknown as { history: { back: ()
 
 const listRows = () => [...screen.getByTestId('list-rows').querySelectorAll('tr')]
 const rowTexts = () => listRows().map((r) => r.textContent ?? '')
-const filterWords = () => screen.queryAllByTestId('filter-chip').map((c) => (c.textContent ?? '').replace('×', '').trim())
+/** The filters the list shows, in words: its chips, and its filled field boxes (#1289: a box shows its own filter, no chip). */
+const filterWords = () => [
+  ...screen.queryAllByTestId('filter-chip').map((c) => (c.textContent ?? '').replace('✕', '').trim()),
+  ...[...document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-testid="standard-filters"] :is(input, select)')]
+    .filter((box) => box.value)
+    .map((box) => `${box.closest('label')?.querySelector('span')?.textContent ?? ''}: ${box.value}`),
+]
+/** A filter's remove control: a chip's ✕, or a filled box's own ✕. */
+const REMOVE_FILTER = /^(Remove .+ filter|Clear the .+ filter)$/
 
 /** The list's line whose name (a link or button) is `name`. */
 function rowNamed(name: string) {
@@ -385,7 +393,7 @@ describe('relational-navigation', () => {
     })
     await step("the filter shows as one of the list's filters, which the user can remove", () => {
       expect(filterWords().some((w) => w.includes('Kerala'))).toBe(true)
-      expect(within(screen.getAllByTestId('filter-chip')[0]!).getByRole('button', { name: 'Remove filter' })).toBeVisible()
+      expect(screen.getAllByRole('button', { name: REMOVE_FILTER })[0]).toBeVisible()
     })
   })
 

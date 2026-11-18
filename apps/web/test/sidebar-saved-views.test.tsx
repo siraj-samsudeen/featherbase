@@ -8,6 +8,7 @@ import { tableHref } from 'shared'
 import { afterEach, vi } from 'vitest'
 import { holdResponses } from './held-requests'
 import { test, expect, renderApp } from './pg-test'
+import { openListMenu } from './list-menus'
 
 type Admin = Parameters<typeof renderApp>[1]
 const DEPT = 'Ssv Department'
@@ -138,7 +139,7 @@ test("a view saved while the sidebar's first read is out still appears in the si
     return answer
   })
   await renderApp(`${tableHref(DEPT)}?filters=${encodeURIComponent(JSON.stringify([ATK]))}`, admin)
-  await userEvent.click(await screen.findByTestId('save-view-open', {}, T))
+  await userEvent.click((await openListMenu('View', screen, T)).getByTestId('save-view-open'))
   await userEvent.type(await screen.findByTestId('nudge-name', {}, T), 'ATK Departments')
   await userEvent.click(screen.getByTestId('nudge-save'))
   expect(await screen.findByTestId('saved-view-chip', {}, T)).toHaveTextContent('ATK Departments')
