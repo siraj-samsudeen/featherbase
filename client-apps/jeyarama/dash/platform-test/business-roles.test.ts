@@ -71,7 +71,7 @@ describe('business roles in shadow', () => {
       const act = (name: string, payload: Record<string, unknown>) => manager.post<{ result: unknown }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload })
       await act('add_starting_roles', {})
       const page = (await manager.post<{ result: { roles: { id: string; name: string }[] } }>('/api/app_reads/dash/business_roles', { payload: {} })).result
-      expect(page.roles).toHaveLength(14)
+      expect(page.roles).toHaveLength(18)
       const storeManager = page.roles.find(r => r.name === 'Store Manager')!.id
       await act('give_role', { person: reader.user, change: 'Correct', role: storeManager, reason: 'Runs the store' })
       // A role that would reach every store in the new model, and a mapping that changes the reader's title: neither may leak into today.
@@ -111,6 +111,8 @@ describe('business roles in shadow', () => {
       await save('Site', { code: 'LKS', name: 'Lakeside', is_store: true })
       await save('Plant', { plant_code: '9901', plant_type: 'Store', site: 'LKS' })
       await save('dash.report', { report_key: 'whole', report_name: 'Store Totals', dive_id: 'made-up-whole-dive', filter_shape: 'Whole stores' })
+      // Decision 7: a grant to Dash Reader is carried over to the manager roles; one to a job stays where it is.
+      await save('dash.report_access', { report: 'whole', role: 'Dash Reader' })
       await save('dash.report_access', { report: 'whole', job: 'Store Manager' })
       // Dash Reader is the platform's door into Dash; behind it, business roles decide.
       const storeManager = await createUser({ email: 'live-store-manager@example.test', roles: ['Dash Reader'] })
@@ -129,8 +131,8 @@ describe('business roles in shadow', () => {
       expect(await sql`select 1 from dash.business_role`).toEqual([])
       const systemManager = await createUser({ email: 'live-system-manager@example.test', roles: ['System Manager'] })
       const act = (name: string) => systemManager.post<{ result: Record<string, unknown> }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload: {} }).then(a => a.result)
-      expect(await act('add_starting_roles')).toEqual({ roles: 14, titles: 9 })
-      expect(await act('give_old_grants_to_roles')).toEqual({ grants_added: 1, grants_not_converted: 0 })
+      expect(await act('add_starting_roles')).toEqual({ roles: 18, titles: 12 })
+      expect(await act('give_old_grants_to_roles')).toEqual({ grants_added: 9, grants_not_converted: 1 })
       expect(await read(staff, 'can_open')).toBe(true)
       // The owner's yes: a System Manager adds the switch row.
       await saveRow(systemManager, 'dash.access_source', { source: 'business_roles' })
@@ -140,7 +142,7 @@ describe('business roles in shadow', () => {
       expect(await read(storeManager, 'report', { report: 'whole', scope: { places: ['9901'] } })).toEqual({ state: 'report_not_set_up' })
       expect(await read(staff, 'can_open')).toBe(false)
       // Run again: nothing more.
-      expect([await act('add_starting_roles'), await act('give_old_grants_to_roles')]).toEqual([{ roles: 0, titles: 0 }, { grants_added: 0, grants_not_converted: 0 }])
+      expect([await act('add_starting_roles'), await act('give_old_grants_to_roles')]).toEqual([{ roles: 0, titles: 0 }, { grants_added: 0, grants_not_converted: 1 }])
 
       // J5: one row back to the old rules, no deploy.
       const [row] = await sql`select row_id, updated_at from dash.access_source`

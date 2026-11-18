@@ -170,7 +170,15 @@ The starting roles SHALL include Division Head, with a Category Head's permissio
 #### Scenario: New starting roles on an instance that has the others
 
 - **WHEN** Add The Starting Roles is clicked on an instance whose starting roles were added before Division Head and the visual merchandising roles existed, and whose Category Head the owner has edited
-- **THEN** only those three roles and their titles are added, and Category Head is unchanged
+- **THEN** only the roles missing by name and their titles are added, and Category Head is unchanged
+
+### Requirement: Report Analyst sees every store and only the reports given to them
+The starting role Report Analyst SHALL be given by hand only and reach the whole company. It views reports in its area, never at reach All, so it gets only the reports given to its holder as a person, and Give Old Grants To Business Roles gives it nothing.
+
+#### Scenario: A report analyst
+
+- **WHEN** Rekha is given Report Analyst by hand and Sales is given to her as a person
+- **THEN** she opens Sales at every store, and with no report given to her she gets none
 
 ### Requirement: Only an open store gives store reach
 A role placed at a site SHALL reach a store there only when the site is an open store: not Planned or Closed, of site kind Store where classified, else marked as a store. The Site is read alike on every path. Someone given a business role by hand is never shown as having left.

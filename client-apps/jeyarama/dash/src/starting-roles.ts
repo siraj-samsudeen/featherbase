@@ -46,6 +46,9 @@ export const STARTING_ROLES: StartingRole[] = [
   { name: 'Owner Director', reaches: 'Whole company', description: 'The group\'s owner-directors: the whole company and every report.', by_hand_only: true, grants: [EVERY_REPORT, GIVE_TO_TEAM, TEAM_TASKS, TEAM_TICKETS] },
   { name: 'Master Data Manager', reaches: 'Whole company', description: 'Keeps the master tables right: reads, adds and edits them everywhere, and deletes none.', by_hand_only: true,
     grants: [MASTER_DATA('View'), MASTER_DATA('Add'), MASTER_DATA('Edit')] },
+  // Owner, 18-Nov-2026: every store, but only the reports given to them as a person: View Reports at Area, never at All.
+  { name: 'Report Analyst', reaches: 'Whole company', description: 'Analyses reports across the company: sees every store, and the reports given to them as a person.', by_hand_only: true,
+    grants: [REPORTS_IN_AREA, OWN_TASKS, TICKETS] },
   // Owner, 18-Nov-2026: Supplier (was Vendor), D8's supplier area.
   // No Dash until the supplier area exists: a store's reports show every supplier's articles (Codex adversarial round 5).
   { name: 'Supplier', reaches: 'Given place', description: 'An outside supplier, given by hand. No Dash yet: it will see only its own supplier\'s articles once the supplier area is set up.', by_hand_only: true, grants: [TICKETS] },

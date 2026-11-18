@@ -1376,7 +1376,7 @@ describe('Division Head and visual merchandising', () => {
 
   it('adds only the new roles and titles to an instance that already has the others, leaving edited roles as they are', async () => {
     const tables = await seeded()
-    const NEW = ['Division Head', 'Visual Merchandising Manager', 'Visual Merchandiser']
+    const NEW = ['Division Head', 'Visual Merchandising Manager', 'Visual Merchandiser', 'Report Analyst']
     const ids = NEW.map(n => roleId(tables, n))
     tables['dash.business_role'] = tables['dash.business_role'].filter(r => !ids.includes(String(r.row_id)))
     tables['dash.business_role_permission'] = tables['dash.business_role_permission'].filter(p => !ids.includes(String(p.business_role)))
@@ -1393,7 +1393,7 @@ describe('Division Head and visual merchandising', () => {
     const ctx = context(tables)
     const create = ctx.documents.create
     ctx.documents.create = async (table: string, values: Row) => { const row = await create(table, values); row.row_id = `new-${row.row_id}`; return row }
-    expect(await addStartingRoles(ctx as never)).toEqual({ roles: 3, titles: 3 })
+    expect(await addStartingRoles(ctx as never)).toEqual({ roles: 4, titles: 3 })
     expect(JSON.stringify(SHADOW.map((name, i) => tables[name].slice(0, counts[i])))).toBe(before)
     expect(tables['dash.business_role'].slice(counts[0]).map(r => r.role_name)).toEqual(NEW)
     expect(GRANTS(tables, 'Division Head')).toContain('Dash · Manager · Edit · Buyer Sections · Area')
@@ -1461,5 +1461,54 @@ describe('Give Old Grants To Business Roles carries only the grants to Dash Read
     const answer = await accessChanges(context(tables, { peopleRoles: { sm: ['Dash Reader'], st: ['Dash Reader'], buy: ['Dash Reader'], ho: ['Dash Reader'] } }) as never)
     expect(answer.not_carried_over).toEqual([{ grant: 'a1', gives: { name: 'Vendor Sales', table: 'dash.report', id: 'vs' }, receiver: { kind: 'job', name: 'Store Manager' },
       note: 'Not carried over: add on request', people: [{ person: 'sm', name: 'Selvi', reports: [{ name: 'Vendor Sales', table: 'dash.report', id: 'vs' }] }] }])
+  })
+
+  it('names a report or a bundle no longer listed plainly, and lists who would lose a bundle given to a role', async () => {
+    const tables = await seeded()
+    tables['dash.report_bundle_member'].push({ row_id: 'bm9', report_bundle: 'b-gone', report: 'vs' })
+    tables['dash.report_access'] = [{ row_id: 'g1', report: 'gone', job: 'Store Manager' }, { row_id: 'g2', report_bundle: 'b-gone', role: 'Dash All-Stores Reader' }]
+    const answer = await accessChanges(context(tables, { peopleRoles: { sm: ['Dash All-Stores Reader'], st: [], buy: [], ho: [] } }) as never)
+    expect(answer.not_carried_over.map(g => [g.gives.name, g.receiver.name, g.people.map(p => [p.name, p.reports.map(r => r.id)])])).toEqual([
+      ['No longer listed', 'Dash All-Stores Reader', [['Selvi', ['vs']]]],
+      ['No longer listed', 'Store Manager', []]])
+  })
+})
+
+// #1277 (owner, 18-Nov-2026): Report Analyst, given by hand: every store, and only the reports given to them as a person.
+describe('Report Analyst', () => {
+  async function analyst(grant: boolean) {
+    const { tables } = await switched()
+    tables.Site.push({ row_id: 'HIL', name: 'Hillview', is_store: true, operating_region: 'East' }, { row_id: 'RIV', name: 'Riverside', is_store: true, operating_region: 'West' })
+    tables.Plant.push({ row_id: '9902', site: 'HIL', plant_type: 'Store' }, { row_id: '9903', site: 'RIV', plant_type: 'Store' })
+    tables.Employee.push({ row_id: 'E-RA', name: 'Rekha', employee_code: 'E-RA', status: 'Current', person: 'ra' })
+    tables['Job Assignment'].push({ row_id: 'J-RA', employee: 'E-RA', job: 'Head office staff', site: 'HOF', starts_on: '2026-01-01' })
+    if (grant) tables['dash.report_access'].push({ row_id: 'a-ra', report: 'sales', person: 'ra' })
+    await giveRole(context(tables, { roles: ['System Manager'], payload: { person: 'ra', change: 'Also give', role: roleId(tables, 'Report Analyst') } }) as never)
+    return tables
+  }
+
+  it('is given by hand only, reaches the whole company, and views reports in its area, never at reach All', async () => {
+    const tables = await seeded()
+    const role = tables['dash.business_role'].find(r => r.role_name === 'Report Analyst')!
+    expect([role.reaches, role.by_hand_only, role.description]).toEqual(['Whole company', true, 'Analyses reports across the company: sees every store, and the reports given to them as a person.'])
+    expect(tables['dash.business_role_permission'].filter(p => p.business_role === role.row_id).map(p => [p.app, p.level, p.verb, p.thing, p.reach].join(' · ')).sort())
+      .toEqual(['Dash · Reader · View · Reports · Area', 'Tasker · User · Edit · Tasks · Own', 'Tickets · User · Raise · Tickets · Own'])
+    expect(tables['dash.title_map'].map(t => t.business_role)).not.toContain(role.row_id)
+  })
+
+  it('gets no store bundle or any grant to Dash Reader from Give Old Grants To Business Roles', async () => {
+    const { tables } = await switched(await seeded())
+    expect(tables['dash.report_access'].filter(r => r.business_role === roleId(tables, 'Report Analyst'))).toEqual([])
+  })
+
+  it('opens a report given to them as a person at every store', async () => {
+    const tables = await analyst(true)
+    expect(await scopeOf(tables, 'ra', ['Dash Reader'])).toEqual({ 9901: null, 9902: null, 9903: null })
+    expect((await reportsFor(readerOf(tables, 'ra', ['Dash Reader']) as never)).map(r => r.report_key)).toEqual(['sales'])
+  })
+
+  it('gets no report with no grant to them as a person', async () => {
+    const tables = await analyst(false)
+    expect((await reportsFor(readerOf(tables, 'ra', ['Dash Reader']) as never)).map(r => r.report_key)).toEqual([])
   })
 })

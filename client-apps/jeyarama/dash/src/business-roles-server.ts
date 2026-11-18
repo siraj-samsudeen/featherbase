@@ -489,7 +489,7 @@ export async function accessChanges(context: AccessContext) {
   const who = await whoIs(ctx.baseTables, changed.map(c => c.person), world.today)
   const rows = changed.map(c => ({ ...c, name: names.get(c.person) ?? 'Someone', who: who.get(c.person)! })).sort((a, b) => a.name.localeCompare(b.name))
   return { people: people.length, changed: rows.length, groups: GROUPS.map(kind => ({ kind, people: rows.filter(r => r.kinds.includes(kind)) })),
-    not_carried_over: await notCarriedOver(ctx, world, reports, losing, names) }
+    not_carried_over: await notCarriedOver(ctx, world, reports, losing, new Map(rows.map(r => [r.person, r.name]))) }
 }
 
 /**
@@ -507,12 +507,14 @@ async function notCarriedOver(ctx: Ctx, world: ShadowWorld, reports: Map<string,
     if (!carried || carried.roles.length) continue
     const given = exact(row.report) ? [exact(row.report)] : world.grants.members.filter(m => m.report_bundle === exact(row.report_bundle)).map(m => m.report)
     const people = losing.filter(({ receiver }) => (carried.old.kind === 'job' ? receiver.jobs : receiver.roles).includes(carried.old.name))
-      .map(({ receiver, lost }) => ({ person: receiver.person, name: names.get(receiver.person) ?? 'Someone', reports: given.filter(k => lost.includes(k)).sort().map(reportPart) }))
-      .filter(p => p.reports.length).sort((a, b) => a.name.localeCompare(b.name) || a.person.localeCompare(b.person))
+      // Everyone losing a report is a changed person, so the page has already named them.
+      .map(({ receiver, lost }) => ({ person: receiver.person, name: names.get(receiver.person)!, reports: given.filter(k => lost.includes(k)).sort().map(reportPart) }))
+      .filter(p => p.reports.length).sort((a, b) => `${a.name}\u0000${a.person}`.localeCompare(`${b.name}\u0000${b.person}`))
     out.push({ grant: exact(row.row_id), gives: exact(row.report) ? reportPart(exact(row.report)) : { name: text(bundleNames.get(exact(row.report_bundle))) || 'No longer listed', table: 'dash.report_bundle', id: exact(row.report_bundle) },
       receiver: carried.old, note: 'Not carried over: add on request', people })
   }
-  return out.sort((a, b) => a.gives.name.localeCompare(b.gives.name) || a.receiver.name.localeCompare(b.receiver.name) || a.grant.localeCompare(b.grant))
+  const order = (g: { gives: { name: string }; receiver: { name: string }; grant: string }) => `${g.gives.name}\u0000${g.receiver.name}\u0000${g.grant}`
+  return out.sort((a, b) => order(a).localeCompare(order(b)))
 }
 
 const CHANGES = ['Correct', 'Also give']
