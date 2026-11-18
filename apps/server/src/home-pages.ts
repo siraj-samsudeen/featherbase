@@ -68,8 +68,9 @@ async function ensureModuleHomePage(module: string): Promise<string> {
   if (existing) return existing.row_id as string
   const page = homePageForModule(module)
   // The slug may collide with an unrelated page (e.g. a user module named
-  // "System" vs the seeded 'system' page, which carries no module) — probe
-  // for a free name rather than adopting a page that isn't this module's.
+  // "Home!" vs the seeded 'home' page, which is Core's) — probe for a free
+  // name rather than adopting a page that isn't this module's. ("System" is
+  // reserved and never reaches here, #1287.)
   let name = page.name
   for (let i = 2; ; i++) {
     const [taken] = await sql`select 1 from home_page where row_id = ${name}`
