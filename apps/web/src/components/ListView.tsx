@@ -15,7 +15,7 @@ import { formatValue, useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
-import { Button, EmptyState, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Button, EmptyState, NARROW_QUERY, Notice, PageHeader, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { ChevronDown } from '@featherbase/shop-floor'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
@@ -82,6 +82,8 @@ export function ListView({
   defaultOrderBy,
   empty,
   subtitle,
+  count,
+  actions,
   baseFilters,
   onRowOpen,
   openRow,
@@ -103,6 +105,10 @@ export function ListView({
   empty?: ReactNode
   /** One line under the heading saying what the page lists. */
   subtitle?: ReactNode
+  /** #1271: what the count beside the title says, in place of "N total". */
+  count?: ReactNode
+  /** #1271: the page's own actions, first in the toolbar, with More beside them. */
+  actions?: ReactNode
   /** #1173: filters the page always applies, not shown as chips nor saved in the address. */
   baseFilters?: Filter[]
   /** #1173: a click on a line opens the row in the page's own panel, in place of the drill pane. */
@@ -657,25 +663,22 @@ export function ListView({
   const hasTableAdministration = Boolean(canShapeColumns || caps?.manage || isSystemManager)
   return (
     <div data-testid="list-view">
-      {/* Top-aligned on desktop: however many rows the actions wrap to, the first
-          row sits level with the title (listview.spec "share a vertical band"). */}
-      <div className="mb-2 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-        <div>
-          {/* #1242 (admin-lists 1): "<Module> / <Table>", by label. */}
-          {breadcrumb ?? <div className="text-xs text-ink-subtle" data-testid="list-breadcrumb">
+      {/* #1288: the shared page header. The page's own actions first, then the one primary (New), then More. */}
+      <PageHeader
+        className="mb-2"
+        breadcrumb={breadcrumb ?? <div className="text-xs text-ink-subtle" data-testid="list-breadcrumb">
             <Link to="/featherbase/admin" className="hover:text-ink">
               {meta.data?.module || 'Home'}
             </Link>
             {' / '}
             {label}
           </div>}
-          {/* #1017: the count reads on the title's line, not one of its own. */}
-          <div className="flex flex-wrap items-baseline gap-x-2">
-          <h1 className="text-xl font-semibold text-ink">{title ?? <>{label}<GlossaryHelp table={table} className="ml-1" /></>}</h1>
+        title={title ?? <>{label}<GlossaryHelp table={table} className="ml-1" /></>}
+        count={<>
           {/* #1259: the three views, right after the title. */}
           {layout && onLayoutChange && <span className="self-center"><LayoutSwitch value={layout} onChange={onLayoutChange} /></span>}
           <span className="text-xs text-ink-muted" data-testid="list-total">
-            {fmtCount(total)} total
+            {count ?? <>{fmtCount(total)} total</>}
           </span>
           {/* #1276: Explore's totals live on the list: the exact sum of its money
               (or other measure) column over every row the filters keep. */}
@@ -691,13 +694,35 @@ export function ListView({
               {meta.data.data_source} · {meta.data.source_writable ? 'read-write' : 'read-only'}
             </span>
           )}
-          </div>
-          {subtitle && <p className="text-sm text-ink-muted">{subtitle}</p>}
-        </div>
-        <div
-          className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:basis-64 sm:justify-end"
-          data-testid="list-toolbar"
-        >
+        </>}
+        status={subtitle}
+        actions={<div className="flex flex-wrap items-center justify-end gap-2" data-testid="list-toolbar">
+          {actions}
+          {/* TLC-R1 (docs/specs/0007-table-lifecycle.md): the create
+              affordance is metadata-gated and lives HERE, in the toolbar of
+              the list the user is already looking at. It used to exist only
+              as an awesomebar suggestion, which meant a table you had just
+              built could not be filled unless you knew to search for its own
+              name (#247). Absent, not disabled, where rows cannot be made:
+              a read-only source owns its rows (EDS-13), a settings table
+              has one row and no list at all, and a sub-table's rows exist only
+              inside a parent — `saveDoc` refuses a direct child insert, so
+              offering New on a directly-reached child list could only ever
+              produce an error. */}
+          {canAddRows &&
+            !isRowsReadOnly(meta.data) &&
+            meta.data?.kind !== 'settings' &&
+            meta.data?.kind !== 'sub_table' && (
+            <Link
+              to="/featherbase/admin/table/$table/new"
+              params={{ table }}
+              search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
+              className={buttonClasses({ variant: 'primary' })}
+              data-testid="list-new"
+            >
+              New {thingWords(label)}
+            </Link>
+          )}
           {/* #1242 (admin-lists 2): one ⋯ More for what is not the page's own action. */}
           {(hasListActions || hasTableAdministration) && <ActionDisclosure label="More">
           {hasListActions && <div role="group" aria-label="List actions" className="flex flex-col items-stretch gap-1">
@@ -759,33 +784,8 @@ export function ListView({
           )}
           </div>}
           </ActionDisclosure>}
-          {/* TLC-R1 (docs/specs/0007-table-lifecycle.md): the create
-              affordance is metadata-gated and lives HERE, in the toolbar of
-              the list the user is already looking at. It used to exist only
-              as an awesomebar suggestion, which meant a table you had just
-              built could not be filled unless you knew to search for its own
-              name (#247). Absent, not disabled, where rows cannot be made:
-              a read-only source owns its rows (EDS-13), a settings table
-              has one row and no list at all, and a sub-table's rows exist only
-              inside a parent — `saveDoc` refuses a direct child insert, so
-              offering New on a directly-reached child list could only ever
-              produce an error. */}
-          {canAddRows &&
-            !isRowsReadOnly(meta.data) &&
-            meta.data?.kind !== 'settings' &&
-            meta.data?.kind !== 'sub_table' && (
-            <Link
-              to="/featherbase/admin/table/$table/new"
-              params={{ table }}
-              search={{ prefill: newRowPrefill ? JSON.stringify(newRowPrefill) : undefined }}
-              className={buttonClasses({ variant: 'primary' })}
-              data-testid="list-new"
-            >
-              New {thingWords(label)}
-            </Link>
-          )}
-        </div>
-      </div>
+        </div>}
+      />
       <ArchivedBanner table={table} meta={meta.data} canUnarchive={isSystemManager} />
       <ViewBanner meta={meta.data} />
       {conflictsOpen && meta.data && <ImportConflicts key={table} table={table} meta={meta.data} />}

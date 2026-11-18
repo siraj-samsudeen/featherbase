@@ -8,7 +8,9 @@
 //   4. people the people app says are not employees who hold a StyleHR link
 //      or a link on another employees-only method (#1267);
 //   5. for review only: people off the latest payroll with no exit date passed
-//      and not marked inactive (owner-directors are), whom the job never disables.
+//      and not marked inactive (owner-directors are), whom the job never disables;
+//   6. for review only: people StyleHR says have left whom attendance shows at
+//      work since (#1286), whom the job never disables.
 import { createHash } from 'node:crypto'
 import { sql, withTransaction } from './db'
 import { LEAVER_CHECK_JOB, planLeaverCheck, type Leaver, type LeaverPlan } from './leaver-check'
@@ -220,6 +222,9 @@ export async function leaverSignInStatus() {
   const report = jobs.find((j) => j.row_id === LEAVER_SIGN_IN_JOB)
   // The rows on show are the published rebuild's: a failed or superseded one leaves them as they were.
   const [shown] = await sql`select started_at, summary from leaver_sign_in_rebuild where id = 1`
+  // What the list holds now, counted the way the rebuild's summary counts it: sections 5 and 6 are for review only.
+  const [held] = await sql`select count(*) filter (where section in ${sql([...LEAVER_SECTIONS])})::int as can_sign_in,
+    count(*) filter (where section not in ${sql([...LEAVER_SECTIONS])})::int as review from leaver_sign_in`
   const failed = report?.last_run_at && report.last_outcome !== 'success'
     && (!shown || new Date(report.last_run_at as string) > new Date(shown.started_at as string))
   return {
@@ -229,5 +234,6 @@ export async function leaverSignInStatus() {
     checked_result: shown?.summary ?? null,
     /** The latest rebuild attempt, when it failed after the last success. */
     last_failed: failed ? { at: report.last_run_at, error: report.last_result ?? null } : null,
+    counts: { can_sign_in: held.can_sign_in as number, review: held.review as number },
   }
 }

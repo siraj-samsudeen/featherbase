@@ -111,7 +111,7 @@ test('someone off the payroll with no exit date is listed in section 5 for revie
 })
 
 // #1286: the leaver rule holds someone attendance shows at work after their exit date.
-test('someone StyleHR says left but attendance shows at work is listed in section 6 for review, outside the leaver count', async () => {
+test('someone StyleHR says left but attendance shows at work is listed in section 6 for review, outside the leaver count', async ({ admin }) => {
   await applySeedPack('jeyarama')
   const working = await makePerson({ full_name: 'Still At Work' })
   await linkStyleHrRecord(working, '811')
@@ -122,6 +122,26 @@ test('someone StyleHR says left but attendance shows at work is listed in sectio
     { section: '6. At work, though StyleHR says they left', person: working, why: `Exit date 05-Sep-2026 has passed, but attendance shows them at work on ${displayDay(istToday())}`, ways_in: 'Password', left_on: null },
   ])
   expect(rebuildSummary(report)).toMatch(/^0 people can still sign in\. 1 person at work though StyleHR says they left, for review/)
+  await refreshLeaverSignIn()
+  const status = await admin.get<{ counts: { can_sign_in: number; review: number } }>('/api/leaver_sign_in/status')
+  expect(status.counts).toEqual({ can_sign_in: 0, review: 1 })
+})
+
+// #1271 polish: the header's numbers are the list's own rows, section by section, after a real rebuild.
+test("the header's counts equal the rows in each section, and the rebuild's summary says the same numbers", async ({ admin }) => {
+  await applySeedPack('jeyarama')
+  const people: string[] = []
+  for (const full_name of ['Gone A', 'Gone B', 'Off Payroll']) people.push(await makePerson({ full_name }))
+  for (const [i, p] of people.entries()) { await linkStyleHrRecord(p, `90${i}`); await password(p) }
+  warehouse([rec('900', 'C-900', { exit_date: '2026-10-01' }), rec('901', 'C-901', { movement_active: false }),
+    rec('902', 'C-902', { payroll_active: false, date_of_joining: '2010-01-01' })])
+  await refreshLeaverSignIn()
+  const bySection = await sql`select section, count(*)::int as n from leaver_sign_in group by section`
+  const rows = (pick: (s: string) => boolean) => bySection.filter((r) => pick(String(r.section))).reduce((n, r) => n + Number(r.n), 0)
+  const status = await admin.get<{ counts: { can_sign_in: number; review: number }; checked_result: string }>('/api/leaver_sign_in/status')
+  expect(status.counts).toEqual({ can_sign_in: rows((s) => !s.startsWith('5.')), review: rows((s) => s.startsWith('5.')) })
+  expect(status.counts).toEqual({ can_sign_in: 2, review: 1 })
+  expect(status.checked_result).toMatch(/^2 people can still sign in\. 1 person off the payroll with no exit date, for review/)
 })
 
 test("a plan the leaver job would refuse, or cannot read, is named; a StyleHR leaver it misses is still listed from the people app", async ({ admin }) => {

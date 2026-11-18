@@ -42,6 +42,23 @@ test('the list shows its four sections in order, each person with why and how; t
   expect(within(page).getByTestId('leaver-checked')).toHaveTextContent("next run would refuse: the warehouse's StyleHR data is stale")
 })
 
+// #1271 polish: the title in Title Case counts who can still sign in (sections 1 to 4), and Refresh Now is
+// the page's action, with More beside it on the toolbar.
+test('the title counts only who can still sign in, and Refresh Now sits on the toolbar with More', async ({ admin, createUser }) => {
+  const people = await Promise.all(['one', 'two', 'three'].map((n) => createUser({ email: `count.${n}.1271@example.com` })))
+  await sql`insert into leaver_sign_in (row_id, position, section, person, why, ways_in) values
+    ('c1', 0, '1. Leaver job would disable', ${people[0].user!}, 'x', 'Password'),
+    ('c2', 1, '4. Not an employee, holds a StyleHR link', ${people[1].user!}, 'x', 'StyleHR'),
+    ('c3', 2, '5. Not on payroll, but no exit date', ${people[2].user!}, 'x', 'Password')`
+  await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
+  const page = await screen.findByTestId('leavers-who-can-sign-in')
+  expect(await within(page).findByRole('heading', { level: 1 })).toHaveTextContent('Leavers Who Can Still Sign In')
+  expect(await within(page).findByTestId('leaver-count')).toHaveTextContent('2 can still sign in')
+  const toolbar = within(page).getByTestId('list-toolbar')
+  expect(within(toolbar).getByTestId('leaver-refresh')).toHaveTextContent('Refresh Now')
+  expect(within(toolbar).getByRole('button', { name: /More/ })).toBeInTheDocument()
+})
+
 test('a list never rebuilt says it was checked never', async ({ admin }) => {
   await renderApp('/featherbase/admin/leavers-who-can-sign-in', admin)
   expect(await screen.findByTestId('leaver-checked')).toHaveTextContent(/^Checked never$/)

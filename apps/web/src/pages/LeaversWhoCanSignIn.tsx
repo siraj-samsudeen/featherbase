@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, fmtDateTime } from '@featherbase/shop-floor'
+import { Button, fmtCount, fmtDateTime } from '@featherbase/shop-floor'
 import { adminPageTitle } from 'shared'
 import { api } from '../lib/api'
 import { ListView } from '../components/ListView'
@@ -15,12 +15,14 @@ interface Status {
   checked_result: string | null
   /** The latest rebuild attempt, when it failed after the last success: the rows shown are older. */
   last_failed: { at: string; error: string | null } | null
+  /** What the list holds now: who can still sign in (sections 1 to 4), and sections 5 and 6's people for review. */
+  counts: { can_sign_in: number; review: number }
 }
 
 export const LEAVER_STATUS_KEY = ['leaver-sign-in-status'] as const
 
-/** The list header's line: whether the leaver job disables anyone, its last run, and when the list was checked. */
-function StatusLine() {
+/** The page's view of the report: its status, and Refresh Now, which waits until the rebuild has run. */
+function useLeaverStatus() {
   const qc = useQueryClient()
   // While a requested rebuild runs: the "Checked" time it started from. The
   // line is read again until that time moves on, then the list is read again.
@@ -44,11 +46,15 @@ function StatusLine() {
     setWaitingSince(undefined)
     void qc.invalidateQueries({ queryKey: ['list', 'Leaver Sign In'] })
   }, [waitingSince, checkedAt, failedAt, qc])
-  const s = status.data
+  return { status: status.data, waiting, refresh: () => refresh.mutate() }
+}
+
+/** The list header's line: whether the leaver job disables anyone, its last run, and when the list was checked. */
+function StatusLine({ s }: { s: Status | undefined }) {
   const job = s?.leaver_job
   const at = (iso: string | null) => (iso ? fmtDateTime(new Date(iso)) : 'never')
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-muted" data-testid="leaver-status">
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-muted" data-testid="leaver-status">
       {s && (
         <span data-testid="leaver-job-line">
           Leaver job: <b className={job?.on ? 'font-medium text-positive' : 'font-medium text-caution'}>{job?.on ? 'On' : 'Off'}</b>
@@ -69,14 +75,12 @@ function StatusLine() {
           {s.checked_at ? ' These rows are from the last one that worked.' : ' No rebuild has worked yet.'}
         </span>
       )}
-      <Button variant="secondary" disabled={waiting} onClick={() => refresh.mutate()} data-testid="leaver-refresh">
-        {waiting ? 'Refreshing…' : 'Refresh Now'}
-      </Button>
-    </div>
+    </span>
   )
 }
 
 export function LeaversWhoCanSignIn({ filters, onFiltersChange }: { filters: Filter[]; onFiltersChange: (f: Filter[]) => void }) {
+  const { status, waiting, refresh } = useLeaverStatus()
   return (
     <div data-testid="leavers-who-can-sign-in" className="h-full">
       <ListView
@@ -91,7 +95,14 @@ export function LeaversWhoCanSignIn({ filters, onFiltersChange }: { filters: Fil
             {' / People and access'}
           </div>
         }
-        subtitle={<StatusLine />}
+        subtitle={<StatusLine s={status} />}
+        // #1271 polish: the title counts who can still sign in (sections 1 to 4); sections 5 and 6's review count is on the line.
+        count={status && <span data-testid="leaver-count">{fmtCount(status.counts.can_sign_in)} can still sign in</span>}
+        actions={
+          <Button variant="secondary" disabled={waiting} onClick={refresh} data-testid="leaver-refresh">
+            {waiting ? 'Refreshing…' : 'Refresh Now'}
+          </Button>
+        }
         empty={<p className="text-sm text-ink-muted">Nobody is listed. The line above says if anything could not be checked.</p>}
       />
     </div>
