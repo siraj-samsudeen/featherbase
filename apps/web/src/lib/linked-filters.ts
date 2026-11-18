@@ -247,7 +247,8 @@ export function choiceCountQuery(from: string, fromFilters: Filter[], step: Pick
   const { link } = step
   switch (link.kind) {
     case 'forward':
-      return { table: from, group_by: link.column, filters: fromFilters }
+      // A sub-table's `parent` may name a row of another holding Table with the same id.
+      return { table: from, group_by: link.column, filters: link.column === 'parent' ? [...fromFilters, ['parenttype', '=', step.table]] : fromFilters }
     case 'back':
       return { table: step.table, group_by: 'row_id', filters: [[link.column, 'related', all]] }
     case 'via':
