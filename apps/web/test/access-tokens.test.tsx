@@ -95,7 +95,7 @@ test('a service account is turned off after a confirmation, and back on at one c
       (a) => a.row_id === svc.row_id,
     )!.enabled
   expect(await enabled()).toBe(false)
-  expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument())
   await user.click(screen.getByTestId(`sa-toggle-${svc.row_id}`))
   expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
   await waitFor(() => expect(screen.getByTestId(`sa-toggle-${svc.row_id}`)).toHaveTextContent('Disable'))
@@ -240,7 +240,8 @@ test('Revoke on a token row asks first, then marks it revoked', async ({ admin }
   await user.click(screen.getByTestId(`revoke-${tok.id}`))
   await user.click(screen.getByTestId('confirm-action'))
   await waitFor(() => expect(screen.getByTestId(`token-state-${tok.id}`).textContent).toBe('revoked'))
-  expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
+  // The confirmation closes once the lists have refreshed, which can land just after the row reads revoked.
+  await waitFor(() => expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument())
   const { tokens } = await admin.get<{ tokens: { id: string; revoked_at: string | null }[] }>('/api/access_tokens')
   expect(tokens.find((t) => t.id === tok.id)?.revoked_at).toEqual(expect.any(String))
 })
