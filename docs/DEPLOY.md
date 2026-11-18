@@ -40,7 +40,7 @@ server lint:env` refuses a `process.env` read anywhere else in the server.
 
 The release (and the server start) refuses while a required variable is
 missing — an empty or blank value counts as missing — or while a switch that
-only development, test and staging may have is on, and names each one. A
+only development, test, dev and staging may have is on, and names each one. A
 missing recommended variable is printed as a `WARNING:` line and the release
 goes ahead. `cli boot-check` runs the same checks read-only. CLI commands
 themselves never refuse, so the break-glass commands over `railway ssh`
@@ -72,7 +72,7 @@ only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 
 | Variable | Required | Secret | Default | Purpose |
 | --- | --- | --- | --- | --- |
-| `FEATHERBASE_ENV` | **yes**, this or `NODE_ENV`, for a release | no | `NODE_ENV`, then `development` | which environment this process is: `production`, `staging`, `development` or `test`; it wins over `NODE_ENV`. The release (and `cli boot-check`) refuses when neither is set (#430). Only `development` and `test` allow zero-setup Administrator credentials |
+| `FEATHERBASE_ENV` | **yes**, this or `NODE_ENV`, for a release | no | `NODE_ENV`, then `development` | which environment this process is: `production`, `dev` or `staging` (hosted trial instances), `development` or `test`; it wins over `NODE_ENV`. The release (and `cli boot-check`) refuses when neither is set (#430). Only `development` and `test` allow zero-setup Administrator credentials |
 | `NODE_ENV` | no | no | `development` | read only when `FEATHERBASE_ENV` is unset (Vitest sets it to `test`) |
 | `DATABASE_URL` | **yes**, outside development and test | yes | local `featherbase` (`featherbase_test` under test) | Postgres connection string. `db.ts` sets `prepare: false`, which transaction-mode poolers (such as Supabase on port 6543) require (must differ across environments) |
 | `PORT` | no | no | `8000` | HTTP and WebSocket port |
@@ -107,11 +107,11 @@ only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 | `CLIENT_ADDRESS_HEADER` | no | no |  | one request header the edge overwrites with the client's address (Railway's edge sets `X-Real-IP` and `X-Forwarded-For`), recorded on each sign-in and used for the pre-auth budgets. Set it only when the edge replaces the caller's copy; see [Behind a proxy](#behind-a-proxy) |
 | `RATE_LIMIT_WINDOW_MS` | no | no | `60000` | per-user API rate-limit window |
 | `RATE_LIMIT_MAX` | no | no | `100000` | per-user API requests per window, unless the person has their own limit |
-| `DELEGATED_LOGIN_TEST_MODE` | **never in production**: development, test and staging only | no |  | `trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored |
+| `DELEGATED_LOGIN_TEST_MODE` | **never in production**: development, test, dev and staging only | no |  | `trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored |
 | `ALLOW_MOCK_OAUTH` | **never outside development and test** | no |  | `1` turns on the mock Google provider, which mints a session for any typed email from a pre-auth endpoint. For development and the test suites |
 | `MOTHERDUCK_STANDIN` | **never outside development and test** | no |  | a folder holding a local stand-in for MotherDuck (its account listing and database files); set, every MotherDuck source talks to it instead of MotherDuck. For the test suites |
-| `PREVIEW_LOGIN_KEY` | **never in production**: development, test and staging only | yes |  | preview deployments: the one-link sign-in's secret, 32+ characters. See [PREVIEW.md](PREVIEW.md) |
-| `PREVIEW_LOGIN_USER` | **never in production**: development, test and staging only | no |  | preview deployments: the account the link signs in as (never Administrator) |
+| `PREVIEW_LOGIN_KEY` | **never in production**: development, test, dev and staging only | yes |  | preview deployments: the one-link sign-in's secret, 32+ characters. See [PREVIEW.md](PREVIEW.md) |
+| `PREVIEW_LOGIN_USER` | **never in production**: development, test, dev and staging only | no |  | preview deployments: the account the link signs in as (never Administrator) |
 | `PREVIEW_USER_NAME` | no | no |  | preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`) |
 | `DISABLE_DATABASE_ENVIRONMENT_CHECK` | no | no |  | `1` skips the check that the database was stamped by this environment. Break-glass only |
 | `FEATHERBASE_APP_PATHS` | no | no | `[]` | JSON array of extra app package directories to discover at boot; `<folder>/*` means every folder in it |
@@ -169,9 +169,9 @@ gets Google's `redirect_uri_mismatch` error.
 
 `FEATHERBASE_ENV` names the environment, and the database is **stamped** with
 it (`internal_metadata.environment`); the migrator refuses a database stamped
-for another environment. **`staging` is the environment of a hosted trial
-instance** (dev): it admits test mode (`DELEGATED_LOGIN_TEST_MODE`) and preview
-sign-in, and is production in every other respect. `development` is *not* safe
+for another environment. **`dev` and `staging` are the environments of
+hosted trial instances** (#1278). They admit test mode (`DELEGATED_LOGIN_TEST_MODE`) and preview
+sign-in, and are production in every other respect. `development` is *not* safe
 on a public host — it gives a null Administrator hash the known password
 `admin`. A database labelled `production` never runs with test mode, even with
 the stamp check overridden.
@@ -235,13 +235,13 @@ With `FEATHERBASE_INSTANCE` set, `pnpm --filter server pre-deploy` runs, in orde
 stopping at the first problem so that the old deployment keeps serving:
 
 1. the release (preflight, migrations);
-2. on `staging` only, re-pin an app whose files changed (below). This comes before
+2. on `dev`, `staging` and `production`, re-pin an app whose files changed (below). This comes before
    any upgrade, which checks the installed version against the files the image
    holds for it;
 3. each app the image ships: install it if missing, upgrade and activate it if a
    newer version ships;
-4. the settings file's section for this environment: `staging` applies `dev`,
-   `production` applies `prod`. Any other environment refuses (`pnpm dev` is for a
+4. the settings file's section for this environment: `dev` applies `dev`, `staging`
+   applies `staging`, `production` applies `prod`. Any other environment refuses (`pnpm dev` is for a
    developer's machine).
 
 Steps 2 to 4 are one transaction, and they hold the apps' lifecycle lock from
@@ -261,7 +261,7 @@ deploy.
 | Variable | Why |
 | --- | --- |
 | `FEATHERBASE_INSTANCE` | `<client>/<instance>`; Railway passes it to the build as well, because the Dockerfile declares the `ARG` |
-| `FEATHERBASE_ENV` | `staging` for its dev, `production` for its prod |
+| `FEATHERBASE_ENV` | `dev` for its dev, `staging` for its staging, `production` for its prod |
 | `PORT` | `8000` on Railway, matching the port of its domain |
 | `RAILWAY_DOCKERFILE_PATH` | `apps/server/Dockerfile`, on Railway (see [Railway](#railway)) |
 | `DATABASE_URL`, `JWT_SECRET`, `INSTANCE_ADDRESSES`, `ADMIN_PASSWORD` | as for any instance, with its own values |
@@ -271,7 +271,7 @@ deploy.
 
 **Which code each environment runs.**
 
-| | Dev (`staging`) | Prod (`production`) |
+| | Dev (`dev`) and staging (`staging`) | Prod (`production`) |
 | --- | --- | --- |
 | Branch the service builds | `main` | `release/<client>-<instance>-prod` |
 | An app's files changed, same version and manifest | re-pinned automatically | re-pinned automatically (#1178) |
@@ -859,7 +859,7 @@ row exists) and refuses everyone until it is set. Test mode never makes anyone.
 
 **`DELEGATED_LOGIN_TEST_MODE=trust-any-password` lets anyone sign in as any
 linked staff member by employee code, with no password.** It is allowed only
-on `development`, `test` and `staging`; never set it where real users sign in,
+on `development`, `test`, `dev` and `staging`; never set it where real users sign in,
 and remove it at the end of the trial.
 
 ### People records while the roster sync is frozen

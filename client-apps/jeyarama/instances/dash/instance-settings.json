@@ -156,6 +156,33 @@
           },
           {
             "row_id": "microsoft",
+            "enabled": false
+          }
+        ],
+        "App Setting": [
+          {
+            "row_id": "dash.embed_service_account",
+            "value": {
+              "env": "SERVICE_ACCOUNT"
+            }
+          },
+          {
+            "row_id": "dash.linked_tables",
+            "value": "[\"Employee\", \"Job Assignment\", \"Merchandise Assignment\", \"Buyer Section\", \"Buyer Section Subcategory\", \"Section\", \"Store Floor\", \"Section Subcategory\", \"Subcategory\", \"Site\", \"Plant\", \"Department\", \"Department Section\", \"Cluster\", \"Designation\"]"
+          }
+        ]
+      }
+    },
+    "staging": {
+      "settings": {
+        "Sign In Method": [
+          {
+            "row_id": "google",
+            "client_id": "526042382398-1bqqe2ejsbsi3elihqrkv9k1diorc93l.apps.googleusercontent.com",
+            "self_link": true
+          },
+          {
+            "row_id": "microsoft",
             "client_id": "0497d1b4-e9b3-4556-88f5-d4c8f97bcc63"
           }
         ],
