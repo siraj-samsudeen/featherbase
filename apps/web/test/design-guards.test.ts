@@ -412,9 +412,12 @@ describe('the Admin shell', () => {
   test("#1253: a page with a sidebar has no top bar: the bar draws into the sidebar's top and foot", () => {
     expect(topBar).toMatch(/createPortal\([\s\S]{0,800}slots\.top/)
     expect(topBar).toMatch(/createPortal\([\s\S]{0,800}slots\.foot/)
-    // The sidebar is still 240px, a 56px rail, beside the page.
+    // The sidebar is the person's width (240px unless they drag its edge, the
+    // owner's "a little adjustable", 18-Nov), a 56px rail, beside the page.
     expect(shell).toMatch(/<SidebarAside testid="admin-sidebar"/)
-    expect(shell).toMatch(/data-testid=\{testid\}[\s\S]{0,600}\bmd:w-60\b/)
+    expect(shell).toMatch(/data-testid=\{testid\}[\s\S]{0,600}\bmd:w-\(--sidebar-width\)/)
+    expect(shell).toMatch(/data-testid=\{testid\}[\s\S]{0,600}\bmd:w-14\b/)
+    expect(source('src/lib/sidebar-collapsed.ts')).toMatch(/DEFAULT: 240\b/)
   })
 
   test('#1253: the command bar opens as a wide box in the middle of the screen', () => {

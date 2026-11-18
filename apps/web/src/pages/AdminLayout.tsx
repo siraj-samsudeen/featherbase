@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { GROUP_TONE, RAIL_ROW, ROW_IDLE, ROW_SELECTED, RailFold, RailMenuItem, RailRule, SIDEBAR_HEADING, SidebarRailContext, TableTile, useSidebarRail, type GroupTone } from '../components/SidebarRail'
 import { attachRailTips, railMark, sidebarWords } from '../lib/sidebar-rail'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
@@ -31,7 +31,7 @@ import { TopBar } from '../components/TopBar'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, tableLabel, useMeta, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
-import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
+import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, attachSidebarEdge, offerSidebarSlots, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
@@ -1063,9 +1063,12 @@ export function SidebarGroup({ heading, testid, items, first = false, tone = 'sl
  */
 export function SidebarAside({ testid, children }: { testid: string; children: ReactNode }) {
   useRegisterSidebar()
-  const { collapsed: choice, drawerOpen, setDrawerOpen, toggleCollapsed } = useSidebar()
+  const { collapsed: choice, drawerOpen, setDrawerOpen, toggleCollapsed, width, resizing } = useSidebar()
   const isDrawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const collapsed = choice && !isDrawer
+  // The edge: a click folds the sidebar, a drag sets its width (the same in every app).
+  const edge = useRef<HTMLDivElement>(null)
+  useEffect(() => attachSidebarEdge(edge.current!), [])
   // #1248: in the rail each row is named at once by a tooltip beside it.
   const aside = useRef<HTMLElement>(null)
   const top = useRef<HTMLDivElement>(null)
@@ -1104,7 +1107,8 @@ export function SidebarAside({ testid, children }: { testid: string; children: R
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('a')) setDrawerOpen(false)
         }}
-        className={`${collapsed ? 'md:w-14' : 'md:w-60'} absolute inset-y-0 left-0 z-30 flex w-64 flex-col bg-canvas transition-transform md:static md:shrink-0 md:translate-x-0 md:bg-transparent md:transition-[width] md:duration-200 md:ease-linear motion-reduce:transition-none ${
+        style={{ '--sidebar-width': `${width}px` } as CSSProperties}
+        className={`${collapsed ? 'md:w-14' : 'md:w-(--sidebar-width)'} absolute inset-y-0 left-0 z-30 flex w-64 flex-col bg-canvas transition-transform md:static md:shrink-0 md:translate-x-0 md:bg-transparent ${resizing ? '' : 'md:transition-[width] md:duration-200 md:ease-linear '}motion-reduce:transition-none ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div ref={top} className="shrink-0" data-testid="sidebar-slot-top" />
@@ -1134,8 +1138,8 @@ export function SidebarAside({ testid, children }: { testid: string; children: R
       </aside>
       <div
         aria-hidden
+        ref={edge}
         data-testid="sidebar-edge"
-        onClick={toggleCollapsed}
         className="group relative z-30 -mx-1.5 w-3 shrink-0 cursor-col-resize max-md:hidden"
       >
         <span className="absolute inset-y-0 left-[5px] w-0.5 bg-transparent transition-colors group-hover:bg-action" />

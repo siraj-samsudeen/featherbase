@@ -36,6 +36,35 @@ test('the control is the sidebar footer, there is no top bar, and collapsing lea
   expect(collapsed()).toBe(false)
 })
 
+// The owner (17-Nov): "a little adjustable". The same edge, dragged, sets the
+// open sidebar's width from 200 to 360px, the person's own; a click folds it.
+test("dragging the edge sets the open sidebar's width, kept for the person; a click on it still folds it", async ({ admin }) => {
+  const { unmount } = await renderApp('/featherbase/admin/all-tables', admin)
+  await screen.findByTestId('sidebar-collapse', {}, T)
+  const edge = () => screen.getByTestId('sidebar-edge')
+  const width = () => aside().style.getPropertyValue('--sidebar-width')
+  expect(width()).toBe('240px')
+  const drag = (from: number, to: number) => {
+    fireEvent.pointerDown(edge(), { clientX: from, button: 0, pointerId: 1 })
+    fireEvent.pointerMove(document, { clientX: to, pointerId: 1 })
+    fireEvent.pointerUp(document, { clientX: to, pointerId: 1 })
+    fireEvent.click(edge())
+  }
+  drag(240, 320)
+  await waitFor(() => expect(width()).toBe('320px'))
+  expect(collapsed()).toBe(false)
+  drag(320, 1000)
+  await waitFor(() => expect(width()).toBe('360px'))
+  expect(localStorage.getItem(`fc-sidebar-width:${admin.user}`)).toBe('360')
+
+  unmount()
+  await renderApp('/featherbase/admin/all-tables', admin)
+  await screen.findByTestId('sidebar-collapse', {}, T)
+  expect(width()).toBe('360px')
+  await userEvent.click(edge())
+  expect(collapsed()).toBe(true)
+})
+
 // #1253 (the frame Siraj agreed on 17-Nov-2026): the switcher and the bell lead
 // the sidebar, then the "Search or Command" field; the account, help and theme
 // sit at its foot, above the Collapse row. In the rail: the logo, a magnifier
@@ -51,7 +80,7 @@ test("the sidebar's top and foot hold the switcher, the command field and the ac
   const foot = await screen.findByTestId('sidebar-account', {}, T)
   expect(aside()).toContainElement(foot)
   for (const id of ['session-user', 'help-button', 'theme-button']) expect(within(foot).getByTestId(id)).toBeInTheDocument()
-  expect(within(within(foot).getByTestId('session-user')).getByText('Administrator')).toBeInTheDocument()
+  expect(await within(within(foot).getByTestId('session-user')).findByText('Administrator')).toBeInTheDocument()
   // The foot comes before the Collapse row.
   expect(foot.compareDocumentPosition(screen.getByTestId('sidebar-collapse')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
@@ -86,8 +115,13 @@ test("the sidebar's top and foot hold the switcher, the command field and the ac
 
   await userEvent.click(screen.getByTestId('sidebar-collapse'))
   expect(within(aside()).queryByTestId('notif-bell')).not.toBeInTheDocument()
-  expect(within(aside()).queryByTestId('help-button')).not.toBeInTheDocument()
-  expect(within(aside()).queryByTestId('theme-button')).not.toBeInTheDocument()
+  // The owner (18-Nov): every foot icon stays in the rail, the avatar, Help
+  // and Theme stacked; their menus open beside the rail, as the avatar's does.
+  expect(foot.className).toMatch(/\bflex-col\b/)
+  for (const id of ['session-user', 'help-button', 'theme-button']) expect(within(foot).getByTestId(id)).toBeInTheDocument()
+  await userEvent.click(within(foot).getByTestId('help-button'))
+  expect(screen.getByTestId('help-button-menu').className).toMatch(/\bleft-full\b/)
+  await userEvent.keyboard('{Escape}')
   // The avatar alone: the name stays only as the button's accessible name.
   expect(within(within(aside()).getByTestId('session-user')).queryByText('Administrator')).not.toBeInTheDocument()
   const magnifier = within(aside()).getByTestId('command-field')

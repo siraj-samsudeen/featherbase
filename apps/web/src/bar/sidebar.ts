@@ -1,11 +1,10 @@
 import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
-import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerPickerSlot, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
+import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, SIDEBAR_WIDTH, attachSidebarEdge, offerPickerSlot, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
 import { attachRailTips, railMark, railMenuPlace, rowCount, rowLabel } from '../lib/sidebar-rail'
 
-/** Admin's sidebar widths (AdminLayout: md:w-60, the rail md:w-14, a w-64 drawer), for every app (#1227, #1248). */
-const WIDTH = 240
+/** Admin's sidebar widths (AdminLayout: the person's width, SIDEBAR_WIDTH; the rail md:w-14, a w-64 drawer), for every app (#1227, #1248). */
 const RAIL = 56
 const DRAWER_WIDTH = 256
 
@@ -76,6 +75,7 @@ export class FeatherbaseSidebar extends HTMLElement {
   private unsubscribe?: () => void
   private untips?: () => void
   private unslot?: () => void
+  private unedge?: () => void
   private unpickers?: () => void
   private pickers?: HTMLElement
   private pickersRoot?: HTMLElement
@@ -109,8 +109,10 @@ export class FeatherbaseSidebar extends HTMLElement {
     const style = document.createElement('style')
     style.textContent = `${shadowCss(platformCss)}
       /* #1253: no fill of its own, and nothing clips the menus its top and foot open. */
-      :host { display:block; position:static; z-index:auto; box-sizing:border-box; width:${WIDTH}px; min-width:0; height:100%;
+      :host { display:block; position:static; z-index:auto; box-sizing:border-box; width:var(--featherbase-sidebar-width, ${SIDEBAR_WIDTH.DEFAULT}px); min-width:0; height:100%;
         transition:width 200ms linear; background:transparent !important; overflow:visible !important; }
+      /* The edge is being dragged: the width follows the pointer at once. */
+      :host([data-resizing]) { transition:none; }
       /* #1248: collapsed (md+), an icon rail; at phone width the frame is the drawer. */
       :host([data-collapsed]) { width:${RAIL}px; }
       .sidebar-backdrop { display:none; }
@@ -210,7 +212,8 @@ export class FeatherbaseSidebar extends HTMLElement {
     edge.className = 'sidebar-edge'
     edge.dataset.testid = 'sidebar-edge'
     edge.setAttribute('aria-hidden', 'true')
-    edge.addEventListener('click', () => toggleSidebarCollapsed())
+    this.unedge?.()
+    this.unedge = attachSidebarEdge(edge)
     const layer = document.createElement('div')
     layer.className = 'rail-layer'
     nav.append(foot, edge, layer)
@@ -322,6 +325,8 @@ export class FeatherbaseSidebar extends HTMLElement {
     const open = drawer && state.drawerOpen
     this.toggleAttribute('data-collapsed', collapsed)
     this.toggleAttribute('data-open', open)
+    this.style.setProperty('--featherbase-sidebar-width', `${state.width}px`)
+    this.toggleAttribute('data-resizing', state.resizing)
     const hidden = drawer && !open
     this.inert = hidden
     if (hidden) this.setAttribute('aria-hidden', 'true')
@@ -454,6 +459,8 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.rowsObserver?.disconnect()
     this.untips?.()
     this.untips = undefined
+    this.unedge?.()
+    this.unedge = undefined
     this.unslot?.()
     this.unslot = undefined
     this.unpickers?.()

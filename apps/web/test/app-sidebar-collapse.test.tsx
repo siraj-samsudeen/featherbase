@@ -154,20 +154,66 @@ test("viewing as someone, the sidebar and its foot keep the tester's own choice 
   openAppPage(admin, APPS[0])
   await signedIn()
   await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/view_as'))
-  const foot = () => within(sidebar().shadowRoot!.querySelector<HTMLElement>('[data-testid=sidebar-account]')!)
+  const foot = () => sidebar().shadowRoot!.querySelector<HTMLElement>('[data-testid=sidebar-account]')!
+  // The rail's foot is a stack in its 56px; the open sidebar's, one row.
+  const stacked = () => /\bflex-col\b/.test(foot().className)
 
   expect(collapsed()).toBe(true)
-  expect(foot().queryByTestId('help-button')).not.toBeInTheDocument()
-  expect(foot().queryByTestId('theme-toggle')).not.toBeInTheDocument()
+  expect(stacked()).toBe(true)
 
   await userEvent.click(control())
   expect(collapsed()).toBe(false)
-  expect(foot().getByTestId('help-button')).toBeInTheDocument()
+  // The row waits until the sidebar has widened, so nothing hangs outside meanwhile (the owner, 18-Nov).
+  await waitFor(() => expect(stacked()).toBe(false))
 
   await userEvent.click(control())
   expect(collapsed()).toBe(true)
-  expect(foot().queryByTestId('help-button')).not.toBeInTheDocument()
+  expect(stacked()).toBe(true)
   expect(localStorage.getItem(`fc-sidebar-collapsed:${person.user}`)).toBeNull()
+})
+
+/** A drag on the sidebar's edge, as a mouse does it: down on the edge, moved,
+ *  let go, and the click the browser then sends to the edge. */
+function drag(edge: HTMLElement, from: number, to: number) {
+  fireEvent.pointerDown(edge, { clientX: from, button: 0, pointerId: 1 })
+  fireEvent.pointerMove(document, { clientX: (from + to) / 2, pointerId: 1 })
+  fireEvent.pointerMove(document, { clientX: to, pointerId: 1 })
+  fireEvent.pointerUp(document, { clientX: to, pointerId: 1 })
+  fireEvent.click(edge)
+}
+
+// The owner (17-Nov): the sidebar should be "a little adjustable". Its edge is
+// dragged to any width from 200 to 360px; the width is the person's own, like
+// the collapsed choice; a click on the edge still folds it.
+test("dragging the edge sets the open sidebar's width, from 200 to 360px, kept for the person; a click on it still folds it", async ({ admin }) => {
+  openAppPage(admin, APPS[0])
+  await signedIn()
+  const edge = () => sidebar().shadowRoot!.querySelector<HTMLElement>('[data-testid=sidebar-edge]')!
+  const width = () => sidebar().style.getPropertyValue('--featherbase-sidebar-width')
+  expect(width()).toBe('240px')
+
+  drag(edge(), 240, 300)
+  expect(width()).toBe('300px')
+  expect(collapsed()).toBe(false)
+  drag(edge(), 300, 900)
+  expect(width()).toBe('360px')
+  drag(edge(), 360, 0)
+  expect(width()).toBe('200px')
+  expect(collapsed()).toBe(false)
+
+  // A reload, in another app: the same person, the same width.
+  act(() => mounted?.unmount())
+  document.body.replaceChildren()
+  openAppPage(admin, APPS[2])
+  await signedIn()
+  expect(width()).toBe('200px')
+
+  await userEvent.click(edge())
+  expect(collapsed()).toBe(true)
+  // In the rail the edge only reopens it, at the kept width.
+  drag(edge(), 56, 400)
+  expect(collapsed()).toBe(false)
+  expect(width()).toBe('200px')
 })
 
 test('a page with no sidebar has no sidebar controls, and Ctrl/Cmd+B is left alone', async ({ admin }) => {

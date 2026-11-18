@@ -19,7 +19,7 @@ import { KeyboardShortcutsItem, ShortcutTeachingHost } from './ShortcutTeaching'
 import { ViewAsBanner, ViewAsButton } from './ViewAs'
 import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
-import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
+import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useRailUntilWidened, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
 
@@ -239,6 +239,9 @@ export function TopBar({
   const pickerSlot = usePickerSlot()
   const drawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const rail = sidebar.collapsed && !drawer
+  // The foot's row (avatar, Help, Theme) is wider than the rail: while the
+  // sidebar widens it keeps its stacked rail form, so nothing hangs outside.
+  const footRail = useRailUntilWidened(rail)
   const switcher = left ?? (caps && context && name
     ? <AppSwitcher app={switcherApp} place={rail ? 'rail' : 'sidebar'} />
     : context && name && <BarName href={homeHref(context, installed)} name={name} />)
@@ -285,11 +288,12 @@ export function TopBar({
           slots.top,
         )}
         {caps && createPortal(
-          // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen.
-          <div className={rail ? 'relative flex flex-col items-center gap-1' : 'relative flex min-w-0 items-center gap-0.5'} data-testid="sidebar-account">
-            <AccountMenu inSidebar={{ rail, offerAdmin }} />
-            {!rail && <HelpMenu />}
-            {!rail && <ThemeMenu />}
+          // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen;
+          // in the rail, beside it. The owner (18-Nov): every icon stays in the rail, stacked in its 56px.
+          <div className={footRail ? 'relative flex flex-col items-center gap-1' : 'relative flex min-w-0 items-center gap-0.5'} data-testid="sidebar-account">
+            <AccountMenu inSidebar={{ rail: footRail, offerAdmin }} />
+            <HelpMenu rail={footRail} />
+            <ThemeMenu rail={footRail} />
           </div>,
           slots.foot,
         )}
@@ -567,8 +571,8 @@ function AccountMenu({ inMenu, inSidebar }: {
     .join('')
 
   const named = Boolean(inSidebar && !inSidebar.rail)
-  // In the rail the theme has no control of its own beside the avatar, so its menu carries it.
-  const extras = inMenu ?? (inSidebar ? { offerAdmin: inSidebar.offerAdmin, theme: inSidebar.rail } : undefined)
+  // At the sidebar's foot the theme has its own control, in the rail too.
+  const extras = inMenu ?? (inSidebar ? { offerAdmin: inSidebar.offerAdmin, theme: false } : undefined)
   const place = !inSidebar
     ? 'right-0 top-full mt-1'
     : inSidebar.rail ? 'bottom-0 left-full ml-2' : 'bottom-full left-0 mb-1'
@@ -669,10 +673,12 @@ function AccountMenu({ inMenu, inSidebar }: {
 }
 
 /** #1253: a small menu at the sidebar's foot, opening above its button. */
-function FootMenu({ label, icon: Icon, testid, children }: {
+function FootMenu({ label, icon: Icon, testid, rail = false, children }: {
   label: string
   icon: LucideIcon
   testid: string
+  /** In the rail the card opens beside it, as the avatar's does; open, it opens upward. */
+  rail?: boolean
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
@@ -714,7 +720,7 @@ function FootMenu({ label, icon: Icon, testid, children }: {
         <Icon aria-hidden size={16} />
       </button>
       {open && (
-        <div id={menuId} className={cardClasses('absolute bottom-full left-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
+        <div id={menuId} className={cardClasses(`absolute ${rail ? 'bottom-0 left-full ml-2' : 'bottom-full left-0 mb-1'} z-40 w-60 overflow-hidden py-1`)} data-testid={`${testid}-menu`}>
           {children}
         </div>
       )}
@@ -723,11 +729,11 @@ function FootMenu({ label, icon: Icon, testid, children }: {
 }
 
 /** The theme control at the sidebar's foot: its icon is the theme chosen now. */
-function ThemeMenu() {
+function ThemeMenu({ rail }: { rail: boolean }) {
   const { theme } = useThemeChoice()
   const { t } = useI18n()
   return (
-    <FootMenu label={`${t('Theme')}: ${t(THEME_LABEL[theme])}`} icon={THEME_ICON[theme]} testid="theme-button">
+    <FootMenu label={`${t('Theme')}: ${t(THEME_LABEL[theme])}`} icon={THEME_ICON[theme]} testid="theme-button" rail={rail}>
       <ThemeToggle labelled />
     </FootMenu>
   )
@@ -736,9 +742,9 @@ function ThemeMenu() {
 /** Help at the sidebar's foot. #1251: its first item opens the Keyboard
  *  Shortcuts panel, which lists the shortcuts on this page and which ones the
  *  person uses; `?` opens it from anywhere. */
-function HelpMenu() {
+function HelpMenu({ rail }: { rail: boolean }) {
   return (
-    <FootMenu label="Help" icon={CircleHelp} testid="help-button">
+    <FootMenu label="Help" icon={CircleHelp} testid="help-button" rail={rail}>
       <KeyboardShortcutsItem className={MENU_ITEM} />
     </FootMenu>
   )

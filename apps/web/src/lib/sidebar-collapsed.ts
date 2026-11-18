@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { SIDEBAR_SHORTCUT_DEF, addShortcut, noteShortcutUse } from './shortcuts'
 import { getSignedInUser } from './api'
 
@@ -21,12 +21,32 @@ const storageKey = (user: string) => `fc-sidebar-collapsed:${user}`
 /** Below this the sidebar is a drawer over the page, never collapsed (UI-025). */
 export const SIDEBAR_DRAWER_QUERY = '(width < 48rem)'
 
-function load(user: string | undefined): boolean {
-  if (!user) return false
+/** The open sidebar's width (the owner, 17-Nov: "a little adjustable"): its
+ *  edge drags it from MIN to MAX; DEFAULT is the width it always had. */
+export const SIDEBAR_WIDTH = { MIN: 200, DEFAULT: 240, MAX: 360 } as const
+const widthKey = (user: string) => `fc-sidebar-width:${user}`
+const clampWidth = (px: number) => Math.round(Math.min(SIDEBAR_WIDTH.MAX, Math.max(SIDEBAR_WIDTH.MIN, px)))
+
+function load(user: string | undefined): { collapsed: boolean; width: number } {
+  if (!user) return { collapsed: false, width: SIDEBAR_WIDTH.DEFAULT }
   try {
-    return localStorage.getItem(storageKey(user)) === '1'
+    const width = Number(localStorage.getItem(widthKey(user)))
+    return {
+      collapsed: localStorage.getItem(storageKey(user)) === '1',
+      width: Number.isFinite(width) && width > 0 ? clampWidth(width) : SIDEBAR_WIDTH.DEFAULT,
+    }
   } catch {
-    return false
+    return { collapsed: false, width: SIDEBAR_WIDTH.DEFAULT }
+  }
+}
+
+function saveWidth(user: string | undefined, width: number): void {
+  if (!user) return
+  try {
+    if (width === SIDEBAR_WIDTH.DEFAULT) localStorage.removeItem(widthKey(user))
+    else localStorage.setItem(widthKey(user), String(width))
+  } catch {
+    // Blocked or full: the width lasts for this visit.
   }
 }
 
@@ -47,10 +67,14 @@ export interface SidebarState {
   drawerOpen: boolean
   /** How many sidebars the document holds now: the bar offers controls only for one. */
   present: number
+  /** The person's width for the open sidebar, in px; the rail and the drawer keep theirs. */
+  width: number
+  /** The edge is being dragged: the width follows the pointer, with no transition. */
+  resizing: boolean
 }
 
 let owner: string | undefined
-let state: SidebarState = { collapsed: false, drawerOpen: false, present: 0 }
+let state: SidebarState = { collapsed: false, drawerOpen: false, present: 0, width: SIDEBAR_WIDTH.DEFAULT, resizing: false }
 const listeners = new Set<() => void>()
 
 function set(next: Partial<SidebarState>) {
@@ -63,7 +87,7 @@ function set(next: Partial<SidebarState>) {
 function stateFor(user: string | undefined = keeper()): SidebarState {
   if (user !== owner) {
     owner = user
-    state = { ...state, collapsed: load(user) }
+    state = { ...state, ...load(user) }
   }
   return state
 }
@@ -87,6 +111,67 @@ export function toggleSidebarCollapsed(via: 'key' | 'mouse' = 'mouse'): void {
   noteShortcutUse(SIDEBAR_SHORTCUT_DEF.id, via)
 }
 
+/** How far the pointer moves before a press on the edge is a drag, not a click. */
+const DRAG_SLOP = 3
+
+/** #1248 and the owner's "a little adjustable" (17-Nov): the sidebar's edge,
+ *  the same in the Admin and in every app. A click folds the sidebar to the
+ *  rail and back; on the open sidebar a drag sets its width (SIDEBAR_WIDTH),
+ *  kept for the signed-in person when it is let go. Returns the detaching. */
+export function attachSidebarEdge(edge: HTMLElement): () => void {
+  let dragged = false
+  let stop: (() => void) | undefined
+  function onDown(event: PointerEvent) {
+    // A drag let go away from the edge sends it no click: each press starts afresh.
+    dragged = false
+    if (event.button !== 0 || stateFor().collapsed) return
+    event.preventDefault()
+    stop?.()
+    const startX = event.clientX
+    const startWidth = state.width
+    const move = (e: PointerEvent) => {
+      if (!dragged && Math.abs(e.clientX - startX) < DRAG_SLOP) return
+      if (!dragged) {
+        dragged = true
+        document.documentElement.style.setProperty('cursor', 'col-resize')
+        document.documentElement.style.setProperty('user-select', 'none')
+      }
+      const width = clampWidth(startWidth + e.clientX - startX)
+      if (width !== state.width || !state.resizing) set({ width, resizing: true })
+    }
+    const up = () => {
+      stop?.()
+      if (dragged) {
+        saveWidth(keeper(), state.width)
+        set({ resizing: false })
+      }
+    }
+    stop = () => {
+      document.removeEventListener('pointermove', move)
+      document.removeEventListener('pointerup', up)
+      document.removeEventListener('pointercancel', up)
+      document.documentElement.style.removeProperty('cursor')
+      document.documentElement.style.removeProperty('user-select')
+      stop = undefined
+    }
+    document.addEventListener('pointermove', move)
+    document.addEventListener('pointerup', up)
+    document.addEventListener('pointercancel', up)
+  }
+  function onClick() {
+    // The click a browser sends after a drag is the drag's end, not a fold.
+    if (dragged) { dragged = false; return }
+    toggleSidebarCollapsed()
+  }
+  edge.addEventListener('pointerdown', onDown)
+  edge.addEventListener('click', onClick)
+  return () => {
+    stop?.()
+    edge.removeEventListener('pointerdown', onDown)
+    edge.removeEventListener('click', onClick)
+  }
+}
+
 export function setSidebarDrawerOpen(open: boolean): void {
   if (state.drawerOpen !== open) set({ drawerOpen: open })
 }
@@ -97,7 +182,7 @@ export function registerSidebar(): () => void {
   // The first sidebar on a page starts from the kept choice, as a reload does.
   if (state.present === 0) {
     owner = user
-    set({ present: 1, collapsed: load(user), drawerOpen: false })
+    set({ present: 1, ...load(user), drawerOpen: false, resizing: false })
   } else set({ present: state.present + 1 })
   let left = false
   // #1251: while a sidebar is on the page, its key is on the shortcut list.
@@ -117,6 +202,26 @@ export function useSidebar() {
   const current = useSyncExternalStore(subscribeSidebar, snapshot, snapshot)
   const toggle = useCallback(() => toggleSidebarCollapsed(), [])
   return { ...current, toggleCollapsed: toggle, setDrawerOpen: setSidebarDrawerOpen }
+}
+
+/** How long both sidebars take to widen or narrow (their width transition). */
+export const SIDEBAR_TRANSITION_MS = 200
+
+/** The owner (18-Nov): the foot's Theme icon hung outside while the sidebar
+ *  widened, because its open row (avatar, Help, Theme) is drawn at once in a
+ *  sidebar still 56px wide. This keeps the rail's stacked form until the
+ *  widening ends; folding to the rail is drawn at once, since the stack fits
+ *  any width. */
+export function useRailUntilWidened(rail: boolean): boolean {
+  const [held, setHeld] = useState(rail)
+  useEffect(() => {
+    if (rail) { setHeld(true); return }
+    const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (still || state.resizing) { setHeld(false); return }
+    const timer = setTimeout(() => setHeld(false), SIDEBAR_TRANSITION_MS)
+    return () => clearTimeout(timer)
+  }, [rail])
+  return rail || held
 }
 
 /** #1253: where the page's sidebar holds the platform's chrome: the switcher,
