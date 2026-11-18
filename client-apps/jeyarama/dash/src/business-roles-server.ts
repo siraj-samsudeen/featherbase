@@ -6,7 +6,7 @@ import { appsOf, decisionReports, differences, permissionSentence, titleList, SO
   type HeldRole, type Model, type Side, type Spot, type TitleInUse } from './business-roles.ts'
 import { collapseCodes } from './reach-prefixes.ts'
 import { reportsReaching, type AccessRow, type BundleMember } from './report-access.ts'
-import { ACCESS, MEMBER, all, managesAccess, personNames, whoIs, type AccessContext } from './report-access-server.ts'
+import { ACCESS, MEMBER, all, jobsOf, managesAccess, personNames, whoIs, type AccessContext } from './report-access-server.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
 import { EMPLOYEE_STATUS, checked, exact, holdsOn, text } from './values.ts'
 import { istToday } from './report.ts'
@@ -73,6 +73,8 @@ const LEVELS = ['subcategory', 'category', 'subdivision', 'division'] as const
 const LEVEL_TABLE: Record<string, string> = { subcategory: 'Subcategory', category: 'Category', subdivision: 'Subdivision', division: 'Division' }
 
 export interface ShadowWorld {
+  /** The app's own reads, as the old rules' report grants read jobs (retired rows left out). */
+  base: Base
   docs: ReturnType<typeof memoryDocuments>
   model: Model
   hand: HandRow[]
@@ -103,7 +105,7 @@ export async function shadowWorld(base: Base, today: string = istToday()): Promi
   const designationNames = new Map((designations ? await everyRow(base, DESIGNATION, ['designation']) : []).map(row => [exact(row.row_id), text(row.designation)]))
   const every = (await docs.rows('Subcategory')).map(r => exact(r.row_id))
   const names = async (table: string, column = 'name') => new Map((await docs.rows(table)).map(r => [exact(r.row_id), text(r[column])]))
-  return { docs, model, hand, designations, designationNames, every, grants: await grantRows(base), today, names }
+  return { base, docs, model, hand, designations, designationNames, every, grants: await grantRows(base), today, names }
 }
 
 /** A name to show, with the record it names when there is one. */
@@ -142,7 +144,8 @@ export async function personShadow(world: ShadowWorld, person: string, roles: re
   const withPlaces = []
   for (const role of access.held) withPlaces.push({ ...role, area: await areaOf(world, role, access.mine) })
   const todayPlaces = (await reachOf(docs, person, today, roles)).places
-  const jobNames = [...new Set(jobs.map(j => text(j.job)))]
+  // The old rules' report grants read jobs as reportsGivenTo does (Codex adversarial round 2).
+  const jobNames = await jobsOf(world.base, person, today)
   const { rows, members } = world.grants
   // The old rules (report-eligibility.ts): a filtered report needs a place, a whole-stores one a whole store.
   const opensIn = (keys: string[], places: Place[]) => keys.filter(k => reportShapes.has(k) && offered(reportShapes.get(k)!, places)).sort()

@@ -1,7 +1,7 @@
 // The edges of what a manager's area holds (#1223), on the in-memory stand-in. The main paths run
 // through Your store and Your sections on the real platform.
 import { describe, expect, it } from 'vitest'
-import { areasFor, authorityRows, inArea, jobInArea, mayMove, movableIn, sectionAreaOf, type Area } from './areas.ts'
+import { areasFor, authorityRows, inArea, jobInArea, mayEditOwnSection, mayMove, movableIn, sectionAreaOf, type Area } from './areas.ts'
 import { context, today } from './fake-context.test-support.ts'
 import { ensureStartingRoles } from './switch-over.ts'
 
@@ -75,4 +75,23 @@ describe('who may edit sections when business roles decide', () => {
     tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Store Manager'), site: 'HIL' })
     expect(await sectionAreaOf(ctx, 'sm', section, today)).toBeUndefined()
   })
+
+  // Codex standard round 2: the area is narrowed to the corrected role's reach, not kept whole.
+  it('keeps no store-wide area for a Store Manager corrected to Floor Manager', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Floor Manager') })
+    expect(await sectionAreaOf(ctx, 'sm', section, today)).toBeUndefined()
+  })
+
+  // Codex round 2: Your sections' own changes ask the same permission.
+  it('lets a job change its own section\'s subcategories only with a role that may edit sections, once business roles decide', async () => {
+    const { tables, ctx, roleId } = await store('business_roles')
+    const job = tables['Job Assignment'][0]
+    expect(await mayEditOwnSection(ctx, 'sm', job, today)).toBe(true)
+    tables['dash.role_assignment'].push({ row_id: 'h1', person: 'sm', change: 'Correct', business_role: roleId('Staff') })
+    expect(await mayEditOwnSection(ctx, 'sm', job, today)).toBe(false)
+    tables['dash.access_source'][0].source = 'legacy'
+    expect(await mayEditOwnSection(ctx, 'sm', job, today)).toBe(true)
+  })
 })
+

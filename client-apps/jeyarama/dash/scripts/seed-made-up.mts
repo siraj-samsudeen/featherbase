@@ -344,9 +344,9 @@ ${says(org.sectionPeople, 'sections')}
 Report access (/dash/?view=access), same password:
   access-manager@example.test          Report Access Manager: gives reports and bundles, and sees who has what
   sections-categoryhead@example.test   Team Report Manager: gives reports to her own team only, two of them named Vinod Buyer-Two (#1217)
-Business roles in shadow (#1218): /dash/?view=roles, ?view=explain and ?view=changes, as access-manager@example.test:
+Business roles (#1218, #1277; the old rules decide until a System Manager sets the Dash access source): /dash/?view=roles, ?view=explain and ?view=changes, as access-manager@example.test:
   explain reader-sm (Selvi, Store Manager), reader-buyer (Bina, Category head of Sarees, East), reader-opsexec (Sundar, to Correct),
-  reader-staff1 (Siva, who would lose Dash) and reader-office (Omar, who would gain every store).
+  reader-staff1 (Siva, who would lose Dash) and reader-office (Omar, Head Office: no Dash until a role is given by hand).
 View as (#1222), same password:
   view-as-tester@example.test          View As Tester: sees Dash as any of the people above, for viewing only
   view-as-manager@example.test         Report Access Manager and View As Tester: "What a person sees" offers View as`)
