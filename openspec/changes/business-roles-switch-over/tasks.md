@@ -11,3 +11,4 @@
 - [x] 2.4 Give Old Grants To Business Roles and Add The Starting Roles, each only when asked, logged and idempotent; the switch starts on the old rules (tests)
 - [x] 2.5 Dash 0.13.30's version step and manifest; platform tests of the upgrade, each step, the switch and the switch back
 - [x] 2.6 Business Roles page: what decides now, the Give Old Grants button, the log; Report access gives to a business role; Needs A Dash Role on the comparison
+- [x] 2.7 The starting roles as the owner reviewed them (18-Nov-2026); Edit Section names and subcategories enforced under business roles (tests)

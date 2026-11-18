@@ -2,8 +2,9 @@
 // Or Lose Access. #1277: the new side of the comparison is businessAccess (business-access.ts), the very code
 // that decides Dash access when business roles are live, so the comparison predicts exactly what happens.
 // Read as the app, for Report Access Managers and System Managers only.
-import { appsOf, decisionReports, differences, permissionSentence, titleList, SOURCE_WORDS, areaPrefixes,
+import { appsOf, decisionReports, differences, permissionSentence, titleList, SOURCE_WORDS,
   type HeldRole, type Model, type Side, type Spot, type TitleInUse } from './business-roles.ts'
+import { collapseCodes } from './reach-prefixes.ts'
 import { reportsReaching, type AccessRow, type BundleMember } from './report-access.ts'
 import { ACCESS, MEMBER, all, managesAccess, personNames, whoIs, type AccessContext } from './report-access-server.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
@@ -205,7 +206,7 @@ async function areaOf(world: ShadowWorld, held: HeldRole & { places: Place[] }, 
   const whole = Object.values(byStore).includes(null)
   const plants = await world.docs.list('Plant', { fields: [], filters: [['row_id', 'in', Object.keys(byStore)]], limit_page_length: 10_000 })
   // A job with no site or section names nothing there: its part is left out rather than shown blank.
-  return { parts: parts.filter(p => p.name), stores: new Set(plants.map(p => exact(p.site))).size, subcategories: whole ? null : new Set(codes).size, prefixes: whole ? [] : areaPrefixes(codes, world.every) }
+  return { parts: parts.filter(p => p.name), stores: new Set(plants.map(p => exact(p.site))).size, subcategories: whole ? null : new Set(codes).size, prefixes: whole ? [] : collapseCodes(codes, world.every) }
 }
 
 // ---------- reads and actions ----------

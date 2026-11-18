@@ -3,6 +3,7 @@
 // knows any one Dive. A Dive applies what it is sent, so a filter must never widen the reader's
 // reach: when a shape can't express a reader's reach, the answer is a refusal, never a wider view.
 import type { Place } from './provider.ts'
+import { collapseCodes } from './reach-prefixes.ts'
 
 /** How a Dive's filters are shaped: `Report.filter_shape`'s choices. */
 export type FilterShape = 'One store and subcategories' | 'Whole stores' | 'Stores and subcategories' | 'No filter'
@@ -35,6 +36,8 @@ export interface Opening {
   appOrigin: string | null
   /** #1159: the month to open on, for a Dive with its own pickers; this month when none. */
   month?: 'this' | 'last'
+  /** #1269: every Subcategory code there is, so `reach` sends wholly held code prefixes; absent, the codes themselves. */
+  everyCode?: readonly string[]
 }
 
 export type Refusal = 'not_your_store' | 'whole_stores_only' | 'report_not_set_up'
@@ -57,11 +60,14 @@ function reachByStore(places: readonly Place[]): Map<string, Set<string> | null>
 
 const sorted = (values: Iterable<string>) => [...values].sort()
 
-/** Each store's reach as a Dive reads it: null for the whole store, else its subcategories, in order. */
-function reachState(reach: Map<string, Set<string> | null>) {
+/**
+ * Each store's reach as a Dive reads it: null for the whole store, else its subcategories in order,
+ * as the shortest code prefixes wholly held when the hierarchy is known (#1269; the Dive matches with starts_with).
+ */
+function reachState(reach: Map<string, Set<string> | null>, everyCode: readonly string[] | undefined) {
   return Object.fromEntries(sorted(reach.keys()).map(store => {
     const held = reach.get(store)!
-    return [store, held === null ? null : sorted(held)]
+    return [store, held === null ? null : everyCode ? collapseCodes(held, everyCode) : sorted(held)]
   }))
 }
 
@@ -72,7 +78,7 @@ function reachState(reach: Map<string, Set<string> | null>) {
  */
 function pickerFilters(report: ReportRecord, reach: Map<string, Set<string> | null>, opening: Opening): Filters {
   if (!reach.size) return { refused: 'not_your_store' }
-  return { state: { reach: reachState(reach), ...(opening.store !== undefined && reach.has(opening.store) ? { store: opening.store } : {}),
+  return { state: { reach: reachState(reach, opening.everyCode), ...(opening.store !== undefined && reach.has(opening.store) ? { store: opening.store } : {}),
     month: opening.month ?? 'this', ...(report.ready_signal && opening.appOrigin ? { app_origin: opening.appOrigin } : {}) } }
 }
 
@@ -99,7 +105,7 @@ export function diveFilters(report: ReportRecord, places: readonly Place[], open
     }
     case 'Stores and subcategories': {
       if (!report.store_key) return { refused: 'report_not_set_up' }
-      state[report.store_key] = reachState(reach)
+      state[report.store_key] = reachState(reach, opening.everyCode)
       break
     }
     case 'No filter':

@@ -38,7 +38,7 @@ describe('business roles in shadow', () => {
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'business_roles_live'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'reach_prefixes', 'business_roles_live'])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()

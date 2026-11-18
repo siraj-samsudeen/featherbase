@@ -323,8 +323,10 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['people_describe', '0.13.26', '0.13.27', 0],
       // #1218: business roles in shadow, four Tables that decide no one's access yet
       ['business_roles_shadow', '0.13.27', '0.13.28', 4],
+      // #1269: a Dive's reach goes as wholly held code prefixes; no Table change, and no new read.
+      ['reach_prefixes', '0.13.28', '0.13.29', 0],
       // #1277: business roles decide Dash access: four Tables marked as deciding scope, grants to business roles, the switch and its log
-      ['business_roles_live', '0.13.28', '0.13.30', 8],
+      ['business_roles_live', '0.13.29', '0.13.30', 8],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')

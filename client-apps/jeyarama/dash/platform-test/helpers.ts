@@ -55,6 +55,11 @@ type Grant = { grant?: { role: string }; withdraw?: { role: string } }
 export const withoutTeamManager = <T extends Grant | { create?: string }>(list: T[]) =>
   list.filter(entry => ('create' in entry ? entry.create : ((entry as Grant).grant ?? (entry as Grant).withdraw)?.role) !== TEAM_MANAGER)
 
+/** #1269's 0.13.29 taken out of a manifest: it changes no Table, role or read. */
+export function revertReachPrefixes(manifest: { migrations: { id: string }[] }) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'reach_prefixes', fromVersion: '0.13.28', operations: [] })
+}
+
 /** #1218's 0.13.28 taken out of a manifest: no business role Tables, their grants, or the reads of HR titles. Its reads and
  *  actions stay declared: the earlier version shares this build's server module. */
 export const SHADOW_TABLES = ['dash.business_role', 'dash.business_role_permission', 'dash.title_map', 'dash.role_assignment']
@@ -67,7 +72,7 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[] } }
 /** #1277's 0.13.30 taken out of a manifest: business roles decide nothing, no switch. */
 export function revertBusinessRolesLive(manifest: Revertable) {
-  expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_live', fromVersion: '0.13.28' })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_live', fromVersion: '0.13.29' })
   if (manifest.tables) {
     manifest.tables = manifest.tables.filter(t => !LIVE_TABLES.includes(t.name))
     for (const table of manifest.tables) {
@@ -92,8 +97,10 @@ export function revertBusinessRolesLive(manifest: Revertable) {
     provider.optionalTables = provider.optionalTables?.filter(t => t !== 'Designation')
   }
 }
+/** #1277's 0.13.30, then #1269's 0.13.29 under it, then #1218's 0.13.28. */
 export function revertBusinessRoles(manifest: Revertable) {
   revertBusinessRolesLive(manifest)
+  revertReachPrefixes(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_shadow', fromVersion: '0.13.27' })
   if (manifest.tables) manifest.tables = manifest.tables.filter(t => !SHADOW_TABLES.includes(t.name))
   if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !SHADOW_TABLES.includes(p.table))
@@ -139,7 +146,7 @@ export const withoutViewAsTester = <T extends Grant | { create?: string }>(list:
  */
 export function revertViewAs(manifest: { roles: string[]; permissions: { role: string }[]; migrations: { id: string }[]; viewAs?: unknown }) {
   // #1254's 0.13.23 to 0.13.25 change no Table, role or grant; they come off first.
-  // #1219's 0.13.26 sits on top of #1254's steps, #1267's 0.13.27 on it and #1218's 0.13.28 on that; they come off first.
+  // #1219's 0.13.26 sits on top of #1254's steps, #1267's 0.13.27 on it, #1218's 0.13.28 on that, #1269's 0.13.29 and #1277's 0.13.30 last; they come off first.
   revertBusinessRoles(manifest as never)
   revertMdeReview(manifest)
   expect(manifest.migrations.pop()).toMatchObject({ id: 'deciders_read_together', fromVersion: '0.13.24', operations: [] })

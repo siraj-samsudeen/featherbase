@@ -1,6 +1,6 @@
 // #1218: business roles in shadow (option A). Made-up roles, titles and people.
 import { describe, expect, it } from 'vitest'
-import { fit, appsOf, areaPrefixes, decisionReports, differences, permissionSentence, rolesOf, shadowReceiver, titleList, opensDash, type BusinessRole, type Permission, type Spot, type TitleRule } from './business-roles'
+import { fit, appsOf, decisionReports, differences, permissionSentence, rolesOf, shadowReceiver, titleList, opensDash, type BusinessRole, type Permission, type Spot, type TitleRule } from './business-roles'
 
 const ON = '2026-11-17'
 const ROLES: BusinessRole[] = [
@@ -296,21 +296,6 @@ describe('today against the new model', () => {
 
   it('finds different subcategories in the same store', () => {
     expect(differences(side({ places: { '9901': ['010101001'] } }), side({ places: { '9901': ['010101001', '010101002'] } }), []).kind).toBe('stores')
-  })
-})
-
-describe('a merchandise area as code prefixes', () => {
-  const every = ['010101001', '010101002', '010102001', '020101001']
-  it('sends a category wholly held as its prefix', () => {
-    expect(areaPrefixes(['010101001', '010101002', '010102001'], every)).toEqual(['01'])
-  })
-
-  it('keeps a code the hierarchy does not know as itself', () => {
-    expect(areaPrefixes(['99'], every)).toEqual(['99'])
-  })
-
-  it('keeps a subcategory whose siblings are not held as itself', () => {
-    expect(areaPrefixes(['010101001'], every)).toEqual(['010101001'])
   })
 })
 

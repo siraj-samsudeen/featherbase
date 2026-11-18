@@ -101,6 +101,27 @@ The starting business roles and their Title Map rows SHALL be added only when Ad
 - **WHEN** the owner edits Store Manager and Add The Starting Roles is clicked again
 - **THEN** nothing is added and Store Manager is unchanged
 
+### Requirement: The starting roles as the owner reviewed them
+The starting roles SHALL be as the owner reviewed them on 18-Nov-2026: every manager role (Team Leader, Floor Manager, Department Manager, Store Manager, Cluster Manager, Category Head, Leadership) sees its team's tickets, while Staff, Buyer and Head Office raise their own; Head Office has no Dash permission; the master data role is named Master Data Manager. External people, such as consultants, get no role from a title and are given roles by hand.
+
+#### Scenario: Head office staff
+
+- **WHEN** Omar's HR title maps to Head Office and business roles decide
+- **THEN** Dash does not open for him until a role with Dash is given to him by hand, or a report is given to him
+
+#### Scenario: A consultant
+
+- **WHEN** a System Manager also gives Store Manager at Lakeside to a consultant on no staff list
+- **THEN** Explain shows Store Manager at Lakeside, also given by hand, and with a Dash role the consultant reaches Lakeside
+
+### Requirement: Editing sections follows business roles when they decide
+The permission Edit Section names and subcategories SHALL mean editing a section's name and which subcategories sit under it, within the role's area. When business roles decide, a manager edits a section only where a role of theirs holding that permission comes from the very job whose store, floor, department or sections hold it; a role placed at another store gives no area at the job's own store. Under the old rules, the jobs alone decide.
+
+#### Scenario: A store manager corrected to Staff
+
+- **WHEN** Sundar runs Lakeside by his job, business roles decide, and his role is corrected by hand to Staff
+- **THEN** he can no longer change Lakeside's sections
+
 ## REMOVED Requirements
 
 ### Requirement: The shadow model changes no one's access
