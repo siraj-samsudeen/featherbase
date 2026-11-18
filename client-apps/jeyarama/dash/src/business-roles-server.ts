@@ -590,7 +590,7 @@ const PLAIN_AREAS = new Set(['Whole company', 'No area yet'])
  * someone who may read every one), at most 10, and the plain words above. Text naming a record without saying which
  * (an unresolved area's message) is left out (Codex adversarial, round 3).
  */
-function areaParts(parts: Part[]): { detailParts?: { name: string; record?: { table: string; row: string } }[] } {
+export function areaParts(parts: Part[]): { detailParts?: { name: string; record?: { table: string; row: string } }[] } {
   const shown = parts.flatMap(p => p.table && p.id ? [{ name: clip(p.name, 80), record: { table: p.table, row: p.id } }]
     : PLAIN_AREAS.has(p.name) ? [{ name: p.name }] : []).slice(0, 10)
   return shown.length ? { detailParts: shown } : {}
@@ -651,7 +651,7 @@ export async function whyAccess(context: AccessContext) {
   ], box => box, 'can')
   const shown = new Set(['person', ...[...roleBoxes, ...appBoxes, ...can].map(b => String(b.id))])
   // A report comes through the Dash box its role reaches (else straight from the role).
-  const dashOf = (h: { id: string; role: string | null }) => apps.find(a => (h.role === null ? a.id === 'direct:app:Dash' : a.app === 'Dash' && a.from.some(f => f.id === h.id)))?.id
+  const dashOf = (h: { id: string }) => apps.find(a => a.app === 'Dash' && a.from.some(f => f.id === h.id))?.id
   const edges = ([
     ...holders.map(h => ['person', h.id]),
     ...apps.flatMap(a => a.from.map(h => [h.id, a.id])),

@@ -80,6 +80,10 @@ describe('business roles in shadow', () => {
       const explained = (await manager.post<{ result: { roles: { name: string; source: string }[] } }>('/api/app_reads/dash/explain_person', { payload: { person: reader.user } })).result
       expect(explained.roles.map(r => [r.name, r.source])).toEqual([['Store Manager', 'Corrected by hand'], ['Owner Director', 'Also given by hand']])
       // #1277: Owner Director views every report; the whole-company comparison, with everyone's roles read at once, agrees.
+      // #1282: the platform Map's Why, through Dash's own reads: offered to this manager, and the chain from the same reasoning.
+      expect((await manager.post<{ result: unknown }>('/api/app_reads/dash/why_access_offered', { payload: { table: 'Person', row: reader.user } })).result).toBe(true)
+      const why = (await manager.post<{ result: { version: number; columns: { heading: string }[] } }>('/api/app_reads/dash/why_access', { payload: { table: 'Person', row: reader.user } })).result
+      expect([why.version, why.columns[0]!.heading]).toEqual([1, 'Person'])
       expect((explained as unknown as { reports: { key: string; why: string[] }[] }).reports).toEqual([{ key: 'open', name: 'Company notices', why: ['Every report, through Owner Director'], roles: [expect.any(String)], direct: false }])
       const changes = (await manager.post<{ result: { people: number; changed: number; groups: { people: { person: string }[] }[] } }>('/api/app_reads/dash/access_changes', { payload: {} })).result
       expect([changes.people, changes.groups.flatMap(g => g.people).map(p => p.person)]).toEqual([1, []])
