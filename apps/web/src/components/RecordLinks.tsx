@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { tableHref, type ListFilter } from 'shared'
+import { GroupChip } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import { useMeta } from '../lib/meta'
 import { useNavigation } from '../lib/navigation'
@@ -83,8 +84,15 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }
   const plans = useGroupPlans(table, name, all)
   const rank = (g: BacklinkGroup) => (plans.get(g.key)?.tick ? 0 : g.count ? 1 : 2)
   const groups = [...all].sort((a, b) => rank(a) - rank(b))
+  // C4 (verifier): empty groups are one compact row of greyed chips; opening one offers + New.
+  const sections = groups.filter((g) => rank(g) < 2)
+  const empties = groups.filter((g) => rank(g) === 2)
+  const [openEmpty, setOpenEmpty] = useState<string | null>(null)
+  const chosenEmpty = empties.find((g) => g.key === openEmpty)
   useEffect(() => {
     if (!focusGroup || !groups.length) return
+    // An empty group's chip opens, so its + New is at hand.
+    if (empties.some((g) => g.key === focusGroup)) setOpenEmpty(focusGroup)
     const el = document.getElementById(linksSectionId({ key: focusGroup }))
     el?.scrollIntoView?.({ block: 'start' })
     el?.focus({ preventScroll: true })
@@ -101,11 +109,24 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }
       <div className={pref.fields ? 'grid gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]' : 'grid gap-6'}>
         {pref.fields && (meta.data && values ? <div data-testid="links-fields"><PaneFields meta={meta.data} row={values} onOpen={open} stacked={false} /></div> : <span />)}
         <div className="flex min-w-0 flex-col gap-6">
-          {groups.map((g) => (
+          {sections.map((g) => (
             <div key={g.key} id={linksSectionId(g)} tabIndex={-1} className="scroll-mt-4 rounded-lg focus:outline-none focus-visible:outline-2 focus-visible:outline-focus">
               <LinkedRowsGroup table={table} record={name} group={g} onOpen={open} showAllHref={listHref(g)} editable />
             </div>
           ))}
+          {empties.length > 0 && (
+            <section aria-label="Pointed At By" data-testid="links-empty-groups" className="flex min-w-0 flex-col gap-2">
+              <h4 className="text-sm font-semibold text-ink">Pointed At By</h4>
+              <div className="flex flex-wrap gap-2">
+                {empties.map((g) => (
+                  <span key={g.key} id={linksSectionId(g)} tabIndex={-1} className="scroll-mt-4 rounded-full focus:outline-none focus-visible:outline-2 focus-visible:outline-focus">
+                    <GroupChip label={g.label} count={0} selected={openEmpty === g.key} onSelect={() => setOpenEmpty(openEmpty === g.key ? null : g.key)} />
+                  </span>
+                ))}
+              </div>
+              {chosenEmpty && <LinkedRowsGroup key={chosenEmpty.key} table={table} record={name} group={chosenEmpty} onOpen={open} showAllHref={listHref(chosenEmpty)} heading={false} />}
+            </section>
+          )}
           {cnx.isPending && <p className="text-sm text-ink-subtle">Loading…</p>}
           {cnx.data && !groups.length && <p className="text-sm text-ink-muted">No rows point at it</p>}
         </div>

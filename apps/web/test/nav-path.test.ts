@@ -134,10 +134,16 @@ describe('encodePath / decodePath', () => {
     expect(decodePath(JSON.stringify({ steps: [step], at: 0 }))).toBeNull()
   })
 
-  it('#1273: a step whose Links layout is not sections or the tree is refused; Tree and Collaboration tabs are gone', () => {
-    for (const step of [{ screen: 'row', table: 'Site', row: 'ENK', view: 'links', linksAs: 'grid' },
-      { screen: 'row', table: 'Site', row: 'ENK', view: 'collaboration' }])
-      expect(decodePath(JSON.stringify({ steps: [step], at: 0 }))).toBeNull()
+  it('#1273: a step whose Links layout is not sections or the tree is refused', () => {
+    const step = { screen: 'row', table: 'Site', row: 'ENK', view: 'links', linksAs: 'grid' }
+    expect(decodePath(JSON.stringify({ steps: [step], at: 0 }))).toBeNull()
+  })
+
+  it('#1273: a walk saved before Links keeps its place: Collaboration opens Activity, a row page\'s Tree opens Links as the tree', () => {
+    const at = (step: object) => decodePath(JSON.stringify({ steps: [step], at: 0 }))?.steps[0]
+    expect(at({ screen: 'row', table: 'Site', row: 'ENK', view: 'collaboration' })).toMatchObject({ view: 'activity' })
+    expect(at({ screen: 'row', table: 'Site', row: 'ENK', view: 'tree' })).toMatchObject({ view: 'links', linksAs: 'tree' })
+    expect(at({ screen: 'list', table: 'Site', view: 'tree' })).toMatchObject({ view: 'tree' })
   })
 
   it("round-trips a group's relationship filter through a sub-table", () => {

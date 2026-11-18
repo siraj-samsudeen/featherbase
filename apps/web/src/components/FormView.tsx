@@ -824,7 +824,8 @@ export function FormView({
           )}
         </div>
       </div>
-      {!isNew && !personPage && <RowConnections table={table} row={name} values={doc.data}
+      {/* #1273 (verifier): a Person's page shows its link chips under its header too, to jump from (D3). */}
+      {!isNew && <RowConnections table={table} row={name} values={doc.data}
         onGroup={(key) => { setArea('Links'); setJumpTo(key) }} />}
       {storage && (
         <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>

@@ -174,8 +174,14 @@ function readStep(v: unknown): NavStep | null {
     step.pane = pane
   }
   if (v.view !== undefined) {
-    if (!oneOf(v.view, ['form', 'links', 'map', 'activity', 'tree'] as const)) return null
-    step.view = v.view
+    // #1273: a walk saved before Links keeps its place: Collaboration is now in Activity,
+    // and a row page's Tree is the Links tab as the tree.
+    const view = v.view === 'collaboration' ? 'activity' : v.view
+    if (!oneOf(view, ['form', 'links', 'map', 'activity', 'tree'] as const)) return null
+    if (view === 'tree' && v.screen === 'row') {
+      step.view = 'links'
+      if (v.linksAs === undefined) step.linksAs = 'tree'
+    } else step.view = view
   }
   if (v.linksAs !== undefined) {
     if (!oneOf(v.linksAs, LINKS_LAYOUTS)) return null

@@ -13,7 +13,7 @@ import { rowHref, tableHref } from 'shared'
 import { sql } from 'server/src/db'
 import { tableRelation } from 'server/src/table-engine'
 import { createUserWithRole } from 'server/test/fixtures'
-import { newRowHref, pluralLabel, startingValues } from '../src/components/LinkTickList'
+import { newRowHref, startingValues } from '../src/components/LinkTickList'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect, renderApp } from './pg-test'
 import { SITE, seedSites, type Admin } from './relational-fixture'
@@ -78,7 +78,8 @@ async function openLinks(as: Admin, table = MEMBER, row = 'M1') {
   await screen.findByTestId('record-links')
   return view
 }
-const roles = () => screen.findByRole('region', { name: 'Lt Roles' })
+// The tick list bears its group's name; until its plan is read the group shows as a list.
+const roles = () => screen.findByTestId('tick-list')
 const lineOf = async (name: string) => {
   const list = await roles()
   return waitFor(() => within(list).getAllByTestId('tick-line').find((l) => within(l).queryByText(name))
@@ -167,7 +168,7 @@ describe('relational-navigation', () => {
       fireEvent.click(within(form).getByRole('button', { name: 'Add' }))
     })
     await step('the member holds Team Leader, given by hand', async () => {
-      await waitFor(() => expect(within(screen.getByRole('region', { name: 'Lt Roles' })).getByTestId('tick-count')).toHaveTextContent('3 of 7'))
+      await waitFor(() => expect(within(screen.getByTestId('tick-list')).getByTestId('tick-count')).toHaveTextContent('3 of 7'))
       const line = await lineOf('Team Leader')
       expect(line.dataset.ticked).toBe('true')
       await waitFor(() => expect(within(line).getByTestId('source-chip')).toHaveTextContent('given by hand'))
@@ -187,7 +188,7 @@ describe('relational-navigation', () => {
       fireEvent.click(untick)
     })
     await step('the member no longer holds Buyer, and the page says it is saved', async () => {
-      await waitFor(() => expect(within(screen.getByRole('region', { name: 'Lt Roles' })).getByTestId('tick-count')).toHaveTextContent('1 of 7'))
+      await waitFor(() => expect(within(screen.getByTestId('tick-list')).getByTestId('tick-count')).toHaveTextContent('1 of 7'))
       expect((await heldBy(admin, 'M1')).map((r) => r.role)).toEqual(['R01'])
       expect(screen.getByTestId('tick-status')).toHaveTextContent('✓ Saved')
       expect(screen.getByTestId('save-state')).toHaveTextContent('Saved')
@@ -198,12 +199,13 @@ describe('relational-navigation', () => {
     await step('a member has no notes, and the user may add notes', () => seed(admin))
     await step("the user opens the member's Links tab", () => openLinks(admin))
     await step('the notes group shows greyed with + New', async () => {
-      const notes = await screen.findByRole('region', { name: NOTE })
-      expect(within(notes).getByRole('heading')).toHaveAttribute('data-empty', 'true')
-      expect(await within(notes).findByRole('link', { name: '+ New' })).toBeInTheDocument()
+      // Empty groups are one compact row of greyed chips; opening one offers + New.
+      const empty = await screen.findByRole('region', { name: 'Pointed At By' })
+      fireEvent.click(await within(empty).findByRole('button', { name: `${NOTE} 0` }))
+      expect(await within(empty).findByRole('link', { name: '+ New' })).toBeInTheDocument()
     })
     await step('+ New opens a new note already linked to the member', async () => {
-      const href = within(screen.getByRole('region', { name: NOTE })).getByRole('link', { name: '+ New' }).getAttribute('href')!
+      const href = within(screen.getByRole('region', { name: 'Pointed At By' })).getByRole('link', { name: '+ New' }).getAttribute('href')!
       const url = new URL(href, 'http://x')
       expect(url.pathname).toBe(`${tableHref(NOTE)}/new`)
       expect(JSON.parse(url.searchParams.get('prefill')!)).toEqual({ member: 'M1' })
@@ -222,7 +224,7 @@ describe('relational-navigation', () => {
       await openLinks(admin)
     })
     await step("the roles' header no longer offers it", async () => {
-      await waitFor(() => expect(within(screen.getByRole('region', { name: 'Lt Roles' })).getByTestId('tick-count')).toHaveTextContent('2 of 7'))
+      await waitFor(() => expect(within(screen.getByTestId('tick-list')).getByTestId('tick-count')).toHaveTextContent('2 of 7'))
       expect(within(await roles()).queryByRole('link', { name: 'Open as grid' })).not.toBeInTheDocument()
     })
   })
@@ -259,7 +261,8 @@ test('the record panel puts a tick list beside the fields, and the other groups 
   const link = await screen.findByRole('link', { name: 'Mira Member' })
   fireEvent.click(within(link.closest('tr')!).getAllByRole('cell').at(-1)!)
   const panel = await screen.findByRole('complementary', { name: 'Mira Member · M1' })
-  const ticks = await within(panel).findByRole('region', { name: 'Lt Roles' })
+  const ticks = await within(panel).findByTestId('tick-list')
+  expect(ticks).toHaveAttribute('aria-label', GIVEN)
   await waitFor(() => expect(within(ticks).getByTestId('tick-count')).toHaveTextContent('2 of 7'))
   const pointed = within(panel).getByRole('heading', { name: 'Pointed At By' }).parentElement!
   expect(await within(pointed).findByRole('button', { name: `${NOTE} 0` })).toBeInTheDocument()
@@ -318,6 +321,8 @@ test('the area is picked from the link Table\'s other link, and saved with the r
   fireEvent.focus(box)
   fireEvent.change(box, { target: { value: 'Hill' } })
   const options = await screen.findByTestId('link-options-place')
+  // Pick-only: no new Place is offered from here.
+  expect(within(options).queryByTestId('link-create-new')).not.toBeInTheDocument()
   fireEvent.mouseDown(await within(options).findByText(/Hill Road Store/))
   fireEvent.click(within(form).getByRole('button', { name: 'Done' }))
   await waitFor(() => expect(within(form).getByTestId('area-pick')).toHaveTextContent('Hill Road Store ▸'))
@@ -337,6 +342,19 @@ test("someone who may delete only their own rows cannot untick another person's 
   await openLinks(clerk)
   const line = await lineOf('Buyer')
   await waitFor(() => expect(within(line).getByRole('button', { name: 'Untick Buyer' })).toBeDisabled())
+  // Locked and grey, with why on hover: not a faded blue tick.
+  const box = within(line).getByRole('button', { name: 'Untick Buyer' })
+  await waitFor(() => expect(box).toHaveAttribute('title', 'You may not remove this one'))
+  expect(box).toHaveClass('bg-subtle')
+  expect(box).not.toHaveClass('bg-action')
+})
+
+test('a feed row on a Table with no correction path says where it changes, and offers no Correct', async ({ admin }) => {
+  await seed(admin)
+  await openLinks(admin)
+  const line = await lineOf('Floor Lead')
+  await waitFor(() => expect(within(line).getByTestId('tick-locked')).toHaveAttribute('title', 'Comes from HR: change it there'))
+  expect(within(line).queryByRole('link', { name: 'Correct' })).not.toBeInTheDocument()
 })
 
 test('Correct fills its address from a read-only column of the row', async ({ admin }) => {
@@ -396,11 +414,6 @@ test("a ticked name opens its record in the panel; View ▾ hides the fields bes
   await waitFor(() => expect(screen.queryByTestId('links-fields')).not.toBeInTheDocument())
 })
 
-test('a heading over many reads in the plural', () => {
-  expect(pluralLabel('Business Role')).toBe('Business Roles')
-  expect(pluralLabel('Category')).toBe('Categories')
-  expect(pluralLabel('Status')).toBe('Status')
-})
 
 test('a group through a sub-table offers no + New: there is no column of its own to link back', () => {
   const group = { key: 'k', label: 'Lines', count: 0, connection: { table: 'Lt Line', column: 'item', via: 'Lt Order Line', count: 0, filters: [] } }
@@ -434,4 +447,17 @@ test('a new link starts with each field as it would be saved: defaults typed, a 
   const col = (column_name: string, column_type: string, default_value: string | null) => ({ column_name, column_type, default_value }) as never
   expect(startingValues([col('confirmed', 'Check', '1'), col('flag', 'Check', null), col('level', 'Choice', 'Reader'),
     col('weight', 'Int', '2'), col('ends_on', 'Date', 'Today'), col('note', 'Data', '')])).toEqual({ confirmed: true, flag: false, level: 'Reader', weight: 2 })
+})
+
+test("a Person's page shows its link chips under its header, and a chip jumps to its section", async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', { name: 'Lt Person Note', id_pattern: 'hash', title_column: 'note_text',
+    columns: [{ column_name: 'note_text', column_type: 'Data', label: 'Note' }, { column_name: 'person', column_type: 'Reference', reference_table: 'Person', label: 'Person' }] })
+  await renderApp(rowHref('Person', admin.user!), admin)
+  const chips = await screen.findByRole('region', { name: 'Connections' })
+  fireEvent.click(await within(chips).findByTestId('connections-show-empty'))
+  fireEvent.click(await within(chips).findByRole('button', { name: /^Lt Person Note\s*0$/ }))
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
+  const empty = await screen.findByRole('region', { name: 'Pointed At By' })
+  expect(await within(empty).findByRole('link', { name: '+ New' })).toBeInTheDocument()
 })

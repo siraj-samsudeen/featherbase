@@ -40,8 +40,9 @@ const key = (r: RecordRef) => `${r.table}\u0000${r.row_id}`
  * most two: a section subcategory seen from its site reads "Sarees › Silk sarees".
  */
 export function farSides(meta: TableMeta, row: Row, opts: { backLink?: string; record: RecordRef; own: Iterable<RecordRef> }): FarSide[] {
-  // Only a link table reads through: a section keeps its name, never its floor.
-  if (!isLinkTable(meta)) return []
+  // Only a Table whose rows only link reads through: a section keeps its name, never its
+  // floor. #1273: a Table with no title is one too, as the tick list treats it.
+  if (!linksOnly(meta)) return []
   const skip = new Set([opts.record, ...opts.own].map(key))
   const sides: FarSide[] = []
   for (const c of readableLinks(meta)) {
@@ -56,8 +57,7 @@ export function farSides(meta: TableMeta, row: Row, opts: { backLink?: string; r
 }
 
 /** A Table whose rows only link others (#1273): its title is its own id, or it
- *  has no title at all. Such a group can tick its far side; only a link Table's
- *  rows are also read by it (farSides). */
+ *  has no title at all. Its rows read by their far side, and its group can tick it. */
 export function linksOnly(meta: TableMeta): boolean {
   return isLinkTable(meta) || !titleListColumn(meta)
 }

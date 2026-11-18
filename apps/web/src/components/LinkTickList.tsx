@@ -109,13 +109,6 @@ export function useGroupPlan(table: string, record: string, group: BacklinkGroup
   return useGroupPlans(table, record, [group]).get(group.key) ?? LOADING
 }
 
-/** "Business Role" as a heading over many: "Business Roles". */
-export function pluralLabel(label: string): string {
-  if (/s$/i.test(label)) return label
-  if (/[^aeiou]y$/i.test(label)) return `${label.slice(0, -1)}ies`
-  return `${label}s`
-}
-
 /** #1273: a record page tells its one save state when a tick saves (C9). */
 export const LinkSaveContext = createContext<{ saved: () => void } | null>(null)
 
@@ -167,7 +160,8 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
   const [error, setError] = useState<string | null>(null)
   const lines = tickLines(choices, data, column.column_name)
   const total = lines.ticked.length + lines.unticked.length
-  const farLabel = pluralLabel(tableLabel(farTable, farMeta))
+  // The section bears its chip's name, so a chip and its section read the same (verifier).
+  const farLabel = group.label
 
   const refresh = async () => {
     await Promise.all([
@@ -280,11 +274,15 @@ function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, s
     <li className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-subtle" data-testid="tick-line" data-ticked="true">
       {/* A feed's link is locked: it changes only through Correct (C7). Undecided while its source loads. */}
       {fromFeed || !sourceKnown
-        ? <span className={cx(BOX, 'cursor-not-allowed border-caution bg-caution-tint text-caution')} title={fromFeed ? `From ${source}: change it with Correct` : undefined}
+        ? <span className={cx(BOX, 'cursor-not-allowed border-caution bg-caution-tint text-caution')}
+            // With no correction path, the feed itself is where it changes (verifier).
+            title={fromFeed ? (correct ? `From ${source}: change it with Correct` : `Comes from ${source}: change it there`) : undefined}
             role="img" aria-label={`${title}, from ${source ?? 'a feed'}, locked`} data-testid="tick-locked">✓</span>
         : <button type="button" onClick={onUntick} disabled={busy || !mayUntick} aria-label={`Untick ${title}`} data-testid="tick-box"
             title={caps.data && !mayUntick ? 'You may not remove this one' : undefined}
-            className={cx(BOX, 'cursor-pointer border-action bg-action text-surface focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-60')}>✓</button>}
+            // A tick the viewer may not remove reads locked and grey, not a faded blue (verifier).
+            className={cx(BOX, 'focus-visible:outline-2 focus-visible:outline-focus disabled:opacity-60',
+              caps.data && !mayUntick ? 'cursor-not-allowed border-border-control bg-subtle text-ink-muted disabled:opacity-100' : 'cursor-pointer border-action bg-action text-surface')}>✓</button>}
       <span className="flex min-w-0 flex-col">
         {name.state === 'unreadable'
           ? <RecordLink table={farTable} rowId={choice.id} name={UNSEEN_ROW} canOpen={false} />
@@ -393,8 +391,8 @@ function AreaPicker({ columns, values, set }: { columns: ColumnDef[]; values: Ro
       {picking && columns.map((c) => (
         <span key={c.column_name} className="inline-flex items-center gap-1" data-testid="area-picker">
           {columns.length > 1 && <span className="text-ink-muted">{c.label ?? c.column_name}</span>}
-          <span className="w-44">
-            <LinkControl field={c} value={values[c.column_name] ?? ''} onChange={(v) => set(c.column_name, v)}
+          <span className="w-60 min-w-0">
+            <LinkControl field={c} value={values[c.column_name] ?? ''} onChange={(v) => set(c.column_name, v)} pickOnly
               className={FLD} common={{ 'aria-label': c.label ?? c.column_name }} />
           </span>
         </span>
