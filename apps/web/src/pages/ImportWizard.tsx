@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { FileDropZone } from '../components/FileDropZone'
 import { tableHref } from 'shared'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
@@ -113,11 +114,9 @@ export function ImportWizard() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const search = useSearch({ strict: false }) as { table?: string }
-  const fileInput = useRef<HTMLInputElement>(null)
   const [fileName, setFileName] = useState<string | null>(null)
   const [sheets, setSheets] = useState<ParsedSheet[]>([])
   const [plans, setPlans] = useState<SheetPlan[]>([])
-  const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -1171,25 +1170,12 @@ export function ImportWizard() {
     <div data-testid="import-wizard" className="max-w-4xl">
       <h1 className="mb-4 text-xl font-semibold text-ink">{adminPageTitle('import')}</h1>
 
-      <div
-        data-testid="iw-dropzone"
-        onClick={() => fileInput.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault()
-          setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault()
-          setDragging(false)
-          const file = e.dataTransfer.files[0]
-          if (file) void loadFile(file)
-        }}
-        className={`mb-4 cursor-pointer rounded-md border-2 border-dashed px-4 py-6 text-center text-sm transition-colors ${
-          dragging
-            ? 'border-action bg-action-tint text-action'
-            : 'border-border-control text-ink-muted hover:border-action'
-        }`}
+      <FileDropZone
+        testId="iw-dropzone"
+        inputTestId="iw-file-input"
+        label="Choose a CSV or Excel file to import"
+        onFile={(file) => void loadFile(file)}
+        className="px-4 py-6"
       >
         {fileName && needsFile ? (
           <span data-testid="iw-file-name">
@@ -1202,18 +1188,7 @@ export function ImportWizard() {
         ) : (
           <>Drag & drop a CSV or Excel workbook here — every sheet becomes an import — or click to browse</>
         )}
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".csv,.tsv,.xlsx,.xlsm,.xls"
-          data-testid="iw-file-input"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) void loadFile(file)
-          }}
-        />
-      </div>
+      </FileDropZone>
 
       {/* #204: what was decided outlived the page; the rows did not. Say
           exactly what is being held and what is needed, because a wizard that

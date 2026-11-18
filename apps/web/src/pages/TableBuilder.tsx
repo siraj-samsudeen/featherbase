@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { FileDropZone } from '../components/FileDropZone'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { DEFAULT_ID_PATTERN, LIST_COLUMNS_ON_CREATE, coerceRows, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
@@ -108,7 +109,6 @@ export function TableBuilder() {
   const [view, setView] = useState<BuilderView>(initialView)
   const [imported, setImported] = useState<ImportedFile | null>(null)
   const [sheetNames, setSheetNames] = useState<string[]>([])
-  const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Field-level SERVER errors, keyed by GRID row — the same mechanism
   // FormView uses (`if (err.fields) setErrors(err.fields)`), so the two
@@ -371,25 +371,14 @@ export function TableBuilder() {
     <div data-testid="table-builder" className="max-w-3xl">
       <h1 className="mb-4 text-xl font-semibold text-ink">New Table</h1>
 
-      <div
-        data-testid="dt-dropzone"
-        onClick={() => fileInput.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault()
-          setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault()
-          setDragging(false)
-          const file = e.dataTransfer.files[0]
-          if (file) void loadFile(file)
-        }}
-        className={`mb-4 cursor-pointer rounded-md border-2 border-dashed px-4 py-5 text-center text-sm transition-colors ${
-          dragging
-            ? 'border-action bg-action/5 text-action'
-            : 'border-border-control text-ink-muted hover:border-action'
-        }`}
+      <FileDropZone
+        testId="dt-dropzone"
+        inputTestId="dt-file-input"
+        label="Choose a CSV or Excel file to build the Table from"
+        onFile={(file) => void loadFile(file)}
+        inputRef={fileInput}
+        className="px-4 py-5"
+        dragClassName="border-action bg-action/5 text-action"
       >
         {imported ? (
           <span data-testid="dt-file-name">
@@ -410,18 +399,7 @@ export function TableBuilder() {
         ) : (
           <>Drag & drop a CSV or Excel file here to build the Table from it — or click to browse</>
         )}
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".csv,.tsv,.xlsx,.xlsm,.xls"
-          data-testid="dt-file-input"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) void loadFile(file)
-          }}
-        />
-      </div>
+      </FileDropZone>
 
       {sheetNames.length > 1 && (
         <div role="status" className="mb-4 rounded-md border border-caution bg-caution-tint px-3 py-2 text-sm text-caution" data-testid="dt-more-sheets">
