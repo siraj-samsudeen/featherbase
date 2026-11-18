@@ -144,3 +144,12 @@ function useStepNaming(steps: NavStep[]) {
   })
   return { labels, compact }
 }
+
+/**
+ * #1282 (UI owner): a walk's name short enough for one sidebar line, cut in the middle so where it ends stays in
+ * view: "Lakeside › … › Devi". Two walks that part only late no longer read the same; the whole walk is the tooltip.
+ */
+export function walkShortLabel(label: string): string {
+  const parts = label.split(' › ')
+  return parts.length > 2 ? `${parts[0]} › … › ${parts[parts.length - 1]}` : label
+}

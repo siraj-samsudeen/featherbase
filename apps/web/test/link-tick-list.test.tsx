@@ -265,6 +265,9 @@ test('the record panel puts a tick list beside the fields, and the other groups 
   expect(ticks).toHaveAttribute('aria-label', GIVEN)
   await waitFor(() => expect(within(ticks).getByTestId('tick-count')).toHaveTextContent('2 of 7'))
   const pointed = within(panel).getByRole('heading', { name: 'Pointed At By' }).parentElement!
+  // #1282 (UI owner): an empty group waits behind Show N empty, as on the record page.
+  expect(within(pointed).queryByRole('button', { name: `${NOTE} 0` })).not.toBeInTheDocument()
+  fireEvent.click(await within(pointed).findByRole('button', { name: /^Show \d+ empty$/ }))
   expect(await within(pointed).findByRole('button', { name: `${NOTE} 0` })).toBeInTheDocument()
   expect(within(pointed).queryByRole('button', { name: new RegExp(`^${GIVEN}`) })).not.toBeInTheDocument()
   // C1: the header reads the record's name, then its Table and its code.

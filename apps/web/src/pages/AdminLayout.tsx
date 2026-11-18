@@ -48,6 +48,7 @@ import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
+import { walkShortLabel } from '../lib/step-labels'
 
 
 
@@ -897,7 +898,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
             <RailFold label="Recently Opened" icon={Clock} testid="sidebar-recents" tone="slate">
               {(close) => railRecents.map((item) => item.kind === 'walk' ? (
                 <RailMenuItem key={`walk:${encodePath(item.path)}`} close={close} onSelect={() => openWalk(item.path)}>
-                  <span className="truncate" data-testid="sidebar-walk">{item.label}</span>
+                  <span className="truncate" data-testid="sidebar-walk" title={item.label}>{walkShortLabel(item.label)}</span>
                 </RailMenuItem>
               ) : (
                 <RailMenuItem key={item.entry.key} close={close} onSelect={() => openRecent(item.entry)}>
@@ -1057,7 +1058,7 @@ function SidebarWalkRow({ label, at, href, onOpen }: { label: string; at: number
       <span aria-hidden data-testid="walk-tile" className={`grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-current/15 ${GROUP_TONE.slate}`}>
         <Route size={14} />
       </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="min-w-0 flex-1 truncate">{walkShortLabel(label)}</span>
       {when && <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{when}</span>}
     </a>
   )

@@ -280,7 +280,9 @@ test('a walk that starts on a record reads by names alone in Recently Opened, sa
   await admin.put('/api/user_settings/__navigation', { recentPaths: [key], recentPathTimes: { [key]: Date.now() } })
   recordAction('Administrator', { kind: 'page', key: 'page:all-tables', label: 'All tables', path: '/featherbase/admin/all-tables' }, Date.now() - 60_000)
   await renderApp('/featherbase/admin/all-tables', admin)
-  await waitFor(() => expect(screen.getByTestId('sidebar-walk')).toHaveTextContent(new RegExp(`^Enchakkal › ${PLANT} › Plant name: Super`)))
+  // The whole walk is the tooltip; the line keeps where it starts and where it ends (#1282, UI owner).
+  await waitFor(() => expect(screen.getByTestId('sidebar-walk')).toHaveAttribute('title', expect.stringMatching(new RegExp(`^Enchakkal › ${PLANT} › Plant name: Super`))))
+  expect(screen.getByTestId('sidebar-walk')).toHaveTextContent(/^Enchakkal › … › Plant name: Super/)
   expect(screen.getByTestId('sidebar-walk')).not.toHaveTextContent('ENK')
   // Opened, the path bar still names each step in full.
   fireEvent.click(screen.getByTestId('sidebar-walk'))

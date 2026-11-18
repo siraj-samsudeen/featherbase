@@ -342,12 +342,15 @@ export function ExplainPersonPage() {
   const person = new URLSearchParams(window.location.search).get('person')
   const { answer, failed, load } = useRead<Explained>('explain_person', person ? { person } : null)
   const choose = (found: Found | null) => { if (found) window.location.search = explainAddress(found.person).slice(1) }
+  // #1316: with no one chosen yet, ask whether this viewer may use the page at all.
+  const may = useRead<boolean>('manages_roles', person ? null : {})
   // Someone who may not see the page gets the refusal alone, with no search above it.
-  const refused = failed?.startsWith('Only a Report Access Manager')
+  const refused = failed?.startsWith('Only a Report Access Manager') || may.answer === false
   return (
     <Shell current="explain" testid="explain-person" title={answer ? answer.name : 'Explain A Person'} wide>
       {!refused && <div className="max-w-xl"><PersonPicker chosen={null} onChoose={choose} label="Find a person" /></div>}
-      {!person && <p className="fd-muted">Choose someone to see their business roles, the apps they would open and the reports they would get. {SHADOW_NOTE}</p>}
+      {!person && (may.answer === false ? <Failed message={REFUSED} onRetry={may.load} />
+        : <p className="fd-muted">Choose someone to see their business roles, the apps they would open and the reports they would get. {SHADOW_NOTE}</p>)}
       {person && !answer && !failed && <Loading />}
       {failed && <Failed message={failed} onRetry={load} />}
       {answer && <Explanation answer={answer} onChanged={load} />}

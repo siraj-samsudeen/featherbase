@@ -81,6 +81,20 @@ in the pane SHALL show its first 4 rows, then how many more.
 - **THEN** the pane reads Level 3 of 3, back one level reads Level 2 of 3, and Escape closes it,
   leaving the customer's page as it was
 
+### Requirement: Step sideways to another row of the same list
+
+The path's last step SHALL offer the other rows of the list or group it came from: the list's own
+rows (with its filters), or the rows that point at the previous step's record by the same link. It
+SHALL say where the current row sits and mark it, start around it when there are more than 20, and
+search the rest. Choosing a row SHALL replace the step in place, adding none.
+
+#### Scenario: Another of Asha's orders
+
+- **WHEN** the user, on the list of Asha's orders, has her fourth order open and steps sideways to
+  another of her orders
+- **THEN** that order shows in its place, the path has the same number of steps, and orders of
+  other customers are not offered
+
 ### Requirement: Two links from the same table stay separate groups
 
 When one table links to the row in two ways, the drill pane SHALL show each way as its own group
@@ -93,7 +107,7 @@ Given each cost centre names a supplying plant and a billing plant
 And Enchakkal Supermarket supplies 8 cost centres and bills none
 When the user opens Enchakkal Supermarket in the drill pane
 Then a group of 8 cost centres by supplying plant shows
-And a group of 0 cost centres by billing plant shows, quieter than the other
+And a group of 0 cost centres by billing plant shows, quieter than the other, once the user shows the empty groups
 ```
 
 ### Requirement: A group lists its rows by what they point to

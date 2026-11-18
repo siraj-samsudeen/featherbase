@@ -124,6 +124,18 @@ describe('who has what, in order', () => {
   })
 })
 
+describe('the days shown are the day in India', () => {
+  // #1313: given or asked after midnight IST, before midnight UTC, is the next day here.
+  it('says a grant given and a request made at 01:20 IST on 19-Nov-2026 were on 19-Nov', async () => {
+    const ctx = context({ people: {
+      async names(ids) { return Object.fromEntries(ids.map(id => [id, id.toUpperCase()])) },
+      async waitingForAccess() { return [{ person: 'p1', name: 'Priya', asked_at: '2026-11-18T19:50:00Z' }] },
+    } }, { 'dash.report_access': [{ row_id: 'a1', report: 'sales', person: 'ravi', created_by: 'meera', updated_at: '2026-11-18T19:50:00.000Z' }] })
+    const page = await accessPage(ctx)
+    expect([page.rows.map(row => row.given_on), page.waiting.map(w => w.asked_on)]).toEqual([['2026-11-19'], ['2026-11-19']])
+  })
+})
+
 describe('the person picker', () => {
   it('needs two letters, and lists each current person once', async () => {
     const data = { Employee: [
