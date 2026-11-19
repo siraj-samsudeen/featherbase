@@ -250,8 +250,9 @@ describe('the "We couldn\'t sign you in" card (#474, #1283)', () => {
     const expired = await page('/featherbase/login?error=expired&via=microsoft')
     expect(first).toEqual({ form: 'Sign in with StyleHR', divider: true, kinds: ['google', 'microsoft', 'password'], styles: 1, message: null,
       texts: ['Sign in with Google', 'Sign in with Microsoft', 'Sign in with user name and password'] })
-    for (const card of [refused, expired])
-      expect({ ...card, message: null }).toEqual({ ...first, texts: ['Sign in with Google', 'Try another Microsoft account', 'Sign in with user name and password'] })
+    // Only a refused account is offered another; a sign-in that took too long reads exactly as the first page.
+    expect({ ...refused, message: null }).toEqual({ ...first, texts: ['Sign in with Google', 'Try another Microsoft account', 'Sign in with user name and password'] })
+    expect({ ...expired, message: null }).toEqual(first)
     expect(refused.message).toMatch(/This Microsoft account isn't set up/)
     expect(expired.message).toMatch(/took too long or was started in another window/)
   })
