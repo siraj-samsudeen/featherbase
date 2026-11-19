@@ -293,7 +293,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
         target &&
         (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
 
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      // Ctrl/⌘+Shift+K is View as's (ViewAsButton), not this bar's.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setBarFocused(true)
         setSelection(null)
