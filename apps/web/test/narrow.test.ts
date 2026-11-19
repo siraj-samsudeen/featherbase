@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { narrowLists, pickFilter, readPick, splitPicks, togglePick, type NarrowList } from '../src/lib/narrow'
-import { parseChain } from '../src/lib/linked-filters'
+import { chainFilter, parseChain } from '../src/lib/linked-filters'
 import type { TableMeta } from '../src/lib/meta'
 
 // #1289 option C, Click To Narrow: which lists a list's panel shows, and how
@@ -59,7 +59,8 @@ describe('narrowLists', () => {
   })
 
   test('a table whose metadata is still loading is waited for; one the viewer may not read is left out', () => {
-    const withSecret = table('Audit', [ref('store', 'Store'), ref('secret', 'Secret'), ref('pending', 'Pending')])
+    // An any-Table link names no table, so it has no list either.
+    const withSecret = table('Audit', [ref('store', 'Store'), ref('secret', 'Secret'), ref('pending', 'Pending'), { column_name: 'about', column_type: 'Reference', reference_table: null }])
     const { lists, missing } = narrowLists(withSecret, [], metaOf)
     expect(lists.map((l) => l.label)).toEqual(['Store', 'Audit'])
     expect(missing).toEqual(['Pending'])
@@ -85,10 +86,14 @@ describe('a tick is a Linked to filter', () => {
   })
 
   test('every pick reads back as its list, and a filter of another shape belongs to none', () => {
-    for (const [list, picked] of [[store, ['Bayside']], [store, 'none'], [own, ['Grocery']], [subcategory, ['Rava', 'Churidar']], [category, 'none'], [kind, 'none']] as const)
+    for (const [list, picked] of [[store, ['Bayside']], [store, 'none'], [own, ['Grocery']], [subcategory, ['Rava', 'Churidar']], [category, 'none'], [kind, ['Fashion']], [kind, 'none']] as const)
       expect(readPick(list, pickFilter(list, picked as string[] | 'none')!)).toEqual(picked)
     expect(readPick(store, ['store', '=', 'Bayside'])).toBeNull()
     expect(readPick(subcategory, pickFilter(category, ['Staples'])!)).toBeNull()
+    expect(readPick(kind, ['kind', 'in', [1]])).toBeNull()
+    // A chain that also picks on an earlier step is the person's own Linked to filter, not a tick.
+    const steps = parseChain(pickFilter(category, ['Staples'])!)!.steps
+    expect(readPick(category, chainFilter(steps.map((st, i) => (i === 0 ? { ...st, picked: ['Rava'] } : st)), false)!)).toBeNull()
   })
 
   test("splitPicks separates the panel's picks from the list's other filters", () => {

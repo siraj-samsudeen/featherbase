@@ -1,6 +1,8 @@
 // #1289 option C, Click To Narrow (board A): the panel left of every list.
 // Made-up store layout: Region ← Store ← Section → Floor.
-import { configure, screen, waitFor, within } from '@testing-library/react'
+import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
+import { NARROW_QUERY } from '@featherbase/shop-floor'
 import userEvent from '@testing-library/user-event'
 import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
@@ -187,4 +189,77 @@ test('Clear All Filters on the panel picks narrows in place too', async ({ admin
   await userEvent.click(screen.getByTestId('filter-clear-all'))
   await waitFor(() => expect(rowTitles()).toHaveLength(5))
   expect(walk(r).steps).toHaveLength(1)
+})
+
+test('Clear All Filters under "No Rows Match" clears in place', async ({ admin }) => {
+  await seed(admin)
+  const r = await renderApp(listPath(SECTION), admin)
+  await waitFor(() => expect(value(STORE, 'Northgate')).toHaveTextContent('1'))
+  await userEvent.click(value(STORE, 'Northgate'))
+  await waitFor(() => expect(value(FLOOR, 'Ground Floor')).toHaveAttribute('data-state', 'ruled-out'))
+  await userEvent.click(value(FLOOR, 'Ground Floor'))
+  await userEvent.click(await screen.findByTestId('list-empty-clear'))
+  await waitFor(() => expect(rowTitles()).toHaveLength(5))
+  expect(walk(r).steps).toHaveLength(1)
+})
+
+test('a record value picks on a plain click or Space; a Ctrl-click is left to the link', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(listPath(SECTION), admin)
+  await waitFor(() => expect(value(STORE, 'Bayside')).toHaveTextContent('3'))
+  expect(value(STORE, 'Bayside')).toHaveAttribute('href')
+  fireEvent.click(value(STORE, 'Bayside'), { ctrlKey: true })
+  expect(value(STORE, 'Bayside')).toHaveAttribute('aria-pressed', 'false')
+  value(STORE, 'Bayside').focus()
+  await userEvent.keyboard('a')
+  expect(value(STORE, 'Bayside')).toHaveAttribute('aria-pressed', 'false')
+  await userEvent.keyboard(' ')
+  await waitFor(() => expect(rowTitles()).toHaveLength(3))
+  expect(value(STORE, 'Bayside')).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('a picked "No Store" stays, at 0, when no row it reaches is left', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(listPath(SECTION), admin)
+  await waitFor(() => expect(value(STORE, `No ${STORE}`)).toHaveTextContent('1'))
+  await userEvent.click(value(STORE, `No ${STORE}`))
+  await waitFor(() => expect(value(FLOOR, 'First Floor')).toHaveAttribute('data-state', 'ruled-out'))
+  await userEvent.click(value(FLOOR, 'First Floor'))
+  await waitFor(() => expect(value(STORE, `No ${STORE}`)).toHaveTextContent('0'))
+  expect(value(STORE, `No ${STORE}`)).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('on a phone the panel opens as a "Narrow By" sheet; Done or the backdrop closes it', async ({ admin }) => {
+  await seed(admin)
+  vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
+    matches: q === NARROW_QUERY, media: q, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  }) as MediaQueryList)
+  try {
+    await renderApp(listPath(SECTION), admin)
+    await userEvent.click(await screen.findByTestId('narrow-sheet-open'))
+    const sheet = screen.getByRole('dialog', { name: 'Narrow By' })
+    const bayside = () => within(within(sheet).getByRole('region', { name: STORE })).getByRole('button', { name: /^Bayside \d+$/ })
+    await waitFor(() => expect(bayside()).toHaveTextContent('3'))
+    await userEvent.click(bayside())
+    // A tick inside the sheet keeps it open.
+    await waitFor(() => expect(bayside()).toHaveAttribute('aria-pressed', 'true'))
+    expect(screen.getByRole('dialog', { name: 'Narrow By' })).toBeInTheDocument()
+    await userEvent.click(within(sheet).getByTestId('narrow-sheet-done'))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await userEvent.click(screen.getByTestId('narrow-sheet-open'))
+    await userEvent.click(screen.getByRole('dialog', { name: 'Narrow By' }).parentElement!)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  } finally {
+    vi.restoreAllMocks()
+  }
+})
+
+test('Save As View on the chip line opens the view naming', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(listPath(SECTION), admin)
+  await waitFor(() => expect(value(STORE, 'Bayside')).toHaveTextContent('3'))
+  await userEvent.click(value(STORE, 'Bayside'))
+  await userEvent.click(await screen.findByRole('button', { name: 'Save As View' }))
+  expect(await screen.findByPlaceholderText(`${SECTION} view`)).toBeInTheDocument()
 })
