@@ -22,7 +22,8 @@ from (values
   ('link_roster', 'Link the Staff Roster'),
   ('refresh_datasets', 'Refresh Datasets'),
   ('refresh_leaver_sign_in', 'Refresh Leavers Who Can Still Sign In'),
-  ('remind_access_requests', 'Remind About Access Requests')
+  ('remind_access_requests', 'Remind About Access Requests'),
+  ('sync_motherduck_accounts', 'Sync MotherDuck Accounts')
 ) as t(method, title)
 where j.method = t.method and coalesce(j.title, '') = '';
 
