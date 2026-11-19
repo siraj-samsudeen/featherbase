@@ -100,3 +100,26 @@ test('a report reader who opens an Admin link is told the Admin is not part of t
   expect(pathOf(app)).toBe('/featherbase/admin/table/site')
   await waitFor(() => expect(asked).toEqual([]))
 })
+
+test('a list whose rows the network drops says it could not load them, and Try again loads them', async ({ admin }) => {
+  await aTable(admin)
+  await admin.post(`/api/table/${encodeURIComponent(TABLE)}`, { row_id: 'pp-listed', note: 'listed' })
+  const restore = dropNetwork('GET', '/api/table/Pp%20Probe?')
+  await renderApp('/featherbase/admin/table/pp-probe', admin)
+  const page = await screen.findByTestId('problem-failed', {}, T)
+  expect(within(page).getByRole('heading')).toHaveTextContent('The rows of Pp Probe couldn’t be loaded')
+  restore()
+  fireEvent.click(within(page).getByRole('button', { name: 'Try again' }))
+  expect(await screen.findByText('pp-listed', {}, T)).toBeInTheDocument()
+})
+
+test('a Portal Table the viewer may not read leads to Featherbase, not the Admin home', async ({ admin, createUser }) => {
+  await aTable(admin)
+  await admin.post('/api/table_def', { name: 'Pp Desk', columns: [{ column_name: 'code', column_type: 'Data' }] })
+  await grantRole(admin, { table: 'Pp Desk', role: 'Pp Reader', can_read: true })
+  const reader = await createUser({ roles: ['Pp Reader'] })
+  await renderApp('/featherbase/portal/pp-probe/NOPE', reader)
+  const page = await screen.findByTestId('problem-no-access', {}, T)
+  expect(within(page).getByRole('link', { name: 'Go to Featherbase' })).toHaveAttribute('href', '/')
+  expect(within(page).queryByRole('link', { name: 'Go to the Admin home' })).not.toBeInTheDocument()
+})
