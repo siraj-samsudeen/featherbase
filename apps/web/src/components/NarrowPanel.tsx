@@ -147,7 +147,8 @@ function NarrowValues({ list, values, picked, onToggle }: {
   // "Not linked to any" stays in view past the top values.
   const none = matching.find((v) => v.value === null && v.count > 0)
   const top = matching.filter((v) => v !== none).slice(0, TOP)
-  const shown = boxed ? matching : none ? [...top, none] : top
+  // Back in rank order, so "Not linked" stays before ruled-out values.
+  const shown = boxed ? matching : [...top, ...(none ? [none] : [])].sort((a, b) => rank(a) - rank(b))
   const records = list.kind !== 'choice'
   const refs = records ? shown.filter((v) => v.value !== null).map((v) => ({ table: list.table!, row_id: v.value! })) : []
   const names = useRowNames(refs)

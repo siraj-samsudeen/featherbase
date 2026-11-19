@@ -1002,7 +1002,9 @@ export function ListView({
               <Button aria-expanded={narrowSheet} onClick={() => setNarrowSheet(true)} data-testid="narrow-sheet-open" className="whitespace-nowrap">Narrow By</Button>
             )}
             <FilterChips meta={meta.data} filters={filters} onChange={onFiltersChange} held={heldByBoxes(meta.data, filters)}
-              picked={pickedChips} onSaveView={filters.length ? () => setNamingView(true) : undefined} />
+              picked={pickedChips} onSaveView={filters.length ? () => setNamingView(true) : undefined}
+              onClearAll={narrowPicks && narrowPicks.base.length === 0 ? () => onFiltersChange([], { replace: true }) : undefined}
+              flow />
           </>
         )}
         </div>
