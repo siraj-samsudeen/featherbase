@@ -92,6 +92,15 @@ describe('saving the grid', () => {
     expect(tables[PERMISSION]!.filter(r => r.thing === 'Sections').map(r => r.permission_key)).toEqual(['sm / Dash / Manager / Edit / Sections', 'tl / Dash / Manager / Edit / Sections'])
   })
 
+  it('refuses an entry that is no change, logs no name when the platform sends none, and is read-only with no roles', async () => {
+    await expect(changePermissions(context(world(), [null]).ctx as never)).rejects.toThrow('Each change names a role and a permission')
+    const tables = world()
+    const { ctx } = context(tables, [{ role: 'tl', ...edit, from: null, to: 'Own' }])
+    await changePermissions({ ...ctx, userName: undefined } as never)
+    expect(tables[PERMISSION_CHANGE]!.at(-1)!.changed_by_name).toBeNull()
+    expect(mayChangePermissions({ ...ctx, roles: undefined } as never)).toBe(false)
+  })
+
   it('refuses a change whose cell changed since the grid loaded, writing none of them', async () => {
     const tables = world()
     const { ctx, writes } = context(tables, [{ role: 'tl', ...edit, from: null, to: 'Own' }, { role: 'sm', ...edit, from: 'Team', to: 'All' }])

@@ -1,6 +1,7 @@
 // #1282 F1–F6: the Business Roles reports grid's save, against a world held in memory. Made-up names.
 import { describe, expect, it } from 'vitest'
 import { changeReportGrants } from './report-grid-server'
+import { actions } from './server'
 
 type Row = Record<string, unknown>
 const ACCESS = 'dash.report_access'
@@ -75,6 +76,14 @@ describe('saving the reports grid', () => {
     const { ctx, writes } = context(world(), changes)
     await expect(changeReportGrants(ctx as never)).rejects.toThrow(message)
     expect(writes).toEqual([])
+  })
+
+  it('refuses an entry that is no change, and gives with no name when the platform sends none, through Dash\'s own action', async () => {
+    await expect(changeReportGrants(context(world(), [null]).ctx as never)).rejects.toThrow('Each change names a role and a report or a bundle')
+    const tables = world()
+    const { ctx } = context(tables, [{ role: 'tl', table: 'dash.report_bundle', key: 'b1', from: false, to: true }])
+    expect(await actions.change_report_grants({ ...ctx, userName: undefined } as never)).toEqual({ saved: 1 })
+    expect(tables[ACCESS]!.at(-1)).toMatchObject({ report_bundle: 'b1', business_role: 'tl', given_by_name: null })
   })
 
   it('is only for those who manage access', async () => {
