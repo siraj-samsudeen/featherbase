@@ -65,6 +65,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   },
   service_account: { row_id: id, label: text, display_name: text },
   person_id_map: { '*': code },
+  // #1346: a MotherDuck user; only `person` names a principal.
+  motherduck_account: { person: id, username: code, email: code, full_name: text, roles: code, account_status: code, review_ticket: code },
   // #1336: the person's own password, as the person row's column was: a merge
   // or re-id never moves a password to another person, so it is not rewritten.
   person_credential: { person_id: code, password_hash: code },
