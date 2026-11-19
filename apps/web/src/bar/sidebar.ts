@@ -1,12 +1,10 @@
 import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
-import { getSignedInUser } from '../lib/api'
-import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerPickerSlot, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
+import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, SIDEBAR_WIDTH, attachSidebarEdge, offerPickerSlot, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
 import { attachRailTips, railMark, railMenuPlace, rowCount, rowLabel } from '../lib/sidebar-rail'
 
-/** Admin's sidebar widths (AdminLayout: md:w-60, the rail md:w-14, a w-64 drawer), for every app (#1227, #1248). */
-const WIDTH = 240
+/** Admin's sidebar widths (AdminLayout: the person's width, SIDEBAR_WIDTH; the rail md:w-14, a w-64 drawer), for every app (#1227, #1248). */
 const RAIL = 56
 const DRAWER_WIDTH = 256
 
@@ -77,6 +75,7 @@ export class FeatherbaseSidebar extends HTMLElement {
   private unsubscribe?: () => void
   private untips?: () => void
   private unslot?: () => void
+  private unedge?: () => void
   private unpickers?: () => void
   private pickers?: HTMLElement
   private pickersRoot?: HTMLElement
@@ -110,14 +109,19 @@ export class FeatherbaseSidebar extends HTMLElement {
     const style = document.createElement('style')
     style.textContent = `${shadowCss(platformCss)}
       /* #1253: no fill of its own, and nothing clips the menus its top and foot open. */
-      :host { display:block; position:static; z-index:auto; box-sizing:border-box; width:${WIDTH}px; min-width:0; height:100%;
+      :host { display:block; position:static; z-index:auto; box-sizing:border-box; width:var(--featherbase-sidebar-width, ${SIDEBAR_WIDTH.DEFAULT}px); min-width:0; height:100%;
         transition:width 200ms linear; background:transparent !important; overflow:visible !important; }
+      /* The edge is being dragged: the width follows the pointer at once. */
+      :host([data-resizing]) { transition:none; }
       /* #1248: collapsed (md+), an icon rail; at phone width the frame is the drawer. */
       :host([data-collapsed]) { width:${RAIL}px; }
       .sidebar-backdrop { display:none; }
       /* #1253 (Quiet Canvas): no fill and no border; it sits on the grey canvas, as
          tall as the window, its links scrolling between the top and the foot. */
-      .sidebar-frame { position:sticky; top:var(--featherbase-bar-height, 0px); display:flex; flex-direction:column;
+      /* Its own layer, above the app's page (the owner, 18-Nov: the app switcher's, the
+         account's and the theme's menus, and the rail's tooltips, were drawn under a
+         report's pinned table header). The pickers' strip is below it (20). */
+      .sidebar-frame { position:sticky; z-index:30; top:var(--featherbase-bar-height, 0px); display:flex; flex-direction:column;
         height:calc(100dvh - var(--featherbase-bar-height, 0px)); box-sizing:border-box;
         color:var(--color-ink); font:14px/1.45 var(--font-sans); }
       .sidebar-links { flex:1; min-height:0; overflow-y:auto; padding:4px 8px; display:flex; flex-direction:column; }
@@ -152,9 +156,8 @@ export class FeatherbaseSidebar extends HTMLElement {
         border:0; border-radius:var(--radius-control); background:transparent; color:var(--color-ink-muted); font:inherit; cursor:pointer; text-align:left; }
       .sidebar-collapse:hover { background:color-mix(in srgb, var(--color-border) 50%, transparent); color:var(--color-ink); }
       .sidebar-collapse:focus-visible { outline:2px solid var(--color-focus); outline-offset:1px; }
-      .sidebar-collapse kbd { margin-left:auto; font:12px var(--font-mono, ui-monospace, monospace); color:var(--color-ink-subtle); }
       :host([data-collapsed]) .sidebar-collapse { width:40px; justify-content:center; padding:0; margin:0 auto; }
-      :host([data-collapsed]) .sidebar-collapse .words, :host([data-collapsed]) .sidebar-collapse kbd { display:none; }
+      :host([data-collapsed]) .sidebar-collapse .words { display:none; }
       .sidebar-edge { position:absolute; top:0; bottom:0; right:-5px; width:10px; cursor:col-resize; z-index:2; }
       .sidebar-edge::after { content:""; position:absolute; top:0; bottom:0; left:4px; width:2px; background:transparent; transition:background 120ms; }
       .sidebar-edge:hover::after { background:var(--color-action); }
@@ -205,13 +208,14 @@ export class FeatherbaseSidebar extends HTMLElement {
     control.dataset.shortcutId = 'sidebar'
     control.dataset.shortcutKey = SIDEBAR_SHORTCUT
     control.setAttribute('aria-keyshortcuts', 'Meta+B Control+B')
-    control.addEventListener('click', () => toggleSidebarCollapsed(getSignedInUser()?.row_id))
+    control.addEventListener('click', () => toggleSidebarCollapsed())
     foot.append(control)
     const edge = document.createElement('div')
     edge.className = 'sidebar-edge'
     edge.dataset.testid = 'sidebar-edge'
     edge.setAttribute('aria-hidden', 'true')
-    edge.addEventListener('click', () => toggleSidebarCollapsed(getSignedInUser()?.row_id))
+    this.unedge?.()
+    this.unedge = attachSidebarEdge(edge, { frame: () => this, widthVar: '--featherbase-sidebar-width' })
     const layer = document.createElement('div')
     layer.className = 'rail-layer'
     nav.append(foot, edge, layer)
@@ -237,7 +241,9 @@ export class FeatherbaseSidebar extends HTMLElement {
       const pickerShadow = host.attachShadow({ mode: 'open' })
       const pickerStyle = document.createElement('style')
       pickerStyle.textContent = `${shadowCss(platformCss)}
-        :host { display:block; }
+        /* Pinned at the panel's top like the bar's host, but under the sidebar's menus (30),
+           not at the bar's topmost layer, which drew it over them (the owner, 18-Nov). */
+        :host { display:block; z-index:20; }
         .pickers-root { color:var(--color-ink); font:14px/1.45 var(--font-sans); }
         .pickers-root:empty { display:none; }
         .pickers-root:not(:empty) { padding:12px 16px 0; }`
@@ -258,7 +264,7 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.panelObserver?.disconnect()
     this.panelObserver = new MutationObserver(() => this.placePickers())
     if (this.parentElement) this.panelObserver.observe(this.parentElement, { childList: true, subtree: false })
-    this.leave = registerSidebar(getSignedInUser()?.row_id)
+    this.leave = registerSidebar()
     this.unsubscribe = subscribeSidebar(this.onWidth)
     this.drawerWidth = typeof window.matchMedia === 'function' ? window.matchMedia(SIDEBAR_DRAWER_QUERY) : undefined
     this.drawerWidth?.addEventListener?.('change', this.onWidth)
@@ -266,9 +272,16 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.addEventListener('keydown', this.onKey)
     this.untips?.()
     this.untips = attachRailTips({
+      drawer: () => Boolean(this.drawerWidth?.matches),
       root: this, layer,
       active: () => this.rail,
       rowOf: (target) => {
+        // The sidebar's own controls, in its shadow: the top's (the switcher, View as, the search), the
+        // foot's icons and the expand button, as in the Admin's rail; never an open menu's items.
+        if (target instanceof Element && target.getRootNode() === this.shadowRoot) {
+          const own = target.closest<HTMLElement>('a, button')
+          return own && !own.closest('[role="menu"], [data-testid$="-menu"]') ? own : null
+        }
         const row = target instanceof Element ? target.closest('featherbase-sidebar > *') as HTMLElement | null : null
         return row && row.parentElement === this && (row.matches('button, a') || row.hasAttribute('data-rail-fold')) && !this.menu ? row : null
       },
@@ -317,12 +330,15 @@ export class FeatherbaseSidebar extends HTMLElement {
   /** Draws the shared state: collapsed (md+) is the rail; at phone width the
    *  drawer, which is out of the tab order and the accessibility tree while shut. */
   private sync() {
-    const state = readSidebar(getSignedInUser()?.row_id)
+    const state = readSidebar()
     const drawer = Boolean(this.drawerWidth?.matches)
     const collapsed = state.collapsed && !drawer
     const open = drawer && state.drawerOpen
     this.toggleAttribute('data-collapsed', collapsed)
     this.toggleAttribute('data-open', open)
+    // While the edge is dragged the drag writes the width itself, each frame.
+    if (!state.resizing) this.style.setProperty('--featherbase-sidebar-width', `${state.width}px`)
+    this.toggleAttribute('data-resizing', state.resizing)
     const hidden = drawer && !open
     this.inert = hidden
     if (hidden) this.setAttribute('aria-hidden', 'true')
@@ -330,9 +346,11 @@ export class FeatherbaseSidebar extends HTMLElement {
     if (this.control) {
       const words = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
       this.control.setAttribute('aria-label', words)
-      // #1251: hover text in Title Case, the key after " · ".
-      this.control.title = `${collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'} · ${SIDEBAR_SHORTCUT}`
-      this.control.innerHTML = collapsed ? EXPAND_ICON : `${COLLAPSE_ICON}<span class="words">Collapse</span><kbd>${SIDEBAR_SHORTCUT}</kbd>`
+      // #1251 (9e9da16a8, agreed): the hover label in Title Case, the key after " · ".
+      this.control.dataset.tip = collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'
+      // The owner (18-Nov): the key shows only in the hover tooltip ("Collapse Sidebar · Ctrl+B"), the
+      // sidebar's own, open or in the rail (lib/sidebar-rail), never on the row, and no browser tooltip too.
+      this.control.innerHTML = collapsed ? EXPAND_ICON : `${COLLAPSE_ICON}<span class="words">Collapse</span>`
     }
     if (this.rail !== collapsed) {
       this.rail = collapsed
@@ -455,6 +473,8 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.rowsObserver?.disconnect()
     this.untips?.()
     this.untips = undefined
+    this.unedge?.()
+    this.unedge = undefined
     this.unslot?.()
     this.unslot = undefined
     this.unpickers?.()

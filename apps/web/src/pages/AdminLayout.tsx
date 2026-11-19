@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { GROUP_TONE, RAIL_ROW, ROW_IDLE, ROW_SELECTED, RailFold, RailMenuItem, RailRule, SIDEBAR_HEADING, SidebarRailContext, TableTile, useSidebarRail, type GroupTone } from '../components/SidebarRail'
 import { attachRailTips, railMark, sidebarWords } from '../lib/sidebar-rail'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
@@ -36,7 +36,7 @@ import { TopBar, useSignOut } from '../components/TopBar'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, tableLabel, useMeta, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
-import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
+import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, attachSidebarEdge, offerSidebarSlots, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
@@ -203,7 +203,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   // be collapsed to give the page its width; a phone keeps its drawer,
   // whatever was chosen on a wider window. #1227: the state, the controls and
   // Ctrl/Cmd+B are the shared ones every app's sidebar uses (TopBar).
-  const { collapsed: collapsedChoice, setDrawerOpen: setSidebarOpen } = useSidebar(user?.row_id)
+  const { collapsed: collapsedChoice, setDrawerOpen: setSidebarOpen } = useSidebar()
   // #1248: collapsed (md+), the sidebar is an icon rail; each group draws its rail form.
   const drawerWidth = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const rail = collapsedChoice && !drawerWidth
@@ -861,7 +861,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
       </div>
 
       <div className="relative flex min-h-0 flex-1">
-        <SidebarAside testid="admin-sidebar" user={user?.row_id}>
+        <SidebarAside testid="admin-sidebar">
           {/* #1235 item 7: on the account pages, the Account group leads the sidebar. */}
           {account && <AccountSidebarGroup />}
           {/* #80: the sidebar is Home Pages only. Every
@@ -1131,11 +1131,14 @@ export function SidebarGroup({ heading, testid, items, first = false, tone = 'sl
  * between them scroll, so the menus that open from the top and foot are never
  * clipped.
  */
-export function SidebarAside({ testid, user, children }: { testid: string; user: string | undefined; children: ReactNode }) {
-  useRegisterSidebar(user)
-  const { collapsed: choice, drawerOpen, setDrawerOpen, toggleCollapsed } = useSidebar(user)
+export function SidebarAside({ testid, children }: { testid: string; children: ReactNode }) {
+  useRegisterSidebar()
+  const { collapsed: choice, drawerOpen, setDrawerOpen, toggleCollapsed, width, resizing } = useSidebar()
   const isDrawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const collapsed = choice && !isDrawer
+  // The edge: a click folds the sidebar, a drag sets its width (the same in every app).
+  const edge = useRef<HTMLDivElement>(null)
+  useEffect(() => attachSidebarEdge(edge.current!, { frame: () => aside.current!, widthVar: '--sidebar-width' }), [])
   // #1248: in the rail each row is named at once by a tooltip beside it.
   const aside = useRef<HTMLElement>(null)
   const top = useRef<HTMLDivElement>(null)
@@ -1146,10 +1149,11 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
     // The aside is always drawn by the time this runs.
     const root = aside.current!
     return attachRailTips({
+      drawer: () => typeof window.matchMedia === 'function' && window.matchMedia(SIDEBAR_DRAWER_QUERY).matches,
       root, layer: document.body,
       active: () => railRef.current,
-      // A row of an open menu (the switcher's, the account's) needs no tooltip.
-      rowOf: (target) => (target instanceof Element && !target.closest('[role="menu"]') ? target.closest<HTMLElement>('a, button') : null) ?? null,
+      // A row of an open menu (the switcher's, the account's, the foot's Help and Theme) needs no tooltip.
+      rowOf: (target) => (target instanceof Element && !target.closest('[role="menu"], [data-testid$="-menu"]') ? target.closest<HTMLElement>('a, button') : null) ?? null,
     })
   }, [])
   // Offered before the first paint, so the page never shows a top bar first.
@@ -1174,7 +1178,8 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('a')) setDrawerOpen(false)
         }}
-        className={`${collapsed ? 'md:w-14' : 'md:w-60'} absolute inset-y-0 left-0 z-30 flex w-64 flex-col bg-canvas transition-transform md:static md:shrink-0 md:translate-x-0 md:bg-transparent md:transition-[width] md:duration-200 md:ease-linear motion-reduce:transition-none ${
+        style={{ '--sidebar-width': `${width}px` } as CSSProperties}
+        className={`${collapsed ? 'md:w-14' : 'md:w-(--sidebar-width)'} absolute inset-y-0 left-0 z-30 flex w-64 flex-col bg-canvas transition-transform md:static md:shrink-0 md:translate-x-0 md:bg-transparent ${resizing ? '' : 'md:transition-[width] md:duration-200 md:ease-linear '}motion-reduce:transition-none ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div ref={top} className="shrink-0" data-testid="sidebar-slot-top" />
@@ -1192,20 +1197,22 @@ export function SidebarAside({ testid, user, children }: { testid: string; user:
             data-shortcut-id="sidebar"
             data-shortcut-key={SIDEBAR_SHORTCUT}
             aria-label={words}
+            // #1251 (9e9da16a8, agreed): the hover label in Title Case, the key after " · ".
+            data-tip={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
             aria-keyshortcuts="Meta+B Control+B"
-            title={`${words.replace('sidebar', 'Sidebar')} · ${SIDEBAR_SHORTCUT}`}
+            // The owner (18-Nov): the key shows only in the hover tooltip ("Collapse Sidebar · Ctrl+B"), the
+            // sidebar's own, open or in the rail (lib/sidebar-rail), never on the row, and no browser tooltip too.
             className={`max-md:hidden ${collapsed ? `${RAIL_ROW} ${ROW_IDLE}` : touchRowClasses(`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm ${ROW_IDLE}`)}`}
           >
             {collapsed ? <ChevronsRight aria-hidden size={18} className="text-ink-muted" /> : <ChevronsLeft aria-hidden size={16} className="shrink-0 text-ink-muted" />}
             {!collapsed && <span className="flex-1 text-left text-ink-muted">Collapse</span>}
-            {!collapsed && <kbd className="font-mono text-xs text-ink-subtle">{SIDEBAR_SHORTCUT}</kbd>}
           </button>
         </div>
       </aside>
       <div
         aria-hidden
+        ref={edge}
         data-testid="sidebar-edge"
-        onClick={toggleCollapsed}
         className="group relative z-30 -mx-1.5 w-3 shrink-0 cursor-col-resize max-md:hidden"
       >
         <span className="absolute inset-y-0 left-[5px] w-0.5 bg-transparent transition-colors group-hover:bg-action" />

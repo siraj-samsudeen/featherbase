@@ -24,12 +24,20 @@ test('the control collapses and reopens the sidebar, and says what it will do', 
   const control = await openAdmin(admin)
   expect(collapsed()).toBe(false)
   expect(control).toHaveAccessibleName('Collapse sidebar')
-  expect(control.title).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
+  // The owner (18-Nov): its hover text is the sidebar's own tooltip, key and all; no browser tooltip.
+  expect(control).not.toHaveAttribute('title')
+  fireEvent.pointerOver(control)
+  expect(screen.getByRole('tooltip').textContent).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
+  fireEvent.pointerOut(control)
 
   await userEvent.click(control)
   expect(collapsed()).toBe(true)
   expect(control).toHaveAccessibleName('Expand sidebar')
-  expect(control.title).toMatch(/^Expand Sidebar · (⌘B|Ctrl\+B)$/)
+  // In the rail its hover text is the rail's own tooltip, key and all (the owner, 18-Nov),
+  // so the browser's tooltip is left off: one tooltip, not two.
+  expect(control).not.toHaveAttribute('title')
+  fireEvent.pointerOver(control)
+  expect(screen.getByRole('tooltip').textContent).toMatch(/^Expand Sidebar · (⌘B|Ctrl\+B)$/)
 
   await userEvent.click(control)
   expect(collapsed()).toBe(false)

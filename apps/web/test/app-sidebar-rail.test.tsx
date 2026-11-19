@@ -58,7 +58,11 @@ test('the control is on the sidebar, not in the bar, and collapses it to a rail 
 
   const control = shadow(sidebar).getByTestId('sidebar-collapse')
   expect(control).toHaveAccessibleName('Collapse sidebar')
-  expect(control.title).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
+  // The owner (18-Nov): named on hover by the sidebar's own tooltip, with its key; no browser tooltip.
+  expect(control).not.toHaveAttribute('title')
+  fireEvent.pointerOver(control, { composed: true })
+  expect(sidebar.shadowRoot!.querySelector('[role=tooltip]')?.textContent).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
+  fireEvent.pointerOut(control, { composed: true })
   // #1251's keyboard-shortcut list finds it by these.
   expect(control).toHaveAttribute('data-shortcut-id', 'sidebar')
   expect(control.getAttribute('data-shortcut-key')).toMatch(/^(⌘B|Ctrl\+B)$/)

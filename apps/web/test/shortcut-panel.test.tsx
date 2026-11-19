@@ -32,6 +32,13 @@ async function openFromHelp() {
 }
 const panel = () => screen.queryByRole('dialog', { name: 'Keyboard Shortcuts' })
 const sidebarStatus = () => (screen.getByText('Collapse Or Expand The Sidebar').closest('[data-shortcut-row]') as HTMLElement).textContent
+/** Opens search from the sidebar's field by mouse, and closes it, `times` times: the uses that bring its tip. */
+async function searchByMouse(times: number) {
+  for (let i = 0; i < times; i++) {
+    await userEvent.click(await screen.findByTestId('command-field', {}, WAIT))
+    await userEvent.keyboard('{Escape}')
+  }
+}
 
 test("Help's Keyboard Shortcuts item opens the panel and closes the menu; Close, ? and Escape close it", async ({ admin }) => {
   await openAdmin(admin)
@@ -78,8 +85,8 @@ test('the Search or Command field carries its key in its hover text and badge', 
 
 test('Got It dismisses the tip', async ({ admin }) => {
   await openAdmin(admin)
-  const control = await screen.findByTestId('sidebar-collapse', {}, WAIT)
-  for (let i = 0; i < 3; i++) await userEvent.click(control)
+  // The sidebar's key teaches no tip (the owner, 18-Nov): search's is the tip these show.
+  await searchByMouse(3)
   const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
   // Placed again when the page moves; still there.
   fireEvent(window, new Event('resize'))
@@ -151,8 +158,8 @@ test('the tip is placed inside the page area, clear of its controls', async ({ a
   // jsdom lays nothing out: give the page area a real size, as a browser would.
   const main = document.querySelector('main')!
   vi.spyOn(main, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ x: 240, y: 0, width: 1040, height: 800 }))
-  const control = await screen.findByTestId('sidebar-collapse', {}, WAIT)
-  for (let i = 0; i < 3; i++) await userEvent.click(control)
+  // The sidebar's key teaches no tip (the owner, 18-Nov): search's is the tip these show.
+  await searchByMouse(3)
   const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
   await waitFor(() => expect(tip.style.visibility).not.toBe('hidden'))
   expect(parseFloat(tip.style.left)).toBeGreaterThanOrEqual(256)
@@ -162,8 +169,8 @@ test('the tip is placed inside the page area, clear of its controls', async ({ a
 test('in a page area with no free spot the tip still shows, at its top', async ({ admin }) => {
   // jsdom's page area measures nothing, so no spot is free: the tip falls back to the top.
   await openAdmin(admin)
-  const control = await screen.findByTestId('sidebar-collapse', {}, WAIT)
-  for (let i = 0; i < 3; i++) await userEvent.click(control)
+  // The sidebar's key teaches no tip (the owner, 18-Nov): search's is the tip these show.
+  await searchByMouse(3)
   const tip = await screen.findByRole('status', { name: 'Tip' }, WAIT)
   await waitFor(() => expect(tip.style.visibility).not.toBe('hidden'))
   expect(tip.style.top).toBe('8px')

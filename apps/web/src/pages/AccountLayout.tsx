@@ -2,7 +2,6 @@ import { Outlet } from '@tanstack/react-router'
 import { PagePickerSlot, TopBar, useOnAppAddress } from '../components/TopBar'
 import { useShellKind } from '../lib/session'
 import { AccountSidebarGroup, AdminShell, PAGE_PANEL, SidebarAside } from './AdminLayout'
-import { getSessionUser } from '../lib/api'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 
 // #489 item 13: the person's own account pages, outside the Admin screens.
@@ -32,7 +31,7 @@ function AccountFrame() {
       {/* #1235 item 7: the shared sidebar with the Account group, and the page at
           the shared x (32px from the sidebar, left-aligned, at most 880px). */}
       <div className="relative flex min-h-0 flex-1">
-        <SidebarAside testid="account-sidebar" user={getSessionUser()?.row_id}>
+        <SidebarAside testid="account-sidebar">
           <AccountSidebarGroup />
         </SidebarAside>
         <main className={PAGE_PANEL} data-testid="page-panel">

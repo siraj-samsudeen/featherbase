@@ -18,8 +18,8 @@ import { Logo } from './Logo'
 import { KeyboardShortcutsItem, ShortcutTeachingHost } from './ShortcutTeaching'
 import { ViewAsBanner, ViewAsButton } from './ViewAs'
 import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
-import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
+import { Check, CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
+import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useRailUntilWidened, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
 
@@ -220,8 +220,8 @@ export function TopBar({
   const tabs = useAppTabs(context, installed, isPhone && Boolean(caps))
   // #1227: the page's sidebar, wherever it is drawn (the Admin's own, or an
   // app's <featherbase-sidebar>), is worked from here, the same on every page.
-  const sidebar = useSidebar(getSessionUser()?.row_id)
-  useEffect(() => listenForSidebarKeys(() => getSessionUser()?.row_id), [])
+  const sidebar = useSidebar()
+  useEffect(() => listenForSidebarKeys(), [])
   // #1227: the switcher on every signed-in page, named for the page's app; a
   // page of the person's own is named for where they belong (#501).
   const switcherApp = app ?? (context && name
@@ -239,6 +239,9 @@ export function TopBar({
   const pickerSlot = usePickerSlot()
   const drawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const rail = sidebar.collapsed && !drawer
+  // The foot's row (avatar, Help, Theme) is wider than the rail: while the
+  // sidebar widens it keeps its stacked rail form, so nothing hangs outside.
+  const footRail = useRailUntilWidened(rail)
   const switcher = left ?? (caps && context && name
     ? <AppSwitcher app={switcherApp} place={rail ? 'rail' : 'sidebar'} />
     : context && name && <BarName href={homeHref(context, installed)} name={name} />)
@@ -287,11 +290,12 @@ export function TopBar({
           slots.top,
         )}
         {caps && createPortal(
-          // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen.
-          <div className={rail ? 'relative flex flex-col items-center gap-1' : 'relative flex min-w-0 items-center gap-0.5'} data-testid="sidebar-account">
-            <AccountMenu inSidebar={{ rail, offerAdmin }} />
-            {!rail && <HelpMenu />}
-            {!rail && <ThemeMenu />}
+          // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen;
+          // in the rail, beside it. The owner (18-Nov): every icon stays in the rail, stacked in its 56px.
+          <div className={footRail ? 'relative flex flex-col items-center gap-1' : 'relative flex min-w-0 items-center gap-0.5'} data-testid="sidebar-account">
+            <AccountMenu inSidebar={{ rail: footRail, offerAdmin }} />
+            <HelpMenu rail={footRail} />
+            <ThemeMenu rail={footRail} />
           </div>,
           slots.foot,
         )}
@@ -569,11 +573,11 @@ function AccountMenu({ inMenu, inSidebar }: {
     .join('')
 
   const named = Boolean(inSidebar && !inSidebar.rail)
-  // In the rail the theme has no control of its own beside the avatar, so its menu carries it.
-  const extras = inMenu ?? (inSidebar ? { offerAdmin: inSidebar.offerAdmin, theme: inSidebar.rail } : undefined)
+  // At the sidebar's foot the theme has its own control, in the rail too.
+  const extras = inMenu ?? (inSidebar ? { offerAdmin: inSidebar.offerAdmin, theme: false } : undefined)
   const place = !inSidebar
     ? 'right-0 top-full mt-1'
-    : inSidebar.rail ? 'bottom-0 left-full ml-2' : 'bottom-full left-0 mb-1'
+    : inSidebar.rail ? 'bottom-0 left-full ml-4' : 'bottom-full left-0 mb-1'
   return (
     <div className={named ? 'relative min-w-0 flex-1' : 'relative'} ref={wrapper}>
       <button
@@ -602,7 +606,7 @@ function AccountMenu({ inMenu, inSidebar }: {
         <span className="sr-only">{t('Account')}: {shown}</span>
       </button>
       {open && (
-        <div id={menuId} className={cardClasses(`absolute ${place} z-40 w-64 overflow-hidden py-1`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
+        <div id={menuId} className={cardClasses(`absolute ${place} z-40 w-64 overflow-hidden py-1 shadow-lg`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
           <div className="border-b border-border px-3 py-2 text-sm" data-testid="account-identity">
             {/* #1227: a record shown is a RecordLink — the person's own Person record, for
                 someone who may open it (a System Manager, or a reader of Person). */}
@@ -671,11 +675,14 @@ function AccountMenu({ inMenu, inSidebar }: {
 }
 
 /** #1253: a small menu at the sidebar's foot, opening above its button. */
-function FootMenu({ label, icon: Icon, testid, children }: {
+function FootMenu({ label, icon: Icon, testid, rail = false, children }: {
   label: string
   icon: LucideIcon
   testid: string
-  children: ReactNode
+  /** In the rail the card opens beside it, as the avatar's does; open, it opens upward. */
+  rail?: boolean
+  /** The card's content; a function gets the card's closing, for a choice that closes it. */
+  children: ReactNode | ((close: () => void) => ReactNode)
 }) {
   const [open, setOpen] = useState(false)
   const wrapper = useRef<HTMLDivElement>(null)
@@ -707,7 +714,7 @@ function FootMenu({ label, icon: Icon, testid, children }: {
         type="button"
         onClick={() => setOpen((was) => !was)}
         aria-label={label}
-        title={label}
+        // Named on hover by the sidebar's own tooltip (lib/sidebar-rail), open or in the rail; no browser tooltip too.
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         data-testid={testid}
@@ -716,21 +723,46 @@ function FootMenu({ label, icon: Icon, testid, children }: {
         <Icon aria-hidden size={16} />
       </button>
       {open && (
-        <div id={menuId} className={cardClasses('absolute bottom-full left-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
-          {children}
+        <div id={menuId} className={cardClasses(`absolute ${rail ? 'bottom-0 left-full ml-4' : 'bottom-full left-0 mb-1'} z-40 w-max min-w-52 overflow-hidden p-1 shadow-lg`)} data-testid={`${testid}-menu`}>
+          {typeof children === 'function' ? children(() => { setOpen(false); button.current?.focus() }) : children}
         </div>
       )}
     </div>
   )
 }
 
-/** The theme control at the sidebar's foot: its icon is the theme chosen now. */
-function ThemeMenu() {
-  const { theme } = useThemeChoice()
+/** The theme control at the sidebar's foot: its icon is the theme chosen now.
+ *  The owner (18-Nov, option A): its menu is a short list, an icon and a name
+ *  on each row and a tick on the one in use, like the app switcher's and the
+ *  account's; choosing closes it. */
+function ThemeMenu({ rail }: { rail: boolean }) {
+  const { theme, set } = useThemeChoice()
   const { t } = useI18n()
   return (
-    <FootMenu label={`${t('Theme')}: ${t(THEME_LABEL[theme])}`} icon={THEME_ICON[theme]} testid="theme-button">
-      <ThemeToggle labelled />
+    <FootMenu label={`${t('Theme')}: ${t(THEME_LABEL[theme])}`} icon={THEME_ICON[theme]} testid="theme-button" rail={rail}>
+      {(close) => (
+        <div role="menu" aria-label={t('Theme')} data-testid="theme-choice">
+          {THEMES.map((choice) => {
+            const Icon = THEME_ICON[choice]
+            const chosen = theme === choice
+            return (
+              <button
+                key={choice}
+                type="button"
+                role="menuitemradio"
+                aria-checked={chosen}
+                onClick={() => { set(choice); close() }}
+                data-testid={`theme-${choice}`}
+                className={`${MENU_ITEM} gap-2.5 whitespace-nowrap rounded-md hover:bg-subtle${chosen ? ' font-medium' : ''}`}
+              >
+                <Icon aria-hidden size={16} className="shrink-0 text-ink-muted" />
+                <span className="flex-1">{t(THEME_LABEL[choice])}</span>
+                <Check aria-hidden size={16} className={`ml-4 shrink-0 text-action${chosen ? '' : ' invisible'}`} />
+              </button>
+            )
+          })}
+        </div>
+      )}
     </FootMenu>
   )
 }
@@ -738,10 +770,10 @@ function ThemeMenu() {
 /** Help at the sidebar's foot. #1251: its first item opens the Keyboard
  *  Shortcuts panel, which lists the shortcuts on this page and which ones the
  *  person uses; `?` opens it from anywhere. */
-function HelpMenu() {
+function HelpMenu({ rail }: { rail: boolean }) {
   return (
-    <FootMenu label="Help" icon={CircleHelp} testid="help-button">
-      <KeyboardShortcutsItem className={MENU_ITEM} />
+    <FootMenu label="Help" icon={CircleHelp} testid="help-button" rail={rail}>
+      <KeyboardShortcutsItem className={`${MENU_ITEM} rounded-md`} />
     </FootMenu>
   )
 }

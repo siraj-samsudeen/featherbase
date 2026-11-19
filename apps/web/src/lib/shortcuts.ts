@@ -29,6 +29,9 @@ export interface Shortcut {
   label: string
   /** The tip's sentence: "Press ⌘B to collapse or expand the sidebar." */
   tip: string
+  /** false: listed, and its uses counted (the list's "slipping"), but no tip or
+   *  reminder ever pops up for it. */
+  tips?: false
 }
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
@@ -40,6 +43,8 @@ export const SIDEBAR_SHORTCUT_DEF: Shortcut = {
   keys: mod('B'),
   label: 'Collapse Or Expand The Sidebar',
   tip: `Press ${mod('B')} to collapse or expand the sidebar.`,
+  // The owner (18-Nov): no tip for the sidebar; its control's hover tooltip names the key.
+  tips: false,
 }
 export const COMMAND_SHORTCUT_DEF: Shortcut = {
   id: 'command',
@@ -170,11 +175,13 @@ export function noteShortcutUse(id: string, via: 'key' | 'mouse', control?: Elem
     id,
     via,
     run: (learning) => {
-      const result = rule(held ? { ...learning, lastTip: now } : learning, id, via, now)
       const shortcut = added.get(id)?.shortcut
+      // A shortcut without tips counts its use as a held one does: no tip, and no day's tip spent.
+      const quiet = held || shortcut?.tips === false
+      const result = rule(quiet ? { ...learning, lastTip: now } : learning, id, via, now)
       return {
-        learning: held ? { ...result.learning, lastTip: learning.lastTip } : result.learning,
-        tip: !held && result.tip && shortcut ? { ...result.tip, shortcut, near } : null,
+        learning: quiet ? { ...result.learning, lastTip: learning.lastTip } : result.learning,
+        tip: !quiet && result.tip && shortcut ? { ...result.tip, shortcut, near } : null,
       }
     },
   }
