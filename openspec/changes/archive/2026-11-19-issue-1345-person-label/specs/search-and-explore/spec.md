@@ -30,6 +30,11 @@ code · email, and never an error (#1345).
 - **WHEN** an admin searches a name three staff members share
 - **THEN** each result reads its own code, role and place, and no two results read the same
 
+#### Scenario: Someone who has left
+
+- **WHEN** the person found has left
+- **THEN** their result reads "Former Staff", the day they left where the viewer may read it, and their code
+
 #### Scenario: Someone with no employee code
 
 - **WHEN** the person found has no employee code and no role or place
