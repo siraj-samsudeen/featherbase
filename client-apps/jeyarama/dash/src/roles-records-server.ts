@@ -4,7 +4,8 @@
 import { ACCESS_SOURCE, accessSource } from './access-source.ts'
 import { PERMISSION, TITLE_MAP, businessModel, every, type Base } from './business-access.ts'
 import { DASH_APP, permissionParts, type Reach } from './business-roles.ts'
-import { businessRoles } from './business-roles-server.ts'
+import { ACCESS_DECISION, businessRoles, decidedToLose } from './business-roles-server.ts'
+export { ACCESS_DECISION, decidedToLose }
 import { all, managesAccess, personNames, type AccessContext } from './report-access-server.ts'
 import { planGrants, type PlannedGrant } from './switch-over.ts'
 import { checked, exact, text } from './values.ts'
@@ -63,7 +64,7 @@ async function roleGroups(ctx: AccessContext, role: Roles[number], roles: Roles,
         parts: permissionParts(role, { verb: text(r.verb), thing: text(r.thing), reach: text(r.reach) as Reach }),
         note: [`In ${text(r.app)}, at level ${text(r.level)}`],
       }])) },
-    { key: 'reports', heading: 'Reports', table: 'dash.report_access',
+    { key: 'reports', heading: 'Reports', table: 'dash.report_access', links: [{ label: 'Open as grid', href: `${GRID_PAGE}&grid=reports` }],
       // Each tick line says who else holds the same grant: the grant is one, each role sees its own area.
       notes: Object.fromEntries(role.given.map(given => {
         const also = others(given)
@@ -174,14 +175,6 @@ export async function giveOldGrantsPreview(context: AccessContext) {
     rows,
     note: 'Running this again adds nothing; each run is kept in Setup Runs.',
   }
-}
-
-export const ACCESS_DECISION = 'dash.access_decision'
-
-/** #1340: the people the owner has decided are to lose Dash with business roles, by person. Taken-back ones are not. */
-export async function decidedToLose(base: Base): Promise<Set<string>> {
-  return new Set((await every(base, ACCESS_DECISION, ['person', 'decision', 'removed']))
-    .filter(r => !checked(r.removed) && text(r.decision) === 'Lose Dash').map(r => exact(r.person)))
 }
 
 /**

@@ -1,7 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
+import { choiceLabel, rowHref, tableHref, type ListFilter, type RecordGroup } from 'shared'
+import { appGroupFor, appGroupKey, inAppOrder } from './AppLinkGroup'
 import {
   FieldGrid, GroupChip, LinkChip, PaneSection, Plus, RecordLink, SplitWithPane, X,
   buttonClasses, cx, fmtCount, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
@@ -423,8 +424,10 @@ function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: u
  * rows it points at and the counted groups that point at it, the same chips
  * as the drill pane. Opening one shows it in the pane.
  */
-export function RowConnections({ table, row, values, layout = 'chips', onGroup }: {
+export function RowConnections({ table, row, values, layout = 'chips', onGroup, appGroups }: {
   table: string; row: string; values: Row | undefined
+  /** #1340: the app's groups: its headings on the chips, its own groups as chips too, all in its order. */
+  appGroups?: RecordGroup[]
   /** #1267: 'list' is a Person page's right column, one group per line with its count. */
   layout?: 'chips' | 'list'
   /** #1273 (D3): a group's chip jumps to its section on the Links tab, by the group's key. */
@@ -442,8 +445,10 @@ export function RowConnections({ table, row, values, layout = 'chips', onGroup }
   const step = nav.step
   const open = (pane: NavPane) => nav.push({ ...step, pane })
   const chosen = step.pane?.table === table && step.pane.row === row ? step.pane.group : undefined
-  const full = groups.filter((g) => g.count > 0)
-  const empty = groups.filter((g) => g.count === 0)
+  const ordered = inAppOrder(groups, appGroups)
+  const full = ordered.filter((g) => g.count > 0)
+  const empty = ordered.filter((g) => g.count === 0)
+  const own = layout === 'chips' && onGroup ? (appGroups ?? []).filter((g) => !g.table) : []
   const shown = showEmpty ? [...full, ...empty] : full
   const choose = (g: BacklinkGroup) => onGroup ? onGroup(g.key) : open({ table, row, group: { table: g.connection.table, column: g.connection.column, via: g.connection.via } })
   const isChosen = (g: BacklinkGroup) => (!onGroup && chosen ? groupKey(chosen) === g.key : false)
@@ -481,8 +486,9 @@ export function RowConnections({ table, row, values, layout = 'chips', onGroup }
       ))}
       {groups.length > 0 && <span className="flex flex-wrap items-center gap-2">
         {shown.map((g) => (
-          <GroupChip key={g.key} label={g.label} count={g.count} selected={isChosen(g)} onSelect={() => choose(g)} />
+          <GroupChip key={g.key} label={appGroupFor(appGroups, g.connection.table)?.heading ?? g.label} count={g.count} selected={isChosen(g)} onSelect={() => choose(g)} />
         ))}
+        {own.map((g) => <GroupChip key={appGroupKey(g)} label={g.heading} count={g.count ?? g.lines?.length ?? 0} selected={false} onSelect={() => onGroup!(appGroupKey(g))} />)}
         {emptyToggle}
       </span>}
     </section>

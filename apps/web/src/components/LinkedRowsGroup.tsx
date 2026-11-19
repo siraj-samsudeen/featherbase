@@ -13,6 +13,8 @@ import { useI18n } from '../lib/i18n'
 import { useCapabilities } from '../lib/session'
 import { isRowsReadOnly } from '../lib/meta'
 import { GridButton, LinkTickList, groupListHref, newRowHref, useGroupPlan, type GroupPlan } from './LinkTickList'
+import type { RecordGroup } from 'shared'
+import { AppGroupLinks, AppLine } from './AppLinkGroup'
 
 type Row = Record<string, unknown>
 
@@ -26,7 +28,7 @@ type Row = Record<string, unknown>
  * list read is permission-scoped). The record panel draws it; later slices
  * (the Links tab, a person's linked records, tick editing) reuse it.
  */
-export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, showAllHref, onOpen, editable = false, heading = true, peek = false }: {
+export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, showAllHref, onOpen, editable = false, heading = true, peek = false, app }: {
   /** The record's Table and id: what the group's rows point at. */
   table: string
   record: string
@@ -43,18 +45,20 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
   heading?: boolean
   /** #1282 C14: in the peek, the rest of a group reads "+ N more", not "Show all N". */
   peek?: boolean
+  /** #1340: what the app describing the record says of this group: its heading, a sentence for each row, a note for each tick. */
+  app?: RecordGroup
 }) {
   const plan = useGroupPlan(table, record, group)
   const href = showAllHref ?? groupListHref(group)
   if (editable && plan.tick && plan.linkMeta && plan.column && plan.farTable && plan.farMeta && plan.choices)
-    return <LinkTickList table={table} record={record} group={group} onOpen={onOpen} gridHref={href}
-      plan={plan as Parameters<typeof LinkTickList>[0]['plan']} />
+    return <LinkTickList table={table} record={record} group={group} onOpen={onOpen} gridHref={app?.links?.[0]?.href ?? href}
+      plan={plan as Parameters<typeof LinkTickList>[0]['plan']} heading={app?.heading} notes={app?.notes} />
   return <LinkedRowsList table={table} record={record} group={group} maxRows={maxRows} href={href} onOpen={onOpen} peek={peek}
-    heading={heading} plan={editable ? plan : undefined} />
+    heading={heading} plan={editable ? plan : undefined} app={app} />
 }
 
 /** The slice-1 list of a group; with a plan (on the Links tab), Open as grid and + New. */
-function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, plan, peek = false }: {
+function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, plan, peek = false, app }: {
   table: string
   record: string
   group: BacklinkGroup
@@ -64,6 +68,7 @@ function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, 
   onOpen?: (pane: NavPane) => void
   heading: boolean
   plan?: GroupPlan
+  app?: RecordGroup
 }) {
   const { connection } = group
   const meta = useMeta(connection.table)
@@ -90,14 +95,15 @@ function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, 
   // A group linked through a sub-table has no column of its own pointing back.
   const backLink = connection.via ? undefined : connection.column
   return (
-    <section aria-label={group.label} data-testid="linked-rows-group" className="flex min-w-0 flex-col gap-3">
+    <section aria-label={app?.heading ?? group.label} data-testid="linked-rows-group" className="flex min-w-0 flex-col gap-3">
       {heading && (
         <div className="flex min-w-0 items-center gap-2">
           <h4 className={total ? 'text-sm font-semibold text-ink' : 'text-sm font-semibold text-ink-muted'} data-empty={total ? undefined : 'true'}>
-            {group.label} <span className="font-normal text-ink-muted">{fmtCount(total)}</span>
+            {app?.heading ?? group.label} <span className="font-normal text-ink-muted">{fmtCount(total)}</span>
           </h4>
           <span className="flex-1" />
-          {plan?.grid && <GridButton href={href} />}
+          {app && <AppGroupLinks group={app} />}
+          {plan?.grid && !app?.links?.length && <GridButton href={href} />}
         </div>
       )}
       {!total ? <p className="flex items-center gap-3 text-sm text-ink-muted">No rows
@@ -105,10 +111,12 @@ function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, 
         : rows.isPending || !meta.data || doc.isPending ? <p className="text-sm text-ink-subtle">Loading…</p>
         : (
           <ul className="flex min-w-0 flex-col gap-0.5">
-            {data.map((r) => (
-              <LinkedRowLine key={String(r.row_id)} meta={meta.data!} row={r} onOpen={onOpen}
-                far={farSides(meta.data!, r, { backLink, record: { table, row_id: record }, own })} />
-            ))}
+            {data.map((r) => app?.rows?.[String(r.row_id)]
+              // #1340: the row in the app's words (a permission as its sentence), its records links.
+              ? <AppLine key={String(r.row_id)} line={app.rows[String(r.row_id)]!} />
+              : <LinkedRowLine key={String(r.row_id)} meta={meta.data!} row={r} onOpen={onOpen}
+                  far={farSides(meta.data!, r, { backLink, record: { table, row_id: record }, own })} />
+            )}
           </ul>
         )}
       {/* More than shown: Show all N. Otherwise a quieter way to the group as a

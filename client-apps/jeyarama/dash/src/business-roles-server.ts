@@ -485,13 +485,27 @@ export async function explainPerson(context: AccessContext) {
       direct: shadow.nextWhy.get(key)!.some(w => w.person === true) })),
     permissions: world.model.permissions.filter(p => shadow.held.some(h => h.role === p.role))
       .map(p => ({ role: p.role, app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach })),
-    today: { opens: shadow.today.opens, reports: shadow.today.reports.length, stores: new Set(Object.keys(shadow.today.places).map(s => plants.get(s))).size },
-    next: { opens: shadow.next.opens, reports: shadow.next.reports.length, stores: new Set(Object.keys(shadow.next.places).map(s => plants.get(s))).size },
+    today: sideCounts(shadow.today, plants),
+    next: sideCounts(shadow.next, plants),
     change: await changeWords(world, reports, found, shadow.everyReport),
     choices: world.model.roles.map(r => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name)),
     // The Correct form's places: every store, their job's first.
     places: { stores, default: jobs.map(j => exact(j.site)).find(id => stores.some(s => s.id === id)) ?? null },
   }
+}
+
+/** One side of a comparison as counts: whether Dash opens, how many reports, how many stores (a store's plants count once). */
+function sideCounts(side: { opens: boolean; reports: string[]; places: Record<string, unknown> }, plants: Map<string, string>) {
+  return { opens: side.opens, reports: side.reports.length, stores: new Set(Object.keys(side.places).map(s => plants.get(s))).size }
+}
+
+/** #1340: the owner's decisions on Who Would Gain Or Lose Access, by person. */
+export const ACCESS_DECISION = 'dash.access_decision'
+
+/** #1340: the people the owner has decided are to lose Dash with business roles. A decision taken back is not one. */
+export async function decidedToLose(base: Documents): Promise<Set<string>> {
+  return new Set((await everyRow(base, ACCESS_DECISION, ['person', 'decision', 'removed']))
+    .filter(r => !checked(r.removed) && text(r.decision) === 'Lose Dash').map(r => exact(r.person)))
 }
 
 const GROUPS = ['loses_dash', 'gains_dash', 'stores', 'reports', 'decision', 'needs_dash_role'] as const
@@ -533,6 +547,7 @@ export async function accessChanges(context: AccessContext) {
   const people = await population(world)
   const platformRoles = await platformRolesOf(ctx.people, people)
   const roleName = new Map(world.model.roles.map(r => [r.id, r.name]))
+  const plants = new Map((await world.docs.rows('Plant')).map(p => [exact(p.row_id), exact(p.site)]))
   const changed = []
   const losing: { receiver: Receiver; lost: string[] }[] = []
   for (const person of people) {
@@ -540,11 +555,15 @@ export async function accessChanges(context: AccessContext) {
     if (!found.kind) continue
     // Every report they get today and would not under business roles, whether lost or awaiting a decision.
     losing.push({ receiver: shadow.receiver, lost: shadow.today.reports.filter(k => !shadow.next.reports.includes(k)) })
-    changed.push({ person, kind: found.kind, roles: [...new Set(shadow.held.map(h => roleName.get(h.role)!))].sort(), ...await changeWords(world, reports, found, shadow.everyReport) })
+    changed.push({ person, kind: found.kind, roles: [...new Set(shadow.held.map(h => roleName.get(h.role)!))].sort(), ...await changeWords(world, reports, found, shadow.everyReport),
+      // #1340: today and with business roles, counted as Explain A Person counts them.
+      today: sideCounts(shadow.today, plants), next: sideCounts(shadow.next, plants) })
   }
   const names = await personNames(ctx, changed.map(c => c.person))
-  const who = await whoIs(ctx.baseTables, changed.map(c => c.person), world.today)
-  const rows = changed.map(c => ({ ...c, name: names.get(c.person) ?? 'Someone', who: who.get(c.person)! })).sort((a, b) => a.name.localeCompare(b.name))
+  // #1340: with each job's site as a record, so the list links it.
+  const who = await whoIs(ctx.baseTables, changed.map(c => c.person), world.today, { sites: true })
+  const decided = await decidedToLose(ctx.baseTables)
+  const rows = changed.map(c => ({ ...c, name: names.get(c.person) ?? 'Someone', who: who.get(c.person)!, decided: decided.has(c.person) })).sort((a, b) => a.name.localeCompare(b.name))
   return { people: people.length, changed: rows.length, groups: GROUPS.map(kind => ({ kind, people: rows.filter(r => r.kinds.includes(kind)) })),
     not_carried_over: await notCarriedOver(ctx, world, reports, losing, new Map(rows.map(r => [r.person, r.name]))) }
 }

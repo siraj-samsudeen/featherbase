@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { choiceLabel, rowDisplayTitle, tableHref, wallTimeToInstant, type ListFilter } from 'shared'
-import { AreaPicker as AreaColumns, RecordLink, cx, fmtCount } from '@featherbase/shop-floor'
+import { AreaPicker as AreaColumns, RecordLink, TickMark, ToneChip, cx, fmtCount } from '@featherbase/shop-floor'
 import { ApiError, api, listResource } from '../lib/api'
 import { forwardLinks, ALL_ROWS, useRowName, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
 import { linkRowsTable, metaQuery, tableLabel, type ColumnDef, type TableMeta } from '../lib/meta'
@@ -113,7 +113,6 @@ export function useGroupPlan(table: string, record: string, group: BacklinkGroup
 /** #1273: a record page tells its one save state when a tick saves (C9). */
 export const LinkSaveContext = createContext<{ saved: () => void } | null>(null)
 
-const SRC = 'inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-[7px] py-px font-mono text-xs'
 const BOX = 'grid size-4 shrink-0 place-items-center rounded-[4px] border-[1.5px] text-xs leading-none'
 
 /**
@@ -124,7 +123,7 @@ const BOX = 'grid size-4 shrink-0 place-items-center rounded-[4px] border-[1.5px
  * names a correction path. Ticking an unticked choice opens the inline form
  * under it; nothing is saved until Add. Unticking a hand-given link removes it.
  */
-export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
+export function LinkTickList({ table, record, group, plan, onOpen, gridHref, heading, notes }: {
   table: string
   record: string
   group: BacklinkGroup
@@ -132,6 +131,9 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
   onOpen?: (pane: NavPane) => void
   /** Open as grid: the group's list, until the grid comes (C12). */
   gridHref?: string
+  /** #1340: the app's heading for the group, and a note for each choice (by its id): who else holds it. */
+  heading?: string
+  notes?: Record<string, string>
 }) {
   const { connection } = group
   const { linkMeta, column, farTable, farMeta, choices } = plan
@@ -162,7 +164,7 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
   const lines = tickLines(choices, data, column.column_name)
   const total = lines.ticked.length + lines.unticked.length
   // The section bears its chip's name, so a chip and its section read the same (verifier).
-  const farLabel = group.label
+  const farLabel = heading ?? group.label
 
   const refresh = async () => {
     await Promise.all([
@@ -219,10 +221,10 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
         : rows.isPending ? <p className="text-sm text-ink-subtle">Loading…</p> : (
         <ul className="grid gap-0.5">
           {visible.map((item) => item.kind === 'ticked'
-            ? <TickedLineView key={String(item.line.row.row_id)} line={item.line} farTable={farTable} linkMeta={linkMeta}
+            ? <TickedLineView key={String(item.line.row.row_id)} line={item.line} farTable={farTable} linkMeta={linkMeta} note={notes?.[item.line.choice.id]}
                 otherLinks={otherLinks} dates={dates} source={sources.data?.sources[String(item.line.row.row_id)]}
                 sourceKnown={sources.isSuccess} onUntick={() => untick(item.line.row)} onOpen={onOpen} busy={status === 'saving'} />
-            : <UntickedLineView key={item.choice.id} choice={item.choice} farTable={farTable} open={opened === item.choice.id}
+            : <UntickedLineView key={item.choice.id} choice={item.choice} farTable={farTable} open={opened === item.choice.id} note={notes?.[item.choice.id]}
                 onTick={() => setOpened(opened === item.choice.id ? null : item.choice.id)} onCancel={() => setOpened(null)}
                 fields={fields} onAdd={(values) => add(item.choice, values)} busy={status === 'saving'} />)}
         </ul>
@@ -247,8 +249,10 @@ export function GridButton({ href }: { href: string }) {
   )
 }
 
-function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, sourceKnown, onUntick, onOpen, busy }: {
+function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, sourceKnown, onUntick, onOpen, busy, note }: {
   line: TickedLine
+  /** #1340: the app's note on this choice. */
+  note?: string
   farTable: string
   linkMeta: TableMeta
   otherLinks: ColumnDef[]
@@ -275,10 +279,9 @@ function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, s
     <li className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-subtle" data-testid="tick-line" data-ticked="true">
       {/* A feed's link is locked: it changes only through Correct (C7). Undecided while its source loads. */}
       {fromFeed || !sourceKnown
-        ? <span className={cx(BOX, 'cursor-not-allowed border-caution bg-caution-tint text-caution')}
-            // With no correction path, the feed itself is where it changes (verifier).
-            title={fromFeed ? (correct ? `From ${source}: change it with Correct` : `Comes from ${source}: change it there`) : undefined}
-            role="img" aria-label={`${title}, from ${source ?? 'a feed'}, locked`} data-testid="tick-locked">✓</span>
+        // With no correction path, the feed itself is where it changes (verifier).
+        ? <TickMark state="locked" label={`${title}, from ${source ?? 'a feed'}, locked`}
+            title={fromFeed ? (correct ? `From ${source}: change it with Correct` : `Comes from ${source}: change it there`) : undefined} />
         : <button type="button" onClick={onUntick} disabled={busy || !mayUntick} aria-label={`Untick ${title}`} data-testid="tick-box"
             title={caps.data && !mayUntick ? 'You may not remove this one' : undefined}
             // A tick the viewer may not remove reads locked and grey, not a faded blue (verifier).
@@ -289,6 +292,7 @@ function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, s
           ? <RecordLink table={farTable} rowId={choice.id} name={UNSEEN_ROW} canOpen={false} />
           : <RecordLink table={farTable} rowId={choice.id} name={title} className="self-start"
               onNavigate={onOpen ? () => onOpen({ table: farTable, row: choice.id }) : undefined} />}
+        {note && <span className="text-xs text-ink-muted" data-testid="tick-note">{note}</span>}
         {(areas.length > 0 || facts.length > 0) && (
           <span className="text-xs text-ink-muted" data-testid="tick-meta">
             {areas.map((c, i) => <span key={c.column_name}>{i > 0 && ' · '}<AreaName column={c} value={String(row[c.column_name])} /></span>)}
@@ -298,8 +302,8 @@ function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, s
       </span>
       <span className="flex items-center gap-1">
         {sourceKnown && (fromFeed
-          ? <span className={cx(SRC, 'bg-action-tint text-action')} data-testid="source-chip">from {source}</span>
-          : <span className={cx(SRC, 'bg-caution-tint text-caution')} data-testid="source-chip">given by hand</span>)}
+          ? <ToneChip tone="neutral">from {source}</ToneChip>
+          : <ToneChip tone="caution">given by hand</ToneChip>)}
         {correct && <a href={correct} data-testid="correct-link" className="px-1 text-xs text-action hover:underline focus-visible:outline-2 focus-visible:outline-focus">Correct</a>}
       </span>
     </li>
@@ -313,8 +317,9 @@ function AreaName({ column, value }: { column: ColumnDef; value: string }) {
   return <RecordLink table={table} rowId={value} name={name.state === 'read' ? name.title : UNSEEN_ROW} canOpen={name.state === 'read'} className="text-ink-muted" />
 }
 
-function UntickedLineView({ choice, farTable, open, onTick, onCancel, fields, onAdd, busy }: {
+function UntickedLineView({ choice, farTable, open, onTick, onCancel, fields, onAdd, busy, note }: {
   choice: Choice
+  note?: string
   farTable: string
   open: boolean
   onTick: () => void
@@ -328,7 +333,10 @@ function UntickedLineView({ choice, farTable, open, onTick, onCancel, fields, on
       <button type="button" onClick={onTick} aria-label={`Tick ${choice.title}`} aria-expanded={open} data-testid="tick-box"
         className={cx(BOX, 'cursor-pointer border-border-control bg-surface focus-visible:outline-2 focus-visible:outline-focus')} />
       {/* Unticked choices are greyed: the name still opens its record. */}
-      <RecordLink table={farTable} rowId={choice.id} name={choice.title} className="self-start !font-normal !text-ink-muted" />
+      <span className="flex min-w-0 flex-col">
+        <RecordLink table={farTable} rowId={choice.id} name={choice.title} className="self-start !font-normal !text-ink-muted" />
+        {note && <span className="text-xs text-ink-muted" data-testid="tick-note">{note}</span>}
+      </span>
       <span />
       {open && <AlsoGiveForm choice={choice} fields={fields} onAdd={onAdd} onCancel={onCancel} busy={busy} />}
     </li>

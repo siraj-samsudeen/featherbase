@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { choiceLabel } from 'shared'
+import { choiceLabel, type RecordFact } from 'shared'
 import { api } from '../lib/api'
 import { LinkedTitle, RowLink } from '../lib/row-name'
 import { UNSEEN_ROW, useLinkTitle } from '../lib/relations'
@@ -16,7 +16,7 @@ import { OneLine } from './list-one-line'
 import { Button, DataCards, LinkActions, Select, touchLinkClasses, useRecordHref, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp } from '@featherbase/shop-floor'
 import { RetiredBadge } from './RowRetirement'
-import { fmtCount } from '@featherbase/shop-floor'
+import { fmtCount, pillClasses, StatusPill } from '@featherbase/shop-floor'
 import { Indicator } from './Indicator'
 
 /** #1224: the columns that record who acted on a row. */
@@ -60,6 +60,8 @@ export function ListRow({
   inPane,
   onOpenPane,
   titleOpensPane,
+  factColumns = [],
+  facts,
 }: {
   row: Record<string, unknown>
   table: string
@@ -81,6 +83,9 @@ export function ListRow({
   onOpenPane?: (pane: { table: string; row: string }) => void
   /** #1173: the row's name link opens the pane too, in place of the row's page. */
   titleOpensPane?: boolean
+  /** #1340: the app's columns, after the Table's own, and this row's facts for them. */
+  factColumns?: { key: string; label: string }[]
+  facts?: Record<string, RecordFact>
 }) {
   // A title that is a person's id reads as their name.
   const shownTitle = usePrincipalLabels([title])
@@ -145,12 +150,17 @@ export function ListRow({
             {i > 0 && <LinkCellActions row={row} col={col} />}
           </td>
         ))}
+        {factColumns.map((c) => (
+          <td key={`fact-${c.key}`} className="border-b border-border px-3 py-2 group-last:border-b-0" data-testid={`fact-${c.key}`}>
+            <OneLine className="max-w-80">{facts?.[c.key] ? <FactCell fact={facts[c.key]!} /> : <span className="text-ink-subtle">—</span>}</OneLine>
+          </td>
+        ))}
         <td aria-hidden className="border-b border-border p-0 group-last:border-b-0" />
       </tr>
       {expanded && (
         <tr data-testid="expanded-row">
           <td
-            colSpan={columns.length + 2 + (selectable ? 1 : 0)}
+            colSpan={columns.length + factColumns.length + 2 + (selectable ? 1 : 0)}
             className="border-b border-border bg-subtle py-3 pl-10 pr-4"
           >
             <InlineChildren table={table} name={String(row.row_id)} childFields={childFields} />
@@ -159,6 +169,13 @@ export function ListRow({
       )}
     </>
   )
+}
+
+/** #1340: an app's fact in a list cell: its words, as a status pill when it has a tone. */
+export function FactCell({ fact }: { fact: RecordFact }) {
+  if (!fact.tone) return <>{fact.text}</>
+  if (fact.tone === 'quiet') return <span className={pillClasses('bg-tag text-ink-muted')}>{fact.text}</span>
+  return <StatusPill tone={fact.tone}>{fact.text}</StatusPill>
 }
 
 // One value of a row, the same in both shapes: the first column links to the

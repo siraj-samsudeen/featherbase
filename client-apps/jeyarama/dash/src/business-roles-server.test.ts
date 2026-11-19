@@ -1855,6 +1855,17 @@ describe('business roles described for Featherbase (#1340)', () => {
     await expect(giveOldGrantsPreview(context(tables, { roles: ['Dash Reader'] }) as never)).rejects.toThrow(/Only a Report Access Manager/)
   })
 
+  it("says, for each person who changes, today and with business roles as counts, their job's site as a record, and whether the owner decided", async () => {
+    const tables = await seeded()
+    await decideAccess(context(tables, { payload: { person: 'st' } }) as never)
+    const answer = await accessChanges(context(tables) as never)
+    const rows = answer.groups.flatMap(g => g.people)
+    expect(rows.find(r => r.person === 'st')).toMatchObject({ decided: true,
+      today: { opens: expect.any(Boolean), reports: expect.any(Number), stores: expect.any(Number) }, next: { opens: expect.any(Boolean) },
+      who: { held: [{ job: 'Staff', site: { id: 'LKS', name: 'Lakeside' } }] } })
+    expect(rows.filter(r => r.person !== 'st').some(r => r.decided)).toBe(false)
+  })
+
   it('records Let Them Lose Dash once, changing no access, and only for someone who may see the page', async () => {
     const tables = await seeded()
     const scope = JSON.stringify(await scopeOf(tables, 'st', ['Dash Reader']))

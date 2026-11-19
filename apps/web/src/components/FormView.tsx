@@ -43,6 +43,7 @@ import { RecordNav } from './RecordNav'
 import { RowMap } from './RowMap'
 import { LinksViewMenu, RecordLinks, useLinksPreference } from './RecordLinks'
 import { LinkSaveContext } from './LinkTickList'
+import { useRecordFacts } from '../lib/record-facts'
 import { useNavigation } from '../lib/navigation'
 import { GlossaryHelp } from './GlossaryHelp'
 import { ReadingPresentation } from './ReadingPresentation'
@@ -186,6 +187,9 @@ export function FormView({
   const linksPref = useLinksPreference(table, rowNav?.step.linksAs)
   const [jumpTo, setJumpTo] = useState<string | null>(null)
   const jumped = useCallback(() => setJumpTo(null), [])
+  // #1340: what the app describing this Table says of this record: its header line and its Links groups.
+  const facts = useRecordFacts(table, name, !isNew)
+  const appGroups = facts.data?.facts.rows[name]?.groups
   // C9: a tick saved on the Links tab shows in the record's one save state.
   const linkSave = useMemo(() => ({ saved: () => { setBanner('Saved'); setSavedAt(new Date()) } }), [])
   const setLinksAs = (as: 'sections' | 'tree') => {
@@ -643,6 +647,10 @@ export function FormView({
           </h1>
           {/* #1267 step 3: who the person is, their jobs and stores, and their email. */}
           {personPage && <PersonStanding person={name} email={typeof values.email === 'string' ? values.email : null} />}
+          {/* #1340: the line the app describing this record gives under its title ("Business role · 25 people · from HR title"). */}
+          {!isNew && facts.data?.facts.rows[name]?.header && (
+            <p className="mt-1 text-sm text-ink-muted" data-testid="record-header-line">{facts.data.facts.rows[name]!.header}</p>
+          )}
           {/* #1267: a saved record says so once, at the tab row's right end; a new one here. */}
           {isNew && (
             <span className="text-xs text-ink-muted" data-testid="form-status">
@@ -839,7 +847,7 @@ export function FormView({
         </div>
       </div>
       {/* #1273 (verifier): a Person's page shows its link chips under its header too, to jump from (D3). */}
-      {!isNew && <RowConnections table={table} row={name} values={doc.data}
+      {!isNew && <RowConnections table={table} row={name} values={doc.data} appGroups={appGroups}
         onGroup={(key) => { setArea('Links'); setJumpTo(key) }} />}
       {storage && (
         <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
@@ -1085,7 +1093,7 @@ export function FormView({
         // Drawn only while open: its sections ask for every group's rows and choices.
         { id: 'Links', label: 'Links', content: area !== 'Links' ? null : (
           <LinkSaveContext.Provider value={linkSave}>
-            <RecordLinks table={table} name={name} values={doc.data} pref={linksPref} focusGroup={jumpTo} onFocused={jumped} />
+            <RecordLinks table={table} name={name} values={doc.data} pref={linksPref} focusGroup={jumpTo} onFocused={jumped} appGroups={appGroups} />
           </LinkSaveContext.Provider>
         ) },
         { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },

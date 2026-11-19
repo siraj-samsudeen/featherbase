@@ -37,6 +37,7 @@ import { ReportView } from './components/ReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
 import { TableNaming } from './components/TableNaming'
+import { ActionPreview } from './components/ActionPreview'
 import { DashboardView } from './components/DashboardView'
 import { HomePageView } from './components/HomePageView'
 import { useHomePages } from './lib/home-pages'
@@ -1017,6 +1018,25 @@ function NamingPage() {
   )
 }
 
+// #1340: an app's action previewed before it runs, as an ordinary page under its Table (static first segment).
+const actionPreviewRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'table/$table/run/$action',
+  ...tableAddress,
+  params: { stringify: stringifyTableParams<{ table: string; action: string }> },
+  component: tablePage(ActionPreviewPage),
+})
+
+function ActionPreviewPage() {
+  const { table } = useTableAddress()
+  const { action } = actionPreviewRoute.useParams()
+  return (
+    <div data-testid="table-page">
+      <ActionPreview key={`${table}/${action}`} table={table} action={action} />
+    </div>
+  )
+}
+
 // SET-003: role & permission manager for a Table (static first segment).
 const permissionsRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -1169,5 +1189,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, actionPreviewRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

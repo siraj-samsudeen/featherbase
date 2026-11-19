@@ -25,6 +25,8 @@ import { fmtCount, fmtINR } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
+import { AppRecordActions } from './AppRecordActions'
+import { useListFacts } from '../lib/record-facts'
 import { RenameTable } from './RenameTable'
 import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
 import { rememberListPlace } from './RecordNav'
@@ -411,6 +413,11 @@ export function ListView({
   }, [knownTotal, start])
 
   const rows = list.isError ? [] : list.data?.data ?? []
+  // #1340: what the app describing this Table says about the rows shown: its columns after the Table's own, and its
+  // Record actions. Nothing when no app describes it, or not to this viewer.
+  const listFacts = useListFacts(table, rows.map((r) => String(r.row_id)), Boolean(meta.data) && !list.isPending)
+  const described = listFacts.data ?? null
+  const factColumns = compact ? [] : described?.facts.columns ?? []
 
   // #1259: with a record open beside or over the list, the arrow keys move to
   // the next or previous row and the record follows (one step, not one per
@@ -736,6 +743,7 @@ export function ListView({
               New {thingWords(label)}
             </Link>
           )}
+          {described?.facts.actions?.length ? <AppRecordActions described={described} table={table} /> : null}
           {/* #1242 (admin-lists 2): one ⋯ More for what is not the page's own action. */}
           {(hasListActions || hasTableAdministration) && <ActionDisclosure label="More">
           {hasListActions && <div role="group" aria-label="List actions" className="flex flex-col items-stretch gap-1">
@@ -1259,6 +1267,12 @@ export function ListView({
                   </button>
                 </th>
               ))}
+              {/* #1340: the app's columns, after the Table's own; worked out, so not sortable. */}
+              {factColumns.map((c) => (
+                <th key={`fact-${c.key}`} className="border-b border-border bg-subtle px-3 py-2 text-left font-medium text-ink-muted" data-testid={`fact-col-${c.key}`}>
+                  <OneLine className="max-w-80">{c.label}</OneLine>
+                </th>
+              ))}
               {/* Takes the spare width, so columns stay as wide as their content. */}
               <td aria-hidden className="w-full border-b border-border p-0" />
             </tr>
@@ -1282,13 +1296,15 @@ export function ListView({
                 inPane={paneRow === String(row.row_id)}
                 onOpenPane={openPane}
                 titleOpensPane={Boolean(onRowOpen)}
+                factColumns={factColumns}
+                facts={described?.facts.rows[String(row.row_id)]?.facts}
               />
             ))}
             {!rows.length && (
               <tr>
                 <td
                   colSpan={
-                    columns.length + 1 +
+                    columns.length + 1 + factColumns.length +
                     (expandable ? 1 : 0) +
                     (isRowsReadOnly(meta.data) ? 0 : 1)
                   }
