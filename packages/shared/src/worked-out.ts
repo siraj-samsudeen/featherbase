@@ -17,6 +17,8 @@ export const workedOutRowSchema = z.object({
   name: words(120),
   /** The record the row names, opened by its link. */
   record: record.optional(),
+  /** The installed app the row names ("Dash"), by its name: its link opens the app, kept only for an app the viewer may open. */
+  app: words(60).optional(),
   /** A second line: "at level Reader", or the area. */
   detail: words(120).optional(),
   /** The roles (or other records) that give it: "via Floor Manager", each a link. */

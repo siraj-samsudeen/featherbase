@@ -666,10 +666,18 @@ export async function workedOut(context: AccessContext) {
   const roleLink = (r: { role: string; name: string }) => ({ name: clip(r.name), record: { table: ROLE, row: r.role } })
   // The role's area as record parts (as Why's boxes carry it), so the platform hides a chain naming an area the viewer may not read.
   const chainVia = (r: { role: string; name: string; area: { parts: Part[] } } | undefined) => (r ? [{ ...roleLink(r), ...areaParts(r.area.parts) }] : [])
-  const apps: WorkedRow[] = explained.apps.slice(0, WORKED_OUT_ROWS).map(a => {
-    const via = a.via.flatMap(name => roleByName.has(name) ? [roleByName.get(name)!] : [])
-    return { name: clip(a.app), detail: clip(`at level ${a.level}`), via: via.slice(0, 6).map(roleLink),
-      why: [self, ...chainVia(via[0]), { name: clip(`${a.app} · ${a.level}`) }] }
+  const rolesOf = (names: string[]) => names.flatMap(name => roleByName.has(name) ? [roleByName.get(name)!] : [])
+  // UI owner: one row per app, at its highest level (a higher level includes the lower). A lower level is named
+  // ("also Reader") only where a role that does not give the higher one gives it; Why? opens the shown level's chain.
+  const byApp = new Map<string, typeof explained.apps>()
+  for (const a of explained.apps) byApp.set(a.app, [...(byApp.get(a.app) ?? []), a])
+  const apps: WorkedRow[] = [...byApp.values()].slice(0, WORKED_OUT_ROWS).map(levels => {
+    const [top, ...lower] = [...levels].sort((x, y) => levelRank(y.level) - levelRank(x.level))
+    const also = lower.filter(l => l.via.some(name => !top!.via.includes(name)))
+    const via = rolesOf([...new Set([...top!.via, ...also.flatMap(l => l.via)])])
+    return { name: clip(top!.app), app: top!.app.toLowerCase(),
+      detail: clip(`at level ${top!.level}${also.length ? `, also ${also.map(l => l.level).join(', ')}` : ''}`),
+      via: via.slice(0, 6).map(roleLink), why: [self, ...chainVia(rolesOf(top!.via)[0]), { name: clip(`${top!.app} · ${top!.level}`) }] }
   })
   const reports: WorkedRow[] = explained.reports.slice(0, WORKED_OUT_ROWS).map(r => {
     const via = r.roles.flatMap(id => roleById.has(id) ? [roleById.get(id)!] : [])
@@ -683,9 +691,12 @@ export async function workedOut(context: AccessContext) {
 }
 /** The most rows one worked-out section holds (the platform's limit). */
 const WORKED_OUT_ROWS = 50
+/** An app level's rank, lowest first: a higher level includes what a lower one gives. A level not listed ranks lowest. */
+const LEVEL_ORDER = ['Reader', 'User', 'Manager']
+const levelRank = (level: string) => LEVEL_ORDER.indexOf(level)
 type Named = { name: string; record?: { table: string; row: string } }
-/** One row of a worked-out section, as the platform's shape has it. */
-type WorkedRow = Named & { detail?: string; via: Named[]; why: (Named & { detailParts?: Named[] })[] }
+/** One row of a worked-out section, as the platform's shape has it; `app` names the installed app it is, for its link. */
+type WorkedRow = Named & { app?: string; detail?: string; via: Named[]; why: (Named & { detailParts?: Named[] })[] }
 
 export function mayExplainAccess(context: AccessContext): boolean {
   // The platform always sends a payload; anything that is not { table, row } names no Person.

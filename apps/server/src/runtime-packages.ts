@@ -1069,7 +1069,7 @@ export async function appCatalog(user: string) {
     const pkg = packages.get(item.name)
     // Its installation declares pages of its own (#659's classification), and
     // this process holds them to serve.
-    if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read') && await passesGate(pkg, user))
+    if (item.active && pkg && await opensApp(item, pkg, user))
       result.push({
         name: pkg.name, title: pkg.title, href: appHref(pkg.name),
         // #1236: the switcher's menu draws each app's icon and one line, in its accent.
@@ -1084,6 +1084,22 @@ export async function appCatalog(user: string) {
       })
   }
   return result
+}
+
+/** Whether `user` may open the app's own pages: installed, active, with pages of its own this process serves, its entry
+ *  Table readable and its gate passed. The app switcher lists exactly these. */
+async function opensApp(item: { active: boolean; ownPages?: boolean }, pkg: RuntimePackage, user: string) {
+  return item.active && !!item.ownPages && !!pkg.clientRoot && await hasPermission(user, pkg.entryTable, 'read') && await passesGate(pkg, user)
+}
+
+/** #1282: the names of the apps `user` may open, as the app switcher lists them. */
+export async function appsUserMayOpen(user: string): Promise<Set<string>> {
+  const names = new Set<string>()
+  for (const item of await listInstalledApps()) {
+    const pkg = packages.get(item.name)
+    if (pkg && await opensApp(item, pkg, user)) names.add(pkg.name)
+  }
+  return names
 }
 
 /** #1282 C10–C11: the app that works out sections about records of `table` (its manifest's `workedOut`), for

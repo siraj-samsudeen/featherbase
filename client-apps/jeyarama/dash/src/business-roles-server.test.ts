@@ -324,6 +324,18 @@ describe("Why on the platform's Map", () => {
     expect([report.name, report.via.map(v => v.name), report.why.at(-1)]).toEqual(['Vendor Sales', ['Store Manager'], { name: 'Vendor Sales', record: { table: 'dash.report', row: 'vs' } }])
   })
 
+  // UI owner: one row per app at its highest level (a higher level includes the lower); "also Reader" only where a
+  // different role gives the lower level. The app's name lets the Lens link it to the app.
+  it('shows each app once, at its highest level, naming a lower one only when another role gives it', async () => {
+    const tables = onRequest(await converted(await seeded()), 'vs', 'Store Manager')
+    const dashRows = async () => (await workedOut(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never))!.sections[0]!.rows.filter(r => r.name === 'Dash')
+    const [alone] = await dashRows()
+    expect([await dashRows().then(r => r.length), alone!.detail, alone!.app]).toEqual([1, 'at level Manager', 'dash'])
+    await giveRole(context(tables, { payload: { person: 'sm', change: 'Also give', role: roleId(tables, 'Team Leader'), ends_on: '2999-03-31', reason: 'Covering' } }) as never)
+    const [both] = await dashRows()
+    expect([both!.detail, both!.via.map(v => v.name), both!.why.at(-1)]).toEqual(['at level Manager, also Reader', ['Store Manager', 'Team Leader'], { name: 'Dash · Manager' }])
+  })
+
   it('keeps every name within the platform\'s limits, so one long name refuses nothing', async () => {
     const tables = onRequest(await converted(await seeded()), 'vs', 'Store Manager')
     const long = `Vendor Sales ${'x'.repeat(200)}`

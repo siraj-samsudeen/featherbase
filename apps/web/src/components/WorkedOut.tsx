@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { WorkedOutAnswer, WorkedOutRow } from 'shared'
+import { appHref, type WorkedOutAnswer, type WorkedOutRow } from 'shared'
 import { Lock, PaneSection, RecordLink, fmtCount, touchLinkClasses } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import type { NavPane } from '../lib/nav-path'
@@ -45,7 +45,8 @@ function WorkedOutLine({ row, onOpen }: { row: WorkedOutRow; onOpen?: (pane: Nav
     <li className="grid min-w-0 grid-cols-[22px_minmax(0,1fr)] gap-x-2 rounded-control px-2 py-1.5 text-[13px] hover:bg-subtle" data-testid="worked-out-row">
       <span title={LOCKED} aria-label={LOCKED} role="img" className="pt-0.5 text-ink-subtle" data-testid="worked-out-lock"><Lock aria-hidden size={14} /></span>
       <div className="flex min-w-0 flex-col">
-        <span className="min-w-0">{link(row, onOpen)}</span>
+        {/* An app's name opens the app itself, as the app switcher does (UI owner); the level beneath is words. */}
+        <span className="min-w-0">{row.app ? <RecordLink table="App" rowId={row.app} name={row.name} href={appHref(row.app)} /> : link(row, onOpen)}</span>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
           {row.detail && <span>{row.detail}</span>}
           {row.via.map((v, i) => (

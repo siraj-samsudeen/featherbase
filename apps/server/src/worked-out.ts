@@ -3,7 +3,7 @@ import { withAppIdentity } from './app-lifecycle'
 import { getDoc } from './document'
 import { AppError } from './errors'
 import { rowTitles } from './row-titles'
-import { runPackageRead, workedOutDeclarationFor } from './runtime-packages'
+import { appsUserMayOpen, runPackageRead, workedOutDeclarationFor } from './runtime-packages'
 
 // #1282 C10–C11 (UI owner, option A): the record panel's worked-out sections ("Apps They Can Open ·
 // worked out from their roles") are an installed app's answer about one record, declared in its
@@ -35,7 +35,8 @@ export async function workedOutFor(table: string, row: string, user: string): Pr
 /**
  * The sections as the viewer gets them: a row naming a record the viewer may not read is named neutrally, with no
  * record, no via and no why; a via naming one is named neutrally too, without its record; a why naming one is
- * left out whole, so its chain never names a record the viewer may not read.
+ * left out whole, so its chain never names a record the viewer may not read. A row keeps the app it names only where
+ * the viewer may open that app.
  */
 async function scrubbed(answer: WorkedOut, user: string): Promise<WorkedOut['sections']> {
   const rows = answer.sections.flatMap((s) => s.rows)
@@ -44,6 +45,7 @@ async function scrubbed(answer: WorkedOut, user: string): Promise<WorkedOut['sec
   const readable = new Set((await rowTitles(user, named.map((r) => ({ table: r.table, row_id: r.row }))))
     .map((t) => `${t.table}\u0000${t.row_id}`))
   const reads = (r?: { table: string; row: string }) => !r || readable.has(`${r.table}\u0000${r.row}`)
+  const opens = rows.some((r) => r.app) ? await appsUserMayOpen(user) : new Set<string>()
   return answer.sections.map((section) => ({
     ...section,
     rows: section.rows.map((r) => {
@@ -51,8 +53,9 @@ async function scrubbed(answer: WorkedOut, user: string): Promise<WorkedOut['sec
       const via = r.via.map((v) => (reads(v.record) ? v : { name: UNSEEN_ROW }))
       // A chain naming any record the viewer may not read, its areas' parts included, is left out whole.
       const why = r.why && r.why.every((p) => reads(p.record) && (p.detailParts ?? []).every((q) => reads(q.record))) ? { why: r.why } : {}
-      const { why: _dropped, ...rest } = r
-      return { ...rest, via, ...why }
+      // An app the viewer may not open is named without its link.
+      const { why: _dropped, app, ...rest } = r
+      return { ...rest, ...(app && opens.has(app) ? { app } : {}), via, ...why }
     }),
   }))
 }

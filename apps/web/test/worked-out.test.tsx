@@ -12,7 +12,7 @@ afterEach(cleanup)
 
 const SECTIONS: WorkedOutAnswer = { sections: [
   { heading: 'Apps They Can Open', note: 'worked out from their roles', empty: 'No apps from roles yet', rows: [
-    { name: 'Tasker', detail: 'at level Manager', via: [{ name: 'Floor Manager', record: { table: 'dash.business_role', row: 'fm' } }],
+    { name: 'Tasker', app: 'tasker', detail: 'at level Manager', via: [{ name: 'Floor Manager', record: { table: 'dash.business_role', row: 'fm' } }],
       why: [{ name: 'Priya S.', record: { table: 'Person', row: 'p1' } }, { name: 'Floor Manager', record: { table: 'dash.business_role', row: 'fm' }, detailParts: [{ name: 'Store C', record: { table: 'Site', row: 'C' } }, { name: 'First floor' }] }, { name: 'Tasker · Manager' }] },
     { name: 'Dash', detail: 'at level Reader', via: [{ name: 'A row you cannot see' }] },
   ] },
@@ -44,6 +44,9 @@ describe('the Lens worked-out sections', () => {
     const via = within(tasker!).getByTestId('worked-out-via')
     fireEvent.click(within(via).getByRole('link', { name: 'Floor Manager' }))
     expect(onOpen).toHaveBeenCalledWith({ table: 'dash.business_role', row: 'fm' })
+    // The app's name opens the app; the level is words.
+    expect(within(tasker!).getByRole('link', { name: 'Tasker' })).toHaveAttribute('href', '/tasker/')
+    expect(within(tasker!).queryByRole('link', { name: /at level/ })).toBeNull()
     // A role the viewer may not read is plain words.
     expect(within(within(dash!).getByTestId('worked-out-via')).queryByRole('link')).toBeNull()
   })

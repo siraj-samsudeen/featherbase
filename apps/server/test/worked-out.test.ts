@@ -149,6 +149,16 @@ describe('worked-out sections: what the viewer is told', () => {
     expect(JSON.stringify(answer)).not.toContain('Hidden store')
   })
 
+  // UI owner: an app's name links to the app; kept only for an app the viewer may open, as the app switcher lists it.
+  test("a row naming an app keeps it only where the viewer may open that app", async ({ admin, createUser }) => {
+    await install(admin)
+    const [, explainer] = await people(createUser)
+    hook().answer = { version: 1, sections: [{ heading: 'Apps They Can Open', empty: 'None', rows: [
+      { name: 'Bar Proof', app: 'barproof', via: [] }, { name: 'Elsewhere', app: 'no-such-app', via: [] }] }] }
+    const answer = await (await sections(explainer)).json() as { sections: { rows: { name: string; app?: string }[] }[] }
+    expect(answer.sections[0]!.rows).toEqual([{ name: 'Bar Proof', app: 'barproof', via: [] }, { name: 'Elsewhere', via: [] }])
+  })
+
   test('an answer that is not the one shape is refused whole, saying nothing of it', async ({ admin, createUser }) => {
     await install(admin)
     const [, explainer] = await people(createUser)
