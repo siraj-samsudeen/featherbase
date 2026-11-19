@@ -612,6 +612,9 @@ export function ListView({
         <input
           type="checkbox"
           checked={on}
+          // Codex adversarial round 3: not before this person's saved columns are here, so a switch never
+          // replaces choices it could not see yet.
+          disabled={!settingsLoaded}
           data-testid={`list-col-toggle-${col.column_name}`}
           onChange={() => toggleColumn(col.column_name, !on)}
         />

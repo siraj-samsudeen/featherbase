@@ -7,7 +7,7 @@ import { KindIcon } from '../lib/kind-icons'
 import { useRealtime } from '../lib/realtime'
 import { useIsSystemManager } from '../lib/session'
 import { undoTableDefault } from './TableDefaultDialog'
-import { cardClasses, touchRowClasses } from '@featherbase/shop-floor'
+import { cardClasses, touchLinkClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 interface FeedItem {
   /** Display name (#440). The feed carries no person id, by design. */
@@ -159,7 +159,7 @@ export function ActivityFeed() {
                 )}
                 {/* #1282 A4 (UI owner): while this save is still the Table's default, it can be put back from here too. */}
                 {item.undo && (
-                  <button type="button" className="relative shrink-0 text-xs font-medium text-action hover:underline" data-testid="feed-undo"
+                  <button type="button" className={touchLinkClasses('relative shrink-0 text-xs font-medium text-action hover:underline')} data-testid="feed-undo"
                     onClick={() => void undoTableDefault(queryClient, item.label, item.undo!)
                       .finally(() => queryClient.invalidateQueries({ queryKey: ['activity-feed'] }))}>
                     Undo

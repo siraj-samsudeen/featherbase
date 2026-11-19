@@ -139,3 +139,28 @@ test("a Links choice held on screen gives way once a Reset is read back", async 
   await act(() => queryClient.invalidateQueries({ queryKey: ['user-settings', DT] }))
   await waitFor(() => expect(result.current.as).toBe('sections'), T)
 })
+
+// Codex adversarial round 3: no column can be switched before the person's saved columns arrive, so a switch never
+// replaces choices it could not see yet.
+test("the column switches wait for the person's saved columns, which stay as they were", async ({ admin }) => {
+  await seed(admin)
+  await admin.fetch(`/api/user_settings/${enc(DT)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ shownCols: ['bay'], hiddenCols: [] }) })
+  const real = globalThis.fetch
+  let release!: () => void
+  const held = new Promise<void>((r) => { release = r })
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (!init?.method && url.endsWith(`/api/user_settings/${enc(DT)}`)) await held
+    return real(input, init)
+  })
+  try {
+    await renderApp(tableHref(DT), admin)
+    await userEvent.click(await screen.findByTestId('list-columns', {}, T))
+    expect(await screen.findByTestId('list-col-toggle-aisle', {}, T)).toBeDisabled()
+    release()
+    await waitFor(() => expect(screen.getByTestId('list-col-toggle-aisle')).toBeEnabled(), T)
+    await userEvent.click(screen.getByTestId('list-col-toggle-aisle'))
+    await waitFor(async () => expect((await admin.get<{ settings: { shownCols?: string[]; hiddenCols?: string[] } }>(`/api/user_settings/${enc(DT)}`)).settings)
+      .toMatchObject({ shownCols: ['bay'], hiddenCols: ['aisle'] }), T)
+  } finally { release(); vi.restoreAllMocks() }
+})
