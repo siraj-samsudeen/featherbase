@@ -410,3 +410,16 @@ test('the count row counts only the rows the viewer may read, and names no Table
   expect(await within(row).findByRole('link', { name: '1 Nv Plant' })).toBeInTheDocument()
   expect(within(row).queryByRole('link', { name: /Nv Visit/ })).not.toBeInTheDocument()
 })
+
+// #1349 item 2 (C5): hovering a count shows the shared peek card: the group's first rows, then "Open all N as a list".
+test("hovering a count shows its first rows and the way to all of them; leaving hides it", async ({ admin }) => {
+  await seedSites(admin)
+  await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.pointerEnter(chip.parentElement!)
+  const card = await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
+  expect(await within(card).findByRole('link', { name: 'Enchakkal Supermarket' })).toHaveAttribute('href', expect.stringContaining('/row/1503'))
+  expect(within(card).getByRole('link', { name: 'Open all 3 as a list' })).toHaveAttribute('href', chip.getAttribute('href'))
+  fireEvent.pointerLeave(chip.parentElement!)
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Nv Plants in Enchakkal' })).not.toBeInTheDocument())
+})
