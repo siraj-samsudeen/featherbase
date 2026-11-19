@@ -33,16 +33,16 @@ const sectionBacklinks = [{ table: 'Section Subcategory', column: 'section', via
 const view = (l: NarrowList) => [l.label, l.through ?? '', JSON.stringify(l.path)]
 
 describe('narrowLists', () => {
-  test('a link table lists every table its links reach, up to three links, each once, named by its table', () => {
+  test('a link table lists every table its links reach, up to three links, each once, by branch, farthest first (board A)', () => {
     const { lists, missing } = narrowLists(SECSUB, [], metaOf)
     expect(missing).toEqual([])
     expect(lists.map(view)).toEqual([
-      ['Section', '', '[{"column":"section"}]'],
-      ['Subcategory', '', '[{"column":"subcategory"}]'],
       ['Store', 'Section', '[{"column":"section"},{"column":"store"}]'],
       ['Floor', 'Section', '[{"column":"section"},{"column":"floor"}]'],
-      ['Category', 'Subcategory', '[{"column":"subcategory"},{"column":"category"}]'],
+      ['Section', '', '[{"column":"section"}]'],
       ['Division', 'Subcategory', '[{"column":"subcategory"},{"column":"category"},{"column":"division"}]'],
+      ['Category', 'Subcategory', '[{"column":"subcategory"},{"column":"category"}]'],
+      ['Subcategory', '', '[{"column":"subcategory"}]'],
     ])
   })
 
@@ -52,8 +52,8 @@ describe('narrowLists', () => {
       ['Store', '', '[{"column":"store"}]'],
       ['Floor', '', '[{"column":"floor"}]'],
       ['Section', '', '[]'],
-      ['Subcategory', 'Section Subcategory', '[{"from":"Section Subcategory","column":"section"},{"column":"subcategory"}]'],
       ['Category', 'Section Subcategory', '[{"from":"Section Subcategory","column":"section"},{"column":"subcategory"},{"column":"category"}]'],
+      ['Subcategory', 'Section Subcategory', '[{"from":"Section Subcategory","column":"section"},{"column":"subcategory"}]'],
       ['Kind', '', '[{"column":"kind"}]'],
     ])
   })
@@ -68,7 +68,7 @@ describe('narrowLists', () => {
 
 describe('a tick is a Linked to filter', () => {
   const lists = narrowLists(SECTION, sectionBacklinks, metaOf).lists
-  const [store, , own, subcategory, category, kind] = lists
+  const [store, , own, category, subcategory, kind] = lists
 
   test('a forward link picks rows of its table; a two-step path is a chain the chips already read', () => {
     expect(pickFilter(store, ['Bayside'])).toEqual(['store', 'related', { table: 'Store', filters: [['row_id', 'in', ['Bayside']]] }])
