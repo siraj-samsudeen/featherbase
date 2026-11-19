@@ -122,6 +122,14 @@ describe('#1289: Click To Narrow counts', () => {
     expect(category).toEqual({ 'Women Ethnic Wear': 2, Staples: 1, '∅': 3 })
   })
 
+  // Codex review: a fan-out reaching both a value and nothing is linked, as `not related` reads it.
+  test('a row reaching a value through one link row and nothing through another is not counted as none', async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/save_row', { table: SECSUB, row: { section: 'Ethnic Wear', subcategory: null } })
+    const [subcategory] = await narrow(admin, SECTION, [{ path: [{ from: SECSUB, column: 'section' }, { column: 'subcategory' }] }])
+    expect(subcategory).toEqual({ Churidar: 2, 'Half Saree': 1, Rava: 1, '∅': 3 })
+  })
+
   test("a Choice column and the list's own rows are lists too", async ({ admin }) => {
     await setup(admin)
     const [kind, own] = await narrow(admin, SECTION, [
