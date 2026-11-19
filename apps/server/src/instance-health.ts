@@ -210,7 +210,7 @@ async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
         fix: 'The background worker may have stopped. Check that the server is running and look at Jobs in Admin; the check passes after the next successful run.',
       }
     if (r.last_outcome === 'error') {
-      const error = typeof r.last_error === 'string' && r.last_error.trim() ? `: ${r.last_error.trim().slice(0, 200)}` : '.'
+      const error = typeof r.last_error === 'string' && r.last_error.trim() ? `: ${clipAtWord(r.last_error.trim())}` : '.'
       return {
         ...base,
         ok: false,
@@ -220,7 +220,7 @@ async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
     }
     // #464: a run that refused to act is treated like a failure.
     if (r.last_outcome === 'refused') {
-      const reason = typeof r.last_result === 'string' && r.last_result.trim() ? `: ${r.last_result.trim().slice(0, 200)}` : '.'
+      const reason = typeof r.last_result === 'string' && r.last_result.trim() ? `: ${clipAtWord(r.last_result.trim())}` : '.'
       return {
         ...base,
         ok: false,
@@ -231,6 +231,15 @@ async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
     if (!lastRun) return { ...base, ok: true, message: 'Has not run yet.', fix: null }
     return { ...base, ok: true, message: `The last run succeeded (${fmtInstantIST(lastRun)}).`, fix: null }
   })
+}
+
+/** #1360: a job's own words whole, up to the 500 characters a run keeps; a
+ *  longer text is cut at a word and says so with "…", never mid-word. */
+function clipAtWord(text: string, max = 500): string {
+  if (text.length <= max) return text
+  const cut = text.slice(0, max)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > 0 ? cut.slice(0, space) : cut).trimEnd()}…`
 }
 
 async function administratorPassword(environment: string): Promise<HealthCheck> {

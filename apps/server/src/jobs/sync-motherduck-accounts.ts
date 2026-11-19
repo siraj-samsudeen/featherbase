@@ -10,7 +10,10 @@ registerJob(MOTHERDUCK_ACCOUNT_JOB, async (_payload, ctx) => {
     const result = await syncMotherDuckAccounts()
     const summary = formatMotherDuckSync(result)
     console.log(summary)
-    if (result.ticket_errors.length) ctx.refuse(`${summary}. ${result.ticket_errors.slice(0, 3).join('; ')}`.slice(0, 500))
+    // #1360: the reason first, as sentences, then the counts: a reader, and any
+    // cut, meets why the run refused before what it counted.
+    const reasons = result.ticket_errors.slice(0, 3).map((e) => `${e.charAt(0).toUpperCase()}${e.slice(1)}.`).join(' ')
+    if (result.ticket_errors.length) ctx.refuse(`${reasons} ${summary}`.slice(0, 500))
     else ctx.setResult(summary.slice(0, 500))
   } catch (error) {
     if (error instanceof MotherDuckSyncStop) return ctx.refuse(error.message)
