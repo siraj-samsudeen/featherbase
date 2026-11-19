@@ -20,11 +20,11 @@ describe('invalid route arguments leave stored state alone', () => {
   test('an absent password cannot replace a person’s current password', async ({ admin }) => {
     const person = await makePerson({ full_name: 'Password shape' })
     await admin.post('/api/set_password', { user: person, password: 'shape-original-password' })
-    const before = await sql`select password_hash from person where row_id = ${person}`
+    const before = await sql`select (select password_hash from person_credential where person_id = ${person}) as password_hash`
     await expectApiError(admin.post('/api/set_password', { user: person }), {
       status: 417, type: 'ValidationError', message: expect.stringContaining('Expected { password }'),
     })
-    expect(await sql`select password_hash from person where row_id = ${person}`).toEqual(before)
+    expect(await sql`select (select password_hash from person_credential where person_id = ${person}) as password_hash`).toEqual(before)
   })
 
   test('missing identifier search terms are reported without revealing people', async ({ admin }) => {

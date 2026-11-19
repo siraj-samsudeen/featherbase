@@ -242,7 +242,7 @@ async function administratorPassword(environment: string): Promise<HealthCheck> 
   }
   if (DEV_ENVIRONMENTS.includes(environment))
     return { ...base, ok: true, message: `Not checked on a ${environment} server, where the default password is expected.`, fix: null }
-  const [admin] = await sql`select password_hash from person where row_id = 'Administrator'`
+  const [admin] = await sql`select password_hash from person_credential where person_id = 'Administrator'`
   if (!admin?.password_hash) return { ...base, ok: true, message: 'The Administrator has no password, so it cannot sign in with one.', fix: null }
   if (verifyPassword('admin', String(admin.password_hash)))
     return {

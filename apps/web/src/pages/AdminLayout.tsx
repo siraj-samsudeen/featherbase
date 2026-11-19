@@ -39,7 +39,7 @@ import { useI18n } from '../lib/i18n'
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
-import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
+import { AdminNotInAccount, NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
@@ -115,8 +115,9 @@ function AdminLayoutForKind({ fillHeight }: { fillHeight: boolean }) {
     )
   if (kind === 'no-access') return <NoAccessPage />
   // A report reader has no Admin page left: their sign-in methods are an
-  // account page now (#489), so every Admin address sends them to the report.
-  if (kind === 'report-only') return <Navigate to={REPORT_PATH} replace />
+  // account page now (#489). #1327 (audit F08): an Admin address says so and
+  // offers the report, keeping the address; it never moves them silently.
+  if (kind === 'report-only') return <AdminNotInAccount />
   return <AdminShell fillHeight={fillHeight} />
 }
 

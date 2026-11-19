@@ -1,7 +1,7 @@
 // UI-026: a Dashboard shows number cards and a bar chart that match the data.
 // Moved down from e2e/dashboard.spec.ts (#1080): the page in jsdom, its counts
 // from the real in-process server on the sandboxed database.
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
@@ -99,9 +99,13 @@ test('a card and a chart the network drops show a dash and say they failed to lo
   expect(await screen.findByText('Failed to load')).toBeInTheDocument()
 })
 
-test('a dashboard the network drops says it was not found', async ({ admin }) => {
+test('a dashboard the network drops says it could not be opened', async ({ admin }) => {
   await admin.post('/api/save_row', { table: 'Dashboard', row: { row_id: DASH, label: DASH } })
   dropNetwork((url) => url.startsWith('/api/table/Dashboard/'))
   await renderApp(`/featherbase/admin/dashboard/${encodeURIComponent(DASH)}`, admin)
-  expect(await screen.findByTestId('dashboard-error', {}, { timeout: 8000 })).toHaveTextContent('Dashboard not found')
+  // #1327: a dropped request is a failure, not "not found".
+  expect(await screen.findByTestId('dashboard-error', {}, { timeout: 8000 })).toHaveTextContent('This dashboard couldn’t be openedThe server didn’t answer.')
+  vi.restoreAllMocks()
+  fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+  await waitFor(() => expect(screen.queryByTestId('dashboard-error')).not.toBeInTheDocument(), { timeout: 8000 })
 })

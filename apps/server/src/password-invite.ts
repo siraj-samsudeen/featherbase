@@ -81,7 +81,7 @@ function view(row: Record<string, unknown>): InviteView {
  *  the caller's transaction (and its lock on the person) when one is given. */
 async function whyNot(person: string, db: TxSql | typeof sql = sql): Promise<string | null> {
   const [row] = await db`
-    select p.enabled, p.email, (p.password_hash is not null) as has_password, p.expects_google_sign_in, p.expects_microsoft_sign_in,
+    select p.enabled, p.email, exists (select 1 from person_credential c where c.person_id = p.row_id) as has_password, p.expects_google_sign_in, p.expects_microsoft_sign_in,
       exists (select 1 from sign_in_identity i where i.person_id = p.row_id and i.ended_at is null) as other_way
     from person p where p.row_id = ${person}`
   if (!row) throw new AppError('NotFoundError', `Person ${person} not found`)
@@ -258,7 +258,8 @@ async function acceptPasswordInvite(key: string, newPassword: string): Promise<A
     if (await whyNot(used.person, t)) throw new AppError('ValidationError', INVALID_INVITE)
     await setUserPassword(used.person, newPassword, t)
     await t`update password_invite set accepted_at = now() where id = ${used.id}`
-    const [after] = await t`select password_hash, sessions_ended_at::text as ended from person where row_id = ${used.person}`
+    const [after] = await t`select (select c.password_hash from person_credential c where c.person_id = person.row_id) as password_hash,
+      sessions_ended_at::text as ended from person where row_id = ${used.person}`
     return { person: used.person, passwordHash: after.password_hash as string, sessionsEndedAt: (after.ended as string | null) ?? null }
   })
   await logActivity(used.person, 'password_invite_accepted')
@@ -281,8 +282,13 @@ export async function signInWithPasswordInvite(key: string, newPassword: string,
   const issued = await completeSignIn(method, { status: 'verified' }, { user: accepted.person, identity: null }, { ipAddress })
   const unchanged = await sql.begin(async (tx) => {
     const t = tx as unknown as TxSql
-    const [p] = await t`select password_hash, sessions_ended_at::text as ended from person where row_id = ${accepted.person} for update`
-    return Boolean(p) && p.password_hash === accepted.passwordHash && ((p.ended as string | null) ?? null) === accepted.sessionsEndedAt
+    const [p] = await t`select sessions_ended_at::text as ended from person where row_id = ${accepted.person} for update`
+    if (!p) return false
+    // #1336 (Codex): read after the lock, in a statement of its own, so a
+    // password change the lock waited for is seen (one statement keeps the
+    // snapshot it started with).
+    const [c] = await t`select password_hash from person_credential where person_id = ${accepted.person}`
+    return (c?.password_hash ?? null) === accepted.passwordHash && ((p.ended as string | null) ?? null) === accepted.sessionsEndedAt
   })
   if (!unchanged) {
     const s = issued.user.sign_in!

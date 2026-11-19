@@ -65,6 +65,9 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   },
   service_account: { row_id: id, label: text, display_name: text },
   person_id_map: { '*': code },
+  // #1336: the person's own password, as the person row's column was: a merge
+  // or re-id never moves a password to another person, so it is not rewritten.
+  person_credential: { person_id: code, password_hash: code },
   access_request: { person: id, email: code, app: text, app_name: code, declined_by: id, declined_reason: text },
   access_log: { user: id, operation: code, ref_table: code, reference_name: on('ref_table'), method: code, scope: code, reason: text, snapshot: text },
   access_token: { id: code, label: text, token_hash: code, person: id, service_account: id, agent_connection: code },

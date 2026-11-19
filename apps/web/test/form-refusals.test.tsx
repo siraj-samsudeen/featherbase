@@ -36,7 +36,7 @@ async function seedNotes(admin: Admin) {
 test('a row that is not there says it cannot be loaded', async ({ admin }) => {
   await seedNotes(admin)
   await renderApp(`/featherbase/admin/table/frf-note/row/no-such-note`, admin)
-  expect(await screen.findByText('Cannot load Frf Note no-such-note', {}, { timeout: 8000 })).toBeInTheDocument()
+  expect(await screen.findByTestId('problem-not-found', {}, { timeout: 8000 })).toHaveTextContent('No Frf Note has the ID “no-such-note”.')
   expect(screen.queryByTestId('form-save')).not.toBeInTheDocument()
 })
 
