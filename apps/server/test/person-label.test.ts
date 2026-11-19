@@ -21,12 +21,14 @@ const group = async (client: TestClient, query: string, table: string) =>
 
 const SYSTEM = 'pl-staff-code'
 let identifier = 0
-/** A current employee code for `person`, from `since` (the latest-joined comes first). */
-async function code(person: string, value: string, since = '2026-01-01') {
+/** An employee code for `person`, from `since` (the latest-joined comes first), in a system of the given
+ *  sensitivity; `until` ends it. */
+async function code(person: string, value: string, since = '2026-01-01', { sensitivity = 'Normal', until = null as string | null } = {}) {
+  const system = sensitivity === 'Normal' ? SYSTEM : `${SYSTEM}-${sensitivity.replace(/\W+/g, '-').toLowerCase()}`
   await sql`insert into identifier_system (row_id, label, kind, sensitivity, match, enabled)
-    values (${SYSTEM}, 'Made-up staff code', 'employee-record', 'Normal', 'Off', true) on conflict (row_id) do nothing`
+    values (${system}, ${`Made-up staff code (${sensitivity})`}, 'employee-record', ${sensitivity}, 'Off', true) on conflict (row_id) do nothing`
   await sql`insert into person_identifier (id, person_id, system, value, one_holder, source, recorded_by, valid)
-    values (${`pid_pl${String(++identifier).padStart(18, 'a')}`}, ${person}, ${SYSTEM}, ${value}, true, 'test', 'test', daterange(${since}::date, null))`
+    values (${`pid_pl${String(++identifier).padStart(18, 'a')}`}, ${person}, ${system}, ${value}, true, 'test', 'test', daterange(${since}::date, ${until}::date))`
 }
 
 /** The made-up staff list: a Table whose rows are a person's record, found by its code. */
@@ -98,6 +100,18 @@ describe('#1345: search lists each human once, told apart', () => {
     const labels = await personLabels([plain, moved], 'Administrator')
     expect(labels.get(plain)).toEqual({ email: 'plain.visitor@example.test' })
     expect(labels.get(moved)).toEqual({ code: 'PL-20001', more_codes: [{ code: 'PL-10001' }], email: 'moved.twice@example.test' })
+  })
+
+  // Codex adversarial round 1: a code reaches a viewer only as the person's identifiers panel would show it.
+  test('a restricted code shows only to a viewer who may read restricted identifiers; a hidden one to nobody', async ({ admin, createUser }) => {
+    const person = await makePerson({ full_name: 'Restricted Coded', email: 'restricted.coded@example.test' })
+    await code(person, 'PL-R1', '2026-02-01', { sensitivity: 'Restricted' })
+    await code(person, 'PL-H1', '2026-03-01', { sensitivity: 'Restricted, hidden' })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pl Person Reader' } })
+    await grantRole(admin, { role: 'Pl Person Reader', table: 'Person', can_read: true })
+    const reader = await createUser({ email: 'pl-person-reader@example.test', roles: ['Pl Person Reader'] })
+    expect((await personLabels([person], reader.user!)).get(person)).toEqual({ email: 'restricted.coded@example.test' })
+    expect((await personLabels([person], 'Administrator')).get(person)).toEqual({ code: 'PL-R1', email: 'restricted.coded@example.test' })
   })
 
   test('a person the viewer may not read gets no label at all', async ({ admin, createUser }) => {
@@ -183,10 +197,39 @@ describe('#1345: the app that says who people are adds role and place; the platf
 
   test("a leaver reads Former Staff with the day they left and the app's code, the platform holding none current", async ({ admin }) => {
     const leaver = await makePerson({ full_name: 'Left Lately', email: 'left.lately@example.test' })
+    await code(leaver, 'PL-55001', '2024-01-01', { until: '2026-08-31' })
     await describing(admin)
     said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: 'PL-55001', left_on: '2026-08-31', jobs: [] }))
     expect((await personLabels([leaver], 'Administrator')).get(leaver))
       .toEqual({ email: 'left.lately@example.test', standing: 'left', left_on: '2026-08-31', code: 'PL-55001' })
+  })
+
+  test("the app's code never restores one the viewer may not see", async ({ admin, createUser }) => {
+    const leaver = await makePerson({ full_name: 'Left Restricted', email: 'left.restricted@example.test' })
+    await code(leaver, 'PL-55002', '2024-01-01', { sensitivity: 'Restricted', until: '2026-08-31' })
+    await describing(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pl Person Reader' } })
+    await grantRole(admin, { role: 'Pl Person Reader', table: 'Person', can_read: true })
+    const reader = await createUser({ email: 'pl-reader-2@example.test', roles: ['Pl Person Reader'] })
+    said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: 'PL-55002', left_on: '2026-08-31', jobs: [] }))
+    expect((await personLabels([leaver], reader.user!)).get(leaver)).not.toHaveProperty('code')
+    expect((await personLabels([leaver], 'Administrator')).get(leaver)).toMatchObject({ code: 'PL-55002', standing: 'left' })
+  })
+
+  // Codex adversarial round 1: the Person page names a store or role by its own title as the viewer reads it.
+  test("the Person page names a store and business role by the viewer's own read of their titles, never the app's words", async ({ admin, createUser }) => {
+    const { ids } = await threeMeenas(admin)
+    await describing(admin)
+    await makeTable(admin, { name: 'Pl Guarded Role', id_pattern: 'prompt', title_column: 'title',
+      columns: [{ column_name: 'title', column_type: 'Data', tier: 'restricted' }, 'note'] })
+    await admin.post('/api/save_row', { table: 'Pl Guarded Role', row: { row_id: 'role-g', title: 'Guarded Title' } })
+    const { viewer } = await roleAndStore(admin, createUser)
+    await grantRole(admin, { role: 'Pl Viewer', table: 'Pl Guarded Role', can_read: true })
+    said().answer = (persons) => persons.map((person) => ({ person, status: 'current', code: null,
+      jobs: [{ job: 'Store Manager', site: { table: 'Pl Role', id: 'role-sm', name: 'App words' }, business_role: { table: 'Pl Guarded Role', id: 'role-g', name: 'App words' } }] }))
+    const standing = await viewer.get<{ jobs: { site?: { name: string }; business_role?: unknown }[] }>(`/api/people/${ids[0]}/standing`)
+    // The site reads its own title; the role's row is readable but its title is not, so it is left out.
+    expect(standing.jobs).toEqual([{ job: 'Store Manager', site: { table: 'Pl Role', id: 'role-sm', name: 'Store Manager' } }])
   })
 
   test('an app that is late, failing or answering nonsense adds nothing, and the label still reads code and email', async ({ admin }) => {
