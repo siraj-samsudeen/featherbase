@@ -401,6 +401,76 @@
       ]
     }
   ],
+  "areas": [
+    {
+      "name": "Location",
+      "whole": "Whole company",
+      "levels": [
+        {
+          "table": "Cluster",
+          "title": "name",
+          "label": "Cluster",
+          "plural": "clusters"
+        },
+        {
+          "table": "Site",
+          "title": "name",
+          "parent": "cluster",
+          "label": "Store",
+          "plural": "stores",
+          "adminLabel": "Site",
+          "adminPlural": "sites",
+          "filters": [
+            [
+              "is_store",
+              "=",
+              1
+            ]
+          ]
+        },
+        {
+          "table": "Store Floor",
+          "title": "name",
+          "parent": "site",
+          "label": "Floor",
+          "plural": "floors"
+        }
+      ]
+    },
+    {
+      "name": "Merchandise",
+      "whole": "All merchandise",
+      "levels": [
+        {
+          "table": "Division",
+          "title": "division",
+          "label": "Division",
+          "plural": "divisions"
+        },
+        {
+          "table": "Subdivision",
+          "title": "subdivision",
+          "parent": "division",
+          "label": "Subdivision",
+          "plural": "subdivisions"
+        },
+        {
+          "table": "Category",
+          "title": "category",
+          "parent": "subdivision",
+          "label": "Category",
+          "plural": "categories"
+        },
+        {
+          "table": "Subcategory",
+          "title": "subcategory",
+          "parent": "category",
+          "label": "Subcategory",
+          "plural": "subcategories"
+        }
+      ]
+    }
+  ],
   "why": {
     "Person": {
       "explain": "why_access",
@@ -1066,7 +1136,8 @@
   "reads": {
     "version": 1,
     "tables": [
-      "dash.report"
+      "dash.report",
+      "dash.report_bundle"
     ],
     "operations": {
       "manages_roles": {
@@ -3088,6 +3159,12 @@
       "id": "report_access_days_in_india",
       "fromVersion": "0.13.36",
       "toVersion": "0.13.37",
+      "operations": []
+    },
+    {
+      "id": "area_picker",
+      "fromVersion": "0.13.37",
+      "toVersion": "0.13.38",
       "operations": []
     }
   ],

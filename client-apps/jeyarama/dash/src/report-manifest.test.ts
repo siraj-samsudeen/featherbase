@@ -343,12 +343,14 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['why_app_levels_merged', '0.13.35', '0.13.36', 0],
       // #1313: Report access dates are the day in India, with no Table change.
       ['report_access_days_in_india', '0.13.36', '0.13.37', 0],
+      // #1282: the area picker on Also Give, with no Table change.
+      ['area_picker', '0.13.37', '0.13.38', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
-    expect(pkg.version).toBe('0.13.37')
+    expect(pkg.version).toBe('0.13.38')
   })
 })

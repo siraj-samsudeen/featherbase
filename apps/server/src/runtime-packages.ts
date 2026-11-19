@@ -23,7 +23,7 @@ import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './a
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
-import { invalidateMeta } from './meta'
+import { getMeta, invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, countLosses, describeLoss, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
 
 // Public v1 hook contract is structural: packages never import core classes.
@@ -133,6 +133,23 @@ const manifestSchema = z.object({
     may: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
     label: z.string().max(40).optional(),
   }).strict()).optional(),
+  // #1282 G1–G6: the areas people pick on the trees: each axis a list of levels,
+  // each a Table read by its title and linked to the level above by `parent`,
+  // with the words a staff screen says and, where an admin screen says other ones, those.
+  areas: z.array(z.object({
+    name: z.string().min(1).max(40),
+    whole: z.string().min(1).max(40),
+    levels: z.array(z.object({
+      table: z.string().min(1),
+      title: z.string().min(1),
+      parent: z.string().min(1).optional(),
+      label: z.string().min(1).max(40),
+      plural: z.string().min(1).max(40),
+      adminLabel: z.string().min(1).max(40).optional(),
+      adminPlural: z.string().min(1).max(40).optional(),
+      filters: z.array(z.tuple([z.string().min(1), z.literal('='), z.union([z.string(), z.number(), z.boolean()])])).max(4).optional(),
+    }).strict()).min(1).max(6),
+  }).strict()).max(4).optional(),
   tables: z.array(tableDefSchema).min(1),
   roles: z.array(z.string().min(1)).optional(),
   permissions: z.array(appPermissionSchema).default([]),
@@ -468,6 +485,14 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       throw new Error(`The app's record page for ${table} is for a Table that is not one of the app's`)
     if (!address.startsWith(appHref(manifest.name)))
       throw new Error(`The app's record page for ${table} is ${address}, which is not one of the app's own pages (${appHref(manifest.name)}…)`)
+  }
+  // #1282 G1–G6: each level of an area hangs from the one above it, and the first from none.
+  for (const area of manifest.areas ?? []) {
+    const [first, ...below] = area.levels
+    if (first!.parent) throw new Error(`The app's area ${area.name} starts at ${first!.table}, which has no level above it to link to`)
+    below.forEach((level, i) => {
+      if (!level.parent) throw new Error(`The app's area ${area.name} names ${level.table} under ${area.levels[i]!.table} without the link to it`)
+    })
   }
   // #1282: a Why only reads: both its names must be the app's reads, never its actions.
   for (const [table, why] of Object.entries(manifest.why ?? {})) {
@@ -989,6 +1014,37 @@ export async function servedApp(name: string): Promise<{ name: string; title: st
   return item?.active && item.ownPages && pkg?.clientRoot ? { name: pkg.name, title: pkg.title } : null
 }
 
+type DeclaredArea = NonNullable<z.infer<typeof manifestSchema>['areas']>[number]
+
+/** #1282 (Codex adversarial round 1): the areas an app declares, as this instance's Tables bear them out. An area's
+ *  Tables are usually the instance's own, not the app's, so they are checked here, where they are served: each level a
+ *  Table with its title and filter columns, and each one below the first linked to the level above by a Reference to
+ *  that level's Table. An area they do not bear out is not offered, so no picker walks a hierarchy that is not there. */
+async function realAreas(app: string, areas: DeclaredArea[]): Promise<DeclaredArea[]> {
+  const real: DeclaredArea[] = []
+  for (const area of areas) {
+    const problem = await areaProblem(area)
+    if (problem) console.warn(`[app ${app}] area ${area.name} is not offered: ${problem}`)
+    else real.push(area)
+  }
+  return real
+}
+
+async function areaProblem(area: DeclaredArea): Promise<string | null> {
+  for (const [i, level] of area.levels.entries()) {
+    const meta = await getMeta(level.table).catch(() => null)
+    if (!meta) return `there is no Table ${level.table}`
+    const column = (name: string) => meta.columns.find(c => c.column_name === name)
+    const missing = [level.title, ...(level.filters ?? []).map(([name]) => name)].find(name => name !== 'row_id' && !column(name))
+    if (missing) return `${level.table} has no column ${missing}`
+    const above = area.levels[i - 1]
+    const link = above && column(level.parent!)
+    if (above && (link?.column_type !== 'Reference' || (link.reference_base ?? link.reference_table) !== above.table))
+      return `${level.table}.${level.parent} does not link to ${above.table}`
+  }
+  return null
+}
+
 export async function appCatalog(user: string) {
   const installed = await listInstalledApps()
   const result = []
@@ -1005,6 +1061,8 @@ export async function appCatalog(user: string) {
         ...(pkg.manifest.accent && { accent: pkg.manifest.accent }),
         // #1237: where the app shows one of its rows, for the record page's "Open in <App>".
         ...(pkg.manifest.recordPages && { recordPages: pkg.manifest.recordPages }),
+        // #1282: the areas its people pick on the trees, for the area picker.
+        ...(pkg.manifest.areas && { areas: await realAreas(pkg.name, pkg.manifest.areas) }),
         ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
       })
   }
