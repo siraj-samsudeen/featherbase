@@ -698,7 +698,8 @@ describe('job capability arguments are checked by the platform', () => {
       const queued = await sql`select row_id, recipient, subject, body from email_queue order by row_id`
       expect(queued.filter(mail => !before.some(old => old.row_id === mail.row_id))).toEqual([{
         row_id: expect.any(String), recipient: 'invalid-mail@example.test',
-        subject: `Scheduled job failed: Fbjobsa.${name.replaceAll('_', ' ')}`,
+        // #1330: the job by its title (its name in words), not its prefixed code.
+        subject: `Scheduled job failed: ${name.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')}`,
         body: expect.stringContaining('What failed: An email needs a subject and a body'),
       }])
     })
