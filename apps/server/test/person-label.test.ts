@@ -92,6 +92,38 @@ describe('#1345: search lists each human once, told apart', () => {
     expect(await group(reader, 'pl-77002', 'Person')).toEqual([])
   })
 
+  // Codex standard round 1: an instance's own Employee Table joins by a Metadata Override, as #1346's searched columns do.
+  test('a Metadata Override makes a Table a person\'s record; an unrelated update never writes it in; a rename carries it', async ({ admin }) => {
+    const staff = await makeTable(admin, { name: 'Pl Roster', id_pattern: 'field:roster_code', title_column: 'full_name',
+      columns: ['roster_code', 'full_name', { column_name: 'person', column_type: 'Reference', reference_table: 'Person' }] })
+    const person = await makePerson({ full_name: 'Overridden Person', email: 'overridden@example.test' })
+    await admin.post(staff.url, { roster_code: 'PL-OV1', full_name: 'Overridden Person', person })
+    expect((await group(admin, 'Overridden Person', 'Pl Roster')).map((h) => h.row_id)).toEqual(['PL-OV1'])
+    await admin.post('/api/save_row', { table: 'Metadata Override', row: { table_name: staff.name, property: 'person_column', value: 'person' } })
+    expect(await group(admin, 'Overridden Person', 'Pl Roster')).toEqual([])
+    expect((await group(admin, 'Overridden Person', 'Person')).map((h) => h.row_id)).toEqual([person])
+    const columns = (await getMeta(staff.name)).columns.map(({ column_name, column_type, reference_table }) => ({ column_name, column_type, reference_table }))
+    await updateTable(staff.name, { name: staff.name, description: 'changed', columns })
+    expect(await sql`select person_column from table_def where name = ${staff.name}`).toEqual([{ person_column: null }])
+    await renameColumn(staff.name, 'person', 'staff_member')
+    expect((await getMeta(staff.name)).person_column).toBe('staff_member')
+    // An override naming anything but a Reference to Person names none.
+    const [o] = await sql`select row_id, updated_at from metadata_override where table_name = ${staff.name} and property = 'person_column'`
+    await admin.post('/api/save_row', { table: 'Metadata Override', row: { row_id: o!.row_id, value: 'full_name', updated_at: o!.updated_at } })
+    expect((await getMeta(staff.name)).person_column).toBeNull()
+  })
+
+  test('a staff row whose person\'s name the viewer may not read stays a staff row, never named by an id', async ({ admin, createUser }) => {
+    await threeMeenas(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pl Nameless' } })
+    await grantRole(admin, { role: 'Pl Nameless', table: 'Pl Staff', can_read: true })
+    await grantRole(admin, { role: 'Pl Nameless', table: 'Person', can_read: true })
+    await admin.post('/api/save_row', { table: 'Metadata Override', row: { table_name: 'Person', column_name: 'full_name', property: 'hidden', value: '1' } })
+    const viewer = await createUser({ email: 'pl-nameless@example.test', roles: ['Pl Nameless'] })
+    const people = await group(viewer, 'pl-77002', 'Person')
+    expect(people.every((h) => !h.title.startsWith('psn_'))).toBe(true)
+  })
+
   test('someone with no code reads by their email; their latest-joined code comes first, the rest after it', async ({ admin }) => {
     const plain = await makePerson({ full_name: 'Plain Visitor', email: 'plain.visitor@example.test' })
     const moved = await makePerson({ full_name: 'Moved Twice', email: 'moved.twice@example.test' })

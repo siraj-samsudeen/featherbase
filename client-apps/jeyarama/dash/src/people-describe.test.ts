@@ -11,6 +11,7 @@ function tables(data: Record<string, Row[]>) {
   const matches = (row: Row, [column, operator, value]: Filter) =>
     operator === '=' ? row[column] === value : operator === 'in' ? (value as unknown[]).includes(row[column]) : false
   return {
+    async available(table: string) { return table in data },
     async list(table: string, args: { filters?: Filter[]; limit_start?: number; limit_page_length?: number }) {
       const rows = (data[table] ?? []).filter(row => (args.filters ?? []).every(filter => matches(row, filter)))
       const start = args.limit_start ?? 0
@@ -59,10 +60,12 @@ describe('describe_people', () => {
       ...DATA,
       Employee: [...DATA.Employee!, { row_id: 'E4', employee_code: '6000', person: 'p-corrected', status: 'Current' }],
       'Job Assignment': [
-        { row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'LKS', designation: 'Senior Team Lead', starts_on: '2026-01-01', ends_on: null },
+        // HR's title as a Designation record (Codex standard round 1): its id is not its words.
+        { row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'LKS', designation: 'D123', starts_on: '2026-01-01', ends_on: null },
         { row_id: 'J2', employee: 'E1', job: 'Buyer', site: '', starts_on: '2026-01-01', ends_on: null },
         { row_id: 'J4', employee: 'E4', job: 'Cashier', site: 'LKS', starts_on: '2026-01-01', ends_on: null },
       ],
+      Designation: [{ row_id: 'D123', designation: 'Senior Team Lead' }],
       'dash.business_role': [
         { row_id: 'br-lead', role_name: 'Floor Lead', by_hand_only: 0 },
         { row_id: 'br-buyer', role_name: 'Buyer', by_hand_only: 0 },
