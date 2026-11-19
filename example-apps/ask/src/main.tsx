@@ -3,8 +3,8 @@ import { createElement, useCallback, useEffect, useRef, useState, type FormEvent
 import { createRoot } from 'react-dom/client'
 import { THEME_CHANGE_EVENT, paintTheme } from '@featherbase/shop-floor/theme'
 import { Button, DataList, EmptyState, Notice, PageHeader, RecordLink, StatusPill, buttonClasses, cardClasses, fmtINR, fmtInstantIST, fmtPct, inputClasses, labelClasses, panelClasses, tagClasses, type DataColumn } from '@featherbase/shop-floor'
-import { act, catalog as appCatalog, read, readApp, type Asked, type Group, type Limit, type Log, type Model, type Reply, type Session, type Thought } from './api'
-import { figures, throughLine, type Figures, type Line } from './answer'
+import { act, catalog as appCatalog, read, readApp, type Asked, type Group, type Limit, type Log, type Model, type Reply, type Said, type Session, type Thought } from './api'
+import { facts, figures, throughLine, type Figures, type Line } from './answer'
 import './style.css'
 
 const params = new URLSearchParams(window.location.search)
@@ -116,14 +116,19 @@ function AskView({ session, catalog, refresh, chat, earlier, fresh }: { session:
     try {
       const thought = await read<Thought>('think', { question, model, chat, catalog: { reports: catalog.reports, stores: catalog.stores, areas: catalog.areas.map(({ name, title, summary }) => ({ name, title, summary })), focus: catalog.focus } })
       if (thought.refused || !thought.reply) { patch({ state: 'refused', error: thought.refused ?? 'That did not work. Try again.' }); return }
-      // The log is written from the receipt the server signed, whatever happens to the figures next.
-      if (thought.receipt) void act('record', thought.receipt).then(refresh, () => {})
-      let shown: Figures | undefined, error: string | undefined
+      let shown: Figures | undefined, error: string | undefined, receipt = thought.receipt, cost = thought.cost_usd, took = thought.took_ms
       if (thought.reply.kind === 'data' && thought.reply.plan) {
         const plan = FOCUS_STORE && thought.reply.plan.stores === 'all' && catalog.stores.some(s => s.value === FOCUS_STORE) ? { ...thought.reply.plan, stores: [FOCUS_STORE] } : thought.reply.plan
         try { shown = await figures(plan, catalog.stores) } catch (e) { error = e instanceof Error ? e.message : 'The figures could not be read.' }
+        // The AI writes the answer from her own rows, just fetched. If it can't, Featherbase's own sentence stands.
+        if (shown?.lines.length && receipt) {
+          const said = await read<Said>('think', { mode: 'say', receipt, facts: facts(shown) }).catch(() => null)
+          if (said) { receipt = said.receipt; if (said.say) { shown = { ...shown, sentence: said.say }; cost = said.cost_usd ?? cost; took = said.took_ms ?? took } }
+        }
       }
-      patch({ state: 'done', reply: thought.reply, figures: shown, error, model: thought.model, cost: thought.cost_usd, took: thought.took_ms, note: thought.admin_note })
+      // The log is written from the receipt the server signed: both AI calls of a figures answer count as one question.
+      if (receipt) void act('record', receipt).then(refresh, () => {})
+      patch({ state: 'done', reply: thought.reply, figures: shown, error, model: thought.model, cost, took, note: thought.admin_note })
     } catch (e) { patch({ state: 'refused', error: e instanceof Error ? e.message : 'That did not work. Try again.' }) }
   }
   const submit = (e: FormEvent) => { e.preventDefault(); void ask(text) }

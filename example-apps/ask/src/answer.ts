@@ -70,3 +70,9 @@ export async function figures(plan: Plan, stores: { value: string; label: string
   return { ...base, sentence, lines, label, more }
 }
 export const throughLine = (f: Figures) => [`Covers ${f.covers || 'no store'}`, f.through && `Figures through ${fmtDate(f.through)}`].filter(Boolean).join(' · ')
+
+/** The figures as the person would read them, for the AI to put into words: formatted here, so it copies and never recalculates. */
+export function facts(f: Figures): string {
+  const rows = f.lines.slice(0, 40).map(l => `${l.name}${l.store ? ` (${l.store})` : ''}: target ${fmtINR(l.target)}, sales ${fmtINR(l.actual)}, gap ${fmtINR(l.gap, { signed: true })}, achieved ${fmtPct(l.achieved)}`)
+  return [`Summary: ${f.sentence}`, `${f.label} rows shown (${f.lines.length}${f.more ? `, ${f.more} more not shown` : ''}):`, ...rows, throughLine(f), ...f.notes].join('\n')
+}

@@ -26,6 +26,7 @@ export interface Plan { report: 'sales'; month: 'this' | 'last'; stores: 'all' |
 export interface Reply { kind: 'data' | 'help' | 'suggest' | 'cannot'; say: string; plan?: Plan; reports: string[]; areas: string[]; guide?: string }
 export interface Meter { label: string; period: string; used: number; of: number; unit: 'questions' | 'usd'; full: boolean }
 export interface Session { user: string; name: string; admin: boolean; ai: 'openrouter' | 'built_in'; model: string; models: string[]; meters: Meter[]; refused: string | null }
+export interface Said { say: string | null; cost_usd?: number; took_ms?: number; receipt: { body: string; signature: string } }
 export interface Thought { refused?: string; reply?: Reply; model?: string; cost_usd?: number; took_ms?: number; admin_note?: string; receipt?: { body: string; signature: string } }
 export interface Asked { row_id: string; question: string; kind: string; reply: string; report: string; pointed_to: string; model: string; asked_at: string; chat?: string; plan?: string }
 export interface Group { key: string; questions: number; cost_usd: number; last: string; name?: string }
