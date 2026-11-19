@@ -1,7 +1,7 @@
 import type { PersonLabel } from 'shared'
 import { sql } from './db'
 import { scopedWhere } from './query'
-import { readableTitles, recordKey as key, type RecordRef as Ref } from './record-titles'
+import { fieldKey, readableFields, readableTitles, recordKey as key, type RecordRef as Ref } from './record-titles'
 import { readsRestricted } from './person-identifiers'
 import { displayValue, SENSITIVITY, type Sensitivity } from './identifiers'
 import { describePeople } from './person-standing'
@@ -99,13 +99,17 @@ async function appLayer(ids: string[], viewer: string, codes: Map<string, { curr
     if (job?.business_role) refs.push({ table: job.business_role.table, row_id: job.business_role.id })
   }
   const titles = await readableTitles(refs, viewer)
+  // #1345 (Codex): a leaving day only where the viewer may read the field it comes from.
+  const dayFields = [...standing.values()].flatMap((st) => (st.left_on_from ? [{ table: st.left_on_from.table, row_id: st.left_on_from.id, column: st.left_on_from.column }] : []))
+  const days = await readableFields(dayFields, viewer)
   const shown = new Map<string, PersonLabel>()
   for (const id of ids) {
     const s = standing.get(id)
     // 'none' (not on the staff list) and 'unknown' (the app is off, failed or late) add nothing.
     if (!s || (s.status !== 'current' && s.status !== 'left')) continue
     const label: PersonLabel = { standing: s.status }
-    if (s.status === 'left' && s.left_on) label.left_on = s.left_on
+    if (s.status === 'left' && s.left_on && s.left_on_from && days.has(fieldKey({ table: s.left_on_from.table, row_id: s.left_on_from.id, column: s.left_on_from.column })))
+      label.left_on = s.left_on
     // A leaver's code has ended, so the platform holds no current one: the app's says who they were, but
     // only as a value this viewer may already see among their codes, so it never restores a withheld one.
     // The code never drops (item 3): with no app code the viewer may see, their latest ended one.

@@ -32,3 +32,29 @@ export async function readableTitles(refs: RecordRef[], viewer: string): Promise
   }))
   return titles
 }
+
+/** #1345 (Codex): which of these fields (a record and one of its columns) `viewer` may read: the row in their
+ *  scope and the column among those they may read. Keyed by recordKey; anything else is left out. */
+export async function readableFields(refs: (RecordRef & { column: string })[], viewer: string): Promise<Set<string>> {
+  const byTable = new Map<string, Map<string, Set<string>>>()
+  for (const r of refs) {
+    const columns = byTable.get(r.table) ?? new Map<string, Set<string>>()
+    columns.set(r.column, (columns.get(r.column) ?? new Set()).add(r.row_id))
+    byTable.set(r.table, columns)
+  }
+  const readable = new Set<string>()
+  await Promise.all([...byTable].map(async ([table, columns]) => {
+    const scoped = await scopedWhere(table, viewer, []).catch(() => null)
+    if (!scoped) return
+    const { meta, table: physical, where, cols } = scoped
+    const rowKey = sql(meta.row_key)
+    for (const [column, rowIds] of columns) {
+      if (!cols.has(column)) continue
+      const rows = await sql`select ${rowKey}::text as id from ${sql(physical)} where ${where} and ${rowKey}::text = any(${[...rowIds]})`
+      for (const r of rows) readable.add(fieldKey({ table, row_id: String(r.id), column }))
+    }
+  }))
+  return readable
+}
+
+export const fieldKey = (r: RecordRef & { column: string }) => `${recordKey(r)}\u0000${r.column}`

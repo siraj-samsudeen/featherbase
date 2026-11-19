@@ -17,8 +17,9 @@ export type Described = {
   status: 'current' | 'left' | 'none'
   code: string | null
   jobs: { job: string; site?: { table: 'Site'; id: string; name: string }; business_role?: { table: typeof ROLE; id: string; name: string } }[]
-  /** For someone who has left: the last day of their last job, YYYY-MM-DD. */
+  /** For someone who has left: the last day of their last job, YYYY-MM-DD, and the field it comes from. */
   left_on?: string
+  left_on_from?: { table: 'Job Assignment'; id: string; column: 'ends_on' }
 }
 
 /** `{ persons }` described in the order asked. Only the platform's describe actor may ask. */
@@ -37,7 +38,7 @@ export async function describePeople(ctx: AccessContext, on: string = istToday()
       status: w.staff,
       code: w.code,
       // featherbase #1345: the day someone who has left left (#1271), for "Former Staff · left …".
-      ...(leftOn.get(person) ? { left_on: leftOn.get(person) } : {}),
+      ...(leftOn.get(person) ? { left_on: leftOn.get(person)!.day, left_on_from: { table: 'Job Assignment' as const, id: leftOn.get(person)!.row, column: 'ends_on' as const } } : {}),
       jobs: (w.held ?? []).map(h => {
         const role = roleOf(person, h.job, h.site?.id)
         return {
@@ -89,9 +90,10 @@ async function businessRolesOf(ctx: AccessContext, persons: string[], on: string
   }
 }
 
-/** featherbase #1345: for each person who has left, the last day of their last job assignment. One read. */
-async function leavingDays(ctx: AccessContext, persons: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>()
+/** featherbase #1345: for each person who has left, the last day of their last job assignment and that assignment,
+ *  so the platform tells the day only to someone who may read it. One read. */
+async function leavingDays(ctx: AccessContext, persons: string[]): Promise<Map<string, { day: string; row: string }>> {
+  const out = new Map<string, { day: string; row: string }>()
   if (!persons.length) return out
   const base = ctx.baseTables!
   const employees = await all(base, 'Employee', ['person'], [['person', 'in', persons]])
@@ -100,7 +102,7 @@ async function leavingDays(ctx: AccessContext, persons: string[]): Promise<Map<s
   for (const row of await all(base, 'Job Assignment', ['employee', 'ends_on'], [['employee', 'in', [...owner.keys()]]])) {
     const person = owner.get(exact(row.employee))
     const ended = day(row.ends_on)
-    if (person && ended && ended > (out.get(person) ?? '')) out.set(person, ended)
+    if (person && ended && ended > (out.get(person)?.day ?? '')) out.set(person, { day: ended, row: exact(row.row_id) })
   }
   return out
 }

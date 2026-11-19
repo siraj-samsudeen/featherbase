@@ -14,7 +14,7 @@ import { sql } from './db'
 import { getDoc } from './document'
 import { activeApps } from './app-lifecycle'
 import { runAsSystemActor } from './system-actor'
-import { readableTitles, recordKey } from './record-titles'
+import { readableFields, readableTitles, recordKey } from './record-titles'
 // Loaded when first needed, as view-as.ts does: a static import closes a start-up cycle.
 const packages = () => import('./runtime-packages')
 
@@ -29,6 +29,8 @@ export interface Standing {
   jobs: { job: string; site?: { table: string; id: string; name: string }; business_role?: { table: string; id: string; name: string } }[]
   /** #1271: for someone who has left, the day they left, when the app knows it. */
   left_on?: string | null
+  /** #1345: the field the day comes from; a viewer is told the day only where they may read it. */
+  left_on_from?: { table: string; id: string; column: string }
 }
 
 /** How long the app has to answer before the person reads as 'unknown'. */
@@ -42,6 +44,7 @@ const answerSchema = z.array(z.object({
   status: z.enum(['current', 'left', 'none']),
   code: z.string().nullable().optional(),
   left_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  left_on_from: z.object({ table: z.string(), id: z.string(), column: z.string() }).optional(),
   jobs: z.array(z.object({
     job: z.string(),
     site: z.object({ table: z.string(), id: z.string(), name: z.string() }).optional(),
@@ -99,7 +102,8 @@ export async function describePeople(persons: string[]): Promise<Map<string, Sta
   for (const person of wanted) {
     const entry = said.get(person)
     // A person the app answered for; a person it left out, while it answered at all, is unknown too.
-    out.set(person, entry ? { status: entry.status, code: entry.code ?? null, jobs: entry.jobs ?? [], ...(entry.left_on ? { left_on: entry.left_on } : {}) } : UNKNOWN)
+    out.set(person, entry ? { status: entry.status, code: entry.code ?? null, jobs: entry.jobs ?? [],
+      ...(entry.left_on ? { left_on: entry.left_on } : {}), ...(entry.left_on_from ? { left_on_from: entry.left_on_from } : {}) } : UNKNOWN)
   }
   return out
 }
@@ -122,6 +126,9 @@ export async function standingFor(person: string, viewer: string): Promise<Stand
     return { ...job, ...(s ? { site: s } : {}), ...(role ? { business_role: role } : {}) }
   })
   const label = typeof row.external_label === 'string' ? row.external_label : null
+  // #1345 (Codex): the day someone left is told only where the viewer may read the field it comes from.
+  const { left_on_from: from, left_on: leftOn, ...rest } = standing
+  const day = leftOn && from && (await readableFields([{ table: from.table, row_id: from.id, column: from.column }], viewer)).size ? { left_on: leftOn } : {}
   // The label describes an External person only.
-  return { ...standing, jobs, external_label: standing.status === 'none' ? label : null }
+  return { ...rest, ...day, jobs, external_label: standing.status === 'none' ? label : null }
 }
