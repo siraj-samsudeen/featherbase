@@ -139,8 +139,7 @@ function NarrowValues({ list, values, picked, onToggle }: {
   const isPicked = (v: string | null) => (v === null ? picked === 'none' : Array.isArray(picked) && picked.includes(v))
   const all: Value[] = [...(values ?? [])]
   // A picked value no row reaches any more still shows, at 0, so it can be taken back.
-  for (const id of Array.isArray(picked) ? picked : []) if (!all.some((v) => v.value === id)) all.push({ value: id, count: 0 })
-  if (picked === 'none' && !all.some((v) => v.value === null)) all.push({ value: null, count: 0 })
+  for (const id of picked === 'none' ? [null] : picked ?? []) if (!all.some((v) => v.value === id)) all.push({ value: id, count: 0 })
   // The server orders by count. Picked values are pinned on top; "Not linked to any"
   // closes the possible values; ruled-out ones fall below.
   const rank = (v: Value) => isPicked(v.value) ? 0 : v.count > 0 ? (v.value === null ? 2 : 1) : 3
@@ -278,27 +277,19 @@ function useFound(list: NarrowList, q: string, values: Value[]): (value: string 
   const words = q.toLowerCase()
   const hits = new Set((rows.data?.data ?? []).map((r) => String(r.row_id)))
   return (value) => value === null ? noneLabel(list).toLowerCase().includes(words)
-    : records ? hits.has(value) : value.toLowerCase().includes(words) && values.some((v) => v.value === value)
+    : records ? hits.has(value) : value.toLowerCase().includes(words)
 }
 
-/** A pick as its chip reads, through the shared Sentence: the list's table,
- *  then what is picked, each record a link ("Store: [Bayside], [Northgate]"),
- *  or "Not linked to any Store". */
-export function NarrowPickWords({ list, picked }: { list: NarrowList; picked: Picked }) {
-  const ids = Array.isArray(picked) ? picked : []
+/** One picked value as its chip reads, through the shared Sentence: the list's
+ *  table, then the value, a record as a link ("Store: [Bayside]"), or "No Store". */
+export function NarrowPickWords({ list, value }: { list: NarrowList; value: string | null }) {
   // A linked list's pick is a Linked to chain: how many rows each step holds is its tooltip, as on every Linked to chip (#1276).
-  const filter = list.kind === 'link' ? pickFilter(list, picked) : null
+  const filter = list.kind === 'link' ? pickFilter(list, value === null ? 'none' : [value]) : null
   const chain = filter ? parseChain(filter) : null
   const tip = useChainCountTip(chain?.steps ?? [])
   const records = list.kind !== 'choice'
-  const names = useRowNames(records ? ids.map((row_id) => ({ table: list.table!, row_id })) : [])
-  if (picked === 'none') return <span data-testid="linked-words" title={chain ? tip : undefined}><Sentence parts={[noneLabel(list)]} /></span>
-  const parts: SentencePart[] = [`${list.label}: `]
-  ids.forEach((id, i) => {
-    if (i) parts.push(', ')
-    const name = names[i]
-    parts.push(records && name?.state === 'read' ? { record: { table: list.table!, row: id, name: name.title } }
-      : records ? filterRowName(name) : id)
-  })
+  const [name] = useRowNames(records && value !== null ? [{ table: list.table!, row_id: value }] : [])
+  const parts: SentencePart[] = value === null ? [noneLabel(list)]
+    : [`${list.label}: `, records && name?.state === 'read' ? { record: { table: list.table!, row: value, name: name.title } } : records ? filterRowName(name) : value]
   return <span data-testid={chain ? 'linked-words' : undefined} title={chain ? tip : undefined}><Sentence parts={parts} /></span>
 }

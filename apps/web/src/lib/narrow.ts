@@ -54,12 +54,12 @@ export function narrowLists(meta: TableMeta, backlinks: Backlink[], metaOf: Meta
   if (meta.data_source) return { lists: [], missing: [] }
   const label = (t: string) => tableLabel(t, metaOf(t) ?? undefined)
   const seen = new Set<string>([meta.name])
-  const usable = (t: string | null | undefined): t is string => {
-    if (!t) return false
+  const usable = (t: string) => {
     const m = metaOf(t)
     if (m === undefined) missing.add(t)
     return Boolean(m && !m.data_source)
   }
+  // readableLinks keeps only links that name their table, so each has one.
   const links = (m: TableMeta) => readableLinks(m).filter((c) => !c.table_column)
   const lists: NarrowList[] = []
   const linkList = (w: Walk, table: string): NarrowList => ({
@@ -75,7 +75,7 @@ export function narrowLists(meta: TableMeta, backlinks: Backlink[], metaOf: Meta
       for (const w of frontier) {
         if (w.depth >= MAX_RELATED_DEPTH) continue
         for (const c of links(w.meta)) {
-          const t = linkRowsTable(c)
+          const t = linkRowsTable(c)!
           if (!usable(t) || seen.has(t)) continue
           seen.add(t)
           const step: Walk = {
@@ -102,7 +102,7 @@ export function narrowLists(meta: TableMeta, backlinks: Backlink[], metaOf: Meta
     if (linkMeta === undefined) missing.add(b.table)
     if (!linkMeta || linkMeta.data_source || !isLinkTable(linkMeta)) continue
     for (const far of links(linkMeta)) {
-      const t = linkRowsTable(far)
+      const t = linkRowsTable(far)!
       if (far.column_name === b.column || !usable(t) || seen.has(t)) continue
       seen.add(t)
       const link: Link = { kind: 'through', link: b.table, back: b.column, column: far.column_name }

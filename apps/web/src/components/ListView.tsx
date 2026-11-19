@@ -443,6 +443,8 @@ export function ListView({
   const narrowLists = useNarrowLists(table, meta.data, Boolean(onFiltersChange))
   const narrowPicks = narrowLists && narrowLists.length ? splitPicks(narrowLists, filters) : null
   // One green chip per picked value, as board A draws them; removing one keeps the list's other picks.
+  // A saved view or a recent filter is a step of the walk, so it pushes (no `replace`).
+  const applyFilters = (next: Filter[]) => onFiltersChange?.(next)
   const pickedChips = narrowPicks && narrowLists && onFiltersChange
     ? new Map(narrowPicks.owner.flatMap((i, k) => {
       if (i === null) return []
@@ -452,7 +454,7 @@ export function ListView({
       return [[k, values.map((v) => ({
         key: v ?? '\u0000none',
         name: list.label,
-        words: <NarrowPickWords list={list} picked={v === null ? 'none' : [v]} />,
+        words: <NarrowPickWords list={list} value={v} />,
         onRemove: () => onFiltersChange(setPick(narrowLists, filters, i, v === null || !Array.isArray(picked) ? null : picked.filter((x) => x !== v)), { replace: true }),
       }))] as const]
     }))
@@ -981,8 +983,8 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? ((next) => onFiltersChange(next))} naming={namingView} onNamingChange={setNamingView} />}
-      {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
+      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? applyFilters} naming={namingView} onNamingChange={setNamingView} />}
+      {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={applyFilters} />}
       {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
       {/* #1289: the filters (and their chips) wrap inside the left part, so the view tools keep the first line. */}
       {/* #1348 (UI owner): at phone width the view tools wrap under the search; they never cover it. */}
