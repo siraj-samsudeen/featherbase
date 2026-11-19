@@ -199,6 +199,16 @@
      "label": "Asked At",
      "column_type": "Data",
      "in_list_view": true
+    },
+    {
+     "column_name": "chat",
+     "label": "Chat",
+     "column_type": "Data"
+    },
+    {
+     "column_name": "plan",
+     "label": "Plan (names only, never figures)",
+     "column_type": "Text"
     }
    ]
   },
@@ -297,7 +307,33 @@
    ]
   }
  ],
- "migrations": [],
+ "migrations": [
+  {
+   "id": "chats",
+   "fromVersion": "0.1.0",
+   "toVersion": "0.1.1",
+   "operations": [
+    {
+     "kind": "addColumn",
+     "table": "ask.question",
+     "column": {
+      "column_name": "chat",
+      "label": "Chat",
+      "column_type": "Data"
+     }
+    },
+    {
+     "kind": "addColumn",
+     "table": "ask.question",
+     "column": {
+      "column_name": "plan",
+      "label": "Plan (names only, never figures)",
+      "column_type": "Text"
+     }
+    }
+   ]
+  }
+ ],
  "permissions": [
   {
    "table": "ask.question",

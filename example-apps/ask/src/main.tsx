@@ -14,7 +14,7 @@ const FOCUS = params.get('report') ?? undefined
 const FOCUS_STORE = params.get('store') ?? undefined
 
 interface Catalog { reports: { key: string; name: string }[]; stores: { value: string; label: string }[]; areas: { name: string; title: string; href: string; summary?: string }[]; focus?: string }
-interface Turn { id: number; question: string; state: 'thinking' | 'done' | 'refused'; reply?: Reply; figures?: Figures; error?: string; model?: string; cost?: number; took?: number }
+interface Turn { id: number; question: string; state: 'thinking' | 'done' | 'refused'; reply?: Reply; figures?: Figures; error?: string; model?: string; cost?: number; took?: number; note?: string }
 
 const usd = (n: number) => (n === 0 ? '$0' : n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`)
 const KIND: Record<string, string> = { data: 'Figures', help: 'How-To', suggest: 'Pointed To A Report', cannot: 'Not Possible', failed: 'AI Failed' }
@@ -73,15 +73,35 @@ function Answer({ turn, catalog, admin }: { turn: Turn; catalog: Catalog; admin:
           <Pointers reply={f ? { ...turn.reply, reports: turn.reply.reports.filter(k => k !== 'sales') } : turn.reply} catalog={catalog} />
         </div>
       )}
-      {admin && turn.state === 'done' && <p className="text-xs text-ink-subtle">Admin only: {KIND[turn.reply?.kind ?? ''] ?? turn.reply?.kind} · {turn.model} · {usd(turn.cost ?? 0)} · {((turn.took ?? 0) / 1000).toFixed(1)}s</p>}
+      {admin && turn.state === 'done' && <p className="text-xs text-ink-subtle">Admin only: {KIND[turn.reply?.kind ?? ''] ?? turn.reply?.kind} · {turn.model} · {usd(turn.cost ?? 0)} · {((turn.took ?? 0) / 1000).toFixed(1)}s{turn.note && ` · ${turn.note}`}</p>}
     </article>
   )
 }
 
 const STARTERS = ['Did I meet my target this month?', 'Which subcategories are furthest behind?', 'What does Gap mean?', 'How do I report a wrong figure?', 'What reports can I open?']
 
-function AskView({ session, catalog, refresh }: { session: Session; catalog: Catalog; refresh: () => void }) {
-  const [turns, setTurns] = useState<Turn[]>([])
+/** An earlier chat's rows, oldest first, as turns: the words as they were said, the figures read again now. */
+function restore(rows: Asked[], catalog: Catalog): Turn[] {
+  return rows.map((row, i) => {
+    const named = row.pointed_to.split(',').map(n => n.trim()).filter(Boolean)
+    let plan: Reply['plan']
+    try { plan = row.plan ? JSON.parse(row.plan) : undefined } catch { plan = undefined }
+    const kind = (['data', 'help', 'suggest', 'cannot'] as const).find(k => k === row.kind) ?? 'suggest'
+    return { id: i + 1, question: row.question, state: kind === 'data' && plan ? 'thinking' : 'done', model: row.model, cost: 0, took: 0,
+      reply: { kind, say: row.reply, plan, reports: named.filter(n => catalog.reports.some(r => r.key === n)), areas: named.filter(n => catalog.areas.some(a => a.name === n)) } }
+  })
+}
+
+function AskView({ session, catalog, refresh, chat, earlier, fresh }: { session: Session; catalog: Catalog; refresh: () => void; chat: string; earlier: Asked[]; fresh: () => void }) {
+  const [turns, setTurns] = useState<Turn[]>(() => restore(earlier, catalog))
+  // A reopened chat reads its figures again, as this person, under what they may see today. No AI call, no cost.
+  useEffect(() => {
+    for (const turn of restore(earlier, catalog)) {
+      if (turn.state !== 'thinking' || !turn.reply?.plan) continue
+      figures(turn.reply.plan, catalog.stores).then(shown => ({ figures: shown }), e => ({ error: e instanceof Error ? e.message : 'The figures could not be read.' }))
+        .then(change => setTurns(list => list.map(t => (t.id === turn.id ? { ...t, ...change, state: 'done' } : t))))
+    }
+  }, [])
   const [text, setText] = useState('')
   const [model, setModel] = useState(session.model)
   const busy = turns.some(t => t.state === 'thinking')
@@ -94,7 +114,7 @@ function AskView({ session, catalog, refresh }: { session: Session; catalog: Cat
     const patch = (change: Partial<Turn>) => setTurns(list => list.map(t => (t.id === id ? { ...t, ...change } : t)))
     setTurns(list => [...list, { id, question, state: 'thinking' }]); setText('')
     try {
-      const thought = await read<Thought>('think', { question, model, catalog: { reports: catalog.reports, stores: catalog.stores, areas: catalog.areas.map(({ name, title, summary }) => ({ name, title, summary })), focus: catalog.focus } })
+      const thought = await read<Thought>('think', { question, model, chat, catalog: { reports: catalog.reports, stores: catalog.stores, areas: catalog.areas.map(({ name, title, summary }) => ({ name, title, summary })), focus: catalog.focus } })
       if (thought.refused || !thought.reply) { patch({ state: 'refused', error: thought.refused ?? 'That did not work. Try again.' }); return }
       // The log is written from the receipt the server signed, whatever happens to the figures next.
       if (thought.receipt) void act('record', thought.receipt).then(refresh, () => {})
@@ -103,7 +123,7 @@ function AskView({ session, catalog, refresh }: { session: Session; catalog: Cat
         const plan = FOCUS_STORE && thought.reply.plan.stores === 'all' && catalog.stores.some(s => s.value === FOCUS_STORE) ? { ...thought.reply.plan, stores: [FOCUS_STORE] } : thought.reply.plan
         try { shown = await figures(plan, catalog.stores) } catch (e) { error = e instanceof Error ? e.message : 'The figures could not be read.' }
       }
-      patch({ state: 'done', reply: thought.reply, figures: shown, error, model: thought.model, cost: thought.cost_usd, took: thought.took_ms })
+      patch({ state: 'done', reply: thought.reply, figures: shown, error, model: thought.model, cost: thought.cost_usd, took: thought.took_ms, note: thought.admin_note })
     } catch (e) { patch({ state: 'refused', error: e instanceof Error ? e.message : 'That did not work. Try again.' }) }
   }
   const submit = (e: FormEvent) => { e.preventDefault(); void ask(text) }
@@ -132,6 +152,7 @@ function AskView({ session, catalog, refresh }: { session: Session; catalog: Cat
     <div className={PANEL ? 'flex h-full flex-col gap-4 p-4' : 'mx-auto flex h-full w-full max-w-3xl flex-col gap-5'}>
       {!PANEL && <PageHeader title="Ask" status={focused ? <>You came from <RecordLink table="dash.report" rowId={focused.key} name={focused.name} href={`/dash/?report=${focused.key}`} />. Ask about it, or anything else.</> : 'One box for your figures, your reports and how Featherbase works.'} />}
       {PANEL && <h1 className="text-[15px] font-semibold text-ink">Ask{focused ? ` · ${focused.name}` : ''}</h1>}
+      {!PANEL && turns.length > 0 && <div className="-mt-2"><Button variant="quiet" onClick={fresh}>Start A New Chat</Button></div>}
       {session.refused && <Notice tone="caution">{session.refused}</Notice>}
       {turns.length === 0 ? (
         <div className="flex flex-col gap-5">
@@ -153,27 +174,40 @@ function AskView({ session, catalog, refresh }: { session: Session; catalog: Cat
             {turns.map(t => <Answer key={t.id} turn={t} catalog={catalog} admin={session.admin} />)}
             <div ref={end} />
           </div>
-          {box}
+          <div className="sticky bottom-0 -mb-2 bg-surface pb-2 pt-3">{box}</div>
         </>
       )}
     </div>
   )
 }
 
-function History({ ask }: { ask: () => void }) {
-  const [rows, setRows] = useState<Asked[] | null>(null)
-  useEffect(() => { read<Asked[]>('history').then(setRows, () => setRows([])) }, [])
-  const columns: DataColumn<Asked>[] = [
-    { key: 'when', header: 'Asked', cell: r => fmtInstantIST(r.asked_at), phone: 'meta' },
-    { key: 'q', header: 'Question', cell: r => <span className="font-medium text-ink">{r.question}</span>, phone: 'title' },
-    { key: 'kind', header: 'Kind', cell: r => <span className={tagClasses()}>{KIND[r.kind] ?? r.kind}</span>, phone: 'status' },
-    { key: 'reply', header: 'Ask Said', cell: r => <span className="text-ink-muted">{r.reply}</span>, phone: 'meta' },
+interface Chat { key: string; rows: Asked[] }
+function History({ ask, open }: { ask: () => void; open: (chat: Chat) => void }) {
+  const [chats, setChats] = useState<Chat[] | null>(null)
+  useEffect(() => {
+    read<Asked[]>('history').then(rows => {
+      // Newest first from the server; a chat lists its questions oldest first. A question from before chats stands alone.
+      const byChat = new Map<string, Asked[]>()
+      for (const row of rows) { const key = row.chat || row.row_id; byChat.set(key, [row, ...(byChat.get(key) ?? [])]) }
+      setChats([...byChat].map(([key, list]) => ({ key, rows: list })))
+    }, () => setChats([]))
+  }, [])
+  const last = (c: Chat) => c.rows[c.rows.length - 1]
+  const columns: DataColumn<Chat>[] = [
+    { key: 'q', header: 'Chat', phone: 'title', cell: c => (
+      <div className="flex min-w-48 flex-col gap-0.5">
+        <button type="button" onClick={() => open(c)} className="text-left font-medium text-action hover:underline" data-testid="open-chat">{c.rows[0].question}</button>
+        {c.rows.length > 1 && <span className="text-[13px] text-ink-subtle">Then: {last(c).question}</span>}
+      </div>) },
+    { key: 'n', header: 'Questions', cell: c => c.rows.length, align: 'end', phone: 'value' },
+    { key: 'kind', header: 'Kind', cell: c => <span className="flex flex-wrap gap-1">{[...new Set(c.rows.map(r => r.kind))].map(k => <span key={k} className={tagClasses()}>{KIND[k] ?? k}</span>)}</span>, phone: 'status' },
+    { key: 'when', header: 'Last Asked', cell: c => <span className="whitespace-nowrap">{fmtInstantIST(last(c).asked_at)}</span>, phone: 'meta' },
   ]
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="My Questions" count={rows ? `${rows.length} asked` : undefined} status="Everything you asked, from any page. Figures are never kept here: ask again and they are read fresh, under what you may see today."
+      <PageHeader title="My Questions" count={chats ? `${chats.length} ${chats.length === 1 ? 'chat' : 'chats'}` : undefined} status="Every chat you had, from any page. Open one to carry on. Figures are never kept: an opened chat reads them fresh, under what you may see today."
         actions={<Button variant="primary" onClick={ask}>Ask A Question</Button>} />
-      <DataList caption="My questions" rows={rows ?? []} state={rows ? 'ready' : 'loading'} rowKey={r => r.row_id} columns={columns} empty={{ title: 'No Questions Yet', body: 'What you ask shows here.' }} />
+      <DataList caption="My chats" rows={chats ?? []} state={chats ? 'ready' : 'loading'} rowKey={c => c.key} columns={columns} empty={{ title: 'No Questions Yet', body: 'What you ask shows here.' }} />
     </div>
   )
 }
@@ -189,7 +223,7 @@ const groupColumns = (first: string, cell: (g: Group) => ReactNode): DataColumn<
   { key: 'key', header: first, cell, phone: 'title' },
   { key: 'n', header: 'Questions', cell: g => g.questions, align: 'end', phone: 'value' },
   { key: 'cost', header: 'Cost', cell: g => usd(g.cost_usd), align: 'end', phone: 'value' },
-  { key: 'last', header: 'Last Asked', cell: g => fmtInstantIST(g.last), phone: 'meta' },
+  { key: 'last', header: 'Last Asked', cell: g => <span className="whitespace-nowrap">{fmtInstantIST(g.last)}</span>, phone: 'meta' },
 ]
 const Section = ({ title, children }: { title: string; children: ReactNode }) => <section className="flex flex-col gap-2"><h2 className="text-[15px] font-semibold text-ink">{title}</h2>{children}</section>
 const Person = ({ id, name }: { id: string; name: string }) => <RecordLink table="Person" rowId={id} name={name} />
@@ -197,7 +231,7 @@ const Person = ({ id, name }: { id: string; name: string }) => <RecordLink table
 function Usage({ log, ai }: { log: Log; ai: string }) {
   const share = log.cap ? Math.min(100, (log.total.cost_usd / log.cap) * 100) : null
   const questions: DataColumn<Log['questions'][number]>[] = [
-    { key: 'when', header: 'Asked', cell: r => fmtInstantIST(r.asked_at), phone: 'meta' },
+    { key: 'when', header: 'Asked', cell: r => <span className="whitespace-nowrap">{fmtInstantIST(r.asked_at)}</span>, phone: 'meta' },
     { key: 'who', header: 'Who', cell: r => <Person id={r.asked_by} name={r.name} />, phone: 'meta' },
     { key: 'q', header: 'Question', cell: r => <span className="font-medium text-ink">{r.question}</span>, phone: 'title' },
     { key: 'kind', header: 'Kind', cell: r => <span className={tagClasses()}>{KIND[r.kind] ?? r.kind}</span>, phone: 'status' },
@@ -306,6 +340,7 @@ function App() {
   const [log, setLog] = useState<Log | null>(null)
   const [error, setError] = useState('')
   const [view, setView] = useState<View>(() => (['mine', 'usage', 'limits', 'models'].includes(params.get('view') ?? '') ? params.get('view') as View : 'ask'))
+  const [chat, setChat] = useState<{ id: string; earlier: Asked[] }>(() => ({ id: crypto.randomUUID(), earlier: [] }))
   const loadSession = useCallback(() => { read<Session>('session').then(setSession, e => setError(e instanceof Error ? e.message : 'Ask could not open.')) }, [])
   const loadLog = useCallback(() => { read<Log>('log').then(setLog, () => {}); loadSession() }, [loadSession])
   useEffect(() => {
@@ -322,8 +357,8 @@ function App() {
     ['usage', 'Usage', ICONS.usage, !!session?.admin], ['limits', 'Limits And Budget', ICONS.limits, !!session?.admin], ['models', 'Models', ICONS.models, !!session?.admin]]
   const body = error ? <Notice tone="negative">{error}</Notice>
     : !session || !catalog ? <p className="text-sm text-ink-muted" role="status">Opening Ask…</p>
-    : view === 'ask' ? <AskView session={session} catalog={catalog} refresh={loadSession} />
-    : view === 'mine' ? <History ask={() => open('ask')} />
+    : view === 'ask' ? <AskView key={chat.id} session={session} catalog={catalog} refresh={loadSession} chat={chat.id} earlier={chat.earlier} fresh={() => setChat({ id: crypto.randomUUID(), earlier: [] })} />
+    : view === 'mine' ? <History ask={() => { setChat({ id: crypto.randomUUID(), earlier: [] }); open('ask') }} open={c => { setChat({ id: c.rows[0].chat || crypto.randomUUID(), earlier: c.rows }); open('ask') }} />
     : !session.admin ? <EmptyState title="Admins Only" body="Usage, limits and models are for Ask Admins." />
     : !log ? <p className="text-sm text-ink-muted" role="status">Loading…</p>
     : view === 'usage' ? <Usage log={log} ai={session.ai} /> : view === 'limits' ? <Limits key={`${log.model}|${log.allowed_models}|${log.cap}`} log={log} reload={loadLog} /> : <Models log={log} reload={loadLog} />

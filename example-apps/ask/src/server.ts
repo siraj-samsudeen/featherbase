@@ -109,26 +109,28 @@ async function think(ctx: ReadContext) {
   const catalog = cleanCatalog(p.catalog)
   const key = realKey(ctx)
   const started = Date.now()
-  let reply: Reply, usedModel = 'built-in rules', tokensIn = 0, tokensOut = 0, cost = 0, failed = false
+  let reply: Reply, usedModel = 'built-in rules', tokensIn = 0, tokensOut = 0, cost = 0, failed = false, why = ''
   if (!key) reply = builtIn(question, catalog)
   else {
     try {
       const response = await fetch(`${OPENROUTER}/chat/completions`, { method: 'POST', signal: AbortSignal.timeout(45_000),
         headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
         body: JSON.stringify({ model, messages: messages(question, ctx.userName, catalog), temperature: 0, max_tokens: 700, usage: { include: true } }) })
-      const body = await response.json() as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number }; model?: string }
-      if (!response.ok || !body.choices?.[0]?.message?.content) throw new Error(`OpenRouter answered ${response.status}`)
+      const body = await response.json() as { error?: { message?: string }; choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number; cost_details?: { upstream_inference_cost?: number | null } }; model?: string }
+      if (!response.ok || !body.choices?.[0]?.message?.content) throw new Error(`OpenRouter answered ${response.status}: ${String(body.error?.message ?? 'no answer').slice(0, 240)}`)
       reply = checkedReply(body.choices[0].message.content, catalog)
-      usedModel = model; tokensIn = Number(body.usage?.prompt_tokens ?? 0); tokensOut = Number(body.usage?.completion_tokens ?? 0); cost = Number(body.usage?.cost ?? 0)
-    } catch {
-      // The provider's own words are never shown to the asker.
-      failed = true; usedModel = model
+      usedModel = model; tokensIn = Number(body.usage?.prompt_tokens ?? 0); tokensOut = Number(body.usage?.completion_tokens ?? 0); // With your own provider key (BYOK), OpenRouter's charge is its fee only; what the provider charged comes beside it.
+      cost = Number(body.usage?.cost ?? 0) + Number(body.usage?.cost_details?.upstream_inference_cost ?? 0)
+    } catch (e) {
+      // The provider's own words are never shown to the asker, only to an admin trying Ask out.
+      failed = true; usedModel = model; why = e instanceof Error ? e.message : 'The call failed'
       reply = { kind: 'suggest', say: "The AI didn't answer just now. Try again in a moment.", reports: [], areas: [] }
     }
   }
-  const body = JSON.stringify({ user: ctx.user, question, kind: failed ? 'failed' : reply.kind, reply: reply.say, report: reply.plan?.report ?? catalog.focus ?? '',
+  const chat = String(p.chat ?? '').replace(/[^a-zA-Z0-9-]/g, '').slice(0, 40)
+  const body = JSON.stringify({ user: ctx.user, question, chat, plan: reply.plan ? JSON.stringify(reply.plan) : '', kind: failed ? 'failed' : reply.kind, reply: reply.say, report: reply.plan?.report ?? catalog.focus ?? '',
     pointed_to: [...reply.reports, ...reply.areas].join(', '), model: usedModel, tokens_in: tokensIn, tokens_out: tokensOut, cost_usd: cost, took_ms: Date.now() - started, asked_at: new Date().toISOString() })
-  return { reply, model: usedModel, cost_usd: cost, took_ms: Date.now() - started, receipt: { body, signature: sign(ctx, body) } }
+  return { reply, model: usedModel, cost_usd: cost, took_ms: Date.now() - started, ...(why && isAdmin(ctx) ? { admin_note: why } : {}), receipt: { body, signature: sign(ctx, body) } }
 }
 
 const number = (ctx: ReadContext, v: unknown, what: string) => { if (v === '' || v == null) return null; const n = Number(v); if (!Number.isFinite(n) || n < 0) ctx.reject(`${what} must be a number`); return n }
@@ -197,9 +199,9 @@ export const reads = {
       return { cfg, model, refused: await refusal(ctx, cfg, model, Date.now()) }
     },
   }),
-  /** This person's own questions, newest first: everything they asked, from any page. */
+  /** This person's own questions, newest first, with the chat each belongs to and its plan: a reopened chat reads its figures fresh. */
   async history(ctx: ReadContext) {
-    return ctx.documents.list(Q, { fields: ['row_id', 'question', 'kind', 'reply', 'report', 'pointed_to', 'model', 'asked_at'], filters: [['asked_by', '=', ctx.user]], order_by: 'asked_at desc', limit_page_length: 60 })
+    return ctx.documents.list(Q, { fields: ['row_id', 'question', 'kind', 'reply', 'report', 'pointed_to', 'model', 'asked_at', 'chat', 'plan'], filters: [['asked_by', '=', ctx.user]], order_by: 'asked_at desc', limit_page_length: 300 })
   },
   /** OpenRouter's live list of GPT, Claude and GLM models with their prices, for the admin's picker. */
   async models(ctx: ReadContext) {
