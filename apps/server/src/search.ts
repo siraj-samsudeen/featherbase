@@ -85,11 +85,6 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   tables.sort((a, b) => isRegistry(a.name) - isRegistry(b.name))
   const readable = []
   for (const t of tables) if (await hasPermission(user, t.name as string, 'read')) readable.push(t)
-  yield { groups: readable.map((t) => ({ table: String(t.name), label: registryLabel(String(t.name)) ?? tableLabel(String(t.name), t.label) })) }
-
-  // Each Table answers on its own, a few at a time, in the order they finish.
-  // Each keeps at most PER_TABLE hits; the bar shows the first ones in group
-  // order, so a slow Table is never crowded out by faster ones (Codex review).
   // #1345: Person and the Tables whose rows are a person's record search as one: such a row's hit
   // folds into its Person, so one human is listed once, and each Person reads its label.
   const people = readable.find((t) => t.name === 'Person')
@@ -104,6 +99,12 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   const folded = new Set(records.map((t) => t.name))
   const queue: (Record<string, unknown> | 'people')[] = [...readable.filter((t) => t !== people && !folded.has(t.name))]
   if (people) queue.unshift('people')
+  // The groups go out once the plan is made, so the searches start as soon as the next line is asked for.
+  yield { groups: readable.map((t) => ({ table: String(t.name), label: registryLabel(String(t.name)) ?? tableLabel(String(t.name), t.label) })) }
+
+  // Each Table answers on its own, a few at a time, in the order they finish.
+  // Each keeps at most PER_TABLE hits; the bar shows the first ones in group
+  // order, so a slow Table is never crowded out by faster ones (Codex review).
   const finished: SearchEvent[] = []
   // Every search started, so none outlives the lifecycle lock the caller holds.
   const started = new Set<Promise<unknown>>()
