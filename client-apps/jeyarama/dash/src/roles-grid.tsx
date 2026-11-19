@@ -95,7 +95,8 @@ function Review({ changes, touched, people, personHref, onBack, onSaved }: {
   const [names, setNames] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const shown = touched.flatMap(role => role.holders)
+  // Someone holding two of the changed roles is named once.
+  const shown = [...new Map(touched.flatMap(role => role.holders).map(h => [h.person, h])).values()]
   const save = async () => {
     setBusy(true); setError(null)
     try {

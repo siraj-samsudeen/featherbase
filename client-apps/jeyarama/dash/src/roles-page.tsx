@@ -150,7 +150,7 @@ export function BusinessRolesPage() {
         </div>
       )}
       {answer && answer.roles.length > 0 && view === 'grid' && (
-        <Card data-testid="roles-grid-card">
+        <Card className="p-4" data-testid="roles-grid-card">
           <PermissionsGrid roles={answer.roles} mayChange={answer.may_change} onSaved={load} onWaiting={setWaiting} personHref={explainAddress} />
         </Card>
       )}

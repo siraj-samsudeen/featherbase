@@ -809,6 +809,11 @@ describe('Dash\'s own records open on Dash\'s own pages (verifier on 70c47d3c4)'
     expect(await ask('sm', ['Report Access Manager'])).toEqual([true, true, true, false, false])
   })
 
+  // #1282: a Role Permission Manager opens Business Roles, so a business role is a link for them; a bundle is not.
+  it('lets a Role Permission Manager open business roles, not bundles', async () => {
+    expect(await ask('st', ['Role Permission Manager'])).toEqual([true, false, true, false, false])
+  })
+
   it('leaves business roles and bundles plain words for anyone else, and a report they are not offered', async () => {
     expect(await ask('st', ['Dash Reader'])).toEqual([false, false, true, false, false])
   })
