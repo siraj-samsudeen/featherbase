@@ -354,12 +354,13 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['every_report_own_read', '0.13.40', '0.13.41', 0],
       // #1345: each job's business role and a leaver's leaving day in describe_people, for the Person Label; no Table change.
       ['person_label', '0.13.41', '0.13.42', 0],
+      ['people_sections', '0.13.42', '0.13.43', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
-    expect(manifest.people).toEqual({ describe: 'describe_people' })
+    expect(manifest.people).toEqual({ describe: 'describe_people', sections: 'worked_out' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
-    expect(pkg.version).toBe('0.13.42')
+    expect(pkg.version).toBe('0.13.43')
   })
 })

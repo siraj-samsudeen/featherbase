@@ -97,7 +97,9 @@ async function openColumnsMenu() {
 async function switchColumn(as: TestClient, table: string, label: string, on: boolean) {
   // The person's saved arrangement has loaded once the rows show.
   await waitFor(() => expect(screen.getByTestId('list-rows').querySelectorAll('tr').length).toBeGreaterThan(0), WAIT)
-  await openColumnsMenu()
+  const menu = await openColumnsMenu()
+  // #1282 A4: the switches wait for this person's saved columns.
+  await waitFor(() => expect(within(menu).getByLabelText(label)).toBeEnabled(), WAIT)
   await onScreen().within(byTestId('list-columns-popup'), (menu) => on ? menu.check(label) : menu.uncheck(label))
   await waitFor(async () => {
     const { settings } = await as.get<{ settings: { shownCols?: string[]; hiddenCols?: string[] } | null }>(`/api/user_settings/${enc(table)}`)

@@ -179,6 +179,8 @@ async function renameInGlossary(tx: TxSql, table: string, from: { table: string;
 const TABLE_NAME_COLUMNS: readonly [string, string][] = [
   ['custom_field', 'reference_table'], ['custom_field', 'row_table'], ['access_log', 'ref_table'],
   ['saved_view', 'ref_table'], ['user_settings', 'table_name'], ['tag_link', 'ref_table'],
+  // #1282 A4: a Table's default view.
+  ['table_view_default', 'ref_table'],
   // #871: an import's memory of each row, so a re-import keeps people's edits.
   [`${PLATFORM_SCHEMA}.import_source`, 'ref_table'], [`${PLATFORM_SCHEMA}.import_conflict`, 'ref_table'],
 ]

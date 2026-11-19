@@ -3,6 +3,7 @@ import { LIST_LAYOUTS, type ListLayout } from 'shared'
 import { useMediaQuery } from '@featherbase/shop-floor'
 import { api, getToken } from './api'
 import { useMeta } from './meta'
+import { tableViewDefaultQuery } from './table-view-default'
 import { SIDEBAR_DRAWER_QUERY } from './sidebar-collapsed'
 
 // #1259: which of the three views a Table's list shows. In order: a phone
@@ -25,6 +26,12 @@ const choices = new Map<string, number>()
 /** The keys above: one per sign-in per Table (remembered-filters.ts does the same). */
 const savesKey = (table: string) => `${getToken() ?? ''}\u0000${table}`
 
+/** #1282 A4: resolves once every layout save already queued for this Table has landed, so a reset after it is final. */
+export function layoutSavesSettled(table: string): Promise<unknown> {
+  // Each save already catches its own failure (choose), so this never rejects.
+  return saves.get(savesKey(table)) ?? Promise.resolve()
+}
+
 export function useListLayout(table: string, asked?: ListLayout) {
   const queryClient = useQueryClient()
   const meta = useMeta(table)
@@ -42,7 +49,9 @@ export function useListLayout(table: string, asked?: ListLayout) {
       return isListLayout(res.settings?.layout) ? res.settings.layout : null
     },
   })
-  const layout: ListLayout = phone ? 'table' : asked ?? stored.data ?? (meta.data?.queue ? 'split' : 'panel')
+  // #1282 A4: the Table's default comes after the person's own choice and before the built-in.
+  const tableDefault = useQuery(tableViewDefaultQuery(table))
+  const layout: ListLayout = phone ? 'table' : asked ?? stored.data ?? tableDefault.data?.settings.layout ?? (meta.data?.queue ? 'split' : 'panel')
   /** The person chooses: remembered for them on this Table (the server merges it
    *  beside their sort and columns, never over them). */
   const choose = (next: ListLayout) => {
