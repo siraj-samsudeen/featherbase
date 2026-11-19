@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { canRetire } from 'shared'
-import { Notice, buttonClasses, cardClasses, fmtCount, inputClasses, labelClasses } from '@featherbase/shop-floor'
+import { Notice, buttonClasses, fmtCount, inputClasses, labelClasses, raisedClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
 import { useMeta } from '../lib/meta'
 
@@ -134,7 +134,7 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
         role="dialog"
         aria-modal="true"
         aria-labelledby="purge-title"
-        className={cardClasses('max-h-[90vh] w-full max-w-xl overflow-y-auto p-4')}
+        className={raisedClasses('max-h-[90vh] w-full max-w-xl overflow-y-auto p-4')}
         data-testid="purge-dialog"
         onClick={(e) => e.stopPropagation()}
       >
@@ -212,7 +212,7 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
           <button
             onClick={confirm}
             disabled={!ready}
-            className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint disabled:opacity-40' })}
+            className={buttonClasses({ variant: 'danger', className: 'disabled:opacity-40' })}
             data-testid="purge-confirm"
           >
             {busy ? 'Deleting…' : 'Delete permanently'}

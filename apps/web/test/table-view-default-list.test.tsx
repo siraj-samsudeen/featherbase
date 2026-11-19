@@ -117,7 +117,7 @@ test('Reset waits for a slow earlier save, so the cleared choice stays cleared',
     return real(input, init)
   })
   try {
-    await userEvent.click(screen.getByTestId('compact-rows'))
+    await userEvent.click(screen.getByRole('button', { name: 'Compact Rows' }))
     await userEvent.click((await openListMenu('View')).getByRole('button', { name: "Reset to the Table's Default" }))
     await new Promise((r) => setTimeout(r, 600))
     await waitFor(async () => expect((await admin.get<{ settings: { compact?: boolean } | null }>(`/api/user_settings/${enc(DT)}`)).settings?.compact).toBeUndefined(), T)

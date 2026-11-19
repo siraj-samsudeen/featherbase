@@ -24,12 +24,12 @@ export function PageHeader({ breadcrumb, title, count, actions, status, classNam
   className?: string
 }) {
   return (
-    <header className={cx('flex flex-col gap-1', className)} data-testid="page-header">
-      {breadcrumb && <div className="text-xs text-ink-subtle" data-testid="page-header-breadcrumb">{breadcrumb}</div>}
+    <header className={cx('flex flex-col gap-3', className)} data-testid="page-header">
+      {breadcrumb && <div className="text-[13px] text-ink-subtle" data-testid="page-header-breadcrumb">{breadcrumb}</div>}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-semibold text-ink">{title}</h1>
-          {count && <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted" data-testid="page-header-count">{count}</div>}
+          {count && <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink-subtle" data-testid="page-header-count">{count}</div>}
         </div>
         {actions && <div className="ml-auto flex flex-wrap items-center justify-end gap-2" data-testid="page-header-actions">{actions}</div>}
       </div>

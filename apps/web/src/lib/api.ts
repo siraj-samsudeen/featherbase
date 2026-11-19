@@ -144,15 +144,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     () => ({}),
   )) as {
     error?: { type: string; message: string; fields?: Record<string, string> }
-  }
+  } | null // #1301: `null` is an answer too (":copy_info" of a Table that is not a copy)
   // #1222: View as just ended on the server; reload so the page never shows two people at once.
-  if (res.status === 409 && body.error?.message?.startsWith('View as has ended')) window.location.reload()
+  if (res.status === 409 && body?.error?.message?.startsWith('View as has ended')) window.location.reload()
   if (!res.ok)
     throw new ApiError(
       res.status,
-      body.error?.type ?? 'InternalError',
-      body.error?.message ?? `Request failed (${res.status})`,
-      body.error?.fields,
+      body?.error?.type ?? 'InternalError',
+      body?.error?.message ?? `Request failed (${res.status})`,
+      body?.error?.fields,
     )
   return body as T
 }

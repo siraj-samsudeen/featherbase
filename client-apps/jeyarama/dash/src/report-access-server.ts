@@ -95,13 +95,15 @@ export async function reportsGivenTo(base: Documents, person: string, roles: rea
  * #1277: the reports given to `person` by whichever rules decide now (access-source.ts): under business roles,
  * those given to them or to a business role they hold; under the old rules, reportsGivenTo.
  */
-export async function reportsGivenNow(base: Base, person: string, roles: readonly string[], on: string, source?: string): Promise<Map<string, Because[]>> {
+export async function reportsGivenNow(base: Base, own: Documents, person: string, roles: readonly string[], on: string, source?: string): Promise<Map<string, Because[]>> {
   if ((source ?? await accessSource(base)) !== BUSINESS_ROLES) return reportsGivenTo(base, person, roles, on)
   const { access, model } = await liveBusinessAccess(base, person, on)
   const { rows, members } = await grants(base)
   const roleName = new Map(model.roles.map(r => [r.id, r.name]))
-  // A role viewing every report gives every report the instance has; the reports are read only for its holders.
-  const every = access.everyReport.length ? (await all(base, REPORT, ['report_key'])).map(row => exact(row.report_key)).filter(Boolean) : []
+  // A role viewing every report gives every report the instance has; the reports are read only for its holders, through
+  // Dash's own documents (production hotfix, 19-Nov-2026): dash.report is not a base Table, so the base-Table reader
+  // refuses it, and every Owner Director's reports failed to open.
+  const every = access.everyReport.length ? (await all(own, REPORT, ['report_key'])).map(row => exact(row.report_key)).filter(Boolean) : []
   return new Map([...businessReportsReaching({ person, roles: access.roles, everyReport: access.everyReport }, rows, members, every)].map(([key, whys]) =>
     [key, whys.map((why): Because => why.person ? { kind: 'person', receiver: person, bundle: why.bundle }
       : { kind: 'business_role', receiver: roleName.get(why.role!)!, bundle: why.bundle, ...(why.every ? { every: true as const } : {}) })]))
@@ -134,7 +136,7 @@ async function scopeOf(ctx: AccessContext, on: string): Promise<Scope> {
   const opensReports = roles.some(role => role === 'Dash Reader' || role === ALL_STORES_ROLE)
   const reports = (await names(ctx)).reports
   const reach = ctx.reach ? await ctx.reach(ctx.user, roles) : { any: false, wholeStore: false }
-  const holds = new Set(!opensReports ? [] : [...(await reportsGivenNow(ctx.baseTables as Base, ctx.user, roles, on)).keys()]
+  const holds = new Set(!opensReports ? [] : [...(await reportsGivenNow(ctx.baseTables as Base, ctx.documents!, ctx.user, roles, on)).keys()]
     .filter(key => reports.has(key) && closedBecause(reports.get(key), reach) === null))
   return { kind: 'team', team, holds }
 }
@@ -324,7 +326,7 @@ export async function personLookup(ctx: AccessContext, on: string, reaches: (per
   if (scope.kind === 'team' && !scope.team.has(person)) ctx.reject!(NOT_IN_TEAM)
   const named = await names(ctx)
   const roles = (await ctx.people!.rolesOf?.(person)) ?? []
-  const given = await reportsGivenNow(ctx.baseTables as Base, person, roles, on)
+  const given = await reportsGivenNow(ctx.baseTables as Base, ctx.documents!, person, roles, on)
   const reach = await reaches(person, roles)
   const name = (await personNames(ctx, [person])).get(person) ?? 'This person'
   const reports = [...given].map(([key, because]) => {
@@ -523,7 +525,7 @@ export async function grantOptions(ctx: AccessContext, on: string) {
   const roles = (await ctx.people!.rolesOf?.(person)) ?? []
   // #1277: by whichever rules decide now; a bundle is marked given when any of its reports reaches them.
   const source = await accessSource(base as Base)
-  const reaching = await reportsGivenNow(base as Base, person, roles, on, source)
+  const reaching = await reportsGivenNow(base as Base, ctx.documents!, person, roles, on, source)
   const { rows } = await grants(base)
   const bundleReaches = (bundle: string) => source === BUSINESS_ROLES
     ? [...reaching.values()].some(why => why.some(b => b.bundle === bundle || b.every))

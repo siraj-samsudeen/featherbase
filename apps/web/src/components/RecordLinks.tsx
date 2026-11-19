@@ -115,9 +115,9 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }
   }
   return (
     <div className="@container" data-testid="record-links">
-      <div className={pref.fields ? 'grid gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]' : 'grid gap-6'}>
+      <div className={pref.fields ? 'grid gap-7 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]' : 'grid gap-7'}>
         {pref.fields && (meta.data && values ? <div data-testid="links-fields"><PaneFields meta={meta.data} row={values} onOpen={open} stacked={false} /></div> : <span />)}
-        <div className="flex min-w-0 flex-col gap-6">
+        <div className="flex min-w-0 flex-col gap-7">
           {sections.map((g) => (
             <div key={g.key} id={linksSectionId(g)} tabIndex={-1} className="scroll-mt-4 rounded-lg focus:outline-none focus-visible:outline-2 focus-visible:outline-focus">
               <LinkedRowsGroup table={table} record={name} group={g} onOpen={open} showAllHref={listHref(g)} editable />
@@ -128,7 +128,7 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }
           <WorkedOutSections table={table} row={name} onOpen={open} />
           {empties.length > 0 && (
             <section aria-label="Pointed At By" data-testid="links-empty-groups" className="flex min-w-0 flex-col gap-2">
-              <h4 className="text-sm font-semibold text-ink">Pointed At By</h4>
+              <h4 className="text-[15px] font-semibold text-ink">Pointed At By</h4>
               <div className="flex flex-wrap gap-2">
                 {empties.map((g) => (
                   <span key={g.key} id={linksSectionId(g)} tabIndex={-1} className="scroll-mt-4 rounded-full focus:outline-none focus-visible:outline-2 focus-visible:outline-focus">

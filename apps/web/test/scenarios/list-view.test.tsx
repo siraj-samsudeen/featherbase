@@ -440,7 +440,7 @@ describe('list-view', () => {
 
   // #1282 A4: the Table's default is the System Manager's whole view.
   const sections = () => columnValues('section')
-  const compactOn = () => screen.getByTestId('compact-rows').getAttribute('aria-pressed') === 'true'
+  const compactOn = () => layout('Compact').getAttribute('aria-pressed') === 'true'
   const putSettings = (as: Client, table: string, settings: unknown) =>
     as.fetch(`/api/user_settings/${enc(table)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(settings) })
   const tableDefault = async (as: Client, table: string) =>
@@ -455,7 +455,7 @@ describe('list-view', () => {
       await waitFor(() => expect(sections().length).toBe(2))
       fireEvent.click(screen.getByTestId('col-floor'))
       await waitFor(() => expect(sections()).toEqual(['Kids Wear', 'Sarees']))
-      fireEvent.click(screen.getByTestId('compact-rows'))
+      fireEvent.click(layout('Compact'))
       await waitFor(async () => expect(await settingsOf(admin, given.table)).toMatchObject({ sort: { field: 'floor', dir: 'asc' }, compact: true }))
     })
     await step('a colleague has never changed their own view of it', async () =>
@@ -474,7 +474,7 @@ describe('list-view', () => {
       given = await sectionMapping(admin, createUser as CreateUser, DEFAULT_LIST)
       await openList(admin, given.table)
       await waitFor(() => expect(sections().length).toBe(2))
-      fireEvent.click(screen.getByTestId('compact-rows'))
+      fireEvent.click(layout('Compact'))
       await makeDefaultForEveryone(admin, given.table, {})
       expect((await tableDefault(admin, given.table))?.settings).toMatchObject({ compact: true })
     })
@@ -679,10 +679,11 @@ describe('list-view', () => {
       signInAfresh()
       await openList(user, SITE)
     })
-    await step('Enchakkal shows by its name with a few key values', async () => {
+    // #1348: Compact Rows is a row height and keeps every column (list-view, "A list's rows are Comfortable or Compact").
+    await step('Enchakkal shows in Compact Rows with every column', async () => {
       await waitFor(() => expect(layout('Compact')).toHaveAttribute('aria-pressed', 'true'))
       await waitFor(() => expect(within(screen.getByRole('main')).getAllByText('Enchakkal', { exact: true })[0]).toBeVisible())
-      await waitFor(() => expect(columnHeaders().length).toBeLessThan(listColumns(SITE).length))
+      await waitFor(() => { for (const label of listColumns(SITE)) expect(columnHeaders()).toContain(label) })
     })
     await step('the list of plants still shows all its columns', async () => {
       await openList(user, 'Plant')

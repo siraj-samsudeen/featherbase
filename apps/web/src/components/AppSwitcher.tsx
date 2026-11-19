@@ -6,7 +6,7 @@ import { api } from '../lib/api'
 import { useWhoAmI } from '../lib/session'
 import { APP_ICON } from '../lib/app-icons'
 import { Logo } from './Logo'
-import { Check, ChevronDown, cardClasses, cx, iconButtonClasses } from '@featherbase/shop-floor'
+import { Check, ChevronDown, cx, iconButtonClasses, raisedClasses } from '@featherbase/shop-floor'
 import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 
 /** Keep the server's cross-address sign-in handoff when leaving an app. */
@@ -169,7 +169,7 @@ export function AppSwitcher({ app, compact = false, place = 'bar' }: {
           aria-label="Applications"
           data-testid="app-switcher-menu"
           onKeyDown={onMenuKey}
-          className={cardClasses('absolute left-0 top-full z-40 mt-1 w-96 max-w-[calc(100vw-1rem)] p-1 shadow-lg')}
+          className={raisedClasses('absolute left-0 top-full z-40 mt-1 w-96 max-w-[calc(100vw-1rem)] p-1')}
         >
           {choices.map((item) => {
             const isCurrent = item.href === current

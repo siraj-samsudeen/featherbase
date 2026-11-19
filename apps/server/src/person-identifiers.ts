@@ -91,7 +91,7 @@ function isoDate(v: unknown, field: string): string | null {
 // ------------------------------------------------------------- who may
 
 /** Can this principal read restricted identifiers (D9)? */
-async function readsRestricted(viewer: string, person?: string): Promise<boolean> {
+export async function readsRestricted(viewer: string, person?: string): Promise<boolean> {
   if (await isPrivileged(viewer)) return true
   if ((await getRoles(viewer)).includes('Data Quality Manager')) return true
   const scope = await permissionScope(viewer, 'Person', 'read_identifiers')

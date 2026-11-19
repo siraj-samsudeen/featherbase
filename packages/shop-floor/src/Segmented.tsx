@@ -13,11 +13,11 @@ export function Segmented<T extends string>({ label, options, value, onChange, c
   className?: string
 }) {
   return (
-    <div role="group" aria-label={label} className={cx('inline-flex w-fit shrink-0 rounded-control border border-border-control bg-surface p-0.5', className)}>
+    <div role="group" aria-label={label} className={cx('inline-flex w-fit shrink-0 gap-0.5 rounded-control bg-fill p-[3px]', className)}>
       {options.map((option) => (
         <button key={option.value} type="button" aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
-          className="min-h-control rounded-control px-3 text-control font-medium text-ink-muted transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-action-tint aria-pressed:font-semibold aria-pressed:text-action motion-reduce:transition-none"
+          className="min-h-8 rounded-[7px] px-3 text-[13px] text-ink-subtle transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-focus aria-pressed:bg-surface aria-pressed:font-medium aria-pressed:text-ink aria-pressed:shadow-pressed pointer-coarse:min-h-control motion-reduce:transition-none"
         >{option.label}</button>
       ))}
     </div>
