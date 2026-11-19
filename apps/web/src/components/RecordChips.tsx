@@ -16,7 +16,7 @@ export function RecordChips({ meta, values, className = 'mt-3' }: { meta: TableM
     .sort((a, b) => Number(b.column_name === 'status') - Number(a.column_name === 'status'))
   if (!chips.length) return null
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${className}`} data-testid="record-chips">
+    <div className={`flex flex-wrap items-center gap-2 ${className}`} data-testid="record-status-chips">
       {chips.map((c) => {
         const value = String(values[c.column_name])
         return <Indicator key={c.column_name} value={value} label={choiceLabel(value, c.choice_labels, t)} />

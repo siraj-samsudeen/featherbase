@@ -20,7 +20,7 @@ const meta = { name: 'Site', columns: [
 describe("a record's header", () => {
   test('its status leads its category chips; a source, a hidden field and a blank stay out', () => {
     render(<RecordChips meta={meta} values={{ status: 'Open', division: 'Apparel', source_system: 'SAP', hidden_kind: 'X', code: 'BAY' }} />)
-    const chips = within(screen.getByTestId('record-chips')).getAllByText(/./, { selector: '[data-chip]' })
+    const chips = within(screen.getByTestId('record-status-chips')).getAllByText(/./, { selector: '[data-chip]' })
     expect(chips.map((c) => c.textContent)).toEqual(['Open', 'Apparel'])
     expect(chips[0].getAttribute('data-chip')).toBe('green')
   })
@@ -52,5 +52,5 @@ describe("a record's workspace", () => {
 
 test('the chips can sit closer under a pane\'s name', () => {
   render(<RecordChips meta={meta} values={{ status: 'Open' }} className="mt-2" />)
-  expect(screen.getByTestId('record-chips').className).toMatch(/\bmt-2\b/)
+  expect(screen.getByTestId('record-status-chips').className).toMatch(/\bmt-2\b/)
 })
