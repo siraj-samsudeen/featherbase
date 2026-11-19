@@ -32,7 +32,7 @@ import { countWaitingForAccess, noAccessYetPage, peekAccess, requestAccess } fro
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
 import { hold, rosterFirstSignIn } from './roster-first-sign-in'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, OAUTH_CALLBACK_PATH, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
-import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
+import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost, adminLinkOrigin } from './instance-addresses'
 import { USERNAME_RE, methodOfKind, type SignInMethod } from './identities'
 import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
 import { getVisibleHomePages } from './home-pages'
@@ -216,6 +216,9 @@ app.get('/api/brand', async (c) => {
     // #489: what this address opens — `admin`, an app's name, or null for a
     // host the list does not name — so the shared top bar can name itself.
     opens: opened ?? null,
+    // #1328: on an address that opens an app, where Featherbase itself is (the Admin's address), so a way
+    // forward from an app that is off never leads back to it. From the server's own list, never the URL.
+    home: opened && opened !== ADMIN ? adminLinkOrigin(config.instanceAddresses, config.environment) : null,
     sign_in_methods: methods,
     sign_up_open: Boolean(password?.enabled && password.new_person === 'create'),
     // The roster sync checks this before writing linked identities (design D11).

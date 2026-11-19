@@ -5,7 +5,7 @@ import { Card, ProblemPage, Skeleton, buttonClasses } from '@featherbase/shop-fl
 import { api, getSessionUser, getToken } from '../lib/api'
 import { usePageTitle } from '../lib/page-title'
 import { useShellKind } from '../lib/session'
-import { TopBar } from '../components/TopBar'
+import { TopBar, useBrand } from '../components/TopBar'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 
 const TITLE = 'Not Available'
@@ -62,6 +62,9 @@ function Answer({ shown, off, signedIn }: { shown: string | null; off: { title: 
 /** One way forward: Featherbase for an administrator or someone signed out; their apps for someone whose place is an app. */
 function WayForward({ signedIn }: { signedIn: boolean }) {
   const kind = useShellKind()
+  // On an app's own address, "/" is that app: the way forward is Featherbase's own address (the server's
+  // configured origin, never anything from the URL).
+  const home = useBrand().data?.home
   const words = signedIn && kind !== 'admin' && kind !== 'loading' && kind !== 'failed' ? 'Open your apps' : 'Go to Featherbase'
-  return <a href="/" className={buttonClasses()}>{words}</a>
+  return <a href={home ? `${home}/` : '/'} className={buttonClasses()}>{words}</a>
 }

@@ -55,9 +55,12 @@ const ADMIN = 'admin'
 interface Brand {
   app_name: string
   opens: string | null
+  /** #1328: on an address that opens an app, the Admin's own origin. */
+  home?: string | null
 }
 
-function useBrand() {
+/** The instance's public brand: the same for everyone on this address. */
+export function useBrand() {
   // Public, and the same for everyone on this address: a plain fetch, so a
   // signed-out moment never sends a stale token with it.
   return useQuery({

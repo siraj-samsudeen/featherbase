@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { askedAddress } from 'shared'
 import { sql } from './db'
-import { getRoles, isPrivileged } from './permissions'
+import { OPEN_ROLES, PLATFORM_ROLES, directRoles, getRoles, isPrivileged } from './permissions'
 import { listInstalledApps } from './apps'
 import { who, type Env } from './route-context'
 
@@ -21,10 +21,13 @@ export async function turnedOffFor(address: string, viewer: string): Promise<{ t
   // A turned-off app's grants are suspended, so whether the viewer could use it is read from what the app
   // declares: a permission that lets one of their roles read its entry Table.
   // With the app's own App Role Bindings, which getRoles leaves out while the app is off (Codex standard
-  // round 1): a role the viewer holds that carries one of the app's roles counts here, and only here.
+  // round 1): one level, as normal resolution, so only a role the viewer holds itself carries one of the
+  // app's roles, and never an open or platform role (Codex adversarial round 2).
   const roles = new Set(await getRoles(viewer))
+  const direct = new Set(await directRoles(viewer))
   for (const b of await sql`select app_role, bound_role from app_role_binding where app = ${name}`)
-    if (roles.has(String(b.bound_role))) roles.add(String(b.app_role))
+    if (direct.has(String(b.bound_role)) && !OPEN_ROLES.includes(String(b.bound_role)) && !PLATFORM_ROLES.includes(String(b.app_role)))
+      roles.add(String(b.app_role))
   // A grant reads either way an app declares it: `can_read`, or a read in its `operations`.
   const declared = Array.isArray(manifest.permissions) ? manifest.permissions as { table?: unknown; role?: unknown; can_read?: unknown; operations?: { read?: unknown } }[] : []
   const reads = (p: (typeof declared)[number]) => p.can_read === true || Boolean(p.operations?.read)
