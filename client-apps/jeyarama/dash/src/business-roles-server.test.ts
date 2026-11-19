@@ -324,6 +324,19 @@ describe("Why on the platform's Map", () => {
     expect([report.name, report.via.map(v => v.name), report.why.at(-1)]).toEqual(['Vendor Sales', ['Store Manager'], { name: 'Vendor Sales', record: { table: 'dash.report', row: 'vs' } }])
   })
 
+  it('keeps every name within the platform\'s limits, so one long name refuses nothing', async () => {
+    const tables = onRequest(await converted(await seeded()), 'vs', 'Store Manager')
+    const long = `Vendor Sales ${'x'.repeat(200)}`
+    const ctx = context(tables, { payload: { table: 'Person', row: 'sm' } })
+    const list = ctx.documents.list
+    ctx.documents.list = (async (table: string, args: never) => (table === 'dash.report'
+      ? (await list(table, args)).map((r: Record<string, unknown>) => (r.report_key === 'vs' ? { ...r, report_name: long } : r)) : list(table, args))) as typeof list
+    const answer = (await workedOut(ctx as never))!
+    const names = answer.sections.flatMap(s => s.rows.flatMap(r => [r.name, ...r.via.map(v => v.name), ...r.why.flatMap(w => [w.name, ...(w.detailParts ?? []).map(p => p.name)])]))
+    expect(names.every(n => n.length <= 120)).toBe(true)
+    expect(answer.sections[1]!.rows.find(r => r.record?.row === 'vs')!.name).toMatch(/^Vendor Sales x+…$/)
+  })
+
   it('shows nothing to someone who may not have access explained, or about anything but a Person', async () => {
     const tables = await seeded()
     expect(await workedOut(context(tables, { roles: ['Dash Reader'], payload: { table: 'Person', row: 'sm' } }) as never)).toBeNull()

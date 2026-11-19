@@ -60,7 +60,11 @@ function WorkedOutLine({ row, onOpen }: { row: WorkedOutRow; onOpen?: (pane: Nav
       </div>
       {open && row.why && (
         <p className="mt-1 pl-6 text-ink-muted" data-testid="worked-out-chain">
-          {row.why.map((part, i) => <span key={i}>{i ? ' → ' : ''}{link(part, onOpen)}{part.detail ? ` (${part.detail})` : ''}</span>)}
+          {row.why.map((part, i) => (
+            <span key={i}>{i ? ' → ' : ''}{link(part, onOpen)}
+              {part.detailParts && <> ({part.detailParts.map((p, j) => <span key={j}>{j ? ' · ' : ''}{link(p, onOpen)}</span>)})</>}
+            </span>
+          ))}
         </p>
       )}
     </li>

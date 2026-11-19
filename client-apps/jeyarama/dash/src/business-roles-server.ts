@@ -659,20 +659,21 @@ export async function workedOut(context: AccessContext) {
   if (!mayExplainAccess(context)) return null
   const person = String((context.payload as { row: string }).row)
   const explained = await explainPerson({ ...context, payload: { person } })
-  const self = { name: explained.name, record: { table: 'Person', row: person } }
+  // Every name within the platform's limits (Codex standard round 1): one long name must not refuse both sections.
+  const self = { name: clip(explained.name), record: { table: 'Person', row: person } }
   const roleByName = new Map(explained.roles.map(r => [r.name, r]))
   const roleById = new Map(explained.roles.map(r => [r.role, r]))
-  const roleLink = (r: { role: string; name: string }) => ({ name: r.name, record: { table: ROLE, row: r.role } })
-  const inArea = (r: { area: { parts: Part[] } }) => r.area.parts.map(p => p.name).join(' · ') || undefined
-  const chainVia = (r: { role: string; name: string; area: { parts: Part[] } } | undefined) => (r ? [{ ...roleLink(r), ...(inArea(r) ? { detail: inArea(r) } : {}) }] : [])
+  const roleLink = (r: { role: string; name: string }) => ({ name: clip(r.name), record: { table: ROLE, row: r.role } })
+  // The role's area as record parts (as Why's boxes carry it), so the platform hides a chain naming an area the viewer may not read.
+  const chainVia = (r: { role: string; name: string; area: { parts: Part[] } } | undefined) => (r ? [{ ...roleLink(r), ...areaParts(r.area.parts) }] : [])
   const apps: WorkedRow[] = explained.apps.slice(0, WORKED_OUT_ROWS).map(a => {
     const via = a.via.flatMap(name => roleByName.has(name) ? [roleByName.get(name)!] : [])
-    return { name: a.app, detail: `at level ${a.level}`, via: via.slice(0, 6).map(roleLink),
-      why: [self, ...chainVia(via[0]), { name: `${a.app} · ${a.level}` }] }
+    return { name: clip(a.app), detail: clip(`at level ${a.level}`), via: via.slice(0, 6).map(roleLink),
+      why: [self, ...chainVia(via[0]), { name: clip(`${a.app} · ${a.level}`) }] }
   })
   const reports: WorkedRow[] = explained.reports.slice(0, WORKED_OUT_ROWS).map(r => {
     const via = r.roles.flatMap(id => roleById.has(id) ? [roleById.get(id)!] : [])
-    const report = { name: r.name, record: { table: 'dash.report', row: r.key } }
+    const report = { name: clip(r.name), record: { table: 'dash.report', row: r.key } }
     return { ...report, via: via.slice(0, 6).map(roleLink), why: [self, ...chainVia(via[0]), report] }
   })
   return { version: 1, sections: [
@@ -684,7 +685,7 @@ export async function workedOut(context: AccessContext) {
 const WORKED_OUT_ROWS = 50
 type Named = { name: string; record?: { table: string; row: string } }
 /** One row of a worked-out section, as the platform's shape has it. */
-type WorkedRow = Named & { detail?: string; via: Named[]; why: (Named & { detail?: string })[] }
+type WorkedRow = Named & { detail?: string; via: Named[]; why: (Named & { detailParts?: Named[] })[] }
 
 export function mayExplainAccess(context: AccessContext): boolean {
   // The platform always sends a payload; anything that is not { table, row } names no Person.

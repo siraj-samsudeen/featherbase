@@ -40,7 +40,7 @@ export async function workedOutFor(table: string, row: string, user: string): Pr
 async function scrubbed(answer: WorkedOut, user: string): Promise<WorkedOut['sections']> {
   const rows = answer.sections.flatMap((s) => s.rows)
   const named = rows.flatMap((r) => [...(r.record ? [r.record] : []), ...r.via.flatMap((v) => v.record ? [v.record] : []),
-    ...(r.why ?? []).flatMap((p) => p.record ? [p.record] : [])])
+    ...(r.why ?? []).flatMap((p) => [p, ...(p.detailParts ?? [])].flatMap((q) => q.record ? [q.record] : []))])
   const readable = new Set((await rowTitles(user, named.map((r) => ({ table: r.table, row_id: r.row }))))
     .map((t) => `${t.table}\u0000${t.row_id}`))
   const reads = (r?: { table: string; row: string }) => !r || readable.has(`${r.table}\u0000${r.row}`)
@@ -49,7 +49,8 @@ async function scrubbed(answer: WorkedOut, user: string): Promise<WorkedOut['sec
     rows: section.rows.map((r) => {
       if (!reads(r.record)) return { name: UNSEEN_ROW, via: [] }
       const via = r.via.map((v) => (reads(v.record) ? v : { name: UNSEEN_ROW }))
-      const why = r.why && r.why.every((p) => reads(p.record)) ? { why: r.why } : {}
+      // A chain naming any record the viewer may not read, its areas' parts included, is left out whole.
+      const why = r.why && r.why.every((p) => reads(p.record) && (p.detailParts ?? []).every((q) => reads(q.record))) ? { why: r.why } : {}
       const { why: _dropped, ...rest } = r
       return { ...rest, via, ...why }
     }),

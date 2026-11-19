@@ -13,7 +13,7 @@ afterEach(cleanup)
 const SECTIONS: WorkedOutAnswer = { sections: [
   { heading: 'Apps They Can Open', note: 'worked out from their roles', empty: 'No apps from roles yet', rows: [
     { name: 'Tasker', detail: 'at level Manager', via: [{ name: 'Floor Manager', record: { table: 'dash.business_role', row: 'fm' } }],
-      why: [{ name: 'Priya S.', record: { table: 'Person', row: 'p1' } }, { name: 'Floor Manager', record: { table: 'dash.business_role', row: 'fm' }, detail: 'Store C · First floor' }, { name: 'Tasker · Manager' }] },
+      why: [{ name: 'Priya S.', record: { table: 'Person', row: 'p1' } }, { name: 'Floor Manager', record: { table: 'dash.business_role', row: 'fm' }, detailParts: [{ name: 'Store C', record: { table: 'Site', row: 'C' } }, { name: 'First floor' }] }, { name: 'Tasker · Manager' }] },
     { name: 'Dash', detail: 'at level Reader', via: [{ name: 'A row you cannot see' }] },
   ] },
   { heading: 'Reports They See', note: 'given to their roles', empty: 'No reports from roles yet', rows: [] },
@@ -55,7 +55,7 @@ describe('the Lens worked-out sections', () => {
     fireEvent.click(within(tasker!).getByRole('button', { name: 'Why?' }))
     const chain = within(tasker!).getByTestId('worked-out-chain')
     expect(chain).toHaveTextContent('Priya S. → Floor Manager (Store C · First floor) → Tasker · Manager')
-    expect(within(chain).getAllByRole('link').map((l) => l.textContent)).toEqual(['Priya S.', 'Floor Manager'])
+    expect(within(chain).getAllByRole('link').map((l) => l.textContent)).toEqual(['Priya S.', 'Floor Manager', 'Store C'])
     fireEvent.click(within(tasker!).getByRole('button', { name: 'Hide why' }))
     expect(within(tasker!).queryByTestId('worked-out-chain')).toBeNull()
   })

@@ -46,7 +46,7 @@ reads.worked_out = ({ roles, payload }) => {
     sections: [
       { heading: 'Notes They Can Read', note: 'worked out from their roles', empty: 'No notes from roles yet', rows: [
         { name: 'The note', record: { table: payload.table, row: payload.row }, detail: 'at level Reader', via: [{ name: 'Bar Reader' }],
-          ...(why ? { why: [{ name: 'Made-up Person' }, { name: 'Bar Reader', detail: 'by hand' }, { name: 'The note', record: { table: payload.table, row: payload.row } }] } : {}) },
+          ...(why ? { why: [{ name: 'Made-up Person' }, { name: 'Bar Reader', detailParts: [{ name: 'Whole company' }] }, { name: 'The note', record: { table: payload.table, row: payload.row } }] } : {}) },
       ] },
       { heading: 'Reports They See', note: 'given to their roles', empty: 'No reports from roles yet', rows: [] },
     ],
@@ -124,12 +124,17 @@ describe('worked-out sections: what the viewer is told', () => {
       { name: 'A hidden note', record: hidden, via: [{ name: 'Bar Reader' }] },
       { name: 'The note', record: { table: NOTE, row: 'n1' }, via: [{ name: 'Secret role', record: hidden }],
         why: [{ name: 'Made-up Person' }, { name: 'Secret', record: hidden }] },
+      // Codex adversarial round 1: an area the viewer may not read hides the whole chain, though every step is readable.
+      { name: 'Another note', record: { table: NOTE, row: 'n1' }, via: [],
+        why: [{ name: 'Made-up Person' }, { name: 'Bar Reader', detailParts: [{ name: 'Hidden store', record: hidden }] }, { name: 'The note', record: { table: NOTE, row: 'n1' } }] },
     ] }] }
     const answer = await (await sections(explainer)).json() as { sections: { rows: { name: string; record?: unknown; via: { name: string; record?: unknown }[]; why?: unknown }[] }[] }
     expect(answer.sections[0]!.rows).toEqual([
       { name: 'A row you cannot see', via: [] },
       { name: 'The note', record: { table: NOTE, row: 'n1' }, via: [{ name: 'A row you cannot see' }] },
+      { name: 'Another note', record: { table: NOTE, row: 'n1' }, via: [] },
     ])
+    expect(JSON.stringify(answer)).not.toContain('Hidden store')
   })
 
   test('an answer that is not the one shape is refused whole, saying nothing of it', async ({ admin, createUser }) => {

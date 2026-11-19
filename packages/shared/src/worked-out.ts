@@ -22,8 +22,10 @@ export const workedOutRowSchema = z.object({
   /** The roles (or other records) that give it: "via Floor Manager", each a link. */
   via: z.array(named).max(WORKED_OUT_LIMITS.via),
   /** The one-line chain Why? opens: "Priya S. → Floor Manager (Store C · First floor) → Vendor Sales", part by part.
-   *  The app gives it only to a viewer who may see why; without it the row offers no Why?. */
-  why: z.array(named.extend({ detail: words(80).optional() }).strict()).min(2).max(WORKED_OUT_LIMITS.why).optional(),
+   *  A step's area is its detail parts, each a record the platform checks (Codex adversarial round 1): never free words,
+   *  which could name a record the viewer may not read. The app gives the chain only to a viewer who may see why;
+   *  without it the row offers no Why?. */
+  why: z.array(named.extend({ detailParts: z.array(named).min(1).max(10).optional() }).strict()).min(2).max(WORKED_OUT_LIMITS.why).optional(),
 }).strict()
 
 export const workedOutSchema = z.object({
