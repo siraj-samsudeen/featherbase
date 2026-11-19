@@ -212,6 +212,21 @@ describe('admin-ui-feedback', () => {
     })
   })
 
+  // #1325 (audit F39)
+  scenario("The account menu's pages are found", async ({ admin }, step) => {
+    const user = userEvent.setup()
+    let app!: { router: unknown }
+    await step('the user manages the instance', async () => {
+      app = await renderApp('/featherbase/admin', admin)
+      await waitFor(() => input(), T)
+    })
+    await step('the user finds Service accounts through the command bar', () => findDestination(user, 'Service accounts'))
+    await step('Access tokens is shown on its Service accounts tab', async () => {
+      await waitFor(() => expect(here(app)).toBe('/featherbase/admin/access-tokens'), T)
+      expect(await screen.findByRole('tab', { name: 'Service accounts', selected: true }, T)).toBeInTheDocument()
+    })
+  })
+
   scenario('Unavailable pages are absent', async ({ admin, createUser }, step) => {
     const user = userEvent.setup()
     await step('the user can read Person but cannot manage the instance', async () => {
