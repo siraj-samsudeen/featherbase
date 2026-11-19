@@ -316,6 +316,27 @@ describe("a job follows its app's lifecycle", () => {
     expect(Number(entry.repeat_every)).toBe(3600)
   })
 
+  // #1330: a new title reaches the row, unless an administrator gave the job their own.
+  test("an upgrade brings a job's new title, and keeps a title an administrator wrote", async ({ admin }) => {
+    const v1 = await writeApp({ jobs: [sweep, overreach] })
+    expect(await discoverPackages([v1])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await admin.post('/api/save_row', { table: 'Scheduled Job', row: { row_id: OVERREACH, title: 'Our Own Check', updated_at: (await row(OVERREACH)).updated_at } })
+    const v2 = await writeApp({ version: '2.0.0',
+      jobs: [{ ...sweep, title: 'Sweep Out Leavers' }, { ...overreach, title: 'Overreach Check' }, { name: 'tidy', title: 'Tidy the Notes', cadence: 'daily', description: 'Tidy notes.' }],
+      migrations: [{ id: 'titles_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] })
+    expect(await discoverPackages([v1, v2])).toEqual([])
+    const plan = await admin.post('/api/preview_app_upgrade', { name: APP, version: '2.0.0' }) as { planId: string; jobs: unknown[] }
+    expect(plan.jobs).toEqual(expect.arrayContaining([
+      { change: { name: 'sweep', title: 'Sweep Out Leavers' } },
+      { add: expect.objectContaining({ name: 'tidy', title: 'Tidy the Notes' }) },
+    ]))
+    await admin.post('/api/upgrade_app', { name: APP, version: '2.0.0', planId: plan.planId })
+    expect((await row(SWEEP)).title).toBe('Sweep Out Leavers')
+    expect((await row(`${APP}.tidy`)).title).toBe('Tidy the Notes')
+    expect((await row(OVERREACH)).title).toBe('Our Own Check')
+  })
+
   test("an upgrade keeps an administrator's own cadence", async ({ admin }) => {
     const v1 = await writeApp({ jobs: [sweep] })
     expect(await discoverPackages([v1])).toEqual([])
