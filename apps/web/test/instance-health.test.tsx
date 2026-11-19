@@ -72,6 +72,26 @@ test('history: each change of state, with the activity around it one step away (
   expect(within(applied).getByText(/Since 22-Oct-2026 14:30 IST/)).toBeInTheDocument()
 })
 
+test("history: a scheduled job's change leads to that job's own runs, not the Activity Log (#1361)", async ({ admin }) => {
+  await sql`delete from health_check_event`
+  await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'refused',
+    last_result = 'the feed is stale' where method = 'disable_leavers'`
+  await sql`insert into health_check_event (check_key, ok, severity, message, at) values
+    ('scheduled-job:disable_leavers', false, 'error', 'The last run refused to act: the feed is stale', '2026-10-22T09:00:00Z')`
+  await renderApp('/featherbase/admin/instance-health', admin)
+  const job = await card('scheduled-job:disable_leavers')
+  const [entry] = within(job).getAllByTestId('health-history-entry')
+  expect(within(entry).queryByRole('link', { name: 'Activity around this change' })).not.toBeInTheDocument()
+  const link = within(entry).getByRole('link', { name: "This job's runs around this change" })
+  const url = new URL(link.getAttribute('href')!, 'http://x')
+  expect(url.pathname).toBe('/featherbase/admin/table/job-execution')
+  expect(JSON.parse(url.searchParams.get('filters')!)).toEqual([
+    ['method', '=', 'disable_leavers'],
+    ['started_at', '>=', '2026-10-22T08:00:00.000Z'],
+    ['started_at', '<=', '2026-10-22T09:15:00.000Z'],
+  ])
+})
+
 test('a System Manager sees a red banner leading to the page; it has no close button (items 12–16)', async ({ admin }) => {
   await sql`delete from instance_settings_apply`
   await sql`update scheduled_job set enabled = true, last_run_at = now(), last_outcome = 'error' where method = 'disable_leavers'`
