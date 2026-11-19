@@ -4,7 +4,8 @@ export class ApiError extends Error {
   constructor(message: string, readonly status?: number) { super(message) }
 }
 
-export function getSessionUser(): { row_id: string } | null {
+/** The signed-in person as whoami answered at boot (main.tsx), their own name included. */
+export function getSessionUser(): { row_id: string; full_name?: string | null } | null {
   return JSON.parse(localStorage.getItem('fc_user') ?? 'null')
 }
 

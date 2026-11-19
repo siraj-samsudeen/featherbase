@@ -142,7 +142,7 @@ describe('the way-in counts need the hosted-domain claim for a company domain', 
     await rawLink(noClaim.id, 'uid_693_pw_nohd', 'g-693-pw-nohd', `pw.nohd@${COMPANY}`, 'self', '')
     const call = (token: string) => api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })
     await expectStatus(await call(noClaim.token), 409)
-    expect(await sql`select password_hash is not null as kept from person where row_id = ${noClaim.id}`).toEqual([{ kept: true }])
+    expect(await sql`select exists (select 1 from person_credential where person_id = ${noClaim.id}) as kept`).toEqual([{ kept: true }])
     // With the matching claim recorded, the link is a way in and the password can go.
     const withClaim = await passwordSession(api, admin, 'pw.693.hd')
     await rawLink(withClaim.id, 'uid_693_pw_hd', 'g-693-pw-hd', `pw.hd@${COMPANY}`, 'self', COMPANY)
@@ -235,7 +235,7 @@ describe('a link whose claim was never recorded', () => {
     await rawLink(id, 'uid_693_pw_unrecorded', 'g-693-pw-unrecorded', `pw.unrecorded@${COMPANY}`, 'self', null)
     const res = await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })
     await expectStatus(res, 409)
-    expect(await sql`select password_hash is not null as kept from person where row_id = ${id}`).toEqual([{ kept: true }])
+    expect(await sql`select exists (select 1 from person_credential where person_id = ${id}) as kept`).toEqual([{ kept: true }])
   })
 
   test('under *, an unrecorded link needs no claim, so the password can go', async ({ api, admin }) => {
@@ -316,7 +316,7 @@ describe('a link with no verified address', () => {
     await noEmailLink(id, 'uid_693_pw_noemail', 'g-693-pw-noemail')
     const res = await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })
     await expectStatus(res, 409)
-    expect(await sql`select password_hash is not null as kept from person where row_id = ${id}`).toEqual([{ kept: true }])
+    expect(await sql`select exists (select 1 from person_credential where person_id = ${id}) as kept`).toEqual([{ kept: true }])
   })
 
   test('a link verified once, then signed in unverified under an empty list, cannot strand its owner when the list becomes *', async ({ admin }) => {

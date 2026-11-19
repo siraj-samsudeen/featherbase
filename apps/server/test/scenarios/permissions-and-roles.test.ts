@@ -425,7 +425,7 @@ describe('permissions-and-roles', () => {
       const saved = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { full_name: 'Asha', email: 'asha@example.com' } })
       asha = saved.row_id
       await setUserPassword(asha, 'hunter2-secret')
-      const [{ password_hash }] = await sql`select password_hash from person where row_id = ${asha}`
+      const [{ password_hash }] = await sql`select (select password_hash from person_credential where person_id = ${asha}) as password_hash`
       stored = String(password_hash)
       expect(stored).not.toBe('')
     })

@@ -15,12 +15,14 @@ import { storeActions, storeReads } from './my-store.ts'
 import { buyerSectionActions, buyerSectionReads } from './buyer-sections.ts'
 import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
+import { changePermissions } from './permission-grid-server.ts'
+import { changeReportGrants } from './report-grid-server.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenNow, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
 import { viewAsPeople } from './view-as-people.ts'
 import { describePeople } from './people-describe.ts'
 import { DASH_ROLES, offeredByPlaces, openableByReach, opensDashFor } from './report-eligibility.ts'
-import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, removeRole, whyAccess } from './business-roles-server.ts'
+import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, removeRole, whyAccess, workedOut } from './business-roles-server.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -379,6 +381,10 @@ export const actions = {
   // #1218: business roles in shadow; they change no one's access.
   give_role: (context: AccessContext) => giveRole(context),
   remove_role: (context: AccessContext) => removeRole(context),
+  /** #1282 F1–F6: the Business Roles grid's changes, checked whole, written as the caller, each logged. */
+  change_permissions: (context: AccessContext) => changePermissions(context),
+  /** #1282 F1–F6: the reports grid's changes: reports and bundles given to business roles, or taken away. */
+  change_report_grants: (context: AccessContext) => changeReportGrants(context),
   map_title: (context: AccessContext) => mapTitle(context),
   add_starting_roles: (context: AccessContext) => addStartingRoles(context),
   /** #1277 (J3): the old grants given to business roles, logged, only when a System Manager asks; rerunning adds nothing. */
@@ -438,6 +444,8 @@ export const reads = {
 
   /** #1218: whether this person sees the business roles pages (company-wide managers only), for the sidebar's links. */
   manages_roles: (context: ReadContext) => managesAccess(context as AccessContext),
+  /** #1282 C10–C11: a person's worked-out sections for the platform's record panel (the Lens), as Why is gated. */
+  worked_out: (context: ReadContext) => workedOut(context as AccessContext),
   /** #1218, in shadow: the Business Roles page, Explain a person, and Who would gain or lose access. Company-wide managers only. */
   business_roles: (context: ReadContext) => businessRoles(context as AccessContext),
   explain_person: (context: ReadContext) => explainPerson(context as AccessContext),

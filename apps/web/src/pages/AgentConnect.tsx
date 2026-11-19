@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Button, cardClasses } from '@featherbase/shop-floor'
+import { Button, panelClasses } from '@featherbase/shop-floor'
 import { api, getToken, loginHref } from '../lib/api'
 import { Logo } from '../components/Logo'
 import { usePageTitle } from '../lib/page-title'
@@ -67,7 +67,7 @@ function AgentConnect({ query }: { query: string }) {
         <div className="mb-6 flex justify-center">
           <Logo className="h-11 w-11 rounded-xl shadow-sm" />
         </div>
-        <div className={cardClasses('p-6')}>
+        <div className={panelClasses('p-6')}>
           {request.error ? (
             <div className="space-y-2" data-testid="connect-error">
               <h1 className="text-base font-semibold text-ink">This connection request can't be used</h1>

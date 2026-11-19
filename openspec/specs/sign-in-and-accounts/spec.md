@@ -650,7 +650,10 @@ the browser SHALL go back to the sign-in page with a short reason, and the
 page SHALL explain it in one plain sentence that says what to do next (ask
 their manager or IT, try again, or use another way in) and reveals nothing
 else: no address, no domain, and no detail of the account. A caller that does
-not ask for a page, such as a script, SHALL get the error as before.
+not ask for a page, such as a script, SHALL get the error as before. The return
+from the provider is only ever a page, so there only a caller that asks for
+JSON, or a browser fetch, SHALL get the error; any other caller is sent to the
+sign-in page (#1318).
 
 #### Scenario: A Google account nobody set up
 
@@ -671,8 +674,17 @@ not ask for a page, such as a script, SHALL get the error as before.
 
 #### Scenario: An API caller keeps the error
 
-- **WHEN** the same refusal reaches a caller that did not ask for a page
+- **WHEN** the same refusal reaches a caller that did not ask for a page, or,
+  on the return from the provider, a caller that asks for JSON or a browser
+  fetch
 - **THEN** it gets the error response and status it got before
+
+#### Scenario: A stale or replayed callback
+
+- **WHEN** a Google or Microsoft sign-in callback is opened again without the
+  sign-in cookie, by a caller that asks for neither a page nor JSON
+- **THEN** it lands on the sign-in page, told the sign-in took too long or
+  started in another window
 
 ### Requirement: A refused sign-in offers the next step
 
@@ -1463,16 +1475,23 @@ Wherever a sign-in is offered, the page SHALL be drawn one way: its open form,
 "or", then one panel of the other ways in (Google, Microsoft, each connected
 service, then "Sign in with user name and password"), each only when it is on,
 in that order and as the same button. The "We couldn't sign you in" card is that
-same page with only its heading and one sentence above it.
+same page with only its heading and one sentence above it. Only an account the
+service refused is offered as "Try another … account".
 
 #### Scenario: The card after a failed Microsoft sign-in
 
-- **WHEN** a Microsoft sign-in comes back refused, because the account is not set
-  up or because the attempt took too long or started in another window
+- **WHEN** a Microsoft sign-in comes back refused because the account is not set up
 - **THEN** the card shows "We couldn't sign you in" and one sentence, then the
   first page exactly: StyleHR's form, "or", "Sign in with Google", "Try another
   Microsoft account" and "Sign in with user name and password", all the same
   button, and no "Other ways to sign in" link
+
+#### Scenario: The card after a sign-in that took too long
+
+- **WHEN** a Microsoft sign-in comes back because the attempt took too long or
+  started in another window
+- **THEN** the card shows "We couldn't sign you in" and one sentence, then the
+  first page exactly as it is, with "Sign in with Microsoft"
 
 #### Scenario: The first page offers the same ways in
 

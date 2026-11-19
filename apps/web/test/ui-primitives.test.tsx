@@ -61,7 +61,7 @@ describe('Button', () => {
   test('a button that reports its menu open looks pressed: tinted with the accent', () => {
     for (const variant of ['secondary', 'quiet'] as const) {
       const c = buttonClasses({ variant }).split(' ')
-      expect(c).toEqual(expect.arrayContaining(['aria-expanded:border-action', 'aria-expanded:bg-action-tint', 'aria-expanded:text-action']))
+      expect(c).toEqual(expect.arrayContaining(['aria-expanded:bg-action-tint', 'aria-expanded:text-action']))
     }
   })
 
@@ -73,7 +73,7 @@ describe('Button', () => {
     render(<a href="/x" className={buttonClasses({ variant: 'secondary' })}>Open</a>)
     const link = screen.getByRole('link', { name: 'Open' })
     expect(link.className).toMatch(/\bmin-h-control\b/)
-    expect(link.className).toMatch(/\bborder-border-control\b/)
+    expect(link.className).toMatch(/\bbg-fill\b/)
   })
 })
 
@@ -368,8 +368,8 @@ describe('class recipes give way to the call site', () => {
     expect(c).toEqual(expect.arrayContaining(['gap-2', 'gap-x-4']))
   })
 
-  test('a card keeps its surface and takes the caller padding', () => {
-    expect(cardClasses('p-4').split(' ')).toEqual(expect.arrayContaining(['p-4', 'rounded-card', 'bg-surface']))
+  test('a card keeps its quiet fill and takes the caller padding', () => {
+    expect(cardClasses('p-4').split(' ')).toEqual(expect.arrayContaining(['p-4', 'rounded-card', 'bg-subtle']))
   })
 
   test('a pill is only a shape; the caller brings the colour', () => {

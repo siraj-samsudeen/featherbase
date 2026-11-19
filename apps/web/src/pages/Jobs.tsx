@@ -4,7 +4,7 @@ import { adminPageTitle, jobTitle } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { JobMonitor } from '../components/JobMonitor'
-import { Button, DataList, Notice, StatusPill, cx, useMediaQuery, type DataColumn, type StatusTone } from '@featherbase/shop-floor'
+import { Button, DataList, Notice, RecordLink, StatusPill, cx, useMediaQuery, type DataColumn, type StatusTone } from '@featherbase/shop-floor'
 
 // #464: the Jobs page. Every scheduled job in one list: an on/off switch, its
 // schedule, its last run (time, OK / Failed / Refused and the one-line
@@ -16,6 +16,7 @@ import { Button, DataList, Notice, StatusPill, cx, useMediaQuery, type DataColum
 interface ScheduledJobRow {
   row_id: string
   method: string
+  title: string | null
   cadence: string
   enabled: boolean | number
   description: string | null
@@ -43,12 +44,15 @@ const OUTCOME: Record<string, { label: string; tone: StatusTone }> = {
   refused: { label: 'Refused', tone: 'caution' },
 }
 
+/** #1330: a job by its title; its method in words only when it has none. */
+const jobName = (job: Pick<ScheduledJobRow, 'title' | 'method'>) => job.title || jobTitle(job.method)
+
 const capitalised = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 
 async function loadJobs(): Promise<JobView[]> {
   const rows = (
     await listResource<ScheduledJobRow>('Scheduled Job', {
-      fields: ['row_id', 'method', 'cadence', 'enabled', 'description', 'last_run_at', 'last_outcome', 'last_result', 'updated_at'],
+      fields: ['row_id', 'method', 'title', 'cadence', 'enabled', 'description', 'last_run_at', 'last_outcome', 'last_result', 'updated_at'],
       order_by: 'method asc',
       limit_page_length: 500,
     })
@@ -83,7 +87,7 @@ function OnSwitch({ job, busy, onToggle }: { job: JobView; busy: boolean; onTogg
         type="button"
         role="switch"
         aria-checked={on}
-        aria-label={`Run ${jobTitle(job.method)} on its schedule`}
+        aria-label={`Run ${jobName(job)} on its schedule`}
         disabled={busy}
         onClick={onToggle}
         className={cx(
@@ -156,7 +160,7 @@ export function Jobs() {
   })
 
   async function toggle(job: JobView) {
-    const name = jobTitle(job.method)
+    const name = jobName(job)
     const on = !job.enabled
     setSaving(job.method)
     setNotice(null)
@@ -184,7 +188,7 @@ export function Jobs() {
   }
 
   async function runNow(job: JobView) {
-    const name = jobTitle(job.method)
+    const name = jobName(job)
     setAsked((s) => new Set(s).add(job.method))
     setNotice(null)
     try {
@@ -210,7 +214,7 @@ export function Jobs() {
       cell: (j) => (
         <div className="min-w-0">
           <div className="flex items-center justify-between gap-3">
-            <span className="font-semibold text-ink">{jobTitle(j.method)}</span>
+            <RecordLink table="Scheduled Job" rowId={j.row_id} name={jobName(j)} className="font-semibold" />
             {cards && <OnSwitch job={j} busy={saving === j.method} onToggle={() => void toggle(j)} />}
           </div>
           {j.description && (
@@ -249,7 +253,7 @@ export function Jobs() {
         const queued = j.pending || asked.has(j.method)
         return (
           <Button
-            aria-label={`Run ${jobTitle(j.method)} now`}
+            aria-label={`Run ${jobName(j)} now`}
             disabled={queued}
             onClick={() => void runNow(j)}
             className="whitespace-nowrap max-sm:min-h-11"

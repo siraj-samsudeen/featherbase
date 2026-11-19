@@ -186,7 +186,7 @@ describe('running-an-instance', () => {
     await step('the user can sign in to Featherbase', async () => {
       // --check signs in as Administrator against the started API before it stops.
       expect(started.stdout).toContain('check passed')
-      const [administrator] = await instance.sql`select password_hash from featherbase.person where row_id = 'Administrator'`
+      const [administrator] = await instance.sql`select (select password_hash from featherbase.person_credential where person_id = 'Administrator') as password_hash`
       expect(verifyPassword('admin', String(administrator!.password_hash))).toBe(true)
     })
     await step('no example app, client app or test app is installed', () => noInstalledApps(instance))

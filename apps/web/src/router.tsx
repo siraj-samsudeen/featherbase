@@ -19,7 +19,10 @@ import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
 import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
-import { EmptyState, Notice, buttonClasses, fmtDate } from '@featherbase/shop-floor'
+import { Card, EmptyState, Notice, ProblemPage, buttonClasses, fmtDate } from '@featherbase/shop-floor'
+import { AdminHomeLink, CannotShow } from './components/CannotShow'
+import { TopBar } from './components/TopBar'
+import { ThemeChoiceProvider } from './lib/theme-choice'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
 import { isListLayout, useListLayout } from './lib/list-layout'
@@ -80,6 +83,7 @@ import type { NavStep } from './lib/nav-path'
 // server set for the page it shows. Checked on every navigation.
 const rootRoute = createRootRoute({
   component: Outlet,
+  notFoundComponent: () => <PageNotFound />,
   beforeLoad: ({ location }) => {
     if (crossesFramePolicy(location.pathname)) throw redirect({ href: location.href, reloadDocument: true })
   },
@@ -135,19 +139,22 @@ function tablePage(Page: ComponentType) {
   return function TablePageBoundary() {
     const { table } = useParams({ strict: false }) as { table: string }
     const meta = useMeta(table)
+    const retry = () => void meta.refetch()
     // A failed refresh may retain data. Connectivity loss can use it, but a
     // definitive refusal (notably ambiguity or deletion) must not mount it.
     if (meta.error instanceof ApiError && meta.error.status < 500)
-      return <TableAddressError error={meta.error} />
+      return <TableAddressError error={meta.error} reset={retry} />
     if (!meta.data) {
-      if (meta.error) return <TableAddressError error={meta.error} />
+      if (meta.error) return <TableAddressError error={meta.error} reset={retry} />
       return <p className="p-4 text-ink-muted">Loading…</p>
     }
     return <resolvedTable.Provider value={meta.data}><Page /></resolvedTable.Provider>
   }
 }
 
-function TableAddressError({ error }: { error: unknown }) {
+/** `reset` asks again: the route's own reset as its error boundary, else the Table's details read again. */
+function TableAddressError({ error, reset }: { error: unknown; reset: () => void }) {
+  const inAdmin = useRouterState({ select: (state) => state.location.pathname.startsWith('/featherbase/admin') })
   if (error instanceof ApiError && error.status === 404 && /^Table .* not found$/.test(error.message))
     return <AdminPageNotFound />
   // #871: an old address of a renamed Table says where it went.
@@ -162,7 +169,12 @@ function TableAddressError({ error }: { error: unknown }) {
         />
       </div>
     )
-  return <p role="alert" className="p-4 text-negative">{error instanceof Error ? error.message : 'Could not open this Table'}</p>
+  // #1327: a deleted Table, a refusal or a failure, said on the shared page. Outside the Admin (the
+  // Portal) the way forward is Featherbase, not the Admin home.
+  const home = inAdmin ? undefined : <a href="/" className={buttonClasses()}>Go to Featherbase</a>
+  if (error instanceof ApiError && error.status === 404)
+    return <ProblemPage kind="not-found" title="This Table isn’t here" body={error.message} action={home ?? <AdminHomeLink />} />
+  return <CannotShow error={error} what="Table" home={home} onRetry={reset} />
 }
 
 /** Where the root sends someone: sign in, or their landing. Found on staging and production
@@ -310,12 +322,30 @@ function AdminRouteLayout() {
 function AdminPageNotFound() {
   return (
     <div data-testid="page-not-found">
-      <EmptyState
-        title="Page not found"
-        body="There is no page at this address in the Admin."
-        action={<Link to="/featherbase/admin" className={buttonClasses()}>Go to the Admin home</Link>}
-      />
+      <ProblemPage kind="not-found" title="Page not found" body="There is no page at this address in the Admin." action={<AdminHomeLink />} />
     </div>
+  )
+}
+
+/** #1327 (audit F07): an address outside the Admin that matches nothing, under the shared top bar. */
+function PageNotFound() {
+  // Above the Admin's own providers: the bar needs the theme choice, and a signed-out visitor gets no bar.
+  return (
+    <ThemeChoiceProvider>
+    <div className="flex min-h-screen flex-col bg-canvas">
+      {getToken() && <TopBar forPerson />}
+      <main className="flex flex-1 items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <ProblemPage
+            kind="not-found"
+            title="Page not found"
+            body="There is no page at this address in Featherbase."
+            action={<a href="/" className={buttonClasses()}>Go to Featherbase</a>}
+          />
+        </Card>
+      </main>
+    </div>
+    </ThemeChoiceProvider>
   )
 }
 

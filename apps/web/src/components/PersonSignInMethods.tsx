@@ -3,7 +3,7 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
-import { fmtInstantIST } from '@featherbase/shop-floor'
+import { fmtInstantIST, raisedClasses } from '@featherbase/shop-floor'
 import { Button, TextInput, cardClasses } from '@featherbase/shop-floor'
 import { PrincipalLink, principalLabel, usePrincipalNameState } from '../lib/people'
 import { NO_AUTOFILL_FIELD, NO_AUTOFILL_FORM } from '../lib/no-autofill'
@@ -621,7 +621,7 @@ function MethodDialog({ title, onClose, error, testid, children }: {
         e.stopPropagation()
         onClose()
       }}>
-      <div ref={box} role="dialog" aria-modal="true" aria-labelledby={id} data-testid={testid} className={cardClasses('w-full max-w-sm p-4')}>
+      <div ref={box} role="dialog" aria-modal="true" aria-labelledby={id} data-testid={testid} className={raisedClasses('w-full max-w-sm p-4')}>
         <h2 id={id} className="mb-2 text-base font-semibold text-ink">{title}</h2>
         {children}
         {error && (

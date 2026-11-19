@@ -13,10 +13,7 @@ import { RowLink } from '../lib/row-name'
 import { useIsSystemManager } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 import { useNavigation } from '../lib/navigation'
-import {
-  buttonClasses, cardClasses, fmtDate, pillClasses,
-  Braces, CalendarDays, ChevronDown, ChevronRight, Hash, Image, Link2, ToggleRight, Type, type LucideIcon,
-} from '@featherbase/shop-floor'
+import { buttonClasses, fmtDate, pillClasses, Braces, CalendarDays, ChevronDown, ChevronRight, Hash, Image, Link2, ToggleRight, Type, type LucideIcon, raisedClasses } from '@featherbase/shop-floor'
 
 export type Arrangement = 'importance' | 'type' | 'filled' | 'links' | 'source'
 export const ARRANGEMENTS: [Arrangement, string][] = [
@@ -207,7 +204,7 @@ export function MenuShell({ children }: { children: (close: () => void) => React
             items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
           }}
           style={{ top: at.top, right: at.right }}
-          className={cardClasses('fixed z-30 w-60 p-1.5 shadow-lg')}>
+          className={raisedClasses('fixed z-30 w-60 p-1.5')}>
           {children(close)}
         </div>
       )}
@@ -432,7 +429,7 @@ export function BookkeepingLine({ table, fields, values, settings }: { table?: s
   const stamped = !isEmpty(values.created_at) || !isEmpty(values.updated_at)
   if (!shown.length && !stamped) return null
   return (
-    <p className="mt-3 border-t border-border pt-2 text-xs text-ink-subtle" data-testid="bookkeeping-line">
+    <p className="mt-3 pt-2 text-[13px] text-ink-subtle" data-testid="bookkeeping-line">
       {stamped && <RowStamps values={values} table={table} />}
       {shown.map((f, i) => (
         <span key={f.column_name}>

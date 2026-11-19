@@ -52,7 +52,7 @@ test('Enter with no exact name opens the first result shown, a page before a rec
   const { app, bar } = await openBar(admin)
   fireEvent.change(bar, { target: { value: 'health' } })
   await screen.findByTestId('awesomebar-doc', {}, T)
-  expect(screen.getAllByTestId('awesomebar-page')[0]).toHaveTextContent('Instance health')
+  expect(screen.getAllByTestId('awesomebar-page')[0]).toHaveTextContent('Instance Health')
   fireEvent.submit(screen.getByTestId('awesomebar'))
   await waitFor(() => expect(pathOf(app)).toBe('/featherbase/admin/instance-health'))
 })

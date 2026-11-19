@@ -186,11 +186,11 @@ describe('admin-ui-feedback', () => {
       app = await renderApp('/featherbase/admin', admin)
       await waitFor(() => input(), T)
     })
-    await step('the user finds Instance health through the command bar', () => findDestination(user, 'Instance health'))
+    await step('the user finds Instance health through the command bar', () => findDestination(user, 'Instance Health'))
     await step('the instance health page is shown without the command dropdown', async () => {
       await waitFor(() => expect(here(app)).toBe('/featherbase/admin/instance-health'), T)
       const page = await screen.findByTestId('instance-health', {}, T)
-      expect(within(page).getByRole('heading', { name: 'Instance health' })).toBeInTheDocument()
+      expect(within(page).getByRole('heading', { name: 'Instance Health' })).toBeInTheDocument()
       await waitFor(() => expect(dropdown()).toBeNull())
     })
   })
@@ -237,7 +237,7 @@ describe('admin-ui-feedback', () => {
     })
     await step('the user searches for Instance health through the command bar', () => searchDestination(user, 'Instance health'))
     await step('Instance health is not offered', () => {
-      const offered = dropdown() ? within(dropdown()!).queryAllByRole('option').filter((e) => e.textContent?.includes('Instance health')) : []
+      const offered = dropdown() ? within(dropdown()!).queryAllByRole('option').filter((e) => e.textContent?.includes('Instance Health')) : []
       expect(offered).toHaveLength(0)
     })
   })

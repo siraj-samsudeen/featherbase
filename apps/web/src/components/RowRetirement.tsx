@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { canRetire } from 'shared'
 import { useQueryClient } from '@tanstack/react-query'
-import { StatusPill, buttonClasses, cardClasses, fmtInstant, inputClasses, labelClasses } from '@featherbase/shop-floor'
+import { StatusPill, buttonClasses, fmtInstant, inputClasses, labelClasses, raisedClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
 import { PrincipalLink } from '../lib/people'
 import { RowTitle } from '../lib/row-titles'
@@ -82,7 +82,7 @@ export function RetireDialog({ table, name, onClose, onSubmit }: { table: string
         role="dialog"
         aria-modal="true"
         aria-labelledby="retire-row-title"
-        className={cardClasses('w-full max-w-md p-4')}
+        className={raisedClasses('w-full max-w-md p-4')}
         data-testid="retire-row-dialog"
         onClick={(e) => e.stopPropagation()}
       >

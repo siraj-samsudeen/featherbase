@@ -3,13 +3,14 @@
 // Lens tab of issue_1218_relational_navigation.html: header chips, fields beside links, a source chip
 // and a Why? per item) and Who Would Gain Or Lose Access. The rules are the server's.
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { AreaPicker, Button, Sentence, type SentencePart, Card, EmptyState, Field, Notice, Select, TextInput, fmtDate, pillClasses } from '@featherbase/shop-floor'
+import { AreaPicker, Button, Segmented, Sentence, type SentencePart, Card, EmptyState, Field, Notice, Select, TextInput, fmtDate, pillClasses } from '@featherbase/shop-floor'
 import { act, read } from './api'
 import { DASH_AREAS, loadDashArea } from './area-axes'
 import { LoadFailed, Loading, Shell } from './sections-page'
 import { RecordLink } from './record-link'
 import { PersonPicker, type Found } from './access-page'
 import { type Who } from './person-identity'
+import { PermissionsGrid, ReportsGrid, type GivenThing } from './roles-grid'
 
 export const ROLES_ADDRESS = '?view=roles'
 export const EXPLAIN_ADDRESS = '?view=explain'
@@ -102,15 +103,27 @@ interface Permission { app: string; level: string; verb: string; thing: string; 
 interface RolesAnswer {
   roles: {
     id: string; name: string; description: string | null; by_hand_only: boolean; reaches: string; permissions: Permission[]
-    reports: SentencePart[][]; people: number; people_from: string; holders: { person: string; name: string }[]
+    reports: SentencePart[][]; given: string[]; people: number; people_from: string; holders: { person: string; name: string }[]
   }[]
   titles: { title: string; role: string | null; role_name: string | null; people: number; falls_back_to?: string; holders: { person: string; name: string }[] }[]
+  /** #1282 F1–F6: whether the permissions grid steps for this caller, and whether the reports grid does. */
+  may_change: boolean
+  may_give_reports: boolean
+  /** The reports grid's rows. */
+  report_catalog: GivenThing[]
 }
 
 export function BusinessRolesPage() {
   const { answer, failed, load } = useRead<RolesAnswer>('business_roles', {})
   const [open, setOpen] = useState<string | null>(new URLSearchParams(window.location.search).get('role'))
   const [people, setPeople] = useState<string | null>(null)
+  // #1282 F1–F6: the roles as a list, or as a grid; leaving the grid with changes waiting asks first.
+  const [view, setView] = useState<'roles' | 'grid' | 'reports'>('roles')
+  const [waiting, setWaiting] = useState(0)
+  const show = (next: 'roles' | 'grid' | 'reports') => {
+    if (next !== view && waiting > 0 && !window.confirm(`Leave the grid? ${waiting === 1 ? 'Your change' : `Your ${waiting} changes`} will not be saved.`)) return
+    setView(next)
+  }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const start = async () => {
@@ -130,6 +143,21 @@ export function BusinessRolesPage() {
         </Card>
       )}
       {answer && answer.roles.length > 0 && (
+        // The shared Segmented control, as other pages switch views (consistency check).
+        <Segmented label="Show the business roles as" value={view} onChange={show}
+          options={[{ value: 'roles', label: 'Roles' }, { value: 'grid', label: 'Grid: Permissions' }, { value: 'reports', label: 'Grid: Reports' }]} />
+      )}
+      {answer && answer.roles.length > 0 && view === 'grid' && (
+        <Card data-testid="roles-grid-card">
+          <PermissionsGrid roles={answer.roles} mayChange={answer.may_change} onSaved={load} onWaiting={setWaiting} personHref={explainAddress} />
+        </Card>
+      )}
+      {answer && answer.roles.length > 0 && view === 'reports' && (
+        <Card data-testid="reports-grid-card">
+          <ReportsGrid roles={answer.roles} catalog={answer.report_catalog} mayChange={answer.may_give_reports} onSaved={load} onWaiting={setWaiting} personHref={explainAddress} />
+        </Card>
+      )}
+      {answer && answer.roles.length > 0 && view === 'roles' && (
         <>
           <Group title="Business Roles" count={answer.roles.length} testid="role-list">
             {answer.roles.map(role => (

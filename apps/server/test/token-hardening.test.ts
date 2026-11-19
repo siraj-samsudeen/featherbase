@@ -265,7 +265,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     })).row_id
     // person-identities: a reset link goes only to an account with a password.
     await setUserPassword(id, 'initial-pw-1')
-    const [{ password_hash: initial }] = await sql`select password_hash from person where row_id = ${id}`
+    const [{ password_hash: initial }] = await sql`select (select password_hash from person_credential where person_id = ${id}) as password_hash`
     const token = await requestPasswordReset(email)
     expect(token).toMatch(/^[0-9a-f]{48}$/)
 
@@ -293,7 +293,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     })).row_id
     // person-identities: a reset link goes only to an account with a password.
     await setUserPassword(id, 'initial-pw-1')
-    const [{ password_hash: initial }] = await sql`select password_hash from person where row_id = ${id}`
+    const [{ password_hash: initial }] = await sql`select (select password_hash from person_credential where person_id = ${id}) as password_hash`
     const token = await requestPasswordReset(email)
 
     // Same failure mode as above — the principal turns into a service account
@@ -330,14 +330,14 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     await setUserPassword(id, 'initial-pw-1')
     const token = await requestPasswordReset(email)
     await resetPassword(token as string, 'first-password-1')
-    const [afterFirst] = await sql`select password_hash from person where row_id = ${id}`
+    const [afterFirst] = await sql`select (select password_hash from person_credential where person_id = ${id}) as password_hash`
     expect(afterFirst.password_hash).not.toBeNull()
 
     // Replaying it must not set a second password.
     await expect(resetPassword(token as string, 'second-password-2')).rejects.toMatchObject({
       type: 'ValidationError',
     })
-    const [afterSecond] = await sql`select password_hash from person where row_id = ${id}`
+    const [afterSecond] = await sql`select (select password_hash from person_credential where person_id = ${id}) as password_hash`
     expect(afterSecond.password_hash).toBe(afterFirst.password_hash)
   })
 })
