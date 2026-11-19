@@ -49,7 +49,16 @@ const SCOPE = [
   // #1191: how each declared approval type works. The controller fills what the app declares and
   // refuses applying at once for a type that grants access, so the file sets the mode alone.
   { table: 'Approval Type', shape: 'rows', fields: ['mode'], createRows: true },
+  // #1345: how an instance's own Tables read (Employee folds into its Person, found by its code), so
+  // it survives a wipe. Only the properties in FILE_OVERRIDE_PROPERTIES; a row is the override of its
+  // Table, column and property, whatever row_id the file gives it (an administrator's own is replaced).
+  { table: 'Metadata Override', shape: 'rows', fields: ['table_name', 'column_name', 'property', 'value'], createRows: true },
 ] as const
+
+/** #1345: the Metadata Override properties a settings file may set: how an instance's Tables are found
+ *  and read, never who may read or change them (access, permission, sharing and row scope are not
+ *  overridable at all; this list keeps even the overridable rest to what a file needs). */
+export const FILE_OVERRIDE_PROPERTIES = { table: ['person_column', 'search_columns', 'label'], column: ['label'] } as const
 
 /** Column types that hold no value, a secret, or a file in one instance's own
  *  storage (the System Settings logo, #380): never in scope. A settings file
@@ -472,6 +481,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
       }
       rows.push({ row_id: row.row_id, values })
     }
+    if (table === 'Metadata Override') overrideProblems(rows, problems)
     plan.push({ entry, meta, rows })
   }
   // Not refused yet: the saves below find the problems only a save can (a
@@ -494,6 +504,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
     const appliedValues: ManagedValue[] = []
     for (const { entry, meta, rows } of plan) {
       const stamps = new Map<string, unknown>()
+      if (meta.name === 'Metadata Override') warnings.push(...await resolveOverrides(rows))
       const before = entry.shape === 'settings'
         ? new Map([[meta.name, await storedSettings(meta, entry.fields)]])
         : await storedRows(meta, entry.fields, stamps)
@@ -753,10 +764,61 @@ async function exportUnderLock(): Promise<ExportResult> {
       settings[entry.table] = keep(entry.table, entry.table, await storedSettings(meta, entry.fields))
     } else {
       const rows: Row[] = []
-      for (const [rowId, values] of await storedRows(meta, entry.fields))
+      for (const [rowId, values] of await storedRows(meta, entry.fields)) {
+        // #1345: an override a settings file may not set stays out, so applying the export changes nothing.
+        if (entry.table === 'Metadata Override' && !(FILE_OVERRIDE_PROPERTIES[values.column_name ? 'column' : 'table'] as readonly string[]).includes(String(values.property))) {
+          withheld.push(`Metadata Override.${rowId}: ${String(values.property)} is not set by a settings file`)
+          continue
+        }
         rows.push({ row_id: rowId, ...keep(`${entry.table}.${rowId}`, rowId, values) })
+      }
       settings[entry.table] = rows
     }
   }
   return { file: { settings }, withheld }
+}
+
+// ------------------------------------------------- Metadata Override (#1345)
+
+type PlannedRow = { row_id: string; values: Record<string, unknown> }
+const overrideKey = (v: Record<string, unknown>) => `${String(v.table_name ?? '')}\u0000${String(v.column_name ?? '')}\u0000${String(v.property ?? '')}`
+
+/** The file may set only FILE_OVERRIDE_PROPERTIES, each override named once. */
+function overrideProblems(rows: PlannedRow[], problems: Record<string, string>) {
+  const seen = new Set<string>()
+  for (const { row_id, values } of rows) {
+    const where = `Metadata Override.${row_id}`
+    const scope = values.column_name ? 'column' : 'table'
+    const allowed: readonly string[] = FILE_OVERRIDE_PROPERTIES[scope]
+    if (!values.table_name || !values.property || values.value === undefined)
+      problems[where] = 'Metadata Override takes table_name, property and value (and column_name for a column)'
+    else if (!allowed.includes(String(values.property)))
+      problems[`${where}.property`] = `Metadata Override property ${String(values.property)} cannot be set by the settings file (it may set, on a ${scope}: ${allowed.join(', ')})`
+    if (seen.has(overrideKey(values))) problems[where] = 'Metadata Override names the same Table, column and property twice'
+    seen.add(overrideKey(values))
+  }
+}
+
+/** Each file row becomes the stored override of its Table, column and property, so applying again
+ *  changes nothing; replacing one an administrator made is said. */
+async function resolveOverrides(rows: PlannedRow[]): Promise<string[]> {
+  const warnings: string[] = []
+  // A Table the instance does not have yet (Employee, before the first data load on a fresh install) is
+  // left for the next apply: the rest of the file still applies.
+  const present = new Set((await sql`select name from table_def where name = any(${[...new Set(rows.map((r) => String(r.values.table_name)))]})`).map((t) => String(t.name)))
+  for (const row of [...rows]) {
+    if (present.has(String(row.values.table_name))) continue
+    rows.splice(rows.indexOf(row), 1)
+    warnings.push(`Metadata Override ${String(row.values.table_name)} ${String(row.values.property)}: the Table is not here yet; apply the file again once it is`)
+  }
+  for (const row of rows) {
+    const [stored] = await sql`select row_id, value, created_by from metadata_override
+      where table_name = ${String(row.values.table_name)} and coalesce(column_name, '') = ${String(row.values.column_name ?? '')}
+        and property = ${String(row.values.property)}`
+    if (!stored) continue
+    row.row_id = String(stored.row_id)
+    if (stored.created_by !== INSTANCE_SETTINGS_ACTOR && String(stored.value) !== String(row.values.value))
+      warnings.push(`Metadata Override ${String(row.values.table_name)}${row.values.column_name ? `.${String(row.values.column_name)}` : ''} ${String(row.values.property)}: replaces an override someone made by hand ("${String(stored.value)}")`)
+  }
+  return warnings
 }
