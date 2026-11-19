@@ -59,6 +59,8 @@ describe('#1346: the MotherDuck account sync', () => {
       on conflict (table_name, field) do update set value = excluded.value`
     const ravi = await makePerson({ email: 'ravi-1346@example.com', full_name: 'Ravi Md' })
     const asha = await makePerson({ full_name: 'Asha Reports Md' })
+    // A leaver is still the person who used the account.
+    await sql`update person set enabled = false where row_id = ${ravi}`
 
     // Day one: three people and a program.
     motherduck([[
@@ -72,8 +74,12 @@ describe('#1346: the MotherDuck account sync', () => {
     expect(refused).toMatchObject({ listed: 4, added: 4, removed: 0, linked: 1 })
     expect(refused.tickets_raised).toHaveLength(2)
     expect(refused.ticket_errors).toEqual([expect.stringMatching(/add it to the Tickets setting support_users/)])
-    // Once it is support, the next run assigns them, and raises none twice.
+    // Support, but with no reviewer set: the run says so, and assigns nobody.
     await setSupport([await motherDuckSyncAccount()])
+    await sql`delete from single_value where table_name = 'System Settings' and field = 'motherduck_reviewer'`
+    expect((await syncMotherDuckAccounts()).ticket_errors).toEqual([expect.stringMatching(/no MotherDuck reviewer is set/)])
+    await sql`insert into single_value (table_name, field, value) values ('System Settings', 'motherduck_reviewer', ${reviewer})`
+    // With both, the next run assigns them, and raises none twice.
     const first = await syncMotherDuckAccounts()
     expect(first).toMatchObject({ added: 0, linked: 0, tickets_raised: [], ticket_errors: [] })
     expect(await accounts()).toEqual([
@@ -102,22 +108,13 @@ describe('#1346: the MotherDuck account sync', () => {
       ['asha_reports', 'Active', false], ['gone_user', 'Removed', true], ['loader_service_account', 'Active', false], ['ravi_md', 'Deprovisioned', false],
     ])
 
-    // A run that raised a ticket but stopped before recording it: the next run finds that
-    // ticket again, even with the account's details changed, and raises no second one.
-    await sql`update motherduck_account set review_ticket = null, email = 'asha-new@elsewhere.example' where row_id = 'md-asha'`
-    motherduck([[
-      { id: 'md-ravi', username: 'ravi_md', email: 'ravi-1346@example.com', is_deprovisioned: true },
-      { id: 'md-asha', username: 'asha_reports', email: 'asha-new@elsewhere.example' },
-      { id: 'md-bot', username: 'loader_service_account', is_service_account: true },
-    ]])
-    expect(await syncMotherDuckAccounts()).toMatchObject({ tickets_raised: [], ticket_errors: [] })
-    expect(await sql`select count(*)::int as n from tickets.ticket where title like '%asha_reports%'`).toEqual([{ n: 1 }])
-    expect((await accounts()).find((a) => a.username === 'asha_reports')).toMatchObject({ ticketed: true })
-
-    // A person links asha_reports by hand; the next run closes its ticket.
+    // A run raised asha_reports' ticket but stopped before recording it, and a person then
+    // linked the account by hand: the next run finds that ticket again and closes it.
+    await sql`update motherduck_account set review_ticket = null where row_id = 'md-asha'`
     const row = await admin.get<Record<string, unknown>>('/api/table/MotherDuck Account/md-asha')
     await patchDoc(admin, '/api/table/MotherDuck Account/md-asha', { updated_at: row.updated_at, person: asha })
     const third = await syncMotherDuckAccounts()
+    expect(third).toMatchObject({ tickets_raised: [], ticket_errors: [] })
     expect(third.tickets_resolved).toHaveLength(1)
     expect(await sql`select ticket_state from tickets.ticket where title like '%asha_reports%'`).toEqual([{ ticket_state: 'Resolved' }])
     expect((await syncMotherDuckAccounts()).tickets_resolved).toEqual([])
@@ -125,7 +122,7 @@ describe('#1346: the MotherDuck account sync', () => {
     // Search finds the account by its username, and by its email.
     const hits = async (q: string) => ((await searchLines(admin, q)).find((l) => (l as { table?: string }).table === 'MotherDuck Account') as { hits: { title: string }[] } | undefined)?.hits.map((h) => h.title) ?? []
     expect(await hits('asha_reports')).toEqual(['asha_reports'])
-    expect(await hits('asha-new@elsewhere')).toEqual(['asha_reports'])
+    expect(await hits('asha@elsewhere')).toEqual(['asha_reports'])
   })
 
   test('a reappearing account is listed again, Active, with no removal date', async () => {

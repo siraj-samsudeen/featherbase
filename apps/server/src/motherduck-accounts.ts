@@ -143,11 +143,12 @@ export async function syncMotherDuckAccounts(): Promise<MotherDuckSyncResult> {
   return result
 }
 
-/** Exactly one enabled person with the account's email: link it. Never overwrites a link. */
+/** Exactly one person with the account's email (a leaver too; never one merged into
+ *  another) is who uses it: link it. Never overwrites a link. */
 async function linkByEmail(actor: string): Promise<number> {
   const sure = await sql`
     select a.row_id, a.updated_at, min(p.row_id) as person from motherduck_account a
-    join person p on p.enabled and p.email is not null and lower(trim(p.email)) = lower(trim(a.email))
+    join person p on p.replaced_by is null and p.email is not null and lower(trim(p.email)) = lower(trim(a.email))
     where a.person is null and a.email is not null and not a.service_account
     group by a.row_id, a.updated_at having count(*) = 1`
   for (const a of sure)
@@ -159,7 +160,7 @@ async function linkByEmail(actor: string): Promise<number> {
 async function candidates(username: string): Promise<string[]> {
   const key = username.replace(/^ea_/i, '').toLowerCase().replace(/[^a-z]/g, '')
   if (key.length < 3) return []
-  const rows = await sql`select row_id, full_name from person where enabled and full_name is not null
+  const rows = await sql`select row_id, full_name from person where replaced_by is null and full_name is not null
     and regexp_replace(lower(full_name), '[^a-z]', '', 'g') like ${key + '%'} order by full_name, row_id limit 6`
   const standing = await describePeople(rows.map((r) => String(r.row_id)))
   return rows.map((r) => {
@@ -187,25 +188,33 @@ async function ticketAction<T>(actor: string, operation: string, payload: Record
 async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promise<void> {
   const [reviewer] = await sql`select value from single_value where table_name = 'System Settings' and field = 'motherduck_reviewer'`
   const assignee = reviewer?.value ? String(reviewer.value) : null
-  const open = await sql`select row_id, updated_at, username, email, account_status from motherduck_account
-    where person is null and review_ticket is null and not service_account and account_status <> 'Removed' order by username`
+  // Every account no ticket is recorded on: a ticket a stopped run raised is
+  // found again even if the account was linked since (Codex round 2); a new one
+  // is raised only for an account still unlinked and still in MotherDuck.
+  const unrecorded = await sql`select row_id, updated_at, username, email, account_status, person from motherduck_account
+    where review_ticket is null and not service_account order by username`
+  const needsTicket = (a: (typeof unrecorded)[number]) => a.person == null && a.account_status !== 'Removed'
   // Asked first, not caught: a failed query would end a caller's transaction.
   const [tickets] = await sql`select to_regclass('tickets.ticket') is not null as present`
-  if (open.length && !tickets?.present) { result.ticket_errors.push('the Tickets app is not installed and on, so no ticket was raised'); return }
-  for (const a of open) {
+  if (!tickets?.present) {
+    if (unrecorded.some(needsTicket)) result.ticket_errors.push('the Tickets app is not installed and on, so no ticket was raised')
+    return
+  }
+  for (const a of unrecorded) {
     try {
       const title = `Link MotherDuck user ${String(a.username)} to a person`
-      const people = await candidates(String(a.username))
+      // Codex: a run that raised the ticket but stopped before recording it left
+      // it open with no account naming it; it is found again, never raised twice.
+      const [orphan] = await sql`select row_id from tickets.ticket where owner = ${actor} and title = ${title}
+        and ticket_state not in ('Resolved', 'Closed') order by created_at, row_id limit 1`
+      if (!orphan && !needsTicket(a)) continue
+      const people = orphan ? [] : await candidates(String(a.username))
       const original = [
         `MotherDuck user ${String(a.username)} is not linked to a person in Featherbase.`,
         `Email in MotherDuck: ${a.email ? String(a.email) : '(none)'}. Status: ${String(a.account_status)}.`,
         people.length ? `People whose name it reads as:\n${people.join('\n')}` : 'No person\'s name reads as this username.',
         `Link it by setting Person on the MotherDuck Account ${String(a.username)}; this ticket then closes itself.`,
       ].join('\n\n')
-      // Codex: a run that raised the ticket but stopped before recording it left
-      // it open with no account naming it; it is found again, never raised twice.
-      const [orphan] = await sql`select row_id from tickets.ticket where owner = ${actor} and title = ${title}
-        and ticket_state not in ('Resolved', 'Closed') order by created_at, row_id limit 1`
       const payload = { title, original }
       const ticket = orphan ? String(orphan.row_id) : String((await ticketAction<{ ticket: { row_id: string } }>(actor, 'create', payload,
         `motherduck-account-${String(a.row_id)}-${createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16)}`)).ticket.row_id)
@@ -220,10 +229,14 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
   if (!tickets?.present) return
   // Each open review ticket nobody is assigned to goes to the reviewer, this run
   // or a later one; one support has reassigned is left as it is.
-  const unassigned = !assignee ? [] : await sql`select a.username, t.row_id, t.updated_at from motherduck_account a
+  const unassigned = await sql`select a.username, t.row_id, t.updated_at from motherduck_account a
     join tickets.ticket t on t.row_id = a.review_ticket
     where a.person is null and t.assigned_to is null and t.ticket_state not in ('Resolved', 'Closed')`
-  for (const t of unassigned) {
+  // Codex round 2: tickets nobody is given are said, not left silent; they are
+  // assigned on the first run after a reviewer is set.
+  if (unassigned.length && !assignee)
+    result.ticket_errors.push(`no MotherDuck reviewer is set in System Settings, so ${unassigned.length} review tickets are not assigned to anyone`)
+  for (const t of assignee ? unassigned : []) {
     try {
       await ticketAction(actor, 'edit', { row_id: String(t.row_id), updated_at: iso(t.updated_at), assigned_to: assignee }, `motherduck-account-assign-${String(t.row_id)}-${iso(t.updated_at)}`)
     } catch (error) {
