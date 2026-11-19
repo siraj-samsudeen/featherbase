@@ -10,6 +10,12 @@ vi.mock('../../../../packages/shop-floor/node_modules/lucide-react', async impor
 
 type Call = { kind: string; name: string; payload: Record<string, unknown> }
 const calls: Call[] = []
+/** #1282: made-up places, as the platform's list read answers them. */
+const TABLES: Record<string, Record<string, unknown>[]> = {
+  Cluster: [{ row_id: 'cs', name: 'Chennai South' }, { row_id: 'no', name: 'North' }],
+  Site: [{ row_id: 'SE', name: 'Store E', cluster: 'cs', is_store: 1 }, { row_id: 'SF', name: 'Store F', cluster: 'cs', is_store: 1 }, { row_id: 'WH', name: 'Warehouse', cluster: 'cs', is_store: 0 }],
+  'Store Floor': [{ row_id: 'SE1', name: 'First floor', site: 'SE' }],
+}
 let answers: Record<string, unknown> = {}
 let teardown: () => void = () => {}
 let dom: { window: Record<string, unknown> & { close(): void } }
@@ -29,6 +35,14 @@ beforeAll(() => {
     Object.defineProperty(globalThis, key, { configurable: true, get: () => (key === 'window' ? dom.window : dom.window[key]) })
   ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true
   ;(globalThis as Record<string, unknown>).fetch = async (url: string, init: RequestInit) => {
+    // #1282: the platform's list read, for the area picker's columns.
+    const listed = /\/api\/table\/([^?]+)\?(.*)$/.exec(String(url))
+    if (listed) {
+      const query = new URLSearchParams(listed[2])
+      const filters = JSON.parse(query.get('filters') ?? '[]') as [string, string, unknown][]
+      const rows = (TABLES[decodeURIComponent(listed[1]!)] ?? []).filter(r => filters.every(([c, , v]) => r[c] === v))
+      return new Response(JSON.stringify({ data: rows.slice(0, Number(query.get('limit_page_length') ?? 500)), total: rows.length }), { status: 200 })
+    }
     const match = /app_(reads|actions)\/dash\/(.+)$/.exec(String(url))
     if (!match) return new Response('{}', { status: 404 })
     calls.push({ kind: match[1], name: match[2], payload: JSON.parse(String(init.body)).payload })
@@ -93,6 +107,13 @@ describe('Explain A Person', () => {
     expect([before, all('explain-report')[0].querySelector('[data-testid="why-line"]')!.textContent]).toEqual([0, 'Given to Store Manager, for Lakeside'])
   })
 
+  // UI owner (#1282): on a phone a Why line's chip drops under the name, so "Dash at level Manager" stays whole.
+  it('stacks a Why line\'s chip under its name on a phone', async () => {
+    const { all } = await render('explain')
+    expect(all('explain-report')[0].querySelector('[data-testid="line-body"]')!.className).toContain('max-[30rem]:flex-col')
+    expect(all('explain-role')[0].querySelector('[data-testid="line-body"]')!.className).not.toContain('max-[30rem]:flex-col')
+  })
+
   it('reads the designation as the HR title, with Employee and Site chips in the header', async () => {
     const { all } = await render('explain')
     expect([all('hr-title')[0].textContent, all('header-chip').map(c => c.textContent)]).toEqual(['Operations Executive', ['Employee Selvi 3005', 'Site Lakeside']])
@@ -116,6 +137,25 @@ describe('Explain A Person', () => {
     await click(all('hand-save')[0])
     expect([calls.find(c => c.name === 'give_role')?.payload, calls.filter(c => c.name === 'explain_person').length])
       .toEqual([{ person: 'sm', change: 'Also give', role: 'r-tl', site: 'LKS', ends_on: '2027-03-31', reason: '' }, 2])
+  })
+
+  // #1282 G1: the place picked on the trees, a store; a cluster shows but cannot be given yet.
+  it('picks the place on the trees: a cluster walks to its stores, and a store becomes the place', async () => {
+    const { all, click, set } = await render('explain')
+    await click(all('also-give-button')[0])
+    await set(all('hand-role')[0] as HTMLSelectElement, 'r-tl')
+    await click(all('hand-pick-area')[0])
+    const button = (text: string) => [...document.querySelectorAll('[data-testid="area-picker"] button')].find(b => b.textContent?.startsWith(text))!
+    // Two stores under Chennai South: its warehouse is no store.
+    expect(button('Chennai South').textContent).toBe('Chennai South2 stores')
+    await click(button('Chennai South'))
+    expect(all('area-not-yet')[0].textContent).toBe('Can be given at Store level for now')
+    expect((button('Use Chennai South') as HTMLButtonElement).disabled).toBe(true)
+    await click(button('Store E'))
+    await click(button('Use Store E'))
+    expect([all('area-picker').length, all('hand-sentence')[0].textContent]).toEqual([0, 'Also give: treat as Team Leader at Store E.'])
+    await click(all('hand-save')[0])
+    expect(calls.find(c => c.name === 'give_role')?.payload).toMatchObject({ site: 'SE' })
   })
 
   it('offers the job\'s place by default in a Correct, said as a sentence', async () => {
@@ -185,8 +225,12 @@ describe('Explain A Person', () => {
 describe('Business Roles', () => {
   const ROLES = { business_roles: {
     roles: [{ id: 'r-sm', name: 'Store Manager', description: 'Runs a store.', by_hand_only: false, reaches: 'their store', permissions: [
-      { app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area', sentence: 'Store Managers can Edit Sections in their Area' },
-      { app: 'Dash', level: 'Manager', verb: 'Give', thing: 'Reports', reach: 'Team', sentence: 'Store Managers can Give Reports for their Team' }] }],
+      { app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area', sentence: 'Store Managers can Edit Sections in their area',
+        parts: [{ record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Managers' } }, ' can Edit Sections ', { chip: 'in their area' }] },
+      { app: 'Dash', level: 'Manager', verb: 'Give', thing: 'Reports', reach: 'Team', sentence: 'Store Managers can Give Reports for their team',
+        parts: [{ record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Managers' } }, ' can Give Reports ', { chip: 'for their team' }] }],
+      reports: [[{ record: { table: 'dash.report', row: 'vs', name: 'Visit Sales' } }, ' is given to ', { record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Manager' } }, ' ', { chip: 'each in their own area' }]],
+      people: 25, people_from: 'from HR title and by hand', holders: [{ person: 'p1', name: 'Sundar' }] }],
     titles: [{ title: 'Operations Executive', role: null, role_name: null, people: 3, falls_back_to: 'Store Manager', holders: [{ person: 'p1', name: 'Sundar' }] },
       { title: 'Store Manager', role: 'r-sm', role_name: 'Store Manager', people: 4, holders: [] }],
   } }
@@ -203,19 +247,40 @@ describe('Business Roles', () => {
 
   it('says business roles decide once switched, offers nothing to someone who is not a System Manager, and lists what was done', async () => {
     answers = { ...ROLES, access_source: { source: 'business_roles', switch_rows: [{ id: 's1', source: 'business_roles' }], can_switch: false },
-      switch_over_log: [{ id: 'l1', step: 'Report grant', outcome: 'Added', detail: 'Gave report vs to Store Manager, as it was given to the job Store Manager' }] }
+      switch_over_log: [{ id: 'l1', step: 'Report grant', outcome: 'Added', detail: 'Gave report vs to Store Manager, as it was given to the job Store Manager',
+        parts: ['Gave report vs to ', { record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Manager' } }, ', as it was given to the job Store Manager'] },
+        { id: 'l2', step: 'Report grant', outcome: 'Not converted', detail: 'The grant of the report vs to the job Buyer is not carried over', parts: ['The grant of the report vs to the job Buyer is not carried over'] }] }
     const { all, click } = await render('roles')
     expect([all('access-source-line')[0].textContent!.includes('decided by business roles'), all('give-old-grants').length]).toEqual([true, 0])
     await click(all('switch-over-log-toggle')[0])
     expect(all('switch-over-log')[0].textContent).toContain('Gave report vs to Store Manager')
+    // Colour only where it needs attention: an Added line is a quiet tag.
+    expect(all('log-outcome').map(c => [c.textContent, c.getAttribute('data-tone')])).toEqual([['Added', 'quiet'], ['Not converted', 'hand']])
   })
 
-  it('opens a role as a grid: things as rows, a reach chip under its verb, other verbs on the row', async () => {
+
+  // #1282 H1–H4: the role said as sentences, each record a link and its reach a chip; its people counted, with where they come from.
+  it('says a role in sentences: a header with its people, its permissions and the reports given to it', async () => {
     answers = ROLES
     const { all, click } = await render('roles')
+    expect(all('role-header')[0].textContent).toBe('Business role · 25 people · from HR title and by hand')
+    await click(all('role-people')[0])
+    expect([all('role-holders')[0].textContent, all('role-holders')[0].querySelector('a')!.getAttribute('href')]).toEqual(['Sundar and 24 more', '?view=explain&person=p1'])
     await click(all('role-open')[0])
-    expect(all('grid-row').map(row => [row.querySelector('[data-testid="cell-Edit"]')!.textContent, row.textContent!.includes('Give')]))
-      .toEqual([['Area', false], ['—', true]])
+    expect(all('permission-line').map(l => [l.textContent, l.querySelector('[data-testid="sentence-reach"]')!.textContent])).toEqual([
+      ['Store Managers can Edit Sections in their area', 'in their area'], ['Store Managers can Give Reports for their team', 'for their team']])
+    expect(all('report-line').map(l => l.textContent)).toEqual(['Visit Sales is given to Store Manager each in their own area'])
+    // The sentences say it; the per-role matrix is gone (the cross-role view is the Grid's).
+    expect(all('permission-grid').length).toBe(0)
+  })
+
+  it('says a role nobody holds, with no permissions yet, still with the reports given to it', async () => {
+    answers = { business_roles: { ...ROLES.business_roles, roles: [{ ...ROLES.business_roles.roles[0]!, permissions: [], people: 0, people_from: 'nobody yet', holders: [] }] } }
+    const { all, click } = await render('roles')
+    await click(all('role-open')[0])
+    // At 0 the header says it once, with no link to an empty list.
+    expect([all('role-header')[0].textContent, all('role-people').length, all('report-line').length, all('role-line')[0].textContent!.includes('No permissions yet.')])
+      .toEqual(['Business role · nobody yet', 0, 1, true])
   })
 
   it('says how far a role reaches in plain words', async () => {
@@ -224,12 +289,6 @@ describe('Business Roles', () => {
     expect(all('role-reaches')[0].textContent).toBe('Reaches: their store')
   })
 
-  it('colours each reach by its word', async () => {
-    answers = ROLES
-    const { all, click } = await render('roles')
-    await click(all('role-open')[0])
-    expect(all('reach-chip').map(c => [c.textContent, c.className.includes('positive') || c.className.includes('action')])).toEqual([['Area', true], ['Team', true]])
-  })
 
   it('lists titles not mapped yet first, and opens who holds one', async () => {
     answers = ROLES

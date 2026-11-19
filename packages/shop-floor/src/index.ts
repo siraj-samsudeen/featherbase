@@ -31,3 +31,5 @@ export { FieldGrid, type FieldGridField, type FieldGridGroup } from './FieldGrid
 export { DrillPane, PaneSection } from './DrillPane'
 export { PathBar, RecentPaths, type PathStep } from './PathBar'
 export { TreeOutline, type TreeNode } from './TreeOutline'
+export { AreaPicker, type AreaAxis, type AreaLevel, type AreaRow, type PickedArea } from './AreaPicker'
+export { Sentence, sentenceText, type SentencePart } from './Sentence'

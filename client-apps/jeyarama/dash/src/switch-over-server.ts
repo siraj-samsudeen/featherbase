@@ -28,10 +28,52 @@ export async function businessAccessSummary(context: AccessContext) {
     can_switch: context.roles!.includes('System Manager') }
 }
 
-/** The switch-over's log, newest first. */
+type Part = string | { record: { table: string; row: string; name: string } }
+
+/** Where a name is the record and not words about something else: the line's subject, or what it was
+ *  given or mapped "to" ("Mapped the title Buyer to Buyer" names the role second); else its first mention. */
+function mention(words: string, name: string, atStart: boolean): number {
+  const all: number[] = []
+  for (let at = words.indexOf(name); at >= 0; at = words.indexOf(name, at + 1)) all.push(at)
+  return all.find(at => (at === 0 && atStart) || words.slice(0, at).endsWith('to ')) ?? all[0] ?? -1
+}
+
+/** #1282 H1–H4: a log line's own words, each named record in them a link. The words stay as they were
+ *  written; a name changed since (or never in them) is left as plain words. */
+export function linked(detail: string, records: { table: string; row: string; name: string }[]): Part[] {
+  let parts: Part[] = [detail]
+  for (const record of records.filter(r => r.name)) {
+    let done = false
+    parts = parts.flatMap((part, i) => {
+      if (done || typeof part !== 'string') return [part]
+      const at = mention(part, record.name, i === 0)
+      if (at < 0) return [part]
+      done = true
+      return [part.slice(0, at), { record }, part.slice(at + record.name.length)].filter(p => p !== '')
+    })
+  }
+  return parts
+}
+
+/** The switch-over's log, newest first: each line's words, with the role and the report it names as links. */
 export async function switchOverLog(context: AccessContext) {
   if (!managesAccess(context)) context.reject!(ONLY_MANAGERS)
   const rows = await every(context.baseTables!, SWITCH_OVER_LOG, ['step', 'outcome', 'business_role', 'source_grant', 'detail', 'created_at'])
-  return rows.map(r => ({ id: exact(r.row_id), step: text(r.step), outcome: text(r.outcome), detail: text(r.detail), business_role: exact(r.business_role) || null,
-    source_grant: exact(r.source_grant) || null, at: exact(r.created_at) })).sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id))
+  const roles = new Map((await every(context.baseTables!, 'dash.business_role', ['role_name'])).map(r => [exact(r.row_id), text(r.role_name)]))
+  const grants = new Map((await every(context.baseTables!, 'dash.report_access', ['report', 'report_bundle'])).map(r => [exact(r.row_id), r]))
+  const reports = new Map((await context.documents!.list('dash.report', { fields: ['report_key', 'report_name'], limit_page_length: 500 })).map(r => [exact(r.report_key), text(r.report_name)]))
+  // As the caller may read them (Codex adversarial round 2): a bundle they may not read is neither linked nor named by id.
+  const bundles = new Map((await context.documents!.list('dash.report_bundle', { fields: ['row_id', 'bundle_name'], limit_page_length: 500 })).map(r => [exact(r.row_id), text(r.bundle_name)]))
+  return rows.map(r => {
+    const role = exact(r.business_role)
+    const grant = grants.get(exact(r.source_grant))
+    const [report, bundle] = [exact(grant?.report), exact(grant?.report_bundle)]
+    const records = [
+      ...(role && roles.has(role) ? [{ table: 'dash.business_role', row: role, name: roles.get(role)! }] : []),
+      ...(report && reports.has(report) ? [{ table: 'dash.report', row: report, name: reports.get(report)! }] : []),
+      ...(!report && bundle && bundles.has(bundle) ? [{ table: 'dash.report_bundle', row: bundle, name: bundles.get(bundle)! }] : []),
+    ]
+    return { id: exact(r.row_id), step: text(r.step), outcome: text(r.outcome), detail: text(r.detail), parts: linked(text(r.detail), records), business_role: role || null,
+      source_grant: exact(r.source_grant) || null, at: exact(r.created_at) }
+  }).sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id))
 }
