@@ -96,6 +96,25 @@ describe('#1328: whether an app is turned off is said only to someone who could 
     expect(await status(chained, '/barproof/')).toBeNull()
   })
 
+  // Codex round 3: an app's own gate decides who could use it; while it is off the gate cannot run.
+  test('an app with an access gate is said to be turned off only to a System Manager', async ({ admin, createUser }) => {
+    const directory = await mkdtemp(resolve('test/.unavailable-1328-'))
+    copies.push(directory)
+    await cp(BAR_PROOF, directory, { recursive: true })
+    const file = resolve(directory, 'featherbase.json')
+    const manifest = JSON.parse(await readFile(file, 'utf8'))
+    manifest.reads.operations = { ...manifest.reads.operations, closed: { policy: { kind: 'table' }, authorization: { kind: 'generic' } } }
+    manifest.access = { gate: 'closed' }
+    await writeFile(file, JSON.stringify(manifest))
+    await writeFile(resolve(directory, 'server.mjs'), (await readFile(resolve(directory, 'server.mjs'), 'utf8')) + '\nreads.closed = () => false\n')
+    expect(await discoverPackages([directory])).toEqual([])
+    await admin.post('/api/install_app', { name: 'barproof' })
+    await admin.post('/api/set_app_enabled', { name: 'barproof', enabled: false })
+    const reader = await createUser({ email: 'ua-gated@example.test', roles: ['Bar Reader'] })
+    expect(await status(reader, '/barproof/')).toBeNull()
+    expect(await status(admin, '/barproof/')).toEqual({ title: 'Bar proof' })
+  })
+
   test('only a plain address is answered about, and only to someone signed in', async ({ api, admin }) => {
     await installBarProof(admin)
     await admin.post('/api/set_app_enabled', { name: 'barproof', enabled: false })
