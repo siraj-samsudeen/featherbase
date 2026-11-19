@@ -132,3 +132,32 @@ test('an exact match by name or by code is never crowded out by rows that only c
   const sites = (await searchLines(admin, 'ATK')).find((l) => l.table === 'Ss Site') as { hits: { row_id: string }[] }
   expect(sites.hits[0].row_id).toBe('ATK')
 })
+
+// #1321: past the 500 rows search ranks, an exact name or an exact code in another case is still found.
+test('an exact name, or a code typed in another case, is found behind more than 500 rows containing the text', async ({ admin }) => {
+  const { sql } = await import('../src/db')
+  const { storedRelation, quoteRelation } = await import('../src/table-engine')
+  await admin.post('/api/table_def', { name: 'Ss Crowd', id_pattern: 'prompt', title_column: 'full_name', columns: [{ column_name: 'full_name', column_type: 'Data' }] })
+  const relation = quoteRelation(await storedRelation('Ss Crowd'))
+  // 600 rows containing both texts first, in storage order, then the two rows sought.
+  await sql.unsafe(`insert into ${relation} (row_id, full_name) select 'C-atk-' || n, 'Surekha ' || n from generate_series(1, 600) n`)
+  await admin.post('/api/save_row', { table: 'Ss Crowd', row: { row_id: 'ATK', full_name: 'Attakulangara' } })
+  await admin.post('/api/save_row', { table: 'Ss Crowd', row: { row_id: 'R-1', full_name: 'Rekha' } })
+  const hits = async (q: string) => ((await searchLines(admin, q)).find((l) => l.table === 'Ss Crowd') as { hits: { row_id: string }[] }).hits
+  expect((await hits('rekha'))[0].row_id).toBe('R-1')
+  expect((await hits('atk'))[0].row_id).toBe('ATK')
+})
+
+test('each stored Table has search indexes on its key and its title, which follow a changed title', async ({ admin }) => {
+  const { sql } = await import('../src/db')
+  const indexes = async () => (await sql<{ indexdef: string }[]>`
+    select indexdef from pg_indexes where tablename = 'ss_indexed' and indexname like '%\\_search\\_%' order by indexname`).map((i) => i.indexdef.replace(/^.* USING btree /, ''))
+  const columns = [{ column_name: 'first', column_type: 'Data' }, { column_name: 'second', column_type: 'Data' }, { column_name: 'born', column_type: 'Date' }]
+  await admin.post('/api/table_def', { name: 'Ss Indexed', title_column: 'first', columns })
+  expect(await indexes()).toEqual(['(lower("left"((row_id)::text, 140)))', '(lower("left"((first)::text, 140)))'])
+  await admin.put('/api/table_def/Ss%20Indexed', { title_column: 'second', columns })
+  expect(await indexes()).toEqual(['(lower("left"((row_id)::text, 140)))', '(lower("left"((second)::text, 140)))'])
+  // A date title is not text: only the key is indexed.
+  await admin.put('/api/table_def/Ss%20Indexed', { title_column: 'born', columns })
+  expect(await indexes()).toEqual(['(lower("left"((row_id)::text, 140)))'])
+})
