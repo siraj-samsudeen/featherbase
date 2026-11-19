@@ -14,6 +14,7 @@ import { sql } from './db'
 import { getDoc } from './document'
 import { activeApps } from './app-lifecycle'
 import { runAsSystemActor } from './system-actor'
+import { readableTitles, recordKey } from './record-titles'
 // Loaded when first needed, as view-as.ts does: a static import closes a start-up cycle.
 const packages = () => import('./runtime-packages')
 
@@ -103,21 +104,23 @@ export async function describePeople(persons: string[]): Promise<Map<string, Sta
   return out
 }
 
-async function mayRead(table: string, row: string, viewer: string): Promise<boolean> {
-  return getDoc(table, row, viewer).then(() => true, () => false)
-}
-
 /** A person's standing as `viewer` may see it. Refuses a viewer who may not
  *  read the Person; drops each store the viewer may not open. */
 export async function standingFor(person: string, viewer: string): Promise<Standing & { external_label: string | null }> {
   const row = await getDoc('Person', person, viewer)
   const standing = (await describePeople([person])).get(person)!
-  // Each store and business role is kept only where the viewer may open it.
-  const jobs = await Promise.all(standing.jobs.map(async ({ site, business_role, ...job }) => ({
-    ...job,
-    ...(site && (await mayRead(site.table, site.id, viewer)) ? { site } : {}),
-    ...(business_role && (await mayRead(business_role.table, business_role.id, viewer)) ? { business_role } : {}),
-  })))
+  // Each store and business role is kept only where the viewer may read it, named by its own title as the
+  // viewer reads it, never by the app's words (#1345, Codex adversarial round 1).
+  const titles = await readableTitles(standing.jobs.flatMap(({ site, business_role }) =>
+    [site, business_role].filter((r): r is NonNullable<typeof r> => !!r).map((r) => ({ table: r.table, row_id: r.id }))), viewer)
+  const named = (r?: { table: string; id: string }) => {
+    const title = r && titles.get(recordKey({ table: r.table, row_id: r.id }))
+    return r && title ? { table: r.table, id: r.id, name: title } : undefined
+  }
+  const jobs = standing.jobs.map(({ site, business_role, ...job }) => {
+    const s = named(site), role = named(business_role)
+    return { ...job, ...(s ? { site: s } : {}), ...(role ? { business_role: role } : {}) }
+  })
   const label = typeof row.external_label === 'string' ? row.external_label : null
   // The label describes an External person only.
   return { ...standing, jobs, external_label: standing.status === 'none' ? label : null }

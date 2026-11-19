@@ -1,6 +1,9 @@
 import type { PersonLabel } from 'shared'
 import { sql } from './db'
 import { scopedWhere } from './query'
+import { readableTitles, recordKey as key, type RecordRef as Ref } from './record-titles'
+import { readsRestricted } from './person-identifiers'
+import { displayValue, SENSITIVITY, type Sensitivity } from './identifiers'
 import { describePeople } from './person-standing'
 
 // #1345: the Person Label. Every place a person is named reads who they are:
@@ -28,9 +31,9 @@ export async function personLabels(persons: readonly string[], viewer: string, w
   const readable = await readablePeople(wanted, viewer)
   if (!readable.size) return labels
   const ids = [...readable.keys()]
-  const codes = await currentCodes(ids)
+  const codes = await visibleCodes(ids, viewer)
   for (const id of ids) {
-    const mine = codes.get(id) ?? []
+    const mine = codes.get(id)?.current ?? []
     labels.set(id, {
       ...(mine[0] ? { code: mine[0] } : {}),
       ...(mine.length > 1 ? { more_codes: mine.slice(1).map((code) => ({ code })) } : {}),
@@ -53,15 +56,29 @@ async function readablePeople(ids: string[], viewer: string): Promise<Map<string
   return new Map(rows.map((r) => [String(r.row_id), (r.email as string | null) || null]))
 }
 
-/** Each person's current employee codes, the latest-joined first. */
-async function currentCodes(ids: string[]): Promise<Map<string, string[]>> {
+/** Each person's employee codes the viewer may see in plain, current ones the latest-joined first, then
+ *  ended ones (#1345, Codex adversarial round 1): the identifier systems' own sensitivity, as the person's
+ *  identifiers panel applies it. A masked or hidden value tells no one apart, so it is no label code. */
+async function visibleCodes(ids: string[], viewer: string): Promise<Map<string, { current: string[]; ended: string[] }>> {
   const rows = await sql`
-    select i.person_id, i.value from person_identifier i
+    select i.person_id, i.value, i.value_hint, s.sensitivity, upper_inf(i.valid) as current from person_identifier i
     join identifier_system s on s.row_id = i.system and s.kind = 'employee-record'
-    where i.person_id = any(${ids}) and upper_inf(i.valid)
-    order by i.person_id, lower(i.valid) desc nulls last, i.value`
-  const codes = new Map<string, string[]>()
-  for (const r of rows) codes.set(String(r.person_id), [...(codes.get(String(r.person_id)) ?? []), String(r.value)])
+    where i.person_id = any(${ids})
+    order by i.person_id, upper_inf(i.valid) desc, lower(i.valid) desc nulls last, i.value`
+  const restricted = new Map<string, boolean>()
+  for (const id of new Set(rows.map((r) => String(r.person_id))))
+    restricted.set(id, viewer === id || (await readsRestricted(viewer, id)))
+  const codes = new Map<string, { current: string[]; ended: string[] }>()
+  for (const r of rows) {
+    const id = String(r.person_id)
+    const sensitivity = r.sensitivity as Sensitivity
+    const shown = displayValue({ value: r.value as string | null, value_hint: r.value_hint as string | null }, sensitivity,
+      restricted.get(id)! && (viewer !== id || sensitivity !== 'Restricted, hidden'))
+    if (!shown.shown || SENSITIVITY[sensitivity].display !== 'full' || !shown.value) continue
+    const mine = codes.get(id) ?? { current: [], ended: [] }
+    ;(r.current ? mine.current : mine.ended).push(shown.value)
+    codes.set(id, mine)
+  }
   return codes
 }
 
@@ -73,7 +90,7 @@ function within<T>(ms: number, work: Promise<T>): Promise<T | null> {
 
 /** What the app that describes people adds, as the viewer may see it: their standing, the job they hold
  *  (the first the app names), its business role and its store, each record only where the viewer may read it. */
-async function appLayer(ids: string[], viewer: string, codes: Map<string, string[]>): Promise<Map<string, PersonLabel>> {
+async function appLayer(ids: string[], viewer: string, codes: Map<string, { current: string[]; ended: string[] }>): Promise<Map<string, PersonLabel>> {
   const standing = await describePeople(ids)
   const refs: Ref[] = []
   for (const s of standing.values()) {
@@ -89,8 +106,10 @@ async function appLayer(ids: string[], viewer: string, codes: Map<string, string
     if (!s || (s.status !== 'current' && s.status !== 'left')) continue
     const label: PersonLabel = { standing: s.status }
     if (s.status === 'left' && s.left_on) label.left_on = s.left_on
-    // A leaver's code has ended, so the platform holds no current one: the app's says who they were.
-    if (!codes.get(id)?.length && s.code) label.code = s.code
+    // A leaver's code has ended, so the platform holds no current one: the app's says who they were, but
+    // only as a value this viewer may already see among their codes, so it never restores a withheld one.
+    const mine = codes.get(id)
+    if (!mine?.current.length && s.code && mine?.ended.includes(s.code)) label.code = s.code
     const job = s.jobs[0]
     if (job) {
       const role = job.business_role ? titles.get(key({ table: job.business_role.table, row_id: job.business_role.id })) : undefined
@@ -104,26 +123,3 @@ async function appLayer(ids: string[], viewer: string, codes: Map<string, string
   return shown
 }
 
-type Ref = { table: string; row_id: string }
-const key = (r: Ref) => `${r.table}\u0000${r.row_id}`
-
-/** Each record's title (else its key), for the records the viewer may read; the rest are left out. */
-async function readableTitles(refs: Ref[], viewer: string): Promise<Map<string, string>> {
-  const byTable = new Map<string, Set<string>>()
-  for (const r of refs) byTable.set(r.table, (byTable.get(r.table) ?? new Set()).add(r.row_id))
-  const titles = new Map<string, string>()
-  await Promise.all([...byTable].map(async ([table, rowIds]) => {
-    const scoped = await scopedWhere(table, viewer, []).catch(() => null)
-    if (!scoped) return
-    const { meta, table: physical, where, cols, readExpression } = scoped
-    const rowKey = sql(meta.row_key)
-    const shown = meta.title_column && cols.has(meta.title_column) ? readExpression(meta.title_column) : rowKey
-    const rows = await sql`select ${rowKey}::text as id, ${shown}::text as title from ${sql(physical)}
-      where ${where} and ${rowKey}::text = any(${[...rowIds]})`
-    for (const r of rows) {
-      const words = String(r.title ?? r.id ?? '').trim()
-      if (words) titles.set(key({ table, row_id: String(r.id) }), words)
-    }
-  }))
-  return titles
-}
