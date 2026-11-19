@@ -112,6 +112,8 @@ test('from a record page reached from the list, › opens the next row page', as
   fireEvent.click(within(await peeked('Order 03')).getByRole('link', { name: 'Open Full Page' }))
   await waitFor(() => expect(screen.queryByRole('complementary', { name: /Order 03/ })).not.toBeInTheDocument())
   await waitFor(async () => expect(await position()).toHaveTextContent('4 of 6'))
+  // One walk on screen (UI owner, W5): the page's own ‹ N of M › gives way to the path bar's.
+  expect(screen.queryByTestId('record-nav')).not.toBeInTheDocument()
   fireEvent.click(next())
   await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Order 02'))
 })
