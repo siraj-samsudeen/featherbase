@@ -40,8 +40,9 @@ export async function personLabels(persons: readonly string[], viewer: string, w
       ...(readable.get(id) ? { email: readable.get(id)! } : {}),
     })
   }
-  // The app layer: never longer than `wait`, never an error (items 1 and 2).
-  const described = await within(wait, appLayer(ids, viewer, codes)).catch(() => null)
+  // The app layer: never longer than `wait` (item 2). It cannot fail on the app: describePeople reads a
+  // failing or late app as unknown, and the record checks treat a refusal as unreadable.
+  const described = await within(wait, appLayer(ids, viewer, codes))
   if (described) for (const [id, extra] of described) labels.set(id, { ...labels.get(id), ...extra })
   return labels
 }
@@ -83,7 +84,7 @@ async function visibleCodes(ids: string[], viewer: string): Promise<Map<string, 
 }
 
 /** Resolves to the promise's value, or null after `ms`; the promise is left to finish on its own. */
-function within<T>(ms: number, work: Promise<T>): Promise<T | null> {
+export function within<T>(ms: number, work: Promise<T>): Promise<T | null> {
   work.catch(() => undefined)
   return Promise.race([work, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))])
 }

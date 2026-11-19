@@ -180,9 +180,9 @@ async function searchPeople(people: Record<string, unknown>, records: Record<str
 /** The person each of `rowIds` is the record of, through `column`, where the viewer may read that column. */
 async function personsOf(table: string, column: string, rowIds: string[], user: string): Promise<Map<string, string>> {
   if (!rowIds.length) return new Map()
-  const scoped = await scopedWhere(table, user, []).catch(() => null)
-  if (!scoped || !scoped.cols.has(column)) return new Map()
-  const { meta, table: physical, where, readExpression } = scoped
+  // Only Tables the viewer may read come here (streamSearch's readable list).
+  const { meta, table: physical, where, cols, readExpression } = await scopedWhere(table, user, [])
+  if (!cols.has(column)) return new Map()
   const key = sql(meta.row_key)
   const rows = await sql`select ${key}::text as id, ${readExpression(column)}::text as person from ${sql(physical)}
     where ${where} and ${key}::text = any(${rowIds})`
