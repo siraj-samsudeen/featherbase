@@ -57,8 +57,6 @@ export function pageRange(start: number, pageSize: number, total: number): strin
   return `${fmtCount(total === 0 ? 0 : start + 1)}–${fmtCount(Math.min(start + pageSize, total))} of ${fmtCount(total)}`
 }
 
-// A compact list: the row's name, then this many key values.
-const COMPACT_COLUMNS = 3
 
 /** The link values a filtered list's new rows start with: each "= one row"
  *  filter on a link column the person may set. */
@@ -344,7 +342,8 @@ export function ListView({
   const allColumns = meta.data
     ? viewColumns(meta.data, extraColumns?.length ? { ...arrangement, shownCols: [...arrangement.shownCols, ...extraColumns] } : arrangement)
     : []
-  const columns = compact ? allColumns.slice(0, COMPACT_COLUMNS) : allColumns
+  // #1348: Compact Rows is a row height (RowDensityContext); it keeps every column.
+  const columns = allColumns
   // #209 / #738: who may shape this Table's columns for everyone — "Edit
   // columns" and "Make this the default for everyone" show exactly here.
   // Not on system Tables (their columns are the platform's) nor bound ones

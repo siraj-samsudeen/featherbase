@@ -22,6 +22,7 @@ and spec item 8 describes it as density only. The list-view spec still says Comp
 
 ## Impact
 
-Supersedes the "leads with each row's name and a few key values" part of the unarchived change
-`issue-910-relational-navigation` (requirement "A compact list, remembered per table"); relational navigation
-drops that part when it archives. The UI owner agreed on 19-Nov-2026.
+Replaces the requirement "A compact list, remembered per table" of the unarchived change
+`issue-910-relational-navigation`, which said Compact leads with each row's name and a few key values: it is
+taken out of that change's delta, and its scenario "The sites list stays compact" moves here with the new
+outcome. The UI owner agreed on 19-Nov-2026; relational navigation is told.

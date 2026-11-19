@@ -13,11 +13,14 @@ remembered for that user on that table.
 - **WHEN** the user switches the list of sites to Compact Rows
 - **THEN** the rows are shorter and every column of the list still shows
 
-#### Scenario: The choice is kept per table
+#### Scenario: The sites list stays compact
 
-- **WHEN** the user who chose Compact Rows for sites signs in again
-- **THEN** the list of sites opens in Compact Rows
-- **AND** the list of plants opens Comfortable
+```gherkin
+Given the user switched the list of sites to its compact layout
+When the user signs in again and opens the list of sites
+Then Enchakkal shows in Compact Rows with every column
+And the list of plants still shows all its columns
+```
 
 ## MODIFIED Requirements
 
