@@ -108,8 +108,12 @@ async function appLayer(ids: string[], viewer: string, codes: Map<string, { curr
     if (s.status === 'left' && s.left_on) label.left_on = s.left_on
     // A leaver's code has ended, so the platform holds no current one: the app's says who they were, but
     // only as a value this viewer may already see among their codes, so it never restores a withheld one.
+    // The code never drops (item 3): with no app code the viewer may see, their latest ended one.
     const mine = codes.get(id)
-    if (!mine?.current.length && s.code && mine?.ended.includes(s.code)) label.code = s.code
+    if (!mine?.current.length) {
+      const code = s.code && mine?.ended.includes(s.code) ? s.code : mine?.ended[0]
+      if (code) label.code = code
+    }
     const job = s.jobs[0]
     if (job) {
       const role = job.business_role ? titles.get(key({ table: job.business_role.table, row_id: job.business_role.id })) : undefined
