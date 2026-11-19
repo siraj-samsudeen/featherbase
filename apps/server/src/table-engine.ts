@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isSensitiveColumn } from './sensitive-columns'
 import { DEFAULT_ID_PATTERN, namingColumn, prettifyLabel, tableSlug } from 'shared'
 import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
@@ -212,6 +213,9 @@ export const tableDefSchema = z.object({
   // instance, {column} for the row's value). Kept when an update leaves it out;
   // null or empty clears it.
   correction_path: z.string().nullish(),
+  // #1346: more columns search matches, besides the key and the title. Kept
+  // when an update leaves it out; an empty list clears it.
+  search_columns: z.array(z.string()).nullish(),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
   // updateTable never touches these. A bound Table gets no DDL and no RLS
   // (BV1): its rows live on the source.
@@ -308,6 +312,12 @@ function validateDef(def: TableDef) {
     if (bad) errs.scope_on = `${bad} is not a Reference column of this Table`
   }
   if (def.scope_required && !def.scope_on?.length) errs.scope_required = 'Name the columns it is scoped on first'
+  if (def.search_columns?.length) {
+    // A column named like a stored secret is never searched, whatever it holds.
+    const bad = def.search_columns.find((name) => isSensitiveColumn(name) || !def.columns.some((c) =>
+      c.column_name === name && !['Section Break', 'Column Break', 'Sub-table'].includes(c.column_type)))
+    if (bad) errs.search_columns = `${bad} is not a column of this Table that search can match`
+  }
   if (def.correction_path) {
     const problem = correctionPathProblem(def.correction_path, def.columns.map((c) => c.column_name))
     if (problem) errs.correction_path = problem
@@ -595,6 +605,8 @@ export async function updateTable(
   if (def.scope_required === undefined) def.scope_required = existing.scope_required
   if (def.queue === undefined) def.queue = existing.queue
   if (def.correction_path === undefined) def.correction_path = existing.correction_path
+  // #1346 (Codex round 2): an update that leaves search_columns out writes
+  // nothing to it; `existing` is the effective list, an override included.
   validateDef(def)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
@@ -681,6 +693,7 @@ export async function updateTable(
       ...(def.scope_required !== undefined ? { scope_required: def.scope_required } : {}),
       ...(def.queue !== undefined ? { queue: def.queue } : {}),
       ...(def.correction_path !== undefined ? { correction_path: def.correction_path || null } : {}),
+      ...(def.search_columns !== undefined ? { search_columns: def.search_columns?.length ? def.search_columns : null } : {}),
       ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
@@ -1072,6 +1085,7 @@ export async function createTable(
     if (def.scope_required) tableRow.scope_required = true
     if (def.queue) tableRow.queue = true
     if (def.correction_path) tableRow.correction_path = def.correction_path
+    if (def.search_columns?.length) tableRow.search_columns = def.search_columns
     if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]

@@ -98,7 +98,7 @@ test('#1257: the link sets the first password, signs the person in, and works on
 
   await waitFor(() => expect(getSessionUser()?.row_id).toBe(ravi.user), { timeout: 8000 })
   await waitFor(() => expect(pathOf(rendered)).not.toBe('/featherbase/set-password'))
-  const [row] = await sql`select password_hash from person where row_id = ${ravi.user!}`
+  const [row] = await sql`select (select password_hash from person_credential where person_id = ${ravi.user!}) as password_hash`
   expect(row.password_hash).not.toBeNull()
 })
 
@@ -155,7 +155,7 @@ test('#1257: mismatched passwords are caught on the page, and a refused password
   await userEvent.clear(within(form).getByLabelText('Confirm password'))
   await choose(form, 'abc')
   await waitFor(() => expect(within(form).getByTestId('set-password-error')).toHaveTextContent('Password must be at least 6 characters'))
-  const [row] = await sql`select password_hash from person where email = 'typo@partner.test'`
+  const [row] = await sql`select (select c.password_hash from person_credential c where c.person_id = person.row_id) as password_hash from person where email = 'typo@partner.test'`
   expect(row.password_hash).toBeNull()
 })
 
