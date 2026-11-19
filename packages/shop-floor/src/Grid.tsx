@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Button } from './Button'
 import { cx } from './cx'
 import { fmtCount } from './format'
 
@@ -7,7 +8,8 @@ import { fmtCount } from './format'
 // cell says its sentence on hover. A real table: each header heads exactly its own column.
 // The app owns the data, the sentences and the save; this draws and steps.
 
-export interface GridRow { id: string; group?: string; title: string }
+/** `titleNode`: the title as drawn, where the row is a record (its RecordLink); `title` stays its plain words. */
+export interface GridRow { id: string; group?: string; title: string; titleNode?: ReactNode }
 export interface GridColumn { id: string; label: string; header: ReactNode }
 export interface GridStep { value: string; label: string }
 
@@ -58,14 +60,15 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
       <table className="border-separate border-spacing-0 text-sm" aria-label={label} data-testid="grid">
         <thead>
           <tr>
-            <th scope="col" data-column="" className="sticky left-0 bg-surface" />
+            {/* The header band and lines are the list view's (consistency check against ListView). */}
+            <th scope="col" data-column="" className="sticky left-0 z-10 border-r border-b border-border bg-subtle" />
             {columns.map((column) => (
               <th key={column.id} scope="col" data-column={column.id} data-testid="grid-header" data-tilt={tilt}
-                className={cx('px-1 pb-2 align-bottom font-normal', tilt === 'flat' ? 'w-24 text-center' : 'relative h-44 w-14 min-w-14 max-w-14')}>
+                className={cx('border-b border-border bg-subtle px-3 py-2 align-bottom font-normal', tilt === 'flat' ? 'w-24 text-center' : 'relative h-44 w-18 min-w-18 max-w-18')}>
                 {tilt === 'flat'
-                  ? <span className="line-clamp-2 break-words text-[13px] leading-tight">{column.header}</span>
+                  ? <span className="line-clamp-2 break-words text-sm leading-tight">{column.header}</span>
                   // Tilted, the label is drawn outside the column's width: a narrow column, its name rising to the right.
-                  : <span className="absolute bottom-2 left-1/2 origin-bottom-left -rotate-45 whitespace-nowrap text-[13px]">{column.header}</span>}
+                  : <span className="absolute bottom-2 left-1/2 origin-bottom-left -rotate-45 whitespace-nowrap text-sm">{column.header}</span>}
               </th>
             ))}
           </tr>
@@ -78,12 +81,12 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
               <Fragment key={row.id}>
                 {group && (
                   // The group's name stays in view while the grid scrolls sideways.
-                  <tr><td colSpan={columns.length + 1} className="px-2 pt-3 pb-1"><span className="sticky left-2 font-semibold text-ink" data-testid="grid-group">{group}</span></td></tr>
+                  <tr><td colSpan={columns.length + 1} className="border-b border-border px-3 py-2"><span className="sticky left-3 font-semibold text-ink" data-testid="grid-group">{group}</span></td></tr>
                 )}
-                <tr className="hover:bg-subtle">
+                <tr className="group hover:bg-subtle">
                   {/* On a phone the title column is narrow and wraps to two lines, so the cells stay in reach (UI owner). */}
-                  <td data-column="" className="sticky left-0 bg-surface px-2 py-1 whitespace-nowrap text-ink-muted max-md:max-w-30 max-md:whitespace-normal" data-testid="grid-row-title">
-                    <span className="max-md:line-clamp-2">{row.title}</span>
+                  <td data-column="" className="sticky left-0 border-r border-b border-border bg-surface px-3 py-2 whitespace-nowrap text-ink-muted group-hover:bg-subtle max-md:max-w-30 max-md:whitespace-normal" data-testid="grid-row-title">
+                    <span className="max-md:line-clamp-2">{row.titleNode ?? row.title}</span>
                   </td>
                   {columns.map((column) => {
                     const key = gridKey(row, column)
@@ -93,7 +96,7 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
                       isWaiting ? 'bg-action-tint text-action outline-2 outline-action' : value === null ? 'text-ink-subtle' : 'bg-tag text-ink-muted')
                     const title = tooltip(row, column, value)
                     return (
-                      <td key={column.id} data-column={column.id} data-testid={`grid-cell-${row.id}-${column.id}`} data-waiting={String(isWaiting)} className="px-1 py-1 text-center">
+                      <td key={column.id} data-column={column.id} data-testid={`grid-cell-${row.id}-${column.id}`} data-waiting={String(isWaiting)} className="border-b border-border px-3 py-2 text-center">
                         {readOnly
                           ? <span className={pill} title={title}>{labelOf(value)}</span>
                           : (
@@ -125,8 +128,8 @@ export function PendingBar({ count, people, onDiscard, onReview }: { count: numb
     <div className="sticky bottom-3 mt-3 flex flex-wrap items-center gap-3 rounded-control bg-ink px-3 py-2 text-sm text-surface" role="status" data-testid="pending-bar">
       <span><b className="font-semibold">{plural(count, 'change', 'changes')} waiting</b> · affects about {plural(people, 'person', 'people')}</span>
       <span className="flex-1" />
-      <button type="button" className="underline underline-offset-2 hover:no-underline" onClick={onDiscard}>Discard</button>
-      <button type="button" className="rounded-control bg-surface px-3 py-1 font-medium text-ink hover:bg-subtle" onClick={onReview}>Review and save</button>
+      <Button variant="secondary" onClick={onDiscard}>Discard</Button>
+      <Button variant="primary" onClick={onReview}>Review and save</Button>
     </div>
   )
 }

@@ -3,7 +3,7 @@
 // Lens tab of issue_1218_relational_navigation.html: header chips, fields beside links, a source chip
 // and a Why? per item) and Who Would Gain Or Lose Access. The rules are the server's.
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { AreaPicker, Button, Sentence, type SentencePart, Card, EmptyState, Field, Notice, Select, TextInput, fmtDate, pillClasses } from '@featherbase/shop-floor'
+import { AreaPicker, Button, Segmented, Sentence, type SentencePart, Card, EmptyState, Field, Notice, Select, TextInput, fmtDate, pillClasses } from '@featherbase/shop-floor'
 import { act, read } from './api'
 import { DASH_AREAS, loadDashArea } from './area-axes'
 import { LoadFailed, Loading, Shell } from './sections-page'
@@ -143,22 +143,17 @@ export function BusinessRolesPage() {
         </Card>
       )}
       {answer && answer.roles.length > 0 && (
-        <div className="flex gap-1.5" role="group" aria-label="Show the business roles as" data-testid="roles-views">
-          {(['roles', 'grid', 'reports'] as const).map(v => (
-            <button key={v} type="button" aria-pressed={view === v} onClick={() => show(v)} data-testid={`roles-view-${v}`}
-              className={`rounded-full px-3 py-1 text-sm ${view === v ? 'bg-action-tint font-medium text-action' : 'bg-tag text-ink-muted hover:text-ink'}`}>
-              {v === 'roles' ? 'Roles' : v === 'grid' ? 'Grid: Permissions' : 'Grid: Reports'}
-            </button>
-          ))}
-        </div>
+        // The shared Segmented control, as other pages switch views (consistency check).
+        <Segmented label="Show the business roles as" value={view} onChange={show}
+          options={[{ value: 'roles', label: 'Roles' }, { value: 'grid', label: 'Grid: Permissions' }, { value: 'reports', label: 'Grid: Reports' }]} />
       )}
       {answer && answer.roles.length > 0 && view === 'grid' && (
-        <Card className="p-4" data-testid="roles-grid-card">
+        <Card data-testid="roles-grid-card">
           <PermissionsGrid roles={answer.roles} mayChange={answer.may_change} onSaved={load} onWaiting={setWaiting} personHref={explainAddress} />
         </Card>
       )}
       {answer && answer.roles.length > 0 && view === 'reports' && (
-        <Card className="p-4" data-testid="reports-grid-card">
+        <Card data-testid="reports-grid-card">
           <ReportsGrid roles={answer.roles} catalog={answer.report_catalog} mayChange={answer.may_give_reports} onSaved={load} onWaiting={setWaiting} personHref={explainAddress} />
         </Card>
       )}

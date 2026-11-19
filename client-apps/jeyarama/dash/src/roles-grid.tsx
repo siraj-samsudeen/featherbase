@@ -72,7 +72,9 @@ export function PermissionsGrid(props: Shared) {
 
 /** Reports and bundles × roles: which each business role is given, each in its own area. */
 export function ReportsGrid(props: Shared & { catalog: GivenThing[] }) {
-  const rows: ReportRow[] = props.catalog.map(t => ({ id: `${t.table}|${t.key}`, group: t.table === 'dash.report' ? 'Reports' : 'Bundles', title: t.name, table: t.table, key: t.key }))
+  // A report or a bundle is a record: its title is its RecordLink.
+  const rows: ReportRow[] = props.catalog.map(t => ({ id: `${t.table}|${t.key}`, group: t.table === 'dash.report' ? 'Reports' : 'Bundles', title: t.name,
+    titleNode: <RecordLink table={t.table} id={t.key}>{t.name}</RecordLink>, table: t.table, key: t.key }))
     // Reports first, then bundles, each by name.
     .sort((a, b) => Number(a.group === 'Bundles') - Number(b.group === 'Bundles') || a.title.localeCompare(b.title))
   const given = (value: string | null) => (value ? 'given' : 'not given')
@@ -144,19 +146,19 @@ function Review({ lines, touched, people, personHref, onBack, onSave }: {
     try { await onSave() } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { setBusy(false) }
   }
   return (
-    <div className="flex flex-col gap-3" data-testid="grid-review">
+    <div className="flex flex-col gap-3 p-4" data-testid="grid-review">
       <h2 className="text-base font-semibold">Review {plural(lines.length, 'change', 'changes')}</h2>
       <ul className="flex flex-col gap-1 text-sm">
         {lines.map(({ key, parts }) => <li key={key} data-testid="review-line"><Sentence parts={parts} renderRecord={sentenceRecord} /></li>)}
       </ul>
       <p className="text-sm text-ink-muted">
         Affects about{' '}
-        <button type="button" className="text-action hover:underline" aria-expanded={names} onClick={() => setNames(!names)} data-testid="review-people">{plural(people, 'person', 'people')}</button>
+        <button type="button" className="font-medium text-action hover:underline" aria-expanded={names} onClick={() => setNames(!names)} data-testid="review-people">{plural(people, 'person', 'people')}</button>
         {' '}holding {touched.map(r => r.name).join(', ')}.
       </p>
       {names && (
         <p className="text-sm" data-testid="review-names">
-          {shown.map((h, i) => <span key={h.person}>{i ? ', ' : ''}<a className="text-action hover:underline" href={personHref(h.person)}>{h.name}</a></span>)}
+          {shown.map((h, i) => <span key={h.person}>{i ? ', ' : ''}<a className="font-medium text-action hover:underline" href={personHref(h.person)}>{h.name}</a></span>)}
           {people > shown.length && ` and ${(people - shown.length).toLocaleString('en-IN')} more`}
         </p>
       )}
