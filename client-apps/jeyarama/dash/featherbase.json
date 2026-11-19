@@ -96,7 +96,8 @@
     "people": "view_as_people"
   },
   "people": {
-    "describe": "describe_people"
+    "describe": "describe_people",
+    "sections": "worked_out"
   },
   "datasets": [
     {
@@ -476,11 +477,6 @@
       "explain": "why_access",
       "may": "why_access_offered",
       "label": "Why: Access"
-    }
-  },
-  "person": {
-    "sections": {
-      "read": "worked_out"
     }
   },
   "tables": [
