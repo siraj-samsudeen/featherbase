@@ -98,7 +98,7 @@ export function HealthBanner({ enabled }: { enabled: boolean }) {
         to={INSTANCE_HEALTH_PATH}
         className="inline-flex min-h-8 items-center underline underline-offset-2 max-sm:min-h-11"
       >
-        Open instance health
+        Open Instance Health
       </Link>
     </div>
   )
