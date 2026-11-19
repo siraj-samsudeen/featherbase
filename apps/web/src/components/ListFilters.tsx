@@ -495,12 +495,16 @@ export function FilterBar({
 /** #1289: the list's active filters as big chips, each with a round ✕, then Clear All Filters when more than one
  *  is on. They sit in the list's one filter row; filters come back on the next visit (#1228), so one control takes
  *  them all off. */
-export function FilterChips({ meta, filters, onChange, held, className }: {
+export function FilterChips({ meta, filters, onChange, held, picked, onSaveView, className }: {
   meta: import('../lib/meta').TableMeta
   filters: Filter[]
   onChange: (filters: Filter[]) => void
   /** #1289: the filters a visible box already shows (heldByBoxes): they get no chip. */
   held?: Set<number>
+  /** #1289 option C: the filters Click To Narrow picked, by index, with their words; they read green. */
+  picked?: Map<number, import('react').ReactNode>
+  /** #1289 option C: Save As View beside the chips. */
+  onSaveView?: () => void
   className?: string
 }) {
   const { t } = useI18n()
@@ -509,8 +513,8 @@ export function FilterChips({ meta, filters, onChange, held, className }: {
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className ?? ''}`} data-testid="filter-chips">
       {filters.map((f, i) => held?.has(i) ? null : (
-        <FilterChip key={i} name={nameOf(f)} onRemove={() => onChange(filters.filter((_, j) => j !== i))}>
-          <FilterWords meta={meta} filter={f} asLink />
+        <FilterChip key={i} name={nameOf(f)} onRemove={() => onChange(filters.filter((_, j) => j !== i))} tone={picked?.has(i) ? 'picked' : undefined}>
+          {picked?.has(i) ? picked.get(i) : <FilterWords meta={meta} filter={f} asLink />}
         </FilterChip>
       ))}
       {filters.length > 1 && (
@@ -521,6 +525,16 @@ export function FilterChips({ meta, filters, onChange, held, className }: {
           className="min-h-control text-sm font-medium text-action underline-offset-2 hover:underline"
         >
           Clear All Filters
+        </button>
+      )}
+      {onSaveView && (
+        <button
+          type="button"
+          onClick={onSaveView}
+          data-testid="filter-save-view"
+          className="min-h-control text-sm font-medium text-action underline-offset-2 hover:underline"
+        >
+          Save As View
         </button>
       )}
     </div>

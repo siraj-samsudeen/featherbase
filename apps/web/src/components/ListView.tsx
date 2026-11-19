@@ -22,7 +22,7 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
 import { Button, EmptyState, NARROW_QUERY, Notice, PageHeader, ProblemPage, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery, raisedClasses, headCellClasses, RowDensityContext, Segmented, TABLE_CLASSES } from '@featherbase/shop-floor'
-import { ChevronDown } from '@featherbase/shop-floor'
+import { ChevronDown, PanelLeft } from '@featherbase/shop-floor'
 import { Columns3, ListTree } from 'lucide-react'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
@@ -36,6 +36,8 @@ import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
 import { rememberListPlace } from './RecordNav'
 import { FilterBar, FilterChips, ListSearch, StandardFilters, hasFieldBoxes, heldByBoxes, type Filter } from './ListFilters'
 import { SavedViewsBar } from './SavedViewsBar'
+import { NarrowPanel, NarrowPickWords, useNarrowLists } from './NarrowPanel'
+import { splitPicks } from '../lib/narrow'
 import { LayoutSwitch } from './LayoutSwitch'
 import { RecordCards } from './RecordCards'
 import { RecentStrip } from './RecentStrip'
@@ -193,6 +195,9 @@ export function ListView({
   const [confirmingDefault, setConfirmingDefault] = useState(false)
   // Bumped by Reset, so this person's settings load again from what the server now holds.
   const [settingsEpoch, setSettingsEpoch] = useState(0)
+  // #1289 option C: Click To Narrow sits left of the table unless this person hid it here.
+  const [narrowHidden, setNarrowHidden] = useState(false)
+  const [narrowSheet, setNarrowSheet] = useState(false)
   // #1289: Save View… in the View menu opens the saved views' name form.
   const [namingView, setNamingView] = useState(false)
   const [viewMenuOpen, setViewMenuOpen] = useState(false)
@@ -315,7 +320,7 @@ export function ListView({
     setArrangement({ shownCols: [], hiddenCols: [] })
     setShowRetired(false)
     api
-      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[]; compact?: boolean; showRetired?: boolean } | null }>(
+      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[]; compact?: boolean; showRetired?: boolean; narrowHidden?: boolean } | null }>(
         `/api/user_settings/${encodeURIComponent(table)}`,
       )
       .then((res) => {
@@ -326,6 +331,7 @@ export function ListView({
         setSort(s.sort ?? null)
         setOwnCompact(typeof s.compact === 'boolean' ? s.compact : undefined)
         setShowRetired(s.showRetired === true)
+        setNarrowHidden(s.narrowHidden === true)
         setArrangement({
           shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
           hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
@@ -345,7 +351,7 @@ export function ListView({
   // Persist settings whenever the user changes them (after the initial load).
   // A save that fails is said, not swallowed (#546): the change still shows
   // now, but the list would open the old way next time.
-  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement>; compact?: boolean; showRetired?: boolean }) {
+  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement>; compact?: boolean; showRetired?: boolean; narrowHidden?: boolean }) {
     // A change before this person's saved settings arrive is not saved: what they saved wins.
     if (!settingsLoaded) return
     const token = getToken()
@@ -432,6 +438,17 @@ export function ListView({
   }, [knownTotal, start])
 
   const rows = list.isError ? [] : list.data?.data ?? []
+  // #1289 option C: Click To Narrow, on a list whose filters the person changes.
+  const narrowLists = useNarrowLists(table, meta.data, Boolean(onFiltersChange))
+  const narrowPicks = narrowLists && narrowLists.length ? splitPicks(narrowLists, filters) : null
+  const pickedChips = narrowPicks && narrowLists
+    ? new Map(narrowPicks.owner.flatMap((i, k) => (i === null ? [] : [[k, <NarrowPickWords list={narrowLists[i]} picked={narrowPicks.picks[i]} />] as const])))
+    : undefined
+  const narrowPanel = (columns: 1 | 2, className?: string) => onFiltersChange && narrowLists && narrowLists.length > 0 && (
+    <NarrowPanel table={table} lists={narrowLists} filters={filters} baseFilters={baseFilters} withRetired={withRetired}
+      onFiltersChange={onFiltersChange} columns={columns} className={className} />
+  )
+  const narrowBeside = !narrow && !narrowHidden && Boolean(narrowLists?.length)
 
   // #1259: with a record open beside or over the list, ↑/↓ move to the next or previous row and the record
   // follows; #1343 made that the path's walk (useWalkKeys), in the list's order across its pages. Closing the record
@@ -960,7 +977,12 @@ export function ListView({
               <ChevronDown aria-hidden data-chevron size={18} />
             </Button>
             {/* #1289: the active filters as big chips, in this same row. */}
-            <FilterChips meta={meta.data} filters={filters} onChange={onFiltersChange} held={heldByBoxes(meta.data, filters)} />
+            {/* #1289 option C: on a phone Click To Narrow is a sheet, opened from here. */}
+            {narrow && Boolean(narrowLists?.length) && (
+              <Button aria-expanded={narrowSheet} onClick={() => setNarrowSheet(true)} data-testid="narrow-sheet-open">Narrow By</Button>
+            )}
+            <FilterChips meta={meta.data} filters={filters} onChange={onFiltersChange} held={heldByBoxes(meta.data, filters)}
+              picked={pickedChips} onSaveView={filters.length ? () => setNamingView(true) : undefined} />
           </>
         )}
         </div>
@@ -985,6 +1007,13 @@ export function ListView({
               />
               Show Retired
             </label>
+          )}
+          {/* #1289 option C: Click To Narrow shows or hides, remembered for this person and Table. */}
+          {!narrow && Boolean(narrowLists?.length) && (
+            <Button aria-pressed={!narrowHidden} aria-label="Click To Narrow" title="Click To Narrow" data-testid="narrow-toggle" onClick={() => {
+              setNarrowHidden(!narrowHidden)
+              persist({ narrowHidden: !narrowHidden })
+            }} className={iconToggle(!narrowHidden)}><PanelLeft aria-hidden size={18} /></Button>
           )}
           {/* #1242 (admin-lists 2-3): the other ways to see this Table. */}
           <ActionDisclosure label="View" open={viewMenuOpen} onOpenChange={setViewMenuOpen}>
@@ -1193,6 +1222,10 @@ export function ListView({
           )}
         </div>
       )}
+      {/* #1289 option C (board A): the panel left of the rows, 18px apart. */}
+      <div className={narrowBeside ? 'flex items-start gap-[18px]' : undefined}>
+      {narrowBeside && narrowPanel(2, 'min-w-[300px] flex-[0_1_560px]')}
+      <div className={narrowBeside ? 'min-w-0 flex-[1_1_520px]' : undefined}>
       {treeOn ? (
         <div className="flex min-h-0 items-start gap-3" data-testid="list-tree">
           <div className={cardClasses('min-w-0 flex-1 p-3')}>
@@ -1371,6 +1404,26 @@ export function ListView({
         </button>
         </>}
       </div>
+      </div>
+      </div>
+      {narrowSheet && narrow && (
+        <div className="fixed inset-0 z-50 bg-scrim/40" onClick={() => setNarrowSheet(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Narrow By"
+            className="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col gap-3 rounded-t-card bg-surface p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="narrow-sheet"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-ink">Narrow By</h2>
+              <Button onClick={() => setNarrowSheet(false)} data-testid="narrow-sheet-done">Done</Button>
+            </div>
+            <div className="min-h-0 overflow-y-auto">{narrowPanel(1)}</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
