@@ -33,8 +33,8 @@ test('the title line: <Module> / <label>, the label and its total, then New <thi
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Job Assignment')
   const header = screen.getByTestId('list-toolbar')
   const controls = [...header.querySelectorAll('a, button')].map((el) => el.textContent?.trim())
-  expect(controls.indexOf('New job assignment')).toBeGreaterThanOrEqual(0)
-  expect(controls.indexOf('New job assignment')).toBeLessThan(controls.indexOf('More'))
+  expect(controls.indexOf('New Job Assignment')).toBeGreaterThanOrEqual(0)
+  expect(controls.indexOf('New Job Assignment')).toBeLessThan(controls.indexOf('More'))
   // The other views are not on the title's line.
   expect(within(header).queryByRole('button', { name: /^View/ })).toBeNull()
   const view = await openListMenu('View')

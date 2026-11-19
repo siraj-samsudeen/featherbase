@@ -8,6 +8,7 @@ import { ListCell } from '../src/components/ListRows'
 import type { ListColumn } from '../src/lib/list-view-columns'
 import { DEFAULT_SETTINGS } from '../src/lib/settings'
 import { summableColumn } from '../src/lib/column-kinds'
+import { titleWords } from '../src/components/ListView'
 
 const col = (column_name: string, column_type: string): ListColumn => ({ column_name, column_type, label: column_name } as ListColumn)
 const draw = (name: string, type: string, value: unknown, compact = false) => render(
@@ -54,4 +55,10 @@ describe('a run time held in milliseconds (#1348, Last Run Took)', () => {
     expect(summableColumn([col('last_duration_ms', 'Int')])).toBeUndefined()
     expect(summableColumn([col('runs', 'Int'), col('amount', 'Currency')])?.column_name).toBe('amount')
   })
+})
+
+test("#1348 (Siraj's Title Case rule): a list's New button names its Table in Title Case, acronyms kept", () => {
+  expect(titleWords('job assignment')).toBe('Job Assignment')
+  expect(titleWords('Store Floor')).toBe('Store Floor')
+  expect(titleWords('SKU list')).toBe('SKU List')
 })
