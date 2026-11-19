@@ -68,7 +68,7 @@ describe('business roles in shadow', () => {
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'old_grants_one_receiver', 'every_report_and_bulk_comparison', 'site_kind', 'division_head_and_visual_merchandising', 'why_on_the_map', 'why_app_levels_merged', 'report_access_days_in_india', 'area_picker', 'permission_grid'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'old_grants_one_receiver', 'every_report_and_bulk_comparison', 'site_kind', 'division_head_and_visual_merchandising', 'why_on_the_map', 'why_app_levels_merged', 'report_access_days_in_india', 'area_picker', 'permission_grid', 'worked_out_sections'])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()
@@ -114,6 +114,10 @@ describe('business roles in shadow', () => {
       expect((await manager.post<{ result: unknown }>('/api/app_reads/dash/why_access_offered', { payload: { table: 'Person', row: reader.user } })).result).toBe(true)
       const why = (await manager.post<{ result: { version: number; columns: { heading: string }[] } }>('/api/app_reads/dash/why_access', { payload: { table: 'Person', row: reader.user } })).result
       expect([why.version, why.columns[0]!.heading]).toEqual([1, 'Person'])
+      // #1282 C10–C11: the Lens's worked-out sections, through the platform's checked route (never the app-read route).
+      const worked = await (await manager.fetch(`/api/worked-out/Person/${encodeURIComponent(reader.user!)}`)).json() as { sections: { heading: string; rows: { name: string; app?: string }[] }[] }
+      expect(worked.sections.map(s => s.heading)).toEqual(['Apps They Can Open', 'Reports They See'])
+      expect(worked.sections[0]!.rows.find(r => r.name === 'Dash')).toEqual(expect.objectContaining({ detail: 'at level Manager' }))
       expect((explained as unknown as { reports: { key: string; why: string[] }[] }).reports).toEqual([{ key: 'open', name: 'Company notices', why: ['Every report, through Owner Director'], roles: [expect.any(String)], direct: false }])
       const changes = (await manager.post<{ result: { people: number; changed: number; groups: { people: { person: string }[] }[] } }>('/api/app_reads/dash/access_changes', { payload: {} })).result
       expect([changes.people, changes.groups.flatMap(g => g.people).map(p => p.person)]).toEqual([1, []])

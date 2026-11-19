@@ -22,7 +22,7 @@ import { TEAM_MANAGER } from './team-access.ts'
 import { viewAsPeople } from './view-as-people.ts'
 import { describePeople } from './people-describe.ts'
 import { DASH_ROLES, offeredByPlaces, openableByReach, opensDashFor } from './report-eligibility.ts'
-import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, removeRole, whyAccess } from './business-roles-server.ts'
+import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, removeRole, whyAccess, workedOut } from './business-roles-server.ts'
 
 /** The save rules of Dash's own Tables. */
 export const validators = accessValidators
@@ -444,6 +444,8 @@ export const reads = {
 
   /** #1218: whether this person sees the business roles pages (company-wide managers only), for the sidebar's links. */
   manages_roles: (context: ReadContext) => managesAccess(context as AccessContext),
+  /** #1282 C10–C11: a person's worked-out sections for the platform's record panel (the Lens), as Why is gated. */
+  worked_out: (context: ReadContext) => workedOut(context as AccessContext),
   /** #1218, in shadow: the Business Roles page, Explain a person, and Who would gain or lose access. Company-wide managers only. */
   business_roles: (context: ReadContext) => businessRoles(context as AccessContext),
   explain_person: (context: ReadContext) => explainPerson(context as AccessContext),
