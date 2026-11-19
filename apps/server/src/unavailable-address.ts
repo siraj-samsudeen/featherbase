@@ -20,7 +20,11 @@ export async function turnedOffFor(address: string, viewer: string): Promise<{ t
   const manifest = (row.manifest ?? {}) as { title?: unknown; entryTable?: unknown; permissions?: unknown }
   // A turned-off app's grants are suspended, so whether the viewer could use it is read from what the app
   // declares: a permission that lets one of their roles read its entry Table.
+  // With the app's own App Role Bindings, which getRoles leaves out while the app is off (Codex standard
+  // round 1): a role the viewer holds that carries one of the app's roles counts here, and only here.
   const roles = new Set(await getRoles(viewer))
+  for (const b of await sql`select app_role, bound_role from app_role_binding where app = ${name}`)
+    if (roles.has(String(b.bound_role))) roles.add(String(b.app_role))
   // A grant reads either way an app declares it: `can_read`, or a read in its `operations`.
   const declared = Array.isArray(manifest.permissions) ? manifest.permissions as { table?: unknown; role?: unknown; can_read?: unknown; operations?: { read?: unknown } }[] : []
   const reads = (p: (typeof declared)[number]) => p.can_read === true || Boolean(p.operations?.read)
