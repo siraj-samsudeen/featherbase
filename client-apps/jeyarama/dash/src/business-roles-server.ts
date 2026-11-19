@@ -402,6 +402,7 @@ export async function businessRoles(context: AccessContext) {
   return {
     // #1282 F1–F6: whether the grid steps for this caller, or is read-only.
     may_change: mayChangePermissions(ctx),
+    manages_access: managesAccess(ctx),
     roles: roles.sort((a, b) => a.name.localeCompare(b.name)).sort((a, b) => order(a.name) - order(b.name)).map(role => ({
       id: role.id, name: role.name, description: role.description, by_hand_only: role.by_hand_only, reaches: REACHES_WORDS[role.reaches!] ?? 'Not set',
       permissions: permissions.filter(p => p.role === role.id).map(p => ({ app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach, sentence: permissionSentence(role.name, p), parts: permissionParts(role, p) })),

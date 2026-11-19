@@ -46,7 +46,7 @@ export function useLeaveGuard(waiting: boolean) {
 }
 
 export function PermissionsGrid({ roles, mayChange, onSaved, onWaiting, personHref }: {
-  roles: GridRole[]; mayChange: boolean; onSaved: () => Promise<void>; onWaiting: (n: number) => void; personHref: (person: string) => string
+  roles: GridRole[]; mayChange: boolean; onSaved: () => Promise<void>; onWaiting: (n: number) => void; personHref: ((person: string) => string) | null
 }) {
   const [waiting, setWaiting] = useState(new Map<string, string | null>())
   const [reviewing, setReviewing] = useState(false)
@@ -90,13 +90,16 @@ export function PermissionsGrid({ roles, mayChange, onSaved, onWaiting, personHr
 
 /** Before anything is saved: one sentence per change, old → new, and the people they touch. */
 function Review({ changes, touched, people, personHref, onBack, onSaved }: {
-  changes: { row: PermissionRow; role: GridRole; from: string | null; to: string | null }[]; touched: GridRole[]; people: number; personHref: (person: string) => string; onBack: () => void; onSaved: () => Promise<void>
+  changes: { row: PermissionRow; role: GridRole; from: string | null; to: string | null }[]; touched: GridRole[]; people: number; personHref: ((person: string) => string) | null; onBack: () => void; onSaved: () => Promise<void>
 }) {
   const [names, setNames] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Someone holding two of the changed roles is named once.
   const shown = [...new Map(touched.flatMap(role => role.holders).map(h => [h.person, h])).values()]
+  // The same verb and thing at two levels ("Edit Tasks · Manager", "· User"): its sentence names the level.
+  const things = changes.map(c => `${c.row.verb} ${c.row.thing}`)
+  const atLevels = new Set(things.filter(t => new Set(changes.filter(c => `${c.row.verb} ${c.row.thing}` === t).map(c => c.row.level)).size > 1))
   const save = async () => {
     setBusy(true); setError(null)
     try {
@@ -110,7 +113,7 @@ function Review({ changes, touched, people, personHref, onBack, onSaved }: {
       <ul className="flex flex-col gap-1 text-sm">
         {changes.map(({ row, role, from, to }) => (
           <li key={`${row.id}|${role.id}`} data-testid="review-line">
-            <Sentence parts={[roleRecord(role), ` can ${row.verb} ${row.thing}: ${reachWords(from)} → ${reachWords(to)}`]} renderRecord={sentenceRecord} />
+            <Sentence parts={[roleRecord(role), ` can ${row.verb} ${row.thing}${atLevels.has(`${row.verb} ${row.thing}`) ? ` (${row.level})` : ''}: ${reachWords(from)} → ${reachWords(to)}`]} renderRecord={sentenceRecord} />
           </li>
         ))}
       </ul>
@@ -121,7 +124,8 @@ function Review({ changes, touched, people, personHref, onBack, onSaved }: {
       </p>
       {names && (
         <p className="text-sm" data-testid="review-names">
-          {shown.map((h, i) => <span key={`${h.person}-${i}`}>{i ? ', ' : ''}<a className="text-action hover:underline" href={personHref(h.person)}>{h.name}</a></span>)}
+          {/* A name links to Explain A Person only for a viewer who may open it; plain words otherwise. */}
+          {shown.map((h, i) => <span key={h.person}>{i ? ', ' : ''}{personHref ? <a className="text-action hover:underline" href={personHref(h.person)}>{h.name}</a> : h.name}</span>)}
           {people > shown.length && ` and ${(people - shown.length).toLocaleString('en-IN')} more`}
         </p>
       )}

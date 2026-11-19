@@ -66,6 +66,8 @@ describe('the Grid', () => {
   test('a change waiting shows its new value, outlined, and every cell says its sentence on hover', () => {
     grid({ waiting: new Map([['v|r2', 'Team'], ['v|r0', null]]) })
     expect([cell('v', 'r2').textContent, cell('v', 'r2').dataset.waiting, cell('v', 'r0').textContent, cell('e', 'r1').dataset.waiting]).toEqual(['Team', 'true', '—', 'false'])
+    // A waiting cell is tinted in action blue, not the quiet tag's grey (verifier: both fills clashed).
+    expect([within(cell('v', 'r2')).getByRole('button').className.includes('bg-action-tint'), within(cell('v', 'r2')).getByRole('button').className.includes('bg-tag')]).toEqual([true, false])
     expect(within(cell('e', 'r1')).getByRole('button')).toHaveAttribute('title', 'Role 1 can Edit Sections · Manager (Area)')
     expect(within(cell('t', 'r0')).getByRole('button')).toHaveAttribute('title', 'Role 0 cannot Edit Tasks · Manager')
   })

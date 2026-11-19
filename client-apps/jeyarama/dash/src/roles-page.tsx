@@ -108,6 +108,8 @@ interface RolesAnswer {
   titles: { title: string; role: string | null; role_name: string | null; people: number; falls_back_to?: string; holders: { person: string; name: string }[] }[]
   /** #1282 F1–F6: whether the grid steps for this caller. */
   may_change: boolean
+  /** Whether the caller may open Explain A Person: a person's name links there only then. */
+  manages_access: boolean
 }
 
 export function BusinessRolesPage() {
@@ -151,7 +153,7 @@ export function BusinessRolesPage() {
       )}
       {answer && answer.roles.length > 0 && view === 'grid' && (
         <Card className="p-4" data-testid="roles-grid-card">
-          <PermissionsGrid roles={answer.roles} mayChange={answer.may_change} onSaved={load} onWaiting={setWaiting} personHref={explainAddress} />
+          <PermissionsGrid roles={answer.roles} mayChange={answer.may_change} onSaved={load} onWaiting={setWaiting} personHref={answer.manages_access ? explainAddress : null} />
         </Card>
       )}
       {answer && answer.roles.length > 0 && view === 'roles' && (
@@ -164,7 +166,7 @@ export function BusinessRolesPage() {
                   <span data-testid="role-header">Business role · {role.people ? <><button type="button" className={linkClasses} aria-expanded={people === role.id}
                     onClick={() => setPeople(people === role.id ? null : role.id)} data-testid="role-people">{plural(role.people, 'person', 'people')}</button> · {role.people_from}</> : 'nobody yet'}</span>
                   {' · '}<span data-testid="role-reaches">Reaches: {role.reaches}</span>{role.description ? ` · ${role.description}` : ''}
-                  {people === role.id && <RolePeople role={role} />}
+                  {people === role.id && <RolePeople role={role} explains={answer.manages_access} />}
                 </>}
                 side={<>
                   {role.by_hand_only && <Chip tone="hand">Given by hand only</Chip>}
@@ -239,10 +241,10 @@ function AccessSource({ onSwitched }: { onSwitched: () => Promise<unknown> | voi
 const sentenceRecord = (record: { table: string; row: string; name: string }) => <RecordLink table={record.table} id={record.row}>{record.name}</RecordLink>
 
 /** #1282 H4: the people who hold a role, each opening Explain A Person. */
-function RolePeople({ role }: { role: RolesAnswer['roles'][number] }) {
+function RolePeople({ role, explains }: { role: RolesAnswer['roles'][number]; explains: boolean }) {
   return (
     <span className="block" data-testid="role-holders">
-      {role.holders.map((h, i) => <span key={h.person}>{i ? ', ' : ''}<a className="text-action hover:underline" href={explainAddress(h.person)}>{h.name}</a></span>)}
+      {role.holders.map((h, i) => <span key={h.person}>{i ? ', ' : ''}{explains ? <a className="text-action hover:underline" href={explainAddress(h.person)}>{h.name}</a> : h.name}</span>)}
       {role.people > role.holders.length && ` and ${(role.people - role.holders.length).toLocaleString('en-IN')} more`}
     </span>
   )

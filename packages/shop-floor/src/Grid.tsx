@@ -48,10 +48,11 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
             <th scope="col" data-column="" className="sticky left-0 bg-surface" />
             {columns.map((column) => (
               <th key={column.id} scope="col" data-column={column.id} data-testid="grid-header" data-tilt={tilt}
-                className={cx('px-1 pb-2 align-bottom font-normal', tilt === 'flat' ? 'w-24 text-center' : 'h-28 w-10')}>
+                className={cx('px-1 pb-2 align-bottom font-normal', tilt === 'flat' ? 'w-24 text-center' : 'relative h-44 w-14 min-w-14 max-w-14')}>
                 {tilt === 'flat'
                   ? <span className="line-clamp-2 break-words text-[13px] leading-tight">{column.header}</span>
-                  : <span className="inline-block origin-bottom-left translate-x-4 -rotate-45 whitespace-nowrap text-[13px]">{column.header}</span>}
+                  // Tilted, the label is drawn outside the column's width: a narrow column, its name rising to the right.
+                  : <span className="absolute bottom-2 left-1/2 origin-bottom-left -rotate-45 whitespace-nowrap text-[13px]">{column.header}</span>}
               </th>
             ))}
           </tr>
@@ -63,7 +64,8 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
             return (
               <Fragment key={row.id}>
                 {group && (
-                  <tr><td colSpan={columns.length + 1} className="sticky left-0 bg-surface px-2 pt-3 pb-1 font-semibold text-ink" data-testid="grid-group">{group}</td></tr>
+                  // The group's name stays in view while the grid scrolls sideways.
+                  <tr><td colSpan={columns.length + 1} className="px-2 pt-3 pb-1"><span className="sticky left-2 font-semibold text-ink" data-testid="grid-group">{group}</span></td></tr>
                 )}
                 <tr className="hover:bg-subtle">
                   <td data-column="" className="sticky left-0 bg-surface px-2 py-1 whitespace-nowrap text-ink-muted" data-testid="grid-row-title">{row.title}</td>
@@ -72,8 +74,7 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
                     const isWaiting = waiting.has(key)
                     const value = isWaiting ? waiting.get(key)! : saved(row, column)
                     const pill = cx('inline-block min-w-12 rounded-full px-2 py-px text-center text-xs',
-                      value === null ? 'text-ink-subtle' : 'bg-tag text-ink-muted',
-                      isWaiting && 'bg-action-tint text-action outline-2 outline-action')
+                      isWaiting ? 'bg-action-tint text-action outline-2 outline-action' : value === null ? 'text-ink-subtle' : 'bg-tag text-ink-muted')
                     const title = tooltip(row, column, value)
                     return (
                       <td key={column.id} data-column={column.id} data-testid={`grid-cell-${row.id}-${column.id}`} data-waiting={String(isWaiting)} className="px-1 py-1 text-center">
