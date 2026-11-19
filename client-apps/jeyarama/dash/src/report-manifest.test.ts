@@ -14,6 +14,7 @@ import { DESIGNATION, SHADOW_TABLES } from './business-roles-server.ts'
 import { READ_ROLES } from './report-eligibility.ts'
 import { ACCESS_SOURCE } from './access-source.ts'
 import { SWITCH_OVER_LOG } from './switch-over.ts'
+import { PERMISSION_CHANGE } from './permission-grid-server.ts'
 import { OPTIONAL_PROVIDER_TABLES } from './provider.ts'
 import { REACHES_CHOICES } from './business-roles.ts'
 
@@ -155,7 +156,7 @@ describe("last month's datasets", () => {
 describe('what Dash owns and what it reads', () => {
   it('owns its list of Dives, its entry Table, and the report access Tables (#1046)', () => {
     expect([manifest.entryTable, manifest.tables.map(table => table.name)])
-      .toEqual(['dash.report', ['dash.report', 'dash.report_bundle', 'dash.report_bundle_member', 'dash.report_access', ...SHADOW_TABLES, ACCESS_SOURCE, SWITCH_OVER_LOG]])
+      .toEqual(['dash.report', ['dash.report', 'dash.report_bundle', 'dash.report_bundle_member', 'dash.report_access', ...SHADOW_TABLES, ACCESS_SOURCE, SWITCH_OVER_LOG, PERMISSION_CHANGE]])
   })
 
   // #1277: the business role Tables and the switch decide who reaches what, so only a System Manager writes them; the
@@ -255,6 +256,7 @@ describe('the read grants, declared before the first install', () => {
       // #1217: a Team Report Manager writes only the access rows they made, and the save rule takes them only from Dash's own actions.
       ['Team Report Manager', 'dash.report_access'],
       // #1218: the business roles in shadow; no delete, a hand change is marked removed.
+      // A System Manager writes them all the same (#437); the grid's change log is read here and written by the grid's save.
       ...SHADOW_TABLES.map(table => ['Report Access Manager', table])])
     expect(manifest.permissions.find(p => p.role === 'Team Report Manager' && p.table === 'dash.report_access')).toEqual({
       table: 'dash.report_access', role: 'Team Report Manager', scope_mode: 'creator', operations: { read: '@basic', create: '@basic', update: '@basic' } })
@@ -345,12 +347,16 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['report_access_days_in_india', '0.13.36', '0.13.37', 0],
       // #1282: the area picker on Also Give, with no Table change.
       ['area_picker', '0.13.37', '0.13.38', 0],
+      // #1282: the permission grid: a permission's removed mark and its unique key, and the grid's change log.
+      ['permission_grid', '0.13.38', '0.13.39', 3],
+      // #1282: the Lens's worked-out sections, a read only, with no Table change.
+      ['worked_out_sections', '0.13.39', '0.13.40', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
-    expect(pkg.version).toBe('0.13.38')
+    expect(pkg.version).toBe('0.13.40')
   })
 })

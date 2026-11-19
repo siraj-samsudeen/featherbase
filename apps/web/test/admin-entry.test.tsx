@@ -49,5 +49,6 @@ test('a row that does not exist says so at once, without asking the server again
   await admin.post('/api/table_def', { name: 'Ae Note', columns: [{ column_name: 'title', column_type: 'Data' }] })
   await openAdmin(admin, '/featherbase/admin/table/ae-note/row/no-such-note')
   // A refusal (4xx) is final: retried, it would only hold the page on Loading.
-  expect(await screen.findByText('Cannot load Ae Note no-such-note', {}, { timeout: 2000 })).toBeInTheDocument()
+  // #1327: said on the shared Not found page.
+  expect(await screen.findByText('This Ae Note isn’t here', {}, { timeout: 2000 })).toBeInTheDocument()
 })

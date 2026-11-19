@@ -137,13 +137,13 @@ export function AccountChooser({ list, onList, onSignedIn, onSignInAgain, onUseA
                   disabled={busy !== null}
                   onClick={() => void choose(account)}
                   aria-label={`${account.name ?? account.sign_in_id}${way ? `, ${way}` : ''}: continue`}
-                  className="flex min-w-0 flex-1 items-center gap-3 rounded-md border border-border px-3 py-2 text-left hover:border-action hover:bg-action-tint focus-visible:outline-2 focus-visible:outline-focus"
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-control bg-fill px-3 py-2 text-left hover:bg-action-tint focus-visible:outline-2 focus-visible:outline-focus"
                 >
                   {details}
                   <span aria-hidden="true" className="text-lg leading-none text-action">›</span>
                 </button>
               ) : (
-                <div className="flex min-w-0 flex-1 items-center gap-3 rounded-md border border-border px-3 py-2">
+                <div className="flex min-w-0 flex-1 items-center gap-3 rounded-control bg-fill px-3 py-2">
                   {details}
                   {!removing && (
                     <button type="button" onClick={() => onSignInAgain(account)} className="text-xs font-semibold text-action hover:underline">

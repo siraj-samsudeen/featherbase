@@ -112,11 +112,11 @@ describe('Stored passwords and secrets never leave the server', () => {
       row: { email: 'secret-holder@example.com' },
     })
     await setUserPassword(person.row_id, 'hunter2-secret')
-    const [{ password_hash: stored }] = await sql`select password_hash from person where row_id = ${person.row_id}`
+    const [{ password_hash: stored }] = await sql`select (select password_hash from person_credential where person_id = ${person.row_id}) as password_hash`
 
     const row = await admin.get<Record<string, unknown>>(`/api/table/Person/${person.row_id}`)
     await patchDoc(admin, `/api/table/Person/${person.row_id}`, { updated_at: row.updated_at, password_hash: 'forged' })
-    const [{ password_hash: after }] = await sql`select password_hash from person where row_id = ${person.row_id}`
+    const [{ password_hash: after }] = await sql`select (select password_hash from person_credential where person_id = ${person.row_id}) as password_hash`
     expect(after).toBe(stored)
   })
 })

@@ -139,7 +139,7 @@ describe('#1257 password invite', () => {
     expect(await mailCount(email)).toBe(2)
 
     await expectRefused(post(api, '/api/password_invite/accept', { key: first.key, new_password: 'chosen-pw-1' }), 417, INVALID)
-    expect((await sql`select password_hash from person where row_id = ${person}`)[0].password_hash).toBeNull()
+    expect((await sql`select (select password_hash from person_credential where person_id = ${person}) as password_hash`)[0].password_hash).toBeNull()
     await expectStatus(await post(api, '/api/password_invite/accept', { key: second.key, new_password: 'chosen-pw-1' }), 200)
     const statuses = (await invitesOf(person)).map((r) => [r.voided_at != null, r.accepted_at != null])
     expect(statuses).toEqual([[true, false], [false, true]])
@@ -153,7 +153,7 @@ describe('#1257 password invite', () => {
     await sql`update password_invite set expires_at = now() - interval '1 second' where person = ${person}`
     await expectRefused(post(api, '/api/password_invite/accept', { key, new_password: 'chosen-pw-1' }), 417, INVALID)
     expect((await panel(admin, person)).password_invite).toMatchObject({ offered: true, latest: { status: 'expired' } })
-    expect((await sql`select password_hash from person where row_id = ${person}`)[0].password_hash).toBeNull()
+    expect((await sql`select (select password_hash from person_credential where person_id = ${person}) as password_hash`)[0].password_hash).toBeNull()
   })
 
   test('an unknown or empty key is refused the same way', async ({ api }) => {
@@ -193,7 +193,7 @@ describe('#1257 password invite', () => {
     const [{ n }] = await sql`select count(*)::int as n from email_sink where subject = 'Set your password'`
     expect(n).toBe(0)
     // #137: none of them was given a password.
-    const hashes = await sql`select row_id from person where row_id in ${sql([hr, googleInvited, expectsGoogle, expectsMicrosoft, noEmail, disabled])} and password_hash is not null`
+    const hashes = await sql`select row_id from person where row_id in ${sql([hr, googleInvited, expectsGoogle, expectsMicrosoft, noEmail, disabled])} and exists (select 1 from person_credential c where c.person_id = person.row_id)`
     expect(hashes).toEqual([])
   })
 
@@ -220,7 +220,7 @@ describe('#1257 password invite', () => {
       const { key } = await linkFromMail(email)
       await change(person)
       await expectRefused(post(api, '/api/password_invite/accept', { key, new_password: 'chosen-pw-1' }), 417, INVALID)
-      const [row] = await sql`select password_hash from person where row_id = ${person}`
+      const [row] = await sql`select (select password_hash from person_credential where person_id = ${person}) as password_hash`
       if (label !== 'shell reset') expect(row.password_hash, label).toBeNull()
     }
   })
@@ -274,7 +274,7 @@ describe('#1257 password invite', () => {
       } finally {
         _setPasswordInviteAcceptHooksForTests(null)
       }
-      const [row] = await sql`select password_hash from person where row_id = ${person}`
+      const [row] = await sql`select (select password_hash from person_credential where person_id = ${person}) as password_hash`
       if (label !== 'shell reset') expect(row.password_hash, label).toBeNull()
       expect(await sql`select 1 from password_invite where person = ${person} and accepted_at is not null`, label).toEqual([])
     }

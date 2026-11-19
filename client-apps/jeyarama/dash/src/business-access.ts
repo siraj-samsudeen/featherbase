@@ -44,7 +44,8 @@ export type HandRow = HandChange & { person: string; updated_at: string }
 export async function businessModel(docs: Documents, today: string, person?: string): Promise<{ model: Model; hand: HandRow[] }> {
   const roles: BusinessRole[] = (await every(docs, ROLE, ['role_name', 'description', 'by_hand_only', 'reaches']))
     .map(r => ({ id: exact(r.row_id), name: text(r.role_name), description: text(r.description), by_hand_only: checked(r.by_hand_only), reaches: text(r.reaches) as Reaches }))
-  const permissions: Permission[] = (await every(docs, PERMISSION, ['business_role', 'app', 'level', 'verb', 'thing', 'reach']))
+  // #1282: a permission taken away on the grid is marked removed, never deleted; it gives nothing.
+  const permissions: Permission[] = (await every(docs, PERMISSION, ['business_role', 'app', 'level', 'verb', 'thing', 'reach', 'removed'])).filter(p => !checked(p.removed))
     .map(p => ({ role: exact(p.business_role), app: text(p.app), level: text(p.level), verb: text(p.verb), thing: text(p.thing), reach: text(p.reach) as Reach }))
   const rules: TitleRule[] = (await every(docs, TITLE_MAP, ['title', 'business_role'])).map(r => ({ title: text(r.title), role: nullable(r.business_role) }))
   const hand = (await every(docs, ROLE_ASSIGNMENT, ['person', 'change', 'business_role', 'site', 'ends_on', 'reason', 'removed', 'updated_at'], person ? [['person', '=', person]] : []))

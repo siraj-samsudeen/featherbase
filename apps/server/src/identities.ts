@@ -2,8 +2,8 @@
 //
 // A Person is a human. Outside providers (Google, a connected HR system, …) are
 // linked to that person in `sign_in_identity`, keyed by the provider's permanent
-// subject — never by email. Featherbase's own password is the person's
-// `password_hash` (one home, no identity row). Sign-in methods are rows of the
+// subject — never by email. Featherbase's own password is the person's row in
+// `person_credential` (one home, no identity row; #1336). Sign-in methods are rows of the
 // system Table "Sign In Method", each with its own policy for people it does
 // not recognise. This module owns the records and their rules; the shared
 // sign-in pipeline is sign-in.ts, and adapters only verify credentials.
@@ -679,7 +679,7 @@ async function waysInEach(users: string[], db: Sql | TxSql, excluding?: string, 
     )
     select w.id,
       (select count(*) from person u join sign_in_method m on m.kind = 'password' and ${usableWhere(mock)}
-        where u.row_id = w.id and u.password_hash is not null and ${excluding ?? ''}::text <> 'password')::int
+        where u.row_id = w.id and exists (select 1 from person_credential c where c.person_id = u.row_id) and ${excluding ?? ''}::text <> 'password')::int
       + (select count(*) from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
         where i.person_id = w.id and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
           and not (m.kind = 'delegated_password' and (select privileged from p where p.id = w.id))
@@ -742,7 +742,7 @@ export async function removeOwnPassword(user: string): Promise<void> {
     await t`select 1 from person where row_id = ${user} for update`
     if ((await waysIn(user, t, 'password')) === 0)
       throw new AppError('ConflictError', 'This is your last way to sign in. Add another one first.')
-    await t`update person set password_hash = null where row_id = ${user}`
+    await t`delete from person_credential where person_id = ${user}`
     await logActivity(user, 'password_removed')
   })
 }
@@ -912,9 +912,9 @@ export async function assertNoAdminLockout(
     ), passwords as (
       select p.row_id as person_id,
         exists (select 1 from person u join m0 m on m.kind = 'password' and ${usableWhere(mock)}
-          where u.row_id = p.row_id and u.password_hash is not null) as before_ok,
+          where u.row_id = p.row_id and exists (select 1 from person_credential c where c.person_id = u.row_id)) as before_ok,
         exists (select 1 from person u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
-          where u.row_id = p.row_id and u.password_hash is not null) as after_ok
+          where u.row_id = p.row_id and exists (select 1 from person_credential c where c.person_id = u.row_id)) as after_ok
       from privileged p
     ), ways as (
       -- #693 (Codex round 5): refuse only when the change restricts one of

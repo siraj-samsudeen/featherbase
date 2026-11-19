@@ -15,8 +15,9 @@ export function ContentTabs({ label, tabs, value, onChange, className, actions }
   const buttons = useRef<(HTMLButtonElement | null)[]>([])
   return (
     <div className={cx('flex min-h-0 min-w-0 flex-1 flex-col', className)}>
-      <div className="flex shrink-0 items-center gap-3 border-b border-border">
-      <div role="tablist" aria-label={label} className="flex min-w-0 gap-4 overflow-x-auto">
+      <div className="flex shrink-0 items-center gap-3">
+      {/* #1348 board 3: the tabs are a quiet track, the chosen one a blue tint; no underline rule. */}
+      <div role="tablist" aria-label={label} className="flex min-w-0 gap-1 overflow-x-auto rounded-[10px] bg-subtle p-1">
         {tabs.map((tab, index) => (
           <button key={tab.id} ref={(el) => { buttons.current[index] = el }} type="button" role="tab"
             id={`${id}-tab-${tab.id}`} aria-controls={`${id}-panel-${tab.id}`} aria-selected={value === tab.id}
@@ -31,8 +32,8 @@ export function ContentTabs({ label, tabs, value, onChange, className, actions }
               onChange(tabs[next].id)
               buttons.current[next]?.focus()
             }}
-            className={cx('min-h-control shrink-0 border-b-2 px-1 py-2 text-control font-semibold focus-visible:outline-2 focus-visible:outline-focus',
-              value === tab.id ? 'border-action text-action' : 'border-transparent text-ink-muted hover:text-ink')}
+            className={cx('min-h-[34px] shrink-0 rounded-lg px-3.5 text-control focus-visible:outline-2 focus-visible:outline-focus pointer-coarse:min-h-control',
+              value === tab.id ? 'bg-action-tint font-medium text-action' : 'text-ink-subtle hover:text-ink')}
           >{tab.label}</button>
         ))}
       </div>

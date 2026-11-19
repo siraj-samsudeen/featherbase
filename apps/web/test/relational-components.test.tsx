@@ -911,6 +911,7 @@ describe('GroupChip with no rows', () => {
     const classes = screen.getByRole('button', { name: 'Shelf 0' }).className.split(/\s+/)
     expect(classes).toContain('aria-pressed:text-action-ink')
     // The quieter grey applies to an empty chip only while it is not chosen.
-    expect(classes.filter((c) => c.endsWith(':text-ink-muted'))).toEqual(['[&[data-empty]:not([aria-pressed=true])]:text-ink-muted'])
+    // #1348: the meta grey (ink-subtle), on the quiet fill.
+    expect(classes.filter((c) => c.endsWith(':text-ink-subtle'))).toEqual(['[&[data-empty]:not([aria-pressed=true])]:text-ink-subtle'])
   })
 })

@@ -1283,7 +1283,7 @@ app.post('/api/set_password', async (c) => {
   else {
     // Adding a password where there was none is adding a way in: it needs a
     // recent sign-in, like linking (review minor 4). Changing one does not.
-    const [mine] = await sql`select password_hash is not null as has from person where row_id = ${target}`
+    const [mine] = await sql`select exists (select 1 from person_credential c where c.person_id = person.row_id) as has from person where row_id = ${target}`
     if (!mine?.has) assertFreshForLinking(c.get('user'))
   }
   // #131: a service account must never become password-login-able; the write

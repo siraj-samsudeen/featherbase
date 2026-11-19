@@ -101,7 +101,7 @@ export function HomePageView({ name }: { name: string }) {
               key={s.label}
               data-testid={`shortcut-${s.label}`}
               onClick={() => navigate({ to: routeFor(s) })}
-              className={cardClasses('p-4 text-left transition hover:border-action')}
+              className={cardClasses('p-4 text-left transition hover:bg-hover')}
             >
               <div className="text-sm font-medium text-ink">{s.label}</div>
               <div className="mt-1 text-xs text-ink-muted">{s.type ?? 'table'}</div>

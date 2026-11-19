@@ -33,9 +33,11 @@ export async function setCopySchedule(user: SessionUser, target: string, args: R
     if (!copy) throw new AppError('NotFoundError', `${target} is not a copied table`)
     const old = await copySchedule(target)
     const method = old ? String(old.method) : `copy_refresh_${randomUUID().replaceAll('-', '')}`
+    // #1330: the job reads by its copied Table, never its code; a title someone wrote stays.
+    const title = old?.title ? {} : { title: `Refresh Copy of ${(await getMeta(target)).label || target}` }
     const saved = await saveDoc('Scheduled Job', {
       ...(old ? { row_id: old.row_id, updated_at: old.updated_at } : {}),
-      method, cadence: args.cadence, enabled: args.enabled, description: `Refresh copied table ${target}`,
+      method, cadence: args.cadence, enabled: args.enabled, description: `Refresh copied table ${target}`, ...title,
     }, user.row_id, old ? 'upsert' : 'insert')
     if (!old) await sql`insert into featherbase.copy_refresh_schedule (target_table, scheduled_job) values (${target}, ${method})`
     registerCopyRefresh(method)

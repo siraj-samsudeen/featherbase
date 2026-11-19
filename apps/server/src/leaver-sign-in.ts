@@ -59,7 +59,7 @@ async function waysIn(): Promise<Map<string, WaysIn>> {
   const add = (w: WaysIn, way: string) => { if (!w.ways.includes(way)) w.ways.push(way) }
   const passwordOn = methods.some((m) => m.kind === 'password')
   // A live password invitation lets them set a password and sign in: as checkPasswordInvite reads it.
-  const people = await sql`select row_id, email, replaced_by, (password_hash is not null) as has_password, expects_google_sign_in, expects_microsoft_sign_in,
+  const people = await sql`select row_id, email, replaced_by, exists (select 1 from person_credential c where c.person_id = person.row_id) as has_password, expects_google_sign_in, expects_microsoft_sign_in,
       exists (select 1 from password_invite i where i.person = person.row_id and i.used_at is null and i.voided_at is null
         and i.sent_at is not null and i.expires_at > now()) as invited
     from person where enabled order by row_id`

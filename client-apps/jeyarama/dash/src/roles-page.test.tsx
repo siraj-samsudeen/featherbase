@@ -222,15 +222,21 @@ describe('Explain A Person', () => {
   })
 })
 
+/** The Business Roles view switch (the shared Segmented control), in the page rendered last. */
+const viewButton = (name: string) =>
+  [...[...document.querySelectorAll('[role="group"][aria-label="Show the business roles as"]')].at(-1)!.querySelectorAll('button')].find(b => b.textContent === name)!
+
 describe('Business Roles', () => {
   const ROLES = { business_roles: {
+    may_change: false, may_give_reports: true,
+    report_catalog: [{ table: 'dash.report', key: 'vs', name: 'Visit Sales' }, { table: 'dash.report_bundle', key: 'b1', name: 'Store pack' }],
     roles: [{ id: 'r-sm', name: 'Store Manager', description: 'Runs a store.', by_hand_only: false, reaches: 'their store', permissions: [
       { app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area', sentence: 'Store Managers can Edit Sections in their area',
         parts: [{ record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Managers' } }, ' can Edit Sections ', { chip: 'in their area' }] },
       { app: 'Dash', level: 'Manager', verb: 'Give', thing: 'Reports', reach: 'Team', sentence: 'Store Managers can Give Reports for their team',
         parts: [{ record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Managers' } }, ' can Give Reports ', { chip: 'for their team' }] }],
       reports: [[{ record: { table: 'dash.report', row: 'vs', name: 'Visit Sales' } }, ' is given to ', { record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Manager' } }, ' ', { chip: 'each in their own area' }]],
-      people: 25, people_from: 'from HR title and by hand', holders: [{ person: 'p1', name: 'Sundar' }] }],
+      given: ['dash.report|vs'], people: 25, people_from: 'from HR title and by hand', holders: [{ person: 'p1', name: 'Sundar' }] }],
     titles: [{ title: 'Operations Executive', role: null, role_name: null, people: 3, falls_back_to: 'Store Manager', holders: [{ person: 'p1', name: 'Sundar' }] },
       { title: 'Store Manager', role: 'r-sm', role_name: 'Store Manager', people: 4, holders: [] }],
   } }
@@ -281,6 +287,143 @@ describe('Business Roles', () => {
     // At 0 the header says it once, with no link to an empty list.
     expect([all('role-header')[0].textContent, all('role-people').length, all('report-line').length, all('role-line')[0].textContent!.includes('No permissions yet.')])
       .toEqual(['Business role · nobody yet', 0, 1, true])
+  })
+
+  // #1282 F1–F6: the grid. Store Manager holds two permissions; Team Leader none yet.
+  const GRID = (mayChange = true, extra: unknown[] = []) => ({ business_roles: { ...ROLES.business_roles, may_change: mayChange, roles: [
+    ROLES.business_roles.roles[0]!,
+    { ...ROLES.business_roles.roles[0]!, id: 'r-tl', name: 'Team Leader', permissions: [], reports: [], given: [], people: 3, holders: [{ person: 'p9', name: 'Tara' }] },
+    ...extra,
+  ] } })
+  const cellButton = (all: (t: string) => Element[], row: string, role: string) =>
+    all(`grid-cell-Dash / Manager / ${row.split(' ').join(' / ')}-${role}`)[0]!.querySelector('button')!
+
+  it('shows the roles as a grid: permissions grouped by app, a header linking each role, a reach in each cell', async () => {
+    answers = GRID()
+    const { all, click } = await render('roles')
+    await click(viewButton('Grid: Permissions'))
+    expect(all('grid-row-title').map(t => t.textContent)).toEqual(['Give Reports · Manager', 'Edit Sections · Manager'])
+    expect(all('grid-group').map(g => g.textContent)).toEqual(['Dash'])
+    // Each header is the role's record link (plain words here, where this stand-in platform says it may not be opened).
+    expect(all('grid-header').map(h => [h.textContent, h.querySelector('[data-table="dash.business_role"]')?.getAttribute('data-row')])).toEqual([['Store Manager', 'r-sm'], ['Team Leader', 'r-tl']])
+    expect([cellButton(all, 'Edit Sections', 'r-sm').textContent, cellButton(all, 'Edit Sections', 'r-tl').textContent]).toEqual(['Area', '—'])
+    expect(cellButton(all, 'Edit Sections', 'r-sm').getAttribute('title')).toBe('Store Managers can edit sections — in their area')
+    expect(cellButton(all, 'Edit Sections', 'r-tl').getAttribute('title')).toBe("Team Leaders can't edit sections")
+  })
+
+  it('steps a cell, waits with the dark bar, and Discard puts it back; stepping back to the saved value is no change', async () => {
+    answers = GRID()
+    const { all, click } = await render('roles')
+    await click(viewButton('Grid: Permissions'))
+    await click(cellButton(all, 'Edit Sections', 'r-tl'))
+    await click(cellButton(all, 'Edit Sections', 'r-sm'))
+    expect(all('pending-bar')[0]!.textContent).toContain('2 changes waiting · affects about 28 people')
+    await click([...all('pending-bar')[0]!.querySelectorAll('button')].find(b => b.textContent === 'Discard')!)
+    expect([all('pending-bar').length, cellButton(all, 'Edit Sections', 'r-sm').textContent]).toEqual([0, 'Area'])
+    for (let i = 0; i < 5; i++) await click(cellButton(all, 'Edit Sections', 'r-tl'))
+    expect([cellButton(all, 'Edit Sections', 'r-tl').textContent, all('pending-bar').length]).toEqual(['—', 0])
+  })
+
+  it('reviews each change as a sentence, old → new, with the people it touches, and saves them whole', async () => {
+    answers = { ...GRID(), change_permissions: { saved: 2 } }
+    const { all, click } = await render('roles')
+    await click(viewButton('Grid: Permissions'))
+    await click(cellButton(all, 'Edit Sections', 'r-tl'))
+    await click(cellButton(all, 'Edit Sections', 'r-sm'))
+    await click([...all('pending-bar')[0]!.querySelectorAll('button')].find(b => b.textContent === 'Review and save')!)
+    expect(all('review-line').map(l => l.textContent)).toEqual(['Team Leaders · Edit Sections: not given → their own', 'Store Managers · Edit Sections: in their area → everywhere'])
+    expect(all('review-line')[0]!.querySelector('[data-table="dash.business_role"]')?.getAttribute('data-row')).toBe('r-tl')
+    await click(all('review-people')[0]!)
+    expect(all('review-names')[0]!.textContent).toBe('Tara, Sundar and 26 more')
+    await click(all('review-back')[0]!)
+    expect(all('pending-bar')[0]!.textContent).toContain('2 changes waiting')
+    await click([...all('pending-bar')[0]!.querySelectorAll('button')].find(b => b.textContent === 'Review and save')!)
+    const before = calls.filter(c => c.name === 'business_roles').length
+    await click(all('review-save')[0]!)
+    expect(calls.find(c => c.name === 'change_permissions')!.payload).toEqual({ changes: [
+      { role: 'r-tl', app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', from: null, to: 'Own' },
+      { role: 'r-sm', app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', from: 'Area', to: 'All' },
+    ] })
+    expect([calls.filter(c => c.name === 'business_roles').length > before, all('grid-review').length, all('pending-bar').length]).toEqual([true, 0, 0])
+  })
+
+  it('says why a save is refused, and keeps the changes to review again', async () => {
+    answers = { ...GRID(), change_permissions: { __error: 'Store Manager · Dash · Manager · Edit Sections was changed since you loaded the grid; reload it and try again' } }
+    const { all, click } = await render('roles')
+    await click(viewButton('Grid: Permissions'))
+    await click(cellButton(all, 'Edit Sections', 'r-sm'))
+    await click([...all('pending-bar')[0]!.querySelectorAll('button')].find(b => b.textContent === 'Review and save')!)
+    await click(all('review-save')[0]!)
+    expect(all('grid-review')[0]!.textContent).toContain('was changed since you loaded the grid')
+  })
+
+  it('is read-only for someone who may not change it: no stepping, no bar', async () => {
+    answers = GRID(false)
+    const { all, click } = await render('roles')
+    await click(viewButton('Grid: Permissions'))
+    expect([all('permissions-grid')[0]!.querySelectorAll('button').length, all('grid-cell-Dash / Manager / Edit / Sections-r-sm')[0]!.textContent]).toEqual([0, 'Area'])
+  })
+
+  it('asks before leaving the grid with changes waiting, and before the page is closed', async () => {
+    answers = GRID()
+    const { all, click } = await render('roles')
+    await click(viewButton('Grid: Permissions'))
+    await click(cellButton(all, 'Edit Sections', 'r-tl'))
+    const unload = new window.Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    await click(viewButton('Roles'))
+    expect(all('permissions-grid').length).toBe(1)
+    await click(viewButton('Roles'))
+    expect([confirm.mock.calls[0]![0], all('permissions-grid').length, all('role-list').length]).toEqual(['Leave the grid? Your change will not be saved.', 0, 1])
+    confirm.mockRestore()
+  })
+
+  // Verifier on the grid: the same verb and thing at two levels reads with its level, so two changes never read alike.
+  it('names the level in a review sentence where the same thing is changed at two levels', async () => {
+    const atTwo = { ...ROLES.business_roles.roles[0]!, permissions: [...ROLES.business_roles.roles[0]!.permissions,
+      { app: 'Dash', level: 'Reader', verb: 'Edit', thing: 'Sections', reach: 'Own', sentence: '', parts: [] }] }
+    answers = { business_roles: { ...GRID().business_roles, roles: [atTwo] } }
+    const { all, click } = await render('roles')
+    await click(viewButton('Grid: Permissions'))
+    await click(cellButton(all, 'Edit Sections', 'r-sm'))
+    await click(all('grid-cell-Dash / Reader / Edit / Sections-r-sm')[0]!.querySelector('button')!)
+    await click(cellButton(all, 'Give Reports', 'r-sm'))
+    await click([...all('pending-bar')[0]!.querySelectorAll('button')].find(b => b.textContent === 'Review and save')!)
+    expect(all('review-line').map(l => l.textContent)).toEqual(expect.arrayContaining([
+      'Store Managers · Edit Sections (Manager): in their area → everywhere', 'Store Managers · Edit Sections (Reader): their own → for their team',
+      'Store Managers · Give Reports: for their team → in their area']))
+  })
+
+  // UI owner: the reports grid, a tick in each cell, reviewed and saved as the permissions are.
+  it('shows reports and bundles × roles with ticks, and gives and takes away through the review', async () => {
+    answers = { ...GRID(), change_report_grants: { saved: 2 } }
+    const { all, click } = await render('roles')
+    await click(viewButton('Grid: Reports'))
+    expect([all('grid-group').map(g => g.textContent), all('grid-row-title').map(t => t.textContent)]).toEqual([['Reports', 'Bundles'], ['Visit Sales', 'Store pack']])
+    const tick = (row: string, role: string) => all(`grid-cell-${row}-${role}`)[0]!.querySelector('button')!
+    expect([tick('dash.report|vs', 'r-sm').textContent, tick('dash.report|vs', 'r-tl').textContent, tick('dash.report|vs', 'r-tl').getAttribute('title')])
+      .toEqual(['✓', '—', "Team Leaders aren't given Visit Sales"])
+    await click(tick('dash.report|vs', 'r-sm'))
+    await click(tick('dash.report_bundle|b1', 'r-tl'))
+    // Room under the last row while the dark bar shows.
+    expect(all('reports-grid')[0]!.className).toContain('pb-16')
+    await click([...all('pending-bar')[0]!.querySelectorAll('button')].find(b => b.textContent === 'Review and save')!)
+    expect(all('review-line').map(l => l.textContent)).toEqual(['Store Managers · Visit Sales: given → not given', 'Team Leaders · Store pack: not given → given'])
+    await click(all('review-save')[0]!)
+    expect(calls.find(c => c.name === 'change_report_grants')!.payload).toEqual({ changes: [
+      { role: 'r-sm', table: 'dash.report', key: 'vs', from: true, to: false },
+      { role: 'r-tl', table: 'dash.report_bundle', key: 'b1', from: false, to: true },
+    ] })
+  })
+
+  it('offers the grid only while both sides are small', async () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ id: `x${i}`, name: `Role ${i}`, permissions: [], reports: [], given: [], people: 0, people_from: 'nobody yet', holders: [], description: null, by_hand_only: false, reaches: 'x' }))
+    answers = GRID(true, many)
+    const { all, click } = await render('roles')
+    await click(viewButton('Grid: Permissions'))
+    expect(all('grid-too-big')[0]!.textContent).toContain('at most 40 roles and 40 permissions; here there are 42 roles and 2 permissions')
   })
 
   it('says how far a role reaches in plain words', async () => {

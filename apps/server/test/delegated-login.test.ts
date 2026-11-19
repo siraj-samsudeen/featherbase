@@ -531,11 +531,11 @@ describe('delegated sign-in test mode', () => {
     vi.stubEnv('ADMIN_PASSWORD', '')
     await sql`update person set password_hash = null where row_id = 'Administrator'`
     await bootstrapAdministrator('staging')
-    expect(await sql`select password_hash from person where row_id = 'Administrator'`).toEqual([{ password_hash: null }])
+    expect(await sql`select (select password_hash from person_credential where person_id = 'Administrator') as password_hash`).toEqual([{ password_hash: null }])
     await bootstrapAdministrator('dev')
-    expect(await sql`select password_hash from person where row_id = 'Administrator'`).toEqual([{ password_hash: null }])
+    expect(await sql`select (select password_hash from person_credential where person_id = 'Administrator') as password_hash`).toEqual([{ password_hash: null }])
     await bootstrapAdministrator('development')
-    expect((await sql`select password_hash from person where row_id = 'Administrator'`)[0].password_hash).not.toBeNull()
+    expect((await sql`select (select password_hash from person_credential where person_id = 'Administrator') as password_hash`)[0].password_hash).not.toBeNull()
   })
 
   test('the login page is told, so it can say so', async ({ api }) => {
@@ -635,7 +635,7 @@ describe('delegated sign-in through linked identities', () => {
     await expectStatus(await as('/api/access_tokens', { method: 'POST', body: JSON.stringify({ label: 'keep' }) }), 403)
     await expectStatus(await as(`/api/me/identities/${identity}`, { method: 'DELETE' }), 403)
     await expectStatus(await as('/api/oauth/google/link', { redirect: 'manual' }), 403)
-    const [row] = await sql`select password_hash from person where row_id = ${tl.user!}`
+    const [row] = await sql`select (select password_hash from person_credential where person_id = ${tl.user!}) as password_hash`
     expect(row.password_hash).toBeNull()
   })
 

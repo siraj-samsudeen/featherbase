@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { setViewedPerson, viewedPerson } from '../lib/viewing-as'
-import { Card, EmptyState, Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, iconButtonClasses, inputClasses } from '@featherbase/shop-floor'
+import { Card, EmptyState, Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, iconButtonClasses, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 
 export interface ViewAsPerson {
   person: string
@@ -241,7 +241,7 @@ export function ViewAsBanner() {
       </div>
       {error && <p role="alert" className="mt-1 text-xs">{error}</p>}
       {switching && (
-        <div className={cardClasses('absolute right-2 top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2 text-ink')} data-testid="view-as-switch-panel">
+        <div className={raisedClasses('absolute right-2 top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2 text-ink')} data-testid="view-as-switch-panel">
           <ViewAsPicker state={data} autoFocus />
         </div>
       )}
@@ -285,7 +285,7 @@ export function ViewAsButton({ compact, place = 'bar' }: {
         <UserRoundSearch aria-hidden size={place === 'rail' ? 18 : 16} />{place === 'bar' && !compact && <span>View as</span>}
       </button>}
       {open === 'dropdown' && (
-        <div className={cardClasses(`absolute ${place === 'bar' ? 'right-0' : 'left-0'} top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2`)} role="dialog" aria-label="View as" data-testid="view-as-dropdown">
+        <div className={raisedClasses(`absolute ${place === 'bar' ? 'right-0' : 'left-0'} top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2`)} role="dialog" aria-label="View as" data-testid="view-as-dropdown">
           <ViewAsPicker state={data} autoFocus />
         </div>
       )}

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { cardClasses, fmtClockTime, fmtDateTime } from '@featherbase/shop-floor'
+import { fmtClockTime, fmtDateTime, raisedClasses } from '@featherbase/shop-floor'
 import { PrincipalLink } from '../lib/people'
 
 /** #1267: a saved record's one save state, at the tab row's right end. Hover
@@ -50,7 +50,7 @@ export function SaveState({ dirty, savedHere, savedAt, updatedAt, updatedBy }: {
       </span>
       {open && detail && (
         <span id={id} role="tooltip" data-testid="save-state-detail" style={{ top: at.top, right: at.right }}
-          className={cardClasses('fixed z-30 whitespace-nowrap px-3 py-2 text-xs text-ink shadow-lg')}>
+          className={raisedClasses('fixed z-30 whitespace-nowrap px-3 py-2 text-xs text-ink')}>
           {detail}
         </span>
       )}

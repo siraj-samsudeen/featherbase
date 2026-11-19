@@ -5,7 +5,7 @@ import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import type { ParsedSheet } from '../lib/parse-file'
 import type { ImportTarget, MappableColumn, SheetPlan } from '../lib/import-plan'
-import { cardClasses, inputClasses } from '@featherbase/shop-floor'
+import { inputClasses, raisedClasses } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 
 // Named UI-side import thresholds (packages/shared/src/import.ts) — suggestion bets. (IMPORT_CHUNK
@@ -108,7 +108,7 @@ export function TargetPicker({
       />
       {open && (
         <div
-          className={cardClasses('absolute right-0 z-20 mt-1 max-h-80 w-72 overflow-y-auto p-1')}
+          className={raisedClasses('absolute right-0 z-20 mt-1 max-h-80 w-72 overflow-y-auto p-1')}
           data-testid={`iw-target-menu-${i}`}
         >
           <input

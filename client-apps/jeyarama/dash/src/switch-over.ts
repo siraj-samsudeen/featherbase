@@ -8,6 +8,7 @@
 // grants stay as they were, so the old rules keep working whichever way the switch is set (J5).
 import { DASH_APP, type Model } from './business-roles.ts'
 import { ROLE, PERMISSION, TITLE_MAP, businessModel, every } from './business-access.ts'
+import { permissionRowKey } from './permission-grid-server.ts'
 import { type Documents } from './provider.ts'
 import { DASH_READER_GRANT_ROLES, STARTING_ROLES, STARTING_TITLES } from './starting-roles.ts'
 import { accessKey, all } from './report-access-server.ts'
@@ -44,7 +45,7 @@ export async function ensureStartingRoles(read: Documents, write: Writer, log?: 
     const saved = await write.create(ROLE, { role_name: role.name, description: role.description, reaches: role.reaches, by_hand_only: !!role.by_hand_only })
     ids.set(key(role.name), exact(saved.row_id))
     for (const [app, level, verb, thing, reach] of role.grants)
-      await write.create(PERMISSION, { business_role: exact(saved.row_id), app, level, verb, thing, reach })
+      await write.create(PERMISSION, { business_role: exact(saved.row_id), app, level, verb, thing, reach, permission_key: permissionRowKey({ business_role: exact(saved.row_id), app, level, verb, thing }) })
     roles++
     await log?.({ step: 'Starting role', outcome: 'Added', business_role: exact(saved.row_id), detail: `Added the starting role ${role.name}, with its ${role.grants.length} permission${role.grants.length === 1 ? '' : 's'}` })
   }

@@ -97,7 +97,8 @@ describe('a first sign-in links the roster row', () => {
     const { user } = (await res.json()) as { user: { row_id: string } }
     expect(calls).toEqual([{ body: { email: CODE, password: PASSWORD } }])
     expect(await peopleCount()).toBe(before + 1)
-    const [person] = await sql`select row_id, full_name, email, enabled, password_hash from person where row_id = ${user.row_id}`
+    const [person] = await sql`select row_id, full_name, email, enabled,
+      (select c.password_hash from person_credential c where c.person_id = person.row_id) as password_hash from person where row_id = ${user.row_id}`
     expect(person).toMatchObject({ full_name: 'Made Up Crew', email: null, enabled: true, password_hash: null })
     const [row] = await crew()
     expect(row.login).toBe(user.row_id)
