@@ -3,13 +3,14 @@ import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
 import { Sentence, cx, fmtCount, useRecordHref, type SentencePart } from '@featherbase/shop-floor'
 import { api, listResource } from '../lib/api'
 import { useBacklinks } from '../lib/connections'
-import type { Filter } from '../lib/linked-filters'
+import { parseChain, type Filter } from '../lib/linked-filters'
 import { metaQuery, useMeta, type TableMeta } from '../lib/meta'
 import { narrowLists, pickFilter, splitPicks, togglePick, type MetaOf, type NarrowList, type Picked } from '../lib/narrow'
 import { filterRowName, useRowNames } from '../lib/relations'
 import { NOT_A_LOGIN } from '../lib/not-a-login'
 import { searchColumn } from './ListFilters'
 import { useFitToWindow } from '../lib/fit-to-window'
+import { useChainCountTip } from './LinkedFilter'
 
 // #1289 option C, Click To Narrow (board A, docs/design/mockups/look-and-relationships.html):
 // beside every list, one list of values per table the list's rows reach. Every
@@ -259,9 +260,13 @@ function useFound(list: NarrowList, q: string, values: Value[]): (value: string 
  *  or "Not linked to any Store". */
 export function NarrowPickWords({ list, picked }: { list: NarrowList; picked: Picked }) {
   const ids = Array.isArray(picked) ? picked : []
+  // A linked list's pick is a Linked to chain: how many rows each step holds is its tooltip, as on every Linked to chip (#1276).
+  const filter = list.kind === 'link' ? pickFilter(list, picked) : null
+  const chain = filter ? parseChain(filter) : null
+  const tip = useChainCountTip(chain?.steps ?? [])
   const records = list.kind !== 'choice'
   const names = useRowNames(records ? ids.map((row_id) => ({ table: list.table!, row_id })) : [])
-  if (picked === 'none') return <Sentence parts={[noneLabel(list)]} />
+  if (picked === 'none') return <span data-testid="linked-words" title={chain ? tip : undefined}><Sentence parts={[noneLabel(list)]} /></span>
   const parts: SentencePart[] = [`${list.label}: `]
   ids.forEach((id, i) => {
     if (i) parts.push(', ')
@@ -269,5 +274,5 @@ export function NarrowPickWords({ list, picked }: { list: NarrowList; picked: Pi
     parts.push(records && name?.state === 'read' ? { record: { table: list.table!, row: id, name: name.title } }
       : records ? filterRowName(name) : id)
   })
-  return <Sentence parts={parts} />
+  return <span data-testid={chain ? 'linked-words' : undefined} title={chain ? tip : undefined}><Sentence parts={parts} /></span>
 }
