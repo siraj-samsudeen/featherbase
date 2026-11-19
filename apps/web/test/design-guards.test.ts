@@ -211,6 +211,8 @@ describe.each(themes)('%s tokens', (_mode, t) => {
     ['tag-ink', 'tag'], ['ink', 'fill'], ['ink', 'fill-hover'], ['ink-muted', 'fill'], ['ink-subtle', 'fill'],
     ['ink', 'hover'], ['ink-subtle', 'hover'], ['action', 'hover'], ['action', 'subtle'],
     ...CHIP_HUES.map((hue) => [`chip-${hue}-ink`, `chip-${hue}`] as [string, string]),
+    // #1289 option C: a ruled-out value (still a control you can click).
+    ['ruled-out-ink', 'fill'],
   ]
   // #1348 (UI owner): a shadow doesn't show in dark, so a raised surface (the pane, a menu) is lighter than the
   // panel; the fills and the quiet block inside it still read against it.
