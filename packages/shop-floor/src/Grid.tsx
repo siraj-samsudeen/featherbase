@@ -68,7 +68,8 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
                 {tilt === 'flat'
                   ? <span className="line-clamp-2 break-words text-sm leading-tight">{column.header}</span>
                   // Tilted, the label is drawn outside the column's width: a narrow column, its name rising to the right.
-                  : <span className="absolute bottom-2 left-1/2 origin-bottom-left -rotate-45 whitespace-nowrap text-sm">{column.header}</span>}
+                  // Lifted above the band, so the next column's header does not paint over its rising name.
+                  : <span className="absolute bottom-2 left-1/2 z-10 origin-bottom-left -rotate-45 whitespace-nowrap text-sm">{column.header}</span>}
               </th>
             ))}
           </tr>
@@ -85,7 +86,7 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
                 )}
                 <tr className="group hover:bg-subtle">
                   {/* On a phone the title column is narrow and wraps to two lines, so the cells stay in reach (UI owner). */}
-                  <td data-column="" className="sticky left-0 border-r border-b border-border bg-surface px-3 py-2 whitespace-nowrap text-ink-muted group-hover:bg-subtle max-md:max-w-30 max-md:whitespace-normal" data-testid="grid-row-title">
+                  <td data-column="" className="sticky left-0 border-r border-b border-border bg-surface px-3 py-2 whitespace-nowrap text-ink-muted group-last:border-b-0 group-hover:bg-subtle max-md:max-w-30 max-md:whitespace-normal" data-testid="grid-row-title">
                     <span className="max-md:line-clamp-2">{row.titleNode ?? row.title}</span>
                   </td>
                   {columns.map((column) => {
@@ -96,7 +97,7 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
                       isWaiting ? 'bg-action-tint text-action outline-2 outline-action' : value === null ? 'text-ink-subtle' : 'bg-tag text-ink-muted')
                     const title = tooltip(row, column, value)
                     return (
-                      <td key={column.id} data-column={column.id} data-testid={`grid-cell-${row.id}-${column.id}`} data-waiting={String(isWaiting)} className="border-b border-border px-3 py-2 text-center">
+                      <td key={column.id} data-column={column.id} data-testid={`grid-cell-${row.id}-${column.id}`} data-waiting={String(isWaiting)} className="border-b border-border px-3 py-2 text-center group-last:border-b-0">
                         {readOnly
                           ? <span className={pill} title={title}>{labelOf(value)}</span>
                           : (
