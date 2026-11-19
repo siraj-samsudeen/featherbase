@@ -37,7 +37,7 @@ import { rememberListPlace } from './RecordNav'
 import { FilterBar, FilterChips, ListSearch, StandardFilters, hasFieldBoxes, heldByBoxes, type Filter } from './ListFilters'
 import { SavedViewsBar } from './SavedViewsBar'
 import { NarrowPanel, NarrowPickWords, useNarrowLists } from './NarrowPanel'
-import { splitPicks } from '../lib/narrow'
+import { setPick, splitPicks } from '../lib/narrow'
 import { LayoutSwitch } from './LayoutSwitch'
 import { RecordCards } from './RecordCards'
 import { RecentStrip } from './RecentStrip'
@@ -442,8 +442,20 @@ export function ListView({
   // #1289 option C: Click To Narrow, on a list whose filters the person changes.
   const narrowLists = useNarrowLists(table, meta.data, Boolean(onFiltersChange))
   const narrowPicks = narrowLists && narrowLists.length ? splitPicks(narrowLists, filters) : null
-  const pickedChips = narrowPicks && narrowLists
-    ? new Map(narrowPicks.owner.flatMap((i, k) => (i === null ? [] : [[k, <NarrowPickWords list={narrowLists[i]} picked={narrowPicks.picks[i]} />] as const])))
+  // One green chip per picked value, as board A draws them; removing one keeps the list's other picks.
+  const pickedChips = narrowPicks && narrowLists && onFiltersChange
+    ? new Map(narrowPicks.owner.flatMap((i, k) => {
+      if (i === null) return []
+      const list = narrowLists[i]
+      const picked = narrowPicks.picks[i]
+      const values: (string | null)[] = picked === 'none' ? [null] : picked ?? []
+      return [[k, values.map((v) => ({
+        key: v ?? '\u0000none',
+        name: list.label,
+        words: <NarrowPickWords list={list} picked={v === null ? 'none' : [v]} />,
+        onRemove: () => onFiltersChange(setPick(narrowLists, filters, i, v === null || !Array.isArray(picked) ? null : picked.filter((x) => x !== v)), { replace: true }),
+      }))] as const]
+    }))
     : undefined
   const narrowPanel = (columns: 1 | 2, className?: string) => onFiltersChange && narrowLists && narrowLists.length > 0 && (
     <NarrowPanel table={table} lists={narrowLists} filters={filters} baseFilters={baseFilters} withRetired={withRetired}

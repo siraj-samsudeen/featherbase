@@ -501,8 +501,8 @@ export function FilterChips({ meta, filters, onChange, held, picked, onSaveView,
   onChange: (filters: Filter[]) => void
   /** #1289: the filters a visible box already shows (heldByBoxes): they get no chip. */
   held?: Set<number>
-  /** #1289 option C: the filters Click To Narrow picked, by index, with their words; they read green. */
-  picked?: Map<number, import('react').ReactNode>
+  /** #1289 option C: the filters Click To Narrow picked, by index: one green chip per picked value. */
+  picked?: Map<number, { key: string; name: string; words: import('react').ReactNode; onRemove: () => void }[]>
   /** #1289 option C: Save As View beside the chips. */
   onSaveView?: () => void
   className?: string
@@ -512,9 +512,11 @@ export function FilterChips({ meta, filters, onChange, held, picked, onSaveView,
   const nameOf = ([column]: Filter) => (column === 'row_id' ? 'Row ID' : t(meta.columns.find((c) => c.column_name === column)?.label ?? String(column)))
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className ?? ''}`} data-testid="filter-chips">
-      {filters.map((f, i) => held?.has(i) ? null : (
-        <FilterChip key={i} name={nameOf(f)} onRemove={() => onChange(filters.filter((_, j) => j !== i))} tone={picked?.has(i) ? 'picked' : undefined}>
-          {picked?.has(i) ? picked.get(i) : <FilterWords meta={meta} filter={f} asLink />}
+      {filters.map((f, i) => held?.has(i) ? null : picked?.has(i) ? picked.get(i)!.map((chip) => (
+        <FilterChip key={`${i}\u0000${chip.key}`} name={chip.name} onRemove={chip.onRemove} tone="picked">{chip.words}</FilterChip>
+      )) : (
+        <FilterChip key={i} name={nameOf(f)} onRemove={() => onChange(filters.filter((_, j) => j !== i))}>
+          <FilterWords meta={meta} filter={f} asLink />
         </FilterChip>
       ))}
       {filters.length > 1 && (
