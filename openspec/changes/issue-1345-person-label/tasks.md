@@ -2,7 +2,7 @@
 
 - [ ] 1.1 Table setting `person_column` (migration 0176): a link to Person; kept on update, renamed with the column, carried in an app's replay
 - [ ] 1.2 Person labels: the platform layer (current employee code, email), gated by the viewer's read on Person, batched
-- [ ] 1.3 `person.describe` in the manifest; called once per request as the viewer, ~300 ms timeout, fail closed, first app with an appointment wins
+- [ ] 1.3 The app layer from `people.describe` (#1267), ~300 ms in search; each job may name its business role; store and role shown only where the viewer may read them
 - [ ] 1.4 Search folds person-record hits into their Person and sends each Person hit its label
 
 ## 2. Web
@@ -12,7 +12,7 @@
 
 ## 3. Dash
 
-- [ ] 3.1 Dash implements `person.describe` from its staff list (code, role, place, standing)
+- [ ] 3.1 Dash's describe names each job's business role (#1218), as Explain finds it
 
 ## 4. Checks
 

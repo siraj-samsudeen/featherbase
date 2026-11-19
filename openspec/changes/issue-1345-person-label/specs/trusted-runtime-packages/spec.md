@@ -1,19 +1,19 @@
 ## ADDED Requirements
 
-### Requirement: An app may describe people
+### Requirement: The app that says who people are names their business role
 
-An app MAY name a server read as `person.describe`. Given people, it answers each
-one's code, role, place, standing (current, left, consultant, supplier) and
-company. Featherbase SHALL ask it once per request, as the viewer, wait about
-300 ms, and on a failure or delay show its own layer alone. Where two apps answer, the
-first with an appointment wins and the conflict is logged (#1345).
+The app that says who people are (`people.describe`, #1267) MAY name, for each
+job, the business role it gives (#1218) as a record. Featherbase SHALL show a
+job's store and business role only where the viewer may read that record, by
+the record's own title, and SHALL wait about 300 ms for the app in search,
+showing its own layer alone when the app is off, failing or late (#1345).
+
+#### Scenario: A business role the viewer may read
+
+- **WHEN** Dash says a person's job gives the business role Store Manager, at a store the viewer may not read
+- **THEN** the person reads "Store Manager" and no store
 
 #### Scenario: A slow app
 
-- **WHEN** the app's describe read takes longer than its time
+- **WHEN** the app takes longer than its time to say who people are
 - **THEN** search answers without waiting, showing code and email
-
-#### Scenario: An app's answer about someone the viewer may not read
-
-- **WHEN** the app's answer names a role or place the viewer may not read
-- **THEN** nothing of it is shown

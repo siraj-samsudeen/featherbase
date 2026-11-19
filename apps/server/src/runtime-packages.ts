@@ -137,12 +137,7 @@ const manifestSchema = z.object({
   // roles), by one of its reads run as the viewer with { table, row }; the record panel draws them.
   // #1282 C10–C11, #1345: what an app says about a Person, in one place apps learn: `sections` names the read that works
   // out the Lens's sections about one person ("Apps They Can Open"). #1345 adds `describe` beside it.
-  // #1345: `describe` names the read that says who people are on the staff list (role, place, standing), for the
-  // shared Person Label; the platform shows each part only where the viewer may read the record it names.
-  person: z.object({
-    sections: z.object({ read: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/) }).strict().optional(),
-    describe: z.object({ read: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/) }).strict().optional(),
-  }).strict().optional(),
+  person: z.object({ sections: z.object({ read: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/) }).strict().optional() }).strict().optional(),
   // #1282 G1–G6: the areas people pick on the trees: each axis a list of levels,
   // each a Table read by its title and linked to the level above by `parent`,
   // with the words a staff screen says and, where an admin screen says other ones, those.
@@ -508,10 +503,6 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   const sections = manifest.person?.sections
   if (sections && !Object.hasOwn(readOperations, sections.read))
     throw new Error(`The app's person sections come from ${sections.read}, which is not one of the app's reads`)
-  // #1345: the same for the read that describes people.
-  const describe = manifest.person?.describe
-  if (describe && !Object.hasOwn(readOperations, describe.read))
-    throw new Error(`The app's person descriptions come from ${describe.read}, which is not one of the app's reads`)
   // #1282: a Why only reads: both its names must be the app's reads, never its actions.
   for (const [table, why] of Object.entries(manifest.why ?? {})) {
     if (!Object.hasOwn(readOperations, why.explain))
@@ -734,10 +725,6 @@ export function runPackageRead(app: string, read: string, input: unknown, user: 
 export function runPublicPackageRead(app: string, read: string, input: unknown, user: string, discovery = false) {
   if (packages.get(app)?.manifest.person?.sections?.read === read)
     throw new AppError('PermissionError', "This read answers only through the record panel's worked-out sections")
-  // #1345: likewise the read that describes people: it answers only through the Person Label, which shows each
-  // part only where the viewer may read the record it names.
-  if (packages.get(app)?.manifest.person?.describe?.read === read)
-    throw new AppError('PermissionError', 'This read answers only through the Person Label')
   return runPackageRead(app, read, input, user, discovery)
 }
 
@@ -1127,26 +1114,6 @@ export async function workedOutDeclarationFor(table: string, user: string): Prom
     return { app: pkg.name, version: pkg.version, read: worked.read }
   }
   return null
-}
-
-/** #1345: the apps that describe people (their manifest's `person.describe`), in installation order, for `user`:
- *  only installed, active apps the user may open (each one's entry Table and its own gate). */
-export async function describingApps(user: string): Promise<{ app: string; version: string; read: string }[]> {
-  const found = []
-  for (const item of await listInstalledApps()) {
-    const pkg = packages.get(item.name)
-    const describe = pkg?.manifest.person?.describe
-    if (!item.active || !pkg || !describe) continue
-    if (!(await hasPermission(user, pkg.entryTable, 'read')) || !(await passesGate(pkg, user))) continue
-    found.push({ app: pkg.name, version: pkg.version, read: describe.read })
-  }
-  return found
-}
-
-/** #1345: one app's answer about `persons`, read as `user` under its identity; whatever it says is checked by the
- *  caller (person-labels.ts) before anyone sees it. */
-export function describePeopleWith(app: { app: string; version: string; read: string }, persons: string[], user: string) {
-  return withAppIdentity(app.app, app.version, () => runPackageRead(app.app, app.read, { payload: { persons } }, user))
 }
 
 /** #1282: the app that explains records of `table` (its manifest's `why`), for
