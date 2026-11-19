@@ -784,10 +784,13 @@ async function exportUnderLock(): Promise<ExportResult> {
 type PlannedRow = { row_id: string; values: Record<string, unknown> }
 const overrideKey = (v: Record<string, unknown>) => `${String(v.table_name ?? '')}\u0000${String(v.column_name ?? '')}\u0000${String(v.property ?? '')}`
 
-/** The file may set only FILE_OVERRIDE_PROPERTIES, each override named once. */
+/** The file may set only FILE_OVERRIDE_PROPERTIES, each override named once. A row with a problem is not
+ *  saved, so the file's own words are the problem reported (the whole apply is refused either way). */
 function overrideProblems(rows: PlannedRow[], problems: Record<string, string>) {
   const seen = new Set<string>()
-  for (const { row_id, values } of rows) {
+  for (const row of [...rows]) {
+    const { row_id, values } = row
+    const before = Object.keys(problems).length
     const where = `Metadata Override.${row_id}`
     const scope = values.column_name ? 'column' : 'table'
     const allowed: readonly string[] = FILE_OVERRIDE_PROPERTIES[scope]
@@ -797,6 +800,7 @@ function overrideProblems(rows: PlannedRow[], problems: Record<string, string>) 
       problems[`${where}.property`] = `Metadata Override property ${String(values.property)} cannot be set by the settings file (it may set, on a ${scope}: ${allowed.join(', ')})`
     if (seen.has(overrideKey(values))) problems[where] = 'Metadata Override names the same Table, column and property twice'
     seen.add(overrideKey(values))
+    if (Object.keys(problems).length > before) rows.splice(rows.indexOf(row), 1)
   }
 }
 

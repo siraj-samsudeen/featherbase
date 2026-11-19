@@ -4,6 +4,7 @@ import { hasPermission } from './permissions'
 import { scopedWhere } from './query'
 import { tableLabel } from './access-explanation'
 import { getMeta } from './meta'
+import { readableTitles, recordKey } from './record-titles'
 import { personLabels, type PersonLabel } from './person-labels'
 import { isSensitiveColumn } from './sensitive-columns'
 
@@ -189,15 +190,15 @@ async function personsOf(table: string, column: string, rowIds: string[], user: 
   return new Map(rows.filter((r) => r.person).map((r) => [String(r.id), String(r.person)]))
 }
 
-/** Each person's title (their name), for the people the viewer may read and see named; an opaque id
- *  names no one (#1265), so a person with no readable name is not folded in. */
+/** Each person's title (their name), for the people the viewer may read and see named: their title as
+ *  record-titles reads it for the viewer (none where they may not read it). An opaque id names no one
+ *  (#1265), so a person named only by their id is not folded in. */
 async function personTitles(ids: string[], user: string): Promise<Map<string, string>> {
-  if (!ids.length) return new Map()
-  const { meta, table, where, cols, readExpression } = await scopedWhere('Person', user, [])
-  // A name the viewer may not read names no one: the record's own hit stays (Codex standard round 1).
-  if (!meta.title_column || !cols.has(meta.title_column)) return new Map()
-  const rows = await sql`select row_id, ${readExpression(meta.title_column)}::text as title from ${sql(table)} where ${where} and row_id = any(${ids})`
-  return new Map(rows.filter((r) => String(r.title ?? '').trim()).map((r) => [String(r.row_id), String(r.title).trim()]))
+  const titles = await readableTitles(ids.map((row_id) => ({ table: 'Person', row_id })), user)
+  return new Map(ids.flatMap((id) => {
+    const title = titles.get(recordKey({ table: 'Person', row_id: id }))
+    return title && title !== id ? [[id, title] as const] : []
+  }))
 }
 
 async function searchOne(t: Record<string, unknown>, user: string, { exact, prefix, like }: { exact: string; prefix: string; like: string }): Promise<SearchHit[]> {
