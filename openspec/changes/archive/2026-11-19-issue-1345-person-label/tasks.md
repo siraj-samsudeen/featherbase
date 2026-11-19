@@ -1,6 +1,6 @@
 ## 1. Server (#1345 slice 1)
 
-- [x] 1.1 Table setting `person_column` (migration 0176): a link to Person; kept on update, renamed with the column, carried in an app's replay
+- [x] 1.1 Table setting `person_column` (migration 0182): a link to Person; kept on update, renamed with the column, carried in an app's replay
 - [x] 1.2 Person labels: the platform layer (current employee code, email), gated by the viewer's read on Person, batched
 - [x] 1.3 The app layer from `people.describe` (#1267), ~300 ms in search; each job may name its business role; store and role shown only where the viewer may read them
 - [x] 1.4 Search folds person-record hits into their Person and sends each Person hit its label
