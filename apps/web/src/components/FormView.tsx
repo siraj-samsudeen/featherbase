@@ -783,7 +783,7 @@ export function FormView({
               data-testid="form-purge"
               className={menuItemClasses({ tone: 'negative' })}
             >
-              {t('Delete Permanently')}
+              {t('Delete With History…')}
             </button>
           )}
           {/* TLC-J2.1: the row I am looking at is the row I can remove.
@@ -911,6 +911,8 @@ export function FormView({
             {deleteError && (
               <p className="mb-3 text-sm text-negative" data-testid="delete-row-error">
                 {deleteError}
+                {/* #1348 (UI owner): the line that offers Retire names a System Manager's other way out. */}
+                {deleteOffersRetire && access.data?.purge && ' Or Delete With History (System Managers).'}
               </p>
             )}
             <div className="flex flex-wrap justify-end gap-2 [&>button]:whitespace-nowrap">
@@ -924,7 +926,7 @@ export function FormView({
                   className={buttonClasses({ variant: 'danger' })}
                   data-testid="delete-row-purge-instead"
                 >
-                  Delete Permanently
+                  Delete With History…
                 </button>
               )}
               {deleteOffersRetire && access.data?.retire && (
