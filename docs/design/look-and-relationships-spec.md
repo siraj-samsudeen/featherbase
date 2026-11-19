@@ -9,7 +9,7 @@ The UI owner agreed to v2; v3 routed 19-Nov-2026 (siraj-samsudeen/featherbase):
 - #1350 five views, order N5, N1, N3, N2, N4 (30–34) → relnav, after its queue
 Changes from Siraj go through the UI owner, who updates the issues.
 Business rules for #1350 (Siraj, 19-Nov-2026):
-- Rule 1 · Which plant: a sentence lists ALL the site's plants ("Bayside (plants 9101 Fashion Store, 9102 Supermarket, 9103 E-commerce)") until a section is linked to its plant; then it names that one. Never guess a plant.
+- Rule 1 · No plant for a section (revised by Siraj 19-Nov-2026, #1351 dropped): sections sit under the store only. A sentence about a person or section names its store ("Ethnic Wear, First Floor, at Bayside"), never a plant. Plants appear only on the site's own record. (Superseded: "list all the site's plants until a section is linked to one".)
 - Rule 2 · Missing team leader: a section with no team leader recorded is a red "Things To Check" gap on the section, subcategory and store pages; a section can be marked "No team leader needed", which turns it off for that section only.
 Issues in the public featherbase repo use made-up examples only (Bayside, Northgate, Kumar Test-Staff…).
 
