@@ -8,7 +8,7 @@
 ## 2. Wave 2 · Live Cells (board B)
 
 - [ ] 2.1 The ▾ value menu: Only, Leave out, Open.
-- [ ] 2.2 Count previews and "+ Linked count" columns.
+- [ ] 2.2 Count previews and "+ Linked count" columns. The hover on a count (item 28) reuses #1349's shared shop-floor hover card (first rows as RecordLinks, "+ N more", "Open all N as a list"); no card of its own. Keep `narrowLists` and `:narrow` callable from the record page's count row (the two-hop count issue).
 
 ## 3. Wave 3 · Connections (board C)
 
