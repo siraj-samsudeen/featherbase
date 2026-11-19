@@ -80,8 +80,3 @@ test('choosing the app you are in closes the menu and stays', async ({ admin }) 
   expect((r.router as { state: { location: { pathname: string } } }).state.location.pathname).toBe('/featherbase/admin/all-tables')
 })
 
-test("choosing Featherbase from an app's page on the Admin's own address goes to the Admin", async ({ admin }) => {
-  const r = await renderApp('/featherbase/sales-target', admin)
-  await chooseApp(screen, 'Featherbase', WAIT)
-  await waitFor(() => expect((r.router as { state: { location: { pathname: string } } }).state.location.pathname).toMatch(/^\/featherbase\/admin/), WAIT)
-})

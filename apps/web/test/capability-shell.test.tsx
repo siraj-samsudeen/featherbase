@@ -1,4 +1,4 @@
-// #410: the shell shows only what the person can use. Three layouts, driven
+// #410: the shell shows only what the person can use. Two layouts, driven
 // by `capabilities` from /api/whoami — computed on the server, never guessed
 // from role names in the browser.
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
@@ -6,7 +6,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
 import { sql } from 'server/src/db'
-import { VIEWER_ROLE } from 'server/src/sales-target'
 import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
 import { resolve } from 'node:path'
 import { discoverPackages } from 'server/src/runtime-packages'
@@ -33,7 +32,7 @@ function recordCalls(): string[] {
 }
 
 async function seed(admin: Admin) {
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Store Reader' } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
   await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
@@ -85,9 +84,9 @@ test('a Person reader without management access cannot see administrative sign-i
   expect(urls.filter((u) => u.includes('/identities') || u === '/api/me/sign_in_methods')).toEqual([])
 })
 
-test('a viewer-only person reaches their sign-in methods on the account page, still without Admin calls', async ({ admin, createUser }) => {
+test('a person whose role opens no Admin reaches their sign-in methods on the account page, still without Admin calls', async ({ admin, createUser }) => {
   await seed(admin)
-  const tl = await createUser({ email: 'tl2@example.com', roles: [VIEWER_ROLE] })
+  const tl = await createUser({ email: 'tl2@example.com', roles: ['Store Reader'] })
   const urls = recordCalls()
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, tl)
   expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
@@ -99,7 +98,7 @@ test('a viewer-only person reaches their sign-in methods on the account page, st
   expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog\/closed|unread_count|events|navigable_tables)/.test(u))).toEqual([])
 })
 
-test('a person with neither the viewer role nor a Table grant lands on a plain no-access page, which asks for access', async ({ admin, createUser }) => {
+test('a person with no Table grant lands on a plain no-access page, which asks for access', async ({ admin, createUser }) => {
   await seed(admin)
   const nobody = await createUser({ email: 'nobody@example.com' })
   const urls = recordCalls()
@@ -151,21 +150,19 @@ test('the no-access page still says so when asking for access fails', async ({ c
 })
 
 test('a failed refresh of whoami keeps the shell the person already has', () => {
-  const caps = { manage: false, report: false, admin: true, own_grant: true, tables: ['Shelf Note'], creatable: [], archived: [] }
+  const caps = { manage: false, admin: true, own_grant: true, tables: ['Shelf Note'], creatable: [], archived: [] }
   expect(shellKindOf({ isError: true, data: { capabilities: caps } })).toBe('admin')
   expect(shellKindOf({ isError: true, data: undefined })).toBe('failed')
   expect(shellKindOf({ isError: false, data: undefined })).toBe('loading')
 })
 
 // (5) Grants to the implicit All role come from runtime apps; they list a Table, they do not earn the shell.
-test('a viewer whose only grants are to the All role is offered the report, not the Admin', async ({ admin, createUser }) => {
+test('a person whose only grants are to the All role gets the no-access page, not the Admin', async ({ admin, createUser }) => {
   await seed(admin)
   await sql`insert into permission (row_id, ref_table, role, operation, scope_mode, column_rule) values ('all-grant-web', 'Back Office', 'All', 'read', 'all', 'basic')`
-  const tl = await createUser({ email: 'tl-all@example.com', roles: [VIEWER_ROLE] })
+  const tl = await createUser({ email: 'tl-all@example.com', roles: ['Store Reader'] })
   await renderApp('/featherbase/admin/all-tables', tl)
-  // #1327 (audit F08): told and offered the report, not moved there.
-  const page = await screen.findByTestId('problem-no-access', {}, { timeout: 8000 })
-  expect(page).toHaveTextContent('The Admin isn’t part of your account')
+  await screen.findByTestId('no-access', {}, { timeout: 8000 })
   expect(screen.queryByTestId('admin-sidebar')).not.toBeInTheDocument()
 })
 

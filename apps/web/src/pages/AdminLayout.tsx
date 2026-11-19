@@ -3,7 +3,7 @@ import { GROUP_TONE, RAIL_ROW, ROW_IDLE, ROW_SELECTED, RailFold, RailMenuItem, R
 import { attachRailTips, railMark, sidebarWords } from '../lib/sidebar-rail'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { SIDEBAR_VIEWS_KEY, useNavigationSettings } from '../lib/nav-settings'
 import { pathHref } from '../lib/navigation'
 import { encodePath, type NavPath } from '../lib/nav-path'
@@ -39,7 +39,7 @@ import { useI18n } from '../lib/i18n'
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, useRegisterSidebar, useSidebar } from '../lib/sidebar-collapsed'
 import { KindIcon } from '../lib/kind-icons'
 import { DataSourcesSidebar } from '../components/DataSourcesSidebar'
-import { AdminNotInAccount, NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
+import { NoAccessPage, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
@@ -114,10 +114,6 @@ function AdminLayoutForKind({ fillHeight }: { fillHeight: boolean }) {
       </div>
     )
   if (kind === 'no-access') return <NoAccessPage />
-  // A report reader has no Admin page left: their sign-in methods are an
-  // account page now (#489). #1327 (audit F08): an Admin address says so and
-  // offers the report, keeping the address; it never moves them silently.
-  if (kind === 'report-only') return <AdminNotInAccount />
   return <AdminShell fillHeight={fillHeight} />
 }
 
@@ -484,8 +480,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   function openPage(page: CommandPageDestination) {
     recordSearch(search.trim())
     dismissSearch()
-    // Runtime apps and pages with their own frame policy need a full load.
-    if (page.kind === 'App' || page.kind === 'App tab' || ownFramePolicyPage(page.href)) window.location.assign(page.href)
+    // Runtime apps need a full load.
+    if (page.kind === 'App' || page.kind === 'App tab') window.location.assign(page.href)
     else router.history.push(page.href)
   }
 
