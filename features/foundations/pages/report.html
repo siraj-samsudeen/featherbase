@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Featherbase Report</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="pages.css">
+</head>
+<body>
+<!-- Mock-up of a report, in the same look as screens.html and with the same pages.css.
+     Every number comes from samples/employees/employees.csv. The charts are plain SVG, drawn by the server:
+     no chart library and no script. Hovering a mark shows its value (an SVG <title>), and each chart keeps
+     its numbers as a table under "Show the numbers". The only script is the mock-up's theme switch. -->
+<div class="frame">
+
+<div class="mock">
+  <span><b>Mock-up</b> · figures worked out from the sample rows</span>
+  <span class="opt">Theme <span class="seg" id="theme"><button type="button" data-v="" aria-pressed="true">System</button><button type="button" data-v="light" aria-pressed="false">Light</button><button type="button" data-v="dark" aria-pressed="false">Dark</button></span></span>
+  <a href="screens.html">Back to the screens</a>
+</div>
+
+<div class="app">
+  <nav class="side" aria-label="Featherbase">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect width="22" height="22" rx="6" fill="var(--accent)"/><path d="M15.5 5.5c-4.5.5-8 4-8.5 10.5M7 16l2.5-2.5M10 9.5c1.8.4 3.2.3 4.5-.5" fill="none" stroke="var(--accent-fg)" stroke-width="1.7" stroke-linecap="round"/></svg>
+      Featherbase
+    </div>
+    <div class="nav"><a href="screens.html#home">Home</a></div>
+    <div><div class="nav-label">Tables · main</div><div class="nav"><a href="screens.html#employees">Employees <span class="n">24</span></a></div></div>
+    <div><div class="nav-label">Reports</div><div class="nav"><a href="report.html" aria-current="page">Employees overview</a></div></div>
+    <div><div class="nav-label">Uploads</div><div class="nav"><a href="screens.html#home">employees.csv <span class="n">24</span></a></div></div>
+  </nav>
+
+  <div class="main">
+   <section class="view">
+    <div class="bar">
+      <h1>Employees overview</h1><span class="count">From Employees · 24 rows · as of 19-Nov-2026</span>
+      <span class="grow"></span>
+      <a class="btn opt-wide" href="screens.html#employees">Open Employees</a>
+    </div>
+    <div class="page"><div class="col" style="max-width: 1100px">
+
+      <dl class="figures">
+        <div class="box figure"><dt>Employees</dt><dd>24</dd><small>every row in the Table</small></div>
+        <div class="box figure"><dt>Active</dt><dd>21</dd><small>88% of all rows</small></div>
+        <div class="box figure"><dt>Left in 2025</dt><dd>3</dd><small>Esther, Naveen, Uma</small></div>
+        <div class="box figure"><dt>Average weekly hours</dt><dd>39.7</dd><small>active employees, from 36 to 48</small></div>
+      </dl>
+
+      <div class="charts">
+        <figure class="box chart wide">
+          <div><h3>Headcount at the end of each year</h3><p class="say">Grew by two or three a year to 24 in 2024. Three people left in 2025.</p></div>
+          <svg viewBox="0 0 960 240" role="img" aria-label="Headcount at the end of each year, 2015 to 2025: rising from 3 to 24 by 2024, then 21 in 2025 after three people left."><line class="base-line" x1="36" x2="916" y1="212" y2="212"/><text class="tick" x="28" y="216" text-anchor="end">0</text><line class="grid-line" x1="36" x2="916" y1="172.8" y2="172.8"/><text class="tick" x="28" y="176.8" text-anchor="end">5</text><line class="grid-line" x1="36" x2="916" y1="133.6" y2="133.6"/><text class="tick" x="28" y="137.6" text-anchor="end">10</text><line class="grid-line" x1="36" x2="916" y1="94.4" y2="94.4"/><text class="tick" x="28" y="98.4" text-anchor="end">15</text><line class="grid-line" x1="36" x2="916" y1="55.2" y2="55.2"/><text class="tick" x="28" y="59.2" text-anchor="end">20</text><line class="grid-line" x1="36" x2="916" y1="16" y2="16"/><text class="tick" x="28" y="20" text-anchor="end">25</text><path class="area" d="M36,212L36,188.5L124,165L212,141.4L300,117.9L388,102.2L476,86.6L564,70.9L652,55.2L740,39.5L828,23.8L916,47.4L916,212z"/><polyline class="line" points="36,188.5 124,165 212,141.4 300,117.9 388,102.2 476,86.6 564,70.9 652,55.2 740,39.5 828,23.8 916,47.4"/><g class="pt"><title>End of 2015: 3 employees</title><rect class="hit" x="-8" y="16" width="88" height="196"/><circle class="dot" cx="36" cy="188.5" r="3.5"/><text class="tick" x="36" y="232" text-anchor="middle">2015</text></g><g class="pt"><title>End of 2016: 6 employees</title><rect class="hit" x="80" y="16" width="88" height="196"/><circle class="dot" cx="124" cy="165" r="3.5"/><text class="tick" x="124" y="232" text-anchor="middle">2016</text></g><g class="pt"><title>End of 2017: 9 employees</title><rect class="hit" x="168" y="16" width="88" height="196"/><circle class="dot" cx="212" cy="141.4" r="3.5"/><text class="tick" x="212" y="232" text-anchor="middle">2017</text></g><g class="pt"><title>End of 2018: 12 employees</title><rect class="hit" x="256" y="16" width="88" height="196"/><circle class="dot" cx="300" cy="117.9" r="3.5"/><text class="tick" x="300" y="232" text-anchor="middle">2018</text></g><g class="pt"><title>End of 2019: 14 employees</title><rect class="hit" x="344" y="16" width="88" height="196"/><circle class="dot" cx="388" cy="102.2" r="3.5"/><text class="tick" x="388" y="232" text-anchor="middle">2019</text></g><g class="pt"><title>End of 2020: 16 employees</title><rect class="hit" x="432" y="16" width="88" height="196"/><circle class="dot" cx="476" cy="86.6" r="3.5"/><text class="tick" x="476" y="232" text-anchor="middle">2020</text></g><g class="pt"><title>End of 2021: 18 employees</title><rect class="hit" x="520" y="16" width="88" height="196"/><circle class="dot" cx="564" cy="70.9" r="3.5"/><text class="tick" x="564" y="232" text-anchor="middle">2021</text></g><g class="pt"><title>End of 2022: 20 employees</title><rect class="hit" x="608" y="16" width="88" height="196"/><circle class="dot" cx="652" cy="55.2" r="3.5"/><text class="tick" x="652" y="232" text-anchor="middle">2022</text></g><g class="pt"><title>End of 2023: 22 employees</title><rect class="hit" x="696" y="16" width="88" height="196"/><circle class="dot" cx="740" cy="39.5" r="3.5"/><text class="tick" x="740" y="232" text-anchor="middle">2023</text></g><g class="pt"><title>End of 2024: 24 employees</title><rect class="hit" x="784" y="16" width="88" height="196"/><circle class="dot" cx="828" cy="23.8" r="5"/><text class="tick" x="828" y="232" text-anchor="middle">2024</text></g><g class="pt"><title>End of 2025: 21 employees</title><rect class="hit" x="872" y="16" width="88" height="196"/><circle class="dot" cx="916" cy="47.4" r="5"/><text class="tick" x="916" y="232" text-anchor="middle">2025</text></g><text class="value strong" x="926" y="51.4">21</text><text class="value" x="828" y="11.8" text-anchor="middle">24</text></svg>
+          <details><summary>Show the numbers</summary><table><thead><tr><th>Year</th><th class="num">Employees at year end</th></tr></thead><tbody><tr><td>2015</td><td class="num">3</td></tr><tr><td>2016</td><td class="num">6</td></tr><tr><td>2017</td><td class="num">9</td></tr><tr><td>2018</td><td class="num">12</td></tr><tr><td>2019</td><td class="num">14</td></tr><tr><td>2020</td><td class="num">16</td></tr><tr><td>2021</td><td class="num">18</td></tr><tr><td>2022</td><td class="num">20</td></tr><tr><td>2023</td><td class="num">22</td></tr><tr><td>2024</td><td class="num">24</td></tr><tr><td>2025</td><td class="num">21</td></tr></tbody></table></details>
+        </figure>
+
+        <figure class="box chart">
+          <div><h3>Employees by department</h3><p class="say">Each department has four or five people. The pale part of a bar is people who left.</p></div>
+          <div class="key-row" aria-hidden="true"><span><i style="--c: var(--faint)"></i>Active</span><span><i class="pale" style="--c: var(--faint)"></i>Left</span></div>
+          <svg viewBox="0 0 460 196" role="img" aria-label="Employees by department. Accounts: 4 active, 1 left. Billing: 5 active, 0 left. Sales: 4 active, 1 left. Stores: 5 active, 0 left. Tailoring: 3 active, 1 left."><line class="base-line" x1="84" x2="84" y1="4" y2="174"/><text class="tick" x="84" y="190" text-anchor="middle">0</text><line class="grid-line" x1="140" x2="140" y1="4" y2="174"/><text class="tick" x="140" y="190" text-anchor="middle">1</text><line class="grid-line" x1="196" x2="196" y1="4" y2="174"/><text class="tick" x="196" y="190" text-anchor="middle">2</text><line class="grid-line" x1="252" x2="252" y1="4" y2="174"/><text class="tick" x="252" y="190" text-anchor="middle">3</text><line class="grid-line" x1="308" x2="308" y1="4" y2="174"/><text class="tick" x="308" y="190" text-anchor="middle">4</text><line class="grid-line" x1="364" x2="364" y1="4" y2="174"/><text class="tick" x="364" y="190" text-anchor="middle">5</text><g class="pt s1"><title>Accounts: 4 active, 1 left</title><rect class="hit" x="0" y="4" width="460" height="34"/><text class="label" x="74" y="25" text-anchor="end">Accounts</text><path class="mark" d="M84,12h223v18h-223z"/><path class="mark pale" d="M309,12h51a4,4 0 0 1 4,4v10a4,4 0 0 1 -4,4h-51z"/><text class="value" x="372" y="25">4 <tspan class="tick">+ 1 left</tspan></text></g><g class="pt s2"><title>Billing: 5 active, 0 left</title><rect class="hit" x="0" y="38" width="460" height="34"/><text class="label" x="74" y="59" text-anchor="end">Billing</text><path class="mark" d="M84,46h276a4,4 0 0 1 4,4v10a4,4 0 0 1 -4,4h-276z"/><text class="value" x="372" y="59">5</text></g><g class="pt s3"><title>Sales: 4 active, 1 left</title><rect class="hit" x="0" y="72" width="460" height="34"/><text class="label" x="74" y="93" text-anchor="end">Sales</text><path class="mark" d="M84,80h223v18h-223z"/><path class="mark pale" d="M309,80h51a4,4 0 0 1 4,4v10a4,4 0 0 1 -4,4h-51z"/><text class="value" x="372" y="93">4 <tspan class="tick">+ 1 left</tspan></text></g><g class="pt s4"><title>Stores: 5 active, 0 left</title><rect class="hit" x="0" y="106" width="460" height="34"/><text class="label" x="74" y="127" text-anchor="end">Stores</text><path class="mark" d="M84,114h276a4,4 0 0 1 4,4v10a4,4 0 0 1 -4,4h-276z"/><text class="value" x="372" y="127">5</text></g><g class="pt s5"><title>Tailoring: 3 active, 1 left</title><rect class="hit" x="0" y="140" width="460" height="34"/><text class="label" x="74" y="161" text-anchor="end">Tailoring</text><path class="mark" d="M84,148h167v18h-167z"/><path class="mark pale" d="M253,148h51a4,4 0 0 1 4,4v10a4,4 0 0 1 -4,4h-51z"/><text class="value" x="316" y="161">3 <tspan class="tick">+ 1 left</tspan></text></g></svg>
+          <details><summary>Show the numbers</summary><table><thead><tr><th>Department</th><th class="num">Active</th><th class="num">Left</th></tr></thead><tbody><tr><td><span class="chip s1">Accounts</span></td><td class="num">4</td><td class="num">1</td></tr><tr><td><span class="chip s2">Billing</span></td><td class="num">5</td><td class="num">0</td></tr><tr><td><span class="chip s3">Sales</span></td><td class="num">4</td><td class="num">1</td></tr><tr><td><span class="chip s4">Stores</span></td><td class="num">5</td><td class="num">0</td></tr><tr><td><span class="chip s5">Tailoring</span></td><td class="num">3</td><td class="num">1</td></tr></tbody></table></details>
+        </figure>
+
+        <figure class="box chart">
+          <div><h3>People who joined each year</h3><p class="say">Three a year from 2015 to 2018, two a year since. Nobody joined in 2025.</p></div>
+          <svg viewBox="0 0 460 200" role="img" aria-label="People who joined each year: 2015: 3, 2016: 3, 2017: 3, 2018: 3, 2019: 2, 2020: 2, 2021: 2, 2022: 2, 2023: 2, 2024: 2, 2025: 0."><line class="base-line" x1="28" x2="452" y1="174" y2="174"/><text class="tick" x="20" y="178" text-anchor="end">0</text><line class="grid-line" x1="28" x2="452" y1="134" y2="134"/><text class="tick" x="20" y="138" text-anchor="end">1</text><line class="grid-line" x1="28" x2="452" y1="94" y2="94"/><text class="tick" x="20" y="98" text-anchor="end">2</text><line class="grid-line" x1="28" x2="452" y1="54" y2="54"/><text class="tick" x="20" y="58" text-anchor="end">3</text><line class="grid-line" x1="28" x2="452" y1="14" y2="14"/><text class="tick" x="20" y="18" text-anchor="end">4</text><g class="pt"><title>2015: 3 joined</title><rect class="hit" x="28" y="14" width="38.5" height="160"/><path class="mark" style="--c: var(--accent)" d="M35.3,174v-116a4,4 0 0 1 4,-4h16a4,4 0 0 1 4,4v116z"/><text class="tick" x="47.3" y="192" text-anchor="middle">2015</text></g><g class="pt"><title>2016: 3 joined</title><rect class="hit" x="66.5" y="14" width="38.5" height="160"/><path class="mark" style="--c: var(--accent)" d="M73.8,174v-116a4,4 0 0 1 4,-4h16a4,4 0 0 1 4,4v116z"/><text class="tick" x="85.8" y="192" text-anchor="middle">’16</text></g><g class="pt"><title>2017: 3 joined</title><rect class="hit" x="105.1" y="14" width="38.5" height="160"/><path class="mark" style="--c: var(--accent)" d="M112.4,174v-116a4,4 0 0 1 4,-4h16a4,4 0 0 1 4,4v116z"/><text class="tick" x="124.4" y="192" text-anchor="middle">’17</text></g><g class="pt"><title>2018: 3 joined</title><rect class="hit" x="143.6" y="14" width="38.5" height="160"/><path class="mark" style="--c: var(--accent)" d="M150.9,174v-116a4,4 0 0 1 4,-4h16a4,4 0 0 1 4,4v116z"/><text class="tick" x="162.9" y="192" text-anchor="middle">’18</text></g><g class="pt"><title>2019: 2 joined</title><rect class="hit" x="182.2" y="14" width="38.5" height="160"/><path class="mark" style="--c: var(--accent)" d="M189.5,174v-76a4,4 0 0 1 4,-4h16a4,4 0 0 1 4,4v76z"/><text class="tick" x="201.5" y="192" text-anchor="middle">’19</text></g><g class="pt"><title>2020: 2 joined</title><rect class="hit" x="220.7" y="14" width="38.5" height="160"/><path class="mark" style="--c: var(--accent)" d="M228,174v-76a4,4 0 0 1 4,-4h16a4,4 0 0 1 4,4v76z"/><text class="tick" x="240" y="192" text-anchor="middle">’20</text></g><g class="pt"><title>2021: 2 joined</title><rect class="hit" x="259.3" y="14" width="38.5" height="160"/><path class="mark" style="--c: var(--accent)" d="M266.5,174v-76a4,4 0 0 1 4,-4h16a4,4 0 0 1 4,4v76z"/><text class="tick" x="278.5" y="192" text-anchor="middle">’21</text></g><g class="pt"><title>2022: 2 joined</title><rect class="hit" x="297.8" y="14" width="38.5" height="160"/><path class="mark" style="--c: var(--accent)" d="M305.1,174v-76a4,4 0 0 1 4,-4h16a4,4 0 0 1 4,4v76z"/><text class="tick" x="317.1" y="192" text-anchor="middle">’22</text></g><g class="pt"><title>2023: 2 joined</title><rect class="hit" x="336.4" y="14" width="38.5" height="160"/><path class="mark" style="--c: var(--accent)" d="M343.6,174v-76a4,4 0 0 1 4,-4h16a4,4 0 0 1 4,4v76z"/><text class="tick" x="355.6" y="192" text-anchor="middle">’23</text></g><g class="pt"><title>2024: 2 joined</title><rect class="hit" x="374.9" y="14" width="38.5" height="160"/><path class="mark" style="--c: var(--accent)" d="M382.2,174v-76a4,4 0 0 1 4,-4h16a4,4 0 0 1 4,4v76z"/><text class="tick" x="394.2" y="192" text-anchor="middle">’24</text></g><g class="pt"><title>2025: 0 joined</title><rect class="hit" x="413.5" y="14" width="38.5" height="160"/><text class="tick" x="432.7" y="192" text-anchor="middle">’25</text></g></svg>
+          <details><summary>Show the numbers</summary><table><thead><tr><th>Year</th><th class="num">Joined</th></tr></thead><tbody><tr><td>2015</td><td class="num">3</td></tr><tr><td>2016</td><td class="num">3</td></tr><tr><td>2017</td><td class="num">3</td></tr><tr><td>2018</td><td class="num">3</td></tr><tr><td>2019</td><td class="num">2</td></tr><tr><td>2020</td><td class="num">2</td></tr><tr><td>2021</td><td class="num">2</td></tr><tr><td>2022</td><td class="num">2</td></tr><tr><td>2023</td><td class="num">2</td></tr><tr><td>2024</td><td class="num">2</td></tr><tr><td>2025</td><td class="num">0</td></tr></tbody></table></details>
+        </figure>
+      </div>
+
+      <div class="sect"><h2>Who left</h2>
+        <div class="box scroll"><table class="plain"><thead><tr><th>Name</th><th>Employee Code</th><th>Department</th><th>Date of Joining</th><th>Date of Leaving</th><th class="num">Years</th></tr></thead><tbody>
+          <tr><td>Esther Paul</td><td class="code">E0035</td><td><span class="chip s5">Tailoring</span></td><td class="date">13-Sep-2019</td><td class="date">09-May-2025</td><td class="num">5.7</td></tr>
+          <tr><td>Naveen Shetty</td><td class="code">E0098</td><td><span class="chip s1">Accounts</span></td><td class="date">13-Jun-2018</td><td class="date">27-Aug-2025</td><td class="num">7.2</td></tr>
+          <tr><td>Uma Shankar</td><td class="code">E0147</td><td><span class="chip s3">Sales</span></td><td class="date">07-May-2015</td><td class="date">14-Sep-2025</td><td class="num">10.4</td></tr>
+        </tbody></table></div>
+      </div>
+
+    </div></div>
+   </section>
+  </div>
+</div>
+</div>
+
+<script>
+// mock-up only: the theme switch. In the app the theme is a per-person preference.
+document.getElementById('theme').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  b.dataset.v ? document.documentElement.dataset.theme = b.dataset.v : delete document.documentElement.dataset.theme;
+});
+</script>
+</body>
+</html>
