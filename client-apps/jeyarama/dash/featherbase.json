@@ -96,7 +96,8 @@
     "people": "view_as_people"
   },
   "people": {
-    "describe": "describe_people"
+    "describe": "describe_people",
+    "sections": "worked_out"
   },
   "datasets": [
     {
@@ -476,11 +477,6 @@
       "explain": "why_access",
       "may": "why_access_offered",
       "label": "Why: Access"
-    }
-  },
-  "person": {
-    "sections": {
-      "read": "worked_out"
     }
   },
   "tables": [
@@ -3518,9 +3514,15 @@
       "operations": []
     },
     {
-      "id": "business_roles_in_featherbase",
+      "id": "people_sections",
       "fromVersion": "0.13.42",
       "toVersion": "0.13.43",
+      "operations": []
+    },
+    {
+      "id": "business_roles_in_featherbase",
+      "fromVersion": "0.13.43",
+      "toVersion": "0.13.44",
       "operations": [
         {
           "kind": "moveTable",

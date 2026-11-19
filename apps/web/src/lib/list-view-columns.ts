@@ -107,8 +107,7 @@ export function readableLinks(meta: TableMeta): ColumnDef[] {
 /** What this person's list shows: the title column first (the link to the
  *  row), or Row ID when the Table has none, then each shown data column. The
  *  leader is always on. */
-export function viewColumns(meta: TableMeta, arrangement: ColumnArrangement): ListColumn[] {
-  const defaults = defaultColumnNames(meta)
+export function viewColumns(meta: TableMeta, arrangement: ColumnArrangement, defaults = defaultColumnNames(meta)): ListColumn[] {
   const title = listLeader(meta)
   return [
     title ? toListColumn(title) : ROW_ID_COLUMN,
@@ -134,25 +133,13 @@ export function switchColumn(
   arrangement: ColumnArrangement,
   name: string,
   on: boolean,
+  /** #1282 A4: the list columns this person starts from, the Table's default's included. */
+  defaults = defaultColumnNames(meta),
 ): Required<ColumnArrangement> {
-  const inList = defaultColumnNames(meta).has(name)
+  const inList = defaults.has(name)
   const shown = (arrangement.shownCols ?? []).filter((c) => c !== name)
   const hidden = (arrangement.hiddenCols ?? []).filter((c) => c !== name)
   if (on && !inList) shown.push(name)
   if (!on && inList) hidden.push(name)
   return { shownCols: shown, hiddenCols: hidden }
-}
-
-/** The Table's columns with each data column's in_list_view set to whether
- *  it shows in this person's view — "Make this the default for everyone"
- *  (#738, Decision 3). A column no list can show keeps its flag. */
-export function listFlagsFromView(meta: TableMeta, arrangement: ColumnArrangement): TableMeta {
-  const defaults = defaultColumnNames(meta)
-  const listable = new Set(dataColumns(meta).map((c) => c.column_name))
-  return {
-    ...meta,
-    columns: meta.columns.map((c) =>
-      listable.has(c.column_name) ? { ...c, in_list_view: isShown(c.column_name, defaults, arrangement) } : c,
-    ),
-  }
 }

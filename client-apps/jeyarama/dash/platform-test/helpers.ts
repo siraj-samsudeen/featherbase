@@ -84,7 +84,10 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
  *  role's two columns back on its list, and no setup runs or access decisions. It comes off before all the others. */
 export const RUN_TABLES = ['dash.setup_run', 'dash.access_decision']
 export function revertRolesInFeatherbase(manifest: Revertable) {
-  expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_in_featherbase', fromVersion: '0.13.42', toVersion: '0.13.43' })
+  const step = manifest.migrations.pop() as unknown as { operations: { kind: string; table: string; column?: string; from?: { label?: string } }[] }
+  expect(step).toMatchObject({ id: 'business_roles_in_featherbase', fromVersion: '0.13.43', toVersion: '0.13.44' })
+  // Each column the step relabelled reads as it did before it.
+  const relabelled = new Map(step.operations.filter(o => o.kind === 'alterColumn' && o.from?.label).map(o => [`${o.table}/${o.column}`, o.from!.label!]))
   if (manifest.tables) manifest.tables = manifest.tables.filter(t => !RUN_TABLES.includes(t.name)).map(t => {
     const table = { ...t } as typeof t & { module?: string; label?: string; columns?: { column_name: string; in_list_view?: boolean; label?: string }[] }
     if (table.module === 'People') table.module = 'Dash'
@@ -94,7 +97,8 @@ export function revertRolesInFeatherbase(manifest: Revertable) {
     if (label) table.label = label
     if (table.name === 'dash.switch_over_log') table.columns = table.columns!.filter(c => c.column_name !== 'setup_run')
     if (table.name === 'dash.business_role') table.columns = table.columns!.map(c => (['description', 'by_hand_only'].includes(c.column_name) ? { ...c, in_list_view: true }
-      : c.column_name === 'role_name' ? { ...c, label: 'Role name' } : c))
+      : c))
+    if (table.columns) table.columns = table.columns.map(c => (relabelled.has(`${table.name}/${c.column_name}`) ? { ...c, label: relabelled.get(`${table.name}/${c.column_name}`) } : c))
     return table
   })
   if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !RUN_TABLES.includes(p.table))
@@ -109,7 +113,9 @@ export function revertRolesInFeatherbase(manifest: Revertable) {
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
   revertRolesInFeatherbase(manifest)
-  // #1345's 0.13.42 (each job's business role and a leaver's leaving day, for the Person Label) changes no Table and comes off first.
+  // #1282's 0.13.43 (the worked-out sections declared as people.sections) changes no Table and comes off next.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'people_sections', fromVersion: '0.13.42', operations: [] })
+  // #1345's 0.13.42 (each job's business role and a leaver's leaving day, for the Person Label) changes no Table and comes off after it.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'person_label', fromVersion: '0.13.41', operations: [] })
   // The 0.13.41 hotfix (every report read through Dash's own documents) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'every_report_own_read', fromVersion: '0.13.40', operations: [] })

@@ -58,8 +58,9 @@ test("with no connection, a list whose own details have not come yet makes no vi
   try {
     const sent = vi.spyOn(globalThis, 'fetch')
     await renderApp(tableHref(TABLE), admin, { queryClient })
-    await userEvent.click(await screen.findByTestId('list-columns', {}, T))
-    await userEvent.click(await screen.findByTestId('list-make-default', {}, T))
+    // #1282 A4: the default is made from the View menu, offered only once the Table's details are here.
+    await screen.findByTestId('list-view', {}, T)
+    expect(screen.queryByTestId('make-table-default')).not.toBeInTheDocument()
     expect(sent.mock.calls.filter(([, init]) => init?.method === 'PUT')).toEqual([])
   } finally {
     onlineManager.setOnline(true)

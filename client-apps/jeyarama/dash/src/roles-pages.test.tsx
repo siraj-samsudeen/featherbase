@@ -53,6 +53,7 @@ beforeAll(() => {
   teardown = () => { for (const key of added) delete (globalThis as Record<string, unknown>)[key]; dom.window.close() }
 })
 afterAll(() => teardown())
+// Each test starts with no remembered view (#1282 A4).
 
 const NONE = { kinds: [], stores_gained: [], stores_lost: [], stores_changed: [], gained: [], lost: [], decisions: [] }
 const SELVI = {

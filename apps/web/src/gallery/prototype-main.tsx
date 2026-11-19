@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
+import { ToastProvider } from '@featherbase/shop-floor'
 import { setSession } from '../lib/api'
 import { paintSavedTheme } from '../lib/theme'
 import { createPrototypeRouter } from './PrototypeApp'
@@ -19,5 +20,5 @@ paintSavedTheme()
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 const router = createPrototypeRouter(<PrototypeLibrary />)
 createRoot(document.getElementById('root')!).render(
-  <QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>,
+  <QueryClientProvider client={client}><ToastProvider><RouterProvider router={router} /></ToastProvider></QueryClientProvider>,
 )

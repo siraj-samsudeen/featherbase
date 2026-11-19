@@ -19,7 +19,7 @@ import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
 import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
-import { Card, EmptyState, Notice, ProblemPage, buttonClasses, fmtDate } from '@featherbase/shop-floor'
+import { Card, EmptyState, Notice, ProblemPage, ToastProvider, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { AdminHomeLink, CannotShow } from './components/CannotShow'
 import { TopBar } from './components/TopBar'
 import { ThemeChoiceProvider } from './lib/theme-choice'
@@ -27,7 +27,8 @@ import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
 import { isListLayout, useListLayout } from './lib/list-layout'
 import { rememberFilters, useRememberedFilters } from './lib/remembered-filters'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { userSettingsQuery } from './components/FormArrangement'
 import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
@@ -83,7 +84,8 @@ import type { NavStep } from './lib/nav-path'
 // is entered and left by a full load, so each document carries the policy the
 // server set for the page it shows. Checked on every navigation.
 const rootRoute = createRootRoute({
-  component: Outlet,
+  // #1282 A4: short confirmations (Saved as the Table's default · Undo) for every page.
+  component: () => <ToastProvider><Outlet /></ToastProvider>,
   notFoundComponent: () => <PageNotFound />,
   beforeLoad: ({ location }) => {
     if (crossesFramePolicy(location.pathname)) throw redirect({ href: location.href, reloadDocument: true })
@@ -638,13 +640,21 @@ function KanbanPage() {
   const { table } = useTableAddress()
   const { group_by } = kanbanRoute.useSearch()
   const navigate = kanbanRoute.useNavigate()
+  // #1282 A4: the board's grouping is remembered for this person on this Table; the address still wins.
+  const queryClient = useQueryClient()
+  const stored = useQuery(userSettingsQuery(table))
+  const remembered = typeof stored.data?.settings?.groupBy === 'string' ? stored.data.settings.groupBy : undefined
   return (
     <div data-testid="table-page">
       <KanbanView
         key={table}
         table={table}
-        groupBy={group_by}
-        onGroupByChange={(f) => navigate({ search: { group_by: f }, replace: true })}
+        groupBy={group_by ?? remembered}
+        onGroupByChange={(f) => {
+          navigate({ search: { group_by: f }, replace: true })
+          queryClient.setQueryData(userSettingsQuery(table).queryKey, { settings: { ...(stored.data?.settings ?? {}), groupBy: f } })
+          api.put(`/api/user_settings/${encodeURIComponent(table)}`, { groupBy: f ?? null }).catch(() => {})
+        }}
       />
     </div>
   )

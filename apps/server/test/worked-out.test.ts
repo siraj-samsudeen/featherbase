@@ -21,7 +21,7 @@ afterEach(async () => {
 
 const tableRead = { policy: { kind: 'table' }, authorization: { kind: 'generic' } }
 
-/** bar-proof with `person.sections` and its read. The read answers `hooks.answer` where a test sets one; otherwise,
+/** bar-proof with `people.sections` and its read. The read answers `hooks.answer` where a test sets one; otherwise,
  *  by the viewer's roles: with the why for an explainer, without it for a reader, nothing for anyone else. */
 async function working(person: unknown, { gate }: { gate?: string } = {}) {
   const directory = await mkdtemp(resolve('test/.worked-out-1282-'))
@@ -32,7 +32,7 @@ async function working(person: unknown, { gate }: { gate?: string } = {}) {
   manifest.roles = ['Bar Reader', 'Bar Explainer', 'Bar Guest']
   manifest.reads.operations = { ...manifest.reads.operations, worked_out: tableRead, closed: tableRead }
   if (gate) manifest.access = { gate }
-  manifest.person = person
+  manifest.people = person
   await writeFile(file, JSON.stringify(manifest))
   await appendFile(resolve(directory, 'server.mjs'), `
 const worked = (globalThis.__workedOut1282 ??= { answer: undefined, asked: [] })
@@ -57,7 +57,7 @@ reads.closed = () => false
   return directory
 }
 
-const declared = { sections: { read: 'worked_out' } }
+const declared = { sections: 'worked_out' }
 /** The Person the sections are about: the explainer's own record, which both made-up people may read. */
 let target = ''
 
@@ -84,8 +84,8 @@ afterEach(() => { hook().answer = undefined; hook().asked.length = 0 })
 
 describe('worked-out sections: what an app may declare', () => {
   test("sections from something that is not one of the app's reads are refused", async () => {
-    expect(await discoverPackages([await working({ sections: { read: 'nothing' } })])).toEqual([
-      expect.objectContaining({ error: "The app's person sections come from nothing, which is not one of the app's reads" }),
+    expect(await discoverPackages([await working({ sections: 'nothing' })])).toEqual([
+      expect.objectContaining({ error: "The app's people sections come from nothing, which is not one of the app's reads" }),
     ])
   })
 })

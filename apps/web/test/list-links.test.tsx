@@ -40,19 +40,3 @@ test("a nested row's link to a row the viewer cannot read shows no name and no i
   expect(lines).not.toHaveTextContent('C-7')
   expect(lines).not.toHaveTextContent('Acme Traders')
 })
-
-test("a list whose Table's details cannot be read again after a change says it cannot be loaded", async ({ admin }) => {
-  await seedSites(admin)
-  await renderApp(tableHref(SITE), admin)
-  await screen.findByRole('link', { name: 'Enchakkal' }, T)
-  await userEvent.click(screen.getByTestId('list-columns'))
-  // The network drops just as the list asks for its Table's details again.
-  const real = globalThis.fetch
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-    const path = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    if (path.includes(':meta')) throw new TypeError('Failed to fetch')
-    return real(input, init)
-  })
-  await userEvent.click(await screen.findByTestId('list-make-default', {}, T))
-  await waitFor(() => expect(screen.getByTestId('list-error')).toHaveTextContent('Cannot load Nv Site'), T)
-})

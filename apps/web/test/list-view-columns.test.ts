@@ -3,7 +3,8 @@
 //   Row ID + (list columns ∪ shownCols) − hiddenCols, in the Table's column order.
 import { describe, expect, it } from 'vitest'
 import type { ColumnDef, TableMeta } from '../src/lib/meta'
-import { dataColumns, listFields, listFlagsFromView, switchColumn, viewColumns } from '../src/lib/list-view-columns'
+import { dataColumns, listFields, switchColumn, viewColumns } from '../src/lib/list-view-columns'
+import { listDefaultsWith, viewAsDefault } from '../src/lib/table-view-default'
 
 function column(column_name: string, extra: Partial<ColumnDef> = {}): ColumnDef {
   return {
@@ -143,23 +144,6 @@ describe('a caller with an explicit readable Column selection', () => {
   })
 })
 
-// #738 (Decision 3): "Make this the default for everyone" sets each data
-// column's in_list_view to whether it shows in the System Manager's view.
-describe('listFlagsFromView', () => {
-  const flags = (meta: TableMeta) =>
-    Object.fromEntries(meta.columns.map((c) => [c.column_name, Boolean(c.in_list_view)]))
-
-  it("flags each data column by whether it shows in this person's view", () => {
-    const next = listFlagsFromView(sectionMapping(), { shownCols: ['remarks'], hiddenCols: ['mch'] })
-    expect(flags(next)).toEqual({ section: true, mch: false, floor: true, remarks: true, notes: false })
-  })
-
-  it('leaves a column no list can show as it was', () => {
-    const meta = sectionMapping({ columns: [...sectionMapping().columns, column('secret', { hidden: true, in_list_view: true })] })
-    expect(flags(listFlagsFromView(meta, {})).secret).toBe(true)
-  })
-})
-
 // #738 (Decision 1): a colleague's own sets apply on top of a changed default.
 describe("a colleague's choices on a changed default", () => {
   const colleague = { shownCols: ['notes'], hiddenCols: ['floor'] }
@@ -199,7 +183,7 @@ describe('a Table whose title is its id', () => {
     expect(names(viewColumns(lone, {}))).toEqual(['department_section_id', 'note'])
   })
 
-  // Codex review: "Make this the default for everyone" keeps an id someone chose to show.
+  // Codex review: a Table's default keeps an id someone chose to show (#1282 A4: the whole view, from the View menu).
   it('an id someone made a list column for everyone stays one', () => {
     const meta = departmentSection([
       column('department_section_id'),
@@ -207,8 +191,8 @@ describe('a Table whose title is its id', () => {
       column('section', { column_type: 'Reference', reference_table: 'Section' }),
     ])
     expect(names(viewColumns(meta, {}))).toEqual(['store', 'section'])
-    const saved = listFlagsFromView(meta, switchColumn(meta, {}, 'department_section_id', true))
-    expect(names(viewColumns(saved, {}))).toEqual(['store', 'department_section_id', 'section'])
+    const td = viewAsDefault(meta, switchColumn(meta, {}, 'department_section_id', true), {}, { layout: 'panel', sort: null, compact: false, links: {} })
+    expect(names(viewColumns(meta, {}, listDefaultsWith(meta, td)))).toEqual(['store', 'department_section_id', 'section'])
   })
 
   it('a title that is not the id is unchanged', () => {

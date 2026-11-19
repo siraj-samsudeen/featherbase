@@ -145,9 +145,6 @@ const manifestSchema = z.object({
   }).strict()).optional(),
   // #1282 C10–C11: sections the app works out about a record of a Table (a Person's apps and reports from their
   // roles), by one of its reads run as the viewer with { table, row }; the record panel draws them.
-  // #1282 C10–C11, #1345: what an app says about a Person, in one place apps learn: `sections` names the read that works
-  // out the Lens's sections about one person ("Apps They Can Open"). #1345 adds `describe` beside it.
-  person: z.object({ sections: z.object({ read: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/) }).strict().optional() }).strict().optional(),
   // #1282 G1–G6: the areas people pick on the trees: each axis a list of levels,
   // each a Table read by its title and linked to the level above by `parent`,
   // with the words a staff screen says and, where an admin screen says other ones, those.
@@ -203,8 +200,11 @@ const manifestSchema = z.object({
   // #1267: who people are to the organisation. `describe` is the read that
   // says, for { persons }, each one's standing (current | left | none), code
   // and jobs; the platform runs it as the app's own actor (person-standing.ts).
+  // #1282 C10–C11 (UI owner, #1345): `sections` names the read that works out the Lens's sections about one person
+  // ("Apps They Can Open"), beside `describe`, so apps learn one place for what they say about people.
   people: z.object({
-    describe: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+    describe: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/).optional(),
+    sections: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/).optional(),
   }).strict().optional(),
   tabs: tabsDeclaration.optional(),
   // #941 (ADR 0019): the app's accent, one of the platform's named set. Any
@@ -510,9 +510,9 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     })
   }
   // #1282 C10–C11: worked-out sections only read, so their read must be one of the app's reads.
-  const sections = manifest.person?.sections
-  if (sections && !Object.hasOwn(readOperations, sections.read))
-    throw new Error(`The app's person sections come from ${sections.read}, which is not one of the app's reads`)
+  const sections = manifest.people?.sections
+  if (sections && !Object.hasOwn(readOperations, sections))
+    throw new Error(`The app's people sections come from ${sections}, which is not one of the app's reads`)
   // #1282: a Why only reads: both its names must be the app's reads, never its actions.
   for (const [table, why] of Object.entries(manifest.why ?? {})) {
     if (!Object.hasOwn(readOperations, why.explain))
@@ -542,7 +542,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   if (strangers.length) throw new Error(`The app's access approvers must be its own roles: ${strangers.join(', ')}`)
   if (manifest.viewAs && !(manifest.roles ?? []).includes(manifest.viewAs.role))
     throw new Error(`The app's View as role must be one of its own roles: ${manifest.viewAs.role}`)
-  if (manifest.people && !Object.hasOwn(readOperations, manifest.people.describe))
+  if (manifest.people?.describe && !Object.hasOwn(readOperations, manifest.people.describe))
     throw new Error(`The app's people are described by its read ${manifest.people.describe}, which is not one of the app's reads`)
   if (manifest.viewAs && !Object.hasOwn(readOperations, manifest.viewAs.people))
     throw new Error(`The app's View as people are found by its read ${manifest.viewAs.people}, which is not one of the app's reads`)
@@ -747,7 +747,7 @@ export function runPackageRead(app: string, read: string, input: unknown, user: 
  *  (#1282, Codex adversarial round 2) answers only through GET /api/worked-out, which checks the record and scrubs the
  *  answer for the viewer; called here it would skip both. */
 export function runPublicPackageRead(app: string, read: string, input: unknown, user: string, discovery = false) {
-  if (packages.get(app)?.manifest.person?.sections?.read === read)
+  if (packages.get(app)?.manifest.people?.sections === read)
     throw new AppError('PermissionError', "This read answers only through the record panel's worked-out sections")
   // #1340: a record describer or preview answers only through /api/records, which checks and scrubs it.
   if (isRecordsRead(app, read)) throw new AppError('PermissionError', "This read answers only through Featherbase's record pages")
@@ -1130,15 +1130,15 @@ export async function appsUserMayOpen(user: string): Promise<Set<string>> {
   return names
 }
 
-/** #1282 C10–C11: the app that works out sections about a record of `table` (its manifest's `person.sections`, so a
+/** #1282 C10–C11: the app that works out sections about a record of `table` (its manifest's `people.sections`, so a
  *  Person only), for `user`: only an installed, active app the user may open (its entry Table and its own gate). */
 export async function workedOutDeclarationFor(table: string, user: string): Promise<{ app: string; version: string; read: string } | null> {
   for (const item of await listInstalledApps()) {
     const pkg = packages.get(item.name)
-    const worked = table === 'Person' ? pkg?.manifest.person?.sections : undefined
-    if (!item.active || !pkg || !worked) continue
+    const sections = table === 'Person' ? pkg?.manifest.people?.sections : undefined
+    if (!item.active || !pkg || !sections) continue
     if (!(await hasPermission(user, pkg.entryTable, 'read')) || !(await passesGate(pkg, user))) return null
-    return { app: pkg.name, version: pkg.version, read: worked.read }
+    return { app: pkg.name, version: pkg.version, read: sections }
   }
   return null
 }
@@ -1209,7 +1209,7 @@ export function accessGrantApps(): { app: string; title: string; read: string; a
  *  the read each finds people with. */
 /** #1267: the apps that describe people, each with the read that does it. */
 export function peopleDescribers(): { app: string; describe: string }[] {
-  return [...packages.values()].flatMap((pkg) => pkg.manifest.people ? [{ app: pkg.name, describe: pkg.manifest.people.describe }] : [])
+  return [...packages.values()].flatMap((pkg) => pkg.manifest.people?.describe ? [{ app: pkg.name, describe: pkg.manifest.people.describe }] : [])
 }
 
 export function viewAsApps(): { app: string; role: string; people: string }[] {
