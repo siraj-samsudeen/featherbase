@@ -58,8 +58,16 @@ if (!apply) {
   process.exit(0)
 }
 
+// The record is made before the first write, so an --out that cannot be written stops the run before it
+// changes anything; it is named to the millisecond and never made over an existing file, so a rerun cannot
+// replace an earlier run's record; and it is saved after each section, so a run cut short keeps what it did.
+const keepUntil = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)
+const at = new Date().toISOString().replace(/[-:T.Z]/g, '')
+const record = join(flag('--out') ?? '.', `section-plants-filled-${at}__keep-until-${keepUntil}.json`)
 const filled: typeof plan.fill = []
 const skipped: { section: string; why: string }[] = []
+const save = () => writeFileSync(record, JSON.stringify({ filled, skipped }, null, 2))
+writeFileSync(record, JSON.stringify({ filled, skipped }, null, 2), { flag: 'wx' })
 for (const fill of plan.fill) {
   try {
     await call(`/api/table/Section/${encodeURIComponent(fill.section)}`, { method: 'PATCH',
@@ -68,10 +76,6 @@ for (const fill of plan.fill) {
   } catch (error) {
     skipped.push({ section: fill.section, why: (error as Error).message })
   }
+  save()
 }
-const keepUntil = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)
-// To the millisecond, and never over an existing file: a rerun cannot replace an earlier run's record.
-const at = new Date().toISOString().replace(/[-:T.Z]/g, '')
-const record = join(flag('--out') ?? '.', `section-plants-filled-${at}__keep-until-${keepUntil}.json`)
-writeFileSync(record, JSON.stringify({ filled, skipped }, null, 2), { flag: 'wx' })
 console.log(JSON.stringify({ ...summary, filled: filled.length, skipped, record }, null, 1))
