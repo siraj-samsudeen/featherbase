@@ -12,7 +12,7 @@ import { reflectTables } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
 import { activeApps, appOperation, provisionApp } from './app-lifecycle'
 import { cadenceSeconds, jobRegistrant, registerJob, syncScheduledJobs, unregisterAppJobs, type Cadence, type JobHandler } from './jobs'
-import { assertJobClaimable, jobClaimRefusal, jobTitle } from './app-jobs'
+import { assertJobClaimable, declaredJobTitle, jobClaimRefusal } from './app-jobs'
 import {
   registerController,
   unregisterController,
@@ -226,7 +226,7 @@ async function ensureSchedulerJobs(manifest: AppManifest, claimed?: Set<string>)
         created_by: 'Administrator',
         updated_by: 'Administrator',
         method: ev.method,
-        title: ev.title ?? jobTitle({ name: ev.method.replace(/^[a-z0-9_]+\./, '') }),
+        title: ev.title ?? declaredJobTitle({ name: ev.method.replace(/^[a-z0-9_]+\./, '') }),
         cadence: ev.cadence,
         enabled: true,
         description: ev.description ?? `Scheduled by app ${manifest.name}.`,

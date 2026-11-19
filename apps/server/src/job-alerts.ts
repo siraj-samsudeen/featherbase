@@ -44,8 +44,7 @@ function plain(message: string): string {
   return first.length > 300 ? `${first.slice(0, 299)}…` : first
 }
 
-function alertBody(p: JobProblem): string {
-  const name = jobTitle(p.method)
+function alertBody(p: JobProblem, name: string): string {
   const message = plain(p.message)
   const when = fmtInstantIST(p.at)
   const lines =
@@ -78,7 +77,7 @@ export async function alertJobProblem(p: JobProblem): Promise<number | 'no recip
     // lookup or partial queue rolls back, leaving the next run able to retry.
     return await withTransaction<number | 'no recipients' | 'repeat'>(async () => {
       const [schedule] = await sql`
-        select problem_alert_queued from scheduled_job
+        select problem_alert_queued, title from scheduled_job
         where method = ${p.method} and last_outcome = ${p.outcome === 'failed' ? 'error' : 'refused'}
         for update`
       if (!schedule || schedule.problem_alert_queued) return 'repeat'
@@ -87,8 +86,10 @@ export async function alertJobProblem(p: JobProblem): Promise<number | 'no recip
         await recordUndeliveredNotice(`job alert: ${p.method}`)
         return 'no recipients'
       }
-      const subject = `${JOB_ALERT_SUBJECT[p.outcome]}: ${jobTitle(p.method)}`
-      const body = alertBody(p)
+      // #1330: the job by its title; its method in words only when it has none.
+      const name = schedule.title || jobTitle(p.method)
+      const subject = `${JOB_ALERT_SUBJECT[p.outcome]}: ${name}`
+      const body = alertBody(p, name)
       for (const to of managers) await sender({ to, subject, body })
       await sql`update scheduled_job set problem_alert_queued = true where method = ${p.method}`
       return managers.length

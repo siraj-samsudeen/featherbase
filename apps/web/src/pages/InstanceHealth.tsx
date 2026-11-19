@@ -3,6 +3,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { adminPageTitle, tableHref } from 'shared'
 import { api, getSessionUser } from '../lib/api'
+import { usePageTitle } from '../lib/page-title'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { Button, Card, Notice, Skeleton, StatusPill, buttonClasses, cx, type StatusTone } from '@featherbase/shop-floor'
 import { ChevronRight } from '@featherbase/shop-floor'
@@ -235,6 +236,7 @@ function CheckCard({ check }: { check: HealthCheckView }) {
 }
 
 export function InstanceHealth() {
+  usePageTitle(adminPageTitle('instance-health'))
   const health = useInstanceHealth(true)
   const data = health.data
   return (
