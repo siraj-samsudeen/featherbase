@@ -131,6 +131,28 @@ describe('describe_people', () => {
       left_on_from: { table: 'Job Assignment', id: 'J10', column: 'ends_on' }, jobs: [] })
   })
 
+  // featherbase #1345 (CI's Dash coverage): the edges of the role and leaving-day reads.
+  it("leaves out a role the Title Map does not name, and one for a job whose site Dash cannot read", async () => {
+    const data: Record<string, Row[]> = {
+      ...DATA,
+      'Job Assignment': [{ row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'GONE', starts_on: '2026-01-01', ends_on: null }],
+      'dash.business_role': [{ row_id: 'br-lead', role_name: 'Floor Lead', by_hand_only: 0 }],
+      'dash.title_map': [{ row_id: 't1', title: 'Team Leader', business_role: 'br-lead' }, { row_id: 't2', title: 'Buyer', business_role: '' }],
+    }
+    const [asha] = await describePeople({ ...context({ persons: ['p-asha'] }), baseTables: tables(data) }, ON)
+    // The site is not on the staff list's Site Table, so the job reads without it, and its role cannot be matched.
+    expect(asha!.jobs).toEqual([{ job: 'Team Leader' }])
+  })
+
+  it("a leaver's day is the latest end among their jobs, a job with no end leaving it as it was", async () => {
+    const data: Record<string, Row[]> = { ...DATA, 'Job Assignment': [...DATA['Job Assignment']!,
+      { row_id: 'J8', employee: 'E2', job: 'Cashier', site: 'LKS', starts_on: '2025-07-01', ends_on: '2026-03-12' },
+      { row_id: 'J9', employee: 'E2', job: 'Packer', site: 'LKS', starts_on: '2024-01-01', ends_on: '2025-06-30' },
+      { row_id: 'J7', employee: 'E2', job: 'Trainee', site: 'LKS', starts_on: '2023-01-01', ends_on: null }] }
+    const [old] = await describePeople({ ...context({ persons: ['p-old'] }), baseTables: tables(data) }, ON)
+    expect(old).toMatchObject({ left_on: '2026-03-12', left_on_from: { table: 'Job Assignment', id: 'J8', column: 'ends_on' } })
+  })
+
   it('asks nothing for no persons', async () => {
     expect(await describePeople(context({}), ON)).toEqual([])
   })
