@@ -159,6 +159,9 @@ describe('the Business Roles page', () => {
     expect(role('Staff').people_from).toBe('from HR title')
     expect(role('Master Data Manager')).toMatchObject({ people: 0, people_from: 'nobody yet', reports: [] })
     expect(role('Head Office').reports.map(parts => (parts[0] as { record: { name: string } }).record.name)).toContain('Store pack')
+    // #1282: the reports grid's ticks and rows, and that a Report Access Manager may give them.
+    expect([role('Head Office').given, page.report_catalog.map(t => `${t.table}|${t.key}`), page.may_give_reports])
+      .toEqual([expect.arrayContaining(['dash.report|vs', 'dash.report_bundle|bx']), expect.arrayContaining(['dash.report|vs', 'dash.report_bundle|bx']), true])
     expect(role('Head Office').reports).toContainEqual([{ record: { table: 'dash.report', row: 'vs', name: expect.any(String) } }, ' is given to ', { record: { table: 'dash.business_role', row: roleId(tables, 'Head Office'), name: 'Head Office' } }, ' ', { chip: 'each in their own area' }])
   })
 

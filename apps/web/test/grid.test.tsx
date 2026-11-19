@@ -72,6 +72,17 @@ describe('the Grid', () => {
     expect(within(cell('t', 'r0')).getByRole('button')).toHaveAttribute('title', 'Role 0 cannot Edit Tasks · Manager')
   })
 
+  test('fades its right edge while columns are hidden past it, and not at the end', () => {
+    grid({ n: 12 })
+    const box = screen.getByTestId('grid-scroller')
+    Object.defineProperties(box, { scrollWidth: { value: 900, configurable: true }, clientWidth: { value: 400, configurable: true } })
+    fireEvent.scroll(box)
+    expect(screen.getByTestId('grid-more')).toBeInTheDocument()
+    Object.defineProperty(box, 'scrollLeft', { value: 500, configurable: true })
+    fireEvent.scroll(box)
+    expect(screen.queryByTestId('grid-more')).not.toBeInTheDocument()
+  })
+
   test('read-only, the same values with their sentences, and nothing to step', () => {
     grid({ readOnly: true })
     expect(screen.queryAllByRole('button')).toEqual([])

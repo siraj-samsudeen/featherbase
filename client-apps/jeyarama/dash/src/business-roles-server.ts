@@ -401,11 +401,16 @@ export async function businessRoles(context: AccessContext) {
   return {
     // #1282 F1–F6: whether the grid steps for this caller, or is read-only.
     may_change: mayChangePermissions(ctx),
+    // #1282: the reports grid's rows: every report and bundle the caller may read, and whether they may give them to roles.
+    report_catalog: [...named.values()],
+    may_give_reports: managesAccess(ctx),
     roles: roles.sort((a, b) => a.name.localeCompare(b.name)).sort((a, b) => order(a.name) - order(b.name)).map(role => ({
       id: role.id, name: role.name, description: role.description, by_hand_only: role.by_hand_only, reaches: REACHES_WORDS[role.reaches!] ?? 'Not set',
       permissions: permissions.filter(p => p.role === role.id).map(p => ({ app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach, sentence: permissionSentence(role.name, p), parts: permissionParts(role, p) })),
       reports: [...givenTo].filter(([what, given]) => given.includes(role.id) && named.has(what))
         .map(([what, given]) => grantParts(named.get(what)!, given.flatMap(id => roles.filter(r => r.id === id)))),
+      // #1282: the reports grid's ticks: each report or bundle given to this role, as "dash.report|<key>".
+      given: [...givenTo].filter(([what, given]) => given.includes(role.id) && named.has(what)).map(([what]) => what),
       people: peopleOf.get(role.id)?.size ?? 0,
       people_from: sourceWords(role.id) || 'nobody yet',
       holders: [...peopleOf.get(role.id) ?? []].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone' })),

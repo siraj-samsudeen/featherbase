@@ -10,7 +10,7 @@ import { LoadFailed, Loading, Shell } from './sections-page'
 import { RecordLink } from './record-link'
 import { PersonPicker, type Found } from './access-page'
 import { type Who } from './person-identity'
-import { PermissionsGrid } from './roles-grid'
+import { PermissionsGrid, ReportsGrid, type GivenThing } from './roles-grid'
 
 export const ROLES_ADDRESS = '?view=roles'
 export const EXPLAIN_ADDRESS = '?view=explain'
@@ -103,11 +103,14 @@ interface Permission { app: string; level: string; verb: string; thing: string; 
 interface RolesAnswer {
   roles: {
     id: string; name: string; description: string | null; by_hand_only: boolean; reaches: string; permissions: Permission[]
-    reports: SentencePart[][]; people: number; people_from: string; holders: { person: string; name: string }[]
+    reports: SentencePart[][]; given: string[]; people: number; people_from: string; holders: { person: string; name: string }[]
   }[]
   titles: { title: string; role: string | null; role_name: string | null; people: number; falls_back_to?: string; holders: { person: string; name: string }[] }[]
-  /** #1282 F1–F6: whether the grid steps for this caller. */
+  /** #1282 F1–F6: whether the permissions grid steps for this caller, and whether the reports grid does. */
   may_change: boolean
+  may_give_reports: boolean
+  /** The reports grid's rows. */
+  report_catalog: GivenThing[]
 }
 
 export function BusinessRolesPage() {
@@ -115,9 +118,9 @@ export function BusinessRolesPage() {
   const [open, setOpen] = useState<string | null>(new URLSearchParams(window.location.search).get('role'))
   const [people, setPeople] = useState<string | null>(null)
   // #1282 F1–F6: the roles as a list, or as a grid; leaving the grid with changes waiting asks first.
-  const [view, setView] = useState<'roles' | 'grid'>('roles')
+  const [view, setView] = useState<'roles' | 'grid' | 'reports'>('roles')
   const [waiting, setWaiting] = useState(0)
-  const show = (next: 'roles' | 'grid') => {
+  const show = (next: 'roles' | 'grid' | 'reports') => {
     if (next !== view && waiting > 0 && !window.confirm(`Leave the grid? ${waiting === 1 ? 'Your change' : `Your ${waiting} changes`} will not be saved.`)) return
     setView(next)
   }
@@ -141,10 +144,10 @@ export function BusinessRolesPage() {
       )}
       {answer && answer.roles.length > 0 && (
         <div className="flex gap-1.5" role="group" aria-label="Show the business roles as" data-testid="roles-views">
-          {(['roles', 'grid'] as const).map(v => (
+          {(['roles', 'grid', 'reports'] as const).map(v => (
             <button key={v} type="button" aria-pressed={view === v} onClick={() => show(v)} data-testid={`roles-view-${v}`}
               className={`rounded-full px-3 py-1 text-sm ${view === v ? 'bg-action-tint font-medium text-action' : 'bg-tag text-ink-muted hover:text-ink'}`}>
-              {v === 'roles' ? 'Roles' : 'Grid: Permissions'}
+              {v === 'roles' ? 'Roles' : v === 'grid' ? 'Grid: Permissions' : 'Grid: Reports'}
             </button>
           ))}
         </div>
@@ -152,6 +155,11 @@ export function BusinessRolesPage() {
       {answer && answer.roles.length > 0 && view === 'grid' && (
         <Card className="p-4" data-testid="roles-grid-card">
           <PermissionsGrid roles={answer.roles} mayChange={answer.may_change} onSaved={load} onWaiting={setWaiting} personHref={explainAddress} />
+        </Card>
+      )}
+      {answer && answer.roles.length > 0 && view === 'reports' && (
+        <Card className="p-4" data-testid="reports-grid-card">
+          <ReportsGrid roles={answer.roles} catalog={answer.report_catalog} mayChange={answer.may_give_reports} onSaved={load} onWaiting={setWaiting} personHref={explainAddress} />
         </Card>
       )}
       {answer && answer.roles.length > 0 && view === 'roles' && (

@@ -224,14 +224,15 @@ describe('Explain A Person', () => {
 
 describe('Business Roles', () => {
   const ROLES = { business_roles: {
-    may_change: false,
+    may_change: false, may_give_reports: true,
+    report_catalog: [{ table: 'dash.report', key: 'vs', name: 'Visit Sales' }, { table: 'dash.report_bundle', key: 'b1', name: 'Store pack' }],
     roles: [{ id: 'r-sm', name: 'Store Manager', description: 'Runs a store.', by_hand_only: false, reaches: 'their store', permissions: [
       { app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area', sentence: 'Store Managers can Edit Sections in their area',
         parts: [{ record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Managers' } }, ' can Edit Sections ', { chip: 'in their area' }] },
       { app: 'Dash', level: 'Manager', verb: 'Give', thing: 'Reports', reach: 'Team', sentence: 'Store Managers can Give Reports for their team',
         parts: [{ record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Managers' } }, ' can Give Reports ', { chip: 'for their team' }] }],
       reports: [[{ record: { table: 'dash.report', row: 'vs', name: 'Visit Sales' } }, ' is given to ', { record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Manager' } }, ' ', { chip: 'each in their own area' }]],
-      people: 25, people_from: 'from HR title and by hand', holders: [{ person: 'p1', name: 'Sundar' }] }],
+      given: ['dash.report|vs'], people: 25, people_from: 'from HR title and by hand', holders: [{ person: 'p1', name: 'Sundar' }] }],
     titles: [{ title: 'Operations Executive', role: null, role_name: null, people: 3, falls_back_to: 'Store Manager', holders: [{ person: 'p1', name: 'Sundar' }] },
       { title: 'Store Manager', role: 'r-sm', role_name: 'Store Manager', people: 4, holders: [] }],
   } }
@@ -287,7 +288,7 @@ describe('Business Roles', () => {
   // #1282 F1–F6: the grid. Store Manager holds two permissions; Team Leader none yet.
   const GRID = (mayChange = true, extra: unknown[] = []) => ({ business_roles: { ...ROLES.business_roles, may_change: mayChange, roles: [
     ROLES.business_roles.roles[0]!,
-    { ...ROLES.business_roles.roles[0]!, id: 'r-tl', name: 'Team Leader', permissions: [], reports: [], people: 3, holders: [{ person: 'p9', name: 'Tara' }] },
+    { ...ROLES.business_roles.roles[0]!, id: 'r-tl', name: 'Team Leader', permissions: [], reports: [], given: [], people: 3, holders: [{ person: 'p9', name: 'Tara' }] },
     ...extra,
   ] } })
   const cellButton = (all: (t: string) => Element[], row: string, role: string) =>
@@ -302,8 +303,8 @@ describe('Business Roles', () => {
     // Each header is the role's record link (plain words here, where this stand-in platform says it may not be opened).
     expect(all('grid-header').map(h => [h.textContent, h.querySelector('[data-table="dash.business_role"]')?.getAttribute('data-row')])).toEqual([['Store Manager', 'r-sm'], ['Team Leader', 'r-tl']])
     expect([cellButton(all, 'Edit Sections', 'r-sm').textContent, cellButton(all, 'Edit Sections', 'r-tl').textContent]).toEqual(['Area', '—'])
-    expect(cellButton(all, 'Edit Sections', 'r-sm').getAttribute('title')).toBe('Store Managers can Edit Sections in their area')
-    expect(cellButton(all, 'Edit Sections', 'r-tl').getAttribute('title')).toBe('Team Leaders cannot Edit Sections')
+    expect(cellButton(all, 'Edit Sections', 'r-sm').getAttribute('title')).toBe('Store Managers can edit sections — in their area')
+    expect(cellButton(all, 'Edit Sections', 'r-tl').getAttribute('title')).toBe("Team Leaders can't edit sections")
   })
 
   it('steps a cell, waits with the dark bar, and Discard puts it back; stepping back to the saved value is no change', async () => {
@@ -326,7 +327,7 @@ describe('Business Roles', () => {
     await click(cellButton(all, 'Edit Sections', 'r-tl'))
     await click(cellButton(all, 'Edit Sections', 'r-sm'))
     await click([...all('pending-bar')[0]!.querySelectorAll('button')].find(b => b.textContent === 'Review and save')!)
-    expect(all('review-line').map(l => l.textContent)).toEqual(['Team Leaders can Edit Sections: nothing → their own', 'Store Managers can Edit Sections: in their area → everywhere'])
+    expect(all('review-line').map(l => l.textContent)).toEqual(['Team Leaders · Edit Sections: not given → their own', 'Store Managers · Edit Sections: in their area → everywhere'])
     expect(all('review-line')[0]!.querySelector('[data-table="dash.business_role"]')?.getAttribute('data-row')).toBe('r-tl')
     await click(all('review-people')[0]!)
     expect(all('review-names')[0]!.textContent).toBe('Tara, Sundar and 26 more')
@@ -387,12 +388,34 @@ describe('Business Roles', () => {
     await click(cellButton(all, 'Give Reports', 'r-sm'))
     await click([...all('pending-bar')[0]!.querySelectorAll('button')].find(b => b.textContent === 'Review and save')!)
     expect(all('review-line').map(l => l.textContent)).toEqual(expect.arrayContaining([
-      'Store Managers can Edit Sections (Manager): in their area → everywhere', 'Store Managers can Edit Sections (Reader): their own → for their team',
-      'Store Managers can Give Reports: for their team → in their area']))
+      'Store Managers · Edit Sections (Manager): in their area → everywhere', 'Store Managers · Edit Sections (Reader): their own → for their team',
+      'Store Managers · Give Reports: for their team → in their area']))
+  })
+
+  // UI owner: the reports grid, a tick in each cell, reviewed and saved as the permissions are.
+  it('shows reports and bundles × roles with ticks, and gives and takes away through the review', async () => {
+    answers = { ...GRID(), change_report_grants: { saved: 2 } }
+    const { all, click } = await render('roles')
+    await click(all('roles-view-reports')[0])
+    expect([all('grid-group').map(g => g.textContent), all('grid-row-title').map(t => t.textContent)]).toEqual([['Reports', 'Bundles'], ['Visit Sales', 'Store pack']])
+    const tick = (row: string, role: string) => all(`grid-cell-${row}-${role}`)[0]!.querySelector('button')!
+    expect([tick('dash.report|vs', 'r-sm').textContent, tick('dash.report|vs', 'r-tl').textContent, tick('dash.report|vs', 'r-tl').getAttribute('title')])
+      .toEqual(['✓', '—', "Team Leaders aren't given Visit Sales"])
+    await click(tick('dash.report|vs', 'r-sm'))
+    await click(tick('dash.report_bundle|b1', 'r-tl'))
+    // Room under the last row while the dark bar shows.
+    expect(all('reports-grid')[0]!.className).toContain('pb-16')
+    await click([...all('pending-bar')[0]!.querySelectorAll('button')].find(b => b.textContent === 'Review and save')!)
+    expect(all('review-line').map(l => l.textContent)).toEqual(['Store Managers · Visit Sales: given → not given', 'Team Leaders · Store pack: not given → given'])
+    await click(all('review-save')[0]!)
+    expect(calls.find(c => c.name === 'change_report_grants')!.payload).toEqual({ changes: [
+      { role: 'r-sm', table: 'dash.report', key: 'vs', from: true, to: false },
+      { role: 'r-tl', table: 'dash.report_bundle', key: 'b1', from: false, to: true },
+    ] })
   })
 
   it('offers the grid only while both sides are small', async () => {
-    const many = Array.from({ length: 40 }, (_, i) => ({ id: `x${i}`, name: `Role ${i}`, permissions: [], reports: [], people: 0, people_from: 'nobody yet', holders: [], description: null, by_hand_only: false, reaches: 'x' }))
+    const many = Array.from({ length: 40 }, (_, i) => ({ id: `x${i}`, name: `Role ${i}`, permissions: [], reports: [], given: [], people: 0, people_from: 'nobody yet', holders: [], description: null, by_hand_only: false, reaches: 'x' }))
     answers = GRID(true, many)
     const { all, click } = await render('roles')
     await click(all('roles-view-grid')[0])

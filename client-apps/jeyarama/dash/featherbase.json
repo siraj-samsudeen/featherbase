@@ -3646,6 +3646,14 @@
           "kind": "generic"
         }
       },
+      "change_report_grants": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
       "map_title": {
         "policy": {
           "kind": "table"

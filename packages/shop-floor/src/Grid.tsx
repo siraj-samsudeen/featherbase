@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { cx } from './cx'
 import { fmtCount } from './format'
 
@@ -38,10 +38,23 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
   readOnly?: boolean
 }) {
   const tilt = columns.length > FLAT_COLUMNS ? 'tilted' : 'flat'
+  // A soft fade at the right edge while columns are hidden past it (UI owner), gone at the end.
+  const scroller = useRef<HTMLDivElement>(null)
+  const [more, setMore] = useState(false)
+  useEffect(() => {
+    const box = scroller.current!
+    const measure = () => setMore(box.scrollLeft + box.clientWidth < box.scrollWidth - 1)
+    measure()
+    box.addEventListener('scroll', measure)
+    const resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    resized?.observe(box)
+    return () => { box.removeEventListener('scroll', measure); resized?.disconnect() }
+  }, [columns.length])
   const labelOf = (value: string | null) => (value === null ? '—' : steps.find((s) => s.value === value)?.label ?? value)
   let lastGroup: string | undefined
   return (
-    <div className="overflow-x-auto">
+    <div className="relative">
+    <div className="overflow-x-auto" ref={scroller} data-testid="grid-scroller">
       <table className="border-separate border-spacing-0 text-sm" aria-label={label} data-testid="grid">
         <thead>
           <tr>
@@ -95,6 +108,8 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
           })}
         </tbody>
       </table>
+    </div>
+    {more && <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-surface to-transparent" data-testid="grid-more" />}
     </div>
   )
 }

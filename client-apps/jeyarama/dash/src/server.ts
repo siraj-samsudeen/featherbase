@@ -16,6 +16,7 @@ import { buyerSectionActions, buyerSectionReads } from './buyer-sections.ts'
 import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
 import { changePermissions } from './permission-grid-server.ts'
+import { changeReportGrants } from './report-grid-server.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenNow, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
 import { viewAsPeople } from './view-as-people.ts'
@@ -382,6 +383,8 @@ export const actions = {
   remove_role: (context: AccessContext) => removeRole(context),
   /** #1282 F1–F6: the Business Roles grid's changes, checked whole, written as the caller, each logged. */
   change_permissions: (context: AccessContext) => changePermissions(context),
+  /** #1282 F1–F6: the reports grid's changes: reports and bundles given to business roles, or taken away. */
+  change_report_grants: (context: AccessContext) => changeReportGrants(context),
   map_title: (context: AccessContext) => mapTitle(context),
   add_starting_roles: (context: AccessContext) => addStartingRoles(context),
   /** #1277 (J3): the old grants given to business roles, logged, only when a System Manager asks; rerunning adds nothing. */
