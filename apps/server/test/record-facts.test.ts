@@ -248,3 +248,43 @@ describe('Record facts: the preview of an action', () => {
     await expectStatus(await preview(admin), 502)
   })
 })
+
+// Codex adversarial round 1: the public read endpoints would run a describer or a preview raw, with none of the checks
+// above. A read the manifest names in `records` answers only through /api/records.
+describe('Record facts: their reads are never run raw', () => {
+  // As the app's own page sends a read, naming the installed version.
+  const raw = (client: TestClient, read: string, payload: unknown) => client.fetch(`/api/app_reads/barproof/${read}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': 'barproof@1.0.0' }, body: JSON.stringify({ payload }),
+  })
+
+  test.for(['describe_notes', 'preview_tidy'])('%s called directly is refused, the app is not asked, and no hidden record leaves', async (read, { admin, createUser }) => {
+    await install(admin)
+    const [, describer] = await people(createUser)
+    const response = await raw(describer, read, { table: NOTE, rows: ['n1'], page: true })
+    expect(response.status).toBe(403)
+    expect(await response.text()).not.toContain('The secret')
+    expect(hook().asked).toEqual([])
+  })
+
+  test('the discovery form of the read endpoint refuses them too', async ({ admin, createUser }) => {
+    await install(admin)
+    const [, describer] = await people(createUser)
+    expect((await describer.fetch('/api/app_reads/barproof/describe_notes/access', { headers: { 'X-Featherbase-App-Version': 'barproof@1.0.0' } })).status).toBe(403)
+  })
+
+  test("refused raw even to someone the app's own gate keeps out, and even to a System Manager", async ({ admin, createUser }) => {
+    await install(admin, declared, true)
+    const [, describer] = await people(createUser)
+    expect((await raw(describer, 'describe_notes', { table: NOTE, rows: ['n1'], page: true })).status).toBe(403)
+    expect((await raw(admin, 'describe_notes', { table: NOTE, rows: ['n1'], page: true })).status).toBe(403)
+    expect(hook().asked).toEqual([])
+  })
+
+  test("the app's other reads still answer directly", async ({ admin, createUser }) => {
+    await install(admin)
+    const [, describer] = await people(createUser)
+    const answer = await raw(describer, 'by_report', { report: 'x' })
+    expect(answer.status, await answer.clone().text()).toBe(200)
+  })
+})
+

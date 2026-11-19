@@ -5,7 +5,7 @@ import { buildInfo } from './build-info'
 import { assertSystemManager } from './permissions'
 import { recordAppAccessRefusal } from './app-access'
 import { installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { appCatalog, closedApps, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { appCatalog, closedApps, appBar, isRecordsRead, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { activeRuntimeVersions, appOperation } from './app-lifecycle'
 import { who, type Env } from './route-context'
@@ -50,6 +50,8 @@ appRoutes.post('/api/app_actions/:app/:action', async (c) =>
   c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
 appRoutes.post('/api/app_reads/:app/:read', async (c) => {
   c.header('Cache-Control', 'no-store')
+  // #1340: a record describer or preview answers only through /api/records, never raw.
+  if (isRecordsRead(c.req.param('app'), c.req.param('read'))) return recordAppAccessRefusal(who(c), c.req.param('app'), c.req.param('read'), 'records')
   return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
 })
 // #1282 Why mode: whether the Map offers Why for a record, and the app's checked explanation.
@@ -75,6 +77,7 @@ appRoutes.get('/api/app_reads/:app/:read/access', async (c) => {
   c.header('Cache-Control', 'no-store')
   if (new URL(c.req.url).search || (await c.req.text()).length)
     return recordAppAccessRefusal(who(c), c.req.param('app'), c.req.param('read'), 'override')
+  if (isRecordsRead(c.req.param('app'), c.req.param('read'))) return recordAppAccessRefusal(who(c), c.req.param('app'), c.req.param('read'), 'records')
   return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), undefined, who(c), true))
 })
 for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upgrade'] as const) {

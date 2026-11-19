@@ -1105,6 +1105,13 @@ export async function whyDeclarationFor(table: string, user: string): Promise<{ 
   return null
 }
 
+/** #1340: whether `read` describes or previews rows of one of `app`'s Tables (its manifest's `records`). Such a read
+ *  answers only through /api/records, which checks who may read what and scrubs its answer; run raw it would skip both. */
+export function isRecordsRead(app: string, read: string): boolean {
+  const records = packages.get(app)?.manifest.records ?? {}
+  return Object.values(records).some((r) => r.describe === read || Object.values(r.previews ?? {}).includes(read))
+}
+
 /** #1340: the app that describes rows of `table` (its manifest's `records`), for `user`, on the same terms as a
  *  Why: an installed, active app the user may open. None when no such app declares one. */
 export async function recordsDeclarationFor(table: string, user: string): Promise<{ app: string; version: string; describe: string; previews: Record<string, string> } | null> {

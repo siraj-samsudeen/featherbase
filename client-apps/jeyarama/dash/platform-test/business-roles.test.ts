@@ -177,6 +177,12 @@ describe('business roles in shadow', () => {
       expect(described.facts.rows[String(store.row_id)]!.header).toBe('Business role · 1 person · from HR title')
       const preview = await systemManager.get<{ preview: { rows: { filter: string }[] } }>('/api/records/dash.business_role/preview/give_old_grants_to_roles')
       expect(preview.preview.rows.filter(r => r.filter === 'there').length).toBeGreaterThan(0)
+      // Codex adversarial round 1: the two reads answer only through Featherbase's checked endpoints, never raw.
+      for (const name of ['describe_business_roles', 'give_old_grants_preview']) {
+        const response = await systemManager.fetch(`/api/app_reads/dash/${name}`, { method: 'POST',
+          headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': `dash@${VERSION}` }, body: JSON.stringify({ payload: { rows: [String(store.row_id)], page: true } }) })
+        expect(response.status, name).toBe(403)
+      }
       expect(await systemManager.post<{ result: unknown }>('/api/app_actions/dash/decide_access', { idempotencyKey: crypto.randomUUID(), payload: { person: staff.user } }).then(a => a.result))
         .toEqual({ person: staff.user, decision: 'Lose Dash' })
       // The owner's yes: a System Manager adds the switch row.
