@@ -54,8 +54,15 @@ test('#859 a delete refused by history offers Retire instead', async ({ admin })
   await user.click(await screen.findByRole('button', { name: 'Record actions' }))
   await user.click(await screen.findByTestId('form-delete', {}, WAIT))
   await user.click(within(screen.getByTestId('delete-row-dialog')).getByTestId('delete-row-confirm'))
-  await screen.findByTestId('delete-row-error', {}, WAIT)
-  await user.click(await screen.findByTestId('delete-row-retire-instead'))
+  const refusal = await screen.findByTestId('delete-row-error', {}, WAIT)
+  // #1348 (UI owner): a refusal is advice, not a data problem: body text in ink, not red, and the warning that
+  // a delete cannot be undone goes, since nothing was deleted.
+  expect(refusal.className.split(' ')).toEqual(expect.arrayContaining(['text-sm', 'text-ink']))
+  expect(refusal.className).not.toContain('text-negative')
+  expect(screen.getByTestId('delete-row-dialog')).not.toHaveTextContent('This cannot be undone.')
+  const retire = await screen.findByTestId('delete-row-retire-instead')
+  expect(retire).toHaveAccessibleName('Retire Instead')
+  await user.click(retire)
   expect(screen.getByTestId('retire-row-dialog')).toBeInTheDocument()
 }, 40_000)
 
