@@ -17,7 +17,7 @@ import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
 import { KeyboardShortcutsItem, ShortcutTeachingHost } from './ShortcutTeaching'
 import { ViewAsBanner, ViewAsButton } from './ViewAs'
-import { RecordLink, TabBar, buttonClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery, raisedClasses } from '@featherbase/shop-floor'
+import { RecordLink, TabBar, buttonClasses, iconButtonClasses, labelClasses, menuItemClasses, touchRowClasses, useMediaQuery, raisedClasses } from '@featherbase/shop-floor'
 import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
@@ -510,7 +510,8 @@ export function useSignOut() {
   }
 }
 
-const MENU_ITEM = 'flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint'
+// #1348: the Account menu's and Help's items are the shared menu rows.
+const MENU_ITEM = menuItemClasses()
 
 /** #72 / #489: the avatar is the Account menu — the person's name, Sign-in
  *  methods, Log out. On a phone it also carries Open Admin and the theme. */
@@ -605,7 +606,7 @@ function AccountMenu({ inMenu, inSidebar }: {
         <span className="sr-only">{t('Account')}: {shown}</span>
       </button>
       {open && (
-        <div id={menuId} className={raisedClasses(`absolute ${place} z-40 w-64 overflow-hidden py-1`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
+        <div id={menuId} className={raisedClasses(`absolute ${place} z-40 w-64 overflow-hidden p-1.5`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
           <div className="px-3 py-2 text-sm" data-testid="account-identity">
             {/* #1227: a record shown is a RecordLink — the person's own Person record, for
                 someone who may open it (a System Manager, or a reader of Person). */}
