@@ -1,0 +1,367 @@
+{
+ "manifestVersion": 1,
+ "platformVersion": "2026-10",
+ "name": "ask",
+ "title": "Ask",
+ "summary": "Ask anything about your figures, your reports or how Featherbase works",
+ "icon": "inbox",
+ "accent": "blue",
+ "server": "dist/server.mjs",
+ "client": "dist/client",
+ "entryTable": "ask.question",
+ "roles": [
+  "Ask Admin"
+ ],
+ "secrets": [
+  {
+   "name": "OPENROUTER_API_KEY",
+   "optional": true
+  }
+ ],
+ "actions": {
+  "version": 2,
+  "tables": [
+   "ask.question",
+   "ask.config",
+   "ask.limit",
+   "ask.tally"
+  ],
+  "operations": {
+   "record": {
+    "policy": {
+     "kind": "table"
+    },
+    "authorization": {
+     "kind": "generic"
+    },
+    "needs": [
+     "OPENROUTER_API_KEY"
+    ]
+   },
+   "configure": {
+    "policy": {
+     "kind": "table"
+    },
+    "authorization": {
+     "kind": "generic"
+    }
+   },
+   "set_limit": {
+    "policy": {
+     "kind": "table"
+    },
+    "authorization": {
+     "kind": "generic"
+    }
+   },
+   "remove_limit": {
+    "policy": {
+     "kind": "table"
+    },
+    "authorization": {
+     "kind": "generic"
+    }
+   }
+  }
+ },
+ "reads": {
+  "version": 1,
+  "tables": [
+   "ask.question",
+   "ask.config",
+   "ask.limit",
+   "ask.tally"
+  ],
+  "operations": {
+   "session": {
+    "policy": {
+     "kind": "table"
+    },
+    "authorization": {
+     "kind": "generic"
+    },
+    "needs": [
+     "OPENROUTER_API_KEY"
+    ]
+   },
+   "think": {
+    "policy": {
+     "kind": "table"
+    },
+    "authorization": {
+     "kind": "generic"
+    },
+    "outbound": true,
+    "needs": [
+     "OPENROUTER_API_KEY"
+    ]
+   },
+   "models": {
+    "policy": {
+     "kind": "table"
+    },
+    "authorization": {
+     "kind": "generic"
+    },
+    "outbound": true
+   },
+   "log": {
+    "policy": {
+     "kind": "table"
+    },
+    "authorization": {
+     "kind": "generic"
+    }
+   },
+   "history": {
+    "policy": {
+     "kind": "table"
+    },
+    "authorization": {
+     "kind": "generic"
+    }
+   }
+  }
+ },
+ "tables": [
+  {
+   "name": "ask.question",
+   "label": "Question",
+   "module": "Ask",
+   "id_pattern": "ASK-.######",
+   "title_column": "question",
+   "columns": [
+    {
+     "column_name": "question",
+     "label": "Question",
+     "column_type": "Text",
+     "reqd": true,
+     "in_list_view": true
+    },
+    {
+     "column_name": "asked_by",
+     "label": "Asked By",
+     "column_type": "Data",
+     "reqd": true,
+     "in_list_view": true
+    },
+    {
+     "column_name": "kind",
+     "label": "Kind",
+     "column_type": "Data",
+     "in_list_view": true
+    },
+    {
+     "column_name": "reply",
+     "label": "Reply (words only, never figures)",
+     "column_type": "Text"
+    },
+    {
+     "column_name": "report",
+     "label": "Report",
+     "column_type": "Data",
+     "in_list_view": true
+    },
+    {
+     "column_name": "pointed_to",
+     "label": "Pointed To",
+     "column_type": "Data"
+    },
+    {
+     "column_name": "model",
+     "label": "Model",
+     "column_type": "Data",
+     "in_list_view": true
+    },
+    {
+     "column_name": "tokens_in",
+     "label": "Tokens In",
+     "column_type": "Int"
+    },
+    {
+     "column_name": "tokens_out",
+     "label": "Tokens Out",
+     "column_type": "Int"
+    },
+    {
+     "column_name": "cost_usd",
+     "label": "Cost (USD)",
+     "column_type": "Float",
+     "in_list_view": true
+    },
+    {
+     "column_name": "took_ms",
+     "label": "Took (ms)",
+     "column_type": "Int"
+    },
+    {
+     "column_name": "asked_at",
+     "label": "Asked At",
+     "column_type": "Data",
+     "in_list_view": true
+    }
+   ]
+  },
+  {
+   "name": "ask.config",
+   "label": "Ask Setting",
+   "module": "Ask",
+   "columns": [
+    {
+     "column_name": "model",
+     "label": "Model",
+     "column_type": "Data"
+    },
+    {
+     "column_name": "allowed_models",
+     "label": "Other Models People May Pick",
+     "column_type": "Text"
+    },
+    {
+     "column_name": "monthly_cap_usd",
+     "label": "Monthly Spend Cap (USD)",
+     "column_type": "Float"
+    }
+   ]
+  },
+  {
+   "name": "ask.limit",
+   "label": "Ask Limit",
+   "module": "Ask",
+   "id_pattern": "ASKL-.####",
+   "columns": [
+    {
+     "column_name": "applies_to",
+     "label": "Applies To",
+     "column_type": "Choice",
+     "choices": "everyone\nperson\nrole",
+     "reqd": true,
+     "in_list_view": true
+    },
+    {
+     "column_name": "who",
+     "label": "Person Or Role",
+     "column_type": "Data",
+     "in_list_view": true
+    },
+    {
+     "column_name": "who_name",
+     "label": "Name",
+     "column_type": "Data"
+    },
+    {
+     "column_name": "model",
+     "label": "Model (blank for any)",
+     "column_type": "Data",
+     "in_list_view": true
+    },
+    {
+     "column_name": "period",
+     "label": "Period",
+     "column_type": "Choice",
+     "choices": "hour\nday\nmonth",
+     "reqd": true,
+     "in_list_view": true
+    },
+    {
+     "column_name": "max_questions",
+     "label": "Most Questions",
+     "column_type": "Int",
+     "in_list_view": true
+    },
+    {
+     "column_name": "max_usd",
+     "label": "Most Spend (USD)",
+     "column_type": "Float",
+     "in_list_view": true
+    }
+   ]
+  },
+  {
+   "name": "ask.tally",
+   "label": "Ask Monthly Total",
+   "module": "Ask",
+   "columns": [
+    {
+     "column_name": "spent_usd",
+     "label": "Spent (USD)",
+     "column_type": "Float",
+     "in_list_view": true
+    },
+    {
+     "column_name": "questions",
+     "label": "Questions",
+     "column_type": "Int",
+     "in_list_view": true
+    }
+   ]
+  }
+ ],
+ "migrations": [],
+ "permissions": [
+  {
+   "table": "ask.question",
+   "role": "All",
+   "own_rows_only": true,
+   "can_read": true,
+   "can_create": true
+  },
+  {
+   "table": "ask.question",
+   "role": "Ask Admin",
+   "can_read": true
+  },
+  {
+   "table": "ask.question",
+   "role": "System Manager",
+   "can_read": true
+  },
+  {
+   "table": "ask.config",
+   "role": "All",
+   "can_read": true
+  },
+  {
+   "table": "ask.config",
+   "role": "Ask Admin",
+   "can_read": true,
+   "can_write": true,
+   "can_create": true
+  },
+  {
+   "table": "ask.config",
+   "role": "System Manager",
+   "can_read": true,
+   "can_write": true,
+   "can_create": true
+  },
+  {
+   "table": "ask.limit",
+   "role": "All",
+   "can_read": true
+  },
+  {
+   "table": "ask.limit",
+   "role": "Ask Admin",
+   "can_read": true,
+   "can_write": true,
+   "can_create": true,
+   "can_delete": true
+  },
+  {
+   "table": "ask.limit",
+   "role": "System Manager",
+   "can_read": true,
+   "can_write": true,
+   "can_create": true,
+   "can_delete": true
+  },
+  {
+   "table": "ask.tally",
+   "role": "All",
+   "can_read": true,
+   "can_write": true,
+   "can_create": true
+  }
+ ]
+}

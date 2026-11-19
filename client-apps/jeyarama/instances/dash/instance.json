@@ -2,7 +2,8 @@
   "apps": [
     "client-apps/jeyarama/dash",
     "example-apps/tasker",
-    "example-apps/tickets"
+    "example-apps/tickets",
+    "example-apps/ask"
   ],
   "madeUpData": "client-apps/jeyarama/dash/scripts/seed-made-up.mts"
 }

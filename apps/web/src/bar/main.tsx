@@ -3,10 +3,14 @@
 import { mountBar } from './mount'
 import { FeatherbaseSidebar } from './sidebar'
 import { installDeployWait } from '../lib/deploy-wait'
+import { installAskLauncher } from './ask-launcher'
 
 // #1260: every app page loads this bundle, so an app's own requests wait
 // out a deploy too, without the app changing.
 installDeployWait(window, document)
+// Ask on every app page (prototype).
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => installAskLauncher(window, document))
+else installAskLauncher(window, document)
 
 class FeatherbaseBar extends HTMLElement {
   connectedCallback() {

@@ -1,0 +1,14 @@
+@import '@featherbase/shop-floor/styles.css';
+@source './';
+@source '../../../packages/shop-floor/src';
+@source not '../../../packages/shop-floor/src/**/*.stories.tsx';
+
+/* Ask colours itself only through Shop Floor tokens. One white panel on the canvas, as every page. */
+html, body { max-width: 100%; overflow-x: hidden; }
+body { margin: 0; background: var(--color-canvas); color: var(--color-ink); font: var(--text-control)/1.45 var(--font-sans); }
+.ask-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); height: calc(100vh - var(--featherbase-bar-height, 48px)); }
+.ask-page { min-width: 0; overflow: auto; padding: 16px 16px 16px 0; }
+.ask-panel { min-height: 100%; padding: 24px 28px; display: flex; flex-direction: column; }
+.ask-panel > * { flex: 1; min-height: 0; }
+.ask-in-panel featherbase-bar { display: none; }
+.ask-in-panel body { background: var(--color-surface); }
