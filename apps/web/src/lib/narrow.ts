@@ -92,6 +92,7 @@ export function narrowLists(meta: TableMeta, backlinks: Backlink[], metaOf: Meta
     }
   }
   walkForward([{ meta, steps: [], path: [], depth: 0 }])
+  byBranch(lists, 0)
   if (!isLinkTable(meta)) lists.push({ key: 'rows', label: label(meta.name), kind: 'rows', table: meta.name, path: [] })
   // The far side of each link table pointing here (Section → Section
   // Subcategory → Subcategory), two links deep, and what it links on to.
@@ -113,10 +114,24 @@ export function narrowLists(meta: TableMeta, backlinks: Backlink[], metaOf: Meta
       farSides.push(w)
     }
   }
+  const farFrom = lists.length
   walkForward(farSides)
+  byBranch(lists, farFrom - farSides.length)
   for (const c of dataColumns(meta).filter((x) => x.column_type === 'Choice'))
     lists.push({ key: `choice:${c.column_name}`, label: c.label ?? c.column_name, kind: 'choice', column: c.column_name, path: [{ column: c.column_name }] })
   return { lists: lists.slice(0, MAX_NARROW_LISTS), missing: [...missing] }
+}
+
+/** Board A's order, from `from` on: lists grouped by the link they start from,
+ *  in the order those links come, each group's farthest table first (Store,
+ *  Floor, then Section; Division, Category, then Subcategory). Found breadth
+ *  first, so each table is still listed by its shortest path. */
+function byBranch(lists: NarrowList[], from: number) {
+  const branchOf = (l: NarrowList) => { const s = l.path[0]; return s ? ('from' in s ? `${s.from}<${s.column}` : s.column) : '' }
+  const part = lists.slice(from)
+  const order = [...new Set(part.map(branchOf))]
+  part.sort((a, b) => order.indexOf(branchOf(a)) - order.indexOf(branchOf(b)) || b.path.length - a.path.length)
+  lists.splice(from, part.length, ...part)
 }
 
 /** The one filter a list's picks add to the list, or none when nothing is picked. */
