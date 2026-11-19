@@ -407,7 +407,8 @@ export function LoginPage() {
       microsoft={microsoft}
       delegated={delegatedMethods}
       password={passwordOn}
-      failed={panelShowing ? (refusedByMicrosoft ? 'microsoft' : 'google') : null}
+      // A sign-in that only took too long refused no account: its buttons read as the first page's.
+      failed={panelShowing && refusalCode !== 'expired' ? (refusedByMicrosoft ? 'microsoft' : 'google') : null}
       without={p.without ?? null}
       onRedirect={() => rememberLoginNext(next)}
       onDelegated={(key) => switchMode('delegated', key)}
