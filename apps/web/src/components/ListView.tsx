@@ -229,8 +229,6 @@ export function ListView({
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsUnsaved, setSettingsUnsaved] = useState(false)
   const settingsWrite = useRef(Promise.resolve())
-  // #1282 A4: what the person changed before their saved settings arrived; the load leaves those alone.
-  const touched = useRef(new Set<string>())
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const selectedAccess = useQueries({ queries: [...selected].map((name) => rowCapabilitiesQuery(table, name)) })
@@ -307,7 +305,6 @@ export function ListView({
     setSettingsLoaded(false)
     setSettingsUnsaved(false)
     // A Table's own settings, never the last Table's.
-    touched.current = new Set()
     setSort(null)
     setOwnCompact(undefined)
     setArrangement({ shownCols: [], hiddenCols: [] })
@@ -318,17 +315,16 @@ export function ListView({
       )
       .then((res) => {
         if (cancelled) return
-        const s = res.settings
-        if (s) {
-          const fresh = (key: string) => !touched.current.has(key)
-          if (s.sort && fresh('sort')) setSort(s.sort)
-          if (typeof s.compact === 'boolean' && fresh('compact')) setOwnCompact(s.compact)
-          if (fresh('showRetired')) setShowRetired(s.showRetired === true)
-          if (fresh('arrangement')) setArrangement({
-            shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
-            hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
-          })
-        }
+        // What the person saved wins over anything clicked before it arrived, each setting left unsaved
+        // following the Table's default (#1282 A4).
+        const s = res.settings ?? {}
+        setSort(s.sort ?? null)
+        setOwnCompact(typeof s.compact === 'boolean' ? s.compact : undefined)
+        setShowRetired(s.showRetired === true)
+        setArrangement({
+          shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
+          hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
+        })
         setSettingsLoaded(true)
       })
       .catch(
@@ -345,7 +341,8 @@ export function ListView({
   // A save that fails is said, not swallowed (#546): the change still shows
   // now, but the list would open the old way next time.
   function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement>; compact?: boolean; showRetired?: boolean }) {
-    for (const key of Object.keys(next)) touched.current.add(key)
+    // A change before this person's saved settings arrive is not saved: what they saved wins.
+    if (!settingsLoaded) return
     const token = getToken()
     // #1282 A4: only what the person changed is saved (the server merges it), so a choice they never made keeps
     // following the Table's default. Writes keep interaction order, so a slower earlier one never lands last.
@@ -1070,7 +1067,7 @@ export function ListView({
           <ChecklistSwitch table={table} meta={meta.data} />
           {/* #1282 A4 (UI owner): the Table's managers make their whole view the Table's default; anyone whose view
               differs from it goes back to it. */}
-          {canShapeColumns && meta.data && (
+          {canShapeColumns && meta.data && settingsLoaded && !ownSettings.isPending && (
             <button type="button" className={buttonClasses()} data-testid="make-table-default"
               onClick={() => { setViewMenuOpen(false); setColPickerOpen(false); setConfirmingDefault(true) }}>
               Make This the Table's Default…

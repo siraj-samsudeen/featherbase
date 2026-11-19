@@ -28,7 +28,8 @@ const savesKey = (table: string) => `${getToken() ?? ''}\u0000${table}`
 
 /** #1282 A4: resolves once every layout save already queued for this Table has landed, so a reset after it is final. */
 export function layoutSavesSettled(table: string): Promise<unknown> {
-  return (saves.get(savesKey(table)) ?? Promise.resolve()).catch(() => undefined)
+  // Each save already catches its own failure (choose), so this never rejects.
+  return saves.get(savesKey(table)) ?? Promise.resolve()
 }
 
 export function useListLayout(table: string, asked?: ListLayout) {

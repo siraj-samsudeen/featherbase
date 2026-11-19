@@ -449,6 +449,8 @@ describe('list-view', () => {
     await step('a System Manager has sorted the list of "Section Mapping" by Floor and switched on Compact Rows', async () => {
       given = await sectionMapping(admin, createUser as CreateUser, DEFAULT_LIST)
       await openList(admin, given.table)
+      // The rows show once the person's saved settings are here; a click before then is not kept.
+      await waitFor(() => expect(sections().length).toBe(2))
       fireEvent.click(screen.getByTestId('col-floor'))
       await waitFor(() => expect(sections()).toEqual(['Kids Wear', 'Sarees']))
       fireEvent.click(screen.getByTestId('compact-rows'))
@@ -469,6 +471,7 @@ describe('list-view', () => {
     await step('a System Manager has made their view the default for "Section Mapping"', async () => {
       given = await sectionMapping(admin, createUser as CreateUser, DEFAULT_LIST)
       await openList(admin, given.table)
+      await waitFor(() => expect(sections().length).toBe(2))
       fireEvent.click(screen.getByTestId('compact-rows'))
       await makeDefaultForEveryone(admin, given.table, {})
       expect((await tableDefault(admin, given.table))?.settings).toMatchObject({ compact: true })

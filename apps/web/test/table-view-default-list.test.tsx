@@ -74,6 +74,7 @@ test("a person's own sort wins; Reset shows, and clears only their own choices",
 test('Show Retired is remembered, and its toggle reads as on when the list opens again', async ({ admin }) => {
   await seed(admin)
   const view = await renderApp(tableHref(DT), admin)
+  await waitFor(() => expect(shelves().length).toBe(3), T)
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Show Retired' }, T))
   await waitFor(async () => expect((await admin.get<{ settings: { showRetired?: boolean } }>(`/api/user_settings/${enc(DT)}`)).settings.showRetired).toBe(true), T)
   view.unmount()
@@ -176,8 +177,68 @@ test("a default made on a phone keeps the person's desktop layout, not the phone
   }) as unknown as MediaQueryList)
   try {
     await renderApp(tableHref(DT), admin)
-    await userEvent.click((await openListMenu('View')).getByRole('button', { name: "Make This the Table's Default…" }))
+    await waitFor(() => expect(screen.getByTestId('list-view')).toBeInTheDocument(), T)
+    await userEvent.click(await waitFor(async () => (await openListMenu('View')).getByRole('button', { name: "Make This the Table's Default…" }), T))
     const dialog = await screen.findByTestId('table-default-dialog', {}, T)
     expect(within(dialog).getByTestId('table-default-words').children[0]!.textContent).toBe('List And Record')
   } finally { vi.restoreAllMocks() }
+})
+
+test('the confirm closes on Escape and on a click outside it, saving nothing', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(tableHref(DT), admin)
+  await waitFor(() => expect(shelves().length).toBe(3), T)
+  const open = async () => {
+    await userEvent.click(await waitFor(async () => (await openListMenu('View')).getByRole('button', { name: "Make This the Table's Default…" }), T))
+    return screen.findByTestId('table-default-dialog', {}, T)
+  }
+  await open()
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByTestId('table-default-dialog')).not.toBeInTheDocument())
+  const dialog = await open()
+  await userEvent.click(dialog.parentElement!)
+  await waitFor(() => expect(screen.queryByTestId('table-default-dialog')).not.toBeInTheDocument())
+  expect((await admin.get<{ default: unknown }>(`/api/table_view_default/${enc(DT)}`)).default).toBeNull()
+})
+
+test("the toast's Undo says so when the save is no longer the default", async ({ admin }) => {
+  await seed(admin)
+  await renderApp(tableHref(DT), admin)
+  await waitFor(() => expect(shelves().length).toBe(3), T)
+  await userEvent.click(await waitFor(async () => (await openListMenu('View')).getByRole('button', { name: "Make This the Table's Default…" }), T))
+  await userEvent.click(await screen.findByTestId('table-default-confirm', {}, T))
+  await screen.findByTestId('table-default-toast', {}, T)
+  // Another save lands first, so this one is no longer the default.
+  await putDefault(admin, { compact: true })
+  await userEvent.click(screen.getByTestId('table-default-undo'))
+  expect(await screen.findByText("Couldn't undo: it is no longer the default.", {}, T)).toBeInTheDocument()
+})
+
+test('a Reset the server refuses says the list could not be saved', async ({ admin }) => {
+  await seed(admin)
+  await admin.fetch(`/api/user_settings/${enc(DT)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ compact: true }) })
+  await renderApp(tableHref(DT), admin)
+  await waitFor(() => expect(shelves().length).toBe(3), T)
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url.includes('/reset')) return new Response(JSON.stringify({ error: { type: 'InternalError', message: 'no' } }), { status: 500 })
+    return real(input, init)
+  })
+  try {
+    await userEvent.click((await openListMenu('View')).getByRole('button', { name: "Reset to the Table's Default" }))
+    expect(await screen.findByTestId('list-settings-error', {}, T)).toBeInTheDocument()
+  } finally { vi.restoreAllMocks() }
+})
+
+test("choosing a board's grouping remembers it", async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', { name: 'Tvd Bin', id_pattern: 'hash', title_column: 'bin_name', columns: [
+    { column_name: 'bin_name', column_type: 'Data', label: 'Bin', in_list_view: true },
+    { column_name: 'state', column_type: 'Choice', label: 'State', choices: 'Full\nEmpty' },
+    { column_name: 'size', column_type: 'Choice', label: 'Size', choices: 'Small\nLarge' },
+  ] })
+  await renderApp(`${tableHref('Tvd Bin')}/view/kanban`, admin)
+  await userEvent.selectOptions(await screen.findByRole('combobox', {}, T), 'size')
+  await waitFor(async () => expect((await admin.get<{ settings: { groupBy?: string } }>(`/api/user_settings/${enc('Tvd Bin')}`)).settings.groupBy).toBe('size'), T)
 })
