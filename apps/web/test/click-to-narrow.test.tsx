@@ -64,6 +64,10 @@ test('every list shows a panel with one list per table its rows reach, each valu
   await waitFor(() => expect(value(REGION, 'Coastal')).toHaveTextContent('3'))
   // The section with no store is "Not linked to any Store", in red.
   expect(value(STORE, `Not linked to any ${STORE}`)).toHaveTextContent('1')
+  // It closes the list's possible values, and names itself in full on hover.
+  const storeValues = within(narrowList(STORE)).getAllByRole('button', { name: / \d+$/ })
+  expect(storeValues.at(-1)).toBe(value(STORE, `Not linked to any ${STORE}`))
+  expect(within(storeValues.at(-1)!).getByText(`Not linked to any ${STORE}`)).toHaveAttribute('title', `Not linked to any ${STORE}`)
 })
 
 test('a click narrows the list and every other list; ruled-out values stay, grey, at 0', async ({ admin }) => {
@@ -136,4 +140,15 @@ test('each picked value is its own green chip; removing one keeps the others', a
   await userEvent.click(within(chips[0]).getByRole('button', { name: /Remove/ }))
   await waitFor(() => expect(rowTitles()).toEqual(['Ladies Ethnic']))
   expect(screen.getAllByTestId('filter-chip').map((c) => c.textContent?.replace('✕', ''))).toEqual([`${STORE}: Northgate`])
+})
+
+test('picks that leave no rows say so, not "add the first one"', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(listPath(SECTION), admin)
+  await waitFor(() => expect(value(STORE, 'Northgate')).toHaveTextContent('1'))
+  await userEvent.click(value(STORE, 'Northgate'))
+  await waitFor(() => expect(value(FLOOR, 'Ground Floor')).toHaveAttribute('data-state', 'ruled-out'))
+  await userEvent.click(value(FLOOR, 'Ground Floor'))
+  expect(await screen.findByText('No Rows Match These Filters')).toBeInTheDocument()
+  expect(screen.queryByText(/Add the first/)).toBeNull()
 })
