@@ -101,6 +101,14 @@ describe('#1289: Click To Narrow counts', () => {
     expect(store).toEqual({ Bayside: 1, Northgate: 1 })
   })
 
+  test('no lists, no counts; with_retired is read', async ({ admin }) => {
+    await setup(admin)
+    expect(await narrow(admin, SECTION, [])).toEqual([])
+    const qs = `lists=${encodeURIComponent(JSON.stringify([{ path: [{ column: 'store' }] }]))}&with_retired=true`
+    const res = await admin.get<{ lists: { values: { value: string | null; count: number }[] }[] }>(`/api/table/${encodeURIComponent(SECTION)}:narrow?${qs}`)
+    expect(res.lists[0].values.reduce((n, v) => n + v.count, 0)).toBe(6)
+  })
+
   test('a two-step path counts the value two links away', async ({ admin }) => {
     await setup(admin)
     const [floor, category] = await narrow(admin, SECSUB, [
@@ -179,5 +187,19 @@ describe('#1289: Click To Narrow counts', () => {
     await refused([{ path: [{ column: 'store' }, { column: 'title' }, { column: 'x' }, { column: 'y' }] }]) // too deep
     await refused(Array.from({ length: 41 }, () => ({ path: [] })))
     await refused({ path: [] })
+    await refused([{ path: [{ column: 5 }] }]) // a step names its column
+    await refused([{}]) // a list has a path
+    await refused([{ path: [{ column: 'store' }], pick: 'store' }]) // a pick is one filter
+  })
+
+  test('a link to a row of any Table cannot be a list, and lists must be JSON', async ({ admin }) => {
+    await setup(admin)
+    const PIN = 'Nar Pin'
+    await admin.post('/api/table_def', { name: PIN, columns: [
+      { column_name: 'pinned_table', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'pinned', column_type: 'Reference', table_column: 'pinned_table', choices: `${STORE}\n${FLOOR}` },
+    ] })
+    await expect(narrow(admin, PIN, [{ path: [{ column: 'pinned' }] }])).rejects.toMatchObject({ status: 417 })
+    await expect(admin.get(`/api/table/${encodeURIComponent(SECTION)}:narrow?lists=not-json`)).rejects.toMatchObject({ status: 400 })
   })
 })
