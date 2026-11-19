@@ -15,6 +15,7 @@ import { storeActions, storeReads } from './my-store.ts'
 import { buyerSectionActions, buyerSectionReads } from './buyer-sections.ts'
 import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
+import { changePermissions, seesBusinessRoles } from './permission-grid-server.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenNow, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
 import { viewAsPeople } from './view-as-people.ts'
@@ -379,6 +380,8 @@ export const actions = {
   // #1218: business roles in shadow; they change no one's access.
   give_role: (context: AccessContext) => giveRole(context),
   remove_role: (context: AccessContext) => removeRole(context),
+  /** #1282 F1–F6: the Business Roles grid's changes, checked whole, written as the caller, each logged. */
+  change_permissions: (context: AccessContext) => changePermissions(context),
   map_title: (context: AccessContext) => mapTitle(context),
   add_starting_roles: (context: AccessContext) => addStartingRoles(context),
   /** #1277 (J3): the old grants given to business roles, logged, only when a System Manager asks; rerunning adds nothing. */
@@ -438,6 +441,8 @@ export const reads = {
 
   /** #1218: whether this person sees the business roles pages (company-wide managers only), for the sidebar's links. */
   manages_roles: (context: ReadContext) => managesAccess(context as AccessContext),
+  /** #1282: whether the sidebar offers Business Roles: those who manage access, and a Role Permission Manager. */
+  sees_roles: (context: ReadContext) => seesBusinessRoles(context as AccessContext),
   /** #1218, in shadow: the Business Roles page, Explain a person, and Who would gain or lose access. Company-wide managers only. */
   business_roles: (context: ReadContext) => businessRoles(context as AccessContext),
   explain_person: (context: ReadContext) => explainPerson(context as AccessContext),

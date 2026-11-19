@@ -132,6 +132,12 @@ describe('a log line as a sentence', () => {
 describe('the Business Roles page', () => {
   it('reads each permission as a sentence with its reach', async () => {
     const page = await businessRoles(context(await seeded()) as never)
+    // #1282 (Siraj): a Report Access Manager sees the grid read-only; only a Role Permission Manager changes it.
+    expect(page.may_change).toBe(false)
+    const asSystemManager = await businessRoles(context(await seeded(), { roles: ['System Manager'] }) as never)
+    const asRolePermissionManager = await businessRoles(context(await seeded(), { roles: ['Role Permission Manager'] }) as never)
+    expect([asSystemManager.may_change, asRolePermissionManager.may_change]).toEqual([false, true])
+    await expect(businessRoles(context(await seeded(), { roles: ['Dash Reader'] }) as never)).rejects.toThrow()
     expect(page.roles.find(r => r.name === 'Store Manager')!.permissions).toContainEqual(expect.objectContaining({ app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Section names and subcategories', reach: 'Area', sentence: 'Store Managers can Edit Section names and subcategories in their area' }))
     // Owner, 18-Nov-2026: managers see their team's tickets; Head Office opens no Dash by default.
     expect(page.roles.find(r => r.name === 'Store Manager')!.permissions.find(p => p.app === 'Tickets')!.sentence).toBe('Store Managers can View Tickets for their team')

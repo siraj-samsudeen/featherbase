@@ -9,6 +9,7 @@ import { reportsReaching, type AccessRow, type BundleMember, type Receiver } fro
 import { ACCESS, MEMBER, all, jobsOf, managesAccess, personNames, whoIs, type AccessContext } from './report-access-server.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
 import { EMPLOYEE_STATUS, checked, exact, holdsOn, text } from './values.ts'
+import { mayChangePermissions, seesBusinessRoles } from './permission-grid-server.ts'
 import { istToday } from './report.ts'
 import { STARTING_ROLES } from './starting-roles.ts'
 import { opensDashFor, readableByRoles, offered } from './report-eligibility.ts'
@@ -362,7 +363,8 @@ const HOLDER_WORDS: Record<Source, string> = {
 const joined = (words: string[]) => words.length <= 1 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
 
 export async function businessRoles(context: AccessContext) {
-  const ctx = managersOnly(context)
+  if (!seesBusinessRoles(context)) context.reject!(ONLY_MANAGERS)
+  const ctx = context as Ctx
   const world = await shadowWorld(ctx.baseTables)
   const { roles, permissions } = world.model
   const nameOf = new Map(roles.map(r => [r.id, r.name]))
@@ -398,6 +400,8 @@ export async function businessRoles(context: AccessContext) {
   const shown = [...new Set([...holdersOf.values()].flatMap(set => [...set].slice(0, HOLDERS_SHOWN)).concat(roles.flatMap(r => [...peopleOf.get(r.id) ?? []].slice(0, HOLDERS_SHOWN))))]
   const names = await personNames(ctx, shown)
   return {
+    // #1282 F1–F6: whether the grid steps for this caller, or is read-only.
+    may_change: mayChangePermissions(ctx),
     roles: roles.sort((a, b) => a.name.localeCompare(b.name)).sort((a, b) => order(a.name) - order(b.name)).map(role => ({
       id: role.id, name: role.name, description: role.description, by_hand_only: role.by_hand_only, reaches: REACHES_WORDS[role.reaches!] ?? 'Not set',
       permissions: permissions.filter(p => p.role === role.id).map(p => ({ app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach, sentence: permissionSentence(role.name, p), parts: permissionParts(role, p) })),

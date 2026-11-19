@@ -5,8 +5,11 @@ import { ALL_STORES_ROLE, type Place } from './provider.ts'
 import { TEAM_MANAGER } from './team-access.ts'
 import { VIEW_AS_TESTER } from './view-as-people.ts'
 
+/** #1282 (Siraj, 19-Nov-2026): the one role that changes what a business role can do, on Business Roles' grid. */
+export const ROLE_PERMISSION_MANAGER = 'Role Permission Manager'
+
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
-export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager', TEAM_MANAGER, VIEW_AS_TESTER])
+export const DASH_ROLES = new Set([ALL_STORES_ROLE, 'Dash Reader', 'Report Access Manager', TEAM_MANAGER, VIEW_AS_TESTER, ROLE_PERMISSION_MANAGER])
 
 /** reportsFor: someone whose job reaches nothing gets only a given report that takes no filter. */
 export const openableByReach = (shape: string, reachesAny: boolean) => reachesAny || shape === 'No filter'
