@@ -17,7 +17,6 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { madeUpReportDates } from './made-up-report-dates.ts'
-import { planSectionPlants } from '../src/section-plants.ts'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const checkout = resolve(appDir, '../../..')
@@ -96,16 +95,6 @@ for (const [code, name, is_store, cluster, operating_region] of org.sites) await
 for (const [plant_code, plant_type, site] of org.plants) await keep('Plant', plant_code, { plant_code, plant_type, site })
 for (const [row_id, name, site] of org.floors) await keep('Store Floor', row_id, { row_id, name, site })
 for (const [row_id, name, site, floor, status] of org.sections) await keep('Section', row_id, { row_id, name, site, floor, status })
-// #1351: Lakeside holds a store and a warehouse, so its sections' plant is a person's choice: the store's,
-// set here as a person would. Every other made-up section is at a one-plant site and gets it as the fill
-// script would, so the Sections Without A Plant check lists none. A plant already set is never touched.
-const sectionRows = (await call<{ data: { row_id: string; site: string; plant: string | null; updated_at: string }[] }>(
-  `/api/table/Section?fields=${encodeURIComponent('["row_id","site","plant","updated_at"]')}&limit_page_length=1000`)).data
-const plantRows = (org.plants as string[][]).map(([row_id, , site]) => ({ row_id, site }))
-const chosen = sectionRows.map(s => s.site === 'LKS' && !s.plant ? { ...s, plant: '9901', chosen: true } : s)
-const sectionPlants = [...chosen.filter(s => 'chosen' in s).map(s => ({ section: s.row_id, plant: s.plant! })), ...planSectionPlants(chosen, plantRows).fill]
-for (const { section, plant } of sectionPlants)
-  await call(`/api/table/Section/${encodeURIComponent(section)}`, { method: 'PATCH', body: JSON.stringify({ plant, updated_at: sectionRows.find(s => s.row_id === section)!.updated_at }) })
 const tree = org.merchandise
 for (const division of tree.divisions) await keep('Division', division, { division })
 for (const [subdivision, division] of tree.subdivisions) await keep('Subdivision', subdivision, { subdivision, division })
