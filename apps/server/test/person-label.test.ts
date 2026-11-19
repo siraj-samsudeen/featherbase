@@ -12,7 +12,7 @@ import { getMeta } from '../src/meta'
 import { updateTable } from '../src/table-engine'
 import { renameColumn } from '../src/table-rename'
 import { discoverPackages } from '../src/runtime-packages'
-import { personLabels } from '../src/person-labels'
+import { personLabels, within } from '../src/person-labels'
 import { sql } from '../src/db'
 
 type Hit = { table: string; row_id: string; title: string; person?: Record<string, unknown> }
@@ -146,6 +146,27 @@ describe('#1345: search lists each human once, told apart', () => {
     expect((await personLabels([person], 'Administrator')).get(person)).toEqual({ code: 'PL-R1', email: 'restricted.coded@example.test' })
   })
 
+  test('a staff row that names no one, or whose person column the viewer may not read, stays a staff row', async ({ admin, createUser }) => {
+    await threeMeenas(admin)
+    await admin.post('/api/save_row', { table: 'Pl Staff', row: { staff_code: 'PL-77009', full_name: 'Meena Ravikumar' } })
+    expect((await group(admin, 'pl-77009', 'Pl Staff')).map((h) => h.row_id)).toEqual(['PL-77009'])
+    // A viewer who may read the staff list and Person, but not the staff row's person column.
+    await makeTable(admin, { name: 'Pl Guarded Staff', id_pattern: 'field:guard_code', title_column: 'full_name', person_column: 'person',
+      columns: ['guard_code', 'full_name', { column_name: 'person', column_type: 'Reference', reference_table: 'Person', tier: 'restricted' }] })
+    const [someone] = await sql`select row_id from person where full_name = 'Meena Ravikumar' limit 1`
+    await admin.post('/api/save_row', { table: 'Pl Guarded Staff', row: { guard_code: 'PL-G1', full_name: 'Guarded Meena', person: someone!.row_id } })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pl Guard Reader' } })
+    for (const table of ['Person', 'Pl Guarded Staff']) await grantRole(admin, { role: 'Pl Guard Reader', table, can_read: true })
+    const reader = await createUser({ email: 'pl-guard-reader@example.test', roles: ['Pl Guard Reader'] })
+    expect((await group(reader, 'pl-g1', 'Pl Guarded Staff')).map((h) => h.row_id)).toEqual(['PL-G1'])
+  })
+
+  test('a principal that may not read Person gets no labels, and a label never waits on a failing app', async () => {
+    expect((await personLabels(['psn_aaaaaaaaaaaaaaaaaaaa'], 'Guest')).size).toBe(0)
+    await expect(within(50, Promise.reject(new Error('down')))).rejects.toThrow('down')
+    expect(await within(20, new Promise((done) => setTimeout(() => done('late'), 200)))).toBeNull()
+  })
+
   test('a person the viewer may not read gets no label at all', async ({ admin, createUser }) => {
     const hidden = await makePerson({ full_name: 'Hidden Person' })
     await code(hidden, 'PL-90001')
@@ -255,6 +276,20 @@ describe('#1345: the app that says who people are adds role and place; the platf
   })
 
   // Codex (focused round): the app reads the day as its own actor; a viewer is told it only where they may read its field.
+  test('a leaving day stays hidden from a viewer who may read its row but not its column', async ({ admin, createUser }) => {
+    const leaver = await makePerson({ full_name: 'Left Guarded', email: 'left.guarded@example.test' })
+    await code(leaver, 'PL-55005', '2023-01-01', { until: '2026-03-12' })
+    await describing(admin)
+    await makeTable(admin, { name: 'Pl Guarded Assignment', id_pattern: 'prompt', columns: ['note', { column_name: 'ends_on', column_type: 'Date', tier: 'restricted' }] })
+    await admin.post('/api/save_row', { table: 'Pl Guarded Assignment', row: { row_id: 'pl-gasg', note: 'x', ends_on: '2026-03-12' } })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pl Row Reader' } })
+    for (const table of ['Person', 'Pl Guarded Assignment']) await grantRole(admin, { role: 'Pl Row Reader', table, can_read: true })
+    const reader = await createUser({ email: 'pl-row-reader@example.test', roles: ['Pl Row Reader'] })
+    said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: 'PL-55005', left_on: '2026-03-12',
+      left_on_from: { table: 'Pl Guarded Assignment', id: 'pl-gasg', column: 'ends_on' }, jobs: [] }))
+    expect((await personLabels([leaver], reader.user!)).get(leaver)).not.toHaveProperty('left_on')
+  })
+
   test('a leaving day reaches only a viewer who may read the field it comes from, in the label and on the Person page', async ({ admin, createUser }) => {
     const leaver = await makePerson({ full_name: 'Left Quietly', email: 'left.quietly@example.test' })
     await code(leaver, 'PL-55004', '2023-01-01', { until: '2026-03-12' })

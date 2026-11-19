@@ -79,4 +79,10 @@ describe('#1345: a settings file sets Metadata Overrides from an allowlist', () 
     await expect(applyInstanceSettings(file([label]), { by: 'Administrator' })).rejects.toThrow(`Metadata Override row ${String(guarded!.row_id)} is already another override (Iso Roster.full_name read_only)`)
     expect(await sql`select property, value from metadata_override where row_id = ${guarded!.row_id}`).toEqual([{ property: 'read_only', value: '1' }])
   })
+
+  test('a row without its Table, property or value is refused', async ({ admin }) => {
+    await roster(admin)
+    await expect(applyInstanceSettings(file([{ row_id: 'iso-bare', table_name: 'Iso Roster', property: 'person_column' }]), { by: 'Administrator' }))
+      .rejects.toThrow('Metadata Override takes table_name, property and value')
+  })
 })
