@@ -6,11 +6,12 @@ import { describe, expect, test } from 'vitest'
 import { RowDensityContext } from '@featherbase/shop-floor'
 import { ListCell } from '../src/components/ListRows'
 import type { ListColumn } from '../src/lib/list-view-columns'
+import { DEFAULT_SETTINGS } from '../src/lib/settings'
 
 const col = (column_name: string, column_type: string): ListColumn => ({ column_name, column_type, label: column_name } as ListColumn)
 const draw = (name: string, type: string, value: unknown, compact = false) => render(
   <QueryClientProvider client={new QueryClient()}><RowDensityContext.Provider value={compact ? 'compact' : 'comfortable'}>
-    <ListCell row={{ row_id: 'r1', [name]: value }} col={col(name, type)} table="Site" settings={{}} first={false} />
+    <ListCell row={{ row_id: 'r1', [name]: value }} col={col(name, type)} table="Site" settings={DEFAULT_SETTINGS} first={false} />
   </RowDensityContext.Provider></QueryClientProvider>,
 ).container.querySelector(`[data-testid="cell-${name}"]`) as HTMLElement
 
@@ -36,4 +37,8 @@ describe('a list cell in the calmer look', () => {
     expect(draw('postal_code', 'Data', '').textContent).toBe('')
     expect(draw('opened_on', 'Date', null).textContent).toBe('')
   })
+})
+
+test('a postal code is an address, not a code: it keeps body text', () => {
+  expect(draw('postal_code', 'Data', '600 101').querySelector('.font-mono')).toBeNull()
 })
