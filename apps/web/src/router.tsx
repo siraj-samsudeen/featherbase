@@ -139,19 +139,21 @@ function tablePage(Page: ComponentType) {
   return function TablePageBoundary() {
     const { table } = useParams({ strict: false }) as { table: string }
     const meta = useMeta(table)
+    const retry = () => void meta.refetch()
     // A failed refresh may retain data. Connectivity loss can use it, but a
     // definitive refusal (notably ambiguity or deletion) must not mount it.
     if (meta.error instanceof ApiError && meta.error.status < 500)
-      return <TableAddressError error={meta.error} />
+      return <TableAddressError error={meta.error} reset={retry} />
     if (!meta.data) {
-      if (meta.error) return <TableAddressError error={meta.error} />
+      if (meta.error) return <TableAddressError error={meta.error} reset={retry} />
       return <p className="p-4 text-ink-muted">Loading…</p>
     }
     return <resolvedTable.Provider value={meta.data}><Page /></resolvedTable.Provider>
   }
 }
 
-function TableAddressError({ error }: { error: unknown }) {
+/** `reset` asks again: the route's own reset as its error boundary, else the Table's details read again. */
+function TableAddressError({ error, reset }: { error: unknown; reset: () => void }) {
   const inAdmin = useRouterState({ select: (state) => state.location.pathname.startsWith('/featherbase/admin') })
   if (error instanceof ApiError && error.status === 404 && /^Table .* not found$/.test(error.message))
     return <AdminPageNotFound />
@@ -172,7 +174,7 @@ function TableAddressError({ error }: { error: unknown }) {
   const home = inAdmin ? undefined : <a href="/" className={buttonClasses()}>Go to Featherbase</a>
   if (error instanceof ApiError && error.status === 404)
     return <ProblemPage kind="not-found" title="This Table isn’t here" body={error.message} action={home ?? <AdminHomeLink />} />
-  return <CannotShow error={error} what="Table" home={home} onRetry={() => window.location.reload()} />
+  return <CannotShow error={error} what="Table" home={home} onRetry={reset} />
 }
 
 /** Where the root sends someone: sign in, or their landing. Found on staging and production

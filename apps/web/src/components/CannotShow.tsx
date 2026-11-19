@@ -14,10 +14,9 @@ export function AdminHomeLink() {
   return <Link to="/featherbase/admin" className={buttonClasses()}>Go to the Admin home</Link>
 }
 
-/** A refusal in the server's own words ("You don't have read permission on Back Office"), else plainly. */
+/** A refusal (always the server's 403) in its own words: "You don't have read permission on Back Office". */
 function refusalWords(error: unknown): string {
-  const said = error instanceof ApiError ? error.message.trim() : ''
-  return said ? said.replace(/([^.!?])$/, '$1.') : 'Your account can’t see it.'
+  return (error as ApiError).message.trim().replace(/([^.!?])$/, '$1.')
 }
 
 /** A failure in words a person can act on; the server's own words when it gave a reason. */
