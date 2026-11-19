@@ -10,7 +10,7 @@ const PROSE_WITHOUT_IDENTIFIERS = (text: string) => text.replace(/`[^`]*`|\([a-z
 describe('the column descriptions people read', () => {
   const columns = manifest.tables.flatMap(t => t.columns.map(c => ({ table: t.name, ...c })))
 
-  it.each(columns.filter(c => 'description' in c && c.description).map(c => [`${c.table}.${c.column_name}`, c.description as string]))(
+  it.each(columns.filter(c => 'description' in c && c.description).map(c => [`${c.table}.${c.column_name}`, (c as { description?: string }).description as string]))(
     "%s never uses SAP's name for the subcategory outside an identifier", (_name, description) => {
       expect(PROSE_WITHOUT_IDENTIFIERS(description)).not.toMatch(SAP_NAME)
     })

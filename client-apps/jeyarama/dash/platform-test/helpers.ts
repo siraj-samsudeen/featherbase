@@ -72,7 +72,7 @@ export const withoutBusinessRoles = <T,>(list: T[]) =>
   list.filter(entry => {
     const change = entry as { create?: string; grant?: { table?: string; role?: string }; withdraw?: { table?: string; role?: string } }
     // #1282's grid change log is part of business roles too.
-    return ![...SHADOW_TABLES, 'dash.access_source', 'dash.switch_over_log', 'dash.permission_change'].includes(change.grant?.table ?? '')
+    return ![...SHADOW_TABLES, 'dash.access_source', 'dash.switch_over_log', 'dash.permission_change', 'dash.setup_run', 'dash.access_decision'].includes(change.grant?.table ?? '')
   })
 /** #1277's switch and its log, which 0.13.30 brings. */
 export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
@@ -80,8 +80,31 @@ export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
 export const GRID_LOG = 'dash.permission_change'
 type Revertable = { migrations: { id: string }[]; tables?: { name: string; decides_scope?: boolean; columns?: { column_name: string }[] }[]; permissions?: { table: string }[];
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[]; optionalColumns?: Record<string, string[]> } }
+/** #1340's 0.13.40 taken out of a manifest: the four Tables back under Dash, Report grant back to Report access, the
+ *  role's two columns back on its list, and no setup runs or access decisions. It comes off before all the others. */
+export const RUN_TABLES = ['dash.setup_run', 'dash.access_decision']
+export function revertRolesInFeatherbase(manifest: Revertable) {
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_in_featherbase', fromVersion: '0.13.39', toVersion: '0.13.40' })
+  if (manifest.tables) manifest.tables = manifest.tables.filter(t => !RUN_TABLES.includes(t.name)).map(t => {
+    const table = { ...t } as typeof t & { module?: string; label?: string; columns?: { column_name: string; in_list_view?: boolean }[] }
+    if (table.module === 'People') table.module = 'Dash'
+    if (table.name === 'dash.report_access') table.label = 'Report access'
+    if (table.name === 'dash.switch_over_log') table.columns = table.columns!.filter(c => c.column_name !== 'setup_run')
+    if (table.name === 'dash.business_role') table.columns = table.columns!.map(c => (['description', 'by_hand_only'].includes(c.column_name) ? { ...c, in_list_view: true } : c))
+    return table
+  })
+  if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !RUN_TABLES.includes(p.table))
+  if (manifest.actions) manifest.actions.tables = manifest.actions.tables.filter(t => !RUN_TABLES.includes(t))
+  const read = manifest.baseTables?.read
+  if (read) {
+    delete read['dash.access_decision']
+    if (read['dash.switch_over_log']) read['dash.switch_over_log'] = read['dash.switch_over_log'].filter(c => c !== 'setup_run')
+  }
+  delete (manifest as { records?: unknown }).records
+}
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
+  revertRolesInFeatherbase(manifest)
   // #1282's 0.13.39 (the permission grid): a permission's removed mark and the grid's change log; it comes off first.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'permission_grid', fromVersion: '0.13.38',
     operations: [{ kind: 'addColumn', table: 'dash.business_role_permission', column: { column_name: 'removed' } }, { kind: 'addColumn', table: 'dash.business_role_permission', column: { column_name: 'permission_key' } }, { kind: 'addTable', table: { name: GRID_LOG } }] })

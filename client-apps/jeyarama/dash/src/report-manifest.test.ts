@@ -30,7 +30,10 @@ describe("the app's name in the manifest", () => {
     expect(manifest.title).toBe('Dash')
     expect(manifest.name).toBe('dash')
     expect(manifest.roles).toEqual(ROLES)
-    expect([...new Set(manifest.tables.map(table => table.module))]).toEqual(['Dash'])
+    // #1340: the business roles, the Title Map, hand changes and report grants are listed under People in Featherbase.
+    expect([...new Set(manifest.tables.map(table => table.module))]).toEqual(['Dash', 'People'])
+    expect(manifest.tables.filter(table => table.module === 'People').map(table => table.name))
+      .toEqual(['dash.report_access', 'dash.business_role', 'dash.title_map', 'dash.role_assignment'])
   })
 })
 
@@ -156,7 +159,9 @@ describe("last month's datasets", () => {
 describe('what Dash owns and what it reads', () => {
   it('owns its list of Dives, its entry Table, and the report access Tables (#1046)', () => {
     expect([manifest.entryTable, manifest.tables.map(table => table.name)])
-      .toEqual(['dash.report', ['dash.report', 'dash.report_bundle', 'dash.report_bundle_member', 'dash.report_access', ...SHADOW_TABLES, ACCESS_SOURCE, SWITCH_OVER_LOG, PERMISSION_CHANGE]])
+      .toEqual(['dash.report', ['dash.report', 'dash.report_bundle', 'dash.report_bundle_member', 'dash.report_access', ...SHADOW_TABLES, ACCESS_SOURCE, SWITCH_OVER_LOG, PERMISSION_CHANGE,
+        // #1340: each setup run as one record, and the owner's decisions on who loses Dash.
+        'dash.setup_run', 'dash.access_decision']])
   })
 
   // #1277: the business role Tables and the switch decide who reaches what, so only a System Manager writes them; the
@@ -172,7 +177,9 @@ describe('what Dash owns and what it reads', () => {
       // #1218: the business roles in shadow, and the HR title they map from.
       ...SHADOW_TABLES, DESIGNATION,
       // #1277: the switch and the switch-over's log.
-      ACCESS_SOURCE, SWITCH_OVER_LOG])].sort())
+      ACCESS_SOURCE, SWITCH_OVER_LOG,
+      // #1340: the owner's decisions on who loses Dash, which Who Would Gain Or Lose Access reads.
+      'dash.access_decision'])].sort())
   })
 
   // #1277: and the business role Tables, the switch and HR's titles, which business roles read.
@@ -257,7 +264,9 @@ describe('the read grants, declared before the first install', () => {
       ['Team Report Manager', 'dash.report_access'],
       // #1218: the business roles in shadow; no delete, a hand change is marked removed.
       // A System Manager writes them all the same (#437); the grid's change log is read here and written by the grid's save.
-      ...SHADOW_TABLES.map(table => ['Report Access Manager', table])])
+      ...SHADOW_TABLES.map(table => ['Report Access Manager', table]),
+      // #1340: who decides who loses Dash, as who sees Who Would Gain Or Lose Access.
+      ['Report Access Manager', 'dash.access_decision']])
     expect(manifest.permissions.find(p => p.role === 'Team Report Manager' && p.table === 'dash.report_access')).toEqual({
       table: 'dash.report_access', role: 'Team Report Manager', scope_mode: 'creator', operations: { read: '@basic', create: '@basic', update: '@basic' } })
   })
@@ -349,12 +358,15 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['area_picker', '0.13.37', '0.13.38', 0],
       // #1282: the permission grid: a permission's removed mark and its unique key, and the grid's change log.
       ['permission_grid', '0.13.38', '0.13.39', 3],
+      // #1340: business roles in Featherbase: four Tables move to People (one relabelled Report grant), two columns leave
+      // the list, setup runs and access decisions are kept, and each log line names its run.
+      ['business_roles_in_featherbase', '0.13.39', '0.13.40', 10],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
-    expect(pkg.version).toBe('0.13.39')
+    expect(pkg.version).toBe('0.13.40')
   })
 })

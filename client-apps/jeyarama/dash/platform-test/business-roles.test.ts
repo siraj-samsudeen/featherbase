@@ -68,7 +68,7 @@ describe('business roles in shadow', () => {
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'old_grants_one_receiver', 'every_report_and_bulk_comparison', 'site_kind', 'division_head_and_visual_merchandising', 'why_on_the_map', 'why_app_levels_merged', 'report_access_days_in_india', 'area_picker', 'permission_grid'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'old_grants_one_receiver', 'every_report_and_bulk_comparison', 'site_kind', 'division_head_and_visual_merchandising', 'why_on_the_map', 'why_app_levels_merged', 'report_access_days_in_india', 'area_picker', 'permission_grid', 'business_roles_in_featherbase'])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()
@@ -165,8 +165,8 @@ describe('business roles in shadow', () => {
       expect(await sql`select 1 from dash.business_role`).toEqual([])
       const systemManager = await createUser({ email: 'live-system-manager@example.test', roles: ['System Manager'] })
       const act = (name: string) => systemManager.post<{ result: Record<string, unknown> }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload: {} }).then(a => a.result)
-      expect(await act('add_starting_roles')).toEqual({ roles: 18, titles: 12 })
-      expect(await act('give_old_grants_to_roles')).toEqual({ grants_added: 9, grants_not_converted: 1 })
+      expect(await act('add_starting_roles')).toMatchObject({ roles: 18, titles: 12 })
+      expect(await act('give_old_grants_to_roles')).toMatchObject({ grants_added: 9, grants_not_converted: 1 })
       expect(await read(staff, 'can_open')).toBe(true)
       // The owner's yes: a System Manager adds the switch row.
       await saveRow(systemManager, 'dash.access_source', { source: 'business_roles' })
@@ -176,7 +176,7 @@ describe('business roles in shadow', () => {
       expect(await read(storeManager, 'report', { report: 'whole', scope: { places: ['9901'] } })).toEqual({ state: 'report_not_set_up' })
       expect(await read(staff, 'can_open')).toBe(false)
       // Run again: nothing more.
-      expect([await act('add_starting_roles'), await act('give_old_grants_to_roles')]).toEqual([{ roles: 0, titles: 0 }, { grants_added: 0, grants_not_converted: 1 }])
+      expect([await act('add_starting_roles'), await act('give_old_grants_to_roles')]).toMatchObject([{ roles: 0, titles: 0 }, { grants_added: 0, grants_not_converted: 1 }])
 
       // J5: one row back to the old rules, no deploy.
       const [row] = await sql`select row_id, updated_at from dash.access_source`

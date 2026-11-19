@@ -16,7 +16,7 @@ const ONLY_MANAGERS = 'Only a Report Access Manager or a System Manager can see 
 export async function giveOldGrantsAction(context: AccessContext) {
   if (!(context.roles ?? []).includes('System Manager')) context.reject!(ONLY_SYSTEM_MANAGERS)
   const reports = await context.documents!.list('dash.report', { fields: ['report_key', 'report_name'], limit_page_length: 500 })
-  return giveOldGrantsToRoles(context.baseTables!, context.documents as unknown as Writer, istToday(), new Map(reports.map(r => [exact(r.report_key), text(r.report_name)])))
+  return giveOldGrantsToRoles(context.baseTables!, context.documents as unknown as Writer, istToday(), new Map(reports.map(r => [exact(r.report_key), text(r.report_name)])), text(context.userName) || null)
 }
 
 /** What decides Dash access now, and the switch row a System Manager changes to put the old rules back. */

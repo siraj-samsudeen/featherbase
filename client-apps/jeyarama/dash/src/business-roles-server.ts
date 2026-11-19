@@ -16,7 +16,7 @@ import { opensDashFor, readableByRoles, offered } from './report-eligibility.ts'
 import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, isStore, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
 import { openStore, siteKindRead, siteStoreFields } from './site-kind.ts'
 import { businessReports, businessRolesOpen, opensDashByBusinessRoles } from './business-reports.ts'
-import { carriedOver, ensureStartingRoles, logger } from './switch-over.ts'
+import { carriedOver, ensureStartingRoles, logger, startingRolesSummary } from './switch-over.ts'
 
 export { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, type Base }
 type Row = Record<string, unknown>
@@ -375,10 +375,13 @@ export async function businessRoles(context: AccessContext) {
   const bulk = await shadowWorld(ctx.baseTables, world.today, { bulk: true })
   const peopleOf = new Map<string, Set<string>>()
   const sourcesOf = new Map<string, Set<string>>()
+  // #1340: how each holder came to hold the role, for the role page's source chips: by hand wins over HR.
+  const handOf = new Map<string, Set<string>>()
   for (const person of await population(bulk)) {
     for (const held of (await businessAccess(bulk.docs, person, bulk.today, bulk)).held) {
       peopleOf.set(held.role, (peopleOf.get(held.role) ?? new Set()).add(person))
       sourcesOf.set(held.role, (sourcesOf.get(held.role) ?? new Set()).add(HOLDER_WORDS[held.source]))
+      if (BY_HAND.has(held.source)) handOf.set(held.role, (handOf.get(held.role) ?? new Set()).add(person))
     }
   }
   const sourceWords = (role: string) => joined(Object.values(HOLDER_WORDS).filter((w, i, all) => all.indexOf(w) === i && sourcesOf.get(role)?.has(w)))
@@ -413,7 +416,9 @@ export async function businessRoles(context: AccessContext) {
       given: [...givenTo].filter(([what, given]) => given.includes(role.id) && named.has(what)).map(([what]) => what),
       people: peopleOf.get(role.id)?.size ?? 0,
       people_from: sourceWords(role.id) || 'nobody yet',
-      holders: [...peopleOf.get(role.id) ?? []].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone' })),
+      holders: [...peopleOf.get(role.id) ?? []].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone', by_hand: handOf.get(role.id)?.has(person) ?? false })),
+      /** #1340: how its people came to hold it, in short words for the list ("HR title + by hand"). */
+      given_by: [...sourcesOf.get(role.id) ?? []],
     })),
     titles: titleList(inUse, world.model).map(t => ({ ...t, role_name: nameOf.get(t.role!) ?? null,
       holders: [...holdersOf.get(t.title.toLowerCase()) ?? []].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone' })) })),
@@ -617,7 +622,11 @@ export async function mapTitle(context: AccessContext) {
  */
 export async function addStartingRoles(context: AccessContext) {
   const ctx = managersOnly(context)
-  return ensureStartingRoles(ctx.baseTables, ctx.documents as never, await logger(ctx.baseTables, ctx.documents as never))
+  const log = await logger(ctx.baseTables, ctx.documents as never)
+  const added = await ensureStartingRoles(ctx.baseTables, ctx.documents as never, log)
+  // #1340: each run kept as one record, whatever it added.
+  const run = await log.finish('Add The Starting Roles', startingRolesSummary(added), { added: added.roles + added.titles }, text(context.userName) || null)
+  return { ...added, run }
 }
 
 /** Where a role came from, as the Why map says it: HR's own facts, or someone's hand. */
