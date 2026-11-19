@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { appHref, type WorkedOutAnswer, type WorkedOutRow } from 'shared'
-import { Lock, PaneSection, RecordLink, fmtCount, touchLinkClasses } from '@featherbase/shop-floor'
+import { Lock, RecordLink, fmtCount, touchLinkClasses } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import type { NavPane } from '../lib/nav-path'
 
@@ -20,16 +20,18 @@ export function WorkedOutSections({ table, row, onOpen }: { table: string; row: 
   })
   // Nothing worked out, or the app's answer refused: the panel shows its own groups only.
   if (!answer.data?.sections.length) return null
-  // Each section is the Lens's own section (PaneSection), as Fields and Pointed At By beside it (consistency check).
+  // Each section is headed as a linked group (LinkedRowsGroup), the rows beside it on the Lens and the Links tab
+  // (consistency check): the label, its count and note muted, the heading greyed when the section is empty.
   return <>{answer.data.sections.map((section) => (
-    <div key={section.heading} aria-label={section.heading} role="region" data-testid="worked-out-section">
-      <PaneSection title={`${section.heading} ${fmtCount(section.rows.length)}${section.note ? ` · ${section.note}` : ''}`}>
-        {/* An empty section keeps its heading, so people see the check was done (UI owner). */}
-        {section.rows.length === 0
-          ? <p className="text-sm text-ink-muted" data-testid="worked-out-empty">{section.empty}</p>
-          : <ul className="flex min-w-0 flex-col gap-0.5">{section.rows.map((r, i) => <WorkedOutLine key={i} row={r} onOpen={onOpen} />)}</ul>}
-      </PaneSection>
-    </div>
+    <section key={section.heading} aria-label={section.heading} data-testid="worked-out-section" className="flex min-w-0 flex-col gap-3">
+      <h4 className={section.rows.length ? 'text-sm font-semibold text-ink' : 'text-sm font-semibold text-ink-muted'}>
+        {section.heading} <span className="font-normal text-ink-muted">{fmtCount(section.rows.length)}{section.note ? ` · ${section.note}` : ''}</span>
+      </h4>
+      {/* An empty section keeps its heading, so people see the check was done (UI owner). */}
+      {section.rows.length === 0
+        ? <p className="text-sm text-ink-muted" data-testid="worked-out-empty">{section.empty}</p>
+        : <ul className="flex min-w-0 flex-col gap-0.5">{section.rows.map((r, i) => <WorkedOutLine key={i} row={r} onOpen={onOpen} />)}</ul>}
+    </section>
   ))}</>
 }
 
