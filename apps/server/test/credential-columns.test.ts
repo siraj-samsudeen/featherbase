@@ -16,6 +16,8 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { createTable } from '../src/table-engine'
+import { setUserPassword } from '../src/auth'
+import { removeOwnPassword } from '../src/identities'
 import { PLATFORM_SCHEMA, qualifyPlatformSql, tableName } from '../src/platform-schema'
 import { expectStatus } from './fixtures'
 
@@ -60,5 +62,26 @@ describe('#1336: a secret lives only in a credential table', () => {
     await expect(
       createTable({ name: 'Person Credential', columns: [{ column_name: 'label', column_type: 'Data' }] }),
     ).rejects.toMatchObject({ type: 'ConflictError' })
+  })
+
+  // #1336 step one keeps person.password_hash in step until #1338 drops it:
+  // rolled back to the server before #1336, every password still works.
+  test('a password set by this server is also in the column the server before #1336 reads', async ({ admin }) => {
+    const person = (await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { email: 'rollback-1336@example.com' } })).row_id
+    const both = async () => (await sql`select p.password_hash as old_home,
+      (select c.password_hash from person_credential c where c.person_id = p.row_id) as new_home
+      from person p where p.row_id = ${person}`)[0]
+    await setUserPassword(person, 'rollback-pw-1')
+    const set = await both()
+    expect(set.new_home).toMatch(/^[0-9a-f]+:[0-9a-f]+$/)
+    expect(set.old_home).toBe(set.new_home)
+    // An Admin save of the person writes nothing to either.
+    const row = await admin.get<Record<string, unknown>>(`/api/table/Person/${person}`)
+    await admin.fetch(`/api/table/Person/${person}`, { method: 'PUT', body: JSON.stringify({ updated_at: row.updated_at, full_name: 'Rolled Back' }) })
+    expect(await both()).toEqual(set)
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
+      values ('uid_rollback_1336', ${person}, 'google', 'g-rollback-1336', 'rollback-1336@example.com', 'self')`
+    await removeOwnPassword(person)
+    expect(await both()).toEqual({ old_home: null, new_home: null })
   })
 })

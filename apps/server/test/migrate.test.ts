@@ -303,7 +303,8 @@ describe('migrate: an installed database', () => {
 
   // #1336: 0172 moves every password hash out of person into person_credential.
   // Until the next release drops the column, an old server still writing it
-  // (the release window) has its writes carried across by a trigger.
+  // (the release window) has its writes carried across, and the new server's
+  // writes reach the column, so a rollback to the old server still works.
   it('installed before 0172: hashes move to person_credential; a person with none stays without one', async () => {
     const scratch = await scratchInstalled()
     try {
@@ -312,6 +313,8 @@ describe('migrate: an installed database', () => {
         .map((r) => [String(r.person_id), String(r.password_hash)])
       await scratch.db`drop trigger person_password_to_credential on featherbase.person`
       await scratch.db`drop trigger person_password_to_credential_insert on featherbase.person`
+      await scratch.db`drop trigger credential_password_to_person on featherbase.person_credential`
+      await scratch.db`drop function featherbase.fc_credential_password_to_person()`
       await scratch.db`drop function featherbase.fc_person_password_to_credential()`
       await scratch.db`drop table featherbase.person_credential`
       await scratch.db`delete from featherbase.migration where name = '0172_person_credential.sql'`
@@ -330,12 +333,17 @@ describe('migrate: an installed database', () => {
       await scratch.db`update featherbase.person set password_hash = 'salt:hash-3' where row_id = 'psn_no_pw_0172'`
       await scratch.db`update featherbase.person set password_hash = null where row_id = 'Administrator'`
       expect(await credentials()).toEqual([['psn_has_pw_0172', 'salt:hash-2'], ['psn_no_pw_0172', 'salt:hash-3']])
-      // A write of the value the column already holds (a generic row save) changes nothing.
-      await scratch.db`update featherbase.person set password_hash = null where row_id = 'Administrator'`
+      // A write of the value the column already holds changes nothing.
+      await scratch.db`update featherbase.person set password_hash = password_hash, full_name = full_name where row_id = 'psn_has_pw_0172'`
+      expect(await credentials()).toEqual([['psn_has_pw_0172', 'salt:hash-2'], ['psn_no_pw_0172', 'salt:hash-3']])
+      // The new server's writes reach the column too, so a rollback to the old server finds them.
+      const column = async (id: string) => (await scratch.db`select password_hash from featherbase.person where row_id = ${id}`)[0].password_hash
       await scratch.db`insert into featherbase.person_credential (person_id, password_hash) values ('Administrator', 'salt:new-home')`
-      await scratch.db`update featherbase.person set password_hash = null, full_name = 'Administrator' where row_id = 'Administrator'`
-      expect(await credentials()).toEqual([['Administrator', 'salt:new-home'], ['psn_has_pw_0172', 'salt:hash-2'], ['psn_no_pw_0172', 'salt:hash-3']])
+      expect(await column('Administrator')).toBe('salt:new-home')
+      await scratch.db`update featherbase.person_credential set password_hash = 'salt:newer' where person_id = 'Administrator'`
+      expect(await column('Administrator')).toBe('salt:newer')
       await scratch.db`delete from featherbase.person_credential where person_id = 'Administrator'`
+      expect(await column('Administrator')).toBeNull()
       // A person's password goes with the person.
       await scratch.db`delete from featherbase.person where row_id = 'psn_no_pw_0172'`
       expect(await credentials()).toEqual([['psn_has_pw_0172', 'salt:hash-2']])
