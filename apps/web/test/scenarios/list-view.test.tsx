@@ -436,6 +436,102 @@ describe('list-view', () => {
     await step("the colleague's list still does not show Floor", () => expect(columnLabels()).not.toContain('Floor'))
   })
 
+  // #1282 A4: the Table's default is the System Manager's whole view.
+  const sections = () => columnValues('section')
+  const compactOn = () => screen.getByTestId('compact-rows').getAttribute('aria-pressed') === 'true'
+  const putSettings = (as: Client, table: string, settings: unknown) =>
+    as.fetch(`/api/user_settings/${enc(table)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(settings) })
+  const tableDefault = async (as: Client, table: string) =>
+    (await as.get<{ default: { settings: Record<string, unknown> } | null }>(`/api/table_view_default/${enc(table)}`)).default
+
+  scenario('The default carries the layout, sort and compact rows', async ({ admin, createUser }, step) => {
+    let given!: Given
+    await step('a System Manager has sorted the list of "Section Mapping" by Floor and switched on Compact Rows', async () => {
+      given = await sectionMapping(admin, createUser as CreateUser, DEFAULT_LIST)
+      await openList(admin, given.table)
+      fireEvent.click(screen.getByTestId('col-floor'))
+      await waitFor(() => expect(sections()).toEqual(['Kids Wear', 'Sarees']))
+      fireEvent.click(screen.getByTestId('compact-rows'))
+      await waitFor(async () => expect(await settingsOf(admin, given.table)).toMatchObject({ sort: { field: 'floor', dir: 'asc' }, compact: true }))
+    })
+    await step('a colleague has never changed their own view of it', async () =>
+      expect(await settingsOf(given.colleague, given.table)).toEqual({}))
+    await step('the System Manager makes their view the default for everyone', () => makeDefaultForEveryone(admin, given.table, {}))
+    await step("the colleague's list is sorted by Floor with compact rows", async () => {
+      await openList(given.colleague, given.table)
+      await waitFor(() => expect(sections()).toEqual(['Kids Wear', 'Sarees']))
+      expect(compactOn()).toBe(true)
+    })
+  })
+
+  scenario('Undo puts the previous default back', async ({ admin, createUser }, step) => {
+    let given!: Given
+    await step('a System Manager has made their view the default for "Section Mapping"', async () => {
+      given = await sectionMapping(admin, createUser as CreateUser, DEFAULT_LIST)
+      await openList(admin, given.table)
+      fireEvent.click(screen.getByTestId('compact-rows'))
+      await makeDefaultForEveryone(admin, given.table, {})
+      expect((await tableDefault(admin, given.table))?.settings).toMatchObject({ compact: true })
+    })
+    await step("they undo it while it is still the Table's default", async () => {
+      fireEvent.click(await screen.findByTestId('table-default-undo'))
+      await waitFor(async () => expect(await tableDefault(admin, given.table)).toBeNull())
+    })
+    await step('a colleague who never changed their view sees the previous default again', async () => {
+      await openList(given.colleague, given.table)
+      await waitFor(() => expect(sections().length).toBe(2))
+      expect(compactOn()).toBe(false)
+    })
+  })
+
+  scenario('Only a System Manager sets a default', async ({ admin, createUser }, step) => {
+    let given!: Given
+    await step("someone who is not a System Manager tries to make their view a Table's default", async () => {
+      given = await sectionMapping(admin, createUser as CreateUser, DEFAULT_LIST)
+      await openList(given.user, given.table)
+      fireEvent.click(screen.getByRole('button', { name: /^View$/ }))
+      expect(screen.queryByTestId('make-table-default')).toBeNull()
+      const tried = await given.user.fetch(`/api/table_view_default/${enc(given.table)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: { compact: true } }) })
+      expect(tried.status).toBe(403)
+    })
+    await step("it is refused and the Table's default is as it was", async () => expect(await tableDefault(admin, given.table)).toBeNull())
+  })
+
+  scenario("Reset to the Table's default", async ({ admin, createUser }, step) => {
+    let given!: Given
+    await step('a Table has a default sorted by Floor and a colleague sorted it by Name', async () => {
+      given = await sectionMapping(admin, createUser as CreateUser, DEFAULT_LIST)
+      await admin.fetch(`/api/table_view_default/${enc(given.table)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: { sort: { field: 'floor', dir: 'asc' } } }) })
+      for (const who of [given.colleague, given.user]) await putSettings(who, given.table, { sort: { field: 'section', dir: 'desc' } })
+      await openList(given.colleague, given.table)
+      await waitFor(() => expect(sections()).toEqual(['Sarees', 'Kids Wear']))
+    })
+    await step("the colleague resets to the Table's default", () => {
+      fireEvent.click(screen.getByRole('button', { name: /^View$/ }))
+      fireEvent.click(screen.getByTestId('reset-table-default'))
+    })
+    await step('their list is sorted by Floor', () => waitFor(() => expect(sections()).toEqual(['Kids Wear', 'Sarees'])))
+    await step("another colleague's own sort is unchanged", async () =>
+      expect((await settingsOf(given.user, given.table)).sort).toEqual({ field: 'section', dir: 'desc' }))
+  })
+
+  scenario('Retired rows still show next time', async ({ admin, createUser }, step) => {
+    let given!: Given
+    await step('the user turned on Show Retired in the list of "Section Mapping"', async () => {
+      given = await sectionMapping(admin, createUser as CreateUser, DEFAULT_LIST)
+      await admin.post(`/api/table/${enc(given.table)}/SM-2:retire`, { reason: 'Moved upstairs' })
+      await openList(given.user, given.table)
+      await waitFor(() => expect(sections()).toEqual(['Sarees']))
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Show Retired' }))
+      await waitFor(async () => expect((await given.user.get<{ settings: { showRetired?: boolean } }>(`/api/user_settings/${enc(given.table)}`)).settings.showRetired).toBe(true))
+    })
+    await step('the user reopens that list', () => openList(given.user, given.table))
+    await step('retired rows show and Show Retired reads as on', async () => {
+      await waitFor(() => expect(sections()).toContain('Kids Wear'))
+      expect(screen.getByRole('checkbox', { name: 'Show Retired' })).toBeChecked()
+    })
+  })
+
   scenario("Only Globex Ltd's orders show", async ({ admin }, step) => {
     await step('the user is a System Manager', () => {})
     await step('orders from the customers "Globex Ltd" and "Initech"', () => ordersFromCustomers(admin))
