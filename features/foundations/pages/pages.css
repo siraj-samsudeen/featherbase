@@ -38,11 +38,12 @@
   --tag-bg:    light-dark(#eef0f3, #24304a);  --tag-fg:    light-dark(#374151, #c5cddb);
 
   /* a Choice value: eight tints, given out in the order of the list of values. A value keeps its
-     tint everywhere. --cN is the same colour at full strength, for its bar in a chart. */
+     tint everywhere. --cN is the same colour at full strength, for its bar in a chart. The first five
+     are checked for colour-blind separation on both panels; a chart always names each bar as well. */
   --c1: light-dark(#2a78d6, #3987e5);  --c1-bg: light-dark(#dbeafe, #172a4d);  --c1-fg: light-dark(#1e40af, #a9c6fb);
   --c2: light-dark(#1baf7a, #199e70);  --c2-bg: light-dark(#ccfbf1, #0f312d);  --c2-fg: light-dark(#115e59, #7fdccc);
   --c3: light-dark(#6250d6, #9085e9);  --c3-bg: light-dark(#ede9fe, #2a2350);  --c3-fg: light-dark(#5b21b6, #c8b9fb);
-  --c4: light-dark(#e87ba4, #d55181);  --c4-bg: light-dark(#fce7f3, #3d1a2d);  --c4-fg: light-dark(#9d174d, #f5a8cb);
+  --c4: light-dark(#d95fb0, #cf4f9e);  --c4-bg: light-dark(#fce7f3, #3d1a2d);  --c4-fg: light-dark(#9d174d, #f5a8cb);
   --c5: light-dark(#eb6834, #d95926);  --c5-bg: light-dark(#ffedd5, #3a2210);  --c5-fg: light-dark(#9a3412, #f6b98a);
   --c6: light-dark(#5a9e0f, #6fb01f);  --c6-bg: light-dark(#ecfccb, #22300d);  --c6-fg: light-dark(#3f6212, #b9e27a);
   --c7: light-dark(#0e9bb8, #1aa9c6);  --c7-bg: light-dark(#cffafe, #0d2f38);  --c7-fg: light-dark(#155e75, #86dcee);
