@@ -21,4 +21,6 @@ test("every platform job has a Title Case title, not its code", async () => {
       if (!['a', 'an', 'and', 'for', 'of', 'the', 'to', 'about'].includes(word)) expect(word[0], `${job.method}: ${job.title}`).toMatch(/[A-Z0-9]/)
   }
   expect(jobs.find((j) => j.method === 'check_instance_health')?.title).toBe('Check Instance Health')
+  // A product's own capitals stay: MotherDuck, not Motherduck.
+  expect(jobs.find((j) => j.method === 'sync_motherduck_accounts')?.title).toBe('Sync MotherDuck Accounts')
 })
