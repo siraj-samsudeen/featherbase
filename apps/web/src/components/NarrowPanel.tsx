@@ -118,6 +118,12 @@ export function NarrowPanel({ table, lists, filters, baseFilters = [], withRetir
 
 /** What a list's value reads: the row's name, the Choice value, or the "none" value. */
 function noneLabel(list: NarrowList) {
+  // The heading already names the table, so the value is short and keeps it in view (UI owner).
+  return `No ${list.label}`
+}
+
+/** The "none" value said in full, as its tooltip: "Not linked to any Store Floor". */
+function noneTitle(list: NarrowList) {
   return list.kind === 'choice' ? `No ${list.label}` : `Not linked to any ${list.label}`
 }
 
@@ -178,7 +184,7 @@ function NarrowValues({ list, values, picked, onToggle }: {
       <div className={boxed ? 'max-h-[232px] overflow-y-auto pr-0.5' : undefined} data-testid={boxed ? 'narrow-scroll' : undefined}>
         {shown.map((v) => (
           <NarrowValue key={v.value ?? '\u0000none'} list={list} value={v} label={labelOf(v.value)} max={max}
-            on={isPicked(v.value)} onToggle={() => onToggle(v.value)} />
+            on={isPicked(v.value)} title={v.value === null ? noneTitle(list) : undefined} onToggle={() => onToggle(v.value)} />
         ))}
         {q && !shown.length && <p className="px-1.5 py-1 text-[12.5px] text-ink-subtle">No value matches</p>}
       </div>
@@ -194,12 +200,14 @@ function NarrowValues({ list, values, picked, onToggle }: {
 /** One value: a pick control drawn as board A draws it. A record value is a
  *  real link underneath (UI owner, 19-Nov-2026): a plain click picks, while
  *  Cmd/Ctrl-click and middle-click open the record in a new tab. */
-function NarrowValue({ list, value: v, label, max, on, onToggle }: {
+function NarrowValue({ list, value: v, label, max, on, title, onToggle }: {
   list: NarrowList
   value: Value
   label: string
   max: number
   on: boolean
+  /** What a hover shows; the label itself by default. */
+  title?: string
   onToggle: () => void
 }) {
   const out = !on && v.count === 0
@@ -207,11 +215,11 @@ function NarrowValue({ list, value: v, label, max, on, onToggle }: {
   const href = useRecordHref(list.table ?? '', v.value ?? '')
   const className = cx(
     'grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_54px_44px] items-center gap-2 rounded-[7px] px-1.5 py-[5px] text-left text-[13px] leading-4 no-underline focus-visible:outline-2 focus-visible:outline-focus',
-    on ? 'bg-chip-green font-medium text-chip-green-ink' : out ? 'bg-fill text-ruled-out-ink' : 'text-ink hover:bg-fill-hover',
+    on ? 'bg-chip-green font-medium text-chip-green-ink' : out ? 'text-ruled-out-ink hover:bg-fill-hover' : 'text-ink hover:bg-fill-hover',
     v.value === null && !on && !out && list.kind !== 'choice' && 'text-negative',
   )
   const body = <>
-    <span className="truncate" title={label}>{label}</span>
+    <span className="truncate" title={title ?? label}>{label}</span>
     <span
       aria-hidden
       className={cx('h-1.5 rounded-[3px]', on ? 'bg-picked-bar' : out ? 'bg-ruled-out-bar' : 'bg-count-bar')}
