@@ -735,6 +735,18 @@ describe('an address whose app is installed under the interim name', () => {
     expect((await get(api, `${DASH}${ROOT}`)).headers.get('location')).toBe(APP_ROOT)
   })
 
+  // #1328 (Codex adversarial round 1): on the app's own address the page is served, never sent back to the root.
+  test("on the app's own address, a disabled app's visitors reach the shared page and stay there, signed in or out", async ({ api, admin }) => {
+    await installDashApp(admin)
+    await disable(admin)
+    for (const client of [admin, api]) {
+      const first = await get(client, `${DASH}${APP_ROOT}`)
+      expect([first.status, first.headers.get('location')]).toEqual([302, unavailableHref(APP_ROOT)])
+      const page = await get(client, `${DASH}${unavailableHref(APP_ROOT)}`)
+      expect(page.status).not.toBe(302)
+    }
+  })
+
   test("a process that has not loaded the installed app answers at the app's root that it is unavailable", async ({ admin }) => {
     const { discoverPackages } = await import('../src/runtime-packages')
     await installDashApp(admin)

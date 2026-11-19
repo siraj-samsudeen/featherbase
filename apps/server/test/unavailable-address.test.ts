@@ -54,6 +54,16 @@ describe('#1328: whether an app is turned off is said only to someone who could 
     expect(await status(admin, '/equipment/')).toBeNull()
   })
 
+  // Codex standard round 1: access through an App Role Binding counts while the app is off.
+  test('a person whose own role carries the app\'s role through a binding is told it is turned off', async ({ admin, createUser }) => {
+    await installBarProof(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ua Desk Staff' } })
+    await admin.post('/api/save_row', { table: 'App Role Binding', row: { app: 'barproof', app_role: 'Bar Reader', bound_role: 'Ua Desk Staff' } })
+    await admin.post('/api/set_app_enabled', { name: 'barproof', enabled: false })
+    const bound = await createUser({ email: 'ua-bound@example.test', roles: ['Ua Desk Staff'] })
+    expect(await status(bound, '/barproof/')).toEqual({ title: 'Bar proof' })
+  })
+
   test('only a plain address is answered about, and only to someone signed in', async ({ api, admin }) => {
     await installBarProof(admin)
     await admin.post('/api/set_app_enabled', { name: 'barproof', enabled: false })
