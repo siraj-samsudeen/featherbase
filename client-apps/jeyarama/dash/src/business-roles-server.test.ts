@@ -1976,6 +1976,10 @@ describe('business roles described for Featherbase (#1340)', () => {
       note: [expect.stringMatching(/^Also given to 8 other roles: /)], chip: { label: 'from old grant', tone: 'neutral' } })
     expect(groups[1]!.rows!['g-b1']).toEqual({ parts: [{ record: { table: 'dash.report_bundle', row: 'b1', name: 'Store pack' } }],
       note: ['Given to this role only'], chip: { label: 'given by hand', tone: 'caution' } })
+    // A grant of a report no longer listed says so, plainly.
+    tables['dash.report_access'].push({ row_id: 'g-gone', report: 'gone', business_role: sm, access_key: `report:gone/business_role:${sm}` })
+    const again = ((await describeBusinessRoles(context(tables, { payload: { rows: [sm], page: true } }) as never)).rows[sm] as { groups: { rows?: Record<string, { parts: unknown[] }> }[] }).groups
+    expect(again[1]!.rows!['g-gone']!.parts).toEqual(['A report no longer listed'])
   })
 
   // Codex standard round 1 (P2): a role's page lists all its people, past the twenty the old page showed.

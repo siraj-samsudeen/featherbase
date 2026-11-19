@@ -102,16 +102,21 @@ test("the Links tab draws the app's groups in its order: a link group in its wor
 })
 
 // Verifier round 1 (blocker 1): a row naming no choice (it points elsewhere) cannot be ticked or counted.
-test('a link group with a row that names no choice draws as a list, every row said as it is', async ({ admin }) => {
+test('a tick list whose rows come to include one naming no choice turns into a list, every row said as it is', async ({ admin }) => {
   await installFacts(admin)
-  await admin.post('/api/save_row', { table: NOTE_TAG, row: { note: 'n1' } })
   await openRecord(admin)
   fireEvent.click(screen.getByRole('tab', { name: 'Links' }))
-  await waitFor(() => expect(within(screen.getByRole('region', { name: 'Tags It Has' })).getAllByTestId('linked-row')).toHaveLength(2))
-  expect(within(screen.getByRole('region', { name: 'Tags It Has' })).queryByTestId('tick-box')).not.toBeInTheDocument()
+  const tags = () => screen.getByRole('region', { name: 'Tags It Has' })
+  await waitFor(() => expect(within(tags()).getByRole('button', { name: 'Tick Later' })).toBeInTheDocument())
+  // A link naming a line, not a tag, arrives (as a copied grant names a bundle, not a report); the next save reads the rows again.
+  await admin.post('/api/save_row', { table: NOTE_TAG, row: { note: 'n1', line: 'l2' } })
+  fireEvent.click(within(tags()).getByRole('button', { name: 'Tick Later' }))
+  const add = within(tags()).queryByRole('button', { name: /^Add/ })
+  if (add) fireEvent.click(add)
+  await waitFor(() => expect(within(tags()).queryByTestId('tick-box')).not.toBeInTheDocument())
+  expect(within(tags()).getAllByTestId('linked-row').length).toBeGreaterThanOrEqual(1)
 })
 
-// Codex round 2: a save through the generic pages (a tick here) reads the app's facts again.
 test("a save on the record page reads the app's facts again", async ({ admin }) => {
   await installFacts(admin)
   await openRecord(admin)

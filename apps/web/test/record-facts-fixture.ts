@@ -72,7 +72,7 @@ export async function installFacts(admin: Client) {
   manifest.tables.push(
     { name: LINE, label: 'line', id_pattern: 'prompt', title_column: 'words', columns: [{ column_name: 'words', column_type: 'Data' }, { column_name: 'note', column_type: 'Reference', reference_table: NOTE }] },
     { name: TAG, label: 'tag', id_pattern: 'prompt', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data' }] },
-    { name: NOTE_TAG, label: 'note tag', columns: [{ column_name: 'note', column_type: 'Reference', reference_table: NOTE }, { column_name: 'tag', column_type: 'Reference', reference_table: TAG }] },
+    { name: NOTE_TAG, label: 'note tag', columns: [{ column_name: 'note', column_type: 'Reference', reference_table: NOTE }, { column_name: 'tag', column_type: 'Reference', reference_table: TAG }, { column_name: 'line', column_type: 'Reference', reference_table: LINE }] },
   )
   manifest.reads.tables = [NOTE, LINE, TAG, NOTE_TAG]
   manifest.reads.operations = { ...manifest.reads.operations, describe_notes: tableRead, preview_tidy: tableRead }
