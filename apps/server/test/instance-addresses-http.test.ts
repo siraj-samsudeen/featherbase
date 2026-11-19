@@ -90,7 +90,7 @@ describe('the OAuth state is bound to its address', () => {
   test('a callback arriving on another listed host is refused', async ({ api }) => {
     await setGoogleOpen()
     const { callback, cookie } = await mockCallbackUrl(api, DASH, 'someone@gmail.com')
-    const res = await api.fetch(`${ADMIN}${callback}`, { headers: { cookie } })
+    const res = await api.fetch(`${ADMIN}${callback}`, { headers: { cookie, accept: 'application/json' } })
     await expectStatus(res, 401)
   })
 

@@ -432,6 +432,18 @@ function isPageNavigation(c: Context): boolean {
   return c.req.header('sec-fetch-mode') === 'navigate' || (c.req.header('accept') ?? '').includes('text/html')
 }
 
+// #1318: a sign-in callback is only ever a page: the provider sends a browser
+// there, and a stale one is opened again by Back, an old tab or a replayed
+// link. So it keeps the JSON error only for a caller that says it wants one:
+// a browser fetch (any Sec-Fetch-Mode but navigate), or an Accept that names
+// JSON and not HTML. A client that names neither gets the sign-in page.
+function isCallbackPage(c: Context): boolean {
+  const mode = c.req.header('sec-fetch-mode')
+  if (mode) return mode === 'navigate'
+  const accept = c.req.header('accept') ?? ''
+  return accept.includes('text/html') || !accept.includes('json')
+}
+
 function refusedToLoginPage(c: Context, err: unknown, provider: RedirectProvider = GOOGLE) {
   // Unexpected faults are still worth a server-side line; refusals are not.
   if (!(err instanceof AppError)) console.error(`[sign-in] ${provider.kind} callback failed`, err)
@@ -559,7 +571,7 @@ function redirectCallbackRoute(provider: RedirectProvider) {
       // never raw JSON. A refused sign-in does the same for a browser, on the
       // sign-in page; an API caller keeps the JSON error and its status.
       if (claimedPurpose(c.req.query('state')) !== 'link') {
-        if (!isPageNavigation(c)) throw err
+        if (!isCallbackPage(c)) throw err
         clearLoginChallengeCookies(c)
         return refusedToLoginPage(c, err, provider)
       }

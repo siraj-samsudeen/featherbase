@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useSearch } from '@tanstack/react-router'
 import { ApiError, api } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
+import { buttonClasses, inputClasses, labelClasses, panelClasses } from '@featherbase/shop-floor'
 
 // SET-002: the target of the emailed reset link. Reads ?key= and sets a new
 // password for the associated account.
@@ -41,7 +41,7 @@ export function ResetPasswordPage() {
           </span>
           <h1 className="text-lg font-semibold text-ink">Reset password</h1>
         </div>
-        <div className={cardClasses('p-6')}>
+        <div className={panelClasses('p-6')}>
           {done ? (
             <div className="space-y-4 text-center" data-testid="reset-done">
               <p className="text-sm text-ink">Your password has been reset.</p>

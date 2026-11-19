@@ -3377,6 +3377,12 @@
       "fromVersion": "0.13.39",
       "toVersion": "0.13.40",
       "operations": []
+    },
+    {
+      "id": "every_report_own_read",
+      "fromVersion": "0.13.40",
+      "toVersion": "0.13.41",
+      "operations": []
     }
   ],
   "baseTables": {

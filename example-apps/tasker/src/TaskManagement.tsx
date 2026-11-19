@@ -36,7 +36,8 @@ const SAVED_VIEWS_SETTINGS = 'tasker.saved-views'
 
 export function TaskManagementPage() {
   const queryClient = useQueryClient()
-  const me = getSessionUser()?.row_id ?? ''
+  const session = getSessionUser()
+  const me = session?.row_id ?? ''
   const [view, setView] = useState<View>(() => hashSavedViewId() ? 'views' : new URLSearchParams(location.hash.slice(1)).has('issue') ? 'issues' : 'work')
   const [capture, setCapture] = useState('')
   const [projectName, setProjectName] = useState('')
@@ -167,7 +168,7 @@ export function TaskManagementPage() {
   const starredProjectIds = (projectPreferences.data?.settings?.project_ids ?? []).filter((id) => projectById.has(id))
   const starredProjectSet = new Set(starredProjectIds)
   const detailMode = detailPreferences.data?.settings?.mode ?? 'inspector'
-  const people = peopleWithTaskResponsibility(users.data?.people ?? [], allTasks, me)
+  const people = peopleWithTaskResponsibility(users.data?.people ?? [], allTasks, { row_id: me, full_name: session?.full_name })
   const savedViews = parseSavedTaskViews(savedViewPreferences.data?.settings)
   const activeSavedView = savedViews.find((savedView) => savedView.id === activeSavedViewId)
   const toVerify = waitingFor(allTasks, me)

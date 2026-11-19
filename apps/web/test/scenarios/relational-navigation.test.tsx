@@ -374,7 +374,7 @@ describe('relational-navigation', () => {
       await waitFor(() => expect(location(view).pathname).toBe(tableHref('Plant')))
     })
     await step('the user starts a new plant', async () => {
-      fireEvent.click(await screen.findByRole('link', { name: 'New plant' }))
+      fireEvent.click(await screen.findByRole('link', { name: 'New Plant' }))
       await waitFor(() => expect(location(view).pathname).toBe(`${tableHref('Plant')}/new`))
     })
     await step("the new plant's site is already Enchakkal", async () => {

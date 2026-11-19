@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { buttonClasses, cardClasses, ChevronDown } from '@featherbase/shop-floor'
+import { buttonClasses, ChevronDown, raisedClasses } from '@featherbase/shop-floor'
 import { menuAlign, visibleSpan, type MenuAlign } from './menuPlacement'
 
 /** Ordinary links/buttons keep their native keyboard behavior inside the disclosure. */
@@ -81,7 +81,7 @@ export function ActionDisclosure({ label, ariaLabel, compact = false, children, 
           aria-label={ariaLabel ?? label}
           data-align={align}
           style={place ? { position: 'fixed', top: place.top, left: place.left, right: place.right, maxHeight: place.maxHeight } : undefined}
-          className={cardClasses(`${place ? '' : `absolute ${align === 'end' ? 'right-0' : 'left-0'} mt-1 `}z-40 flex w-64 max-w-[calc(100vw-1rem)] flex-col items-stretch gap-1 overflow-y-auto p-2`)}
+          className={raisedClasses(`${place ? '' : `absolute ${align === 'end' ? 'right-0' : 'left-0'} mt-1 `}z-40 flex w-64 max-w-[calc(100vw-1rem)] flex-col items-stretch gap-1 overflow-y-auto p-2`)}
         >
           {children}
         </div>

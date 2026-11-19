@@ -4,19 +4,7 @@ import { useRouterState } from '@tanstack/react-router'
 import { api, getSessionUser, listResource } from '../lib/api'
 import { adminPageTitle } from 'shared'
 import { useIsSystemManager, useWhoAmI } from '../lib/session'
-import {
-  Button,
-  DataList,
-  Field,
-  Notice,
-  Select,
-  StatusPill,
-  TextInput,
-  buttonClasses,
-  cardClasses,
-  pillClasses,
-  type DataColumn,
-} from '@featherbase/shop-floor'
+import { Button, DataList, Field, Notice, Select, StatusPill, TextInput, buttonClasses, pillClasses, type DataColumn, raisedClasses } from '@featherbase/shop-floor'
 import { fmtInstantIST } from '@featherbase/shop-floor'
 import { invalidatePrincipalName } from '../lib/people'
 import { NotWhileViewing } from '../components/ViewAs'
@@ -897,7 +885,7 @@ function CredentialDialog({
         aria-labelledby={heading}
         aria-busy={busy || undefined}
         data-testid={testId}
-        className={cardClasses('max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto p-6')}
+        className={raisedClasses('max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto p-6')}
       >
         <h2 id={heading} className="text-base font-semibold text-ink">
           {title}

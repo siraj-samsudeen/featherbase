@@ -52,7 +52,11 @@ describe('Copy a warehouse table into Featherbase', () => {
     expect(code).toMatchObject({ usable: true, rows: 3 })
     await expectRefused(admin.post(`${SOURCES}/tc-key:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Invalid Key Copy', key: 'city', columns: [{ source: 'city', column_name: 'city' }] }), 417)
     await expectRefused(admin.post(`${SOURCES}/tc-key:copy_create`, { database: 'sales', schema: 'main', table: 'stores', name: 'Missing Key Copy', key: 'code', columns: STORES.slice(0, 1) }), 417)
-    await expectRefused(admin.get('/api/table/Data%20Source:copy_info'), 404)
+  })
+
+  // #1301: every list asks; a Table that is not a copy answers "none", not a refusal.
+  test('a Table that was not copied from a data source has no copy information', async ({ admin }) => {
+    expect(await admin.get('/api/table/Data%20Source:copy_info')).toBeNull()
   })
 
   test('incomplete copy choices refuse before creating a native Table', async ({ admin }) => {
@@ -372,7 +376,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     const choices = { database: 'sales', schema: 'main', table: 'stores', name: 'Recreated Copy', key: 'code', columns: STORES }
     const first = await admin.post<{ result: { run_id: string } }>(`${SOURCES}/tc-recreate:copy_create`, choices)
     await admin.delete('/api/table_def/Recreated%20Copy')
-    await expectRefused(admin.get('/api/table/Recreated%20Copy:copy_info'), 404)
+    expect(await admin.get('/api/table/Recreated%20Copy:copy_info')).toBeNull()
     const second = await admin.post<{ result: { run_id: string; inserted: number } }>(`${SOURCES}/tc-recreate:copy_create`, choices)
     expect(second.result.inserted).toBe(3)
     expect(second.result.run_id).not.toBe(first.result.run_id)
@@ -389,7 +393,7 @@ describe('Copy a warehouse table into Featherbase', () => {
     const row = await admin.get<{ updated_at: string }>('/api/table/Source%20Removed%20Copy/S001')
     await admin.post('/api/save_row', { table: 'Source Removed Copy', row: { row_id: 'S001', display_name: 'Still editable', updated_at: row.updated_at } })
     expect(await admin.get('/api/table/Source%20Removed%20Copy/S001')).toMatchObject({ display_name: 'Still editable' })
-    await expectRefused(admin.get('/api/table/Source%20Removed%20Copy:copy_info'), 404)
+    expect(await admin.get('/api/table/Source%20Removed%20Copy:copy_info')).toBeNull()
     await expectRefused(admin.post('/api/table/Source%20Removed%20Copy:copy_again', {}), 404)
     const history = await admin.get<{ batches: { batch_id: string }[] }>('/api/import/batches')
     expect(history.batches.map(b => b.batch_id)).toContain(copied.result.run_id)

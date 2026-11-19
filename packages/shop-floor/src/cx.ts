@@ -3,7 +3,7 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
 }
 
-const COLOUR = String.raw`(?:canvas|surface|subtle|border|border-control|ink|ink-muted|ink-subtle|action|action-hover|action-ink|action-tint|focus|negative|negative-tint|caution|caution-tint|positive|positive-tint|opportunity|opportunity-tint|missing|missing-tint|scrim|on-scrim|series-[1-5]|transparent|current|inherit)(?:\/\d+)?`
+const COLOUR = String.raw`(?:canvas|surface|raised|subtle|tag|tag-ink|fill|fill-hover|hover|chip-[a-z]+(?:-ink|-dot)?|border|border-control|ink|ink-muted|ink-subtle|action|action-hover|action-ink|action-tint|focus|negative|negative-tint|caution|caution-tint|positive|positive-tint|opportunity|opportunity-tint|missing|missing-tint|scrim|on-scrim|series-[1-5]|transparent|current|inherit)(?:\/\d+)?`
 
 // The utility groups a call site legitimately overrides on a recipe. Two
 // classes from one group (px-2 and px-4, text-ink and text-ink-muted) would

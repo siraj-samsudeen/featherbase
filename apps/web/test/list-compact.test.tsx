@@ -1,6 +1,6 @@
 // #910 checklist 1 (spec: list-view "A compact list, remembered per table"):
-// a list shows all its columns by default; Compact leads with each row's name
-// and a few key values, and the choice is kept for that person on that table.
+// a list shows all its columns by default; #1348 (spec list-view "A list's rows are Comfortable or
+// Compact"): Compact Rows is a row height and keeps every column; the choice is kept per person and table.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import { tableHref } from 'shared'
@@ -20,13 +20,14 @@ test('a list shows every one of its columns by default', async ({ admin }) => {
   await waitFor(() => expect(headers()).toEqual(['', 'Site name', 'Region', 'Opened on']))
 })
 
-test('Compact leads with the name and two key values', async ({ admin }) => {
+test('Compact Rows keeps every column the list shows', async ({ admin }) => {
   await seedSites(admin)
   await admin.put(`/api/user_settings/${encodeURIComponent(SITE)}`, { shownCols: ['rent'] })
   await renderApp(tableHref(SITE), admin)
   await waitFor(() => expect(headers()).toEqual(['', 'Site name', 'Region', 'Opened on', 'Rent']))
   fireEvent.click(await compactRows())
-  await waitFor(() => expect(headers()).toEqual(['', 'Site name', 'Region', 'Opened on']))
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Compact Rows' }))).toHaveAttribute('aria-pressed', 'true'))
+  expect(headers()).toEqual(['', 'Site name', 'Region', 'Opened on', 'Rent'])
 })
 
 test('the compact choice is kept for that table alone, after signing in again', async ({ admin }) => {

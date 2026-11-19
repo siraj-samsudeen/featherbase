@@ -4,7 +4,7 @@ import { ApiError, api, listResource } from '../lib/api'
 import { TopBar } from '../components/TopBar'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { NO_COLUMN_TYPES, useMeta, type ColumnDef } from '../lib/meta'
-import { ProblemPage, buttonClasses, cardClasses } from '@featherbase/shop-floor'
+import { ProblemPage, buttonClasses, panelClasses } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
 
@@ -63,7 +63,7 @@ export function PortalListPage({ table }: { table: string }) {
           />
         </div>
       )}
-      <div className={cardClasses('overflow-x-auto')}>
+      <div className={panelClasses('overflow-x-auto')}>
         <table className="w-full text-sm" data-testid="portal-list">
           <thead className="bg-subtle text-left text-xs text-ink-muted">
             <tr>
@@ -122,7 +122,7 @@ export function PortalRowPage({ table, name }: { table: string; name: string }) 
         ← Back to my {table}
       </Link>
       {forbidden ? (
-        <div className={cardClasses()} data-testid="portal-forbidden">
+        <div className={panelClasses()} data-testid="portal-forbidden">
           <ProblemPage
             kind="no-access"
             title="You can’t open this row"
@@ -133,7 +133,7 @@ export function PortalRowPage({ table, name }: { table: string; name: string }) 
       ) : doc.isLoading || meta.isLoading ? (
         <p className="text-sm text-ink-subtle">Loading…</p>
       ) : doc.data ? (
-        <div className={cardClasses('p-6')} data-testid="portal-doc">
+        <div className={panelClasses('p-6')} data-testid="portal-doc">
           <h1 className="mb-4 text-lg font-semibold text-ink">{name}</h1>
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {columns.map((c) => (
