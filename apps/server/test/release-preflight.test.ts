@@ -274,6 +274,15 @@ describe('release preflight: the configured Administrator password', () => {
     }
   })
 
+  // #1336: the preflight runs before the migrations, so on the release that
+  // brings person_credential the hash is still only on person.
+  test('before person_credential exists, the live password is read from person', async () => {
+    await setLive(live)
+    await sql`alter table person_credential rename to person_credential_before_1336`
+    vi.stubEnv('ADMIN_PASSWORD', live)
+    expect(await preflightRelease({ environment: 'test' })).toContain("ADMIN_PASSWORD is the Administrator's live password")
+  })
+
   test('a set ADMIN_PASSWORD that is the live password passes and says so', async () => {
     await setLive(live)
     vi.stubEnv('ADMIN_PASSWORD', live)
