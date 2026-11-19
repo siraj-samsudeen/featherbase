@@ -225,3 +225,18 @@ export function fmtDuration(ms: number | null | undefined): string {
   const rest = minutes % 60
   return `${Math.floor(minutes / 60)} h${rest ? ` ${rest} min` : ''}`
 }
+
+/** #1349: a Table's label counted, as the count row reads it: "1 Plant", "3 Plants", "31 People", "214 Subcategories".
+ *  English rules on the last word, with the irregular words Featherbase's Tables use. */
+export function countedLabel(label: string, count: number): string {
+  if (count === 1) return label
+  const words = label.split(' ')
+  const last = words.pop() ?? ''
+  const lower = last.toLowerCase()
+  const IRREGULAR: Record<string, string> = { person: 'people', child: 'children', staff: 'staff', data: 'data' }
+  const plural = IRREGULAR[lower] !== undefined ? IRREGULAR[lower]!.replace(/^./, (c) => (last[0] === last[0]!.toUpperCase() ? c.toUpperCase() : c))
+    : /[^aeiou]y$/i.test(last) ? `${last.slice(0, -1)}ies`
+    : /(s|x|z|ch|sh)$/i.test(last) ? `${last}es`
+    : `${last}s`
+  return [...words, plural].join(' ')
+}

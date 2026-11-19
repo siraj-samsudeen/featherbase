@@ -76,14 +76,11 @@ export const linksSectionId = (group: Pick<BacklinkGroup, 'key'>) => `links-${gr
  * the first 10 then Show all, an empty one greyed with + New, and Open as grid
  * where both sides are small. As the tree: the Tree's unfolding.
  */
-export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }: {
+export function RecordLinks({ table, name, values, pref }: {
   table: string
   name: string
   values: Row | undefined
   pref: LinksPreference
-  /** The group whose chip was chosen: its section scrolls into view and takes focus. */
-  focusGroup?: string | null
-  onFocused?: () => void
 }) {
   const nav = useNavigation()
   const meta = useMeta(table)
@@ -100,15 +97,6 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }
   // #1349 item 3: the empty groups fold behind one "+ N tables with none".
   const [showEmpty, setShowEmpty] = useState(false)
   const chosenEmpty = empties.find((g) => g.key === openEmpty)
-  useEffect(() => {
-    if (!focusGroup || !groups.length) return
-    // An empty group's chip opens, so its + New is at hand.
-    if (empties.some((g) => g.key === focusGroup)) { setShowEmpty(true); setOpenEmpty(focusGroup) }
-    const el = document.getElementById(linksSectionId({ key: focusGroup }))
-    el?.scrollIntoView?.({ block: 'start' })
-    el?.focus({ preventScroll: true })
-    onFocused?.()
-  }, [focusGroup, groups.length, onFocused])
   if (pref.as === 'tree') return <RowTree table={table} name={name} />
   const open = (pane: NavPane) => nav?.push({ ...nav.step, pane })
   const listHref = (g: BacklinkGroup) => {

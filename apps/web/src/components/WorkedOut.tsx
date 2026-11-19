@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { appHref, type WorkedOutAnswer, type WorkedOutRow } from 'shared'
-import { Lock, RecordLink, fmtCount, touchLinkClasses } from '@featherbase/shop-floor'
+import { CountChip, Lock, RecordLink, fmtCount, touchLinkClasses } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import type { NavPane } from '../lib/nav-path'
 
@@ -12,18 +12,37 @@ import type { NavPane } from '../lib/nav-path'
 
 const LOCKED = 'Comes from a role; change it on the role'
 
-export function WorkedOutSections({ table, row, onOpen }: { table: string; row: string; onOpen?: (pane: NavPane) => void }) {
-  const answer = useQuery({
+function useWorkedOut(table: string, row: string) {
+  return useQuery({
     queryKey: ['worked-out', table, row],
     retry: false,
     queryFn: () => api.get<WorkedOutAnswer>(`/api/worked-out/${encodeURIComponent(table)}/${encodeURIComponent(row)}`),
   })
+}
+
+/** The id a worked-out section answers to, so its chip in the count row can jump to it (#1349). */
+export const workedOutId = (heading: string) => `worked-out-${heading.replace(/[^A-Za-z0-9_-]/g, '_')}`
+
+/** #1349 (board 4b): each worked-out section as a chip in the count row, "3 Apps They Can Open"; an empty one quiet
+ *  and grey, since its section below says the check ran. */
+export function WorkedOutCounts({ table, row, onSection, size }: {
+  table: string; row: string; onSection: (heading: string) => void; size?: 'page' | 'pane'
+}) {
+  const answer = useWorkedOut(table, row)
+  return <>{(answer.data?.sections ?? []).map((section) => (
+    <CountChip key={section.heading} count={section.rows.length} label={section.heading} size={size} onSelect={() => onSection(section.heading)} />
+  ))}</>
+}
+
+export function WorkedOutSections({ table, row, onOpen }: { table: string; row: string; onOpen?: (pane: NavPane) => void }) {
+  const answer = useWorkedOut(table, row)
   // Nothing worked out, or the app's answer refused: the panel shows its own groups only.
   if (!answer.data?.sections.length) return null
   // Each section is headed as a linked group (LinkedRowsGroup), the rows beside it on the Lens and the Links tab
   // (consistency check): the label, its count and note muted, the heading greyed when the section is empty.
   return <>{answer.data.sections.map((section) => (
-    <section key={section.heading} aria-label={section.heading} data-testid="worked-out-section" className="flex min-w-0 flex-col gap-3">
+    <section key={section.heading} id={workedOutId(section.heading)} tabIndex={-1} aria-label={section.heading} data-testid="worked-out-section"
+      className="flex min-w-0 scroll-mt-4 flex-col gap-3 focus:outline-none">
       <h4 className={section.rows.length ? 'text-sm font-semibold text-ink' : 'text-sm font-semibold text-ink-muted'}>
         {section.heading} <span className="font-normal text-ink-muted">{fmtCount(section.rows.length)}{section.note ? ` · ${section.note}` : ''}</span>
       </h4>

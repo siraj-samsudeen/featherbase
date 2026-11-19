@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
-  FieldGrid, GroupChip, LinkChip, NoneFold, PaneSection, Plus, RecordLink, SplitWithPane, X,
-  buttonClasses, cx, fmtCount, fmtDuration, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, tagClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
+  CountChip, FieldGrid, GroupChip, LinkChip, NoneFold, PaneSection, Plus, RecordLink, SplitWithPane, X,
+  buttonClasses, countedLabel, cx, fmtCount, fmtDuration, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, tagClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
   type FieldGridGroup,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
@@ -22,7 +22,7 @@ import { LinkedRowsGroup } from './LinkedRowsGroup'
 import { Indicator } from './Indicator'
 import { RecordChips } from './RecordChips'
 import { isCodeColumn, isDurationColumn, isSourceColumn } from '../lib/column-kinds'
-import { WorkedOutSections } from './WorkedOut'
+import { WorkedOutCounts, WorkedOutSections, workedOutId } from './WorkedOut'
 import { useGroupPlans } from './LinkTickList'
 import { managedBySignIn } from './PersonSignInMethods'
 
@@ -141,6 +141,8 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
         <p className="text-sm text-ink-subtle">Loading…</p>
       ) : <>
         <PointsAt links={forwardLinks(meta.data, doc.data)} nav={nav} onOpen={drill} editHref={pageHref} />
+        {/* #1349 item 1 (board 4b): what links here, counted, before the fields. */}
+        <CountRow table={table} row={row} size="pane" onSection={(heading) => scrollToWhenShown(workedOutId(heading))} />
         {/* Two columns when the panel is wide, one when narrow (C1). */}
         <div className="@container" data-testid="record-panel-body">
           <div className="grid gap-5 @2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
@@ -175,6 +177,50 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
 /** #1349 (board 4b): said once the counts are in and nothing with rows points at the record. */
 export function NothingPointsAt({ kind }: { kind: string }) {
   return <span className="text-[13.5px] text-ink-muted">Nothing points at this {kind.toLowerCase()} yet.</span>
+}
+
+/**
+ * #1349 item 1 (boards 3 and 4b): one row of counts under a record's title: a chip per group with rows, the number
+ * first, each opening that group's list already filtered; then a chip per section an app works out about the record.
+ * A group with no rows has no chip (it waits behind "+ N tables with none"); every count is the viewer's own.
+ */
+export function CountRow({ table, row, size = 'page', onSection }: {
+  table: string; row: string; size?: 'page' | 'pane'; onSection: (heading: string) => void
+}) {
+  const nav = useNavigation()
+  const navigate = useNavigate()
+  const cnx = useConnections(table, row)
+  const groups = useBacklinkGroups(cnx.data?.connections).filter((g) => g.count > 0)
+  return (
+    // Drawn only when it holds a chip (empty:hidden), so a record nothing links to keeps no gap.
+    <div role="group" aria-label="What links here" data-testid="count-row" className="flex flex-wrap items-center gap-2 empty:hidden">
+      {groups.map((g) => {
+        const href = nav ? groupListHref(g, nav) : `${tableHref(g.connection.table)}?filters=${encodeURIComponent(JSON.stringify(g.connection.filters))}`
+        return <GroupCount key={g.key} group={g} href={href} size={size} onNavigate={() => void navigate({ href })} />
+      })}
+      <WorkedOutCounts table={table} row={row} size={size} onSection={onSection} />
+    </div>
+  )
+}
+
+/** A group's chip in the count row: "3 Plants", or "1 Visit through Visit Line" for a hop through a sub-table. */
+function GroupCount({ group, href, size, onNavigate }: { group: BacklinkGroup; href: string; size: 'page' | 'pane'; onNavigate: () => void }) {
+  const via = group.connection.via
+  const viaMeta = useMeta(via ?? '', Boolean(via))
+  // Two links from one Table read "Orders · Customer": the Table's word is the one counted.
+  const [head, ...rest] = group.label.split(' · ')
+  const label = [countedLabel(head!, group.count), ...rest].join(' · ')
+  return <CountChip count={group.count} label={label} through={via ? tableLabel(via, viaMeta.data) : undefined}
+    href={href} onNavigate={onNavigate} size={size} />
+}
+
+/** Scrolls to a section once it is on screen (it may wait on a tab switch or a read), and gives it focus. */
+export function scrollToWhenShown(id: string, tries = 40) {
+  const el = document.getElementById(id)
+  if (el) {
+    el.scrollIntoView?.({ block: 'start' })
+    el.focus({ preventScroll: true })
+  } else if (tries > 0) setTimeout(() => scrollToWhenShown(id, tries - 1), 50)
 }
 
 /** A group's rows as a list, on the path when the panel is on one. */
@@ -442,12 +488,12 @@ function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: u
  * rows it points at and the counted groups that point at it, the same chips
  * as the drill pane. Opening one shows it in the pane.
  */
-export function RowConnections({ table, row, values, layout = 'chips', onGroup }: {
+export function RowConnections({ table, row, values, layout = 'chips', onSection }: {
   table: string; row: string; values: Row | undefined
   /** #1267: 'list' is a Person page's right column, one group per line with its count. */
   layout?: 'chips' | 'list'
-  /** #1273 (D3): a group's chip jumps to its section on the Links tab, by the group's key. */
-  onGroup?: (key: string) => void
+  /** #1349: a worked-out section's chip in the count row goes to that section. */
+  onSection?: (heading: string) => void
 }) {
   const nav = useNavigation()
   const meta = useMeta(table)
@@ -457,15 +503,11 @@ export function RowConnections({ table, row, values, layout = 'chips', onGroup }
   const [showEmpty, setShowEmpty] = useState(false)
   if (!nav || !meta.data || !values) return null
   const links = forwardLinks(meta.data, values)
-  if (!links.length && !groups.length) return null
   const step = nav.step
   const open = (pane: NavPane) => nav.push({ ...step, pane })
-  const chosen = step.pane?.table === table && step.pane.row === row ? step.pane.group : undefined
   const full = groups.filter((g) => g.count > 0)
   const empty = groups.filter((g) => g.count === 0)
   const shown = showEmpty ? [...full, ...empty] : full
-  const choose = (g: BacklinkGroup) => onGroup ? onGroup(g.key) : open({ table, row, group: { table: g.connection.table, column: g.connection.column, via: g.connection.via } })
-  const isChosen = (g: BacklinkGroup) => (!onGroup && chosen ? groupKey(chosen) === g.key : false)
   const emptyToggle = empty.length > 0 && (
     <button type="button" onClick={() => setShowEmpty((was) => !was)} aria-expanded={showEmpty} data-testid="connections-show-empty"
       className={touchLinkClasses('text-sm text-ink-muted hover:text-ink hover:underline')}>
@@ -474,7 +516,8 @@ export function RowConnections({ table, row, values, layout = 'chips', onGroup }
   )
   // #1267 on #1218 slice 1: a Person's right column draws each group with
   // LinkedRowsGroup, its rows named by what they point to; rows open in the pane.
-  if (layout === 'list')
+  if (layout === 'list') {
+    if (!links.length && !groups.length) return null
     return (
       <section aria-labelledby="connections-heading" data-testid="connections-list" className="flex min-w-0 flex-col gap-4">
         <h2 id="connections-heading" className="text-sm font-medium text-ink-muted">Linked Records</h2>
@@ -490,20 +533,19 @@ export function RowConnections({ table, row, values, layout = 'chips', onGroup }
         {emptyToggle && <span className="px-2">{emptyToggle}</span>}
       </section>
     )
+  }
+  // #1349 item 1 (board 3): what the row points at, then the count row; a group with no rows has no chip here.
   return (
-    <section aria-label="Connections" className="mb-4 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-      {links.map((link) => (
-        <span key={link.column} className="inline-flex min-w-0 items-center gap-2 text-sm">
-          <span className="text-ink-muted">{link.label}</span>
-          <PaneLink table={link.table} rowId={link.row_id} onOpen={open} />
-        </span>
-      ))}
-      {groups.length > 0 && <span className="flex flex-wrap items-center gap-2">
-        {shown.map((g) => (
-          <GroupChip key={g.key} label={g.label} count={g.count} selected={isChosen(g)} onSelect={() => choose(g)} />
+    <section aria-label="Connections" className="mb-4 flex min-w-0 flex-col gap-3">
+      {links.length > 0 && <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+        {links.map((link) => (
+          <span key={link.column} className="inline-flex min-w-0 items-center gap-2 text-sm">
+            <span className="text-ink-muted">{link.label}</span>
+            <PaneLink table={link.table} rowId={link.row_id} onOpen={open} />
+          </span>
         ))}
-        {emptyToggle}
-      </span>}
+      </div>}
+      <CountRow table={table} row={row} onSection={onSection ?? ((heading) => scrollToWhenShown(workedOutId(heading)))} />
     </section>
   )
 }
