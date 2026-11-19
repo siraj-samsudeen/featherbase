@@ -292,7 +292,7 @@ describe('relational-navigation', () => {
     await step('a group of 8 cost centres by supplying plant shows', () => viaGroup('Supplying plant', 8))
     await step('a group of 0 cost centres by billing plant shows, quieter than the other, once the user shows the empty groups', async () => {
       // #1282 (UI owner): the pane's empty groups wait behind Show N empty, as on the record page.
-      fireEvent.click(await within(await pane('Enchakkal Supermarket')).findByRole('button', { name: /^Show \d+ empty$/ }))
+      fireEvent.click(await within(await pane('Enchakkal Supermarket')).findByRole('button', { name: /^\+ \d+ tables? with none$/ }))
       const empty = await viaGroup('Billing plant', 0)
       // The empty group carries the mark that mutes it; the full one doesn't.
       expect(empty).toHaveAttribute('data-empty')

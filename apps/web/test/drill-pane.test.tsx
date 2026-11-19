@@ -14,7 +14,8 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 /** The pane on the row named `name`, which its code may follow ("Enchakkal · ENK"). */
 const pane = (name: string) => screen.findByRole('complementary', { name: new RegExp(`^${escape(name)}( · .+)?$`) })
 const listed = () => within(screen.getByTestId('list-rows')).getAllByTestId('row-check').length
-const pathSteps = () => within(screen.getByRole('navigation', { name: 'Path' })).getAllByRole('button')
+// The path's steps, not the walk's ‹ › beside the last one (#1343).
+const pathSteps = () => within(screen.getByRole('navigation', { name: 'Path' })).getAllByRole('button').filter((b) => !b.closest('[data-testid="walk"]'))
 
 /** Selects a row of the list by clicking a plain cell of its line. */
 async function select(name: string) {
@@ -280,7 +281,7 @@ test('two links from the same table stay separate groups, each with its own coun
   expect(await within(site).findByRole('button', { name: `${PLANT} · Site 3` })).toBeInTheDocument()
   // A group with no rows waits behind Show N empty (#1282, as on the record page), and is still there.
   expect(within(site).queryByRole('button', { name: `${PLANT} · Backup site 0` })).not.toBeInTheDocument()
-  fireEvent.click(within(site).getByRole('button', { name: /^Show \d+ empty$/ }))
+  fireEvent.click(within(site).getByRole('button', { name: /^\+ \d+ tables? with none$/ }))
   expect(within(site).getByRole('button', { name: `${PLANT} · Backup site 0` })).toBeInTheDocument()
 })
 
