@@ -69,4 +69,14 @@ describe('#1345: a settings file sets Metadata Overrides from an allowlist', () 
     expect(result.warnings).toEqual(['Metadata Override Iso Not Loaded Yet person_column: the Table is not here yet; apply the file again once it is'])
     expect((await getMeta('Iso Roster')).person_column).toBe('person')
   })
+
+  // Codex adversarial round 3: an allowed override may not take the row of one outside the allowlist.
+  test("an override cannot take another override's row, so it never replaces one the file may not set", async ({ admin }) => {
+    await roster(admin)
+    await admin.post('/api/save_row', { table: 'Metadata Override', row: { table_name: 'Iso Roster', column_name: 'full_name', property: 'read_only', value: '1' } })
+    const [guarded] = await sql`select row_id from metadata_override where table_name = 'Iso Roster' and property = 'read_only'`
+    const label = { row_id: String(guarded!.row_id), table_name: 'Iso Roster', column_name: 'full_name', property: 'label', value: 'Name' }
+    await expect(applyInstanceSettings(file([label]), { by: 'Administrator' })).rejects.toThrow(`Metadata Override row ${String(guarded!.row_id)} is already another override (Iso Roster.full_name read_only)`)
+    expect(await sql`select property, value from metadata_override where row_id = ${guarded!.row_id}`).toEqual([{ property: 'read_only', value: '1' }])
+  })
 })
