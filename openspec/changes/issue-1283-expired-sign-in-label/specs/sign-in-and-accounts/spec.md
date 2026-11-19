@@ -9,7 +9,7 @@ in that order and as the same button. The "We couldn't sign you in" card is that
 same page with only its heading and one sentence above it. Only an account the
 service refused is offered as "Try another … account".
 
-#### Scenario: The card after a refused Microsoft account
+#### Scenario: The card after a failed Microsoft sign-in
 
 - **WHEN** a Microsoft sign-in comes back refused because the account is not set up
 - **THEN** the card shows "We couldn't sign you in" and one sentence, then the
