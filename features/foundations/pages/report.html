@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Featherbase Report</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
 <link rel="stylesheet" href="pages.css">
 </head>
 <body>
@@ -22,21 +22,21 @@
     <div class="nav"><a href="screens.html#home">Home</a></div>
     <div class="group">
       <h2>Tables · main</h2>
-      <div class="nav"><a href="screens.html#employees">Employees <span>24</span></a></div>
+      <div class="nav"><a href="screens.html#employees"><span class="ico c1">Em</span>Employees <span>24</span></a></div>
     </div>
     <div class="group">
       <h2>Reports</h2>
-      <div class="nav"><a href="report.html" aria-current="page">Headcount</a></div>
+      <div class="nav"><a href="report.html" aria-current="page"><span class="ico c3">He</span>Headcount</a></div>
     </div>
     <div class="group">
       <h2>Uploads</h2>
-      <div class="nav"><a href="screens.html#upload-next">employees.csv <span>24</span></a></div>
+      <div class="nav"><a href="screens.html#upload-next"><span class="ico c8">Up</span>employees.csv <span>24</span></a></div>
     </div>
   </nav>
 
   <div class="main">
     <section class="view">
-      <div class="bar"><h1>Headcount</h1><span class="count">from Employees, 24 rows, as at 19-Nov-2026</span></div>
+      <div class="bar"><p class="crumbs">Reports / Headcount</p><h1>Headcount</h1><span class="count">from Employees, 24 rows, as at 19-Nov-2026</span></div>
 
       <!-- The report's one scrolling box -->
       <div class="page wide">
@@ -53,14 +53,14 @@
           <div class="tile"><dt>Employees</dt><dd>24</dd><dd>everyone on the Table</dd></div>
           <div class="tile"><dt>Active</dt><dd>21</dd><dd>88% of everyone</dd></div>
           <div class="tile"><dt>Left</dt><dd>3</dd><dd>all in 2025</dd></div>
-          <div class="tile"><dt>Weekly hours</dt><dd>833</dd><dd>active employees, 39.7 each</dd></div>
+          <div class="tile"><dt>Weekly Hours</dt><dd>833</dd><dd>active employees, 39.7 each</dd></div>
         </dl>
 
         <div class="charts">
 
           <!-- A line: one series, so no legend. The peak and the latest point are labelled; the rest is in the table. -->
           <figure class="chart wide">
-            <figcaption><b>Employees at the end of each year</b><span>Grew by two or three a year to 24 in 2024, then three people left.</span></figcaption>
+            <figcaption><b>Employees At The End Of Each Year</b><span>Grew by two or three a year to 24 in 2024, then three people left.</span></figcaption>
             <div class="plotbox"><svg class="plot" viewBox="0 0 880 232" role="img" aria-label="Employees at the end of each year, 2015 to today">
             <line class="grid" x1="36" x2="848" y1="160.4" y2="160.4"/>
             <line class="grid" x1="36" x2="848" y1="124.8" y2="124.8"/>
@@ -128,7 +128,7 @@
 
           <!-- Each department wears its own colour, the one on its chip in the list. The total sits at the tip. -->
           <figure class="chart">
-            <figcaption><b>Employees by department</b><span>Active employees in the department's colour, largest team first. The grey part has left.</span></figcaption>
+            <figcaption><b>Employees By Department</b><span>Active employees in the department's colour, largest team first. The grey part has left.</span></figcaption>
             <ul class="legend"><li><i class="rest"></i>Left</li></ul>
             <ul class="bars" style="--max:5">
             <li title="Billing: 5 active, 0 left"><span class="name">Billing</span><span class="track"><i class="c2" style="--v:5"></i><span class="val">5</span></span></li>
@@ -153,7 +153,7 @@
 
           <!-- Ranked bars, the value at the tip -->
           <figure class="chart">
-            <figcaption><b>Weekly hours by department</b><span>Hours a week that active employees are contracted for.</span></figcaption>
+            <figcaption><b>Weekly Hours By Department</b><span>Hours a week that active employees are contracted for.</span></figcaption>
             <ul class="bars" style="--max:201.5">
             <li title="Billing: 201.5 hours a week"><span class="name">Billing</span><span class="track"><i class="c2" style="--v:201.5"></i><span class="val">201.5</span></span></li>
             <li title="Stores: 199 hours a week"><span class="name">Stores</span><span class="track"><i class="c4" style="--v:199.0"></i><span class="val">199</span></span></li>
@@ -179,7 +179,7 @@
 
         <!-- The rows behind a headline number, as an ordinary table -->
         <div class="sect">
-          <h2>Who left</h2>
+          <h2>Who Left</h2>
           <div class="tbox">
             <table>
               <thead><tr><th>Employee Code</th><th>Name</th><th>Department</th><th>Date of Joining</th><th>Date of Leaving</th><th class="num">Stayed</th></tr></thead>
