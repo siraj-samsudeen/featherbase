@@ -2,7 +2,6 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
 import { getMeta } from './meta'
-import { isBound } from './sources/dispatch'
 import { MAX_RELATED_DEPTH } from 'shared'
 import { hideRetired, scopedWhere, type Filter } from './query'
 import { linkBase, storedTable } from './views'
@@ -63,9 +62,9 @@ async function narrowCountsImpl(
   user: string,
   opts: { withRetired?: boolean } = {},
 ): Promise<NarrowCounts> {
-  const stored = await getMeta(await storedTable(table))
-  if (isBound(stored)) throw bad(`${table} is bound to data source ${stored.data_source}: Click To Narrow counts only Featherbase's own Tables`)
   if (!lists.length) return { lists: [] }
+  // A Table on a data source is refused by scopedWhere: its rows are not in this database.
+  const stored = await getMeta(await storedTable(table))
   const baseFilters = hideRetired(stored, filters, opts.withRetired)
   const base = await scopedWhere(table, user, baseFilters)
   const rowKey = sql`${sql(base.table)}.${sql(base.meta.row_key)}`
@@ -146,8 +145,8 @@ async function pathJoins(list: number, path: NarrowStep[], base: Scoped, user: s
     if (!reference) {
       // A plain column (a Choice) ends the path: its value is the list's value.
       if (next) throw bad(`A list's path cannot go on past ${at.meta.name}.${step.column}`)
-      if (col && (col.column_type === 'Sub-table' || col.column_type === 'Reference'))
-        throw bad(`${at.meta.name}.${step.column} cannot be a list`)
+      // A link to a row of any Table names no one Table to list (a Sub-table is no field here at all).
+      if (col?.column_type === 'Reference') throw bad(`${at.meta.name}.${step.column} cannot be a list`)
       return { joins, value: at.read(step.column) }
     }
     const hop = await scopedWhere(reference, user, [])
