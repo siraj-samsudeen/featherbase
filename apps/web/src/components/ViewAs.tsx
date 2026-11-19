@@ -9,6 +9,7 @@
 // window in the middle of the page. Dash's "What a person sees" offers a third
 // (E), which starts View as directly.
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { setViewedPerson, viewedPerson } from '../lib/viewing-as'
@@ -288,13 +289,16 @@ export function ViewAsButton({ compact, place = 'bar' }: {
           <ViewAsPicker state={data} autoFocus />
         </div>
       )}
-      {open === 'window' && (
+      {/* To the body: the button may sit in the sidebar, which would otherwise hold
+          this fixed window to its own width instead of the middle of the page. */}
+      {open === 'window' && createPortal(
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-scrim/40 px-2 pt-[12vh]" data-testid="view-as-palette">
           <div ref={panel} role="dialog" aria-modal="true" aria-label="View as" className={cardClasses('w-[min(36rem,100%)] p-3')}>
             <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink"><UserRoundSearch aria-hidden size={16} />View as someone</h2>
             <ViewAsPicker state={data} autoFocus />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
