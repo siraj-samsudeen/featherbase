@@ -41,6 +41,8 @@ async function openList(admin: TestClient): Promise<{ session: Session }> {
   cleanup()
   const { session } = await renderSession(listPath, admin, { session: WAIT })
   await session.until('the list has rows', () => screen.queryByTestId('list-rows'))
+  // #1282 A4: Show Retired is offered once the person's saved list settings are here.
+  await session.until('the list has its settings', () => !screen.queryByRole<HTMLInputElement>('checkbox', { name: 'Show Retired' })?.disabled)
   return { session }
 }
 

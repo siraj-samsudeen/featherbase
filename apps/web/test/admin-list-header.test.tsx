@@ -71,6 +71,8 @@ test('Show Retired is a toggle chip in the toolbar', async ({ admin }) => {
   expect(chip).not.toBeChecked()
   // In the toolbar, not on the title's line.
   expect(within(screen.getByTestId('list-toolbar')).queryByTestId('list-show-retired-toggle')).toBeNull()
+  // #1282 A4: it is offered once the person's saved list settings are here.
+  await waitFor(() => expect(chip).toBeEnabled(), T)
   await userEvent.click(chip)
   expect(chip).toBeChecked()
 })

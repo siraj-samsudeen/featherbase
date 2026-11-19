@@ -242,3 +242,22 @@ test("choosing a board's grouping remembers it", async ({ admin }) => {
   await userEvent.selectOptions(await screen.findByRole('combobox', {}, T), 'size')
   await waitFor(async () => expect((await admin.get<{ settings: { groupBy?: string } }>(`/api/user_settings/${enc('Tvd Bin')}`)).settings.groupBy).toBe('size'), T)
 })
+
+test("a board's grouping that could not be saved still holds for this visit", async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Tvd Crate', id_pattern: 'hash', title_column: 'crate_name', columns: [
+    { column_name: 'crate_name', column_type: 'Data', label: 'Crate', in_list_view: true },
+    { column_name: 'state', column_type: 'Choice', label: 'State', choices: 'Full\nEmpty' },
+    { column_name: 'size', column_type: 'Choice', label: 'Size', choices: 'Small\nLarge' },
+  ] })
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (init?.method === 'PUT' && url.includes('/api/user_settings/')) return new Response('{}', { status: 500 })
+    return real(input, init)
+  })
+  try {
+    await renderApp(`${tableHref('Tvd Crate')}/view/kanban`, admin)
+    await userEvent.selectOptions(await screen.findByRole('combobox', {}, T), 'size')
+    await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('size'), T)
+  } finally { vi.restoreAllMocks() }
+})

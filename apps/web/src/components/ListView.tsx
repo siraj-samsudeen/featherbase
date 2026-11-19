@@ -995,6 +995,8 @@ export function ListView({
               <input
                 type="checkbox"
                 checked={showRetired}
+                // Not before this person's saved settings are here (#1282 A4), which then decide it.
+                disabled={!settingsLoaded}
                 onChange={(e) => {
                   setShowRetired(e.target.checked)
                   persist({ showRetired: e.target.checked })
