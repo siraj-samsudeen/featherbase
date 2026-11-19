@@ -57,7 +57,7 @@ describe('#1345: a settings file sets Metadata Overrides from an allowlist', () 
     await admin.post('/api/save_row', { table: 'Metadata Override', row: { table_name: 'Iso Roster', property: 'sort_column', value: 'full_name' } })
     const [sort] = await sql`select row_id from metadata_override where table_name = 'Iso Roster' and property = 'sort_column'`
     const { file: exported, withheld } = await exportInstanceSettings()
-    const rows = (exported.settings['Metadata Override'] as { table_name: string; property: string }[]).filter((r) => r.table_name === 'Iso Roster')
+    const rows = (exported.settings['Metadata Override'] as unknown as { table_name: string; property: string }[]).filter((r) => r.table_name === 'Iso Roster')
     expect(rows.map((r) => r.property).sort()).toEqual(['person_column', 'search_columns'])
     expect(withheld).toContain(`Metadata Override.${sort!.row_id}: sort_column is not set by a settings file`)
   })
