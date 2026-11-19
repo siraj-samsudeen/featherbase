@@ -661,12 +661,11 @@ export async function workedOut(context: AccessContext) {
   const explained = await explainPerson({ ...context, payload: { person } })
   // Every name within the platform's limits (Codex standard round 1): one long name must not refuse both sections.
   const self = { name: clip(explained.name), record: { table: 'Person', row: person } }
-  const roleByName = new Map(explained.roles.map(r => [r.name, r]))
-  const roleById = new Map(explained.roles.map(r => [r.role, r]))
   const roleLink = (r: { role: string; name: string }) => ({ name: clip(r.name), record: { table: ROLE, row: r.role } })
   // The role's area as record parts (as Why's boxes carry it), so the platform hides a chain naming an area the viewer may not read.
-  const chainVia = (r: { role: string; name: string; area: { parts: Part[] } } | undefined) => (r ? [{ ...roleLink(r), ...areaParts(r.area.parts) }] : [])
-  const rolesOf = (names: string[]) => names.flatMap(name => roleByName.has(name) ? [roleByName.get(name)!] : [])
+  const chainVia = (roles: { role: string; name: string; area: { parts: Part[] } }[]) => roles.slice(0, 1).map(r => ({ ...roleLink(r), ...areaParts(r.area.parts) }))
+  // The person's own roles, in their order, that the names (or ids) given name.
+  const rolesOf = (names: string[]) => explained.roles.filter(r => names.includes(r.name))
   // UI owner: one row per app, at its highest level (a higher level includes the lower). A lower level is named
   // ("also Reader") only where a role that does not give the higher one gives it; Why? opens the shown level's chain.
   const byApp = new Map<string, typeof explained.apps>()
@@ -677,12 +676,12 @@ export async function workedOut(context: AccessContext) {
     const via = rolesOf([...new Set([...top!.via, ...also.flatMap(l => l.via)])])
     return { name: clip(top!.app), app: top!.app.toLowerCase(),
       detail: clip(`at level ${top!.level}${also.length ? `, also ${also.map(l => l.level).join(', ')}` : ''}`),
-      via: via.slice(0, 6).map(roleLink), why: [self, ...chainVia(rolesOf(top!.via)[0]), { name: clip(`${top!.app} · ${top!.level}`) }] }
+      via: via.slice(0, 6).map(roleLink), why: [self, ...chainVia(rolesOf(top!.via)), { name: clip(`${top!.app} · ${top!.level}`) }] }
   })
   const reports: WorkedRow[] = explained.reports.slice(0, WORKED_OUT_ROWS).map(r => {
-    const via = r.roles.flatMap(id => roleById.has(id) ? [roleById.get(id)!] : [])
+    const via = explained.roles.filter(x => r.roles.includes(x.role))
     const report = { name: clip(r.name), record: { table: 'dash.report', row: r.key } }
-    return { ...report, via: via.slice(0, 6).map(roleLink), why: [self, ...chainVia(via[0]), report] }
+    return { ...report, via: via.slice(0, 6).map(roleLink), why: [self, ...chainVia(via), report] }
   })
   return { version: 1, sections: [
     { heading: 'Apps They Can Open', note: 'worked out from their roles', empty: 'No apps from roles yet', rows: apps },
