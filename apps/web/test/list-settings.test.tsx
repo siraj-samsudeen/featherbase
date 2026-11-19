@@ -25,7 +25,7 @@ import { test, expect, renderApp } from './pg-test'
 const DT = 'Ls Settings'
 
 type Admin = Parameters<typeof renderApp>[1]
-type Stored = { settings: { sort: { field: string; dir: string } | null; hiddenCols: string[] } }
+type Stored = { settings: { sort?: { field: string; dir: string } | null; hiddenCols?: string[] } }
 
 async function seedList(admin: Admin) {
   await admin.post('/api/table_def', {
