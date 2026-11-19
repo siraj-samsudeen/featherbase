@@ -244,13 +244,15 @@ function GroupPeek({ group }: { group: BacklinkGroup }) {
     fields: ['row_id', ...(title ? [title] : [])], limit: PEEK_ROWS, orderBy: meta.data ? groupOrder(meta.data) : undefined, enabled: Boolean(meta.data),
   })
   if (!meta.data || !rows.data) return <span className="text-[13px] text-ink-subtle">Loading…</span>
+  const shown = rows.data.data as Row[]
+  const more = group.count - shown.length
+  // UI owner: the rows as RecordLinks, no fills inside the raised card, then a muted "+ N more".
   return (
-    <div className="flex flex-wrap gap-1.5 text-[13px]">
-      {(rows.data.data as Row[]).map((r) => (
-        <span key={String(r.row_id)} className="rounded-full bg-subtle px-2.5 py-0.5">
-          <RecordLink table={group.connection.table} rowId={String(r.row_id)} name={rowDisplayTitle(meta.data!, r, String(r.row_id))} />
-        </span>
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13.5px]">
+      {shown.map((r) => (
+        <RecordLink key={String(r.row_id)} table={group.connection.table} rowId={String(r.row_id)} name={rowDisplayTitle(meta.data!, r, String(r.row_id))} />
       ))}
+      {more > 0 && <span className="text-[13px] text-ink-subtle">+ {fmtCount(more)} more</span>}
     </div>
   )
 }
