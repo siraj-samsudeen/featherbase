@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { MoreHorizontal } from 'lucide-react'
-import { cx, raisedClasses } from '@featherbase/shop-floor'
+import { cx, menuClasses, menuItemClasses } from '@featherbase/shop-floor'
 
 // #1235 item 9 (UI standard §5): a row's destructive actions wait behind a ⋯
 // button, never as a button on every row. Each item asks its own confirm
@@ -47,17 +47,14 @@ export function RowMenu({ name, items, className }: { name: string; items: RowMe
         <MoreHorizontal aria-hidden size={18} />
       </button>
       {open && (
-        <div id={menuId} role="menu" aria-label={`Actions for ${name}`} className={raisedClasses('absolute right-0 top-full z-30 mt-1 min-w-40 py-1')}>
+        <div id={menuId} role="menu" aria-label={`Actions for ${name}`} className={menuClasses('absolute right-0 top-full z-30 mt-1')}>
           {items.map((item) => (
             <button
               key={item.label}
               type="button"
               role="menuitem"
               disabled={item.disabled}
-              className={cx(
-                'flex w-full items-center px-3 py-2 text-left text-sm hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50',
-                item.tone === 'negative' ? 'text-negative' : 'text-ink',
-              )}
+              className={menuItemClasses({ tone: item.tone === 'negative' ? 'negative' : undefined })}
               onClick={() => {
                 setOpen(false)
                 item.onSelect()

@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { rowDisplayTitle, type ListFilter } from 'shared'
-import { ChevronDown, ChevronLeft, ChevronRight, RecordLink, fmtCount, iconButtonClasses, raisedClasses } from '@featherbase/shop-floor'
+import { ChevronDown, ChevronLeft, ChevronRight, RecordLink, fmtCount, iconButtonClasses, menuClasses } from '@featherbase/shop-floor'
 import { api, listResource } from '../lib/api'
 import { tableLabel, useMeta } from '../lib/meta'
 import { replace as replaceStep, type NavPath, type NavStep } from '../lib/nav-path'
@@ -232,7 +232,7 @@ function SidewaysList({ nav, siblings, close }: { nav: AddressNavigation; siblin
   const pick = (row: string) => { close(); nav.replace(siblings.stepFor(row)) }
   return (
     <div role="menu" aria-label="Other rows in this list"
-      className={raisedClasses('absolute left-0 top-full z-30 mt-1 flex w-72 flex-col gap-1 p-2')}>
+      className={menuClasses('absolute left-0 top-full z-30 mt-1 w-72 gap-1')}>
       <span className="px-2 text-xs text-ink-muted" data-testid="sideways-position">
         {at >= 0 ? `${fmtCount(at + 1)} of ${fmtCount(total)}` : `${fmtCount(total)}`} · {tableLabel(siblings.table, meta.data)}
       </span>
@@ -244,7 +244,7 @@ function SidewaysList({ nav, siblings, close }: { nav: AddressNavigation; siblin
           const current = id === siblings.rowId
           return (
             <li key={id} role="none" aria-current={current ? 'true' : undefined}
-              className={`flex items-center gap-2 rounded-md px-2 py-1 text-sm ${current ? 'bg-action-tint' : 'hover:bg-subtle'}`}>
+              className={`flex min-h-[34px] items-center gap-2 rounded-lg px-2 text-sm ${current ? 'bg-action-tint' : 'hover:bg-hover'}`}>
               <span aria-hidden className="w-3 shrink-0 text-action">{current ? '✓' : ''}</span>
               <RecordLink table={siblings.table} rowId={id} name={rowDisplayTitle(meta.data!, r, id)}
                 href={nav.href(replaceStep(nav.path, siblings.stepFor(id)))} onNavigate={() => pick(id)} />

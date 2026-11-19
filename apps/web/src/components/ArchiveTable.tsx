@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Notice, buttonClasses, fmtInstant, inputClasses, raisedClasses } from '@featherbase/shop-floor'
+import { Notice, buttonClasses, menuItemClasses, fmtInstant, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
 import { PrincipalLink } from '../lib/people'
 import { isArchived, type TableMeta } from '../lib/meta'
@@ -58,7 +58,7 @@ export function ArchiveTable({ table }: { table: string }) {
           setNote('')
           setOpen(true)
         }}
-        className={buttonClasses()}
+        className={menuItemClasses()}
         data-testid="archive-table"
       >
         Archive Table
