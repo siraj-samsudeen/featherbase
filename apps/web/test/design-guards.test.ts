@@ -101,12 +101,43 @@ const ROLES = [
   'negative', 'negative-tint', 'caution', 'caution-tint', 'positive', 'positive-tint',
   'opportunity', 'opportunity-tint', 'missing', 'missing-tint',
   'scrim', 'on-scrim', 'series-1', 'series-2', 'series-3', 'series-4', 'series-5',
+  // #1348 calmer look: the control fill, the row hover, and the chip tints.
+  'fill', 'fill-hover', 'hover',
 ]
+// #1348: the chips' hues. The first eight are the category tints, picked by a value's name; green, amber and
+// grey are the status chips (live, not yet, finished); red marks a data problem. Each has a tint and an ink.
+const CHIP_HUES = ['blue', 'teal', 'violet', 'pink', 'orange', 'lime', 'cyan', 'yellow', 'green', 'amber', 'grey', 'red']
+ROLES.push(...CHIP_HUES.flatMap((hue) => [`chip-${hue}`, `chip-${hue}-ink`]))
+
+// #1348: board 1 (Visual System) of docs/design/mockups/look-and-relationships.html, measured.
+describe('the calmer look tokens are board 1, exactly', () => {
+  test.each([
+    ['canvas', '#f4f5f7'], ['surface', '#ffffff'], ['subtle', '#f6f7f9'], ['fill', '#f1f2f4'], ['hover', '#f1f5ff'],
+    ['tag', '#eef0f3'], ['ink', '#151a23'], ['ink-subtle', '#5b6472'], ['action', '#1d4ed8'], ['action-tint', '#eef2ff'],
+    ['chip-green', '#dcfce7'], ['chip-green-ink', '#166534'], ['chip-amber', '#fef3c7'], ['chip-amber-ink', '#92400e'],
+    ['chip-grey', '#f1f2f4'], ['chip-grey-ink', '#4b5563'], ['chip-red', '#fee2e2'], ['chip-red-ink', '#991b1b'],
+    ['chip-blue', '#dbeafe'], ['chip-teal', '#ccfbf1'], ['chip-violet', '#ede9fe'], ['chip-pink', '#fce7f3'],
+    ['chip-orange', '#ffedd5'], ['chip-lime', '#ecfccb'], ['chip-cyan', '#cffafe'], ['chip-yellow', '#fef9c3'],
+  ])('%s is %s in light', (role, hex) => {
+    expect(light[role]).toBe(hex)
+  })
+  test('shapes and shadows: control radius 9, card 14, panel and raised shadows, controls 38px under a mouse', () => {
+    expect(CSS).toMatch(/@theme static \{[^}]*--radius-control: 9px;/)
+    expect(CSS).toMatch(/@theme static \{[^}]*--radius-card: 14px;/)
+    expect(CSS).toMatch(/@theme static \{[^}]*--spacing-control: 2\.375rem;/)
+    expect(CSS).toMatch(/--shadow-panel: 0 1px 2px rgb\(16 24 40 \/ 0\.05\);/)
+    expect(CSS).toMatch(/--shadow-raised: 0 12px 32px rgb\(16 24 40 \/ 0\.14\);/)
+  })
+  test('the type is Inter, served from the app itself', () => {
+    expect(CSS).toMatch(/^@import '@fontsource-variable\/inter';/m)
+    expect(CSS).toMatch(/--font-sans: 'Inter Variable', /)
+  })
+})
 // Tailwind drops theme variables no utility uses from a plain @theme block, so
 // a component reading var(--color-…) directly would get nothing in light mode
 // in the production build. The token set is the design system's API: emit it whole.
 test('control side padding is a density token: compact under a mouse, roomier on touch', () => {
-  expect(CSS).toMatch(/@theme static \{[^}]*--spacing-control-x: 0\.75rem;/)
+  expect(CSS).toMatch(/@theme static \{[^}]*--spacing-control-x: 0\.875rem;/)
   expect(CSS).toMatch(/@media \(pointer: coarse\) \{\s*:root \{[^}]*--spacing-control-x: 1rem;/)
 })
 
@@ -176,6 +207,10 @@ describe.each(themes)('%s tokens', (_mode, t) => {
     // A quiet tag (a sentence's reach, a log line's outcome) holds only ink or muted text.
     ['ink', 'tag'],
     ['ink-muted', 'tag'],
+    // #1348: a filled button or input holds ink; a hovered or selected row keeps its links and muted text.
+    ['ink', 'fill'], ['ink', 'fill-hover'], ['ink-muted', 'fill'], ['ink-subtle', 'fill'],
+    ['ink', 'hover'], ['ink-subtle', 'hover'], ['action', 'hover'], ['action', 'subtle'],
+    ...CHIP_HUES.map((hue) => [`chip-${hue}-ink`, `chip-${hue}`] as [string, string]),
   ]
   test.each(textPairs)('text %s on %s reaches 4.5:1', (fg, bg) => {
     expect(t[fg] && t[bg], `${fg} or ${bg} undefined`).toBeTruthy()
