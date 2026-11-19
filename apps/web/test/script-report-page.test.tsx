@@ -131,6 +131,9 @@ test("a report whose definition the network drops says it could not be opened", 
   try {
     await renderApp(`/featherbase/admin/script-report/${encodeURIComponent('Web SR Bare')}`, admin)
     expect(await screen.findByTestId('script-report-error', {}, { timeout: 10_000 })).toHaveTextContent('This report couldn’t be openedThe server didn’t answer.')
+    dropped.mockRestore()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(screen.queryByTestId('script-report-error')).not.toBeInTheDocument(), { timeout: 10_000 })
   } finally {
     dropped.mockRestore()
   }

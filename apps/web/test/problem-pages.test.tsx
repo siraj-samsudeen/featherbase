@@ -123,3 +123,31 @@ test('a Portal Table the viewer may not read leads to Featherbase, not the Admin
   expect(within(page).getByRole('link', { name: 'Go to Featherbase' })).toHaveAttribute('href', '/')
   expect(within(page).queryByRole('link', { name: 'Go to the Admin home' })).not.toBeInTheDocument()
 })
+
+test('a record the server failed on says something went wrong on the server', async ({ admin }) => {
+  await aTable(admin)
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    return url.includes('/api/table/Pp%20Probe/pp-broken')
+      ? Promise.resolve(new Response(JSON.stringify({ error: { type: 'Internal', message: 'database exploded' } }), { status: 500, headers: { 'content-type': 'application/json' } }))
+      : bridge(input, init)
+  })
+  await renderApp('/featherbase/admin/table/pp-probe/row/pp-broken', admin)
+  const page = await screen.findByTestId('problem-failed', {}, T)
+  expect(page).toHaveTextContent('Something went wrong on the server. Try again in a moment.')
+  expect(page).not.toHaveTextContent('database exploded')
+})
+
+test("a record the server turns away for another reason says it in the server's words", async ({ admin }) => {
+  await aTable(admin)
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    return url.includes('/api/table/Pp%20Probe/pp-odd')
+      ? Promise.resolve(new Response(JSON.stringify({ error: { type: 'Conflict', message: 'This record is being moved; open it in a minute' } }), { status: 409, headers: { 'content-type': 'application/json' } }))
+      : bridge(input, init)
+  })
+  await renderApp('/featherbase/admin/table/pp-probe/row/pp-odd', admin)
+  expect(await screen.findByTestId('problem-failed', {}, T)).toHaveTextContent('This record is being moved; open it in a minute')
+})
