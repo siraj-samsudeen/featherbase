@@ -91,14 +91,9 @@ async function narrowCountsImpl(
   const rows = await sql<{ list: number; value: string | null; count: number }[]>`
     ${parts.reduce((acc, p) => sql`${acc} union all ${p}`)}
     order by 1, 3 desc, 2 asc nulls last`
-  // `nullif` folds '' and null into one value only after grouping: merge them.
+  // Each list groups by its normalised value, so every row is one value: append (Codex: no per-value scan).
   const out: NarrowCounts['lists'] = lists.map(() => ({ values: [] }))
-  for (const r of rows) {
-    const values = out[r.list].values
-    const same = values.find((v) => v.value === r.value)
-    if (same) same.count += r.count
-    else values.push({ value: r.value, count: r.count })
-  }
+  for (const r of rows) out[r.list].values.push({ value: r.value, count: r.count })
   return { lists: out }
 }
 
