@@ -370,8 +370,8 @@ export function LinkControl({
           // Off the Tab order, which a browser otherwise gives a list that scrolls.
           tabIndex={-1}
           className={place
-            ? 'fixed z-30 overflow-y-auto rounded-md border border-border bg-surface shadow-lg'
-            : 'absolute z-10 mt-1 max-h-80 w-full min-w-56 overflow-y-auto rounded-md border border-border bg-surface shadow-lg'}
+            ? 'fixed z-30 overflow-y-auto rounded-card bg-surface shadow-raised'
+            : 'absolute z-10 mt-1 max-h-80 w-full min-w-56 overflow-y-auto rounded-card bg-surface shadow-raised'}
           style={place ?? undefined}
           onFocus={() => clearTimeout(blurTimer.current)}
           onBlur={leave}
@@ -391,7 +391,7 @@ export function LinkControl({
             }}
             onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault() }}
             data-testid="link-search"
-            className="sticky top-0 block w-full border-b border-border bg-surface px-3 py-1.5 text-sm text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+            className="sticky top-0 block w-full bg-subtle px-3 py-1.5 text-sm text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
             {...NOT_A_LOGIN}
           />}
           {titleSettled && options.map((o) => (
@@ -435,7 +435,7 @@ export function LinkControl({
               target="_blank"
               rel="noopener"
               tabIndex={-1}
-              className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
+              className="block px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
               data-testid="link-create-new"
             >
               + Create new {target}

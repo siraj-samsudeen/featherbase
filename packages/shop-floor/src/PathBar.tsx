@@ -44,7 +44,7 @@ function HiddenSteps({ label, items, onStep }: {
       >…</button>
       {open && (
         <div role="menu" aria-label={label}
-          className={cx('absolute z-20 mt-1 flex w-72 max-w-[calc(100vw-2rem)] flex-col rounded-card border border-border bg-surface py-1 shadow-lg',
+          className={cx('absolute z-20 mt-1 flex w-72 max-w-[calc(100vw-2rem)] flex-col rounded-card bg-surface py-1 shadow-raised',
             label === 'Later steps' ? 'right-0' : 'left-0')}>
           {items.map(({ step, index }) => (
             <button key={step.key} type="button" role="menuitem" onClick={() => { setOpen(false); onStep(index) }}
@@ -139,7 +139,7 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
     </button>
   )
   return (
-    <div className="@container flex min-w-0 flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-2">
+    <div className="@container flex min-w-0 flex-wrap items-center gap-2 bg-surface px-4 py-2">
       <Button onClick={onBack} disabled={current <= 0}>Back</Button>
       <Button onClick={onForward} disabled={current >= steps.length - 1}>Forward</Button>
       <div ref={room} data-path-room className="relative flex min-w-0 flex-1 items-center gap-1 @max-5xl:order-last @max-5xl:basis-full">
@@ -201,7 +201,7 @@ export function RecentPaths({ paths, onPick }: {
       </Button>
       {open && (
         <div role="menu" aria-label="Recent paths"
-          className="absolute right-0 z-20 mt-1 flex w-80 max-w-[calc(100vw-2rem)] flex-col rounded-card border border-border bg-surface py-1 shadow-lg">
+          className="absolute right-0 z-20 mt-1 flex w-80 max-w-[calc(100vw-2rem)] flex-col rounded-card bg-surface py-1 shadow-raised">
           {shown.length === 0 && <p className="px-3 py-2 text-sm text-ink-muted">No recent paths yet</p>}
           {shown.map((path) => (
             <button key={path.key} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(path.key) }}

@@ -22,7 +22,7 @@ import { placeTip, type Box } from '../lib/tip-place'
 // and the "tips are quiet" notice. All are fixed to the window and placed from
 // the page's content area, so they work the same inside the bar's shadow root.
 
-const kbdClasses = 'rounded-[5px] border border-b-2 border-border bg-surface px-1.5 font-mono text-xs text-ink-muted whitespace-nowrap'
+const kbdClasses = 'rounded-[5px] bg-fill px-1.5 font-mono text-xs text-ink-muted whitespace-nowrap'
 
 /** Where the page itself sits: the Admin's <main> panel, else everything right
  *  of an app's sidebar. The panel, tip and notice are placed within it. */
@@ -106,7 +106,7 @@ function ShortcutsPanel() {
       role="dialog"
       aria-modal="false"
       aria-label="Keyboard Shortcuts"
-      className="fixed z-[46] grid w-[340px] max-w-[calc(100vw-2rem)] gap-2 rounded-card border border-border bg-surface p-3 text-[13px] shadow-lg"
+      className="fixed z-[46] grid w-[340px] max-w-[calc(100vw-2rem)] gap-2 rounded-card bg-surface p-3 text-[13px] shadow-raised"
       style={(({ right, top }) => ({ top: top + 16, right: window.innerWidth - right + 16 }))(contentArea())}
       data-testid="shortcuts-panel"
     >
@@ -124,14 +124,14 @@ function ShortcutsPanel() {
           : status.kind === 'in-use' ? ['text-positive', `In Use · ${status.keys}×`]
           : ['text-caution', `Slipping · mouse ${status.mouse}× since`]
         return (
-          <div key={s.id} data-shortcut-row={s.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 border-b border-border py-1">
+          <div key={s.id} data-shortcut-row={s.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-2 py-1">
             <span className="text-ink">{s.label}</span>
             <kbd className={kbdClasses}>{s.keys}</kbd>
             <span className={cx('whitespace-nowrap text-right text-xs', tone)}>{text}</span>
           </div>
         )
       })}
-      <div data-shortcut-row="help" className="grid grid-cols-[1fr_auto_auto] items-center gap-2 border-b border-border py-1">
+      <div data-shortcut-row="help" className="grid grid-cols-[1fr_auto_auto] items-center gap-2 py-1">
         <span className="text-ink">Show this list</span>
         <kbd className={kbdClasses}>?</kbd>
         <span className="whitespace-nowrap text-right text-xs text-positive">You found it</span>
@@ -262,7 +262,7 @@ function Tip({ tip }: { tip: ShownTip }) {
       role="status"
       aria-label={tip.reminder ? 'Reminder' : 'Tip'}
       className={cx(
-        'fixed z-[45] flex items-center gap-2 rounded-control border bg-surface py-1 pl-2.5 pr-1.5 text-[13px] leading-4 text-ink shadow-lg',
+        'fixed z-[45] flex items-center gap-2 rounded-control bg-surface py-1 pl-2.5 pr-1.5 text-[13px] leading-4 text-ink shadow-raised',
         tip.reminder ? 'border-caution' : 'border-action',
       )}
       style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: 'hidden' }}
