@@ -805,8 +805,8 @@
           "label": "Permission key",
           "column_type": "Data",
           "unique": true,
-          "read_only": true,
-          "description": "#1282: set on save: the role and the permission. Unique, so a role holds one row for each permission, given or taken away, and two saves at once cannot give it twice."
+          "description": "#1282: set by Dash on every permission row it writes: the role and the permission. Unique, so a role holds one row for each permission, given or taken away, and two saves at once cannot give it twice. Hidden from forms.",
+          "hidden": true
         }
       ],
       "decides_scope": true
@@ -3281,8 +3281,8 @@
             "label": "Permission key",
             "column_type": "Data",
             "unique": true,
-            "read_only": true,
-            "description": "#1282: set on save: the role and the permission. Unique, so a role holds one row for each permission, given or taken away, and two saves at once cannot give it twice."
+            "description": "#1282: set by Dash on every permission row it writes: the role and the permission. Unique, so a role holds one row for each permission, given or taken away, and two saves at once cannot give it twice. Hidden from forms.",
+            "hidden": true
           }
         },
         {

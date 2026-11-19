@@ -48,9 +48,12 @@ describe('the permission grid saves', () => {
     const held = () => sql`select row_id, reach, removed from dash.business_role_permission where business_role = ${staff!.row_id} and app = ${cell.app} and level = ${cell.level} and verb = ${cell.verb} and thing = ${cell.thing}`
     const [row] = await held()
     expect(await held()).toHaveLength(1)
-    // The database itself holds the key unique, so a second row Dash writes for the same role and permission is refused.
-    expect(await sql`select indexdef from pg_indexes where tablename = 'business_role_permission' and indexdef ilike '%unique%' and indexdef ilike '%permission_key%'`).toHaveLength(1)
     expect(row!.reach).toMatch(/^(Own|Team)$/)
+    // Codex standard round 3: the key is stored, not dropped as a read-only column's would be, and the database holds it
+    // unique: a second row with the same role and permission is refused, however it is saved.
+    const [keyed] = await sql`select permission_key from dash.business_role_permission where row_id = ${row!.row_id}`
+    expect(keyed!.permission_key).toBe(`${staff!.row_id} / ${cell.app} / ${cell.level} / ${cell.verb} / ${cell.thing}`)
+    await expect(saveRow(admin, 'dash.business_role_permission', { business_role: staff!.row_id, app: cell.app, level: cell.level, verb: cell.verb, thing: cell.thing, reach: 'All', permission_key: keyed!.permission_key })).rejects.toThrow()
     await act('change_permissions', { changes: [{ ...cell, from: row!.reach, to: null }] })
     expect((await held()).filter(r => !r.removed)).toEqual([])
   })
