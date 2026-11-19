@@ -423,3 +423,28 @@ test("hovering a count shows its first rows and the way to all of them; leaving 
   fireEvent.pointerLeave(chip.parentElement!)
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Nv Plants in Enchakkal' })).not.toBeInTheDocument())
 })
+
+test('the card shows at most 5 rows, then how many more', async ({ admin }) => {
+  await seedSites(admin, { profitCentres: 12 })
+  await renderApp(`${tableHref(PLANT)}/row/1503`, admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '12 Nv Profit Centres' })
+  fireEvent.pointerEnter(chip.parentElement!)
+  const card = await screen.findByRole('dialog', { name: /^Nv Profit Centres in / })
+  await waitFor(() => expect(within(card).getAllByRole('link', { name: /^EKL - Retail/ })).toHaveLength(5))
+  expect(card).toHaveTextContent('+ 7 more')
+  expect(within(card).getByRole('link', { name: 'Open all 12 as a list' })).toBeInTheDocument()
+})
+
+test('on touch, the first tap on a count opens its card and the second opens the list', async ({ admin }) => {
+  await seedSites(admin)
+  const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.pointerDown(chip, { pointerType: 'touch' })
+  fireEvent.click(chip)
+  expect(await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })).toBeInTheDocument()
+  const path = () => (view.router.state as { location: { pathname: string } }).location.pathname
+  expect(path()).toBe(`${tableHref(SITE)}/row/ENK`)
+  fireEvent.pointerDown(chip, { pointerType: 'touch' })
+  fireEvent.click(chip)
+  await waitFor(() => expect(path()).toBe(tableHref(PLANT)))
+})
