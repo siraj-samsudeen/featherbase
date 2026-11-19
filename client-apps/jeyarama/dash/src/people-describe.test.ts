@@ -108,6 +108,18 @@ describe('describe_people', () => {
     expect(asha!.jobs.find(j => j.job === 'Team Leader')?.business_role).toEqual({ table: 'dash.business_role', id: 'br-lead', name: 'Floor Lead' })
   })
 
+  // Codex standard round 3: a Correct naming another store does not move that role onto this job's store.
+  it('a Correct naming a store gives its role only there', async () => {
+    const data: Record<string, Row[]> = {
+      ...DATA,
+      'dash.business_role': [{ row_id: 'br-sm', role_name: 'Store Manager', by_hand_only: 0 }, { row_id: 'br-cash', role_name: 'Cashier', by_hand_only: 0 }],
+      'dash.title_map': [{ row_id: 't1', title: 'Team Leader', business_role: 'br-cash' }],
+      'dash.role_assignment': [{ row_id: 'h1', person: 'p-asha', change: 'Correct', business_role: 'br-sm', site: 'HILL', ends_on: null, removed: 0 }],
+    }
+    const [asha] = await describePeople({ ...context({ persons: ['p-asha'] }), baseTables: tables(data) }, ON)
+    expect(asha!.jobs.find(j => j.job === 'Team Leader')).toEqual({ job: 'Team Leader', site: { table: 'Site', id: 'LKS', name: 'Lakeside' } })
+  })
+
   it('asks nothing for no persons', async () => {
     expect(await describePeople(context({}), ON)).toEqual([])
   })
