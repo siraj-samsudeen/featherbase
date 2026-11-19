@@ -147,6 +147,8 @@ export interface TableMeta {
   correction_path?: string | null
   /** #1346: more columns search matches, besides the key and the title. */
   search_columns?: string[] | null
+  /** #1345: the Reference to Person through which each row is that person's record. */
+  person_column?: string | null
   // #905: archived: readable, never written, out of everyday menus.
   archived_at?: string | Date | null
   archived_by?: string | null

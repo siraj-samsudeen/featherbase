@@ -3,6 +3,7 @@ import { AppError } from './errors'
 import { hasPermission } from './permissions'
 import { scopedWhere } from './query'
 import { tableLabel } from './access-explanation'
+import { personLabels, type PersonLabel } from './person-labels'
 import { isSensitiveColumn } from './sensitive-columns'
 
 // UI-014: awesomebar global search. Matches row names (and the
@@ -15,6 +16,8 @@ export interface SearchHit {
   title: string
   /** Set only for system-registry rows: what the row IS, not where it lives. */
   kind_label?: string
+  /** #1345: a Person's label (code · role · place), as the viewer may see it. */
+  person?: PersonLabel
 }
 
 // #431: rows of these engine registries describe structure, not business data.
@@ -73,7 +76,7 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   // per-keystroke ilike out to every foreign store is not a typeahead's job.
   // #1041: an archived Table is out of everyday use, so out of search too.
   const tables = await sql`
-    select name, owner_app, label from table_def where kind = 'table' and data_source is null and archived_at is null
+    select name, owner_app, label, person_column from table_def where kind = 'table' and data_source is null and archived_at is null
     order by name`
   // Stable sort: ordinary Tables first, registries last (#431).
   const isRegistry = (n: unknown) => (registryLabel(String(n)) ? 1 : 0)
@@ -85,7 +88,12 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   // Each Table answers on its own, a few at a time, in the order they finish.
   // Each keeps at most PER_TABLE hits; the bar shows the first ones in group
   // order, so a slow Table is never crowded out by faster ones (Codex review).
-  const queue = [...readable]
+  // #1345: Person and the Tables whose rows are a person's record search as one: such a row's hit
+  // folds into its Person, so one human is listed once, and each Person reads its label.
+  const people = readable.find((t) => t.name === 'Person')
+  const records = people ? readable.filter((t) => t.person_column && t.name !== 'Person') : []
+  const queue: (Record<string, unknown> | 'people')[] = [...readable.filter((t) => t !== people && !records.includes(t))]
+  if (people) queue.unshift('people')
   const finished: SearchEvent[] = []
   // Every search started, so none outlives the lifecycle lock the caller holds.
   const started = new Set<Promise<unknown>>()
@@ -101,8 +109,11 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
     while (!halted() && running < AT_ONCE && queue.length) {
       const t = queue.shift()!
       running++
-      const one: Promise<void> = searchOne(t, user, pattern)
-        .then((hits) => { finished.push({ table: String(t.name), hits }) })
+      const work: Promise<SearchEvent[]> = t === 'people'
+        ? searchPeople(people!, records, user, pattern)
+        : searchOne(t, user, pattern).then((hits) => [{ table: String(t.name), hits }])
+      const one: Promise<void> = work
+        .then((events) => { finished.push(...events) })
         .catch((error: unknown) => { failure ??= error })
         .finally(() => { running--; started.delete(one); launch(); wake?.() })
       started.add(one)
@@ -128,6 +139,55 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
     // An abandoned or failed search still waits for what it started (Codex review).
     await Promise.allSettled([...started])
   }
+}
+
+/** How many people the Person group shows: its own best three, and as many folded in. */
+const PEOPLE = PER_TABLE * 2
+
+/** #1345: Person's hits and the person-record Tables' hits, folded. A record whose person the viewer
+ *  may read becomes that Person; the rest stay hits of their own Table. Each Person reads its label. */
+async function searchPeople(people: Record<string, unknown>, records: Record<string, unknown>[], user: string,
+  pattern: { exact: string; prefix: string; like: string }): Promise<SearchEvent[]> {
+  const [own, ...found] = await Promise.all([searchOne(people, user, pattern), ...records.map((t) => searchOne(t, user, pattern))])
+  const owners = await Promise.all(records.map((t, i) => personsOf(String(t.name), String(t.person_column), found[i]!.map((h) => h.row_id), user)))
+  const titles = await personTitles([...new Set(owners.flatMap((m) => [...m.values()]))], user)
+  const hits = new Map(own.map((h) => [h.row_id, h]))
+  const events: SearchEvent[] = []
+  records.forEach((t, i) => {
+    const kept: SearchHit[] = []
+    for (const h of found[i]!) {
+      const person = owners[i]!.get(h.row_id)
+      const title = person ? titles.get(person) : undefined
+      if (person && title !== undefined) { if (!hits.has(person)) hits.set(person, { table: 'Person', row_id: person, title }) }
+      else kept.push(h)
+    }
+    events.push({ table: String(t.name), hits: kept })
+  })
+  const listed = [...hits.values()].slice(0, PEOPLE)
+  const labels = await personLabels(listed.map((h) => h.row_id), user)
+  return [{ table: 'Person', hits: listed.map((h) => (labels.has(h.row_id) ? { ...h, person: labels.get(h.row_id) } : h)) }, ...events]
+}
+
+/** The person each of `rowIds` is the record of, through `column`, where the viewer may read that column. */
+async function personsOf(table: string, column: string, rowIds: string[], user: string): Promise<Map<string, string>> {
+  if (!rowIds.length) return new Map()
+  const scoped = await scopedWhere(table, user, []).catch(() => null)
+  if (!scoped || !scoped.cols.has(column)) return new Map()
+  const { meta, table: physical, where, readExpression } = scoped
+  const key = sql(meta.row_key)
+  const rows = await sql`select ${key}::text as id, ${readExpression(column)}::text as person from ${sql(physical)}
+    where ${where} and ${key}::text = any(${rowIds})`
+  return new Map(rows.filter((r) => r.person).map((r) => [String(r.id), String(r.person)]))
+}
+
+/** Each person's title (their name), for the people the viewer may read and see named; an opaque id
+ *  names no one (#1265), so a person with no readable name is not folded in. */
+async function personTitles(ids: string[], user: string): Promise<Map<string, string>> {
+  if (!ids.length) return new Map()
+  const { meta, table, where, cols, readExpression } = await scopedWhere('Person', user, [])
+  const shown = meta.title_column && cols.has(meta.title_column) ? readExpression(meta.title_column) : sql`row_id`
+  const rows = await sql`select row_id, ${shown}::text as title from ${sql(table)} where ${where} and row_id = any(${ids})`
+  return new Map(rows.filter((r) => String(r.title ?? '').trim()).map((r) => [String(r.row_id), String(r.title).trim()]))
 }
 
 async function searchOne(t: Record<string, unknown>, user: string, { exact, prefix, like }: { exact: string; prefix: string; like: string }): Promise<SearchHit[]> {

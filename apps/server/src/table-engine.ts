@@ -216,6 +216,10 @@ export const tableDefSchema = z.object({
   // #1346: more columns search matches, besides the key and the title. Kept
   // when an update leaves it out; an empty list clears it.
   search_columns: z.array(z.string()).nullish(),
+  // #1345: the Reference to Person through which each row is a person's
+  // record; search folds such a row into its Person. Kept when an update
+  // leaves it out; null or empty clears it.
+  person_column: z.string().nullish(),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
   // updateTable never touches these. A bound Table gets no DDL and no RLS
   // (BV1): its rows live on the source.
@@ -318,6 +322,8 @@ function validateDef(def: TableDef) {
       c.column_name === name && !['Section Break', 'Column Break', 'Sub-table'].includes(c.column_type)))
     if (bad) errs.search_columns = `${bad} is not a column of this Table that search can match`
   }
+  if (def.person_column && !def.columns.some((c) => c.column_name === def.person_column && c.column_type === 'Reference' && c.reference_table === 'Person'))
+    errs.person_column = `${def.person_column} is not a Reference to Person on this Table`
   if (def.correction_path) {
     const problem = correctionPathProblem(def.correction_path, def.columns.map((c) => c.column_name))
     if (problem) errs.correction_path = problem
@@ -605,6 +611,7 @@ export async function updateTable(
   if (def.scope_required === undefined) def.scope_required = existing.scope_required
   if (def.queue === undefined) def.queue = existing.queue
   if (def.correction_path === undefined) def.correction_path = existing.correction_path
+  if (def.person_column === undefined) def.person_column = existing.person_column
   // #1346 (Codex round 2): an update that leaves search_columns out writes
   // nothing to it; `existing` is the effective list, an override included.
   validateDef(def)
@@ -694,6 +701,7 @@ export async function updateTable(
       ...(def.queue !== undefined ? { queue: def.queue } : {}),
       ...(def.correction_path !== undefined ? { correction_path: def.correction_path || null } : {}),
       ...(def.search_columns !== undefined ? { search_columns: def.search_columns?.length ? def.search_columns : null } : {}),
+      ...(def.person_column !== undefined ? { person_column: def.person_column || null } : {}),
       ...(def.access_policy !== undefined ? { access_policy: def.access_policy } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
@@ -1086,6 +1094,7 @@ export async function createTable(
     if (def.queue) tableRow.queue = true
     if (def.correction_path) tableRow.correction_path = def.correction_path
     if (def.search_columns?.length) tableRow.search_columns = def.search_columns
+    if (def.person_column) tableRow.person_column = def.person_column
     if (def.access_policy) tableRow.access_policy = def.access_policy
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]
