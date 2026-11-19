@@ -1,3 +1,4 @@
+@import '@fontsource-variable/inter';
 @import 'tailwindcss';
 
 /* recipe() (components/ui/cx.ts) keeps the 16px text and 48px control height on
@@ -15,17 +16,21 @@
    to mean something. test/design-guards.test.ts checks every text pair reaches
    4.5:1 and every control edge 3:1, in light and dark. */
 @theme static {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Malayalam',
+  /* #1348: Inter, served from the app (no font request leaves it); the system fonts cover the scripts it lacks. */
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Noto Sans Malayalam',
     'Noto Sans Tamil', sans-serif;
 
   /* Surfaces and text */
-  --color-canvas: #f3f4f6; /* page background */
-  --color-surface: #ffffff; /* cards, inputs */
-  --color-subtle: #f8fafc; /* header rows, hovers */
+  --color-canvas: #f4f5f7; /* page background, behind the sidebar and the panel */
+  --color-surface: #ffffff; /* the page's one panel, menus, the pane */
+  --color-subtle: #f6f7f9; /* #1348 quiet fill: the table header band, a pane's one field block */
+  --color-fill: #f1f2f4; /* #1348: a button or an input is a fill, never a box */
+  --color-fill-hover: #e7e9ed; /* a filled button under the pointer */
+  --color-hover: #f1f5ff; /* the row under the pointer, and the selected row */
   --color-tag: #eef0f3; /* a quiet tag's fill: one step below the canvas, seen on every surface */
   --color-border: #e5e7eb; /* hairlines between content */
   --color-border-control: #6b7280; /* the edge of something you type into or press */
-  --color-ink: #111827; /* primary text */
+  --color-ink: #151a23; /* primary text */
   --color-ink-muted: #4b5563; /* secondary text */
   --color-ink-subtle: #5b6472; /* meta text, placeholders */
 
@@ -33,7 +38,7 @@
   --color-action: #1d4ed8;
   --color-action-hover: #1e40af;
   --color-action-ink: #ffffff;
-  --color-action-tint: #eff6ff;
+  --color-action-tint: #eef2ff;
   --color-focus: #1d4ed8;
 
   /* Meaning, never decoration. Each reads as text on surfaces and on its tint. */
@@ -72,14 +77,51 @@
   --color-group-indigo: #4338ca;
   --color-group-slate: #64748b;
 
+  /* #1348 chips. The first eight are the category tints, one per value, picked by the value's name, so a
+     value has the same colour on every page. Green, amber and grey are a status (live, not yet, finished);
+     red is kept for a data problem. Each tint carries its own ink; the dot beside a status is a 6px mark. */
+  --color-chip-blue: #dbeafe;
+  --color-chip-blue-ink: #1e40af;
+  --color-chip-teal: #ccfbf1;
+  --color-chip-teal-ink: #115e59;
+  --color-chip-violet: #ede9fe;
+  --color-chip-violet-ink: #5b21b6;
+  --color-chip-pink: #fce7f3;
+  --color-chip-pink-ink: #9d174d;
+  --color-chip-orange: #ffedd5;
+  --color-chip-orange-ink: #9a3412;
+  --color-chip-lime: #ecfccb;
+  --color-chip-lime-ink: #3f6212;
+  --color-chip-cyan: #cffafe;
+  --color-chip-cyan-ink: #155e75;
+  --color-chip-yellow: #fef9c3;
+  --color-chip-yellow-ink: #854d0e;
+  --color-chip-green: #dcfce7;
+  --color-chip-green-ink: #166534;
+  --color-chip-green-dot: #16a34a;
+  --color-chip-amber: #fef3c7;
+  --color-chip-amber-ink: #92400e;
+  --color-chip-amber-dot: #d97706;
+  --color-chip-grey: #f1f2f4;
+  --color-chip-grey-ink: #4b5563;
+  --color-chip-grey-dot: #9ca3af;
+  --color-chip-red: #fee2e2;
+  --color-chip-red-ink: #991b1b;
+
+  /* #1348: surfaces are told apart by fills and shadow, never by a line. The panel barely lifts off the
+     canvas; a raised surface (a menu, the pane, a hover card) floats; a pressed segment sits up a little. */
+  --shadow-panel: 0 1px 2px rgb(16 24 40 / 0.05);
+  --shadow-raised: 0 12px 32px rgb(16 24 40 / 0.14);
+  --shadow-pressed: 0 1px 2px rgb(16 24 40 / 0.1);
+
   /* Shape */
   --radius-card: 14px;
-  --radius-control: 10px;
+  --radius-control: 9px;
 
   /* Density follows the pointer: thumb-sized on touch screens (and 16px text,
      so a phone never zooms on focus), compact under a mouse. */
-  --spacing-control: 2.25rem;
-  --spacing-control-x: 0.75rem; /* a control's side padding */
+  --spacing-control: 2.375rem;
+  --spacing-control-x: 0.875rem; /* a control's side padding */
   --spacing-touch: 3rem;
   --text-control: 0.875rem;
 }
@@ -125,6 +167,9 @@
     --color-canvas: #0b1220;
     --color-surface: #131c2e;
     --color-subtle: #18233a;
+    --color-fill: #1f2a40;
+    --color-fill-hover: #28354f;
+    --color-hover: #1a2846;
     --color-tag: #24304a;
     --color-border: #24314a;
     --color-border-control: #66768e;
@@ -163,6 +208,38 @@
     --color-group-green: #4ade80;
     --color-group-indigo: #818cf8;
     --color-group-slate: #94a3b8;
+
+    --color-chip-blue: #1c2d52;
+    --color-chip-blue-ink: #93c5fd;
+    --color-chip-teal: #113936;
+    --color-chip-teal-ink: #5eead4;
+    --color-chip-violet: #2a2352;
+    --color-chip-violet-ink: #c4b5fd;
+    --color-chip-pink: #3b1a33;
+    --color-chip-pink-ink: #f9a8d4;
+    --color-chip-orange: #3d2414;
+    --color-chip-orange-ink: #fdba74;
+    --color-chip-lime: #24330f;
+    --color-chip-lime-ink: #bef264;
+    --color-chip-cyan: #0f3340;
+    --color-chip-cyan-ink: #67e8f9;
+    --color-chip-yellow: #352d0c;
+    --color-chip-yellow-ink: #fde047;
+    --color-chip-green: #12331f;
+    --color-chip-green-ink: #86efac;
+    --color-chip-green-dot: #4ade80;
+    --color-chip-amber: #3a2a0c;
+    --color-chip-amber-ink: #fcd34d;
+    --color-chip-amber-dot: #fbbf24;
+    --color-chip-grey: #242f45;
+    --color-chip-grey-ink: #cbd5e1;
+    --color-chip-grey-dot: #94a3b8;
+    --color-chip-red: #3a1717;
+    --color-chip-red-ink: #fca5a5;
+
+    --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-raised: 0 12px 32px rgb(0 0 0 / 0.5);
+    --shadow-pressed: 0 1px 2px rgb(0 0 0 / 0.4);
   }
 }
 
