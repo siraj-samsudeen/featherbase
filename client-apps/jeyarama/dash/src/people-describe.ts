@@ -96,8 +96,8 @@ async function leavingDays(ctx: AccessContext, persons: string[]): Promise<Map<s
   const out = new Map<string, { day: string; row: string }>()
   if (!persons.length) return out
   const base = ctx.baseTables!
+  // Everyone asked about has left, so has an Employee row (whoIs read it).
   const employees = await all(base, 'Employee', ['person'], [['person', 'in', persons]])
-  if (!employees.length) return out
   const owner = new Map(employees.map(e => [exact(e.row_id), exact(e.person)]))
   for (const row of await all(base, 'Job Assignment', ['employee', 'ends_on'], [['employee', 'in', [...owner.keys()]]])) {
     const person = owner.get(exact(row.employee))
