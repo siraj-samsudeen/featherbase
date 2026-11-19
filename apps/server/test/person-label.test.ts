@@ -7,7 +7,7 @@ import { resolve } from 'node:path'
 import { appendFile, cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { expectStatus, grantRole, makePerson, makeTable, searchLines } from './fixtures'
+import { grantRole, makePerson, makeTable, searchLines } from './fixtures'
 import { getMeta } from '../src/meta'
 import { updateTable } from '../src/table-engine'
 import { renameColumn } from '../src/table-rename'
@@ -112,14 +112,14 @@ describe('#1345: search lists each human once, told apart', () => {
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const directories: string[] = []
-const said = () => ((globalThis as unknown as { __describe1345?: { answer?: (persons: string[]) => unknown; delay?: number } }).__describe1345 ??= {})
+const said = () => ((globalThis as unknown as { __people1345?: { answer?: (persons: string[]) => unknown; delay?: number } }).__people1345 ??= {})
 afterEach(async () => {
   said().answer = undefined
   said().delay = undefined
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true })
 })
 
-/** bar-proof with `person.describe`: its read answers what the test sets, after the test's delay. */
+/** bar-proof that says who people are (`people.describe`, #1267): its read answers what the test sets, after its delay. */
 async function describing(admin: TestClient) {
   const directory = await mkdtemp(resolve('test/.person-label-1345-'))
   directories.push(directory)
@@ -127,94 +127,80 @@ async function describing(admin: TestClient) {
   const file = resolve(directory, 'featherbase.json')
   const manifest = JSON.parse(await readFile(file, 'utf8'))
   manifest.reads.operations = { ...manifest.reads.operations, describe: { policy: { kind: 'table' }, authorization: { kind: 'generic' } } }
-  manifest.person = { describe: { read: 'describe' } }
+  manifest.people = { describe: 'describe' }
   await writeFile(file, JSON.stringify(manifest))
   await appendFile(resolve(directory, 'server.mjs'), `
-const told = (globalThis.__describe1345 ??= {})
+const told = (globalThis.__people1345 ??= {})
 reads.describe = async ({ payload }) => {
   if (told.delay) await new Promise((done) => setTimeout(done, told.delay))
-  return told.answer ? told.answer(payload.persons) : null
+  return told.answer ? told.answer(payload.persons) : payload.persons.map((person) => ({ person, status: 'none' }))
 }
 `)
   expect(await discoverPackages([directory])).toEqual([])
   await admin.post('/api/install_app', { name: 'barproof' })
 }
 
-/** A made-up job and site the app names, and a viewer who may read the job but not the site. */
-async function jobAndSite(admin: TestClient, createUser: CreateUserFn) {
-  const job = await makeTable(admin, { name: 'Pl Job', id_pattern: 'prompt', title_column: 'title', columns: ['title'] })
-  const site = await makeTable(admin, { name: 'Pl Site', id_pattern: 'prompt', title_column: 'title', columns: ['title'] })
-  await admin.post(job.url, { row_id: 'job-sm', title: 'Store Manager' })
-  await admin.post(site.url, { row_id: 'site-lk', title: 'Lakeside' })
-  for (const table of ['Person', 'Pl Job', 'Pl Staff']) await grantRole(admin, { role: 'Bar Reader', table, can_read: true })
-  const viewer = await createUser({ email: 'pl-viewer@example.test', roles: ['Bar Reader'] })
+/** A made-up business role and store the app names, and a viewer who may read the role but not the store. */
+async function roleAndStore(admin: TestClient, createUser: CreateUserFn) {
+  const role = await makeTable(admin, { name: 'Pl Role', id_pattern: 'prompt', title_column: 'title', columns: ['title'] })
+  const store = await makeTable(admin, { name: 'Pl Store', id_pattern: 'prompt', title_column: 'title', columns: ['title'] })
+  await admin.post(role.url, { row_id: 'role-sm', title: 'Store Manager' })
+  await admin.post(store.url, { row_id: 'store-lk', title: 'Lakeside' })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pl Viewer' } })
+  for (const table of ['Person', 'Pl Role']) await grantRole(admin, { role: 'Pl Viewer', table, can_read: true })
+  const viewer = await createUser({ email: 'pl-viewer@example.test', roles: ['Pl Viewer'] })
   return { viewer }
 }
 
-describe('#1345: an app describes people; the platform shows only what the viewer may read', () => {
-  test('a role and place the viewer may read read as their records\' own titles; one they may not is left out', async ({ admin, createUser }) => {
+const working = (persons: string[], extra: Record<string, unknown> = {}) => persons.map((person) => ({
+  person, status: 'current', code: 'APP-CODE',
+  jobs: [{ job: 'Store Manager (job words)', site: { table: 'Pl Store', id: 'store-lk', name: 'App words' }, business_role: { table: 'Pl Role', id: 'role-sm', name: 'App words' } }],
+  ...extra,
+}))
+
+describe('#1345: the app that says who people are adds role and place; the platform shows only what the viewer may read', () => {
+  test("a business role and store the viewer may read read as their records' own titles; one they may not is left out", async ({ admin, createUser }) => {
     const { ids } = await threeMeenas(admin)
     await describing(admin)
-    const { viewer } = await jobAndSite(admin, createUser)
-    said().answer = (persons) => ({ version: 1, people: Object.fromEntries(persons.map((p) => [p, {
-      standing: 'current', role: { table: 'Pl Job', row_id: 'job-sm' }, place: { table: 'Pl Site', row_id: 'site-lk' },
-      records: [{ table: 'Pl Staff', row_id: `PL-7700${ids.indexOf(p) + 1}`, code: `PL-7700${ids.indexOf(p) + 1}` }] }])) })
-    const forAdmin = (await personLabels([ids[0]!], 'Administrator')).get(ids[0]!)
-    expect(forAdmin).toMatchObject({ code: 'PL-77001', role: 'Store Manager', place: 'Lakeside', standing: 'current' })
-    const forViewer = (await personLabels([ids[0]!], viewer.user!)).get(ids[0]!)
-    expect(forViewer).toMatchObject({ code: 'PL-77001', role: 'Store Manager', standing: 'current' })
-    expect(forViewer).not.toHaveProperty('place')
-    // And in search, as the viewer.
+    const { viewer } = await roleAndStore(admin, createUser)
+    said().answer = (persons) => working(persons)
+    expect((await personLabels([ids[0]!], 'Administrator')).get(ids[0]!))
+      .toEqual({ code: 'PL-77001', email: 'meena.1@example.test', standing: 'current', role: 'Store Manager', place: 'Lakeside' })
+    expect((await personLabels([ids[0]!], viewer.user!)).get(ids[0]!))
+      .toEqual({ code: 'PL-77001', email: 'meena.1@example.test', standing: 'current', role: 'Store Manager' })
+    // And in search, as the viewer: each of the three reads the role, none the store.
     const people = await group(viewer, 'Meena Ravikumar', 'Person')
-    expect(people.map((h) => h.person?.role)).toEqual(['Store Manager', 'Store Manager', 'Store Manager'])
-    expect(people.every((h) => !('place' in (h.person ?? {})))).toBe(true)
+    expect(people.map((h) => [h.person?.role, 'place' in (h.person ?? {})])).toEqual([['Store Manager', false], ['Store Manager', false], ['Store Manager', false]])
   })
 
-  test('standing needs a record of it the viewer may read, and a record counts only for a code the person holds', async ({ admin, createUser }) => {
+  test("a job with no business role reads by its words, as the Person page shows it; the platform's code wins over the app's", async ({ admin, createUser }) => {
     const { ids } = await threeMeenas(admin)
     await describing(admin)
-    const { viewer } = await jobAndSite(admin, createUser)
-    said().answer = (persons) => ({ version: 1, people: Object.fromEntries(persons.map((p) => [p, {
-      standing: 'left', left_on: '2026-08-31', records: [{ table: 'Pl Staff', row_id: 'PL-77003', code: 'PL-99999' }] }])) })
-    expect((await personLabels([ids[0]!], viewer.user!)).get(ids[0]!)).toEqual({ code: 'PL-77001', email: 'meena.1@example.test' })
-    said().answer = (persons) => ({ version: 1, people: Object.fromEntries(persons.map((p) => [p, {
-      standing: 'left', left_on: '2026-08-31', records: [{ table: 'Pl Staff', row_id: 'PL-77001', code: 'PL-77001' }] }])) })
-    expect((await personLabels([ids[0]!], viewer.user!)).get(ids[0]!)).toMatchObject({ standing: 'left', left_on: '2026-08-31' })
+    await roleAndStore(admin, createUser)
+    said().answer = (persons) => persons.map((person) => ({ person, status: 'current', code: 'APP-CODE', jobs: [{ job: 'Cashier' }] }))
+    expect((await personLabels([ids[0]!], 'Administrator')).get(ids[0]!)).toMatchObject({ code: 'PL-77001', role: 'Cashier' })
   })
 
-  test('an app that is late or answers nonsense adds nothing, and the label still reads code and email', async ({ admin, createUser }) => {
+  test("a leaver reads Former Staff with the day they left and the app's code, the platform holding none current", async ({ admin }) => {
+    const leaver = await makePerson({ full_name: 'Left Lately', email: 'left.lately@example.test' })
+    await describing(admin)
+    said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: 'PL-55001', left_on: '2026-08-31', jobs: [] }))
+    expect((await personLabels([leaver], 'Administrator')).get(leaver))
+      .toEqual({ email: 'left.lately@example.test', standing: 'left', left_on: '2026-08-31', code: 'PL-55001' })
+  })
+
+  test('an app that is late, failing or answering nonsense adds nothing, and the label still reads code and email', async ({ admin }) => {
     const { ids } = await threeMeenas(admin)
     await describing(admin)
-    const { viewer } = await jobAndSite(admin, createUser)
-    said().answer = (persons) => ({ version: 1, people: Object.fromEntries(persons.map((p) => [p, { role: { table: 'Pl Job', row_id: 'job-sm' } }])) })
+    said().answer = (persons) => working(persons)
     said().delay = 1000
     const started = Date.now()
-    expect((await personLabels([ids[0]!], viewer.user!, 100)).get(ids[0]!)).toEqual({ code: 'PL-77001', email: 'meena.1@example.test' })
+    expect((await personLabels([ids[0]!], 'Administrator', 100)).get(ids[0]!)).toEqual({ code: 'PL-77001', email: 'meena.1@example.test' })
     expect(Date.now() - started).toBeLessThan(900)
     said().delay = undefined
-    said().answer = () => ({ version: 1, people: { [ids[0]!]: { role: 'Store Manager, in words' } } })
-    expect((await personLabels([ids[0]!], viewer.user!)).get(ids[0]!)).toEqual({ code: 'PL-77001', email: 'meena.1@example.test' })
-  })
-
-  test("the app's describe read answers only through the Person Label", async ({ admin, createUser }) => {
-    await threeMeenas(admin)
-    await describing(admin)
-    const { viewer } = await jobAndSite(admin, createUser)
-    said().answer = () => ({ version: 1, people: {} })
-    const direct = await viewer.fetch('/api/app_reads/barproof/describe', { method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'barproof@1.0.0' }, body: JSON.stringify({ payload: { persons: [] } }) })
-    await expectStatus(direct, 403)
-    expect(await direct.text()).toContain('answers only through the Person Label')
-  })
-
-  test("describe from something that is not one of the app's reads is refused", async () => {
-    const directory = await mkdtemp(resolve('test/.person-label-1345-'))
-    directories.push(directory)
-    await cp(BAR_PROOF, directory, { recursive: true })
-    const file = resolve(directory, 'featherbase.json')
-    await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), person: { describe: { read: 'nothing' } } }))
-    expect(await discoverPackages([directory])).toEqual([
-      expect.objectContaining({ error: "The app's person descriptions come from nothing, which is not one of the app's reads" }),
-    ])
+    said().answer = () => ({ not: 'a list' })
+    expect((await personLabels([ids[0]!], 'Administrator')).get(ids[0]!)).toEqual({ code: 'PL-77001', email: 'meena.1@example.test' })
+    said().answer = () => { throw new Error('down') }
+    expect((await personLabels([ids[0]!], 'Administrator')).get(ids[0]!)).toEqual({ code: 'PL-77001', email: 'meena.1@example.test' })
   })
 })
