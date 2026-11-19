@@ -26,6 +26,7 @@ const SYSTEM = 'fbjobs-code'
 
 interface Job {
   name: string
+  title?: string
   cadence: string
   description: string
   grants?: string[]
@@ -175,6 +176,14 @@ describe('an app declares its scheduled jobs', () => {
     expect(await row(SWEEP)).toMatchObject({ row_id: SWEEP, cadence: 'daily', enabled: true, owner_app: APP, description: sweep.description })
     expect(await row(OVERREACH)).toMatchObject({ cadence: 'hourly', owner_app: APP })
     expect(await queued(SWEEP)).toBe(1)
+  })
+
+  // #1330: a job reads by a title, never its code: the manifest's, else one made from its name.
+  test("each job's row carries a readable title: the manifest's, else its name in words", async ({ admin }) => {
+    expect(await discoverPackages([await writeApp({ jobs: [{ ...sweep, title: 'Sweep Out Leavers' }, overreach] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    expect((await row(SWEEP)).title).toBe('Sweep Out Leavers')
+    expect((await row(OVERREACH)).title).toBe('Overreach')
   })
 
   test('a job runs as its own actor: it disables people, never a System Manager, and mails the System Managers', async ({ admin, createUser }) => {

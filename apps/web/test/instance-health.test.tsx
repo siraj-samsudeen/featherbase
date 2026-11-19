@@ -36,7 +36,7 @@ test('chosen file configuration shows the required setup without a fault banner'
   await sql`update scheduled_job set enabled = false`
   await renderApp('/featherbase/admin/instance-health', admin)
   const page = await screen.findByTestId('instance-health')
-  expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent('Instance health')
+  expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent('Instance Health')
   const applied = await card('settings-applied')
   expect(within(applied).getByTestId('health-state')).toHaveTextContent('Setup needed')
   expect(applied).toHaveTextContent('The settings were never applied.')
