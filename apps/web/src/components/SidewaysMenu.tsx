@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { rowDisplayTitle, type ListFilter } from 'shared'
-import { ChevronDown, RecordLink, fmtCount, iconButtonClasses } from '@featherbase/shop-floor'
+import { ChevronDown, ChevronLeft, ChevronRight, RecordLink, fmtCount, iconButtonClasses } from '@featherbase/shop-floor'
 import { api, listResource } from '../lib/api'
 import { tableLabel, useMeta } from '../lib/meta'
 import { replace as replaceStep, type NavPath, type NavStep } from '../lib/nav-path'
 import type { AddressNavigation } from '../lib/navigation'
 import { groupOrder } from '../lib/relations'
+import { listOrder, type ListSort } from '../lib/list-order'
+import { tableViewDefaultQuery } from '../lib/table-view-default'
+import { userSettingsQuery } from './FormArrangement'
 
 type Row = Record<string, unknown>
 
@@ -61,6 +64,10 @@ export function listSiblings(path: NavPath): Siblings | null {
  */
 function useSiblings(path: NavPath): Siblings | null {
   const fromList = listSiblings(path)
+  // #1343: a list's rows in the order it shows them (the person's sort, else the Table's default, else its own).
+  const listMeta = useMeta(fromList?.table ?? '', Boolean(fromList))
+  const own = useQuery({ ...userSettingsQuery(fromList?.table ?? ''), enabled: Boolean(fromList) })
+  const td = useQuery({ ...tableViewDefaultQuery(fromList?.table ?? ''), enabled: Boolean(fromList) })
   const here = path.steps[path.at]
   const record = fromList ? null : shownRecord(here)
   const came = fromList ? null : shownRecord(path.steps[path.at - 1])
@@ -71,7 +78,12 @@ function useSiblings(path: NavPath): Siblings | null {
     retry: false,
     queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(record!.table)}/${encodeURIComponent(record!.row)}`),
   })
-  if (fromList) return fromList
+  if (fromList) {
+    // Until the list's order is known, there is no place in it to say.
+    if (!listMeta.data || own.isPending || td.isPending) return null
+    const sort = (own.data?.settings?.sort ?? null) as ListSort | null
+    return { ...fromList, orderBy: listOrder(listMeta.data, sort, td.data?.settings.sort).orderBy }
+  }
   if (!record || !came || !meta.data || !doc.data || (came.table === record.table && came.row === record.row)) return null
   const links = meta.data.columns.filter((c) => c.column_type === 'Reference' && c.reference_table === came.table && doc.data[c.column_name] === came.row)
   if (links.length !== 1) return null
@@ -109,16 +121,91 @@ export function SidewaysMenu({ nav }: { nav: AddressNavigation }) {
   )
 }
 
+/** The title column a sibling is named by, when the Table has one. */
+const titleOf = (meta: { title_column?: string | null } | undefined) =>
+  meta?.title_column && meta.title_column !== 'row_id' ? meta.title_column : undefined
+
+/** The first rows of a step's list or group, in its order: the ▾ lists them and the walk counts in them (one read). */
+function useSiblingRows(siblings: Siblings | null) {
+  const meta = useMeta(siblings?.table ?? '', Boolean(siblings))
+  const title = titleOf(meta.data)
+  return useQuery({
+    queryKey: ['sideways', siblings?.table, JSON.stringify(siblings?.filters ?? []), siblings?.orderBy ?? null],
+    enabled: Boolean(siblings && meta.data),
+    queryFn: () => listResource(siblings!.table, {
+      filters: siblings!.filters, fields: ['row_id', ...(title ? [title] : [])], order_by: siblings!.orderBy, limit_page_length: READ_AT_MOST,
+    }),
+  })
+}
+
+/** #1343 W1–W4: where the shown row sits in its list or group, and the steps to the rows either side of it. */
+export interface Walk {
+  position: number
+  total: number
+  previous?: NavStep
+  next?: NavStep
+}
+
+export function useWalk(path: NavPath): Walk | null {
+  const siblings = useSiblings(path)
+  const rows = useSiblingRows(siblings)
+  if (!siblings || !rows.data) return null
+  const ids = rows.data.data.map((r) => String(r.row_id))
+  const at = ids.indexOf(siblings.rowId)
+  // Past the rows read, the row has no place to say; the ▾'s search still reaches it.
+  if (at < 0) return null
+  return {
+    position: at + 1,
+    total: rows.data.total ?? ids.length,
+    previous: at > 0 ? siblings.stepFor(ids[at - 1]!) : undefined,
+    next: at + 1 < ids.length ? siblings.stepFor(ids[at + 1]!) : undefined,
+  }
+}
+
+/** #1349 item 4, #1343 W4: ↑ and ↓ walk as ‹ and › do, anywhere on the page, unless focus is in something that
+ *  answers arrows itself or a modifier is held. */
+export function useWalkKeys(walk: Walk | null, nav: AddressNavigation | null) {
+  useEffect(() => {
+    if (!walk || !nav) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.defaultPrevented) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input,textarea,select,[contenteditable="true"],[role="listbox"],[role="menu"],[role="dialog"]')) return
+      const to = e.key === 'ArrowDown' ? walk.next : walk.previous
+      if (!to) return
+      e.preventDefault()
+      nav.replace(to)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [walk, nav])
+}
+
+/** #1343 W1: "‹ 3 of 12 ›" beside the path bar's last step. */
+export function WalkControl({ walk, nav }: { walk: Walk | null; nav: AddressNavigation }) {
+  if (!walk) return null
+  const button = (label: string, to: NavStep | undefined, icon: ReactNode) => (
+    <button type="button" aria-label={label} title={label} disabled={!to} onClick={() => to && nav.replace(to)}
+      className={iconButtonClasses('size-7 text-ink-muted hover:text-ink disabled:opacity-40')}>{icon}</button>
+  )
+  return (
+    <span className="inline-flex shrink-0 items-center" data-testid="walk">
+      {button('Previous row', walk.previous, <ChevronLeft aria-hidden size={14} />)}
+      <span className="whitespace-nowrap px-0.5 text-[13px] tabular-nums text-ink-subtle" data-testid="walk-position">
+        {fmtCount(walk.position)} of {fmtCount(walk.total)}
+      </span>
+      {button('Next row', walk.next, <ChevronRight aria-hidden size={14} />)}
+    </span>
+  )
+}
+
 function SidewaysList({ nav, siblings, close }: { nav: AddressNavigation; siblings: Siblings; close: () => void }) {
   const meta = useMeta(siblings.table)
   const [q, setQ] = useState('')
-  const title = meta.data?.title_column && meta.data.title_column !== 'row_id' ? meta.data.title_column : undefined
+  const title = titleOf(meta.data)
   const fields = ['row_id', ...(title ? [title] : [])]
-  const all = useQuery({
-    queryKey: ['sideways', siblings.table, JSON.stringify(siblings.filters), siblings.orderBy ?? null],
-    enabled: Boolean(meta.data),
-    queryFn: () => listResource(siblings.table, { filters: siblings.filters, fields, order_by: siblings.orderBy, limit_page_length: READ_AT_MOST }),
-  })
+  const all = useSiblingRows(siblings)
   const found = useQuery({
     queryKey: ['sideways', siblings.table, JSON.stringify(siblings.filters), q],
     enabled: Boolean(meta.data && q.trim()),
