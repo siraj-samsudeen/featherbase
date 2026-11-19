@@ -9,7 +9,7 @@ import { fmtCount, fmtDay, fmtINR, fmtNumber, fmtShowing } from '@featherbase/sh
 import { fmtInstant } from '@featherbase/shop-floor/format'
 import { formatNumber } from '../src/lib/settings'
 import { pageRange } from '../src/components/ListView'
-import { indicatorColor } from '../src/components/Indicator'
+import { indicatorHue } from '../src/components/Indicator'
 import { previewValue } from '../src/pages/TableBuilder'
 
 describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {
@@ -105,24 +105,20 @@ describe('list counts', () => {
   })
 })
 
-describe('status dots: meaning colours for verdicts only', () => {
+describe('#1348 choice chips: a status means something, a category keeps one tint', () => {
   test.each([
-    ['Done', 'var(--color-positive)'],
-    ['Approved', 'var(--color-positive)'],
-    ['Overdue', 'var(--color-negative)'],
-    ['Failed', 'var(--color-negative)'],
-    ['Not set', 'var(--color-missing)'],
-  ])('%s is a verdict: %s', (word, colour) => {
-    expect(indicatorColor(word)).toBe(colour)
+    ['Open', 'green'], ['Active', 'green'], ['In progress', 'green'],
+    ['Planned', 'amber'], ['Pending', 'amber'], ['Draft', 'amber'],
+    ['Closed', 'grey'], ['Done', 'grey'], ['Inactive', 'grey'],
+    ['Overdue', 'red'], ['Failed', 'red'], ['Error', 'red'],
+  ])('%s is a %s chip', (word, hue) => {
+    expect(indicatorHue(word)).toBe(hue)
   })
 
-  test.each(['Open', 'Urgent', 'High', 'Pending', 'In progress', 'Draft'])(
-    '%s is a state, not a verdict: an identity colour, never a meaning colour',
-    (word) => {
-      expect(indicatorColor(word)).toMatch(/^var\(--color-series-[1-5]\)$/)
-      expect(indicatorColor(word)).toBe(indicatorColor(word))
-    },
-  )
+  test.each(['Urgent', 'High', 'Coastal', 'Apparel'])('%s is a category: one of the eight tints, the same every time', (word) => {
+    expect(['blue', 'teal', 'violet', 'pink', 'orange', 'lime', 'cyan', 'yellow']).toContain(indicatorHue(word))
+    expect(indicatorHue(word)).toBe(indicatorHue(word))
+  })
 })
 
 describe('fmtInstant', () => {
