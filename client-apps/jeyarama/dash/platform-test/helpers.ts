@@ -84,7 +84,7 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
  *  role's two columns back on its list, and no setup runs or access decisions. It comes off before all the others. */
 export const RUN_TABLES = ['dash.setup_run', 'dash.access_decision']
 export function revertRolesInFeatherbase(manifest: Revertable) {
-  expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_in_featherbase', fromVersion: '0.13.39', toVersion: '0.13.40' })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_in_featherbase', fromVersion: '0.13.40', toVersion: '0.13.41' })
   if (manifest.tables) manifest.tables = manifest.tables.filter(t => !RUN_TABLES.includes(t.name)).map(t => {
     const table = { ...t } as typeof t & { module?: string; label?: string; columns?: { column_name: string; in_list_view?: boolean; label?: string }[] }
     if (table.module === 'People') table.module = 'Dash'
@@ -109,7 +109,9 @@ export function revertRolesInFeatherbase(manifest: Revertable) {
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
   revertRolesInFeatherbase(manifest)
-  // #1282's 0.13.39 (the permission grid): a permission's removed mark and the grid's change log; it comes off first.
+  // #1282's 0.13.40 (the Lens's worked-out sections) changes no Table and comes off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'worked_out_sections', fromVersion: '0.13.39', operations: [] })
+  // #1282's 0.13.39 (the permission grid): a permission's removed mark and the grid's change log; it comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'permission_grid', fromVersion: '0.13.38',
     operations: [{ kind: 'addColumn', table: 'dash.business_role_permission', column: { column_name: 'removed' } }, { kind: 'addColumn', table: 'dash.business_role_permission', column: { column_name: 'permission_key' } }, { kind: 'addTable', table: { name: GRID_LOG } }] })
   if (manifest.tables) manifest.tables = manifest.tables.filter(t => t.name !== GRID_LOG).map(t => (t.name === 'dash.business_role_permission'

@@ -26,6 +26,7 @@ const SYSTEM = 'fbjobs-code'
 
 interface Job {
   name: string
+  title?: string
   cadence: string
   description: string
   grants?: string[]
@@ -177,6 +178,14 @@ describe('an app declares its scheduled jobs', () => {
     expect(await queued(SWEEP)).toBe(1)
   })
 
+  // #1330: a job reads by a title, never its code: the manifest's, else one made from its name.
+  test("each job's row carries a readable title: the manifest's, else its name in words", async ({ admin }) => {
+    expect(await discoverPackages([await writeApp({ jobs: [{ ...sweep, title: 'Sweep Out Leavers' }, overreach] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    expect((await row(SWEEP)).title).toBe('Sweep Out Leavers')
+    expect((await row(OVERREACH)).title).toBe('Overreach')
+  })
+
   test('a job runs as its own actor: it disables people, never a System Manager, and mails the System Managers', async ({ admin, createUser }) => {
     expect(await discoverPackages([await writeApp({ jobs: [sweep] })])).toEqual([])
     await admin.post('/api/install_app', { name: APP })
@@ -305,6 +314,27 @@ describe("a job follows its app's lifecycle", () => {
     expect(await queued(`${APP}.tidy`)).toBe(1)
     const [entry] = await sql`select repeat_every from background_job where method = ${SWEEP} and job_status = 'queued'`
     expect(Number(entry.repeat_every)).toBe(3600)
+  })
+
+  // #1330: a new title reaches the row, unless an administrator gave the job their own.
+  test("an upgrade brings a job's new title, and keeps a title an administrator wrote", async ({ admin }) => {
+    const v1 = await writeApp({ jobs: [sweep, overreach] })
+    expect(await discoverPackages([v1])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await admin.post('/api/save_row', { table: 'Scheduled Job', row: { row_id: OVERREACH, title: 'Our Own Check', updated_at: (await row(OVERREACH)).updated_at } })
+    const v2 = await writeApp({ version: '2.0.0',
+      jobs: [{ ...sweep, title: 'Sweep Out Leavers' }, { ...overreach, title: 'Overreach Check' }, { name: 'tidy', title: 'Tidy the Notes', cadence: 'daily', description: 'Tidy notes.' }],
+      migrations: [{ id: 'titles_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] })
+    expect(await discoverPackages([v1, v2])).toEqual([])
+    const plan = await admin.post('/api/preview_app_upgrade', { name: APP, version: '2.0.0' }) as { planId: string; jobs: unknown[] }
+    expect(plan.jobs).toEqual(expect.arrayContaining([
+      { change: { name: 'sweep', title: 'Sweep Out Leavers' } },
+      { add: expect.objectContaining({ name: 'tidy', title: 'Tidy the Notes' }) },
+    ]))
+    await admin.post('/api/upgrade_app', { name: APP, version: '2.0.0', planId: plan.planId })
+    expect((await row(SWEEP)).title).toBe('Sweep Out Leavers')
+    expect((await row(`${APP}.tidy`)).title).toBe('Tidy the Notes')
+    expect((await row(OVERREACH)).title).toBe('Our Own Check')
   })
 
   test("an upgrade keeps an administrator's own cadence", async ({ admin }) => {
@@ -689,7 +719,8 @@ describe('job capability arguments are checked by the platform', () => {
       const queued = await sql`select row_id, recipient, subject, body from email_queue order by row_id`
       expect(queued.filter(mail => !before.some(old => old.row_id === mail.row_id))).toEqual([{
         row_id: expect.any(String), recipient: 'invalid-mail@example.test',
-        subject: `Scheduled job failed: Fbjobsa.${name.replaceAll('_', ' ')}`,
+        // #1330: the job by its title (its name in words), not its prefixed code.
+        subject: `Scheduled job failed: ${name.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')}`,
         body: expect.stringContaining('What failed: An email needs a subject and a body'),
       }])
     })

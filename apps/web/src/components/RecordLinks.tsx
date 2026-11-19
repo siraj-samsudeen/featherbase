@@ -15,6 +15,7 @@ import { useGroupPlans } from './LinkTickList'
 import { PaneFields } from './RowPane'
 import { RowTree } from './RowTree'
 import { MenuChoices, MenuShell, userSettingsQuery } from './FormArrangement'
+import { WorkedOutSections } from './WorkedOut'
 
 type Row = Record<string, unknown>
 
@@ -126,6 +127,9 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused, 
                 <LinkedRowsGroup table={table} record={name} group={g} onOpen={open} showAllHref={listHref(g)} editable app={appGroupFor(appGroups, g.connection.table)} />
               </div>
             ))}
+          {/* #1282 C10–C11 (UI owner): what an installed app works out about this record, in the Lens's order, so a
+              phone and Open Full Page show them too. */}
+          <WorkedOutSections table={table} row={name} onOpen={open} />
           {empties.length > 0 && (
             <section aria-label="Pointed At By" data-testid="links-empty-groups" className="flex min-w-0 flex-col gap-2">
               <h4 className="text-sm font-semibold text-ink">Pointed At By</h4>

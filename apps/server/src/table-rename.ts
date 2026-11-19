@@ -102,6 +102,17 @@ export async function renameColumn(
     // #246: and the columns its Data Scope narrows by.
     if (meta.scope_on?.includes(from))
       await tx`update table_def set scope_on = ${meta.scope_on.map((c) => c === from ? target : c)} where name = ${meta.name}`
+    // #1346: and the columns search matches. The stored list, not the
+    // effective one, so an override is never written into the Table.
+    await tx`update table_def set search_columns = array_replace(search_columns, ${from}, ${target})
+      where name = ${meta.name} and ${from} = any(search_columns)`
+    // A Metadata Override names them as text ("login, email"): rename it there too.
+    for (const o of await tx`select row_id, value from metadata_override
+        where table_name = ${meta.name} and column_name is null and property = 'search_columns'`) {
+      const names = String(o.value).split(/[,\n]/).map((c) => c.trim())
+      if (names.includes(from))
+        await tx`update metadata_override set value = ${names.filter(Boolean).map((c) => c === from ? target : c).join(', ')} where row_id = ${o.row_id}`
+    }
     // The column rules (`field:<column>`, `PREFIX-{<column>}`, see
     // document.ts) name a column. Left stale one stops resolving, and every new
     // row fails with "Naming field glor is required" for a column that is gone.
