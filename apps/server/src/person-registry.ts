@@ -170,6 +170,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   single_value: { '*': code },
   sla_priority: { '*': code },
   table_def: { '*': code, description: text, label: text, archived_by: id, archived_note: text },
+  // #1282 A4: settings name only the Table's columns and view choices.
+  table_view_default: { ref_table: code, settings: text, undoes: code },
   tag_link: { ref_table: code, ref_name: on('ref_table'), tag: code },
   todo: { allocated_to: id, ref_table: code, reference_name: on('ref_table'), description: text, todo_status: code, priority: code },
   translation: { language: code, source_text: text, translated_text: text },
