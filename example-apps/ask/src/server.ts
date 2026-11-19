@@ -24,13 +24,20 @@ interface Context extends ReadContext {
 export const platformVersion = '2026-10'
 
 const Q = 'ask.question', CONFIG = 'ask.config', LIMIT = 'ask.limit', TALLY = 'ask.tally'
-export const DEFAULT_MODEL = 'openai/gpt-6-luna'
+/** The AI providers Ask can call. Both speak the same chat format and report each call's cost. Told apart by the key. */
+const PROVIDERS = {
+  openrouter: { name: 'OpenRouter', chat: 'https://openrouter.ai/api/v1/chat/completions', models: 'https://openrouter.ai/api/v1/models', model: 'openai/gpt-6-luna', families: ['openai/gpt', 'anthropic/claude', 'z-ai/glm'] },
+  zen: { name: 'OpenCode Zen', chat: 'https://opencode.ai/inference/openai/v1/chat/completions', models: 'https://opencode.ai/inference/v1/models', model: 'gpt-5.6-luna', families: ['gpt-', 'claude-', 'glm-'] },
+} as const
+type ProviderKey = keyof typeof PROVIDERS
+/** OpenRouter reports a call's cost only when asked; OpenCode Zen always does, and refuses the request for it. */
+const costAsked = (key: string | undefined) => (providerOf(key) === 'openrouter' ? { usage: { include: true } } : {})
+const providerOf = (key: string | undefined): ProviderKey => (key?.startsWith('oc_sk_') ? 'zen' : 'openrouter')
+export const DEFAULT_MODEL = PROVIDERS.openrouter.model
 /** With no limit set by an admin, each person gets this many questions a day. */
 export const DEFAULT_DAILY_QUESTIONS = 50
 /** The model families the admin's picker offers, from OpenRouter's live list: GPT, Claude and GLM. */
-const FAMILIES = ['openai/gpt', 'anthropic/claude', 'z-ai/glm']
 const LIMIT_FIELDS = ['row_id', 'updated_at', 'applies_to', 'who', 'who_name', 'model', 'period', 'max_questions', 'max_usd']
-const OPENROUTER = 'https://openrouter.ai/api/v1'
 
 // Ask's rows are written only by its own actions, never from the generic Admin form.
 const writes = new AsyncLocalStorage<{ user: string }>()
@@ -56,9 +63,9 @@ const windows = (now: number) => {
 const RESETS = { hour: 'It frees up within the hour.', day: 'It resets at midnight.', month: 'It resets on the 1st.' } as const
 
 interface Config { model: string; allowed: string[]; cap: number | null }
-async function config(ctx: ReadContext): Promise<Config> {
+async function config(ctx: ReadContext, fallback: string = DEFAULT_MODEL): Promise<Config> {
   const [row] = await ctx.documents.list(CONFIG, { fields: ['model', 'allowed_models', 'monthly_cap_usd'], limit_page_length: 1 })
-  const model = String(row?.model || DEFAULT_MODEL)
+  const model = String(row?.model || fallback)
   const allowed = String(row?.allowed_models ?? '').split(/[\s,]+/).filter(Boolean)
   return { model, allowed: [...new Set([model, ...allowed])], cap: row?.monthly_cap_usd == null || row.monthly_cap_usd === '' ? null : Number(row.monthly_cap_usd) }
 }
@@ -124,9 +131,9 @@ async function say(ctx: ReadContext, p: Record<string, unknown>) {
   if (!key || row.kind !== 'data' || !facts) return unchanged
   const started = Date.now()
   try {
-    const response = await fetch(`${OPENROUTER}/chat/completions`, { method: 'POST', signal: AbortSignal.timeout(45_000),
+    const response = await fetch(PROVIDERS[providerOf(key)].chat, { method: 'POST', signal: AbortSignal.timeout(60_000),
       headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: row.model, messages: [{ role: 'system', content: WRITER }, { role: 'user', content: `QUESTION: ${row.question}\n\nFIGURES:\n${facts}` }], temperature: 0, max_tokens: 300, usage: { include: true } }) })
+      body: JSON.stringify({ model: row.model, messages: [{ role: 'system', content: WRITER }, { role: 'user', content: `QUESTION: ${row.question}\n\nFIGURES:\n${facts}` }], temperature: 0, max_tokens: 1500, ...costAsked(key) }) })
     const answer = await response.json() as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number; cost_details?: { upstream_inference_cost?: number | null } } }
     const words = answer.choices?.[0]?.message?.content?.trim()
     if (!response.ok || !words) return unchanged
@@ -152,11 +159,11 @@ async function think(ctx: ReadContext) {
   if (!key) reply = builtIn(question, catalog)
   else {
     try {
-      const response = await fetch(`${OPENROUTER}/chat/completions`, { method: 'POST', signal: AbortSignal.timeout(45_000),
+      const response = await fetch(PROVIDERS[providerOf(key)].chat, { method: 'POST', signal: AbortSignal.timeout(60_000),
         headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model, messages: messages(question, ctx.userName, catalog), temperature: 0, max_tokens: 700, usage: { include: true } }) })
+        body: JSON.stringify({ model, messages: messages(question, ctx.userName, catalog), temperature: 0, max_tokens: 2000, ...costAsked(key) }) })
       const body = await response.json() as { error?: { message?: string }; choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number; cost_details?: { upstream_inference_cost?: number | null } }; model?: string }
-      if (!response.ok || !body.choices?.[0]?.message?.content) throw new Error(`OpenRouter answered ${response.status}: ${String(body.error?.message ?? 'no answer').slice(0, 240)}`)
+      if (!response.ok || !body.choices?.[0]?.message?.content) throw new Error(`${PROVIDERS[providerOf(key)].name} answered ${response.status}: ${String(body.error?.message ?? 'no answer').slice(0, 240)}`)
       reply = checkedReply(body.choices[0].message.content, catalog)
       usedModel = model; tokensIn = Number(body.usage?.prompt_tokens ?? 0); tokensOut = Number(body.usage?.completion_tokens ?? 0); // With your own provider key (BYOK), OpenRouter's charge is its fee only; what the provider charged comes beside it.
       cost = Number(body.usage?.cost ?? 0) + Number(body.usage?.cost_details?.upstream_inference_cost ?? 0)
@@ -221,14 +228,14 @@ const round = (n: number) => Math.round(n * 1e6) / 1e6
 export const reads = {
   /** Who is asking, which model answers, and how much of each of their limits is used. */
   async session(ctx: ReadContext) {
-    const cfg = await config(ctx), now = Date.now()
-    return { user: ctx.user, name: ctx.userName, admin: isAdmin(ctx), ai: realKey(ctx) ? 'openrouter' : 'built_in', model: cfg.model, models: cfg.allowed,
+    const key = realKey(ctx), cfg = await config(ctx, PROVIDERS[providerOf(key)].model), now = Date.now()
+    return { user: ctx.user, name: ctx.userName, admin: isAdmin(ctx), ai: key ? providerOf(key) : 'built_in', provider: key ? PROVIDERS[providerOf(key)].name : null, model: cfg.model, models: cfg.allowed,
       meters: await meters(ctx, cfg.model, now), refused: await refusal(ctx, cfg, cfg.model, now) }
   },
   /** The one door to the AI. Limits are checked in `prepare`, inside the transaction, before any call out. */
   think: Object.assign(think, {
     prepare: async (ctx: ReadContext): Promise<Thought> => {
-      const cfg = await config(ctx)
+      const cfg = await config(ctx, PROVIDERS[providerOf(realKey(ctx))].model)
       if ((ctx.payload as Row | undefined)?.mode === 'say') return { cfg, model: cfg.model, refused: null }
       const asked = String((ctx.payload as Row | undefined)?.model ?? '')
       const model = cfg.allowed.includes(asked) ? asked : cfg.model
@@ -242,17 +249,20 @@ export const reads = {
   /** OpenRouter's live list of GPT, Claude and GLM models with their prices, for the admin's picker. */
   async models(ctx: ReadContext) {
     adminOnly(ctx)
+    const which: ProviderKey = (ctx.payload as Row | undefined)?.provider === 'zen' ? 'zen' : 'openrouter', provider = PROVIDERS[which]
     try {
-      const body = await (await fetch(`${OPENROUTER}/models`, { signal: AbortSignal.timeout(15_000) })).json() as { data?: { id: string; name: string; created?: number; pricing?: { prompt?: string; completion?: string } }[] }
-      return (body.data ?? []).filter(m => FAMILIES.some(f => m.id.startsWith(f)) && !/:|audio|image|realtime|search|transcribe|tts/.test(m.id))
-        .sort((a, b) => Number(b.created ?? 0) - Number(a.created ?? 0)).slice(0, 60)
-        .map(m => ({ id: m.id, name: m.name, in_per_million: Number(m.pricing?.prompt ?? 0) * 1e6, out_per_million: Number(m.pricing?.completion ?? 0) * 1e6 }))
+      const body = await (await fetch(provider.models, { signal: AbortSignal.timeout(15_000) })).json() as { data?: Row[] }
+      const price = (m: Row, side: 'input' | 'output') => which === 'zen' ? Number(((m.cost as Row | undefined)?.text as Record<string, { price?: number }> | undefined)?.[side]?.price ?? 0)
+        : Number((m.pricing as Record<string, string> | undefined)?.[side === 'input' ? 'prompt' : 'completion'] ?? 0) * 1e6
+      return (body.data ?? []).filter(m => provider.families.some(f => String(m.id).startsWith(f)) && (which !== 'zen' || m.type === 'chat') && !/:|audio|image|realtime|search|transcribe|tts|codex/.test(String(m.id)))
+        .sort((a, b) => String(b.release_date ?? '').localeCompare(String(a.release_date ?? '')) || Number(b.created ?? 0) - Number(a.created ?? 0)).slice(0, 60)
+        .map(m => ({ id: String(m.id), name: String(m.name ?? m.id), in_per_million: price(m, 'input'), out_per_million: price(m, 'output') }))
     } catch { return [] }
   },
   /** The admin's view: every question this month, who asks what, what it costs, and the limits in force. */
   async log(ctx: ReadContext) {
     adminOnly(ctx)
-    const now = Date.now(), w = windows(now), cfg = await config(ctx)
+    const now = Date.now(), w = windows(now), cfg = await config(ctx, String((ctx.payload as Row | undefined)?.fallback_model || DEFAULT_MODEL))
     const rows = await ctx.documents.list(Q, { fields: ['row_id', 'question', 'asked_by', 'kind', 'reply', 'report', 'pointed_to', 'model', 'tokens_in', 'tokens_out', 'cost_usd', 'took_ms', 'asked_at'], filters: [['asked_at', '>=', w.month]], order_by: 'asked_at desc', limit_page_length: 2000 })
     const names = await ctx.people.names([...new Set(rows.map(r => String(r.asked_by)))])
     const tally = <K extends string>(key: (r: Row) => K) => {

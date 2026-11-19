@@ -6,7 +6,7 @@ Featherbase limits what a person sees by their reach: the stores and subcategori
 flowchart LR
   person([Person]) --> box[Ask: page or panel]
   box --> door[Ask server: limits, then the model loop]
-  door <-->|question, table descriptions, rows| router[(OpenRouter)]
+  door <-->|question, table descriptions, rows| router[(AI provider)]
   door -->|SQL the model wrote| fence[Platform: allowed tables, reach applied, one read-only SELECT]
   fence --> wh[(MotherDuck)]
   wh --> fence --> door --> box
@@ -54,7 +54,7 @@ Descriptions are not kept here: they are MotherDuck's table and column comments 
 
 The rows that came back go to the model with the question, as a person would read them. A sentence written by Featherbase is the fallback when the model cannot be reached.
 
-- *Instead of a template:* it answers only the questions planned for. The cost, accepted: the rows of each answer leave the instance for OpenRouter.
+- *Instead of a template:* it answers only the questions planned for. The cost, accepted: the rows of each answer leave the instance for the AI provider.
 
 ### D5. Everything is kept, for good; the asker reads their own
 
@@ -72,6 +72,10 @@ Each app ships starter guides that load at install; an admin edits and adds to t
 ### D7. One door to the model, with the limits in front of it
 
 Every model call goes through one place, which checks the person's limits and the monthly budget first, counts every call of a question's loop as one question's cost, and never shows the provider's error text to the asker. It is tested against a model that has been talked into misbehaving.
+
+The provider is one account that offers the GPT, Claude and GLM families and reports the cost of each call: OpenCode Zen (the owner's choice, 19-Nov-2026), with OpenRouter also supported. Only the door knows which.
+
+- *Instead of a key per model maker:* three bills, three sets of limits, and no single price list.
 
 ## Risks / Trade-offs
 

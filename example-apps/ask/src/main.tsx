@@ -233,7 +233,7 @@ const groupColumns = (first: string, cell: (g: Group) => ReactNode): DataColumn<
 const Section = ({ title, children }: { title: string; children: ReactNode }) => <section className="flex flex-col gap-2"><h2 className="text-[15px] font-semibold text-ink">{title}</h2>{children}</section>
 const Person = ({ id, name }: { id: string; name: string }) => <RecordLink table="Person" rowId={id} name={name} />
 
-function Usage({ log, ai }: { log: Log; ai: string }) {
+function Usage({ log, ai, provider }: { log: Log; ai: string; provider: string | null }) {
   const share = log.cap ? Math.min(100, (log.total.cost_usd / log.cap) * 100) : null
   const questions: DataColumn<Log['questions'][number]>[] = [
     { key: 'when', header: 'Asked', cell: r => <span className="whitespace-nowrap">{fmtInstantIST(r.asked_at)}</span>, phone: 'meta' },
@@ -248,7 +248,7 @@ function Usage({ log, ai }: { log: Log; ai: string }) {
   const none = { title: 'Nothing Yet', body: 'It fills in as people ask.' }
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Usage" count={`This month · ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(log.month.slice(5)) - 1]}'${log.month.slice(2, 4)}`} status={ai === 'built_in' ? 'No AI key is set on this instance, so the built-in rules answer and nothing is spent.' : `Answers come from ${log.model} through OpenRouter.`} />
+      <PageHeader title="Usage" count={`This month · ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(log.month.slice(5)) - 1]}'${log.month.slice(2, 4)}`} status={ai === 'built_in' ? 'No AI key is set on this instance, so the built-in rules answer and nothing is spent.' : `Answers come from ${log.model} through ${provider}.`} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile label="Questions This Month" value={log.total.questions} note={`${log.total.today} today`} />
         <Tile label="Spent This Month" value={usd(log.total.cost_usd)} note={log.cap ? `of ${usd(log.cap)} budget` : 'No budget set'} />
@@ -313,9 +313,9 @@ function Limits({ log, reload }: { log: Log; reload: () => void }) {
   )
 }
 
-function Models({ log, reload }: { log: Log; reload: () => void }) {
+function Models({ log, reload, session }: { log: Log; reload: () => void; session: Session }) {
   const [models, setModels] = useState<Model[] | null>(null)
-  useEffect(() => { read<Model[]>('models').then(setModels, () => setModels([])) }, [])
+  useEffect(() => { read<Model[]>('models', { provider: session.ai }).then(setModels, () => setModels([])) }, [])
   const allowed = log.allowed_models.split(/[\s,]+/).filter(Boolean)
   const save = (model: string, others: string[]) => act('configure', { model, allowed_models: others.filter(m => m !== model).join(', '), monthly_cap_usd: log.cap ?? '' }).then(reload, () => {})
   const price = (n: number) => `$${n.toFixed(2)}`
@@ -332,8 +332,8 @@ function Models({ log, reload }: { log: Log; reload: () => void }) {
   ]
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Models" count={models ? `${models.length} from OpenRouter` : undefined} status="GPT, Claude and GLM models, with OpenRouter's live prices. Prices are per million tokens (roughly 750,000 words)." />
-      <DataList caption="Models" rows={models ?? []} state={models ? 'ready' : 'loading'} rowKey={m => m.id} columns={columns} empty={{ title: 'Could Not Reach OpenRouter', body: 'The list comes live from OpenRouter. You can still type a model id on Limits And Budget.' }} />
+      <PageHeader title="Models" count={models ? `${models.length} from ${session.provider ?? 'OpenRouter'}` : undefined} status="GPT, Claude and GLM models, with the provider's live prices. Prices are per million tokens (roughly 750,000 words)." />
+      <DataList caption="Models" rows={models ?? []} state={models ? 'ready' : 'loading'} rowKey={m => m.id} columns={columns} empty={{ title: 'Could Not Reach The Provider', body: 'The list comes live from the AI provider. You can still type a model id on Limits And Budget.' }} />
     </div>
   )
 }
@@ -347,7 +347,7 @@ function App() {
   const [view, setView] = useState<View>(() => (['mine', 'usage', 'limits', 'models'].includes(params.get('view') ?? '') ? params.get('view') as View : 'ask'))
   const [chat, setChat] = useState<{ id: string; earlier: Asked[] }>(() => ({ id: crypto.randomUUID(), earlier: [] }))
   const loadSession = useCallback(() => { read<Session>('session').then(setSession, e => setError(e instanceof Error ? e.message : 'Ask could not open.')) }, [])
-  const loadLog = useCallback(() => { read<Log>('log').then(setLog, () => {}); loadSession() }, [loadSession])
+  const loadLog = useCallback(() => { read<Log>('log', { fallback_model: session?.model }).then(setLog, () => {}); loadSession() }, [loadSession, session?.model])
   useEffect(() => {
     loadSession()
     // What this person may open, asked of each app as them: Dash's reports and stores, and the app switcher's list.
@@ -366,7 +366,7 @@ function App() {
     : view === 'mine' ? <History ask={() => { setChat({ id: crypto.randomUUID(), earlier: [] }); open('ask') }} open={c => { setChat({ id: c.rows[0].chat || crypto.randomUUID(), earlier: c.rows }); open('ask') }} />
     : !session.admin ? <EmptyState title="Admins Only" body="Usage, limits and models are for Ask Admins." />
     : !log ? <p className="text-sm text-ink-muted" role="status">Loading…</p>
-    : view === 'usage' ? <Usage log={log} ai={session.ai} /> : view === 'limits' ? <Limits key={`${log.model}|${log.allowed_models}|${log.cap}`} log={log} reload={loadLog} /> : <Models log={log} reload={loadLog} />
+    : view === 'usage' ? <Usage log={log} ai={session.ai} provider={session.provider} /> : view === 'limits' ? <Limits key={`${log.model}|${log.allowed_models}|${log.cap}`} log={log} reload={loadLog} /> : <Models log={log} reload={loadLog} session={session} />
   if (PANEL) document.documentElement.classList.add('ask-in-panel')
   if (PANEL) return <main className="h-screen overflow-hidden bg-surface" data-testid="ask-panel">{body}</main>
   return (

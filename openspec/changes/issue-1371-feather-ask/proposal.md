@@ -30,6 +30,6 @@ This first slice makes one table askable: sales versus target. More tables, othe
 
 - A new app shipped with the platform, and a platform capability it uses to run a query against the warehouse as the asker.
 - The shared bar every page loads gains the Ask button and panel.
-- A new outside service: OpenRouter, reached with a deployment secret. Questions, table descriptions and the rows of each answer are sent to it.
+- A new outside service: an AI provider that offers GPT, Claude and GLM models through one account and reports the cost of each call (OpenCode Zen; OpenRouter also works), reached with a deployment secret. Questions, table descriptions and the rows of each answer are sent to it.
 - The log holds report figures, so it is backed up and guarded like report data.
 - MotherDuck: comments on the askable tables' columns, and a Guide for metric definitions and join rules.
