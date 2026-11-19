@@ -193,3 +193,22 @@ test('reloading with nothing unsaved asks nothing', async ({ admin }) => {
   await note()
   expect(unloadCancelled()).toBe(false)
 })
+
+// #1364: a password manager filled a Person's Username box with the signed-in
+// admin's login, so an untouched record said "Unsaved changes". No record-form
+// box is a login: every control, the Sub-table's cells included, says so to the
+// browser and to the password managers.
+test('no box on a record form invites a password manager to fill it', async ({ admin, createUser }) => {
+  const person = await createUser({ roles: ['System Manager'] })
+  await renderApp(rowHref('Person', person.user!), admin)
+  const form = await screen.findByTestId('form-view', {}, WAIT)
+  await screen.findByTestId('table-roles', {}, WAIT)
+  const boxes = Array.from(form.querySelectorAll<HTMLElement>('[data-field] , [data-childfield]'))
+    .filter((el) => ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) && (el as HTMLInputElement).type !== 'hidden')
+  expect(boxes.map((el) => el.dataset.field ?? el.dataset.childfield)).toEqual(expect.arrayContaining(['full_name', 'username', 'role']))
+  for (const el of boxes) {
+    const which = el.dataset.field ?? el.dataset.childfield
+    expect({ which, autocomplete: el.getAttribute('autocomplete'), lastpass: el.getAttribute('data-lpignore'), onepassword: el.getAttribute('data-1p-ignore') })
+      .toEqual({ which, autocomplete: 'off', lastpass: 'true', onepassword: 'true' })
+  }
+})
