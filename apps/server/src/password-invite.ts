@@ -282,9 +282,13 @@ export async function signInWithPasswordInvite(key: string, newPassword: string,
   const issued = await completeSignIn(method, { status: 'verified' }, { user: accepted.person, identity: null }, { ipAddress })
   const unchanged = await sql.begin(async (tx) => {
     const t = tx as unknown as TxSql
-    const [p] = await t`select (select c.password_hash from person_credential c where c.person_id = person.row_id) as password_hash,
-      sessions_ended_at::text as ended from person where row_id = ${accepted.person} for update`
-    return Boolean(p) && p.password_hash === accepted.passwordHash && ((p.ended as string | null) ?? null) === accepted.sessionsEndedAt
+    const [p] = await t`select sessions_ended_at::text as ended from person where row_id = ${accepted.person} for update`
+    if (!p) return false
+    // #1336 (Codex): read after the lock, in a statement of its own, so a
+    // password change the lock waited for is seen (one statement keeps the
+    // snapshot it started with).
+    const [c] = await t`select password_hash from person_credential where person_id = ${accepted.person}`
+    return (c?.password_hash ?? null) === accepted.passwordHash && ((p.ended as string | null) ?? null) === accepted.sessionsEndedAt
   })
   if (!unchanged) {
     const s = issued.user.sign_in!
