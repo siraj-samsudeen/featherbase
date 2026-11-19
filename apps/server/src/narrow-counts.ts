@@ -74,6 +74,16 @@ async function narrowCountsImpl(
     const others = lists.flatMap((l, j) => (j !== i && l.pick ? [l.pick] : []))
     const live = others.length ? await scopedWhere(table, user, [...baseFilters, ...others]) : base
     const { joins, value } = await pathJoins(i, list.path, base, user)
+    // A forward path reaches at most one value per row: a plain count is exact.
+    if (!list.path.some((s) => 'from' in s)) {
+      parts.push(sql`
+        select ${i}::int as list, nullif((${value})::text, '') as value,
+          (count(*) filter (where ${live.where}))::int as count
+        from ${sql(base.table)} ${joins}
+        where ${base.where}
+        group by 2`)
+      continue
+    }
     // A path that fans out (through a link table) can reach a value along one
     // branch and nothing along another: such a row is linked, as `not related`
     // reads it, so only a row reaching no value at all counts as none.
