@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { WorkedOutAnswer, WorkedOutRow } from 'shared'
-import { Lock, RecordLink, fmtCount } from '@featherbase/shop-floor'
+import { Lock, PaneSection, RecordLink, fmtCount, touchLinkClasses } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
 import type { NavPane } from '../lib/nav-path'
 
@@ -20,16 +20,16 @@ export function WorkedOutSections({ table, row, onOpen }: { table: string; row: 
   })
   // Nothing worked out, or the app's answer refused: the panel shows its own groups only.
   if (!answer.data?.sections.length) return null
+  // Each section is the Lens's own section (PaneSection), as Fields and Pointed At By beside it (consistency check).
   return <>{answer.data.sections.map((section) => (
-    <section key={section.heading} aria-label={section.heading} data-testid="worked-out-section" className="flex min-w-0 flex-col gap-3">
-      {/* An empty section keeps its heading, so people see the check was done (UI owner). */}
-      <h4 className="text-sm font-semibold text-ink">
-        {section.heading} <span className="font-normal text-ink-muted">{fmtCount(section.rows.length)}{section.note ? ` · ${section.note}` : ''}</span>
-      </h4>
-      {section.rows.length === 0
-        ? <p className="text-sm text-ink-muted" data-testid="worked-out-empty">{section.empty}</p>
-        : <ul className="flex min-w-0 flex-col gap-0.5">{section.rows.map((r, i) => <WorkedOutLine key={i} row={r} onOpen={onOpen} />)}</ul>}
-    </section>
+    <div key={section.heading} aria-label={section.heading} role="region" data-testid="worked-out-section">
+      <PaneSection title={`${section.heading} ${fmtCount(section.rows.length)}${section.note ? ` · ${section.note}` : ''}`}>
+        {/* An empty section keeps its heading, so people see the check was done (UI owner). */}
+        {section.rows.length === 0
+          ? <p className="text-sm text-ink-muted" data-testid="worked-out-empty">{section.empty}</p>
+          : <ul className="flex min-w-0 flex-col gap-0.5">{section.rows.map((r, i) => <WorkedOutLine key={i} row={r} onOpen={onOpen} />)}</ul>}
+      </PaneSection>
+    </div>
   ))}</>
 }
 
@@ -41,32 +41,34 @@ const link = (named: { name: string; record?: { table: string; row: string } }, 
 function WorkedOutLine({ row, onOpen }: { row: WorkedOutRow; onOpen?: (pane: NavPane) => void }) {
   const [open, setOpen] = useState(false)
   return (
-    <li className="flex min-w-0 flex-col rounded-control px-2 py-1.5 text-[13px] hover:bg-subtle" data-testid="worked-out-row">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <span title={LOCKED} aria-label={LOCKED} role="img" className="text-ink-subtle" data-testid="worked-out-lock"><Lock aria-hidden size={14} /></span>
-        {link(row, onOpen)}
-        {row.detail && <span className="text-ink-muted">{row.detail}</span>}
-        {row.via.map((v, i) => (
-          // The role that gives it, a link styled as the tag chip.
-          <span key={i} className="inline-block rounded-full bg-tag px-2 py-px text-xs text-ink-muted" data-testid="worked-out-via">via {link(v, onOpen)}</span>
-        ))}
-        <span className="flex-1" />
-        {/* Why? only where the app gave this viewer the chain; never a locked or empty Why (UI owner). */}
-        {row.why && (
-          <button type="button" className="text-action hover:underline" aria-expanded={open} onClick={() => setOpen(!open)} data-testid="worked-out-why">
-            {open ? 'Hide why' : 'Why?'}
-          </button>
+    // The tick list's line: a 22px column for the (locked) tick, the name, its facts small beneath, as a Lens row.
+    <li className="grid min-w-0 grid-cols-[22px_minmax(0,1fr)] gap-x-2 rounded-control px-2 py-1.5 text-[13px] hover:bg-subtle" data-testid="worked-out-row">
+      <span title={LOCKED} aria-label={LOCKED} role="img" className="pt-0.5 text-ink-subtle" data-testid="worked-out-lock"><Lock aria-hidden size={14} /></span>
+      <div className="flex min-w-0 flex-col">
+        <span className="min-w-0">{link(row, onOpen)}</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+          {row.detail && <span>{row.detail}</span>}
+          {row.via.map((v, i) => (
+            // The role that gives it, a link styled as the tag chip.
+            <span key={i} className="inline-block rounded-full bg-tag px-2 py-px text-xs text-ink-muted" data-testid="worked-out-via">via {link(v, onOpen)}</span>
+          ))}
+          {/* Why? only where the app gave this viewer the chain; never a locked or empty Why (UI owner). */}
+          {row.why && (
+            <button type="button" className={touchLinkClasses('text-action hover:underline')} aria-expanded={open} onClick={() => setOpen(!open)} data-testid="worked-out-why">
+              {open ? 'Hide why' : 'Why?'}
+            </button>
+          )}
+        </div>
+        {open && row.why && (
+          <p className="mt-1 text-ink-muted" data-testid="worked-out-chain">
+            {row.why.map((part, i) => (
+              <span key={i}>{i ? ' → ' : ''}{link(part, onOpen)}
+                {part.detailParts && <> ({part.detailParts.map((p, j) => <span key={j}>{j ? ' · ' : ''}{link(p, onOpen)}</span>)})</>}
+              </span>
+            ))}
+          </p>
         )}
       </div>
-      {open && row.why && (
-        <p className="mt-1 pl-6 text-ink-muted" data-testid="worked-out-chain">
-          {row.why.map((part, i) => (
-            <span key={i}>{i ? ' → ' : ''}{link(part, onOpen)}
-              {part.detailParts && <> ({part.detailParts.map((p, j) => <span key={j}>{j ? ' · ' : ''}{link(p, onOpen)}</span>)})</>}
-            </span>
-          ))}
-        </p>
-      )}
     </li>
   )
 }
