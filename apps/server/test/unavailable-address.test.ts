@@ -8,12 +8,31 @@ import { askedAddress, unavailableHref } from 'shared'
 import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { expectStatus } from './fixtures'
+import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { afterEach } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const page = (client: TestClient, path: string) => client.fetch(path, { headers: { accept: 'text/html' }, redirect: 'manual' })
 const status = async (client: TestClient, address: string) =>
   (await client.get<{ turned_off: { title: string } | null }>(`/api/address_status?address=${encodeURIComponent(address)}`)).turned_off
+
+const copies: string[] = []
+afterEach(async () => { for (const d of copies.splice(0)) await rm(d, { recursive: true, force: true }) })
+
+/** bar-proof again under another name (every "barproof" renamed), so two apps declare roles. */
+async function barChain(admin: TestClient) {
+  const directory = await mkdtemp(resolve('test/.unavailable-1328-'))
+  copies.push(directory)
+  await cp(BAR_PROOF, directory, { recursive: true })
+  for (const file of await readdir(directory, { recursive: true }))
+    if (/\.(json|mjs|js)$/.test(String(file))) {
+      const path = resolve(directory, String(file))
+      await writeFile(path, (await readFile(path, 'utf8')).replaceAll('barproof', 'barchain').replaceAll('Bar proof', 'Bar chain').replaceAll('Bar Reader', 'Chain Reader'))
+    }
+  expect(await discoverPackages([BAR_PROOF, directory])).toEqual([])
+  await admin.post('/api/install_app', { name: 'barchain' })
+}
 
 async function installBarProof(admin: TestClient) {
   expect(await discoverPackages([BAR_PROOF])).toEqual([])
@@ -62,6 +81,19 @@ describe('#1328: whether an app is turned off is said only to someone who could 
     await admin.post('/api/set_app_enabled', { name: 'barproof', enabled: false })
     const bound = await createUser({ email: 'ua-bound@example.test', roles: ['Ua Desk Staff'] })
     expect(await status(bound, '/barproof/')).toEqual({ title: 'Bar proof' })
+  })
+
+  // Codex adversarial round 2: one level, as normal role resolution; a role held only through another
+  // app's binding carries nothing further.
+  test('a role held only through another app\'s binding does not count', async ({ admin, createUser }) => {
+    await installBarProof(admin)
+    await barChain(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Ua Job' } })
+    await admin.post('/api/save_row', { table: 'App Role Binding', row: { app: 'barchain', app_role: 'Chain Reader', bound_role: 'Ua Job' } })
+    await admin.post('/api/save_row', { table: 'App Role Binding', row: { app: 'barproof', app_role: 'Bar Reader', bound_role: 'Chain Reader' } })
+    await admin.post('/api/set_app_enabled', { name: 'barproof', enabled: false })
+    const chained = await createUser({ email: 'ua-chained@example.test', roles: ['Ua Job'] })
+    expect(await status(chained, '/barproof/')).toBeNull()
   })
 
   test('only a plain address is answered about, and only to someone signed in', async ({ api, admin }) => {

@@ -745,6 +745,9 @@ describe('an address whose app is installed under the interim name', () => {
       const page = await get(client, `${DASH}${unavailableHref(APP_ROOT)}`)
       expect(page.status).not.toBe(302)
     }
+    // Its way forward is Featherbase's own address, never this app's root (Codex adversarial round 2).
+    expect(await (await api.fetch(`${DASH}/api/brand`)).json()).toMatchObject({ home: ADMIN })
+    expect(await (await api.fetch(`${ADMIN}/api/brand`)).json()).toMatchObject({ home: null })
   })
 
   test("a process that has not loaded the installed app answers at the app's root that it is unavailable", async ({ admin }) => {

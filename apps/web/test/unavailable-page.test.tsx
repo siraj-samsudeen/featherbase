@@ -4,11 +4,13 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { resolve } from 'node:path'
 import { discoverPackages } from 'server/src/runtime-packages'
+import { afterEach, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
 const T = { timeout: 8000 }
 const anonymous = { user: null, token: null } as never
+afterEach(() => vi.restoreAllMocks())
 const BAR_PROOF = resolve(__dirname, '../../../test-apps/fixtures/bar-proof')
 
 async function offBarProof(admin: Client) {
@@ -68,4 +70,19 @@ test('signed out, the page says nothing is there, with no top bar, and names its
   expect((await shown()).heading).toBe('Nothing is available at /barproof/')
   expect(screen.queryByTestId('top-bar')).not.toBeInTheDocument()
   await waitFor(() => expect(document.title).toBe('Not Available · Featherbase'))
+})
+
+// Codex adversarial round 2: on an app's own address "/" is that app; the way forward is Featherbase's own address.
+test("on an app's own address the way forward is Featherbase's own address", async ({ admin }) => {
+  const bridge = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url.endsWith('/api/brand')) {
+      const brand = await (await bridge(input, init)).json()
+      return new Response(JSON.stringify({ ...brand, opens: 'dash', home: 'https://featherbase.example.com' }), { headers: { 'content-type': 'application/json' } })
+    }
+    return bridge(input, init)
+  })
+  await renderApp('/featherbase/unavailable?address=%2Fdash%2F', admin)
+  await waitFor(async () => expect((await shown()).link).toHaveAttribute('href', 'https://featherbase.example.com/'), T)
 })
