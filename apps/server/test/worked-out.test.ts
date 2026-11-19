@@ -9,7 +9,7 @@ import { appendFile, cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promis
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
-import { expectStatus } from './fixtures'
+import { expectStatus, grantRole } from './fixtures'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const NOTE = 'barproof.note'
@@ -21,9 +21,9 @@ afterEach(async () => {
 
 const tableRead = { policy: { kind: 'table' }, authorization: { kind: 'generic' } }
 
-/** bar-proof with `workedOut` and its read. The read answers `hooks.answer` where a test sets one; otherwise,
+/** bar-proof with `person.sections` and its read. The read answers `hooks.answer` where a test sets one; otherwise,
  *  by the viewer's roles: with the why for an explainer, without it for a reader, nothing for anyone else. */
-async function working(workedOut: unknown, { gate }: { gate?: string } = {}) {
+async function working(person: unknown, { gate }: { gate?: string } = {}) {
   const directory = await mkdtemp(resolve('test/.worked-out-1282-'))
   directories.push(directory)
   await cp(BAR_PROOF, directory, { recursive: true })
@@ -32,7 +32,7 @@ async function working(workedOut: unknown, { gate }: { gate?: string } = {}) {
   manifest.roles = ['Bar Reader', 'Bar Explainer', 'Bar Guest']
   manifest.reads.operations = { ...manifest.reads.operations, worked_out: tableRead, closed: tableRead }
   if (gate) manifest.access = { gate }
-  manifest.workedOut = workedOut
+  manifest.person = person
   await writeFile(file, JSON.stringify(manifest))
   await appendFile(resolve(directory, 'server.mjs'), `
 const worked = (globalThis.__workedOut1282 ??= { answer: undefined, asked: [] })
@@ -57,27 +57,35 @@ reads.closed = () => false
   return directory
 }
 
-const declared = { [NOTE]: { read: 'worked_out' } }
+const declared = { sections: { read: 'worked_out' } }
+/** The Person the sections are about: the explainer's own record, which both made-up people may read. */
+let target = ''
 
-async function install(admin: TestClient, workedOut: unknown = declared, options: { gate?: string } = {}) {
-  expect(await discoverPackages([await working(workedOut, options)])).toEqual([])
+async function install(admin: TestClient, person: unknown = declared, options: { gate?: string } = {}) {
+  expect(await discoverPackages([await working(person, options)])).toEqual([])
   await admin.post('/api/install_app', { name: 'barproof' })
   await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'n1', body: 'kept' } })
+  // The made-up readers may read people; Bar Guest may not.
+  await grantRole(admin, { role: 'Bar Reader', table: 'Person', can_read: true })
 }
 
-const people = (createUser: CreateUserFn) => Promise.all([
-  createUser({ email: 'worked-reader@example.test', roles: ['Bar Reader'] }),
-  createUser({ email: 'worked-explainer@example.test', roles: ['Bar Reader', 'Bar Explainer'] }),
-])
+async function people(createUser: CreateUserFn) {
+  const both = await Promise.all([
+    createUser({ email: 'worked-reader@example.test', roles: ['Bar Reader'] }),
+    createUser({ email: 'worked-explainer@example.test', roles: ['Bar Reader', 'Bar Explainer'] }),
+  ])
+  target = both[1].user!
+  return both
+}
 
-const sections = (client: TestClient, table = NOTE, row = 'n1') => client.fetch(`/api/worked-out/${encodeURIComponent(table)}/${encodeURIComponent(row)}`)
+const sections = (client: TestClient, table = 'Person', row = target) => client.fetch(`/api/worked-out/${encodeURIComponent(table)}/${encodeURIComponent(row)}`)
 const hook = () => ((globalThis as unknown as { __workedOut1282?: { answer: unknown; asked: unknown[] } }).__workedOut1282 ??= { answer: undefined, asked: [] })
 afterEach(() => { hook().answer = undefined; hook().asked.length = 0 })
 
 describe('worked-out sections: what an app may declare', () => {
   test("sections from something that is not one of the app's reads are refused", async () => {
-    expect(await discoverPackages([await working({ [NOTE]: { read: 'nothing' } })])).toEqual([
-      expect.objectContaining({ error: `The app's worked-out sections for ${NOTE} come from nothing, which is not one of the app's reads` }),
+    expect(await discoverPackages([await working({ sections: { read: 'nothing' } })])).toEqual([
+      expect.objectContaining({ error: "The app's person sections come from nothing, which is not one of the app's reads" }),
     ])
   })
 })
@@ -92,7 +100,7 @@ describe('worked-out sections: who sees what', () => {
     const forReader = await (await sections(reader)).json() as typeof forExplainer
     expect([forReader.sections[0]!.rows[0]!.name, forReader.sections[0]!.rows[0]!.why]).toEqual(['The note', undefined])
     // The app is asked about this very record.
-    expect(hook().asked).toContainEqual({ table: NOTE, row: 'n1' })
+    expect(hook().asked).toContainEqual({ table: 'Person', row: target })
   })
 
   test('nothing where the app shows this viewer nothing, where its gate keeps them out, or where no app works any out', async ({ admin, createUser }) => {
@@ -102,7 +110,8 @@ describe('worked-out sections: who sees what', () => {
     // Someone who may not read the record is refused before the app is asked.
     const guest = await createUser({ email: 'worked-guest@example.test', roles: ['Bar Guest'] })
     await expectStatus(await sections(guest), 403)
-    expect(await (await sections(admin, 'Person', admin.user!)).json()).toEqual({ sections: [] })
+    // Sections are about a Person only.
+    expect(await (await sections(admin, NOTE, 'n1')).json()).toEqual({ sections: [] })
   })
 
   // Codex adversarial round 2: the generic app-read route would run the read without the record check or the scrub.
@@ -111,7 +120,7 @@ describe('worked-out sections: who sees what', () => {
     const [, explainer] = await people(createUser)
     // Called as the app's own page calls its reads.
     const direct = await explainer.fetch('/api/app_reads/barproof/worked_out', { method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'barproof@1.0.0' }, body: JSON.stringify({ payload: { table: NOTE, row: 'n1' } }) })
+      headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'barproof@1.0.0' }, body: JSON.stringify({ payload: { table: 'Person', row: target } }) })
     await expectStatus(direct, 403)
     expect(await direct.text()).toContain('answers only through the record panel')
     expect(hook().asked).toEqual([])
@@ -123,7 +132,7 @@ describe('worked-out sections: who sees what', () => {
     hook().answer = null
     expect(await (await sections(explainer)).json()).toEqual({ sections: [] })
     hook().answer = undefined
-    await expectStatus(await sections(explainer, NOTE, 'no-such-note'), 404)
+    await expectStatus(await sections(explainer, 'Person', 'no-such-person'), 404)
   })
 })
 

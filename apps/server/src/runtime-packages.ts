@@ -135,7 +135,9 @@ const manifestSchema = z.object({
   }).strict()).optional(),
   // #1282 C10–C11: sections the app works out about a record of a Table (a Person's apps and reports from their
   // roles), by one of its reads run as the viewer with { table, row }; the record panel draws them.
-  workedOut: z.record(z.string().min(1), z.object({ read: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/) }).strict()).optional(),
+  // #1282 C10–C11, #1345: what an app says about a Person, in one place apps learn: `sections` names the read that works
+  // out the Lens's sections about one person ("Apps They Can Open"). #1345 adds `describe` beside it.
+  person: z.object({ sections: z.object({ read: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/) }).strict().optional() }).strict().optional(),
   // #1282 G1–G6: the areas people pick on the trees: each axis a list of levels,
   // each a Table read by its title and linked to the level above by `parent`,
   // with the words a staff screen says and, where an admin screen says other ones, those.
@@ -498,10 +500,9 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     })
   }
   // #1282 C10–C11: worked-out sections only read, so their read must be one of the app's reads.
-  for (const [table, worked] of Object.entries(manifest.workedOut ?? {})) {
-    if (!Object.hasOwn(readOperations, worked.read))
-      throw new Error(`The app's worked-out sections for ${table} come from ${worked.read}, which is not one of the app's reads`)
-  }
+  const sections = manifest.person?.sections
+  if (sections && !Object.hasOwn(readOperations, sections.read))
+    throw new Error(`The app's person sections come from ${sections.read}, which is not one of the app's reads`)
   // #1282: a Why only reads: both its names must be the app's reads, never its actions.
   for (const [table, why] of Object.entries(manifest.why ?? {})) {
     if (!Object.hasOwn(readOperations, why.explain))
@@ -722,7 +723,7 @@ export function runPackageRead(app: string, read: string, input: unknown, user: 
  *  (#1282, Codex adversarial round 2) answers only through GET /api/worked-out, which checks the record and scrubs the
  *  answer for the viewer; called here it would skip both. */
 export function runPublicPackageRead(app: string, read: string, input: unknown, user: string, discovery = false) {
-  if (Object.values(packages.get(app)?.manifest.workedOut ?? {}).some(w => w.read === read))
+  if (packages.get(app)?.manifest.person?.sections?.read === read)
     throw new AppError('PermissionError', "This read answers only through the record panel's worked-out sections")
   return runPackageRead(app, read, input, user, discovery)
 }
@@ -1102,12 +1103,12 @@ export async function appsUserMayOpen(user: string): Promise<Set<string>> {
   return names
 }
 
-/** #1282 C10–C11: the app that works out sections about records of `table` (its manifest's `workedOut`), for
- *  `user`: only an installed, active app the user may open (its entry Table and its own gate). None otherwise. */
+/** #1282 C10–C11: the app that works out sections about a record of `table` (its manifest's `person.sections`, so a
+ *  Person only), for `user`: only an installed, active app the user may open (its entry Table and its own gate). */
 export async function workedOutDeclarationFor(table: string, user: string): Promise<{ app: string; version: string; read: string } | null> {
   for (const item of await listInstalledApps()) {
     const pkg = packages.get(item.name)
-    const worked = pkg && Object.hasOwn(pkg.manifest.workedOut ?? {}, table) ? pkg.manifest.workedOut![table]! : undefined
+    const worked = table === 'Person' ? pkg?.manifest.person?.sections : undefined
     if (!item.active || !pkg || !worked) continue
     if (!(await hasPermission(user, pkg.entryTable, 'read')) || !(await passesGate(pkg, user))) return null
     return { app: pkg.name, version: pkg.version, read: worked.read }
