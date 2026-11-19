@@ -53,8 +53,11 @@ export async function describePeople(ctx: AccessContext, on: string = istToday()
 async function businessRolesOf(ctx: AccessContext, persons: string[], on: string) {
   const base = ctx.baseTables!
   const employees = (await all(base, 'Employee', ['person', EMPLOYEE_STATUS], [['person', 'in', persons]])).filter(row => text(row[EMPLOYEE_STATUS]) === 'Current')
+  // HR's titles only where this instance's Job Assignment carries them, asked before the read (Codex standard round 2).
+  const designations = await readsDesignations(base as Base)
   const jobs = employees.length
-    ? (await all(base, 'Job Assignment', ['employee', 'job', 'site', 'designation', 'starts_on', 'ends_on'], [['employee', 'in', employees.map(row => exact(row.row_id))]])).filter(row => holdsOn(row, on))
+    ? (await all(base, 'Job Assignment', ['employee', 'job', 'site', ...(designations ? ['designation'] : []), 'starts_on', 'ends_on'],
+      [['employee', 'in', employees.map(row => exact(row.row_id))]])).filter(row => holdsOn(row, on))
     : []
   const roles = (await all(base, ROLE, ['role_name', 'by_hand_only'])).map(r => ({ id: exact(r.row_id), name: text(r.role_name), by_hand_only: r.by_hand_only === 1 || r.by_hand_only === true || r.by_hand_only === '1' }))
   const rules = (await all(base, TITLE_MAP, ['title', 'business_role'])).map(r => ({ title: text(r.title), role: exact(r.business_role) || null }))
@@ -64,7 +67,7 @@ async function businessRolesOf(ctx: AccessContext, persons: string[], on: string
     .filter(h => h.change === 'Correct' && inForce(h, on) && roles.some(r => r.id === h.role))
   // HR's titles, where Job Assignment names a Designation record (as businessAccess reads them).
   const designated = [...new Set(jobs.map(row => exact(row.designation)).filter(Boolean))]
-  const designationNames = new Map(designated.length && await readsDesignations(base as Base)
+  const designationNames = new Map(designated.length && designations
     ? (await all(base, DESIGNATION, ['designation'], [['row_id', 'in', designated]])).map(row => [exact(row.row_id), text(row.designation)])
     : [])
   const named = (id: string | undefined) => { const r = roles.find(x => x.id === id); return r ? { id: r.id, name: r.name } : undefined }
