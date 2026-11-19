@@ -1,0 +1,8 @@
+{
+  "include": [
+    ".",
+    "../client-apps/jeyarama/dash/README.md",
+    "../openspec/specs",
+    "../docs"
+  ]
+}

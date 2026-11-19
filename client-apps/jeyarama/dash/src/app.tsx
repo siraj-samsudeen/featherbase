@@ -2,6 +2,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
 import { REPORT_TIMEOUT_MS, reachMessage, type ReachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, liveFrame, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
+import { ReportAnswer } from './ask-panel'
+import { ChatPanel } from './chat-panel'
+import type { Asked, AskResult } from './ask'
 import type { Heading, Report, ReportRow, Totals } from './report'
 import { DashSidebar, DEPARTMENT_ADDRESS, SECTIONS_ADDRESS, readReports, type ReportLink } from './sections-page'
 import { PrefillBanner, awayLine, capital, sentence, type Setup } from './department-page'
@@ -133,6 +136,8 @@ export function Dash() {
   }, [])
   const tryAgain = useCallback(() => (checkFailed ? setCheckAttempt : setAttempt)((n) => n + 1), [checkFailed])
   // Only a state of the store now chosen is drawn, whatever reached it (round 8).
+  // #1353: the latest report asked for in FeatherBot's Reports mode, drawn on this page until it is closed.
+  const [asked, setAsked] = useState<(Asked & { result: AskResult }) | undefined>(undefined)
   const shown = visibleState(state, store?.value, month)
   const { report } = shown
   const view = checkFailed && !store ? { kind: 'failed' as const } : pageView(shown)
@@ -165,7 +170,11 @@ export function Dash() {
           diveFilters={view.kind === 'dive' ? diveFilters : undefined} pickersInDive={!!current.pickers_in_dive && view.kind === 'dive'}
           chosen={`${store?.value ?? ''}|${month}`} hidden={!showsReport} />
       )}
+      {/* #1353: FeatherBot, beside "Report an issue": its button shows only to someone who holds one of its modes. */}
+      <ChatPanel onReport={setAsked} />
       </div>
+      {/* A report asked for in FeatherBot's Reports mode. */}
+      {asked && <ReportAnswer report={asked} onClose={() => setAsked(undefined)} />}
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}
       {/* #1143: one place for the frame, on show or out of sight behind the quick view, so the Dive
           that says it is ready after the deadline takes over in the same frame, never reloaded. */}

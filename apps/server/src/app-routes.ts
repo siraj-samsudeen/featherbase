@@ -5,10 +5,13 @@ import { buildInfo } from './build-info'
 import { assertSystemManager } from './permissions'
 import { recordAppAccessRefusal } from './app-access'
 import { installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { appCatalog, closedApps, appBar, packageFailures, runPackageAction, runPublicPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { appCatalog, closedApps, appBar, packageFailures, runPackageAction, runPublicPackageRead, runPackageAnalysis, askPackageQuestion, earlierPackageQuestions, forgetPackageQuestions, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { activeRuntimeVersions, appOperation } from './app-lifecycle'
 import { who, type Env } from './route-context'
+import { answerHelp } from './help'
+import { chatModes, chatRequests, chatSession, chatSessions, closeChatSession, decideChatRequest, sendChat } from './app-chat'
+import { usageReport } from './model-usage'
 import { explainRecord, whyOffer } from './why'
 import { workedOutFor } from './worked-out'
 
@@ -51,6 +54,69 @@ appRoutes.post('/api/app_actions/:app/:action', async (c) =>
 appRoutes.post('/api/app_reads/:app/:read', async (c) => {
   c.header('Cache-Control', 'no-store')
   return c.json(await runPublicPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
+})
+// A plan answered from one of the app's semantic models, as the read the
+// model names.
+appRoutes.post('/api/app_analyses/:app/:model', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await runPackageAnalysis(c.req.param('app'), c.req.param('model'), await c.req.json(), who(c)))
+})
+// A question in words, turned into a plan for that model and answered as one.
+// The platform keeps the asker's questions, so a follow-up carries on from them.
+appRoutes.post('/api/app_questions/:app/:model', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await askPackageQuestion(c.req.param('app'), c.req.param('model'), await c.req.json(), who(c)))
+})
+appRoutes.post('/api/app_questions/:app/:model/earlier', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await earlierPackageQuestions(c.req.param('app'), c.req.param('model'), who(c)))
+})
+appRoutes.post('/api/app_questions/:app/:model/start_over', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await forgetPackageQuestions(c.req.param('app'), c.req.param('model'), who(c)))
+})
+// An app's chat panel: the modes this person holds, their conversations, and
+// what they say in a mode, answered by the tool that mode names.
+appRoutes.post('/api/app_chat/:app/modes', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await chatModes(c.req.param('app'), who(c)))
+})
+appRoutes.post('/api/app_chat/:app/sessions', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await chatSessions(c.req.param('app'), who(c)))
+})
+appRoutes.post('/api/app_chat/:app/sessions/:id', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await chatSession(c.req.param('app'), c.req.param('id'), who(c)))
+})
+appRoutes.post('/api/app_chat/:app/sessions/:id/close', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await closeChatSession(c.req.param('app'), c.req.param('id'), who(c)))
+})
+appRoutes.post('/api/app_chat/:app/send', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await sendChat(c.req.param('app'), await c.req.json(), who(c)))
+})
+// Requests sent through the chat's Action mode: the person's own and, for a
+// reviewer, those waiting; and a reviewer's decision on one.
+appRoutes.post('/api/app_chat/:app/requests', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await chatRequests(c.req.param('app'), who(c)))
+})
+appRoutes.post('/api/app_chat/:app/requests/:id/decide', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await decideChatRequest(c.req.param('app'), c.req.param('id'), await c.req.json(), who(c)))
+})
+// What the language model has used this month against the instance's allowance.
+appRoutes.post('/api/analyst/usage', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  await assertSystemManager(who(c))
+  return c.json(await usageReport())
+})
+// A question about how things work, answered from the help folder with its sources.
+appRoutes.post('/api/help/ask', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await answerHelp(await c.req.json()))
 })
 // #1282 C10–C11: the record panel's worked-out sections, an installed app's answer about one record.
 appRoutes.get('/api/worked-out/:table/:row', async (c) => c.json(await workedOutFor(c.req.param('table'), c.req.param('row'), who(c))))

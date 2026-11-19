@@ -11,7 +11,7 @@ import { PROVIDER_FIELDS, PROVIDER_TABLES } from './provider.ts'
 import { BASE_TABLES } from './my-sections.ts'
 import { BUYER_TABLES } from './buyers.ts'
 import { DESIGNATION, SHADOW_TABLES } from './business-roles-server.ts'
-import { READ_ROLES } from './report-eligibility.ts'
+import { CHAT_ROLES, READ_ROLES } from './report-eligibility.ts'
 import { ACCESS_SOURCE } from './access-source.ts'
 import { SWITCH_OVER_LOG } from './switch-over.ts'
 import { PERMISSION_CHANGE } from './permission-grid-server.ts'
@@ -29,7 +29,7 @@ describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
     expect(manifest.title).toBe('Dash')
     expect(manifest.name).toBe('dash')
-    expect(manifest.roles).toEqual(ROLES)
+    expect(manifest.roles).toEqual([...ROLES, ...CHAT_ROLES])
     expect([...new Set(manifest.tables.map(table => table.module))]).toEqual(['Dash'])
   })
 })
@@ -220,7 +220,8 @@ describe('the read grants, declared before the first install', () => {
   // Siraj, 11-Nov-2026 ("Drop whatever is not implemented"): no section editor or reviewer role.
   // #1192 (same day): Dash All-Stores Reader reaches every store. #1217: Team Report Manager gives reports to their team.
   it('declares only the roles Dash uses', () => {
-    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester'])
+    // #1353: FeatherBot's five: one per chat mode, and the reviewer of what its Action mode sends.
+    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester', ...CHAT_ROLES])
   })
 
   // #1218: how far a business role reaches is a required choice on the role, in the step that adds the Table and in its declaration.
@@ -351,12 +352,14 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['permission_grid', '0.13.38', '0.13.39', 3],
       // #1282: the Lens's worked-out sections, a read only, with no Table change.
       ['worked_out_sections', '0.13.39', '0.13.40', 0],
+      // #1353: FeatherBot: the semantic models, the chat and its roles, with no Table change.
+      ['featherbot', '0.13.40', '0.13.42', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
-    expect(pkg.version).toBe('0.13.40')
+    expect(pkg.version).toBe('0.13.42')
   })
 })

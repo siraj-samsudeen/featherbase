@@ -146,3 +146,53 @@ describe('the sales_month query on the warehouse', () => {
   })
 })
 
+// The months side by side (ask-questions-of-app-data): this month and the three before it, each
+// counted over the same days of the month as this month so far, so "compare with last month" is
+// fair partway through a month. The data here runs to the 1st, so each month counts its 1st only.
+describe('the sales_by_month query on the warehouse', () => {
+  let rows: Row[]
+  let lastMonth: string
+  const of = (code: string, monthsAgo: number) => rows.find(r => r.subcategory_code === code && Number(r.months_ago) === monthsAgo)
+
+  beforeAll(async () => {
+    const [labels] = await run(`select strftime(date '${day1}' - interval 1 month, '%Y-%m') as last_month`)
+    lastMonth = String(labels.last_month)
+    // Last month: Silk sarees had a target and a sale on the 1st and again on the 2nd, and Scarves
+    // sold on the 1st with no target. Five months ago is further back than the query looks.
+    await run(`insert into marts.sales.target_vs_actual_daily values
+      ('9901', '010101001', 'material_group', cast(date '${day1}' - interval 1 month as date), 900, 700, date '${day1}', 4, 3),
+      ('9901', '010101001', 'material_group', cast(date '${day1}' - interval 1 month + interval 1 day as date), 900, 650, date '${day1}', 4, 3),
+      ('9901', '010101001', 'material_group', cast(date '${day1}' - interval 5 month as date), 400, 300, date '${day1}', 2, 1)`)
+    await run(`insert into gold.sales.sales_item_daily values
+      ('9901', '010303001', cast(date '${day1}' - interval 1 month as date), 300, 'merchandise', 1)`)
+    rows = await run(query('sales_by_month'))
+  })
+
+  it("gives this month the same figures as sales_to_date, row for row", async () => {
+    const toDate = await run(query('sales_to_date'))
+    const figures = (r: Row) => [r.subcategory_code, r.target === null ? null : Number(r.target), r.actual === null ? null : Number(r.actual),
+      r.target_quantity === null ? null : Number(r.target_quantity), r.actual_quantity === null ? null : Number(r.actual_quantity)]
+    const sorted = (list: Row[]) => list.map(figures).sort((a, b) => String(a[0]) < String(b[0]) ? -1 : 1)
+    expect(sorted(rows.filter(r => Number(r.months_ago) === 0))).toEqual(sorted(toDate))
+  })
+
+  it('counts last month over the same days as this month so far, and no later day', async () => {
+    const silk = of('010101001', 1)!
+    expect([Number(silk.target), Number(silk.actual), Number(silk.target_quantity), Number(silk.actual_quantity)]).toEqual([900, 700, 4, 3])
+    expect((silk.data_through as Date).toISOString().slice(0, 10).slice(8)).toBe('01')
+  })
+
+  it('takes a month with no mart row from the sales lines, with no target', async () => {
+    const scarves = of('010303001', 1)!
+    expect([scarves.target, Number(scarves.actual), Number(scarves.actual_quantity)]).toEqual([null, 300, 1])
+  })
+
+  it('names each month YYYY-MM and says how many months ago it was', async () => {
+    expect([...new Set(rows.map(r => `${r.months_ago} ${r.month_label}`))].sort()).toEqual([`0 ${day1.slice(0, 7)}`, `1 ${lastMonth}`])
+  })
+
+  it('names the store and subcategory on every row, and looks back three months only', async () => {
+    expect(rows.every(r => r.store_name === 'Lakeside' && r.subcategory !== null)).toBe(true)
+    expect(rows.some(r => Number(r.months_ago) > 3 || Number(r.target) === 400)).toBe(false)
+  })
+})

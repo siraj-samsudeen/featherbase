@@ -331,6 +331,37 @@ for (const [store, managers] of Object.entries(Object.groupBy(org.prefills as { 
 await save('dash.report_access', { report_bundle: bundle, job: 'Store Manager' }).catch(() => {})
 await post('/api/app_actions/dash/add_starting_roles', { idempotencyKey: randomUUID(), payload: {} })
 
+// #1353: FeatherBot. A chat mode is held by its role, never by standing, so the made-up readers are
+// each given the four modes; the Administrator, who has no store, is given Ask alone and reviews the
+// requests the others send through the Action mode. A rerun adds nothing.
+const CHAT_ROLES = ['Dash Chat Agent', 'Dash Chat Reports', 'Dash Chat Ask', 'Dash Chat Action']
+const chatHolders = [...(await sql`select row_id from person where lower(email) like 'reader-%@example.test'`).map(row => [String(row.row_id), CHAT_ROLES] as const),
+  ['Administrator', ['Dash Chat Ask', 'Dash Chat Reviewer']] as const]
+for (const [holder, roles] of chatHolders) for (const role of roles) {
+  const [held] = await sql`select 1 from has_role where parent = ${holder} and parenttype = 'Person' and role = ${role}`
+  if (!held) await sql`insert into has_role ${sql({ row_id: randomUUID(), parent: holder, parenttype: 'Person', parentfield: 'roles', role, position: 90 + roles.indexOf(role) } as never)}`
+}
+
+// The months side by side (`sales_by_month`): this month's made-up facts, and for the three months
+// before it the same subcategories with figures a little up or down, each counted to the same day
+// of its month. Bayside's 1,600 lines carry this month and last month only, to keep the seed quick.
+const firstOf = (ago: number) => new Date(Date.UTC(Number(periodStart.slice(0, 4)), Number(periodStart.slice(5, 7)) - 1 - ago, 1))
+const daysIn = Math.max(0, Math.round((Date.parse(dataThrough) - Date.parse(periodStart)) / 86_400_000))
+const sameDay = (ago: number) => {
+  const lastDay = new Date(Date.UTC(firstOf(ago).getUTCFullYear(), firstOf(ago).getUTCMonth() + 1, 0)).getTime()
+  return new Date(Math.min(firstOf(ago).getTime() + daysIn * 86_400_000, lastDay)).toISOString().slice(0, 10)
+}
+const EARLIER = [1, 0.92, 1.07, 0.85]
+const byMonth = facts.filter(fact => fact.period_start === periodStart).flatMap((fact, i) =>
+  [0, 1, 2, 3].filter(ago => fact.store_code !== '9906' || ago < 2).map((ago) => {
+    const factor = ago === 0 ? 1 : EARLIER[ago] + ((i % 5) - 2) * 0.04
+    const scaled = (value: number | null, places: number) => value == null ? null : Math.round(value * factor * 10 ** places) / 10 ** places
+    return { store_code: fact.store_code, store_name: fact.store_name, subcategory_code: fact.subcategory_code, subcategory: fact.subcategory,
+      month_label: firstOf(ago).toISOString().slice(0, 7), months_ago: ago, month_start: firstOf(ago).toISOString().slice(0, 10), data_through: sameDay(ago),
+      target: fact.target, actual: scaled(fact.actual, 2), target_quantity: fact.target_quantity, actual_quantity: scaled(fact.actual_quantity, 3) }
+  }))
+await seed('sales_by_month', byMonth)
+
 // The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
 const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ usr: 'reader-sm@example.test', pwd: PASSWORD }) })

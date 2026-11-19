@@ -830,14 +830,15 @@ app.use('/api/*', async (c, next) => {
     // authorizes (and, unless outbound, runs), so an outbound handler waiting
     // on an outside call holds no lifecycle connection.
     // #642: the top bar's options are app reads too (Codex round 1 on #643).
-    const appRead = c.req.path.startsWith('/api/app_reads/') || c.req.path.startsWith('/api/app_bar/')
+    const appRead = c.req.path.startsWith('/api/app_reads/') || c.req.path.startsWith('/api/app_bar/') || c.req.path.startsWith('/api/app_analyses/')
+      || c.req.path.startsWith('/api/app_questions/') || c.req.path.startsWith('/api/app_chat/')
     // #971: a copy reads its source with no lifecycle lock and takes it to apply.
     const run = () => appRead || isCopyRequest(c.req.method, c.req.path) ? next() : appOperation(next)
     // #1211: /mcp's own inner request (marked in-process, never by a header)
     // has no client to go stale; a browser's must name the version it loaded.
     return agentMark() ? withInstalledAppVersions(run) : withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', run)
   } catch (error) {
-    const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
+    const protectedOperation = /^\/api\/app_(?:reads|actions|analyses|questions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
     if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')
     throw error
   }

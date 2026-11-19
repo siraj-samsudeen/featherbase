@@ -130,6 +130,44 @@ code {
 .fd-issue-mine li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--color-border); font-size: 13px; }
 .fd-issue-mine-what { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
+/* #1353: FeatherBot. Its button sits on the header's line beside "Report an issue"; its panel is the
+   same side panel (.fd-issue-panel), so the report keeps the full width after the sidebar. Parts are
+   set apart by space and fills, not rules. */
+.fd-chat-open { margin-left: auto; flex-shrink: 0; }
+.fd-report-issue + .fd-chat-open { margin-left: 0; }
+.fd-chat { gap: 0; padding: 0; }
+.fd-chat-head { display: flex; align-items: center; gap: 4px; padding: 16px 20px 8px; }
+.fd-chat-head h2 { margin: 0 auto 0 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fd-chat-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 8px 20px 16px; }
+.fd-chat-body p { margin: 0; }
+.fd-chat-said { align-self: flex-end; max-width: 85%; padding: 8px 12px; border-radius: 12px; background: var(--color-action-tint); overflow-wrap: anywhere; }
+.fd-chat-reply { display: flex; flex-direction: column; gap: 8px; overflow-wrap: anywhere; }
+.fd-chat-text { white-space: pre-wrap; }
+.fd-chat-suggestions { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.fd-chat-suggestions .fd-chip { text-align: left; border-radius: 12px; }
+.fd-chat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fd-chat-session { display: flex; align-items: center; gap: 4px; border-radius: var(--radius-control); }
+.fd-chat-session:hover { background: var(--color-subtle); }
+.fd-chat-session-open { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; padding: 8px; border: 0; background: none; color: var(--color-ink); font: inherit; text-align: left; cursor: pointer; }
+.fd-chat-session-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-action); font-weight: 500; }
+.fd-chat-request { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; background: var(--color-subtle); }
+.fd-chat-request-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fd-chat-inputs { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 4px 8px; margin: 0; font-size: 13px; }
+.fd-chat-inputs dt { color: var(--color-ink-muted); }
+.fd-chat-inputs dd { margin: 0; overflow-wrap: anywhere; }
+.fd-chat-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.fd-chat-sources { margin: 0; padding-left: 18px; font-size: 12px; color: var(--color-ink-muted); }
+.fd-chat-form { display: flex; flex-direction: column; gap: 8px; padding: 12px 20px 16px; background: var(--color-subtle); }
+.fd-chat-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.fd-chat .fd-table th, .fd-chat .fd-table td { padding: 6px; font-size: 13px; }
+/* A report asked for in FeatherBot's Reports mode, on the page above the store's own report. */
+.fd-ask { max-width: 960px; width: 100%; margin: 0 auto 12px; display: flex; flex-direction: column; gap: 8px; }
+.fd-ask-head { display: flex; align-items: flex-start; gap: 12px; }
+.fd-ask-question { flex: 1; margin: 0; font-size: 16px; line-height: 1.3; font-weight: 600; }
+.fd-ask p { margin: 0; }
+.fd-ask-definitions { margin: 6px 0 0; padding-left: 18px; color: var(--color-ink-muted); }
+.fd-ask-sql { margin: 6px 0 0; padding: 8px 10px; border-radius: var(--radius-control); background: var(--color-subtle); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* #1222: while a tester views as someone (the platform's bar marks the page), nothing offers a change. */
 html[data-featherbase-viewing-as] [data-action],
 html[data-featherbase-viewing-as] [data-action-hint] { display: none !important; }

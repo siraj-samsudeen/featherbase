@@ -82,7 +82,15 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[]; optionalColumns?: Record<string, string[]> } }
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
-  // #1282's 0.13.40 (the Lens's worked-out sections) changes no Table and comes off first.
+  // #1353's 0.13.42 (FeatherBot) changes no Table and comes off first: its chat roles, its months dataset,
+  // the chat and the semantic models.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'featherbot', fromVersion: '0.13.40', operations: [] })
+  const bot = manifest as Revertable & { roles?: string[]; datasets?: { name: string }[]; chat?: unknown; semantic?: unknown }
+  if (bot.roles) bot.roles = bot.roles.filter(role => !role.startsWith('Dash Chat '))
+  if (bot.datasets) bot.datasets = bot.datasets.filter(dataset => dataset.name !== 'sales_by_month')
+  delete bot.chat
+  delete bot.semantic
+  // #1282's 0.13.40 (the Lens's worked-out sections) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'worked_out_sections', fromVersion: '0.13.39', operations: [] })
   // #1282's 0.13.39 (the permission grid): a permission's removed mark and the grid's change log; it comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'permission_grid', fromVersion: '0.13.38',

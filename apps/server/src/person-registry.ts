@@ -113,6 +113,17 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   // #625: an app dataset's rows: warehouse figures, no person in them.
   app_dataset_row: { '*': code },
   dataset_miss: { '*': code },
+  // ask-questions-of-app-data: who asked what of an app's figures, and what it became.
+  // A person's conversations with an app's chat panel, and what was said and answered in them.
+  chat_session: { owner: id, app: code, title: text },
+  chat_message: { role: code, mode: code, content: text },
+  // A request sent through an app's chat, who sent it and who decided it.
+  chat_request: { requester: id, decided_by: id, app: code, request: code, prefix: code, title: text, inputs: text, status: code, note: text },
+  // What each call to the language model used: no person in it.
+  model_usage: { '*': code },
+  // The help folder's passages and their embeddings: no person in them.
+  help_passage: { '*': code, heading: text, body: text },
+  app_question: { asker: id, app: code, model: code, question: text, sql: text, plan: text, clarify: text, refused: text },
   // #667: which filter keys a dataset could not apply; no person, label or value.
   dataset_place_drop: { '*': code },
   dataset_snapshot: { dataset: code, state: code, definition_version: code, triggered_by: id, error: text },

@@ -30,6 +30,25 @@ being prepared" while the cached copy isn't built, or behind "This month's figur
 yet": those speak for the cached copy, and the Dive reads the warehouse itself. If it then says it is
 ready, the page switches to it in the same frame. A frame that errors falls back for good (#1143).
 
+**FeatherBot, the chat on a report** (#1353; a button on the report's header line opens its side panel) (OpenSpec change
+`ask-questions-of-app-data`). The manifest's `semantic` section declares two
+models (`sales_vs_target` over `sales_to_date`, `sales_by_month` over
+`sales_by_month`) and its `chat` section four modes, each opened by its own
+app role:
+
+| Mode | Role | What it does |
+|---|---|---|
+| Agent | Dash Chat Agent | a question about the figures, answered in the chat by SQL over the reader's own rows |
+| Reports | Dash Chat Reports | a question about the figures, drawn as a report on the page |
+| Ask | Dash Chat Ask | how things work, answered from `help/` with its sources |
+| Action | Dash Chat Action | a target review (TR-n), sent once the reader confirms it |
+
+Dash Chat Reviewer approves or rejects target reviews under
+**Requests**. With `--made-up-data` every made-up reader holds the four modes,
+and the Administrator holds Ask and Reviewer alone. The platform's side needs
+`ANTHROPIC_API_KEY`; `ANALYST_MONTHLY_TOKENS` and `CHAT_DAILY_MESSAGES` limit
+use (see DEPLOY.md).
+
 ## Layout
 
 | Path | What it is |
@@ -204,6 +223,15 @@ at the repository root.
   `embed_session` take `{ month }` (`this` when missing); `report` reads that
   month's datasets, and the Dive gets the month's last day under its `month_key`. The Dive caps its anchor day at `period_end` (Sales Target Dive
   v14, data-warehouse#4630), so it shows last month as it shows this month.
+- **The months side by side, `sales_by_month`**: one row per store, subcategory
+  and month, for this month and the three before it, with target, sales and
+  quantities. Every month is counted over the same days of the month as this
+  month so far, so a month in progress compares fairly with the ones before
+  it. `months_ago` is 0 for this month. It follows `sales_to_date`'s rules
+  month by month (`src/dataset-query.test.ts` proves this month's rows equal
+  `sales_to_date`'s), is limited to the reader the same way, and has no
+  refresh guard yet. Only the `sales_by_month` semantic model reads it, to
+  answer questions such as "how do my sales compare with last month?".
 - **The reads** (`POST /api/app_reads/dash/<read>` with
   `{"payload":{…}}` and the header `X-Featherbase-App-Version:
   dash@<version>`, which the client sends):

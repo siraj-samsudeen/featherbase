@@ -1,0 +1,345 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "semanticproof",
+  "title": "Semantic proof",
+  "entryTable": "semanticproof.note",
+  "server": "server.mjs",
+  "tables": [
+    {
+      "name": "semanticproof.note",
+      "label": "note",
+      "id_pattern": "prompt",
+      "columns": [
+        {
+          "column_name": "body",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "semanticproof.zone",
+      "label": "zone",
+      "id_pattern": "prompt",
+      "columns": [
+        {
+          "column_name": "zone_name",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "semanticproof.placement",
+      "label": "placement",
+      "id_pattern": "prompt",
+      "columns": [
+        {
+          "column_name": "store",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subcategory",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "zone",
+          "column_type": "Reference",
+          "reference_table": "semanticproof.zone"
+        },
+        {
+          "column_name": "starts_on",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "ends_on",
+          "column_type": "Date"
+        }
+      ]
+    }
+  ],
+  "roles": [
+    "Semantic Reader",
+    "Semantic Chat Agent",
+    "Semantic Chat Reports",
+    "Semantic Chat Ask",
+    "Semantic Chat Action",
+    "Semantic Chat Reviewer"
+  ],
+  "permissions": [
+    {
+      "table": "semanticproof.note",
+      "role": "Semantic Reader",
+      "can_read": true
+    }
+  ],
+  "baseTables": { "read": { "semanticproof.zone": ["zone_name"] } },
+  "datasets": [
+    {
+      "name": "sales",
+      "source": "semanticproof-warehouse",
+      "query": "select store_code, store_name, subcategory, target, actual, units from b5_semantic.sales",
+      "columns": [
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory",
+          "type": "text"
+        },
+        {
+          "name": "target",
+          "type": "money"
+        },
+        {
+          "name": "actual",
+          "type": "money"
+        },
+        {
+          "name": "units",
+          "type": "integer"
+        }
+      ],
+      "keys": [
+        "store_code",
+        "subcategory"
+      ],
+      "filters": {
+        "store": "store_code",
+        "section": "subcategory"
+      }
+    }
+  ],
+  "semantic": {
+    "models": [
+      {
+        "name": "sales_vs_target",
+        "description": "Sales against target, per store and subcategory.",
+        "dataset": "sales",
+        "read": "ask",
+        "dimensions": [
+          {
+            "name": "store",
+            "column": "store_name",
+            "synonyms": [
+              "branch"
+            ]
+          },
+          {
+            "name": "subcategory",
+            "column": "subcategory"
+          },
+          {
+            "name": "zone",
+            "relationship": "zone",
+            "column": "zone_name"
+          }
+        ],
+        "measures": [
+          {
+            "name": "target",
+            "column": "target",
+            "aggregate": "sum"
+          },
+          {
+            "name": "sales",
+            "column": "actual",
+            "aggregate": "sum",
+            "synonyms": [
+              "actual"
+            ]
+          },
+          {
+            "name": "units",
+            "column": "units",
+            "aggregate": "sum"
+          }
+        ],
+        "metrics": [
+          {
+            "name": "gap",
+            "expression": "sales - target"
+          },
+          {
+            "name": "achieved",
+            "expression": "100 * sales / target",
+            "unit": "percent"
+          }
+        ],
+        "verified": [
+          {
+            "question": "Which subcategories are furthest behind target?",
+            "plan": {
+              "measures": [
+                "gap"
+              ],
+              "groupBy": [
+                "subcategory"
+              ],
+              "order": [
+                [
+                  "gap",
+                  "asc"
+                ]
+              ],
+              "limit": 5
+            }
+          }
+        ],
+        "relationships": [
+          {
+            "name": "placement",
+            "table": "semanticproof.placement",
+            "on": {
+              "store_code": "store",
+              "subcategory": "subcategory"
+            },
+            "current": {
+              "from": "starts_on",
+              "to": "ends_on"
+            }
+          },
+          {
+            "name": "zone",
+            "from": "placement",
+            "table": "semanticproof.zone",
+            "on": {
+              "zone": "row_id"
+            }
+          }
+        ]
+      },
+      {
+        "name": "pieces_sold",
+        "description": "Pieces sold, per store.",
+        "dataset": "sales",
+        "read": "ask",
+        "dimensions": [
+          {
+            "name": "store",
+            "column": "store_name"
+          }
+        ],
+        "measures": [
+          {
+            "name": "pieces",
+            "column": "units",
+            "aggregate": "sum"
+          }
+        ],
+        "verified": [
+          {
+            "question": "How many pieces has each store sold?",
+            "plan": {
+              "measures": [
+                "pieces"
+              ],
+              "groupBy": [
+                "store"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "reads": {
+    "version": 1,
+    "tables": [
+      "semanticproof.note"
+    ],
+    "operations": {
+      "ask": {
+        "policy": {
+          "kind": "person_scope",
+          "readRoles": [
+            "Semantic Reader"
+          ],
+          "actionRoles": []
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "away": {
+        "policy": {
+          "kind": "person_scope",
+          "readRoles": [
+            "Semantic Reader"
+          ],
+          "actionRoles": []
+        },
+        "authorization": {
+          "kind": "generic"
+        },
+        "outbound": true
+      },
+      "open": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      }
+    }
+  },
+  "chat": {
+    "title": "ProofBot",
+    "modes": {
+      "agent": {
+        "roles": [
+          "Semantic Chat Agent"
+        ],
+        "model": "sales_vs_target"
+      },
+      "reports": {
+        "roles": [
+          "Semantic Chat Reports"
+        ],
+        "model": "sales_vs_target"
+      },
+      "ask": {
+        "roles": [
+          "Semantic Chat Ask"
+        ]
+      },
+      "action": {
+        "roles": [
+          "Semantic Chat Action"
+        ],
+        "reviewers": [
+          "Semantic Chat Reviewer"
+        ],
+        "requests": [
+          {
+            "name": "target_review",
+            "title": "Target review",
+            "description": "Ask for a subcategory's target to be looked at again.",
+            "ticket": "TR",
+            "model": "sales_vs_target",
+            "inputs": [
+              { "name": "store", "label": "Store", "description": "the store the target is for", "dimension": "store" },
+              { "name": "subcategory", "label": "Subcategory", "description": "the subcategory whose target should be reviewed", "dimension": "subcategory" },
+              { "name": "reason", "label": "Reason", "description": "why the target should be looked at again" },
+              { "name": "by_when", "label": "Needed by", "description": "the day an answer is needed", "optional": true }
+            ]
+          },
+          {
+            "name": "price_check",
+            "title": "Price check",
+            "description": "Ask for a price to be checked.",
+            "ticket": "PC",
+            "inputs": [
+              { "name": "item", "label": "Item", "description": "what the price is of" }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

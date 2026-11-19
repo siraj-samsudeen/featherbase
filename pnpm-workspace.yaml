@@ -6,6 +6,13 @@ packages:
 # carrying it is missing (#692). pnpm 12 uses allowBuilds for this permission.
 allowBuilds:
   esbuild: true
+  # #1353: @huggingface/transformers (the local help-embedding model) brings
+  # these three. Their install scripts are declined: the packages carry their
+  # own prebuilt binaries, and no new script runs at install until the owner
+  # decides on the local model (docs/plans/featherbot-1353-review.md).
+  onnxruntime-node: false
+  protobufjs: false
+  sharp: false
 
 # Exact patches approved in #747 item 3, published within pnpm 12's default
 # 24-hour release-age window. Keep that default for every other release.
