@@ -13,6 +13,7 @@ import { dataColumns, isShown, listFields, listLeader, switchColumn, viewColumns
 import { describeView, listDefaultsWith, tableViewDefaultQuery, viewAsDefault } from '../lib/table-view-default'
 import { TableDefaultDialog } from './TableDefaultDialog'
 import { layoutSavesSettled } from '../lib/list-layout'
+import { SIDEBAR_DRAWER_QUERY } from '../lib/sidebar-collapsed'
 import { userSettingsQuery } from './FormArrangement'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings } from '../lib/settings'
@@ -169,6 +170,8 @@ export function ListView({
   const queryClient = useQueryClient()
   // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
   const narrow = useMediaQuery(NARROW_QUERY)
+  // #1282 A4 (verifier): at this width every list shows as Table, which is the phone's, not the person's choice.
+  const phoneWidth = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
   // UI-013 / #738: per-user saved settings — sort, and which columns show,
@@ -571,13 +574,18 @@ export function ListView({
   const visible = (defaults: Set<string>, arr: ColumnArrangement) =>
     (meta.data ? dataColumns(meta.data) : []).map((c) => c.column_name).filter((c) => isShown(c, defaults, arr)).join('\u0000')
   const viewDiffers = Boolean(meta.data) && (
-    (!narrow && Boolean(layout) && layout !== (td.layout ?? builtInLayout))
+    (!phoneWidth && Boolean(layout) && layout !== (td.layout ?? builtInLayout))
     || visible(listDefaults, arrangement) !== visible(listDefaults, {})
     || JSON.stringify(shownSort) !== JSON.stringify(td.sort ?? null)
     || compact !== (td.compact ?? false)
     || shownLinks.as !== (td.links?.as ?? 'sections') || shownLinks.fields !== (td.links?.fields ?? true)
     || showRetired)
-  const asDefault = () => viewAsDefault(meta.data!, arrangement, td, { layout: layout ?? builtInLayout, sort: shownSort, compact, links: shownLinks })
+  // On a phone the saved layout is the person's own desktop choice, else the default's: never the phone's Table.
+  const ownLayout = ownSettings.data?.settings?.layout
+  const savedLayout = phoneWidth
+    ? (ownLayout === 'table' || ownLayout === 'split' || ownLayout === 'panel' ? ownLayout : td.layout ?? builtInLayout)
+    : layout ?? builtInLayout
+  const asDefault = () => viewAsDefault(meta.data!, arrangement, td, { layout: savedLayout, sort: shownSort, compact, links: shownLinks })
   async function resetView() {
     // After every save already on its way, so none of them lands after the reset and brings a choice back
     // (Codex adversarial round 2): this list's own saves, and the layout's.
@@ -1064,7 +1072,7 @@ export function ListView({
               differs from it goes back to it. */}
           {canShapeColumns && meta.data && (
             <button type="button" className={buttonClasses()} data-testid="make-table-default"
-              onClick={() => { setViewMenuOpen(false); setConfirmingDefault(true) }}>
+              onClick={() => { setViewMenuOpen(false); setColPickerOpen(false); setConfirmingDefault(true) }}>
               Make This the Table's Default…
             </button>
           )}

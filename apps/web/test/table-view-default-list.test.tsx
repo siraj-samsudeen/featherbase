@@ -164,3 +164,20 @@ test("the column switches wait for the person's saved columns, which stay as the
       .toMatchObject({ shownCols: ['bay'], hiddenCols: ['aisle'] }), T)
   } finally { release(); vi.restoreAllMocks() }
 })
+
+// Verifier: a phone shows every list as Table, which is the phone's, not the person's choice; a default saved from
+// a phone keeps the person's own desktop layout.
+test("a default made on a phone keeps the person's desktop layout, not the phone's Table", async ({ admin }) => {
+  await seed(admin)
+  await admin.fetch(`/api/user_settings/${enc(DT)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ layout: 'split' }) })
+  vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
+    matches: q === '(width < 48rem)', media: q, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  }) as unknown as MediaQueryList)
+  try {
+    await renderApp(tableHref(DT), admin)
+    await userEvent.click((await openListMenu('View')).getByRole('button', { name: "Make This the Table's Default…" }))
+    const dialog = await screen.findByTestId('table-default-dialog', {}, T)
+    expect(within(dialog).getByTestId('table-default-words').children[0]!.textContent).toBe('List And Record')
+  } finally { vi.restoreAllMocks() }
+})
