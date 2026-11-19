@@ -147,13 +147,22 @@ const stateOf = (ok: boolean, severity: Severity) => STATE[ok ? 'passing' : seve
 
 /** The Activity Log in the hour before a change and the 15 minutes after:
  *  what someone did that broke or fixed it. */
-function activityAround(at: string): string {
+const SCHEDULED_JOB_CHECK = 'scheduled-job:'
+
+/** Where a History entry leads (#1361): a scheduled job's check to that job's
+ *  own runs, which carry the outcome and its whole error or result; any other
+ *  check to the Activity Log around the change. */
+function historyLink(checkKey: string, at: string): { href: string; label: string } {
   const t = new Date(at).getTime()
-  const filters = [
-    ['created_at', '>=', new Date(t - 60 * 60_000).toISOString()],
-    ['created_at', '<=', new Date(t + 15 * 60_000).toISOString()],
+  const window = (column: string) => [
+    [column, '>=', new Date(t - 60 * 60_000).toISOString()],
+    [column, '<=', new Date(t + 15 * 60_000).toISOString()],
   ]
-  return `${tableHref('Activity Log')}?filters=${encodeURIComponent(JSON.stringify(filters))}`
+  const href = (table: string, filters: unknown[]) => `${tableHref(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}`
+  const job = checkKey.startsWith(SCHEDULED_JOB_CHECK) ? checkKey.slice(SCHEDULED_JOB_CHECK.length) : null
+  return job
+    ? { href: href('Job Execution', [['method', '=', job], ...window('started_at')]), label: 'This job\'s runs around this change' }
+    : { href: href('Activity Log', window('created_at')), label: 'Activity around this change' }
 }
 
 function historyLine(h: HistoryEntry): string {
@@ -216,18 +225,21 @@ function CheckCard({ check }: { check: HealthCheckView }) {
             History ({check.history.length})
           </summary>
           <ol className="mt-1 space-y-2 border-l border-border pl-3">
-            {check.history.map((h) => (
+            {check.history.map((h) => {
+              const link = historyLink(check.key, h.from)
+              return (
               <li key={h.from} data-testid="health-history-entry">
                 <p className="text-ink">{historyLine(h)}</p>
                 <p className="text-xs text-ink-muted [overflow-wrap:anywhere]">{h.message}</p>
                 <a
-                  href={activityAround(h.from)}
+                  href={link.href}
                   className="inline-flex min-h-8 items-center text-xs text-action underline underline-offset-2 max-sm:min-h-11"
                 >
-                  Activity around this change
+                  {link.label}
                 </a>
               </li>
-            ))}
+              )
+            })}
           </ol>
         </details>
       )}
