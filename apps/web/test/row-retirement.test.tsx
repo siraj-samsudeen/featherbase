@@ -105,7 +105,7 @@ test('#859 a System Manager deletes a row permanently, seeing what points at it 
   expect(orders.data).toEqual([{ plant: null }])
 }, 40_000)
 
-test('#859 Escape closes the Delete permanently dialog wherever it was opened, changing nothing', async ({ admin }) => {
+test('#859 Escape closes the Delete Permanently dialog wherever it was opened, changing nothing', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
   await renderApp(`${path}/row/${encodeURIComponent('Sample plant')}`, admin)
@@ -128,7 +128,7 @@ async function recordAction(admin: Admin, action: string) {
   return user
 }
 
-test('#859 a delete refused by history also offers Delete permanently instead', async ({ admin }) => {
+test('#859 a delete refused by history also offers Delete Permanently instead', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/table/Comment', { ref_table: TABLE, ref_name: 'Sample plant', content: 'keep this' })
   const user = await recordAction(admin, 'form-delete')
@@ -170,7 +170,7 @@ test('#859 a click outside the Retire dialog closes it, retiring nothing', async
   expect((await admin.get<{ retired_at: unknown }>(SAMPLE)).retired_at).toBeNull()
 }, 40_000)
 
-test('#859 Delete permanently of a row deleted meanwhile says why, keeping the dialog open', async ({ admin }) => {
+test('#859 Delete Permanently of a row deleted meanwhile says why, keeping the dialog open', async ({ admin }) => {
   await seed(admin)
   const user = await recordAction(admin, 'form-purge')
   const dialog = await screen.findByTestId('purge-dialog')
@@ -183,7 +183,7 @@ test('#859 Delete permanently of a row deleted meanwhile says why, keeping the d
   expect(screen.getByTestId('purge-dialog')).toBeInTheDocument()
 }, 40_000)
 
-test('#859 a click outside Delete permanently closes it, deleting nothing', async ({ admin }) => {
+test('#859 a click outside Delete Permanently closes it, deleting nothing', async ({ admin }) => {
   await seed(admin)
   const user = await recordAction(admin, 'form-purge')
   await user.click((await screen.findByTestId('purge-dialog')).parentElement!)
@@ -191,7 +191,7 @@ test('#859 a click outside Delete permanently closes it, deleting nothing', asyn
   expect((await admin.fetch(SAMPLE)).status).toBe(200)
 }, 40_000)
 
-test('#859 Delete permanently can go back from clearing the links to deleting what points at the row', async ({ admin }) => {
+test('#859 Delete Permanently can go back from clearing the links to deleting what points at the row', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/table_def', { name: 'Retire Bin Order', columns: [
     { column_name: 'plant', column_type: 'Reference', reference_table: TABLE },

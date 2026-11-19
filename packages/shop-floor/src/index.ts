@@ -2,6 +2,7 @@
 // src/index.css; design-guards.test.ts keeps raw colours and sizes out.
 export { Button, buttonClasses, iconButtonClasses, touchLinkClasses, touchRowClasses, touchTargetClasses } from './Button'
 export { Card, cardClasses, panelClasses, raisedClasses } from './Card'
+export { menuClasses, menuItemClasses, MENU_GROUP_CLASSES, MENU_HEADING_CLASSES } from './Menu'
 export { CATEGORY_HUES, Chip, chipClasses, chipHue, statusHue, tagClasses, type ChipHue } from './Chip'
 export { cx, recipe } from './cx'
 export { EmptyState } from './EmptyState'

@@ -26,7 +26,7 @@ import { Columns3, ListTree } from 'lucide-react'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
 import { GlossaryHelp } from './GlossaryHelp'
-import { fmtCount, fmtINR } from '@featherbase/shop-floor'
+import { fmtCount, fmtINR, menuItemClasses, MENU_GROUP_CLASSES, MENU_HEADING_CLASSES } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
@@ -793,16 +793,16 @@ export function ListView({
           )}
           {/* #1242 (admin-lists 2): one ⋯ More for what is not the page's own action. */}
           {(hasListActions || hasTableAdministration) && <ActionDisclosure label="More">
-          {hasListActions && <div role="group" aria-label="List actions" className="flex flex-col items-stretch gap-1">
-          <p className="px-1 pt-1 text-xs font-medium text-ink-muted">List actions</p>
-            {table === 'Person' && <Link to="/featherbase/admin/find-person" className={buttonClasses()} data-testid="open-find-person">Find by code</Link>}
-            {!isRowsReadOnly(meta.data) && caps?.manage && <Link to="/featherbase/admin/import" search={{ table }} className={buttonClasses()} data-testid="open-import">Import</Link>}
-            {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && <Button aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>Import conflicts</Button>}
+          {hasListActions && <div role="group" aria-label="List actions" className={MENU_GROUP_CLASSES}>
+          <p className={MENU_HEADING_CLASSES}>List actions</p>
+            {table === 'Person' && <Link to="/featherbase/admin/find-person" className={menuItemClasses()} data-testid="open-find-person">Find by code</Link>}
+            {!isRowsReadOnly(meta.data) && caps?.manage && <Link to="/featherbase/admin/import" search={{ table }} className={menuItemClasses()} data-testid="open-import">Import</Link>}
+            {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && <button type="button" className={menuItemClasses()} aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>Import conflicts</button>}
           </div>}
-          {hasTableAdministration && <div role="group" aria-label="Table administration" className="flex flex-col items-stretch gap-1 pt-2 first:pt-0">
-          <p className="px-1 pt-1 text-xs font-medium text-ink-muted">Table administration</p>
-          {canShapeColumns && <Link to="/featherbase/admin/table/$table/columns" params={{ table }} className={buttonClasses()} data-testid="open-columns">Edit columns</Link>}
-          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && !isView(meta.data) && <Link to="/featherbase/admin/table/$table/merge" params={{ table }} className={buttonClasses()} data-testid="open-merge">Merge into…</Link>}
+          {hasTableAdministration && <div role="group" aria-label="Table administration" className={MENU_GROUP_CLASSES}>
+          <p className={MENU_HEADING_CLASSES}>Table administration</p>
+          {canShapeColumns && <Link to="/featherbase/admin/table/$table/columns" params={{ table }} className={menuItemClasses()} data-testid="open-columns">Edit columns</Link>}
+          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && !isView(meta.data) && <Link to="/featherbase/admin/table/$table/merge" params={{ table }} className={menuItemClasses()} data-testid="open-merge">Merge into…</Link>}
           {isSystemManager && (
             <>
               {/* NAM-001: change how new rows in this Table are named —
@@ -815,7 +815,7 @@ export function ListView({
                 <Link
                   to="/featherbase/admin/table/$table/naming"
                   params={{ table }}
-                  className={buttonClasses()}
+                  className={menuItemClasses()}
                   data-testid="open-naming"
                 >
                   Naming
@@ -825,7 +825,7 @@ export function ListView({
               {!isView(meta.data) && <Link
                 to="/featherbase/admin/table/$table/permissions"
                 params={{ table }}
-                className={buttonClasses()}
+                className={menuItemClasses()}
                 data-testid="open-permissions"
               >
                 Permissions
@@ -842,7 +842,7 @@ export function ListView({
               {!meta.data?.system && !isSystemWritten(meta.data) && (
                 <button
                   onClick={() => setConfirmingDelete(true)}
-                  className={buttonClasses({ variant: 'danger' })}
+                  className={menuItemClasses({ tone: 'negative' })}
                   data-testid="delete-table"
                 >
                   {isView(meta.data) ? 'Delete view' : 'Delete Table'}
@@ -1020,7 +1020,7 @@ export function ListView({
           {onFiltersChange && filters.length > 0 && (
             <button
               type="button"
-              className={buttonClasses()}
+              className={menuItemClasses()}
               data-testid="save-view-open"
               onClick={() => {
                 setViewMenuOpen(false)
@@ -1034,7 +1034,7 @@ export function ListView({
             to="/featherbase/admin/table/$table/view/report"
             params={{ table }}
             search={{ report: undefined }}
-            className={buttonClasses()}
+            className={menuItemClasses()}
             data-testid="open-report"
           >
             Report
@@ -1044,7 +1044,7 @@ export function ListView({
               to="/featherbase/admin/table/$table/view/kanban"
               params={{ table }}
               search={{ group_by: undefined }}
-              className={buttonClasses()}
+              className={menuItemClasses()}
               data-testid="open-kanban"
             >
               Kanban
@@ -1054,7 +1054,7 @@ export function ListView({
             <Link
               to="/featherbase/admin/table/$table/view/calendar"
               params={{ table }}
-              className={buttonClasses()}
+              className={menuItemClasses()}
               data-testid="open-calendar"
             >
               Calendar
@@ -1065,7 +1065,7 @@ export function ListView({
             <Link
               to="/featherbase/admin/table/$table/view/gantt"
               params={{ table }}
-              className={buttonClasses()}
+              className={menuItemClasses()}
               data-testid="open-gantt"
             >
               Gantt
@@ -1078,15 +1078,15 @@ export function ListView({
               differs from it goes back to it. */}
           {/* In a group of their own below the other views, set apart by space only (UI owner, #1348's no-lines rule). */}
           {((canShapeColumns && meta.data && settingsLoaded && !ownSettings.isPending) || viewDiffers) && (
-            <div role="group" aria-label="Table default" className="mt-2 flex flex-col items-stretch gap-1" data-testid="view-menu-defaults">
+            <div role="group" aria-label="Table default" className={MENU_GROUP_CLASSES} data-testid="view-menu-defaults">
             {canShapeColumns && meta.data && settingsLoaded && !ownSettings.isPending && (
-              <button type="button" className={buttonClasses()} data-testid="make-table-default"
+              <button type="button" className={menuItemClasses()} data-testid="make-table-default"
                 onClick={() => { setViewMenuOpen(false); setColPickerOpen(false); setConfirmingDefault(true) }}>
                 Make This the Table's Default…
               </button>
             )}
             {viewDiffers && (
-              <button type="button" className={buttonClasses()} data-testid="reset-table-default"
+              <button type="button" className={menuItemClasses()} data-testid="reset-table-default"
                 onClick={() => { setViewMenuOpen(false); void resetView() }}>
                 Reset to the Table's Default
               </button>
@@ -1213,7 +1213,7 @@ export function ListView({
             className={buttonClasses({ variant: 'danger' })}
             data-testid="bulk-purge"
           >
-            Delete permanently
+            Delete Permanently
           </button>}
           {bulkError && (
             <span className="text-xs text-negative" data-testid="bulk-error">
