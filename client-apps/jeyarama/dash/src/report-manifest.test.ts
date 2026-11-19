@@ -351,12 +351,14 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['permission_grid', '0.13.38', '0.13.39', 3],
       // #1282: the Lens's worked-out sections, a read only, with no Table change.
       ['worked_out_sections', '0.13.39', '0.13.40', 0],
+      // #1345: each job's business role in describe_people, for the Person Label; no Table change.
+      ['person_label', '0.13.40', '0.13.41', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
-    expect(pkg.version).toBe('0.13.40')
+    expect(pkg.version).toBe('0.13.41')
   })
 })
