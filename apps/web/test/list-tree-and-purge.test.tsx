@@ -1,5 +1,5 @@
 // A list's Tree of all opening a row and showing all of a big group (#910),
-// and a list's Delete Permanently for the rows it has selected (#859).
+// and a list's Delete With History for the rows it has selected (#859).
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
@@ -56,14 +56,14 @@ async function selectPlants(admin: Parameters<typeof renderApp>[1]) {
   return screen.findByTestId('purge-dialog', {}, T)
 }
 
-test("Cancel on a list's Delete Permanently keeps the rows and their selection", async ({ admin }) => {
+test("Cancel on a list's Delete With History keeps the rows and their selection", async ({ admin }) => {
   const dialog = await selectPlants(admin)
   await userEvent.click(within(dialog).getByTestId('purge-cancel'))
   expect(screen.queryByTestId('purge-dialog')).not.toBeInTheDocument()
   expect(within(screen.getByTestId('list-rows')).getAllByTestId('row-check').filter((c) => (c as HTMLInputElement).checked)).toHaveLength(2)
 })
 
-test("a list's Delete Permanently removes the selected rows and clears the selection", async ({ admin }) => {
+test("a list's Delete With History removes the selected rows and clears the selection", async ({ admin }) => {
   const user = userEvent.setup()
   const dialog = await selectPlants(admin)
   await within(dialog).findByTestId('purge-summary', {}, T)
