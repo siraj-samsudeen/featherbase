@@ -50,7 +50,7 @@ import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
-import { ContentTabs, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, raisedClasses } from '@featherbase/shop-floor'
+import { ContentTabs, buttonClasses, menuItemClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, raisedClasses } from '@featherbase/shop-floor'
 import { RecordChips } from './RecordChips'
 import type { Row } from './form-row'
 import { FieldControl } from './FieldControl'
@@ -702,7 +702,7 @@ export function FormView({
               params={{ table, name }}
               search={{ format: undefined }}
               data-testid="form-print"
-              className={buttonClasses()}
+              className={menuItemClasses()}
             >
               Print
             </RouterLink>
@@ -715,7 +715,7 @@ export function FormView({
                 setRenaming(true)
               }}
               data-testid="form-rename"
-              className={buttonClasses()}
+              className={menuItemClasses()}
             >
               Rename
             </button>
@@ -745,7 +745,7 @@ export function FormView({
                 setRetiring(true)
               }}
               data-testid="form-retire"
-              className={buttonClasses()}
+              className={menuItemClasses()}
             >
               {t('Retire')}
             </button>
@@ -764,7 +764,7 @@ export function FormView({
                 }
               }}
               data-testid="form-reactivate"
-              className={buttonClasses()}
+              className={menuItemClasses()}
             >
               {t('Reactivate')}
             </button>
@@ -777,7 +777,7 @@ export function FormView({
                 setPurging(true)
               }}
               data-testid="form-purge"
-              className={buttonClasses({ variant: 'danger' })}
+              className={menuItemClasses({ tone: 'negative' })}
             >
               {t('Delete permanently')}
             </button>
@@ -799,7 +799,7 @@ export function FormView({
                   setConfirmingDelete(true)
                 }}
                 data-testid="form-delete"
-                className={buttonClasses({ variant: 'danger' })}
+                className={menuItemClasses({ tone: 'negative' })}
               >
                 {t('Delete')}
               </button>
