@@ -5,6 +5,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { createUserWithRole, expectStatus, makeTable } from './fixtures'
+import { deleteTable } from '../src/table-engine'
 
 const put = (client: TestClient, table: string, settings: unknown) => client.fetch(`/api/table_view_default/${encodeURIComponent(table)}`, {
   method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings }) })
@@ -45,7 +46,9 @@ describe('#1282 A4: a Table\'s default view', () => {
     const table = await floorTable(admin)
     const first = await (await put(admin, table.name, { compact: true })).json() as { id: string }
     const second = await (await put(admin, table.name, { compact: false, sort: { field: 'floor', dir: 'desc' } })).json() as { id: string }
-    // The first is no longer the default, so it cannot be undone.
+    // The first is no longer the default, so it cannot be undone. (Codex adversarial round 1: the check and the
+    // insert are one statement under the Table's lock, which a save takes too, so a save landing in between is
+    // never replaced; the test sandbox runs one transaction at a time, so this stale Undo stands for the race.)
     await expectStatus(await undo(admin, table.name, first.id), 409)
     await expectStatus(await undo(admin, table.name, second.id), 200)
     expect(await current(admin, table.name)).toEqual(expect.objectContaining({ settings: { compact: true } }))
@@ -59,6 +62,15 @@ describe('#1282 A4: a Table\'s default view', () => {
     const only = await (await put(admin, table.name, { compact: true })).json() as { id: string }
     await expectStatus(await undo(admin, table.name, only.id), 200)
     expect(await current(admin, table.name)).toBeNull()
+  })
+
+  // Codex adversarial round 1: a deleted Table's defaults never come back with a new Table of the same name.
+  test("a deleted Table's default goes with it", async ({ admin }) => {
+    const table = await floorTable(admin)
+    await put(admin, table.name, { compact: true })
+    await deleteTable(table.name, admin.user!)
+    const again = await floorTable(admin)
+    expect(await current(admin, again.name)).toBeNull()
   })
 
   test("Reset clears only the person's own view choices for that Table, and only theirs", async ({ admin, createUser }) => {

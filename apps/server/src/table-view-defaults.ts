@@ -52,28 +52,37 @@ export async function setTableViewDefault(table: string, body: unknown, user: st
   return save(table, settings, user)
 }
 
-async function save(table: string, settings: TableViewSettings, user: string, undoes?: string): Promise<TableViewDefault> {
-  const [row] = await sql`insert into table_view_default (row_id, ref_table, settings, undoes, created_by, created_at)
-    values (${id()}, ${table}, ${settings as never}, ${undoes ?? null}, ${user}, clock_timestamp()) returning *`
-  return (toDefault(row!) ?? { id: String(row!.row_id), settings, by: user, at: new Date(row!.created_at as string).toISOString() })
+/** One change to a Table's default at a time (Codex adversarial round 1): a save and an Undo take the same lock. */
+const lockTable = (tx: typeof sql, table: string) => tx`select pg_advisory_xact_lock(hashtextextended(${`table_view_default:${table}`}, 1282))`
+
+async function save(table: string, settings: TableViewSettings, user: string): Promise<TableViewDefault> {
+  return sql.begin(async (tx) => {
+    await lockTable(tx as unknown as typeof sql, table)
+    const [row] = await tx`insert into table_view_default (row_id, ref_table, settings, created_by, created_at)
+      values (${id()}, ${table}, ${settings as never}, ${user}, clock_timestamp()) returning *`
+    return toDefault(row!) ?? { id: String(row!.row_id), settings, by: user, at: new Date(row!.created_at as string).toISOString() }
+  })
 }
 
-/** POST /api/table_view_default/:table/undo: puts back the default before `id`, only while `id` is the default. */
+/** POST /api/table_view_default/:table/undo: puts back the default before `id`, only while `id` is the default
+ *  and is not itself an Undo (no redo). The check and the insert are one statement, so a save landing between
+ *  them can never be replaced. */
 export async function undoTableViewDefault(table: string, body: unknown, user: string): Promise<TableViewDefault | null> {
   await assertSystemManager(user)
   const target = String((body as { id?: unknown } | null)?.id ?? '')
   return sql.begin(async (tx) => {
-    // One undo at a time per Table, so two can't both pass the "still the default" check.
-    await tx`select pg_advisory_xact_lock(hashtextextended(${`table_view_default:${table}`}, 1282))`
-    const rows = await tx`select * from table_view_default where ref_table = ${table} order by created_at desc, row_id desc limit 2`
-    const [now, before] = rows
-    // Only the default itself, and never an Undo (no redo): the one before it comes back, or none.
-    if (!now || String(now.row_id) !== target || now.undoes || !Object.keys(now.settings as object).length)
-      throw new AppError('ConflictError', 'That is no longer the Table\'s default, so there is nothing to undo')
-    const previous = (before?.settings as TableViewSettings | undefined) ?? {}
-    const [row] = await tx`insert into table_view_default (row_id, ref_table, settings, undoes, created_by, created_at)
-      values (${id()}, ${table}, ${previous as never}, ${target}, ${user}, clock_timestamp()) returning *`
-    return toDefault(row!)
+    await lockTable(tx as unknown as typeof sql, table)
+    const [row] = await tx`
+      with ordered as (
+        select row_id, settings, undoes, row_number() over (order by created_at desc, row_id desc) as n
+        from table_view_default where ref_table = ${table}
+      )
+      insert into table_view_default (row_id, ref_table, settings, undoes, created_by, created_at)
+      select ${id()}, ${table}, coalesce((select settings from ordered where n = 2), '{}'::jsonb), ${target}, ${user}, clock_timestamp()
+      where exists (select 1 from ordered where n = 1 and row_id = ${target} and undoes is null and settings <> '{}'::jsonb)
+      returning *`
+    if (!row) throw new AppError('ConflictError', 'That is no longer the Table\'s default, so there is nothing to undo')
+    return toDefault(row)
   })
 }
 

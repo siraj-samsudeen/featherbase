@@ -1247,6 +1247,8 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
         where ${tx(p.column_name)} = ${meta.name}`
     }
     await tx`delete from column_def where parent = ${meta.name}`
+    // #1282 A4 (Codex adversarial round 1): its default view goes with it, never to a new Table of the same name.
+    await tx`delete from table_view_default where ref_table = ${meta.name}`
     await tx`delete from table_def where name = ${meta.name}`
     // DEL-R6/BV1: a bound Table sheds its binding, never its source's
     // storage; a settings Table never had a physical table. RLS policies
