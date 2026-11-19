@@ -62,8 +62,8 @@ async function businessRolesOf(ctx: AccessContext, persons: string[], on: string
   const roles = (await all(base, ROLE, ['role_name', 'by_hand_only'])).map(r => ({ id: exact(r.row_id), name: text(r.role_name), by_hand_only: r.by_hand_only === 1 || r.by_hand_only === true || r.by_hand_only === '1' }))
   const rules = (await all(base, TITLE_MAP, ['title', 'business_role'])).map(r => ({ title: text(r.title), role: exact(r.business_role) || null }))
   const byTitle = mapping({ rules, roles } as Parameters<typeof mapping>[0])
-  const corrections = (await all(base, ROLE_ASSIGNMENT, ['person', 'change', 'business_role', 'ends_on', 'removed'], [['person', 'in', persons]]))
-    .map(r => ({ id: exact(r.row_id), person: exact(r.person), change: text(r.change) as HandChange['change'], role: exact(r.business_role), ends_on: day(r.ends_on) || null, removed: r.removed === 1 || r.removed === true || r.removed === '1' }))
+  const corrections = (await all(base, ROLE_ASSIGNMENT, ['person', 'change', 'business_role', 'site', 'ends_on', 'removed'], [['person', 'in', persons]]))
+    .map(r => ({ id: exact(r.row_id), person: exact(r.person), change: text(r.change) as HandChange['change'], role: exact(r.business_role), site: exact(r.site) || null, ends_on: day(r.ends_on) || null, removed: r.removed === 1 || r.removed === true || r.removed === '1' }))
     .filter(h => h.change === 'Correct' && inForce(h, on) && roles.some(r => r.id === h.role))
   // HR's titles, where Job Assignment names a Designation record (as businessAccess reads them).
   const designated = [...new Set(jobs.map(row => exact(row.designation)).filter(Boolean))]
@@ -72,10 +72,12 @@ async function businessRolesOf(ctx: AccessContext, persons: string[], on: string
     : [])
   const named = (id: string | undefined) => { const r = roles.find(x => x.id === id); return r ? { id: r.id, name: r.name } : undefined }
   return (person: string, job: string, site: string | undefined) => {
-    const corrected = corrections.find(c => c.person === person)
-    if (corrected) return named(corrected.role)
-    const mine = new Set(employees.filter(e => exact(e.person) === person).map(e => exact(e.row_id)))
-    const row = jobs.find(r => mine.has(exact(r.employee)) && exact(r.job) === job && (exact(r.site) || undefined) === site)
+    // As rolesOf: a Correct in force replaces the Title Map for this person; one naming a store gives its
+    // role only at that store, one naming none at each job (Codex standard round 3).
+    const mine = corrections.filter(c => c.person === person)
+    if (mine.length) return named(mine.find(c => !c.site || c.site === site)?.role)
+    const theirs = new Set(employees.filter(e => exact(e.person) === person).map(e => exact(e.row_id)))
+    const row = jobs.find(r => theirs.has(exact(r.employee)) && exact(r.job) === job && (exact(r.site) || undefined) === site)
     if (!row) return undefined
     const title = designationNames.get(exact(row.designation))
     return named((title && byTitle.get(key(title))) || byTitle.get(key(job)))
