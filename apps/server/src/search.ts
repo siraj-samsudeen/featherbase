@@ -3,6 +3,7 @@ import { AppError } from './errors'
 import { hasPermission } from './permissions'
 import { scopedWhere } from './query'
 import { tableLabel } from './access-explanation'
+import { isSensitiveColumn } from './sensitive-columns'
 
 // UI-014: awesomebar global search. Matches row names (and the
 // Table's title_column) across every regular Table the user can read.
@@ -161,7 +162,11 @@ async function searchOne(t: Record<string, unknown>, user: string, { exact, pref
   // early on a common query and an exact code is never crowded out. (Codex:
   // round 1 flagged sorting every match, round 2 sequential scans and limiting
   // before ranking; round 3: the exact code comes before exact names.)
-  const match = (pattern: string) => sql`(${key} ilike ${pattern}${title ? sql` or ${readExpression(title)} ilike ${pattern}` : sql``})`
+  // #1346: and the Table's own searched columns, each only where this viewer
+  // may read it (readExpression hides a creator-only value), so a hit never
+  // tells a viewer about a value they cannot see.
+  const searched = (meta.search_columns ?? []).filter((c) => c !== meta.title_column && cols.has(c) && !isSensitiveColumn(c))
+  const match = (pattern: string) => sql`(${key} ilike ${pattern}${title ? sql` or ${readExpression(title)} ilike ${pattern}` : sql``}${searched.reduce((more, c) => sql`${more} or ${readExpression(c)}::text ilike ${pattern}`, sql``)})`
   const found = sql`${where} ${live} and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID} ${named}`
   const rows = await sql<{ row_id: unknown; title: unknown }[]>`
     select row_id, title from (
