@@ -126,16 +126,16 @@
             </details>
           </figure>
 
-          <!-- Bars with two parts: a legend names them, the total sits at the tip -->
+          <!-- Each department wears its own colour, the one on its chip in the list. The total sits at the tip. -->
           <figure class="chart">
-            <figcaption><b>Employees by department</b><span>Everyone who has worked here, largest active team first.</span></figcaption>
-            <ul class="legend"><li><i></i>Active</li><li><i class="rest"></i>Left</li></ul>
+            <figcaption><b>Employees by department</b><span>Active employees in the department's colour, largest team first. The grey part has left.</span></figcaption>
+            <ul class="legend"><li><i class="rest"></i>Left</li></ul>
             <ul class="bars" style="--max:5">
-            <li title="Billing: 5 active, 0 left"><span class="name">Billing</span><span class="track"><i style="--v:5"></i><span class="val">5</span></span></li>
-            <li title="Stores: 5 active, 0 left"><span class="name">Stores</span><span class="track"><i style="--v:5"></i><span class="val">5</span></span></li>
-            <li title="Accounts: 4 active, 1 left"><span class="name">Accounts</span><span class="track"><i style="--v:4"></i><i class="rest" style="--v:1"></i><span class="val">5</span></span></li>
-            <li title="Sales: 4 active, 1 left"><span class="name">Sales</span><span class="track"><i style="--v:4"></i><i class="rest" style="--v:1"></i><span class="val">5</span></span></li>
-            <li title="Tailoring: 3 active, 1 left"><span class="name">Tailoring</span><span class="track"><i style="--v:3"></i><i class="rest" style="--v:1"></i><span class="val">4</span></span></li>
+            <li title="Billing: 5 active, 0 left"><span class="name">Billing</span><span class="track"><i class="c2" style="--v:5"></i><span class="val">5</span></span></li>
+            <li title="Stores: 5 active, 0 left"><span class="name">Stores</span><span class="track"><i class="c4" style="--v:5"></i><span class="val">5</span></span></li>
+            <li title="Accounts: 4 active, 1 left"><span class="name">Accounts</span><span class="track"><i class="c1" style="--v:4"></i><i class="rest" style="--v:1"></i><span class="val">5</span></span></li>
+            <li title="Sales: 4 active, 1 left"><span class="name">Sales</span><span class="track"><i class="c3" style="--v:4"></i><i class="rest" style="--v:1"></i><span class="val">5</span></span></li>
+            <li title="Tailoring: 3 active, 1 left"><span class="name">Tailoring</span><span class="track"><i class="c5" style="--v:3"></i><i class="rest" style="--v:1"></i><span class="val">4</span></span></li>
             </ul>
             <details class="astable"><summary>Show as a table</summary>
               <div class="tbox"><table>
@@ -151,15 +151,15 @@
             </details>
           </figure>
 
-          <!-- Plain ranked bars: one colour, the value at the tip -->
+          <!-- Ranked bars, the value at the tip -->
           <figure class="chart">
             <figcaption><b>Weekly hours by department</b><span>Hours a week that active employees are contracted for.</span></figcaption>
             <ul class="bars" style="--max:201.5">
-            <li title="Billing: 201.5 hours a week"><span class="name">Billing</span><span class="track"><i style="--v:201.5"></i><span class="val">201.5</span></span></li>
-            <li title="Stores: 199 hours a week"><span class="name">Stores</span><span class="track"><i style="--v:199.0"></i><span class="val">199</span></span></li>
-            <li title="Sales: 161.5 hours a week"><span class="name">Sales</span><span class="track"><i style="--v:161.5"></i><span class="val">161.5</span></span></li>
-            <li title="Accounts: 157.5 hours a week"><span class="name">Accounts</span><span class="track"><i style="--v:157.5"></i><span class="val">157.5</span></span></li>
-            <li title="Tailoring: 113.5 hours a week"><span class="name">Tailoring</span><span class="track"><i style="--v:113.5"></i><span class="val">113.5</span></span></li>
+            <li title="Billing: 201.5 hours a week"><span class="name">Billing</span><span class="track"><i class="c2" style="--v:201.5"></i><span class="val">201.5</span></span></li>
+            <li title="Stores: 199 hours a week"><span class="name">Stores</span><span class="track"><i class="c4" style="--v:199.0"></i><span class="val">199</span></span></li>
+            <li title="Sales: 161.5 hours a week"><span class="name">Sales</span><span class="track"><i class="c3" style="--v:161.5"></i><span class="val">161.5</span></span></li>
+            <li title="Accounts: 157.5 hours a week"><span class="name">Accounts</span><span class="track"><i class="c1" style="--v:157.5"></i><span class="val">157.5</span></span></li>
+            <li title="Tailoring: 113.5 hours a week"><span class="name">Tailoring</span><span class="track"><i class="c5" style="--v:113.5"></i><span class="val">113.5</span></span></li>
             </ul>
             <details class="astable"><summary>Show as a table</summary>
               <div class="tbox"><table>
@@ -175,6 +175,21 @@
             </details>
           </figure>
 
+        </div>
+
+        <!-- The rows behind a headline number, as an ordinary table -->
+        <div class="sect">
+          <h2>Who left</h2>
+          <div class="tbox">
+            <table>
+              <thead><tr><th>Employee Code</th><th>Name</th><th>Department</th><th>Date of Joining</th><th>Date of Leaving</th><th class="num">Stayed</th></tr></thead>
+              <tbody>
+              <tr><td class="code">E0035</td><td class="name">Esther Paul</td><td><span class="chip c5">Tailoring</span></td><td class="date"><time datetime="2019-09-13">13-Sep-2019</time></td><td class="date"><time datetime="2025-05-09">09-May-2025</time></td><td class="num">5 years</td></tr>
+              <tr><td class="code">E0098</td><td class="name">Naveen Shetty</td><td><span class="chip c1">Accounts</span></td><td class="date"><time datetime="2018-06-13">13-Jun-2018</time></td><td class="date"><time datetime="2025-08-27">27-Aug-2025</time></td><td class="num">7 years</td></tr>
+              <tr><td class="code">E0147</td><td class="name">Uma Shankar</td><td><span class="chip c3">Sales</span></td><td class="date"><time datetime="2015-05-07">07-May-2015</time></td><td class="date"><time datetime="2025-09-14">14-Sep-2025</time></td><td class="num">10 years</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>

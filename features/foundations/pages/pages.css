@@ -32,20 +32,18 @@
   --danger:      light-dark(#b3261e, #f08a82);
   --danger-soft: light-dark(#fbeae8, #3a1d1b);
 
-  /* a Choice value: five quiet pairs, given out in the order of the list of values */
-  --c1-bg: light-dark(#e3effb, #17304b);  --c1-fg: light-dark(#1c4f86, #a9cdf5);
-  --c2-bg: light-dark(#f6ebd9, #3d2f17);  --c2-fg: light-dark(#7a4c0b, #efcf96);
-  --c3-bg: light-dark(#e4f2e6, #183624);  --c3-fg: light-dark(#23633a, #a5dcb4);
-  --c4-bg: light-dark(#efe6f7, #2e2242);  --c4-fg: light-dark(#5b3688, #d1b8ee);
-  --c5-bg: light-dark(#fbe6ec, #41202c);  --c5-fg: light-dark(#8c2749, #f3b3c6);
+  /* a Choice value: five colours, given out in the order of the list of values. A value keeps its
+     colour everywhere: the quiet pair on its chip, the full colour on its bar in a chart.
+     The order is checked for colour-blind separation on both surfaces. */
+  --c1: light-dark(#2a78d6, #3987e5);  --c1-bg: light-dark(#e3effb, #17304b);  --c1-fg: light-dark(#1c4f86, #a9cdf5);
+  --c2: light-dark(#eda100, #c98500);  --c2-bg: light-dark(#f6ebd9, #3d2f17);  --c2-fg: light-dark(#7a4c0b, #efcf96);
+  --c3: light-dark(#1baf7a, #199e70);  --c3-bg: light-dark(#e4f2e6, #183624);  --c3-fg: light-dark(#23633a, #a5dcb4);
+  --c4: light-dark(#6250d6, #9085e9);  --c4-bg: light-dark(#efe6f7, #2e2242);  --c4-fg: light-dark(#5b3688, #d1b8ee);
+  --c5: light-dark(#e87ba4, #d55181);  --c5-bg: light-dark(#fbe6ec, #41202c);  --c5-fg: light-dark(#8c2749, #f3b3c6);
 
-  /* chart marks. A fixed order, checked for colour-blind separation on both surfaces.
-     One series uses the first. "rest" is everything that is not the point. */
-  --series-1:    light-dark(#2a78d6, #3987e5);
-  --series-2:    light-dark(#eb6834, #d95926);
-  --series-3:    light-dark(#1baf7a, #199e70);
-  --series-4:    light-dark(#eda100, #c98500);
-  --series-rest: light-dark(#c3cbd1, #43525c);
+  /* chart marks that are not a Choice value: a total takes the accent; "rest" is what is not the point */
+  --mark:      var(--accent);
+  --mark-rest: light-dark(#c3cbd1, #43525c);
 
   /* type: two faces, five sizes */
   --ui:   "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -281,9 +279,11 @@ td.date { font-variant-numeric: tabular-nums; }
 .chart figcaption span { color: var(--muted); font-size: var(--t-small); }
 .legend { display: flex; gap: var(--s4); flex-wrap: wrap; font-size: var(--t-small); color: var(--muted); }
 .legend li { display: flex; align-items: center; gap: 6px; }
-.legend i, .bars i { background: var(--series-1); }
+.legend i, .bars i { background: var(--mark); }
 .legend i { width: 10px; height: 10px; border-radius: 2px; }
-.legend i.rest, .bars i.rest { background: var(--series-rest); }
+.bars i.c1 { background: var(--c1); }  .bars i.c2 { background: var(--c2); }  .bars i.c3 { background: var(--c3); }
+.bars i.c4 { background: var(--c4); }  .bars i.c5 { background: var(--c5); }
+.legend i.rest, .bars i.rest { background: var(--mark-rest); }
 
 /* bars: one row per name, drawn with plain boxes. --v is the value, --max the longest bar */
 .bars { display: grid; gap: var(--s2); }
@@ -301,11 +301,11 @@ td.date { font-variant-numeric: tabular-nums; }
 .plot text.pt { fill: var(--fg); font-weight: 600; }
 .plot .grid { stroke: var(--line); stroke-width: 1; }
 .plot .base { stroke: var(--line-strong); stroke-width: 1; }
-.plot .wash { fill: var(--series-1); opacity: .1; }
-.plot .line { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.plot .dot { fill: var(--series-1); stroke: var(--surface); stroke-width: 2; }
+.plot .wash { fill: var(--mark); opacity: .1; }
+.plot .line { fill: none; stroke: var(--mark); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.plot .dot { fill: var(--mark); stroke: var(--surface); stroke-width: 2; }
 .plot .hit { fill: transparent; }
-.plot .hit:hover { fill: var(--series-1); opacity: .18; }
+.plot .hit:hover { fill: var(--mark); opacity: .18; }
 
 .astable summary { color: var(--muted); font-size: var(--t-small); cursor: pointer; width: fit-content; }
 .astable summary:hover { color: var(--fg); }

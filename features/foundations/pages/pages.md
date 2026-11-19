@@ -42,6 +42,9 @@ pages are made did.
 above everything it changes, then headline numbers, then charts. Charts are drawn by the server, bars as plain
 boxes and a line as SVG, with no chart library and no script. A number is used where a chart would have one
 bar. Each chart has a title, one sentence saying what it shows, a label on the points that matter, and its
-numbers in a table under "Show as a table". One axis per chart. Chart colours are a fixed list in `pages.css`,
-checked for colour-blind separation in light and dark; text never takes a chart colour. The first report is
-Headcount, worked out from the sample rows.
+numbers in a table under "Show as a table". One axis per chart. A Choice value keeps one colour everywhere: a
+department's bar in a chart wears the colour of its chip in the list. The five colours are a fixed list in
+`pages.css`, given out in the order of the list of values and checked for colour-blind separation in light and
+dark. A total takes the accent, and text never takes a chart colour. The rows behind a headline number can
+follow the charts as an ordinary table, as "Who left" does. The first report is Headcount, worked out from the
+sample rows.
