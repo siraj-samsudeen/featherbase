@@ -725,22 +725,66 @@ were three unrelated to-do list trial branches from 21-Oct (`featherbase-rewrite
 A first-pass ledger of the old system's 91 capabilities, marked core, rethink, carry later or park, is in
 `background/old-capabilities-ledger.md`. It is an agent's first pass; correct it by decision 27.
 
-## 9. Open questions for Siraj
+## 9. Decisions still waiting on Siraj
 
-1. May a "check before save" on another package's Table change the row, or only refuse? (decision 9)
-2. Whose permissions does a call to another package's action run under? (decision 8)
-3. Who may read and write a package's field on another Table, and may the owner drop that Table?
-   (decision 10)
-4. Should a package's field on another Table reach the warehouse, and under what name? (section 2,
-   point 1)
-5. How does the platform learn early that a change breaks a private package?
-6. For instance-to-instance: store each person's token for the other instance in an encrypted store?
-   Show another instance's Table inside the local app, or as a separate Table?
-7. The old system's planned move of one client's apps to a private repository (11-Nov) is still
-   waiting on him. With a fresh install planned for production, it may no longer be needed in that form.
-8. For personal work areas (decision 29): who may promote a Table out of a work area; whether other
-   people can see that a work area's Tables exist before they are shared; and what sharing one grants
-   (read only, or edit too).
+Grouped by when each is needed. Bring them to him one at a time.
+
+**Needed early. They block no build, but they shape all the work.**
+
+1. **The old system while the rebuild grows.** 82% of its commits landed in the six weeks to 18-Nov.
+   Every feature added to the old `main` is one more thing the rebuild must match before the client's
+   app can move. Bug fixes only, or features too, and who decides?
+2. **What "ready to move Dash" means.** Nobody has written the list of what Dash uses. Without it the
+   rebuild has no finish line. `background/old-capabilities-ledger.md` is a starting point.
+3. **The words.** `AGENTS.md` has a table of agreed words, and a folder is named exactly as its word.
+   This half added *package*, *contribution*, *slot*, *Connection* and *work area*. None is approved.
+4. **Does each build still start from a GitHub issue?** `TESTING.md` drops OpenSpec on this branch; the
+   old repository's rules required an issue and an OpenSpec change.
+
+**Personal work areas (decision 29).**
+
+5. Who may promote a Table out of a work area?
+6. Can other people see that a work area's Tables exist before they are shared? ("Not private in the
+   data access sense" suggests yes.)
+7. What does sharing a work-area Table grant: read only, or edit too?
+8. What are the area and its schema called?
+
+**When packages are planned.**
+
+9. May a "check before save" on another package's Table change the row, or only refuse? (decision 9;
+   Claude's leaning: refuse only)
+10. Whose permissions does a call to another package's action run under? (decision 8; leaning: the
+    calling person, re-checked against the owner's rules)
+11. Who reviews an outside contributor's package before it reaches a client, and what do they check?
+    (decision 14 depends on this)
+12. How does the platform learn early that a change breaks a private package?
+
+**When fields on other Tables are planned (decision 10).**
+
+13. Who may read and write a package's field on another Table: the Table's grants or the contributing
+    package's? (leaning: the package's)
+14. May an owner drop a Table that holds another package's required field? (leaning: no)
+15. Should such a field reach the warehouse, and under what name? (section 2, "Still to reconcile",
+    point 1)
+
+**Reports and charts.**
+
+16. Siraj put them back in scope on 19-Nov. Where do they live: a kind of page, a contribution a
+    package makes, or both? A separate design-study session is producing a charts mock-up in
+    `features/foundations/pages/`.
+
+**When people and sharing between instances are planned.**
+
+17. Which sign-in methods? The old production uses Google and Microsoft sign-in. Design this together
+    with signing in to another instance (decision 7).
+18. Store each person's token for another instance in an encrypted store? (The old system removed its
+    encrypted store.)
+19. Show another instance's Table inside the local app, or as a separate Table?
+
+**Left over from the old plan.**
+
+20. The planned move of one client's apps to a private repository (11-Nov). With a fresh install
+    planned for production, is it still needed in that form?
 
 ## 10. A suggested order, for the owner and the planning session to challenge
 
