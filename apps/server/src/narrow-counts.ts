@@ -74,12 +74,19 @@ async function narrowCountsImpl(
     const others = lists.flatMap((l, j) => (j !== i && l.pick ? [l.pick] : []))
     const live = others.length ? await scopedWhere(table, user, [...baseFilters, ...others]) : base
     const { joins, value } = await pathJoins(i, list.path, base, user)
+    // A path that fans out (through a link table) can reach a value along one
+    // branch and nothing along another: such a row is linked, as `not related`
+    // reads it, so only a row reaching no value at all counts as none.
     parts.push(sql`
-      select ${i}::int as list, nullif((${value})::text, '') as value,
-        (count(distinct ${rowKey}) filter (where ${live.where}))::int as count
-      from ${sql(base.table)} ${joins}
-      where ${base.where}
-      group by 2`)
+      select ${i}::int as list, narrow_row.value,
+        (count(distinct narrow_row.row_key) filter (where narrow_row.live and (narrow_row.value is not null or not narrow_row.reached)))::int as count
+      from (
+        select ${rowKey} as row_key, nullif((${value})::text, '') as value, (${live.where}) as live,
+          bool_or(nullif((${value})::text, '') is not null) over (partition by ${rowKey}) as reached
+        from ${sql(base.table)} ${joins}
+        where ${base.where}) narrow_row
+      group by narrow_row.value
+      having narrow_row.value is not null or bool_or(not narrow_row.reached)`)
   }
   const rows = await sql<{ list: number; value: string | null; count: number }[]>`
     ${parts.reduce((acc, p) => sql`${acc} union all ${p}`)}
