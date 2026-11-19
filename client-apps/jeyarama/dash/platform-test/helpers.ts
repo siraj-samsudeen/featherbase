@@ -82,7 +82,12 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[]; optionalColumns?: Record<string, string[]> } }
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
-  // #1282's 0.13.43 (the worked-out sections declared as people.sections) changes no Table and comes off first.
+  // #1366's 0.13.44 (no sales copies) only re-describes quick_view; it comes off first, and the description goes back.
+  const noCopies = manifest.migrations.pop() as unknown as { id: string; operations: { kind: string; column: string; from: { description: string } }[] }
+  expect(noCopies).toMatchObject({ id: 'no_sales_copies', fromVersion: '0.13.43', operations: [{ kind: 'alterColumn', table: 'dash.report', column: 'quick_view' }] })
+  if (manifest.tables) manifest.tables = manifest.tables.map(t => (t.name === 'dash.report'
+    ? { ...t, columns: t.columns!.map(c => (c.column_name === 'quick_view' ? { ...c, description: noCopies.operations[0].from.description } : c)) } : t))
+  // #1282's 0.13.43 (the worked-out sections declared as people.sections) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'people_sections', fromVersion: '0.13.42', operations: [] })
   // #1345's 0.13.42 (each job's business role and a leaver's leaving day, for the Person Label) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'person_label', fromVersion: '0.13.41', operations: [] })

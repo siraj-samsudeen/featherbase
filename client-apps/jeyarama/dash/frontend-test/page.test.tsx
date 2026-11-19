@@ -1,5 +1,6 @@
 // Public page tests: every fetch dispatches to the real Hono server
-// inside the shared SQLSandbox. No canned report, API or database responses.
+// inside the shared SQLSandbox. No canned report, API or database responses: the one stand-in is
+// MotherDuck's embed API, the network boundary the server calls to open a Dive.
 import { createRequire } from 'node:module'
 import { afterAll, beforeAll, describe, expect } from 'vitest'
 import { act } from 'react'
@@ -21,6 +22,8 @@ let requestTail: Promise<unknown> = Promise.resolve()
 let token: string | null | undefined
 let delayedResponse: { path: string; untilReleased: Promise<void>; release(): void } | undefined
 let root: Root | undefined
+/** MotherDuck's embed API refuses every session while set. */
+let motherDuckRefuses = false
 let dom: InstanceType<typeof JSDOM>
 const originals = new Map<string, PropertyDescriptor | undefined>()
 
@@ -32,6 +35,9 @@ beforeAll(() => {
     IS_REACT_ACT_ENVIRONMENT: true,
     fetch: async (input: string, init?: RequestInit) => {
       if (!isTestDatabaseOpen()) throw new Error('Dash fetch outside SQLSandbox refused')
+      // The server opening a Dive: MotherDuck mints a made-up session, or refuses.
+      if (String(input).startsWith('https://api.motherduck.com/'))
+        return motherDuckRefuses ? new Response('{}', { status: 500 }) : new Response(JSON.stringify({ session: 'made-up-session' }), { status: 200 })
       if (!input.startsWith('/api/')) throw new Error(`Unexpected external fetch: ${input}`)
       const headers = new Headers(init?.headers)
       if (token) headers.set('Authorization', `Bearer ${token}`)
@@ -65,6 +71,7 @@ afterAll(() => {
 const test = sandboxed.extend<{ browser: void }>({
   browser: [async ({ db: _db }, use) => {
     token = undefined
+    motherDuckRefuses = false
     requests.length = 0
     dom.reconfigure({ url: 'http://localhost/dash/' })
     history.replaceState(null, '', '/dash/')
@@ -103,12 +110,13 @@ async function waitForText(text: string, timeout = 5000) {
   expect(document.body.textContent).toContain(text)
 }
 
-/** The cached table is on show (#950: it has no title of its own to wait for). */
-async function waitForQuickView(timeout = 5000) {
+/** The report's Dive is on show. */
+async function waitForDive(timeout = 5000) {
+  const view = () => document.querySelector('[data-testid=dash]')?.getAttribute('data-view')
   const deadline = Date.now() + timeout
-  while (!document.querySelector('[data-testid=quick-view]') && Date.now() < deadline)
+  while (view() !== 'dive' && Date.now() < deadline)
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
-  expect(document.querySelector('[data-testid=quick-view]')).not.toBeNull()
+  expect(view()).toBe('dive')
 }
 
 describe('Dash against the real platform', () => {
@@ -194,18 +202,12 @@ describe('Dash against the real platform', () => {
     ])
   })
 
-  installed('renders real cached sales with exact totals and lets the reader reveal and hide quiet subcategories', async ({ dash: _dash }) => {
+  installed("opens the reader's store's Dive under its heading, and writes the open to the Access Log (#1366)", async ({ dash }) => {
     await open()
-    await waitForQuickView()
-    expect(document.body.textContent).toContain('Silk')
-    expect(document.body.textContent).not.toContain('Quiet cotton')
-    expect(document.querySelector('tfoot')?.textContent).toContain('₹1,000')
-    const toggle = document.querySelector('[data-testid=toggle-quiet]') as HTMLButtonElement
-    await act(async () => toggle.click())
-    expect(document.body.textContent).toContain('Quiet cotton')
-    expect(toggle.textContent).toBe('Hide 1 with no target and no sales')
-    await act(async () => toggle.click())
-    expect(document.body.textContent).not.toContain('Quiet cotton')
+    await waitForDive()
+    expect(document.querySelector('[data-testid=report-frame]')?.getAttribute('src')).toBe('https://embed-motherduck.com/sandbox/#session=made-up-session')
+    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Lakeside · Sarees')
+    expect(await sql`select ref_table from access_log where "user" = ${dash.reader.user} and operation = 'view_report'`).toEqual([{ ref_table: 'dash.embed_session' }])
 
     // Repeated bar choices and history addresses must not reset a loaded
     // report; unrelated/malformed events and foreign frame messages do nothing.
@@ -220,7 +222,7 @@ describe('Dash against the real platform', () => {
       window.dispatchEvent(new dom.window.MessageEvent('message', { origin: 'https://embed-motherduck.com', data: { type: 'dash:dive-ready' } }))
     })
     expect(requests.length).toBe(count)
-    expect(document.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(document.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('dive')
 
     // An actual deployment-input failure, not a synthetic API rejection:
     // remove the app's required secret, reload, then repair it and retry.
@@ -230,71 +232,8 @@ describe('Dash against the real platform', () => {
       await waitForText("This report couldn't open.")
       expect(requests.slice(-2).map(r => r.status)).toEqual([409, 409])
     })
-    await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
-    await waitForQuickView()
-    expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
-  })
-
-  for (const state of ['not_built', 'no_data_yet', 'unconfirmed'] as const) {
-    installed(`explains ${state} without presenting missing figures as zero`, async ({ dash }) => {
-      if (state === 'not_built')
-        await sql`update dataset_snapshot set state = 'superseded' where dataset = 'dash.sales_to_date'`
-      if (state === 'no_data_yet') await dash.snapshot([dash.fact('010101001', { period_start: '2020-01-01', data_through: '2020-01-15' })])
-      if (state === 'unconfirmed') {
-        await dash.snapshot([])
-        await dash.snapshot([], 'sales_month')
-      }
-      await open()
-      const text = state === 'no_data_yet' ? "This month's figures haven't arrived yet." : 'The figures are being prepared.'
-      await waitForText(text)
-      expect(document.querySelector('table')).toBeNull()
-      expect(document.querySelector('[data-testid=report-heading]')?.textContent).toContain('Sales before tax, net of returns')
-      expect(document.body.textContent).not.toContain('₹0')
-    })
-  }
-
-  for (const example of [
-    { name: 'sales without a recorded target', values: { target: null, actual: 100 }, cells: ['—', '₹100.00', '—', '—'], total: 'Total—₹100.00——' },
-    { name: 'a target without recorded sales', values: { target: 100, actual: null, days_with_actual: 0 }, cells: ['₹100.00', '—', '—', '—'], total: 'Total₹100.00———' },
-    { name: 'a positive gap with Indian grouping and paise', values: { target: 1234567.5, actual: 1235000 }, cells: ['₹12,34,567.50', '₹12,35,000.00', '+₹432.50', '100%'], total: 'Total₹12,34,567.50₹12,35,000.00+₹432.50100%' },
-    { name: 'sales while monthly targets are unavailable', values: { target: 100, actual: 80, targets_available: false }, cells: ['—', '₹80.00', '—', '—'], total: 'Total—₹80.00——' },
-  ]) {
-    installed(`distinguishes ${example.name} in the row and exact total`, async ({ dash }) => {
-      await dash.snapshot([dash.fact('010101001', example.values)])
-      await open()
-      await waitForQuickView()
-      const row = [...document.querySelectorAll('tbody tr')].find(r => r.querySelector('th')?.textContent === 'Silk')!
-      expect([...row.querySelectorAll('td')].map(c => c.textContent)).toEqual(example.cells)
-      expect(document.querySelector('tfoot')?.textContent).toBe(example.total)
-      if (example.values.targets_available === false)
-        expect(document.body.textContent).toContain("Targets for this month aren't available yet; sales are shown.")
-      if (example.cells.includes('—')) expect(document.querySelector('[data-testid=blank-note]')?.textContent)
-        .toContain(example.values.targets_available === false ? '3 subcategories have' : '1 subcategory has')
-    })
-  }
-
-  installed('shows an all-quiet section as nothing recorded until Show is clicked, including unnamed rows', async ({ dash }) => {
-    await dash.snapshot([dash.fact('010101001', { target: 0, actual: 0 })])
-    await open()
-    await waitForText('Nothing recorded this month for your section yet.')
-    expect(document.querySelector('table')).toBeNull()
-    const button = document.querySelector('[data-testid=toggle-quiet]') as HTMLButtonElement
-    expect(button.textContent).toBe('Show 3 with no target and no sales')
-    await act(async () => button.click())
-    expect(document.querySelector('table')?.textContent).toContain('Unnamed subcategory')
-    expect(document.querySelector('[data-testid=blank-note]')?.textContent).toContain('2 subcategories have')
-    expect(document.querySelector('tfoot')?.textContent).toBe('Total₹0.00₹0.00₹0.00—')
-  })
-
-  installed('includes unplaced sales under No section with their own subtotal', async ({ dash }) => {
-    await dash.job(dash.reader.user!, 'Store Manager')
-    await dash.snapshot([...dash.facts, dash.fact('010909009', { subcategory: 'Unplaced silk', target: 50, actual: 80 })])
-    await open()
-    await waitForQuickView()
-    const group = [...document.querySelectorAll('tbody')].find(body => body.textContent?.includes('Unplaced silk'))!
-    expect(group.querySelector('[scope=rowgroup]')?.textContent).toBe('No section')
-    expect(group.querySelector('.fd-subtotal')?.textContent).toBe('No\u00a0section total₹50.00₹80.00+₹30.00160%')
-    expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,050.00₹980.00−₹70.0093.3%')
+    await act(async () => (document.querySelector('[data-testid=failed] button') as HTMLButtonElement).click())
+    await waitForDive()
   })
 
   for (const example of [
@@ -308,7 +247,7 @@ describe('Dash against the real platform', () => {
       await dash.job(person.user!, example.job, { acting: example.acting, section: dash.section.row_id })
       token = person.token
       await open()
-      await waitForQuickView()
+      await waitForDive()
       expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Lakeside · Sarees')
       expect(document.querySelector('[data-testid=why-line]')?.textContent).toBe(example.sentence)
       expect(document.body.textContent).not.toMatch(/9901|010101001/)
@@ -323,7 +262,7 @@ describe('Dash against the real platform', () => {
     await dash.job(dash.reader.user!, 'Cluster Manager')
     await dash.job(dash.reader.user!, 'Staff', { section: dash.section.row_id })
     await open()
-    await waitForQuickView()
+    await waitForDive()
     expect(document.querySelector('[data-testid=why-line]')?.textContent)
       .toBe('You see Lakeside because you are its Store Manager, Cluster Manager and Team Leader of Sarees and work in Sarees.')
   })
@@ -346,11 +285,10 @@ describe('Dash against the real platform', () => {
     expect(document.querySelector('table')).toBeNull()
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
     await act(async () => { release() })
-    await waitForQuickView()
+    await waitForDive()
     expect(requests.filter(r => r.path.endsWith('/stores'))).toHaveLength(2)
     expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
-    expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
-  }, 25000)
+      }, 25000)
 
   installed('leaving while a real address check is pending prevents a late refusal from starting report reads', async ({ dash: _dash, createUser }) => {
     token = (await createUser({ email: 'dash-leaving-no-role@example.test' })).token
@@ -395,23 +333,19 @@ describe('Dash against the real platform', () => {
     installed(`names ${count} covered sections in a staff reader's heading without widening to the whole store`, async ({ dash, createUser }) => {
       const person = await createUser({ email: 'dash-multiple-sections@example.test', roles: ['Dash Reader'] })
       const names = ['Alpha', 'Beta', 'Gamma', 'Omega'].slice(0, count)
-      const facts = []
       for (const [index, section_name] of names.entries()) {
         const section = await dash.addSection(`LKS-${section_name}`, section_name)
         const subcategory = `02000000${index}`
         await dash.place(subcategory, section.row_id)
         await dash.job(person.user!, 'Staff', { section: section.row_id })
-        facts.push(dash.fact(subcategory, { subcategory: `${section_name} cloth` }))
       }
-      await dash.snapshot(facts)
       token = person.token
       await open()
-      await waitForQuickView()
+      await waitForDive()
       expect(document.querySelector('[data-testid=heading-title]')?.textContent)
         .toBe(count > 3 ? 'Lakeside · 4 sections' : `Lakeside · ${names.join(' · ')}`)
       expect(document.querySelector('[data-testid=why-line]')?.textContent)
         .toBe(`You see ${count === 2 ? 'Alpha and Beta' : count === 3 ? 'Alpha, Beta and Gamma' : '4 sections'} at Lakeside because you work in them.`)
-      expect(document.querySelectorAll('tbody')).toHaveLength(count)
       expect(document.body.textContent).not.toContain('Sarees')
     })
   }
@@ -422,10 +356,9 @@ describe('Dash against the real platform', () => {
     await dash.place('020202002', section.row_id)
     await dash.job(person.user!, 'Staff', { section: section.row_id })
     await dash.job(person.user!, 'Team Leader', { section: dash.section.row_id })
-    await dash.snapshot([...dash.facts, dash.fact('020202002', { subcategory: 'Cotton shirts' })])
     token = person.token
     await open()
-    await waitForQuickView()
+    await waitForDive()
     expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Lakeside · Cotton · Sarees')
     expect(document.querySelector('[data-testid=why-line]')?.textContent)
       .toBe('You see Cotton and Sarees at Lakeside because you are Team Leader of Sarees and work in Cotton.')
@@ -441,21 +374,20 @@ describe('Dash against the real platform', () => {
         window.dispatchEvent(new dom.window.CustomEvent('featherbase:bar-change', { detail: { key: 'store', value: '9901' } }))
         await busy
       })
-      if (signedIn) await waitForQuickView()
+      if (signedIn) await waitForDive()
       else await waitForText("You don't have a report to open yet.")
       expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
       expect(requests.filter(r => r.path.endsWith('/embed_session'))).toHaveLength(1)
       // Someone with no reports has no store to check: the report is opened at once, and refused.
       expect(requests.filter(r => r.path.endsWith('/stores'))).toHaveLength(signedIn ? 1 : 0)
-      if (signedIn) expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
-      else {
+      if (!signedIn) {
         expect(document.querySelector('[data-testid=dash] a[href*=instance-health]')).toBeNull()
         expect([...new Set(requests.filter(r => r.path.includes('/app_reads/')).map(r => r.status))]).toEqual([403])
       }
     })
   }
 
-  installed('a cached-read database deadline stays failed when late answers arrive, then Try again loads fresh totals', async ({ dash: _dash }) => {
+  installed('a report-read database deadline stays failed when late answers arrive, then Try again opens the Dive', async ({ dash: _dash }) => {
     history.replaceState(null, '', '/dash/')
     await open()
     await reportsAnswered()
@@ -472,10 +404,9 @@ describe('Dash against the real platform', () => {
     expect(document.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('failed')
     expect(document.querySelector('table')).toBeNull()
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
-    await waitForQuickView()
+    await waitForDive()
     expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(2)
-    expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
-  }, 25000)
+      }, 25000)
 
   for (const missing of [false, true]) {
     installed(`a hosted manager sees ${missing ? 'missing setup guidance' : 'no-store guidance'} without a local-machine command`, async ({ dash: _dash, admin }) => {
@@ -491,43 +422,41 @@ describe('Dash against the real platform', () => {
     })
   }
 
-  installed('bar and history store changes replace old figures with the new store empty state and back again', async ({ dash }) => {
+  installed("bar and history store changes replace the old store's heading with the new store's and back again", async ({ dash }) => {
     await dash.job(dash.reader.user!, 'Store Manager', { site: 'HIL' })
     await open()
-    await waitForQuickView()
+    await waitForDive()
     await act(async () => {
       history.pushState(null, '', '?store=9902')
       window.dispatchEvent(new dom.window.CustomEvent('featherbase:bar-change', { detail: { key: 'store', value: '9902' } }))
     })
-    await waitForText('The figures are being prepared.')
-    expect(document.querySelector('table')).toBeNull()
-    expect(document.body.textContent).not.toContain('Silk')
+    await waitForText('Hillview')
+    expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Hillview')
     await act(async () => {
       history.replaceState(null, '', '?store=9901')
       window.dispatchEvent(new dom.window.PopStateEvent('popstate'))
     })
-    await waitForQuickView()
-    expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
+    await waitForText('Lakeside · Sarees')
+    expect(document.body.textContent).not.toContain('Hillview')
   })
 
   installed('an address outside the real reader scope waits for correction, then opens only their default store', async ({ dash: _dash }) => {
     history.replaceState(null, '', '/dash/?store=9909')
     await open()
-    await waitForQuickView()
+    await waitForDive()
     expect(requests.filter(r => r.path.endsWith('/stores'))).toEqual([
       { path: '/api/app_reads/dash/stores', status: 200 },
     ])
     expect(requests.filter(r => r.path.endsWith('/report'))).toHaveLength(1)
     expect(document.querySelector('[data-testid=heading-title]')?.textContent).toBe('Lakeside · Sarees')
-    expect(document.querySelector('tfoot')?.textContent).toBe('Total₹1,000.00₹900.00−₹100.0090%')
-    expect(document.body.textContent).not.toContain('9909')
+        expect(document.body.textContent).not.toContain('9909')
   })
 
   // #967's UI checklist, against the real reads.
   installed('lists the reports in the sidebar, marks the one on show, and keeps the store in each address', async ({ dash: _dash }) => {
     history.replaceState(null, '', '/dash/?store=9901&report=sales')
     await open()
-    await waitForQuickView()
+    await waitForDive()
     const links = [...document.querySelectorAll('[data-testid=report-link]')]
     expect(links.map(a => [a.textContent, a.getAttribute('aria-current'), a.getAttribute('href')])).toEqual([
       ['Sales versus target', 'page', '?store=9901&report=sales'],
@@ -543,7 +472,8 @@ describe('Dash against the real platform', () => {
     expect(document.body.textContent).not.toMatch(/9901|010101001/)
   })
 
-  installed("says a report with no quick view couldn't open, with Try again, when its Dive isn't set up", async ({ dash: _dash }) => {
+  installed("says a report couldn't open, with Try again, when MotherDuck refuses its Dive", async ({ dash: _dash }) => {
+    motherDuckRefuses = true
     history.replaceState(null, '', '/dash/?report=vendor_sales')
     await open()
     await waitForText("This report couldn't open.")

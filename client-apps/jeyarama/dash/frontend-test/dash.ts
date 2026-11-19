@@ -1,12 +1,9 @@
-// The same real runtime package, core Tables and cached dataset storage
-// as platform-test/report.test.ts. No warehouse or HTTP response stand-ins.
-import { createHash, randomUUID } from 'node:crypto'
+// The same real runtime package and core Tables as platform-test/report.test.ts. Dash copies no
+// figures (#1366): the report is its Dive, whose embed session page-test's MotherDuck stand-in mints.
 import { readFileSync } from 'node:fs'
 import { expect } from 'vitest'
 import type { CreateUserFn, TestClient } from '../../../../apps/server/node_modules/feather-testing-postgres'
 import { discoverPackages } from '../../../../apps/server/src/runtime-packages'
-import { datasetsDeclaration } from '../../../../apps/server/src/app-datasets'
-import { sql } from '../../../../apps/server/src/db'
 // @ts-expect-error a plain .mjs module
 import { ACCESS_ROWS, BASE_TABLES, LINKED_TABLES, REPORT_ROWS } from '../platform-test/base-tables.mjs'
 
@@ -15,7 +12,6 @@ export async function setupDash(admin: TestClient, createUser: CreateUserFn) {
   await admin.post('/api/install_app', { name: 'dash' })
   for (const table of BASE_TABLES) await admin.post('/api/table_def', table)
   await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES) } })
-  const manifest = JSON.parse(readFileSync(new URL('../featherbase.json', import.meta.url), 'utf8'))
   const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
   const headers = { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `dash@${version}` }
   const save = async (table: string, row: Record<string, unknown>) => {
@@ -52,25 +48,7 @@ export async function setupDash(admin: TestClient, createUser: CreateUserFn) {
   const reader = await createUser({ email: 'dash-ui-leader@example.test', roles: ['Dash Reader'] })
   const lead = await job(reader.user!, 'Team Leader', { section: sarees.row_id })
   await admin.post('/api/table/Data%20Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'DASH_UI_DUCKDB', access: 'read_only' })
-  const day = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
-  const fact = (subcategory_code: string, values: Record<string, unknown> = {}) => ({
-    subcategory_code, subcategory: 'Silk', target: 1000, actual: 800,
-    store_code: '9901', store_name: 'Lakeside', short_code: 'LKS', days_with_actual: 1,
-    days: 1, period_start: `${day.slice(0, 8)}01`, data_through: day, targets_available: true, ...values,
-  })
-  const snapshot = async (rows: Record<string, unknown>[], name = 'sales_to_date') => {
-    const dataset = datasetsDeclaration.parse(manifest.datasets).find(d => d.name === name)!
-    const definition = createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16)
-    await sql`update dataset_snapshot set state = 'superseded' where dataset = ${`dash.${name}`} and state = 'active'`
-    const id = randomUUID()
-    await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, activated_at, row_count)
-      values (${id}, ${`dash.${name}`}, ${definition}, 'active', now(), now(), ${rows.length})`
-    for (let start = 0; start < rows.length; start += 500)
-      await sql`insert into app_dataset_row ${sql(rows.slice(start, start + 500).map(row => ({ snapshot_id: id, row: sql.json(row) })), 'snapshot_id', 'row')}`
-  }
-  const facts = [fact('010101001'), fact('010101002', { subcategory: 'Quiet cotton', target: 0, actual: 0 }),
-    fact('010101003', { subcategory: 'Sales only', target: null, actual: 100 })]
-  await snapshot(facts)
-  await snapshot(facts, 'sales_month')
-  return { reader, section: sarees, addSection: section, place, lead, job, save, fact, facts, snapshot, day }
+  // The Dive's service account: with it (and the embed token the config sets) every report opens its Dive.
+  await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'dash.embed_service_account', value: 'svc-made-up' } })
+  return { reader, section: sarees, addSection: section, place, lead, job, save }
 }
