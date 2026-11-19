@@ -5,7 +5,7 @@ import { buildInfo } from './build-info'
 import { assertSystemManager } from './permissions'
 import { recordAppAccessRefusal } from './app-access'
 import { installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { appCatalog, closedApps, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { appCatalog, closedApps, appBar, packageFailures, runPackageAction, runPublicPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { activeRuntimeVersions, appOperation } from './app-lifecycle'
 import { who, type Env } from './route-context'
@@ -50,7 +50,7 @@ appRoutes.post('/api/app_actions/:app/:action', async (c) =>
   c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
 appRoutes.post('/api/app_reads/:app/:read', async (c) => {
   c.header('Cache-Control', 'no-store')
-  return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
+  return c.json(await runPublicPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
 })
 // #1282 C10–C11: the record panel's worked-out sections, an installed app's answer about one record.
 appRoutes.get('/api/worked-out/:table/:row', async (c) => c.json(await workedOutFor(c.req.param('table'), c.req.param('row'), who(c))))
@@ -67,7 +67,7 @@ appRoutes.get('/api/app_reads/:app/:read/access', async (c) => {
   c.header('Cache-Control', 'no-store')
   if (new URL(c.req.url).search || (await c.req.text()).length)
     return recordAppAccessRefusal(who(c), c.req.param('app'), c.req.param('read'), 'override')
-  return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), undefined, who(c), true))
+  return c.json(await runPublicPackageRead(c.req.param('app'), c.req.param('read'), undefined, who(c), true))
 })
 for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upgrade'] as const) {
   appRoutes.post(`/api/${operation}`, async c => {

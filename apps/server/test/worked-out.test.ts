@@ -105,6 +105,18 @@ describe('worked-out sections: who sees what', () => {
     expect(await (await sections(admin, 'Person', admin.user!)).json()).toEqual({ sections: [] })
   })
 
+  // Codex adversarial round 2: the generic app-read route would run the read without the record check or the scrub.
+  test("the app's worked-out read answers only through the record panel's checked route", async ({ admin, createUser }) => {
+    await install(admin)
+    const [, explainer] = await people(createUser)
+    // Called as the app's own page calls its reads.
+    const direct = await explainer.fetch('/api/app_reads/barproof/worked_out', { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'barproof@1.0.0' }, body: JSON.stringify({ payload: { table: NOTE, row: 'n1' } }) })
+    await expectStatus(direct, 403)
+    expect(await direct.text()).toContain('answers only through the record panel')
+    expect(hook().asked).toEqual([])
+  })
+
   test('the app saying nothing is nothing; the viewer must read the record itself', async ({ admin, createUser }) => {
     await install(admin)
     const [, explainer] = await people(createUser)

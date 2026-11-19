@@ -718,6 +718,15 @@ export function runPackageRead(app: string, read: string, input: unknown, user: 
   return executeRuntimeRead(app, read, input, user, () => packages.get(app)?.reads, discovery)
 }
 
+/** POST /api/app_reads/:app/:read, called by people and pages. A read the app declares for its worked-out sections
+ *  (#1282, Codex adversarial round 2) answers only through GET /api/worked-out, which checks the record and scrubs the
+ *  answer for the viewer; called here it would skip both. */
+export function runPublicPackageRead(app: string, read: string, input: unknown, user: string, discovery = false) {
+  if (Object.values(packages.get(app)?.manifest.workedOut ?? {}).some(w => w.read === read))
+    throw new AppError('PermissionError', "This read answers only through the record panel's worked-out sections")
+  return runPackageRead(app, read, input, user, discovery)
+}
+
 export function declaredPackageActions() {
   return [...packages.values()].map(pkg => ({ app: pkg.name, actions: [...(pkg.actions?.handlers.keys() ?? [])],
     ...(pkg.manifest.actions?.version === 1 ? { diagnostic: 'Explicit action policy upgrade required' } : {}) }))
