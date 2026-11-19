@@ -102,7 +102,7 @@ test('Browse a table\'s rows: each listed column is headed by its label', async 
   expect(screen.getByTestId('col-active')).toHaveTextContent('Active')
 })
 
-test('Browse a table\'s rows: a ticked yes/no reads as a tick, an unticked one as no tick', async ({ admin }) => {
+test('Browse a table\'s rows: a ticked yes/no reads Yes, an unticked one No (#1348 board 2)', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: 'Lv Ticks',
     columns: [
@@ -116,8 +116,8 @@ test('Browse a table\'s rows: a ticked yes/no reads as a tick, an unticked one a
   await waitFor(() => expect(cellTexts('city')).toHaveLength(2))
   const activeOf = (city: string) =>
     within(within(rowsEl()).getByText(city).closest('tr') as HTMLElement).getByTestId('cell-active').textContent
-  expect(activeOf('ticked')).toContain('✓')
-  expect(activeOf('unticked')).not.toContain('✓')
+  expect(activeOf('ticked')).toBe('Yes')
+  expect(activeOf('unticked')).toBe('No')
 })
 
 test('Browse a table\'s rows: opening a row takes the user to its full form', async ({ admin }) => {

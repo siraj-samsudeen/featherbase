@@ -1,10 +1,12 @@
 // #1348 the calmer look: the shared primitives separate with fills and shadow, never a line. Board 1
 // (Visual System) of docs/design/mockups/look-and-relationships.html. jsdom computes no stylesheet, so these
 // read the class recipes; the verifier checks the drawn result against the boards.
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, test } from 'vitest'
 import {
-  buttonClasses, cardClasses, Chip, chipHue, inputClasses, panelClasses, raisedClasses, Segmented, statusHue,
+  buttonClasses, cardClasses, cellClasses, Chip, chipHue, headCellClasses, inputClasses, panelClasses, raisedClasses, Segmented, statusHue,
 } from '@featherbase/shop-floor'
 
 const classes = (s: string) => s.split(' ')
@@ -99,5 +101,31 @@ describe('chips with meaning', () => {
     expect(chip.querySelector('[data-chip-dot]')).not.toBeNull()
     rerender(<Chip hue="green" dot compact>Open</Chip>)
     expect(screen.getByText('Open').querySelector('[data-chip-dot]')).toBeNull()
+  })
+})
+
+describe('tables: a grey header band and rows told apart by space, never a line', () => {
+  test('the header is a 36px quiet-fill band with a 12.5/500 grey label and rounded ends', () => {
+    expect(classes(headCellClasses())).toEqual(expect.arrayContaining(['h-9', 'bg-subtle', 'px-3', 'text-[12.5px]', 'font-medium', 'text-ink-subtle']))
+    expect(classes(headCellClasses({ first: true }))).toContain('rounded-l-lg')
+    expect(classes(headCellClasses({ last: true }))).toContain('rounded-r-lg')
+  })
+  test('Comfortable rows are 44px with 14px text; Compact Rows are 32px with 13px text and a faint zebra', () => {
+    expect(classes(cellClasses())).toEqual(expect.arrayContaining(['h-11', 'text-sm', 'px-3']))
+    const compact = classes(cellClasses({ density: 'compact' }))
+    expect(compact).toEqual(expect.arrayContaining(['h-8', 'text-[13px]', 'group-even:bg-subtle']))
+    expect(classes(cellClasses())).not.toContain('group-even:bg-subtle')
+  })
+  test('the row under the pointer and the selected row are the hover tint, with rounded ends', () => {
+    const c = classes(cellClasses({ first: true }))
+    expect(c).toEqual(expect.arrayContaining(['group-hover:bg-hover', 'group-aria-selected:bg-hover', 'rounded-l-lg']))
+    expect(classes(cellClasses({ last: true }))).toContain('rounded-r-lg')
+  })
+  test.each([
+    'src/components/ListView.tsx', 'src/components/ListRows.tsx',
+    '../../packages/shop-floor/src/Grid.tsx', '../../packages/shop-floor/src/DataList.tsx',
+  ])('%s draws no row or column rule', (file) => {
+    const text = readFileSync(join(__dirname, '..', file), 'utf8')
+    expect(text).not.toMatch(/\bborder-[blr]\b(?!-)|\bborder-r\s|divide-y/)
   })
 })
