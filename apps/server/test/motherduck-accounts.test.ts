@@ -99,6 +99,8 @@ describe('#1346: the MotherDuck account sync', () => {
       union all select t.title, t.assigned_to, r.original from tickets.ticket t
       join tickets.request r on r.row_id = t.row_id where t.title like '%asha_reports%'`
     expect(ticket).toMatchObject({ title: 'Link MotherDuck user asha_reports to a person', assigned_to: reviewer })
+    // Raised for the reviewer, so they can read who it may be.
+    expect(await sql`select owner from tickets.ticket where title like '%asha_reports%'`).toEqual([{ owner: reviewer }])
     expect(String(ticket.original)).toContain('asha@elsewhere.example')
     expect(String(ticket.original)).toContain(`Asha Reports Md (${asha})`)
 
@@ -146,6 +148,9 @@ describe('#1346: the MotherDuck account sync', () => {
     motherduck([[{ id: 'md-late', username: 'late_joiner', email: 'late@elsewhere.example' }]])
     expect((await syncMotherDuckAccounts()).ticket_errors).toEqual(['the Tickets app is not installed and on, so no ticket was raised'])
 
+    // The Admin lists them, a link on each to its person.
+    const listed = await admin.get<{ data: Record<string, unknown>[] }>('/api/table/MotherDuck Account?fields=' + encodeURIComponent('["username","person","account_status"]'))
+    expect(JSON.stringify(listed)).toContain('ravi_md')
     // Search finds the account by its username, and by its email.
     const hits = async (q: string) => ((await searchLines(admin, q)).find((l) => (l as { table?: string }).table === 'MotherDuck Account') as { hits: { title: string }[] } | undefined)?.hits.map((h) => h.title) ?? []
     expect(await hits('asha_reports')).toEqual(['asha_reports'])

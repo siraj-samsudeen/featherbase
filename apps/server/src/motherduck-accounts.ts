@@ -222,7 +222,7 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
       // By the account's MotherDuck id in the ticket's details, never its title:
       // a username can be reused by another account (Codex round 3).
       const [orphan] = await sql`select t.row_id from tickets.ticket t join tickets.request r on r.row_id = t.row_id
-        where t.owner = ${actor} and t.ticket_state not in ('Resolved', 'Closed')
+        where t.created_by = ${actor} and t.ticket_state not in ('Resolved', 'Closed')
           and r.details_json::jsonb ->> 'motherduck_account' = ${String(a.row_id)}
         order by t.created_at, t.row_id limit 1`
       if (!orphan && !needsTicket(a)) return
@@ -233,7 +233,9 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
         people.length ? `People whose name it reads as:\n${people.join('\n')}` : 'No person\'s name reads as this username.',
         `Link it by setting Person on the MotherDuck Account ${String(a.username)}; this ticket then closes itself.`,
       ].join('\n\n')
-      const payload = { title, original, details: { motherduck_account: String(a.row_id) } }
+      // Raised for the reviewer: a ticket's request is private to the person it is
+      // raised for and Tickets support, and the reviewer must read who it may be.
+      const payload = { title, original, details: { motherduck_account: String(a.row_id) }, ...(assignee ? { raiser: assignee } : {}) }
       const ticket = orphan ? String(orphan.row_id) : String((await ticketAction<{ ticket: { row_id: string } }>(actor, 'create', payload,
         `motherduck-account-${String(a.row_id)}-${createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16)}`)).ticket.row_id)
       await runAsSystemActor(actor, () => saveDoc(MOTHERDUCK_ACCOUNT_TABLE, { row_id: a.row_id, updated_at: a.updated_at }, actor, 'upsert',
