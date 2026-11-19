@@ -17,3 +17,17 @@ export function GroupChip({ label, count, selected = false, onSelect }: {
     </button>
   )
 }
+
+/**
+ * #1349 item 3 (board 4b): the groups with no rows, folded behind one muted pill, "+ 9 tables with none". Opened, it
+ * reads "Hide 9 tables with none" and the caller shows them. A grey fill, never a box, as #1348 draws a quiet control.
+ */
+export function NoneFold({ count, open, onToggle }: { count: number; open: boolean; onToggle: () => void }) {
+  const tables = `${fmtCount(count)} ${count === 1 ? 'table' : 'tables'} with none`
+  return (
+    <button type="button" aria-expanded={open} onClick={onToggle} data-testid="none-fold"
+      className="inline-flex min-h-[30px] items-center gap-1.5 rounded-full bg-fill px-3 text-[13px] text-ink-subtle transition-colors hover:bg-fill-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus pointer-coarse:min-h-control motion-reduce:transition-none">
+      {open ? `Hide ${tables}` : `+ ${tables}`}
+    </button>
+  )
+}

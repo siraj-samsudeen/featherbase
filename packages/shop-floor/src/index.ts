@@ -29,7 +29,7 @@ export { PANE_RIGHT_MIN_WIDTH, PanePlace, resolvePanePlace, SplitWithPane, type 
 export { KindTag, LinkActions, LinkChip, nameAndCode, smallActionClasses } from './LinkChip'
 export { RecordLink, RecordPagesProvider, useRecordHref, type RecordPageFor } from './RecordLink'
 export { PersonLabel } from './PersonLabel'
-export { GroupChip } from './GroupChip'
+export { GroupChip, NoneFold } from './GroupChip'
 export { FieldGrid, type FieldGridField, type FieldGridGroup } from './FieldGrid'
 export { DrillPane, PaneSection } from './DrillPane'
 export { PathBar, RecentPaths, type PathStep } from './PathBar'

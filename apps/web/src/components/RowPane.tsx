@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
-  FieldGrid, GroupChip, LinkChip, PaneSection, Plus, RecordLink, SplitWithPane, X,
+  FieldGrid, GroupChip, LinkChip, NoneFold, PaneSection, Plus, RecordLink, SplitWithPane, X,
   buttonClasses, cx, fmtCount, fmtDuration, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, tagClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
   type FieldGridGroup,
 } from '@featherbase/shop-floor'
@@ -116,11 +116,15 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
   const statusIsChip = Boolean(meta.data?.columns.some((c) => c.column_name === 'status' && c.column_type === 'Choice'))
   const subtitle = [kind, statusIsChip ? undefined : status, code].filter(Boolean).join(' · ')
   const tickable = groups.filter((g) => plans.get(g.key)?.tick)
-  // UI owner (#1282): as on the record page, groups with no rows wait behind "Show N empty".
+  // #1349 item 3 (board 4b): groups with no rows fold behind one muted "+ N tables with none".
   const chipGroups = groups.filter((g) => !plans.get(g.key)?.tick)
   const emptyChips = chipGroups.filter((g) => g.count === 0)
-  const chips = showEmpty ? chipGroups : chipGroups.filter((g) => g.count > 0)
+  const fullChips = chipGroups.filter((g) => g.count > 0)
   const levels = peekLevels(nav.path)
+  const chip = (g: BacklinkGroup) => (
+    <GroupChip key={g.key} label={g.label} count={g.count} selected={open?.key === g.key}
+      onSelect={() => choose(open?.key === g.key ? undefined : { table: g.connection.table, column: g.connection.column, via: g.connection.via })} />
+  )
   return (
     <RecordFrame kind={subtitle} title={title} place={place} framed={framed} onClose={close}
       chips={readable && doc.data ? <RecordChips meta={meta.data} values={doc.data} className="mt-2" /> : null}
@@ -149,19 +153,12 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
               {/* #1282 C10–C11: what an installed app works out about this record (a Person's apps and reports). */}
               <WorkedOutSections table={table} row={row} onOpen={drill} />
               <PaneSection title="Pointed At By">
-                <div className="flex flex-wrap gap-2">
-                  {chips.map((g) => (
-                    <GroupChip key={g.key} label={g.label} count={g.count} selected={open?.key === g.key}
-                      onSelect={() => choose(open?.key === g.key ? undefined : { table: g.connection.table, column: g.connection.column, via: g.connection.via })} />
-                  ))}
-                  {emptyChips.length > 0 && (
-                    <button type="button" onClick={() => setShowEmpty((was) => !was)} aria-expanded={showEmpty}
-                      className={touchLinkClasses('text-sm text-ink-muted hover:text-ink hover:underline')}>
-                      {showEmpty ? 'Hide empty' : `Show ${fmtCount(emptyChips.length)} empty`}
-                    </button>
-                  )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {fullChips.map(chip)}
                   {cnx.isPending && <span className="text-sm text-ink-subtle">Loading…</span>}
-                  {!cnx.isPending && !groups.length && <span className="text-sm text-ink-muted">No rows point at it</span>}
+                  {!cnx.isPending && !fullChips.length && !tickable.length && <NothingPointsAt kind={kind} />}
+                  {emptyChips.length > 0 && <NoneFold count={emptyChips.length} open={showEmpty} onToggle={() => setShowEmpty((was) => !was)} />}
+                  {showEmpty && emptyChips.map(chip)}
                 </div>
                 {open && !tickable.includes(open) && <PanelGroup key={open.key} table={table} row={row} group={open} nav={nav} onOpen={drill} />}
               </PaneSection>
@@ -173,6 +170,11 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
       </>}
     </RecordFrame>
   )
+}
+
+/** #1349 (board 4b): said once the counts are in and nothing with rows points at the record. */
+export function NothingPointsAt({ kind }: { kind: string }) {
+  return <span className="text-[13.5px] text-ink-muted">Nothing points at this {kind.toLowerCase()} yet.</span>
 }
 
 /** A group's rows as a list, on the path when the panel is on one. */
