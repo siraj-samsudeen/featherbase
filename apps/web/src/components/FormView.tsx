@@ -1101,7 +1101,7 @@ export function FormView({
           </div>
           {/* #1273: what the Collaboration tab held, as a section of Activity. */}
           <section aria-labelledby="people-tags-files" data-testid="activity-collaboration" className="space-y-3">
-            <h3 id="people-tags-files" className="text-sm font-semibold text-ink">People, Tags And Files</h3>
+            <h3 id="people-tags-files" className="text-[15px] font-semibold text-ink">People, Tags And Files</h3>
             <p className="text-sm text-ink-muted">People, tags and files for this record. Disabled features show existing content read-only.</p>
             <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
               <Assignments table={table} name={name} readOnly={!m.enable_assignments || !access.data?.assign} />

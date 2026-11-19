@@ -31,7 +31,8 @@ export function chipHue(value: string): ChipHue {
   return CATEGORY_HUES[h % CATEGORY_HUES.length]
 }
 
-const LIVE = new Set(['open', 'active', 'live', 'running', 'in progress', 'enabled', 'approved', 'current'])
+// A good outcome (Success, OK) reads green too, never a category tint that could look like an error.
+const LIVE = new Set(['open', 'active', 'live', 'running', 'in progress', 'enabled', 'approved', 'current', 'success', 'succeeded', 'ok', 'passed'])
 const NOT_YET = new Set(['planned', 'draft', 'pending', 'not started', 'new', 'waiting', 'on hold', 'scheduled', 'queued', 'proposed'])
 const FINISHED = new Set(['closed', 'inactive', 'done', 'cancelled', 'canceled', 'completed', 'archived', 'retired', 'resolved', 'ended', 'disabled', 'expired'])
 

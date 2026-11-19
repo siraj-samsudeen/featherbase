@@ -88,7 +88,7 @@ describe('the segmented control', () => {
 
 describe('chips with meaning', () => {
   test('a status reads green when live, amber when not yet, grey when finished, whatever its case', () => {
-    expect(['Open', 'Active', 'live', 'Running'].map(statusHue)).toEqual(['green', 'green', 'green', 'green'])
+    expect(['Open', 'Active', 'live', 'Running', 'Success', 'OK'].map(statusHue)).toEqual(['green', 'green', 'green', 'green', 'green', 'green'])
     expect(['Planned', 'Draft', 'Pending'].map(statusHue)).toEqual(['amber', 'amber', 'amber'])
     expect(['Closed', 'Inactive', 'Done', 'Cancelled'].map(statusHue)).toEqual(['grey', 'grey', 'grey', 'grey'])
   })
