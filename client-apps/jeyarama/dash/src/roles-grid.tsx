@@ -55,15 +55,17 @@ interface Shared { roles: GridRole[]; mayChange: boolean; onSaved: () => Promise
 /** Permissions × roles: what each business role can do, and how far. */
 export function PermissionsGrid(props: Shared) {
   const rows = permissionRows(props.roles)
-  // The same verb and thing at two levels ("Edit Tasks · Manager", "· User"): its line in the review names the level.
-  const levels = (row: PermissionRow) => new Set(rows.filter(r => r.verb === row.verb && r.thing === row.thing).map(r => r.level)).size
   return (
     <ChangesGrid<PermissionRow> {...props} testid="permissions-grid" label="What each business role can do" rows={rows} steps={REACH_STEPS} things="permissions"
       saved={(row, role) => role.permissions.find(p => keyOf(p) === row.id)?.reach ?? null}
       tooltip={(row, role, value) => (value
         ? `${rolePlural(role.name)} can ${lower(row.verb)} ${lower(row.thing)} — ${reachWords(value)}`
         : `${rolePlural(role.name)} can't ${lower(row.verb)} ${lower(row.thing)}`)}
-      line={({ row, role, from, to }) => [roleRecord(role), ` · ${row.verb} ${row.thing}${levels(row) > 1 ? ` (${row.level})` : ''}: ${reachWords(from)} → ${reachWords(to)}`]}
+      line={({ row, role, from, to }, changes) => {
+        // The same verb and thing changed at two levels ("Edit Tasks · Manager", "· User"): its line names the level.
+        const levels = new Set(changes.filter(c => c.row.verb === row.verb && c.row.thing === row.thing).map(c => c.row.level)).size
+        return [roleRecord(role), ` · ${row.verb} ${row.thing}${levels > 1 ? ` (${row.level})` : ''}: ${reachWords(from)} → ${reachWords(to)}`]
+      }}
       save={changes => act('change_permissions', { changes: changes.map(({ row, role, from, to }) => ({ role: role.id, app: row.app, level: row.level, verb: row.verb, thing: row.thing, from, to })) })} />
   )
 }
@@ -88,7 +90,7 @@ function ChangesGrid<R extends GridRow>({ roles, mayChange, onSaved, onWaiting, 
   testid: string; label: string; rows: R[]; steps: GridStep[]; things: string
   saved: (row: R, role: GridRole) => string | null
   tooltip: (row: R, role: GridRole, value: string | null) => string
-  line: (change: Change<R>) => SentencePart[]
+  line: (change: Change<R>, changes: Change<R>[]) => SentencePart[]
   save: (changes: Change<R>[]) => Promise<unknown>
 }) {
   const [waiting, setWaiting] = useState(new Map<string, string | null>())
@@ -116,7 +118,7 @@ function ChangesGrid<R extends GridRow>({ roles, mayChange, onSaved, onWaiting, 
   })
   const done = async () => { setWaiting(new Map()); setReviewing(false); await onSaved() }
   if (reviewing)
-    return <Review lines={changes.map(c => ({ key: `${c.row.id}|${c.role.id}`, parts: line(c) }))} touched={touched} people={people} personHref={personHref}
+    return <Review lines={changes.map(c => ({ key: `${c.row.id}|${c.role.id}`, parts: line(c, changes) }))} touched={touched} people={people} personHref={personHref}
       onBack={() => setReviewing(false)} onSave={async () => { await save(changes); await done() }} />
   return (
     // Room under the last row for the dark bar, so it never covers a row (UI owner).
