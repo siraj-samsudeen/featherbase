@@ -43,7 +43,9 @@ export async function beginMockApproval(api: TestClient, email: string, opts: Ap
 
 async function approveAndCallback(api: TestClient, email: string, opts: ApproveExtra & { token?: string }) {
   const { approve, callback, cookie } = await beginMockApproval(api, email, opts)
-  return callback === null ? approve : api.fetch(callback, { headers: { cookie } })
+  // An API caller at the callback asks for JSON, so a refusal is the JSON error,
+  // not the sign-in page a browser gets (#1318).
+  return callback === null ? approve : api.fetch(callback, { headers: { cookie, accept: 'application/json' } })
 }
 
 /** A full Google sign-in through the mock; returns the callback response. */
