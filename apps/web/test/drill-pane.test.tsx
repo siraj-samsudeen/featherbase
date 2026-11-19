@@ -448,3 +448,14 @@ test('on touch, the first tap on a count opens its card and the second opens the
   fireEvent.click(chip)
   await waitFor(() => expect(path()).toBe(tableHref(PLANT)))
 })
+
+test("the card lists the rows in the order of the list it opens", async ({ admin }) => {
+  await seedSites(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(PLANT)}`, { sort: { field: 'plant_name', dir: 'desc' } })
+  await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.pointerEnter(chip.parentElement!)
+  const card = await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
+  await waitFor(() => expect(within(card).getAllByRole('link', { name: /^Enchakkal / }).map((l) => l.textContent))
+    .toEqual(['Enchakkal Textiles', 'Enchakkal Supermarket', 'Enchakkal Jewellery']))
+})

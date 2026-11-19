@@ -94,6 +94,18 @@ test('↓ and ↑ walk the list, but not from inside an input or with a modifier
   await peeked('Order 03')
 })
 
+test('↓ does not walk while the ▾ menu is open', async ({ admin }) => {
+  await seed(admin)
+  await fromFilteredList(admin, 'Order 03')
+  await waitFor(async () => expect(await position()).toHaveTextContent('4 of 6'))
+  const trigger = within(bar()).getByRole('button', { name: 'Other rows in this list' })
+  fireEvent.click(trigger)
+  await screen.findByRole('menu', { name: 'Other rows in this list' })
+  fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+  await new Promise((r) => setTimeout(r, 200))
+  expect(await position()).toHaveTextContent('4 of 6')
+})
+
 test('from a record page reached from the list, › opens the next row page', async ({ admin }) => {
   await seed(admin)
   await fromFilteredList(admin, 'Order 03')
