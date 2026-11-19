@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
   FieldGrid, GroupChip, LinkChip, PaneSection, Plus, RecordLink, SplitWithPane, X,
-  buttonClasses, cx, fmtCount, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, tagClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
+  buttonClasses, cx, fmtCount, fmtDuration, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, tagClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
   type FieldGridGroup,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
@@ -20,7 +20,7 @@ import { useI18n } from '../lib/i18n'
 import { ActivityTimeline } from './ActivityTimeline'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
 import { Indicator } from './Indicator'
-import { isCodeColumn, isSourceColumn } from '../lib/column-kinds'
+import { isCodeColumn, isDurationColumn, isSourceColumn } from '../lib/column-kinds'
 import { WorkedOutSections } from './WorkedOut'
 import { useGroupPlans } from './LinkTickList'
 import { managedBySignIn } from './PersonSignInMethods'
@@ -419,6 +419,7 @@ function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: u
   if (col.column_type === 'Check') return <span className="text-ink-subtle">{value ? 'Yes' : 'No'}</span>
   if (col.column_type === 'Choice' && isSourceColumn(col.column_name)) return <span className={tagClasses()}>{choiceLabel(String(value), col.choice_labels, t)}</span>
   if (col.column_type === 'Choice') return <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
+  if (isDurationColumn(col)) return <>{fmtDuration(Number(value))}</>
   if (col.column_type === 'Data' && isCodeColumn(col.column_name)) return <span className="font-mono text-[12.5px] text-ink-subtle">{String(value)}</span>
   if (col.column_type === 'JSON') return <code className="text-xs">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</code>
   if (col.column_type === 'Attach' || col.column_type === 'Attach Image') return <>{String(value).split('/').pop()}</>

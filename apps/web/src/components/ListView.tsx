@@ -35,6 +35,7 @@ import { RecordCards } from './RecordCards'
 import { RecentStrip } from './RecentStrip'
 import { LinkCellFilter, ListRow, NAME_CLIP, PhoneList, cell, isFigure } from './ListRows'
 import { usePageTitle } from '../lib/page-title'
+import { summableColumn } from '../lib/column-kinds'
 
 const PAGE = 20
 /** #1289: a square icon toggle, tinted while on. */
@@ -377,7 +378,7 @@ export function ListView({
       : undefined)
 
   // #1276: the column a list totals, as Explore's panes did: money first, then other measures.
-  const sumColumn = ['Currency', 'Float', 'Int'].map((t) => columns.find((c) => c.column_type === t)).find(Boolean)
+  const sumColumn = summableColumn(columns)
   const list = useQuery({
     queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey, withRetired],
     enabled: Boolean(meta.data),

@@ -16,9 +16,9 @@ import { OneLine } from './list-one-line'
 import { Button, DataCards, LinkActions, Select, touchLinkClasses, useRecordHref, cellClasses, tagClasses, useRowDensity, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp } from '@featherbase/shop-floor'
 import { RetiredBadge } from './RowRetirement'
-import { fmtCount } from '@featherbase/shop-floor'
+import { fmtCount, fmtDuration } from '@featherbase/shop-floor'
 import { Indicator } from './Indicator'
-import { isCodeColumn, isSourceColumn } from '../lib/column-kinds'
+import { isCodeColumn, isDurationColumn, isSourceColumn } from '../lib/column-kinds'
 
 /** #1224: the columns that record who acted on a row. */
 const ACTOR_COLUMNS = new Set(['created_by', 'updated_by', 'retired_by'])
@@ -257,6 +257,8 @@ export function ListCell({
       ) : isBlank(value) ? (
         // #1348: an empty field stays blank: no dash, no grey box.
         null
+      ) : isDurationColumn(col) ? (
+        fmtDuration(Number(value))
       ) : col.column_type === 'Data' && isCodeColumn(col.column_name) ? (
         // #1348 (board 1): a code tells same-named rows apart; small, mono, grey, never blue.
         <span className="font-mono text-[12.5px] text-ink-subtle">{cell(value, col.column_type, settings)}</span>
