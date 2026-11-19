@@ -168,6 +168,17 @@ describe('business roles in shadow', () => {
       expect(await act('add_starting_roles')).toMatchObject({ roles: 18, titles: 12 })
       expect(await act('give_old_grants_to_roles')).toMatchObject({ grants_added: 9, grants_not_converted: 1 })
       expect(await read(staff, 'can_open')).toBe(true)
+      // #1340: Featherbase's own pages ask Dash about its business roles, and preview Give Old Grants, through the platform.
+      const [store] = await sql`select row_id from dash.business_role where role_name = 'Store Manager'`
+      const described = await systemManager.post<{ app: string; facts: { columns: { key: string }[]; rows: Record<string, { header: string; groups: { key: string }[] }> } }>(
+        '/api/records/dash.business_role/describe', { rows: [String(store.row_id)], page: true })
+      expect([described.app, described.facts.columns.map(c => c.key), described.facts.rows[String(store.row_id)]!.groups.map(g => g.key)])
+        .toEqual(['dash', ['people', 'given_by', 'can_do', 'reports', 'opens_dash'], ['can', 'reports', 'titles', 'people']])
+      expect(described.facts.rows[String(store.row_id)]!.header).toBe('Business role · 1 person · from HR title')
+      const preview = await systemManager.get<{ preview: { rows: { filter: string }[] } }>('/api/records/dash.business_role/preview/give_old_grants_to_roles')
+      expect(preview.preview.rows.filter(r => r.filter === 'there').length).toBeGreaterThan(0)
+      expect(await systemManager.post<{ result: unknown }>('/api/app_actions/dash/decide_access', { idempotencyKey: crypto.randomUUID(), payload: { person: staff.user } }).then(a => a.result))
+        .toEqual({ person: staff.user, decision: 'Lose Dash' })
       // The owner's yes: a System Manager adds the switch row.
       await saveRow(systemManager, 'dash.access_source', { source: 'business_roles' })
       expect([await read(storeManager, 'can_open'), (await read(storeManager, 'reports') as { key: string }[]).map(r => r.key), await labels(storeManager)])

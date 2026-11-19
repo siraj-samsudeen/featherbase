@@ -118,7 +118,7 @@ export interface PlannedGrant {
  * Already there), any other grant to a job or an old role not carried over, and a grant to one person staying with them (D4).
  * Giving the old grants runs exactly this plan, so the preview and the run cannot disagree.
  */
-export async function planGrants(read: Documents, model: Model, reportNames: ReadonlyMap<string, string> = new Map()): Promise<PlannedGrant[]> {
+export async function planGrants(read: Documents, model: Model, reportNames: ReadonlyMap<string, string>): Promise<PlannedGrant[]> {
   // The log names reports and bundles by name, never by key.
   const bundleNames = new Map((await every(read, 'dash.report_bundle', ['bundle_name'])).map(b => [exact(b.row_id), text(b.bundle_name)]))
   // Live grants only, as reportsGivenTo reads them: a retired or removed grant is access already withdrawn (Codex round 3).
@@ -143,8 +143,8 @@ export async function planGrants(read: Documents, model: Model, reportNames: Rea
       continue
     }
     for (const role of targets) {
-      const found = accessKey({ ...gives, business_role: role })
-      if (!('key' in found)) continue
+      // carriedOver has checked the grant gives one thing, so the same thing to one business role has its key.
+      const found = accessKey({ ...gives, business_role: role }) as { key: string }
       const step = { grant: exact(row.row_id), gives, what, old, role }
       if (given.has(`${exact(row.row_id)}/${role}`)) { plan.push({ ...step, outcome: 'Already there', earlier: true }); continue }
       given.add(`${exact(row.row_id)}/${role}`)
@@ -184,7 +184,7 @@ export async function convertGrants(read: Documents, write: Writer, model: Model
 }
 
 /** J3, when asked: the old grants given to business roles, the run kept with its log. It changes no switch and adds no role. */
-export async function giveOldGrantsToRoles(read: Documents, write: Writer, today: string, reportNames: ReadonlyMap<string, string>, by: string | null = null) {
+export async function giveOldGrantsToRoles(read: Documents, write: Writer, today: string, reportNames: ReadonlyMap<string, string>, by: string | null) {
   const { model } = await businessModel(read, today)
   const log = await logger(read, write)
   const grants = await convertGrants(read, write, model, log, reportNames)

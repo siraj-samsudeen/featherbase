@@ -20,7 +20,7 @@ export const GRID_PAGE = '/dash/?view=roles-grid'
 const PEOPLE_SENT = 20
 
 const counted = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-IN')} ${n === 1 ? one : many}`
-const joined = (words: string[]) => words.length <= 1 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
+const joined = (words: string[]) => words.length === 1 ? words[0]! : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
 
 /** How people came to hold a role, in the list's short words. */
 const GIVEN_BY: Record<string, string> = {
@@ -35,7 +35,7 @@ async function listActions(ctx: AccessContext) {
   const source = await accessSource(ctx.baseTables as Base)
   const switchRow = (await every(ctx.baseTables as Base, ACCESS_SOURCE, ['source']))[0]
   const live = source === 'business_roles'
-  const systemManager = (ctx.roles ?? []).includes('System Manager')
+  const systemManager = ctx.roles!.includes('System Manager')
   return [
     { key: 'starting_roles', label: 'Add The Starting Roles', run: 'add_starting_roles',
       explain: 'Creates the agreed roles and HR title maps that are missing. Running it again adds nothing.' },
@@ -72,7 +72,7 @@ async function roleGroups(ctx: AccessContext, role: Roles[number], roles: Roles,
       })) },
     { key: 'titles', heading: 'HR Titles That Give It', table: TITLE_MAP,
       rows: Object.fromEntries(titleRows.map(r => [exact(r.row_id), {
-        parts: [{ record: { table: TITLE_MAP, row: exact(r.row_id), name: text(r.title) } }, ` → this role, for ${counted(peopleOf.get(text(r.title).toLowerCase()) ?? 0, 'person', 'people')}`],
+        parts: [{ record: { table: TITLE_MAP, row: exact(r.row_id), name: text(r.title) } }, ` → this role, for ${counted(peopleOf.get(text(r.title).toLowerCase())!, 'person', 'people')}`],
         chip: { label: 'from HR', tone: 'quiet' as const },
       }])) },
     { key: 'people', heading: 'People', count: role.people,
@@ -102,7 +102,7 @@ export async function describeBusinessRoles(context: AccessContext) {
     rows: Object.fromEntries(await Promise.all(described.map(async role => [role.id, {
       facts: {
         people: { text: role.people.toLocaleString('en-IN') },
-        given_by: { text: role.given_by.map(w => GIVEN_BY[w] ?? w).join(' + ') || '—' },
+        given_by: { text: role.given_by.map(w => GIVEN_BY[w]).join(' + ') || '—' },
         can_do: { text: counted(role.permissions.length, 'permission') },
         reports: { text: role.given.length ? role.given.length.toLocaleString('en-IN') : '—' },
         opens_dash: { text: role.permissions.some(p => p.app === DASH_APP) ? 'Yes' : 'No' },
@@ -149,7 +149,7 @@ export async function giveOldGrantsPreview(context: AccessContext) {
     ? { parts: ['Person: ', { record: { table: 'Person', row: s.old.name, name: people.get(s.old.name) ?? 'Someone' } }] }
     : { text: s.old.kind === 'job' ? `Job: ${s.old.name}` : s.old.name }
   const toRoles = (ids: string[]) => ids.length
-    ? { parts: ids.flatMap((id, i) => [...(i ? [i === ids.length - 1 ? ' and ' : ', '] : []), { record: { table: ROLE_TABLE, row: id, name: roleName.get(id) ?? 'A role' } }]) }
+    ? { parts: ids.flatMap((id, i) => [...(i ? [i === ids.length - 1 ? ' and ' : ', '] : []), { record: { table: ROLE_TABLE, row: id, name: roleName.get(id)! } }]) }
     : { text: '—' }
   const what: Record<PlannedGrant['outcome'], string> = {
     'Will be added': 'Will be added', 'Already there': 'Already there',

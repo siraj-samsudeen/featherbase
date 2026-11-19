@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { accessChanges, addStartingRoles, areaParts, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, whyAccess } from './business-roles-server'
 import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
-import { convertGrants } from './switch-over'
+import { convertGrants, oldGrantsSummary, startingRolesSummary } from './switch-over'
 import { accessPage, grantOptions, personLookup, whoIs } from './report-access-server'
 import { liveReach } from './access-source'
 import { SITE_KINDS, openStore, siteStoreFields } from './site-kind'
@@ -1864,6 +1864,43 @@ describe('business roles described for Featherbase (#1340)', () => {
       today: { opens: expect.any(Boolean), reports: expect.any(Number), stores: expect.any(Number) }, next: { opens: expect.any(Boolean) },
       who: { held: [{ job: 'Staff', site: { id: 'LKS', name: 'Lakeside' } }] } })
     expect(rows.filter(r => r.person !== 'st').some(r => r.decided)).toBe(false)
+  })
+
+  it('says a role that opens no Dash, and describes no row when none is asked for', async () => {
+    const tables = await seeded()
+    const staff = roleId(tables, 'Staff')
+    expect(((await describeBusinessRoles(context(tables, { payload: { rows: [staff] } }) as never)).rows[staff] as { facts: Record<string, { text: string }> }).facts.opens_dash.text).toBe('No')
+    expect((await describeBusinessRoles(context(tables, { payload: {} }) as never)).rows).toEqual({})
+  })
+
+  it('names the one other role that shares a report grant', async () => {
+    const tables = await seeded()
+    const [sm, cm] = [roleId(tables, 'Store Manager'), roleId(tables, 'Cluster Manager')]
+    tables['dash.report_access'].push({ row_id: 'g-sm', report: 'vs', business_role: sm, access_key: `report:vs/business_role:${sm}` },
+      { row_id: 'g-cm', report: 'vs', business_role: cm, access_key: `report:vs/business_role:${cm}` })
+    const groups = ((await describeBusinessRoles(context(tables, { payload: { rows: [sm], page: true } }) as never)).rows[sm] as { groups: { notes?: Record<string, string> }[] }).groups
+    expect(groups[1]!.notes!.vs).toBe('Also given to Cluster Manager, each in their own area')
+  })
+
+  it('says a run in the singular where one was added, and keeps a caller with no name as nobody named', async () => {
+    expect([startingRolesSummary({ roles: 1, titles: 1 }), oldGrantsSummary({ added: 1, alreadyThere: 0, notConverted: 0 })])
+      .toEqual(['1 role and 1 title map added', '1 added · 0 already there · 0 not carried over'])
+    const tables = await seeded()
+    tables['dash.report'] = REPORT_ROWS
+    const nameless = (over: Record<string, unknown> = {}) => ({ ...context(tables, over), userName: undefined })
+    const before = (tables['dash.setup_run'] ?? []).length
+    await actions.give_old_grants_to_roles(nameless({ roles: ['System Manager'] }) as never)
+    await addStartingRoles(nameless() as never)
+    await decideAccess(nameless({ payload: { person: 'st' } }) as never)
+    expect([...tables['dash.setup_run'].slice(before).map(r => r.run_by_name), tables['dash.access_decision'][0]!.decided_by_name]).toEqual([null, null, null])
+  })
+
+  it('names someone whose name is not known plainly in the preview', async () => {
+    const tables = await seeded()
+    tables['dash.report'] = REPORT_ROWS
+    tables['dash.report_access'] = [{ row_id: 'p1', report: 'vs', person: 'ghost' }]
+    const preview = await giveOldGrantsPreview(context(tables) as never)
+    expect(preview.rows[0]!.cells.old_grant).toEqual({ parts: ['Person: ', { record: { table: 'Person', row: 'ghost', name: 'Someone' } }] })
   })
 
   it('records Let Them Lose Dash once, changing no access, and only for someone who may see the page', async () => {
