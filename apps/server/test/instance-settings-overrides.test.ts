@@ -85,4 +85,10 @@ describe('#1345: a settings file sets Metadata Overrides from an allowlist', () 
     await expect(applyInstanceSettings(file([{ row_id: 'iso-bare', table_name: 'Iso Roster', property: 'person_column' }]), { by: 'Administrator' }))
       .rejects.toThrow('Metadata Override takes table_name, property and value')
   })
+
+  test('a file naming the same override twice is refused', async ({ admin }) => {
+    await roster(admin)
+    const twice = { ...fold[0]!, row_id: 'iso-roster-person-again' }
+    await expect(applyInstanceSettings(file([fold[0]!, twice]), { by: 'Administrator' })).rejects.toThrow('Metadata Override names the same Table, column and property twice')
+  })
 })

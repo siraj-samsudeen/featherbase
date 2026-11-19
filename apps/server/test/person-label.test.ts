@@ -76,6 +76,12 @@ describe('#1345: search lists each human once, told apart', () => {
     expect(await group(admin, 'Meena Ravikumar', 'Pl Staff')).toEqual([])
   })
 
+  test('a person no staff row matches is found as themselves', async ({ admin }) => {
+    await threeMeenas(admin)
+    const plain = await makePerson({ full_name: 'Plain Visitor Only', email: 'plain.only@example.test' })
+    expect((await group(admin, 'Plain Visitor Only', 'Person')).map((h) => h.row_id)).toEqual([plain])
+  })
+
   test('typing a staff code finds the person, not their staff row', async ({ admin }) => {
     const { ids } = await threeMeenas(admin)
     const people = await group(admin, 'pl-77002', 'Person')
