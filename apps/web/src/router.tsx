@@ -10,7 +10,7 @@ import {
   useParams,
   useRouter,
 } from '@tanstack/react-router'
-import { parseFilters, tableHref, tableSlug, type ListLayout } from 'shared'
+import { UNAVAILABLE_PATH, parseFilters, tableHref, tableSlug, type ListLayout } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { SetPasswordPage } from './pages/SetPassword'
@@ -22,6 +22,7 @@ import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
 import { Card, EmptyState, Notice, ProblemPage, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { AdminHomeLink, CannotShow } from './components/CannotShow'
 import { TopBar } from './components/TopBar'
+import { UnavailablePage } from './pages/Unavailable'
 import { ThemeChoiceProvider } from './lib/theme-choice'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
@@ -348,6 +349,18 @@ function PageNotFound() {
     </ThemeChoiceProvider>
   )
 }
+
+// #1328 (audit F09): where the server sends an address it cannot open as an app.
+// The address is read as text only (askedAddress), never followed.
+const unavailableRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: UNAVAILABLE_PATH,
+  validateSearch: (search: Record<string, unknown>) => ({ address: typeof search.address === 'string' ? search.address : undefined }),
+  component: function Unavailable() {
+    const { address } = unavailableRoute.useSearch()
+    return <UnavailablePage address={address} />
+  },
+})
 
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
 const printRoute = createRoute({
@@ -1157,6 +1170,7 @@ const exploreRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
+  unavailableRoute,
   featherbaseIndexRoute,
   loginRoute,
   agentConnectRoute,

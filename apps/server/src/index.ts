@@ -10,6 +10,8 @@ import { sql, withTransaction } from './db'
 import { assertRowsWritable } from './system-written'
 import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
+import { addressRoutes, servesAppRoot } from './unavailable-address'
+import { unavailableHref } from 'shared'
 import { runInSession } from './session-context'
 import { VIEW_AS_ENDED, viewAsStillHolds, activeViewAs, endViewAs, endViewAsSession, searchViewAs, sweepExpiredViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
 import { runViewingAs } from './view-as-context'
@@ -910,10 +912,12 @@ app.get('*', async (c, next) => {
       // #1222: View as ended on this very request; the same address now opens as the tester.
       if (error.message === VIEW_AS_ENDED) return c.redirect(`${url.pathname}${url.search}`, 302)
       const navigation = !asset || c.req.header('accept')?.includes('text/html')
+      // #1328: signed out, only an app that is on goes to sign-in; any other address says nothing is
+      // there, so a visitor cannot tell an app that is off from one that does not exist.
       if (navigation && error.type === 'AuthenticationError')
-        return c.redirect(
-          `/featherbase/login?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`,
-        )
+        return (await servesAppRoot(name))
+          ? c.redirect(`/featherbase/login?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`)
+          : c.redirect(unavailableHref(url.pathname), 302)
       if (!navigation || path.extname(asset)) throw error
       // #1222: while viewing, nothing is asked in the viewed person's name; just say they can't open it.
       if (viewing) return c.html(viewingNoAccessPage(viewing.as.name), 403)
@@ -921,14 +925,8 @@ app.get('*', async (c, next) => {
       const asked = user && (await requestAccess(user.row_id, name))
       if (asked && asked.state !== 'open')
         return c.html(noAccessYetPage(asked.title, asked.state === 'declined'), 403)
-      return c.html(
-        `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Application unavailable</title></head>
-      <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
-      <h1>Application unavailable</h1><p>This application may be disabled, its package may be missing or incompatible, or your account may not have access.</p>
-      <p>Disabling an application preserves its data. Ask your system manager to restore access.</p>
-      <p><a href="/featherbase/admin">Back to Featherbase</a> · <a href="/featherbase/login">Sign in</a></p></main></body></html>`,
-        404,
-      )
+      // #1328 (audit F09): the shared page, under the top bar, in the person's theme.
+      return c.redirect(unavailableHref(url.pathname), 302)
     }
     const { file, bytes, catalog, clientEntry, frameOrigins, accent } = resource
     if (path.extname(file) === '.html') c.set('frameOrigins', frameOrigins)
@@ -1388,6 +1386,7 @@ app.post('/api/access_request/:id/:decision', async (c) => {
 })
 
 app.route('/', peopleRoutes)
+app.route('/', addressRoutes)
 // #1207: the browser's part of an agent's sign-in, and Connected apps.
 app.route('/', agentAuthRoutes)
 
