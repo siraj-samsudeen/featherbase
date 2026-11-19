@@ -43,7 +43,10 @@ export function railTip(row: Element): string {
   const count = rowCount(row)
   // The owner (18-Nov): a control's key shows on hover, not on the row itself.
   const key = row.getAttribute('data-shortcut-key')
-  const words = count ? `${rowLabel(row)} · ${count}` : rowLabel(row)
+  // #1251 (9e9da16a8): hover text is Title Case ("Collapse Sidebar · ⌘B"); a control whose
+  // accessible name is in sentence case gives its hover words in data-tip.
+  const name = row.getAttribute('data-tip') ?? rowLabel(row)
+  const words = count ? `${name} · ${count}` : name
   return key ? `${words} · ${key}` : words
 }
 

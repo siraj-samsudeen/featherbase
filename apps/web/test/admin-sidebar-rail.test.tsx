@@ -74,7 +74,7 @@ test('the Collapse row names its key only in its hover tooltip; in the rail, one
   expect(control).not.toHaveAttribute('title')
   // Open, the sidebar's own tooltip names it and its key, at once; so are Help and Theme.
   fireEvent.pointerOver(control)
-  expect(screen.getByRole('tooltip').textContent).toMatch(/^Collapse sidebar · (⌘B|Ctrl\+B)$/)
+  expect(screen.getByRole('tooltip').textContent).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
   fireEvent.pointerOut(control)
   fireEvent.pointerOver(screen.getByTestId('help-button'))
   expect(screen.getByRole('tooltip')).toHaveTextContent(/^Help$/)
@@ -88,7 +88,7 @@ test('the Collapse row names its key only in its hover tooltip; in the rail, one
   // The rail's tooltip, at once; no browser tooltip as well.
   expect(control).not.toHaveAttribute('title')
   fireEvent.pointerOver(control)
-  expect(screen.getByRole('tooltip').textContent).toMatch(/^Expand sidebar · (⌘B|Ctrl\+B)$/)
+  expect(screen.getByRole('tooltip').textContent).toMatch(/^Expand Sidebar · (⌘B|Ctrl\+B)$/)
 })
 
 // #1253 (the frame Siraj agreed on 17-Nov-2026): the switcher and the bell lead

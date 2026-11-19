@@ -1197,8 +1197,10 @@ export function SidebarAside({ testid, children }: { testid: string; children: R
             data-shortcut-id="sidebar"
             data-shortcut-key={SIDEBAR_SHORTCUT}
             aria-label={words}
+            // #1251 (9e9da16a8, agreed): the hover label in Title Case, the key after " · ".
+            data-tip={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
             aria-keyshortcuts="Meta+B Control+B"
-            // The owner (18-Nov): the key shows only in the hover tooltip ("Collapse sidebar · Ctrl+B"), the
+            // The owner (18-Nov): the key shows only in the hover tooltip ("Collapse Sidebar · Ctrl+B"), the
             // sidebar's own, open or in the rail (lib/sidebar-rail), never on the row, and no browser tooltip too.
             className={`max-md:hidden ${collapsed ? `${RAIL_ROW} ${ROW_IDLE}` : touchRowClasses(`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm ${ROW_IDLE}`)}`}
           >

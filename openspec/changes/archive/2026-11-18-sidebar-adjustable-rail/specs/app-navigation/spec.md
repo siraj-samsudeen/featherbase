@@ -39,15 +39,15 @@ Then Tasker's navigation is shown in full, 256 pixels wide
 
 ### Requirement: The rail keeps every control, each named on hover
 
-Folded to its rail, the sidebar SHALL keep every control of its top and foot. Each SHALL be named when the pointer rests on it, and the collapse control SHALL name its key there, open or folded, instead of showing the key on the control. The sidebar's menus and these names SHALL show above the page.
+Folded to its rail, the sidebar SHALL keep every control of its top and foot. Each SHALL be named when the pointer rests on it, and the collapse control SHALL name itself in Title Case with its key there, open or folded ("Collapse Sidebar · ⌘B" on a Mac, Ctrl+B on Windows and Linux), instead of showing the key on the control. The sidebar's menus and these names SHALL show above the page.
 
 #### Scenario: The collapse control names its key on hover
 
 ```gherkin
 Given the user has Dash open with its navigation in full
 When the user rests the pointer on the collapse control
-Then a label reads "Collapse sidebar · Ctrl+B"
+Then a label reads "Collapse Sidebar · Ctrl+B"
 And the control itself shows no key
 When the user folds the sidebar and rests the pointer on the control
-Then a label reads "Expand sidebar · Ctrl+B"
+Then a label reads "Expand Sidebar · Ctrl+B"
 ```

@@ -184,7 +184,7 @@ test('the Collapse row names its key only in its hover tooltip; in the rail, one
   expect(sidebar().shadowRoot!.querySelector('style')!.textContent).toMatch(/\.sidebar-frame \{ position:sticky; z-index:30;/)
   // Open, the sidebar's own tooltip names it and its key, at once.
   fireEvent.pointerOver(control(), { composed: true })
-  expect(sidebar().shadowRoot!.querySelector('[role=tooltip]')?.textContent).toMatch(/^Collapse sidebar · (⌘B|Ctrl\+B)$/)
+  expect(sidebar().shadowRoot!.querySelector('[role=tooltip]')?.textContent).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
   fireEvent.pointerOut(control(), { composed: true })
 
   await userEvent.click(control())
@@ -194,7 +194,7 @@ test('the Collapse row names its key only in its hover tooltip; in the rail, one
   // A real pointer's events cross the shadow boundary (composed).
   fireEvent.pointerOver(control(), { composed: true })
   const tip = sidebar().shadowRoot!.querySelector('[role=tooltip]')
-  expect(tip?.textContent).toMatch(/^Expand sidebar · (⌘B|Ctrl\+B)$/)
+  expect(tip?.textContent).toMatch(/^Expand Sidebar · (⌘B|Ctrl\+B)$/)
 })
 
 // The owner (18-Nov): in the rail every control names itself on hover, the

@@ -346,7 +346,9 @@ export class FeatherbaseSidebar extends HTMLElement {
     if (this.control) {
       const words = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
       this.control.setAttribute('aria-label', words)
-      // The owner (18-Nov): the key shows only in the hover tooltip ("Collapse sidebar · Ctrl+B"), the
+      // #1251 (9e9da16a8, agreed): the hover label in Title Case, the key after " · ".
+      this.control.dataset.tip = collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'
+      // The owner (18-Nov): the key shows only in the hover tooltip ("Collapse Sidebar · Ctrl+B"), the
       // sidebar's own, open or in the rail (lib/sidebar-rail), never on the row, and no browser tooltip too.
       this.control.innerHTML = collapsed ? EXPAND_ICON : `${COLLAPSE_ICON}<span class="words">Collapse</span>`
     }

@@ -27,7 +27,7 @@ test('the control collapses and reopens the sidebar, and says what it will do', 
   // The owner (18-Nov): its hover text is the sidebar's own tooltip, key and all; no browser tooltip.
   expect(control).not.toHaveAttribute('title')
   fireEvent.pointerOver(control)
-  expect(screen.getByRole('tooltip').textContent).toMatch(/^Collapse sidebar · (⌘B|Ctrl\+B)$/)
+  expect(screen.getByRole('tooltip').textContent).toMatch(/^Collapse Sidebar · (⌘B|Ctrl\+B)$/)
   fireEvent.pointerOut(control)
 
   await userEvent.click(control)
@@ -37,7 +37,7 @@ test('the control collapses and reopens the sidebar, and says what it will do', 
   // so the browser's tooltip is left off: one tooltip, not two.
   expect(control).not.toHaveAttribute('title')
   fireEvent.pointerOver(control)
-  expect(screen.getByRole('tooltip').textContent).toMatch(/^Expand sidebar · (⌘B|Ctrl\+B)$/)
+  expect(screen.getByRole('tooltip').textContent).toMatch(/^Expand Sidebar · (⌘B|Ctrl\+B)$/)
 
   await userEvent.click(control)
   expect(collapsed()).toBe(false)

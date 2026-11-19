@@ -133,7 +133,7 @@ describe('app-navigation: the shared sidebar', () => {
       // A real pointer's events cross the shadow boundary (composed).
       fireEvent.pointerOver(control(), { composed: true })
     })
-    await step('a label reads "Collapse sidebar · Ctrl+B"', () => expect(label()).toBe('Collapse sidebar · Ctrl+B'))
+    await step('a label reads "Collapse Sidebar · Ctrl+B"', () => expect(label()).toBe('Collapse Sidebar · Ctrl+B'))
     await step('the control itself shows no key', () => {
       expect(control()).toHaveTextContent(/^Collapse$/)
       expect(control()).not.toHaveAttribute('title')
@@ -143,6 +143,6 @@ describe('app-navigation: the shared sidebar', () => {
       await userEvent.click(control())
       fireEvent.pointerOver(control(), { composed: true })
     })
-    await step('a label reads "Expand sidebar · Ctrl+B"', () => expect(label()).toBe('Expand sidebar · Ctrl+B'))
+    await step('a label reads "Expand Sidebar · Ctrl+B"', () => expect(label()).toBe('Expand Sidebar · Ctrl+B'))
   })
 })

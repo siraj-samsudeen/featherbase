@@ -20,5 +20,5 @@ Testing Dash on staging while viewing as a Store Manager (17/18-Nov-2026), the o
 
 ## Impact
 
-- `apps/web/src/lib/sidebar-collapsed.ts` (the store, the edge), `lib/sidebar-rail.ts` (hover labels, scroll edges), `lib/shortcuts.ts`, `bar/sidebar.ts`, `pages/AdminLayout.tsx`, `components/TopBar.tsx`, `index.css`.
+- `apps/web/src/lib/sidebar-collapsed.ts` (the store, the edge), `lib/sidebar-rail.ts` (hover labels), `lib/shortcuts.ts`, `bar/sidebar.ts`, `pages/AdminLayout.tsx`, `components/TopBar.tsx`.
 - No server or data change.

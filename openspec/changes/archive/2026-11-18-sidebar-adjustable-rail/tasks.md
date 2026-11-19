@@ -14,4 +14,4 @@
 
 ## 3. Hand-over
 
-- [ ] 3.1 The owner tries it on localhost and approves before it is pushed.
+- [x] 3.1 The owner tries it on localhost and approves before it is pushed. Done 18-Nov-2026: all six manual checks confirmed (the foot in the rail while viewing as someone, Collapse and the drag, hover labels and menus above the report, nothing outside the rail while opening, the Theme menu, the account pages).
