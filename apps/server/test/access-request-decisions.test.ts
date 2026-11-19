@@ -94,9 +94,9 @@ describe('approve', () => {
     await role('Master Data Editor')
     await role('Tasker Member')
     const asha = await createUser({ email: 'asha.three@example.com', roles: ['Tasker Member'] })
-    // A role that opens Featherbase: a System Manager-free viewer role is not
-    // enough, so the request for Featherbase stays until it opens (item 9).
-    const id = await waiting(asha.user!, 'dash')
+    // A role with no grant does not open Featherbase, so the request stays
+    // until it opens (item 9).
+    const id = await waiting(asha.user!)
     const sent = mailed.length
     const res = await decide(admin, id, 'approve', { roles: ['Master Data Editor'] })
     await expectStatus(res, 200)
@@ -106,7 +106,7 @@ describe('approve', () => {
     expect(rows.at(-1)).toMatchObject({ user: admin.user ?? 'Administrator' })
     expect(String(rows.at(-1)!.operation)).toContain('roles Master Data Editor')
     expect(mailed.length).toBe(sent)
-    // Master Data Editor does not open Dash: given, and the request stays.
+    // Master Data Editor does not open Featherbase: given, and the request stays.
     expect(await res.json()).toMatchObject({ given: ['Master Data Editor'], open: false })
     expect(await count(admin)).toBe(1)
   })

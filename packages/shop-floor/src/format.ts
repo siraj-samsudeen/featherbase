@@ -25,15 +25,6 @@ export function fmtExact(x: number | null | undefined): string {
   )
 }
 
-/**
- * Above or below target, with an explicit sign BOTH ways. A gap that reads
- * "₹10,000.00" is ambiguous about direction; "+₹10,000.00" is not.
- */
-export function fmtSigned(x: number | null | undefined): string {
-  if (x == null || Number.isNaN(x)) return '—'
-  return (x > 0 ? '+' : '') + fmtExact(x)
-}
-
 /** Achievement percentage, one decimal, Indian-grouped. */
 export function fmtPct(x: number | null | undefined): string {
   if (x == null || Number.isNaN(x) || !Number.isFinite(x)) return '—'

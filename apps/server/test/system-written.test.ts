@@ -349,7 +349,6 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/web_form/:route': 'web form insert through the guarded save',
     'POST /api/oauth/session': 'sign-in',
     'POST /api/open_admin': 'sign-in: mints a hand-off to the Admin address (#489)',
-    'POST /api/sales_target/embed_session': 'sign-in',
     'POST /api/events': 'internal writer: the caller\'s own usage events',
     'POST /api/view_as/start': 'internal writer: the tester\'s own View as state and its Access Log row (#1222)',
     'POST /api/view_as/exit': 'internal writer: ends the tester\'s own View as, logged (#1222)',

@@ -1,9 +1,6 @@
 import { registerJob } from '../jobs'
 import { buildSnapshot, forgetMisses, pendingMisses, pruneSnapshots, registeredDatasets, activeSnapshot } from '../dataset-snapshot'
 import { appDatasetServing } from '../app-datasets'
-// Importing the definition is what registers it. Datasets are registered by
-// import, like controllers and job handlers, so adding one is adding a file.
-import '../datasets/sales-target-mtd'
 
 // Refresh every dataset that has been asked for. Recurring: its cadence is the
 // `refresh_datasets` Scheduled Job row (seeded four-hourly by migration 0086,

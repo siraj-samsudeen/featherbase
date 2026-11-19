@@ -6,7 +6,6 @@
 import { screen, within } from '@testing-library/react'
 import { sql } from 'server/src/db'
 import { linkIdentity } from 'server/src/identities'
-import { VIEWER_ROLE } from 'server/src/sales-target'
 import { configureGoogle } from 'server/test/identity-fixtures'
 import { configureMicrosoft } from 'server/test/microsoft-mock'
 import { rowHref } from 'shared'
@@ -16,8 +15,8 @@ type Client = Parameters<typeof renderApp>[1]
 const anonymous = { user: null, token: null } as never
 
 async function member(admin: Client, createUser: (o: { email: string; roles: string[] }) => Promise<Client>, email: string) {
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
-  return createUser({ email, roles: [VIEWER_ROLE] })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Store Reader' } })
+  return createUser({ email, roles: ['Store Reader'] })
 }
 
 const PAGE = '/featherbase/account/sign-in-methods'

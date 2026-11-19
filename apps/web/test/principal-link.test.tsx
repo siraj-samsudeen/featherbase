@@ -14,7 +14,7 @@ type Viewer = { manage: boolean; tables: string[] }
 
 function shown(ui: React.ReactElement, viewer: Viewer, names: Record<string, string> = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
-  client.setQueryData(['whoami'], { capabilities: { ...viewer, report: false, admin: viewer.manage, own_grant: true, creatable: [], archived: [] }, roles: [] })
+  client.setQueryData(['whoami'], { capabilities: { ...viewer, admin: viewer.manage, own_grant: true, creatable: [], archived: [] }, roles: [] })
   for (const [id, name] of Object.entries(names)) client.setQueryData(['principal-name', id], name)
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
 }

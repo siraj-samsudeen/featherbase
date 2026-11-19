@@ -174,14 +174,10 @@ export const VARIABLES = [
   { name: 'FEATHERBASE_INSTANCE', secret: false, required: 'optional', purpose: 'the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance)' },
   { name: 'JOB_POLL_MS', secret: false, required: 'optional', default: '`500`', purpose: 'background worker poll interval' },
   { name: 'SERVER_URL', secret: false, required: 'optional', default: '`http://localhost:8000`', purpose: 'the server `pnpm smoke` probes' },
-  // ---- Sales target (Feather Dash)
-  { name: 'MOTHERDUCK_TOKEN', secret: true, required: 'optional', purpose: 'the one MotherDuck token: every MotherDuck source, app dataset and the sales-target embed use it. Featherbase only reads the warehouse, whatever rights the token has. Never logged, returned or stored' },
+  // ---- MotherDuck
+  { name: 'MOTHERDUCK_TOKEN', secret: true, required: 'optional', purpose: 'the one MotherDuck token: every MotherDuck source and app dataset use it. Featherbase only reads the warehouse, whatever rights the token has. Never logged, returned or stored' },
   { name: 'MOTHERDUCK_API_BASE', secret: false, required: 'optional', default: '`https://api.motherduck.com`', purpose: 'MotherDuck API base' },
-  { name: 'MOTHERDUCK_EMBED_ORIGIN', secret: false, required: 'optional', default: '`https://embed-motherduck.com`', purpose: 'the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub' },
-  { name: 'DIVE_ID', secret: false, required: 'optional', purpose: 'the sales-target Dive' },
   { name: 'SERVICE_ACCOUNT', secret: false, required: 'optional', purpose: 'the MotherDuck service account the embed runs as' },
-  { name: 'SALES_TARGET_TODAY', secret: false, required: 'optional', purpose: 'pins "today" (YYYY-MM-DD) for the sales target; for tests and rehearsals' },
-  { name: 'SALES_TARGET_SHARED_ENV', secret: false, required: 'optional', purpose: 'path of a local `.env.local` the sales-target experiment reads `DIVE_ID` and `SERVICE_ACCOUNT` from' },
 ] as const satisfies readonly Variable[]
 
 export type VariableName = (typeof VARIABLES)[number]['name']
@@ -228,7 +224,7 @@ export function isSet(name: VariableName): boolean {
 }
 
 /** A variable whose name is DATA, not code: a Data Source's `url_env`, or a
- *  key the sales-target experiment reads. Not in the registry, because the
+ *  variable an instance's settings name. Not in the registry, because the
  *  instance decides the name; the release checks a source's (see
  *  release-preflight.ts). */
 export function readNamedVariable(name: string): string | undefined {

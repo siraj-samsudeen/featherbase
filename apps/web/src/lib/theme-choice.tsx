@@ -6,7 +6,7 @@ import { useTheme, type Theme } from './theme'
 // to the toggle that shows them. On a phone the toggle is inside the Account
 // menu and unmounts when it closes, and a save it started must still land and
 // update the cached whoami (Codex round 1 on #495). Every signed-in shell (the
-// Admin, the account pages, the Sales Target page, the Portal) wraps itself in
+// Admin, the account pages, the Portal) wraps itself in
 // ThemeChoiceProvider; the toggle and the Admin command palette read it.
 //
 // Codex round 2 on #495:

@@ -6,9 +6,10 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
 import { setUserPassword } from 'server/src/auth'
+import { resolve } from 'node:path'
 import { config } from 'server/src/config'
+import { discoverPackages } from 'server/src/runtime-packages'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
-import { VIEWER_ROLE } from 'server/src/sales-target'
 import { getSessionUser } from '../src/lib/api'
 import { test, expect, renderApp } from './pg-test'
 import { openLine } from './sign-in-lines'
@@ -18,10 +19,19 @@ type Admin = Parameters<typeof renderApp>[1]
 const anonymous = { user: null, token: null } as never
 const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { pathname: string } } }).state.location.pathname
 
-afterEach(() => {
+afterEach(async () => {
+  // An app installed by a test stays loaded in this process after its rows roll back.
+  await discoverPackages([])
   config.instanceAddresses = null
   vi.restoreAllMocks()
 })
+
+/** An app open to everyone, installed under the name dash: a person with no
+ *  Admin use can open it, so their sign-in belongs on its address. */
+async function installDashApp(admin: Admin) {
+  expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'dash' })
+}
 
 async function openSetPassword(admin: Admin, email: string) {
   const [{ row_id }] = await sql`select row_id from person where email = ${email}`
@@ -167,8 +177,8 @@ test('#1257: someone who belongs on another address is handed off there once the
     ]),
     'test',
   )
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
-  await createUser({ email: 'handoff.invite@partner.test', roles: [VIEWER_ROLE] })
+  await installDashApp(admin)
+  await createUser({ email: 'handoff.invite@partner.test' })
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
   const navigations = () => errors.mock.calls.filter((c) => /Not implemented: navigation/.test(String(c[0]?.message ?? c[0])))
   const { rendered, form } = await openSetPassword(admin, 'handoff.invite@partner.test')
