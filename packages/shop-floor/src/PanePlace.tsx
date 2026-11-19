@@ -121,7 +121,7 @@ export function SplitWithPane({ place, pane, children }: {
       {shown && (
         <div data-testid="split-pane" className={right
           ? 'sticky top-0 flex max-h-[calc(100dvh-5rem)] min-h-0 w-2/5 min-w-90 max-w-full shrink-0 flex-col overflow-y-auto bg-surface'
-          : 'flex h-1/2 min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto border-t border-border bg-surface shadow-lg'}
+          : 'flex h-1/2 min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto bg-surface shadow-raised'}
         >{pane}</div>
       )}
     </div>

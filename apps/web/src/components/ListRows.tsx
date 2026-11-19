@@ -18,6 +18,7 @@ import { ArrowDown, ArrowUp } from '@featherbase/shop-floor'
 import { RetiredBadge } from './RowRetirement'
 import { fmtCount } from '@featherbase/shop-floor'
 import { Indicator } from './Indicator'
+import { isCodeColumn, isSourceColumn } from '../lib/column-kinds'
 
 /** #1224: the columns that record who acted on a row. */
 const ACTOR_COLUMNS = new Set(['created_by', 'updated_by', 'retired_by'])
@@ -267,9 +268,6 @@ export function ListCell({
 }
 
 const isBlank = (v: unknown) => v == null || String(v).trim() === ''
-/** #1348: a column named for a row's source (source, source_system) and one holding a code (code, site_code). */
-const isSourceColumn = (name: string) => /(^|_)source(_|$)/.test(name)
-const isCodeColumn = (name: string) => /(^|_)code$/.test(name)
 
 /** #1276: how a list narrows itself by one link's value, for its link cells'
  *  Filter. Absent where the list's filters are not the person's to change. */

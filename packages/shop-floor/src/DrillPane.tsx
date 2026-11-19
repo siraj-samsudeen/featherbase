@@ -28,15 +28,15 @@ export function DrillPane({ kind, title, onClose, actions, children, place }: {
         onClose()
       }}
       className={cx('flex min-h-0 min-w-0 flex-col bg-surface focus:outline-none',
-        place === 'right' ? 'h-full border-l border-border' : 'border-t border-border')}
+        place === 'right' ? 'h-full shadow-raised' : 'shadow-raised')}
     >
       {/* The title has the width beside Close to itself, wrapping between
           words; the actions sit on their own line under it and wrap there. */}
       <header className="flex shrink-0 flex-col gap-2 px-4 pt-3 pb-2">
         <div className="flex items-start gap-3">
           <div className="flex min-w-0 flex-1 flex-col">
-            <span className="text-xs text-ink-muted">{kind}</span>
-            <h2 className="text-lg font-semibold text-ink break-words">{title}</h2>
+            <span className="text-[13px] text-ink-subtle">{kind}</span>
+            <h2 className="text-xl font-semibold text-ink break-words">{title}</h2>
           </div>
           <button type="button" aria-label="Close" onClick={onClose} className={iconButtonClasses()}>
             <X aria-hidden size={18} />
@@ -53,7 +53,7 @@ export function DrillPane({ kind, title, onClose, actions, children, place }: {
 export function PaneSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex min-w-0 flex-col gap-2">
-      <h3 className="text-sm font-semibold text-ink-muted">{title}</h3>
+      <h3 className="text-[15px] font-semibold text-ink">{title}</h3>
       {children}
     </section>
   )

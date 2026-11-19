@@ -120,7 +120,7 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }
           <WorkedOutSections table={table} row={name} onOpen={open} />
           {empties.length > 0 && (
             <section aria-label="Pointed At By" data-testid="links-empty-groups" className="flex min-w-0 flex-col gap-2">
-              <h4 className="text-sm font-semibold text-ink">Pointed At By</h4>
+              <h4 className="text-[15px] font-semibold text-ink">Pointed At By</h4>
               <div className="flex flex-wrap gap-2">
                 {empties.map((g) => (
                   <span key={g.key} id={linksSectionId(g)} tabIndex={-1} className="scroll-mt-4 rounded-full focus:outline-none focus-visible:outline-2 focus-visible:outline-focus">

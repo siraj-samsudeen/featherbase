@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
 import {
   FieldGrid, GroupChip, LinkChip, PaneSection, Plus, RecordLink, SplitWithPane, X,
-  buttonClasses, cx, fmtCount, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
+  buttonClasses, cx, fmtCount, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, tagClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
   type FieldGridGroup,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
@@ -19,6 +19,8 @@ import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './For
 import { useI18n } from '../lib/i18n'
 import { ActivityTimeline } from './ActivityTimeline'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
+import { Indicator } from './Indicator'
+import { isCodeColumn, isSourceColumn } from '../lib/column-kinds'
 import { WorkedOutSections } from './WorkedOut'
 import { useGroupPlans } from './LinkTickList'
 import { managedBySignIn } from './PersonSignInMethods'
@@ -221,27 +223,28 @@ function RecordFrame({ kind, title, onClose, actions, children, place, framed, l
         onClose()
       }}
       className={cx('flex min-h-0 min-w-0 flex-col bg-surface focus:outline-none',
-        framed ? 'h-full rounded-xl shadow-lg' : place === 'right' ? 'h-full' : '')}
+        framed ? 'h-full rounded-card shadow-raised' : place === 'right' ? 'h-full' : '')}
     >
       {/* #1282 C14: "← · Level N of N · … · Open Full Page · ✕" on one line, the title under it at full width. */}
-      <header className="flex shrink-0 flex-col gap-1.5 px-5 pb-2 pt-4">
+      <header className="flex shrink-0 flex-col gap-1.5 px-[22px] pb-2 pt-5">
         <div className="flex min-w-0 items-center gap-2">
           <button type="button" aria-label="Back one level" title="Back one level" disabled={!levels.back} onClick={levels.back}
-            className={iconButtonClasses('shrink-0 bg-canvas disabled:opacity-40')}>
+            className={iconButtonClasses('shrink-0 bg-fill hover:bg-fill-hover disabled:opacity-40')}>
             <span aria-hidden>←</span>
           </button>
-          <span className="flex-1 text-xs text-ink-muted" data-testid="peek-level">Level {levels.at} of {levels.of}</span>
+          <span className="flex-1 text-[13px] text-ink-subtle" data-testid="peek-level">Level {levels.at} of {levels.of}</span>
           {actions && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
-          <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={iconButtonClasses('shrink-0 bg-canvas')}>
+          <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={iconButtonClasses('shrink-0 bg-fill hover:bg-fill-hover')}>
             <X aria-hidden size={16} />
           </button>
         </div>
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3.5 gap-y-0.5">
+        {/* #1348 board 4: the Table is a muted kicker above the record's name. */}
+        <div className="mt-3 flex min-w-0 flex-col gap-1">
+          <span className="text-[13px] text-ink-subtle" data-testid="record-panel-kind">{kind}</span>
           <h2 className="break-words text-xl font-semibold text-ink">{title}</h2>
-          <span className="text-sm text-ink-muted" data-testid="record-panel-kind">{kind}</span>
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pb-5">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-[22px] pb-5">{children}</div>
     </aside>
   )
 }
@@ -412,8 +415,11 @@ export function PaneFields({ meta, row, onOpen, stacked = true }: { meta: TableM
 function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: unknown; settings: Settings; onOpen: (pane: NavPane) => void }) {
   const { t } = useI18n()
   if (col.column_type === 'Reference' && col.reference_table) return <PaneLink table={linkRowsTable(col)!} rowId={String(value)} onOpen={onOpen} />
-  if (col.column_type === 'Check') return <>{value ? 'Yes' : 'No'}</>
-  if (col.column_type === 'Choice') return <>{choiceLabel(String(value), col.choice_labels, t)}</>
+  // #1348: the same chips, codes and muted yes/no as the list.
+  if (col.column_type === 'Check') return <span className="text-ink-subtle">{value ? 'Yes' : 'No'}</span>
+  if (col.column_type === 'Choice' && isSourceColumn(col.column_name)) return <span className={tagClasses()}>{choiceLabel(String(value), col.choice_labels, t)}</span>
+  if (col.column_type === 'Choice') return <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
+  if (col.column_type === 'Data' && isCodeColumn(col.column_name)) return <span className="font-mono text-[12.5px] text-ink-subtle">{String(value)}</span>
   if (col.column_type === 'JSON') return <code className="text-xs">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</code>
   if (col.column_type === 'Attach' || col.column_type === 'Attach Image') return <>{String(value).split('/').pop()}</>
   return <>{formatValue(col.column_type, value, settings) || String(value)}</>

@@ -93,7 +93,7 @@ function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, 
     <section aria-label={group.label} data-testid="linked-rows-group" className="flex min-w-0 flex-col gap-3">
       {heading && (
         <div className="flex min-w-0 items-center gap-2">
-          <h4 className={total ? 'text-sm font-semibold text-ink' : 'text-sm font-semibold text-ink-muted'} data-empty={total ? undefined : 'true'}>
+          <h4 className={total ? 'text-[15px] font-semibold text-ink' : 'text-[15px] font-semibold text-ink-muted'} data-empty={total ? undefined : 'true'}>
             {group.label} <span className="font-normal text-ink-muted">{fmtCount(total)}</span>
           </h4>
           <span className="flex-1" />

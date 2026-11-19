@@ -212,7 +212,7 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
           <button
             onClick={confirm}
             disabled={!ready}
-            className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint disabled:opacity-40' })}
+            className={buttonClasses({ variant: 'danger', className: 'disabled:opacity-40' })}
             data-testid="purge-confirm"
           >
             {busy ? 'Deleting…' : 'Delete permanently'}

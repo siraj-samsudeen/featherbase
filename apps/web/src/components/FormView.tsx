@@ -51,6 +51,7 @@ import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
 import { ContentTabs, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, raisedClasses } from '@featherbase/shop-floor'
+import { RecordChips } from './RecordChips'
 import type { Row } from './form-row'
 import { FieldControl } from './FieldControl'
 import { usePageTitle } from '../lib/page-title'
@@ -637,10 +638,13 @@ export function FormView({
         <div className="min-w-0 max-w-full">
           <h1 className="text-xl font-semibold text-ink">
             {/* The row's title (title column, or a readable stand-in from its
-                values) — the same one Home and the activity feed show. */}
-            {tableLabel(table, meta.data)}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
+                values) — the same one Home and the activity feed show. #1348 board 3: the
+                Table is a muted kicker above it; read aloud, the heading is still "Site: Bayside". */}
+            <span className="mb-2 block text-[13px] font-normal text-ink-subtle" data-testid="record-kicker">{tableLabel(table, meta.data)}<span className="sr-only">:</span></span>{' '}
+            {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
             <GlossaryHelp table={table} className="ml-1" />
           </h1>
+          {!isNew && <RecordChips meta={meta.data} values={baseline} />}
           {/* #1267 step 3: who the person is, their jobs and stores, and their email. */}
           {personPage && <PersonStanding person={name} email={typeof values.email === 'string' ? values.email : null} />}
           {/* #1267: a saved record says so once, at the tab row's right end; a new one here. */}
@@ -771,7 +775,7 @@ export function FormView({
                 setPurging(true)
               }}
               data-testid="form-purge"
-              className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+              className={buttonClasses({ variant: 'danger' })}
             >
               {t('Delete permanently')}
             </button>
@@ -793,7 +797,7 @@ export function FormView({
                   setConfirmingDelete(true)
                 }}
                 data-testid="form-delete"
-                className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+                className={buttonClasses({ variant: 'danger' })}
               >
                 {t('Delete')}
               </button>
@@ -822,7 +826,7 @@ export function FormView({
             <button
               onClick={() => runAction('cancel')}
               data-testid="form-cancel"
-              className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+              className={buttonClasses({ variant: 'danger' })}
             >
               Cancel
             </button>
@@ -910,7 +914,7 @@ export function FormView({
                     setPurging(true)
                   }}
                   disabled={deleteBusy}
-                  className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+                  className={buttonClasses({ variant: 'danger' })}
                   data-testid="delete-row-purge-instead"
                 >
                   Delete permanently
@@ -943,7 +947,7 @@ export function FormView({
               {!deleteOffersRetire && <button
                 onClick={deleteRow}
                 disabled={deleteBusy}
-                className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint disabled:opacity-40' })}
+                className={buttonClasses({ variant: 'danger', className: 'disabled:opacity-40' })}
                 data-testid="delete-row-confirm"
               >
                 {deleteBusy ? 'Deleting…' : 'Delete'}
@@ -985,7 +989,7 @@ export function FormView({
       {!isNew && access.isError && <p role="alert" className="mb-3 text-sm text-negative">Available operations could not be checked. Reload to retry.</p>}
       {scriptError && (
         <div
-          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-caution"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-control bg-caution-tint px-3 py-2 text-sm text-caution"
           data-testid="client-script-error"
         >
           <span>{scriptError}</span>
@@ -997,7 +1001,7 @@ export function FormView({
       {uncheckedSaves && (
         <p
           role="note"
-          className="mb-3 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-ink"
+          className="mb-3 rounded-control bg-caution-tint px-3 py-2 text-sm text-ink"
           data-testid="unchecked-saves-notice"
         >
           {boundSource} doesn’t record when its rows last changed, so changes made there while you
@@ -1007,7 +1011,7 @@ export function FormView({
       {idOutOfStep && naming && (
         <p
           role="note"
-          className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-ink"
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-control bg-caution-tint px-3 py-2 text-sm text-ink"
           data-testid="form-id-out-of-step"
         >
           <span>
@@ -1029,7 +1033,7 @@ export function FormView({
       )}
       {staleBanner && (
         <div
-          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-control bg-caution-tint px-3 py-2 text-sm"
           data-testid="stale-banner"
         >
           <span className="text-ink">
@@ -1112,7 +1116,7 @@ export function FormView({
           since the page's split makes its own scroll box, which pins sticky. */}
       {unsaved && !rowsReadOnly && (
         <div role="status" data-testid="form-unsaved-bar"
-          className="fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-card border border-border bg-surface px-4 py-2 shadow-lg max-sm:left-4 max-sm:justify-between">
+          className={raisedClasses('fixed bottom-4 right-4 z-40 flex items-center gap-3 px-4 py-2 max-sm:left-4 max-sm:justify-between')}>
           <span className="text-sm font-medium text-ink">{t('Unsaved changes')}</span>
           <button onClick={save} disabled={saveDisabled} aria-label={saving ? undefined : t('Save changes')} className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}>
             {saving ? t('Saving…') : t('Save')}
@@ -1129,7 +1133,7 @@ export function FormView({
             <p className="mb-3 text-sm text-ink-muted">{t("Your changes to this form haven't been saved.")}</p>
             <div className="flex flex-wrap justify-end gap-2 [&>button]:whitespace-nowrap">
               <button autoFocus onClick={() => leaveGuard.reset()} className={buttonClasses()}>{t('Stay')}</button>
-              <button onClick={() => leaveGuard.proceed()} className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}>{t('Leave without saving')}</button>
+              <button onClick={() => leaveGuard.proceed()} className={buttonClasses({ variant: 'danger' })}>{t('Leave without saving')}</button>
             </div>
           </div>
         </div>

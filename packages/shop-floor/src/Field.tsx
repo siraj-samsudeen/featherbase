@@ -26,7 +26,7 @@ export function inputClasses(className?: string): string {
 
 /** The look of a field label. */
 export function labelClasses(className?: string): string {
-  return recipe('mb-1.5 block text-sm font-semibold text-ink', className)
+  return recipe('mb-1.5 block text-[13px] text-ink-subtle', className)
 }
 
 interface Described {
