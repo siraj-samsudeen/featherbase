@@ -49,3 +49,8 @@ describe("a record's workspace", () => {
     expect(labelClasses()).toMatch(/text-\[13px\].*text-ink-subtle/)
   })
 })
+
+test('the chips can sit closer under a pane\'s name', () => {
+  render(<RecordChips meta={meta} values={{ status: 'Open' }} className="mt-2" />)
+  expect(screen.getByTestId('record-chips').className).toMatch(/\bmt-2\b/)
+})

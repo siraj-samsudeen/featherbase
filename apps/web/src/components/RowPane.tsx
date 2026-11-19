@@ -20,6 +20,7 @@ import { useI18n } from '../lib/i18n'
 import { ActivityTimeline } from './ActivityTimeline'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
 import { Indicator } from './Indicator'
+import { RecordChips } from './RecordChips'
 import { isCodeColumn, isDurationColumn, isSourceColumn } from '../lib/column-kinds'
 import { WorkedOutSections } from './WorkedOut'
 import { useGroupPlans } from './LinkTickList'
@@ -111,7 +112,9 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
   // #1273 (C1): the header reads "Priya S.  Person · Employee · Floor Manager":
   // its Table, its status and its code. A relationship the viewer may change
   // is a section of its own beside the fields; the rest are Pointed At By.
-  const subtitle = [kind, status, code].filter(Boolean).join(' · ')
+  // #1348 board 4: a Choice status is a chip under the name, so the kicker no longer says it too.
+  const statusIsChip = Boolean(meta.data?.columns.some((c) => c.column_name === 'status' && c.column_type === 'Choice'))
+  const subtitle = [kind, statusIsChip ? undefined : status, code].filter(Boolean).join(' · ')
   const tickable = groups.filter((g) => plans.get(g.key)?.tick)
   // UI owner (#1282): as on the record page, groups with no rows wait behind "Show N empty".
   const chipGroups = groups.filter((g) => !plans.get(g.key)?.tick)
@@ -120,6 +123,7 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
   const levels = peekLevels(nav.path)
   return (
     <RecordFrame kind={subtitle} title={title} place={place} framed={framed} onClose={close}
+      chips={readable && doc.data ? <RecordChips meta={meta.data} values={doc.data} className="mt-2" /> : null}
       levels={{ ...levels, back: levels.at > 1 ? () => nav.go(nav.path.at - 1) : undefined }}
       actions={readable ? <>
         {onFocus && !(step.screen === 'row' && step.table === table && step.row === row) &&
@@ -201,8 +205,10 @@ export function peekLevels(path: NavPath): { at: number; of: number } {
  * the actions at the top beside Close. It takes focus when it opens; Escape
  * anywhere inside closes it. No lines: a soft shadow sets it off when framed.
  */
-function RecordFrame({ kind, title, onClose, actions, children, place, framed, levels }: {
+function RecordFrame({ kind, title, chips, onClose, actions, children, place, framed, levels }: {
   kind: string
+  /** #1348: the record's status and category chips, under its name. */
+  chips?: ReactNode
   /** #1282 C14: "← · Level N of N"; ← steps back one level. */
   levels: { at: number; of: number; back?: () => void }
   title: string
@@ -242,6 +248,7 @@ function RecordFrame({ kind, title, onClose, actions, children, place, framed, l
         <div className="mt-3 flex min-w-0 flex-col gap-1">
           <span className="text-[13px] text-ink-subtle" data-testid="record-panel-kind">{kind}</span>
           <h2 className="break-words text-xl font-semibold text-ink">{title}</h2>
+          {chips}
         </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-[22px] pb-5">{children}</div>
