@@ -145,6 +145,8 @@ export interface TableMeta {
   queue?: boolean
   /** #1273: where a feed row is corrected: an address in the instance, {column} for the row's value. */
   correction_path?: string | null
+  /** #1346: more columns search matches, besides the key and the title. */
+  search_columns?: string[] | null
   // #905: archived: readable, never written, out of everyday menus.
   archived_at?: string | Date | null
   archived_by?: string | null
@@ -294,7 +296,11 @@ async function applyMetadataOverrides(name: string, meta: TableMeta): Promise<vo
     const kind = assertMetadataOverride(o.property, o.column_name)
     const val = kind === 'boolean'
       ? Object.hasOwn(METADATA_OVERRIDE_BOOLEAN_VALUES, o.value) && METADATA_OVERRIDE_BOOLEAN_VALUES[o.value]
-      : o.value
+      // #1346: an override names search's columns as text ("login, email");
+      // the effective setting is the list of those that are columns here.
+      : !o.column_name && o.property === 'search_columns'
+        ? o.value.split(/[,\n]/).map((c) => c.trim()).filter((c) => meta.columns.some((x) => x.column_name === c))
+        : o.value
     if (o.column_name) {
       const f = meta.columns.find((x) => x.column_name === o.column_name)
       if (f) (f as unknown as Record<string, unknown>)[o.property] = val
