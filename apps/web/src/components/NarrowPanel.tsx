@@ -130,14 +130,19 @@ function NarrowValues({ list, values, picked, onToggle }: {
   // A picked value no row reaches any more still shows, at 0, so it can be taken back.
   for (const id of Array.isArray(picked) ? picked : []) if (!all.some((v) => v.value === id)) all.push({ value: id, count: 0 })
   if (picked === 'none' && !all.some((v) => v.value === null)) all.push({ value: null, count: 0 })
-  // The server orders by count; picked values are pinned on top, ruled-out ones fall below.
+  // The server orders by count. Picked values are pinned on top; "Not linked to any"
+  // closes the possible values; ruled-out ones fall below.
+  const rank = (v: Value) => isPicked(v.value) ? 0 : v.count > 0 ? (v.value === null ? 2 : 1) : 3
   const sorted = all.map((v, i) => [v, i] as const)
-    .sort(([a, i], [b, j]) => Number(isPicked(b.value)) - Number(isPicked(a.value)) || Number(b.count > 0) - Number(a.count > 0) || i - j)
+    .sort(([a, i], [b, j]) => rank(a) - rank(b) || i - j)
     .map(([v]) => v)
   const found = useFound(list, q, sorted)
   const matching = q ? sorted.filter((v) => isPicked(v.value) || found(v.value)) : sorted
   const boxed = open || Boolean(q)
-  const shown = boxed ? matching : matching.slice(0, TOP)
+  // "Not linked to any" stays in view past the top values.
+  const none = matching.find((v) => v.value === null && v.count > 0)
+  const top = matching.filter((v) => v !== none).slice(0, TOP)
+  const shown = boxed ? matching : none ? [...top, none] : top
   const records = list.kind !== 'choice'
   const refs = records ? shown.filter((v) => v.value !== null).map((v) => ({ table: list.table!, row_id: v.value! })) : []
   const names = useRowNames(refs)
@@ -148,7 +153,7 @@ function NarrowValues({ list, values, picked, onToggle }: {
   const findLabel = `Find in ${list.label}`
   return (
     <section aria-label={list.label} className="min-w-0" data-testid="narrow-list">
-      <h3 className="mb-1 flex flex-wrap items-baseline gap-x-1.5 px-1.5 text-[13.5px] font-semibold text-ink">
+      <h3 className="mb-1 flex flex-wrap items-baseline gap-x-1.5 px-1.5 text-[13.5px] font-semibold leading-4 text-ink">
         {list.label}
         <span className="text-xs font-normal text-ink-subtle" data-testid="narrow-note">{values ? `${fmtCount(possible)} of ${fmtCount(all.length)}` : '…'}</span>
         {list.through && <span className="rounded-md bg-tag px-2 py-0.5 text-xs font-normal text-ink-muted">through {list.through}</span>}
@@ -160,7 +165,7 @@ function NarrowValues({ list, values, picked, onToggle }: {
           placeholder={findLabel}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="mb-1 w-full rounded-[7px] bg-surface px-2 py-1.5 text-[12.5px] text-ink shadow-sm outline-none placeholder:text-ink-subtle focus:shadow-[inset_0_0_0_1.5px_var(--color-focus)]"
+          className="mb-1 w-full rounded-[7px] bg-surface px-2 py-1.5 text-[12.5px] leading-[15px] text-ink shadow-sm outline-none placeholder:text-ink-subtle focus:shadow-[inset_0_0_0_1.5px_var(--color-focus)]"
           {...NOT_A_LOGIN}
         />
       )}
@@ -172,7 +177,7 @@ function NarrowValues({ list, values, picked, onToggle }: {
         {q && !shown.length && <p className="px-1.5 py-1 text-[12.5px] text-ink-subtle">No value matches</p>}
       </div>
       {all.length > TOP && !q && (
-        <button type="button" onClick={() => setOpen(!open)} className="px-1.5 py-[3px] text-[12.5px] text-action hover:underline">
+        <button type="button" onClick={() => setOpen(!open)} className="px-1.5 py-[3px] text-[12.5px] leading-[15px] text-action hover:underline">
           {open ? 'Show fewer' : `Show all ${fmtCount(all.length)}`}
         </button>
       )}
@@ -195,12 +200,12 @@ function NarrowValue({ list, value: v, label, max, on, onToggle }: {
   const record = list.kind !== 'choice' && v.value !== null
   const href = useRecordHref(list.table ?? '', v.value ?? '')
   const className = cx(
-    'grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_54px_44px] items-center gap-2 rounded-[7px] px-1.5 py-[5px] text-left text-[13px] no-underline focus-visible:outline-2 focus-visible:outline-focus',
+    'grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_54px_44px] items-center gap-2 rounded-[7px] px-1.5 py-[5px] text-left text-[13px] leading-4 no-underline focus-visible:outline-2 focus-visible:outline-focus',
     on ? 'bg-chip-green font-medium text-chip-green-ink' : out ? 'bg-fill text-ruled-out-ink' : 'text-ink hover:bg-fill-hover',
     v.value === null && !on && !out && list.kind !== 'choice' && 'text-negative',
   )
   const body = <>
-    <span className="truncate">{label}</span>
+    <span className="truncate" title={label}>{label}</span>
     <span
       aria-hidden
       className={cx('h-1.5 rounded-[3px]', on ? 'bg-picked-bar' : out ? 'bg-ruled-out-bar' : 'bg-count-bar')}

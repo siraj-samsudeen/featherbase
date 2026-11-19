@@ -532,6 +532,13 @@ export function ListView({
     // Not yet loaded is not empty: "No rows" would alarm someone whose
     // Table holds data (#871, a list reopened after its rename).
     'Loading…'
+  ) : filters.length && onFiltersChange ? (
+    // #1289 option C: the person's filters (or Click To Narrow picks) left nothing; the Table is not empty.
+    <EmptyState
+      title="No Rows Match These Filters"
+      body="Take a filter off, or clear them all."
+      action={<Button onClick={() => onFiltersChange([], { replace: true })} data-testid="list-empty-clear">Clear All Filters</Button>}
+    />
   ) : empty ?? (
     // #1242 (admin-lists 9): an empty Table shows the way forward (TLC-J1.2):
     // New, and Import data for those who may import.
@@ -992,7 +999,7 @@ export function ListView({
             {/* #1289: the active filters as big chips, in this same row. */}
             {/* #1289 option C: on a phone Click To Narrow is a sheet, opened from here. */}
             {narrow && Boolean(narrowLists?.length) && (
-              <Button aria-expanded={narrowSheet} onClick={() => setNarrowSheet(true)} data-testid="narrow-sheet-open">Narrow By</Button>
+              <Button aria-expanded={narrowSheet} onClick={() => setNarrowSheet(true)} data-testid="narrow-sheet-open" className="whitespace-nowrap">Narrow By</Button>
             )}
             <FilterChips meta={meta.data} filters={filters} onChange={onFiltersChange} held={heldByBoxes(meta.data, filters)}
               picked={pickedChips} onSaveView={filters.length ? () => setNamingView(true) : undefined} />
@@ -1237,7 +1244,7 @@ export function ListView({
       )}
       {/* #1289 option C (board A): the panel left of the rows, 18px apart. */}
       <div className={narrowBeside ? 'flex items-start gap-[18px]' : undefined}>
-      {narrowBeside && narrowPanel(2, 'min-w-[300px] flex-[0_1_560px]')}
+      {narrowBeside && narrowPanel(2, 'min-w-[300px] flex-[0_1_576px]')}
       <div className={narrowBeside ? 'min-w-0 flex-[1_1_520px]' : undefined}>
       {treeOn ? (
         <div className="flex min-h-0 items-start gap-3" data-testid="list-tree">
