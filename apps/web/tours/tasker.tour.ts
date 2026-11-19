@@ -4,7 +4,7 @@
 //
 // Part 1 is the simple path: install, let the team in, capture, plan, assign.
 // Part 2 layers on how the team talks about and splits up its work.
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { ensurePerson, expect, tour, type Person } from './tour'
 
 /** A System Manager gives a person a role on their Person page. */
@@ -146,6 +146,12 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
   await s.part('Part 2: working together', 'Questions, smaller pieces of work, and what to do first.')
 
   const details = (p: Page) => p.getByRole('complementary', { name: 'Task details' }).or(p.locator('aside[aria-label="Task details"]')).first()
+  // A message as the discussion shows it once saved: a question is an article,
+  // a reply an item under it. A textarea's draft is in the section's text as
+  // well (React mirrors a controlled value into it), so a check on the whole
+  // section passes before anything reached the server (#1376).
+  const posted = (discussion: Locator, text: string) => discussion.getByRole('article').filter({ hasText: text })
+  const reply = (discussion: Locator, text: string) => discussion.getByRole('article').getByRole('listitem').filter({ hasText: text })
   await s.chapter('Ask a question on the task', 30_000, async () => {
     await s.step('Meena opens the task and asks Arun which lights to use', async () => {
       await meena.getByRole('button', { name: PROJECT }).first().click()
@@ -155,7 +161,9 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
       await discussion.getByLabel('Reply needed from').selectOption({ label: ARUN.fullName })
       await discussion.getByLabel('Your question').fill('Warm white or the coloured strings?')
       await discussion.getByRole('button', { name: 'Post question' }).click()
-      await expect(discussion).toContainText('Warm white or the coloured strings?')
+      // #1376: the posted message, not the section: a typed draft is in the
+      // section's text too, and Arun would reload before it was saved.
+      await expect(posted(discussion, 'Warm white or the coloured strings?')).toBeVisible()
     })
     s.show(arun)
     await s.step('Arun sees it waiting on him, and answers', async () => {
@@ -166,13 +174,13 @@ tour('Tasker: a team runs its work', async ({ story, request }) => {
       const discussion = details(arun).locator('section[aria-label="Task discussion"]')
       await discussion.getByLabel('Reply to Warm white or the coloured strings?').fill('Warm white, like last year.')
       await discussion.getByRole('button', { name: 'Reply', exact: true }).click()
-      await expect(discussion).toContainText('Warm white, like last year.')
+      await expect(reply(discussion, 'Warm white, like last year.')).toBeVisible()
     })
     s.show(meena)
     await s.step('Meena marks the question answered', async () => {
       await meena.reload()
       const discussion = details(meena).locator('section[aria-label="Task discussion"]')
-      await expect(discussion).toContainText('Warm white, like last year.')
+      await expect(reply(discussion, 'Warm white, like last year.')).toBeVisible()
       await discussion.getByRole('button', { name: 'Mark answered' }).first().click()
       await expect(discussion.getByRole('button', { name: 'Reopen question' }).first()).toBeVisible()
     })
