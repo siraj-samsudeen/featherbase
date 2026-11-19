@@ -182,13 +182,21 @@ async function switchOffEverything(as: Client, table: string) {
  * saved empty: that last save is the page's, and must land before anyone
  * else signs in on it.
  */
+/** #1282 A4: the System Manager makes their whole view the Table's default from the View menu and confirms it; the
+ *  default then shows each wanted column (Table's list columns, switched on and off by the default) or not. */
 async function makeDefaultForEveryone(admin: Client, table: string, want: Record<string, boolean>) {
-  await inMenu((menu) => menu.clickButton('Make this the default for everyone'))
+  const view = screen.getByRole('button', { name: /^View$/ })
+  if (view.getAttribute('aria-expanded') !== 'true') fireEvent.click(view)
+  fireEvent.click(await screen.findByTestId('make-table-default'))
+  fireEvent.click(await screen.findByTestId('table-default-confirm'))
   await waitFor(async () => {
-    const meta = await admin.get<{ columns: { label?: string; in_list_view?: boolean }[] }>(`/api/table/${enc(table)}:meta`)
-    for (const [label, listed] of Object.entries(want))
-      expect(Boolean(meta.columns.find((c) => c.label === label)?.in_list_view), label).toBe(listed)
-    expect(await settingsOf(admin, table)).toMatchObject({ shownCols: [], hiddenCols: [] })
+    const meta = await admin.get<{ columns: { column_name: string; label?: string; in_list_view?: boolean }[] }>(`/api/table/${enc(table)}:meta`)
+    const { default: saved } = await admin.get<{ default: { settings: { shownCols?: string[]; hiddenCols?: string[] } } | null }>(`/api/table_view_default/${enc(table)}`)
+    for (const [label, listed] of Object.entries(want)) {
+      const col = meta.columns.find((c) => c.label === label)!
+      const shown = !saved?.settings.hiddenCols?.includes(col.column_name) && (Boolean(col.in_list_view) || Boolean(saved?.settings.shownCols?.includes(col.column_name)))
+      expect(shown, label).toBe(listed)
+    }
   })
 }
 

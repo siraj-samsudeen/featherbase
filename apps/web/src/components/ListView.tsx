@@ -9,7 +9,10 @@ import { TreeOfAll } from './RelationTree'
 import { rowCapabilitiesQuery } from '../lib/row-capabilities'
 import { NO_COLUMN_TYPES, isArchived, isRowsReadOnly, isSystemWritten, isView, tableLabel, useMeta } from '../lib/meta'
 import { SaveAsView, ViewBanner } from './TableViews'
-import { dataColumns, defaultColumnNames, isShown, listFields, listFlagsFromView, listLeader, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
+import { dataColumns, isShown, listFields, listLeader, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
+import { describeView, listDefaultsWith, tableViewDefaultQuery, viewAsDefault } from '../lib/table-view-default'
+import { TableDefaultDialog } from './TableDefaultDialog'
+import { userSettingsQuery } from './FormArrangement'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
@@ -171,7 +174,16 @@ export function ListView({
   // kept as columns switched on and off on top of the Table's list columns.
   const [arrangement, setArrangement] = useState<Required<ColumnArrangement>>({ shownCols: [], hiddenCols: [] })
   // #910 checklist 1: Compact shows each row's name and two key values.
-  const [compact, setCompact] = useState(false)
+  // #1282 A4: compact rows as this person chose, if they did; otherwise the Table's default decides.
+  const [ownCompact, setOwnCompact] = useState<boolean | undefined>(undefined)
+  const viewDefault = useQuery(tableViewDefaultQuery(table))
+  const td = viewDefault.data?.settings ?? {}
+  // The person's raw settings, as the Links tab keeps them (read here before any early return: a hook).
+  const ownSettings = useQuery(userSettingsQuery(table))
+  const compact = ownCompact ?? td.compact ?? false
+  const [confirmingDefault, setConfirmingDefault] = useState(false)
+  // Bumped by Reset, so this person's settings load again from what the server now holds.
+  const [settingsEpoch, setSettingsEpoch] = useState(0)
   // #1289: Save View… in the View menu opens the saved views' name form.
   const [namingView, setNamingView] = useState(false)
   const [viewMenuOpen, setViewMenuOpen] = useState(false)
@@ -203,8 +215,8 @@ export function ListView({
   const [conflictsOpen, setConflictsOpen] = useState(false)
   useEffect(() => setConflictsOpen(false), [table])
   // #859: retired rows are left out unless the person asks to see them.
+  // #1282 A4: remembered per person per Table with their list settings; while on, its toggle is tinted.
   const [showRetired, setShowRetired] = useState(false)
-  useEffect(() => setShowRetired(false), [table])
   const retirable = tableCanRetire(meta.data)
   // #859: a System Manager may delete the selection permanently.
   const [purging, setPurging] = useState(false)
@@ -213,7 +225,8 @@ export function ListView({
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsUnsaved, setSettingsUnsaved] = useState(false)
   const settingsWrite = useRef(Promise.resolve())
-  const [makingDefault, setMakingDefault] = useState<'saving' | 'failed' | null>(null)
+  // #1282 A4: what the person changed before their saved settings arrived; the load leaves those alone.
+  const touched = useRef(new Set<string>())
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const selectedAccess = useQueries({ queries: [...selected].map((name) => rowCapabilitiesQuery(table, name)) })
@@ -289,17 +302,25 @@ export function ListView({
     let cancelled = false
     setSettingsLoaded(false)
     setSettingsUnsaved(false)
+    // A Table's own settings, never the last Table's.
+    touched.current = new Set()
+    setSort(null)
+    setOwnCompact(undefined)
+    setArrangement({ shownCols: [], hiddenCols: [] })
+    setShowRetired(false)
     api
-      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[]; compact?: boolean } | null }>(
+      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[]; compact?: boolean; showRetired?: boolean } | null }>(
         `/api/user_settings/${encodeURIComponent(table)}`,
       )
       .then((res) => {
         if (cancelled) return
         const s = res.settings
         if (s) {
-          if (s.sort) setSort(s.sort)
-          setCompact(s.compact === true)
-          setArrangement({
+          const fresh = (key: string) => !touched.current.has(key)
+          if (s.sort && fresh('sort')) setSort(s.sort)
+          if (typeof s.compact === 'boolean' && fresh('compact')) setOwnCompact(s.compact)
+          if (fresh('showRetired')) setShowRetired(s.showRetired === true)
+          if (fresh('arrangement')) setArrangement({
             shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
             hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
           })
@@ -312,23 +333,20 @@ export function ListView({
     return () => {
       cancelled = true
     }
-    // Only re-run when the Table changes.
+    // Only re-run when the Table changes, or Reset cleared what was saved.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table])
+  }, [table, settingsEpoch])
 
   // Persist settings whenever the user changes them (after the initial load).
   // A save that fails is said, not swallowed (#546): the change still shows
   // now, but the list would open the old way next time.
-  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement>; compact?: boolean }) {
-    if (!settingsLoaded) return
+  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement>; compact?: boolean; showRetired?: boolean }) {
+    for (const key of Object.keys(next)) touched.current.add(key)
     const token = getToken()
-    const snapshot = {
-      sort: next.sort !== undefined ? next.sort : sort,
-      ...(next.arrangement ?? arrangement),
-      compact: next.compact ?? compact,
-    }
-    // Settings are whole snapshots. Keep writes in interaction order so a
-    // slower earlier request cannot restore an obsolete sort or column set.
+    // #1282 A4: only what the person changed is saved (the server merges it), so a choice they never made keeps
+    // following the Table's default. Writes keep interaction order, so a slower earlier one never lands last.
+    const { arrangement: cols, ...rest } = next
+    const snapshot = { ...rest, ...(cols ?? {}) }
     settingsWrite.current = settingsWrite.current
       .then(() => {
         // A queued edit belongs to the sign-in that made it. api.put reads
@@ -340,8 +358,10 @@ export function ListView({
       .catch(() => { if (getToken() === token) setSettingsUnsaved(true) })
   }
 
+  // #1282 A4: the Table's list columns with its default's columns switched on and off, then this person's own.
+  const listDefaults = meta.data ? listDefaultsWith(meta.data, td) : new Set<string>()
   const allColumns = meta.data
-    ? viewColumns(meta.data, extraColumns?.length ? { ...arrangement, shownCols: [...arrangement.shownCols, ...extraColumns] } : arrangement)
+    ? viewColumns(meta.data, extraColumns?.length ? { ...arrangement, shownCols: [...arrangement.shownCols, ...extraColumns] } : arrangement, listDefaults)
     : []
   const columns = compact ? allColumns.slice(0, COMPACT_COLUMNS) : allColumns
   // #209 / #738: who may shape this Table's columns for everyone — "Edit
@@ -355,7 +375,6 @@ export function ListView({
   // The menu (#738): the Table's list columns first, then every other column
   // the person may read; the column the list leads with (its title, else
   // Row ID, #792) is always on.
-  const listDefaults = meta.data ? defaultColumnNames(meta.data) : new Set<string>()
   const leadingTitle = meta.data ? listLeader(meta.data) : undefined
   const readableColumns = (meta.data ? dataColumns(meta.data) : []).filter((c) => c !== leadingTitle)
   const inListChoices = readableColumns.filter((c) => listDefaults.has(c.column_name))
@@ -370,8 +389,10 @@ export function ListView({
   const boundNoRevision = Boolean(meta.data?.data_source && !meta.data.external_modified)
   const metaSortColumn =
     boundNoRevision && meta.data?.sort_column === 'updated_at' ? '' : (meta.data?.sort_column ?? '')
-  const orderBy = sort
-    ? `${sort.field} ${sort.dir}`
+  // #1282 A4: the person's sort, else the Table's default's, else the Table's own order.
+  const shownSort = sort ?? td.sort ?? null
+  const orderBy = shownSort
+    ? `${shownSort.field} ${shownSort.dir}`
     : defaultOrderBy ?? (meta.data
       ? `${metaSortColumn || (boundNoRevision ? 'row_id' : 'updated_at')} ${meta.data.sort_order || 'desc'}`
       : undefined)
@@ -380,7 +401,9 @@ export function ListView({
   const sumColumn = ['Currency', 'Float', 'Int'].map((t) => columns.find((c) => c.column_type === t)).find(Boolean)
   const list = useQuery({
     queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey, withRetired],
-    enabled: Boolean(meta.data),
+    // #1282 A4: the rows wait for this person's settings and the Table's default, so they load once, in the
+    // order and columns the person will see.
+    enabled: Boolean(meta.data) && settingsLoaded && !viewDefault.isPending,
     placeholderData: keepPreviousData,
     queryFn: () =>
       listResource(table, {
@@ -528,36 +551,41 @@ export function ListView({
   function toggleSort(field: string) {
     setStart(0)
     const next: { field: string; dir: 'asc' | 'desc' } =
-      sort?.field === field
-        ? { field, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
+      shownSort?.field === field
+        ? { field, dir: shownSort.dir === 'asc' ? 'desc' : 'asc' }
         : { field, dir: 'asc' }
     setSort(next)
     persist({ sort: next })
   }
 
-  // #738 (Decision 3): this person's view becomes the Table's list for
-  // everyone, in one definition save; their own two sets are then empty,
-  // since their view is now the default. The new meta lands before the sets
-  // empty, so the list never flashes the old default.
-  async function makeDefaultForEveryone() {
-    if (!meta.data) return
-    setMakingDefault('saving')
-    try {
-      await api.put(`/api/table_def/${encodeURIComponent(table)}`, listFlagsFromView(meta.data, arrangement))
-      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
-      const cleared = { shownCols: [], hiddenCols: [] }
-      setArrangement(cleared)
-      persist({ arrangement: cleared })
-      setMakingDefault(null)
-    } catch {
-      setMakingDefault('failed')
-    }
+  // #1282 A4 (UI owner): the view a person sees, compared with the Table's default, for Reset, and saved as the
+  // default by "Make This the Table's Default…" (which replaced the Columns menu's "default for everyone").
+  const builtInLayout: ListLayout = meta.data?.queue ? 'split' : 'panel'
+  const ownLinks = (ownSettings.data?.settings?.links ?? {}) as { as?: 'sections' | 'tree'; fields?: boolean }
+  const shownLinks = { as: ownLinks.as ?? td.links?.as ?? 'sections', fields: ownLinks.fields ?? td.links?.fields ?? true }
+  const visible = (defaults: Set<string>, arr: ColumnArrangement) =>
+    (meta.data ? dataColumns(meta.data) : []).map((c) => c.column_name).filter((c) => isShown(c, defaults, arr)).join('\u0000')
+  const viewDiffers = Boolean(meta.data) && (
+    (!narrow && Boolean(layout) && layout !== (td.layout ?? builtInLayout))
+    || visible(listDefaults, arrangement) !== visible(listDefaults, {})
+    || JSON.stringify(shownSort) !== JSON.stringify(td.sort ?? null)
+    || compact !== (td.compact ?? false)
+    || shownLinks.as !== (td.links?.as ?? 'sections') || shownLinks.fields !== (td.links?.fields ?? true)
+    || showRetired)
+  const asDefault = () => viewAsDefault(meta.data!, arrangement, td, { layout: layout ?? builtInLayout, sort: shownSort, compact, links: shownLinks })
+  async function resetView() {
+    await api.post(`/api/user_settings/${encodeURIComponent(table)}/reset`, {}).catch(() => setSettingsUnsaved(true))
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['list-layout', table] }),
+      queryClient.invalidateQueries({ queryKey: ['user-settings', table] }),
+    ])
+    setSettingsEpoch((n) => n + 1)
   }
 
   // UI-013 / #738: switch a column on or off in this person's view (saved
   // per user). Its checkboxes are the columns of meta.data, so it is there.
   function toggleColumn(columnName: string, on: boolean) {
-    const next = switchColumn(meta.data!, arrangement, columnName, on)
+    const next = switchColumn(meta.data!, arrangement, columnName, on, listDefaults)
     setArrangement(next)
     persist({ arrangement: next })
   }
@@ -948,6 +976,7 @@ export function ListView({
                 checked={showRetired}
                 onChange={(e) => {
                   setShowRetired(e.target.checked)
+                  persist({ showRetired: e.target.checked })
                   setStart(0)
                 }}
                 data-testid="list-show-retired-toggle"
@@ -1015,7 +1044,24 @@ export function ListView({
           {/* Checklist needs a Sub-table whose row table has a Check column —
               the component renders nothing when the shape is absent. */}
           <ChecklistSwitch table={table} meta={meta.data} />
+          {/* #1282 A4 (UI owner): the Table's managers make their whole view the Table's default; anyone whose view
+              differs from it goes back to it. */}
+          {canShapeColumns && meta.data && (
+            <button type="button" className={buttonClasses()} data-testid="make-table-default"
+              onClick={() => { setViewMenuOpen(false); setConfirmingDefault(true) }}>
+              Make This the Table's Default…
+            </button>
+          )}
+          {viewDiffers && (
+            <button type="button" className={buttonClasses()} data-testid="reset-table-default"
+              onClick={() => { setViewMenuOpen(false); void resetView() }}>
+              Reset to the Table's Default
+            </button>
+          )}
           </ActionDisclosure>
+          {confirmingDefault && meta.data && (
+            <TableDefaultDialog table={table} view={asDefault()} words={describeView(meta.data, asDefault())} onClose={() => setConfirmingDefault(false)} />
+          )}
           <div className="relative">
             {/* #1289: the view controls are icons, each named in full for a tooltip and a screen reader. */}
             <button
@@ -1054,31 +1100,12 @@ export function ListView({
                   </div>
                 )}
                 {otherChoices.map(columnChoice)}
-                {canShapeColumns && (
-                  // Pinned to the menu's foot, so it shows even when the rows scroll.
-                  <div className="sticky -bottom-2 -mx-2 -mb-2 mt-1 border-t border-border bg-surface px-2 pb-2 pt-1">
-                    <button
-                      type="button"
-                      className={touchRowClasses(`flex w-full items-center rounded px-2 py-1 text-left text-sm text-action hover:bg-subtle disabled:opacity-50 ${PHONE_ROW}`)}
-                      disabled={makingDefault === 'saving'}
-                      onClick={() => void makeDefaultForEveryone()}
-                      data-testid="list-make-default"
-                    >
-                      Make this the default for everyone
-                    </button>
-                    {makingDefault === 'failed' && (
-                      <p className="px-2 pb-1 text-xs text-negative" data-testid="list-make-default-error">
-                        Couldn't make this the default. Everyone's list is as it was.
-                      </p>
-                    )}
-                  </div>
-                )}
               </div>
             )}
           </div>
           {/* #1259: density is one on/off button, so "Table" names only the view. */}
           <Button aria-pressed={compact} aria-label="Compact Rows" title="Compact Rows" data-testid="compact-rows" onClick={() => {
-            setCompact(!compact)
+            setOwnCompact(!compact)
             persist({ compact: !compact })
           }} className={iconToggle(compact)}><Rows4 aria-hidden size={18} /></Button>
           <Button aria-pressed={treeOn} aria-label="Tree of All" title="Tree of All" data-testid="tree-of-all" onClick={() => setTree(!treeOn)}
@@ -1177,7 +1204,7 @@ export function ListView({
           selected={selected}
           onToggleRow={toggleRow}
           onSelectPage={(all) => setSelected(all ? new Set(rows.map((r) => String(r.row_id))) : new Set())}
-          sort={sort}
+          sort={shownSort}
           onSort={(next) => {
             setStart(0)
             setSort(next)
@@ -1255,7 +1282,7 @@ export function ListView({
                   >
                     {/* The sort arrow sits outside the clip, so it always shows. */}
                     <OneLine className={i === 0 ? NAME_CLIP : 'max-w-80'}>{col.label}</OneLine>
-                    {sort?.field === col.column_name && <span className="shrink-0 whitespace-pre">{sort.dir === 'asc' ? ' ↑' : ' ↓'}</span>}
+                    {shownSort?.field === col.column_name && <span className="shrink-0 whitespace-pre">{shownSort.dir === 'asc' ? ' ↑' : ' ↓'}</span>}
                   </button>
                 </th>
               ))}

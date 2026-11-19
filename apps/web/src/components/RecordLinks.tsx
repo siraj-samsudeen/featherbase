@@ -14,6 +14,7 @@ import { PaneFields } from './RowPane'
 import { RowTree } from './RowTree'
 import { MenuChoices, MenuShell, userSettingsQuery } from './FormArrangement'
 import { WorkedOutSections } from './WorkedOut'
+import { tableViewDefaultQuery } from '../lib/table-view-default'
 
 type Row = Record<string, unknown>
 
@@ -27,9 +28,12 @@ export function useLinksPreference(table: string, fromPath?: LinksLayout) {
   const { queryKey: key } = userSettingsQuery(table)
   const stored = useQuery(userSettingsQuery(table))
   const [chosen, setChosen] = useState<StoredLinks>({})
+  // #1282 A4: the person's own choice, else the Table's default, else sections with the fields beside.
+  const fallback = useQuery(tableViewDefaultQuery(table)).data?.settings.links ?? {}
   const saved = (stored.data?.settings?.links ?? {}) as StoredLinks
-  const as: LinksLayout = fromPath ?? chosen.as ?? (saved.as === 'tree' ? 'tree' : 'sections')
-  const fields = chosen.fields ?? saved.fields ?? true
+  const own = saved.as === 'tree' || saved.as === 'sections' ? saved.as : undefined
+  const as: LinksLayout = fromPath ?? chosen.as ?? own ?? (fallback.as === 'tree' ? 'tree' : 'sections')
+  const fields = chosen.fields ?? saved.fields ?? fallback.fields ?? true
   const update = (next: StoredLinks) => {
     const links = { as, fields, ...next }
     setChosen(links)

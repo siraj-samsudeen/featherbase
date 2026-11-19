@@ -25,6 +25,8 @@ const KIND_VISUALS: Record<ActivityKind, KindVisual> = {
 }
 
 function kindVisual(kind: string): KindVisual {
+  // #1282 A4: a Table's default view saved is a change.
+  if (kind === 'table_default') return KIND_VISUALS.change
   return KIND_VISUALS[kind as ActivityKind] ?? KIND_VISUALS.row
 }
 

@@ -69,8 +69,6 @@ test('the menu lists Row ID, the list columns, then the rest under "Not in the l
   const lines = [...menu.children].map((el) => (el.textContent ?? '').trim())
   expect(lines).toEqual([
     'Row ID', 'Section', 'Floor', 'Not in the list by default', 'Remarks', 'Notes',
-    // A System Manager's menu ends with the way to make this view everyone's.
-    'Make this the default for everyone',
   ])
 })
 
@@ -172,15 +170,17 @@ test('switching off every column leaves one row per row, each showing its ID', a
 
 // #738 (Decision 3): "Make this the default for everyone", at the foot of the
 // menu, offered exactly where "Edit columns" is.
-const MAKE_DEFAULT = 'Make this the default for everyone'
-const metaUrl = `/api/table/${encodeURIComponent(DT)}:meta`
-type Meta = { columns: { column_name: string; in_list_view?: boolean }[] }
+// #1282 A4 (UI owner): the Table's default is the whole view, made from the View menu (no longer this menu's foot).
+const MAKE_DEFAULT = "Make This the Table's Default…"
+const defaultUrl = `/api/table_view_default/${encodeURIComponent(DT)}`
+type Default = { default: { settings: { shownCols?: string[]; hiddenCols?: string[] } } | null }
 
-test('a System Manager is offered "Make this the default for everyone" at the foot of the menu', async ({ admin }) => {
+test('the Columns menu offers no default; a System Manager finds it in the View menu', async ({ admin }) => {
   await seedTable(admin)
   await openList(admin)
   const menu = await openMenu()
-  expect(menu.lastElementChild).toHaveTextContent(MAKE_DEFAULT)
+  expect(within(menu).queryByRole('button', { name: /default/i })).not.toBeInTheDocument()
+  expect((await openListMenu('View')).getByRole('button', { name: MAKE_DEFAULT })).toBeInTheDocument()
   await openListMenu('Table administration')
   expect(screen.getByTestId('open-columns')).toBeInTheDocument()
 })
@@ -191,8 +191,7 @@ test('a reader who is not a System Manager is not offered it, nor "Edit columns"
   await grantRole(admin, { table: DT, role: 'Lc Reader', tier: 'basic', can_read: true })
   const reader = await createUser({ email: 'lc.reader@example.com', roles: ['Lc Reader'] })
   await openList(reader)
-  const menu = await openMenu()
-  expect(within(menu).queryByRole('button', { name: MAKE_DEFAULT })).not.toBeInTheDocument()
+  expect((await openListMenu('View')).queryByRole('button', { name: MAKE_DEFAULT })).not.toBeInTheDocument()
   expect(await hasListMenu('Table administration')).toBe(false)
   expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
 })
@@ -200,13 +199,12 @@ test('a reader who is not a System Manager is not offered it, nor "Edit columns"
 test('a Table whose columns belong to the platform offers neither', async ({ admin }) => {
   await renderApp('/featherbase/admin/table/import-log', admin)
   await screen.findByTestId('list-view')
-  const menu = await openMenu()
-  expect(within(menu).queryByRole('button', { name: MAKE_DEFAULT })).not.toBeInTheDocument()
+  expect((await openListMenu('View')).queryByRole('button', { name: MAKE_DEFAULT })).not.toBeInTheDocument()
   await openListMenu('Table administration')
   expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
 })
 
-async function makeDefaultFromView(admin: Admin) {
+async function confirmDefaultFromView(admin: Admin) {
   await seedTable(admin)
   await openList(admin)
   await openMenu()
@@ -214,39 +212,37 @@ async function makeDefaultFromView(admin: Admin) {
   await settledSettings(admin, { shownCols: ['remarks'] })
   screen.getByTestId('list-col-toggle-floor').click()
   await settledSettings(admin, { hiddenCols: ['floor'] })
-  within(screen.getByTestId('list-columns-popup')).getByRole('button', { name: MAKE_DEFAULT }).click()
+  await userEvent.click((await openListMenu('View')).getByRole('button', { name: MAKE_DEFAULT }))
+  return screen.findByTestId('table-default-dialog')
 }
 
-test("making the default puts the System Manager's view in the Table's list", async ({ admin }) => {
-  await makeDefaultFromView(admin)
-  await waitFor(async () => {
-    const meta = (await admin.get(metaUrl)) as Meta
-    expect(Object.fromEntries(meta.columns.map((c) => [c.column_name, Boolean(c.in_list_view)]))).toEqual({
-      section: true, floor: false, remarks: true, notes: false,
-    })
-  })
-  await settledSettings(admin, { shownCols: [], hiddenCols: [] })
+test('the confirm names each setting in words before anything is saved', async ({ admin }) => {
+  const dialog = await confirmDefaultFromView(admin)
+  expect([...within(dialog).getByTestId('table-default-words').children].map((li) => li.textContent))
+    .toEqual(['Table With Panel', 'Columns: Section, Remarks', 'Sorted as the Table is', 'Full rows', 'Links: Sections', 'Fields beside links'])
+  expect(dialog).toHaveTextContent("People who've changed these keep their own choices.")
+  expect((await admin.get(defaultUrl) as Default).default).toBeNull()
+  await userEvent.click(within(dialog).getByTestId('table-default-cancel'))
+  expect(screen.queryByTestId('table-default-dialog')).not.toBeInTheDocument()
 })
 
-test("after making the default, the System Manager's own shown and hidden sets are empty", async ({ admin }) => {
-  await makeDefaultFromView(admin)
-  await settledSettings(admin, { shownCols: [], hiddenCols: [] })
-  await waitFor(() => expect(headers()).toEqual(['Row ID', 'Section', 'Remarks']))
+test("making the default saves the System Manager's view, and the toast's Undo puts the earlier one back", async ({ admin }) => {
+  const dialog = await confirmDefaultFromView(admin)
+  await userEvent.click(within(dialog).getByTestId('table-default-confirm'))
+  await waitFor(async () => expect((await admin.get(defaultUrl) as Default).default?.settings).toMatchObject({ shownCols: ['remarks'], hiddenCols: ['floor'] }))
+  expect(await screen.findByTestId('table-default-toast')).toHaveTextContent("Saved as the Table's default · Undo")
+  await userEvent.click(screen.getByTestId('table-default-undo'))
+  await waitFor(async () => expect((await admin.get(defaultUrl) as Default).default).toBeNull())
+  await waitFor(() => expect(screen.getByTestId('table-default-toast')).toHaveTextContent('Put the earlier default back.'))
 })
 
-test('a refused default save preserves both the shared definition and the private arrangement', async ({ admin }) => {
-  await seedTable(admin)
-  await openList(admin)
-  await openMenu()
-  screen.getByTestId('list-col-toggle-remarks').click()
-  await settledSettings(admin, { shownCols: ['remarks'] })
-  const before = await admin.get(metaUrl)
+test('a refused default save says so and changes nothing', async ({ admin }) => {
+  const dialog = await confirmDefaultFromView(admin)
   const expired = await issueSession('Administrator')
   expect((await fetch('/api/logout', { method: 'POST', headers: { Authorization: `Bearer ${expired.token}` } })).status).toBe(200)
   setSession(expired.token, { row_id: 'Administrator', email: null, full_name: null })
-  screen.getByTestId('list-make-default').click()
-  expect(await screen.findByTestId('list-make-default-error')).toHaveTextContent("Couldn't make this the default. Everyone's list is as it was.")
-  expect(await admin.get(metaUrl)).toEqual(before)
+  await userEvent.click(within(dialog).getByTestId('table-default-confirm'))
+  expect(await screen.findByTestId('table-default-error')).toHaveTextContent(`Couldn't save the default. ${DT} opens as it did.`)
+  expect((await admin.get(defaultUrl) as Default).default).toBeNull()
   await settledSettings(admin, { shownCols: ['remarks'] })
-  expect(headers()).toContain('Remarks')
 })
