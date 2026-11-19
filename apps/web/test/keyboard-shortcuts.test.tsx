@@ -32,6 +32,16 @@ test('Keyboard shortcuts: Ctrl+K puts the cursor in the search bar', async ({ ad
   expect(bar).toHaveFocus()
 })
 
+// Ctrl+Shift+K is View as's window; the search bar must not take the cursor from it.
+test('Keyboard shortcuts: Ctrl+Shift+K leaves the search bar alone', async ({ admin }) => {
+  await seedDoc(admin, 'Kb Shift Search')
+  await renderApp(`/featherbase/admin/table/kb-shift-search`, admin)
+  await screen.findByTestId('list-view', {}, { timeout: 8000 })
+  const bar = screen.getByLabelText('Search or type a command')
+  press({ key: 'K', ctrlKey: true, shiftKey: true })
+  expect(bar).not.toHaveFocus()
+})
+
 test('Keyboard shortcuts: Ctrl+S saves the form that is open', async ({ admin }) => {
   const row = await seedDoc(admin, 'Kb Save')
   await renderApp(`/featherbase/admin/table/kb-save/row/${row.row_id}`, admin)
