@@ -123,7 +123,7 @@ const BOX = 'grid size-4 shrink-0 place-items-center rounded-[4px] border-[1.5px
  * names a correction path. Ticking an unticked choice opens the inline form
  * under it; nothing is saved until Add. Unticking a hand-given link removes it.
  */
-export function LinkTickList({ table, record, group, plan, onOpen, gridHref, heading, notes }: {
+export function LinkTickList({ table, record, group, plan, onOpen, gridHref, heading, notes, fallback }: {
   table: string
   record: string
   group: BacklinkGroup
@@ -134,6 +134,8 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref, hea
   /** #1340: the app's heading for the group, and a note for each choice (by its id): who else holds it. */
   heading?: string
   notes?: Record<string, string>
+  /** #1340: what draws the group when a row names no choice (it points elsewhere, a bundle beside reports): the list. */
+  fallback?: ReactNode
 }) {
   const { connection } = group
   const { linkMeta, column, farTable, farMeta, choices } = plan
@@ -205,6 +207,8 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref, hea
     ...lines.unticked.map((choice) => ({ kind: 'unticked' as const, choice })),
   ]
   const visible = all ? shown : shown.slice(0, FOLD_AFTER)
+  // A row that names no choice cannot be ticked or counted: the group is a list, every row said as it is.
+  if (rows.isSuccess && data.some((r) => r[column.column_name] == null || r[column.column_name] === '')) return <>{fallback}</>
   return (
     <section aria-label={farLabel} data-testid="tick-list" data-group={group.key} className="flex min-w-0 flex-col gap-1.5">
       <div className="flex min-w-0 items-center gap-2">

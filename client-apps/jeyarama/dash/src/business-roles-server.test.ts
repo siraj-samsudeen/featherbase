@@ -1794,7 +1794,7 @@ describe('business roles described for Featherbase (#1340)', () => {
     const live = tables['dash.business_role_permission'].filter(p => p.business_role === sm)
     expect(Object.keys(can.rows!).sort()).toEqual(live.map(p => String(p.row_id)).sort())
     expect(Object.values(can.rows!)[0]!.parts[0]).toEqual({ record: { table: 'dash.business_role', row: sm, name: 'Store Managers' } })
-    expect(groups[1]!.notes!.sales).toMatch(/^Also given to .+, each in their own area$/)
+    expect(groups[1]!.notes!.sales).toMatch(/^Also given to \d+ other roles: .+ and .+$/)
     expect(Object.values(groups[2]!.rows!)[0]).toMatchObject({ parts: [{ record: { table: 'dash.title_map' } }, expect.stringMatching(/^ → this role, for \d+ (person|people)$/)], chip: { label: 'from HR' } })
     expect(groups[3]).toMatchObject({ count: 1, lines: [{ parts: [{ record: { table: 'Person', row: 'sm', name: 'Selvi' } }], chip: { label: 'from HR' } }] })
   })
@@ -1835,7 +1835,8 @@ describe('business roles described for Featherbase (#1340)', () => {
     expect(preview.rows[2]!.cells.old_grant).toEqual({ parts: ['Person: ', { record: { table: 'Person', row: 'st', name: 'Siva' } }] })
     expect(preview.rows[3]!.cells.report).toEqual({ parts: ['A bundle no longer listed'] })
     expect(preview.rows[0]!.cells).toMatchObject({ old_grant: { text: 'Job: Store Manager' }, given_to: { text: '—' }, report: { parts: [{ record: { table: 'dash.report', row: 'vs' } }] } })
-    expect(preview.sentence[0]).toMatch(/^Gives 2 reports to \d+ business roles\. 0 already there\. Grants to people stay with the person\.$/)
+    // Counted in grants, as the run's summary counts them.
+    expect(preview.sentence[0]).toMatch(/^Adds (\d+) grants: 2 reports to \d+ business roles\. 0 grants already there\. Grants to people stay with the person\.$/)
     const run = await actions.give_old_grants_to_roles(context(tables, { roles: ['System Manager'] }) as never) as { grants_added: number }
     const after = await giveOldGrantsPreview(context(tables) as never)
     expect(after.rows.filter(r => r.filter === 'there').length).toBe(2)
@@ -1879,7 +1880,7 @@ describe('business roles described for Featherbase (#1340)', () => {
     tables['dash.report_access'].push({ row_id: 'g-sm', report: 'vs', business_role: sm, access_key: `report:vs/business_role:${sm}` },
       { row_id: 'g-cm', report: 'vs', business_role: cm, access_key: `report:vs/business_role:${cm}` })
     const groups = ((await describeBusinessRoles(context(tables, { payload: { rows: [sm], page: true } }) as never)).rows[sm] as { groups: { notes?: Record<string, string> }[] }).groups
-    expect(groups[1]!.notes!.vs).toBe('Also given to Cluster Manager, each in their own area')
+    expect(groups[1]!.notes!.vs).toBe('Also given to 1 other role: Cluster Manager')
   })
 
   it('says a run in the singular where one was added, and keeps a caller with no name as nobody named', async () => {
@@ -1901,6 +1902,55 @@ describe('business roles described for Featherbase (#1340)', () => {
     tables['dash.report_access'] = [{ row_id: 'p1', report: 'vs', person: 'ghost' }]
     const preview = await giveOldGrantsPreview(context(tables) as never)
     expect(preview.rows[0]!.cells.old_grant).toEqual({ parts: ['Person: ', { record: { table: 'Person', row: 'ghost', name: 'Someone' } }] })
+  })
+
+  // Verifier round 1 (blocker 1): each grant to the role is a line with its real name, who else holds it and where it came from.
+  it('says each report or bundle given to the role by its name, who else holds it, and whether it was copied from an old grant', async () => {
+    const tables = await seeded()
+    tables['dash.report'] = REPORT_ROWS
+    tables['dash.report_bundle'] = [{ row_id: 'b1', bundle_name: 'Store pack' }]
+    const sm = roleId(tables, 'Store Manager')
+    tables['dash.report_access'].push({ row_id: 'g-b1', report_bundle: 'b1', business_role: sm, given_by_name: 'Made-up Manager', access_key: `report_bundle:b1/business_role:${sm}` })
+    await actions.give_old_grants_to_roles(context(tables, { roles: ['System Manager'] }) as never)
+    const copied = tables['dash.report_access'].find(r => r.report === 'sales' && r.business_role === sm)!
+    const groups = ((await describeBusinessRoles(context(tables, { payload: { rows: [sm], page: true } }) as never)).rows[sm] as { groups: { rows?: Record<string, unknown> }[] }).groups
+    expect(groups[1]!.rows![String(copied.row_id)]).toEqual({ parts: [{ record: { table: 'dash.report', row: 'sales', name: 'Sales' } }],
+      note: [expect.stringMatching(/^Also given to 8 other roles: /)], chip: { label: 'from old grant', tone: 'neutral' } })
+    expect(groups[1]!.rows!['g-b1']).toEqual({ parts: [{ record: { table: 'dash.report_bundle', row: 'b1', name: 'Store pack' } }],
+      note: ['Given to this role only'], chip: { label: 'given by hand', tone: 'caution' } })
+  })
+
+  // Codex standard round 1 (P2): a role's page lists all its people, past the twenty the old page showed.
+  it("lists every one of a role's people on its page, and counts them on the list", async () => {
+    const tables = await seeded()
+    for (let i = 1; i <= 26; i++) {
+      tables.Employee.push({ row_id: `E-X${i}`, name: `Made-up Manager ${i}`, employee_code: `E-X${i}`, status: 'Current', person: `px${i}` })
+      tables['Job Assignment'].push({ row_id: `J-X${i}`, employee: `E-X${i}`, job: 'Store Manager', site: 'LKS', starts_on: '2026-01-01' })
+    }
+    const sm = roleId(tables, 'Store Manager')
+    const page = (await describeBusinessRoles(context(tables, { payload: { rows: [sm], page: true } }) as never)).rows[sm] as { groups: { key: string; count?: number; lines?: unknown[] }[] }
+    const people = page.groups.find(g => g.key === 'people')!
+    expect([people.count, people.lines!.length]).toEqual([27, 27])
+    const list = (await describeBusinessRoles(context(tables, { payload: { rows: [sm] } }) as never)).rows[sm] as { facts: Record<string, { text: string }> }
+    expect(list.facts.people.text).toBe('27')
+  })
+
+  it('says Every report for a role that views every report by its rule', async () => {
+    const tables = await seeded()
+    const owner = roleId(tables, 'Owner Director')
+    expect(((await describeBusinessRoles(context(tables, { payload: { rows: [owner] } }) as never)).rows[owner] as { facts: Record<string, { text: string }> }).facts.reports.text).toBe('Every report')
+  })
+
+  it('takes a Let Them Lose Dash back on Undo, so the person needs a decision again; a second Undo changes nothing', async () => {
+    const tables = await seeded()
+    await decideAccess(context(tables, { payload: { person: 'st' } }) as never)
+    expect(await decideAccess(context(tables, { payload: { person: 'st', undo: true } }) as never)).toEqual({ person: 'st', decision: null })
+    expect([...await decidedToLose(context(tables).baseTables as never)]).toEqual([])
+    expect(tables['dash.access_decision'][0]).toMatchObject({ person: 'st', removed: true })
+    expect(await decideAccess(context(tables, { payload: { person: 'st', undo: true } }) as never)).toEqual({ person: 'st', decision: null })
+    // Deciding again records it again.
+    await decideAccess(context(tables, { payload: { person: 'st' } }) as never)
+    expect([...await decidedToLose(context(tables).baseTables as never)]).toEqual(['st'])
   })
 
   it('records Let Them Lose Dash once, changing no access, and only for someone who may see the page', async () => {

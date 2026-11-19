@@ -7,7 +7,8 @@ import { z } from 'zod'
 // platform checks the answer against this one versioned shape first: an answer
 // that is not it is refused whole, and the page is drawn as if there were none.
 
-export const RECORD_FACTS_LIMITS = { rows: 500, columns: 8, groups: 8, lines: 50, actions: 6, parts: 24 } as const
+// A group's lines: a role's people, all of them (a page shows the first ten, then Show all).
+export const RECORD_FACTS_LIMITS = { rows: 500, columns: 8, groups: 8, lines: 2000, actions: 6, parts: 24 } as const
 
 const words = (max: number) => z.string().trim().min(1).max(max)
 const record = z.object({ table: words(200), row: words(200), name: words(200) }).strict()

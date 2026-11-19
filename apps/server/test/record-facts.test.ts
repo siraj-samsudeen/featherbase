@@ -9,11 +9,13 @@ import { appendFile, cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promis
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
+import { canUseAdmin } from '../src/landing'
 import { expectStatus } from './fixtures'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const NOTE = 'barproof.note'
 const SECRET = 'barproof.secret'
+const LINK = 'barproof.link'
 
 const directories: string[] = []
 afterEach(async () => {
@@ -32,7 +34,11 @@ async function describing(records: unknown, { gate = false }: { gate?: boolean }
   // A second Table only a Bar Describer reads, so a record a Bar Reader may not read can be named.
   manifest.tables.push({ name: SECRET, label: 'secret', id_pattern: 'prompt', columns: [{ column_name: 'body', column_type: 'Data' }] })
   manifest.permissions.push({ table: SECRET, role: 'Bar Describer', can_read: true }, { table: NOTE, role: 'Bar Describer', can_read: true })
-  manifest.reads.tables = [NOTE, SECRET]
+  // A link from a note to a secret: its rows, and the secrets it points to, are the Bar Describer's to read only.
+  manifest.tables.push({ name: LINK, label: 'link', id_pattern: 'prompt', columns: [
+    { column_name: 'note', column_type: 'Reference', reference_table: NOTE }, { column_name: 'secret', column_type: 'Reference', reference_table: SECRET }] })
+  manifest.permissions.push({ table: LINK, role: 'Bar Describer', can_read: true }, { table: LINK, role: 'Bar Reader', can_read: true })
+  manifest.reads.tables = [NOTE, SECRET, LINK]
   manifest.reads.operations = { ...manifest.reads.operations, describe_notes: tableRead, preview_tidy: tableRead }
   manifest.actions = { version: 2, tables: [NOTE], operations: { tidy: tableRead } }
   manifest.records = records
@@ -75,6 +81,8 @@ async function install(admin: TestClient, records: unknown = declared, gate = fa
   await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'n1', body: 'kept' } })
   await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'n2', body: 'second' } })
   await admin.post('/api/save_row', { table: SECRET, row: { row_id: 's1', body: 'hidden' } })
+  await admin.post('/api/save_row', { table: SECRET, row: { row_id: 'secret-natural-key', body: 'hidden too' } })
+  await admin.post('/api/save_row', { table: LINK, row: { row_id: 'k1', note: 'n1', secret: 's1' } })
 }
 
 const people = (createUser: CreateUserFn) => Promise.all([
@@ -146,11 +154,32 @@ describe('Record facts: the answer', () => {
   test("a group standing for a link group says each of its rows as the app words it, unreadable records named neutrally", async ({ admin, createUser }) => {
     await install(admin)
     const [reader] = await people(createUser)
-    hook().answer = { version: 1, rows: { n1: { groups: [{ key: 'can', heading: 'What They Can Do', table: SECRET,
-      rows: { s1: { parts: ['Readers can see ', { record: { table: SECRET, row: 's1', name: 'The secret' } }], note: [{ chip: 'Area' }] } } }] } } }
+    hook().answer = { version: 1, rows: { n1: { groups: [{ key: 'links', heading: 'Its Links', table: LINK,
+      rows: { k1: { parts: ['Points at ', { record: { table: SECRET, row: 's1', name: 'The secret' } }], note: [{ chip: 'Area' }] } } }] } } }
     const body = await (await describeRows(reader, { rows: ['n1'], page: true })).json()
-    expect(body.facts.rows.n1.groups[0]).toEqual({ key: 'can', heading: 'What They Can Do', table: SECRET,
-      rows: { s1: { parts: ['Readers can see ', 'A row you cannot see'], note: [{ chip: 'Area' }] } } })
+    expect(body.facts.rows.n1.groups[0]).toEqual({ key: 'links', heading: 'Its Links', table: LINK,
+      rows: { k1: { parts: ['Points at ', 'A row you cannot see'], note: [{ chip: 'Area' }] } } })
+  })
+
+  // Codex standard round 1 (P1): a row id or a far-side id the viewer may not read never leaves, even as a key.
+  test("a group's row the viewer may not read, and a note on a far-side record they may not read, are left out whole, ids and all", async ({ admin, createUser }) => {
+    await install(admin)
+    const [reader, describer] = await people(createUser)
+    hook().answer = { version: 1, rows: { n1: { groups: [
+      { key: 'secrets', heading: 'Secrets', table: SECRET, rows: { 'secret-natural-key': { parts: ['Hidden'] } } },
+      { key: 'links', heading: 'Its Links', table: LINK, notes: { 'secret-natural-key': 'On a hidden secret', n1: 'On the note' } },
+      { key: 'nowhere', heading: 'Nowhere', table: 'barproof.not_there', notes: { s1: 'Points nowhere' } },
+    ] } } }
+    const body = await (await describeRows(reader, { rows: ['n1'], page: true })).json()
+    expect(JSON.stringify(body)).not.toContain('secret-natural-key')
+    expect(body.facts.rows.n1.groups).toEqual([
+      { key: 'secrets', heading: 'Secrets', table: SECRET, rows: {} },
+      { key: 'links', heading: 'Its Links', table: LINK, notes: {} },
+      { key: 'nowhere', heading: 'Nowhere', table: 'barproof.not_there', notes: {} }])
+    // Someone who may read them gets them.
+    const theirs = await (await describeRows(describer, { rows: ['n1'], page: true })).json()
+    expect(theirs.facts.rows.n1.groups[0].rows).toEqual({ 'secret-natural-key': { parts: ['Hidden'] } })
+    expect(theirs.facts.rows.n1.groups[1].notes).toEqual({ 'secret-natural-key': 'On a hidden secret' })
   })
 
   test('an answer naming no record is passed as it is', async ({ admin, createUser }) => {
@@ -285,6 +314,22 @@ describe('Record facts: their reads are never run raw', () => {
     const [, describer] = await people(createUser)
     const answer = await raw(describer, 'by_report', { report: 'x' })
     expect(answer.status, await answer.clone().text()).toBe(200)
+  })
+})
+
+// Verifier round 1 (blocker 2): an app with pages of its own hands the Tables it names in `records` to Featherbase's
+// own pages, so someone granted one of them reaches Featherbase for it, as before they reached the app's page.
+describe("Record facts: an app's records are Featherbase's pages", () => {
+  test('someone who may read a Table the app names in records may use Featherbase; one it does not name is still the app\'s', async ({ admin, createUser }) => {
+    await install(admin, { [SECRET]: {} })
+    const [reader, describer] = await people(createUser)
+    expect([await canUseAdmin(reader.user), await canUseAdmin(describer.user)]).toEqual([false, true])
+  })
+
+  test('a Table named with no describer draws as it always did', async ({ admin, createUser }) => {
+    await install(admin, { [SECRET]: {} })
+    const [, describer] = await people(createUser)
+    expect(await (await describeRows(describer, { rows: ['s1'] }, SECRET)).json()).toEqual({ facts: null })
   })
 })
 

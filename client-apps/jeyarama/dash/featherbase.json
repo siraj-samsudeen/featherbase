@@ -628,7 +628,7 @@
     },
     {
       "name": "dash.report_access",
-      "label": "Report grant",
+      "label": "Report Grant",
       "module": "People",
       "description": "Gives one report or one bundle to one person, one role or one job. A person sees every report given to them by any route; no row means no report.",
       "columns": [
@@ -701,14 +701,14 @@
     },
     {
       "name": "dash.business_role",
-      "label": "Business role",
+      "label": "Business Role",
       "module": "People",
       "title_column": "role_name",
       "description": "#1218, in shadow: what the business calls a position, such as Store Manager or Buyer. Its permissions are its Business role permission rows. Worked out beside today's roles; it decides no one's access yet.",
       "columns": [
         {
           "column_name": "role_name",
-          "label": "Role name",
+          "label": "Name",
           "column_type": "Data",
           "reqd": true,
           "unique": true,
@@ -739,7 +739,7 @@
     },
     {
       "name": "dash.business_role_permission",
-      "label": "Business role permission",
+      "label": "Business Role Permission",
       "module": "Dash",
       "description": "One thing a business role may do: in an app at a level, a verb on a thing, with a reach. Read as a sentence: Store Managers can Edit Sections in their Area.",
       "columns": [
@@ -811,7 +811,7 @@
     },
     {
       "name": "dash.title_map",
-      "label": "Title map",
+      "label": "Title Map",
       "module": "People",
       "title_column": "title",
       "description": "Which business role an HR title holds: a designation, a job or a merchandise responsibility. A person's designation is looked up first, then their job. A title with no row waits on the list as not mapped yet.",
@@ -837,7 +837,7 @@
     },
     {
       "name": "dash.role_assignment",
-      "label": "Role assignment",
+      "label": "Role Assignment",
       "module": "People",
       "description": "A business role changed by hand for one person. Correct replaces the role their HR title gives; Also give adds one. Optional end date; it survives HR reloads until removed.",
       "columns": [
@@ -900,7 +900,7 @@
     },
     {
       "name": "dash.access_source",
-      "label": "Dash access source",
+      "label": "Dash Access Source",
       "module": "Dash",
       "decides_scope": true,
       "title_column": "source",
@@ -930,7 +930,7 @@
     },
     {
       "name": "dash.switch_over_log",
-      "label": "Business roles log",
+      "label": "Business Roles Log",
       "module": "Dash",
       "title_column": "detail",
       "description": "#1277: what the steps towards business roles did, one line each: a starting role or title added by Add The Starting Roles, an old report grant given to a business role by Give Old Grants To Business Roles, or one it could not give to any role. Running either again adds no line twice.",
@@ -985,7 +985,7 @@
     },
     {
       "name": "dash.permission_change",
-      "label": "Permission change",
+      "label": "Permission Change",
       "module": "Dash",
       "title_column": "permission",
       "description": "#1282: each change saved from the Business Roles grid, one line each: which role, which permission, its reach before and after, and who saved it. The platform records when.",
@@ -1054,8 +1054,8 @@
     },
     {
       "name": "dash.setup_run",
-      "label": "Setup run",
-      "module": "Dash",
+      "label": "Setup Run",
+      "module": "People",
       "title_column": "summary",
       "description": "#1340: one run of a step towards business roles (Add The Starting Roles, or Give Old Grants To Business Roles): its counts in its title, and the log lines it wrote linked to it. Running a step again adds a run that says it added nothing.",
       "columns": [
@@ -1100,7 +1100,7 @@
     },
     {
       "name": "dash.access_decision",
-      "label": "Access decision",
+      "label": "Access Decision",
       "module": "Dash",
       "title_column": "decision",
       "description": "#1340: the owner's decision for one person whose access would change with business roles, taken on Who Would Gain Or Lose Access: Lose Dash says they are to lose it. It records the decision only; it gives and takes away nothing.",
@@ -3508,12 +3508,6 @@
           "to": "People"
         },
         {
-          "kind": "relabelTable",
-          "table": "dash.report_access",
-          "from": "Report access",
-          "to": "Report grant"
-        },
-        {
           "kind": "alterColumn",
           "table": "dash.business_role",
           "column": "description",
@@ -3539,8 +3533,8 @@
           "kind": "addTable",
           "table": {
             "name": "dash.setup_run",
-            "label": "Setup run",
-            "module": "Dash",
+            "label": "Setup Run",
+            "module": "People",
             "title_column": "summary",
             "description": "#1340: one run of a step towards business roles (Add The Starting Roles, or Give Old Grants To Business Roles): its counts in its title, and the log lines it wrote linked to it. Running a step again adds a run that says it added nothing.",
             "columns": [
@@ -3600,7 +3594,7 @@
           "kind": "addTable",
           "table": {
             "name": "dash.access_decision",
-            "label": "Access decision",
+            "label": "Access Decision",
             "module": "Dash",
             "title_column": "decision",
             "description": "#1340: the owner's decision for one person whose access would change with business roles, taken on Who Would Gain Or Lose Access: Lose Dash says they are to lose it. It records the decision only; it gives and takes away nothing.",
@@ -3634,6 +3628,65 @@
                 "description": "Taken back: the person needs a decision again."
               }
             ]
+          }
+        },
+        {
+          "kind": "relabelTable",
+          "table": "dash.business_role",
+          "from": "Business role",
+          "to": "Business Role"
+        },
+        {
+          "kind": "relabelTable",
+          "table": "dash.title_map",
+          "from": "Title map",
+          "to": "Title Map"
+        },
+        {
+          "kind": "relabelTable",
+          "table": "dash.role_assignment",
+          "from": "Role assignment",
+          "to": "Role Assignment"
+        },
+        {
+          "kind": "relabelTable",
+          "table": "dash.report_access",
+          "from": "Report access",
+          "to": "Report Grant"
+        },
+        {
+          "kind": "relabelTable",
+          "table": "dash.switch_over_log",
+          "from": "Business roles log",
+          "to": "Business Roles Log"
+        },
+        {
+          "kind": "relabelTable",
+          "table": "dash.business_role_permission",
+          "from": "Business role permission",
+          "to": "Business Role Permission"
+        },
+        {
+          "kind": "relabelTable",
+          "table": "dash.permission_change",
+          "from": "Permission change",
+          "to": "Permission Change"
+        },
+        {
+          "kind": "relabelTable",
+          "table": "dash.access_source",
+          "from": "Dash access source",
+          "to": "Dash Access Source"
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.business_role",
+          "column": "role_name",
+          "from": {
+            "label": "Role name"
+          },
+          "to": {
+            "label": "Name"
           }
         }
       ]
@@ -4159,6 +4212,10 @@
       "previews": {
         "give_old_grants_to_roles": "give_old_grants_preview"
       }
-    }
+    },
+    "dash.title_map": {},
+    "dash.role_assignment": {},
+    "dash.report_access": {},
+    "dash.setup_run": {}
   }
 }

@@ -137,8 +137,10 @@ const manifestSchema = z.object({
   // { table, rows, page }: the list's extra columns and Record actions, the record page's
   // header line and Links groups. `previews` names, for an action the list offers as a page,
   // the read that says what it would do before it runs.
+  // A Table named here, even with no describer, is Featherbase's to show on its own pages (its list and record
+  // page), so someone granted it reaches Featherbase for it although the app has pages of its own.
   records: z.record(z.string().min(1), z.object({
-    describe: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+    describe: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/).optional(),
     previews: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,60}$/), z.string().regex(/^[a-z][a-z0-9_]{0,60}$/)).optional(),
   }).strict()).optional(),
   // #1282 G1–G6: the areas people pick on the trees: each axis a list of levels,
@@ -516,7 +518,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   for (const [table, records] of Object.entries(manifest.records ?? {})) {
     if (!manifest.tables.some(t => t.name === table))
       throw new Error(`The app describes ${table}, which is not one of its Tables`)
-    if (!Object.hasOwn(readOperations, records.describe))
+    if (records.describe && !Object.hasOwn(readOperations, records.describe))
       throw new Error(`The app's ${table} rows are described by ${records.describe}, which is not one of the app's reads`)
     for (const [action, preview] of Object.entries(records.previews ?? {})) {
       if (!Object.hasOwn(actionOperations, action))
@@ -1114,7 +1116,7 @@ export function isRecordsRead(app: string, read: string): boolean {
 
 /** #1340: the app that describes rows of `table` (its manifest's `records`), for `user`, on the same terms as a
  *  Why: an installed, active app the user may open. None when no such app declares one. */
-export async function recordsDeclarationFor(table: string, user: string): Promise<{ app: string; version: string; describe: string; previews: Record<string, string> } | null> {
+export async function recordsDeclarationFor(table: string, user: string): Promise<{ app: string; version: string; describe?: string; previews: Record<string, string> } | null> {
   for (const item of await listInstalledApps()) {
     const pkg = packages.get(item.name)
     const records = pkg && Object.hasOwn(pkg.manifest.records ?? {}, table) ? pkg.manifest.records![table]! : undefined

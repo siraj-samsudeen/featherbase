@@ -115,6 +115,13 @@ describe('Explain A Person', () => {
     expect(all('explain-role')[0].querySelector('[data-testid="tick-locked"]')).not.toBeNull()
   })
 
+  it('lists each app once, its levels together', async () => {
+    answers.explain_person = { ...SELVI, apps: [{ app: 'Dash', level: 'Manager', via: ['Store Manager'] }, { app: 'Dash', level: 'Reader', via: ['Team Leader'] }] }
+    const { all } = await render('explain')
+    expect(all('explain-app').map(a => a.querySelector('[data-testid="link-line-note"]')!.textContent)).toEqual(['at levels Manager and Reader'])
+    expect(all('explain-app')[0]!.querySelectorAll('[data-testid="source-chip"]').length).toBe(2)
+  })
+
   // #1340: the person's header as on a record page, and the answer first.
   it('heads the page with the person, as a record page does, and answers first that nothing changes', async () => {
     const { all } = await render('explain')
@@ -446,6 +453,7 @@ describe('Who Would Gain Or Lose Access', () => {
     const { all } = await render('changes')
     const siva = all('changed-person').find(r => r.textContent!.includes('Siva'))!
     expect(siva.querySelector('a[href="?view=explain&person=st"]')).not.toBeNull()
+    expect(siva.textContent).toContain('Siva 3006')
     expect(siva.textContent).toContain('Staff')
     expect(siva.textContent).toContain('Lakeside')
     expect(siva.textContent).toContain('Dash opens · 1 report · 1 store')
@@ -465,7 +473,16 @@ describe('Who Would Gain Or Lose Access', () => {
     expect(all('decide-card').map(c => c.textContent!.startsWith('Hema'))).toEqual([true])
     expect(all('give-a-role')[0]!.getAttribute('href')).toBe('?view=explain&person=ho&give=1')
     await click(all('let-lose')[0]!)
+    // It asks first; Keep leaves it undecided.
+    expect(all('lose-confirm')[0]!.textContent).toContain('Let Hema lose Dash with business roles?')
+    await click(all('lose-keep')[0]!)
+    expect(calls.some(c => c.name === 'decide_access')).toBe(false)
+    await click(all('let-lose')[0]!)
+    await click(all('lose-yes')[0]!)
     expect([calls.find(c => c.name === 'decide_access')?.payload, calls.filter(c => c.name === 'access_changes').length]).toEqual([{ person: 'ho' }, 2])
+    expect(all('decided')[0]!.textContent).toBe('Hema will lose Dash with business roles. ')
+    await click(all('undo-lose')[0]!)
+    expect([calls.filter(c => c.name === 'decide_access').at(-1)?.payload, all('decided').length]).toEqual([{ person: 'ho', undo: true }, 0])
   })
 
   it('counts someone the owner decided as decided, with no card', async () => {

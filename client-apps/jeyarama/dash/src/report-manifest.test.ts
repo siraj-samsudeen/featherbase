@@ -33,7 +33,7 @@ describe("the app's name in the manifest", () => {
     // #1340: the business roles, the Title Map, hand changes and report grants are listed under People in Featherbase.
     expect([...new Set(manifest.tables.map(table => table.module))]).toEqual(['Dash', 'People'])
     expect(manifest.tables.filter(table => table.module === 'People').map(table => table.name))
-      .toEqual(['dash.report_access', 'dash.business_role', 'dash.title_map', 'dash.role_assignment'])
+      .toEqual(['dash.report_access', 'dash.business_role', 'dash.title_map', 'dash.role_assignment', 'dash.setup_run'])
   })
 })
 
@@ -359,8 +359,8 @@ describe('the version step for Dash All-Stores Reader', () => {
       // #1282: the permission grid: a permission's removed mark and its unique key, and the grid's change log.
       ['permission_grid', '0.13.38', '0.13.39', 3],
       // #1340: business roles in Featherbase: four Tables move to People (one relabelled Report grant), two columns leave
-      // the list, setup runs and access decisions are kept, and each log line names its run.
-      ['business_roles_in_featherbase', '0.13.39', '0.13.40', 10],
+      // the list, setup runs and access decisions are kept, each log line names its run, and the role Tables read in Title Case.
+      ['business_roles_in_featherbase', '0.13.39', '0.13.40', 18],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')

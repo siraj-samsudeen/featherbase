@@ -372,6 +372,8 @@ describe('moveTable', () => {
     const rows = await sql`select row_id, ctid::text as at from shop.supplier order by row_id`
     await run({ kind: 'moveTable', table: 'shop.supplier', from: module ?? 'Shop', to: 'People' })
     expect(await sql`select module from table_def where name = 'shop.supplier'`).toEqual([{ module: 'People' }])
+    // Listed on its new module's home page.
+    expect(await sql`select link_to from home_page_link where link_to = 'shop.supplier'`).toEqual([{ link_to: 'shop.supplier' }])
     expect(await sql`select row_id, ctid::text as at from shop.supplier order by row_id`).toEqual(rows)
   })
 })

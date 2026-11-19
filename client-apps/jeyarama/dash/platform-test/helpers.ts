@@ -86,11 +86,15 @@ export const RUN_TABLES = ['dash.setup_run', 'dash.access_decision']
 export function revertRolesInFeatherbase(manifest: Revertable) {
   expect(manifest.migrations.pop()).toMatchObject({ id: 'business_roles_in_featherbase', fromVersion: '0.13.39', toVersion: '0.13.40' })
   if (manifest.tables) manifest.tables = manifest.tables.filter(t => !RUN_TABLES.includes(t.name)).map(t => {
-    const table = { ...t } as typeof t & { module?: string; label?: string; columns?: { column_name: string; in_list_view?: boolean }[] }
+    const table = { ...t } as typeof t & { module?: string; label?: string; columns?: { column_name: string; in_list_view?: boolean; label?: string }[] }
     if (table.module === 'People') table.module = 'Dash'
-    if (table.name === 'dash.report_access') table.label = 'Report access'
+    const label = ({ 'dash.business_role': 'Business role', 'dash.title_map': 'Title map', 'dash.role_assignment': 'Role assignment', 'dash.report_access': 'Report access',
+      'dash.switch_over_log': 'Business roles log', 'dash.business_role_permission': 'Business role permission', 'dash.permission_change': 'Permission change',
+      'dash.access_source': 'Dash access source' } as Record<string, string>)[table.name]
+    if (label) table.label = label
     if (table.name === 'dash.switch_over_log') table.columns = table.columns!.filter(c => c.column_name !== 'setup_run')
-    if (table.name === 'dash.business_role') table.columns = table.columns!.map(c => (['description', 'by_hand_only'].includes(c.column_name) ? { ...c, in_list_view: true } : c))
+    if (table.name === 'dash.business_role') table.columns = table.columns!.map(c => (['description', 'by_hand_only'].includes(c.column_name) ? { ...c, in_list_view: true }
+      : c.column_name === 'role_name' ? { ...c, label: 'Role name' } : c))
     return table
   })
   if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !RUN_TABLES.includes(p.table))

@@ -3,11 +3,11 @@
 // facts are businessRoles' own, and the preview is the plan the action runs, worked out without writing.
 import { ACCESS_SOURCE, accessSource } from './access-source.ts'
 import { PERMISSION, TITLE_MAP, businessModel, every, type Base } from './business-access.ts'
-import { DASH_APP, permissionParts, type Reach } from './business-roles.ts'
+import { DASH_APP, permissionParts, viewsEveryReport, type Reach } from './business-roles.ts'
 import { ACCESS_DECISION, businessRoles, decidedToLose } from './business-roles-server.ts'
 export { ACCESS_DECISION, decidedToLose }
 import { all, managesAccess, personNames, type AccessContext } from './report-access-server.ts'
-import { planGrants, type PlannedGrant } from './switch-over.ts'
+import { OLD_GRANT_GIVER, planGrants, type PlannedGrant } from './switch-over.ts'
 import { checked, exact, text } from './values.ts'
 import { istToday } from './report.ts'
 
@@ -16,9 +16,11 @@ const ROLE_TABLE = 'dash.business_role'
 export const OLD_GRANTS_PAGE = `/featherbase/admin/table/${ROLE_TABLE}/run/give_old_grants_to_roles`
 /** The roles × permissions grid of #1282, Dash's own page. */
 export const GRID_PAGE = '/dash/?view=roles-grid'
-/** The people of a role shown on its page before Show all. */
-const PEOPLE_SENT = 20
 
+/** "Also given to 2 other roles: Floor Manager and Cluster Manager", or "Given to this role only". */
+const alsoWords = (others: string[]) => others.length
+  ? `Also given to ${counted(others.length, 'other role')}: ${joined(others)}`
+  : 'Given to this role only'
 const counted = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-IN')} ${n === 1 ? one : many}`
 const joined = (words: string[]) => words.length === 1 ? words[0]! : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
 
@@ -52,12 +54,15 @@ async function listActions(ctx: AccessContext) {
 }
 
 /** The groups of a role's Links tab: What They Can Do, Reports, HR Titles That Give It, People. */
-async function roleGroups(ctx: AccessContext, role: Roles[number], roles: Roles, titles: { title: string; role: string | null; people: number }[]) {
+async function roleGroups(ctx: AccessContext, role: Roles[number], roles: Roles, titles: { title: string; role: string | null; people: number }[], reportCatalog: { table: string; key: string; name: string }[]) {
   const permissionRows = (await all(ctx.baseTables!, PERMISSION, ['business_role', 'app', 'level', 'verb', 'thing', 'reach', 'removed'], [['business_role', '=', role.id]]))
     .filter(r => !checked(r.removed))
   const titleRows = (await every(ctx.baseTables as Base, TITLE_MAP, ['title', 'business_role'])).filter(r => exact(r.business_role) === role.id)
   const peopleOf = new Map(titles.map(t => [t.title.toLowerCase(), t.people]))
   const others = (given: string) => roles.filter(r => r.id !== role.id && r.given.includes(given)).map(r => r.name)
+  const grants = (await all(ctx.baseTables!, 'dash.report_access', ['report', 'report_bundle', 'business_role', 'given_by_name', 'removed'], [['business_role', '=', role.id]]))
+    .filter(r => !checked(r.removed))
+  const catalog = new Map(reportCatalog.map(c => [`${c.table}|${c.key}`, c]))
   return [
     { key: 'can', heading: 'What They Can Do', table: PERMISSION, links: [{ label: 'Open as grid', href: GRID_PAGE }],
       rows: Object.fromEntries(permissionRows.map(r => [exact(r.row_id), {
@@ -65,10 +70,17 @@ async function roleGroups(ctx: AccessContext, role: Roles[number], roles: Roles,
         note: [`In ${text(r.app)}, at level ${text(r.level)}`],
       }])) },
     { key: 'reports', heading: 'Reports', table: 'dash.report_access', links: [{ label: 'Open as grid', href: `${GRID_PAGE}&grid=reports` }],
-      // Each tick line says who else holds the same grant: the grant is one, each role sees its own area.
-      notes: Object.fromEntries(role.given.map(given => {
-        const also = others(given)
-        return [given.slice(given.indexOf('|') + 1), also.length ? `Also given to ${joined(also)}, each in their own area` : 'Given to this role only']
+      // Each grant says who else holds the same one: the grant is one, each role sees its own area. A tick list
+      // takes the notes; a list (a bundle among the grants) takes a line for each grant, with where it came from.
+      notes: Object.fromEntries(role.given.map(given => [given.slice(given.indexOf('|') + 1), alsoWords(others(given))])),
+      rows: Object.fromEntries(grants.map(g => {
+        const what = exact(g.report) ? `dash.report|${exact(g.report)}` : `dash.report_bundle|${exact(g.report_bundle)}`
+        const named = catalog.get(what)
+        return [exact(g.row_id), {
+          parts: [named ? { record: { table: named.table, row: named.key, name: named.name } } : 'A report no longer listed'],
+          note: [alsoWords(others(what))],
+          chip: text(g.given_by_name) === OLD_GRANT_GIVER ? { label: 'from old grant', tone: 'neutral' as const } : { label: 'given by hand', tone: 'caution' as const },
+        }]
       })) },
     { key: 'titles', heading: 'HR Titles That Give It', table: TITLE_MAP,
       rows: Object.fromEntries(titleRows.map(r => [exact(r.row_id), {
@@ -76,7 +88,8 @@ async function roleGroups(ctx: AccessContext, role: Roles[number], roles: Roles,
         chip: { label: 'from HR', tone: 'quiet' as const },
       }])) },
     { key: 'people', heading: 'People', count: role.people,
-      lines: role.holders.slice(0, PEOPLE_SENT).map(h => ({
+      // Every holder: the page shows the first ten, then Show all.
+      lines: role.holders.map(h => ({
         parts: [{ record: { table: 'Person', row: h.person, name: h.name } }],
         chip: h.by_hand ? { label: 'given by hand', tone: 'caution' as const } : { label: 'from HR', tone: 'quiet' as const },
       })) },
@@ -91,7 +104,8 @@ async function roleGroups(ctx: AccessContext, role: Roles[number], roles: Roles,
 export async function describeBusinessRoles(context: AccessContext) {
   const { rows, page } = Object(context.payload) as { rows?: unknown; page?: unknown }
   const asked = new Set(Array.isArray(rows) ? rows.map(r => exact(r)) : [])
-  const answer = await businessRoles(context)
+  // A role's own page shows all its people; the list only counts them.
+  const answer = await businessRoles(context, page === true && asked.size === 1 ? { allHoldersOf: [...asked][0] } : {})
   const described = answer.roles.filter(r => asked.has(r.id))
   return {
     version: 1,
@@ -104,11 +118,12 @@ export async function describeBusinessRoles(context: AccessContext) {
         people: { text: role.people.toLocaleString('en-IN') },
         given_by: { text: role.given_by.map(w => GIVEN_BY[w]).join(' + ') || '—' },
         can_do: { text: counted(role.permissions.length, 'permission') },
-        reports: { text: role.given.length ? role.given.length.toLocaleString('en-IN') : '—' },
+        // A role that views every report has every report by its rule, whatever is given to it.
+        reports: { text: role.permissions.some(p => viewsEveryReport(p)) ? 'Every report' : role.given.length ? role.given.length.toLocaleString('en-IN') : '—' },
         opens_dash: { text: role.permissions.some(p => p.app === DASH_APP) ? 'Yes' : 'No' },
       },
       header: `Business role · ${role.people ? `${counted(role.people, 'person', 'people')} · ${role.people_from}` : 'nobody yet'}`,
-      ...(page === true && { groups: await roleGroups(context, role, answer.roles, answer.titles) }),
+      ...(page === true && { groups: await roleGroups(context, role, answer.roles, answer.titles, answer.report_catalog) }),
     }] as const))),
     actions: await listActions(context),
   }
@@ -158,11 +173,13 @@ export async function giveOldGrantsPreview(context: AccessContext) {
   const rows = [...lines.values()].map(line => ({ filter: FILTER[line.outcome], cells: {
     report: { parts: [given(line)] }, old_grant: oldGrant(line), given_to: toRoles(line.roles), what: { text: what[line.outcome], tone: TONE[line.outcome] },
   } }))
+  // Counted as the run counts: one grant for each report or bundle and business role it is given to.
   const adding = [...lines.values()].filter(l => l.outcome === 'Will be added')
-  const there = rows.filter(r => r.filter === 'there').length
+  const added = adding.reduce((n, l) => n + l.roles.length, 0)
+  const there = [...lines.values()].filter(l => l.outcome === 'Already there').reduce((n, l) => n + l.roles.length, 0)
   const toWhom = new Set(adding.flatMap(l => l.roles))
   const sentence = adding.length
-    ? `Gives ${counted(adding.length, 'report')} to ${counted(toWhom.size, 'business role')}. ${there.toLocaleString('en-IN')} already there. Grants to people stay with the person.`
+    ? `Adds ${counted(added, 'grant')}: ${counted(adding.length, 'report')} to ${counted(toWhom.size, 'business role')}. ${counted(there, 'grant')} already there. Grants to people stay with the person.`
     : `Adds nothing: ${there ? 'every old grant it carries is already there' : 'no old grant is carried to a business role'}. Grants to people stay with the person.`
   return {
     version: 1,
@@ -185,6 +202,12 @@ export async function decideAccess(context: AccessContext) {
   if (!managesAccess(context)) context.reject!('Only a Report Access Manager or a System Manager can decide who loses Dash')
   const person = exact(Object(context.payload).person)
   if (!person) context.reject!('Choose a person')
+  // Undo takes the decision back: its row stays, marked removed, so its history says who and when.
+  if (Object(context.payload).undo === true) {
+    const live = (await all(context.baseTables!, ACCESS_DECISION, ['person', 'decision', 'removed', 'updated_at'], [['person', '=', person]])).filter(r => !checked(r.removed))
+    for (const row of live) await context.documents!.update!(ACCESS_DECISION, { row_id: exact(row.row_id), removed: true, updated_at: exact(row.updated_at) })
+    return { person, decision: null }
+  }
   if ((await decidedToLose(context.baseTables as Base)).has(person)) return { person, decision: 'Lose Dash' }
   await context.documents!.create!(ACCESS_DECISION, { person, decision: 'Lose Dash', decided_by_name: text(context.userName) || null })
   return { person, decision: 'Lose Dash' }

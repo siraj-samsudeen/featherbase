@@ -181,7 +181,7 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
     <span className="fd-sidebar-group" data-testid="your-work-group">Your work</span>,
     <a href={SECTIONS_ADDRESS} {...here('sections')}>
       <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
-      <span>Your sections</span>
+      <span>Your Sections</span>
     </a>,
     (waiting > 0 || current === 'approvals') && (
       <a href={APPROVALS_ADDRESS} {...here('approvals')} data-testid="approvals-link">
@@ -217,7 +217,7 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
     (manages || current === 'access') && (
       <a href={ACCESS_ADDRESS} {...here('access')} data-testid="access-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m13 10v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></svg>
-        <span>Report access</span>
+        <span>Report Access</span>
       </a>
     ),
     ...(managesRoles ? [

@@ -17,6 +17,8 @@ import { checked, exact, text } from './values.ts'
 type Row = Record<string, unknown>
 export const SWITCH_OVER_LOG = 'dash.switch_over_log'
 export const ACCESS = 'dash.report_access'
+/** Who a grant copied by Give Old Grants To Business Roles says gave it. */
+export const OLD_GRANT_GIVER = 'Switch-over to business roles'
 export type Step = 'Starting role' | 'Title map' | 'Report grant'
 export type Outcome = 'Added' | 'Already given' | 'Not converted'
 export interface Writer { create(table: string, values: Row): Promise<Row> }
@@ -174,7 +176,7 @@ export async function convertGrants(read: Documents, write: Writer, model: Model
       if (!step.earlier) await log({ step: 'Report grant', outcome: 'Already given', source_grant: step.grant, business_role: step.role,
         detail: `${roleName.get(step.role!)} already had ${what}, as it was given to the ${old.kind} ${old.name}` })
     } else if (step.outcome === 'Will be added') {
-      await write.create(ACCESS, { ...step.gives, business_role: step.role, given_by_name: 'Switch-over to business roles' })
+      await write.create(ACCESS, { ...step.gives, business_role: step.role, given_by_name: OLD_GRANT_GIVER })
       added++
       await log({ step: 'Report grant', outcome: 'Added', source_grant: step.grant, business_role: step.role,
         detail: `Gave ${what} to ${roleName.get(step.role!)}, as it was given to the ${old.kind} ${old.name}` })

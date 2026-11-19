@@ -4,7 +4,7 @@
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
-import { NOTE, PREVIEW, hook, installFacts } from './record-facts-fixture'
+import { NOTE, NOTE_TAG, PREVIEW, hook, installFacts } from './record-facts-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -99,6 +99,16 @@ test("the Links tab draws the app's groups in its order: a link group in its wor
   // In the app's order: its groups first, the rest after.
   const order = [...document.querySelectorAll('[data-testid="record-links"] section[aria-label]')].map((s) => s.getAttribute('aria-label'))
   expect(order.slice(0, 4)).toEqual(['What It Says', 'Tags It Has', 'People', 'Nobody Yet'])
+})
+
+// Verifier round 1 (blocker 1): a row naming no choice (it points elsewhere) cannot be ticked or counted.
+test('a link group with a row that names no choice draws as a list, every row said as it is', async ({ admin }) => {
+  await installFacts(admin)
+  await admin.post('/api/save_row', { table: NOTE_TAG, row: { note: 'n1' } })
+  await openRecord(admin)
+  fireEvent.click(screen.getByRole('tab', { name: 'Links' }))
+  await waitFor(() => expect(within(screen.getByRole('region', { name: 'Tags It Has' })).getAllByTestId('linked-row')).toHaveLength(2))
+  expect(within(screen.getByRole('region', { name: 'Tags It Has' })).queryByTestId('tick-box')).not.toBeInTheDocument()
 })
 
 test("an own group past what the app sent says how many more, when it gives no page with them all", async ({ admin }) => {

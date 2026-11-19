@@ -101,7 +101,8 @@ export function DataList<Row>({
                 key={c.key}
                 scope="col"
                 className={cx(
-                  'border-b border-border px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-ink-muted',
+                  // As the shared list's header (ListView): the column's own words, never shouted in capitals.
+                  'border-b border-border px-3 py-2 text-sm font-medium text-ink-muted',
                   c.align === 'end' ? 'text-right' : 'text-left',
                 )}
               >
@@ -114,7 +115,8 @@ export function DataList<Row>({
           {rows.map((row) => (
             <tr key={rowKey(row)} data-testid={rowTestId?.(row)} className="border-b border-border last:border-b-0">
               {columns.map((c, i) => {
-                const cls = cx('px-3 py-2.5 text-ink', c.align === 'end' && 'text-right tabular-nums', i === 0 && 'text-left font-semibold')
+                // Words stay whole: a cell wraps between words, never inside one.
+                const cls = cx('px-3 py-2.5 text-ink wrap-break-word [&_*]:wrap-break-word', c.align === 'end' && 'text-right tabular-nums', i === 0 && 'text-left font-semibold')
                 // The first cell names its row for screen readers.
                 return i === 0 ? (
                   <th key={c.key} scope="row" className={cls}>

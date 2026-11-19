@@ -3,7 +3,7 @@
 // everyone who changes as the shared list, each person a link to Explain A Person. The comparison is the server's
 // (access_changes), unchanged; Let Them Lose Dash only records the owner's decision (decide_access).
 import { useMemo, useState } from 'react'
-import { Button, Card, DataList, FindingCard, Headline, LinkLine, LinkSection, Notice, SearchInput, Segmented, StatusPill, buttonClasses, fmtCount, fmtDateTime, type DataColumn } from '@featherbase/shop-floor'
+import { Button, Card, DataList, FindingCard, LinkLine, LinkSection, Notice, SearchInput, Segmented, StatusPill, buttonClasses, fmtCount, fmtDateTime, type DataColumn } from '@featherbase/shop-floor'
 import { act } from './api'
 import { Loading, Shell } from './sections-page'
 import { RecordLink } from './record-link'
@@ -96,7 +96,8 @@ function Changes({ answer, onChanged }: { answer: ChangesAnswer; onChanged: () =
   const listed = people.filter(p => inFinding(finding, p) && (!words || `${p.name} ${titleOf(p)} ${sitesOf(p).map(s => s.name).join(' ')}`.toLowerCase().includes(words)))
   const shown = all ? listed : listed.slice(0, SHOWN)
   const columns: DataColumn<Changed>[] = [
-    { key: 'person', header: 'Person', phone: 'title', cell: p => <PersonLink person={p.person} name={p.name} testid="changed-name" /> },
+    // Two people may share a name: their staff code tells them apart.
+    { key: 'person', header: 'Person', phone: 'title', cell: p => <span className="whitespace-nowrap"><PersonLink person={p.person} name={p.name} testid="changed-name" />{p.who?.code && <span className="text-ink-muted"> {p.who.code}</span>}</span> },
     { key: 'title', header: 'HR Title', phone: 'meta', cell: p => titleOf(p) },
     { key: 'site', header: 'Site', phone: 'meta', cell: p => sitesOf(p).length ? <Parts parts={sitesOf(p).map(s => ({ name: s.name, table: 'Site', id: s.id }))} /> : <span className="text-ink-subtle">—</span> },
     { key: 'today', header: 'Today', phone: 'meta', cell: p => sideWords(p.today) },
@@ -110,10 +111,14 @@ function Changes({ answer, onChanged }: { answer: ChangesAnswer; onChanged: () =
   ]
   return (
     <div className="flex flex-col gap-6">
-      <Headline label="With business roles" tone={deciding.length ? 'caution' : 'neutral'} className="text-2xl"
-        conclusion={people.length === 0 ? `All ${counted(answer.people)} would keep exactly what they have.`
-          : `${fmtCount(people.length)} of ${counted(answer.people)} would see something different. ${fmtCount(people.length - deciding.length)} of the ${fmtCount(people.length)} are changes already decided; ${fmtCount(deciding.length)} ${deciding.length === 1 ? 'needs' : 'need'} your decision before the switch.`}
-        detail={<span data-testid="changes-detail">{gains ? `${counted(gains)} would gain Dash.` : 'Nobody gains Dash.'} The other {fmtCount(answer.people - people.length)} keep exactly what they have.</span>} />
+      {/* The answer first, in calm words on a soft fill (the mockup's line): what changes, then what remains. */}
+      <section className="flex flex-col gap-1.5 rounded-card bg-subtle px-5 py-4" aria-label="The answer" data-testid="changes-answer">
+        <p className="text-xl font-semibold leading-snug text-ink max-sm:text-base">
+          {people.length === 0 ? `All ${counted(answer.people)} would keep exactly what they have.`
+            : `${fmtCount(people.length)} of ${counted(answer.people)} would see something different. ${fmtCount(people.length - deciding.length)} of the ${fmtCount(people.length)} are changes already decided; ${fmtCount(deciding.length)} ${deciding.length === 1 ? 'needs' : 'need'} your decision before the switch.`}
+        </p>
+        <p className="text-sm text-ink-muted" data-testid="changes-detail">{gains ? `${counted(gains)} would gain Dash.` : 'Nobody gains Dash.'} The other {fmtCount(answer.people - people.length)} keep exactly what they have.</p>
+      </section>
       <div className="flex flex-wrap gap-3" data-testid="findings">
         <FindingCard count={count('decide')} title="Need A Decision" tone="caution" selected={finding === 'decide'} onSelect={() => toggle('decide')}
           reason="Reports they get today only through an old role that business roles don't give, or Dash opens with nothing to let them in" owner="Owner decides · before the switch" />
@@ -157,23 +162,44 @@ const counted = (n: number) => `${fmtCount(n)} ${n === 1 ? 'person' : 'people'}`
 function Decide({ people, onChanged }: { people: Changed[]; onChanged: () => Promise<unknown> }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const lose = async (p: Changed) => {
+  // Letting someone lose Dash asks first, on the card; once done, it can be undone.
+  const [asking, setAsking] = useState<string | null>(null)
+  const [decided, setDecided] = useState<Changed | null>(null)
+  const decide = async (p: Changed, undo: boolean) => {
     setBusy(p.person); setError(null)
-    try { await act('decide_access', { person: p.person }); await onChanged() } catch (e) { setError(messageOf(e)) } finally { setBusy(null) }
+    try {
+      await act('decide_access', undo ? { person: p.person, undo: true } : { person: p.person })
+      setDecided(undo ? null : p); setAsking(null)
+      await onChanged()
+    } catch (e) { setError(messageOf(e)) } finally { setBusy(null) }
   }
   return (
     <section className="flex flex-col gap-3" aria-label="Need A Decision" data-testid="decide">
       <div className="flex items-baseline gap-2"><h2 className="text-base font-semibold text-ink">Need A Decision</h2><span className="text-[13px] text-ink-muted">{fmtCount(people.length)}</span></div>
       {error && <Notice tone="negative">{error}</Notice>}
+      {decided && (
+        <Notice tone="positive">
+          <span data-testid="decided">{decided.name} will lose Dash with business roles. </span>
+          <button type="button" className="font-medium text-action hover:underline" onClick={() => decide(decided, true)} data-testid="undo-lose">Undo</button>
+        </Notice>
+      )}
       <div className="flex flex-wrap gap-3">
         {people.map(p => (
           <div key={p.person} className="flex min-w-80 flex-1 basis-80 flex-col gap-2.5 rounded-card bg-caution-tint p-4" data-testid="decide-card">
-            <div className="text-sm"><PersonLink person={p.person} name={p.name} /> <span className="text-ink-muted">· {titleOf(p)}{sitesOf(p).length ? <> · <Parts parts={sitesOf(p).map(s => ({ name: s.name, table: 'Site', id: s.id }))} /></> : null}</span></div>
+            <div className="text-sm"><PersonLink person={p.person} name={p.name} />{p.who?.code && <span className="text-ink-muted"> {p.who.code}</span>} <span className="text-ink-muted">· {titleOf(p)}{sitesOf(p).length ? <> · <Parts parts={sitesOf(p).map(s => ({ name: s.name, table: 'Site', id: s.id }))} /></> : null}</span></div>
             <p className="text-sm text-ink">Today: {sideWords(p.today)}. With business roles: {p.kinds.includes('loses_dash') ? 'no Dash' : sideWords(p.next)}. <span className="text-ink-muted"><ChangeFacts change={p} /></span></p>
-            <div className="flex flex-wrap gap-2">
-              <a href={`${explainAddress(p.person)}&give=1`} className={buttonClasses({ variant: 'primary' })} data-testid="give-a-role">Give A Role…</a>
-              <Button loading={busy === p.person} onClick={() => lose(p)} data-testid="let-lose">Let Them Lose Dash</Button>
-            </div>
+            {asking === p.person ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="lose-confirm">
+                <span>Let {p.name} lose Dash with business roles?</span>
+                <Button variant="primary" loading={busy === p.person} onClick={() => decide(p, false)} data-testid="lose-yes">Yes, Let Them Lose It</Button>
+                <Button variant="quiet" onClick={() => setAsking(null)} data-testid="lose-keep">Keep Deciding</Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <a href={`${explainAddress(p.person)}&give=1`} className={buttonClasses({ variant: 'primary' })} data-testid="give-a-role">Give A Role…</a>
+                <Button onClick={() => setAsking(p.person)} data-testid="let-lose">Let Them Lose Dash</Button>
+              </div>
+            )}
           </div>
         ))}
       </div>

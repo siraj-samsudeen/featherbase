@@ -262,7 +262,8 @@ export async function tableAccessFor(
   const shared = await sql`
     select distinct share_table from share
     where (person = ${principal} or service_account = ${principal}) and read = true`
-  const ownGrant = active.some((r) => r.role !== 'All' && !ownPages.tables.has(String(r.ref_table)) && (r.owner_app == null || !ownPages.names.has(String(r.owner_app))))
+  const ownGrant = active.some((r) => r.role !== 'All' && !ownPages.tables.has(String(r.ref_table))
+    && (r.owner_app == null || !ownPages.names.has(String(r.owner_app)) || ownPages.featherbase.has(String(r.ref_table))))
   return {
     readable: names((r) => r.can_read),
     // Read through a role of the principal's own, never only through All: an
@@ -277,11 +278,14 @@ export async function tableAccessFor(
 
 /** #659: installation declarations remain authoritative when code is missing
  *  or disabled. Both owned Tables and contributed grants belong in the app. */
-async function appsWithOwnPages(): Promise<{ names: Set<string>; tables: Set<string> }> {
+async function appsWithOwnPages(): Promise<{ names: Set<string>; tables: Set<string>; featherbase: Set<string> }> {
   const rows = (await sql`select name, tables, runtime_package, manifest from installed_app`).filter(declaresOwnPages)
+  // #1340: the Tables such an app hands to Featherbase's own pages (its manifest's `records`) are Featherbase's.
+  const featherbase = new Set(rows.flatMap((row) => Object.keys((row.manifest as { records?: Record<string, unknown> } | null)?.records ?? {})))
   return {
     names: new Set(rows.map((row) => String(row.name))),
-    tables: new Set(rows.flatMap((row) => asNameList(row.tables))),
+    tables: new Set(rows.flatMap((row) => asNameList(row.tables)).filter((t) => !featherbase.has(t))),
+    featherbase,
   }
 }
 

@@ -671,6 +671,8 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       await owned(op.table, owner, `moveTable ${op.table}`)
       await sql`update table_def set module = ${op.to}, updated_at = ${new Date()} where name = ${op.table}`
       invalidateMeta(op.table)
+      // Moved into a module, it is listed on that module's home page, as a Table added there is.
+      await ensureHomePageForTable(op.table, op.to)
       return null
     }
     case 'markDecidesScope': {

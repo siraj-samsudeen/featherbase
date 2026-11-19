@@ -159,10 +159,10 @@ function Explanation({ answer, onChanged, giving }: { answer: Explained; onChang
             </li>
             {form && <HandForm change={form} person={answer.person} choices={answer.choices} places={answer.places} onDone={async () => { setForm(null); await onChanged() }} onCancel={() => setForm(null)} />}
           </LinkSection>
-          <LinkSection heading="Apps They Can Open" count={`${answer.apps.length.toLocaleString('en-IN')} · worked out from their roles`} testid="explain-apps">
-            {answer.apps.map(app => (
-              <WhyLine key={`${app.app}-${app.level}`} testid="explain-app" name={<span className="font-medium text-ink">{app.app}</span>} note={`at level ${app.level}`}
-                via={app.via} chain={`${answer.name} → ${app.via.join(' and ')} → ${app.app} · ${app.level}`} />
+          <LinkSection heading="Apps They Can Open" count={`${byApp(answer.apps).length.toLocaleString('en-IN')} · worked out from their roles`} testid="explain-apps">
+            {byApp(answer.apps).map(app => (
+              <WhyLine key={app.app} testid="explain-app" name={<span className="font-medium text-ink">{app.app}</span>} note={`at level${app.levels.length > 1 ? 's' : ''} ${app.levels.join(' and ')}`}
+                via={app.via} chain={`${answer.name} → ${app.via.join(' and ')} → ${app.app} · ${app.levels.join(' and ')}`} />
             ))}
             {answer.apps.length === 0 && <li className="px-2 py-1.5 text-sm text-ink-muted">No app.</li>}
           </LinkSection>
@@ -187,6 +187,18 @@ function Explanation({ answer, onChanged, giving }: { answer: Explained; onChang
       </div>
     </div>
   )
+}
+
+/** Each app once, its levels together ("at levels Manager and Reader"), with every role that gives it. */
+function byApp(apps: Explained['apps']): { app: string; levels: string[]; via: string[] }[] {
+  const merged = new Map<string, { app: string; levels: string[]; via: string[] }>()
+  for (const a of apps) {
+    const entry = merged.get(a.app) ?? { app: a.app, levels: [], via: [] }
+    entry.levels.push(a.level)
+    entry.via = [...new Set([...entry.via, ...a.via])].sort()
+    merged.set(a.app, entry)
+  }
+  return [...merged.values()]
 }
 
 /** The roles a report comes through, from its reasons ("Given to Store Manager, for Lakeside"). */

@@ -1,6 +1,7 @@
 import { RECORD_FACTS_LIMITS, actionPreviewSchema, recordFactsSchema, type ActionPreview, type ActionPreviewAnswer, type RecordFacts, type RecordFactsAnswer } from 'shared'
 import { withAppIdentity } from './app-lifecycle'
 import { AppError } from './errors'
+import { getMeta } from './meta'
 import { hasPermission } from './permissions'
 import { rowTitles } from './row-titles'
 import { recordsDeclarationFor, runPackageRead } from './runtime-packages'
@@ -45,6 +46,26 @@ function partsOf(facts: RecordFacts): Part[] {
   ].flatMap((line) => [...line.parts, ...(line.note ?? [])])))
 }
 
+/**
+ * Which keys of the groups' `rows` and `notes` name records `user` may read: a row of the group's Table, or for a
+ * note, a row of a Table the group's links point at (other than the described Table itself, the back link).
+ */
+async function readableKeys(table: string, groups: { table?: string; rows?: Record<string, unknown>; notes?: Record<string, string> }[], user: string): Promise<Set<string>> {
+  const keep = new Set<string>()
+  for (const g of groups) {
+    if (!g.table) continue
+    const rows = Object.keys(g.rows ?? {})
+    if (rows.length) for (const t of await rowTitles(user, rows.map((row_id) => ({ table: g.table!, row_id })))) keep.add(`${g.table}\u0000${t.row_id}`)
+    const notes = Object.keys(g.notes ?? {})
+    if (!notes.length) continue
+    // A Table that is not there points at nothing: its notes are left out.
+    const meta = await getMeta(g.table).catch(() => ({ columns: [] as { column_type: string; reference_table?: string | null }[] }))
+    const far = meta.columns.flatMap((c) => c.column_type === 'Reference' && c.reference_table && c.reference_table !== table ? [c.reference_table] : [])
+    for (const t of await rowTitles(user, far.flatMap((ft) => notes.map((row_id) => ({ table: ft, row_id }))))) keep.add(`note:${g.table}\u0000${t.row_id}`)
+  }
+  return keep
+}
+
 /** POST /api/records/:table/describe { rows, page }: the app's facts about those rows, for `user`, or none. */
 export async function describeRows(table: string, body: unknown, user: string): Promise<RecordFactsAnswer | { facts: null }> {
   const asked = body && typeof body === 'object' ? body as { rows?: unknown; page?: unknown } : {}
@@ -55,11 +76,12 @@ export async function describeRows(table: string, body: unknown, user: string): 
   if (page && rows.length !== 1) throw new AppError('ValidationError', 'A record page asks about one row')
   if (!(await hasPermission(user, table, 'read'))) throw new AppError('PermissionError', 'You may not read this Table')
   const declaration = await recordsDeclarationFor(table, user)
-  if (!declaration) return { facts: null }
+  if (!declaration?.describe) return { facts: null }
+  const describe = declaration.describe
   const shown = await readable(table, rows, user)
   let answer: unknown
   try {
-    answer = (await read(declaration, declaration.describe, { table, rows: shown, page }, user))?.result
+    answer = (await read(declaration, describe, { table, rows: shown, page }, user))?.result
   } catch {
     // Refused, or failed: the page draws as it does with no app.
     return { facts: null }
@@ -70,6 +92,9 @@ export async function describeRows(table: string, body: unknown, user: string): 
   const allowed = new Set(shown)
   const reads = await readableRecords(partsOf(facts), user)
   const line = <L extends { parts: Part[]; note?: Part[] }>(l: L): L => ({ ...l, parts: l.parts.map(scrub(reads)), ...(l.note && { note: l.note.map(scrub(reads)) }) })
+  // Codex standard round 1: a group's row, or a note's far-side record, the viewer may not read never leaves, id and all.
+  const groups = page ? Object.values(facts.rows).flatMap((row) => row.groups ?? []) : []
+  const keep = await readableKeys(table, groups, user)
   return {
     app: declaration.app,
     version: declaration.version,
@@ -80,7 +105,8 @@ export async function describeRows(table: string, body: unknown, user: string): 
         ...row,
         groups: page ? row.groups?.map((g) => ({
           ...g,
-          ...(g.rows && { rows: Object.fromEntries(Object.entries(g.rows).map(([r, l]) => [r, line(l)])) }),
+          ...(g.rows && { rows: Object.fromEntries(Object.entries(g.rows).filter(([r]) => keep.has(`${g.table}\u0000${r}`)).map(([r, l]) => [r, line(l)])) }),
+          ...(g.notes && { notes: Object.fromEntries(Object.entries(g.notes).filter(([r]) => keep.has(`note:${g.table}\u0000${r}`))) }),
           ...(g.lines && { lines: g.lines.map(line) }),
         })) : undefined,
       }])),

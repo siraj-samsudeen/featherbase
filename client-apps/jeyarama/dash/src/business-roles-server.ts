@@ -362,7 +362,8 @@ const HOLDER_WORDS: Record<Source, string> = {
 }
 const joined = (words: string[]) => words.length <= 1 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
 
-export async function businessRoles(context: AccessContext) {
+/** `allHoldersOf`: one role whose people are all wanted (its own page), not only the first ones. */
+export async function businessRoles(context: AccessContext, { allHoldersOf }: { allHoldersOf?: string } = {}) {
   const ctx = managersOnly(context)
   const world = await shadowWorld(ctx.baseTables)
   const { roles, permissions } = world.model
@@ -399,7 +400,8 @@ export async function businessRoles(context: AccessContext) {
     const what = row.report ? `dash.report|${row.report}` : `dash.report_bundle|${row.report_bundle}`
     if (row.business_role) givenTo.set(what, [...new Set([...givenTo.get(what) ?? [], row.business_role])])
   }
-  const shown = [...new Set([...holdersOf.values()].flatMap(set => [...set].slice(0, HOLDERS_SHOWN)).concat(roles.flatMap(r => [...peopleOf.get(r.id) ?? []].slice(0, HOLDERS_SHOWN))))]
+  const shownOf = (role: string) => [...peopleOf.get(role) ?? []].slice(0, role === allHoldersOf ? undefined : HOLDERS_SHOWN)
+  const shown = [...new Set([...holdersOf.values()].flatMap(set => [...set].slice(0, HOLDERS_SHOWN)).concat(roles.flatMap(r => shownOf(r.id))))]
   const names = await personNames(ctx, shown)
   return {
     // #1282 F1–F6: whether the grid steps for this caller, or is read-only.
@@ -416,7 +418,7 @@ export async function businessRoles(context: AccessContext) {
       given: [...givenTo].filter(([what, given]) => given.includes(role.id) && named.has(what)).map(([what]) => what),
       people: peopleOf.get(role.id)?.size ?? 0,
       people_from: sourceWords(role.id) || 'nobody yet',
-      holders: [...peopleOf.get(role.id) ?? []].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone', by_hand: handOf.get(role.id)?.has(person) ?? false })),
+      holders: shownOf(role.id).map(person => ({ person, name: names.get(person) ?? 'Someone', by_hand: handOf.get(role.id)?.has(person) ?? false })),
       /** #1340: how its people came to hold it, in short words for the list ("HR title + by hand"). */
       given_by: [...sourcesOf.get(role.id) ?? []],
     })),
