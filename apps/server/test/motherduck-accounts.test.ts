@@ -119,6 +119,16 @@ describe('#1346: the MotherDuck account sync', () => {
     expect(await sql`select ticket_state from tickets.ticket where title like '%asha_reports%'`).toEqual([{ ticket_state: 'Resolved' }])
     expect((await syncMotherDuckAccounts()).tickets_resolved).toEqual([])
 
+    // MotherDuck gives a removed account's username to a new account: it gets a ticket of its own.
+    motherduck([[
+      { id: 'md-ravi', username: 'ravi_md', email: 'ravi-1346@example.com', is_deprovisioned: true },
+      { id: 'md-asha', username: 'asha_reports', email: 'asha@elsewhere.example' },
+      { id: 'md-gone-again', username: 'gone_user', email: 'gone-again@elsewhere.example' },
+      { id: 'md-bot', username: 'loader_service_account', is_service_account: true },
+    ]])
+    expect((await syncMotherDuckAccounts()).tickets_raised).toHaveLength(1)
+    expect(await sql`select count(distinct review_ticket)::int as n from motherduck_account where username = 'gone_user'`).toEqual([{ n: 2 }])
+
     // Search finds the account by its username, and by its email.
     const hits = async (q: string) => ((await searchLines(admin, q)).find((l) => (l as { table?: string }).table === 'MotherDuck Account') as { hits: { title: string }[] } | undefined)?.hits.map((h) => h.title) ?? []
     expect(await hits('asha_reports')).toEqual(['asha_reports'])
