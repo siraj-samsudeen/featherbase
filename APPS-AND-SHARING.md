@@ -644,6 +644,51 @@ Still parked by his own statement: printing, public websites and portals.
   message unless he asks for a batch. Options with pros and cons, one recommendation, then ask.
   Summarise background work as each piece returns.
 
+### Decision 29 — Where do Tables that people bring in for themselves live?
+
+Raised by Siraj on 19-Nov-2026, after the rest was settled. Importing is today a job for a system
+manager. He wants "each user to create their own little island": "I am doing something in Excel. I just
+want to put it in Featherbase, maybe in an area that does not really collide with others. It's not
+private in the data access sense, but a work area, and then I play with it. Maybe if I find it useful,
+then I share it with others. Eventually, it becomes a table that can be used. That way we can tell
+everybody: bring all your Excels into Featherbase and do your own thing." His worry: "we should have some
+clear separation between what is done by me or an administrator with a thoughtful design and what is the
+kind of junk drawer that is created by the users. Otherwise both would collide." And: when space runs
+short or there are too many things, clean-up should be able to focus on that area.
+
+**Options.**
+- **A. A work area for each person.** Anyone can bring a file in; the Table lands in that person's own
+  area, in its own schema. It shows under "My work", never in the shared lists, and the person can share
+  it with named people. It is never sent to the warehouse: the change-data-capture package skips those
+  schemas. Each area shows its size and when it was last used. A good Table is *promoted*: someone who
+  designs reviews its name, key and types, then moves it to `main` or an app. *For:* names can't collide
+  (two people's "Budget" are different Tables); the designed side stays clean; clean-up has one obvious
+  place to look; when a person leaves, their area is one thing to review. *Against:* many small schemas;
+  a shared draft still has a single owner.
+- **B. One shared drafts area for everyone.** *For:* simplest; people can discover each other's drafts.
+  *Against:* names collide between people; with no clear owner per area it becomes the junk drawer he
+  fears.
+- **C. No separate area, a "draft" mark on Tables in `main`.** *For:* nothing moves on promotion.
+  *Against:* drafts and designed Tables share one list and one set of names, which is the collision he
+  wants to avoid; and the warehouse would need a filter per Table.
+
+**Chosen: A.** By Siraj, on my recommendation. **Firmness: firm on the principle** (a separate place per
+person, kept apart from designed Tables and from the warehouse); the details below are open.
+
+**Why A, beyond his stated worry.** `BIG-PICTURE.md` says the physical shape of every Table is read by
+the change-data-capture package. A separate schema lets that package ignore drafts wholesale; a draft
+mark would have to be respected Table by Table. And promotion needs nothing new: it is the "moving a
+Table between `main` and an app is one deliberate step" that `BIG-PICTURE.md` already describes, with a
+name history, plus a review in front of it.
+
+**How it fits the rest.** A Table can now live in three kinds of place: a person's work area, the shared
+`main`, or an app. `BIG-PICTURE.md` already says "later a person picks the schema"; this decides what the
+default is for a file someone brings in for themselves.
+
+**Open** (also listed in section 9): who may promote; whether others can see that a work area's Tables
+exist before they are shared ("not private in the data access sense" suggests they may); what sharing
+grants; and the naming of the area and its schema.
+
 ## 7. Evidence gathered
 
 **Old code, measured 18-Nov** (branch `main` at the time): server 46,628 lines of source and 92,264 of
@@ -693,12 +738,9 @@ A first-pass ledger of the old system's 91 capabilities, marked core, rethink, c
    Show another instance's Table inside the local app, or as a separate Table?
 7. The old system's planned move of one client's apps to a private repository (11-Nov) is still
    waiting on him. With a fresh install planned for production, it may no longer be needed in that form.
-8. **Personal work areas (raised by the owner on 19-Nov-2026, not yet decided).** Importing is today a
-   job for a system manager. He wants each person to bring their own Excel files into an area of their
-   own, play with them, share them if useful, and have the good ones become proper Tables. His worry:
-   "we should have some clear separation between what is done by me or an administrator with a
-   thoughtful design and what is the kind of junk drawer that is created by the users. Otherwise both
-   would collide." He also wants clean-up to be able to focus on that area when space runs short.
+8. For personal work areas (decision 29): who may promote a Table out of a work area; whether other
+   people can see that a work area's Tables exist before they are shared; and what sharing one grants
+   (read only, or edit too).
 
 ## 10. A suggested order, for the owner and the planning session to challenge
 
