@@ -16,7 +16,6 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/form/$route': 'published readable Web Forms',
   '/featherbase/portal/$table': 'alternate rendering of a readable Table',
   '/featherbase/portal/$table/$name': 'requires an existing row',
-  '/featherbase/sales-target': 'report capability',
   '/featherbase/account': 'account layout',
   '/featherbase/account/sign-in-methods': 'own account page',
   '/featherbase/account/connected-apps': 'own account page, from the account menu and sidebar (#1207)',

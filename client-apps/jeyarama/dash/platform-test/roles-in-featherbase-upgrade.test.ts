@@ -1,4 +1,4 @@
-// #1340: the upgrade to business roles in Featherbase, on an instance like production's: Dash at main's 0.13.43, business
+// #1340: the upgrade to business roles in Featherbase, on an instance like production's: Dash at main's 0.13.44, business
 // roles deciding Dash access, and live roles, title maps, hand changes, report grants (a removed one, one to a person, a
 // bundle) and reports. Nothing in those Tables is lost or changed, the moved Tables keep every row, id and link, the new
 // Tables arrive empty, everyone's access answer is the same after, and asking again finds nothing to do. Made-up data only.
@@ -13,7 +13,7 @@ import { loadInstalledApps } from '../../src/apps'
 import { APP_DIR, VERSION, createCoreTables, revertRolesInFeatherbase, saveRow } from './helpers'
 
 process.env.MOTHERDUCK_TOKEN = 'made-up-token'
-const MAIN = '0.13.43'
+const MAIN = '0.13.44'
 /** The version every client says it was built for: main's until the upgrade is active, then this one's. */
 let running = MAIN
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
@@ -51,7 +51,7 @@ async function rows(): Promise<Record<string, unknown[]>> {
 }
 
 describe('business roles in Featherbase, on live data', () => {
-  test('the upgrade from 0.13.43 with business roles deciding loses or changes no row, keeps access, and runs once', async ({ admin, createUser }) => {
+  test('the upgrade from 0.13.44 with business roles deciding loses or changes no row, keeps access, and runs once', async ({ admin, createUser }) => {
     const previous = await mainVersion()
     running = MAIN
     try {

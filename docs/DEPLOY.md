@@ -122,13 +122,9 @@ only a source using `MOTHERDUCK_URL` or marked as holding a read-scaling token.
 | `FEATHERBASE_INSTANCE` | no | no |  | the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance) |
 | `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
 | `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
-| `MOTHERDUCK_TOKEN` | no | yes |  | the one MotherDuck token: every MotherDuck source, app dataset and the sales-target embed use it. Featherbase only reads the warehouse, whatever rights the token has. Never logged, returned or stored |
+| `MOTHERDUCK_TOKEN` | no | yes |  | the one MotherDuck token: every MotherDuck source and app dataset use it. Featherbase only reads the warehouse, whatever rights the token has. Never logged, returned or stored |
 | `MOTHERDUCK_API_BASE` | no | no | `https://api.motherduck.com` | MotherDuck API base |
-| `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub |
-| `DIVE_ID` | no | no |  | the sales-target Dive |
 | `SERVICE_ACCOUNT` | no | no |  | the MotherDuck service account the embed runs as |
-| `SALES_TARGET_TODAY` | no | no |  | pins "today" (YYYY-MM-DD) for the sales target; for tests and rehearsals |
-| `SALES_TARGET_SHARED_ENV` | no | no |  | path of a local `.env.local` the sales-target experiment reads `DIVE_ID` and `SERVICE_ACCOUNT` from |
 
 <!-- generated:variables:end -->
 
@@ -736,14 +732,14 @@ Values that differ by environment go in that environment's section; when the
 file has sections, every apply must name one. Secrets never go in it: an app's
 declared secrets are deployment variables, set like any other.
 
-A value can come from a variable: `{ "env": "DIVE_ID" }` wherever a value goes.
+A value can come from a variable: `{ "env": "SERVICE_ACCOUNT" }` wherever a value goes.
 It is read when the file is applied (by the `settings:apply` process, or sent in
 the API's `env` field; the server never reads its own environment for a file),
 saved into the Table and locked as usual. A missing or empty variable is a listed
 problem naming it, in a dry run too. Output, logs and the drift report never show
 the value, and the last apply remembers where it came from: `settings:export`
-writes `{ "env": "DIVE_ID" }` back, and replacing it with a plain value shows the
-old one as `[the value of DIVE_ID]`. A file that stops naming the field keeps it
+writes `{ "env": "SERVICE_ACCOUNT" }` back, and replacing it with a plain value shows the
+old one as `[the value of SERVICE_ACCOUNT]`. A file that stops naming the field keeps it
 private until someone changes the value. A variable that holds a secret is refused.
 
 ```bash

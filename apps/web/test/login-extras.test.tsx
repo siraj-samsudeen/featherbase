@@ -8,19 +8,29 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
+import { resolve } from 'node:path'
 import { config } from 'server/src/config'
+import { discoverPackages } from 'server/src/runtime-packages'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
-import { VIEWER_ROLE } from 'server/src/sales-target'
 import { setPasswordMethod } from 'server/test/identity-fixtures'
 import { test, expect, renderApp } from './pg-test'
 
 const anonymous = { user: null, token: null } as never
 type Router = { state: { location: { pathname: string } } }
 
-afterEach(() => {
+afterEach(async () => {
+  // An app installed by a test stays loaded in this process after its rows roll back.
+  await discoverPackages([])
   config.instanceAddresses = null
   vi.restoreAllMocks()
 })
+
+/** An app open to everyone, installed under the name dash: a person with no
+ *  Admin use can open it, so their sign-in belongs on its address. */
+async function installDashApp(admin: Parameters<typeof renderApp>[1]) {
+  expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'dash' })
+}
 
 function navigationReports() {
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -61,8 +71,8 @@ test('someone who belongs on another address is handed off there when they sign 
     ]),
     'test',
   )
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
-  const viewer = await createUser({ email: 'viewer.handoff@example.com', roles: [VIEWER_ROLE] })
+  await installDashApp(admin)
+  const viewer = await createUser({ email: 'viewer.handoff@example.com' })
   await admin.post('/api/set_password', { user: viewer.user, password: 'handoff-pw-1' })
   const reports = navigationReports()
   const { router } = await renderApp('/featherbase/login', anonymous)

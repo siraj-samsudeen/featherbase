@@ -5,9 +5,9 @@ import { getMeta } from './meta'
 // #437: the Tables that decide who may do what. Writing them is System
 // Manager work whatever the Permission rows say: a grant on one of them must
 // never be what stands between an ordinary role and every other grant. Reads
-// stay governed by the normal permission checks. The Sales Target scope
-// Tables are ordinary instance Tables, but their rows decide which stores and
-// groups a person's report covers, so they sit here too — until the go-live
+// stay governed by the normal permission checks. The store-scope Tables are
+// ordinary instance Tables, but their rows decide which stores and groups a
+// person's report covers, so they sit here too — until the go-live
 // cut-over, when the instance's setup marks them `decides_scope` (#559) and
 // their names leave this list (task 2.1 of feather-dash-installed-app). A
 // Table marked `decides_scope` is guarded the same way (isSecurityTable). Server Scripts,
@@ -29,7 +29,6 @@ export const SECURITY_TABLES: ReadonlySet<string> = new Set([
   // #620: an app's settings and which roles carry its roles.
   'App Setting',
   'App Role Binding',
-  'Sales Target Assignment',
   'Employee Section Map',
   'Section Ownership',
   'Store Manager',

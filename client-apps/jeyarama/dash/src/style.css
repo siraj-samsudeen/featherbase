@@ -27,8 +27,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); o
 .fd-notice { max-width: 36rem; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 .fd-title { margin: 0; font-size: 20px; line-height: 1.2; font-weight: 700; }
 .fd-muted { margin: 0; color: var(--color-ink-muted); }
-.fd-small { font-size: 12px; margin-top: 8px; }
-/* The page's header (#4486) is one row (#950): the title, then the period, why and measure in
+/* The page's header (#4486) is one row (#950): the title, then the period and why in
    smaller muted text, set apart by "·". Long lines wrap, never scroll sideways. */
 .fd-heading { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 2px; margin: 0 auto 8px; max-width: 960px; width: 100%; overflow-wrap: anywhere; }
 .fd-heading .fd-title { font-size: 16px; font-weight: 600; margin-right: 4px; }
@@ -36,12 +35,12 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); o
 .fd-count { padding: 0; border: 0; background: none; color: var(--color-action); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .fd-sections { flex-basis: 100%; margin: 2px 0 0; font-size: 13px; color: var(--color-ink-muted); }
 .fd-heading .fd-muted { font-size: 13px; }
-.fd-heading .fd-muted + .fd-muted::before, .fd-quick-line > * + *::before { content: '·'; margin-right: 8px; color: var(--color-ink-muted); }
+.fd-heading .fd-muted + .fd-muted::before { content: '·'; margin-right: 8px; color: var(--color-ink-muted); }
 .fd-heading-wide { max-width: none; }
 
 .fd-opening { margin: 48px auto; color: var(--color-ink-muted); text-align: center; }
 .fd-frame-box { position: relative; flex: 1; display: flex; }
-/* #1143: past the deadline the Dive keeps loading out of sight behind the quick view: laid out at full
+/* #1143: past the deadline the Dive keeps loading out of sight behind "couldn't open": laid out at full
    size (a frame not drawn at all may be throttled), invisible, and out of reach. */
 .fd-frame-behind { position: fixed; inset: 0; opacity: 0; pointer-events: none; z-index: -1; }
 .fd-opening-over { position: absolute; inset: 0; margin: 0; padding-top: 48px; background: var(--color-canvas); }
@@ -52,36 +51,9 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); o
 .fd-button:hover { background: var(--color-subtle); }
 .fd-link { margin-top: 12px; padding: 0; border: 0; background: none; color: var(--color-action); font: inherit; cursor: pointer; text-decoration: underline; }
 
-.fd-quick { max-width: 960px; width: 100%; margin: 0 auto; padding: 12px 16px 16px; }
-/* What the cached table is and how fresh, in one muted line above it (#950). */
-.fd-quick-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; font-size: 13px; }
-.fd-quick-line { display: flex; flex-wrap: wrap; column-gap: 8px; }
-.fd-table-box { overflow-x: auto; max-width: 100%; position: relative; }
-.fd-unnamed { color: var(--color-ink-muted); }
-/* A section's name stays in view while the table scrolls sideways. */
-.fd-sticky-name { position: sticky; left: 8px; display: inline-block; }
-.fd-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.fd-table th, .fd-table td { padding: 8px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
-.fd-table thead th { background: var(--color-subtle); font-size: 12px; color: var(--color-ink-muted); font-weight: 600; }
-.fd-table .fd-num { text-align: right; white-space: nowrap; }
-.fd-sub { font-weight: 400; }
-/* The subcategory column stays in view while the figures scroll under it. */
-.fd-table tbody th[scope='row'], .fd-table tfoot th[scope='row'], .fd-table thead th:first-child {
-  position: sticky; left: 0; z-index: 1; background: var(--color-surface); }
-.fd-table thead th:first-child, .fd-section-row th { background: var(--color-subtle); }
-.fd-section-row th { background: var(--color-subtle); font-weight: 600; }
-.fd-subtotal th, .fd-subtotal td { font-weight: 600; }
-.fd-total th, .fd-total td { font-weight: 700; border-bottom: 0; }
-.fd-negative { color: var(--color-negative); }
 @media (max-width: 640px) {
   .fd-shell { display: block; }
   .fd-page { padding: 8px; }
-  .fd-table th, .fd-table td { padding: 6px 4px; }
-  .fd-table tbody th[scope='row'], .fd-table tfoot th[scope='row'], .fd-table thead th:first-child {
-    max-width: 10rem; overflow-wrap: normal; word-break: normal; box-shadow: 1px 0 0 var(--color-border); }
-  /* While more of the table lies to the right, its edge fades: the cue that it scrolls. At the
-     end of the scroll the fade goes, so the last figure is never left faded. */
-  .fd-table-box.fd-more-right { mask-image: linear-gradient(to right, var(--color-ink) calc(100% - 32px), transparent); }
 }
 
 /* The app shows commands to copy: `--` must read as two hyphens in any font. */

@@ -177,7 +177,7 @@ export function loadEnvLocal() {
   const file = join(root, '.env.local')
   if (!existsSync(file)) return
   // process.loadEnvFile leaves a variable already set alone, so a real one wins.
-  // A blank line in the file (`DIVE_ID=`) must not count as a value either way.
+  // A blank line in the file (`SERVICE_ACCOUNT=`) must not count as a value either way.
   const before = new Set(Object.keys(process.env))
   process.loadEnvFile(file)
   for (const key of Object.keys(process.env)) if (!before.has(key) && process.env[key] === '') delete process.env[key]

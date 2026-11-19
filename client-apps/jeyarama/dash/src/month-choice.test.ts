@@ -1,6 +1,6 @@
 // #750: the page's month choice, this month or last month. Made-up stores and figures.
 import { describe, expect, it } from 'vitest'
-import { blankNote, isMonthChoice, monthChooser, notArrivedLine, pageView, reportLoader, visibleState } from './page.ts'
+import { isMonthChoice, monthChooser, pageView, reportLoader, visibleState } from './page.ts'
 
 describe('choosing a month', () => {
   const loader = () => {
@@ -75,14 +75,5 @@ describe("the page for last month", () => {
   it('opens the interactive report for last month as for this month', () => {
     expect(pageView({ embed: { ok: true, value: { frame: 'https://embed-motherduck.com/sandbox/#session=s' } }, report: { ok: true, value: { state: 'ready' } } }))
       .toEqual({ kind: 'dive', src: 'https://embed-motherduck.com/sandbox/#session=s' })
-  })
-
-  it("says last month's figures aren't ready, never that this month's haven't arrived", () => {
-    expect([notArrivedLine('last'), notArrivedLine('this')]).toEqual(["Last month's figures aren't ready yet. Try again in a few minutes.",
-      "This month's figures haven't arrived yet. They usually arrive by early morning."])
-  })
-
-  it('names last month in the footnote for a blank', () => {
-    expect(blankNote(2, 'last')).toBe('2 subcategories have no target or no sales recorded last month: “—” means nothing was recorded, never ₹0.00.')
   })
 })

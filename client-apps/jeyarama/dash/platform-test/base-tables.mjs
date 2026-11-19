@@ -45,7 +45,7 @@ export const LINKED_TABLES = BASE_TABLES.map(table => table.name).filter(name =>
 
 /** The three made-up Dives, each taking a different shape of filters. No Dive of these ids exists. */
 export const REPORT_ROWS = [
-  { report_key: 'sales', report_name: 'Sales versus target', dive_id: 'made-up-sales-dive', filter_shape: 'One store and subcategories', store_key: 'plant_code', subcategory_key: 'material_groups', whole_store_key: 'whole_store', month_key: 'period_end', ready_signal: false, quick_view: 'Sales target' },
+  { report_key: 'sales', report_name: 'Sales versus target', dive_id: 'made-up-sales-dive', filter_shape: 'One store and subcategories', store_key: 'plant_code', subcategory_key: 'material_groups', whole_store_key: 'whole_store', month_key: 'period_end', ready_signal: false },
   { report_key: 'store_target', report_name: 'Store target month to date', dive_id: 'made-up-store-target-dive', filter_shape: 'Whole stores', store_key: 'plant_codes' },
   { report_key: 'vendor_sales', report_name: 'Vendor sales by city', dive_id: 'made-up-vendor-sales-dive', filter_shape: 'Stores and subcategories', store_key: 'store_reach' },
 ]

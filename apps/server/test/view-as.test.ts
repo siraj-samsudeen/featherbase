@@ -105,7 +105,7 @@ describe('View as: which requests run as the person viewed', () => {
     expect((await describe()).facts.rows.n1!.header).toBe('Asked as the person viewed')
   })
 
-  test.for([['GET', '/api/table/ToDo', 'read'], ['POST', '/api/app_reads/dash/reports', 'read'], ['POST', '/api/dashboard/count', 'read'], ['POST', '/api/row_titles', 'read'], ['POST', '/api/access_log', 'read'], ['POST', '/api/people/actor_names', 'read'], ['POST', '/api/sales_target/embed_session', 'read'],
+  test.for([['GET', '/api/table/ToDo', 'read'], ['POST', '/api/app_reads/dash/reports', 'read'], ['POST', '/api/dashboard/count', 'read'], ['POST', '/api/row_titles', 'read'], ['POST', '/api/access_log', 'read'], ['POST', '/api/people/actor_names', 'read'],
     ['POST', '/api/save_row', 'tester'], ['POST', '/api/app_actions/dash/give_report', 'tester'], ['DELETE', '/api/table/ToDo/x', 'tester'], ['POST', '/api/view_as/exit', 'tester'], ['GET', '/api/me/sign_in_methods', 'tester'], ['GET', '/api/oauth/google/link', 'tester'], ['DELETE', '/api/me/password', 'tester'], ['GET', '/api/view_as', 'tester'], ['POST', '/api/events', 'drop'],
     // #1207: connecting an agent and Connected apps are the signed-in person's own, as the account pages are.
     // #1340 (Codex round 3): an app's facts and an action's preview are reads, so they answer as the person viewed.

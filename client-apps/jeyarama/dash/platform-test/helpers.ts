@@ -85,7 +85,7 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
 export const RUN_TABLES = ['dash.setup_run', 'dash.access_decision']
 export function revertRolesInFeatherbase(manifest: Revertable) {
   const step = manifest.migrations.pop() as unknown as { operations: { kind: string; table: string; column?: string; from?: { label?: string } }[] }
-  expect(step).toMatchObject({ id: 'business_roles_in_featherbase', fromVersion: '0.13.43', toVersion: '0.13.44' })
+  expect(step).toMatchObject({ id: 'business_roles_in_featherbase', fromVersion: '0.13.44', toVersion: '0.13.45' })
   // Each column the step relabelled reads as it did before it.
   const relabelled = new Map(step.operations.filter(o => o.kind === 'alterColumn' && o.from?.label).map(o => [`${o.table}/${o.column}`, o.from!.label!]))
   if (manifest.tables) manifest.tables = manifest.tables.filter(t => !RUN_TABLES.includes(t.name)).map(t => {
@@ -113,6 +113,11 @@ export function revertRolesInFeatherbase(manifest: Revertable) {
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
   revertRolesInFeatherbase(manifest)
+  // #1366's 0.13.44 (no sales copies) only re-describes quick_view; it comes off next, and the description goes back.
+  const noCopies = manifest.migrations.pop() as unknown as { id: string; operations: { kind: string; column: string; from: { description: string } }[] }
+  expect(noCopies).toMatchObject({ id: 'no_sales_copies', fromVersion: '0.13.43', operations: [{ kind: 'alterColumn', table: 'dash.report', column: 'quick_view' }] })
+  if (manifest.tables) manifest.tables = manifest.tables.map(t => (t.name === 'dash.report'
+    ? { ...t, columns: t.columns!.map(c => (c.column_name === 'quick_view' ? { ...c, description: noCopies.operations[0].from.description } : c)) } : t))
   // #1282's 0.13.43 (the worked-out sections declared as people.sections) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'people_sections', fromVersion: '0.13.42', operations: [] })
   // #1345's 0.13.42 (each job's business role and a leaver's leaving day, for the Person Label) changes no Table and comes off after it.
