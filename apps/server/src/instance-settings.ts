@@ -504,7 +504,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
     const appliedValues: ManagedValue[] = []
     for (const { entry, meta, rows } of plan) {
       const stamps = new Map<string, unknown>()
-      if (meta.name === 'Metadata Override') warnings.push(...await resolveOverrides(rows))
+      if (meta.name === 'Metadata Override') warnings.push(...await resolveOverrides(rows, problems))
       const before = entry.shape === 'settings'
         ? new Map([[meta.name, await storedSettings(meta, entry.fields)]])
         : await storedRows(meta, entry.fields, stamps)
@@ -801,7 +801,7 @@ function overrideProblems(rows: PlannedRow[], problems: Record<string, string>) 
 
 /** Each file row becomes the stored override of its Table, column and property, so applying again
  *  changes nothing; replacing one an administrator made is said. */
-async function resolveOverrides(rows: PlannedRow[]): Promise<string[]> {
+async function resolveOverrides(rows: PlannedRow[], problems: Record<string, string>): Promise<string[]> {
   const warnings: string[] = []
   // A Table the instance does not have yet (Employee, before the first data load on a fresh install) is
   // left for the next apply: the rest of the file still applies.
@@ -815,7 +815,14 @@ async function resolveOverrides(rows: PlannedRow[]): Promise<string[]> {
     const [stored] = await sql`select row_id, value, created_by from metadata_override
       where table_name = ${String(row.values.table_name)} and coalesce(column_name, '') = ${String(row.values.column_name ?? '')}
         and property = ${String(row.values.property)}`
-    if (!stored) continue
+    if (!stored) {
+      // A new override takes the file's row_id only where no other override holds it: reusing another's id
+      // would replace that override, whatever its property (Codex adversarial round 3).
+      const [taken] = await sql`select table_name, column_name, property from metadata_override where row_id = ${row.row_id}`
+      if (taken)
+        problems[`Metadata Override.${row.row_id}`] = `Metadata Override row ${row.row_id} is already another override (${String(taken.table_name)}${taken.column_name ? `.${String(taken.column_name)}` : ''} ${String(taken.property)}); give this one its own row_id`
+      continue
+    }
     row.row_id = String(stored.row_id)
     if (stored.created_by !== INSTANCE_SETTINGS_ACTOR && String(stored.value) !== String(row.values.value))
       warnings.push(`Metadata Override ${String(row.values.table_name)}${row.values.column_name ? `.${String(row.values.column_name)}` : ''} ${String(row.values.property)}: replaces an override someone made by hand ("${String(stored.value)}")`)
