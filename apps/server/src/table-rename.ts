@@ -2,6 +2,7 @@ import { renameNamingColumn, tableSlug } from 'shared'
 import { sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
+import { syncSearchIndexes } from './search-indexes'
 import { renameColumnInSyncRules, renameTableInSyncRules } from './master-sync-names'
 import { type TableMeta, getMeta, invalidateMeta } from './meta'
 import { policyColumns } from './access-policy'
@@ -273,6 +274,8 @@ async function moveTable(meta: TableMeta, to: string, relationName: string, user
     // #936: a master sync rule naming this Table as its master or link keeps working.
     await renameTableInSyncRules(tx, from, to)
     await tx`delete from table_def where name = ${from}`
+    // #1321: its search indexes take the new relation's name.
+    await syncSearchIndexes(tx, to)
     await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
     // #881: a link to a row of any Table keeps allowing the Table by its new
     // name; the rows' Table half moves with every other link to Table below.

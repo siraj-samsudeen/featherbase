@@ -38,18 +38,25 @@ export async function syncSearchIndexes(tx: TxSql | typeof sql, table: string): 
     ? await tx<{ column_type: string }[]>`select column_type from column_def where parent = ${table} and column_name = ${def.title_column}`
     : []
   const title = titleColumn && indexableTitle(titleColumn.column_type) ? def.title_column : null
-  // Found by the relation, not by name: a renamed Table keeps its old index names.
+  // Found by the relation, not by name: an index from before a rename takes
+  // the new name, which frees the old one for a Table made later under it.
   const existing = await tx<{ indexname: string; indexdef: string }[]>`
     select indexname, indexdef from pg_indexes
     where schemaname = ${schema} and tablename = ${base} and (indexname like '%\_search\_key' or indexname like '%\_search\_title')`
   const name = (suffix: string) => `${base.slice(0, 63 - suffix.length)}${suffix}`
-  if (!existing.some((i) => i.indexname.endsWith('_search_key')))
-    await tx.unsafe(`create index ${quoteIdent(name('_search_key'))} on ${quoted(relation)} (${searchExpression(key)})`)
+  const keep = async (index: { indexname: string }, suffix: string) => {
+    if (index.indexname !== name(suffix))
+      await tx.unsafe(`alter index ${quoteIdent(schema)}.${quoteIdent(index.indexname)} rename to ${quoteIdent(name(suffix))}`)
+  }
+  const keyIndex = existing.find((i) => i.indexname.endsWith('_search_key'))
+  if (keyIndex) await keep(keyIndex, '_search_key')
+  else await tx.unsafe(`create index ${quoteIdent(name('_search_key'))} on ${quoted(relation)} (${searchExpression(key)})`)
   const titleIndexes = existing.filter((i) => i.indexname.endsWith('_search_title'))
   // pg_get_indexdef names the column as it is now, so a renamed column still matches.
   const onTitle = (i: { indexdef: string }) => title !== null && i.indexdef.includes(`left((${quoteIdent(title)})::text`)
   for (const index of titleIndexes)
     if (!onTitle(index)) await tx.unsafe(`drop index ${quoteIdent(schema)}.${quoteIdent(index.indexname)}`)
-  if (title && !titleIndexes.some(onTitle))
-    await tx.unsafe(`create index ${quoteIdent(name('_search_title'))} on ${quoted(relation)} (${searchExpression(title)})`)
+  const titleIndex = titleIndexes.find(onTitle)
+  if (titleIndex) await keep(titleIndex, '_search_title')
+  else if (title) await tx.unsafe(`create index ${quoteIdent(name('_search_title'))} on ${quoted(relation)} (${searchExpression(title)})`)
 }
