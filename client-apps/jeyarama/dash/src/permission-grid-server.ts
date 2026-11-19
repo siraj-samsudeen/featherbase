@@ -35,6 +35,12 @@ function changeOf(value: unknown): Change | string {
 }
 
 const permissionKey = (p: { app: string; level: string; verb: string; thing: string }) => JSON.stringify([p.app, p.level, p.verb, p.thing])
+
+/** Codex adversarial round 2: Dash keys each permission row it writes by its role and permission. The key is unique and
+ *  stays when the row is taken away (the row comes back when given again), so two saves at once cannot give a role the
+ *  same permission twice: the second is refused whole. */
+export const permissionRowKey = (row: { business_role: string; app: string; level: string; verb: string; thing: string }) =>
+  [row.business_role, row.app, row.level, row.verb, row.thing].join(' / ')
 const label = (c: Change) => `${c.app} · ${c.level} · ${c.verb} ${c.thing}`
 
 export async function changePermissions(context: AccessContext) {
@@ -73,8 +79,8 @@ export async function changePermissions(context: AccessContext) {
     const now = current(change)
     // The row's updated_at as read: a row someone changed meanwhile is refused by the platform, not overwritten.
     if (change.to === null) await docs.update!(PERMISSION, { row_id: exact(now!.row_id), updated_at: exact(now!.updated_at), removed: true })
-    else if (now) await docs.update!(PERMISSION, { row_id: exact(now.row_id), updated_at: exact(now.updated_at), reach: change.to, removed: false })
-    else await docs.create!(PERMISSION, { business_role: change.role, app: change.app, level: change.level, verb: change.verb, thing: change.thing, reach: change.to })
+    else if (now) await docs.update!(PERMISSION, { row_id: exact(now.row_id), updated_at: exact(now.updated_at), reach: change.to, removed: false, permission_key: permissionRowKey({ ...change, business_role: change.role }) })
+    else await docs.create!(PERMISSION, { business_role: change.role, app: change.app, level: change.level, verb: change.verb, thing: change.thing, reach: change.to, permission_key: permissionRowKey({ ...change, business_role: change.role }) })
     await docs.create!(PERMISSION_CHANGE, {
       business_role: change.role, permission: label(change), app: change.app, level: change.level, verb: change.verb, thing: change.thing,
       from_reach: change.from ?? '', to_reach: change.to ?? '', changed_by_name: text(context.userName) || null,

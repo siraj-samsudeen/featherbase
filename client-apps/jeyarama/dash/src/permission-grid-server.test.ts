@@ -85,6 +85,13 @@ describe('saving the grid', () => {
     expect(await changePermissions(ctx as never)).toEqual({ saved: 1 })
   })
 
+  it('keys each permission row it writes by its role and permission, so a second row for the same pair is refused', async () => {
+    const tables = world()
+    const { ctx } = context(tables, [{ role: 'tl', ...edit, from: null, to: 'Own' }, { role: 'sm', ...edit, from: 'Area', to: 'All' }])
+    await changePermissions(ctx as never)
+    expect(tables[PERMISSION]!.filter(r => r.thing === 'Sections').map(r => r.permission_key)).toEqual(['sm / Dash / Manager / Edit / Sections', 'tl / Dash / Manager / Edit / Sections'])
+  })
+
   it('refuses a change whose cell changed since the grid loaded, writing none of them', async () => {
     const tables = world()
     const { ctx, writes } = context(tables, [{ role: 'tl', ...edit, from: null, to: 'Own' }, { role: 'sm', ...edit, from: 'Team', to: 'All' }])

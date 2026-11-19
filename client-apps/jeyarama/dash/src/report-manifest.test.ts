@@ -347,8 +347,8 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['report_access_days_in_india', '0.13.36', '0.13.37', 0],
       // #1282: the area picker on Also Give, with no Table change.
       ['area_picker', '0.13.37', '0.13.38', 0],
-      // #1282: the permission grid: a permission's removed mark, and the grid's change log.
-      ['permission_grid', '0.13.38', '0.13.39', 2],
+      // #1282: the permission grid: a permission's removed mark and its unique key, and the grid's change log.
+      ['permission_grid', '0.13.38', '0.13.39', 3],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')

@@ -84,9 +84,9 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
 export function revertSiteKind(manifest: Revertable) {
   // #1282's 0.13.39 (the permission grid): a permission's removed mark and the grid's change log; it comes off first.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'permission_grid', fromVersion: '0.13.38',
-    operations: [{ kind: 'addColumn', table: 'dash.business_role_permission', column: { column_name: 'removed' } }, { kind: 'addTable', table: { name: GRID_LOG } }] })
+    operations: [{ kind: 'addColumn', table: 'dash.business_role_permission', column: { column_name: 'removed' } }, { kind: 'addColumn', table: 'dash.business_role_permission', column: { column_name: 'permission_key' } }, { kind: 'addTable', table: { name: GRID_LOG } }] })
   if (manifest.tables) manifest.tables = manifest.tables.filter(t => t.name !== GRID_LOG).map(t => (t.name === 'dash.business_role_permission'
-    ? { ...t, columns: t.columns!.filter(c => c.column_name !== 'removed') } : t))
+    ? { ...t, columns: t.columns!.filter(c => c.column_name !== 'removed' && c.column_name !== 'permission_key') } : t))
   if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => p.table !== GRID_LOG)
   if (manifest.actions) manifest.actions.tables = manifest.actions.tables.filter(t => t !== GRID_LOG)
   const permissionRead = manifest.baseTables?.read['dash.business_role_permission']

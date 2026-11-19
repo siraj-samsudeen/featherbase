@@ -29,6 +29,33 @@ async function previousVersion(): Promise<string> {
   return directory
 }
 
+// #1282 (Codex round 2 on the grid): two saves of the same empty cell at once give it once (its key is unique),
+// and taking it away leaves no live row.
+describe('the permission grid saves', () => {
+  test('give a permission once, however the saves meet, and take it away whole', async ({ admin }) => {
+    expect(await discoverPackages([APP_DIR])).toEqual([])
+    await admin.post('/api/install_app', { name: 'dash' })
+    await createCoreTables(admin)
+    const act = (name: string, payload: Record<string, unknown>) => admin.post<{ result: unknown }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload })
+    await act('add_starting_roles', {})
+    const [staff] = await sql`select row_id from dash.business_role where role_name = 'Staff'`
+    // A permission some role holds and Staff does not.
+    const [missing] = await sql`select app, level, verb, thing from dash.business_role_permission p
+      where not exists (select 1 from dash.business_role_permission q where q.business_role = ${staff!.row_id} and q.app = p.app and q.level = p.level and q.verb = p.verb and q.thing = p.thing) limit 1`
+    const cell = { role: staff!.row_id, app: missing!.app, level: missing!.level, verb: missing!.verb, thing: missing!.thing, from: null }
+    const outcomes = await Promise.allSettled([act('change_permissions', { changes: [{ ...cell, to: 'Own' }] }), act('change_permissions', { changes: [{ ...cell, to: 'Team' }] })])
+    expect(outcomes.filter(o => o.status === 'fulfilled')).toHaveLength(1)
+    const held = () => sql`select row_id, reach, removed from dash.business_role_permission where business_role = ${staff!.row_id} and app = ${cell.app} and level = ${cell.level} and verb = ${cell.verb} and thing = ${cell.thing}`
+    const [row] = await held()
+    expect(await held()).toHaveLength(1)
+    // The database itself holds the key unique, so a second row Dash writes for the same role and permission is refused.
+    expect(await sql`select indexdef from pg_indexes where tablename = 'business_role_permission' and indexdef ilike '%unique%' and indexdef ilike '%permission_key%'`).toHaveLength(1)
+    expect(row!.reach).toMatch(/^(Own|Team)$/)
+    await act('change_permissions', { changes: [{ ...cell, from: row!.reach, to: null }] })
+    expect((await held()).filter(r => !r.removed)).toEqual([])
+  })
+})
+
 describe('business roles in shadow', () => {
   test('arrive as four Tables a Report Access Manager edits, and change no reader\'s reports', async ({ admin, createUser }) => {
     const previous = await previousVersion()

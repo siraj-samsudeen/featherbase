@@ -799,6 +799,14 @@
           "label": "Removed",
           "column_type": "Check",
           "description": "#1282: taken away on the Business Roles grid: the role can no longer do it. The row stays, and the Permission change log says who and when; giving it again brings the row back."
+        },
+        {
+          "column_name": "permission_key",
+          "label": "Permission key",
+          "column_type": "Data",
+          "unique": true,
+          "read_only": true,
+          "description": "#1282: set on save: the role and the permission. Unique, so a role holds one row for each permission, given or taken away, and two saves at once cannot give it twice."
         }
       ],
       "decides_scope": true
@@ -3263,6 +3271,18 @@
             "label": "Removed",
             "column_type": "Check",
             "description": "#1282: taken away on the Business Roles grid: the role can no longer do it. The row stays, and the Permission change log says who and when; giving it again brings the row back."
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "dash.business_role_permission",
+          "column": {
+            "column_name": "permission_key",
+            "label": "Permission key",
+            "column_type": "Data",
+            "unique": true,
+            "read_only": true,
+            "description": "#1282: set on save: the role and the permission. Unique, so a role holds one row for each permission, given or taken away, and two saves at once cannot give it twice."
           }
         },
         {
