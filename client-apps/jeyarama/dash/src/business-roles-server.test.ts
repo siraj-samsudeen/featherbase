@@ -1,6 +1,6 @@
 // #1218: the business roles in shadow, over in-memory Tables. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
-import { accessChanges, addStartingRoles, areaParts, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, whyAccess } from './business-roles-server'
+import { accessChanges, addStartingRoles, areaParts, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, whyAccess, workedOut } from './business-roles-server'
 import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
 import { convertGrants } from './switch-over'
@@ -309,6 +309,25 @@ describe("Why on the platform's Map", () => {
     const why = await whyAccess(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never)
     const ho = why.columns[1]!.boxes.find(b => b.name === 'Head Office')!.id
     expect(why.edges).toContainEqual([ho, 'report:vs'])
+  })
+
+  // #1282 C10–C11: the Lens's worked-out sections, from Explain's own answer, for those who may have access explained.
+  it('works out the apps and reports a person gets, each with the roles that give it and the chain Why? opens', async () => {
+    const tables = onRequest(await converted(await seeded()), 'vs', 'Store Manager')
+    const answer = (await workedOut(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never))!
+    expect(answer.sections.map(s => [s.heading, s.note, s.empty])).toEqual([
+      ['Apps They Can Open', 'worked out from their roles', 'No apps from roles yet'], ['Reports They See', 'given to their roles', 'No reports from roles yet']])
+    const dash = answer.sections[0]!.rows.find(r => r.name === 'Dash')!
+    expect([dash.detail, dash.via.map(v => [v.name, v.record?.table]), dash.why[0]]).toEqual(['at level Manager', [['Store Manager', 'dash.business_role']], expect.objectContaining({ record: { table: 'Person', row: 'sm' } })])
+    expect(dash.why.at(-1)).toEqual({ name: 'Dash · Manager' })
+    const report = answer.sections[1]!.rows.find(r => r.record?.row === 'vs')!
+    expect([report.name, report.via.map(v => v.name), report.why.at(-1)]).toEqual(['Vendor Sales', ['Store Manager'], { name: 'Vendor Sales', record: { table: 'dash.report', row: 'vs' } }])
+  })
+
+  it('shows nothing to someone who may not have access explained, or about anything but a Person', async () => {
+    const tables = await seeded()
+    expect(await workedOut(context(tables, { roles: ['Dash Reader'], payload: { table: 'Person', row: 'sm' } }) as never)).toBeNull()
+    expect(await workedOut(context(tables, { payload: { table: 'Site', row: 'LKS' } }) as never)).toBeNull()
   })
 
   it('says a role given by hand is by hand', async () => {

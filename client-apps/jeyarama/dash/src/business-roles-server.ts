@@ -649,6 +649,43 @@ const clip = (words: string, most = 120) => words.length > most ? `${words.slice
  * #1282 Why mode: whether the platform's Map may explain this record for this viewer: a Person, for company-wide
  * managers only (as Explain a Person).
  */
+/**
+ * #1282 C10–C11 (UI owner, option A): a person's worked-out sections for the platform's record panel (the Lens), from
+ * Explain a Person's own answer, so the two never disagree: the apps they can open and the reports they see, each with
+ * the roles that give it and the one-line chain Why? opens. Only for someone who may have this person's access
+ * explained, as Why is; anyone else is shown nothing (the platform draws no section). No pronoun: "They", "their".
+ */
+export async function workedOut(context: AccessContext) {
+  if (!mayExplainAccess(context)) return null
+  const person = String((context.payload as { row: string }).row)
+  const explained = await explainPerson({ ...context, payload: { person } })
+  const self = { name: explained.name, record: { table: 'Person', row: person } }
+  const roleByName = new Map(explained.roles.map(r => [r.name, r]))
+  const roleById = new Map(explained.roles.map(r => [r.role, r]))
+  const roleLink = (r: { role: string; name: string }) => ({ name: r.name, record: { table: ROLE, row: r.role } })
+  const inArea = (r: { area: { parts: Part[] } }) => r.area.parts.map(p => p.name).join(' · ') || undefined
+  const chainVia = (r: { role: string; name: string; area: { parts: Part[] } } | undefined) => (r ? [{ ...roleLink(r), ...(inArea(r) ? { detail: inArea(r) } : {}) }] : [])
+  const apps: WorkedRow[] = explained.apps.slice(0, WORKED_OUT_ROWS).map(a => {
+    const via = a.via.flatMap(name => roleByName.has(name) ? [roleByName.get(name)!] : [])
+    return { name: a.app, detail: `at level ${a.level}`, via: via.slice(0, 6).map(roleLink),
+      why: [self, ...chainVia(via[0]), { name: `${a.app} · ${a.level}` }] }
+  })
+  const reports: WorkedRow[] = explained.reports.slice(0, WORKED_OUT_ROWS).map(r => {
+    const via = r.roles.flatMap(id => roleById.has(id) ? [roleById.get(id)!] : [])
+    const report = { name: r.name, record: { table: 'dash.report', row: r.key } }
+    return { ...report, via: via.slice(0, 6).map(roleLink), why: [self, ...chainVia(via[0]), report] }
+  })
+  return { version: 1, sections: [
+    { heading: 'Apps They Can Open', note: 'worked out from their roles', empty: 'No apps from roles yet', rows: apps },
+    { heading: 'Reports They See', note: 'given to their roles', empty: 'No reports from roles yet', rows: reports },
+  ] }
+}
+/** The most rows one worked-out section holds (the platform's limit). */
+const WORKED_OUT_ROWS = 50
+type Named = { name: string; record?: { table: string; row: string } }
+/** One row of a worked-out section, as the platform's shape has it. */
+type WorkedRow = Named & { detail?: string; via: Named[]; why: (Named & { detail?: string })[] }
+
 export function mayExplainAccess(context: AccessContext): boolean {
   // The platform always sends a payload; anything that is not { table, row } names no Person.
   const { table, row } = Object(context.payload) as { table?: unknown; row?: unknown }

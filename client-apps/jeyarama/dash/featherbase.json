@@ -478,6 +478,11 @@
       "label": "Why: Access"
     }
   },
+  "workedOut": {
+    "Person": {
+      "read": "worked_out"
+    }
+  },
   "tables": [
     {
       "name": "dash.report",
@@ -1264,6 +1269,14 @@
         }
       },
       "why_access": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "worked_out": {
         "policy": {
           "kind": "table"
         },
@@ -3358,6 +3371,12 @@
           }
         }
       ]
+    },
+    {
+      "id": "worked_out_sections",
+      "fromVersion": "0.13.39",
+      "toVersion": "0.13.40",
+      "operations": []
     }
   ],
   "baseTables": {
