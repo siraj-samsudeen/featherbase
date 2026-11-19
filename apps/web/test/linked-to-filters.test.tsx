@@ -89,8 +89,11 @@ test('Linked to a Table, picking rows of it with how many rows each links to', a
   await waitFor(() => expect(rowTitles()).toEqual(['Windshield']))
   await waitFor(() => expect(screen.getByTestId('list-sum')).toHaveTextContent(/Σ Cost: \D*300/))
   const chip = screen.getByTestId('filter-chip')
-  await waitFor(() => expect(chip).toHaveTextContent(`Linked to ${VEHICLE}: Truck 2`))
-  // How many rows each step holds is the chip's tooltip; its words are the path bar's.
+  // #1289 option C: a Linked to filter that a Click To Narrow list holds reads as that list's
+  // pick, green ("Vehicle: Truck 2"), and the panel shows each value's count live.
+  await waitFor(() => expect(chip).toHaveTextContent(`${VEHICLE}: Truck 2`))
+  expect(chip).toHaveAttribute('data-tone', 'picked')
+  // How many rows each step holds is the chip's tooltip, as on every Linked to chip.
   await waitFor(() => expect(within(chip).getByTestId('linked-words')).toHaveAttribute('title', `${VEHICLE}: 1 linked`))
 })
 
@@ -130,8 +133,10 @@ test('a chain: Claims linked to Accidents linked to one Vehicle, each step with 
   // The step before narrows to the accidents of the picked vehicle.
   await waitFor(() => expect(within(stepCard(0)).getByTestId('linked-step-count')).toHaveTextContent(`1 ${ACCIDENT} to choose from`))
   await userEvent.click(screen.getByTestId('linked-add'))
-  await waitFor(() => expect(screen.queryByText('Claim rear bump')).not.toBeInTheDocument())
-  expect(screen.getByTestId('filter-chip')).toHaveTextContent(`Linked to ${ACCIDENT} › ${VEHICLE}: Truck 2`)
+  // The claim leaves the rows (it stays in the panel, ruled out).
+  await waitFor(() => expect(rowTitles()).not.toContain('Claim rear bump'))
+  // #1289 option C: the chain is the Vehicle list's pick, through Accident.
+  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent(`${VEHICLE}: Truck 2`))
   // The filter lives in the address, as every filter does.
   expect(addressFilters(r)).toEqual([['accident', 'related', {
     table: ACCIDENT, filters: [['vehicle', 'related', { table: VEHICLE, filters: [['row_id', 'in', [expect.any(String)]]] }]],
@@ -172,7 +177,8 @@ test('Not linked to a Table that links back: vehicles never serviced', async ({ 
 test('a link cell offers Filter and Go there on hover', async ({ admin }) => {
   const { v2 } = await seed(admin)
   const r = await renderApp(listPath(ACCIDENT), admin)
-  const vehicleCell = async () => within((await screen.findByText('Windshield')).closest('tr')!).getByTestId('cell-vehicle').closest('td')!
+  // The table's own row: the Click To Narrow panel names the accident too.
+  const vehicleCell = async () => within((await within(await screen.findByTestId('list-table-scroll')).findByText('Windshield')).closest('tr')!).getByTestId('cell-vehicle').closest('td')!
   // Out of the Tab order until focus is in the cell.
   const filterButton = await within(await vehicleCell()).findByRole('button', { name: 'Filter' })
   expect(filterButton).toHaveAttribute('tabindex', '-1')

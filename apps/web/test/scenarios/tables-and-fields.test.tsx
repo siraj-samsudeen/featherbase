@@ -444,7 +444,7 @@ describe('tables-and-fields', () => {
       try {
         await onScreen().selectOption('Policy', DISPLAY)
         const filters = await waitFor(() => {
-          const call = sent.mock.calls.find(([url]) => String(url).includes('/api/table/') && new URL(String(url), 'http://x').searchParams.has('filters'))
+          const call = sent.mock.calls.find(([url]) => String(url).includes('/api/table/') && !String(url).includes(':narrow') && new URL(String(url), 'http://x').searchParams.has('filters'))
           expect(call).toBeDefined()
           return new URL(String(call![0]), 'http://x').searchParams.get('filters')!
         }, WAIT)
