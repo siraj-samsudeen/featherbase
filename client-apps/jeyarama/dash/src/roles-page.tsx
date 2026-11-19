@@ -10,6 +10,7 @@ import { LoadFailed, Loading, Shell } from './sections-page'
 import { RecordLink } from './record-link'
 import { PersonPicker, type Found } from './access-page'
 import { type Who } from './person-identity'
+import { PermissionsGrid } from './roles-grid'
 
 export const ROLES_ADDRESS = '?view=roles'
 export const EXPLAIN_ADDRESS = '?view=explain'
@@ -105,12 +106,21 @@ interface RolesAnswer {
     reports: SentencePart[][]; people: number; people_from: string; holders: { person: string; name: string }[]
   }[]
   titles: { title: string; role: string | null; role_name: string | null; people: number; falls_back_to?: string; holders: { person: string; name: string }[] }[]
+  /** #1282 F1–F6: whether the grid steps for this caller. */
+  may_change: boolean
 }
 
 export function BusinessRolesPage() {
   const { answer, failed, load } = useRead<RolesAnswer>('business_roles', {})
   const [open, setOpen] = useState<string | null>(new URLSearchParams(window.location.search).get('role'))
   const [people, setPeople] = useState<string | null>(null)
+  // #1282 F1–F6: the roles as a list, or as a grid; leaving the grid with changes waiting asks first.
+  const [view, setView] = useState<'roles' | 'grid'>('roles')
+  const [waiting, setWaiting] = useState(0)
+  const show = (next: 'roles' | 'grid') => {
+    if (next !== view && waiting > 0 && !window.confirm(`Leave the grid? ${waiting === 1 ? 'Your change' : `Your ${waiting} changes`} will not be saved.`)) return
+    setView(next)
+  }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const start = async () => {
@@ -130,6 +140,21 @@ export function BusinessRolesPage() {
         </Card>
       )}
       {answer && answer.roles.length > 0 && (
+        <div className="flex gap-1.5" role="group" aria-label="Show the business roles as" data-testid="roles-views">
+          {(['roles', 'grid'] as const).map(v => (
+            <button key={v} type="button" aria-pressed={view === v} onClick={() => show(v)} data-testid={`roles-view-${v}`}
+              className={`rounded-full px-3 py-1 text-sm ${view === v ? 'bg-action-tint font-medium text-action' : 'bg-tag text-ink-muted hover:text-ink'}`}>
+              {v === 'roles' ? 'Roles' : 'Grid: Permissions'}
+            </button>
+          ))}
+        </div>
+      )}
+      {answer && answer.roles.length > 0 && view === 'grid' && (
+        <Card data-testid="roles-grid-card">
+          <PermissionsGrid roles={answer.roles} mayChange={answer.may_change} onSaved={load} onWaiting={setWaiting} personHref={explainAddress} />
+        </Card>
+      )}
+      {answer && answer.roles.length > 0 && view === 'roles' && (
         <>
           <Group title="Business Roles" count={answer.roles.length} testid="role-list">
             {answer.roles.map(role => (

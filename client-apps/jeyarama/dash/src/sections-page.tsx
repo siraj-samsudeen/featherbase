@@ -158,6 +158,9 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
   // #1218: the business roles pages, in shadow, to whoever manages report access company-wide.
   const [managesRoles, setManagesRoles] = useState(false)
   useEffect(() => { let live = true; read<boolean>('manages_roles').then(answer => { if (live) setManagesRoles(answer === true) }, () => {}); return () => { live = false } }, [])
+  // #1282: a Role Permission Manager sees Business Roles only (its grid), not Explain or the comparison.
+  const [seesRoles, setSeesRoles] = useState(false)
+  useEffect(() => { let live = true; read<boolean>('sees_roles').then(answer => { if (live) setSeesRoles(answer === true) }, () => {}); return () => { live = false } }, [])
   // #1175: the master data team's list, to whoever holds Master Data Editor.
   const [masterData, setMasterData] = useState(false)
   useEffect(() => { let live = true; read<boolean>('holds_master_data').then(answer => { if (live) setMasterData(answer === true) }, () => {}); return () => { live = false } }, [])
@@ -220,11 +223,12 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
         <span>Report access</span>
       </a>
     ),
-    ...(managesRoles ? [
+    ...(seesRoles ? [
       <a key="roles" href="?view=roles" {...here('roles')} data-testid="roles-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /></svg>
         <span>Business Roles</span>
-      </a>,
+      </a>] : []),
+    ...(managesRoles ? [
       <a key="explain" href="?view=explain" {...here('explain')} data-testid="explain-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8m-7 9a7 7 0 0 1 14 0" /></svg>
         <span>Explain A Person</span>
