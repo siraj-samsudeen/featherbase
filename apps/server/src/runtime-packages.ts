@@ -133,6 +133,14 @@ const manifestSchema = z.object({
     may: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
     label: z.string().max(40).optional(),
   }).strict()).optional(),
+  // #1340: the app describes rows of one of its Tables, by a read run as the viewer with
+  // { table, rows, page }: the list's extra columns and Record actions, the record page's
+  // header line and Links groups. `previews` names, for an action the list offers as a page,
+  // the read that says what it would do before it runs.
+  records: z.record(z.string().min(1), z.object({
+    describe: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
+    previews: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,60}$/), z.string().regex(/^[a-z][a-z0-9_]{0,60}$/)).optional(),
+  }).strict()).optional(),
   // #1282 G1–G6: the areas people pick on the trees: each axis a list of levels,
   // each a Table read by its title and linked to the level above by `parent`,
   // with the words a staff screen says and, where an admin screen says other ones, those.
@@ -502,6 +510,20 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
       throw new Error(`The app's Why for ${table} is offered by ${why.may}, which is not one of the app's reads`)
     if (why.label !== undefined && !WHY_LABEL.test(why.label))
       throw new Error(`The app's Why label for ${table} must read "Why: …" in Title Case, like "${WHY_DEFAULT_LABEL}"`)
+  }
+  // #1340: facts only read: a describer and each preview are the app's reads; what a preview previews is its action;
+  // the Table described is the app's own.
+  for (const [table, records] of Object.entries(manifest.records ?? {})) {
+    if (!manifest.tables.some(t => t.name === table))
+      throw new Error(`The app describes ${table}, which is not one of its Tables`)
+    if (!Object.hasOwn(readOperations, records.describe))
+      throw new Error(`The app's ${table} rows are described by ${records.describe}, which is not one of the app's reads`)
+    for (const [action, preview] of Object.entries(records.previews ?? {})) {
+      if (!Object.hasOwn(actionOperations, action))
+        throw new Error(`The app previews ${action}, which is not one of the app's actions`)
+      if (!Object.hasOwn(readOperations, preview))
+        throw new Error(`The app's preview of ${action} is ${preview}, which is not one of the app's reads`)
+    }
   }
   if (manifest.access?.gate && !Object.hasOwn(readOperations, manifest.access.gate))
     throw new Error(`The app's gate is its read ${manifest.access.gate}, which is not one of the app's reads`)
@@ -1079,6 +1101,19 @@ export async function whyDeclarationFor(table: string, user: string): Promise<{ 
     if (!item.active || !pkg || !why) continue
     if (!(await hasPermission(user, pkg.entryTable, 'read')) || !(await passesGate(pkg, user))) return null
     return { app: pkg.name, version: pkg.version, explain: why.explain, may: why.may, label: why.label ?? WHY_DEFAULT_LABEL }
+  }
+  return null
+}
+
+/** #1340: the app that describes rows of `table` (its manifest's `records`), for `user`, on the same terms as a
+ *  Why: an installed, active app the user may open. None when no such app declares one. */
+export async function recordsDeclarationFor(table: string, user: string): Promise<{ app: string; version: string; describe: string; previews: Record<string, string> } | null> {
+  for (const item of await listInstalledApps()) {
+    const pkg = packages.get(item.name)
+    const records = pkg && Object.hasOwn(pkg.manifest.records ?? {}, table) ? pkg.manifest.records![table]! : undefined
+    if (!item.active || !pkg || !records) continue
+    if (!(await hasPermission(user, pkg.entryTable, 'read')) || !(await passesGate(pkg, user))) return null
+    return { app: pkg.name, version: pkg.version, describe: records.describe, previews: records.previews ?? {} }
   }
   return null
 }

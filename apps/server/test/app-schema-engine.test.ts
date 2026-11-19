@@ -364,6 +364,18 @@ describe('relabelTable', () => {
   })
 })
 
+// #1340: the new module is written to the definition and no row is touched.
+describe('moveTable', () => {
+  shopTest('the Table records its new module and keeps its rows', async () => {
+    await registered()
+    const [{ module }] = await sql`select module from table_def where name = 'shop.supplier'`
+    const rows = await sql`select row_id, ctid::text as at from shop.supplier order by row_id`
+    await run({ kind: 'moveTable', table: 'shop.supplier', from: module ?? 'Shop', to: 'People' })
+    expect(await sql`select module from table_def where name = 'shop.supplier'`).toEqual([{ module: 'People' }])
+    expect(await sql`select row_id, ctid::text as at from shop.supplier order by row_id`).toEqual(rows)
+  })
+})
+
 // #1277: the mark is written to the definition and no row is touched.
 describe('markDecidesScope', () => {
   shopTest('the Table records the mark and keeps its rows', async () => {

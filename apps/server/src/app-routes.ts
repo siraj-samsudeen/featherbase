@@ -10,6 +10,7 @@ import { appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { activeRuntimeVersions, appOperation } from './app-lifecycle'
 import { who, type Env } from './route-context'
 import { explainRecord, whyOffer } from './why'
+import { describeRows, previewAction } from './record-facts'
 
 export const appRoutes = new Hono<Env>()
 
@@ -59,6 +60,16 @@ appRoutes.get('/api/why/:table/:row', async (c) => {
 appRoutes.get('/api/why/:table/:row/explain', async (c) => {
   c.header('Cache-Control', 'no-store')
   return c.json(await explainRecord(c.req.param('table'), c.req.param('row'), who(c)))
+})
+// #1340: an app's facts about rows of its Table (the list's columns and Record actions, the record page's
+// header and Links groups), and the preview of one of its actions before it runs.
+appRoutes.post('/api/records/:table/describe', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await describeRows(c.req.param('table'), await c.req.json().catch(() => null), who(c)))
+})
+appRoutes.get('/api/records/:table/preview/:action', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await previewAction(c.req.param('table'), c.req.param('action'), who(c)))
 })
 appRoutes.get('/api/app_reads/:app/:read/access', async (c) => {
   c.header('Cache-Control', 'no-store')
