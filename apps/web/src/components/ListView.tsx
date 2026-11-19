@@ -15,9 +15,9 @@ import { formatValue, useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
-import { Button, EmptyState, NARROW_QUERY, Notice, PageHeader, ProblemPage, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Button, EmptyState, NARROW_QUERY, Notice, PageHeader, ProblemPage, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery, raisedClasses, headCellClasses, RowDensityContext, Segmented, TABLE_CLASSES } from '@featherbase/shop-floor'
 import { ChevronDown } from '@featherbase/shop-floor'
-import { Columns3, ListTree, Rows4 } from 'lucide-react'
+import { Columns3, ListTree } from 'lucide-react'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
 import { GlossaryHelp } from './GlossaryHelp'
@@ -35,10 +35,11 @@ import { RecordCards } from './RecordCards'
 import { RecentStrip } from './RecentStrip'
 import { LinkCellFilter, ListRow, NAME_CLIP, PhoneList, cell, isFigure } from './ListRows'
 import { usePageTitle } from '../lib/page-title'
+import { summableColumn } from '../lib/column-kinds'
 
 const PAGE = 20
 /** #1289: a square icon toggle, tinted while on. */
-const iconToggle = (on: boolean) => `w-control justify-center px-0 ${on ? 'border-action bg-action-tint text-action' : ''}`
+const iconToggle = (on: boolean) => `w-control justify-center px-0 ${on ? 'bg-action-tint text-action' : ''}`
 
 // #738: a Show columns row is thumb-sized at phone width even under a mouse
 // (a narrowed window still draws the phone layout), as on any touch screen.
@@ -56,8 +57,6 @@ export function pageRange(start: number, pageSize: number, total: number): strin
   return `${fmtCount(total === 0 ? 0 : start + 1)}–${fmtCount(Math.min(start + pageSize, total))} of ${fmtCount(total)}`
 }
 
-// A compact list: the row's name, then this many key values.
-const COMPACT_COLUMNS = 3
 
 /** The link values a filtered list's new rows start with: each "= one row"
  *  filter on a link column the person may set. */
@@ -73,6 +72,11 @@ function linkPrefill(meta: import('../lib/meta').TableMeta, filters: Filter[]): 
 
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 /** "New <thing>": the Table's label in sentence case, its acronyms kept ("New job assignment", "New SAP code"). */
+/** #1348 (Siraj's rule: Title Case on every button and heading): a Table's name on a button, "New Job Assignment". */
+export function titleWords(label: string): string {
+  return label.split(/\s+/).map((word) => (/^[A-Z0-9]{2,}$/.test(word) ? word : word.charAt(0).toUpperCase() + word.slice(1))).join(' ')
+}
+
 export function thingWords(label: string): string {
   return label.split(/\s+/).map((word) => (/^[A-Z0-9]{2,}$/.test(word) ? word : word.toLowerCase())).join(' ')
 }
@@ -343,7 +347,8 @@ export function ListView({
   const allColumns = meta.data
     ? viewColumns(meta.data, extraColumns?.length ? { ...arrangement, shownCols: [...arrangement.shownCols, ...extraColumns] } : arrangement)
     : []
-  const columns = compact ? allColumns.slice(0, COMPACT_COLUMNS) : allColumns
+  // #1348: Compact Rows is a row height (RowDensityContext); it keeps every column.
+  const columns = allColumns
   // #209 / #738: who may shape this Table's columns for everyone — "Edit
   // columns" and "Make this the default for everyone" show exactly here.
   // Not on system Tables (their columns are the platform's) nor bound ones
@@ -377,7 +382,7 @@ export function ListView({
       : undefined)
 
   // #1276: the column a list totals, as Explore's panes did: money first, then other measures.
-  const sumColumn = ['Currency', 'Float', 'Int'].map((t) => columns.find((c) => c.column_type === t)).find(Boolean)
+  const sumColumn = summableColumn(columns)
   const list = useQuery({
     queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey, withRetired],
     enabled: Boolean(meta.data),
@@ -513,7 +518,7 @@ export function ListView({
             className={buttonClasses({ variant: 'primary' })}
             data-testid="list-empty-new"
           >
-            New {thingWords(label)}
+            New {titleWords(label)}
           </Link>
           {caps?.manage && (
             <Link to="/featherbase/admin/import" search={{ table }} className={buttonClasses()} data-testid="list-empty-import">
@@ -690,7 +695,7 @@ export function ListView({
         count={<>
           {/* #1259: the three views, right after the title. */}
           {layout && onLayoutChange && <span className="self-center"><LayoutSwitch value={layout} onChange={onLayoutChange} /></span>}
-          <span className="text-xs text-ink-muted" data-testid="list-total">
+          <span className="text-[13px] text-ink-subtle" data-testid="list-total">
             {count ?? <>{fmtCount(total)} total</>}
           </span>
           {/* #1276: Explore's totals live on the list: the exact sum of its money
@@ -733,7 +738,7 @@ export function ListView({
               className={buttonClasses({ variant: 'primary' })}
               data-testid="list-new"
             >
-              New {thingWords(label)}
+              New {titleWords(label)}
             </Link>
           )}
           {/* #1242 (admin-lists 2): one ⋯ More for what is not the page's own action. */}
@@ -744,7 +749,7 @@ export function ListView({
             {!isRowsReadOnly(meta.data) && caps?.manage && <Link to="/featherbase/admin/import" search={{ table }} className={buttonClasses()} data-testid="open-import">Import</Link>}
             {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && <Button aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>Import conflicts</Button>}
           </div>}
-          {hasTableAdministration && <div role="group" aria-label="Table administration" className="flex flex-col items-stretch gap-1 border-t border-border pt-1 first:border-t-0 first:pt-0">
+          {hasTableAdministration && <div role="group" aria-label="Table administration" className="flex flex-col items-stretch gap-1 pt-2 first:pt-0">
           <p className="px-1 pt-1 text-xs font-medium text-ink-muted">Table administration</p>
           {canShapeColumns && <Link to="/featherbase/admin/table/$table/columns" params={{ table }} className={buttonClasses()} data-testid="open-columns">Edit columns</Link>}
           {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && !isView(meta.data) && <Link to="/featherbase/admin/table/$table/merge" params={{ table }} className={buttonClasses()} data-testid="open-merge">Merge into…</Link>}
@@ -821,7 +826,7 @@ export function ListView({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-table-title"
-            className={cardClasses('w-full max-w-md p-4')}
+            className={raisedClasses('w-full max-w-md p-4')}
             data-testid="delete-table-dialog"
             onClick={(e) => e.stopPropagation()}
           >
@@ -886,7 +891,7 @@ export function ListView({
             role="dialog"
             aria-modal="true"
             aria-labelledby="bulk-delete-title"
-            className={cardClasses('w-full max-w-md p-4')}
+            className={raisedClasses('w-full max-w-md p-4')}
             data-testid="bulk-delete-dialog"
             onClick={(e) => e.stopPropagation()}
           >
@@ -922,8 +927,9 @@ export function ListView({
       {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
       {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
       {/* #1289: the filters (and their chips) wrap inside the left part, so the view tools keep the first line. */}
-      <div className="mb-2 flex items-start gap-2">
-        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
+      {/* #1348 (UI owner): at phone width the view tools wrap under the search; they never cover it. */}
+      <div className="mb-2 flex flex-wrap items-start gap-2" data-testid="list-filter-row">
+        <div className="flex min-w-0 flex-[1_1_20rem] flex-wrap items-end gap-2">
         {onFiltersChange && meta.data && (
           <>
             <ListSearch meta={meta.data} filters={filters} onChange={onFiltersChange} label={label} />
@@ -938,11 +944,11 @@ export function ListView({
         )}
         </div>
         {/* Level with the boxes' controls, below their labels (a text-xs line and gap-0.5). */}
-        <div className={`ml-auto flex flex-none items-end gap-2 ${onFiltersChange && meta.data && hasFieldBoxes(meta.data) ? 'mt-[1.125rem]' : ''}`} data-testid="list-view-tools">
+        <div className={`ml-auto flex max-w-full flex-wrap items-end gap-2 ${onFiltersChange && meta.data && hasFieldBoxes(meta.data) ? 'mt-[1.125rem]' : ''}`} data-testid="list-view-tools">
           {/* #859, #1242, #1289: Show Retired leads the right end of the filter row. */}
           {retirable && (
             // A real checkbox, drawn as a chip: what it is stays plain to everyone.
-            <label className={pillClasses(`min-h-control cursor-pointer gap-1.5 border px-3 text-sm has-focus-visible:outline-2 has-focus-visible:outline-focus ${showRetired ? 'border-action bg-action-tint text-action' : 'border-border-control bg-surface text-ink-muted hover:bg-subtle'}`)}>
+            <label className={pillClasses(`min-h-control cursor-pointer gap-1.5 px-3 text-sm font-medium has-focus-visible:outline-2 has-focus-visible:outline-focus ${showRetired ? 'bg-action-tint text-action' : 'bg-fill text-ink-muted hover:bg-fill-hover'}`)}>
               <input
                 type="checkbox"
                 checked={showRetired}
@@ -1035,7 +1041,7 @@ export function ListView({
                 // so the pop-up opens from its left edge; from sm up it
                 // lines up with the button's right edge as before.
                 ref={colPickerRef}
-                className={cardClasses('absolute left-0 z-10 mt-1 max-h-[calc(100dvh-12rem)] w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
+                className={raisedClasses('absolute left-0 z-10 mt-1 max-h-[calc(100dvh-12rem)] w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
                 style={colPickerMax ? { maxHeight: colPickerMax } : undefined}
                 data-testid="list-columns-popup"
               >
@@ -1047,7 +1053,7 @@ export function ListView({
                 {inListChoices.map(columnChoice)}
                 {otherChoices.length > 0 && (
                   <div
-                    className="mt-1 border-t border-border px-2 pb-1 pt-2 text-xs text-ink-subtle"
+                    className="mt-1 px-2 pb-1 pt-2 text-xs text-ink-subtle"
                     data-testid="list-columns-divider"
                   >
                     Not in the list by default
@@ -1056,7 +1062,7 @@ export function ListView({
                 {otherChoices.map(columnChoice)}
                 {canShapeColumns && (
                   // Pinned to the menu's foot, so it shows even when the rows scroll.
-                  <div className="sticky -bottom-2 -mx-2 -mb-2 mt-1 border-t border-border bg-surface px-2 pb-2 pt-1">
+                  <div className="sticky -bottom-2 -mx-2 -mb-2 mt-1 bg-surface px-2 pb-2 pt-1">
                     <button
                       type="button"
                       className={touchRowClasses(`flex w-full items-center rounded px-2 py-1 text-left text-sm text-action hover:bg-subtle disabled:opacity-50 ${PHONE_ROW}`)}
@@ -1076,11 +1082,13 @@ export function ListView({
               </div>
             )}
           </div>
-          {/* #1259: density is one on/off button, so "Table" names only the view. */}
-          <Button aria-pressed={compact} aria-label="Compact Rows" title="Compact Rows" data-testid="compact-rows" onClick={() => {
-            setCompact(!compact)
-            persist({ compact: !compact })
-          }} className={iconToggle(compact)}><Rows4 aria-hidden size={18} /></Button>
+          {/* #1259: density sits apart from the view; #1348: Comfortable is the default, Compact Rows the toggle. */}
+          <Segmented label="Row height" value={compact ? 'compact' : 'comfortable'}
+            options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact Rows' }]}
+            onChange={(value) => {
+              setCompact(value === 'compact')
+              persist({ compact: value === 'compact' })
+            }} />
           <Button aria-pressed={treeOn} aria-label="Tree of All" title="Tree of All" data-testid="tree-of-all" onClick={() => setTree(!treeOn)}
             className={iconToggle(treeOn)}><ListTree aria-hidden size={18} /></Button>
         </div>
@@ -1090,7 +1098,7 @@ export function ListView({
       )}
       {selected.size > 0 && !isRowsReadOnly(meta.data) && (
         <div
-          className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-action/30 bg-action-tint px-3 py-2 text-sm"
+          className="mb-3 flex flex-wrap items-center gap-3 rounded-control bg-action-tint px-3 py-2 text-sm"
           data-testid="bulk-bar"
         >
           <span className="font-medium text-ink" data-testid="bulk-count">
@@ -1145,7 +1153,7 @@ export function ListView({
           {canPurge && <button
             onClick={() => setPurging(true)}
             disabled={bulkBusy}
-            className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+            className={buttonClasses({ variant: 'danger' })}
             data-testid="bulk-purge"
           >
             Delete permanently
@@ -1219,18 +1227,18 @@ export function ListView({
       {(layout === 'panel' || layout === 'table') && recordPanel && (
         <div className="absolute bottom-0 right-0 z-[3] w-[min(430px,100%)]" style={{ top: headRow }} data-testid="record-panel-over">{recordPanel}</div>
       )}
-      <div className={cardClasses('featherbase-scroll overflow-auto')} ref={setTableScroll} data-testid="list-table-scroll">
+      <div className="featherbase-scroll overflow-auto" ref={setTableScroll} data-testid="list-table-scroll">
         {/* Separate borders: a collapsed one stays behind when its sticky cell scrolls. */}
         <LinkCellFilter.Provider value={cellFilter}>
-        <table className="w-full border-separate border-spacing-0 text-sm">
+        <table className={`${TABLE_CLASSES} text-sm`}>
           {/* #1249: the header row stays in view while the rows scroll under it. */}
-          <thead className="sticky top-0 z-[2] bg-subtle text-left">
+          <thead className="sticky top-0 z-[2] text-left">
             <tr>
               {/* Selection exists only to feed the bulk bar — a read-only
                   source has neither (EDS-13: absent, not disabled). */}
-              {expandable && <th className="w-7 border-b border-border" />}
+              {expandable && <th className={headCellClasses({ first: true, className: 'w-7 px-0' })} />}
               {!isRowsReadOnly(meta.data) && (
-                <th className="w-8 border-b border-border px-3 py-2">
+                <th className={headCellClasses({ first: !expandable, className: 'w-8' })}>
                   <label className="cursor-pointer">
                     <input
                       type="checkbox"
@@ -1247,9 +1255,9 @@ export function ListView({
                 </th>
               )}
               {columns.map((col, i) => (
-                <th key={col.column_name} className={`border-b border-border bg-subtle ${i === 0 ? 'sticky left-0 z-[3] border-r' : ''}`}>
+                <th key={col.column_name} className={headCellClasses({ first: i === 0 && !expandable && isRowsReadOnly(meta.data), className: `px-0 ${i === 0 ? 'sticky left-0 z-[3]' : ''}` })}>
                   <button
-                    className={`flex w-full px-3 py-2 font-medium text-ink-muted hover:text-ink ${isFigure(col) ? 'justify-end text-right' : 'text-left'}`}
+                    className={`flex h-9 w-full items-center px-3 font-medium text-ink-subtle hover:text-ink ${isFigure(col) ? 'justify-end text-right' : 'text-left'}`}
                     data-testid={`col-${col.column_name}`}
                     onClick={() => toggleSort(col.column_name)}
                   >
@@ -1260,9 +1268,10 @@ export function ListView({
                 </th>
               ))}
               {/* Takes the spare width, so columns stay as wide as their content. */}
-              <td aria-hidden className="w-full border-b border-border p-0" />
+              <td aria-hidden className={headCellClasses({ last: true, className: 'w-full p-0' })} />
             </tr>
           </thead>
+          <RowDensityContext.Provider value={compact ? 'compact' : 'comfortable'}>
           <tbody data-testid="list-rows">
             {rows.map((row) => (
               <ListRow
@@ -1300,6 +1309,7 @@ export function ListView({
               </tr>
             )}
           </tbody>
+          </RowDensityContext.Provider>
         </table>
         </LinkCellFilter.Provider>
       </div>
@@ -1309,7 +1319,7 @@ export function ListView({
       {/* #1242 (admin-lists 6): "1–4 of 4" on the left; Prev and Next only when there is
           another page, or this one is not the first (Codex review, round 8). */}
       <div className="mt-3 flex items-center gap-3 text-sm">
-        <span className="text-xs text-ink-muted" data-testid="page-info">
+        <span className="text-[13px] text-ink-subtle" data-testid="page-info">
           {pageRange(start, PAGE, total)}
         </span>
         {(total > PAGE || start > 0) && <>

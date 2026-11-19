@@ -179,12 +179,11 @@ registerRowAction('copy_create', {
 
 registerCollectionAction('copy_info', {
   effect: 'read',
-  description: 'Where a copied table was copied from, and when.',
+  description: 'Where a copied table was copied from, and when; null for a Table that is not a copy.',
   handler: async ({ table, user }) => {
     await assertSystemManager(user.row_id)
-    const copy = await copyInfo(table)
-    if (!copy) throw new AppError('NotFoundError', `${table} was not copied from a data source`)
-    return copy
+    // #1301: every list asks, so "not a copy" is an answer, not a refusal.
+    return await copyInfo(table)
   },
 })
 

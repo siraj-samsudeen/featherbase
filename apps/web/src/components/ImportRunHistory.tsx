@@ -232,7 +232,7 @@ export function RunHistory({ table }: { table: string }) {
           )}
           {canPurge && r.inserted > 0 && !r.reverted_at && remaining[idx]?.data?.remaining ? (
             <button
-              className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
+              className={buttonClasses({ variant: 'danger' })}
               onClick={() => setPurgeRun(r.run_id)}
               data-testid={`iw-run-purge-${idx}`}
             >

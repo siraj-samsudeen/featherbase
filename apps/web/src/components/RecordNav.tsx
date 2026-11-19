@@ -90,7 +90,7 @@ export function RecordNav({ table, name }: { table: string; name: string }) {
         onClick={() => go(prev!)} className={buttonClasses({ className: 'disabled:opacity-40' })}>
         ‹
       </button>
-      <span className="whitespace-nowrap px-1 text-xs text-ink-muted tabular-nums" data-testid="record-position">
+      <span className="whitespace-nowrap px-1 text-[13px] text-ink-subtle tabular-nums" data-testid="record-position">
         {fmtCount(position + 1)} of {fmtCount(near.data.total)}
       </span>
       <button type="button" aria-label="Next record" title="Next record" disabled={!next}

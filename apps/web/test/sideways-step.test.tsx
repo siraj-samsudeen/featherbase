@@ -32,7 +32,7 @@ async function seed(admin: Client, orders = 6) {
   await admin.post('/api/save_row', { table: 'Sw Order', row: { row_id: 'b1', title: 'Bala order', customer: 'c2' } })
 }
 
-const bar = () => screen.getByRole('navigation', { name: 'Path' }).closest('div[class*="border-b"]') as HTMLElement
+const bar = () => screen.getByRole('navigation', { name: 'Path' }).closest('[data-testid="path-bar"]') as HTMLElement
 const sideways = () => within(bar()).findByRole('button', { name: 'Other rows in this list' })
 const menu = () => screen.findByRole('menu', { name: 'Other rows in this list' })
 

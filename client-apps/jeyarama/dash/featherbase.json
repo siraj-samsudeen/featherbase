@@ -3379,9 +3379,15 @@
       "operations": []
     },
     {
-      "id": "person_label",
+      "id": "every_report_own_read",
       "fromVersion": "0.13.40",
       "toVersion": "0.13.41",
+      "operations": []
+    },
+    {
+      "id": "person_label",
+      "fromVersion": "0.13.41",
+      "toVersion": "0.13.42",
       "operations": []
     }
   ],

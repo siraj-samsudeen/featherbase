@@ -17,7 +17,10 @@ async function safelistOnlyCss(): Promise<string> {
   const compiler = await compile(readFileSync(join(web, 'src/index.css'), 'utf8'), {
     base: join(web, 'src'),
     loadStylesheet: async (id: string, base: string) => {
-      const path = id === 'tailwindcss' ? require.resolve('tailwindcss/index.css') : id.startsWith('@featherbase/') ? require.resolve(id) : join(base, id)
+      // #1348: a font package's stylesheet (@fontsource-variable/inter) resolves from the stylesheet importing it.
+      const fromBase = createRequire(join(base, 'package.json'))
+      const path = id === 'tailwindcss' ? require.resolve('tailwindcss/index.css') : id.startsWith('@featherbase/') ? require.resolve(id)
+        : id.startsWith('@fontsource') ? fromBase.resolve(id) : join(base, id)
       return { path, base: dirname(path), content: readFileSync(path, 'utf8') }
     },
   })

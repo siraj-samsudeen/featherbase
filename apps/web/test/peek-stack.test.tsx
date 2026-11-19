@@ -112,3 +112,39 @@ test("the pane's empty groups wait behind Show N empty, as on the record page", 
   fireEvent.click(within(panel()).getByRole('button', { name: 'Hide empty' }))
   expect(within(panel()).queryByRole('button', { name: /^Pk Note/ })).not.toBeInTheDocument()
 })
+
+// #1348 board 4: the pane draws a record's values as the list does: a status chip under the name (and not in
+// the kicker), the source as the shared tag, a code small mono grey, a run time as time, a yes/no muted.
+test("the pane draws a record's values in the calmer look", async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Pk Shop', id_pattern: 'prompt', title_column: 'title',
+    columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Pk Visit', id_pattern: 'prompt', title_column: 'title',
+    columns: [
+      { column_name: 'title', column_type: 'Data', in_list_view: true },
+      { column_name: 'shop', column_type: 'Reference', reference_table: 'Pk Shop', in_list_view: true },
+      { column_name: 'status', column_type: 'Choice', choices: 'Open\nClosed' },
+      { column_name: 'source_system', column_type: 'Choice', choices: 'SAP\nOther' },
+      { column_name: 'visit_code', column_type: 'Data' },
+      { column_name: 'last_duration_ms', column_type: 'Int' },
+      { column_name: 'done', column_type: 'Check' },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Pk Shop', row: { row_id: 's1', title: 'Bayside Shop' } })
+  await admin.post('/api/save_row', { table: 'Pk Visit', row: {
+    row_id: 'v1', title: 'Morning visit', shop: 's1', status: 'Open', source_system: 'SAP', visit_code: 'MV-1', last_duration_ms: 65000, done: true,
+  } })
+  await renderApp(`${tableHref('Pk Shop')}/row/s1`, admin)
+  fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
+  fireEvent.click(await screen.findByRole('link', { name: 'Morning visit' }))
+  await screen.findByRole('complementary', { name: /Morning visit/ })
+  await waitFor(() => expect(within(panel()).getByTestId('record-status-chips')).toHaveTextContent('Open'))
+  expect(within(panel()).getByTestId('record-panel-kind').textContent).not.toContain('Open')
+  const block = await within(panel()).findByTestId('field-block')
+  expect(within(block).getByText('SAP').className).toMatch(/\bbg-tag\b/)
+  expect(within(block).getByText('MV-1').className).toMatch(/\bfont-mono\b/)
+  expect(within(block).getByText('1 min 5 s')).toBeInTheDocument()
+  expect(within(block).getByText('Yes').className).toMatch(/\btext-ink-subtle\b/)
+})

@@ -56,7 +56,7 @@ export function Headline({
   const id = useId()
   const max = Math.max(100, progress?.value ?? 0)
   return (
-    <section aria-labelledby={id} className={cx('rounded-card border border-border bg-surface p-4 shadow-sm', className)}>
+    <section aria-labelledby={id} className={cx('rounded-card bg-subtle p-4', className)}>
       <p className="text-sm font-semibold text-ink-muted">{label}</p>
       <h2 id={id} className={cx('mt-1 text-3xl font-extrabold leading-tight tabular-nums', TONE_TEXT[tone])}>
         {conclusion}

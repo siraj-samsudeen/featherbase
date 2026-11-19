@@ -317,7 +317,7 @@ describe('what Microsoft or the stand-in may hand back (coverage of the refusals
     const state = new URLSearchParams((start.headers.get('location') as string).split('?')[1]).get('state') as string
     const forged = mockMicrosoftApproveRedirect(state, '/api/oauth/microsoft/callback', { email: `asha@${DOMAIN}`, name: 'A', tid: TENANT, oid: OID, edov: true })
     const code = new URLSearchParams(forged.split('?')[1]).get('code')!
-    const res = await api.fetch(`/api/oauth/google/callback?code=${enc(code)}&state=${enc(state)}`, { headers: { cookie } })
+    const res = await api.fetch(`/api/oauth/google/callback?code=${enc(code)}&state=${enc(state)}`, { headers: { cookie, accept: 'application/json' } })
     await expectStatus(res, 401)
   })
 
@@ -419,7 +419,7 @@ describe('the remaining edges (coverage)', () => {
     const start = await api.fetch('/api/oauth/google/login')
     const cookie = start.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
     const state = new URLSearchParams((start.headers.get('location') as string).split('?')[1]).get('state') as string
-    const res = await api.fetch(`/api/oauth/microsoft/callback?code=c&state=${enc(state)}`, { headers: { cookie } })
+    const res = await api.fetch(`/api/oauth/microsoft/callback?code=c&state=${enc(state)}`, { headers: { cookie, accept: 'application/json' } })
     await expectStatus(res, 401)
     expect(await res.text()).toContain('another sign-in method')
   })
