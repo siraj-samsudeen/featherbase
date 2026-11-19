@@ -89,8 +89,10 @@ async function roleGroups(ctx: AccessContext, role: Roles[number], roles: Roles,
       }])) },
     { key: 'people', heading: 'People', count: role.people,
       // Every holder: the page shows the first ten, then Show all.
+      // A name the page saw before stays a name: a link for a System Manager, who opens Person records; plain words
+      // for a Report Access Manager, who does not (the platform would name the record neutrally).
       lines: role.holders.map(h => ({
-        parts: [{ record: { table: 'Person', row: h.person, name: h.name } }],
+        parts: [ctx.roles!.includes('System Manager') ? { record: { table: 'Person', row: h.person, name: h.name } } : h.name],
         chip: h.by_hand ? { label: 'given by hand', tone: 'caution' as const } : { label: 'from HR', tone: 'quiet' as const },
       })) },
   ]

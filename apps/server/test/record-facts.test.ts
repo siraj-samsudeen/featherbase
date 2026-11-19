@@ -323,7 +323,7 @@ describe("Record facts: an app's records are Featherbase's pages", () => {
   test('someone who may read a Table the app names in records may use Featherbase; one it does not name is still the app\'s', async ({ admin, createUser }) => {
     await install(admin, { [SECRET]: {} })
     const [reader, describer] = await people(createUser)
-    expect([await canUseAdmin(reader.user), await canUseAdmin(describer.user)]).toEqual([false, true])
+    expect([await canUseAdmin(reader.user!), await canUseAdmin(describer.user!)]).toEqual([false, true])
   })
 
   test('a Table named with no describer draws as it always did', async ({ admin, createUser }) => {

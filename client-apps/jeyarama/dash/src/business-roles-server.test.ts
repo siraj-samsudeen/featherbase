@@ -1796,7 +1796,10 @@ describe('business roles described for Featherbase (#1340)', () => {
     expect(Object.values(can.rows!)[0]!.parts[0]).toEqual({ record: { table: 'dash.business_role', row: sm, name: 'Store Managers' } })
     expect(groups[1]!.notes!.sales).toMatch(/^Also given to \d+ other roles: .+ and .+$/)
     expect(Object.values(groups[2]!.rows!)[0]).toMatchObject({ parts: [{ record: { table: 'dash.title_map' } }, expect.stringMatching(/^ → this role, for \d+ (person|people)$/)], chip: { label: 'from HR' } })
-    expect(groups[3]).toMatchObject({ count: 1, lines: [{ parts: [{ record: { table: 'Person', row: 'sm', name: 'Selvi' } }], chip: { label: 'from HR' } }] })
+    // A Report Access Manager reads the names as words; a System Manager as links to the people.
+    expect(groups[3]).toMatchObject({ count: 1, lines: [{ parts: ['Selvi'], chip: { label: 'from HR' } }] })
+    const admin = (await describeBusinessRoles(context(tables, { roles: ['System Manager'], payload: { rows: [sm], page: true } }) as never)).rows[sm] as { groups: { lines?: { parts: unknown[] }[] }[] }
+    expect(admin.groups[3]!.lines![0]!.parts).toEqual([{ record: { table: 'Person', row: 'sm', name: 'Selvi' } }])
   })
 
   it('says a report given to one role only, and leaves out a permission taken away', async () => {
