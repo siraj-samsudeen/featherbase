@@ -1,9 +1,9 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
+import { choiceLabel, rowDisplayTitle, rowHref, tableHref, type ListFilter } from 'shared'
 import {
-  CountChip, FieldGrid, GroupChip, LinkChip, NoneFold, PaneSection, Plus, RecordLink, SplitWithPane, X,
+  CountChip, FieldGrid, GroupChip, LinkChip, NoneFold, PaneSection, PeekCard, Plus, RecordLink, SplitWithPane, X,
   buttonClasses, countedLabel, cx, fmtCount, fmtDuration, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, tagClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
   type FieldGridGroup,
 } from '@featherbase/shop-floor'
@@ -13,7 +13,7 @@ import { dataColumns } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { push, type NavGroup, type NavPane, type NavPath, type NavStep } from '../lib/nav-path'
 import { useNavigation, type Navigation } from '../lib/navigation'
-import { forwardLinks, groupKey, rowNameText, useBacklinkGroups, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
+import { forwardLinks, groupKey, groupOrder, rowNameText, useBacklinkGroups, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
 import { useConnections } from '../lib/connections'
 import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './FormArrangement'
 import { useI18n } from '../lib/i18n'
@@ -191,12 +191,14 @@ export function CountRow({ table, row, size = 'page', onSection }: {
   const navigate = useNavigate()
   const cnx = useConnections(table, row)
   const groups = useBacklinkGroups(cnx.data?.connections).filter((g) => g.count > 0)
+  const name = useRowName(table, row)
+  const of = name.state === 'read' ? name.title : undefined
   return (
     // Drawn only when it holds a chip (empty:hidden), so a record nothing links to keeps no gap.
     <div role="group" aria-label="What links here" data-testid="count-row" className="flex flex-wrap items-center gap-2 empty:hidden">
       {groups.map((g) => {
         const href = nav ? groupListHref(g, nav) : `${tableHref(g.connection.table)}?filters=${encodeURIComponent(JSON.stringify(g.connection.filters))}`
-        return <GroupCount key={g.key} group={g} href={href} size={size} onNavigate={() => void navigate({ href })} />
+        return <GroupCount key={g.key} group={g} href={href} size={size} of={of} onNavigate={(to = href) => void navigate({ href: to })} />
       })}
       <WorkedOutCounts table={table} row={row} size={size} onSection={onSection} />
     </div>
@@ -204,14 +206,53 @@ export function CountRow({ table, row, size = 'page', onSection }: {
 }
 
 /** A group's chip in the count row: "3 Plants", or "1 Visit through Visit Line" for a hop through a sub-table. */
-function GroupCount({ group, href, size, onNavigate }: { group: BacklinkGroup; href: string; size: 'page' | 'pane'; onNavigate: () => void }) {
+function GroupCount({ group, href, size, of, onNavigate }: {
+  group: BacklinkGroup; href: string; size: 'page' | 'pane'
+  /** The record's name, for the card's heading ("Plants in Bayside"). */
+  of?: string
+  onNavigate: (href?: string) => void
+}) {
   const via = group.connection.via
   const viaMeta = useMeta(via ?? '', Boolean(via))
   // Two links from one Table read "Orders · Customer": the Table's word is the one counted.
   const [head, ...rest] = group.label.split(' · ')
   const label = [countedLabel(head!, group.count), ...rest].join(' · ')
-  return <CountChip count={group.count} label={label} through={via ? tableLabel(via, viaMeta.data) : undefined}
-    href={href} onNavigate={onNavigate} size={size} />
+  const heading = of ? `${label} in ${of}` : label
+  // #1349 item 2 (C5): hovering shows the shared peek card with the group's first rows.
+  return (
+    <PeekCard label={heading} trigger={<CountChip count={group.count} label={label} through={via ? tableLabel(via, viaMeta.data) : undefined}
+      href={href} onNavigate={() => onNavigate()} size={size} />}>
+      <b className="text-sm font-semibold text-ink">{heading}</b>
+      <GroupPeek group={group} />
+      <a href={href} className={touchLinkClasses('self-start text-[13px] text-action hover:underline')} onClick={(e) => {
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+        e.preventDefault()
+        onNavigate()
+      }}>Open all {fmtCount(group.count)} as a list</a>
+    </PeekCard>
+  )
+}
+
+/** How many of a group's rows its card shows. */
+const PEEK_ROWS = 5
+
+/** The card's rows: the group's first few, in its own order, each a link to its row. */
+function GroupPeek({ group }: { group: BacklinkGroup }) {
+  const meta = useMeta(group.connection.table)
+  const title = meta.data?.title_column && meta.data.title_column !== 'row_id' ? meta.data.title_column : undefined
+  const rows = useGroupRows(group.connection, {
+    fields: ['row_id', ...(title ? [title] : [])], limit: PEEK_ROWS, orderBy: meta.data ? groupOrder(meta.data) : undefined, enabled: Boolean(meta.data),
+  })
+  if (!meta.data || !rows.data) return <span className="text-[13px] text-ink-subtle">Loading…</span>
+  return (
+    <div className="flex flex-wrap gap-1.5 text-[13px]">
+      {(rows.data.data as Row[]).map((r) => (
+        <span key={String(r.row_id)} className="rounded-full bg-subtle px-2.5 py-0.5">
+          <RecordLink table={group.connection.table} rowId={String(r.row_id)} name={rowDisplayTitle(meta.data!, r, String(r.row_id))} />
+        </span>
+      ))}
+    </div>
+  )
 }
 
 /** Scrolls to a section once it is on screen (it may wait on a tab switch or a read), and gives it focus. */
