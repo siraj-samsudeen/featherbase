@@ -31,7 +31,7 @@ export function buttonClasses({
     cx(
       'inline-flex min-h-control select-none items-center justify-center gap-2 rounded-control border px-control-x',
       'text-control font-medium transition-colors',
-      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
+      'focus-visible:outline-[1.5px] focus-visible:outline-offset-2 focus-visible:outline-focus',
       'disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none',
       VARIANT[variant],
       (variant === 'secondary' || variant === 'quiet') && OPEN,
@@ -72,7 +72,7 @@ export function Button({ variant, block, loading = false, icon, className, disab
  */
 export function iconButtonClasses(className?: string): string {
   return recipe(
-    'inline-flex size-control shrink-0 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-subtle hover:text-ink focus-visible:outline-2 focus-visible:outline-focus motion-reduce:transition-none',
+    'inline-flex size-control shrink-0 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-subtle hover:text-ink focus-visible:outline-[1.5px] focus-visible:outline-focus motion-reduce:transition-none',
     className,
   )
 }

@@ -429,7 +429,7 @@ export function BookkeepingLine({ table, fields, values, settings }: { table?: s
   const stamped = !isEmpty(values.created_at) || !isEmpty(values.updated_at)
   if (!shown.length && !stamped) return null
   return (
-    <p className="mt-3 border-t border-border pt-2 text-xs text-ink-subtle" data-testid="bookkeeping-line">
+    <p className="mt-3 pt-2 text-[13px] text-ink-subtle" data-testid="bookkeeping-line">
       {stamped && <RowStamps values={values} table={table} />}
       {shown.map((f, i) => (
         <span key={f.column_name}>

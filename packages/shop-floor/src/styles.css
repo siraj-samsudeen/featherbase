@@ -28,6 +28,7 @@
   --color-fill-hover: #e7e9ed; /* a filled button under the pointer */
   --color-hover: #f1f5ff; /* the row under the pointer, and the selected row */
   --color-tag: #eef0f3; /* a quiet tag's fill: one step below the canvas, seen on every surface */
+  --color-tag-ink: #374151; /* #1348: a tag's words ("from HR", "Team") */
   --color-border: #e5e7eb; /* hairlines between content */
   --color-border-control: #6b7280; /* the edge of something you type into or press */
   --color-ink: #151a23; /* primary text */
@@ -171,6 +172,7 @@
     --color-fill-hover: #28354f;
     --color-hover: #1a2846;
     --color-tag: #24304a;
+    --color-tag-ink: #c3cddb;
     --color-border: #24314a;
     --color-border-control: #66768e;
     --color-ink: #f1f5f9;

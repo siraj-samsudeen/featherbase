@@ -71,9 +71,9 @@ export function ActivityTimeline({ table, name, bare = false, latest }: {
   return (
     <div className={bare ? '' : cardClasses('p-4')} data-testid={latest ? 'activity-glance' : 'activity-timeline'}>
       {latest ? (
-        <h2 className="mb-2 text-sm font-medium text-ink-muted">Activity</h2>
+        <h2 className="mb-2 text-[15px] font-semibold text-ink">Activity</h2>
       ) : (
-        <div className="mb-3 text-xs font-semibold text-ink-subtle">
+        <div className="mb-3 text-[15px] font-semibold text-ink">
           Activity
         </div>
       )}

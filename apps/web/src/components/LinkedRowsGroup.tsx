@@ -175,7 +175,8 @@ function ListLink({ href, quiet, children }: { href: string; quiet: boolean; chi
   const navigate = useNavigate()
   return (
     <a href={href} className={quiet
-      ? 'self-start px-2 text-sm text-ink-muted underline-offset-2 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-focus'
+      // #1348 (spec 14): an action link is blue; the quieter one is only smaller.
+      ? 'self-start px-2 text-[13px] text-action underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus'
       : 'self-start px-2 text-sm font-medium text-action underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus'}
       onClick={(e) => {
         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return

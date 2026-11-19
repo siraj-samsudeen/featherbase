@@ -691,7 +691,7 @@ export function ListView({
         count={<>
           {/* #1259: the three views, right after the title. */}
           {layout && onLayoutChange && <span className="self-center"><LayoutSwitch value={layout} onChange={onLayoutChange} /></span>}
-          <span className="text-xs text-ink-muted" data-testid="list-total">
+          <span className="text-[13px] text-ink-subtle" data-testid="list-total">
             {count ?? <>{fmtCount(total)} total</>}
           </span>
           {/* #1276: Explore's totals live on the list: the exact sum of its money
@@ -1315,7 +1315,7 @@ export function ListView({
       {/* #1242 (admin-lists 6): "1–4 of 4" on the left; Prev and Next only when there is
           another page, or this one is not the first (Codex review, round 8). */}
       <div className="mt-3 flex items-center gap-3 text-sm">
-        <span className="text-xs text-ink-muted" data-testid="page-info">
+        <span className="text-[13px] text-ink-subtle" data-testid="page-info">
           {pageRange(start, PAGE, total)}
         </span>
         {(total > PAGE || start > 0) && <>

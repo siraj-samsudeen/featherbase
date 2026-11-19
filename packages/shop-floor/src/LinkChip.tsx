@@ -16,7 +16,7 @@ export const smallActionClasses = cx(
 
 /** A small caption naming a row's table, e.g. "Shelf". */
 export function KindTag({ children }: { children: string }) {
-  return <span className="shrink-0 rounded-md bg-tag px-1.5 text-xs text-ink-muted">{children}</span>
+  return <span className="shrink-0 rounded-md bg-tag px-1.5 text-xs text-tag-ink">{children}</span>
 }
 
 /**

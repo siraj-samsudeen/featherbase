@@ -17,7 +17,7 @@ export function inputClasses(className?: string): string {
     cx(
       // #1348: grey-filled, no edge; focus is the only outline. An error still draws a red edge.
       'block w-full min-h-control rounded-control border border-transparent bg-fill px-3 text-control text-ink',
-      'placeholder:text-ink-subtle focus:outline-hidden focus-visible:outline-[1.5px] focus-visible:outline-offset-0 focus-visible:outline-focus',
+      'placeholder:text-ink-subtle focus:outline-hidden focus-visible:outline-[1.5px] focus-visible:outline-solid focus-visible:outline-offset-0 focus-visible:outline-focus',
       'disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted aria-invalid:border-negative',
     ),
     className,

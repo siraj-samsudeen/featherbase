@@ -1232,7 +1232,7 @@ function CommandField({ rail, onOpen }: { rail: boolean; onOpen: () => void }) {
       {...shortcutControl(COMMAND_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF.label)}
       className={rail
         ? `${RAIL_ROW} ${ROW_IDLE} focus-visible:outline-2 focus-visible:outline-focus`
-        : 'flex min-h-8 w-full min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-md bg-border/60 px-2.5 text-sm text-ink-muted hover:bg-border focus-visible:outline-2 focus-visible:outline-focus'}
+        : 'flex min-h-[34px] w-full min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-control bg-border/60 px-3 text-[13px] text-ink-subtle hover:bg-border focus-visible:outline-2 focus-visible:outline-focus'}
     >
       <Search aria-hidden size={rail ? 18 : 14} className="shrink-0" />
       {!rail && <span className="min-w-0 flex-1 truncate text-left">Search or Command</span>}
