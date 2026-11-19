@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { PersonLabel } from 'shared'
 import { sql } from './db'
 import { scopedWhere } from './query'
 import { describingApps, describePeopleWith } from './runtime-packages'
@@ -15,20 +16,7 @@ import { describingApps, describePeopleWith } from './runtime-packages'
 // names, and reads as that record's own title, read as the viewer. So nothing
 // the viewer cannot read reaches them through a label (item 10).
 
-/** A person's label, as the viewer may see it. Every part is optional. */
-export interface PersonLabel {
-  /** The main current employee code: the latest-joined current one. */
-  code?: string
-  /** Their other current codes, each with its record where the viewer may open it. */
-  more_codes?: { code: string; table?: string; row_id?: string }[]
-  role?: string
-  place?: string
-  standing?: 'current' | 'left' | 'consultant' | 'supplier'
-  /** YYYY-MM-DD, with standing `left`. */
-  left_on?: string
-  company?: string
-  email?: string
-}
+export type { PersonLabel } from 'shared'
 
 /** How long search waits for the apps that describe people (item 2). */
 export const DESCRIBE_WAIT_MS = 300
