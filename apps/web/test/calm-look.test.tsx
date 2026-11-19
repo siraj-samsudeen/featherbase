@@ -129,3 +129,11 @@ describe('tables: a grey header band and rows told apart by space, never a line'
     expect(text).not.toMatch(/\bborder-[blr]\b(?!-)|\bborder-r\s|divide-y/)
   })
 })
+
+test('#1348 (UI owner): at phone width the list view tools wrap under the search instead of covering it', () => {
+  const text = readFileSync(join(__dirname, '../src/components/ListView.tsx'), 'utf8')
+  const row = /<div className="([^"]*)" data-testid="list-filter-row">\s*<div className="([^"]*)">/.exec(text)
+  expect(row?.[1]).toMatch(/\bflex-wrap\b/)
+  expect(row?.[2]).toMatch(/flex-\[1_1_20rem\]/)
+  expect(text).toMatch(/max-w-full flex-wrap items-end gap-2 \$\{[^`]*`\} data-testid="list-view-tools"/)
+})

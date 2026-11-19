@@ -923,8 +923,9 @@ export function ListView({
       {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
       {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
       {/* #1289: the filters (and their chips) wrap inside the left part, so the view tools keep the first line. */}
-      <div className="mb-2 flex items-start gap-2">
-        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
+      {/* #1348 (UI owner): at phone width the view tools wrap under the search; they never cover it. */}
+      <div className="mb-2 flex flex-wrap items-start gap-2" data-testid="list-filter-row">
+        <div className="flex min-w-0 flex-[1_1_20rem] flex-wrap items-end gap-2">
         {onFiltersChange && meta.data && (
           <>
             <ListSearch meta={meta.data} filters={filters} onChange={onFiltersChange} label={label} />
@@ -939,7 +940,7 @@ export function ListView({
         )}
         </div>
         {/* Level with the boxes' controls, below their labels (a text-xs line and gap-0.5). */}
-        <div className={`ml-auto flex flex-none items-end gap-2 ${onFiltersChange && meta.data && hasFieldBoxes(meta.data) ? 'mt-[1.125rem]' : ''}`} data-testid="list-view-tools">
+        <div className={`ml-auto flex max-w-full flex-wrap items-end gap-2 ${onFiltersChange && meta.data && hasFieldBoxes(meta.data) ? 'mt-[1.125rem]' : ''}`} data-testid="list-view-tools">
           {/* #859, #1242, #1289: Show Retired leads the right end of the filter row. */}
           {retirable && (
             // A real checkbox, drawn as a chip: what it is stays plain to everyone.
