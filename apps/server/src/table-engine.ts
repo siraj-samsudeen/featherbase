@@ -14,6 +14,7 @@ import { PLATFORM_SCHEMA, platformRelation, resolvedRelation, tableName } from '
 import { canRetire, readingPresentationSchema } from 'shared'
 import { allowedTables, anyTableLinkColumns, linkableTable } from './any-table-link'
 import { filterColumns, normaliseViewFilters, rowsInView, viewsOf } from './views'
+import { syncSearchIndexes } from './search-indexes'
 
 export { tableName }
 
@@ -764,6 +765,8 @@ export async function updateTable(
       else if (type && existing.kind !== 'settings' && !isBound && old.unique)
         await tx.unsafe(`alter table ${relation} drop constraint if exists ${quoteIdent(`${table}_${column_name}_uq`)}`)
     }
+    // #1321: the title column may have changed, so its search index follows it.
+    if (!isBound) await syncSearchIndexes(tx, name)
   })
   invalidateMeta(name)
   return getMeta(name)
@@ -1125,6 +1128,7 @@ export async function createTable(
           `create index ${quoteIdent(`${tableName(def.name)}_parent_idx`)} on ${quoteRelation(relation)} ("parent", "position")`,
         )
       await applyRls(tx, def, relation)
+      await syncSearchIndexes(tx, def.name)
     }
   })
   invalidateMeta(def.name)

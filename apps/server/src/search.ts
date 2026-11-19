@@ -3,6 +3,7 @@ import { AppError } from './errors'
 import { hasPermission } from './permissions'
 import { scopedWhere } from './query'
 import { tableLabel } from './access-explanation'
+import { SEARCH_PREFIX, indexableTitle, searchExpression } from './search-indexes'
 
 // UI-014: awesomebar global search. Matches row names (and the
 // Table's title_column) across every regular Table the user can read.
@@ -163,11 +164,27 @@ async function searchOne(t: Record<string, unknown>, user: string, { exact, pref
   // before ranking; round 3: the exact code comes before exact names.)
   const match = (pattern: string) => sql`(${key} ilike ${pattern}${title ? sql` or ${readExpression(title)} ilike ${pattern}` : sql``})`
   const found = sql`${where} ${live} and coalesce(${shown}::text, ${key}::text) !~ ${OPAQUE_ID} ${named}`
+  // #1321: a row named or coded exactly as typed, in any case, is looked up
+  // through the search indexes (search-indexes.ts), so it is found however many
+  // rows contain the text before it. The index narrows on the first characters;
+  // the whole value, as this viewer reads it, decides.
+  const folded = sql`lower(left(${exact}, ${SEARCH_PREFIX}))`
+  const indexed = (column: string) => sql.unsafe(searchExpression(column))
+  const exactTitle = title && indexableTitle(meta.columns.find((c) => c.column_name === title)?.column_type)
+    ? sql`
+      union
+      (select ${key} as row_id, ${shown} as title from ${sql(table)}
+        where ${found} and ${indexed(title)} = ${folded} and lower(${shown}::text) = lower(${exact}) limit ${PER_TABLE})`
+    : sql``
   const rows = await sql<{ row_id: unknown; title: unknown }[]>`
     select row_id, title from (
       (select ${key} as row_id, ${shown} as title from ${sql(table)} where ${found} and ${match(like)} limit ${CANDIDATES})
       union
       (select ${key} as row_id, ${shown} as title from ${sql(table)} where ${found} and ${key} = ${exact})
+      union
+      (select ${key} as row_id, ${shown} as title from ${sql(table)}
+        where ${found} and ${indexed(meta.row_key)} = ${folded} and lower(${key}::text) = lower(${exact}) limit ${PER_TABLE})
+      ${exactTitle}
     ) candidate
     order by
       case when row_id::text = ${exact} then 0
