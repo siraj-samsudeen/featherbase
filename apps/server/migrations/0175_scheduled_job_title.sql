@@ -27,6 +27,12 @@ from (values
 ) as t(method, title)
 where j.method = t.method and coalesce(j.title, '') = '';
 
+-- A copied table's refresh reads by the table it refreshes, never its code
+-- ("copy_refresh_3f…" -> "Refresh Copy of Store Master").
+update featherbase.scheduled_job j set title = 'Refresh Copy of ' || coalesce(nullif(t.label, ''), c.target_table)
+from featherbase.copy_refresh_schedule c left join featherbase.table_def t on t.name = c.target_table
+where c.scheduled_job = j.method and coalesce(j.title, '') = '';
+
 -- Any other job (an app's, or one added since): its name in words, Title Case,
 -- without the app's prefix ("tasker.escalate_issues" -> "Escalate Issues").
 update featherbase.scheduled_job set title = initcap(replace(regexp_replace(method, '^[a-z0-9_]+\.', ''), '_', ' '))
