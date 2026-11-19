@@ -53,6 +53,42 @@ describe('describe_people', () => {
     ])
   })
 
+  // featherbase #1345: the business role each job gives, for the Person Label, as Explain finds it.
+  it("names each job's business role: by HR's title, else the job's, through the Title Map; a Correct in force wins", async () => {
+    const data: Record<string, Row[]> = {
+      ...DATA,
+      Employee: [...DATA.Employee!, { row_id: 'E4', employee_code: '6000', person: 'p-corrected', status: 'Current' }],
+      'Job Assignment': [
+        { row_id: 'J1', employee: 'E1', job: 'Team Leader', site: 'LKS', designation: 'Senior Team Lead', starts_on: '2026-01-01', ends_on: null },
+        { row_id: 'J2', employee: 'E1', job: 'Buyer', site: '', starts_on: '2026-01-01', ends_on: null },
+        { row_id: 'J4', employee: 'E4', job: 'Cashier', site: 'LKS', starts_on: '2026-01-01', ends_on: null },
+      ],
+      'dash.business_role': [
+        { row_id: 'br-lead', role_name: 'Floor Lead', by_hand_only: 0 },
+        { row_id: 'br-buyer', role_name: 'Buyer', by_hand_only: 0 },
+        { row_id: 'br-cash', role_name: 'Cashier', by_hand_only: 0 },
+        { row_id: 'br-owner', role_name: 'Owner Director', by_hand_only: 1 },
+      ],
+      'dash.title_map': [
+        { row_id: 't1', title: 'senior team lead', business_role: 'br-lead' },
+        { row_id: 't2', title: 'Buyer', business_role: 'br-buyer' },
+        { row_id: 't3', title: 'Cashier', business_role: 'br-cash' },
+      ],
+      'dash.role_assignment': [
+        { row_id: 'h1', person: 'p-corrected', change: 'Correct', business_role: 'br-owner', ends_on: null, removed: 0 },
+      ],
+    }
+    const ctx = { ...context({ persons: ['p-asha', 'p-corrected'] }), baseTables: tables(data) }
+    const [asha, corrected] = await describePeople(ctx, ON)
+    expect(asha!.jobs).toEqual([
+      { job: 'Buyer', business_role: { table: 'dash.business_role', id: 'br-buyer', name: 'Buyer' } },
+      { job: 'Team Leader', site: { table: 'Site', id: 'LKS', name: 'Lakeside' }, business_role: { table: 'dash.business_role', id: 'br-lead', name: 'Floor Lead' } },
+    ])
+    expect(corrected!.jobs).toEqual([
+      { job: 'Cashier', site: { table: 'Site', id: 'LKS', name: 'Lakeside' }, business_role: { table: 'dash.business_role', id: 'br-owner', name: 'Owner Director' } },
+    ])
+  })
+
   it('asks nothing for no persons', async () => {
     expect(await describePeople(context({}), ON)).toEqual([])
   })
