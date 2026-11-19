@@ -74,8 +74,11 @@ describe('SET-002: password reset', () => {
     expect(await accepted.json()).toEqual({ ok: true })
     expect(await sql`select * from password_reset where "user" = ${person}`).toEqual([])
     const [changed] = await sql`select * from person where row_id = ${person}`
-    // #1336: the hash is in person_credential; the person row itself is untouched.
-    expect(changed).toEqual(account[0])
+    // #1336: the hash lives in person_credential; until #1338 the person row's
+    // column mirrors it, and nothing else on the row changes.
+    const [{ password_hash: credential }] = await sql`select password_hash from person_credential where person_id = ${person}`
+    expect(credential).not.toBe(account[0].password_hash)
+    expect(changed).toEqual({ ...account[0], password_hash: credential })
     const oldLogin = await signIn('before123')
     await expectStatus(oldLogin, 401)
     expect(await oldLogin.json()).toEqual({ error: {
