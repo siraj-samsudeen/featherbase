@@ -132,6 +132,10 @@ describe('a log line as a sentence', () => {
 describe('the Business Roles page', () => {
   it('reads each permission as a sentence with its reach', async () => {
     const page = await businessRoles(context(await seeded()) as never)
+    // #1282 (Siraj): a Report Access Manager sees the grid read-only; a System Manager changes it (#437).
+    expect(page.may_change).toBe(false)
+    expect((await businessRoles(context(await seeded(), { roles: ['System Manager'] }) as never)).may_change).toBe(true)
+    await expect(businessRoles(context(await seeded(), { roles: ['Dash Reader'] }) as never)).rejects.toThrow()
     expect(page.roles.find(r => r.name === 'Store Manager')!.permissions).toContainEqual(expect.objectContaining({ app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Section names and subcategories', reach: 'Area', sentence: 'Store Managers can Edit Section names and subcategories in their area' }))
     // Owner, 18-Nov-2026: managers see their team's tickets; Head Office opens no Dash by default.
     expect(page.roles.find(r => r.name === 'Store Manager')!.permissions.find(p => p.app === 'Tickets')!.sentence).toBe('Store Managers can View Tickets for their team')
@@ -155,6 +159,9 @@ describe('the Business Roles page', () => {
     expect(role('Staff').people_from).toBe('from HR title')
     expect(role('Master Data Manager')).toMatchObject({ people: 0, people_from: 'nobody yet', reports: [] })
     expect(role('Head Office').reports.map(parts => (parts[0] as { record: { name: string } }).record.name)).toContain('Store pack')
+    // #1282: the reports grid's ticks and rows, and that a Report Access Manager may give them.
+    expect([role('Head Office').given, page.report_catalog.map(t => `${t.table}|${t.key}`), page.may_give_reports])
+      .toEqual([expect.arrayContaining(['dash.report|vs', 'dash.report_bundle|bx']), expect.arrayContaining(['dash.report|vs', 'dash.report_bundle|bx']), true])
     expect(role('Head Office').reports).toContainEqual([{ record: { table: 'dash.report', row: 'vs', name: expect.any(String) } }, ' is given to ', { record: { table: 'dash.business_role', row: roleId(tables, 'Head Office'), name: 'Head Office' } }, ' ', { chip: 'each in their own area' }])
   })
 

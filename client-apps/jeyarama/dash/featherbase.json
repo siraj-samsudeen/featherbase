@@ -793,6 +793,20 @@
           "reqd": true,
           "in_list_view": true,
           "description": "Own: their own things. Team: their reporting line. Area: where their assignment sits. All: the whole company."
+        },
+        {
+          "column_name": "removed",
+          "label": "Removed",
+          "column_type": "Check",
+          "description": "#1282: taken away on the Business Roles grid: the role can no longer do it. The row stays, and the Permission change log says who and when; giving it again brings the row back."
+        },
+        {
+          "column_name": "permission_key",
+          "label": "Permission key",
+          "column_type": "Data",
+          "unique": true,
+          "description": "#1282: set by Dash on every permission row it writes: the role and the permission. Unique, so a role holds one row for each permission, given or taken away, and two saves at once cannot give it twice. Hidden from forms.",
+          "hidden": true
         }
       ],
       "decides_scope": true
@@ -962,6 +976,75 @@
           "in_list_view": true
         }
       ]
+    },
+    {
+      "name": "dash.permission_change",
+      "label": "Permission change",
+      "module": "Dash",
+      "title_column": "permission",
+      "description": "#1282: each change saved from the Business Roles grid, one line each: which role, which permission, its reach before and after, and who saved it. The platform records when.",
+      "columns": [
+        {
+          "column_name": "business_role",
+          "label": "Business role",
+          "column_type": "Reference",
+          "reference_table": "dash.business_role",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "permission",
+          "label": "Permission",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "App · Level · Verb Thing, as the grid's row reads."
+        },
+        {
+          "column_name": "app",
+          "label": "App",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "level",
+          "label": "Level",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "verb",
+          "label": "Verb",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "thing",
+          "label": "Thing",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "from_reach",
+          "label": "Before",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "Empty: the role could not do it."
+        },
+        {
+          "column_name": "to_reach",
+          "label": "After",
+          "column_type": "Data",
+          "in_list_view": true,
+          "description": "Empty: the role can no longer do it."
+        },
+        {
+          "column_name": "changed_by_name",
+          "label": "Changed by",
+          "column_type": "Data",
+          "in_list_view": true
+        }
+      ]
     }
   ],
   "scopeProvider": {
@@ -1009,7 +1092,10 @@
       "Designation"
     ],
     "optionalColumns": {
-      "Site": ["site_kind", "status"]
+      "Site": [
+        "site_kind",
+        "status"
+      ]
     }
   },
   "permissions": [
@@ -1129,6 +1215,11 @@
     },
     {
       "table": "dash.switch_over_log",
+      "role": "Report Access Manager",
+      "can_read": true
+    },
+    {
+      "table": "dash.permission_change",
       "role": "Report Access Manager",
       "can_read": true
     }
@@ -3166,6 +3257,107 @@
       "fromVersion": "0.13.37",
       "toVersion": "0.13.38",
       "operations": []
+    },
+    {
+      "id": "permission_grid",
+      "fromVersion": "0.13.38",
+      "toVersion": "0.13.39",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "dash.business_role_permission",
+          "column": {
+            "column_name": "removed",
+            "label": "Removed",
+            "column_type": "Check",
+            "description": "#1282: taken away on the Business Roles grid: the role can no longer do it. The row stays, and the Permission change log says who and when; giving it again brings the row back."
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "dash.business_role_permission",
+          "column": {
+            "column_name": "permission_key",
+            "label": "Permission key",
+            "column_type": "Data",
+            "unique": true,
+            "description": "#1282: set by Dash on every permission row it writes: the role and the permission. Unique, so a role holds one row for each permission, given or taken away, and two saves at once cannot give it twice. Hidden from forms.",
+            "hidden": true
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "dash.permission_change",
+            "label": "Permission change",
+            "module": "Dash",
+            "title_column": "permission",
+            "description": "#1282: each change saved from the Business Roles grid, one line each: which role, which permission, its reach before and after, and who saved it. The platform records when.",
+            "columns": [
+              {
+                "column_name": "business_role",
+                "label": "Business role",
+                "column_type": "Reference",
+                "reference_table": "dash.business_role",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "permission",
+                "label": "Permission",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "App · Level · Verb Thing, as the grid's row reads."
+              },
+              {
+                "column_name": "app",
+                "label": "App",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "level",
+                "label": "Level",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "verb",
+                "label": "Verb",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "thing",
+                "label": "Thing",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "from_reach",
+                "label": "Before",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Empty: the role could not do it."
+              },
+              {
+                "column_name": "to_reach",
+                "label": "After",
+                "column_type": "Data",
+                "in_list_view": true,
+                "description": "Empty: the role can no longer do it."
+              },
+              {
+                "column_name": "changed_by_name",
+                "label": "Changed by",
+                "column_type": "Data",
+                "in_list_view": true
+              }
+            ]
+          }
+        }
+      ]
     }
   ],
   "baseTables": {
@@ -3311,7 +3503,9 @@
         "level",
         "verb",
         "thing",
-        "reach"
+        "reach",
+        "removed",
+        "updated_at"
       ],
       "dash.title_map": [
         "title",
@@ -3424,7 +3618,8 @@
       "dash.title_map",
       "dash.role_assignment",
       "dash.access_source",
-      "dash.switch_over_log"
+      "dash.switch_over_log",
+      "dash.permission_change"
     ],
     "operations": {
       "give_role": {
@@ -3436,6 +3631,22 @@
         }
       },
       "remove_role": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "change_permissions": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      },
+      "change_report_grants": {
         "policy": {
           "kind": "table"
         },

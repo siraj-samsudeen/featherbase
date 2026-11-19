@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-router'
+import { CannotShow } from './CannotShow'
 import { idFromColumn, namingColumn, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { changeOverride, overrideControl } from '../lib/metadata-override-editor'
@@ -282,8 +283,19 @@ export function FormView({
 
   if (meta.isLoading || (!isNew && (doc.isLoading || access.isLoading)))
     return <p className="text-sm text-ink-subtle">Loading…</p>
-  if (meta.isError || (!isNew && doc.isError))
-    return <p className="text-sm text-negative">Cannot load {table} {name}</p>
+  if (meta.isError || (!isNew && doc.isError)) {
+    // #1327: said in words, with the way back to the Table's list.
+    const label = tableLabel(table, meta.data)
+    return (
+      <CannotShow
+        error={meta.error ?? doc.error}
+        what={label}
+        id={isNew ? undefined : name}
+        back={<RouterLink to="/featherbase/admin/table/$table" params={{ table }} search={{ filters: undefined }} className={buttonClasses()}>Back to {label}</RouterLink>}
+        onRetry={() => { void meta.refetch(); if (!isNew) void doc.refetch() }}
+      />
+    )
+  }
 
   const m = meta.data!
   // #1267: a saved Person's page is laid out in two columns of its own.

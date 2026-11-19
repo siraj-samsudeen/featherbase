@@ -69,14 +69,29 @@ export function revertReachPrefixes(manifest: { migrations: { id: string }[] }) 
 export const SHADOW_TABLES = ['dash.business_role', 'dash.business_role_permission', 'dash.title_map', 'dash.role_assignment']
 /** #1218's grants, which this version brings too: the upgrade tests of earlier steps compare without them. */
 export const withoutBusinessRoles = <T,>(list: T[]) =>
-  list.filter(entry => ![...SHADOW_TABLES, 'dash.access_source', 'dash.switch_over_log'].includes(((entry as Grant & { grant?: { table?: string } }).grant as { table?: string } | undefined)?.table ?? ''))
+  list.filter(entry => {
+    const change = entry as { create?: string; grant?: { table?: string; role?: string }; withdraw?: { table?: string; role?: string } }
+    // #1282's grid change log is part of business roles too.
+    return ![...SHADOW_TABLES, 'dash.access_source', 'dash.switch_over_log', 'dash.permission_change'].includes(change.grant?.table ?? '')
+  })
 /** #1277's switch and its log, which 0.13.30 brings. */
 export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
+/** #1282's 0.13.39: the permission grid's change log. */
+export const GRID_LOG = 'dash.permission_change'
 type Revertable = { migrations: { id: string }[]; tables?: { name: string; decides_scope?: boolean; columns?: { column_name: string }[] }[]; permissions?: { table: string }[];
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[]; optionalColumns?: Record<string, string[]> } }
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
-  // #1282's 0.13.38 (the area picker), #1313's 0.13.37 (Report access dates) and #1282's 0.13.35 and 0.13.36 (the Map's Why) change no Table and come off first.
+  // #1282's 0.13.39 (the permission grid): a permission's removed mark and the grid's change log; it comes off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'permission_grid', fromVersion: '0.13.38',
+    operations: [{ kind: 'addColumn', table: 'dash.business_role_permission', column: { column_name: 'removed' } }, { kind: 'addColumn', table: 'dash.business_role_permission', column: { column_name: 'permission_key' } }, { kind: 'addTable', table: { name: GRID_LOG } }] })
+  if (manifest.tables) manifest.tables = manifest.tables.filter(t => t.name !== GRID_LOG).map(t => (t.name === 'dash.business_role_permission'
+    ? { ...t, columns: t.columns!.filter(c => c.column_name !== 'removed' && c.column_name !== 'permission_key') } : t))
+  if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => p.table !== GRID_LOG)
+  if (manifest.actions) manifest.actions.tables = manifest.actions.tables.filter(t => t !== GRID_LOG)
+  const permissionRead = manifest.baseTables?.read['dash.business_role_permission']
+  if (permissionRead) manifest.baseTables!.read['dash.business_role_permission'] = permissionRead.filter(c => c !== 'removed' && c !== 'updated_at')
+  // #1282's 0.13.38 (the area picker), #1313's 0.13.37 (Report access dates) and #1282's 0.13.35 and 0.13.36 (the Map's Why) change no Table and come off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'area_picker', fromVersion: '0.13.37', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'report_access_days_in_india', fromVersion: '0.13.36', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'why_app_levels_merged', fromVersion: '0.13.35', operations: [] })

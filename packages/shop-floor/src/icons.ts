@@ -9,6 +9,7 @@ export {
   Bookmark,
   Braces,
   Check,
+  FileQuestion,
   Cable,
   CalendarClock,
   CalendarDays,
