@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Featherbase Screens</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
+<link rel="stylesheet" href="pages.css">
+<style>
+/* Mock-up only. This file holds every screen at once and shows the one its address names
+   (screens.html#employees). Featherbase sends one screen per address, so it needs none of this. */
+.view, .rec, .toast { display: none; }
+.view:target, .view:has(:target), .main:not(:has(:target)) > .view:first-child, .rec:target { display: flex; }
+.toast:target { display: block; }
+.app[data-fresh] .has-data { display: none; }
+</style>
+</head>
+<body>
+
+<!-- Mock-up only: the strip above the window. -->
+<div class="strip">
+  <span><b>Mock-up.</b> Sample rows; nothing is saved.</span>
+  <nav aria-label="Screens">
+    <a href="#fresh">Home, fresh install</a>
+    <a href="#home">Home, with data</a>
+    <a href="#import">Import</a>
+    <a href="#proposal">Proposal</a>
+    <a href="#employees">List</a>
+    <a href="#record">Record</a>
+    <a href="#new">New</a>
+    <a href="#refused">Refused</a>
+    <a href="report.html">Report</a>
+  </nav>
+  <label>Theme <select id="theme"><option value="">As the device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+</div>
+
+<div class="app" data-fresh>
+  <nav class="side" aria-label="Featherbase">
+    <a class="brand to-home" href="#home"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M14 5c-4.5 1-7 4.5-7.5 10M9 9.5l3.5.5M7.5 12l2.5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Featherbase</a>
+    <div class="nav"><a class="to-home" href="#home" id="nav-home">Home</a></div>
+    <div class="group has-data">
+      <h2>Tables · main</h2>
+      <div class="nav"><a href="#employees" id="nav-employees"><span class="ico c1">Em</span>Employees <span>24</span></a></div>
+    </div>
+    <div class="group has-data">
+      <h2>Reports</h2>
+      <div class="nav"><a href="report.html"><span class="ico c3">He</span>Headcount</a></div>
+    </div>
+    <div class="group has-data">
+      <h2>Uploads</h2>
+      <div class="nav"><a href="#upload-next"><span class="ico c8">Up</span>employees.csv <span>24</span></a></div>
+    </div>
+  </nav>
+
+  <div class="main">
+
+    <!-- Home on a fresh install -->
+    <section class="view" id="fresh">
+      <div class="bar"><h1>Home</h1></div>
+      <div class="page">
+        <div class="hello">
+          <h2>Welcome To Featherbase</h2>
+          <p>There is nothing here yet. Bring in a spreadsheet and it becomes a Table you can browse and edit.</p>
+        </div>
+        <div class="sect">
+          <h2>Start</h2>
+          <div class="acts">
+            <a class="act" href="#import"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 12V3M5.5 6.5L9 3l3.5 3.5M3 12v3h12v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><b>Import Data</b><span>Turn a CSV file into a Table.</span></a>
+          </div>
+        </div>
+        <div class="sect">
+          <h2>Your Tables</h2>
+          <p class="none">No Tables yet. Your first one will appear here.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Home with data -->
+    <section class="view" id="home">
+      <div class="bar"><h1>Home</h1></div>
+      <div class="page">
+        <div class="sect">
+          <h2>Start</h2>
+          <div class="acts">
+            <a class="act" href="#import"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 12V3M5.5 6.5L9 3l3.5 3.5M3 12v3h12v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><b>Import Data</b><span>Turn a CSV file into a Table.</span></a>
+          </div>
+        </div>
+        <div class="sect">
+          <h2>Your Tables</h2>
+          <div class="items">
+            <a class="item" href="#employees"><b>Employees</b><span class="tag">main</span><span class="dim">7 Columns, keyed by Employee Code</span><span class="grow"></span><span class="cnt">24 rows</span><span class="dim">changed today</span></a>
+          </div>
+        </div>
+        <div class="sect">
+          <h2>Reports</h2>
+          <div class="items">
+            <a class="item" href="report.html"><b>Headcount</b><span class="dim">from Employees</span><span class="grow"></span><span class="dim">3 charts</span></a>
+          </div>
+        </div>
+        <div class="sect">
+          <h2>Recent Uploads</h2>
+          <div class="items">
+            <a class="item" href="#upload-next"><b>employees.csv</b><span class="grow"></span><span class="dim">24 rows</span><span class="dim">16-Nov-2026</span></a>
+          </div>
+        </div>
+      </div>
+      <p class="toast" id="upload-next" role="status">The upload's page is the next mock-up</p>
+    </section>
+
+    <!-- The entry to importing -->
+    <section class="view" id="import">
+      <div class="bar"><p class="crumbs"><a class="to-home" href="#home">Home</a> / Import Data</p><h1>Import Data</h1></div>
+      <div class="page">
+        <form class="drop" id="drop" data-next="#proposal">
+          <strong>Drop A CSV File Here</strong>
+          <p>The first row must hold the column names.</p>
+          <div class="btns">
+            <label class="btn primary">Choose a file<input type="file" id="file" name="file" accept=".csv,text/csv" hidden></label>
+            <a class="btn" href="#proposal">Try the sample: employees.csv</a>
+          </div>
+        </form>
+        <ol class="steps">
+          <li><b>The file is kept</b>Exactly as you gave it, so nothing is lost.</li>
+          <li><b>Featherbase proposes a Table</b>A name, a type for each Column, and a key.</li>
+          <li><b>You decide</b>Nothing is created until you press Create.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- The proposal -->
+    <form class="view" id="proposal" data-next="#created">
+      <div class="bar"><p class="crumbs"><a class="to-home" href="#home">Home</a> / <a href="#import">Import Data</a> / employees.csv</p><h1>employees.csv</h1></div>
+      <div class="page wide">
+        <p class="lead">Featherbase read <b>24 rows</b> and <b>7 columns</b>. This is the Table it would make. Change anything that looks wrong.</p>
+        <div class="namerow">
+          <div class="f"><label for="p-name">Table name</label><input type="text" id="p-name" name="name" value="Employees" autocomplete="off"></div>
+          <span class="tag">main</span>
+        </div>
+        <div class="sect">
+          <h2>Columns</h2>
+          <!-- A type is offered only if every cell fits it. Only a Column that is never blank and never repeats can be the key. -->
+          <div class="tbox cols">
+            <table>
+              <thead><tr><th>Column</th><th>Type</th><th>What Featherbase saw</th><th class="keyc">Key</th></tr></thead>
+              <tbody>
+              <tr><td>Employee Code</td>
+                <td><select id="p-type-1" name="type-1" aria-label="Type of Employee Code"><option selected>Text</option><option disabled>Number</option><option disabled>Date</option><option disabled>Yes/No</option><option disabled>Choice</option></select></td>
+                <td class="saw">Never blank, never repeats. <code>E0007</code>, <code>E0014</code>, <code>E0021</code></td>
+                <td class="keyc"><input type="radio" name="key" id="p-key-1" value="Employee Code" aria-label="Employee Code is the key" checked></td></tr>
+              <tr><td>Name</td>
+                <td><select id="p-type-2" name="type-2" aria-label="Type of Name"><option selected>Text</option><option disabled>Number</option><option disabled>Date</option><option disabled>Yes/No</option><option disabled>Choice</option></select></td>
+                <td class="saw">24 different values. <code>Asha Raman</code>, <code>Bala Krishnan</code></td>
+                <td class="keyc"><input type="radio" name="key" id="p-key-2" value="Name" aria-label="Name is the key"></td></tr>
+              <tr><td>Department</td>
+                <td><select id="p-type-3" name="type-3" aria-label="Type of Department"><option>Text</option><option disabled>Number</option><option disabled>Date</option><option disabled>Yes/No</option><option selected>Choice</option></select></td>
+                <td class="saw">5 values, each used several times: <span class="chip c1">Accounts</span> <span class="chip c2">Billing</span> <span class="chip c3">Sales</span> <span class="chip c4">Stores</span> <span class="chip c5">Tailoring</span></td>
+                <td class="keyc"><input type="radio" name="key" id="p-key-3" value="Department" aria-label="Department is the key" disabled></td></tr>
+              <tr><td>Date of Joining</td>
+                <td><select id="p-type-4" name="type-4" aria-label="Type of Date of Joining"><option>Text</option><option disabled>Number</option><option selected>Date</option><option disabled>Yes/No</option><option disabled>Choice</option></select></td>
+                <td class="saw">Every cell is a date. <code>2015-01-01</code>, <code>2016-06-04</code></td>
+                <td class="keyc"><input type="radio" name="key" id="p-key-4" value="Date of Joining" aria-label="Date of Joining is the key" disabled></td></tr>
+              <tr><td>Date of Leaving</td>
+                <td><select id="p-type-5" name="type-5" aria-label="Type of Date of Leaving"><option>Text</option><option disabled>Number</option><option selected>Date</option><option disabled>Yes/No</option><option disabled>Choice</option></select></td>
+                <td class="saw">3 dates, 21 blank. <code>2025-05-09</code></td>
+                <td class="keyc"><input type="radio" name="key" id="p-key-5" value="Date of Leaving" aria-label="Date of Leaving is the key" disabled></td></tr>
+              <tr><td>Active</td>
+                <td><select id="p-type-6" name="type-6" aria-label="Type of Active"><option>Text</option><option disabled>Number</option><option disabled>Date</option><option selected>Yes/No</option><option>Choice</option></select></td>
+                <td class="saw">Every cell is <code>true</code> or <code>false</code></td>
+                <td class="keyc"><input type="radio" name="key" id="p-key-6" value="Active" aria-label="Active is the key" disabled></td></tr>
+              <tr><td>Weekly Hours</td>
+                <td><select id="p-type-7" name="type-7" aria-label="Type of Weekly Hours"><option>Text</option><option selected>Number</option><option disabled>Date</option><option disabled>Yes/No</option><option>Choice</option></select></td>
+                <td class="saw">Every cell is a number. <code>48</code>, <code>40</code>, <code>37.5</code></td>
+                <td class="keyc"><input type="radio" name="key" id="p-key-7" value="Weekly Hours" aria-label="Weekly Hours is the key" disabled></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="sect">
+          <h2>How The First Rows Will Look</h2>
+          <div class="tbox">
+            <table>
+              <thead><tr><th>Employee Code</th><th>Name</th><th>Department</th><th>Date of Joining</th><th>Date of Leaving</th><th>Active</th><th class="num">Weekly Hours</th></tr></thead>
+              <tbody>
+              <tr><td class="code">E0007</td><td class="name">Asha Raman</td><td><span class="chip c3">Sales</span></td><td class="date"><time datetime="2015-01-01">01-Jan-2015</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">48</td></tr>
+              <tr><td class="code">E0014</td><td class="name">Bala Krishnan</td><td><span class="chip c2">Billing</span></td><td class="date"><time datetime="2016-06-04">04-Jun-2016</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">40</td></tr>
+              <tr><td class="code">E0021</td><td class="name">Chitra Mohan</td><td><span class="chip c4">Stores</span></td><td class="date"><time datetime="2017-11-07">07-Nov-2017</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">37.5</td></tr>
+              <tr><td class="code">E0028</td><td class="name">Dinesh Kumar</td><td><span class="chip c1">Accounts</span></td><td class="date"><time datetime="2018-04-10">10-Apr-2018</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">36</td></tr>
+              <tr><td class="code">E0035</td><td class="name">Esther Paul</td><td><span class="chip c5">Tailoring</span></td><td class="date"><time datetime="2019-09-13">13-Sep-2019</time></td><td class="date"><time datetime="2025-05-09">09-May-2025</time></td><td class="muted">No</td><td class="num">48</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="footbar"><button type="submit" class="btn primary">Create Table</button><a class="btn" href="#import">Cancel</a><span class="hint">Nothing is created until you press Create.</span></div>
+    </form>
+
+    <!-- The list with its form -->
+    <section class="view" id="employees">
+      <div class="bar">
+        <h1>Employees</h1><span class="count">24 rows</span>
+        <span class="grow"></span>
+        <a class="btn optional" href="#import">Import</a>
+        <a class="btn primary" href="#new">New Employee</a>
+      </div>
+      <form class="tools" id="view">
+        <span class="grow"></span>
+        <fieldset class="seg" aria-label="Row height">
+          <label><input type="radio" name="density" id="view-comfortable" value="comfortable" checked>Comfortable</label>
+          <label><input type="radio" name="density" id="view-compact" value="compact">Compact Rows</label>
+        </fieldset>
+        <details class="menu" id="view-menu">
+          <summary class="btn">View ▾</summary>
+          <div class="menu-box">
+            <fieldset><legend>A record opens as</legend>
+              <label><input type="radio" name="record" id="view-panel" value="panel" checked> Side panel</label>
+              <label><input type="radio" name="record" id="view-page" value="page"> Full page</label>
+            </fieldset>
+          </div>
+        </details>
+      </form>
+
+      <!-- data-open="panel" or "page" is set on .work while a record is open; aria-selected marks its row. -->
+      <div class="work">
+        <div class="gridbox" tabindex="0" aria-label="Employees">
+          <table>
+            <thead><tr><th>Employee Code</th><th>Name</th><th>Department</th><th>Date of Joining</th><th>Date of Leaving</th><th>Active</th><th class="num">Weekly Hours</th></tr></thead>
+            <tbody id="rows">
+            <tr><td class="code">E0007</td><td class="name"><a href="#record">Asha Raman</a></td><td><span class="chip c3">Sales</span></td><td class="date"><time datetime="2015-01-01">01-Jan-2015</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">48</td></tr>
+            <tr><td class="code">E0014</td><td class="name"><a href="#record">Bala Krishnan</a></td><td><span class="chip c2">Billing</span></td><td class="date"><time datetime="2016-06-04">04-Jun-2016</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">40</td></tr>
+            <tr><td class="code">E0021</td><td class="name"><a href="#record">Chitra Mohan</a></td><td><span class="chip c4">Stores</span></td><td class="date"><time datetime="2017-11-07">07-Nov-2017</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">37.5</td></tr>
+            <tr><td class="code">E0028</td><td class="name"><a href="#record">Dinesh Kumar</a></td><td><span class="chip c1">Accounts</span></td><td class="date"><time datetime="2018-04-10">10-Apr-2018</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">36</td></tr>
+            <tr><td class="code">E0035</td><td class="name"><a href="#record">Esther Paul</a></td><td><span class="chip c5">Tailoring</span></td><td class="date"><time datetime="2019-09-13">13-Sep-2019</time></td><td class="date"><time datetime="2025-05-09">09-May-2025</time></td><td class="muted">No</td><td class="num">48</td></tr>
+            <tr><td class="code">E0042</td><td class="name"><a href="#record">Farid Khan</a></td><td><span class="chip c3">Sales</span></td><td class="date"><time datetime="2020-02-16">16-Feb-2020</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">40</td></tr>
+            <tr><td class="code">E0049</td><td class="name"><a href="#record">Gita Nair</a></td><td><span class="chip c2">Billing</span></td><td class="date"><time datetime="2021-07-19">19-Jul-2021</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">37.5</td></tr>
+            <tr><td class="code">E0056</td><td class="name"><a href="#record">Hari Prasad</a></td><td><span class="chip c4">Stores</span></td><td class="date"><time datetime="2022-12-22">22-Dec-2022</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">36</td></tr>
+            <tr><td class="code">E0063</td><td class="name"><a href="#record">Indira Das</a></td><td><span class="chip c1">Accounts</span></td><td class="date"><time datetime="2023-05-25">25-May-2023</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">48</td></tr>
+            <tr><td class="code">E0070</td><td class="name"><a href="#record">Jacob Thomas</a></td><td><span class="chip c5">Tailoring</span></td><td class="date"><time datetime="2024-10-01">01-Oct-2024</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">40</td></tr>
+            <tr><td class="code">E0077</td><td class="name"><a href="#record">Kavya Iyer</a></td><td><span class="chip c3">Sales</span></td><td class="date"><time datetime="2015-03-04">04-Mar-2015</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">37.5</td></tr>
+            <tr><td class="code">E0084</td><td class="name"><a href="#record">Lokesh Rao</a></td><td><span class="chip c2">Billing</span></td><td class="date"><time datetime="2016-08-07">07-Aug-2016</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">36</td></tr>
+            <tr><td class="code">E0091</td><td class="name"><a href="#record">Meena Pillai</a></td><td><span class="chip c4">Stores</span></td><td class="date"><time datetime="2017-01-10">10-Jan-2017</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">48</td></tr>
+            <tr><td class="code">E0098</td><td class="name"><a href="#record">Naveen Shetty</a></td><td><span class="chip c1">Accounts</span></td><td class="date"><time datetime="2018-06-13">13-Jun-2018</time></td><td class="date"><time datetime="2025-08-27">27-Aug-2025</time></td><td class="muted">No</td><td class="num">40</td></tr>
+            <tr><td class="code">E0105</td><td class="name"><a href="#record">Oviya Selvam</a></td><td><span class="chip c5">Tailoring</span></td><td class="date"><time datetime="2019-11-16">16-Nov-2019</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">37.5</td></tr>
+            <tr><td class="code">E0112</td><td class="name"><a href="#record">Prakash Menon</a></td><td><span class="chip c3">Sales</span></td><td class="date"><time datetime="2020-04-19">19-Apr-2020</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">36</td></tr>
+            <tr><td class="code">E0119</td><td class="name"><a href="#record">Qadir Ali</a></td><td><span class="chip c2">Billing</span></td><td class="date"><time datetime="2021-09-22">22-Sep-2021</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">48</td></tr>
+            <tr><td class="code">E0126</td><td class="name"><a href="#record">Revathi Suresh</a></td><td><span class="chip c4">Stores</span></td><td class="date"><time datetime="2022-02-25">25-Feb-2022</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">40</td></tr>
+            <tr><td class="code">E0133</td><td class="name"><a href="#record">Sanjay Gupta</a></td><td><span class="chip c1">Accounts</span></td><td class="date"><time datetime="2023-07-01">01-Jul-2023</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">37.5</td></tr>
+            <tr><td class="code">E0140</td><td class="name"><a href="#record">Tara Joseph</a></td><td><span class="chip c5">Tailoring</span></td><td class="date"><time datetime="2024-12-04">04-Dec-2024</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">36</td></tr>
+            <tr><td class="code">E0147</td><td class="name"><a href="#record">Uma Shankar</a></td><td><span class="chip c3">Sales</span></td><td class="date"><time datetime="2015-05-07">07-May-2015</time></td><td class="date"><time datetime="2025-09-14">14-Sep-2025</time></td><td class="muted">No</td><td class="num">48</td></tr>
+            <tr><td class="code">E0154</td><td class="name"><a href="#record">Vikram Bose</a></td><td><span class="chip c2">Billing</span></td><td class="date"><time datetime="2016-10-10">10-Oct-2016</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">40</td></tr>
+            <tr><td class="code">E0161</td><td class="name"><a href="#record">Waseem Sheikh</a></td><td><span class="chip c4">Stores</span></td><td class="date"><time datetime="2017-03-13">13-Mar-2017</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">37.5</td></tr>
+            <tr><td class="code">E0168</td><td class="name"><a href="#record">Yamini Reddy</a></td><td><span class="chip c1">Accounts</span></td><td class="date"><time datetime="2018-08-16">16-Aug-2018</time></td><td class="date"><span class="empty">—</span></td><td class="muted">Yes</td><td class="num">36</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Edit -->
+        <form class="rec" id="record" data-next="#saved" novalidate>
+          <header><div><p class="kicker"><a href="#employees">Employees</a></p><h2 id="e-title">Chitra Mohan</h2></div><a class="x" href="#employees" aria-label="Close">×</a></header>
+          <div class="fields">
+            <div class="f"><label for="e-code">Employee Code <em>· key</em></label><input type="text" id="e-code" name="code" value="E0021" autocomplete="off"></div>
+            <div class="f"><label for="e-name">Name</label><input type="text" id="e-name" name="name" value="Chitra Mohan" autocomplete="off"></div>
+            <div class="f"><label for="e-dept">Department</label><select id="e-dept" name="department"><option value=""></option><option>Accounts</option><option>Billing</option><option>Sales</option><option selected>Stores</option><option>Tailoring</option></select></div>
+            <div class="f"><label for="e-hours">Weekly Hours</label><input type="text" id="e-hours" name="hours" value="37.5" inputmode="decimal" autocomplete="off"></div>
+            <div class="f"><label for="e-doj">Date of Joining</label><input type="date" id="e-doj" name="joined" value="2017-11-07"></div>
+            <div class="f"><label for="e-dol">Date of Leaving</label><input type="date" id="e-dol" name="left"></div>
+            <div class="f wide"><label class="check" for="e-active"><input type="checkbox" id="e-active" name="active" checked> Active</label></div>
+            <p class="from wide"><span class="tag">from employees.csv</span> row <span id="e-row">4</span></p>
+          </div>
+          <footer><button type="submit" class="btn primary">Save</button><a class="btn" href="#employees">Cancel</a><span class="grow"></span><button type="button" class="btn danger" popovertarget="confirm-delete">Delete</button></footer>
+        </form>
+
+        <!-- New -->
+        <form class="rec" id="new" data-next="#saved" novalidate>
+          <header><div><p class="kicker"><a href="#employees">Employees</a></p><h2>New Employee</h2></div><a class="x" href="#employees" aria-label="Close">×</a></header>
+          <div class="fields">
+            <div class="f"><label for="n-code">Employee Code <em>· key</em></label><input type="text" id="n-code" name="code" autocomplete="off"></div>
+            <div class="f"><label for="n-name">Name</label><input type="text" id="n-name" name="name" autocomplete="off"></div>
+            <div class="f"><label for="n-dept">Department</label><select id="n-dept" name="department"><option value=""></option><option>Accounts</option><option>Billing</option><option>Sales</option><option>Stores</option><option>Tailoring</option></select></div>
+            <div class="f"><label for="n-hours">Weekly Hours</label><input type="text" id="n-hours" name="hours" inputmode="decimal" autocomplete="off"></div>
+            <div class="f"><label for="n-doj">Date of Joining</label><input type="date" id="n-doj" name="joined"></div>
+            <div class="f"><label for="n-dol">Date of Leaving</label><input type="date" id="n-dol" name="left"></div>
+            <div class="f wide"><label class="check" for="n-active"><input type="checkbox" id="n-active" name="active" checked> Active</label></div>
+            <p class="from wide"><span class="tag">given by hand</span></p>
+          </div>
+          <footer><button type="submit" class="btn primary">Create</button><a class="btn" href="#employees">Cancel</a></footer>
+        </form>
+
+        <!-- New, refused: each message sits under the field it is about and says what to do -->
+        <form class="rec" id="refused" data-next="#saved" novalidate>
+          <header><div><p class="kicker"><a href="#employees">Employees</a></p><h2>New Employee</h2></div><a class="x" href="#employees" aria-label="Close">×</a></header>
+          <div class="fields">
+            <div class="f"><label for="r-code">Employee Code <em>· key</em></label><input type="text" id="r-code" name="code" value="E0021" autocomplete="off" aria-invalid="true" aria-describedby="r-code-err"><p class="err" id="r-code-err">E0021 is already used.</p></div>
+            <div class="f"><label for="r-name">Name</label><input type="text" id="r-name" name="name" autocomplete="off" aria-invalid="true" aria-describedby="r-name-err"><p class="err" id="r-name-err">Name is required.</p></div>
+            <div class="f"><label for="r-dept">Department</label><select id="r-dept" name="department"><option value=""></option><option>Accounts</option><option>Billing</option><option>Sales</option><option>Stores</option><option>Tailoring</option></select></div>
+            <div class="f"><label for="r-hours">Weekly Hours</label><input type="text" id="r-hours" name="hours" value="forty" inputmode="decimal" autocomplete="off" aria-invalid="true" aria-describedby="r-hours-err"><p class="err" id="r-hours-err">Enter a number, such as 40 or 37.5.</p></div>
+            <div class="f"><label for="r-doj">Date of Joining</label><input type="date" id="r-doj" name="joined"></div>
+            <div class="f"><label for="r-dol">Date of Leaving</label><input type="date" id="r-dol" name="left"></div>
+            <div class="f wide"><label class="check" for="r-active"><input type="checkbox" id="r-active" name="active" checked> Active</label></div>
+            <p class="from wide"><span class="tag">given by hand</span></p>
+          </div>
+          <footer><button type="submit" class="btn primary">Create</button><a class="btn" href="#employees">Cancel</a></footer>
+        </form>
+      </div>
+
+      <!-- Asking before a delete: the browser's own popover, no script -->
+      <div class="confirm" id="confirm-delete" popover>
+        <p><b>Delete <span id="d-name">Chitra Mohan</span>?</b>This can't be undone.</p>
+        <div class="btns"><button type="button" class="btn" popovertarget="confirm-delete" popovertargetaction="hide">Keep</button><a class="btn danger sure" href="#deleted">Delete</a></div>
+      </div>
+
+      <p class="toast" id="created" role="status">Created Employees with 24 rows</p>
+      <p class="toast" id="saved" role="status">Saved</p>
+      <p class="toast" id="deleted" role="status">Deleted <span id="t-name">Chitra Mohan</span></p>
+    </section>
+
+  </div>
+</div>
+
+<script>
+// Mock-up only. It stands in for the server: it follows the address, remembers the two View choices,
+// and fills the form from the row you pressed. Featherbase does each of these when it renders the page.
+const $ = id => document.getElementById(id), root = document.documentElement;
+const app = document.querySelector('.app'), work = document.querySelector('.work'), rows = [...$('rows').rows];
+const get = k => { try { return localStorage.getItem('featherbase-' + k); } catch { return null; } };
+const put = (k, v) => { try { localStorage.setItem('featherbase-' + k, v); } catch {} };
+let fresh = true, current = rows.find(tr => tr.cells[0].textContent === $('e-code').value);
+
+function route() {
+  const target = location.hash && $(location.hash.slice(1));
+  if (!target || target.id === 'fresh') fresh = true; else if (!target.closest('#import, #proposal')) fresh = false;
+  app.toggleAttribute('data-fresh', fresh);
+  document.querySelectorAll('.to-home').forEach(a => a.hash = fresh ? '#fresh' : '#home');
+  const inList = !!(target && target.closest('#employees')), rec = !!(target && target.classList.contains('rec'));
+  $('nav-home').toggleAttribute('aria-current', !inList); $('nav-employees').toggleAttribute('aria-current', inList);
+  if (rec) work.dataset.open = get('record') || 'panel'; else delete work.dataset.open;
+  rows.forEach(tr => tr === current && target && target.id === 'record' ? tr.setAttribute('aria-selected', 'true') : tr.removeAttribute('aria-selected'));
+  document.querySelectorAll(':popover-open').forEach(p => p.hidePopover());
+  $('view-menu').open = false;
+}
+function fill(tr) {
+  const c = tr.cells, iso = td => td.querySelector('time')?.dateTime || '';
+  $('e-code').value = c[0].textContent;
+  $('e-name').value = $('e-title').textContent = $('d-name').textContent = $('t-name').textContent = c[1].textContent;
+  $('e-dept').value = c[2].textContent; $('e-doj').value = iso(c[3]); $('e-dol').value = iso(c[4]);
+  $('e-active').checked = c[5].textContent === 'Yes'; $('e-hours').value = c[6].textContent; $('e-row').textContent = tr.rowIndex + 1;
+}
+$('rows').addEventListener('click', e => { const tr = e.target.closest('tr'); if (!tr) return; e.preventDefault(); current = tr; fill(tr); location.hash = '#record'; route(); });
+document.addEventListener('submit', e => { e.preventDefault(); location.hash = e.target.dataset.next || '#saved'; });
+$('view').addEventListener('change', e => { put(e.target.name, e.target.value); if (e.target.name === 'density') root.dataset.density = e.target.value; else if (work.dataset.open) work.dataset.open = e.target.value; });
+$('theme').addEventListener('change', e => e.target.value ? root.dataset.theme = e.target.value : delete root.dataset.theme);
+$('file').addEventListener('change', () => location.hash = '#proposal');
+$('drop').addEventListener('dragover', e => { e.preventDefault(); $('drop').classList.add('over'); });
+$('drop').addEventListener('dragleave', () => $('drop').classList.remove('over'));
+$('drop').addEventListener('drop', e => { e.preventDefault(); $('drop').classList.remove('over'); location.hash = '#proposal'; });
+if (get('record') === 'page') $('view-page').checked = true;
+if (get('density') === 'compact') { $('view-compact').checked = true; root.dataset.density = 'compact'; }
+addEventListener('hashchange', route); route();
+</script>
+</body>
+</html>
