@@ -50,7 +50,7 @@ import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
-import { ContentTabs, buttonClasses, menuItemClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, raisedClasses } from '@featherbase/shop-floor'
+import { ContentTabs, buttonClasses, menuItemClasses, MENU_GROUP_CLASSES, cardClasses, inputClasses, pillClasses, touchLinkClasses, raisedClasses } from '@featherbase/shop-floor'
 import { RecordChips } from './RecordChips'
 import type { Row } from './form-row'
 import { FieldControl } from './FieldControl'
@@ -696,6 +696,7 @@ export function FormView({
           )}
           {!isNew && baseline.retired_at != null && <RetiredBadge />}
           {!isNew && <ActionDisclosure label="Record actions" open={recordActionsOpen} onOpenChange={setRecordActionsOpen}>
+          <div role="group" aria-label="Record" className={MENU_GROUP_CLASSES}>
           {!isNew && (
             <RouterLink
               to="/featherbase/print/$table/$name"
@@ -769,6 +770,9 @@ export function FormView({
               {t('Reactivate')}
             </button>
           )}
+          </div>
+          {/* #1348 (UI owner): the two deletes sit in a group of their own at the bottom, set apart by space. */}
+          {((!isNew && access.data?.purge && !rowManaged) || (!isNew && access.data?.delete && !rowManaged && m.kind !== 'settings' && m.kind !== 'sub_table')) && <div role="group" aria-label="Delete" className={MENU_GROUP_CLASSES}>
           {/* #859: a System Manager's way out of the history rule. */}
           {!isNew && access.data?.purge && !rowManaged && (
             <button
@@ -779,7 +783,7 @@ export function FormView({
               data-testid="form-purge"
               className={menuItemClasses({ tone: 'negative' })}
             >
-              {t('Delete permanently')}
+              {t('Delete Permanently')}
             </button>
           )}
           {/* TLC-J2.1: the row I am looking at is the row I can remove.
@@ -804,6 +808,7 @@ export function FormView({
                 {t('Delete')}
               </button>
             )}
+          </div>}
           </ActionDisclosure>}
           {!rowsReadOnly && (
             <button
@@ -919,7 +924,7 @@ export function FormView({
                   className={buttonClasses({ variant: 'danger' })}
                   data-testid="delete-row-purge-instead"
                 >
-                  Delete permanently
+                  Delete Permanently
                 </button>
               )}
               {deleteOffersRetire && access.data?.retire && (
