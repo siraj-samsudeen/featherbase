@@ -92,6 +92,22 @@ describe('describe_people', () => {
     ])
   })
 
+  it("still names the job's role by its job title where Job Assignment carries no HR title", async () => {
+    const data: Record<string, Row[]> = {
+      ...DATA,
+      'dash.business_role': [{ row_id: 'br-lead', role_name: 'Floor Lead', by_hand_only: 0 }],
+      'dash.title_map': [{ row_id: 't1', title: 'Team Leader', business_role: 'br-lead' }],
+    }
+    // No Designation Table here, so the designation column is never asked for.
+    const base = tables(data)
+    const strict = { ...base, async list(table: string, args: { fields?: string[] } & Parameters<typeof base.list>[1]) {
+      if (table === 'Job Assignment' && args.fields?.includes('designation')) throw new Error('Unknown field designation')
+      return base.list(table, args)
+    } }
+    const [asha] = await describePeople({ ...context({ persons: ['p-asha'] }), baseTables: strict }, ON)
+    expect(asha!.jobs.find(j => j.job === 'Team Leader')?.business_role).toEqual({ table: 'dash.business_role', id: 'br-lead', name: 'Floor Lead' })
+  })
+
   it('asks nothing for no persons', async () => {
     expect(await describePeople(context({}), ON)).toEqual([])
   })
