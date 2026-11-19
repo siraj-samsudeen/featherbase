@@ -181,7 +181,7 @@ describe('on an address that opens an app', () => {
     expect((await get(api, `${ADMIN}/featherbase/admin`)).status).not.toBe(302)
   })
 
-  test('an app that is not installed shows "Application unavailable"', async ({ admin }) => {
+  test('an app that is not installed goes to the shared page that says nothing is there (#1328)', async ({ admin }) => {
     config.instanceAddresses = parseInstanceAddresses(
       JSON.stringify([{ address: DASH, opens: 'not_installed', emails: true }, { address: ADMIN, opens: 'admin' }]),
       'test',
@@ -189,8 +189,8 @@ describe('on an address that opens an app', () => {
     const home = await get(admin, `${DASH}/`)
     expect(home.headers.get('location')).toBe('/not_installed/')
     const root = await get(admin, `${DASH}/not_installed/`)
-    await expectStatus(root, 404)
-    expect(await root.text()).toContain('Application unavailable')
+    expect(root.status).toBe(302)
+    expect(root.headers.get('location')).toBe('/featherbase/unavailable?address=%2Fnot_installed%2F')
   })
 })
 
