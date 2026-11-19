@@ -38,7 +38,7 @@ describe('release', () => {
     await sql`update scheduled_job set enabled = true, last_outcome = 'error', last_run_at = now() where method = 'check_sla'`
     const r = await runMain(main, [])
     expect(r.code).toBe(0)
-    expect(r.stderr).toMatch(/^health: FAILING \(error\) Scheduled job: check_sla: The last run failed\. Fix: /m)
+    expect(r.stderr).toMatch(/^health: FAILING \(error\) Scheduled Job: Escalate SLA Breaches: The last run failed\. Fix: /m)
   })
 
   // A release holds its lock on one connection and runs health queries on

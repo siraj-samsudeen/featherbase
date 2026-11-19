@@ -28,7 +28,8 @@ export { INSTANCE_SETTINGS_ACTOR }
  *  (one object); `rows` is a Table whose rows are named by `row_id`. */
 const SCOPE = [
   // #923: never the roles everyone who signs in holds: a file reaches no roles.
-  { table: 'System Settings', shape: 'settings', fields: 'all', exclude: ['everyone_roles'], fileFields: ['privacy_notice'] },
+  // #1346: nor the MotherDuck reviewer, a person: a file reaches no people.
+  { table: 'System Settings', shape: 'settings', fields: 'all', exclude: ['everyone_roles', 'motherduck_reviewer'], fileFields: ['privacy_notice'] },
   // Every field of a sign-in method is configuration; its secrets (the Google
   // client secret) are deployment variables, never columns.
   { table: 'Sign In Method', shape: 'rows', fields: 'all', createRows: true },

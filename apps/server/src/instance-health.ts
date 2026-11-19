@@ -178,7 +178,7 @@ const overdueAfterMs = (cadence: string) => (2 * cadenceSeconds(cadence) + 600) 
 
 async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
   const rows = await sql`
-    select j.method, j.cadence, j.enabled, j.last_run_at, j.last_outcome, j.last_result, j.updated_at,
+    select j.method, j.title, j.cadence, j.enabled, j.last_run_at, j.last_outcome, j.last_result, j.updated_at,
       (select e.error from job_execution e where e.method = j.method and e.outcome = 'error'
         order by e.started_at desc nulls last, e.created_at desc limit 1) as last_error
     from scheduled_job j order by j.method`
@@ -186,7 +186,8 @@ async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
     const method = String(r.method)
     const base = {
       key: `scheduled-job:${method}`,
-      title: `Scheduled job: ${method}`,
+      // #1330: the job by its title; its code only when it has none.
+      title: `Scheduled Job: ${r.title || method}`,
       severity: 'error' as const,
       why: 'A scheduled job does its work only when it runs. A failed or stopped run means that work is not being done.',
     }

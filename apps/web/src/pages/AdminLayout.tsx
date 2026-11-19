@@ -1016,7 +1016,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                   ...(setupNeeded ? [{ to: SETUP_PERSON_PATH, label: SETUP_PERSON_LABEL, icon: ListChecks, testid: 'setup-administrators-link' }] : []),
                   { to: '/featherbase/admin/apps', label: 'Apps', icon: Compass, testid: 'apps-link' },
                   { to: JOBS_PATH, label: 'Jobs', icon: CalendarClock, testid: 'jobs-link' },
-                  { to: INSTANCE_HEALTH_PATH, label: 'Instance health', icon: ListChecks, testid: 'instance-health-link' },
+                  { to: INSTANCE_HEALTH_PATH, label: 'Instance Health', icon: ListChecks, testid: 'instance-health-link' },
                 ]
               : []}
           />
