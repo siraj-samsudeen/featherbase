@@ -94,8 +94,7 @@ export function useOnAppAddress(): boolean | undefined {
 
 function nameOf(context: string, brand: Brand | undefined): string {
   if (context === ADMIN) return ADMIN_NAME
-  if (brand?.opens === context) return brand.app_name
-  return context
+  return brand?.opens === context ? brand.app_name : context
 }
 
 /** The one app a person's own pages are named for: Feather Dash. */

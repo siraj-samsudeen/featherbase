@@ -94,6 +94,10 @@ describe('snapshot lifecycle', () => {
     expect(r.state).toBe('failed')
   })
 
+  test('a dataset with no registered definition does not build', async () => {
+    expect(await buildSnapshot('unregistered_probe')).toEqual({ status: 'failed', reason: 'no dataset registered as unregistered_probe' })
+  })
+
   test('a dataset with no registered definition has no snapshot a reader may use', async () => {
     stub(sampleRows())
     const built = await buildSnapshot(PROBE)
