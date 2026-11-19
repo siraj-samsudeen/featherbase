@@ -4,7 +4,7 @@
 // answer is whoIs(), the one function Dash's own screens use.
 import { istToday } from './report.ts'
 import { all, whoIs, type AccessContext } from './report-access-server.ts'
-import { ROLE, ROLE_ASSIGNMENT, TITLE_MAP } from './business-access.ts'
+import { DESIGNATION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, readsDesignations, type Base } from './business-access.ts'
 import { inForce, key, mapping, type HandChange } from './business-roles.ts'
 import { EMPLOYEE_STATUS, day, exact, holdsOn, text } from './values.ts'
 
@@ -62,6 +62,11 @@ async function businessRolesOf(ctx: AccessContext, persons: string[], on: string
   const corrections = (await all(base, ROLE_ASSIGNMENT, ['person', 'change', 'business_role', 'ends_on', 'removed'], [['person', 'in', persons]]))
     .map(r => ({ id: exact(r.row_id), person: exact(r.person), change: text(r.change) as HandChange['change'], role: exact(r.business_role), ends_on: day(r.ends_on) || null, removed: r.removed === 1 || r.removed === true || r.removed === '1' }))
     .filter(h => h.change === 'Correct' && inForce(h, on) && roles.some(r => r.id === h.role))
+  // HR's titles, where Job Assignment names a Designation record (as businessAccess reads them).
+  const designated = [...new Set(jobs.map(row => exact(row.designation)).filter(Boolean))]
+  const designationNames = new Map(designated.length && await readsDesignations(base as Base)
+    ? (await all(base, DESIGNATION, ['designation'], [['row_id', 'in', designated]])).map(row => [exact(row.row_id), text(row.designation)])
+    : [])
   const named = (id: string | undefined) => { const r = roles.find(x => x.id === id); return r ? { id: r.id, name: r.name } : undefined }
   return (person: string, job: string, site: string | undefined) => {
     const corrected = corrections.find(c => c.person === person)
@@ -69,6 +74,7 @@ async function businessRolesOf(ctx: AccessContext, persons: string[], on: string
     const mine = new Set(employees.filter(e => exact(e.person) === person).map(e => exact(e.row_id)))
     const row = jobs.find(r => mine.has(exact(r.employee)) && exact(r.job) === job && (exact(r.site) || undefined) === site)
     if (!row) return undefined
-    return named((exact(row.designation) && byTitle.get(key(exact(row.designation)))) || byTitle.get(key(job)))
+    const title = designationNames.get(exact(row.designation))
+    return named((title && byTitle.get(key(title))) || byTitle.get(key(job)))
   }
 }

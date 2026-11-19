@@ -611,7 +611,8 @@ export async function updateTable(
   if (def.scope_required === undefined) def.scope_required = existing.scope_required
   if (def.queue === undefined) def.queue = existing.queue
   if (def.correction_path === undefined) def.correction_path = existing.correction_path
-  if (def.person_column === undefined) def.person_column = existing.person_column
+  // #1345 (as #1346's Codex round 2): an update that leaves person_column out writes nothing to it;
+  // `existing` is the effective setting, an override included.
   // #1346 (Codex round 2): an update that leaves search_columns out writes
   // nothing to it; `existing` is the effective list, an override included.
   validateDef(def)

@@ -3,6 +3,7 @@ import { AppError } from './errors'
 import { hasPermission } from './permissions'
 import { scopedWhere } from './query'
 import { tableLabel } from './access-explanation'
+import { getMeta } from './meta'
 import { personLabels, type PersonLabel } from './person-labels'
 import { isSensitiveColumn } from './sensitive-columns'
 
@@ -76,7 +77,7 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   // per-keystroke ilike out to every foreign store is not a typeahead's job.
   // #1041: an archived Table is out of everyday use, so out of search too.
   const tables = await sql`
-    select name, owner_app, label, person_column from table_def where kind = 'table' and data_source is null and archived_at is null
+    select name, owner_app, label from table_def where kind = 'table' and data_source is null and archived_at is null
     order by name`
   // Stable sort: ordinary Tables first, registries last (#431).
   const isRegistry = (n: unknown) => (registryLabel(String(n)) ? 1 : 0)
@@ -91,8 +92,16 @@ export async function* streamSearch(query: string, user: string, signal?: AbortS
   // #1345: Person and the Tables whose rows are a person's record search as one: such a row's hit
   // folds into its Person, so one human is listed once, and each Person reads its label.
   const people = readable.find((t) => t.name === 'Person')
-  const records = people ? readable.filter((t) => t.person_column && t.name !== 'Person') : []
-  const queue: (Record<string, unknown> | 'people')[] = [...readable.filter((t) => t !== people && !records.includes(t))]
+  // The effective setting, a Metadata Override included (Codex standard round 1).
+  const records: Record<string, unknown>[] = []
+  if (people)
+    for (const t of readable) {
+      // A Table whose metadata is not available now (an app turned off) folds nothing; searchOne skips it.
+      const column = t.name === 'Person' ? null : (await getMeta(String(t.name)).catch(() => null))?.person_column
+      if (column) records.push({ ...t, person_column: column })
+    }
+  const folded = new Set(records.map((t) => t.name))
+  const queue: (Record<string, unknown> | 'people')[] = [...readable.filter((t) => t !== people && !folded.has(t.name))]
   if (people) queue.unshift('people')
   const finished: SearchEvent[] = []
   // Every search started, so none outlives the lifecycle lock the caller holds.
@@ -185,8 +194,9 @@ async function personsOf(table: string, column: string, rowIds: string[], user: 
 async function personTitles(ids: string[], user: string): Promise<Map<string, string>> {
   if (!ids.length) return new Map()
   const { meta, table, where, cols, readExpression } = await scopedWhere('Person', user, [])
-  const shown = meta.title_column && cols.has(meta.title_column) ? readExpression(meta.title_column) : sql`row_id`
-  const rows = await sql`select row_id, ${shown}::text as title from ${sql(table)} where ${where} and row_id = any(${ids})`
+  // A name the viewer may not read names no one: the record's own hit stays (Codex standard round 1).
+  if (!meta.title_column || !cols.has(meta.title_column)) return new Map()
+  const rows = await sql`select row_id, ${readExpression(meta.title_column)}::text as title from ${sql(table)} where ${where} and row_id = any(${ids})`
   return new Map(rows.filter((r) => String(r.title ?? '').trim()).map((r) => [String(r.row_id), String(r.title).trim()]))
 }
 

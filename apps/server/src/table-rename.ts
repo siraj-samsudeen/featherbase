@@ -108,6 +108,8 @@ export async function renameColumn(
       where name = ${meta.name} and ${from} = any(search_columns)`
     // #1345: and the column through which each row is a person's record.
     await tx`update table_def set person_column = ${target} where name = ${meta.name} and person_column = ${from}`
+    await tx`update metadata_override set value = ${target}
+      where table_name = ${meta.name} and column_name is null and property = 'person_column' and trim(value) = ${from}`
     // A Metadata Override names them as text ("login, email"): rename it there too.
     for (const o of await tx`select row_id, value from metadata_override
         where table_name = ${meta.name} and column_name is null and property = 'search_columns'`) {
