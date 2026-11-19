@@ -560,12 +560,8 @@ export function RowConnections({ table, row, values, layout = 'chips', onSection
   const full = groups.filter((g) => g.count > 0)
   const empty = groups.filter((g) => g.count === 0)
   const shown = showEmpty ? [...full, ...empty] : full
-  const emptyToggle = empty.length > 0 && (
-    <button type="button" onClick={() => setShowEmpty((was) => !was)} aria-expanded={showEmpty} data-testid="connections-show-empty"
-      className={touchLinkClasses('text-sm text-ink-muted hover:text-ink hover:underline')}>
-      {showEmpty ? 'Hide empty' : `Show ${fmtCount(empty.length)} empty`}
-    </button>
-  )
+  // #1349 (consistency check): the same fold as the pane and the Links tab.
+  const emptyToggle = empty.length > 0 && <NoneFold count={empty.length} open={showEmpty} onToggle={() => setShowEmpty((was) => !was)} />
   // #1267 on #1218 slice 1: a Person's right column draws each group with
   // LinkedRowsGroup, its rows named by what they point to; rows open in the pane.
   if (layout === 'list') {
@@ -581,8 +577,8 @@ export function RowConnections({ table, row, values, layout = 'chips', onSection
         ))}
         {shown.map((g) => <LinkedRowsGroup key={g.key} table={table} record={row} group={g} onOpen={open} />)}
         {/* Said only once the counts are in, never while they load. */}
-        {cnx.data && !full.length && !showEmpty && <p className="text-sm text-ink-subtle">Nothing links here yet.</p>}
-        {emptyToggle && <span className="px-2">{emptyToggle}</span>}
+        {cnx.data && !full.length && !showEmpty && <p><NothingPointsAt kind={tableLabel(table, meta.data)} /></p>}
+        {emptyToggle && <span className="self-start">{emptyToggle}</span>}
       </section>
     )
   }

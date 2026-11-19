@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { rowDisplayTitle, type ListFilter } from 'shared'
-import { ChevronDown, ChevronLeft, ChevronRight, RecordLink, fmtCount, iconButtonClasses } from '@featherbase/shop-floor'
+import { ChevronDown, ChevronLeft, ChevronRight, RecordLink, fmtCount, iconButtonClasses, raisedClasses } from '@featherbase/shop-floor'
 import { api, listResource } from '../lib/api'
 import { tableLabel, useMeta } from '../lib/meta'
 import { replace as replaceStep, type NavPath, type NavStep } from '../lib/nav-path'
@@ -224,7 +224,7 @@ function SidewaysList({ nav, siblings, close }: { nav: AddressNavigation; siblin
   const pick = (row: string) => { close(); nav.replace(siblings.stepFor(row)) }
   return (
     <div role="menu" aria-label="Other rows in this list"
-      className="absolute left-0 top-full z-30 mt-1 flex w-72 flex-col gap-1 rounded-xl bg-surface p-2 shadow-lg">
+      className={raisedClasses('absolute left-0 top-full z-30 mt-1 flex w-72 flex-col gap-1 p-2')}>
       <span className="px-2 text-xs text-ink-muted" data-testid="sideways-position">
         {at >= 0 ? `${fmtCount(at + 1)} of ${fmtCount(total)}` : `${fmtCount(total)}`} · {tableLabel(siblings.table, meta.data)}
       </span>

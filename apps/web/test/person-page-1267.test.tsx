@@ -253,12 +253,13 @@ test("a Person's own links lead its linked records, with empty groups a click aw
   const kims = await screen.findByTestId('connections-list')
   // Its own link (Replaced by) leads the list.
   expect(await within(kims).findByText('Replaced by')).toBeInTheDocument()
-  const toggle = await within(kims).findByTestId('connections-show-empty')
-  expect(within(kims).getByText('Nothing links here yet.')).toBeInTheDocument()
+  // #1349: the same fold and words as the pane and the Links tab.
+  const toggle = await within(kims).findByRole('button', { name: /^\+ \d+ tables? with none$/ })
+  expect(within(kims).getByText('Nothing points at this person yet.')).toBeInTheDocument()
   expect(within(kims).queryAllByTestId('linked-rows-group')).toHaveLength(0)
   fireEvent.click(toggle)
   expect(within(kims).getAllByTestId('linked-rows-group').length).toBeGreaterThan(0)
-  expect(within(kims).queryByText('Nothing links here yet.')).not.toBeInTheDocument()
+  expect(within(kims).queryByText('Nothing points at this person yet.')).not.toBeInTheDocument()
 })
 
 test("Google's Set Up dialog can expect the person's own address instead of inviting it", async ({ admin, createUser }) => {

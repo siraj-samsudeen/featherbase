@@ -27,7 +27,7 @@ export function NoneFold({ count, open, onToggle }: { count: number; open: boole
   const tables = `${fmtCount(count)} ${count === 1 ? 'table' : 'tables'} with none`
   return (
     <button type="button" aria-expanded={open} onClick={onToggle} data-testid="none-fold"
-      className="inline-flex items-center gap-1.5 rounded-full bg-fill px-3 py-[5px] text-[13px] text-ink-subtle transition-colors hover:bg-fill-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus pointer-coarse:min-h-control motion-reduce:transition-none">
+      className="inline-flex items-center gap-1.5 rounded-full bg-fill px-3 py-[5px] text-[13px] leading-4 text-ink-subtle transition-colors hover:bg-fill-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus pointer-coarse:min-h-control motion-reduce:transition-none">
       {open ? `Hide ${tables}` : `+ ${tables}`}
     </button>
   )
