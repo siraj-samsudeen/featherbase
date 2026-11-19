@@ -163,3 +163,25 @@ test('the counts follow the rows when some are deleted', async ({ admin }) => {
   await userEvent.click(await screen.findByTestId('bulk-delete-confirm'))
   await waitFor(() => expect(value(STORE, 'Bayside')).toHaveTextContent('2'))
 })
+
+test('"Not linked to any" comes before the ruled-out values', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(listPath(SECTION), admin)
+  await waitFor(() => expect(value(FLOOR, 'Ground Floor')).toHaveTextContent('2'))
+  await userEvent.click(value(FLOOR, 'Ground Floor'))
+  await waitFor(() => expect(value(STORE, 'Northgate')).toHaveAttribute('data-state', 'ruled-out'))
+  const names = within(narrowList(STORE)).getAllByRole('button', { name: / \d+$/ }).map((b) => b.getAttribute('aria-label'))
+  expect(names).toEqual(['Bayside 1', `Not linked to any ${STORE} 1`, 'Northgate 0'])
+})
+
+test('Clear All Filters on the panel picks narrows in place too', async ({ admin }) => {
+  await seed(admin)
+  const r = await renderApp(listPath(SECTION), admin)
+  await waitFor(() => expect(value(STORE, 'Bayside')).toHaveTextContent('3'))
+  await userEvent.click(value(STORE, 'Bayside'))
+  await userEvent.click(value(FLOOR, 'First Floor'))
+  await waitFor(() => expect(rowTitles()).toHaveLength(2))
+  await userEvent.click(screen.getByTestId('filter-clear-all'))
+  await waitFor(() => expect(rowTitles()).toHaveLength(5))
+  expect(walk(r).steps).toHaveLength(1)
+})
