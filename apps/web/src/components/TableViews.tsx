@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Notice, buttonClasses, inputClasses, raisedClasses } from '@featherbase/shop-floor'
+import { Notice, buttonClasses, menuItemClasses, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
 import { describeViewFilters, isView, type TableMeta } from '../lib/meta'
 
@@ -87,7 +87,7 @@ export function SaveAsView({ table, filters }: { table: string; filters: readonl
           setError(null)
           setOpen(true)
         }}
-        className={buttonClasses()}
+        className={menuItemClasses()}
         data-testid="save-as-view"
       >
         New view…

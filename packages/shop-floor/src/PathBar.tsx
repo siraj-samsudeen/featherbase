@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from './Button'
 import { cx } from './cx'
+import { menuClasses, menuItemClasses } from './Menu'
 import { ChevronDown, ChevronRight } from './icons'
 
 export interface PathStep {
@@ -44,12 +45,11 @@ function HiddenSteps({ label, items, onStep }: {
       >…</button>
       {open && (
         <div role="menu" aria-label={label}
-          className={cx('absolute z-20 mt-1 flex w-72 max-w-[calc(100vw-2rem)] flex-col rounded-card bg-raised py-1 shadow-raised',
-            label === 'Later steps' ? 'right-0' : 'left-0')}>
+          className={menuClasses(cx('absolute z-20 mt-1', label === 'Later steps' ? 'right-0' : 'left-0'))}>
           {items.map(({ step, index }) => (
             <button key={step.key} type="button" role="menuitem" onClick={() => { setOpen(false); onStep(index) }}
-              className="min-h-control px-3 py-1.5 text-left text-sm text-ink break-words hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus"
-            >{stepText(step)}</button>
+              className={menuItemClasses()} title={stepText(step)}
+            ><span className="min-w-0 truncate">{stepText(step)}</span></button>
           ))}
         </div>
       )}
@@ -201,12 +201,12 @@ export function RecentPaths({ paths, onPick }: {
       </Button>
       {open && (
         <div role="menu" aria-label="Recent paths"
-          className="absolute right-0 z-20 mt-1 flex w-80 max-w-[calc(100vw-2rem)] flex-col rounded-card bg-raised py-1 shadow-raised">
+          className={menuClasses('absolute right-0 z-20 mt-1')}>
           {shown.length === 0 && <p className="px-3 py-2 text-sm text-ink-muted">No recent paths yet</p>}
           {shown.map((path) => (
             <button key={path.key} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(path.key) }}
-              className="min-h-control px-3 py-1.5 text-left text-sm text-ink wrap-anywhere hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus"
-            >{path.label}</button>
+              className={menuItemClasses()} title={path.label}
+            ><span className="min-w-0 truncate">{path.label}</span></button>
           ))}
         </div>
       )}
