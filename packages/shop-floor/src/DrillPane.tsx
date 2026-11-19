@@ -27,8 +27,8 @@ export function DrillPane({ kind, title, onClose, actions, children, place }: {
         event.stopPropagation()
         onClose()
       }}
-      className={cx('flex min-h-0 min-w-0 flex-col bg-surface focus:outline-none',
-        place === 'right' ? 'h-full shadow-raised' : 'shadow-raised')}
+      className={cx('flex min-h-0 min-w-0 flex-col bg-raised shadow-raised focus:outline-none',
+        place === 'right' && 'h-full')}
     >
       {/* The title has the width beside Close to itself, wrapping between
           words; the actions sit on their own line under it and wrap there. */}

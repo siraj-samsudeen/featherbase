@@ -27,6 +27,7 @@
   --color-fill: #f1f2f4; /* #1348: a button or an input is a fill, never a box */
   --color-fill-hover: #e7e9ed; /* a filled button under the pointer */
   --color-hover: #f1f5ff; /* the row under the pointer, and the selected row */
+  --color-raised: #ffffff; /* #1348: a surface that floats (the pane, a menu); lighter than the panel in dark */
   --color-tag: #eef0f3; /* a quiet tag's fill: one step below the canvas, seen on every surface */
   --color-tag-ink: #374151; /* #1348: a tag's words ("from HR", "Team") */
   --color-border: #e5e7eb; /* hairlines between content */
@@ -171,6 +172,7 @@
     --color-fill: #1f2a40;
     --color-fill-hover: #28354f;
     --color-hover: #1a2846;
+    --color-raised: #222d45;
     --color-tag: #24304a;
     --color-tag-ink: #c3cddb;
     --color-border: #24314a;

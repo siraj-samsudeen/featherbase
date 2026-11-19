@@ -370,8 +370,8 @@ export function LinkControl({
           // Off the Tab order, which a browser otherwise gives a list that scrolls.
           tabIndex={-1}
           className={place
-            ? 'fixed z-30 overflow-y-auto rounded-card bg-surface shadow-raised'
-            : 'absolute z-10 mt-1 max-h-80 w-full min-w-56 overflow-y-auto rounded-card bg-surface shadow-raised'}
+            ? 'fixed z-30 overflow-y-auto rounded-card bg-raised shadow-raised'
+            : 'absolute z-10 mt-1 max-h-80 w-full min-w-56 overflow-y-auto rounded-card bg-raised shadow-raised'}
           style={place ?? undefined}
           onFocus={() => clearTimeout(blurTimer.current)}
           onBlur={leave}

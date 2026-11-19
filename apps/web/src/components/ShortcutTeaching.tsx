@@ -106,7 +106,7 @@ function ShortcutsPanel() {
       role="dialog"
       aria-modal="false"
       aria-label="Keyboard Shortcuts"
-      className="fixed z-[46] grid w-[340px] max-w-[calc(100vw-2rem)] gap-2 rounded-card bg-surface p-3 text-[13px] shadow-raised"
+      className="fixed z-[46] grid w-[340px] max-w-[calc(100vw-2rem)] gap-2 rounded-card bg-raised p-3 text-[13px] shadow-raised"
       style={(({ right, top }) => ({ top: top + 16, right: window.innerWidth - right + 16 }))(contentArea())}
       data-testid="shortcuts-panel"
     >
@@ -262,7 +262,7 @@ function Tip({ tip }: { tip: ShownTip }) {
       role="status"
       aria-label={tip.reminder ? 'Reminder' : 'Tip'}
       className={cx(
-        'fixed z-[45] flex items-center gap-2 rounded-control bg-surface py-1 pl-2.5 pr-1.5 text-[13px] leading-4 text-ink shadow-raised',
+        'fixed z-[45] flex items-center gap-2 rounded-control bg-raised py-1 pl-2.5 pr-1.5 text-[13px] leading-4 text-ink shadow-raised',
         tip.reminder ? 'border-caution' : 'border-action',
       )}
       style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: 'hidden' }}

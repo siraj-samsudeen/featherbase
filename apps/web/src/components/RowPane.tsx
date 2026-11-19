@@ -228,8 +228,8 @@ function RecordFrame({ kind, title, chips, onClose, actions, children, place, fr
         event.stopPropagation()
         onClose()
       }}
-      className={cx('flex min-h-0 min-w-0 flex-col bg-surface focus:outline-none',
-        framed ? 'h-full rounded-card shadow-raised' : place === 'right' ? 'h-full' : '')}
+      className={cx('flex min-h-0 min-w-0 flex-col focus:outline-none',
+        framed ? 'h-full rounded-card bg-raised shadow-raised' : place === 'right' ? 'h-full bg-surface' : 'bg-surface')}
     >
       {/* #1282 C14: "← · Level N of N · … · Open Full Page · ✕" on one line, the title under it at full width. */}
       <header className="flex shrink-0 flex-col gap-1.5 px-[22px] pb-2 pt-5">

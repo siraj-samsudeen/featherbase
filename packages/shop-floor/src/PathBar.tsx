@@ -44,7 +44,7 @@ function HiddenSteps({ label, items, onStep }: {
       >…</button>
       {open && (
         <div role="menu" aria-label={label}
-          className={cx('absolute z-20 mt-1 flex w-72 max-w-[calc(100vw-2rem)] flex-col rounded-card bg-surface py-1 shadow-raised',
+          className={cx('absolute z-20 mt-1 flex w-72 max-w-[calc(100vw-2rem)] flex-col rounded-card bg-raised py-1 shadow-raised',
             label === 'Later steps' ? 'right-0' : 'left-0')}>
           {items.map(({ step, index }) => (
             <button key={step.key} type="button" role="menuitem" onClick={() => { setOpen(false); onStep(index) }}
@@ -201,7 +201,7 @@ export function RecentPaths({ paths, onPick }: {
       </Button>
       {open && (
         <div role="menu" aria-label="Recent paths"
-          className="absolute right-0 z-20 mt-1 flex w-80 max-w-[calc(100vw-2rem)] flex-col rounded-card bg-surface py-1 shadow-raised">
+          className="absolute right-0 z-20 mt-1 flex w-80 max-w-[calc(100vw-2rem)] flex-col rounded-card bg-raised py-1 shadow-raised">
           {shown.length === 0 && <p className="px-3 py-2 text-sm text-ink-muted">No recent paths yet</p>}
           {shown.map((path) => (
             <button key={path.key} type="button" role="menuitem" onClick={() => { setOpen(false); onPick(path.key) }}

@@ -13,7 +13,7 @@ export function panelClasses(className?: string): string {
 
 /** #1348: a surface that floats over the page (a menu, a popover, the pane, a hover card): shadow, no border. */
 export function raisedClasses(className?: string): string {
-  return recipe('rounded-card bg-surface shadow-raised', className)
+  return recipe('rounded-card bg-raised shadow-raised', className)
 }
 
 /** A surface for related content. A titled card is a named region. */
