@@ -102,7 +102,7 @@ const ROLES = [
   'opportunity', 'opportunity-tint', 'missing', 'missing-tint',
   'scrim', 'on-scrim', 'series-1', 'series-2', 'series-3', 'series-4', 'series-5',
   // #1348 calmer look: the control fill, the row hover, and the chip tints.
-  'fill', 'fill-hover', 'hover', 'tag-ink',
+  'fill', 'fill-hover', 'hover', 'tag-ink', 'raised',
 ]
 // #1348: the chips' hues. The first eight are the category tints, picked by a value's name; green, amber and
 // grey are the status chips (live, not yet, finished); red marks a data problem. Each has a tint and an ink.
@@ -112,7 +112,7 @@ ROLES.push(...CHIP_HUES.flatMap((hue) => [`chip-${hue}`, `chip-${hue}-ink`]))
 // #1348: board 1 (Visual System) of docs/design/mockups/look-and-relationships.html, measured.
 describe('the calmer look tokens are board 1, exactly', () => {
   test.each([
-    ['canvas', '#f4f5f7'], ['surface', '#ffffff'], ['subtle', '#f6f7f9'], ['fill', '#f1f2f4'], ['hover', '#f1f5ff'],
+    ['canvas', '#f4f5f7'], ['surface', '#ffffff'], ['raised', '#ffffff'], ['subtle', '#f6f7f9'], ['fill', '#f1f2f4'], ['hover', '#f1f5ff'],
     ['tag', '#eef0f3'], ['tag-ink', '#374151'], ['ink', '#151a23'], ['ink-subtle', '#5b6472'], ['action', '#1d4ed8'], ['action-tint', '#eef2ff'],
     ['chip-green', '#dcfce7'], ['chip-green-ink', '#166534'], ['chip-amber', '#fef3c7'], ['chip-amber-ink', '#92400e'],
     ['chip-grey', '#f1f2f4'], ['chip-grey-ink', '#4b5563'], ['chip-red', '#fee2e2'], ['chip-red-ink', '#991b1b'],
@@ -168,7 +168,7 @@ test('the token block is emitted whole in production (@theme static)', () => {
   expect(CSS).toMatch(/@theme static \{[^}]*--color-action-hover:/)
 })
 
-const SURFACES = ['surface', 'canvas', 'subtle']
+const SURFACES = ['surface', 'canvas', 'subtle', 'raised']
 const TEXT = ['ink', 'ink-muted', 'ink-subtle', 'action', 'negative', 'caution', 'positive', 'opportunity', 'missing']
 const MEANING = ['negative', 'caution', 'positive', 'opportunity', 'missing']
 
@@ -212,6 +212,15 @@ describe.each(themes)('%s tokens', (_mode, t) => {
     ['ink', 'hover'], ['ink-subtle', 'hover'], ['action', 'hover'], ['action', 'subtle'],
     ...CHIP_HUES.map((hue) => [`chip-${hue}-ink`, `chip-${hue}`] as [string, string]),
   ]
+  // #1348 (UI owner): a shadow doesn't show in dark, so a raised surface (the pane, a menu) is lighter than the
+  // panel; the fills and the quiet block inside it still read against it.
+  test('a raised surface stands off the panel, and its fills still show on it', () => {
+    if (_mode.includes('dark')) expect(luminance(t.raised)).toBeGreaterThan(luminance(t.surface))
+    if (_mode.includes('dark')) expect(ratio(t.raised, t.surface)).toBeGreaterThanOrEqual(1.12)
+    else expect(t.raised).toBe(t.surface)
+    for (const inner of ['fill', 'subtle']) expect(t[inner], inner).not.toBe(t.raised)
+  })
+
   test.each(textPairs)('text %s on %s reaches 4.5:1', (fg, bg) => {
     expect(t[fg] && t[bg], `${fg} or ${bg} undefined`).toBeTruthy()
     expect(ratio(t[fg], t[bg])).toBeGreaterThanOrEqual(4.5)

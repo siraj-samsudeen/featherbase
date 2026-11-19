@@ -67,7 +67,7 @@ describe('surfaces', () => {
   })
   test('a raised surface (a menu, the pane, a hover card) floats on its shadow, with no border', () => {
     const c = classes(raisedClasses())
-    expect(c).toEqual(expect.arrayContaining(['bg-surface', 'shadow-raised']))
+    expect(c).toEqual(expect.arrayContaining(['bg-raised', 'shadow-raised']))
     expect(drawsALine(c)).toBe(false)
   })
 })
