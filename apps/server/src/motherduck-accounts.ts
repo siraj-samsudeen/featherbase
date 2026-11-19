@@ -23,7 +23,7 @@ import { runPackageAction } from './runtime-packages'
 import { withAppIdentity } from './app-lifecycle'
 import { actionTransaction } from './action-transaction'
 import { createServiceAccount } from './service-accounts'
-import { describePeople } from './person-standing'
+import { describePeople, type Standing } from './person-standing'
 
 export const MOTHERDUCK_ACCOUNT_TABLE = 'MotherDuck Account'
 export const MOTHERDUCK_ACCOUNT_JOB = 'sync_motherduck_accounts'
@@ -48,10 +48,9 @@ export type MotherDuckUser = z.infer<typeof userSchema>
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>
 // Injectable for the sandboxed suite (no network).
-const realFetch: Fetch = (url, init) => fetch(url, init)
-let fetcher: Fetch = realFetch
+let fetcher: Fetch = fetch
 export function _setMotherDuckUsersFetch(f: Fetch | null) {
-  fetcher = f ?? realFetch
+  fetcher = f ?? fetch
 }
 
 /** Every user MotherDuck lists, all pages. The token is sent, never logged or returned. */
@@ -156,18 +155,20 @@ async function linkByEmail(actor: string): Promise<number> {
   return sure.length
 }
 
+/** One candidate as the reviewer reads it: name (id) · code · job at place. */
+export function candidateLine(name: string, person: string, s: Standing | undefined): string {
+  const jobs = (s?.jobs ?? []).map((j) => [j.job, j.site?.name].filter(Boolean).join(' at ')).join('; ')
+  return [`- ${name} (${person})`, s?.code, jobs].filter(Boolean).join(' · ')
+}
+
 /** People whose name the username reads as, for the reviewer to choose from. */
 async function candidates(username: string): Promise<string[]> {
   const key = username.replace(/^ea_/i, '').toLowerCase().replace(/[^a-z]/g, '')
-  if (key.length < 3) return []
+  // Three letters at least: a shorter key reads as everyone.
   const rows = await sql`select row_id, full_name from person where replaced_by is null and full_name is not null
-    and regexp_replace(lower(full_name), '[^a-z]', '', 'g') like ${key + '%'} order by full_name, row_id limit 6`
+    and length(${key}) >= 3 and regexp_replace(lower(full_name), '[^a-z]', '', 'g') like ${key + '%'} order by full_name, row_id limit 6`
   const standing = await describePeople(rows.map((r) => String(r.row_id)))
-  return rows.map((r) => {
-    const s = standing.get(String(r.row_id))
-    const jobs = (s?.jobs ?? []).map((j) => [j.job, j.site?.name].filter(Boolean).join(' at ')).join('; ')
-    return `- ${String(r.full_name)} (${String(r.row_id)})${[s?.code, jobs].filter(Boolean).map((p) => ` · ${p}`).join('')}`
-  })
+  return rows.map((r) => candidateLine(String(r.full_name), String(r.row_id), standing.get(String(r.row_id))))
 }
 
 async function ticketAction<T>(actor: string, operation: string, payload: Record<string, unknown>, key: string): Promise<T> {
@@ -181,6 +182,19 @@ async function ticketAction<T>(actor: string, operation: string, payload: Record
     if (/Only support|Not authorized/.test(String(error)))
       throw new MotherDuckSyncStop(`Tickets refused the MotherDuck sync's service account (${actor}): add it to the Tickets setting support_users, so it may assign and close its review tickets`)
     throw error
+  }
+}
+
+/** One ticket step for one account. A stop (Tickets refuses the sync, or is not
+ *  on) ends the ticket work for this run; any other error is noted and the
+ *  next account goes on. */
+async function attempt(result: MotherDuckSyncResult, account: unknown, step: () => Promise<void>): Promise<boolean> {
+  try {
+    await step()
+    return true
+  } catch (error) {
+    result.ticket_errors.push(error instanceof MotherDuckSyncStop ? error.message : `${String(account)}: ${String(error).slice(0, 200)}`)
+    return !(error instanceof MotherDuckSyncStop)
   }
 }
 
@@ -201,7 +215,7 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
     return
   }
   for (const a of unrecorded) {
-    try {
+    const going = await attempt(result, a.username, async () => {
       const title = `Link MotherDuck user ${String(a.username)} to a person`
       // Codex: a run that raised the ticket but stopped before recording it left
       // it open with no account naming it; it is found again, never raised twice.
@@ -211,7 +225,7 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
         where t.owner = ${actor} and t.ticket_state not in ('Resolved', 'Closed')
           and r.details_json::jsonb ->> 'motherduck_account' = ${String(a.row_id)}
         order by t.created_at, t.row_id limit 1`
-      if (!orphan && !needsTicket(a)) continue
+      if (!orphan && !needsTicket(a)) return
       const people = orphan ? [] : await candidates(String(a.username))
       const original = [
         `MotherDuck user ${String(a.username)} is not linked to a person in Featherbase.`,
@@ -225,12 +239,9 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
       await runAsSystemActor(actor, () => saveDoc(MOTHERDUCK_ACCOUNT_TABLE, { row_id: a.row_id, updated_at: a.updated_at }, actor, 'upsert',
         { managedValues: { review_ticket: ticket } }))
       if (!orphan) result.tickets_raised.push(ticket)
-    } catch (error) {
-      if (error instanceof MotherDuckSyncStop) { result.ticket_errors.push(error.message); return }
-      result.ticket_errors.push(`${String(a.username)}: ${String(error).slice(0, 200)}`)
-    }
+    })
+    if (!going) return
   }
-  if (!tickets?.present) return
   // Each open review ticket nobody is assigned to goes to the reviewer, this run
   // or a later one; one support has reassigned is left as it is.
   const unassigned = await sql`select a.username, t.row_id, t.updated_at from motherduck_account a
@@ -241,25 +252,20 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
   if (unassigned.length && !assignee)
     result.ticket_errors.push(`no MotherDuck reviewer is set in System Settings, so ${unassigned.length} review tickets are not assigned to anyone`)
   for (const t of assignee ? unassigned : []) {
-    try {
-      await ticketAction(actor, 'edit', { row_id: String(t.row_id), updated_at: iso(t.updated_at), assigned_to: assignee }, `motherduck-account-assign-${String(t.row_id)}-${iso(t.updated_at)}`)
-    } catch (error) {
-      if (error instanceof MotherDuckSyncStop) { result.ticket_errors.push(error.message); return }
-      result.ticket_errors.push(`${String(t.username)}: ${String(error).slice(0, 200)}`)
-    }
+    const going = await attempt(result, t.username, () => ticketAction(actor, 'edit', { row_id: String(t.row_id), updated_at: iso(t.updated_at), assigned_to: assignee },
+      `motherduck-account-assign-${String(t.row_id)}-${iso(t.updated_at)}`))
+    if (!going) return
   }
   const linked = await sql`select a.username, a.review_ticket, t.updated_at from motherduck_account a
     join tickets.ticket t on t.row_id = a.review_ticket
     where a.person is not null and t.ticket_state not in ('Resolved', 'Closed')`
   for (const a of linked) {
-    try {
+    await attempt(result, a.username, async () => {
       await ticketAction(actor, 'resolve', { row_id: String(a.review_ticket), updated_at: iso(a.updated_at),
         reason: `MotherDuck user ${String(a.username)} is now linked to a person.`, reference: `MotherDuck Account ${String(a.username)}` },
         `motherduck-account-resolve-${String(a.review_ticket)}-${iso(a.updated_at)}`)
       result.tickets_resolved.push(String(a.review_ticket))
-    } catch (error) {
-      result.ticket_errors.push(`${String(a.username)}: ${String(error).slice(0, 200)}`)
-    }
+    })
   }
 }
 

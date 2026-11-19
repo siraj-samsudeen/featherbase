@@ -5,7 +5,7 @@ import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { overrideVariable } from '../src/env'
-import { _setMotherDuckUsersFetch, listMotherDuckUsers, motherDuckSyncAccount, MotherDuckSyncStop, syncMotherDuckAccounts, type MotherDuckUser } from '../src/motherduck-accounts'
+import { _setMotherDuckUsersFetch, candidateLine, listMotherDuckUsers, motherDuckSyncAccount, MotherDuckSyncStop, syncMotherDuckAccounts, type MotherDuckUser } from '../src/motherduck-accounts'
 import { makePerson, patchDoc, searchLines } from './fixtures'
 import { resolve } from 'node:path'
 import { discoverPackages } from '../src/runtime-packages'
@@ -42,6 +42,12 @@ describe('#1346: the MotherDuck account sync', () => {
     ])
     motherduck([], 403)
     await expect(listMotherDuckUsers()).rejects.toThrow(/View all members.*no Admin token/)
+    motherduck([], 500)
+    await expect(listMotherDuckUsers()).rejects.toThrow('MotherDuck answered 500 when asked for its users')
+    _setMotherDuckUsersFetch(async () => Response.json({ people: [] }))
+    await expect(listMotherDuckUsers()).rejects.toThrow('in a shape this server does not know')
+    _setMotherDuckUsersFetch(async () => Response.json({ users: [], next_page_token: 'again' }))
+    await expect(listMotherDuckUsers()).rejects.toThrow('stopped after 200')
     overrideVariable('MOTHERDUCK_TOKEN', undefined)
     await expect(listMotherDuckUsers()).rejects.toBeInstanceOf(MotherDuckSyncStop)
   })
@@ -129,10 +135,50 @@ describe('#1346: the MotherDuck account sync', () => {
     expect((await syncMotherDuckAccounts()).tickets_raised).toHaveLength(1)
     expect(await sql`select count(distinct review_ticket)::int as n from motherduck_account where username = 'gone_user'`).toEqual([{ n: 2 }])
 
+    // A ticket Tickets will not close (someone changed its type) is noted, and the run goes on.
+    await sql`update tickets.ticket set kind = 'access' where row_id = (select review_ticket from motherduck_account where row_id = 'md-gone-again')`
+    const again = await admin.get<Record<string, unknown>>('/api/table/MotherDuck Account/md-gone-again')
+    await patchDoc(admin, '/api/table/MotherDuck Account/md-gone-again', { updated_at: again.updated_at, person: ravi })
+    expect((await syncMotherDuckAccounts()).ticket_errors).toEqual([expect.stringMatching(/^gone_user: .*Access must be completed/)])
+
+    // Tickets switched off: the run says no ticket was raised.
+    await sql`update installed_app set enabled = false where name = 'tickets'`
+    motherduck([[{ id: 'md-late', username: 'late_joiner', email: 'late@elsewhere.example' }]])
+    expect((await syncMotherDuckAccounts()).ticket_errors).toEqual(['the Tickets app is not installed and on, so no ticket was raised'])
+
     // Search finds the account by its username, and by its email.
     const hits = async (q: string) => ((await searchLines(admin, q)).find((l) => (l as { table?: string }).table === 'MotherDuck Account') as { hits: { title: string }[] } | undefined)?.hits.map((h) => h.title) ?? []
     expect(await hits('asha_reports')).toEqual(['asha_reports'])
     expect(await hits('asha@elsewhere')).toEqual(['asha_reports'])
+  })
+
+  test('the daily job records what a run did, or why it would not run', async () => {
+    const { enqueue, runOneJob } = await import('../src/jobs')
+    const run = async () => {
+      await sql`delete from background_job`
+      await enqueue('sync_motherduck_accounts', {}, { maxAttempts: 1 })
+      await sql`update background_job set run_at = now() where method = 'sync_motherduck_accounts'`
+      expect(await runOneJob()).toBe(true)
+      const [last] = await sql`select outcome, result from job_execution where method = 'sync_motherduck_accounts' order by started_at desc, row_id desc limit 1`
+      return last
+    }
+    overrideVariable('MOTHERDUCK_TOKEN', 'md-read-token')
+    motherduck([[{ id: 'md-job-bot', username: 'job_service_account', is_service_account: true }]])
+    expect(await run()).toMatchObject({ outcome: 'success', result: expect.stringMatching(/^MotherDuck accounts: 1 listed · 1 added/) })
+    // Without the Tickets app, an account a person uses cannot be put to anyone.
+    motherduck([[{ id: 'md-job-bot', username: 'job_service_account', is_service_account: true }, { id: 'md-job-person', username: 'job_person' }]])
+    expect(await run()).toMatchObject({ outcome: 'refused', result: expect.stringContaining('the Tickets app is not installed') })
+    motherduck([], 403)
+    expect(await run()).toMatchObject({ outcome: 'refused', result: expect.stringContaining('View all members') })
+    // MotherDuck failing outright is an error, retried like any other.
+    motherduck([], 500)
+    expect(await run()).toMatchObject({ outcome: 'error' })
+  })
+
+  test('a candidate reads as name (id) · code · job at place', () => {
+    expect(candidateLine('Asha R', 'psn_a', { status: 'current', code: 'E-1', jobs: [{ job: 'Buyer', site: { table: 'Site', id: 's1', name: 'Main Store' } }, { job: 'Trainer' }] }))
+      .toBe('- Asha R (psn_a) · E-1 · Buyer at Main Store; Trainer')
+    expect(candidateLine('Asha R', 'psn_a', undefined)).toBe('- Asha R (psn_a)')
   })
 
   test('a reappearing account is listed again, Active, with no removal date', async () => {
