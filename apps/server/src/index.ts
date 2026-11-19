@@ -82,6 +82,7 @@ import { recordAppAccessRefusal } from './app-access'
 import { eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { rowTitles, validateRowTitleRequest } from './row-titles'
 import { createSavedView, deleteSavedView, listSavedViews, listSidebarViews, setSavedViewShared } from './saved-views'
+import { currentDefaultIds, resetViewSettings, setTableViewDefault, tableViewDefault, undoTableViewDefault } from './table-view-defaults'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
@@ -96,7 +97,7 @@ import { packageTitle, appCatalog, appAsset } from './runtime-packages'
 import { discoverAppLibrary } from './app-library'
 import { appPathsFromEnvironment, deliverApp, deliveryKeyMatches } from './app-delivery'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref, tableHref } from 'shared'
 import { appOperation, appOperationApart, withAppClientVersion, withInstalledAppVersions } from './app-lifecycle'
 import { agentMark } from './agent-context'
 import { composeRuntimeShell } from './runtime-shell'
@@ -1174,6 +1175,10 @@ app.get('/api/activity_feed', async (c) => {
       union all
       select "user", 'login', null, null, created_at, row_id::text
       from activity_log where operation = 'login'
+      union all
+      -- #1282 A4: a Table's default view saved, or undone.
+      select created_by, 'table_default', ref_table, ref_table, created_at, row_id::text
+      from table_view_default
     ), marked as (
       select *,
              case when lag(kind) over w = kind and lag(who) over w is not distinct from who
@@ -1185,14 +1190,19 @@ app.get('/api/activity_feed', async (c) => {
       select *, sum(starts) over (order by at desc, id desc rows unbounded preceding) as run
       from marked
     )
-    select r.who, r.kind, r.sub, r.label, r.at, n.count
+    select r.who, r.kind, r.sub, r.label, r.at, r.id, n.count
     from runs r
     join (select run, count(*)::int as count from runs where run <= ${limit} group by run) n using (run)
     where r.starts = 1
     order by r.run`
+  const inForce = await currentDefaultIds()
   const items = rows.map((r) => {
     const sub = (r.sub as string | null) ?? undefined
     const label = (r.label as string | null) ?? ''
+    // A run's newest save is its line; Undo while that save is still the Table's default.
+    if (r.kind === 'table_default')
+      return { who: r.who as string, kind: 'table_default', label, sub: undefined, path: tableHref(label), at: new Date(r.at as string).toISOString(),
+        count: Number(r.count), ...(inForce.has(String(r.id)) ? { undo: String(r.id) } : {}) }
     return r.kind === 'login'
       ? {
           who: r.who as string,
@@ -1739,6 +1749,19 @@ app.put('/api/user_settings/:table', async (c) => {
     on conflict ("user", table_name) do update set settings = user_settings.settings || excluded.settings, updated_at = now()`
   return c.json({ ok: true })
 })
+
+// #1282 A4: "Reset to the Table's Default" clears the person's own view choices for the Table; their form stays.
+app.post('/api/user_settings/:table/reset', async (c) => {
+  await resetViewSettings(c.req.param('table'), who(c))
+  return c.json({ ok: true })
+})
+
+// #1282 A4: a Table's default view, set by a System Manager; each save kept, the latest undoable.
+app.get('/api/table_view_default/:table', async (c) => c.json({ default: await tableViewDefault(c.req.param('table'), who(c)) }))
+app.put('/api/table_view_default/:table', async (c) =>
+  c.json(await setTableViewDefault(c.req.param('table'), await c.req.json().catch(() => null), who(c))))
+app.post('/api/table_view_default/:table/undo', async (c) =>
+  c.json({ default: await undoTableViewDefault(c.req.param('table'), await c.req.json().catch(() => null), who(c)) }))
 
 // A document's activity follows access to that document, not broad read
 // permission on the platform-wide Comment and Version tables.

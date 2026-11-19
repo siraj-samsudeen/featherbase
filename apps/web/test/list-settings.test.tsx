@@ -25,7 +25,7 @@ import { test, expect, renderApp } from './pg-test'
 const DT = 'Ls Settings'
 
 type Admin = Parameters<typeof renderApp>[1]
-type Stored = { settings: { sort: { field: string; dir: string } | null; hiddenCols: string[] } }
+type Stored = { settings: { sort?: { field: string; dir: string } | null; hiddenCols?: string[] } }
 
 async function seedList(admin: Admin) {
   await admin.post('/api/table_def', {
@@ -82,10 +82,10 @@ test('unchecking a column in the picker removes its header', async ({ admin }) =
   await hideCity()
   expect(screen.getByTestId('col-title')).toBeInTheDocument()
 
-  await settledSettings(admin, { sort: null, hiddenCols: ['city'] })
+  await settledSettings(admin, { hiddenCols: ['city'] })
   screen.getByTestId('list-col-toggle-city').click()
   await waitFor(() => expect(screen.getByTestId('col-city')).toBeInTheDocument())
-  await settledSettings(admin, { sort: null, hiddenCols: [] })
+  await settledSettings(admin, { hiddenCols: [] })
 })
 
 test('a click before saved settings arrive cannot overwrite the saved configuration', async ({ admin }) => {
@@ -102,9 +102,11 @@ test('a click before saved settings arrive cannot overwrite the saved configurat
   try {
     // #1228: a bare open waits for the saved settings (they carry the remembered filters), so the
     // race lives where the list opens at once: an address that names its filters.
-    await openList(admin, [['title', '!=', 'No such title']])
+    // #1282 A4: the rows wait for the saved settings, so the list opens with its headers only; a sort
+    // clicked then is not kept.
+    await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}?filters=${encodeURIComponent(JSON.stringify([['title', '!=', 'No such title']]))}`, admin)
+    await waitFor(() => expect(screen.getByTestId('col-rank')).toBeInTheDocument())
     screen.getByTestId('col-rank').click()
-    await waitFor(() => expect(firstRowText()).toContain('bravo'))
     release()
     await waitFor(() => expect(firstRowText()).toContain('alpha'))
     await settledSettings(admin, { sort: { field: 'rank', dir: 'desc' }, hiddenCols: [] })
@@ -122,14 +124,14 @@ test('clicking a column header sorts the rows by it, ascending first', async ({ 
   // rank asc puts bravo (1) on top, ahead of charlie (2) and alpha (3).
   await waitFor(() => expect(firstRowText()).toContain('bravo'))
 
-  await settledSettings(admin, { sort: { field: 'rank', dir: 'asc' }, hiddenCols: [] })
+  await settledSettings(admin, { sort: { field: 'rank', dir: 'asc' } })
   screen.getByTestId('col-rank').click()
   await waitFor(() => expect(firstRowText()).toContain('alpha'))
-  await settledSettings(admin, { sort: { field: 'rank', dir: 'desc' }, hiddenCols: [] })
+  await settledSettings(admin, { sort: { field: 'rank', dir: 'desc' } })
   screen.getByTestId('col-rank').click()
   await waitFor(() => expect(firstRowText()).toContain('bravo'))
   expect(screen.getByTestId('col-rank')).toHaveTextContent('↑')
-  await settledSettings(admin, { sort: { field: 'rank', dir: 'asc' }, hiddenCols: [] })
+  await settledSettings(admin, { sort: { field: 'rank', dir: 'asc' } })
 })
 
 test('a fresh mount restores the hidden column and the sort from the server', async ({
@@ -168,7 +170,8 @@ test('rapid list customizations persist the newest snapshot when an earlier requ
   const delayed = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     if (String(input).includes(`/api/user_settings/${encodeURIComponent(DT)}`) && init?.method === 'PUT') {
       const settings = JSON.parse(String(init.body)) as Stored['settings']
-      if (settings.sort?.dir === 'desc' && settings.hiddenCols.includes('city')) {
+      // #1282 A4: each save carries only what changed: the column first (held), then the sort.
+      if (settings.hiddenCols?.includes('city')) {
         await gate
         try { return await real(input, init) } finally { firstFinished() }
       }

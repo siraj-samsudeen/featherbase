@@ -2,9 +2,9 @@
 // Roles (each role's permissions as a grid of reach chips, and the Title Map), Explain A Person (the
 // Lens tab of issue_1218_relational_navigation.html: header chips, fields beside links, a source chip
 // and a Why? per item) and Who Would Gain Or Lose Access. The rules are the server's.
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AreaPicker, Button, Segmented, Sentence, type SentencePart, Card, EmptyState, Field, Notice, Select, TextInput, fmtDate, pillClasses } from '@featherbase/shop-floor'
-import { act, read } from './api'
+import { APP_VERSION_HEADERS, act, read } from './api'
 import { DASH_AREAS, loadDashArea } from './area-axes'
 import { LoadFailed, Loading, Shell } from './sections-page'
 import { RecordLink } from './record-link'
@@ -113,16 +113,37 @@ interface RolesAnswer {
   report_catalog: GivenThing[]
 }
 
+type RolesView = 'roles' | 'grid' | 'reports'
+/** Where the person's choice of view on this page is kept: their settings for the business roles Table. */
+const ROLES_SETTINGS = '/api/user_settings/dash.business_role'
+
 export function BusinessRolesPage() {
   const { answer, failed, load } = useRead<RolesAnswer>('business_roles', {})
   const [open, setOpen] = useState<string | null>(new URLSearchParams(window.location.search).get('role'))
   const [people, setPeople] = useState<string | null>(null)
   // #1282 F1–F6: the roles as a list, or as a grid; leaving the grid with changes waiting asks first.
-  const [view, setView] = useState<'roles' | 'grid' | 'reports'>('roles')
+  const [view, setView] = useState<RolesView>('roles')
   const [waiting, setWaiting] = useState(0)
-  const show = (next: 'roles' | 'grid' | 'reports') => {
+  // #1282 A4 (UI owner, option A): the page opens on the view this person last chose, kept with their settings for
+  // the business roles Table; a choice made before it arrives wins.
+  const chosen = useRef(false)
+  useEffect(() => {
+    let live = true
+    void fetch(ROLES_SETTINGS, { credentials: 'same-origin', headers: APP_VERSION_HEADERS })
+      .then(r => (r.ok ? r.json() : null))
+      .then((body: { settings?: { rolesView?: unknown } | null } | null) => {
+        const saved = body?.settings?.rolesView
+        if (live && !chosen.current && (saved === 'roles' || saved === 'grid' || saved === 'reports')) setView(saved)
+      }, () => {})
+    return () => { live = false }
+  }, [])
+  const show = (next: RolesView) => {
     if (next !== view && waiting > 0 && !window.confirm(`Leave the grid? ${waiting === 1 ? 'Your change' : `Your ${waiting} changes`} will not be saved.`)) return
+    chosen.current = true
     setView(next)
+    // A failed save keeps the choice for this visit.
+    void fetch(ROLES_SETTINGS, { method: 'PUT', credentials: 'same-origin', headers: { ...APP_VERSION_HEADERS, 'content-type': 'application/json' },
+      body: JSON.stringify({ rolesView: next }) }).catch(() => {})
   }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)

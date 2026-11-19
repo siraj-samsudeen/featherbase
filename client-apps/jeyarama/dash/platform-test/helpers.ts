@@ -82,7 +82,9 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[]; optionalColumns?: Record<string, string[]> } }
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
-  // #1345's 0.13.42 (each job's business role and a leaver's leaving day, for the Person Label) changes no Table and comes off first.
+  // #1282's 0.13.43 (the worked-out sections declared as people.sections) changes no Table and comes off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'people_sections', fromVersion: '0.13.42', operations: [] })
+  // #1345's 0.13.42 (each job's business role and a leaver's leaving day, for the Person Label) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'person_label', fromVersion: '0.13.41', operations: [] })
   // The 0.13.41 hotfix (every report read through Dash's own documents) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'every_report_own_read', fromVersion: '0.13.40', operations: [] })

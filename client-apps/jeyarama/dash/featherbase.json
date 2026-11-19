@@ -96,7 +96,8 @@
     "people": "view_as_people"
   },
   "people": {
-    "describe": "describe_people"
+    "describe": "describe_people",
+    "sections": "worked_out"
   },
   "datasets": [
     {
@@ -476,11 +477,6 @@
       "explain": "why_access",
       "may": "why_access_offered",
       "label": "Why: Access"
-    }
-  },
-  "person": {
-    "sections": {
-      "read": "worked_out"
     }
   },
   "tables": [
@@ -3388,6 +3384,12 @@
       "id": "person_label",
       "fromVersion": "0.13.41",
       "toVersion": "0.13.42",
+      "operations": []
+    },
+    {
+      "id": "people_sections",
+      "fromVersion": "0.13.42",
+      "toVersion": "0.13.43",
       "operations": []
     }
   ],
