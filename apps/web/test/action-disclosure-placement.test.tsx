@@ -30,7 +30,7 @@ async function openMenu() {
     // overflowX, not the overflow shorthand: jsdom does not expand it, as browsers do.
     <div data-testid="column" style={{ overflowX: 'auto' }}>
       <ActionDisclosure label="Record actions">
-        <button type="button">Delete Permanently</button>
+        <button type="button">Delete With History…</button>
       </ActionDisclosure>
     </div>,
   )

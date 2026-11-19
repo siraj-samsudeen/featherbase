@@ -105,7 +105,7 @@ test('#859 a System Manager deletes a row permanently, seeing what points at it 
   expect(orders.data).toEqual([{ plant: null }])
 }, 40_000)
 
-test('#859 Escape closes the Delete Permanently dialog wherever it was opened, changing nothing', async ({ admin }) => {
+test('#859 Escape closes the Delete With History dialog wherever it was opened, changing nothing', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
   await renderApp(`${path}/row/${encodeURIComponent('Sample plant')}`, admin)
@@ -128,14 +128,21 @@ async function recordAction(admin: Admin, action: string) {
   return user
 }
 
-test('#859 a delete refused by history also offers Delete Permanently instead', async ({ admin }) => {
+test('#859 a delete refused by history also offers Delete With History instead', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/table/Comment', { ref_table: TABLE, ref_name: 'Sample plant', content: 'keep this' })
   const user = await recordAction(admin, 'form-delete')
   await user.click(within(screen.getByTestId('delete-row-dialog')).getByTestId('delete-row-confirm'))
-  await user.click(await screen.findByTestId('delete-row-purge-instead', {}, WAIT))
+  // #1348 (UI owner): the line that offers Retire names the System Manager's other way out, by its name.
+  const refusal = await screen.findByTestId('delete-row-error', {}, WAIT)
+  expect(refusal).toHaveTextContent(/Retire it instead.*Or Delete With History \(System Managers\)\.$/)
+  const instead = await screen.findByTestId('delete-row-purge-instead', {}, WAIT)
+  expect(instead).toHaveAccessibleName('Delete With History…')
+  await user.click(instead)
   expect(screen.queryByTestId('delete-row-dialog')).not.toBeInTheDocument()
-  expect(await screen.findByTestId('purge-dialog')).toBeInTheDocument()
+  const dialog = await screen.findByTestId('purge-dialog')
+  expect(within(dialog).getByRole('heading', { level: 2 })).toHaveTextContent('Delete With History')
+  expect(within(dialog).getByTestId('purge-confirm')).toHaveAccessibleName('Delete With History')
 }, 40_000)
 
 test('#859 Reactivate on a row deleted meanwhile says why it failed', async ({ admin }) => {
@@ -170,7 +177,7 @@ test('#859 a click outside the Retire dialog closes it, retiring nothing', async
   expect((await admin.get<{ retired_at: unknown }>(SAMPLE)).retired_at).toBeNull()
 }, 40_000)
 
-test('#859 Delete Permanently of a row deleted meanwhile says why, keeping the dialog open', async ({ admin }) => {
+test('#859 Delete With History of a row deleted meanwhile says why, keeping the dialog open', async ({ admin }) => {
   await seed(admin)
   const user = await recordAction(admin, 'form-purge')
   const dialog = await screen.findByTestId('purge-dialog')
@@ -183,7 +190,7 @@ test('#859 Delete Permanently of a row deleted meanwhile says why, keeping the d
   expect(screen.getByTestId('purge-dialog')).toBeInTheDocument()
 }, 40_000)
 
-test('#859 a click outside Delete Permanently closes it, deleting nothing', async ({ admin }) => {
+test('#859 a click outside Delete With History closes it, deleting nothing', async ({ admin }) => {
   await seed(admin)
   const user = await recordAction(admin, 'form-purge')
   await user.click((await screen.findByTestId('purge-dialog')).parentElement!)
@@ -191,7 +198,7 @@ test('#859 a click outside Delete Permanently closes it, deleting nothing', asyn
   expect((await admin.fetch(SAMPLE)).status).toBe(200)
 }, 40_000)
 
-test('#859 Delete Permanently can go back from clearing the links to deleting what points at the row', async ({ admin }) => {
+test('#859 Delete With History can go back from clearing the links to deleting what points at the row', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/table_def', { name: 'Retire Bin Order', columns: [
     { column_name: 'plant', column_type: 'Reference', reference_table: TABLE },
