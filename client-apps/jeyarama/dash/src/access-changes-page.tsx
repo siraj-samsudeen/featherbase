@@ -105,15 +105,16 @@ function Changes({ answer, onChanged }: { answer: ChangesAnswer; onChanged: () =
     // Two people may share a name: their staff code tells them apart.
     { key: 'person', header: 'Person', phone: 'title', cell: p => <span className="whitespace-nowrap"><PersonLink person={p.person} name={p.name} testid="changed-name" />{p.who?.code && <span className="text-ink-muted"> {p.who.code}</span>}</span> },
     { key: 'title', header: 'HR Title', phone: 'meta', cell: p => titleOf(p) },
-    { key: 'site', header: 'Site', phone: 'meta', cell: p => sitesOf(p).length ? <Parts parts={sitesOf(p).map(s => ({ name: s.name, table: 'Site', id: s.id }))} /> : <span className="text-ink-subtle">—</span> },
-    { key: 'today', header: 'Today', phone: 'meta', cell: p => sideWords(p.today) },
+    // Site, Today and With Business Roles are short and kept on one line; Why takes the wrap (verifier round 3).
+    { key: 'site', header: 'Site', phone: 'meta', cell: p => sitesOf(p).length ? <span className="whitespace-nowrap" data-testid="changed-site"><Parts parts={sitesOf(p).map(s => ({ name: s.name, table: 'Site', id: s.id }))} /></span> : <span className="text-ink-subtle">—</span> },
+    { key: 'today', header: 'Today', phone: 'meta', cell: p => <span className="whitespace-nowrap" data-testid="changed-today">{sideWords(p.today)}</span> },
     { key: 'next', header: 'With Business Roles', phone: 'status', cell: p => (
-      <span className="flex flex-wrap items-center gap-1.5">
+      <span className="flex items-center gap-1.5 whitespace-nowrap">
         {p.kinds.includes('loses_dash') ? <StatusPill tone="missing">No Dash</StatusPill> : <span>{sideWords(p.next)}</span>}
         {needsDecision(p) && <StatusPill tone="caution">Needs a decision</StatusPill>}
       </span>
     ) },
-    { key: 'why', header: 'Why', phone: 'meta', cell: p => <span className="text-ink-muted"><ChangeFacts change={p} decided={p.decided} /></span> },
+    { key: 'why', header: 'Why', phone: 'meta', cell: p => <span className="text-ink-muted"><ChangeFacts change={p} decided={p.decided} takeBack={{ person: p.person, onChanged }} /></span> },
   ]
   return (
     <div className="flex flex-col gap-6">
@@ -126,7 +127,7 @@ function Changes({ answer, onChanged }: { answer: ChangesAnswer; onChanged: () =
         <p className="text-sm text-ink-muted" data-testid="changes-detail">{gains ? `${counted(gains)} would gain Dash.` : 'Nobody gains Dash.'} The other {fmtCount(answer.people - people.length)} keep exactly what they have.</p>
       </section>
       <div className="flex flex-wrap gap-3" data-testid="findings">
-        <FindingCard count={count('decide')} title="Need A Decision" tone="caution" selected={finding === 'decide'} onSelect={() => toggle('decide')}
+        <FindingCard count={count('decide')} title="Need A Decision" tone={count('decide') ? 'caution' : 'quiet'} selected={finding === 'decide'} onSelect={() => toggle('decide')}
           reason="Reports they get today only through an old role that business roles don't give, or Dash opens with nothing to let them in" owner="Owner decides · before the switch" />
         <FindingCard count={count('loses')} title="Lose Dash" tone="quiet" selected={finding === 'loses'} onSelect={() => toggle('loses')}
           reason="People whose business roles don't open Dash" owner="Decided by the roles · no action" />

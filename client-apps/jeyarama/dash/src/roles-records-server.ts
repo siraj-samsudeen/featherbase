@@ -183,7 +183,7 @@ export async function giveOldGrantsPreview(context: AccessContext) {
     : { text: '—' }
   const what: Record<PlannedGrant['outcome'], string> = {
     'Will be added': 'Will be added', 'Already there': 'Already there',
-    'Not carried over': 'Not carried over: gives nothing while business roles decide', 'Stays with the person': 'Stays with the person',
+    'Not carried over': 'Not carried over', 'Stays with the person': 'Stays with the person',
   }
   const all = [...lines.values()].map(line => ({ filter: FILTER[line.outcome], cells: {
     report: { parts: [given(line)] }, old_grant: oldGrant(line), given_to: toRoles(line.roles), what: { text: what[line.outcome], tone: TONE[line.outcome] },
@@ -209,9 +209,10 @@ export async function giveOldGrantsPreview(context: AccessContext) {
     runLabel: 'Run',
     filters: (['add', 'there', 'not', 'person'] as const).map(key => ({ key, label: { add: 'Will be added', there: 'Already there', not: 'Not carried over', person: 'Stays with the person' }[key], count: all.filter(r => r.filter === key).length })),
     total: all.length,
-    columns: [{ key: 'report', label: 'Report' }, { key: 'old_grant', label: 'Old Grant' }, { key: 'given_to', label: 'Given To' }, { key: 'what', label: 'What Happens' }],
+    // The report and what happens are kept on one line; the old grant and the roles take the wrap.
+    columns: [{ key: 'report', label: 'Report', nowrap: true }, { key: 'old_grant', label: 'Old Grant' }, { key: 'given_to', label: 'Given To' }, { key: 'what', label: 'What Happens', nowrap: true }],
     rows,
-    note: 'Running this again adds nothing; each run is kept in Setup Runs.',
+    note: 'A grant not carried over gives nothing while business roles decide. Running this again adds nothing; each run is kept in Setup Runs.',
   }
 }
 
@@ -230,6 +231,8 @@ export async function decideAccess(context: AccessContext) {
     return { person, decision: null }
   }
   if ((await decidedToLose(context.baseTables as Base)).has(person)) return { person, decision: 'Lose Dash' }
-  await context.documents!.create!(ACCESS_DECISION, { person, decision: 'Lose Dash', decided_by_name: text(context.userName) || null })
+  // Headed "<person>: Lose Dash", so its list and record say whose decision it is.
+  const name = (await personNames(context, [person])).get(person) ?? 'Someone'
+  await context.documents!.create!(ACCESS_DECISION, { title: `${name}: Lose Dash`, person, decision: 'Lose Dash', decided_by: text(context.user) || null })
   return { person, decision: 'Lose Dash' }
 }

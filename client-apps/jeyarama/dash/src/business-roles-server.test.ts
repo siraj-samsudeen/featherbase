@@ -1109,13 +1109,16 @@ describe('the steps towards business roles run only when asked (#1277 J1, J3, J5
     tables['dash.report'] = REPORT_ROWS
     const first = await actions.give_old_grants_to_roles(context(tables, { roles: ['System Manager'] }) as never) as { run: string; grants_added: number }
     const run = tables['dash.setup_run'].find(r => r.row_id === first.run)!
-    expect(run).toMatchObject({ step: 'Give Old Grants To Business Roles', added: first.grants_added, already_there: 0, not_carried_over: 1, run_by_name: 'Manju Manager',
+    expect(run).toMatchObject({ step: 'Give Old Grants To Business Roles', added: first.grants_added, already_there: 0, not_carried_over: 1, run_by: 'mgr',
       summary: `Give Old Grants To Business Roles: ${first.grants_added} added · 0 already there · 1 not carried over` })
     expect(tables['dash.switch_over_log'].filter(l => l.setup_run === first.run).length).toBe(first.grants_added + 1)
     const again = await actions.give_old_grants_to_roles(context(tables, { roles: ['System Manager'] }) as never) as { run: string }
     expect(tables['dash.setup_run'].find(r => r.row_id === again.run)!.summary)
       .toBe(`Give Old Grants To Business Roles: 0 added · ${first.grants_added} already there · 1 not carried over`)
     expect(tables['dash.switch_over_log'].filter(l => l.setup_run === again.run)).toEqual([])
+    // #1340 (verifier round 3): the run says what it did for the page that ran it, the run kept a link.
+    expect((again as { said?: unknown }).said).toEqual([`0 added · ${first.grants_added} already there · 1 not carried over. `,
+      { record: { table: 'dash.setup_run', row: again.run, name: 'Open the Setup Run' } }])
   })
 
   // Codex adversarial round 1: a removed role grant stays removed.
@@ -1899,7 +1902,7 @@ describe('business roles described for Featherbase (#1340)', () => {
     const preview = await giveOldGrantsPreview(context(tables) as never)
     expect(JSON.stringify(tables)).toBe(before)
     expect(preview.rows.map(r => [r.filter, (r.cells.what as { text: string }).text])).toEqual([
-      ['not', 'Not carried over: gives nothing while business roles decide'], ['add', 'Will be added'], ['person', 'Stays with the person'], ['add', 'Will be added']])
+      ['not', 'Not carried over'], ['add', 'Will be added'], ['person', 'Stays with the person'], ['add', 'Will be added']])
     // Said with code · role · place, so two of one name are told apart.
     expect(preview.rows[2]!.cells.old_grant).toEqual({ parts: ['Person: ', { record: { table: 'Person', row: 'st', name: 'Siva' } }, ' E-ST · Staff · Lakeside'] })
     expect(preview.rows[3]!.cells.report).toEqual({ parts: ['A bundle no longer listed'] })
@@ -1977,17 +1980,17 @@ describe('business roles described for Featherbase (#1340)', () => {
     expect(groups[1]!.notes!.vs).toEqual(['Also given to 1 other role: ', { record: { table: 'dash.business_role', row: cm, name: 'Cluster Manager' } }])
   })
 
-  it('says a run in the singular where one was added, and keeps a caller with no name as nobody named', async () => {
+  it('says a run in the singular where one was added, and keeps a caller with no id as nobody', async () => {
     expect([startingRolesSummary({ roles: 1, titles: 1 }), oldGrantsSummary({ added: 1, alreadyThere: 0, notConverted: 0 })])
       .toEqual(['1 role and 1 title map added', '1 added · 0 already there · 0 not carried over'])
     const tables = await seeded()
     tables['dash.report'] = REPORT_ROWS
-    const nameless = (over: Record<string, unknown> = {}) => ({ ...context(tables, over), userName: undefined })
+    const nameless = (over: Record<string, unknown> = {}) => ({ ...context(tables, over), user: undefined })
     const before = (tables['dash.setup_run'] ?? []).length
     await actions.give_old_grants_to_roles(nameless({ roles: ['System Manager'] }) as never)
     await addStartingRoles(nameless() as never)
     await decideAccess(nameless({ payload: { person: 'st' } }) as never)
-    expect([...tables['dash.setup_run'].slice(before).map(r => r.run_by_name), tables['dash.access_decision'][0]!.decided_by_name]).toEqual([null, null, null])
+    expect([...tables['dash.setup_run'].slice(before).map(r => r.run_by), tables['dash.access_decision'][0]!.decided_by]).toEqual([null, null, null])
   })
 
   it('names someone whose name is not known plainly in the preview', async () => {
@@ -2056,10 +2059,14 @@ describe('business roles described for Featherbase (#1340)', () => {
     const scope = JSON.stringify(await scopeOf(tables, 'st', ['Dash Reader']))
     expect(await decideAccess(context(tables, { payload: { person: 'st' } }) as never)).toEqual({ person: 'st', decision: 'Lose Dash' })
     expect(await decideAccess(context(tables, { payload: { person: 'st' } }) as never)).toEqual({ person: 'st', decision: 'Lose Dash' })
-    expect(tables['dash.access_decision']).toMatchObject([{ person: 'st', decision: 'Lose Dash', decided_by_name: 'Manju Manager' }])
+    // #1340 (verifier round 3): the record is headed by the person and the decision, not "Lose Dash" alone.
+    expect(tables['dash.access_decision']).toMatchObject([{ title: 'Siva: Lose Dash', person: 'st', decision: 'Lose Dash', decided_by: 'mgr' }])
     expect([...await decidedToLose(context(tables).baseTables as never)]).toEqual(['st'])
     expect(JSON.stringify(await scopeOf(tables, 'st', ['Dash Reader']))).toBe(scope)
     await expect(decideAccess(context(tables, { payload: {} }) as never)).rejects.toThrow('Choose a person')
     await expect(decideAccess(context(tables, { roles: ['Dash Reader'], payload: { person: 'st' } }) as never)).rejects.toThrow(/Only a Report Access Manager/)
+    // Someone whose name is not known is said plainly.
+    await decideAccess(context(tables, { payload: { person: 'nobody-known' } }) as never)
+    expect(tables['dash.access_decision'][1]).toMatchObject({ title: 'Someone: Lose Dash', person: 'nobody-known' })
   })
 })

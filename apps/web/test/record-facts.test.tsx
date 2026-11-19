@@ -185,12 +185,16 @@ test('the preview page: path, title with Cancel and Run, the sentence, filters w
   await installFacts(admin)
   await renderApp(`${tableHref(NOTE)}/run/tidy`, admin)
   expect(await screen.findByTestId('action-preview-sentence')).toHaveTextContent('Tidies the note.')
-  expect(screen.getByTestId('page-header-breadcrumb')).toHaveTextContent('note / Tidy The Notes')
+  // #1340 (verifier round 3): the path starts at the Table's module, as its list and record do.
+  expect(screen.getByTestId('page-header-breadcrumb').textContent).toMatch(/^\S.* \/ note \/ Tidy The Notes$/)
   expect(screen.getByTestId('page-header-status')).toHaveTextContent(PREVIEW.status)
   expect(screen.getByTestId('action-preview-cancel')).toHaveAttribute('href', tableHref(NOTE))
   const filters = screen.getByRole('group', { name: 'Show' })
   expect(within(filters).getAllByRole('button').map((b) => b.textContent)).toEqual(['All 2', 'Will be added 1', 'Already there 1'])
   expect(screen.getAllByTestId('action-preview-row')).toHaveLength(2)
+  // A short column the app keeps on one line; the others wrap.
+  expect([within(screen.getAllByTestId('action-preview-row')[0]).getByText('Will be added').closest('.whitespace-nowrap'), within(screen.getAllByTestId('action-preview-row')[0]).getByText('Kept').closest('.whitespace-nowrap')])
+    .toEqual([expect.anything(), null])
   fireEvent.click(within(filters).getByRole('button', { name: 'Already there 1' }))
   expect(screen.getAllByTestId('action-preview-row')).toHaveLength(1)
   expect(screen.getByTestId('action-preview-row')).toHaveTextContent('Second')
@@ -198,6 +202,19 @@ test('the preview page: path, title with Cancel and Run, the sentence, filters w
   fireEvent.click(screen.getByTestId('action-preview-run'))
   expect(await screen.findByText(/Tidy The Notes: done\./)).toBeInTheDocument()
   expect(hook().runs).toBe(1)
+})
+
+// #1340 (verifier round 3): after Run the page says what happened, in the app's words, with the record that keeps the run.
+test("after Run the preview says what the run did, a link to its record, and that the list now shows a second run", async ({ admin }) => {
+  await installFacts(admin)
+  hook().done = { said: ['1 added · 1 already there. ', { record: { table: NOTE, row: 'n1', name: 'Open the run' } }], run: 'n1' }
+  await renderApp(`${tableHref(NOTE)}/run/tidy`, admin)
+  await screen.findByTestId('action-preview-sentence')
+  fireEvent.click(screen.getByTestId('action-preview-run'))
+  const done = await screen.findByTestId('action-preview-done')
+  expect(done).toHaveTextContent('Tidy The Notes: 1 added · 1 already there. Open the run')
+  expect(within(done).getByRole('link', { name: 'Open the run' })).toHaveAttribute('href', expect.stringContaining('n1'))
+  expect(screen.getByTestId('page-header-status')).toHaveTextContent('Done · the list now shows what running it again would do')
 })
 
 test("a preview with a refused run says the app's words; a filter with nothing in it says so", async ({ admin }) => {

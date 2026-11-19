@@ -648,7 +648,7 @@ export async function addStartingRoles(context: AccessContext) {
   const log = await logger(ctx.baseTables, ctx.documents as never)
   const added = await ensureStartingRoles(ctx.baseTables, ctx.documents as never, log)
   // #1340: each run kept as one record, whatever it added.
-  const run = await log.finish('Add The Starting Roles', startingRolesSummary(added), { added: added.roles + added.titles }, text(context.userName) || null)
+  const run = await log.finish('Add The Starting Roles', startingRolesSummary(added), { added: added.roles + added.titles }, text(context.user) || null)
   return { ...added, run }
 }
 

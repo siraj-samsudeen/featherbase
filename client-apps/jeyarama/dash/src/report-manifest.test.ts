@@ -30,10 +30,11 @@ describe("the app's name in the manifest", () => {
     expect(manifest.title).toBe('Dash')
     expect(manifest.name).toBe('dash')
     expect(manifest.roles).toEqual(ROLES)
-    // #1340: the business roles, the Title Map, hand changes and report grants are listed under People in Featherbase.
+    // #1340: the business roles, the Title Map, hand changes, report grants, what decides Dash access, setup runs and
+    // access decisions are listed under People in Featherbase.
     expect([...new Set(manifest.tables.map(table => table.module))]).toEqual(['Dash', 'People'])
     expect(manifest.tables.filter(table => table.module === 'People').map(table => table.name))
-      .toEqual(['dash.report_access', 'dash.business_role', 'dash.title_map', 'dash.role_assignment', 'dash.setup_run'])
+      .toEqual(['dash.report_access', 'dash.business_role', 'dash.title_map', 'dash.role_assignment', 'dash.access_source', 'dash.setup_run', 'dash.access_decision'])
   })
 })
 
@@ -363,9 +364,10 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['every_report_own_read', '0.13.40', '0.13.41', 0],
       // #1345: each job's business role and a leaver's leaving day in describe_people, for the Person Label; no Table change.
       ['person_label', '0.13.41', '0.13.42', 0],
-      // #1340: business roles in Featherbase: four Tables move to People (one relabelled Report grant), two columns leave
-      // the list, setup runs and access decisions are kept, each log line names its run, and the role Tables read in Title Case.
-      ['business_roles_in_featherbase', '0.13.42', '0.13.43', 18],
+      // #1340: business roles in Featherbase: five Tables move to People (one relabelled Report grant), two columns leave
+      // the list, setup runs and access decisions are kept, each log line names its run, and the role Tables and their
+      // columns read in Title Case.
+      ['business_roles_in_featherbase', '0.13.42', '0.13.43', 31],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')

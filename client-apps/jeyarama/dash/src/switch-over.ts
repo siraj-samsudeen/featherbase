@@ -41,7 +41,7 @@ export async function logger(read: Documents, write: Writer) {
   /** #1340: the run kept as one record, its counts in its title, and each line it wrote linked to it. */
   return Object.assign(log, {
     async finish(step: RunStep, summary: string, counts: Partial<Record<'added' | 'already_there' | 'not_carried_over', number>>, by: string | null) {
-      const run = await write.create(SETUP_RUN, { step, summary: `${step}: ${summary}`, ...counts, run_by_name: by })
+      const run = await write.create(SETUP_RUN, { step, summary: `${step}: ${summary}`, ...counts, run_by: by })
       for (const line of lines)
         await write.create(SWITCH_OVER_LOG, { step: line.step, outcome: line.outcome, detail: line.detail, business_role: line.business_role ?? null, source_grant: line.source_grant ?? null, setup_run: exact(run.row_id) })
       return exact(run.row_id)
@@ -192,5 +192,7 @@ export async function giveOldGrantsToRoles(read: Documents, write: Writer, today
   const grants = await convertGrants(read, write, model, log, reportNames)
   const run = await log.finish('Give Old Grants To Business Roles', oldGrantsSummary(grants),
     { added: grants.added, already_there: grants.alreadyThere, not_carried_over: grants.notConverted }, by)
-  return { grants_added: grants.added, grants_not_converted: grants.notConverted, grants_already_there: grants.alreadyThere, run }
+  // `said`: what the run did, for the page that ran it, the run it is kept as a link.
+  return { grants_added: grants.added, grants_not_converted: grants.notConverted, grants_already_there: grants.alreadyThere, run,
+    said: [`${oldGrantsSummary(grants)}. `, { record: { table: SETUP_RUN, row: run, name: 'Open the Setup Run' } }] }
 }

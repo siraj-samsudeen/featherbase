@@ -676,7 +676,7 @@
         },
         {
           "column_name": "access_key",
-          "label": "Access key",
+          "label": "Access Key",
           "column_type": "Data",
           "unique": true,
           "read_only": true,
@@ -690,13 +690,13 @@
         },
         {
           "column_name": "given_by_name",
-          "label": "Given by",
+          "label": "Given By",
           "column_type": "Data",
           "description": "Set when given on the Report access page: the name of the person who gave it, as the page shows it."
         },
         {
           "column_name": "business_role",
-          "label": "Business role",
+          "label": "Business Role",
           "column_type": "Reference",
           "reference_table": "dash.business_role",
           "in_list_view": true,
@@ -726,7 +726,7 @@
         },
         {
           "column_name": "by_hand_only",
-          "label": "Given by hand only",
+          "label": "Given By Hand Only",
           "column_type": "Check",
           "description": "No HR title maps to it: someone gives it to a person by hand, such as Master Data Manager or Supplier."
         },
@@ -832,7 +832,7 @@
         },
         {
           "column_name": "business_role",
-          "label": "Business role",
+          "label": "Business Role",
           "column_type": "Reference",
           "reference_table": "dash.business_role",
           "in_list_view": true
@@ -864,7 +864,7 @@
         },
         {
           "column_name": "business_role",
-          "label": "Business role",
+          "label": "Business Role",
           "column_type": "Reference",
           "reference_table": "dash.business_role",
           "reqd": true,
@@ -879,7 +879,7 @@
         },
         {
           "column_name": "ends_on",
-          "label": "Ends on",
+          "label": "Ends On",
           "column_type": "Date",
           "in_list_view": true,
           "description": "The last day it holds. Blank: until someone removes it."
@@ -897,7 +897,7 @@
         },
         {
           "column_name": "given_by_name",
-          "label": "Given by",
+          "label": "Given By",
           "column_type": "Data"
         }
       ],
@@ -906,14 +906,14 @@
     {
       "name": "dash.access_source",
       "label": "Dash Access Source",
-      "module": "Dash",
+      "module": "People",
       "decides_scope": true,
       "title_column": "source",
       "description": "#1277: what decides who opens Dash, what they reach and which reports they get. No row (as each instance starts) means the old rules: jobs, Dash Reader and Dash All-Stores Reader, and grants to jobs and roles. A System Manager adds one row saying Business roles, after the owner's yes, to switch; setting it to Old rules (or removing it) puts the old rules back. It takes effect on the next request, with no deploy.",
       "columns": [
         {
           "column_name": "source",
-          "label": "Decided by",
+          "label": "Decided By",
           "column_type": "Choice",
           "choices": "business_roles\nlegacy",
           "choice_labels": {
@@ -959,28 +959,28 @@
         },
         {
           "column_name": "detail",
-          "label": "What happened",
+          "label": "What Happened",
           "column_type": "Text",
           "reqd": true,
           "in_list_view": true
         },
         {
           "column_name": "business_role",
-          "label": "Business role",
+          "label": "Business Role",
           "column_type": "Reference",
           "reference_table": "dash.business_role",
           "in_list_view": true
         },
         {
           "column_name": "source_grant",
-          "label": "Old grant",
+          "label": "Old Grant",
           "column_type": "Reference",
           "reference_table": "dash.report_access",
           "in_list_view": true
         },
         {
           "column_name": "setup_run",
-          "label": "Setup run",
+          "label": "Setup Run",
           "column_type": "Reference",
           "reference_table": "dash.setup_run",
           "in_list_view": true,
@@ -1074,7 +1074,7 @@
         },
         {
           "column_name": "summary",
-          "label": "What it did",
+          "label": "What It Did",
           "column_type": "Data",
           "reqd": true,
           "in_list_view": true
@@ -1087,18 +1087,19 @@
         },
         {
           "column_name": "already_there",
-          "label": "Already there",
+          "label": "Already There",
           "column_type": "Int"
         },
         {
           "column_name": "not_carried_over",
-          "label": "Not carried over",
+          "label": "Not Carried Over",
           "column_type": "Int"
         },
         {
-          "column_name": "run_by_name",
-          "label": "Run by",
-          "column_type": "Data",
+          "column_name": "run_by",
+          "label": "Run By",
+          "column_type": "Reference",
+          "reference_table": "Person",
           "in_list_view": true
         }
       ]
@@ -1106,17 +1107,23 @@
     {
       "name": "dash.access_decision",
       "label": "Access Decision",
-      "module": "Dash",
-      "title_column": "decision",
+      "module": "People",
+      "title_column": "title",
       "description": "#1340: the owner's decision for one person whose access would change with business roles, taken on Who Would Gain Or Lose Access: Lose Dash says they are to lose it. It records the decision only; it gives and takes away nothing.",
       "columns": [
         {
+          "column_name": "title",
+          "label": "Title",
+          "column_type": "Data",
+          "description": "The person and the decision, in words (\"<person>: Lose Dash\"), as the record is headed."
+        },
+        {
           "column_name": "person",
           "label": "Person",
-          "column_type": "Data",
+          "column_type": "Reference",
+          "reference_table": "Person",
           "reqd": true,
-          "in_list_view": true,
-          "description": "Their Featherbase id, which the page shows by name."
+          "in_list_view": true
         },
         {
           "column_name": "decision",
@@ -1127,9 +1134,10 @@
           "in_list_view": true
         },
         {
-          "column_name": "decided_by_name",
-          "label": "Decided by",
-          "column_type": "Data",
+          "column_name": "decided_by",
+          "label": "Decided By",
+          "column_type": "Reference",
+          "reference_table": "Person",
           "in_list_view": true
         },
         {
@@ -3539,6 +3547,12 @@
           "to": "People"
         },
         {
+          "kind": "moveTable",
+          "table": "dash.access_source",
+          "from": "Dash",
+          "to": "People"
+        },
+        {
           "kind": "alterColumn",
           "table": "dash.business_role",
           "column": "description",
@@ -3579,7 +3593,7 @@
               },
               {
                 "column_name": "summary",
-                "label": "What it did",
+                "label": "What It Did",
                 "column_type": "Data",
                 "reqd": true,
                 "in_list_view": true
@@ -3592,18 +3606,19 @@
               },
               {
                 "column_name": "already_there",
-                "label": "Already there",
+                "label": "Already There",
                 "column_type": "Int"
               },
               {
                 "column_name": "not_carried_over",
-                "label": "Not carried over",
+                "label": "Not Carried Over",
                 "column_type": "Int"
               },
               {
-                "column_name": "run_by_name",
-                "label": "Run by",
-                "column_type": "Data",
+                "column_name": "run_by",
+                "label": "Run By",
+                "column_type": "Reference",
+                "reference_table": "Person",
                 "in_list_view": true
               }
             ]
@@ -3614,7 +3629,7 @@
           "table": "dash.switch_over_log",
           "column": {
             "column_name": "setup_run",
-            "label": "Setup run",
+            "label": "Setup Run",
             "column_type": "Reference",
             "reference_table": "dash.setup_run",
             "in_list_view": true,
@@ -3626,17 +3641,23 @@
           "table": {
             "name": "dash.access_decision",
             "label": "Access Decision",
-            "module": "Dash",
-            "title_column": "decision",
+            "module": "People",
+            "title_column": "title",
             "description": "#1340: the owner's decision for one person whose access would change with business roles, taken on Who Would Gain Or Lose Access: Lose Dash says they are to lose it. It records the decision only; it gives and takes away nothing.",
             "columns": [
               {
+                "column_name": "title",
+                "label": "Title",
+                "column_type": "Data",
+                "description": "The person and the decision, in words (\"<person>: Lose Dash\"), as the record is headed."
+              },
+              {
                 "column_name": "person",
                 "label": "Person",
-                "column_type": "Data",
+                "column_type": "Reference",
+                "reference_table": "Person",
                 "reqd": true,
-                "in_list_view": true,
-                "description": "Their Featherbase id, which the page shows by name."
+                "in_list_view": true
               },
               {
                 "column_name": "decision",
@@ -3647,9 +3668,10 @@
                 "in_list_view": true
               },
               {
-                "column_name": "decided_by_name",
-                "label": "Decided by",
-                "column_type": "Data",
+                "column_name": "decided_by",
+                "label": "Decided By",
+                "column_type": "Reference",
+                "reference_table": "Person",
                 "in_list_view": true
               },
               {
@@ -3718,6 +3740,138 @@
           },
           "to": {
             "label": "Name"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.report_access",
+          "column": "access_key",
+          "from": {
+            "label": "Access key"
+          },
+          "to": {
+            "label": "Access Key"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.report_access",
+          "column": "given_by_name",
+          "from": {
+            "label": "Given by"
+          },
+          "to": {
+            "label": "Given By"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.report_access",
+          "column": "business_role",
+          "from": {
+            "label": "Business role"
+          },
+          "to": {
+            "label": "Business Role"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.business_role",
+          "column": "by_hand_only",
+          "from": {
+            "label": "Given by hand only"
+          },
+          "to": {
+            "label": "Given By Hand Only"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.title_map",
+          "column": "business_role",
+          "from": {
+            "label": "Business role"
+          },
+          "to": {
+            "label": "Business Role"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.role_assignment",
+          "column": "business_role",
+          "from": {
+            "label": "Business role"
+          },
+          "to": {
+            "label": "Business Role"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.role_assignment",
+          "column": "ends_on",
+          "from": {
+            "label": "Ends on"
+          },
+          "to": {
+            "label": "Ends On"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.role_assignment",
+          "column": "given_by_name",
+          "from": {
+            "label": "Given by"
+          },
+          "to": {
+            "label": "Given By"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.access_source",
+          "column": "source",
+          "from": {
+            "label": "Decided by"
+          },
+          "to": {
+            "label": "Decided By"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.switch_over_log",
+          "column": "detail",
+          "from": {
+            "label": "What happened"
+          },
+          "to": {
+            "label": "What Happened"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.switch_over_log",
+          "column": "business_role",
+          "from": {
+            "label": "Business role"
+          },
+          "to": {
+            "label": "Business Role"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "dash.switch_over_log",
+          "column": "source_grant",
+          "from": {
+            "label": "Old grant"
+          },
+          "to": {
+            "label": "Old Grant"
           }
         }
       ]
@@ -3901,9 +4055,10 @@
         "setup_run"
       ],
       "dash.access_decision": [
+        "title",
         "person",
         "decision",
-        "decided_by_name",
+        "decided_by",
         "removed",
         "updated_at"
       ]

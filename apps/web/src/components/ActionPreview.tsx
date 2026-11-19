@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Card, DataList, Notice, PageHeader, Segmented, Sentence, buttonClasses, fmtCount, type DataColumn } from '@featherbase/shop-floor'
-import type { ActionPreview as Preview, ActionPreviewAnswer } from 'shared'
+import { actionDoneSchema, type ActionPreview as Preview, type ActionPreviewAnswer, type ActionDone } from 'shared'
 import { api } from '../lib/api'
 import { tableLabel, useMeta } from '../lib/meta'
 import { runAppAction } from '../lib/record-facts'
@@ -28,13 +28,15 @@ export function ActionPreview({ table, action }: { table: string; action: string
   usePageTitle(preview.data?.label ?? label)
   const [filter, setFilter] = useState('all')
   const [running, setRunning] = useState(false)
-  const [said, setSaid] = useState<{ tone: 'positive' | 'negative'; words: string } | null>(null)
+  const [said, setSaid] = useState<{ tone: 'positive' | 'negative'; words: string; done?: ActionDone['said'] } | null>(null)
   const run = async (answer: ActionPreviewAnswer) => {
     setRunning(true)
     setSaid(null)
     try {
-      await runAppAction(answer.app, action)
-      setSaid({ tone: 'positive', words: `${answer.label}: done. Running it again adds nothing; the run is kept with its counts.` })
+      // The app may say what the run did, naming the record that keeps it; else the page says it is done.
+      const done = actionDoneSchema.safeParse(await runAppAction(answer.app, action))
+      setSaid(done.success ? { tone: 'positive', words: `${answer.label}: `, done: done.data.said }
+        : { tone: 'positive', words: `${answer.label}: done. Running it again adds nothing; the run is kept with its counts.` })
       await queryClient.invalidateQueries()
     } catch (error) {
       setSaid({ tone: 'negative', words: error instanceof Error ? error.message : 'That did not go through. Try again.' })
@@ -53,21 +55,24 @@ export function ActionPreview({ table, action }: { table: string; action: string
     cell: (row) => {
       const cell = row.cells[c.key]
       if (!cell) return <span className="text-ink-subtle">—</span>
-      return 'parts' in cell ? <Sentence parts={cell.parts} /> : <FactCell fact={cell} />
+      const shown = 'parts' in cell ? <Sentence parts={cell.parts} /> : <FactCell fact={cell} />
+      return c.nowrap ? <span className="whitespace-nowrap">{shown}</span> : shown
     },
   }))
   return (
     <div className="flex flex-col gap-4" data-testid="action-preview">
       <PageHeader
-        breadcrumb={<><Link to="/featherbase/admin/table/$table" params={{ table }} search={{} as never} className="hover:text-ink">{label}</Link> / {data?.title ?? 'Preview'}</>}
+        // The path starts where the Table's list and record do, at its module.
+        breadcrumb={<><Link to="/featherbase/admin" className="hover:text-ink">{meta.data?.module || 'Admin'}</Link> / <Link to="/featherbase/admin/table/$table" params={{ table }} search={{} as never} className="hover:text-ink">{label}</Link> / {data?.title ?? 'Preview'}</>}
         title={data?.title ?? preview.data?.label ?? 'Preview'}
-        status={data?.status}
+        // After a run the page reads again: what it lists is now a second run.
+        status={said?.tone === 'positive' ? 'Done · the list now shows what running it again would do' : data?.status}
         actions={<>
           <Link to="/featherbase/admin/table/$table" params={{ table }} search={{} as never} className={buttonClasses()} data-testid="action-preview-cancel">Cancel</Link>
           {preview.data && <Button variant="primary" loading={running} onClick={() => run(preview.data!)} data-testid="action-preview-run">{data?.runLabel ?? 'Run'}</Button>}
         </>}
       />
-      {said && <Notice tone={said.tone}>{said.words}</Notice>}
+      {said && <Notice tone={said.tone}><span data-testid={said.done ? 'action-preview-done' : undefined}>{said.words}{said.done && <Sentence parts={said.done} />}</span></Notice>}
       {preview.isError && <Notice tone="negative">{preview.error instanceof Error ? preview.error.message : 'This preview could not be read.'}</Notice>}
       {data && <>
         <p className="text-base text-ink" data-testid="action-preview-sentence"><Sentence parts={data.sentence} /></p>

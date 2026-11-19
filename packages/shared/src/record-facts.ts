@@ -108,9 +108,14 @@ export const actionPreviewSchema = z.object({
   filters: z.array(z.object({ key: z.string().regex(/^[a-z][a-z0-9_]{0,40}$/), label: words(40), count: z.number().int().min(0).optional() }).strict()).max(6),
   /** How many lines the whole plan has, when only the first ones are sent. */
   total: z.number().int().min(0).optional(),
-  columns: z.array(z.object({ key: z.string().regex(/^[a-z][a-z0-9_]{0,40}$/), label: words(40) }).strict()).min(1).max(8),
+  // `nowrap`: a column of short names or chips kept on one line, so a longer column beside it takes the wrap.
+  columns: z.array(z.object({ key: z.string().regex(/^[a-z][a-z0-9_]{0,40}$/), label: words(40), nowrap: z.boolean().optional() }).strict()).min(1).max(8),
   rows: z.array(z.object({ filter: z.string(), cells: z.record(z.string(), cell) }).strict()).max(RECORD_FACTS_LIMITS.rows),
   note: words(300).optional(),
 }).strict()
 export type ActionPreview = z.infer<typeof actionPreviewSchema>
 export interface ActionPreviewAnswer { app: string; version: string; label: string; preview: ActionPreview }
+
+// #1340: what a run did, in the app's words, a record named in them a link (the run kept, say). Other keys pass through.
+export const actionDoneSchema = z.object({ said: sentence })
+export type ActionDone = z.infer<typeof actionDoneSchema>

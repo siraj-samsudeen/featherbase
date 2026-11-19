@@ -1,6 +1,6 @@
 // #1340: the one shape an app's record facts and an action's preview must have; anything else is refused whole.
 import { describe, expect, it } from 'vitest'
-import { actionPreviewSchema, recordFactsSchema } from '../src/record-facts'
+import { actionDoneSchema, actionPreviewSchema, recordFactsSchema } from '../src/record-facts'
 
 const ok = (answer: unknown) => recordFactsSchema.safeParse(answer).success
 
@@ -33,7 +33,20 @@ describe('an action preview', () => {
   it('takes a sentence, filters, columns and rows', () => {
     expect(actionPreviewSchema.safeParse(preview).success).toBe(true)
   })
+  it('takes a column kept on one line', () => {
+    expect(actionPreviewSchema.safeParse({ ...preview, columns: [{ key: 'report', label: 'Report', nowrap: true }] }).success).toBe(true)
+  })
   it('refuses one with no columns', () => {
     expect(actionPreviewSchema.safeParse({ ...preview, columns: [] }).success).toBe(false)
+  })
+})
+
+// #1340 (verifier round 3): what a run did, said by the app after it, with the record that keeps it.
+describe('what an action did', () => {
+  it('takes a sentence, a record in it, and leaves the rest of the answer alone', () => {
+    expect(actionDoneSchema.safeParse({ said: ['9 added. ', { record: { table: 'dash.setup_run', row: 'r1', name: 'Open the Setup Run' } }], run: 'r1' }).success).toBe(true)
+  })
+  it('refuses an answer that says nothing', () => {
+    expect([actionDoneSchema.safeParse({ tidied: true }).success, actionDoneSchema.safeParse({ said: [] }).success]).toEqual([false, false])
   })
 })

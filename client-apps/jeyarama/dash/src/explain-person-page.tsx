@@ -42,8 +42,22 @@ function reachWords(area: Explained['roles'][number]['area']): string {
   return `${counted(area.stores, 'store')}${area.subcategories === null ? ', whole' : ` · ${counted(area.subcategories, 'subcategory', 'subcategories')}`}`
 }
 
-/** What changes for one person, in words, each name a link. */
-export function ChangeFacts({ change, decided = false }: { change: Change; decided?: boolean }) {
+/** Takes back the owner's decision that a person loses Dash; the page reads again. */
+export function TakeBack({ person, onChanged }: { person: string; onChanged: () => Promise<unknown> }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const takeBack = async () => {
+    setBusy(true); setError(null)
+    try { await act('decide_access', { person, undo: true }); await onChanged() } catch (e) { setError(messageOf(e)) } finally { setBusy(false) }
+  }
+  return <>
+    <button type="button" disabled={busy} className="whitespace-nowrap font-medium text-action hover:underline" onClick={takeBack} data-testid="take-back">Take Back</button>
+    {error && <span className="text-negative" data-testid="take-back-error"> {error}</span>}
+  </>
+}
+
+/** What changes for one person, in words, each name a link; a decision, with its Take Back when the page offers one. */
+export function ChangeFacts({ change, decided = false, takeBack }: { change: Change; decided?: boolean; takeBack?: { person: string; onChanged: () => Promise<unknown> } }) {
   const facts: ReactNode[] = []
   if (change.kinds.includes('loses_dash')) facts.push('Would lose Dash')
   if (change.kinds.includes('gains_dash')) facts.push('Would gain Dash')
@@ -56,7 +70,7 @@ export function ChangeFacts({ change, decided = false }: { change: Change; decid
   else list('Would get', change.gained)
   list('Would lose', change.lost)
   // Once the owner has decided they lose Dash, the reports are no longer waiting on a decision.
-  if (decided) facts.push('Decided: loses Dash')
+  if (decided) facts.push(<>Decided: loses Dash{takeBack && <> · <TakeBack {...takeBack} /></>}</>)
   else list('Needs a decision:', change.decisions)
   return <>{facts.map((f, i) => <span key={i} data-testid="change-fact">{i ? ' · ' : ''}{f}</span>)}</>
 }
@@ -91,10 +105,11 @@ function HeaderChips({ header }: { header: Explained['header'] }) {
 }
 
 /** The answer first: nothing changes, or what does, in one sentence. */
-function Answer({ answer }: { answer: Explained }) {
+function Answer({ answer, onChanged }: { answer: Explained; onChanged: () => Promise<unknown> }) {
   if (!answer.change.kinds.length)
     return <Notice tone="positive"><span data-testid="explain-answer"><b className="font-semibold">Nothing changes for {answer.name}.</b> Today and with business roles: {accessWords(answer.today)}.</span></Notice>
-  return <Notice tone="caution"><span data-testid="explain-answer"><b className="font-semibold">With business roles, {answer.name} changes:</b> <ChangeFacts change={answer.change} decided={answer.decided} />.</span></Notice>
+  // Decided, nothing waits on the owner: the banner is calm, and the decision can be taken back here.
+  return <Notice tone={answer.decided ? 'info' : 'caution'}><span data-testid="explain-answer"><b className="font-semibold">With business roles, {answer.name} changes:</b> <ChangeFacts change={answer.change} decided={answer.decided} takeBack={{ person: answer.person, onChanged }} />.</span></Notice>
 }
 
 /** A source chip: from HR (or a merchandise or buyer assignment) in the action tint; by hand in the caution tint. */
@@ -118,7 +133,7 @@ function Explanation({ answer, onChanged, giving }: { answer: Explained; onChang
         <p className="text-sm text-ink-muted" data-testid="explain-subtitle">Person · {staff}{answer.who?.jobs?.length ? ` · ${answer.who.jobs.join(', ')}` : ''}</p>
       </header>
       <HeaderChips header={answer.header} />
-      <Answer answer={answer} />
+      <Answer answer={answer} onChanged={onChanged} />
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
         <div data-testid="explain-fields">
           <FieldGrid groups={[{ fields: [

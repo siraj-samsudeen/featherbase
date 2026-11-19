@@ -25,6 +25,17 @@ describe('#101: GET /api/activity_feed', () => {
     expect(feed.items[1]).toMatchObject({ kind: 'row', label: 'A' })
   })
 
+  // #1340 (verifier): a Table opened is said by its label, as its list is headed, not by its internal name.
+  test('a list opened is said by its Table\'s label', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Feed Named', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { name: 'Feed Unlabelled', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    // An app's Table carries its own label (dash.business_role is headed "Business Role").
+    await sql`update table_def set label = 'Feed Shown' where name = 'Feed Named'`
+    await admin.post('/api/events', { events: [{ kind: 'list', key: 'list:Feed Named', label: 'Feed Named', path: '/featherbase/admin/table/feed-named', at: Date.now() }, { kind: 'list', key: 'list:Feed Unlabelled', label: 'Feed Unlabelled', path: '/featherbase/admin/table/feed-unlabelled', at: Date.now() - 1000 }] })
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
+    expect(feed.items.filter((i) => i.kind === 'list').map((i) => i.label)).toEqual(['Feed Shown', 'Feed Unlabelled'])
+  })
+
   test("a 'mine' item with no label or path is shown by its key, with no link", async ({ admin }) => {
     await admin.post('/api/events', { events: [{ kind: 'search', key: 'search:unlabelled' }] })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')

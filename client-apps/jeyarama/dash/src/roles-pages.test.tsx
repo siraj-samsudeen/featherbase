@@ -204,6 +204,25 @@ describe('Explain A Person', () => {
     expect([all('explain-change')[0].textContent, all('explain-decision').length]).toEqual(['Would lose Dash · Decided: loses Dash', 0])
   })
 
+  // #1340 (verifier round 3): a decision can be taken back from Explain, and a decided person's banner is calm, not amber.
+  it('takes back a decision from Explain, with a calm banner while decided', async () => {
+    answers.explain_person = { ...SELVI, decided: true, change: { ...NONE, kinds: ['loses_dash'] } }
+    answers.decide_access = { person: 'ho', undone: true }
+    const { all, click } = await render('explain')
+    expect([all('explain-answer')[0].textContent, all('explain-answer')[0].closest('.bg-caution-tint')]).toEqual(['With business roles, Selvi changes: Would lose Dash · Decided: loses Dash · Take Back.', null])
+    const reads = calls.filter(c => c.name === 'explain_person').length
+    await click(all('take-back')[0]!)
+    expect([calls.filter(c => c.name === 'decide_access').at(-1)?.payload, calls.filter(c => c.name === 'explain_person').length]).toEqual([{ person: SELVI.person, undo: true }, reads + 1])
+  })
+
+  it('says why a decision could not be taken back', async () => {
+    answers.explain_person = { ...SELVI, decided: true, change: { ...NONE, kinds: ['loses_dash'] } }
+    answers.decide_access = { __error: 'The decision has already been taken back.' }
+    const { all, click } = await render('explain')
+    await click(all('take-back')[0]!)
+    expect(all('take-back-error')[0]?.textContent).toBe(' The decision has already been taken back.')
+  })
+
   it('lists only the decisions the comparison makes', async () => {
     answers.explain_person = { ...SELVI, change: { ...NONE, kinds: ['decision'], decisions: [{ name: 'Sales', table: 'dash.report', id: 'sales' }] } }
     const { all } = await render('explain')
@@ -511,6 +530,19 @@ describe('Who Would Gain Or Lose Access', () => {
     expect([all('decide-card').length, container.textContent!.includes('All 3 changes are decided.')]).toEqual([0, true])
     // The decided person's reason says so, not that they need a decision.
     expect(all('changed-person').find(r => r.textContent!.includes('Hema'))!.textContent).toContain('Decided: loses Dash')
+    // Short columns stay on one line; Why takes the wrap.
+    expect(all('changed-today').every(c => c.className.includes('whitespace-nowrap'))).toBe(true)
+    // Nobody left to decide: the finding is calm, not amber.
+    expect(all('finding-card')[0]!.className).not.toContain('bg-caution-tint')
+  })
+
+  // #1340 (verifier round 3): any decided person, not only the latest, can be taken back from the list.
+  it('takes back any decided person from the list', async () => {
+    answers = { ...CHANGES, decide_access: { person: 'ho', undone: true }, access_changes: { ...CHANGES.access_changes, groups: CHANGES.access_changes.groups.map(g => ({ ...g, people: g.people.map(p => p.person === 'ho' ? { ...p, decided: true } : p) })) } }
+    const { all, click } = await render('changes')
+    const row = all('changed-person').find(r => r.textContent!.includes('Hema'))!
+    await click(row.querySelector('[data-testid="take-back"]')!)
+    expect([calls.filter(c => c.name === 'decide_access').at(-1)?.payload, calls.filter(c => c.name === 'access_changes').length]).toEqual([{ person: 'ho', undo: true }, 2])
   })
 
   it('words the decided changes for one and for many', async () => {

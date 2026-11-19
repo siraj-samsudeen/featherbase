@@ -15,12 +15,12 @@ export const NOTE_TAG = 'barproof.note_tag'
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
 const tableRead = { policy: { kind: 'table' }, authorization: { kind: 'generic' } }
 
-type Hook = { facts?: unknown; preview?: unknown; refuse?: boolean; runs: number; runFails?: boolean }
+type Hook = { facts?: unknown; preview?: unknown; refuse?: boolean; runs: number; runFails?: boolean; done?: unknown }
 export const hook = (): Hook => ((globalThis as unknown as { __facts1340?: Hook }).__facts1340 ??= { runs: 0 })
 const directories: string[] = []
 afterEach(async () => {
   const h = hook()
-  delete h.facts; delete h.preview; delete h.refuse; delete h.runFails
+  delete h.facts; delete h.preview; delete h.refuse; delete h.runFails; delete h.done
   h.runs = 0
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true })
 })
@@ -54,7 +54,7 @@ export function factsFor(rows: string[], page: boolean) {
 export const PREVIEW = {
   version: 1, title: 'Tidy The Notes', status: 'Preview · nothing is saved until Run', sentence: ['Tidies ', { record: { table: NOTE, row: 'n1', name: 'the note' } }, '.'],
   runLabel: 'Run', filters: [{ key: 'add', label: 'Will be added' }, { key: 'there', label: 'Already there' }],
-  columns: [{ key: 'what', label: 'What' }, { key: 'happens', label: 'What Happens' }, { key: 'blank', label: 'Blank' }],
+  columns: [{ key: 'what', label: 'What' }, { key: 'happens', label: 'What Happens', nowrap: true }, { key: 'blank', label: 'Blank' }],
   rows: [
     { filter: 'add', cells: { what: { parts: [{ record: { table: NOTE, row: 'n1', name: 'Kept' } }] }, happens: { text: 'Will be added', tone: 'neutral' } } },
     { filter: 'there', cells: { what: { parts: ['Second'] }, happens: { text: 'Already there', tone: 'quiet' } } },
@@ -86,7 +86,7 @@ const people = ${JSON.stringify(people)}
 const NOTE = '${NOTE}', LINE = '${LINE}', NOTE_TAG = '${NOTE_TAG}'
 reads.describe_notes = ({ payload }) => { if (facts.refuse) throw new Error('Not for you'); return facts.facts ?? answer(payload.rows, payload.page) }
 reads.preview_tidy = () => facts.preview ?? ${JSON.stringify(PREVIEW)}
-export const actions = { tidy: (context) => { if (facts.runFails) context.reject('The notes are busy'); facts.runs++; return { tidied: true } } }
+export const actions = { tidy: (context) => { if (facts.runFails) context.reject('The notes are busy'); facts.runs++; return facts.done ?? { tidied: true } } }
 `)
   expect(await discoverPackages([directory])).toEqual([])
   await admin.post('/api/install_app', { name: 'barproof' })

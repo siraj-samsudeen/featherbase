@@ -1140,6 +1140,9 @@ app.get('/api/activity_feed', async (c) => {
     const rowRef = (i: (typeof items)[number]) =>
       i.kind === 'row' && i.sub && i.ref_key === `row:${i.sub}/${i.label}` ? { table: i.sub, row_id: i.label } : {}
     const titleOf = await feedRowTitles(user, items.map(rowRef))
+    // #1340: a list is said by its Table's label, as the list is headed, not by the Table's internal name.
+    const listed = [...new Set(items.filter((i) => i.kind === 'list').map((i) => i.label))]
+    const tableLabels = new Map(listed.length ? (await sql`select name, label from table_def where name = any(${listed})`).map((r) => [String(r.name), String(r.label ?? r.name)]) : [])
     return c.json({
       items: items.map(({ ref_key, ...i }) => {
         const base = { who_name: whoName, ...(me.role ? { who_role: me.role } : {}), path: i.path, at: i.at, count: i.count }
@@ -1151,7 +1154,7 @@ app.get('/api/activity_feed', async (c) => {
         return {
           ...base,
           kind: i.kind,
-          label: i.label,
+          label: (i.kind === 'list' && tableLabels.get(i.label)) || i.label,
           ...(title ? { title } : {}),
           sub: i.sub,
           ...(i.kind === 'list' ? { filtered: listKeyHasFilter(ref_key) } : {}),
