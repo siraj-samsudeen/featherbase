@@ -187,17 +187,25 @@ export function useWalkKeys(walk: Walk | null, nav: AddressNavigation | null) {
 /** #1343 W1: "‹ 3 of 12 ›" beside the path bar's last step. */
 export function WalkControl({ walk, nav }: { walk: Walk | null; nav: AddressNavigation }) {
   if (!walk) return null
-  const button = (label: string, to: NavStep | undefined, icon: ReactNode) => (
-    <button type="button" aria-label={label} title={label} disabled={!to} onClick={() => to && nav.replace(to)}
+  return <WalkButtons position={walk.position} total={walk.total} testId="walk"
+    onPrevious={walk.previous && (() => nav.replace(walk.previous!))} onNext={walk.next && (() => nav.replace(walk.next!))} />
+}
+
+/** The walk's look, one for the path bar and the record page's own (UI owner, W5): quiet ‹ and ›, the place between. */
+export function WalkButtons({ position, total, onPrevious, onNext, testId, positionTestId = 'walk-position' }: {
+  position: number; total: number; onPrevious?: () => void; onNext?: () => void; testId: string; positionTestId?: string
+}) {
+  const button = (label: string, go: (() => void) | undefined, icon: ReactNode) => (
+    <button type="button" aria-label={label} title={label} disabled={!go} onClick={go}
       className={iconButtonClasses('size-7 text-ink-muted hover:text-ink disabled:opacity-40')}>{icon}</button>
   )
   return (
-    <span className="inline-flex shrink-0 items-center" data-testid="walk">
-      {button('Previous row', walk.previous, <ChevronLeft aria-hidden size={14} />)}
-      <span className="whitespace-nowrap px-0.5 text-[13px] tabular-nums text-ink-subtle" data-testid="walk-position">
-        {fmtCount(walk.position)} of {fmtCount(walk.total)}
+    <span className="inline-flex shrink-0 items-center" data-testid={testId}>
+      {button('Previous row', onPrevious, <ChevronLeft aria-hidden size={14} />)}
+      <span className="whitespace-nowrap px-0.5 text-[13px] tabular-nums text-ink-subtle" data-testid={positionTestId}>
+        {fmtCount(position)} of {fmtCount(total)}
       </span>
-      {button('Next row', walk.next, <ChevronRight aria-hidden size={14} />)}
+      {button('Next row', onNext, <ChevronRight aria-hidden size={14} />)}
     </span>
   )
 }
