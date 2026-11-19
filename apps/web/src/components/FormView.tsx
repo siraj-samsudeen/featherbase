@@ -639,8 +639,10 @@ export function FormView({
           <h1 className="text-xl font-semibold text-ink">
             {/* The row's title (title column, or a readable stand-in from its
                 values) — the same one Home and the activity feed show. #1348 board 3: the
-                Table is a muted kicker above it; read aloud, the heading is still "Site: Bayside". */}
-            <span className="mb-2 block text-[13px] font-normal text-ink-subtle" data-testid="record-kicker">{tableLabel(table, meta.data)}<span className="sr-only">:</span></span>{' '}
+                Table is a muted kicker above it; read aloud, the heading is still "Site: Bayside". The colon is
+                plain inline text, drawn transparent: a visually hidden (absolute) span would make Chromium read
+                "Site : Bayside". */}
+            <span className="mb-2 block text-[13px] font-normal text-ink-subtle" data-testid="record-kicker">{tableLabel(table, meta.data)}<span className="text-transparent select-none">:</span></span>{' '}
             {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
             <GlossaryHelp table={table} className="ml-1" />
           </h1>
