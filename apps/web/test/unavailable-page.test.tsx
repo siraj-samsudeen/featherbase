@@ -8,6 +8,7 @@ import { test, expect, renderApp } from './pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
 const T = { timeout: 8000 }
+const anonymous = { user: null, token: null } as never
 const BAR_PROOF = resolve(__dirname, '../../../test-apps/fixtures/bar-proof')
 
 async function offBarProof(admin: Client) {
@@ -33,11 +34,15 @@ test('an address that is no app says nothing is available there, under the top b
   expect(within(page).getAllByRole('link')).toHaveLength(1)
 })
 
-test('an app that is turned off says so to someone who could use it, and nothing to anyone else', async ({ admin, createUser }) => {
+test('an app that is turned off says so to someone who could use it', async ({ admin }) => {
   await offBarProof(admin)
   await renderApp('/featherbase/unavailable?address=%2Fbarproof%2F', admin)
-  expect((await shown()).heading).toBe('Bar proof is turned off')
+  await waitFor(async () => expect((await shown()).heading).toBe('Bar proof is turned off'), T)
   expect(screen.getByTestId('problem-not-found')).toHaveTextContent('Ask your system manager to turn it on again.')
+})
+
+test('the same turned-off app reads as nothing at all to someone who could not use it', async ({ admin, createUser }) => {
+  await offBarProof(admin)
   const stranger = await createUser({ email: 'up-stranger@example.test', roles: [] })
   await renderApp('/featherbase/unavailable?address=%2Fbarproof%2F', stranger)
   await waitFor(async () => expect((await shown()).heading).toBe('Nothing is available at /barproof/'), T)
@@ -58,7 +63,7 @@ test.for([
   expect((await shown()).heading).toBe('Nothing is available at the address you asked for')
 })
 
-test('signed out, the page says nothing is there, with no top bar, and names itself in the tab', async ({ anonymous }) => {
+test('signed out, the page says nothing is there, with no top bar, and names itself in the tab', async () => {
   await renderApp('/featherbase/unavailable?address=%2Fbarproof%2F', anonymous)
   expect((await shown()).heading).toBe('Nothing is available at /barproof/')
   expect(screen.queryByTestId('top-bar')).not.toBeInTheDocument()

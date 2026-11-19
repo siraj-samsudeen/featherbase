@@ -1,3 +1,4 @@
+import { unavailableHref } from 'shared'
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { config } from '../src/config'
@@ -698,7 +699,8 @@ describe('an address whose app is installed under the interim name', () => {
     await installDashApp(admin)
     await disable(admin)
     const res = await get(admin, `${DASH}${APP_ROOT}`)
-    expect([res.status, res.headers.get('location')]).toEqual([404, null])
+    // #1328: the shared page that says nothing is available there.
+    expect([res.status, res.headers.get('location')]).toEqual([302, unavailableHref(APP_ROOT)])
   })
 
   test("a disabled app's address is not named for the interim page", async ({ api, admin }) => {
@@ -738,7 +740,8 @@ describe('an address whose app is installed under the interim name', () => {
     await installDashApp(admin)
     await discoverPackages([])
     const res = await get(admin, `${DASH}${APP_ROOT}`)
-    expect([res.status, res.headers.get('location')]).toEqual([404, null])
+    // #1328: the shared page that says nothing is available there.
+    expect([res.status, res.headers.get('location')]).toEqual([302, unavailableHref(APP_ROOT)])
   })
 
   // A runtime app cannot be uninstalled through the API ("Use disable"), so the
