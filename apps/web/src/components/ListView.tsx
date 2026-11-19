@@ -458,7 +458,7 @@ export function ListView({
     }))
     : undefined
   const narrowPanel = (columns: 1 | 2, className?: string) => onFiltersChange && narrowLists && narrowLists.length > 0 && (
-    <NarrowPanel table={table} lists={narrowLists} filters={filters} baseFilters={baseFilters} withRetired={withRetired}
+    <NarrowPanel table={table} lists={narrowLists} filters={filters} baseFilters={baseFilters} withRetired={withRetired} refreshedAt={list.dataUpdatedAt}
       onFiltersChange={(next) => onFiltersChange(next, { replace: true })} columns={columns} className={className} />
   )
   const narrowBeside = !narrow && !narrowHidden && Boolean(narrowLists?.length)

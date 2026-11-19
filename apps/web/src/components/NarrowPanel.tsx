@@ -24,8 +24,10 @@ const enc = encodeURIComponent
 const TOP = 6
 /** A list longer than this gets "Find in <Table>". */
 const FIND_OVER = 12
-/** Search matches looked up per list. */
-const FOUND = 200
+/** Search matches looked up per list beyond SCOPED_FIND values. */
+const FOUND = 500
+/** Up to this many values, a list's search looks only among them. */
+const SCOPED_FIND = 500
 
 type Value = { value: string | null; count: number }
 
@@ -54,7 +56,7 @@ export function useNarrowLists(table: string, meta: TableMeta | undefined, enabl
 
 /** Every list's counts in one request: under the list's filters and every
  *  other list's picks, scoped by the server to what the viewer may read. */
-function useNarrowCounts(table: string, lists: NarrowList[], filters: Filter[], pageFilters: Filter[], withRetired: boolean) {
+function useNarrowCounts(table: string, lists: NarrowList[], filters: Filter[], pageFilters: Filter[], withRetired: boolean, refreshedAt: number) {
   const split = splitPicks(lists, filters)
   const { picks } = split
   const base = [...pageFilters, ...split.base]
@@ -63,7 +65,8 @@ function useNarrowCounts(table: string, lists: NarrowList[], filters: Filter[], 
     return pick ? { path: l.path, pick } : { path: l.path }
   })
   return useQuery({
-    queryKey: ['narrow-counts', table, JSON.stringify(base), JSON.stringify(request), withRetired],
+    // Read again whenever the list's rows are (Codex: a changed row must not leave stale counts).
+    queryKey: ['narrow-counts', table, JSON.stringify(base), JSON.stringify(request), withRetired, refreshedAt],
     enabled: lists.length > 0,
     // The panel keeps its counts while the next ones load, so a click never blanks it.
     placeholderData: keepPreviousData,
@@ -72,7 +75,7 @@ function useNarrowCounts(table: string, lists: NarrowList[], filters: Filter[], 
   })
 }
 
-export function NarrowPanel({ table, lists, filters, baseFilters = [], withRetired = false, onFiltersChange, columns = 2, className }: {
+export function NarrowPanel({ table, lists, filters, baseFilters = [], withRetired = false, refreshedAt = 0, onFiltersChange, columns = 2, className }: {
   table: string
   lists: NarrowList[]
   /** The person's filters, picks among them. */
@@ -80,12 +83,14 @@ export function NarrowPanel({ table, lists, filters, baseFilters = [], withRetir
   /** The page's own filters, always applied (#1173). */
   baseFilters?: Filter[]
   withRetired?: boolean
+  /** When the list last read its rows: the counts are read again with them. */
+  refreshedAt?: number
   onFiltersChange: (filters: Filter[]) => void
   /** Two columns of lists beside a table (board A); one in the phone sheet. */
   columns?: 1 | 2
   className?: string
 }) {
-  const counts = useNarrowCounts(table, lists, filters, baseFilters, withRetired)
+  const counts = useNarrowCounts(table, lists, filters, baseFilters, withRetired, refreshedAt)
   const { picks } = splitPicks(lists, filters)
   // Beside a table fitted to the window (#1249), the panel fits it too and scrolls inside.
   const [box, setBox] = useState<HTMLElement | null>(null)
@@ -248,11 +253,18 @@ function useFound(list: NarrowList, q: string, values: Value[]): (value: string 
   const records = list.kind !== 'choice'
   const meta = useMeta(list.table ?? '', records && Boolean(q))
   const column = meta.data ? searchColumn(meta.data) : undefined
+  // Search among this list's own values, so a limit never hides one of them
+  // behind matches elsewhere in the table (Codex). A very long list searches
+  // its table's first matches instead.
+  const ids = values.flatMap((v) => (v.value === null ? [] : [v.value]))
+  const within: Filter[] = ids.length <= SCOPED_FIND ? [['row_id', 'in', ids]] : []
   const rows = useQuery({
-    queryKey: ['narrow-find', list.table, column, q],
+    queryKey: ['narrow-find', list.table, column, q, JSON.stringify(within)],
     enabled: records && Boolean(q && column),
     placeholderData: keepPreviousData,
-    queryFn: () => listResource<{ row_id: string }>(list.table!, { filters: [[column!, 'like', `%${q}%`]], fields: ['row_id'], limit_page_length: FOUND }),
+    queryFn: () => listResource<{ row_id: string }>(list.table!, {
+      filters: [[column!, 'like', `%${q}%`], ...within], fields: ['row_id'], limit_page_length: within.length ? ids.length : FOUND,
+    }),
   })
   const words = q.toLowerCase()
   const hits = new Set((rows.data?.data ?? []).map((r) => String(r.row_id)))
