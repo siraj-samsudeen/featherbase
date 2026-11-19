@@ -123,7 +123,7 @@ const BOX = 'grid size-4 shrink-0 place-items-center rounded-[4px] border-[1.5px
  * names a correction path. Ticking an unticked choice opens the inline form
  * under it; nothing is saved until Add. Unticking a hand-given link removes it.
  */
-export function LinkTickList({ table, record, group, plan, onOpen, gridHref, heading, notes, fallback }: {
+export function LinkTickList({ table, record, group, plan, onOpen, gridHref, heading, notes, fallback, removedColumn }: {
   table: string
   record: string
   group: BacklinkGroup
@@ -136,6 +136,8 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref, hea
   notes?: Record<string, string>
   /** #1340: what draws the group when a row names no choice (it points elsewhere, a bundle beside reports): the list. */
   fallback?: ReactNode
+  /** #1340: a Check column marking a row taken away: hidden, not ticked; unticking sets it, ticking again clears it. */
+  removedColumn?: string
 }) {
   const { connection } = group
   const { linkMeta, column, farTable, farMeta, choices } = plan
@@ -151,13 +153,16 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref, hea
     queryKey: ['group-rows', connection.table, JSON.stringify(connection.filters), 'ticks'],
     queryFn: () => listResource(connection.table, {
       filters: connection.filters,
-      fields: [...new Set(['row_id', 'updated_at', 'created_by', backLink, column.column_name, ...fields.map((c) => c.column_name), ...facts.map((c) => c.column_name),
+      fields: [...new Set(['row_id', 'updated_at', 'created_by', backLink, column.column_name, ...(removedColumn ? [removedColumn] : []), ...fields.map((c) => c.column_name), ...facts.map((c) => c.column_name),
         // Correct's address may name any readable column of the row (Codex review).
         ...correctionColumns(linkMeta)])],
       limit_page_length: ALL_ROWS,
     }),
   })
-  const data = rows.data?.data ?? []
+  const read = rows.data?.data ?? []
+  // A row taken away is history, not a link: it is neither shown nor ticked (Codex round 3).
+  const takenAway = (r: Row) => Boolean(removedColumn) && [true, 1, '1', 'true'].includes(r[removedColumn!] as never)
+  const data = read.filter((r) => !takenAway(r))
   const sources = useRowSources(connection.table, data.map((r) => String(r.row_id)), rows.isSuccess)
   const [opened, setOpened] = useState<string | null>(null)
   const [all, setAll] = useState(false)
@@ -194,13 +199,19 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref, hea
       return false
     }
   }
+  const mark = (row: Row, removed: boolean) =>
+    api.patch(`/api/table/${encodeURIComponent(connection.table)}/${encodeURIComponent(String(row.row_id))}`, { [removedColumn!]: removed, updated_at: row.updated_at })
   const untick = (row: Row) => change(() => {
+    // Where the app keeps a taken-away row, unticking marks it, so its history stays.
+    if (removedColumn) return mark(row, true)
     const stamp = row.updated_at == null ? '' : `?updated_at=${encodeURIComponent(String(row.updated_at))}`
     return api.delete(`/api/table/${encodeURIComponent(connection.table)}/${encodeURIComponent(String(row.row_id))}${stamp}`)
   })
-  const add = (choice: Choice, values: Row) => change(() =>
-    api.post(`/api/table/${encodeURIComponent(connection.table)}`, newLinkRow(backLink, record, column.column_name, choice.id, values)))
-    .then((ok) => { if (ok) setOpened(null) })
+  const add = (choice: Choice, values: Row) => change(() => {
+    // Ticking a choice taken away earlier gives its row back, rather than a second row for the same link.
+    const earlier = read.find((r) => takenAway(r) && String(r[column.column_name]) === choice.id)
+    return earlier ? mark(earlier, false) : api.post(`/api/table/${encodeURIComponent(connection.table)}`, newLinkRow(backLink, record, column.column_name, choice.id, values))
+  }).then((ok) => { if (ok) setOpened(null) })
 
   const shown: ({ kind: 'ticked'; line: TickedLine } | { kind: 'unticked'; choice: Choice })[] = [
     ...lines.ticked.map((line) => ({ kind: 'ticked' as const, line })),

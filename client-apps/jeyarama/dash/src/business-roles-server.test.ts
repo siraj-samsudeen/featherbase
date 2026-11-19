@@ -14,6 +14,8 @@ import { scopeProviders } from './server'
 import { directDocuments, memoryDocuments, personShadow, placesByStore, shadowWorld } from './business-roles-server'
 import { businessModel } from './business-access'
 import { istToday } from './report'
+// The platform's own check of a preview's shape, which the page applies before drawing it.
+import { actionPreviewSchema } from '../../../../packages/shared/src/record-facts'
 import { OLD_GRANTS_PAGE, decideAccess, decidedToLose, describeBusinessRoles, giveOldGrantsPreview } from './roles-records-server'
 
 type Row = Record<string, unknown>
@@ -1900,6 +1902,20 @@ describe('business roles described for Featherbase (#1340)', () => {
     tables['dash.access_source'] = [{ row_id: 's1', source: 'business_roles' }]
     const live = await giveOldGrantsPreview(context(tables) as never)
     expect(live.status).toBe('Preview · nothing is saved until Run · business roles decide Dash access now, so Run gives these reports at once')
+  })
+
+  // Codex round 3: past the 500 lines a page can draw, the preview still draws, counts the whole plan and says it shows part.
+  it('previews more than 500 old grants: the first 500 lines, the whole plan counted, and the run still gives every one', async () => {
+    const tables = await seeded()
+    tables['dash.report'] = REPORT_ROWS
+    for (let i = 0; i < 520; i++) tables['dash.report_access'].push({ row_id: `p${i}`, report: 'vs', person: `made-up-${i}` })
+    const preview = await giveOldGrantsPreview(context(tables) as never)
+    expect(actionPreviewSchema.safeParse(preview).success).toBe(true)
+    expect(preview.rows.length).toBe(500)
+    expect(preview.total).toBe(522)
+    expect(preview.filters.find(f => f.key === 'not')!.count).toBe(521)
+    const run = await actions.give_old_grants_to_roles(context(tables, { roles: ['System Manager'] }) as never) as { grants_added: number }
+    expect(run.grants_added).toBeGreaterThan(0)
   })
 
   it('says a preview with nothing to carry, names a bundle, and is refused to someone who may not see the switch', async () => {

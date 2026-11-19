@@ -38,7 +38,7 @@ export function factsFor(rows: string[], page: boolean) {
       ...(page ? { groups: [
         { key: 'lines', heading: 'What It Says', table: LINE, links: [{ label: 'Open as grid', href: '/featherbase/admin/table/barproof.line' }],
           rows: { l1: { parts: ['The first line says ', { record: { table: NOTE, row: row, name: 'this note' } }, ' ', { chip: 'Area' }], note: ['In the note'] } } },
-        { key: 'tags', heading: 'Tags It Has', table: NOTE_TAG, notes: { t1: 'Also on two other notes', t2: 'On no other note' } },
+        { key: 'tags', heading: 'Tags It Has', table: NOTE_TAG, removedColumn: 'removed', notes: { t1: 'Also on two other notes', t2: 'On no other note' } },
         { key: 'people', heading: 'People', count: 15, lines: people, all: { label: 'Open as list', href: '/featherbase/admin/table/Person' } },
         { key: 'empty', heading: 'Nobody Yet', count: 0, lines: [] },
       ] } : {}),
@@ -72,7 +72,7 @@ export async function installFacts(admin: Client) {
   manifest.tables.push(
     { name: LINE, label: 'line', id_pattern: 'prompt', title_column: 'words', columns: [{ column_name: 'words', column_type: 'Data' }, { column_name: 'note', column_type: 'Reference', reference_table: NOTE }] },
     { name: TAG, label: 'tag', id_pattern: 'prompt', title_column: 'title', columns: [{ column_name: 'title', column_type: 'Data' }] },
-    { name: NOTE_TAG, label: 'note tag', columns: [{ column_name: 'note', column_type: 'Reference', reference_table: NOTE }, { column_name: 'tag', column_type: 'Reference', reference_table: TAG }, { column_name: 'line', column_type: 'Reference', reference_table: LINE }] },
+    { name: NOTE_TAG, label: 'note tag', columns: [{ column_name: 'note', column_type: 'Reference', reference_table: NOTE }, { column_name: 'tag', column_type: 'Reference', reference_table: TAG }, { column_name: 'line', column_type: 'Reference', reference_table: LINE }, { column_name: 'removed', column_type: 'Check' }] },
   )
   manifest.reads.tables = [NOTE, LINE, TAG, NOTE_TAG]
   manifest.reads.operations = { ...manifest.reads.operations, describe_notes: tableRead, preview_tidy: tableRead }

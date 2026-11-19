@@ -21,6 +21,8 @@ export const GRID_PAGE = '/dash/?view=roles-grid'
 const alsoWords = (others: string[]) => others.length
   ? `Also given to ${counted(others.length, 'other role')}: ${joined(others)}`
   : 'Given to this role only'
+/** The most lines a preview page draws (the platform's limit on one answer). */
+const PREVIEW_LINES = 500
 const counted = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-IN')} ${n === 1 ? one : many}`
 const joined = (words: string[]) => words.length === 1 ? words[0]! : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
 
@@ -64,12 +66,12 @@ async function roleGroups(ctx: AccessContext, role: Roles[number], roles: Roles,
     .filter(r => !checked(r.removed))
   const catalog = new Map(reportCatalog.map(c => [`${c.table}|${c.key}`, c]))
   return [
-    { key: 'can', heading: 'What They Can Do', table: PERMISSION, links: [{ label: 'Open as grid', href: GRID_PAGE }],
+    { key: 'can', heading: 'What They Can Do', table: PERMISSION, removedColumn: 'removed', links: [{ label: 'Open as grid', href: GRID_PAGE }],
       rows: Object.fromEntries(permissionRows.map(r => [exact(r.row_id), {
         parts: permissionParts(role, { verb: text(r.verb), thing: text(r.thing), reach: text(r.reach) as Reach }),
         note: [`In ${text(r.app)}, at level ${text(r.level)}`],
       }])) },
-    { key: 'reports', heading: 'Reports', table: 'dash.report_access', links: [{ label: 'Open as grid', href: `${GRID_PAGE}&grid=reports` }],
+    { key: 'reports', heading: 'Reports', table: 'dash.report_access', removedColumn: 'removed', links: [{ label: 'Open as grid', href: `${GRID_PAGE}&grid=reports` }],
       // Each grant says who else holds the same one: the grant is one, each role sees its own area. A tick list
       // takes the notes; a list (a bundle among the grants) takes a line for each grant, with where it came from.
       notes: Object.fromEntries(role.given.map(given => [given.slice(given.indexOf('|') + 1), alsoWords(others(given))])),
@@ -172,10 +174,12 @@ export async function giveOldGrantsPreview(context: AccessContext) {
     'Will be added': 'Will be added', 'Already there': 'Already there',
     'Not carried over': 'Not carried over: gives nothing while business roles decide', 'Stays with the person': 'Stays with the person',
   }
-  const rows = [...lines.values()].map(line => ({ filter: FILTER[line.outcome], cells: {
+  const all = [...lines.values()].map(line => ({ filter: FILTER[line.outcome], cells: {
     report: { parts: [given(line)] }, old_grant: oldGrant(line), given_to: toRoles(line.roles), what: { text: what[line.outcome], tone: TONE[line.outcome] },
   } }))
   // Counted as the run counts: one grant for each report or bundle and business role it is given to.
+  // A page draws at most this many lines; the counts and the run are always the whole plan's (Codex round 3).
+  const rows = all.slice(0, PREVIEW_LINES)
   const adding = [...lines.values()].filter(l => l.outcome === 'Will be added')
   const added = adding.reduce((n, l) => n + l.roles.length, 0)
   const there = [...lines.values()].filter(l => l.outcome === 'Already there').reduce((n, l) => n + l.roles.length, 0)
@@ -192,7 +196,8 @@ export async function giveOldGrantsPreview(context: AccessContext) {
       : "Preview · nothing is saved until Run · nobody's access changes until the switch is set",
     sentence: [sentence],
     runLabel: 'Run',
-    filters: [{ key: 'add', label: 'Will be added' }, { key: 'there', label: 'Already there' }, { key: 'not', label: 'Not carried over' }],
+    filters: (['add', 'there', 'not'] as const).map(key => ({ key, label: { add: 'Will be added', there: 'Already there', not: 'Not carried over' }[key], count: all.filter(r => r.filter === key).length })),
+    total: all.length,
     columns: [{ key: 'report', label: 'Report' }, { key: 'old_grant', label: 'Old Grant' }, { key: 'given_to', label: 'Given To' }, { key: 'what', label: 'What Happens' }],
     rows,
     note: 'Running this again adds nothing; each run is kept in Setup Runs.',

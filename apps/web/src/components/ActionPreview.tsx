@@ -72,15 +72,19 @@ export function ActionPreview({ table, action }: { table: string; action: string
       {data && <>
         <p className="text-base text-ink" data-testid="action-preview-sentence"><Sentence parts={data.sentence} /></p>
         {data.filters.length > 0 && (
+          // The whole plan's counts where the app sends only the first lines.
           <Segmented label="Show" value={filter} onChange={setFilter} options={[
-            { value: 'all', label: `All ${fmtCount(data.rows.length)}` },
-            ...data.filters.map((f) => ({ value: f.key, label: `${f.label} ${fmtCount(counts.get(f.key) ?? 0)}` })),
+            { value: 'all', label: `All ${fmtCount(data.total ?? data.rows.length)}` },
+            ...data.filters.map((f) => ({ value: f.key, label: `${f.label} ${fmtCount(f.count ?? counts.get(f.key) ?? 0)}` })),
           ]} />
         )}
         <Card className="overflow-hidden">
           <DataList caption={data.title} rows={rows} columns={columns} rowKey={(row) => `${rows.indexOf(row)}`} rowTestId={() => 'action-preview-row'}
             empty={{ title: 'Nothing here', body: 'No row falls under this filter.' }} />
         </Card>
+        {data.total !== undefined && data.total > data.rows.length && (
+          <p className="text-sm text-ink-muted" data-testid="action-preview-shown">Showing the first {fmtCount(data.rows.length)} of {fmtCount(data.total)} lines; Run carries out all of them.</p>
+        )}
         {data.note && <p className="text-sm text-ink-muted" data-testid="action-preview-note">{data.note}</p>}
       </>}
       {preview.isPending && <p className="text-sm text-ink-subtle">Loading…</p>}

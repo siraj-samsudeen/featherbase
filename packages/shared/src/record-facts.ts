@@ -53,6 +53,9 @@ export const recordGroupSchema = z.object({
   count: z.number().int().min(0).optional(),
   /** Where every line is, beside the first ones ("Show all 25"). */
   all: link.optional(),
+  /** A Check column of the group's Table that marks a row taken away (the app keeps it for its history): such a row is
+   *  neither shown nor ticked; unticking sets it, and ticking that choice again clears it. */
+  removedColumn: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/).optional(),
   /** Other ways to see the group: Open as grid, Open as list. */
   links: z.array(link).max(3).optional(),
 }).strict().refine((g) => !(g.table && g.lines), { message: 'A group stands for a link group or has its own lines, not both' })
@@ -98,7 +101,10 @@ export const actionPreviewSchema = z.object({
   status: words(200),
   sentence,
   runLabel: words(30),
-  filters: z.array(z.object({ key: z.string().regex(/^[a-z][a-z0-9_]{0,40}$/), label: words(40) }).strict()).max(6),
+  // `count`: how many lines of the whole plan fall under the filter, when the rows sent are only the first ones.
+  filters: z.array(z.object({ key: z.string().regex(/^[a-z][a-z0-9_]{0,40}$/), label: words(40), count: z.number().int().min(0).optional() }).strict()).max(6),
+  /** How many lines the whole plan has, when only the first ones are sent. */
+  total: z.number().int().min(0).optional(),
   columns: z.array(z.object({ key: z.string().regex(/^[a-z][a-z0-9_]{0,40}$/), label: words(40) }).strict()).min(1).max(8),
   rows: z.array(z.object({ filter: z.string(), cells: z.record(z.string(), cell) }).strict()).max(RECORD_FACTS_LIMITS.rows),
   note: words(300).optional(),

@@ -52,7 +52,7 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
   const href = showAllHref ?? groupListHref(group)
   if (editable && plan.tick && plan.linkMeta && plan.column && plan.farTable && plan.farMeta && plan.choices)
     return <LinkTickList table={table} record={record} group={group} onOpen={onOpen} gridHref={app?.links?.[0]?.href ?? href}
-      plan={plan as Parameters<typeof LinkTickList>[0]['plan']} heading={app?.heading} notes={app?.notes}
+      plan={plan as Parameters<typeof LinkTickList>[0]['plan']} heading={app?.heading} notes={app?.notes} removedColumn={app?.removedColumn}
       fallback={<LinkedRowsList table={table} record={record} group={group} maxRows={maxRows} href={href} onOpen={onOpen} peek={peek} heading={heading} plan={plan} app={app} />} />
   return <LinkedRowsList table={table} record={record} group={group} maxRows={maxRows} href={href} onOpen={onOpen} peek={peek}
     heading={heading} plan={editable ? plan : undefined} app={app} />
@@ -80,14 +80,17 @@ function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, 
     queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(record)}`),
   })
   const rows = useGroupRows(connection, {
-    fields: meta.data ? groupRowFields(meta.data) : [],
+    fields: meta.data ? [...new Set([...groupRowFields(meta.data), ...(app?.removedColumn ? [app.removedColumn] : [])])] : [],
     limit: maxRows,
     enabled: Boolean(meta.data),
     orderBy: meta.data ? groupOrder(meta.data) : undefined,
   })
   const own = recordMeta.data && doc.data ? forwardLinks(recordMeta.data, doc.data) : []
-  const data = rows.data?.data ?? []
-  const total = rows.data?.total ?? group.count
+  // #1340: a row the app marks taken away is its history, not a link: not listed.
+  const removed = app?.removedColumn
+  const data = (rows.data?.data ?? []).filter((r) => !removed || ![true, 1, '1', 'true'].includes(r[removed] as never))
+  const hidden = (rows.data?.data ?? []).length - data.length
+  const total = (rows.data?.total ?? group.count) - hidden
   const caps = useCapabilities()
   // C4: an empty group stays, greyed, and offers + New: a row already linked here.
   const canAdd = Boolean(caps && meta.data && !isRowsReadOnly(meta.data) && !connection.system_written

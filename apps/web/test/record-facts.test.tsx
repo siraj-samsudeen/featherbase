@@ -3,6 +3,7 @@
 // ordinary page. With no facts (the app refuses), the pages draw as they always did. Fixture: record-facts-fixture.ts.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { tableHref } from 'shared'
+import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 import { NOTE, NOTE_TAG, PREVIEW, hook, installFacts } from './record-facts-fixture'
 
@@ -117,6 +118,37 @@ test('a tick list whose rows come to include one naming no choice turns into a l
   expect(within(tags()).getAllByTestId('linked-row').length).toBeGreaterThanOrEqual(1)
 })
 
+// Codex round 3: a link the app marks taken away is history: not ticked, and ticking it again gives the same row back.
+test('a link marked taken away is not ticked; ticking it again gives its row back, and unticking marks it rather than deleting it', async ({ admin }) => {
+  await installFacts(admin)
+  await admin.post('/api/save_row', { table: NOTE_TAG, row: { note: 'n1', tag: 't2', removed: true } })
+  await openRecord(admin)
+  fireEvent.click(screen.getByRole('tab', { name: 'Links' }))
+  const tags = () => screen.getByRole('region', { name: 'Tags It Has' })
+  await waitFor(() => expect(within(tags()).getByRole('button', { name: 'Tick Later' })).toBeInTheDocument())
+  expect(within(tags()).getByTestId('tick-count')).toHaveTextContent('1 of 2')
+  fireEvent.click(within(tags()).getByRole('button', { name: 'Tick Later' }))
+  const add = within(tags()).queryByRole('button', { name: /^Add/ })
+  if (add) fireEvent.click(add)
+  await waitFor(() => expect(within(tags()).getByTestId('tick-count')).toHaveTextContent('2 of 2'))
+  expect(await sql`select removed from barproof.note_tag where tag = 't2'`).toEqual([{ removed: false }])
+  fireEvent.click(await within(tags()).findByRole('button', { name: 'Untick Urgent' }))
+  await waitFor(() => expect(within(tags()).getByTestId('tick-count')).toHaveTextContent('1 of 2'))
+  expect(await sql`select removed from barproof.note_tag where tag = 't1'`).toEqual([{ removed: true }])
+})
+
+test('a list leaves out a row the app marks taken away', async ({ admin }) => {
+  await installFacts(admin)
+  await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'n2', body: 'Second note' } })
+  await admin.post('/api/save_row', { table: NOTE_TAG, row: { note: 'n2', line: 'l2' } })
+  await admin.post('/api/save_row', { table: NOTE_TAG, row: { note: 'n2', line: 'l1', removed: true } })
+  hook().facts = { version: 1, rows: { n2: { header: 'Note', groups: [{ key: 'tags', heading: 'Tags It Has', table: NOTE_TAG, removedColumn: 'removed' }] } } }
+  await renderApp(`${tableHref(NOTE)}/row/n2`, admin)
+  fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
+  await waitFor(() => expect(within(screen.getByRole('region', { name: 'Tags It Has' })).getAllByTestId('linked-row')).toHaveLength(1))
+  expect(screen.getByRole('region', { name: 'Tags It Has' })).toHaveTextContent('Tags It Has 1')
+})
+
 test("a save on the record page reads the app's facts again", async ({ admin }) => {
   await installFacts(admin)
   await openRecord(admin)
@@ -169,6 +201,16 @@ test("a preview with a refused run says the app's words; a filter with nothing i
   expect(screen.getByText('Nothing here')).toBeInTheDocument()
   fireEvent.click(screen.getByTestId('action-preview-run'))
   expect(await screen.findByText('The notes are busy')).toBeInTheDocument()
+})
+
+// Codex round 3: an app sending only the first lines of a long plan: counts are the whole plan's, and the page says so.
+test('a preview of a long plan counts the whole plan and says it shows the first lines', async ({ admin }) => {
+  await installFacts(admin)
+  hook().preview = { ...PREVIEW, total: 900, filters: [{ key: 'add', label: 'Will be added', count: 600 }, { key: 'there', label: 'Already there', count: 300 }] }
+  await renderApp(`${tableHref(NOTE)}/run/tidy`, admin)
+  await screen.findByTestId('action-preview-sentence')
+  expect(within(screen.getByRole('group', { name: 'Show' })).getAllByRole('button').map((b) => b.textContent)).toEqual(['All 900', 'Will be added 600', 'Already there 300'])
+  expect(screen.getByTestId('action-preview-shown')).toHaveTextContent('Showing the first 2 of 900 lines; Run carries out all of them.')
 })
 
 test('a preview the page cannot draw is said, never half drawn', async ({ admin }) => {
