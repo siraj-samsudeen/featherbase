@@ -38,7 +38,10 @@ export async function setUserPassword(name: string, password: string, db: Sql | 
   if (db === sql) return sql.begin((tx) => setUserPassword(name, password, tx as unknown as TxSql)) as Promise<void>
   // person-rename: only a person has a password. A service account is not a
   // person, so it is refused here whichever route reached this write.
-  const [row] = await db`select 1 from person where row_id = ${name}`
+  // #1336: the hash lives in person_credential. The person row is still locked
+  // first, as the old `update person` did, so whoever locks the person to read
+  // the password (an invite, an agent's code exchange) still waits for this write.
+  const [row] = await db`select 1 from person where row_id = ${name} for no key update`
   if (!row) {
     const [service] = await db`select 1 from service_account where row_id = ${name}`
     if (service)
@@ -46,8 +49,8 @@ export async function setUserPassword(name: string, password: string, db: Sql | 
     throw new AppError('NotFoundError', `Person ${name} not found`)
   }
   await db`
-    update person set password_hash = ${hashPassword(password)}
-    where row_id = ${name}`
+    insert into person_credential (person_id, password_hash) values (${name}, ${hashPassword(password)})
+    on conflict (person_id) do update set password_hash = excluded.password_hash, updated_at = now()`
   // #1207 (D10): every password change (an emailed reset, an admin's, the
   // shell's) ends the person's agent connections; access tokens made by hand
   // are left as they are. Its sign-in codes not yet exchanged go too: one
@@ -178,7 +181,8 @@ export async function findPasswordAccount(typed: string) {
   // A username is the id for older accounts and `username` for people who
   // signed up (their id is opaque); either beats an email.
   const rows = await sql`
-    select row_id, email, full_name, enabled, password_hash,
+    select row_id, email, full_name, enabled,
+      (select c.password_hash from person_credential c where c.person_id = person.row_id) as password_hash,
       case when row_id = ${typed} then 0
            when lower(row_id) = lower(trim(${typed})) or lower(username) = lower(trim(${typed})) then 1
            else 2 end as rank
@@ -476,7 +480,8 @@ export async function checkSession(token: string): Promise<{ user: SessionUser }
   // method is turned off, its password is removed, or its identity is
   // unlinked or moved. Tokens from before the upgrade carry no m/idn.
   const [user] = await sql`
-    select u.row_id, u.email, u.full_name, u.enabled, (u.password_hash is not null) as has_password,
+    select u.row_id, u.email, u.full_name, u.enabled,
+      exists (select 1 from person_credential c where c.person_id = u.row_id) as has_password,
       floor(extract(epoch from u.sessions_ended_at)) as sessions_ended_at,
       m.enabled as method_enabled, m.kind as method_kind,
       i.person_id as identity_owner, i.subject as identity_subject, i.ended_at as identity_ended,

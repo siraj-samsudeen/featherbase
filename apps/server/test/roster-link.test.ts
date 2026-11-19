@@ -96,7 +96,8 @@ describe('a current roster row is linked before anyone signs in', () => {
     expect(run.created).toBe(1)
     expect(await count('person')).toBe(people + 1)
     const row = await crew('TT-1001')
-    const [person] = await sql`select full_name, email, enabled, password_hash, created_by from person where row_id = ${row.login}`
+    const [person] = await sql`select full_name, email, enabled,
+      (select c.password_hash from person_credential c where c.person_id = person.row_id) as password_hash, created_by from person where row_id = ${row.login}`
     expect(person).toMatchObject({ full_name: 'Made Up Crew 1', email: null, enabled: true, password_hash: null, created_by: 'roster-link' })
     expect(await liveLinks(row.login)).toEqual([{ subject: '7001', sign_in_name: 'TT-1001', linked_by: 'roster-link' }])
     expect(await currentIds(row.login)).toEqual([

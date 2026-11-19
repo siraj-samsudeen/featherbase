@@ -98,7 +98,7 @@ async function open(as: Client, route = ADMIN) {
 async function banner(admin: Client, visible = true) {
   if (visible) {
     const shown = await screen.findByTestId('health-banner', {}, LONG)
-    expect(within(shown).getByRole('link', { name: 'Open instance health' })).toBeInTheDocument()
+    expect(within(shown).getByRole('link', { name: 'Open Instance Health' })).toBeInTheDocument()
     const r = await report(admin)
     expect(r.checks.some((c) => c.key === 'scheduled-job:check_instance_health' && c.state === 'fault')).toBe(true)
     expect(r.failing, 'unfinished setup must not inflate the operational fault count').toBe(1)

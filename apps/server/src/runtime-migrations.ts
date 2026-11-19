@@ -153,6 +153,8 @@ function renameLinks(state: TableDef[], from: string, to: string) {
 function renameColumnIn(table: TableDef, from: string, to: string) {
   columnIn(table, from, `renameColumn ${table.name}.${from}`).column_name = to
   if (table.title_column === from) table.title_column = to
+  // #1346 (Codex round 3): the searched columns follow it, as the rename does in the database.
+  if (table.search_columns?.includes(from)) table.search_columns = table.search_columns.map((c) => c === from ? to : c)
   table.id_pattern = renameNamingColumn(table.id_pattern, from, to)
 }
 function setProperties(target: Column, values: Alterable) {

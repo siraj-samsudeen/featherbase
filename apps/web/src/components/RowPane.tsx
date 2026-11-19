@@ -19,6 +19,7 @@ import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './For
 import { useI18n } from '../lib/i18n'
 import { ActivityTimeline } from './ActivityTimeline'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
+import { WorkedOutSections } from './WorkedOut'
 import { useGroupPlans } from './LinkTickList'
 import { managedBySignIn } from './PersonSignInMethods'
 
@@ -139,6 +140,8 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
             <div className="flex min-w-0 flex-col gap-5">
               {tickable.map((g) => <LinkedRowsGroup key={g.key} table={table} record={row} group={g} onOpen={drill} editable
                 showAllHref={groupListHref(g, nav)} />)}
+              {/* #1282 C10–C11: what an installed app works out about this record (a Person's apps and reports). */}
+              <WorkedOutSections table={table} row={row} onOpen={drill} />
               <PaneSection title="Pointed At By">
                 <div className="flex flex-wrap gap-2">
                   {chips.map((g) => (

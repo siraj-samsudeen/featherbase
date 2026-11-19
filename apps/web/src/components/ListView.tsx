@@ -15,7 +15,7 @@ import { formatValue, useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
-import { Button, EmptyState, NARROW_QUERY, Notice, PageHeader, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Button, EmptyState, NARROW_QUERY, Notice, PageHeader, ProblemPage, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { ChevronDown } from '@featherbase/shop-floor'
 import { Columns3, ListTree, Rows4 } from 'lucide-react'
 import { tableCanRetire } from './RowRetirement'
@@ -486,7 +486,13 @@ export function ListView({
     list.error instanceof ApiError ? (
       list.error.message
     ) : (
-      `Cannot load rows for ${table}`
+      // #1327: a dropped request is the shared Couldn't open page, with Try again.
+      <ProblemPage
+        kind="failed"
+        title={`The rows of ${label} couldn’t be loaded`}
+        body="The server didn’t answer. Try again in a moment."
+        action={<Button onClick={() => void list.refetch()}>Try again</Button>}
+      />
     )
   ) : list.isPending ? (
     // Not yet loaded is not empty: "No rows" would alarm someone whose

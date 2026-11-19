@@ -209,7 +209,7 @@ it('narrowing the domain list racing a System Manager removing their password: e
     await gate.end()
     const results = await racing
     expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected'])
-    const [after] = await sql`select password_hash is not null as has_password from person where row_id = ${p}`
+    const [after] = await sql`select exists (select 1 from person_credential where person_id = ${p}) as has_password`
     const [domains] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
     // Either the list kept sister.test or the password stayed: never neither.
     expect(after.has_password || domains.allowed_email_domains === 'example.com,sister.test').toBe(true)
