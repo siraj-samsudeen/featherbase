@@ -9,7 +9,7 @@ import { test as pgTest } from '../pg-test'
 import { sql } from '../../src/db'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
-import { APP_DIR, TEAM_MANAGER, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity, revertTeamReportGiving, withoutTeamManager, revertViewAs, VIEW_AS_TESTER, withoutViewAsTester, withoutBusinessRoles, SHADOW_TABLES, LIVE_TABLES } from './helpers'
+import { APP_DIR, TEAM_MANAGER, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity, revertTeamReportGiving, withoutTeamManager, revertViewAs, VIEW_AS_TESTER, withoutViewAsTester, withoutBusinessRoles, SHADOW_TABLES, LIVE_TABLES, GRID_LOG, ROLE_PERMISSION_MANAGER } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -76,7 +76,8 @@ describe("upgrading production's Dash 0.13.1", () => {
       expect((await sql`select operation from permission where role = ${MANAGER} and ref_table = 'dash.report' order by operation`).map(r => r.operation)).toEqual(['create', 'read'])
       expect((await sql`select operation from activity_log where operation like 'app_grant_added dash%' and operation not like ${`%${TEAM_MANAGER}%`} and operation not like ${`%${VIEW_AS_TESTER}%`}`).map(r => r.operation)
         // #1218's grants on its four Tables come with this version too; business-roles.test.ts checks them.
-        .filter(operation => ![...SHADOW_TABLES, ...LIVE_TABLES].some(table => operation.endsWith(` on ${table}`))))
+        // #1282's Role Permission Manager and the grid's change log come with it as well.
+        .filter(operation => ![...SHADOW_TABLES, ...LIVE_TABLES, GRID_LOG].some(table => operation.endsWith(` on ${table}`)) && !operation.includes(ROLE_PERMISSION_MANAGER)))
         .toEqual([`app_grant_added dash@${VERSION}: ${MANAGER} read, create on dash.report`])
 
       await createCoreTables(admin)

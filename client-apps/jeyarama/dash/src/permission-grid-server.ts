@@ -3,7 +3,7 @@
 // (null: the role cannot do it). All are checked before any is written; then each is written
 // through the caller's own documents, so the platform's grants decide, and logged one line each.
 // Taking a permission away marks its row removed, as a hand change is (#1218: no delete).
-import { PERMISSION, ROLE } from './business-access.ts'
+import { PERMISSION, ROLE, every } from './business-access.ts'
 import { REACHES } from './business-roles.ts'
 import { managesAccess, type AccessContext } from './report-access-server.ts'
 import { ROLE_PERMISSION_MANAGER } from './report-eligibility.ts'
@@ -57,8 +57,9 @@ export async function changePermissions(context: AccessContext) {
 
   // Read as the app: the roles, and every permission row, so a stale grid or an invented permission is refused whole.
   const base = context.baseTables!
-  const roles = new Map((await base.list(ROLE, { fields: ['row_id', 'role_name'], limit_page_length: 1000 })).map(r => [exact(r.row_id), text(r.role_name)]))
-  const rows = await base.list(PERMISSION, { fields: ['row_id', 'business_role', 'app', 'level', 'verb', 'thing', 'reach', 'removed', 'updated_at'], limit_page_length: 10000 })
+  // Every page of each (Codex standard round 1: one list read stops at the platform's 500 rows), as businessModel reads them.
+  const roles = new Map((await every(base as never, ROLE, ['role_name'])).map(r => [exact(r.row_id), text(r.role_name)]))
+  const rows = await every(base as never, PERMISSION, ['business_role', 'app', 'level', 'verb', 'thing', 'reach', 'removed', 'updated_at'])
   const known = new Set(rows.filter(r => !checked(r.removed)).map(r => permissionKey({ app: text(r.app), level: text(r.level), verb: text(r.verb), thing: text(r.thing) })))
   const seen = new Set<string>()
   for (const change of wanted) {

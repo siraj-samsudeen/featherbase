@@ -11,7 +11,7 @@ import { test as pgTest } from '../pg-test'
 import { sql } from '../../src/db'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
-import { APP_DIR, TEAM_MANAGER, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity, revertTeamReportGiving, saveRow, revertViewAs, withoutViewAsTester } from './helpers'
+import { APP_DIR, TEAM_MANAGER, VERSION, createCoreTables, pinned, revertAddDive, revertPersonIdentity, revertTeamReportGiving, saveRow, revertViewAs, withoutViewAsTester, withoutBusinessRoles } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -69,7 +69,7 @@ describe("upgrading production's Dash 0.13.1 to team report giving", () => {
       await loadInstalledApps()
 
       const plan = await admin.post<{ planId: string; roles: { create?: string }[]; permissions: { grant?: { role: string } }[]; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect([withoutViewAsTester(plan.roles as never[]), plan.permissions.filter(p => p.grant?.role === TEAM_MANAGER), plan.migrations.map(m => m.id)])
+      expect([withoutBusinessRoles(withoutViewAsTester(plan.roles as never[])), plan.permissions.filter(p => p.grant?.role === TEAM_MANAGER), plan.migrations.map(m => m.id)])
         .toEqual([[{ create: TEAM_MANAGER }], TEAM_GRANTS, ['person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves', 'switcher_summary', 'sidebar_icon_rail', 'view_as', 'waiting_reads_fast', 'holders_read_whole', 'deciders_read_together', 'mde_review', 'people_describe', 'business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'old_grants_one_receiver', 'every_report_and_bulk_comparison', 'site_kind', 'division_head_and_visual_merchandising', 'why_on_the_map', 'why_app_levels_merged', 'report_access_days_in_india', 'area_picker', 'permission_grid']])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])

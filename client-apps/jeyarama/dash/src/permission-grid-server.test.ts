@@ -18,7 +18,9 @@ function world(): Record<string, Row[]> {
 
 function context(tables: Record<string, Row[]>, changes: unknown, roles = ['Role Permission Manager']) {
   let n = 0
-  const list = async (table: string) => tables[table] ?? []
+  // As the platform: pages of at most 500 rows (the save must read every page).
+  const list = async (table: string, args: { limit_start?: number; limit_page_length?: number } = {}) =>
+    (tables[table] ?? []).slice(args.limit_start ?? 0, (args.limit_start ?? 0) + Math.min(args.limit_page_length ?? 500, 500))
   const writes: string[] = []
   return {
     writes,
@@ -74,6 +76,13 @@ describe('saving the grid', () => {
     tables[PERMISSION]!.push({ row_id: 'p4', business_role: 'tl', app: 'Dash', level: 'Manager', verb: 'Close', thing: 'Stores', reach: 'All', removed: true })
     const { ctx } = context(tables, [{ role: 'sm', app: 'Dash', level: 'Manager', verb: 'Close', thing: 'Stores', from: null, to: 'All' }])
     await expect(changePermissions(ctx as never)).rejects.toThrow('Dash · Manager · Close Stores is not a permission any business role has')
+  })
+
+  it('finds a permission past the first 500 rows', async () => {
+    const tables = world()
+    for (let i = 0; i < 600; i++) tables[PERMISSION]!.splice(0, 0, { row_id: `f${i}`, business_role: 'sm', app: 'Filler', level: 'Manager', verb: 'View', thing: `Thing ${i}`, reach: 'Own', updated_at: 'u' })
+    const { ctx } = context(tables, [{ role: 'tl', ...tasks, from: 'Team', to: 'All' }])
+    expect(await changePermissions(ctx as never)).toEqual({ saved: 1 })
   })
 
   it('refuses a change whose cell changed since the grid loaded, writing none of them', async () => {
