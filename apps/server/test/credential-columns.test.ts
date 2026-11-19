@@ -27,6 +27,10 @@ const CREDENTIAL_TABLES = ['access_token', 'agent_auth_code', 'agent_refresh_tok
 const KNOWN_EXCEPTIONS: Record<string, string> = {
   'person.password_hash': '#1338: the second step of #1336 drops it; the server no longer reads it',
   'webhook.webhook_secret': '#1337',
+  // #1353: named like secrets, and none is one. A help passage's hash is of its public text; the other two count a language model's tokens.
+  'help_passage.content_hash': '#1353: the hash of a help page\'s text, which says whether to embed it again',
+  'model_usage.input_tokens': '#1353: a count of language model tokens',
+  'model_usage.output_tokens': '#1353: a count of language model tokens',
 }
 
 // `*_hash`, `*_secret`, `*token*`, `*password*`.
