@@ -111,7 +111,8 @@ test('a list whose rows the network drops says it cannot load them', async ({ ad
   await seed(admin, 'Lrf Rows Lost')
   dropNetwork((url) => url.startsWith(`/api/table/${enc('Lrf Rows Lost')}?`))
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug('Lrf Rows Lost'))}`, admin)
-  expect(await screen.findByText('Cannot load rows for Lrf Rows Lost', {}, { timeout: 8000 })).toBeInTheDocument()
+  // #1327: the shared Couldn't open page.
+  expect(await screen.findByText('The rows of Lrf Rows Lost couldn’t be loaded', {}, { timeout: 8000 })).toBeInTheDocument()
 })
 
 test('a bulk delete the network drops says the bulk delete failed', async ({ admin }) => {

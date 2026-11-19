@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { Navigate } from '@tanstack/react-router'
 import { getSessionUser } from '../lib/api'
 import { TopBar } from '../components/TopBar'
-import { Card, EmptyState, Skeleton, buttonClasses } from '@featherbase/shop-floor'
+import { Card, EmptyState, ProblemPage, Skeleton, buttonClasses } from '@featherbase/shop-floor'
 import { useCapabilities } from '../lib/session'
 import { useAccessRequest } from '../lib/access-request'
 
@@ -47,6 +47,26 @@ export function GoingToApp({ path }: { path: string }) {
   return (
     <div className="flex min-h-screen flex-col bg-canvas" data-testid="going-to-app" data-path={path}>
       <Waiting label="Opening your app" />
+    </div>
+  )
+}
+
+/** #1327 (audit F08): a report reader at an Admin address is told the Admin isn't theirs, and offered the report.
+ *  Their place is an app, so an access request would tell nobody (#955): none is sent. */
+export function AdminNotInAccount() {
+  return (
+    <div className="flex min-h-screen flex-col bg-canvas">
+      <TopBar forPerson />
+      <main className="flex flex-1 items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <ProblemPage
+            kind="no-access"
+            title="The Admin isn’t part of your account"
+            body="This address is in Featherbase’s Admin. Your account opens the Dash report. Ask your administrator if you need the Admin."
+            action={<a href={REPORT_PATH} className={buttonClasses()}>Open your report</a>}
+          />
+        </Card>
+      </main>
     </div>
   )
 }

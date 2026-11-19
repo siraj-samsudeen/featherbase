@@ -158,12 +158,14 @@ test('a failed refresh of whoami keeps the shell the person already has', () => 
 })
 
 // (5) Grants to the implicit All role come from runtime apps; they list a Table, they do not earn the shell.
-test('a viewer whose only grants are to the All role gets the report, not the Admin', async ({ admin, createUser }) => {
+test('a viewer whose only grants are to the All role is offered the report, not the Admin', async ({ admin, createUser }) => {
   await seed(admin)
   await sql`insert into permission (row_id, ref_table, role, operation, scope_mode, column_rule) values ('all-grant-web', 'Back Office', 'All', 'read', 'all', 'basic')`
   const tl = await createUser({ email: 'tl-all@example.com', roles: [VIEWER_ROLE] })
   await renderApp('/featherbase/admin/all-tables', tl)
-  await screen.findByTestId('identity')
+  // #1327 (audit F08): told and offered the report, not moved there.
+  const page = await screen.findByTestId('problem-no-access', {}, { timeout: 8000 })
+  expect(page).toHaveTextContent('The Admin isn’t part of your account')
   expect(screen.queryByTestId('admin-sidebar')).not.toBeInTheDocument()
 })
 
