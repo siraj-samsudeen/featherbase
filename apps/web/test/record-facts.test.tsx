@@ -111,6 +111,20 @@ test('a link group with a row that names no choice draws as a list, every row sa
   expect(within(screen.getByRole('region', { name: 'Tags It Has' })).queryByTestId('tick-box')).not.toBeInTheDocument()
 })
 
+// Codex round 2: a save through the generic pages (a tick here) reads the app's facts again.
+test("a save on the record page reads the app's facts again", async ({ admin }) => {
+  await installFacts(admin)
+  await openRecord(admin)
+  fireEvent.click(screen.getByRole('tab', { name: 'Links' }))
+  const tags = () => screen.getByRole('region', { name: 'Tags It Has' })
+  await waitFor(() => expect(within(tags()).getByRole('button', { name: 'Tick Later' })).toBeInTheDocument())
+  hook().facts = { version: 1, rows: { n1: { header: 'Note · 16 people · from HR and by hand' } } }
+  fireEvent.click(within(tags()).getByRole('button', { name: 'Tick Later' }))
+  const add = within(tags()).queryByRole('button', { name: /^Add/ })
+  if (add) fireEvent.click(add)
+  await waitFor(() => expect(screen.getByTestId('record-header-line')).toHaveTextContent('Note · 16 people'))
+})
+
 test("an own group past what the app sent says how many more, when it gives no page with them all", async ({ admin }) => {
   await installFacts(admin)
   hook().facts = { version: 1, rows: { n1: { header: 'Note', groups: [{ key: 'people', heading: 'People', count: 15,

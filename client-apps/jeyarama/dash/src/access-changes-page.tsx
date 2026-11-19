@@ -90,6 +90,12 @@ function Changes({ answer, onChanged }: { answer: ChangesAnswer; onChanged: () =
   const [finding, setFinding] = useState<Finding>('all')
   const [search, setSearch] = useState('')
   const [all, setAll] = useState(false)
+  const [decided, setDecided] = useState<Changed | null>(null)
+  const [undoError, setUndoError] = useState<string | null>(null)
+  const undo = async () => {
+    setUndoError(null)
+    try { await act('decide_access', { person: decided!.person, undo: true }); setDecided(null); await onChanged() } catch (e) { setUndoError(messageOf(e)) }
+  }
   const count = (f: Finding) => people.filter(p => inFinding(f, p)).length
   const toggle = (f: Finding) => { setFinding(finding === f ? 'all' : f); setAll(false) }
   const words = search.trim().toLowerCase()
@@ -130,7 +136,15 @@ function Changes({ answer, onChanged }: { answer: ChangesAnswer; onChanged: () =
           reason="A report given to a job or an old role, now given to a business role" owner="Check after the switch" />
       </div>
       <p className="-mt-3 text-[13px] text-ink-muted">Each finding filters the list below. A person with two changes counts once in the headline and shows under each finding.</p>
-      {deciding.length > 0 && <Decide people={deciding} onChanged={onChanged} />}
+      {/* Kept here, not in the list: deciding the last person empties the list, and the Undo must stay (Codex round 2). */}
+      {decided && (
+        <Notice tone="positive">
+          <span data-testid="decided">{decided.name} will lose Dash with business roles. </span>
+          <button type="button" className="font-medium text-action hover:underline" onClick={undo} data-testid="undo-lose">Undo</button>
+        </Notice>
+      )}
+      {undoError && <Notice tone="negative">{undoError}</Notice>}
+      {deciding.length > 0 && <Decide people={deciding} onChanged={onChanged} onDecided={setDecided} />}
       <section className="flex flex-col gap-3" aria-label="Everyone Who Changes" data-testid="everyone">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-base font-semibold text-ink">Everyone Who Changes</h2>
@@ -159,17 +173,17 @@ function Changes({ answer, onChanged }: { answer: ChangesAnswer; onChanged: () =
 const counted = (n: number) => `${fmtCount(n)} ${n === 1 ? 'person' : 'people'}`
 
 /** One card for each person who needs a decision: what they have today and with business roles, and the two ways to settle it. */
-function Decide({ people, onChanged }: { people: Changed[]; onChanged: () => Promise<unknown> }) {
+function Decide({ people, onChanged, onDecided }: { people: Changed[]; onChanged: () => Promise<unknown>; onDecided: (p: Changed) => void }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // Letting someone lose Dash asks first, on the card; once done, it can be undone.
+  // Letting someone lose Dash asks first, on the card; once done, the page offers Undo.
   const [asking, setAsking] = useState<string | null>(null)
-  const [decided, setDecided] = useState<Changed | null>(null)
-  const decide = async (p: Changed, undo: boolean) => {
+  const decide = async (p: Changed) => {
     setBusy(p.person); setError(null)
     try {
-      await act('decide_access', undo ? { person: p.person, undo: true } : { person: p.person })
-      setDecided(undo ? null : p); setAsking(null)
+      await act('decide_access', { person: p.person })
+      setAsking(null)
+      onDecided(p)
       await onChanged()
     } catch (e) { setError(messageOf(e)) } finally { setBusy(null) }
   }
@@ -177,12 +191,6 @@ function Decide({ people, onChanged }: { people: Changed[]; onChanged: () => Pro
     <section className="flex flex-col gap-3" aria-label="Need A Decision" data-testid="decide">
       <div className="flex items-baseline gap-2"><h2 className="text-base font-semibold text-ink">Need A Decision</h2><span className="text-[13px] text-ink-muted">{fmtCount(people.length)}</span></div>
       {error && <Notice tone="negative">{error}</Notice>}
-      {decided && (
-        <Notice tone="positive">
-          <span data-testid="decided">{decided.name} will lose Dash with business roles. </span>
-          <button type="button" className="font-medium text-action hover:underline" onClick={() => decide(decided, true)} data-testid="undo-lose">Undo</button>
-        </Notice>
-      )}
       <div className="flex flex-wrap gap-3">
         {people.map(p => (
           <div key={p.person} className="flex min-w-80 flex-1 basis-80 flex-col gap-2.5 rounded-card bg-caution-tint p-4" data-testid="decide-card">
@@ -191,7 +199,7 @@ function Decide({ people, onChanged }: { people: Changed[]; onChanged: () => Pro
             {asking === p.person ? (
               <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="lose-confirm">
                 <span>Let {p.name} lose Dash with business roles?</span>
-                <Button variant="primary" loading={busy === p.person} onClick={() => decide(p, false)} data-testid="lose-yes">Yes, Let Them Lose It</Button>
+                <Button variant="primary" loading={busy === p.person} onClick={() => decide(p)} data-testid="lose-yes">Yes, Let Them Lose It</Button>
                 <Button variant="quiet" onClick={() => setAsking(null)} data-testid="lose-keep">Keep Deciding</Button>
               </div>
             ) : (

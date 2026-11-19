@@ -186,7 +186,10 @@ export async function giveOldGrantsPreview(context: AccessContext) {
   return {
     version: 1,
     title: 'Give Old Grants To Business Roles',
-    status: "Preview · nothing is saved until Run · nobody's access changes until the switch is set",
+    // Once business roles decide, a grant to a role is access at once (Codex round 2).
+    status: (await accessSource(context.baseTables as Base)) === 'business_roles'
+      ? 'Preview · nothing is saved until Run · business roles decide Dash access now, so Run gives these reports at once'
+      : "Preview · nothing is saved until Run · nobody's access changes until the switch is set",
     sentence: [sentence],
     runLabel: 'Run',
     filters: [{ key: 'add', label: 'Will be added' }, { key: 'there', label: 'Already there' }, { key: 'not', label: 'Not carried over' }],

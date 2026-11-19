@@ -1891,6 +1891,17 @@ describe('business roles described for Featherbase (#1340)', () => {
     expect(run.grants_added).toBeGreaterThan(0)
   })
 
+  // Codex round 2: once business roles decide, Run gives the reports at once; the preview says so.
+  it('says nobody changes until the switch while the old rules decide, and that Run gives the reports at once while business roles decide', async () => {
+    const tables = await seeded()
+    tables['dash.report'] = REPORT_ROWS
+    const old = await giveOldGrantsPreview(context(tables) as never)
+    expect([old.rows.some(r => r.filter === 'add'), old.status]).toEqual([true, "Preview · nothing is saved until Run · nobody's access changes until the switch is set"])
+    tables['dash.access_source'] = [{ row_id: 's1', source: 'business_roles' }]
+    const live = await giveOldGrantsPreview(context(tables) as never)
+    expect(live.status).toBe('Preview · nothing is saved until Run · business roles decide Dash access now, so Run gives these reports at once')
+  })
+
   it('says a preview with nothing to carry, names a bundle, and is refused to someone who may not see the switch', async () => {
     const tables = await seeded()
     tables['dash.report_bundle'] = [{ row_id: 'b1', bundle_name: 'Store pack' }]

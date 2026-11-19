@@ -485,6 +485,20 @@ describe('Who Would Gain Or Lose Access', () => {
     expect([calls.filter(c => c.name === 'decide_access').at(-1)?.payload, all('decided').length]).toEqual([{ person: 'ho', undo: true }, 0])
   })
 
+  // Codex round 2: deciding the last person empties Need A Decision; the Undo must stay.
+  it('keeps Undo after the last person who needed a decision is decided', async () => {
+    const decided = { ...CHANGES.access_changes, groups: CHANGES.access_changes.groups.map(g => ({ ...g, people: g.people.map(p => p.person === 'ho' ? { ...p, decided: true } : p) })) }
+    answers = { ...CHANGES, decide_access: { person: 'ho', decision: 'Lose Dash' } }
+    const { all, click } = await render('changes')
+    await click(all('let-lose')[0]!)
+    answers.access_changes = decided
+    await click(all('lose-yes')[0]!)
+    expect([all('decide-card').length, all('decided')[0]?.textContent]).toEqual([0, 'Hema will lose Dash with business roles. '])
+    answers.access_changes = CHANGES.access_changes
+    await click(all('undo-lose')[0]!)
+    expect([calls.filter(c => c.name === 'decide_access').at(-1)?.payload, all('decide-card').length, all('decided').length]).toEqual([{ person: 'ho', undo: true }, 1, 0])
+  })
+
   it('counts someone the owner decided as decided, with no card', async () => {
     answers = { ...CHANGES, access_changes: { ...CHANGES.access_changes, groups: CHANGES.access_changes.groups.map(g => ({ ...g, people: g.people.map(p => p.person === 'ho' ? { ...p, decided: true } : p) })) } }
     const { all, container } = await render('changes')
