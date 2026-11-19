@@ -139,7 +139,7 @@ describe('CUST-002: metadata overrides', () => {
       }), { status: 417, type: 'ValidationError' })
       expect(error.message.split('Permitted properties: ')[1]).toBe(column
         ? 'label, hidden, reqd, read_only, in_list_view, default_value, choices'
-        : 'label, title_column, search_columns, sort_column, sort_direction, enable_assignments, enable_tags, enable_files, enable_discussion')
+        : 'label, title_column, search_columns, person_column, sort_column, sort_direction, enable_assignments, enable_tags, enable_files, enable_discussion')
     })
   }
 
