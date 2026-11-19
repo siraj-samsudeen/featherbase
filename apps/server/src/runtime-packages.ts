@@ -933,7 +933,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           if (gone.length)
             await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${gone.length} contributions)`.slice(0, 140))
         }
-        const losses = await applyMigrations(prepared.pending, name, actor, { ownsClient: typeof prepared.target.manifest.client === 'string' })
+        const losses = await applyMigrations(prepared.pending, name, actor, { ownsClient: typeof prepared.target.manifest.client === 'string', featherbase: Object.keys(prepared.target.manifest.records ?? {}) })
         // Counts only, never values: what each destructive step removed.
         for (const loss of losses)
           await logActivity(actor, `app_data_removed ${name}@${version}: ${describeLoss(loss)}`.slice(0, 140))
@@ -991,6 +991,7 @@ export async function shippedUpgrades(installed: Record<string, unknown>[], path
     if (!newest) return []
     return [{ name: String(row.name), from: String(row.package_version), to: newest.version,
       ownsClient: typeof newest.manifest.client === 'string',
+      featherbase: Object.keys(newest.manifest.records ?? {}),
       migrations: newest.manifest.migrations.slice((row.migration_ledger as unknown[]).length) }]
   })
 }
@@ -1003,7 +1004,7 @@ const removesData = (loss: Loss) => (loss.rows ?? 0) + (loss.childRows ?? 0) + (
 export async function upgradeLossWarning(upgrade: Awaited<ReturnType<typeof shippedUpgrades>>[number]): Promise<string | null> {
   let losses: Loss[]
   try {
-    losses = (await countLosses(upgrade.name, upgrade.migrations, { ownsClient: upgrade.ownsClient })).filter(removesData)
+    losses = (await countLosses(upgrade.name, upgrade.migrations, { ownsClient: upgrade.ownsClient, featherbase: upgrade.featherbase })).filter(removesData)
   } catch (error) {
     return `WARNING: upgrading app ${upgrade.name} from ${upgrade.from} to ${upgrade.to} would fail here: ${(error as Error).message}`
   }
@@ -1023,7 +1024,7 @@ export async function rehearseAppUpgrades(paths: string[]): Promise<string[]> {
     const label = `app ${upgrade.name} ${upgrade.from} to ${upgrade.to}`
     try {
       const losses = (await sql.begin(() => provisionApp(upgrade.name, () =>
-        applyMigrations(upgrade.migrations, upgrade.name, 'Administrator', { ownsClient: upgrade.ownsClient })))).filter(removesData)
+        applyMigrations(upgrade.migrations, upgrade.name, 'Administrator', { ownsClient: upgrade.ownsClient, featherbase: upgrade.featherbase })))).filter(removesData)
       lines.push(`${label}: rehearsed; ${losses.length ? `it removes ${losses.map(describeLoss).join('; ')}` : 'it removes no data'}`)
     } catch (error) {
       lines.push(`${label}: the upgrade would fail: ${errorMessage(error)}`)

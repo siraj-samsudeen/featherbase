@@ -52,7 +52,7 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
   const href = showAllHref ?? groupListHref(group)
   if (editable && plan.tick && plan.linkMeta && plan.column && plan.farTable && plan.farMeta && plan.choices)
     return <LinkTickList table={table} record={record} group={group} onOpen={onOpen} gridHref={app?.links?.[0]?.href ?? href}
-      plan={plan as Parameters<typeof LinkTickList>[0]['plan']} heading={app?.heading} notes={app?.notes} removedColumn={app?.removedColumn}
+      plan={plan as Parameters<typeof LinkTickList>[0]['plan']} heading={app?.heading} notes={app?.notes} removedColumn={app?.removedColumn} tickFields={app?.tickFields}
       fallback={<LinkedRowsList table={table} record={record} group={group} maxRows={maxRows} href={href} onOpen={onOpen} peek={peek} heading={heading} plan={plan} app={app} />} />
   return <LinkedRowsList table={table} record={record} group={group} maxRows={maxRows} href={href} onOpen={onOpen} peek={peek}
     heading={heading} plan={editable ? plan : undefined} app={app} />

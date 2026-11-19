@@ -38,7 +38,7 @@ export function factsFor(rows: string[], page: boolean) {
       ...(page ? { groups: [
         { key: 'lines', heading: 'What It Says', table: LINE, links: [{ label: 'Open as grid', href: '/featherbase/admin/table/barproof.line' }],
           rows: { l1: { parts: ['The first line says ', { record: { table: NOTE, row: row, name: 'this note' } }, ' ', { chip: 'Area' }], note: ['In the note'] } } },
-        { key: 'tags', heading: 'Tags It Has', table: NOTE_TAG, removedColumn: 'removed', notes: { t1: 'Also on two other notes', t2: 'On no other note' } },
+        { key: 'tags', heading: 'Tags It Has', table: NOTE_TAG, removedColumn: 'removed', tickFields: [], count: 1, notes: { t1: 'Also on two other notes', t2: 'On no other note' } },
         { key: 'people', heading: 'People', count: 15, lines: people, all: { label: 'Open as list', href: '/featherbase/admin/table/Person' } },
         { key: 'empty', heading: 'Nobody Yet', count: 0, lines: [] },
       ] } : {}),

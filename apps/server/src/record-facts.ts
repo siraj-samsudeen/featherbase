@@ -43,14 +43,14 @@ const scrub = (reads: Set<string>) => (part: Part): Part =>
 function partsOf(facts: RecordFacts): Part[] {
   return Object.values(facts.rows).flatMap((row) => (row.groups ?? []).flatMap((g) => [
     ...Object.values(g.rows ?? {}), ...(g.lines ?? []),
-  ].flatMap((line) => [...line.parts, ...(line.note ?? [])])))
+  ].flatMap((line) => [...line.parts, ...(line.note ?? [])]).concat(Object.values(g.notes ?? {}).flatMap((n) => (typeof n === 'string' ? [] : n)))))
 }
 
 /**
  * Which keys of the groups' `rows` and `notes` name records `user` may read: a row of the group's Table, or for a
  * note, a row of a Table the group's links point at (other than the described Table itself, the back link).
  */
-async function readableKeys(table: string, groups: { table?: string; rows?: Record<string, unknown>; notes?: Record<string, string> }[], user: string): Promise<Set<string>> {
+async function readableKeys(table: string, groups: { table?: string; rows?: Record<string, unknown>; notes?: Record<string, unknown> }[], user: string): Promise<Set<string>> {
   const keep = new Set<string>()
   for (const g of groups) {
     if (!g.table) continue
@@ -106,7 +106,8 @@ export async function describeRows(table: string, body: unknown, user: string): 
         groups: page ? row.groups?.map((g) => ({
           ...g,
           ...(g.rows && { rows: Object.fromEntries(Object.entries(g.rows).filter(([r]) => keep.has(`${g.table}\u0000${r}`)).map(([r, l]) => [r, line(l)])) }),
-          ...(g.notes && { notes: Object.fromEntries(Object.entries(g.notes).filter(([r]) => keep.has(`note:${g.table}\u0000${r}`))) }),
+          ...(g.notes && { notes: Object.fromEntries(Object.entries(g.notes).filter(([r]) => keep.has(`note:${g.table}\u0000${r}`))
+            .map(([r, n]) => [r, typeof n === 'string' ? n : n.map(scrub(reads))])) }),
           ...(g.lines && { lines: g.lines.map(line) }),
         })) : undefined,
       }])),

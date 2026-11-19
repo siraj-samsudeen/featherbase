@@ -448,7 +448,9 @@ export function RowConnections({ table, row, values, layout = 'chips', onGroup, 
   const step = nav.step
   const open = (pane: NavPane) => nav.push({ ...step, pane })
   const chosen = step.pane?.table === table && step.pane.row === row ? step.pane.group : undefined
-  const ordered = inAppOrder(groups, appGroups)
+  // #1340: a link group's count is the app's, where it gives one: rows it marks taken away do not count.
+  const counted = groups.map((g) => { const n = appGroupFor(appGroups, g.connection.table)?.count; return n === undefined ? g : { ...g, count: n } })
+  const ordered = inAppOrder(counted, appGroups)
   const full = ordered.filter((g) => g.count > 0)
   const empty = ordered.filter((g) => g.count === 0)
   const own = layout === 'chips' && onGroup ? (appGroups ?? []).filter((g) => !g.table) : []

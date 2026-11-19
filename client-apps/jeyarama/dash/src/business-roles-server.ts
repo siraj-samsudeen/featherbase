@@ -490,6 +490,8 @@ export async function explainPerson(context: AccessContext) {
     today: sideCounts(shadow.today, plants),
     next: sideCounts(shadow.next, plants),
     change: await changeWords(world, reports, found, shadow.everyReport),
+    // #1340: the owner has decided they are to lose Dash (Let Them Lose Dash).
+    decided: (await decidedToLose(ctx.baseTables)).has(person),
     choices: world.model.roles.map(r => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name)),
     // The Correct form's places: every store, their job's first.
     places: { stores, default: jobs.map(j => exact(j.site)).find(id => stores.some(s => s.id === id)) ?? null },

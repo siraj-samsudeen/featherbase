@@ -113,7 +113,7 @@ function Changes({ answer, onChanged }: { answer: ChangesAnswer; onChanged: () =
         {needsDecision(p) && <StatusPill tone="caution">Needs a decision</StatusPill>}
       </span>
     ) },
-    { key: 'why', header: 'Why', phone: 'meta', cell: p => <span className="text-ink-muted"><ChangeFacts change={p} /></span> },
+    { key: 'why', header: 'Why', phone: 'meta', cell: p => <span className="text-ink-muted"><ChangeFacts change={p} decided={p.decided} /></span> },
   ]
   return (
     <div className="flex flex-col gap-6">
@@ -121,7 +121,7 @@ function Changes({ answer, onChanged }: { answer: ChangesAnswer; onChanged: () =
       <section className="flex flex-col gap-1.5 rounded-card bg-subtle px-5 py-4" aria-label="The answer" data-testid="changes-answer">
         <p className="text-xl font-semibold leading-snug text-ink max-sm:text-base">
           {people.length === 0 ? `All ${counted(answer.people)} would keep exactly what they have.`
-            : `${fmtCount(people.length)} of ${counted(answer.people)} would see something different. ${fmtCount(people.length - deciding.length)} of the ${fmtCount(people.length)} are changes already decided; ${fmtCount(deciding.length)} ${deciding.length === 1 ? 'needs' : 'need'} your decision before the switch.`}
+            : `${fmtCount(people.length)} of ${counted(answer.people)} would see something different. ${decidedWords(people.length, deciding.length)}`}
         </p>
         <p className="text-sm text-ink-muted" data-testid="changes-detail">{gains ? `${counted(gains)} would gain Dash.` : 'Nobody gains Dash.'} The other {fmtCount(answer.people - people.length)} keep exactly what they have.</p>
       </section>
@@ -170,6 +170,13 @@ function Changes({ answer, onChanged }: { answer: ChangesAnswer; onChanged: () =
   )
 }
 
+/** "All 17 changes are decided.", or "15 of the 17 changes are decided; 2 need your decision before the switch." */
+export function decidedWords(changed: number, deciding: number): string {
+  const changes = `${fmtCount(changed)} ${changed === 1 ? 'change' : 'changes'}`
+  if (!deciding) return changed === 1 ? 'The 1 change is decided.' : `All ${changes} are decided.`
+  return `${fmtCount(changed - deciding)} of the ${changes} ${changed - deciding === 1 ? 'is' : 'are'} decided; ${fmtCount(deciding)} ${deciding === 1 ? 'needs' : 'need'} your decision before the switch.`
+}
+
 const counted = (n: number) => `${fmtCount(n)} ${n === 1 ? 'person' : 'people'}`
 
 /** One card for each person who needs a decision: what they have today and with business roles, and the two ways to settle it. */
@@ -195,7 +202,7 @@ function Decide({ people, onChanged, onDecided }: { people: Changed[]; onChanged
         {people.map(p => (
           <div key={p.person} className="flex min-w-80 flex-1 basis-80 flex-col gap-2.5 rounded-card bg-caution-tint p-4" data-testid="decide-card">
             <div className="text-sm"><PersonLink person={p.person} name={p.name} />{p.who?.code && <span className="text-ink-muted"> {p.who.code}</span>} <span className="text-ink-muted">· {titleOf(p)}{sitesOf(p).length ? <> · <Parts parts={sitesOf(p).map(s => ({ name: s.name, table: 'Site', id: s.id }))} /></> : null}</span></div>
-            <p className="text-sm text-ink">Today: {sideWords(p.today)}. With business roles: {p.kinds.includes('loses_dash') ? 'no Dash' : sideWords(p.next)}. <span className="text-ink-muted"><ChangeFacts change={p} /></span></p>
+            <p className="text-sm text-ink">Today: {sideWords(p.today)}. With business roles: {p.kinds.includes('loses_dash') ? 'no Dash' : sideWords(p.next)}. <span className="text-ink-muted"><ChangeFacts change={p} decided={p.decided} /></span></p>
             {asking === p.person ? (
               <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="lose-confirm">
                 <span>Let {p.name} lose Dash with business roles?</span>

@@ -22,7 +22,7 @@ const CHIP_TONE: Record<ChipTone, string> = {
 /** A small chip on a line's right: where a link came from ("from HR", "given by hand", "via Store Manager"). */
 export function ToneChip({ tone = 'quiet', children, className, testid = 'source-chip' }: { tone?: ChipTone; children: ReactNode; className?: string; testid?: string }) {
   return (
-    <span className={cx('inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-[7px] py-px font-mono text-xs', CHIP_TONE[tone], className)}
+    <span className={cx('inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-px text-xs font-medium', CHIP_TONE[tone], className)}
       data-testid={testid} data-tone={tone}>{children}</span>
   )
 }

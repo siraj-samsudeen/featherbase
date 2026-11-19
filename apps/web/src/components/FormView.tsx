@@ -623,7 +623,8 @@ export function FormView({
   return (
     <div data-testid="form-view" className={`min-w-0 [overflow-wrap:anywhere] ${unsaved && !rowsReadOnly ? 'pb-20' : ''}`}>
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
-        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
+        {/* #1340: the path starts where the Table's list does, at its module. */}
+        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')} data-testid="breadcrumb-module">{meta.data?.module || 'Admin'}</RouterLink>
         <span aria-hidden="true">/</span>
         <RouterLink
           to="/featherbase/admin/table/$table"

@@ -10,6 +10,7 @@ import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { canUseAdmin } from '../src/landing'
+import { sql } from '../src/db'
 import { expectStatus } from './fixtures'
 
 const BAR_PROOF = resolve('../..', 'test-apps/fixtures/bar-proof')
@@ -182,6 +183,15 @@ describe('Record facts: the answer', () => {
     expect(theirs.facts.rows.n1.groups[1].notes).toEqual({ 'secret-natural-key': 'On a hidden secret' })
   })
 
+  test('a note given as a sentence keeps its records as links for someone who may read them', async ({ admin, createUser }) => {
+    await install(admin)
+    const [, describer] = await people(createUser)
+    hook().answer = { version: 1, rows: { n1: { groups: [{ key: 'links', heading: 'Its Links', table: LINK,
+      notes: { s1: ['Also on ', { record: { table: SECRET, row: 's1', name: 'The secret' } }] } }] } } }
+    const body = await (await describeRows(describer, { rows: ['n1'], page: true })).json()
+    expect(body.facts.rows.n1.groups[0].notes).toEqual({ s1: ['Also on ', { record: { table: SECRET, row: 's1', name: 'The secret' } }] })
+  })
+
   test('an answer naming no record is passed as it is', async ({ admin, createUser }) => {
     await install(admin)
     const [reader] = await people(createUser)
@@ -324,6 +334,13 @@ describe("Record facts: an app's records are Featherbase's pages", () => {
     await install(admin, { [SECRET]: {} })
     const [reader, describer] = await people(createUser)
     expect([await canUseAdmin(reader.user!), await canUseAdmin(describer.user!)]).toEqual([false, true])
+  })
+
+  // Verifier round 2: such a Table is reached from its module's home page, not only by its address.
+  test("a Table the app names in records is listed on its module's home page; one it does not name is not", async ({ admin }) => {
+    await install(admin, { [SECRET]: {} })
+    const listed = (await sql`select link_to from home_page_link where link_to in (${SECRET}, ${NOTE})`).map((r) => r.link_to)
+    expect(listed).toEqual([SECRET])
   })
 
   test('a Table named with no describer draws as it always did', async ({ admin, createUser }) => {

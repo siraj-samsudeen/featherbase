@@ -198,6 +198,12 @@ describe('Explain A Person', () => {
     expect([(all('hand-site')[0] as HTMLSelectElement).value, all('hand-sentence')[0].textContent]).toEqual(['LKS', 'Correct: treat as Store Manager at Lakeside.'])
   })
 
+  it('says a person the owner decided loses Dash as decided, with no Needs A Decision list', async () => {
+    answers.explain_person = { ...SELVI, decided: true, change: { ...NONE, kinds: ['loses_dash', 'decision'], decisions: [{ name: 'Sales', table: 'dash.report', id: 'sales' }] } }
+    const { all } = await render('explain')
+    expect([all('explain-change')[0].textContent, all('explain-decision').length]).toEqual(['Would lose Dash · Decided: loses Dash', 0])
+  })
+
   it('lists only the decisions the comparison makes', async () => {
     answers.explain_person = { ...SELVI, change: { ...NONE, kinds: ['decision'], decisions: [{ name: 'Sales', table: 'dash.report', id: 'sales' }] } }
     const { all } = await render('explain')
@@ -430,7 +436,7 @@ describe('Who Would Gain Or Lose Access', () => {
   it('answers first: how many change, how many are decided, how many need a decision, and who gains', async () => {
     answers = CHANGES
     const { all, container } = await render('changes')
-    expect(container.textContent).toContain('3 of 10 people would see something different. 2 of the 3 are changes already decided; 1 needs your decision before the switch.')
+    expect(container.textContent).toContain('3 of 10 people would see something different. 2 of the 3 changes are decided; 1 needs your decision before the switch.')
     expect(all('changes-detail')[0].textContent).toBe('1 person would gain Dash. The other 7 keep exactly what they have.')
     expect(all('decides-today')[0].textContent).toBe('Today old rules decide')
     expect(all('changes-checked')[0].textContent).toMatch(/^Old rules compared with business roles · checked \d{2}-[A-Z][a-z]{2}-\d{4}/)
@@ -502,7 +508,16 @@ describe('Who Would Gain Or Lose Access', () => {
   it('counts someone the owner decided as decided, with no card', async () => {
     answers = { ...CHANGES, access_changes: { ...CHANGES.access_changes, groups: CHANGES.access_changes.groups.map(g => ({ ...g, people: g.people.map(p => p.person === 'ho' ? { ...p, decided: true } : p) })) } }
     const { all, container } = await render('changes')
-    expect([all('decide-card').length, container.textContent!.includes('3 of the 3 are changes already decided; 0 need your decision')]).toEqual([0, true])
+    expect([all('decide-card').length, container.textContent!.includes('All 3 changes are decided.')]).toEqual([0, true])
+    // The decided person's reason says so, not that they need a decision.
+    expect(all('changed-person').find(r => r.textContent!.includes('Hema'))!.textContent).toContain('Decided: loses Dash')
+  })
+
+  it('words the decided changes for one and for many', async () => {
+    const { decidedWords } = await import('./access-changes-page')
+    expect([decidedWords(1, 0), decidedWords(17, 0), decidedWords(17, 1), decidedWords(2, 1)]).toEqual([
+      'The 1 change is decided.', 'All 17 changes are decided.', '16 of the 17 changes are decided; 1 needs your decision before the switch.',
+      '1 of the 2 changes is decided; 1 needs your decision before the switch.'])
   })
 
   it('checks again on request', async () => {

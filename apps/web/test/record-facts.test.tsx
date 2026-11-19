@@ -77,6 +77,15 @@ test("the record page says the app's header line, and its chips carry the app's 
   expect(await screen.findByRole('region', { name: 'People' })).toHaveAttribute('data-testid', 'app-link-group')
 })
 
+// Verifier round 2: a jump chip counts what its group shows: the app's count, not rows it marks taken away.
+test("a link group's jump chip counts as the app does", async ({ admin }) => {
+  await installFacts(admin)
+  await admin.post('/api/save_row', { table: NOTE_TAG, row: { note: 'n1', tag: 't2', removed: true } })
+  await openRecord(admin)
+  const chips = await screen.findByRole('region', { name: 'Connections' })
+  await waitFor(() => expect(within(chips).getByRole('button', { name: /Tags It Has/ })).toHaveTextContent('1'))
+})
+
 test("the Links tab draws the app's groups in its order: a link group in its words, a tick list with notes, and its own group", async ({ admin }) => {
   await installFacts(admin)
   await openRecord(admin)
@@ -128,8 +137,8 @@ test('a link marked taken away is not ticked; ticking it again gives its row bac
   await waitFor(() => expect(within(tags()).getByRole('button', { name: 'Tick Later' })).toBeInTheDocument())
   expect(within(tags()).getByTestId('tick-count')).toHaveTextContent('1 of 2')
   fireEvent.click(within(tags()).getByRole('button', { name: 'Tick Later' }))
-  const add = within(tags()).queryByRole('button', { name: /^Add/ })
-  if (add) fireEvent.click(add)
+  // One click: the app asks for no field, so no form opens.
+  expect(within(tags()).queryByRole('button', { name: /^Add/ })).not.toBeInTheDocument()
   await waitFor(() => expect(within(tags()).getByTestId('tick-count')).toHaveTextContent('2 of 2'))
   expect(await sql`select removed from barproof.note_tag where tag = 't2'`).toEqual([{ removed: false }])
   fireEvent.click(await within(tags()).findByRole('button', { name: 'Untick Urgent' }))

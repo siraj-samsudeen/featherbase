@@ -28,6 +28,7 @@ interface Explained {
   today: Side
   next: Side
   change: Change
+  decided?: boolean
   choices: { id: string; name: string }[]
   places: { stores: { id: string; name: string }[]; default: string | null }
 }
@@ -42,7 +43,7 @@ function reachWords(area: Explained['roles'][number]['area']): string {
 }
 
 /** What changes for one person, in words, each name a link. */
-export function ChangeFacts({ change }: { change: Change }) {
+export function ChangeFacts({ change, decided = false }: { change: Change; decided?: boolean }) {
   const facts: ReactNode[] = []
   if (change.kinds.includes('loses_dash')) facts.push('Would lose Dash')
   if (change.kinds.includes('gains_dash')) facts.push('Would gain Dash')
@@ -54,7 +55,9 @@ export function ChangeFacts({ change }: { change: Change }) {
   if (change.gained.length && change.every_report?.length) facts.push(`Would get every report, through ${change.every_report.join(' and ')}`)
   else list('Would get', change.gained)
   list('Would lose', change.lost)
-  list('Needs a decision:', change.decisions)
+  // Once the owner has decided they lose Dash, the reports are no longer waiting on a decision.
+  if (decided) facts.push('Decided: loses Dash')
+  else list('Needs a decision:', change.decisions)
   return <>{facts.map((f, i) => <span key={i} data-testid="change-fact">{i ? ' · ' : ''}{f}</span>)}</>
 }
 
@@ -91,7 +94,7 @@ function HeaderChips({ header }: { header: Explained['header'] }) {
 function Answer({ answer }: { answer: Explained }) {
   if (!answer.change.kinds.length)
     return <Notice tone="positive"><span data-testid="explain-answer"><b className="font-semibold">Nothing changes for {answer.name}.</b> Today and with business roles: {accessWords(answer.today)}.</span></Notice>
-  return <Notice tone="caution"><span data-testid="explain-answer"><b className="font-semibold">With business roles, {answer.name} changes:</b> <ChangeFacts change={answer.change} />.</span></Notice>
+  return <Notice tone="caution"><span data-testid="explain-answer"><b className="font-semibold">With business roles, {answer.name} changes:</b> <ChangeFacts change={answer.change} decided={answer.decided} />.</span></Notice>
 }
 
 /** A source chip: from HR (or a merchandise or buyer assignment) in the action tint; by hand in the caution tint. */
@@ -123,7 +126,7 @@ function Explanation({ answer, onChanged, giving }: { answer: Explained; onChang
             { label: 'Status', value: <StaffBadge who={answer.who} /> },
             { label: 'Today', value: <span data-testid="explain-today">{accessWords(answer.today)}</span> },
             { label: 'With business roles', value: <span data-testid="explain-next">{accessWords(answer.next)}</span> },
-            { label: 'What changes', value: <span data-testid="explain-change">{answer.change.kinds.length ? <ChangeFacts change={answer.change} /> : 'Nothing'}</span> },
+            { label: 'What changes', value: <span data-testid="explain-change">{answer.change.kinds.length ? <ChangeFacts change={answer.change} decided={answer.decided} /> : 'Nothing'}</span> },
           ] }]} />
         </div>
         <div className="flex min-w-0 flex-col gap-6">
@@ -173,7 +176,7 @@ function Explanation({ answer, onChanged, giving }: { answer: Explained; onChang
             ))}
             {answer.reports.length === 0 && <li className="px-2 py-1.5 text-sm text-ink-muted">No report.</li>}
           </LinkSection>
-          {answer.change.decisions.length > 0 && (
+          {answer.change.decisions.length > 0 && !answer.decided && (
             <LinkSection heading="Needs A Decision" count={answer.change.decisions.length} testid="explain-decisions">
               <li className="px-2 text-[13px] text-ink-muted">They get these today only through a role such as Dash Reader, and business roles don't give them. The owner decides which business roles get them.</li>
               {answer.change.decisions.map(report => (

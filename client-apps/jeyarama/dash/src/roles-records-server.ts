@@ -6,7 +6,7 @@ import { PERMISSION, TITLE_MAP, businessModel, every, type Base } from './busine
 import { DASH_APP, permissionParts, viewsEveryReport, type Reach } from './business-roles.ts'
 import { ACCESS_DECISION, businessRoles, decidedToLose } from './business-roles-server.ts'
 export { ACCESS_DECISION, decidedToLose }
-import { all, managesAccess, personNames, type AccessContext } from './report-access-server.ts'
+import { all, managesAccess, personNames, whoIs, type AccessContext } from './report-access-server.ts'
 import { OLD_GRANT_GIVER, planGrants, type PlannedGrant } from './switch-over.ts'
 import { checked, exact, text } from './values.ts'
 import { istToday } from './report.ts'
@@ -17,14 +17,19 @@ export const OLD_GRANTS_PAGE = `/featherbase/admin/table/${ROLE_TABLE}/run/give_
 /** The roles × permissions grid of #1282, Dash's own page. */
 export const GRID_PAGE = '/dash/?view=roles-grid'
 
-/** "Also given to 2 other roles: Floor Manager and Cluster Manager", or "Given to this role only". */
-const alsoWords = (others: string[]) => others.length
-  ? `Also given to ${counted(others.length, 'other role')}: ${joined(others)}`
-  : 'Given to this role only'
+/** "Also given to 2 other roles: [Floor Manager] and [Cluster Manager]", each role a link; or "Given to this role only". */
+const alsoParts = (others: { id: string; name: string }[]) => others.length
+  ? [`Also given to ${counted(others.length, 'other role')}: `, ...others.flatMap((r, i) => [...(i ? [i === others.length - 1 ? ' and ' : ', '] : []), { record: { table: ROLE_TABLE, row: r.id, name: r.name } }])]
+  : ['Given to this role only']
+/** " 3024 · Head office staff · Head Office": a person's staff code, job and place after their name, where known. */
+const personDetail = (who: { code: string | null; jobs: string[] } | undefined) => {
+  const words = [who?.code, ...(who?.jobs ?? [])].filter(Boolean).join(' · ')
+  return words ? [` ${words}`] : []
+}
+
 /** The most lines a preview page draws (the platform's limit on one answer). */
 const PREVIEW_LINES = 500
 const counted = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-IN')} ${n === 1 ? one : many}`
-const joined = (words: string[]) => words.length === 1 ? words[0]! : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
 
 /** How people came to hold a role, in the list's short words. */
 const GIVEN_BY: Record<string, string> = {
@@ -48,8 +53,8 @@ async function listActions(ctx: AccessContext) {
       explain: 'Shows what it would copy first; nothing is saved until Run.' }] : []),
     { key: 'access_source', label: `Dash Access Source: ${live ? 'Business Roles' : 'Old Rules'}`,
       href: switchRow ? `/featherbase/admin/table/${ACCESS_SOURCE}/row/${encodeURIComponent(exact(switchRow.row_id))}` : `/featherbase/admin/table/${ACCESS_SOURCE}`,
-      explain: live ? 'The one switch. Set it to Old rules to put the old rules back.'
-        : 'The one switch, on the old rules. After the owner\'s yes, a System Manager adds a row saying Business roles.' },
+      explain: live ? 'The one switch, on business roles. To switch back, set it to Old rules: the old access returns at once, with no deploy.'
+        : 'The one switch, on the old rules. After the owner\'s yes, a System Manager adds a row saying Business roles; setting it back to Old rules undoes that at once.' },
     { key: 'grid', label: 'Open As Grid', href: GRID_PAGE, explain: "Every role's permissions and reports side by side." },
     { key: 'runs', label: 'Setup Runs', href: '/featherbase/admin/table/dash.setup_run', explain: 'Each run of the setup steps, with its counts and what it did.' },
   ]
@@ -61,26 +66,27 @@ async function roleGroups(ctx: AccessContext, role: Roles[number], roles: Roles,
     .filter(r => !checked(r.removed))
   const titleRows = (await every(ctx.baseTables as Base, TITLE_MAP, ['title', 'business_role'])).filter(r => exact(r.business_role) === role.id)
   const peopleOf = new Map(titles.map(t => [t.title.toLowerCase(), t.people]))
-  const others = (given: string) => roles.filter(r => r.id !== role.id && r.given.includes(given)).map(r => r.name)
+  const others = (given: string) => roles.filter(r => r.id !== role.id && r.given.includes(given)).map(r => ({ id: r.id, name: r.name }))
   const grants = (await all(ctx.baseTables!, 'dash.report_access', ['report', 'report_bundle', 'business_role', 'given_by_name', 'removed'], [['business_role', '=', role.id]]))
     .filter(r => !checked(r.removed))
   const catalog = new Map(reportCatalog.map(c => [`${c.table}|${c.key}`, c]))
   return [
-    { key: 'can', heading: 'What They Can Do', table: PERMISSION, removedColumn: 'removed', links: [{ label: 'Open as grid', href: GRID_PAGE }],
+    { key: 'can', heading: 'What They Can Do', table: PERMISSION, removedColumn: 'removed', count: permissionRows.length, links: [{ label: 'Open as grid', href: GRID_PAGE }],
       rows: Object.fromEntries(permissionRows.map(r => [exact(r.row_id), {
         parts: permissionParts(role, { verb: text(r.verb), thing: text(r.thing), reach: text(r.reach) as Reach }),
         note: [`In ${text(r.app)}, at level ${text(r.level)}`],
       }])) },
-    { key: 'reports', heading: 'Reports', table: 'dash.report_access', removedColumn: 'removed', links: [{ label: 'Open as grid', href: `${GRID_PAGE}&grid=reports` }],
+    // A tick gives the report to this role at once: the role is the page's, and nothing else is asked.
+    { key: 'reports', heading: 'Reports', table: 'dash.report_access', removedColumn: 'removed', tickFields: [], count: grants.length, links: [{ label: 'Open as grid', href: `${GRID_PAGE}&grid=reports` }],
       // Each grant says who else holds the same one: the grant is one, each role sees its own area. A tick list
       // takes the notes; a list (a bundle among the grants) takes a line for each grant, with where it came from.
-      notes: Object.fromEntries(role.given.map(given => [given.slice(given.indexOf('|') + 1), alsoWords(others(given))])),
+      notes: Object.fromEntries(role.given.map(given => [given.slice(given.indexOf('|') + 1), alsoParts(others(given))])),
       rows: Object.fromEntries(grants.map(g => {
         const what = exact(g.report) ? `dash.report|${exact(g.report)}` : `dash.report_bundle|${exact(g.report_bundle)}`
         const named = catalog.get(what)
         return [exact(g.row_id), {
           parts: [named ? { record: { table: named.table, row: named.key, name: named.name } } : 'A report no longer listed'],
-          note: [alsoWords(others(what))],
+          note: alsoParts(others(what)),
           chip: text(g.given_by_name) === OLD_GRANT_GIVER ? { label: 'from old grant', tone: 'neutral' as const } : { label: 'given by hand', tone: 'caution' as const },
         }]
       })) },
@@ -134,8 +140,9 @@ export async function describeBusinessRoles(context: AccessContext) {
 }
 
 /** The preview's filter for each outcome: Stays with the person is not carried over either. */
-const FILTER: Record<PlannedGrant['outcome'], 'add' | 'there' | 'not'> = {
-  'Will be added': 'add', 'Already there': 'there', 'Not carried over': 'not', 'Stays with the person': 'not',
+const FILTER: Record<PlannedGrant['outcome'], 'add' | 'there' | 'not' | 'person'> = {
+  // A grant to a person is its own filter: Not carried over counts what the run's summary counts.
+  'Will be added': 'add', 'Already there': 'there', 'Not carried over': 'not', 'Stays with the person': 'person',
 }
 const TONE: Record<PlannedGrant['outcome'], 'neutral' | 'quiet' | 'caution'> = {
   'Will be added': 'neutral', 'Already there': 'quiet', 'Not carried over': 'caution', 'Stays with the person': 'caution',
@@ -152,7 +159,10 @@ export async function giveOldGrantsPreview(context: AccessContext) {
   const { model } = await businessModel(context.baseTables!, istToday())
   const plan = await planGrants(context.baseTables!, model, reports)
   const roleName = new Map(model.roles.map(r => [r.id, r.name]))
-  const people = await personNames(context, plan.filter(s => s.old.kind === 'person').map(s => s.old.name))
+  const persons = plan.filter(s => s.old.kind === 'person').map(s => s.old.name)
+  const people = await personNames(context, persons)
+  // A person said as code · role · place, so two of one name are told apart.
+  const who = await whoIs(context.baseTables!, persons, istToday())
   // One line per old grant and what happens to it, its roles together.
   const lines = new Map<string, PlannedGrant & { roles: string[] }>()
   for (const step of plan) {
@@ -165,7 +175,7 @@ export async function giveOldGrantsPreview(context: AccessContext) {
     ? reports.has(s.gives.report) ? { record: { table: 'dash.report', row: s.gives.report, name: reports.get(s.gives.report)! } } : 'A report no longer listed'
     : bundles.has(s.gives.report_bundle) ? { record: { table: 'dash.report_bundle', row: s.gives.report_bundle, name: bundles.get(s.gives.report_bundle)! } } : 'A bundle no longer listed'
   const oldGrant = (s: PlannedGrant) => s.old.kind === 'person'
-    ? { parts: ['Person: ', { record: { table: 'Person', row: s.old.name, name: people.get(s.old.name) ?? 'Someone' } }] }
+    ? { parts: ['Person: ', { record: { table: 'Person', row: s.old.name, name: people.get(s.old.name) ?? 'Someone' } }, ...personDetail(who.get(s.old.name))] }
     : { text: s.old.kind === 'job' ? `Job: ${s.old.name}` : s.old.name }
   const toRoles = (ids: string[]) => ids.length
     ? { parts: ids.flatMap((id, i) => [...(i ? [i === ids.length - 1 ? ' and ' : ', '] : []), { record: { table: ROLE_TABLE, row: id, name: roleName.get(id)! } }]) }
@@ -196,7 +206,7 @@ export async function giveOldGrantsPreview(context: AccessContext) {
       : "Preview · nothing is saved until Run · nobody's access changes until the switch is set",
     sentence: [sentence],
     runLabel: 'Run',
-    filters: (['add', 'there', 'not'] as const).map(key => ({ key, label: { add: 'Will be added', there: 'Already there', not: 'Not carried over' }[key], count: all.filter(r => r.filter === key).length })),
+    filters: (['add', 'there', 'not', 'person'] as const).map(key => ({ key, label: { add: 'Will be added', there: 'Already there', not: 'Not carried over', person: 'Stays with the person' }[key], count: all.filter(r => r.filter === key).length })),
     total: all.length,
     columns: [{ key: 'report', label: 'Report' }, { key: 'old_grant', label: 'Old Grant' }, { key: 'given_to', label: 'Given To' }, { key: 'what', label: 'What Happens' }],
     rows,

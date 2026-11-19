@@ -484,7 +484,7 @@ const DRY_RUN = new Error('counting what an upgrade removes')
  *  transaction that is always rolled back, so each one meets the rows the
  *  steps before it left, and a step the upgrade would refuse is refused here
  *  too. Counts only, never values. */
-export async function countLosses(owner: string, migrations: PackageMigration[], opts: { ownsClient?: boolean } = {}): Promise<Loss[]> {
+export async function countLosses(owner: string, migrations: PackageMigration[], opts: { ownsClient?: boolean; featherbase?: string[] } = {}): Promise<Loss[]> {
   let losses: Loss[] = []
   try {
     await withTransaction(() => provisionApp(owner, async () => {
@@ -542,7 +542,7 @@ async function writeFill(found: Stored, table: string, column: Column, value: un
   await sql.unsafe(`update ${found.relation} set ${quoteIdent(name)} = $1 where ${isEmpty(name)}`, [(parsed.data as Record<string, never>)[name]])
 }
 
-async function applyOperation(owner: string, op: Operation, actor: string, base: Omit<Loss, 'table'>, ownsClient: boolean): Promise<Loss | null> {
+async function applyOperation(owner: string, op: Operation, actor: string, base: Omit<Loss, 'table'>, ownsClient: boolean, featherbase: string[] = []): Promise<Loss | null> {
   switch (op.kind) {
     case 'addAccessPolicy': {
       await owned(op.table, owner, 'addAccessPolicy')
@@ -557,7 +557,8 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       await sql`update installed_app set tables = tables || ${sql.json([meta.name])} where name = ${owner}`
       // As an install does: an app without its own client keeps the
       // generated Table home page as its usable UI.
-      if (!ownsClient && meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
+      // #1340: so does a Table an app with its own client hands to Featherbase's pages (its `records`).
+      if ((!ownsClient || featherbase.includes(meta.name)) && meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
       return null
     }
     case 'dropTable': {
@@ -690,12 +691,12 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
  *  inside the caller's transaction (a failing step rolls back the whole
  *  upgrade). Answers what the destructive steps removed. */
 export async function applyMigrations(migrations: PackageMigration[], owner: string, actor = 'Administrator',
-  opts: { ownsClient?: boolean } = {}): Promise<Loss[]> {
+  opts: { ownsClient?: boolean; featherbase?: string[] } = {}): Promise<Loss[]> {
   const losses: Loss[] = []
   try {
     for (const migration of migrations) for (const [index, op] of migration.operations.entries()) {
       const base = { migration: migration.id, operation: index + 1, kind: op.kind, destructive: 'destructive' in op && op.destructive === true }
-      const loss = await applyOperation(owner, op, actor, base, opts.ownsClient ?? false)
+      const loss = await applyOperation(owner, op, actor, base, opts.ownsClient ?? false, opts.featherbase)
       if (loss) losses.push(loss)
     }
   } finally {

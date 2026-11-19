@@ -48,7 +48,8 @@ export const recordGroupSchema = z.object({
   heading: words(60),
   table: words(200).optional(),
   rows: z.record(words(200), recordLineSchema).optional(),
-  notes: z.record(words(200), words(200)).optional(),
+  // A note is words, or a sentence whose records are links ("Also given to [Floor Manager] and [Buyer]").
+  notes: z.record(words(200), z.union([words(200), sentence])).optional(),
   lines: z.array(recordLineSchema).max(RECORD_FACTS_LIMITS.lines).optional(),
   count: z.number().int().min(0).optional(),
   /** Where every line is, beside the first ones ("Show all 25"). */
@@ -56,6 +57,8 @@ export const recordGroupSchema = z.object({
   /** A Check column of the group's Table that marks a row taken away (the app keeps it for its history): such a row is
    *  neither shown nor ticked; unticking sets it, and ticking that choice again clears it. */
   removedColumn: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/).optional(),
+  /** For a tick list: the only fields a tick asks for (none: a tick gives the link at once). */
+  tickFields: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,62}$/)).max(8).optional(),
   /** Other ways to see the group: Open as grid, Open as list. */
   links: z.array(link).max(3).optional(),
 }).strict().refine((g) => !(g.table && g.lines), { message: 'A group stands for a link group or has its own lines, not both' })

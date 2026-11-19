@@ -1840,7 +1840,9 @@ describe('business roles described for Featherbase (#1340)', () => {
     const live = tables['dash.business_role_permission'].filter(p => p.business_role === sm)
     expect(Object.keys(can.rows!).sort()).toEqual(live.map(p => String(p.row_id)).sort())
     expect(Object.values(can.rows!)[0]!.parts[0]).toEqual({ record: { table: 'dash.business_role', row: sm, name: 'Store Managers' } })
-    expect(groups[1]!.notes!.sales).toMatch(/^Also given to \d+ other roles: .+ and .+$/)
+    // Each other role a link.
+    expect((groups[1]!.notes!.sales as unknown as unknown[])[0]).toMatch(/^Also given to \d+ other roles: $/)
+    expect((groups[1]!.notes!.sales as unknown as unknown[]).filter(p => typeof p === 'object')).toContainEqual({ record: expect.objectContaining({ table: 'dash.business_role' }) })
     expect(Object.values(groups[2]!.rows!)[0]).toMatchObject({ parts: [{ record: { table: 'dash.title_map' } }, expect.stringMatching(/^ → this role, for \d+ (person|people)$/)], chip: { label: 'from HR' } })
     // A Report Access Manager reads the names as words; a System Manager as links to the people.
     expect(groups[3]).toMatchObject({ count: 1, lines: [{ parts: ['Selvi'], chip: { label: 'from HR' } }] })
@@ -1855,7 +1857,7 @@ describe('business roles described for Featherbase (#1340)', () => {
     const gone = tables['dash.business_role_permission'].find(p => p.business_role === sm)!
     gone.removed = 1
     const groups = ((await describeBusinessRoles(context(tables, { payload: { rows: [sm], page: true } }) as never)).rows[sm] as { groups: { rows?: Record<string, unknown>; notes?: Record<string, string> }[] }).groups
-    expect(groups[1]!.notes!.vs).toBe('Given to this role only')
+    expect(groups[1]!.notes!.vs).toEqual(['Given to this role only'])
     expect(Object.keys(groups[0]!.rows!)).not.toContain(String(gone.row_id))
   })
 
@@ -1869,7 +1871,7 @@ describe('business roles described for Featherbase (#1340)', () => {
     expect(admin.actions.map(a => a.key)).toEqual(['starting_roles', 'old_grants', 'access_source', 'grid', 'runs'])
     expect(admin.actions[1]).toMatchObject({ href: OLD_GRANTS_PAGE })
     expect(admin.actions[2]).toMatchObject({ label: 'Dash Access Source: Business Roles', href: '/featherbase/admin/table/dash.access_source/row/s1',
-      explain: 'The one switch. Set it to Old rules to put the old rules back.' })
+      explain: 'The one switch, on business roles. To switch back, set it to Old rules: the old access returns at once, with no deploy.' })
   })
 
   it('previews Give Old Grants as its run would do it, writing nothing; after the run, each is already there', async () => {
@@ -1880,8 +1882,9 @@ describe('business roles described for Featherbase (#1340)', () => {
     const preview = await giveOldGrantsPreview(context(tables) as never)
     expect(JSON.stringify(tables)).toBe(before)
     expect(preview.rows.map(r => [r.filter, (r.cells.what as { text: string }).text])).toEqual([
-      ['not', 'Not carried over: gives nothing while business roles decide'], ['add', 'Will be added'], ['not', 'Stays with the person'], ['add', 'Will be added']])
-    expect(preview.rows[2]!.cells.old_grant).toEqual({ parts: ['Person: ', { record: { table: 'Person', row: 'st', name: 'Siva' } }] })
+      ['not', 'Not carried over: gives nothing while business roles decide'], ['add', 'Will be added'], ['person', 'Stays with the person'], ['add', 'Will be added']])
+    // Said with code · role · place, so two of one name are told apart.
+    expect(preview.rows[2]!.cells.old_grant).toEqual({ parts: ['Person: ', { record: { table: 'Person', row: 'st', name: 'Siva' } }, ' E-ST · Staff · Lakeside'] })
     expect(preview.rows[3]!.cells.report).toEqual({ parts: ['A bundle no longer listed'] })
     expect(preview.rows[0]!.cells).toMatchObject({ old_grant: { text: 'Job: Store Manager' }, given_to: { text: '—' }, report: { parts: [{ record: { table: 'dash.report', row: 'vs' } }] } })
     // Counted in grants, as the run's summary counts them.
@@ -1913,7 +1916,7 @@ describe('business roles described for Featherbase (#1340)', () => {
     expect(actionPreviewSchema.safeParse(preview).success).toBe(true)
     expect(preview.rows.length).toBe(500)
     expect(preview.total).toBe(522)
-    expect(preview.filters.find(f => f.key === 'not')!.count).toBe(521)
+    expect([preview.filters.find(f => f.key === 'not')!.count, preview.filters.find(f => f.key === 'person')!.count]).toEqual([1, 520])
     const run = await actions.give_old_grants_to_roles(context(tables, { roles: ['System Manager'] }) as never) as { grants_added: number }
     expect(run.grants_added).toBeGreaterThan(0)
   })
@@ -1954,7 +1957,7 @@ describe('business roles described for Featherbase (#1340)', () => {
     tables['dash.report_access'].push({ row_id: 'g-sm', report: 'vs', business_role: sm, access_key: `report:vs/business_role:${sm}` },
       { row_id: 'g-cm', report: 'vs', business_role: cm, access_key: `report:vs/business_role:${cm}` })
     const groups = ((await describeBusinessRoles(context(tables, { payload: { rows: [sm], page: true } }) as never)).rows[sm] as { groups: { notes?: Record<string, string> }[] }).groups
-    expect(groups[1]!.notes!.vs).toBe('Also given to 1 other role: Cluster Manager')
+    expect(groups[1]!.notes!.vs).toEqual(['Also given to 1 other role: ', { record: { table: 'dash.business_role', row: cm, name: 'Cluster Manager' } }])
   })
 
   it('says a run in the singular where one was added, and keeps a caller with no name as nobody named', async () => {
@@ -1989,7 +1992,7 @@ describe('business roles described for Featherbase (#1340)', () => {
     const copied = tables['dash.report_access'].find(r => r.report === 'sales' && r.business_role === sm)!
     const groups = ((await describeBusinessRoles(context(tables, { payload: { rows: [sm], page: true } }) as never)).rows[sm] as { groups: { rows?: Record<string, unknown> }[] }).groups
     expect(groups[1]!.rows![String(copied.row_id)]).toEqual({ parts: [{ record: { table: 'dash.report', row: 'sales', name: 'Sales' } }],
-      note: [expect.stringMatching(/^Also given to 8 other roles: /)], chip: { label: 'from old grant', tone: 'neutral' } })
+      note: expect.arrayContaining(['Also given to 8 other roles: ']), chip: { label: 'from old grant', tone: 'neutral' } })
     expect(groups[1]!.rows!['g-b1']).toEqual({ parts: [{ record: { table: 'dash.report_bundle', row: 'b1', name: 'Store pack' } }],
       note: ['Given to this role only'], chip: { label: 'given by hand', tone: 'caution' } })
     // A grant of a report no longer listed says so, plainly.
