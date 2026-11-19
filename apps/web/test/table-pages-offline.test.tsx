@@ -3,7 +3,7 @@
 // ago, it opens from them and each page says it cannot load the Table now.
 import { QueryClient, onlineManager } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
@@ -37,7 +37,12 @@ test("a Table's page whose details the network drops on first opening says why i
   await seed(admin)
   networkDown()
   await renderApp(tableHref(TABLE), admin)
-  expect(await screen.findByRole('alert', {}, T)).toHaveTextContent('Failed to fetch')
+  // #1327: the shared Couldn't open page, in words a person can act on.
+  expect(await screen.findByRole('alert', {}, T)).toHaveTextContent('This Table couldn’t be openedThe server didn’t answer.')
+  // Back online, Try again reads the Table's details again and the page opens.
+  vi.restoreAllMocks()
+  await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument(), T)
 })
 
 test("with no connection, a list whose own details have not come yet makes no view everyone's default", async ({ admin }) => {

@@ -46,7 +46,7 @@ test('a Home Page address that names no Home Page says so', async ({ admin }) =>
 
 test('a Dashboard address that names no Dashboard says so', async ({ admin }) => {
   await renderApp('/featherbase/admin/dashboard/hps-no-such-board', admin)
-  expect(await screen.findByTestId('dashboard-error', {}, { timeout: 8000 })).toHaveTextContent(/not found/i)
+  expect(await screen.findByTestId('dashboard-error', {}, { timeout: 8000 })).toHaveTextContent('There is no dashboard named “hps-no-such-board”.')
 })
 
 test('the activity feed goes from Team back to My activity', async ({ admin }) => {

@@ -23,7 +23,7 @@ describe('API-004: authentication', () => {
   })
 
   test('password recovery rejects truncated JSON before recording a reset or changing credentials', async ({ api }) => {
-    const before = await sql`select row_id, password_hash from person order by row_id`
+    const before = await sql`select person_id, password_hash from person_credential order by person_id`
     const resets = await sql`select * from password_reset order by token`
     for (const [path, message] of [
       ['/api/reset_password_request', 'Expected { usr }'],
@@ -34,7 +34,7 @@ describe('API-004: authentication', () => {
       expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
       expect(response.headers.get('set-cookie')).toBeNull()
     }
-    expect(await sql`select row_id, password_hash from person order by row_id`).toEqual(before)
+    expect(await sql`select person_id, password_hash from person_credential order by person_id`).toEqual(before)
     expect(await sql`select * from password_reset order by token`).toEqual(resets)
   })
 

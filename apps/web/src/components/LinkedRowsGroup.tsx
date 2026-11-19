@@ -93,7 +93,7 @@ function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, 
     <section aria-label={group.label} data-testid="linked-rows-group" className="flex min-w-0 flex-col gap-3">
       {heading && (
         <div className="flex min-w-0 items-center gap-2">
-          <h4 className={total ? 'text-sm font-semibold text-ink' : 'text-sm font-semibold text-ink-muted'} data-empty={total ? undefined : 'true'}>
+          <h4 className={total ? 'text-[15px] font-semibold text-ink' : 'text-[15px] font-semibold text-ink-muted'} data-empty={total ? undefined : 'true'}>
             {group.label} <span className="font-normal text-ink-muted">{fmtCount(total)}</span>
           </h4>
           <span className="flex-1" />
@@ -175,7 +175,8 @@ function ListLink({ href, quiet, children }: { href: string; quiet: boolean; chi
   const navigate = useNavigate()
   return (
     <a href={href} className={quiet
-      ? 'self-start px-2 text-sm text-ink-muted underline-offset-2 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-focus'
+      // #1348 (spec 14): an action link is blue; the quieter one is only smaller.
+      ? 'self-start px-2 text-[13px] text-action underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus'
       : 'self-start px-2 text-sm font-medium text-action underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus'}
       onClick={(e) => {
         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return

@@ -29,6 +29,36 @@ async function previousVersion(): Promise<string> {
   return directory
 }
 
+// #1282 (Codex round 2 on the grid): two saves of the same empty cell at once give it once (its key is unique),
+// and taking it away leaves no live row.
+describe('the permission grid saves', () => {
+  test('give a permission once, however the saves meet, and take it away whole', async ({ admin }) => {
+    expect(await discoverPackages([APP_DIR])).toEqual([])
+    await admin.post('/api/install_app', { name: 'dash' })
+    await createCoreTables(admin)
+    const act = (name: string, payload: Record<string, unknown>) => admin.post<{ result: unknown }>(`/api/app_actions/dash/${name}`, { idempotencyKey: crypto.randomUUID(), payload })
+    await act('add_starting_roles', {})
+    const [staff] = await sql`select row_id from dash.business_role where role_name = 'Staff'`
+    // A permission some role holds and Staff does not.
+    const [missing] = await sql`select app, level, verb, thing from dash.business_role_permission p
+      where not exists (select 1 from dash.business_role_permission q where q.business_role = ${staff!.row_id} and q.app = p.app and q.level = p.level and q.verb = p.verb and q.thing = p.thing) limit 1`
+    const cell = { role: staff!.row_id, app: missing!.app, level: missing!.level, verb: missing!.verb, thing: missing!.thing, from: null }
+    const outcomes = await Promise.allSettled([act('change_permissions', { changes: [{ ...cell, to: 'Own' }] }), act('change_permissions', { changes: [{ ...cell, to: 'Team' }] })])
+    expect(outcomes.filter(o => o.status === 'fulfilled')).toHaveLength(1)
+    const held = () => sql`select row_id, reach, removed from dash.business_role_permission where business_role = ${staff!.row_id} and app = ${cell.app} and level = ${cell.level} and verb = ${cell.verb} and thing = ${cell.thing}`
+    const [row] = await held()
+    expect(await held()).toHaveLength(1)
+    expect(row!.reach).toMatch(/^(Own|Team)$/)
+    // Codex standard round 3: the key is stored, not dropped as a read-only column's would be, and the database holds it
+    // unique: a second row with the same role and permission is refused, however it is saved.
+    const [keyed] = await sql`select permission_key from dash.business_role_permission where row_id = ${row!.row_id}`
+    expect(keyed!.permission_key).toBe(`${staff!.row_id} / ${cell.app} / ${cell.level} / ${cell.verb} / ${cell.thing}`)
+    await expect(saveRow(admin, 'dash.business_role_permission', { business_role: staff!.row_id, app: cell.app, level: cell.level, verb: cell.verb, thing: cell.thing, reach: 'All', permission_key: keyed!.permission_key })).rejects.toThrow()
+    await act('change_permissions', { changes: [{ ...cell, from: row!.reach, to: null }] })
+    expect((await held()).filter(r => !r.removed)).toEqual([])
+  })
+})
+
 describe('business roles in shadow', () => {
   test('arrive as four Tables a Report Access Manager edits, and change no reader\'s reports', async ({ admin, createUser }) => {
     const previous = await previousVersion()
@@ -38,7 +68,7 @@ describe('business roles in shadow', () => {
       expect(await discoverPackages([previous, APP_DIR])).toEqual([])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
-      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'old_grants_one_receiver', 'every_report_and_bulk_comparison', 'site_kind', 'division_head_and_visual_merchandising', 'why_on_the_map', 'why_app_levels_merged', 'report_access_days_in_india', 'area_picker'])
+      expect(plan.migrations.map(m => m.id)).toEqual(['business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'old_grants_one_receiver', 'every_report_and_bulk_comparison', 'site_kind', 'division_head_and_visual_merchandising', 'why_on_the_map', 'why_app_levels_merged', 'report_access_days_in_india', 'area_picker', 'permission_grid', 'worked_out_sections'])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])
       await loadInstalledApps()
@@ -84,6 +114,10 @@ describe('business roles in shadow', () => {
       expect((await manager.post<{ result: unknown }>('/api/app_reads/dash/why_access_offered', { payload: { table: 'Person', row: reader.user } })).result).toBe(true)
       const why = (await manager.post<{ result: { version: number; columns: { heading: string }[] } }>('/api/app_reads/dash/why_access', { payload: { table: 'Person', row: reader.user } })).result
       expect([why.version, why.columns[0]!.heading]).toEqual([1, 'Person'])
+      // #1282 C10–C11: the Lens's worked-out sections, through the platform's checked route (never the app-read route).
+      const worked = await (await manager.fetch(`/api/worked-out/Person/${encodeURIComponent(reader.user!)}`)).json() as { sections: { heading: string; rows: { name: string; app?: string }[] }[] }
+      expect(worked.sections.map(s => s.heading)).toEqual(['Apps They Can Open', 'Reports They See'])
+      expect(worked.sections[0]!.rows.find(r => r.name === 'Dash')).toEqual(expect.objectContaining({ detail: 'at level Manager' }))
       expect((explained as unknown as { reports: { key: string; why: string[] }[] }).reports).toEqual([{ key: 'open', name: 'Company notices', why: ['Every report, through Owner Director'], roles: [expect.any(String)], direct: false }])
       const changes = (await manager.post<{ result: { people: number; changed: number; groups: { people: { person: string }[] }[] } }>('/api/app_reads/dash/access_changes', { payload: {} })).result
       expect([changes.people, changes.groups.flatMap(g => g.people).map(p => p.person)]).toEqual([1, []])

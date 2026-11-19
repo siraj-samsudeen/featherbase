@@ -17,7 +17,7 @@ import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
 import { KeyboardShortcutsItem, ShortcutTeachingHost } from './ShortcutTeaching'
 import { ViewAsBanner, ViewAsButton } from './ViewAs'
-import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { RecordLink, TabBar, buttonClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery, raisedClasses } from '@featherbase/shop-floor'
 import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
@@ -310,7 +310,7 @@ export function TopBar({
       <header
         // Where the bar draws an app's controls (on the app's address, or over
         // the app's own page) it frames the phone list of a declared control.
-        className={`${controlsOf ? 'relative ' : ''}flex shrink-0 items-center gap-x-1 border-b border-border bg-surface px-2 py-1 sm:gap-4 sm:px-4 md:pl-0`}
+        className={`${controlsOf ? 'relative ' : ''}flex shrink-0 items-center gap-x-1 bg-surface px-2 py-1 sm:gap-4 sm:px-4 md:pl-0`}
         data-testid="top-bar"
       >
         {/* The shared name dropdown lines up with the sidebar. App-declared
@@ -436,7 +436,7 @@ function ThemeToggle({ labelled = false }: { labelled?: boolean }) {
       aria-labelledby={labelled ? labelId : undefined}
       aria-label={labelled ? undefined : t('Theme')}
       data-testid="theme-toggle"
-      className={labelled ? 'border-b border-border px-3 py-2' : 'flex items-center gap-0.5 rounded-control border border-border p-0.5'}
+      className={labelled ? 'px-3 py-2' : 'flex items-center gap-0.5 rounded-control bg-fill p-0.5'}
     >
       {labelled && <p id={labelId} className={labelClasses()}>{t('Theme')}</p>}
       <div className={labelled ? 'grid grid-cols-3 gap-1' : 'contents'} data-testid="theme-choice">
@@ -602,8 +602,8 @@ function AccountMenu({ inMenu, inSidebar }: {
         <span className="sr-only">{t('Account')}: {shown}</span>
       </button>
       {open && (
-        <div id={menuId} className={cardClasses(`absolute ${place} z-40 w-64 overflow-hidden py-1`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
-          <div className="border-b border-border px-3 py-2 text-sm" data-testid="account-identity">
+        <div id={menuId} className={raisedClasses(`absolute ${place} z-40 w-64 overflow-hidden py-1`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
+          <div className="px-3 py-2 text-sm" data-testid="account-identity">
             {/* #1227: a record shown is a RecordLink — the person's own Person record, for
                 someone who may open it (a System Manager, or a reader of Person). */}
             {user && (
@@ -623,7 +623,7 @@ function AccountMenu({ inMenu, inSidebar }: {
           {extras && (
             <>
               {extras.offerAdmin && (
-                <div className="border-b border-border py-1">
+                <div className="py-1">
                   <OpenAdminButton role="menuitem" />
                 </div>
               )}
@@ -716,7 +716,7 @@ function FootMenu({ label, icon: Icon, testid, children }: {
         <Icon aria-hidden size={16} />
       </button>
       {open && (
-        <div id={menuId} className={cardClasses('absolute bottom-full left-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
+        <div id={menuId} className={raisedClasses('absolute bottom-full left-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
           {children}
         </div>
       )}

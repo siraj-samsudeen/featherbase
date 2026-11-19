@@ -3,7 +3,7 @@ import { useRouter, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { markSetupOffer } from './FirstRunSetup'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser, type SignedIn } from '../lib/api'
-import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
+import { Button, Field, Notice, TextInput, buttonClasses, inputClasses, labelClasses, panelClasses } from '@featherbase/shop-floor'
 import { Logo } from '../components/Logo'
 import { AccountChooser, useBrowserAccounts } from '../components/AccountChooser'
 import { pageLoad } from '../lib/page-load'
@@ -407,7 +407,8 @@ export function LoginPage() {
       microsoft={microsoft}
       delegated={delegatedMethods}
       password={passwordOn}
-      failed={panelShowing ? (refusedByMicrosoft ? 'microsoft' : 'google') : null}
+      // A sign-in that only took too long refused no account: its buttons read as the first page's.
+      failed={panelShowing && refusalCode !== 'expired' ? (refusedByMicrosoft ? 'microsoft' : 'google') : null}
       without={p.without ?? null}
       onRedirect={() => rememberLoginNext(next)}
       onDelegated={(key) => switchMode('delegated', key)}
@@ -445,7 +446,7 @@ export function LoginPage() {
             <Notice tone="caution">{refusal}</Notice>
           </div>
         )}
-        <div className={cardClasses('p-6')}>
+        <div className={panelClasses('p-6')}>
           {!panelShowing && !useAnother && accountList === null ? (
             <p className="text-sm text-ink-muted" data-testid="accounts-loading">Loading…</p>
           ) : !panelShowing && accountList?.accounts.length && (!useAnother || accountList.full) ? (
@@ -600,7 +601,7 @@ export function LoginPage() {
               Create an account
             </Button>
           )}
-          <div className="mt-4 border-t border-border pt-4">
+          <div className="mt-4 pt-2">
             {!forgot ? (
               <button
                 type="button"

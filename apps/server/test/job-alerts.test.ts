@@ -49,6 +49,23 @@ async function scheduledRow() {
 }
 
 describe('a scheduled job that fails emails the System Managers', () => {
+  // #1330: a job with a title is named by it, never its code.
+  test('naming the job by its title when it has one', async ({ createUser }) => {
+    await setup()
+    await createUser({ email: 'boss.titled@example.com', roles: ['System Manager'] })
+    registerJob(METHOD, async () => {
+      throw new Error('the warehouse did not answer')
+    })
+    await syncScheduledJobs(METHOD)
+    await sql`update scheduled_job set title = 'Probe the Warehouse' where method = ${METHOD}`
+
+    await runDue()
+
+    const mine = sent.filter((m) => m.to === 'boss.titled@example.com')
+    expect(mine[0].subject).toBe(`${JOB_ALERT_SUBJECT.failed}: Probe the Warehouse`)
+    expect(mine[0].body).toContain('The scheduled job "Probe the Warehouse" failed')
+  })
+
   test('once, after its last attempt, naming the job and what failed', async ({ createUser }) => {
     await setup()
     await createUser({ email: 'boss.alerts@example.com', roles: ['System Manager'] })

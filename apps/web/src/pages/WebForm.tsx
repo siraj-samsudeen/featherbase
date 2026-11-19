@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { choiceLabel, type WebFormColumn, type WebFormConfig } from 'shared'
 import { api, ApiError } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
+import { buttonClasses, inputClasses, labelClasses, panelClasses } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
 
 // WEB-002: a public, session-less form. Fetches its column config and creates
@@ -89,7 +89,7 @@ export function WebFormPage() {
   if (loadError)
     return (
       <div className="mx-auto mt-16 max-w-lg px-4" data-testid="web-form-error">
-        <div className={cardClasses('p-6 text-sm text-negative')}>{loadError}</div>
+        <div className={panelClasses('p-6 text-sm text-negative')}>{loadError}</div>
       </div>
     )
   if (!config) return <div className="p-8 text-center text-ink-subtle">Loading…</div>
@@ -100,11 +100,11 @@ export function WebFormPage() {
         {config.title}
       </h1>
       {done ? (
-        <div className={cardClasses('p-6 text-sm text-positive')} data-testid="web-form-success">
+        <div className={panelClasses('p-6 text-sm text-positive')} data-testid="web-form-success">
           {done}
         </div>
       ) : (
-        <form className={cardClasses('space-y-4 p-6')} data-testid="web-form-form" onSubmit={submit}>
+        <form className={panelClasses('space-y-4 p-6')} data-testid="web-form-form" onSubmit={submit}>
           {config.columns.map((c) => (
             <div key={c.column_name}>
               <label htmlFor={`wf-field-${c.column_name}`} className={labelClasses()}>

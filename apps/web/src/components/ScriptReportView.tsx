@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { choiceLabel } from 'shared'
 import { api, ApiError } from '../lib/api'
+import { CannotShow } from './CannotShow'
 import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
 import { useI18n } from '../lib/i18n'
 
@@ -79,8 +80,8 @@ export function ScriptReportView({ name }: { name: string }) {
   })
   if (meta.isError)
     return (
-      <div className={cardClasses('p-4 text-sm text-negative')} data-testid="script-report-error">
-        {meta.error instanceof ApiError ? meta.error.message : 'Report not found'}
+      <div data-testid="script-report-error">
+        <CannotShow error={meta.error} what="report" named={name} onRetry={() => void meta.refetch()} />
       </div>
     )
   if (!meta.data) return <div className="p-4 text-ink-subtle">Loading…</div>

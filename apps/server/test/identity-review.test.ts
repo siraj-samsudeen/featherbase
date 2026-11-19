@@ -83,7 +83,7 @@ describe('administrators are never locked out (A-M2, minor 1)', () => {
     await linkDelegated(smd, 'sm_hr')
     const { token } = (await (await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'sm.delegated', pwd: 'sm-delegated-1' }) })).json()) as { token: string }
     await expectStatus(await as(api, token)('/api/me/password', { method: 'DELETE' }), 409)
-    const [row] = await sql`select password_hash is not null as has from person where row_id = ${smd}`
+    const [row] = await sql`select exists (select 1 from person_credential where person_id = ${smd}) as has`
     expect(row.has).toBe(true)
   })
 

@@ -51,13 +51,13 @@ test('someone without Admin reads the account pages beside a sidebar of their ow
   expect(within(account).getByRole('link', { name: 'What You Can See' })).toHaveAttribute('aria-current', 'page')
 })
 
-test('the account page starts at the shared x (20px), left-aligned, at most 880px wide', async ({ createUser }) => {
+test('the account page starts at the shared x (28px), left-aligned, at most 880px wide', async ({ createUser }) => {
   const me = await createUser({ roles: [] })
   await renderApp('/featherbase/account/sign-in-methods', me)
   const content = await screen.findByTestId('account-content', {}, WAIT)
   expect(content.className).toContain('max-w-[880px]')
   expect(content.className).not.toContain('mx-auto')
-  // #1249: the shared x is 20px from the sidebar (was 32), with 16px above.
-  expect(content.closest('main')!.className).toContain('sm:px-5')
-  expect(content.closest('main')!.className).toContain('sm:py-4')
+  // #1348 board 2: the shared x is 28px from the panel's edge, with 24px above.
+  expect(content.closest('main')!.className).toContain('sm:px-7')
+  expect(content.closest('main')!.className).toContain('sm:py-6')
 })

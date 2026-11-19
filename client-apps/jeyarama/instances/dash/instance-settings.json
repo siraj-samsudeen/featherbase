@@ -89,6 +89,10 @@
       {
         "row_id": "refresh_datasets",
         "enabled": true
+      },
+      {
+        "row_id": "sync_motherduck_accounts",
+        "enabled": true
       }
     ],
     "Data Source": [

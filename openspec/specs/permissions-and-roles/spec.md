@@ -224,7 +224,7 @@ screen.
 ```gherkin
 Given the user holds only the Sales Target Viewer role
 When the user opens an administration address
-Then the user is taken to the Sales Target report
+Then the user is told the administration is not part of their account, and offered the report
 And no administration menu appears
 And no administration request is made
 ```

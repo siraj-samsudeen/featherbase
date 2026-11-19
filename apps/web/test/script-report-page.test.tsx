@@ -123,14 +123,17 @@ test('a choice filter declared with no choices offers only (any), and an answer 
   expect(within(screen.getByTestId('sr-filter-pick')).getAllByRole('option').map((o) => o.textContent)).toEqual(['(any)'])
 })
 
-test("a report whose definition the network drops says it was not found", async ({ admin }) => {
+test("a report whose definition the network drops says it could not be opened", async ({ admin }) => {
   await seedBare(admin)
   const real = globalThis.fetch
   const dropped = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
     String(input).includes('/api/script_report/') ? Promise.reject(new TypeError('Failed to fetch')) : real(input, init))
   try {
     await renderApp(`/featherbase/admin/script-report/${encodeURIComponent('Web SR Bare')}`, admin)
-    expect(await screen.findByTestId('script-report-error', {}, { timeout: 10_000 })).toHaveTextContent(/^Report not found$/)
+    expect(await screen.findByTestId('script-report-error', {}, { timeout: 10_000 })).toHaveTextContent('This report couldn’t be openedThe server didn’t answer.')
+    dropped.mockRestore()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(screen.queryByTestId('script-report-error')).not.toBeInTheDocument(), { timeout: 10_000 })
   } finally {
     dropped.mockRestore()
   }

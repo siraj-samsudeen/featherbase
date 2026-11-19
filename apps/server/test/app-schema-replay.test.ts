@@ -163,6 +163,11 @@ describe('renameColumn', () => {
     expect(() => validateMigrations('shop', '0.2.0', [final], [step([{ kind: 'renameColumn', table: 'shop.item', from: 'title', to: 'heading' }])])).not.toThrow()
   })
 
+  test('the searched columns follow the rename (#1346)', () => {
+    const tables = replayForward('shop', [{ ...item(), search_columns: ['title'] }], [{ kind: 'renameColumn', table: 'shop.item', from: 'title', to: 'heading' }])
+    expect(tables[0].search_columns).toEqual(['heading'])
+  })
+
   test('the Table title column follows the rename', () => {
     const tables = replayForward('shop', [{ ...item(), title_column: 'title' }], [{ kind: 'renameColumn', table: 'shop.item', from: 'title', to: 'heading' }])
     expect(tables[0].title_column).toBe('heading')

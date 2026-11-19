@@ -15,8 +15,9 @@ import { ChevronDown, Eye, EyeOff, Search } from './icons'
 export function inputClasses(className?: string): string {
   return recipe(
     cx(
-      'block w-full min-h-control rounded-control border border-border-control bg-surface px-3 text-control text-ink',
-      'placeholder:text-ink-subtle focus:outline-hidden focus-visible:border-focus focus-visible:ring-2 focus-visible:ring-focus/30',
+      // #1348: grey-filled, no edge; focus is the only outline. An error still draws a red edge.
+      'block w-full min-h-control rounded-control border border-transparent bg-fill px-3 text-control text-ink',
+      'placeholder:text-ink-subtle focus:outline-hidden focus-visible:outline-[1.5px] focus-visible:outline-solid focus-visible:outline-offset-0 focus-visible:outline-focus',
       'disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted aria-invalid:border-negative',
     ),
     className,
@@ -25,7 +26,7 @@ export function inputClasses(className?: string): string {
 
 /** The look of a field label. */
 export function labelClasses(className?: string): string {
-  return recipe('mb-1.5 block text-sm font-semibold text-ink', className)
+  return recipe('mb-1.5 block text-[13px] text-ink-subtle', className)
 }
 
 interface Described {
