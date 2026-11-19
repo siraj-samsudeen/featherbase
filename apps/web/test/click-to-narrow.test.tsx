@@ -123,3 +123,17 @@ test('ticks narrow the list in place: the walk gains no step per click', async (
   await waitFor(() => expect(rowTitles()).toHaveLength(3))
   expect(walk(r).steps).toHaveLength(1)
 })
+
+test('each picked value is its own green chip; removing one keeps the others', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(listPath(SECTION), admin)
+  await waitFor(() => expect(value(STORE, 'Bayside')).toHaveTextContent('3'))
+  await userEvent.click(value(STORE, 'Bayside'))
+  await userEvent.click(value(STORE, 'Northgate'))
+  await waitFor(() => expect(rowTitles()).toHaveLength(4))
+  const chips = await screen.findAllByTestId('filter-chip')
+  expect(chips.map((c) => c.textContent?.replace('✕', ''))).toEqual([`${STORE}: Bayside`, `${STORE}: Northgate`])
+  await userEvent.click(within(chips[0]).getByRole('button', { name: /Remove/ }))
+  await waitFor(() => expect(rowTitles()).toEqual(['Ladies Ethnic']))
+  expect(screen.getAllByTestId('filter-chip').map((c) => c.textContent?.replace('✕', ''))).toEqual([`${STORE}: Northgate`])
+})
