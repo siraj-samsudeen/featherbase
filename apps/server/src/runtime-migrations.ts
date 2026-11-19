@@ -155,6 +155,8 @@ function renameColumnIn(table: TableDef, from: string, to: string) {
   if (table.title_column === from) table.title_column = to
   // #1346 (Codex round 3): the searched columns follow it, as the rename does in the database.
   if (table.search_columns?.includes(from)) table.search_columns = table.search_columns.map((c) => c === from ? to : c)
+  // #1345: and the column through which a row is a person's record.
+  if (table.person_column === from) table.person_column = to
   table.id_pattern = renameNamingColumn(table.id_pattern, from, to)
 }
 function setProperties(target: Column, values: Alterable) {

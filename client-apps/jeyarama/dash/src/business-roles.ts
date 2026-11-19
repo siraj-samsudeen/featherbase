@@ -36,14 +36,14 @@ export const CLUSTER_TITLE = 'Cluster Manager'
 /** The merchandise responsibility whose role a Buyer Section's buyer holds. */
 export const BUYER_TITLE = 'Buyer'
 
-const key = (title: string) => title.trim().toLowerCase()
+export const key = (title: string) => title.trim().toLowerCase()
 /** Title to role id, for rows naming a role that still exists and is not given by hand only: such a title reads as not mapped yet. */
-function mapping(model: Pick<Model, 'rules' | 'roles'>): Map<string, string> {
+export function mapping(model: Pick<Model, 'rules' | 'roles'>): Map<string, string> {
   return new Map(model.rules.filter(rule => model.roles.some(r => r.id === rule.role && !r.by_hand_only)).map(rule => [key(rule.title), rule.role!]))
 }
 
 
-const inForce = (hand: HandChange, today: string) => !hand.removed && (!hand.ends_on || hand.ends_on >= today)
+export const inForce = (hand: HandChange, today: string) => !hand.removed && (!hand.ends_on || hand.ends_on >= today)
 
 /** The location reaches, each covering what a job of its kind covers where the assignment sits. */
 const LOCATION: readonly (Reaches | undefined | null)[] = ['Section', 'Floor', 'Department', 'Store', 'Cluster', 'Region']

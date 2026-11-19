@@ -62,3 +62,4 @@ export { personScopeSchema, scopePlaceSchema, SCOPE_CONFIRMATIONS, type ScopePla
 export { APP_ACCENTS, DEFAULT_APP_ACCENT, type AppAccent } from './app-accents'
 export { WHY_DEFAULT_LABEL, WHY_LABEL, WHY_LIMITS, whyAnswerSchema, whyBoxSchema, type WhyAnswer, type WhyBox, type WhyExplained, type WhyOffer } from './why'
 export { WORKED_OUT_LIMITS, workedOutRowSchema, workedOutSchema, type WorkedOut, type WorkedOutAnswer, type WorkedOutRow } from './worked-out'
+export { needsEmail, personMeta, personMetaShort, personMetaText, type PersonLabel, type PersonMetaPart } from './person-label'

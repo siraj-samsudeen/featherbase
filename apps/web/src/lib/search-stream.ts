@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { send } from './api'
 import { pageLoad } from './page-load'
+import type { PersonLabel } from 'shared'
 
 // #1265: Search or Command shows its work. /api/search answers one JSON line
 // at a time: the groups it will search, then each group as its Table answers,
@@ -12,6 +13,8 @@ export interface SearchHit {
   row_id: string
   title: string
   kind_label?: string
+  /** #1345: a Person's label (code · role · place), as the viewer may see it. */
+  person?: PersonLabel
 }
 
 export interface SearchGroup {
