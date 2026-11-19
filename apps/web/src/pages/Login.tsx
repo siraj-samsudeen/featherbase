@@ -601,7 +601,7 @@ export function LoginPage() {
               Create an account
             </Button>
           )}
-          <div className="mt-4 border-t border-border pt-4">
+          <div className="mt-4 pt-2">
             {!forgot ? (
               <button
                 type="button"
