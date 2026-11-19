@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '@featherbase/shop-floor'
 import { fmtCount, fmtDay, fmtINR, fmtNumber, fmtShowing } from '@featherbase/shop-floor'
-import { fmtInstant } from '@featherbase/shop-floor/format'
+import { fmtDuration, fmtInstant } from '@featherbase/shop-floor/format'
 import { formatNumber } from '../src/lib/settings'
 import { pageRange } from '../src/components/ListView'
 import { indicatorHue } from '../src/components/Indicator'
@@ -438,5 +438,18 @@ describe('achievementTone — the bands of the sales-target legend', () => {
     [null, 'missing'],
   ] as const)('%s%% is %s', (pct, tone) => {
     expect(achievementTone(pct)).toBe(tone)
+  })
+})
+
+describe('#1348 fmtDuration: a run time in words a person reads', () => {
+  test.each([
+    [0, '0 s'], [450, '0.5 s'], [1234, '1.2 s'], [59_400, '59 s'], [65_000, '1 min 5 s'], [180_000, '3 min'],
+    [3_720_000, '1 h 2 min'], [7_200_000, '2 h'],
+  ])('%i ms reads %s', (ms, words) => {
+    expect(fmtDuration(ms)).toBe(words)
+  })
+  test('nothing to say is a dash', () => {
+    expect(fmtDuration(null)).toBe('—')
+    expect(fmtDuration(Number.NaN)).toBe('—')
   })
 })

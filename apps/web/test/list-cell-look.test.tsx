@@ -7,6 +7,7 @@ import { RowDensityContext } from '@featherbase/shop-floor'
 import { ListCell } from '../src/components/ListRows'
 import type { ListColumn } from '../src/lib/list-view-columns'
 import { DEFAULT_SETTINGS } from '../src/lib/settings'
+import { summableColumn } from '../src/lib/column-kinds'
 
 const col = (column_name: string, column_type: string): ListColumn => ({ column_name, column_type, label: column_name } as ListColumn)
 const draw = (name: string, type: string, value: unknown, compact = false) => render(
@@ -41,4 +42,16 @@ describe('a list cell in the calmer look', () => {
 
 test('a postal code is an address, not a code: it keeps body text', () => {
   expect(draw('postal_code', 'Data', '600 101').querySelector('.font-mono')).toBeNull()
+})
+
+describe('a run time held in milliseconds (#1348, Last Run Took)', () => {
+  test('reads as time, never a count of milliseconds', () => {
+    expect(draw('last_duration_ms', 'Int', 65000).textContent).toBe('1 min 5 s')
+  })
+  test('is never what the list sums: the next number column is', () => {
+    const cols = [col('last_duration_ms', 'Int'), col('runs', 'Int')]
+    expect(summableColumn(cols)?.column_name).toBe('runs')
+    expect(summableColumn([col('last_duration_ms', 'Int')])).toBeUndefined()
+    expect(summableColumn([col('runs', 'Int'), col('amount', 'Currency')])?.column_name).toBe('amount')
+  })
 })
