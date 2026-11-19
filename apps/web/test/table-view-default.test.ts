@@ -30,14 +30,14 @@ describe("#1282 A4: a Table's default view", () => {
 
   test("the confirm names the columns in the list's own order, led by what the list leads with", () => {
     const led = { ...meta, columns: [meta.columns[1], meta.columns[0], ...meta.columns.slice(2)] } as unknown as TableMeta
-    expect(describeView(led, {})[1]).toBe('Columns: Name, Site')
+    expect(describeView(led, {})[1]).toBe('Show Columns: Name, Site')
   })
 
   test('the confirm names each setting in words', () => {
     expect(describeView(meta, { layout: 'split', shownCols: ['status'], hiddenCols: [], sort: { field: 'opened_on', dir: 'asc' }, compact: true, links: { as: 'sections', fields: true } }))
-      .toEqual(['List And Record', 'Columns: Name, Site, Status', 'Sorted by Age, oldest first', 'Compact rows', 'Links: Sections', 'Fields beside links'])
+      .toEqual(['List And Record', 'Show Columns: Name, Site, Status', 'Sorted by Age, oldest first', 'Compact Rows: On', 'Show Links As: Sections', 'Fields Beside Links: Show'])
     expect(describeView(meta, { layout: 'panel', sort: { field: 'floor', dir: 'desc' }, compact: false, links: { as: 'tree', fields: false } }))
-      .toEqual(['Table With Panel', 'Columns: Name, Site', 'Sorted by Floor, largest first', 'Full rows', 'Links: Tree', 'No fields beside links'])
+      .toEqual(['Table With Panel', 'Show Columns: Name, Site', 'Sorted by Floor, largest first', 'Compact Rows: Off', 'Show Links As: Tree', 'Fields Beside Links: Hide'])
     expect(describeView(meta, { layout: 'table', sort: { field: 'section_name', dir: 'asc' } })[2]).toBe('Sorted by Name, A to Z')
     // No sort of their own: the Table's own order.
     expect(describeView(meta, { layout: 'table', sort: null })[2]).toBe('Sorted as the Table is')

@@ -44,12 +44,13 @@ const NUMBER_TYPES = new Set(['Int', 'Float', 'Currency', 'Percent'])
 const DATE_TYPES = new Set(['Date', 'Datetime', 'Time'])
 const BUILT_IN_LABELS: Record<string, string> = { row_id: 'Row ID', created_at: 'Created', updated_at: 'Last Updated' }
 
-/** The confirm's words for a default, one per setting: "List And Record", "Columns: Name, Site, Status",
- *  "Sorted by Age, oldest first", "Compact rows", "Links: Sections", "Fields beside links". */
+/** The confirm's words for a default, one per setting, each in its control's own words: "List And Record",
+ *  "Show Columns: Name, Site, Status", "Sorted by Age, oldest first", "Compact Rows: On", "Show Links As: Sections",
+ *  "Fields Beside Links: Show". */
 export function describeView(meta: TableMeta, view: TableViewSettings): string[] {
   // In the list's own order: what it leads with first, then each shown column.
   const shown = viewColumns(meta, view)
-  const columns = `Columns: ${shown.map((c) => c.label).join(', ')}`
+  const columns = `Show Columns: ${shown.map((c) => c.label).join(', ')}`
   const sorted = (() => {
     if (!view.sort) return 'Sorted as the Table is'
     const col = meta.columns.find((c) => c.column_name === view.sort!.field)
@@ -63,8 +64,9 @@ export function describeView(meta: TableMeta, view: TableViewSettings): string[]
     LAYOUT_WORDS[view.layout ?? 'panel'],
     columns,
     sorted,
-    view.compact ? 'Compact rows' : 'Full rows',
-    `Links: ${links.as === 'tree' ? 'Tree' : 'Sections'}`,
-    links.fields === false ? 'No fields beside links' : 'Fields beside links',
+    // Each named as its control is (UI owner): the toggle, the Links tab's View ▾ choices.
+    `Compact Rows: ${view.compact ? 'On' : 'Off'}`,
+    `Show Links As: ${links.as === 'tree' ? 'Tree' : 'Sections'}`,
+    `Fields Beside Links: ${links.fields === false ? 'Hide' : 'Show'}`,
   ]
 }

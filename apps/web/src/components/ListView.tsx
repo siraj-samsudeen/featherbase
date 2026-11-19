@@ -1070,17 +1070,22 @@ export function ListView({
           <ChecklistSwitch table={table} meta={meta.data} />
           {/* #1282 A4 (UI owner): the Table's managers make their whole view the Table's default; anyone whose view
               differs from it goes back to it. */}
-          {canShapeColumns && meta.data && settingsLoaded && !ownSettings.isPending && (
-            <button type="button" className={buttonClasses()} data-testid="make-table-default"
-              onClick={() => { setViewMenuOpen(false); setColPickerOpen(false); setConfirmingDefault(true) }}>
-              Make This the Table's Default…
-            </button>
-          )}
-          {viewDiffers && (
-            <button type="button" className={buttonClasses()} data-testid="reset-table-default"
-              onClick={() => { setViewMenuOpen(false); void resetView() }}>
-              Reset to the Table's Default
-            </button>
+          {/* In a group of their own below the other views, set apart by space only (UI owner, #1348's no-lines rule). */}
+          {((canShapeColumns && meta.data && settingsLoaded && !ownSettings.isPending) || viewDiffers) && (
+            <div role="group" aria-label="Table default" className="mt-2 flex flex-col items-stretch gap-1" data-testid="view-menu-defaults">
+            {canShapeColumns && meta.data && settingsLoaded && !ownSettings.isPending && (
+              <button type="button" className={buttonClasses()} data-testid="make-table-default"
+                onClick={() => { setViewMenuOpen(false); setColPickerOpen(false); setConfirmingDefault(true) }}>
+                Make This the Table's Default…
+              </button>
+            )}
+            {viewDiffers && (
+              <button type="button" className={buttonClasses()} data-testid="reset-table-default"
+                onClick={() => { setViewMenuOpen(false); void resetView() }}>
+                Reset to the Table's Default
+              </button>
+            )}
+            </div>
           )}
           </ActionDisclosure>
           {confirmingDefault && meta.data && (

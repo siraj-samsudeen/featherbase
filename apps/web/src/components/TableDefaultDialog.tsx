@@ -37,7 +37,7 @@ export function TableDefaultDialog({ table, view, words, onClose }: { table: str
       onKeyDown={(e) => e.key === 'Escape' && onClose()}>
       <form role="dialog" aria-modal="true" aria-labelledby="table-default-title" className={cardClasses('w-full max-w-md p-4')}
         data-testid="table-default-dialog" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); void save() }}>
-        <h2 id="table-default-title" className="mb-2 text-base font-semibold text-ink">Make this the {table} default?</h2>
+        <h2 id="table-default-title" className="mb-2 text-base font-semibold text-ink">Make This the {table} Default?</h2>
         <p className="mb-2 text-sm text-ink-muted">Everyone opens {table} like this:</p>
         <ul className="mb-3 list-disc pl-5 text-sm text-ink" data-testid="table-default-words">
           {words.map((w) => <li key={w}>{w}</li>)}
