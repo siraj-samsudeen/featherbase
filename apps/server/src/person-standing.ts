@@ -23,8 +23,9 @@ export interface Standing {
   status: StandingStatus
   /** The person's employee code, when the app knows one. */
   code: string | null
-  /** Each job held today, with its store where the viewer may open it. */
-  jobs: { job: string; site?: { table: string; id: string; name: string } }[]
+  /** Each job held today, with its store where the viewer may open it, and (#1345) the business role it
+   *  gives where the viewer may open that. */
+  jobs: { job: string; site?: { table: string; id: string; name: string }; business_role?: { table: string; id: string; name: string } }[]
   /** #1271: for someone who has left, the day they left, when the app knows it. */
   left_on?: string | null
 }
@@ -43,6 +44,8 @@ const answerSchema = z.array(z.object({
   jobs: z.array(z.object({
     job: z.string(),
     site: z.object({ table: z.string(), id: z.string(), name: z.string() }).optional(),
+    // #1345: the business role the job gives (#1218), for the Person Label.
+    business_role: z.object({ table: z.string(), id: z.string(), name: z.string() }).optional(),
   })).optional(),
 }))
 
@@ -109,8 +112,12 @@ async function mayRead(table: string, row: string, viewer: string): Promise<bool
 export async function standingFor(person: string, viewer: string): Promise<Standing & { external_label: string | null }> {
   const row = await getDoc('Person', person, viewer)
   const standing = (await describePeople([person])).get(person)!
-  const jobs = await Promise.all(standing.jobs.map(async (job) =>
-    job.site && !(await mayRead(job.site.table, job.site.id, viewer)) ? { job: job.job } : job))
+  // Each store and business role is kept only where the viewer may open it.
+  const jobs = await Promise.all(standing.jobs.map(async ({ site, business_role, ...job }) => ({
+    ...job,
+    ...(site && (await mayRead(site.table, site.id, viewer)) ? { site } : {}),
+    ...(business_role && (await mayRead(business_role.table, business_role.id, viewer)) ? { business_role } : {}),
+  })))
   const label = typeof row.external_label === 'string' ? row.external_label : null
   // The label describes an External person only.
   return { ...standing, jobs, external_label: standing.status === 'none' ? label : null }

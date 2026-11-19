@@ -1,8 +1,7 @@
-import { z } from 'zod'
 import type { PersonLabel } from 'shared'
 import { sql } from './db'
 import { scopedWhere } from './query'
-import { describingApps, describePeopleWith } from './runtime-packages'
+import { describePeople } from './person-standing'
 
 // #1345: the Person Label. Every place a person is named reads who they are:
 // `employee code · role · place`. Values are worked out here, once per request
@@ -10,30 +9,16 @@ import { describingApps, describePeopleWith } from './runtime-packages'
 //
 // Two layers. The platform's own: the person's current employee codes
 // (employee-record identifiers) and email, read through Person as the viewer.
-// Then an app that knows the staff list (`person.describe` in its manifest)
-// adds role, place, standing and company. The app answers with records, never
-// words: each part is shown only where the viewer may read the record it
-// names, and reads as that record's own title, read as the viewer. So nothing
-// the viewer cannot read reaches them through a label (item 10).
+// Then the app that says who people are (`people.describe`, #1267: Dash, from
+// StyleHR's Employee rows) adds their standing, job, business role and store,
+// as the Person page shows them: the store and the business role only where
+// the viewer may read that record, and read as its own title, so nothing the
+// viewer cannot read reaches them through a label (item 10).
 
 export type { PersonLabel } from 'shared'
 
-/** How long search waits for the apps that describe people (item 2). */
+/** How long search waits for the app that describes people (item 2). */
 export const DESCRIBE_WAIT_MS = 300
-
-const ref = z.object({ table: z.string().min(1).max(140), row_id: z.string().min(1).max(200) }).strict()
-const described = z.object({
-  standing: z.enum(['current', 'left', 'consultant', 'supplier']).optional(),
-  left_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  /** The person's employment records, the main one first, each by the code it holds. */
-  records: z.array(ref.extend({ code: z.string().min(1).max(60) }).strict()).max(20).optional(),
-  role: ref.optional(),
-  place: ref.optional(),
-  company: ref.optional(),
-}).strict()
-const answerSchema = z.object({ version: z.literal(1), people: z.record(z.string(), described) }).strict()
-type Described = z.infer<typeof described>
-type Ref = z.infer<typeof ref>
 
 /** The labels of `persons` as `viewer` may see them. A person the viewer may not read gets none. */
 export async function personLabels(persons: readonly string[], viewer: string, wait = DESCRIBE_WAIT_MS): Promise<Map<string, PersonLabel>> {
@@ -86,59 +71,40 @@ function within<T>(ms: number, work: Promise<T>): Promise<T | null> {
   return Promise.race([work, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))])
 }
 
-/** What the apps that describe people add, as the viewer may see it. The first app with an
- *  appointment for a person speaks for them; another that also answers is logged, never merged. */
+/** What the app that describes people adds, as the viewer may see it: their standing, the job they hold
+ *  (the first the app names), its business role and its store, each record only where the viewer may read it. */
 async function appLayer(ids: string[], viewer: string, codes: Map<string, string[]>): Promise<Map<string, PersonLabel>> {
-  const apps = await describingApps(viewer)
-  const answers = await Promise.all(apps.map(async (app) => {
-    try {
-      // A read's answer comes as `{ result }`.
-      const answer = await describePeopleWith(app, ids, viewer) as { result?: unknown } | null
-      const parsed = answerSchema.safeParse(answer?.result)
-      return { app: app.app, people: parsed.success ? parsed.data.people : {} }
-    } catch {
-      return { app: app.app, people: {} }
-    }
-  }))
-  const chosen = new Map<string, Described>()
-  for (const { app, people } of answers)
-    for (const id of ids) {
-      const said = Object.hasOwn(people, id) ? people[id]! : undefined
-      if (!said || !hasAppointment(said)) continue
-      if (chosen.has(id)) console.warn(`[person-label] ${app} also describes ${id}; the first app's answer is shown`)
-      else chosen.set(id, said)
-    }
-  const titles = await readableTitles([...chosen.values()].flatMap((d) => [d.role, d.place, d.company, ...(d.records ?? [])].filter((r): r is Ref => !!r)), viewer)
+  const standing = await describePeople(ids)
+  const refs: Ref[] = []
+  for (const s of standing.values()) {
+    const job = s.jobs[0]
+    if (job?.site) refs.push({ table: job.site.table, row_id: job.site.id })
+    if (job?.business_role) refs.push({ table: job.business_role.table, row_id: job.business_role.id })
+  }
+  const titles = await readableTitles(refs, viewer)
   const shown = new Map<string, PersonLabel>()
-  for (const [id, d] of chosen) {
-    const title = (r?: Ref) => (r ? titles.get(key(r)) : undefined)
-    const mine = codes.get(id) ?? []
-    // Records count only for codes the platform holds for this person, and only where the viewer may open them.
-    const records = (d.records ?? []).filter((r) => mine.includes(r.code))
-    const main = records.find((r) => r.code === mine[0])
-    const label: PersonLabel = {}
-    const role = title(d.role), place = title(d.place), company = title(d.company)
-    if (role) label.role = role
-    if (place) label.place = place
-    if (company) label.company = company
-    // Standing says something about their employment: shown only with a record of it the viewer may read
-    // (their main employment record; for a consultant or supplier, their company).
-    const anchored = d.standing === 'consultant' || d.standing === 'supplier' ? !!company : !!(main && titles.has(key(main)))
-    if (d.standing && anchored) {
-      label.standing = d.standing
-      if (d.standing === 'left' && d.left_on) label.left_on = d.left_on
+  for (const id of ids) {
+    const s = standing.get(id)
+    // 'none' (not on the staff list) and 'unknown' (the app is off, failed or late) add nothing.
+    if (!s || (s.status !== 'current' && s.status !== 'left')) continue
+    const label: PersonLabel = { standing: s.status }
+    if (s.status === 'left' && s.left_on) label.left_on = s.left_on
+    // A leaver's code has ended, so the platform holds no current one: the app's says who they were.
+    if (!codes.get(id)?.length && s.code) label.code = s.code
+    const job = s.jobs[0]
+    if (job) {
+      const role = job.business_role ? titles.get(key({ table: job.business_role.table, row_id: job.business_role.id })) : undefined
+      // The job's words are what the Person page shows anyone who may read the person (#1267).
+      label.role = role ?? job.job
+      const place = job.site ? titles.get(key({ table: job.site.table, row_id: job.site.id })) : undefined
+      if (place) label.place = place
     }
-    const more = mine.slice(1).map((code) => {
-      const r = records.find((x) => x.code === code)
-      return r && titles.has(key(r)) ? { code, table: r.table, row_id: r.row_id } : { code }
-    })
-    if (more.length) label.more_codes = more
-    if (Object.keys(label).length) shown.set(id, label)
+    shown.set(id, label)
   }
   return shown
 }
 
-const hasAppointment = (d: Described) => !!(d.role || d.place || d.company || d.standing || d.records?.length)
+type Ref = { table: string; row_id: string }
 const key = (r: Ref) => `${r.table}\u0000${r.row_id}`
 
 /** Each record's title (else its key), for the records the viewer may read; the rest are left out. */
