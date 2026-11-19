@@ -80,9 +80,11 @@ test("a person's standing is the app's answer, asked as the app's own actor, not
   const ravi = await createUser({ email: 'ravi.1267@example.test' })
   const note = await admin.post<{ row_id: string }>('/api/save_row', { table: 'barproof.note', row: { row_id: 'N-1267-1', body: 'Lakeside' } })
   globalThis.__standing = { [ravi.user!]: { person: ravi.user, status: 'current', code: '2001', jobs: [{ job: 'Team Leader', site: { table: 'barproof.note', id: note.row_id, name: 'Lakeside' } }] } }
+  // #1345 (Codex adversarial round 1): the store is named by its own title as the viewer reads it, never the
+  // app's words; barproof.note has no title column, so it reads by its key, as the platform names such rows.
   expect(await admin.get(`/api/people/${ravi.user}/standing`)).toEqual({
     status: 'current', code: '2001', external_label: null,
-    jobs: [{ job: 'Team Leader', site: { table: 'barproof.note', id: note.row_id, name: 'Lakeside' } }],
+    jobs: [{ job: 'Team Leader', site: { table: 'barproof.note', id: note.row_id, name: note.row_id } }],
   })
   expect(globalThis.__describedAs).toBe(describeActor('barproof'))
 })

@@ -22,8 +22,9 @@ const alsoParts = (others: { id: string; name: string }[]) => others.length
   ? [`Also given to ${counted(others.length, 'other role')}: `, ...others.flatMap((r, i) => [...(i ? [i === others.length - 1 ? ' and ' : ', '] : []), { record: { table: ROLE_TABLE, row: r.id, name: r.name } }])]
   : ['Given to this role only']
 /** " 3024 · Head office staff · Head Office": a person's staff code, job and place after their name, where known. */
-const personDetail = (who: { code: string | null; jobs: string[] } | undefined) => {
-  const words = [who?.code, ...(who?.jobs ?? [])].filter(Boolean).join(' · ')
+// whoIs answers for every person it is asked about.
+const personDetail = (who: { code: string | null; jobs: string[] }) => {
+  const words = [who.code, ...who.jobs].filter(Boolean).join(' · ')
   return words ? [` ${words}`] : []
 }
 
@@ -175,7 +176,7 @@ export async function giveOldGrantsPreview(context: AccessContext) {
     ? reports.has(s.gives.report) ? { record: { table: 'dash.report', row: s.gives.report, name: reports.get(s.gives.report)! } } : 'A report no longer listed'
     : bundles.has(s.gives.report_bundle) ? { record: { table: 'dash.report_bundle', row: s.gives.report_bundle, name: bundles.get(s.gives.report_bundle)! } } : 'A bundle no longer listed'
   const oldGrant = (s: PlannedGrant) => s.old.kind === 'person'
-    ? { parts: ['Person: ', { record: { table: 'Person', row: s.old.name, name: people.get(s.old.name) ?? 'Someone' } }, ...personDetail(who.get(s.old.name))] }
+    ? { parts: ['Person: ', { record: { table: 'Person', row: s.old.name, name: people.get(s.old.name) ?? 'Someone' } }, ...personDetail(who.get(s.old.name)!)] }
     : { text: s.old.kind === 'job' ? `Job: ${s.old.name}` : s.old.name }
   const toRoles = (ids: string[]) => ids.length
     ? { parts: ids.flatMap((id, i) => [...(i ? [i === ids.length - 1 ? ' and ' : ', '] : []), { record: { table: ROLE_TABLE, row: id, name: roleName.get(id)! } }]) }

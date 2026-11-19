@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from './Button'
 import { cx } from './cx'
 import { fmtCount } from './format'
+import { cellClasses, headCellClasses } from './TableLook'
 
 // #1282 F1–F6: the Grid: a small pair (both sides at most about 40) as rows × columns, each
 // cell stepping through its values. A change waits, outlined, until the app saves it; every
@@ -60,11 +61,11 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
       <table className="border-separate border-spacing-0 text-sm" aria-label={label} data-testid="grid">
         <thead>
           <tr>
-            {/* The header band and lines are the list view's (consistency check against ListView). */}
-            <th scope="col" data-column="" className="sticky left-0 z-10 border-r border-b border-border bg-subtle" />
+            {/* #1348: the header band is the list view's (TableLook): a quiet fill, rounded ends, no lines. */}
+            <th scope="col" data-column="" className={headCellClasses({ first: true, className: 'sticky left-0 z-10' })} />
             {columns.map((column) => (
               <th key={column.id} scope="col" data-column={column.id} data-testid="grid-header" data-tilt={tilt}
-                className={cx('border-b border-border bg-subtle px-3 py-2 align-bottom font-normal', tilt === 'flat' ? 'w-24 text-center' : 'relative h-44 w-18 min-w-18 max-w-18')}>
+                className={headCellClasses({ last: column === columns[columns.length - 1], className: cx('py-2 align-bottom', tilt === 'flat' ? 'w-24 text-center' : 'relative h-44 w-18 min-w-18 max-w-18') })}>
                 {tilt === 'flat'
                   ? <span className="line-clamp-2 break-words text-sm leading-tight">{column.header}</span>
                   // Tilted, the label is drawn outside the column's width: a narrow column, its name rising to the right.
@@ -82,11 +83,11 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
               <Fragment key={row.id}>
                 {group && (
                   // The group's name stays in view while the grid scrolls sideways.
-                  <tr><td colSpan={columns.length + 1} className="border-b border-border px-3 py-2"><span className="sticky left-3 font-semibold text-ink" data-testid="grid-group">{group}</span></td></tr>
+                  <tr><td colSpan={columns.length + 1} className="px-3 pt-4 pb-1"><span className="sticky left-3 font-semibold text-ink" data-testid="grid-group">{group}</span></td></tr>
                 )}
-                <tr className="group hover:bg-subtle">
+                <tr className="group">
                   {/* On a phone the title column is narrow and wraps to two lines, so the cells stay in reach (UI owner). */}
-                  <td data-column="" className="sticky left-0 border-r border-b border-border bg-surface px-3 py-2 whitespace-nowrap text-ink-muted group-last:border-b-0 group-hover:bg-subtle max-md:max-w-30 max-md:whitespace-normal" data-testid="grid-row-title">
+                  <td data-column="" className={cellClasses({ first: true, className: 'sticky left-0 bg-surface whitespace-nowrap text-ink-muted max-md:max-w-30 max-md:whitespace-normal' })} data-testid="grid-row-title">
                     <span className="max-md:line-clamp-2">{row.titleNode ?? row.title}</span>
                   </td>
                   {columns.map((column) => {
@@ -97,7 +98,7 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
                       isWaiting ? 'bg-action-tint text-action outline-2 outline-action' : value === null ? 'text-ink-subtle' : 'bg-tag text-ink-muted')
                     const title = tooltip(row, column, value)
                     return (
-                      <td key={column.id} data-column={column.id} data-testid={`grid-cell-${row.id}-${column.id}`} data-waiting={String(isWaiting)} className="border-b border-border px-3 py-2 text-center group-last:border-b-0">
+                      <td key={column.id} data-column={column.id} data-testid={`grid-cell-${row.id}-${column.id}`} data-waiting={String(isWaiting)} className={cellClasses({ last: column === columns[columns.length - 1], className: 'text-center' })}>
                         {readOnly
                           ? <span className={pill} title={title}>{labelOf(value)}</span>
                           : (

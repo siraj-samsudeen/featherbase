@@ -8,15 +8,15 @@ export function nameAndCode(label: string, code?: string): string {
 
 /** A small, quiet action beside a value (Go there, Filter, Focus here). */
 export const smallActionClasses = cx(
-  'inline-flex min-h-8 shrink-0 items-center rounded-control border border-border px-2 text-xs font-medium text-ink-muted transition-colors',
-  'hover:bg-subtle hover:text-ink focus-visible:outline-2 focus-visible:outline-focus',
+  'inline-flex min-h-8 shrink-0 items-center rounded-control bg-fill px-2 text-xs font-medium text-ink-muted transition-colors',
+  'hover:bg-fill-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus',
   'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent motion-reduce:transition-none',
   'pointer-coarse:min-h-control',
 )
 
 /** A small caption naming a row's table, e.g. "Shelf". */
 export function KindTag({ children }: { children: string }) {
-  return <span className="shrink-0 rounded-control border border-border px-1.5 text-xs text-ink-muted">{children}</span>
+  return <span className="shrink-0 rounded-md bg-tag px-1.5 text-xs text-tag-ink">{children}</span>
 }
 
 /**

@@ -168,6 +168,11 @@ describe('renameColumn', () => {
     expect(tables[0].search_columns).toEqual(['heading'])
   })
 
+  test('the column through which a row is a person\'s record follows the rename (#1345)', () => {
+    const tables = replayForward('shop', [{ ...item(), person_column: 'title' }], [{ kind: 'renameColumn', table: 'shop.item', from: 'title', to: 'heading' }])
+    expect(tables[0].person_column).toBe('heading')
+  })
+
   test('the Table title column follows the rename', () => {
     const tables = replayForward('shop', [{ ...item(), title_column: 'title' }], [{ kind: 'renameColumn', table: 'shop.item', from: 'title', to: 'heading' }])
     expect(tables[0].title_column).toBe('heading')

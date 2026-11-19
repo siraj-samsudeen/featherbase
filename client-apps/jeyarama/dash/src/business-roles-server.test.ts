@@ -1,5 +1,6 @@
 // #1218: the business roles in shadow, over in-memory Tables. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
+import manifest from '../featherbase.json'
 import { accessChanges, addStartingRoles, areaParts, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, whyAccess, workedOut } from './business-roles-server'
 import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
@@ -56,6 +57,9 @@ function world(): Record<string, Row[]> {
   }
 }
 
+/** The Tables Dash's manifest declares for base-Table reads. */
+const BASE_READ = new Set(Object.keys(manifest.baseTables.read))
+
 function context(tables: Record<string, Row[]>, { user = 'mgr', roles = ['Report Access Manager'], payload = {} as unknown, peopleRoles = {} as Record<string, string[]> } = {}) {
   let n = 0
   // As the platform does: only the fields asked for come back, so a column the code forgets to ask for is missing here too.
@@ -69,7 +73,10 @@ function context(tables: Record<string, Row[]>, { user = 'mgr', roles = ['Report
     user, roles, payload, userName: 'Manju Manager',
     reject(message: string): never { throw new Error(message) },
     // A column is there when a row carries it, as the instance's Table has it or not (#1280).
-    baseTables: { list, available: async (table: string, columns: readonly string[] = []) => table in tables && columns.every(c => tables[table].some(row => c in row)) },
+    // As the platform does: the base-Table reader reads only the Tables the manifest declares for it (production
+    // hotfix, 19-Nov-2026: dash.report isn't one, so reading it there refused every Owner Director's reports).
+    baseTables: { list: (table: string, args: Parameters<typeof list>[1]) => (BASE_READ.has(table) ? list(table, args) : Promise.reject(new Error(`The app has not declared Table ${table}`))),
+      available: async (table: string, columns: readonly string[] = []) => table in tables && columns.every(c => tables[table].some(row => c in row)) },
     documents: {
       list: async (table: string, args: { filters?: [string, string, unknown][] }) => table === 'dash.report'
         ? [{ report_key: 'vs', report_name: 'Vendor Sales', filter_shape: 'Stores and subcategories' }, { report_key: 'sales', report_name: 'Sales', filter_shape: 'One store and subcategories' }] : list(table, args),
@@ -1170,6 +1177,16 @@ describe('business roles decide Dash access (#1277 J2)', () => {
     const { tables } = await switched()
     const sm = (await accessChanges(context(tables, { peopleRoles: { sm: [] } }) as never)).groups.find(g => g.kind === 'needs_dash_role')!.people.map(p => p.person)
     expect(sm).toContain('sm')
+  })
+
+  // Production hotfix (19-Nov-2026): an Owner Director (a role viewing every report) gets every report from the
+  // reports read under business roles, read through Dash's own documents, never the base-Table reader.
+  it('gives someone holding an every-report role every report under business roles', async () => {
+    const { tables } = await switched()
+    // Head office is given no report by any grant; Owner Director alone gives them every report the instance has.
+    expect(await reportsFor(readerOf(tables, 'ho', ['Dash Reader']) as never)).toEqual([])
+    await giveRole(context(tables, { payload: { person: 'ho', change: 'Also give', role: roleId(tables, 'Owner Director') } }) as never)
+    expect((await reportsFor(readerOf(tables, 'ho', ['Dash Reader']) as never)).map(r => r.report_key).sort()).toEqual(['sales', 'vs'])
   })
 
   it('gives a store manager the reports given to their role and to them, and no Dash All-Stores Reader reach', async () => {

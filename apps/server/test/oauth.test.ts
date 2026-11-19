@@ -40,12 +40,15 @@ async function beginLogin(api: TestClient): Promise<{ state: string; cookie: str
   return { state, cookie }
 }
 
+// #1318: a sign-in callback answers JSON only to a caller that asks for it.
+const API_CALLER = { accept: 'application/json' }
+
 async function mockSignIn(api: TestClient, email: string, name = 'Test User', extra: { subject?: string; hd?: string } = {}) {
   // The login start must redirect to the provider; a refusal there is not the
   // sign-in outcome these tests examine.
   const { start, approve, callback, cookie } = await beginMockApproval(api, email, { ...extra, name })
   expect(start.status, 'the login start redirects to the provider').toBe(302)
-  return callback === null ? approve : api.fetch(callback, { headers: { cookie } })
+  return callback === null ? approve : api.fetch(callback, { headers: { cookie, ...API_CALLER } })
 }
 
 // #150: what the callback hands the SPA is a one-time handoff code, not the
@@ -81,7 +84,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
         const approved = await api.fetch(mockApproveUrl(state, email, { name: 'Elapsed Login' }), { headers: { cookie } })
         await expectStatus(approved, 302)
         vi.setSystemTime(started + seconds * 1000)
-        const callback = await api.fetch(approved.headers.get('location')!, { headers: { cookie } })
+        const callback = await api.fetch(approved.headers.get('location')!, { headers: { cookie, ...API_CALLER } })
         if (seconds === 599) {
           await expectStatus(callback, 302)
           const session = await redeem(api, handoffCode(callback), sidCookie(callback))
@@ -304,7 +307,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   })
 
   test('PLAT-006: a callback with a forged state is refused to an API caller', async ({ api }) => {
-    const res = await api.fetch('/api/oauth/google/callback?code=abc&state=forged.signature')
+    const res = await api.fetch('/api/oauth/google/callback?code=abc&state=forged.signature', { headers: API_CALLER })
     await expectStatus(res, 401)
   })
 
@@ -344,7 +347,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       // Sign-in itself refuses rather than falling back to the mock, and the
       // callback will not decode a mock code either.
       await expectStatus(await api.fetch('/api/oauth/google/login'), 401)
-      await expectStatus(await api.fetch('/api/oauth/google/callback?code=x&state=y'), 401)
+      await expectStatus(await api.fetch('/api/oauth/google/callback?code=x&state=y', { headers: API_CALLER }), 401)
     } finally {
       vi.unstubAllEnvs()
     }
@@ -373,11 +376,11 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const callbackUrl = approve.headers.get('location') as string
 
     // The victim's browser: it never started this login, so it has no cookie.
-    await expectStatus(await api.fetch(callbackUrl), 401)
+    await expectStatus(await api.fetch(callbackUrl, { headers: API_CALLER }), 401)
 
     // A browser mid-flight on its OWN login: cookie present, but not this one.
     const other = await beginLogin(api)
-    await expectStatus(await api.fetch(callbackUrl, { headers: { cookie: other.cookie } }), 401)
+    await expectStatus(await api.fetch(callbackUrl, { headers: { cookie: other.cookie, ...API_CALLER } }), 401)
 
     // Neither attempt minted a session or a user.
     const [row] = await sql`select 1 from person where email = 'attacker@gmail.com'`
@@ -415,7 +418,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const before = await stateOfAccounts()
     expect(before.people.some((person) => person.email === email)).toBe(false)
     callback.searchParams.set('code', tampered)
-    const refused = await api.fetch(callback.pathname + callback.search, { headers: { cookie } })
+    const refused = await api.fetch(callback.pathname + callback.search, { headers: { cookie, ...API_CALLER } })
     await expectStatus(refused, 401)
     expect(await refused.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Bad signature' } })
     expect(refused.headers.get('location')).toBeNull()
@@ -692,7 +695,7 @@ describe('the OAuth steps refuse what they cannot use', () => {
   test('a mock approval that names no email signs nobody in', async ({ api }) => {
     const { state, cookie } = await beginLogin(api)
     const approve = await expectStatus(await api.fetch(`/api/oauth/mock/approve?${new URLSearchParams({ state, redirect_uri: '/api/oauth/google/callback' })}`, { headers: { cookie } }), 302)
-    await expectRefused(api.fetch(approve.headers.get('location') as string, { headers: { cookie } }), 401, 'No email in code')
+    await expectRefused(api.fetch(approve.headers.get('location') as string, { headers: { cookie, ...API_CALLER } }), 401, 'No email in code')
   })
 
   test('a code exchange without a code is refused', async () => {
@@ -738,7 +741,7 @@ describe('the OAuth steps refuse what they cannot use', () => {
   })
 
   test('a callback with no state is refused to the API caller', async ({ api }) => {
-    await expectRefused(api.fetch('/api/oauth/google/callback?code=c'), 401, 'Missing OAuth state')
+    await expectRefused(api.fetch('/api/oauth/google/callback?code=c', { headers: API_CALLER }), 401, 'Missing OAuth state')
   })
 
   test('a browser sign-in whose call to Google fails outright lands on the sign-in page, logged', async ({ api }) => {

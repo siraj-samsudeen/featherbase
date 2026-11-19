@@ -113,7 +113,7 @@ export async function reportsFor(ctx: ScopedContext): Promise<ReportRecord[]> {
     const source = await sourceOf(ctx)
     const placedBy = placesSource(ctx.authorization?.places ?? [])
     if (placedBy && placedBy !== source) return []
-    given = new Set((await reportsGivenNow(ctx.baseTables as Base, ctx.user, ctx.roles ?? [], istToday(), source)).keys())
+    given = new Set((await reportsGivenNow(ctx.baseTables as Base, ctx.documents, ctx.user, ctx.roles ?? [], istToday(), source)).keys())
   } catch { return [] }
   if (!given.size) return []
   const rows = await ctx.documents.list('dash.report', { fields: REPORT_FIELDS, order_by: 'report_name asc', limit_page_length: 200 })

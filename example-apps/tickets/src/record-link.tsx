@@ -1,11 +1,13 @@
 // #1230: everything that is a Featherbase record shows as a link to it (the shared RecordLink, #1234),
 // plain text only for a viewer who can't open it. Whether they can is asked of the platform, as them.
 import { useEffect, useState } from 'react'
+import { mayReadTable } from './api'
 
-/** The ids of these rows the viewer may open: the platform's own list, read with their token. */
+/** The ids of these rows the viewer may open: the platform's own list, read with their token.
+ *  #1301: a viewer whoami says may not read the Table at all is not asked about it (the list would refuse). */
 export async function openable(table: string, ids: string[]): Promise<Set<string>> {
   const wanted = [...new Set(ids.filter(Boolean))]
-  if (!wanted.length) return new Set()
+  if (!wanted.length || !(await mayReadTable(table))) return new Set()
   const token = localStorage.getItem('fc_token')
   const query = new URLSearchParams({ filters: JSON.stringify([['row_id', 'in', wanted]]), fields: JSON.stringify(['row_id']),
     limit_page_length: String(wanted.length) })

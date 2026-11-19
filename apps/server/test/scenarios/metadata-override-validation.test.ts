@@ -92,7 +92,7 @@ class Catalogue {
     // An independent baseline pins the existing allowlists; not expectations derived from production.
     const expected = target === 'column'
       ? ['label', 'hidden', 'reqd', 'read_only', 'in_list_view', 'default_value', 'choices']
-      : ['label', 'title_column', 'search_columns', 'sort_column', 'sort_direction', 'enable_assignments', 'enable_tags', 'enable_files', 'enable_discussion']
+      : ['label', 'title_column', 'search_columns', 'person_column', 'sort_column', 'sort_direction', 'enable_assignments', 'enable_tags', 'enable_files', 'enable_discussion']
     expect(this.permittedNames()).toEqual(expected)
   }
 

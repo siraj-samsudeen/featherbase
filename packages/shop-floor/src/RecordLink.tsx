@@ -36,19 +36,23 @@ export function useRecordHref(table: string, rowId: string): string {
  *   there is room; `inline` (the default) after a middle dot.
  * - `canOpen={false}` (the viewer may not open it) is the one case drawn as
  *   plain text, the same words, with no link.
+ * - `inLink` draws the same words inside a row that is itself the link to
+ *   this record (a search result): a link may not hold another.
  * - `href` names the destination outright; otherwise an app's page for the
  *   Table (RecordPagesProvider), else the Featherbase record.
  * - `onNavigate` lets a single-page screen open it in place; modified clicks
  *   (new tab, new window) stay the browser's.
  */
 export function RecordLink({
-  table, rowId, name, detail, canOpen = true, href, layout = 'inline', onNavigate, className,
+  table, rowId, name, detail, canOpen = true, inLink = false, href, layout = 'inline', onNavigate, className,
 }: {
   table: string
   rowId: string
   name?: string | null
-  detail?: string | null
+  /** Words, or a node of them (PersonLabel marks each part so a narrow space can drop one). */
+  detail?: ReactNode
   canOpen?: boolean
+  inLink?: boolean
   href?: string
   layout?: 'inline' | 'two-lines'
   onNavigate?: (href: string) => void
@@ -66,6 +70,8 @@ export function RecordLink({
     </>
   )
   const shape = layout === 'two-lines' ? 'inline-flex min-w-0 flex-col' : 'min-w-0'
+  if (inLink && canOpen)
+    return <span className={cx(shape, 'text-ink', className)} data-record-link="in-link" data-table={table} data-row={rowId}>{words}</span>
   if (!canOpen)
     return <span className={cx(shape, 'text-ink', className)} data-record-link="text" data-table={table} data-row={rowId}>{words}</span>
   return (

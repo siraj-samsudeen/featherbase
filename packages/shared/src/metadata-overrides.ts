@@ -5,6 +5,7 @@ export const METADATA_OVERRIDE_PROPERTIES = {
     label: 'text',
     title_column: 'text',
     search_columns: 'text',
+    person_column: 'text',
     sort_column: 'text',
     sort_direction: 'text',
     enable_assignments: 'boolean',

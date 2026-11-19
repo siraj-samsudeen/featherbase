@@ -495,10 +495,9 @@ Then the user sees the customer of the order "Bolts" read by its id "cust-3"
 ### Requirement: A list row is one line
 
 Every row of a list shown as a table, and its header, SHALL be one line, in both
-the Table and Compact layouts, whatever its values hold. A long value SHALL be
+Comfortable and Compact Rows, whatever its values hold. A long value SHALL be
 clipped with an ellipsis and SHALL show in full on hover and on the row's page.
-A column SHALL be as wide as its content up to a maximum. Compact stays the
-list's short form: the row's name and two key values.
+A column SHALL be as wide as its content up to a maximum.
 
 #### Scenario: A very long note
 
@@ -658,4 +657,24 @@ The record open in a list's panel SHALL be part of the page's address, so going 
 Given the user copies the address while Anitha's record is open beside the Job Assignment list
 When a colleague who can read Job Assignment opens that address
 Then they see the Job Assignment list with Anitha's record open
+```
+
+### Requirement: A list's rows are Comfortable or Compact
+
+A list SHALL show its rows Comfortable by default, and the user SHALL be able to switch them to Compact Rows:
+shorter rows with smaller text. Compact Rows SHALL keep every column the list shows. The choice SHALL be
+remembered for that user on that table.
+
+#### Scenario: Compact keeps the columns
+
+- **WHEN** the user switches the list of sites to Compact Rows
+- **THEN** the rows are shorter and every column of the list still shows
+
+#### Scenario: The sites list stays compact
+
+```gherkin
+Given the user switched the list of sites to its compact layout
+When the user signs in again and opens the list of sites
+Then Enchakkal shows in Compact Rows with every column
+And the list of plants still shows all its columns
 ```

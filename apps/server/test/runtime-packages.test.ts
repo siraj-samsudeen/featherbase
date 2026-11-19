@@ -243,7 +243,8 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         await writeFile(resolve(root, 'featherbase.json'), JSON.stringify({ ...manifest, migrations: migrations.slice(0, index + 1) }))
       }
       const rows = await sql`select name, package_version, migration_ledger from installed_app where name = 'other'`
-      const expected = [{ name: 'other', from: '0.0.1', to: '1.10.0', ownsClient: true, migrations }]
+      // #1340: with the Tables the app hands to Featherbase's pages, none here.
+      const expected = [{ name: 'other', from: '0.0.1', to: '1.10.0', ownsClient: true, featherbase: [], migrations }]
       expect(await shippedUpgrades(rows, roots)).toEqual(expected)
       expect(await shippedUpgrades(rows, [...roots].reverse())).toEqual(expected)
       expect(await sql`select package_version, migration_ledger from installed_app where name = 'other'`)

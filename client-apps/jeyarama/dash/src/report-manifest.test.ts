@@ -360,15 +360,18 @@ describe('the version step for Dash All-Stores Reader', () => {
       ['permission_grid', '0.13.38', '0.13.39', 3],
       // #1282: the Lens's worked-out sections, a read only, with no Table change.
       ['worked_out_sections', '0.13.39', '0.13.40', 0],
+      ['every_report_own_read', '0.13.40', '0.13.41', 0],
+      // #1345: each job's business role and a leaver's leaving day in describe_people, for the Person Label; no Table change.
+      ['person_label', '0.13.41', '0.13.42', 0],
       // #1340: business roles in Featherbase: four Tables move to People (one relabelled Report grant), two columns leave
       // the list, setup runs and access decisions are kept, each log line names its run, and the role Tables read in Title Case.
-      ['business_roles_in_featherbase', '0.13.40', '0.13.41', 18],
+      ['business_roles_in_featherbase', '0.13.42', '0.13.43', 18],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
-    expect(pkg.version).toBe('0.13.41')
+    expect(pkg.version).toBe('0.13.43')
   })
 })

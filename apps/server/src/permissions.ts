@@ -32,7 +32,14 @@ export async function getRolesMany(principals: string[]): Promise<Map<string, st
     else asked.push(principal)
   }
   const rows = asked.length ? await heldRoleRows(asked) : []
-  for (const principal of asked) roles.set(principal, rolesFrom(rows.filter((r) => r.principal === principal)))
+  const rowsOf = new Map<string, Record<string, unknown>[]>()
+  for (const row of rows) {
+    const principal = String(row.principal)
+    const own = rowsOf.get(principal)
+    if (own) own.push(row)
+    else rowsOf.set(principal, [row])
+  }
+  for (const principal of asked) roles.set(principal, rolesFrom(rowsOf.get(principal) ?? []))
   return roles
 }
 
