@@ -300,4 +300,48 @@ describe('migrate: an installed database', () => {
       await scratch.close()
     }
   }, 120_000)
+
+  // #1336: 0172 moves every password hash out of person into person_credential.
+  // Until the next release drops the column, an old server still writing it
+  // (the release window) has its writes carried across by a trigger.
+  it('installed before 0172: hashes move to person_credential; a person with none stays without one', async () => {
+    const scratch = await scratchInstalled()
+    try {
+      const credentials = async () => (await scratch.db`select person_id, password_hash from featherbase.person_credential
+        where person_id in ('psn_has_pw_0172', 'psn_no_pw_0172', 'Administrator') order by person_id collate "C"`)
+        .map((r) => [String(r.person_id), String(r.password_hash)])
+      await scratch.db`drop trigger person_password_to_credential on featherbase.person`
+      await scratch.db`drop trigger person_password_to_credential_insert on featherbase.person`
+      await scratch.db`drop function featherbase.fc_person_password_to_credential()`
+      await scratch.db`drop table featherbase.person_credential`
+      await scratch.db`delete from featherbase.migration where name = '0172_person_credential.sql'`
+      await scratch.db`update featherbase.person set password_hash = 'salt:admin-hash' where row_id = 'Administrator'`
+      await scratch.db`insert into featherbase.person (row_id, enabled, password_hash, created_by, updated_by) values
+        ('psn_has_pw_0172', true, 'salt:hash-1', 'Administrator', 'Administrator'),
+        ('psn_no_pw_0172', true, null, 'Administrator', 'Administrator')`
+      expect(await scratch.migrate.pendingMigrations()).toEqual(['0172_person_credential.sql'])
+      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
+      expect(await credentials()).toEqual([['Administrator', 'salt:admin-hash'], ['psn_has_pw_0172', 'salt:hash-1']])
+      // No Table names it, so the Admin, /api/table and the MCP cannot reach it.
+      expect(await scratch.db`select name from featherbase.table_def where name ilike '%credential%'`).toEqual([])
+
+      // The old server, during the release window: its writes reach person_credential.
+      await scratch.db`update featherbase.person set password_hash = 'salt:hash-2' where row_id = 'psn_has_pw_0172'`
+      await scratch.db`update featherbase.person set password_hash = 'salt:hash-3' where row_id = 'psn_no_pw_0172'`
+      await scratch.db`update featherbase.person set password_hash = null where row_id = 'Administrator'`
+      expect(await credentials()).toEqual([['psn_has_pw_0172', 'salt:hash-2'], ['psn_no_pw_0172', 'salt:hash-3']])
+      // A write of the value the column already holds (a generic row save) changes nothing.
+      await scratch.db`update featherbase.person set password_hash = null where row_id = 'Administrator'`
+      await scratch.db`insert into featherbase.person_credential (person_id, password_hash) values ('Administrator', 'salt:new-home')`
+      await scratch.db`update featherbase.person set password_hash = null, full_name = 'Administrator' where row_id = 'Administrator'`
+      expect(await credentials()).toEqual([['Administrator', 'salt:new-home'], ['psn_has_pw_0172', 'salt:hash-2'], ['psn_no_pw_0172', 'salt:hash-3']])
+      await scratch.db`delete from featherbase.person_credential where person_id = 'Administrator'`
+      // A person's password goes with the person.
+      await scratch.db`delete from featherbase.person where row_id = 'psn_no_pw_0172'`
+      expect(await credentials()).toEqual([['psn_has_pw_0172', 'salt:hash-2']])
+      expect(await ledger(scratch)).toEqual(allMigrations())
+    } finally {
+      await scratch.close()
+    }
+  }, 120_000)
 })

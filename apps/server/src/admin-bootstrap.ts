@@ -6,13 +6,18 @@ import { readVariable } from './env'
 // The first Administrator's password (migration 0002; #130). Only a
 // developer's own machine or a test run has a knowable default; `dev` (a
 // hosted trial instance) is production here. Provisioning never rotates a hash.
-export async function bootstrapAdministrator(env: string = environment) {
+export function administratorBootstrapPassword(env: string = environment): string | null {
   const configured = readVariable('ADMIN_PASSWORD')
-  const password = configured?.trim() ? configured
+  return configured?.trim() ? configured
     : ['development', 'test'].includes(env) ? 'admin' : null
+}
+
+export async function bootstrapAdministrator(env: string = environment) {
+  const password = administratorBootstrapPassword(env)
   if (password === null) return
-  await sql`update person set password_hash = ${hashPassword(password)}
-    where row_id = 'Administrator' and password_hash is null`
+  await sql`insert into person_credential (person_id, password_hash)
+    select row_id, ${hashPassword(password)} from person where row_id = 'Administrator'
+    on conflict (person_id) do nothing`
 }
 
 // The default-password warning is now the "Administrator default password"
@@ -20,7 +25,7 @@ export async function bootstrapAdministrator(env: string = environment) {
 export async function diagnoseAdminBootstrap(env: string = environment) {
   if (['development', 'test'].includes(env)) return
   const [ready] = await sql`select 1 from person u
-    where u.enabled and u.password_hash is not null
+    where u.enabled and exists (select 1 from person_credential c where c.person_id = u.row_id)
       and (u.row_id = 'Administrator' or exists (
         select 1 from has_role r where r.parent = u.row_id and r.role = 'System Manager')) limit 1`
   if (!ready)

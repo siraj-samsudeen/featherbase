@@ -30,7 +30,7 @@ export const peopleRoutes = new Hono<Env>()
 peopleRoutes.get('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   const user = c.req.param('id')
-  const [row] = await sql`select (password_hash is not null) as has_password, email, expects_google_sign_in, expects_microsoft_sign_in from person where row_id = ${user}`
+  const [row] = await sql`select exists (select 1 from person_credential c where c.person_id = person.row_id) as has_password, email, expects_google_sign_in, expects_microsoft_sign_in from person where row_id = ${user}`
   if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
   // Every method row, turned off or not, so an identity on a disabled method
   // still shows its name on the Person form.
@@ -217,7 +217,7 @@ peopleRoutes.delete('/api/identities/:identityId', async (c) => {
 
 peopleRoutes.get('/api/me/sign_in_methods', async (c) => {
   const me = c.get('user')
-  const [row] = await sql`select (password_hash is not null) as has_password from person where row_id = ${me.row_id}`
+  const [row] = await sql`select exists (select 1 from person_credential c where c.person_id = person.row_id) as has_password from person where row_id = ${me.row_id}`
   const methods = (await listSignInMethods()).filter((m) => m.enabled)
   return c.json({
     identities: (await listIdentities(me.row_id)).map(({ id, method, subject, sign_in_name, email, display_name, pending_email, linked_at, last_used_at }) => ({
