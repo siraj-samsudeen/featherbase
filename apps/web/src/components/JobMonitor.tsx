@@ -18,6 +18,7 @@ interface Job {
 
 const STATUS_STYLE: Record<string, string> = {
   done: 'text-positive',
+  refused: 'text-caution',
   failed: 'text-negative',
   running: 'text-action',
   queued: 'text-ink-muted',
@@ -46,6 +47,21 @@ export function JobMonitor() {
     refetchInterval: 3000, // live view
   })
 
+  // #1362: the queue entry is done once the queue is finished with it; whether
+  // its run refused to act is on its Job Execution row, so a refusal says so.
+  const doneIds = (jobs.data?.data ?? []).filter((j) => j.job_status === 'done').map((j) => j.row_id)
+  const refusals = useQuery({
+    queryKey: ['jobs', 'refused', doneIds],
+    enabled: doneIds.length > 0,
+    queryFn: () =>
+      listResource<{ job: string; result: string | null }>('Job Execution', {
+        fields: ['job', 'result'],
+        filters: [['job', 'in', doneIds], ['outcome', '=', 'refused']],
+        limit_page_length: doneIds.length,
+      }),
+  })
+  const refusedReason = new Map((refusals.data?.data ?? []).map((e) => [e.job, e.result]))
+
   async function retry(name: string) {
     setBusy(name)
     try {
@@ -56,7 +72,9 @@ export function JobMonitor() {
     }
   }
 
-  const rows = jobs.data?.data ?? []
+  const rows = (jobs.data?.data ?? []).map((j) => refusedReason.has(j.row_id)
+    ? { ...j, job_status: 'refused', error: refusedReason.get(j.row_id) || null }
+    : j)
 
   return (
     <div data-testid="job-monitor" className="space-y-4">
