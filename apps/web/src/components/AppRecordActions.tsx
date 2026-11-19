@@ -36,13 +36,13 @@ export function AppRecordActions({ described, table }: { described: NonNullable<
   return (
     <div className="flex flex-col items-end gap-1" data-testid="app-record-actions" data-table={table}>
       <ActionDisclosure label="Record actions" open={open} onOpenChange={setOpen}>
-        <div role="group" aria-label="Record actions" className="flex w-96 max-w-[calc(100vw-2rem)] flex-col items-stretch gap-0.5">
+        <div role="group" aria-label="Record actions" className="flex w-full flex-col items-stretch gap-0.5 whitespace-normal">
           {actions.map((action) => {
             const body = <>
               <span className="text-sm font-medium text-ink">{busy === action.key ? `${action.label}…` : action.label}</span>
               <span className="text-xs text-ink-muted">{action.explain}</span>
             </>
-            const classes = touchRowClasses('flex flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus')
+            const classes = touchRowClasses('flex w-full flex-col items-start gap-0.5 whitespace-normal rounded-lg px-3 py-2 text-left hover:bg-subtle focus-visible:outline-2 focus-visible:outline-focus')
             return action.run
               ? <button key={action.key} type="button" disabled={busy !== null} onClick={() => run(action)} className={classes} data-testid={`record-action-${action.key}`}>{body}</button>
               : <a key={action.key} href={action.href} className={classes} data-testid={`record-action-${action.key}`}
