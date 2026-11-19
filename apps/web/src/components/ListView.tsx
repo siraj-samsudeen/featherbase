@@ -72,6 +72,11 @@ function linkPrefill(meta: import('../lib/meta').TableMeta, filters: Filter[]): 
 
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 /** "New <thing>": the Table's label in sentence case, its acronyms kept ("New job assignment", "New SAP code"). */
+/** #1348 (Siraj's rule: Title Case on every button and heading): a Table's name on a button, "New Job Assignment". */
+export function titleWords(label: string): string {
+  return label.split(/\s+/).map((word) => (/^[A-Z0-9]{2,}$/.test(word) ? word : word.charAt(0).toUpperCase() + word.slice(1))).join(' ')
+}
+
 export function thingWords(label: string): string {
   return label.split(/\s+/).map((word) => (/^[A-Z0-9]{2,}$/.test(word) ? word : word.toLowerCase())).join(' ')
 }
@@ -513,7 +518,7 @@ export function ListView({
             className={buttonClasses({ variant: 'primary' })}
             data-testid="list-empty-new"
           >
-            New {thingWords(label)}
+            New {titleWords(label)}
           </Link>
           {caps?.manage && (
             <Link to="/featherbase/admin/import" search={{ table }} className={buttonClasses()} data-testid="list-empty-import">
@@ -733,7 +738,7 @@ export function ListView({
               className={buttonClasses({ variant: 'primary' })}
               data-testid="list-new"
             >
-              New {thingWords(label)}
+              New {titleWords(label)}
             </Link>
           )}
           {/* #1242 (admin-lists 2): one ⋯ More for what is not the page's own action. */}

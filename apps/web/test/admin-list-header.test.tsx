@@ -89,7 +89,7 @@ test('an empty Table shows the way forward: New and Import data', async ({ admin
   await admin.post('/api/table_def', { name: 'alh empty raw', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
   await renderApp(tableHref('alh empty raw'), admin)
   expect(await screen.findByRole('heading', { level: 3, name: 'No rows' }, T)).toBeInTheDocument()
-  expect(screen.getByTestId('list-empty-new')).toHaveTextContent(/^New alh empty raw$/)
+  expect(screen.getByTestId('list-empty-new')).toHaveTextContent(/^New Alh Empty Raw$/)
   expect(screen.getByTestId('list-empty-import')).toHaveTextContent('Import data')
 })
 // A linked cell's code, muted inside the link: drill-pane.test.tsx ("Kerala · KL").
