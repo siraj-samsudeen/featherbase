@@ -396,6 +396,8 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/permissions/:table': 'grants; a grant never makes an audit table writable',
     'POST /api/app_actions/:app/:action': 'app actions refuse system tables',
     'POST /api/app_reads/:app/:read': 'read',
+    // #1340: an app's facts about rows of its Table: a read, run as the viewer, writing nothing.
+    'POST /api/records/:table/describe': 'read',
     'POST /api/preview_app_upgrade': 'app lifecycle',
     'POST /deliver/app': 'app lifecycle: a code fix to the installed version, by the deploy key (#1178)',
     'POST /api/upgrade_app': 'app lifecycle',

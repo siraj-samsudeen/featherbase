@@ -22,7 +22,7 @@ afterEach(async () => {
 
 const tableRead = { policy: { kind: 'table' }, authorization: { kind: 'generic' } }
 
-async function describing(records: unknown) {
+async function describing(records: unknown, { gate = false }: { gate?: boolean } = {}) {
   const directory = await mkdtemp(resolve('test/.records-1340-'))
   directories.push(directory)
   await cp(BAR_PROOF, directory, { recursive: true })
@@ -36,11 +36,13 @@ async function describing(records: unknown) {
   manifest.reads.operations = { ...manifest.reads.operations, describe_notes: tableRead, preview_tidy: tableRead }
   manifest.actions = { version: 2, tables: [NOTE], operations: { tidy: tableRead } }
   manifest.records = records
+  if (gate) { manifest.reads.operations.closed = tableRead; manifest.access = { gate: 'closed' } }
   await writeFile(file, JSON.stringify(manifest))
   await appendFile(resolve(directory, 'server.mjs'), `
 const facts = (globalThis.__records1340 ??= { answer: null, asked: [] })
 reads.describe_notes = ({ payload }) => { facts.asked.push(payload); if (facts.fails) throw new Error('down'); return facts.answer ?? answerFor(payload) }
 reads.preview_tidy = () => facts.preview ?? previewFor()
+${gate ? 'reads.closed = () => false' : ''}
 export const actions = { tidy: () => ({ tidied: true }) }
 function answerFor({ rows, page }) {
   return {
@@ -67,8 +69,8 @@ function previewFor() {
 
 const declared = { [NOTE]: { describe: 'describe_notes', previews: { tidy: 'preview_tidy' } } }
 
-async function install(admin: TestClient, records: unknown = declared) {
-  expect(await discoverPackages([await describing(records)])).toEqual([])
+async function install(admin: TestClient, records: unknown = declared, gate = false) {
+  expect(await discoverPackages([await describing(records, { gate })])).toEqual([])
   await admin.post('/api/install_app', { name: 'barproof' })
   await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'n1', body: 'kept' } })
   await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'n2', body: 'second' } })
@@ -158,6 +160,13 @@ describe('Record facts: the answer', () => {
     expect((await (await describeRows(reader, { rows: ['n1'] })).json()).facts.rows).toEqual({ n1: { header: 'Note · nobody yet' } })
   })
 
+  test('a body that is not JSON asks about no row', async ({ admin }) => {
+    await install(admin)
+    const response = await admin.fetch(`/api/records/${encodeURIComponent(NOTE)}/describe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'not json' })
+    await expectStatus(response, 200)
+    expect(hook().asked).toEqual([{ table: NOTE, rows: [], page: false }])
+  })
+
   test('more than 500 rows at once is refused', async ({ admin }) => {
     await install(admin)
     await expectStatus(await describeRows(admin, { rows: Array.from({ length: 501 }, (_, i) => `r${i}`) }), 417)
@@ -195,6 +204,13 @@ describe('Record facts: the answer', () => {
     hook().answer = answer
     const body = await (await describeRows(describer, { rows: ['n1'] })).json()
     expect(body).toEqual({ facts: null })
+  })
+
+  test("someone the app's own gate keeps out gets no facts", async ({ admin, createUser }) => {
+    await install(admin, declared, true)
+    const [, describer] = await people(createUser)
+    expect(await (await describeRows(describer, { rows: ['n1'] })).json()).toEqual({ facts: null })
+    expect(hook().asked).toEqual([])
   })
 
   test('a Table no app describes gives no facts', async ({ admin }) => {
