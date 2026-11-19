@@ -17,7 +17,12 @@ export async function turnedOffFor(address: string, viewer: string): Promise<{ t
   if (!name) return null
   const [row] = await sql`select name, enabled, manifest from installed_app where name = ${name}`
   if (!row || row.enabled !== false) return null
-  const manifest = (row.manifest ?? {}) as { title?: unknown; entryTable?: unknown; permissions?: unknown }
+  const manifest = (row.manifest ?? {}) as { title?: unknown; entryTable?: unknown; permissions?: unknown; access?: { gate?: unknown } }
+  const title = typeof manifest.title === 'string' && manifest.title.trim() ? manifest.title.trim() : name
+  if (await isPrivileged(viewer)) return { title }
+  // An app with its own access gate admits only whom its gate passes, and a turned-off app's gate cannot run:
+  // whether this viewer could use it cannot be known, so nothing is said (Codex round 3).
+  if (manifest.access?.gate) return null
   // A turned-off app's grants are suspended, so whether the viewer could use it is read from what the app
   // declares: a permission that lets one of their roles read its entry Table.
   // With the app's own App Role Bindings, which getRoles leaves out while the app is off (Codex standard
@@ -31,9 +36,8 @@ export async function turnedOffFor(address: string, viewer: string): Promise<{ t
   // A grant reads either way an app declares it: `can_read`, or a read in its `operations`.
   const declared = Array.isArray(manifest.permissions) ? manifest.permissions as { table?: unknown; role?: unknown; can_read?: unknown; operations?: { read?: unknown } }[] : []
   const reads = (p: (typeof declared)[number]) => p.can_read === true || Boolean(p.operations?.read)
-  const may = (await isPrivileged(viewer)) ||
-    declared.some((p) => p.table === manifest.entryTable && reads(p) && typeof p.role === 'string' && roles.has(p.role))
-  return may ? { title: typeof manifest.title === 'string' && manifest.title.trim() ? manifest.title.trim() : name } : null
+  const may = declared.some((p) => p.table === manifest.entryTable && reads(p) && typeof p.role === 'string' && roles.has(p.role))
+  return may ? { title } : null
 }
 
 /** Whether an app is served at its own root now: installed, switched on, active, with pages of its own. */
