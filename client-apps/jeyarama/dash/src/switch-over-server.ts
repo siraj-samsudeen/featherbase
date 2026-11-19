@@ -1,8 +1,7 @@
 // #1277: the action giving old grants to business roles, and the reads of the switch and the log. The steps are switch-over.ts.
 import { ACCESS_SOURCE, accessSource } from './access-source.ts'
 import { every, type Base } from './business-access.ts'
-import { type AccessContext } from './report-access-server.ts'
-import { seesBusinessRoles } from './permission-grid-server.ts'
+import { managesAccess, type AccessContext } from './report-access-server.ts'
 import { SWITCH_OVER_LOG, giveOldGrantsToRoles, type Writer } from './switch-over.ts'
 import { exact, text } from './values.ts'
 import { istToday } from './report.ts'
@@ -22,7 +21,7 @@ export async function giveOldGrantsAction(context: AccessContext) {
 
 /** What decides Dash access now, and the switch row a System Manager changes to put the old rules back. */
 export async function businessAccessSummary(context: AccessContext) {
-  if (!seesBusinessRoles(context)) context.reject!(ONLY_MANAGERS)
+  if (!managesAccess(context)) context.reject!(ONLY_MANAGERS)
   const base = context.baseTables as Base
   const rows = await every(base, ACCESS_SOURCE, ['source', 'updated_at'])
   return { source: await accessSource(base), switch_rows: rows.map(r => ({ id: exact(r.row_id), source: text(r.source), updated_at: exact(r.updated_at) })),
@@ -58,7 +57,7 @@ export function linked(detail: string, records: { table: string; row: string; na
 
 /** The switch-over's log, newest first: each line's words, with the role and the report it names as links. */
 export async function switchOverLog(context: AccessContext) {
-  if (!seesBusinessRoles(context)) context.reject!(ONLY_MANAGERS)
+  if (!managesAccess(context)) context.reject!(ONLY_MANAGERS)
   const rows = await every(context.baseTables!, SWITCH_OVER_LOG, ['step', 'outcome', 'business_role', 'source_grant', 'detail', 'created_at'])
   const roles = new Map((await every(context.baseTables!, 'dash.business_role', ['role_name'])).map(r => [exact(r.row_id), text(r.role_name)]))
   const grants = new Map((await every(context.baseTables!, 'dash.report_access', ['report', 'report_bundle'])).map(r => [exact(r.row_id), r]))

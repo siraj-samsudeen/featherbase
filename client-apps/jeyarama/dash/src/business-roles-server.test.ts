@@ -132,11 +132,9 @@ describe('a log line as a sentence', () => {
 describe('the Business Roles page', () => {
   it('reads each permission as a sentence with its reach', async () => {
     const page = await businessRoles(context(await seeded()) as never)
-    // #1282 (Siraj): a Report Access Manager sees the grid read-only; only a Role Permission Manager changes it.
+    // #1282 (Siraj): a Report Access Manager sees the grid read-only; a System Manager changes it (#437).
     expect(page.may_change).toBe(false)
-    const asSystemManager = await businessRoles(context(await seeded(), { roles: ['System Manager'] }) as never)
-    const asRolePermissionManager = await businessRoles(context(await seeded(), { roles: ['Role Permission Manager'] }) as never)
-    expect([asSystemManager.may_change, asRolePermissionManager.may_change]).toEqual([false, true])
+    expect((await businessRoles(context(await seeded(), { roles: ['System Manager'] }) as never)).may_change).toBe(true)
     await expect(businessRoles(context(await seeded(), { roles: ['Dash Reader'] }) as never)).rejects.toThrow()
     expect(page.roles.find(r => r.name === 'Store Manager')!.permissions).toContainEqual(expect.objectContaining({ app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Section names and subcategories', reach: 'Area', sentence: 'Store Managers can Edit Section names and subcategories in their area' }))
     // Owner, 18-Nov-2026: managers see their team's tickets; Head Office opens no Dash by default.
@@ -807,11 +805,6 @@ describe('Dash\'s own records open on Dash\'s own pages (verifier on 70c47d3c4)'
 
   it('lets a Report Access Manager open business roles and bundles, and a report they are offered', async () => {
     expect(await ask('sm', ['Report Access Manager'])).toEqual([true, true, true, false, false])
-  })
-
-  // #1282: a Role Permission Manager opens Business Roles, so a business role is a link for them; a bundle is not.
-  it('lets a Role Permission Manager open business roles, not bundles', async () => {
-    expect(await ask('st', ['Role Permission Manager'])).toEqual([true, false, true, false, false])
   })
 
   it('leaves business roles and bundles plain words for anyone else, and a report they are not offered', async () => {

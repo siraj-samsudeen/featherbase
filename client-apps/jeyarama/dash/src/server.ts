@@ -15,7 +15,7 @@ import { storeActions, storeReads } from './my-store.ts'
 import { buyerSectionActions, buyerSectionReads } from './buyer-sections.ts'
 import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
-import { changePermissions, seesBusinessRoles } from './permission-grid-server.ts'
+import { changePermissions } from './permission-grid-server.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenNow, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
 import { viewAsPeople } from './view-as-people.ts'
@@ -91,7 +91,7 @@ const sourceOf = (ctx: ScopedContext) => accessSource(ctx.baseTables as Base)
 
 
 /** #1218: the Dash Tables whose records open on a page only a company-wide manager may open. */
-const MANAGERS_PAGES = new Set(['dash.report_bundle'])
+const MANAGERS_PAGES = new Set(['dash.business_role', 'dash.report_bundle'])
 
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
 export { DASH_ROLES }
@@ -403,12 +403,10 @@ export const reads = {
   async dash_pages_open(context: ReadContext) {
     const answers = await coverageReads.dash_pages_open(context as never) as boolean[]
     const manager = managesAccess(context as AccessContext)
-    // #1282: a business role opens on Business Roles, which a Role Permission Manager sees too.
-    const seesRoles = seesBusinessRoles(context as AccessContext)
     const offered = new Set((await offeredReports(context as ScopedContext)).map(report => report.report_key))
     return answers.map((answer, i) => {
       const { table, id } = (context.payload as { refs: { table: unknown; id: unknown }[] }).refs[i]
-      return table === 'dash.report' ? offered.has(String(id)) : table === 'dash.business_role' ? seesRoles : MANAGERS_PAGES.has(String(table)) ? manager : answer
+      return table === 'dash.report' ? offered.has(String(id)) : MANAGERS_PAGES.has(String(table)) ? manager : answer
     })
   },
 
@@ -443,8 +441,6 @@ export const reads = {
 
   /** #1218: whether this person sees the business roles pages (company-wide managers only), for the sidebar's links. */
   manages_roles: (context: ReadContext) => managesAccess(context as AccessContext),
-  /** #1282: whether the sidebar offers Business Roles: those who manage access, and a Role Permission Manager. */
-  sees_roles: (context: ReadContext) => seesBusinessRoles(context as AccessContext),
   /** #1218, in shadow: the Business Roles page, Explain a person, and Who would gain or lose access. Company-wide managers only. */
   business_roles: (context: ReadContext) => businessRoles(context as AccessContext),
   explain_person: (context: ReadContext) => explainPerson(context as AccessContext),

@@ -23,7 +23,7 @@ type Dataset = { name: string; source: string; query: string; columns: { name: s
 const datasets = (manifest as unknown as { datasets: Dataset[] }).datasets
 const sales = () => datasets.find(d => d.name === SALES_DATASET)!
 const operations = manifest.reads.operations as Record<string, { policy: { kind: string; readRoles?: string[] }; outbound?: boolean; needs?: string[] }>
-const ROLES = ['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester', 'Role Permission Manager']
+const ROLES = ['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester']
 
 describe("the app's name in the manifest", () => {
   it('is Dash everywhere: title, identifier, roles and Table group', () => {
@@ -84,7 +84,7 @@ describe('the report in the manifest', () => {
 
   it("scopes the report's reads by the reader's places", () => {
     expect(['stores', 'report', 'embed_session'].map(name => [name, operations[name].policy.kind, operations[name].policy.readRoles]))
-      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager' && role !== 'Team Report Manager' && role !== 'View As Tester' && role !== 'Role Permission Manager')]))
+      .toEqual(['stores', 'report', 'embed_session'].map(name => [name, 'person_scope', ROLES.filter(role => role !== 'Report Access Manager' && role !== 'Team Report Manager' && role !== 'View As Tester')]))
   })
 
   it('declares only the two Dive openers and the Dive list for Add a Dive (#1169) as calling out', () => {
@@ -220,7 +220,7 @@ describe('the read grants, declared before the first install', () => {
   // Siraj, 11-Nov-2026 ("Drop whatever is not implemented"): no section editor or reviewer role.
   // #1192 (same day): Dash All-Stores Reader reaches every store. #1217: Team Report Manager gives reports to their team.
   it('declares only the roles Dash uses', () => {
-    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester', 'Role Permission Manager'])
+    expect(manifest.roles).toEqual(['Dash All-Stores Reader', 'Dash Reader', 'Report Access Manager', 'Team Report Manager', 'View As Tester'])
   })
 
   // #1218: how far a business role reaches is a required choice on the role, in the step that adds the Table and in its declaration.
@@ -256,10 +256,8 @@ describe('the read grants, declared before the first install', () => {
       // #1217: a Team Report Manager writes only the access rows they made, and the save rule takes them only from Dash's own actions.
       ['Team Report Manager', 'dash.report_access'],
       // #1218: the business roles in shadow; no delete, a hand change is marked removed.
-      // #1282 (Siraj): permissions are changed by the Role Permission Manager alone; a Report Access Manager reads them.
-      ...SHADOW_TABLES.filter(table => table !== 'dash.business_role_permission').map(table => ['Report Access Manager', table]),
-      // #1282: the Role Permission Manager changes permissions (taken away is marked removed, never deleted) and logs each change.
-      ['Role Permission Manager', 'dash.business_role_permission'], ['Role Permission Manager', PERMISSION_CHANGE]])
+      // A System Manager writes them all the same (#437); the grid's change log is read here and written by the grid's save.
+      ...SHADOW_TABLES.map(table => ['Report Access Manager', table])])
     expect(manifest.permissions.find(p => p.role === 'Team Report Manager' && p.table === 'dash.report_access')).toEqual({
       table: 'dash.report_access', role: 'Team Report Manager', scope_mode: 'creator', operations: { read: '@basic', create: '@basic', update: '@basic' } })
   })

@@ -46,7 +46,7 @@ export function useLeaveGuard(waiting: boolean) {
 }
 
 export function PermissionsGrid({ roles, mayChange, onSaved, onWaiting, personHref }: {
-  roles: GridRole[]; mayChange: boolean; onSaved: () => Promise<void>; onWaiting: (n: number) => void; personHref: ((person: string) => string) | null
+  roles: GridRole[]; mayChange: boolean; onSaved: () => Promise<void>; onWaiting: (n: number) => void; personHref: (person: string) => string
 }) {
   const [waiting, setWaiting] = useState(new Map<string, string | null>())
   const [reviewing, setReviewing] = useState(false)
@@ -90,7 +90,7 @@ export function PermissionsGrid({ roles, mayChange, onSaved, onWaiting, personHr
 
 /** Before anything is saved: one sentence per change, old → new, and the people they touch. */
 function Review({ changes, touched, people, personHref, onBack, onSaved }: {
-  changes: { row: PermissionRow; role: GridRole; from: string | null; to: string | null }[]; touched: GridRole[]; people: number; personHref: ((person: string) => string) | null; onBack: () => void; onSaved: () => Promise<void>
+  changes: { row: PermissionRow; role: GridRole; from: string | null; to: string | null }[]; touched: GridRole[]; people: number; personHref: (person: string) => string; onBack: () => void; onSaved: () => Promise<void>
 }) {
   const [names, setNames] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -124,8 +124,7 @@ function Review({ changes, touched, people, personHref, onBack, onSaved }: {
       </p>
       {names && (
         <p className="text-sm" data-testid="review-names">
-          {/* A name links to Explain A Person only for a viewer who may open it; plain words otherwise. */}
-          {shown.map((h, i) => <span key={h.person}>{i ? ', ' : ''}{personHref ? <a className="text-action hover:underline" href={personHref(h.person)}>{h.name}</a> : h.name}</span>)}
+          {shown.map((h, i) => <span key={h.person}>{i ? ', ' : ''}<a className="text-action hover:underline" href={personHref(h.person)}>{h.name}</a></span>)}
           {people > shown.length && ` and ${(people - shown.length).toLocaleString('en-IN')} more`}
         </p>
       )}

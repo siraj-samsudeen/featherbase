@@ -12,7 +12,7 @@ import { test as pgTest } from '../pg-test'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
 import { runHealthChecks } from '../../src/instance-health'
-import { APP_DIR, VERSION, pinned, saveRow, revertViewAs, VIEW_AS_TESTER, withoutBusinessRoles } from './helpers'
+import { APP_DIR, VERSION, pinned, saveRow, revertViewAs, VIEW_AS_TESTER } from './helpers'
 // @ts-expect-error a plain .mjs module, copied in beside this file by the runner
 import { BASE_TABLES, LINKED_TABLES } from './base-tables.mjs'
 
@@ -104,7 +104,7 @@ describe("deploying the named cluster head to an instance shaped like production
       const plan = await admin.post<{ planId: string; roles: unknown[]; permissions: { grant?: { role: string } }[]; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
       expect(plan.migrations.map(m => m.id)).toEqual(['named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves', 'switcher_summary', 'sidebar_icon_rail', 'view_as', 'waiting_reads_fast', 'holders_read_whole', 'deciders_read_together', 'mde_review', 'people_describe', 'business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'old_grants_one_receiver', 'every_report_and_bulk_comparison', 'site_kind', 'division_head_and_visual_merchandising', 'why_on_the_map', 'why_app_levels_merged', 'report_access_days_in_india', 'area_picker', 'permission_grid'])
       // #1222: the upgrade creates View As Tester with one grant, the read of the reports list.
-      expect([withoutBusinessRoles(plan.roles as never[]), plan.permissions.filter(p => p.grant?.role === VIEW_AS_TESTER)]).toEqual([[{ create: VIEW_AS_TESTER }],
+      expect([plan.roles, plan.permissions.filter(p => p.grant?.role === VIEW_AS_TESTER)]).toEqual([[{ create: VIEW_AS_TESTER }],
         [{ grant: { table: 'dash.report', role: VIEW_AS_TESTER, operations: { read: '@basic' } } }]])
       await admin.post('/api/upgrade_app', { name: 'dash', version: VERSION, planId: plan.planId })
       await discoverPackages([previous, APP_DIR])

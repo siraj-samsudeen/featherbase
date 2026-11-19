@@ -13,8 +13,7 @@
     "Dash Reader",
     "Report Access Manager",
     "Team Report Manager",
-    "View As Tester",
-    "Role Permission Manager"
+    "View As Tester"
   ],
   "roleDefaults": {},
   "settings": [
@@ -1177,7 +1176,11 @@
     {
       "table": "dash.business_role_permission",
       "role": "Report Access Manager",
-      "can_read": true
+      "operations": {
+        "read": "@basic",
+        "create": "@basic",
+        "update": "@basic"
+      }
     },
     {
       "table": "dash.title_map",
@@ -1211,38 +1214,6 @@
       "table": "dash.permission_change",
       "role": "Report Access Manager",
       "can_read": true
-    },
-    {
-      "table": "dash.report",
-      "role": "Role Permission Manager",
-      "can_read": true
-    },
-    {
-      "table": "dash.report_bundle",
-      "role": "Role Permission Manager",
-      "can_read": true
-    },
-    {
-      "table": "dash.business_role",
-      "role": "Role Permission Manager",
-      "can_read": true
-    },
-    {
-      "table": "dash.business_role_permission",
-      "role": "Role Permission Manager",
-      "operations": {
-        "read": "@basic",
-        "create": "@basic",
-        "update": "@basic"
-      }
-    },
-    {
-      "table": "dash.permission_change",
-      "role": "Role Permission Manager",
-      "operations": {
-        "read": "@basic",
-        "create": "@basic"
-      }
     }
   ],
   "reads": {
@@ -1253,14 +1224,6 @@
     ],
     "operations": {
       "manages_roles": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      },
-      "sees_roles": {
         "policy": {
           "kind": "table"
         },

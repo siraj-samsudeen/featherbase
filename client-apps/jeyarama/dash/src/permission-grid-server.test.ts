@@ -1,6 +1,6 @@
 // #1282 F1–F6: the Business Roles grid's save, against a world held in memory. Made-up names.
 import { describe, expect, it } from 'vitest'
-import { PERMISSION_CHANGE, changePermissions, mayChangePermissions, seesBusinessRoles } from './permission-grid-server'
+import { PERMISSION_CHANGE, changePermissions, mayChangePermissions } from './permission-grid-server'
 
 type Row = Record<string, unknown>
 const ROLE = 'dash.business_role'
@@ -16,7 +16,7 @@ function world(): Record<string, Row[]> {
   }
 }
 
-function context(tables: Record<string, Row[]>, changes: unknown, roles = ['Role Permission Manager']) {
+function context(tables: Record<string, Row[]>, changes: unknown, roles = ['System Manager']) {
   let n = 0
   // As the platform: pages of at most 500 rows (the save must read every page).
   const list = async (table: string, args: { limit_start?: number; limit_page_length?: number } = {}) =>
@@ -111,17 +111,12 @@ describe('saving the grid', () => {
     expect(writes).toEqual([])
   })
 
-  // Siraj, 19-Nov-2026: the Role Permission Manager alone; report access is not role permissions, and a System Manager is the platform's administrator.
-  it.each([['a Report Access Manager', ['Report Access Manager']], ['a System Manager', ['System Manager']], ['someone with neither', ['Dash Reader']]])(
+  // Siraj, 19-Nov-2026: editing what a role can do is System Manager work (#437); the grid is read-only for anyone else.
+  it.each([['a Report Access Manager', ['Report Access Manager']], ['someone with neither', ['Dash Reader']]])(
     'refuses the save to %s, and draws the grid read-only for them', async (_who, roles) => {
       const { ctx, writes } = context(world(), [{ role: 'tl', ...edit, from: null, to: 'Own' }], roles)
       expect(mayChangePermissions(ctx as never)).toBe(false)
-      await expect(changePermissions(ctx as never)).rejects.toThrow('Only a Role Permission Manager can change what a business role can do')
+      await expect(changePermissions(ctx as never)).rejects.toThrow('Only a System Manager can change what a business role can do')
       expect(writes).toEqual([])
     })
-
-  it('lets a Role Permission Manager open Business Roles, beside those who manage access, and nobody else', () => {
-    const sees = (roles: string[]) => seesBusinessRoles(context(world(), [], roles).ctx as never)
-    expect([sees(['Role Permission Manager']), sees(['Report Access Manager']), sees(['System Manager']), sees(['Dash Reader'])]).toEqual([true, true, true, false])
-  })
 })

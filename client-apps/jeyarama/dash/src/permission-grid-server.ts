@@ -5,28 +5,20 @@
 // Taking a permission away marks its row removed, as a hand change is (#1218: no delete).
 import { PERMISSION, ROLE, every } from './business-access.ts'
 import { REACHES } from './business-roles.ts'
-import { managesAccess, type AccessContext } from './report-access-server.ts'
-import { ROLE_PERMISSION_MANAGER } from './report-eligibility.ts'
+import { type AccessContext } from './report-access-server.ts'
 import { checked, exact, text } from './values.ts'
 
 export const PERMISSION_CHANGE = 'dash.permission_change'
 /** The most changes one save takes: a grid of 40 × 40 is more than anyone reviews at once. */
 const MOST_CHANGES = 200
-const ONLY_MANAGERS = 'Only a Role Permission Manager can change what a business role can do'
+const ONLY_MANAGERS = 'Only a System Manager can change what a business role can do'
 
 type Row = Record<string, unknown>
 interface Change { role: string; app: string; level: string; verb: string; thing: string; from: string | null; to: string | null }
 
-/** #1282 (Siraj, 19-Nov-2026): Role Permission Manager alone changes what a business role can do. Report access is
- *  not role permissions, and a System Manager is the platform's administrator, so neither has it. Given to nobody on install. */
-export { ROLE_PERMISSION_MANAGER }
-
-/** Whether the caller may change business roles' permissions: as Dash's manifest grants create and update on the
- *  permission Table, a Role Permission Manager only. The grid is read-only for anyone else. */
-export const mayChangePermissions = (context: AccessContext) => (context.roles ?? []).includes(ROLE_PERMISSION_MANAGER)
-
-/** Who opens Business Roles: those who manage access, and a Role Permission Manager (that page only, read-only but the grid). */
-export const seesBusinessRoles = (context: AccessContext) => managesAccess(context) || mayChangePermissions(context)
+/** Whether the caller may change business roles' permissions (Siraj, 19-Nov-2026): a System Manager, as platform rule #437
+ *  makes every scope-deciding Table System Manager work. The grid is read-only for anyone else. */
+export const mayChangePermissions = (context: AccessContext) => (context.roles ?? []).includes('System Manager')
 
 const reachOrNone = (value: unknown): string | null | undefined =>
   value === null ? null : typeof value === 'string' && (REACHES as readonly string[]).includes(value) ? value : undefined

@@ -71,16 +71,14 @@ export const SHADOW_TABLES = ['dash.business_role', 'dash.business_role_permissi
 export const withoutBusinessRoles = <T,>(list: T[]) =>
   list.filter(entry => {
     const change = entry as { create?: string; grant?: { table?: string; role?: string }; withdraw?: { table?: string; role?: string } }
-    // #1282's Role Permission Manager and the grid's change log are business roles too.
-    if (change.create === 'Role Permission Manager' || change.grant?.role === 'Role Permission Manager') return false
+    // #1282's grid change log is part of business roles too.
     return ![...SHADOW_TABLES, 'dash.access_source', 'dash.switch_over_log', 'dash.permission_change'].includes(change.grant?.table ?? '')
   })
 /** #1277's switch and its log, which 0.13.30 brings. */
 export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
 /** #1282's 0.13.39: the permission grid's change log. */
 export const GRID_LOG = 'dash.permission_change'
-export const ROLE_PERMISSION_MANAGER = 'Role Permission Manager'
-type Revertable = { migrations: { id: string }[]; roles?: string[]; tables?: { name: string; decides_scope?: boolean; columns?: { column_name: string }[] }[]; permissions?: { table: string }[];
+type Revertable = { migrations: { id: string }[]; tables?: { name: string; decides_scope?: boolean; columns?: { column_name: string }[] }[]; permissions?: { table: string }[];
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[]; optionalColumns?: Record<string, string[]> } }
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
@@ -89,11 +87,7 @@ export function revertSiteKind(manifest: Revertable) {
     operations: [{ kind: 'addColumn', table: 'dash.business_role_permission', column: { column_name: 'removed' } }, { kind: 'addTable', table: { name: GRID_LOG } }] })
   if (manifest.tables) manifest.tables = manifest.tables.filter(t => t.name !== GRID_LOG).map(t => (t.name === 'dash.business_role_permission'
     ? { ...t, columns: t.columns!.filter(c => c.column_name !== 'removed') } : t))
-  // and Role Permission Manager, who alone changes permissions; before it a Report Access Manager wrote them.
-  if (manifest.roles) manifest.roles = manifest.roles.filter(role => role !== ROLE_PERMISSION_MANAGER)
-  if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => p.table !== GRID_LOG && (p as { role?: string }).role !== ROLE_PERMISSION_MANAGER)
-    .map(p => (p.table === 'dash.business_role_permission' && (p as { role?: string }).role === 'Report Access Manager'
-      ? { table: p.table, role: 'Report Access Manager', operations: { read: '@basic', create: '@basic', update: '@basic' } } : p))
+  if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => p.table !== GRID_LOG)
   if (manifest.actions) manifest.actions.tables = manifest.actions.tables.filter(t => t !== GRID_LOG)
   const permissionRead = manifest.baseTables?.read['dash.business_role_permission']
   if (permissionRead) manifest.baseTables!.read['dash.business_role_permission'] = permissionRead.filter(c => c !== 'removed' && c !== 'updated_at')

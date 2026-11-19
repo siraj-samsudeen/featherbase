@@ -246,8 +246,6 @@ await person('access-manager@example.test', 'Made-up Access Manager', ['Report A
 await person('view-as-tester@example.test', 'Made-up Tester', ['View As Tester'], false)
 // #1222 (E): someone who manages report access and may view as anyone: "What a person sees" offers View as.
 await person('view-as-manager@example.test', 'Made-up Access Tester', ['Report Access Manager', 'View As Tester'], false)
-// #1282: someone who changes what each business role can do, on Business Roles' grid, and nothing else.
-await person('role-permissions@example.test', 'Made-up Role Permissions', ['Role Permission Manager'], false)
 // #1216: same-named people on that page. Four current Kumars are among the readers above; here a
 // Kumar who has left and someone not on the staff list, each given a report directly with one current Kumar.
 const leftKumar = await person('reader-same-left@example.test', 'Kumar')
@@ -349,7 +347,6 @@ Report access (/dash/?view=access), same password:
 Business roles (#1218, #1277; the old rules decide until a System Manager sets the Dash access source): /dash/?view=roles, ?view=explain and ?view=changes, as access-manager@example.test:
   explain reader-sm (Selvi, Store Manager), reader-buyer (Bina, Category head of Sarees, East), reader-opsexec (Sundar, to Correct),
   reader-staff1 (Siva, who would lose Dash) and reader-office (Omar, Head Office: no Dash until a role is given by hand).
-  role-permissions@example.test        Role Permission Manager: changes what each business role can do, on Business Roles' Grid: Permissions (#1282)
 View as (#1222), same password:
   view-as-tester@example.test          View As Tester: sees Dash as any of the people above, for viewing only
   view-as-manager@example.test         Report Access Manager and View As Tester: "What a person sees" offers View as`)

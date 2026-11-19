@@ -9,7 +9,7 @@ import { test as pgTest } from '../pg-test'
 import { sql } from '../../src/db'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
-import { APP_DIR, VERSION, pinned, revertAddDive, revertPersonIdentity, TEAM_MANAGER, revertTeamReportGiving, withoutTeamManager, revertViewAs, VIEW_AS_TESTER, withoutViewAsTester, withoutBusinessRoles, ROLE_PERMISSION_MANAGER } from './helpers'
+import { APP_DIR, VERSION, pinned, revertAddDive, revertPersonIdentity, TEAM_MANAGER, revertTeamReportGiving, withoutTeamManager, revertViewAs, VIEW_AS_TESTER, withoutViewAsTester, withoutBusinessRoles } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -70,7 +70,7 @@ describe('upgrading production\'s Dash 0.12.10', () => {
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; roles: unknown; permissions: unknown; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
       // #1217's role and grants come with this version too; team-report-upgrade.test.ts checks them.
-      expect([withoutBusinessRoles(withoutViewAsTester(withoutTeamManager(plan.roles as never[]))), withoutBusinessRoles(withoutViewAsTester(withoutTeamManager(plan.permissions as never[]))), plan.migrations.map(m => m.id)])
+      expect([withoutViewAsTester(withoutTeamManager(plan.roles as never[])), withoutBusinessRoles(withoutViewAsTester(withoutTeamManager(plan.permissions as never[]))), plan.migrations.map(m => m.id)])
         .toEqual([[{ create: ROLE }], [
           { withdraw: { table: 'dash.report', role: 'Report Access Manager', operations: { read: '@basic' } } },
           { grant: { table: 'dash.report', role: ROLE, operations: { read: '@basic' } } },
@@ -81,7 +81,7 @@ describe('upgrading production\'s Dash 0.12.10', () => {
       await loadInstalledApps()
       await admin.post('/api/activate_app_upgrade', { name: 'dash', version: VERSION })
       const [installed] = await sql`select package_version, roles, migration_ledger from installed_app where name = 'dash'`
-      expect([installed.package_version, (installed.roles as string[]).filter(role => role !== TEAM_MANAGER && role !== VIEW_AS_TESTER && role !== ROLE_PERMISSION_MANAGER), (installed.migration_ledger as { id: string }[]).slice(-38).map(m => m.id)])
+      expect([installed.package_version, (installed.roles as string[]).filter(role => role !== TEAM_MANAGER && role !== VIEW_AS_TESTER), (installed.migration_ledger as { id: string }[]).slice(-38).map(m => m.id)])
         .toEqual([VERSION, ['Dash Reader', 'Report Access Manager', ROLE], ['all_stores_reader', 'sections_not_mine', 'department_self_setup', 'person_identity', 'report_access_managers_add_dives', 'team_report_giving', 'waiting_for_access_grant', 'department_name_follows_sections', 'named_cluster_head', 'one_app_chrome', 'ends_on_inclusive', 'manager_area', 'report_an_issue', 'report_access_redesign', 'more_list_closes', 'store_run_by', 'buyer_section_desks', 'buyer_section_moves', 'switcher_summary', 'sidebar_icon_rail', 'view_as', 'waiting_reads_fast', 'holders_read_whole', 'deciders_read_together', 'mde_review', 'people_describe', 'business_roles_shadow', 'reach_prefixes', 'business_roles_live', 'old_grants_one_receiver', 'every_report_and_bulk_comparison', 'site_kind', 'division_head_and_visual_merchandising', 'why_on_the_map', 'why_app_levels_merged', 'report_access_days_in_india', 'area_picker', 'permission_grid']])
       expect(await sql`select ref_table, operation from permission where role = ${ROLE} order by operation`).toEqual([{ ref_table: 'dash.report', operation: 'read' }])
       const holder = await createUser({ email: 'upgrade-holder@example.test', roles: [ROLE] })

@@ -224,7 +224,7 @@ describe('Explain A Person', () => {
 
 describe('Business Roles', () => {
   const ROLES = { business_roles: {
-    may_change: false, manages_access: true,
+    may_change: false,
     roles: [{ id: 'r-sm', name: 'Store Manager', description: 'Runs a store.', by_hand_only: false, reaches: 'their store', permissions: [
       { app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Sections', reach: 'Area', sentence: 'Store Managers can Edit Sections in their area',
         parts: [{ record: { table: 'dash.business_role', row: 'r-sm', name: 'Store Managers' } }, ' can Edit Sections ', { chip: 'in their area' }] },
@@ -373,29 +373,6 @@ describe('Business Roles', () => {
     await click(all('roles-view-roles')[0])
     expect([confirm.mock.calls[0]![0], all('permissions-grid').length, all('role-list').length]).toEqual(['Leave the grid? Your change will not be saved.', 0, 1])
     confirm.mockRestore()
-  })
-
-  // #1282 (Siraj): a Role Permission Manager opens Business Roles for its grid, and nothing else of the access pages.
-  it('offers a Role Permission Manager the Business Roles page alone in the sidebar', async () => {
-    answers = { ...GRID(), sees_roles: true, manages_roles: false }
-    const { all } = await render('roles')
-    expect([all('roles-link').length, all('explain-link').length, all('changes-link').length]).toEqual([1, 0, 0])
-    answers = { ...GRID(), sees_roles: true, manages_roles: true }
-    const manager = await render('roles')
-    expect([manager.all('roles-link').length, manager.all('explain-link').length, manager.all('changes-link').length]).toEqual([1, 1, 1])
-  })
-
-  // Verifier on the grid: a viewer who may not open Explain A Person reads names as plain words, in the review and a role's people.
-  it('names people in plain words for a viewer who may not open Explain A Person', async () => {
-    answers = { business_roles: { ...GRID().business_roles, manages_access: false } }
-    const { all, click } = await render('roles')
-    await click(all('role-people')[0]!)
-    expect([all('role-holders')[0]!.textContent, all('role-holders')[0]!.querySelector('a')]).toEqual(['Sundar and 24 more', null])
-    await click(all('roles-view-grid')[0])
-    await click(cellButton(all, 'Edit Sections', 'r-tl'))
-    await click([...all('pending-bar')[0]!.querySelectorAll('button')].find(b => b.textContent === 'Review and save')!)
-    await click(all('review-people')[0]!)
-    expect([all('review-names')[0]!.textContent, all('review-names')[0]!.querySelector('a')]).toEqual(['Tara and 2 more', null])
   })
 
   // Verifier on the grid: the same verb and thing at two levels reads with its level, so two changes never read alike.
