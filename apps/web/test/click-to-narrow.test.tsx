@@ -152,3 +152,14 @@ test('picks that leave no rows say so, not "add the first one"', async ({ admin 
   expect(await screen.findByText('No Rows Match These Filters')).toBeInTheDocument()
   expect(screen.queryByText(/Add the first/)).toBeNull()
 })
+
+test('the counts follow the rows when some are deleted', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(listPath(SECTION), admin)
+  await waitFor(() => expect(value(STORE, 'Bayside')).toHaveTextContent('3'))
+  const row = within(await screen.findByTestId('list-table-scroll')).getByText('Grocery').closest('tr')!
+  await userEvent.click(within(row).getByTestId('row-check'))
+  await userEvent.click(await screen.findByTestId('bulk-delete'))
+  await userEvent.click(await screen.findByTestId('bulk-delete-confirm'))
+  await waitFor(() => expect(value(STORE, 'Bayside')).toHaveTextContent('2'))
+})
