@@ -43,6 +43,7 @@ const rowTitles = () => [...document.querySelectorAll('tbody [data-title-cell]')
 const panel = () => screen.getByRole('complementary', { name: 'Click To Narrow' })
 const narrowList = (name: string) => within(panel()).getByRole('region', { name })
 const value = (list: string, name: string) => within(narrowList(list)).getByRole('button', { name: new RegExp(`^${name} \\d+$`) })
+const walk = (r: { router: unknown }) => decodePath((r.router as { state: { location: { search: { path?: unknown } } } }).state.location.search.path)!
 const addressFilters = (r: { router: unknown }) => {
   const search = (r.router as { state: { location: { search: { path?: unknown } } } }).state.location.search
   const path = decodePath(search.path)!
@@ -108,4 +109,17 @@ test('the panel can be hidden, and stays hidden for this person and Table', asyn
   await screen.findByText('Ethnic Wear')
   await waitFor(() => expect(screen.getByRole('button', { name: 'Click To Narrow' })).toHaveAttribute('aria-pressed', 'false'))
   expect(screen.queryByRole('complementary', { name: 'Click To Narrow' })).toBeNull()
+})
+
+test('ticks narrow the list in place: the walk gains no step per click', async ({ admin }) => {
+  await seed(admin)
+  const r = await renderApp(listPath(SECTION), admin)
+  await waitFor(() => expect(value(STORE, 'Bayside')).toHaveTextContent('3'))
+  await userEvent.click(value(STORE, 'Bayside'))
+  await waitFor(() => expect(rowTitles()).toHaveLength(3))
+  await userEvent.click(value(FLOOR, 'First Floor'))
+  await waitFor(() => expect(rowTitles()).toHaveLength(2))
+  await userEvent.click(value(STORE, 'Bayside'))
+  await waitFor(() => expect(rowTitles()).toHaveLength(3))
+  expect(walk(r).steps).toHaveLength(1)
 })
