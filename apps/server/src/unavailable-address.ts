@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { askedAddress } from 'shared'
 import { sql } from './db'
-import { hasPermission, isPrivileged } from './permissions'
+import { getRoles, isPrivileged } from './permissions'
 import { listInstalledApps } from './apps'
 import { who, type Env } from './route-context'
 
@@ -17,9 +17,15 @@ export async function turnedOffFor(address: string, viewer: string): Promise<{ t
   if (!name) return null
   const [row] = await sql`select name, enabled, manifest from installed_app where name = ${name}`
   if (!row || row.enabled !== false) return null
-  const manifest = (row.manifest ?? {}) as { title?: unknown; entryTable?: unknown }
-  const entry = typeof manifest.entryTable === 'string' ? manifest.entryTable : null
-  const may = (await isPrivileged(viewer)) || (entry !== null && (await hasPermission(viewer, entry, 'read').catch(() => false)))
+  const manifest = (row.manifest ?? {}) as { title?: unknown; entryTable?: unknown; permissions?: unknown }
+  // A turned-off app's grants are suspended, so whether the viewer could use it is read from what the app
+  // declares: a permission that lets one of their roles read its entry Table.
+  const roles = new Set(await getRoles(viewer))
+  // A grant reads either way an app declares it: `can_read`, or a read in its `operations`.
+  const declared = Array.isArray(manifest.permissions) ? manifest.permissions as { table?: unknown; role?: unknown; can_read?: unknown; operations?: { read?: unknown } }[] : []
+  const reads = (p: (typeof declared)[number]) => p.can_read === true || Boolean(p.operations?.read)
+  const may = (await isPrivileged(viewer)) ||
+    declared.some((p) => p.table === manifest.entryTable && reads(p) && typeof p.role === 'string' && roles.has(p.role))
   return may ? { title: typeof manifest.title === 'string' && manifest.title.trim() ? manifest.title.trim() : name } : null
 }
 

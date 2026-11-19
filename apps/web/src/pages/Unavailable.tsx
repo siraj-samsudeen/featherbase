@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { askedAddress } from 'shared'
 import { Card, ProblemPage, Skeleton, buttonClasses } from '@featherbase/shop-floor'
-import { api, getToken } from '../lib/api'
+import { api, getSessionUser, getToken } from '../lib/api'
 import { usePageTitle } from '../lib/page-title'
 import { useShellKind } from '../lib/session'
 import { TopBar } from '../components/TopBar'
@@ -20,7 +20,8 @@ export function UnavailablePage({ address }: { address: unknown }) {
   const shown = askedAddress(address)
   const signedIn = Boolean(getToken())
   const status = useQuery({
-    queryKey: ['address_status', shown],
+    // Per person: one who signs in after another on this browser never reads the other's answer.
+    queryKey: ['address_status', getSessionUser()?.row_id ?? null, shown],
     queryFn: () => api.get<{ turned_off: { title: string } | null }>(`/api/address_status?address=${encodeURIComponent(shown!)}`),
     enabled: signedIn && shown !== null,
     retry: false,
