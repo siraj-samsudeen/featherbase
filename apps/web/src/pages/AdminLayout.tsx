@@ -32,7 +32,7 @@ import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { useStreamedSearch, type SearchHit } from '../lib/search-stream'
 import { ActionDisclosure } from '../components/ActionDisclosure'
-import { TopBar } from '../components/TopBar'
+import { TopBar, useSignOut } from '../components/TopBar'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, tableLabel, useMeta, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
@@ -48,6 +48,7 @@ import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
+import { walkShortLabel } from '../lib/step-labels'
 
 
 
@@ -121,6 +122,7 @@ function AdminLayoutForKind({ fillHeight }: { fillHeight: boolean }) {
 
 export function AdminShell({ fillHeight, account = false }: { fillHeight: boolean; account?: boolean }) {
   const navigate = useNavigate()
+  const signOut = useSignOut()
   const router = useRouter()
   const queryClient = useQueryClient()
   const { t } = useI18n()
@@ -291,7 +293,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
         target &&
         (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
 
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      // Ctrl/⌘+Shift+K is View as's (ViewAsButton), not this bar's.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setBarFocused(true)
         setSelection(null)
@@ -486,7 +489,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   }
 
   // Explicit selection uses the same activation as a pointer or Tab/Enter.
-  // Without it, preserve the exact-Table/first-record Enter defaults.
+  // #1325 (audit F39): without it, a name typed exactly (a Table, a page, a
+  // command) wins, else the first result shown; never a guessed address.
   function runSearch(e: React.FormEvent) {
     e.preventDefault()
     const selected = resultElements().find((el) => el.id === selectedId)
@@ -496,29 +500,31 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     }
     const q = search.trim()
     if (!q) return
-    recordSearch(q)
-    const dtHit = tables?.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
-      ?? tables?.find((d) => d.label.toLowerCase() === q.toLowerCase())
-    if (dtHit) {
-      dismissSearch()
-      navigate({ to: '/featherbase/admin/table/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
-      return
-    }
-    const doc = recordHits[0]
-    if (doc) {
-      openDoc(doc)
-      return
-    }
-    const page = pageHits.find((page) => [page.label, ...(page.aliases ?? [])].some((label) => label.toLowerCase() === q.toLowerCase())) ?? pageHits[0]
-    if (page) openPage(page)
-    else if (suggestions[0]) {
-      dismissSearch()
-      navigate({ to: '/featherbase/admin/table/$table', params: { table: suggestions[0].row_id }, search: { filters: undefined } })
-    } else {
-      dismissSearch()
-      navigate({ to: '/featherbase/admin/table/$table', params: { table: q }, search: { filters: undefined } })
-    }
+    // Pressed before anything is listed: wait for the results still arriving.
+    if (!openTopResult(q) && searching) setEnterPending(q)
   }
+
+  function openTopResult(q: string): boolean {
+    const lower = q.toLowerCase()
+    const exactTable = tables?.find((d) => d.row_id.toLowerCase() === lower) ?? tables?.find((d) => d.label.toLowerCase() === lower)
+    if (exactTable) {
+      recordSearch(q)
+      dismissSearch()
+      navigate({ to: '/featherbase/admin/table/$table', params: { table: exactTable.row_id }, search: { filters: undefined } })
+      return true
+    }
+    const exactPage = pageHits.find((page) => [page.label, ...(page.aliases ?? [])].some((label) => label.toLowerCase() === lower))
+    if (exactPage) {
+      openPage(exactPage)
+      return true
+    }
+    // The list's own order: Commands, Pages, Tables, Create rows, Records. A past search is not a destination.
+    const first = resultElements().find((el) => !el.id.startsWith('command-search-'))
+    first?.click()
+    return Boolean(first)
+  }
+
+  const [enterPending, setEnterPending] = useState<string | null>(null)
 
   // User tables surface before system tables in suggestions (stable sort
   // keeps the alphabetical order within each group).
@@ -541,11 +547,22 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     { id: 'theme-dark', label: 'Theme: dark (dark mode)', run: () => setTheme('dark') },
     { id: 'theme-device', label: 'Theme: same as device', run: () => setTheme('device') },
     { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/featherbase/admin' }) },
+    { id: 'logout', label: 'Log out', run: () => void signOut() },
   ]
   const commandHits =
     search.trim().length > 1
       ? commands.filter((c) => c.label.toLowerCase().includes(search.trim().toLowerCase()))
       : []
+  // #1325: an Enter that came before the results opens the first once they are listed, or gives up when none came.
+  useEffect(() => {
+    if (enterPending === null) return
+    if (enterPending !== trimmed) setEnterPending(null)
+    else if (resultElements().some((el) => !el.id.startsWith('command-search-'))) {
+      setEnterPending(null)
+      openTopResult(enterPending)
+    } else if (!searching) setEnterPending(null)
+  })
+
   // #1265: once every group has answered and nothing anywhere matched, say so.
   const noMatch = current && streamed.done && !streamed.failed && recordHits.length === 0 &&
     pageHits.length === 0 && commandHits.length === 0 && suggestions.length === 0
@@ -897,7 +914,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
             <RailFold label="Recently Opened" icon={Clock} testid="sidebar-recents" tone="slate">
               {(close) => railRecents.map((item) => item.kind === 'walk' ? (
                 <RailMenuItem key={`walk:${encodePath(item.path)}`} close={close} onSelect={() => openWalk(item.path)}>
-                  <span className="truncate" data-testid="sidebar-walk">{item.label}</span>
+                  <span className="truncate" data-testid="sidebar-walk" title={item.label}>{walkShortLabel(item.label)}</span>
                 </RailMenuItem>
               ) : (
                 <RailMenuItem key={item.entry.key} close={close} onSelect={() => openRecent(item.entry)}>
@@ -1057,7 +1074,7 @@ function SidebarWalkRow({ label, at, href, onOpen }: { label: string; at: number
       <span aria-hidden data-testid="walk-tile" className={`grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-current/15 ${GROUP_TONE.slate}`}>
         <Route size={14} />
       </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="min-w-0 flex-1 truncate">{walkShortLabel(label)}</span>
       {when && <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{when}</span>}
     </a>
   )

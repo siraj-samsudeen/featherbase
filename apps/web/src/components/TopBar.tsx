@@ -263,9 +263,11 @@ export function TopBar({
         {/* #1222: who is being viewed, on every page, while a tester views as someone. */}
         <ViewAsBanner />
         {/* The menu button is for the phone drawer only (md:hidden); with no
-            pickers the whole strip is gone from a wide window. */}
+            pickers the whole strip is gone from a wide window. The bar is
+            sticky over a scrolling page, so the strip has the page's own
+            background: text scrolls under the button, never behind it. */}
         <header
-          className={`${pickers && !inPanel ? 'relative ' : 'md:hidden '}flex shrink-0 items-center gap-x-1 px-2 py-1 sm:gap-4 md:px-3`}
+          className={`${pickers && !inPanel ? 'relative ' : 'md:hidden '}flex shrink-0 items-center gap-x-1 bg-canvas px-2 py-1 sm:gap-4 md:px-3`}
           data-testid="page-header"
         >
           <SidebarControls sidebar={sidebar} />
@@ -473,8 +475,8 @@ function ThemeToggle({ labelled = false }: { labelled?: boolean }) {
   )
 }
 
-/** Signing out, the same from every bar. */
-function useSignOut() {
+/** Signing out, the same from every bar (and the command bar's Log out, #1325). */
+export function useSignOut() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   return async () => {

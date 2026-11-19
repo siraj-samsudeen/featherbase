@@ -201,12 +201,12 @@ describe('apps and levels', () => {
 })
 
 describe('a permission as a sentence', () => {
-  it('reads "Store Managers can Edit Sections in their Area"', () => {
-    expect(permissionSentence('Store Manager', PERMISSIONS[3])).toBe('Store Managers can Edit Sections in their Area')
+  it('reads "Store Managers can Edit Sections in their area"', () => {
+    expect(permissionSentence('Store Manager', PERMISSIONS[3])).toBe('Store Managers can Edit Sections in their area')
   })
 
   it('keeps a collective name as it is', () => {
-    expect(permissionSentence('Staff', PERMISSIONS[0])).toBe('Staff can Edit Tasks they own')
+    expect(permissionSentence('Staff', PERMISSIONS[0])).toBe('Staff can Edit Tasks their own')
   })
 })
 

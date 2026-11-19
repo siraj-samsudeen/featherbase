@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRouterState } from '@tanstack/react-router'
 import { api, getSessionUser, listResource } from '../lib/api'
 import { adminPageTitle } from 'shared'
 import { useIsSystemManager, useWhoAmI } from '../lib/session'
@@ -90,7 +91,9 @@ function OwnAccessTokens() {
   const identity = useWhoAmI()
   const me = getSessionUser()?.row_id ?? ''
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'tokens' | 'accounts'>('tokens')
+  // #1325: the command bar's "Service accounts" opens this page on that tab (?tab=accounts).
+  const opensOn = useRouterState({ select: (state) => new URLSearchParams(state.location.searchStr).get('tab') })
+  const [tab, setTab] = useState<'tokens' | 'accounts'>(opensOn === 'accounts' ? 'accounts' : 'tokens')
   const tokens = useQuery({
     queryKey: ['access-tokens'],
     queryFn: () => api.get<{ tokens: Token[] }>('/api/access_tokens'),
@@ -163,15 +166,30 @@ function OwnAccessTokens() {
       await refresh()
     },
   })
+  // #1323 (audit F37): Revoke and Disable stop credentials working, so each asks first. Enable acts at once.
+  const [confirming, setConfirming] = useState<
+    { kind: 'revoke'; token: Token } | { kind: 'disable'; account: ServiceAccount } | null
+  >(null)
   const revoke = useMutation({
     mutationFn: (id: string) => api.delete(`/api/access_tokens/${id}`),
-    onSuccess: refresh,
+    onSuccess: async () => {
+      await refresh()
+      setConfirming(null)
+    },
   })
   const setEnabled = useMutation({
     mutationFn: (account: ServiceAccount) =>
       api.patch(`/api/service_accounts/${account.row_id}`, { enabled: !account.enabled }),
-    onSuccess: refresh,
+    onSuccess: async () => {
+      await refresh()
+      setConfirming(null)
+    },
   })
+  function askFirst(next: NonNullable<typeof confirming>) {
+    revoke.reset()
+    setEnabled.reset()
+    setConfirming(next)
+  }
 
   const [renaming, setRenaming] = useState<{ kind: 'token' | 'account'; id: string; label: string } | null>(
     null,
@@ -269,8 +287,7 @@ function OwnAccessTokens() {
             <Button
               variant="quiet"
               data-testid={`revoke-${t.id}`}
-              disabled={revoke.isPending}
-              onClick={() => revoke.mutate(t.id)}
+              onClick={() => askFirst({ kind: 'revoke', token: t })}
             >
               Revoke
             </Button>
@@ -336,7 +353,7 @@ function OwnAccessTokens() {
             variant="quiet"
             data-testid={`sa-toggle-${a.row_id}`}
             disabled={setEnabled.isPending}
-            onClick={() => setEnabled.mutate(a)}
+            onClick={() => (a.enabled ? askFirst({ kind: 'disable', account: a }) : setEnabled.mutate(a))}
           >
             {a.enabled ? 'Disable' : 'Enable'}
           </Button>
@@ -403,7 +420,6 @@ function OwnAccessTokens() {
               Issue token
             </Button>
           </div>
-          {revoke.isError && <Notice tone="negative">{revoke.error.message}</Notice>}
           <div data-testid="token-rows">
             <DataList
               caption="Access tokens"
@@ -452,7 +468,7 @@ function OwnAccessTokens() {
               Create service account
             </Button>
           </div>
-          {setEnabled.isError && <Notice tone="negative">{setEnabled.error.message}</Notice>}
+          {setEnabled.isError && !confirming && <Notice tone="negative">{setEnabled.error.message}</Notice>}
           <div data-testid="sa-rows">
             <DataList
               caption="Service accounts"
@@ -721,6 +737,47 @@ function OwnAccessTokens() {
               </Button>
             </div>
           </form>
+        </CredentialDialog>
+      )}
+
+      {confirming && (
+        <CredentialDialog
+          title={
+            confirming.kind === 'revoke'
+              ? `Revoke token “${confirming.token.label}”?`
+              : `Disable service account “${confirming.account.label}”?`
+          }
+          testId="confirm-dialog"
+          busy={revoke.isPending || setEnabled.isPending}
+          onClose={() => setConfirming(null)}
+        >
+          <p className="text-sm text-ink-muted" data-testid="confirm-consequence">
+            {confirming.kind === 'revoke'
+              ? 'Anything using it stops working at once. This cannot be undone.'
+              : confirming.account.token_count > 0
+                ? `Its ${confirming.account.token_count} active token${confirming.account.token_count === 1 ? '' : 's'} stop${confirming.account.token_count === 1 ? 's' : ''} working until you enable it again.`
+                : 'It has no active tokens, and can’t be issued new ones until you enable it again.'}
+          </p>
+          {(confirming.kind === 'revoke' ? revoke : setEnabled).isError && (
+            <Notice tone="negative">
+              <p data-testid="confirm-error">{(confirming.kind === 'revoke' ? revoke : setEnabled).error?.message}</p>
+            </Notice>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button disabled={revoke.isPending || setEnabled.isPending} onClick={() => setConfirming(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              data-testid="confirm-action"
+              loading={revoke.isPending || setEnabled.isPending}
+              onClick={() =>
+                confirming.kind === 'revoke' ? revoke.mutate(confirming.token.id) : setEnabled.mutate(confirming.account)
+              }
+            >
+              {confirming.kind === 'revoke' ? 'Revoke' : 'Disable'}
+            </Button>
+          </div>
         </CredentialDialog>
       )}
 

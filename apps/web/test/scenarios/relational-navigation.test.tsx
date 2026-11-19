@@ -290,7 +290,9 @@ describe('relational-navigation', () => {
       await pane('Enchakkal Supermarket')
     })
     await step('a group of 8 cost centres by supplying plant shows', () => viaGroup('Supplying plant', 8))
-    await step('a group of 0 cost centres by billing plant shows, quieter than the other', async () => {
+    await step('a group of 0 cost centres by billing plant shows, quieter than the other, once the user shows the empty groups', async () => {
+      // #1282 (UI owner): the pane's empty groups wait behind Show N empty, as on the record page.
+      fireEvent.click(await within(await pane('Enchakkal Supermarket')).findByRole('button', { name: /^Show \d+ empty$/ }))
       const empty = await viaGroup('Billing plant', 0)
       // The empty group carries the mark that mutes it; the full one doesn't.
       expect(empty).toHaveAttribute('data-empty')
@@ -414,7 +416,7 @@ describe('relational-navigation', () => {
     await step('the two empty fields are folded away under a count', async () =>
       expect(await within(await pane('Enchakkal')).findByText(/^\d+ empty fields?$/)).toHaveTextContent('2 empty fields'))
     await step("the user can open Enchakkal's form to edit it", async () => {
-      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Edit' }))
+      fireEvent.click(await within(await pane('Enchakkal')).findByRole('link', { name: 'Open Full Page' }))
       await waitFor(() => expect(location(view).pathname.startsWith(`${tableHref(SITE)}/row/`)).toBe(true))
       await screen.findByTestId('form-view')
       await onScreen().within(byTestId('form-view'), (form) => form.assertValue('Name', 'Enchakkal'))

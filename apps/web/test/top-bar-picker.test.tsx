@@ -117,6 +117,9 @@ test('with no options the control is not shown', async ({ admin, createUser }) =
   // With nothing to pick, nothing is drawn in the panel, and the phone's header holds only its menu button.
   expect(screen.queryByTestId('page-pickers')).not.toBeInTheDocument()
   expect(screen.getByTestId('page-header').className).toMatch(/\bmd:hidden\b/)
+  // The bar stays at the top while an app's page scrolls; on a phone its strip has the page's own background,
+  // so text scrolls under the menu button instead of showing through behind it.
+  expect(screen.getByTestId('page-header').className).toMatch(/\bbg-canvas\b/)
 })
 
 test("on the Admin address the bar draws no app's picker", async ({ admin, createUser }) => {

@@ -26,7 +26,7 @@ type Row = Record<string, unknown>
  * list read is permission-scoped). The record panel draws it; later slices
  * (the Links tab, a person's linked records, tick editing) reuse it.
  */
-export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, showAllHref, onOpen, editable = false, heading = true }: {
+export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, showAllHref, onOpen, editable = false, heading = true, peek = false }: {
   /** The record's Table and id: what the group's rows point at. */
   table: string
   record: string
@@ -41,22 +41,25 @@ export function LinkedRowsGroup({ table, record, group, maxRows = GROUP_ROWS, sh
   editable?: boolean
   /** Draws the group's name and count above the rows. */
   heading?: boolean
+  /** #1282 C14: in the peek, the rest of a group reads "+ N more", not "Show all N". */
+  peek?: boolean
 }) {
   const plan = useGroupPlan(table, record, group)
   const href = showAllHref ?? groupListHref(group)
   if (editable && plan.tick && plan.linkMeta && plan.column && plan.farTable && plan.farMeta && plan.choices)
     return <LinkTickList table={table} record={record} group={group} onOpen={onOpen} gridHref={href}
       plan={plan as Parameters<typeof LinkTickList>[0]['plan']} />
-  return <LinkedRowsList table={table} record={record} group={group} maxRows={maxRows} href={href} onOpen={onOpen}
+  return <LinkedRowsList table={table} record={record} group={group} maxRows={maxRows} href={href} onOpen={onOpen} peek={peek}
     heading={heading} plan={editable ? plan : undefined} />
 }
 
 /** The slice-1 list of a group; with a plan (on the Links tab), Open as grid and + New. */
-function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, plan }: {
+function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, plan, peek = false }: {
   table: string
   record: string
   group: BacklinkGroup
   maxRows: number
+  peek?: boolean
   href: string
   onOpen?: (pane: NavPane) => void
   heading: boolean
@@ -110,7 +113,7 @@ function LinkedRowsList({ table, record, group, maxRows, href, onOpen, heading, 
         )}
       {/* More than shown: Show all N. Otherwise a quieter way to the group as a
           list, where a new row starts linked to the record. */}
-      {total > data.length && data.length > 0 ? <ListLink href={href} quiet={false}>Show all {fmtCount(total)}</ListLink>
+      {total > data.length && data.length > 0 ? <ListLink href={href} quiet={false}>{peek ? `+ ${fmtCount(total - data.length)} more` : `Show all ${fmtCount(total)}`}</ListLink>
         : <ListLink href={href} quiet>Open as list</ListLink>}
     </section>
   )

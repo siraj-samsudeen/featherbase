@@ -95,7 +95,7 @@ function ratio(a: string, b: string): number {
 }
 
 const ROLES = [
-  'canvas', 'surface', 'subtle', 'border', 'border-control',
+  'canvas', 'surface', 'subtle', 'tag', 'border', 'border-control',
   'ink', 'ink-muted', 'ink-subtle',
   'action', 'action-hover', 'action-ink', 'action-tint', 'focus',
   'negative', 'negative-tint', 'caution', 'caution-tint', 'positive', 'positive-tint',
@@ -173,6 +173,9 @@ describe.each(themes)('%s tokens', (_mode, t) => {
     ['action-ink', 'positive'],
     ['action-ink', 'caution'],
     ['on-scrim', 'scrim'],
+    // A quiet tag (a sentence's reach, a log line's outcome) holds only ink or muted text.
+    ['ink', 'tag'],
+    ['ink-muted', 'tag'],
   ]
   test.each(textPairs)('text %s on %s reaches 4.5:1', (fg, bg) => {
     expect(t[fg] && t[bg], `${fg} or ${bg} undefined`).toBeTruthy()

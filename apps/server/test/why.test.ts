@@ -23,21 +23,23 @@ afterEach(async () => {
 const tableRead = { policy: { kind: 'table' }, authorization: { kind: 'generic' } }
 
 /** bar-proof with `why` and the reads behind it. `explain` answers `hooks.answer`, which a test sets. */
-async function explaining(why: unknown, { action = false }: { action?: boolean } = {}) {
+async function explaining(why: unknown, { action = false, gate }: { action?: boolean; gate?: string } = {}) {
   const directory = await mkdtemp(resolve('test/.why-1282-'))
   directories.push(directory)
   await cp(BAR_PROOF, directory, { recursive: true })
   const file = resolve(directory, 'featherbase.json')
   const manifest = JSON.parse(await readFile(file, 'utf8'))
   manifest.roles = ['Bar Reader', 'Bar Explainer']
-  manifest.reads.operations = { ...manifest.reads.operations, may_explain: tableRead, explain: tableRead }
+  manifest.reads.operations = { ...manifest.reads.operations, may_explain: tableRead, explain: tableRead, closed: tableRead }
+  if (gate) manifest.access = { gate }
   if (action) manifest.actions = { version: 2, tables: [NOTE], operations: { change_note: tableRead } }
   manifest.why = why
   await writeFile(file, JSON.stringify(manifest))
   await appendFile(resolve(directory, 'server.mjs'), `
 const why = (globalThis.__why1282 ??= { answer: null, asked: [] })
-reads.may_explain = ({ roles, payload }) => { why.asked.push(payload); return roles.includes('Bar Explainer') }
+reads.may_explain = ({ roles, payload }) => { why.asked.push(payload); if (why.mayFails) throw new Error('down'); return roles.includes('Bar Explainer') }
 reads.explain = ({ payload }) => { why.asked.push(payload); return why.answer ?? answerFor(payload) }
+reads.closed = () => false
 ${action ? 'export const actions = { change_note: () => true }' : ''}
 function answerFor({ table, row }) {
   return {
@@ -70,8 +72,8 @@ const offer = (client: TestClient, table = NOTE, row = 'n1') => client.fetch(`/a
 const explain = (client: TestClient, table = NOTE, row = 'n1') => client.fetch(`/api/why/${encodeURIComponent(table)}/${encodeURIComponent(row)}/explain`)
 
 /** What the app's server module answers and was asked (the platform loads its own copy of the module). */
-const hook = () => ((globalThis as unknown as { __why1282?: { answer: unknown; asked: unknown[] } }).__why1282 ??= { answer: null, asked: [] })
-afterEach(() => { hook().answer = null; hook().asked.length = 0 })
+const hook = () => ((globalThis as unknown as { __why1282?: { answer: unknown; asked: unknown[]; mayFails?: boolean } }).__why1282 ??= { answer: null, asked: [] })
+afterEach(() => { hook().answer = null; hook().asked.length = 0; delete hook().mayFails })
 const answerNext = (answer: unknown) => { hook().answer = answer }
 
 describe('Why: what an app may declare', () => {
@@ -112,6 +114,23 @@ describe('Why: who is offered it', () => {
     hook().asked.length = 0
     await offer(explainer)
     expect(hook().asked).toEqual([{ table: NOTE, row: 'n1' }])
+  })
+
+  test('an app whose may read fails offers nothing, and its explanation is refused: Why fails closed', async ({ admin, createUser }) => {
+    await install(admin)
+    const [, explainer] = await people(createUser)
+    hook().mayFails = true
+    expect(await (await offer(explainer)).json()).toEqual({ offer: null })
+    await expectStatus(await explain(explainer), 403)
+  })
+
+  test("someone the app's own gate keeps out is offered no Why, even where may would say yes", async ({ admin, createUser }) => {
+    expect(await discoverPackages([await explaining(declared, { gate: 'closed' })])).toEqual([])
+    await admin.post('/api/install_app', { name: 'barproof' })
+    await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'n1', body: 'kept' } })
+    const [, explainer] = await people(createUser)
+    expect(await (await offer(explainer)).json()).toEqual({ offer: null })
+    await expectStatus(await explain(explainer), 403)
   })
 
   test('the label is "Why: Access" when the app gives none', async ({ admin, createUser }) => {

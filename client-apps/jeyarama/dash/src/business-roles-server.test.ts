@@ -1,6 +1,6 @@
 // #1218: the business roles in shadow, over in-memory Tables. Made-up stores and people.
 import { describe, expect, it } from 'vitest'
-import { accessChanges, addStartingRoles, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, whyAccess } from './business-roles-server'
+import { accessChanges, addStartingRoles, areaParts, businessRoles, explainPerson, giveRole, mapTitle, mayExplainAccess, whyAccess } from './business-roles-server'
 import { actions, reads, reportsFor } from './server'
 import { STARTING_ROLES } from './starting-roles'
 import { convertGrants } from './switch-over'
@@ -8,7 +8,7 @@ import { accessPage, grantOptions, personLookup, whoIs } from './report-access-s
 import { liveReach } from './access-source'
 import { SITE_KINDS, openStore, siteStoreFields } from './site-kind'
 import { every, mergePlaces } from './business-access'
-import { businessAccessSummary, switchOverLog } from './switch-over-server'
+import { businessAccessSummary, linked, switchOverLog } from './switch-over-server'
 import { rolesForOldRole } from './switch-over'
 import { scopeProviders } from './server'
 import { directDocuments, memoryDocuments, personShadow, placesByStore, shadowWorld } from './business-roles-server'
@@ -103,6 +103,8 @@ function onRequest(tables: Record<string, Row[]>, report: string, role: string) 
 describe('the starting roles', () => {
   it('writes the starting business roles once', async () => {
     const tables = await seeded()
+    // A count of one is said in the singular.
+    expect(tables['dash.switch_over_log'].map(l => l.detail)).toEqual(expect.arrayContaining([expect.stringMatching(/, with its 1 permission$/), expect.stringMatching(/, with its \d+ permissions$/)]))
     expect(tables['dash.business_role'].map(r => r.role_name)).toEqual(STARTING_ROLES.map(r => r.name))
   })
 
@@ -115,13 +117,60 @@ describe('the starting roles', () => {
   })
 })
 
+describe('a log line as a sentence', () => {
+  it('links each named record in its own words, and leaves a name no longer in them as words', () => {
+    const role = { table: 'dash.business_role', row: 'r1', name: 'Store Manager' }
+    expect(linked('Gave the report Vendor Sales to Store Manager, as before', [role, { table: 'dash.report', row: 'vs', name: 'Vendor Sales' }, { table: 'dash.report', row: 'x', name: 'Renamed' }, { table: 'dash.report', row: 'y', name: '' }]))
+      .toEqual(['Gave the report ', { record: { table: 'dash.report', row: 'vs', name: 'Vendor Sales' } }, ' to ', { record: role }, ', as before'])
+    // The role is what the title is mapped to, not the title of the same name; a line's subject is the role.
+    expect(linked('Mapped the title Buyer to Buyer', [{ ...role, name: 'Buyer' }])).toEqual(['Mapped the title Buyer to ', { record: { ...role, name: 'Buyer' } }])
+    expect(linked('Store Manager already had the report Store Manager pack', [role])).toEqual([{ record: role }, ' already had the report Store Manager pack'])
+    expect(linked('Added the starting role Store Manager, with its 5 permissions', [role])).toEqual(['Added the starting role ', { record: role }, ', with its 5 permissions'])
+  })
+})
+
 describe('the Business Roles page', () => {
   it('reads each permission as a sentence with its reach', async () => {
     const page = await businessRoles(context(await seeded()) as never)
-    expect(page.roles.find(r => r.name === 'Store Manager')!.permissions).toContainEqual({ app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Section names and subcategories', reach: 'Area', sentence: 'Store Managers can Edit Section names and subcategories in their Area' })
+    expect(page.roles.find(r => r.name === 'Store Manager')!.permissions).toContainEqual(expect.objectContaining({ app: 'Dash', level: 'Manager', verb: 'Edit', thing: 'Section names and subcategories', reach: 'Area', sentence: 'Store Managers can Edit Section names and subcategories in their area' }))
     // Owner, 18-Nov-2026: managers see their team's tickets; Head Office opens no Dash by default.
-    expect(page.roles.find(r => r.name === 'Store Manager')!.permissions.find(p => p.app === 'Tickets')!.sentence).toBe('Store Managers can View Tickets for their Team')
+    expect(page.roles.find(r => r.name === 'Store Manager')!.permissions.find(p => p.app === 'Tickets')!.sentence).toBe('Store Managers can View Tickets for their team')
     expect(page.roles.find(r => r.name === 'Head Office')!.permissions.map(p => p.app)).toEqual(['Tasker', 'Tickets'])
+  })
+
+  it('says each role as sentences: its name a link, its people counted with where they come from, each report given to it', async () => {
+    const tables = onRequest(await converted(await seeded()), 'vs', 'Head Office')
+    await giveRole(context(tables, { payload: { person: 'st', change: 'Also give', role: roleId(tables, 'Team Leader'), ends_on: '2999-03-31', reason: 'Covering' } }) as never)
+    tables['dash.report_bundle'] = [...tables['dash.report_bundle'] ?? [], { row_id: 'bx', bundle_name: 'Store pack' }]
+    tables['dash.report_access'].push({ row_id: 'given-bx', report_bundle: 'bx', business_role: roleId(tables, 'Head Office'), access_key: `bundle:bx/business_role:${roleId(tables, 'Head Office')}` })
+    const page = await businessRoles(context(tables) as never)
+    // Codex adversarial round 1: a bundle the caller may not read is not named to them (their own documents decide).
+    const blind = context(tables)
+    const list = blind.documents.list
+    blind.documents.list = (async (table: string, args: never) => (table === 'dash.report_bundle' ? [] : list(table, args))) as typeof list
+    expect((await businessRoles(blind as never)).roles.flatMap(r => r.reports).flat().some(p => typeof p !== 'string' && 'record' in p && p.record.name === 'Store pack')).toBe(false)
+    const role = (name: string) => page.roles.find(r => r.name === name)!
+    expect(role('Store Manager').permissions[0]!.parts[0]).toEqual({ record: { table: 'dash.business_role', row: roleId(tables, 'Store Manager'), name: 'Store Managers' } })
+    expect(role('Team Leader')).toMatchObject({ people: 1, people_from: 'by hand' })
+    expect(role('Staff').people_from).toBe('from HR title')
+    expect(role('Master Data Manager')).toMatchObject({ people: 0, people_from: 'nobody yet', reports: [] })
+    expect(role('Head Office').reports.map(parts => (parts[0] as { record: { name: string } }).record.name)).toContain('Store pack')
+    expect(role('Head Office').reports).toContainEqual([{ record: { table: 'dash.report', row: 'vs', name: expect.any(String) } }, ' is given to ', { record: { table: 'dash.business_role', row: roleId(tables, 'Head Office'), name: 'Head Office' } }, ' ', { chip: 'each in their own area' }])
+  })
+
+  // Codex standard round 1: the count agrees with access: a person Corrected counts only under the role they now hold,
+  // and once the correction ends they count under their HR title's role again.
+  it("counts a role's people as access decides: a correction moves them, and an ended one moves them back", async () => {
+    const tables = await seeded()
+    const before = await businessRoles(context(tables) as never)
+    const count = (page: typeof before, name: string) => page.roles.find(r => r.name === name)!.people
+    await giveRole(context(tables, { payload: { person: 'st', change: 'Correct', role: roleId(tables, 'Team Leader'), ends_on: '2999-03-31', reason: 'Acting' } }) as never)
+    const corrected = await businessRoles(context(tables) as never)
+    expect([count(corrected, 'Staff'), count(corrected, 'Team Leader')]).toEqual([count(before, 'Staff') - 1, count(before, 'Team Leader') + 1])
+    expect(corrected.roles.find(r => r.name === 'Team Leader')!.people_from).toContain('by hand')
+    for (const row of tables['dash.role_assignment']) row.ends_on = '2000-01-01'
+    const ended = await businessRoles(context(tables) as never)
+    expect([count(ended, 'Staff'), count(ended, 'Team Leader')]).toEqual([count(before, 'Staff'), count(before, 'Team Leader')])
   })
 
   it('lists a designation nobody has mapped first, with how many hold it', async () => {
@@ -238,6 +287,21 @@ describe("Why on the platform's Map", () => {
     const reached = why.columns[2]!.boxes.filter(b => why.edges.filter(([, to]) => to === b.id).length === 2)
     expect(reached.length).toBeGreaterThan(0)
     expect(reached.every(b => b.detail === 'both roles')).toBe(true)
+  })
+
+  it("leaves out area words that name a record without saying which, and keeps the company's plain words", () => {
+    expect(areaParts([{ name: 'No area: Store Manager reaches one store, and this person is named only at Lakeside' }])).toEqual({})
+    expect(areaParts([{ name: 'Whole company' }, { name: 'Lakeside', table: 'Site', id: 'LKS' }]))
+      .toEqual({ detailParts: [{ name: 'Whole company' }, { name: 'Lakeside', record: { table: 'Site', row: 'LKS' } }] })
+  })
+
+  it("joins a report straight to its role when that role opens no Dash level of its own", async () => {
+    // Store Manager opens Dash; Head Office, also given by hand, does not, yet a report is given to it.
+    const tables = onRequest(await converted(await seeded()), 'vs', 'Head Office')
+    await giveRole(context(tables, { payload: { person: 'sm', change: 'Also give', role: roleId(tables, 'Head Office'), ends_on: '2999-03-31', reason: 'Covering' } }) as never)
+    const why = await whyAccess(context(tables, { payload: { table: 'Person', row: 'sm' } }) as never)
+    const ho = why.columns[1]!.boxes.find(b => b.name === 'Head Office')!.id
+    expect(why.edges).toContainEqual([ho, 'report:vs'])
   })
 
   it('says a role given by hand is by hand', async () => {
@@ -1341,12 +1405,24 @@ describe('business roles at their edges', () => {
   it('says to a manager what decides Dash access and what was done, and refuses anyone else', async () => {
     const tables0 = await richWorld()
     tables0['dash.report_access'].push({ row_id: 'g-n', report: 'vs', role: 'Report Access Manager' })
+    tables0['dash.report_bundle'] = [...tables0['dash.report_bundle'] ?? [], { row_id: 'b-x', bundle_name: 'Store pack' }]
+    tables0['dash.report_access'].push({ row_id: 'g-b', report_bundle: 'b-x', role: 'Dash Reader' })
     const { tables } = await switched(tables0)
     expect(await businessAccessSummary(context(tables, { roles: ['System Manager'] }) as never)).toMatchObject({ source: 'business_roles', switch_rows: [{ id: 's1', source: 'business_roles' }], can_switch: true })
     expect(await businessAccessSummary(context(tables) as never)).toMatchObject({ can_switch: false })
     const log = await reads.switch_over_log(context(tables) as never)
     expect([log.length > 0, log.every((l, i) => i === 0 || `${log[i - 1].at}${log[i - 1].id}` >= `${l.at}${l.id}`)]).toEqual([true, true])
     expect(log.find(l => l.outcome === 'Not converted')).toMatchObject({ business_role: null, source_grant: 'g-n' })
+    // #1282 H1–H4: a line given to a role names the role and the report as links, in its own words.
+    const added = log.find(l => l.outcome === 'Added' && l.parts.some(p => typeof p !== 'string' && p.record.table === 'dash.report'))!
+    expect([added.parts.map(p => (typeof p === 'string' ? p : p.record.name)).join(''), added.parts.flatMap(p => (typeof p === 'string' ? [] : [p.record.table])).sort()])
+      .toEqual([added.detail, ['dash.business_role', 'dash.report']])
+    expect(log.some(l => l.parts.some(p => typeof p !== 'string' && p.record.table === 'dash.report_bundle'))).toBe(true)
+    // Codex adversarial round 2: a bundle the caller may not read is not linked, nor its id given.
+    const blind = context(tables)
+    const list = blind.documents.list
+    blind.documents.list = (async (table: string, args: never) => (table === 'dash.report_bundle' ? [] : list(table, args))) as typeof list
+    expect(JSON.stringify((await switchOverLog(blind as never)).map(l => l.parts))).not.toContain('b-x')
     expect((await reads.access_source(context(tables) as never)).source).toBe('business_roles')
     await expect(switchOverLog(context(tables, { roles: ['Dash Reader'] }) as never)).rejects.toThrow('Only a Report Access Manager')
     await expect(businessAccessSummary(context(tables, { roles: ['Dash Reader'] }) as never)).rejects.toThrow('Only a Report Access Manager')

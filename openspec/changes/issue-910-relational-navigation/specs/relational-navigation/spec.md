@@ -67,6 +67,49 @@ Then the drill pane shows Enchakkal Supermarket and what points at it
 And the list of sites stays as it was
 ```
 
+### Requirement: The pane is a peek, one level per drill
+
+The drill pane SHALL count each drill inside it as a level and say "Level N of N" in its header,
+with a way back one level and Open Full Page; closing it, or Escape, SHALL close the whole pane. A
+linked name on a row page's Links tab, or inside the pane, SHALL open its row in the pane; a group
+in the pane SHALL show its first 4 rows, then how many more.
+
+#### Scenario: Three levels deep from a customer's page
+
+- **WHEN** the user, on a customer's Links tab, opens one of its orders, then that order's rep, then
+  another of the rep's orders
+- **THEN** the pane reads Level 3 of 3, back one level reads Level 2 of 3, and Escape closes it,
+  leaving the customer's page as it was
+
+### Requirement: Step sideways to another row of the same list
+
+The path's last step SHALL offer the other rows of the list or group it came from: the list's own
+rows (with its filters), or the rows that point at the previous step's record by the same link. It
+SHALL say where the current row sits and mark it, start around it when there are more than 20, and
+search the rest. Choosing a row SHALL replace the step in place, adding none.
+
+#### Scenario: Another of Asha's orders
+
+- **WHEN** the user, on the list of Asha's orders, has her fourth order open and steps sideways to
+  another of her orders
+- **THEN** that order shows in its place, the path has the same number of steps, and orders of
+  other customers are not offered
+
+### Requirement: Pick an area on the trees
+
+Where an installed app declares an area's levels (Location, Merchandise), picking a link's area
+SHALL offer the area picker: one column per level, each row with how many rows of the next level the
+viewer may see under it, picking clearing the columns to its right, and the area named as links. A
+level the field cannot hold yet SHALL stay walkable, with Use this area off and saying which level
+can be given.
+
+#### Scenario: A store in Chennai South
+
+- **WHEN** the user gives a member a role and picks its area on the trees, the cluster Chennai South
+  and then its Store E
+- **THEN** Chennai South counts only its stores, using Chennai South itself is not offered yet, and
+  Store E becomes the role's area
+
 ### Requirement: Two links from the same table stay separate groups
 
 When one table links to the row in two ways, the drill pane SHALL show each way as its own group
@@ -79,7 +122,7 @@ Given each cost centre names a supplying plant and a billing plant
 And Enchakkal Supermarket supplies 8 cost centres and bills none
 When the user opens Enchakkal Supermarket in the drill pane
 Then a group of 8 cost centres by supplying plant shows
-And a group of 0 cost centres by billing plant shows, quieter than the other
+And a group of 0 cost centres by billing plant shows, quieter than the other, once the user shows the empty groups
 ```
 
 ### Requirement: A group lists its rows by what they point to

@@ -75,7 +75,7 @@ test('a token issued for a service account, with an expiry, is copied once and s
   expect(days).toBeLessThanOrEqual(30)
 })
 
-test('a service account can be turned off and back on from its row', async ({ admin }) => {
+test('a service account is turned off after a confirmation, and back on at one click', async ({ admin }) => {
   const user = userEvent.setup()
   const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-toggle' })
   await renderApp('/featherbase/admin/access-tokens', admin)
@@ -83,15 +83,44 @@ test('a service account can be turned off and back on from its row', async ({ ad
   const toggle = await screen.findByTestId(`sa-toggle-${svc.row_id}`, {}, { timeout: 10_000 })
   expect(toggle).toHaveTextContent('Disable')
   await user.click(toggle)
+  // #1323: Disable asks first, and says what it stops.
+  const dialog = screen.getByTestId('confirm-dialog')
+  expect(within(dialog).getByRole('heading')).toHaveTextContent('Disable service account “svc-toggle”?')
+  expect(screen.getByTestId('confirm-consequence')).toHaveTextContent('It has no active tokens, and can’t be issued new ones until you enable it again.')
+  expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+  await user.click(screen.getByTestId('confirm-action'))
   await waitFor(() => expect(screen.getByTestId(`sa-toggle-${svc.row_id}`)).toHaveTextContent('Enable'))
   const enabled = async () =>
     (await admin.get<{ service_accounts: { row_id: string; enabled: boolean }[] }>('/api/service_accounts')).service_accounts.find(
       (a) => a.row_id === svc.row_id,
     )!.enabled
   expect(await enabled()).toBe(false)
+  await waitFor(() => expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument())
   await user.click(screen.getByTestId(`sa-toggle-${svc.row_id}`))
+  expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
   await waitFor(() => expect(screen.getByTestId(`sa-toggle-${svc.row_id}`)).toHaveTextContent('Disable'))
   expect(await enabled()).toBe(true)
+})
+
+test('Disable says how many active tokens stop working, and Escape leaves the account on', async ({ admin }) => {
+  const user = userEvent.setup()
+  const one = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-one-token' })
+  const two = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-two-tokens' })
+  await admin.post('/api/access_tokens', { label: 'one a', owner: one.row_id })
+  await admin.post('/api/access_tokens', { label: 'two a', owner: two.row_id })
+  await admin.post('/api/access_tokens', { label: 'two b', owner: two.row_id })
+  await renderApp('/featherbase/admin/access-tokens', admin)
+  await user.click(await screen.findByRole('tab', { name: 'Service accounts' }, { timeout: 10_000 }))
+  await user.click(await screen.findByTestId(`sa-toggle-${one.row_id}`, {}, { timeout: 10_000 }))
+  expect(screen.getByTestId('confirm-consequence')).toHaveTextContent('Its 1 active token stops working until you enable it again.')
+  await user.keyboard('{Escape}')
+  expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
+  await user.click(screen.getByTestId(`sa-toggle-${two.row_id}`))
+  expect(screen.getByTestId('confirm-consequence')).toHaveTextContent('Its 2 active tokens stop working until you enable it again.')
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
+  const { service_accounts } = await admin.get<{ service_accounts: { row_id: string; enabled: boolean }[] }>('/api/service_accounts')
+  expect(service_accounts.filter((a) => [one.row_id, two.row_id].includes(a.row_id)).map((a) => a.enabled)).toEqual([true, true])
 })
 
 test('suggestions count every selected-owner token from either issuance entry point', async ({ admin }) => {
@@ -195,14 +224,24 @@ test('a service account created with a role is listed under its name with that r
   expect(row).toHaveTextContent('System Manager')
 })
 
-test('Revoke on a token row marks it revoked', async ({ admin }) => {
+test('Revoke on a token row asks first, then marks it revoked', async ({ admin }) => {
   const user = userEvent.setup()
   const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-revoke-here' })
   const tok = await admin.post<{ id: string }>('/api/access_tokens', { label: 'revoke me', owner: svc.row_id })
   await renderApp('/featherbase/admin/access-tokens', admin)
   expect((await screen.findByTestId(`token-state-${tok.id}`, {}, { timeout: 10_000 })).textContent).toBe('active')
   await user.click(screen.getByTestId(`revoke-${tok.id}`))
+  // #1323: nothing is revoked until the dialog's Revoke; Cancel changes nothing.
+  expect(within(screen.getByTestId('confirm-dialog')).getByRole('heading')).toHaveTextContent('Revoke token “revoke me”?')
+  expect(screen.getByTestId('confirm-consequence')).toHaveTextContent('Anything using it stops working at once. This cannot be undone.')
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
+  expect(screen.getByTestId(`token-state-${tok.id}`).textContent).toBe('active')
+  await user.click(screen.getByTestId(`revoke-${tok.id}`))
+  await user.click(screen.getByTestId('confirm-action'))
   await waitFor(() => expect(screen.getByTestId(`token-state-${tok.id}`).textContent).toBe('revoked'))
+  // The confirmation closes once the lists have refreshed, which can land just after the row reads revoked.
+  await waitFor(() => expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument())
   const { tokens } = await admin.get<{ tokens: { id: string; revoked_at: string | null }[] }>('/api/access_tokens')
   expect(tokens.find((t) => t.id === tok.id)?.revoked_at).toEqual(expect.any(String))
 })

@@ -1,12 +1,13 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { choiceLabel, rowDisplayTitle, tableHref, wallTimeToInstant, type ListFilter } from 'shared'
-import { RecordLink, cx, fmtCount } from '@featherbase/shop-floor'
+import { AreaPicker as AreaColumns, RecordLink, cx, fmtCount } from '@featherbase/shop-floor'
 import { ApiError, api, listResource } from '../lib/api'
 import { forwardLinks, ALL_ROWS, useRowName, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
 import { linkRowsTable, metaQuery, tableLabel, type ColumnDef, type TableMeta } from '../lib/meta'
 import { titleListColumn } from '../lib/list-view-columns'
 import { useCapabilities } from '../lib/session'
+import { areaLoader, useAppAreas } from '../lib/app-areas'
 import { formatValue, useSettings } from '../lib/settings'
 import { useI18n } from '../lib/i18n'
 import type { NavPane } from '../lib/nav-path'
@@ -376,10 +377,19 @@ export function startingValues(fields: ColumnDef[]): Row {
 
 const FLD = 'rounded-md border border-border-control bg-surface px-2 py-1 text-[12.5px] text-ink'
 
-/** Area: "Pick on the trees ▸". For now a plain picker of the link Table's other links. */
+/** Area: "Pick on the trees ▸": the shared area picker (#1282 G1) where an app declares the area's
+ *  levels; a link of another Table keeps its plain picker. */
 function AreaPicker({ columns, values, set }: { columns: ColumnDef[]; values: Row; set: (name: string, value: unknown) => void }) {
   const [picking, setPicking] = useState(false)
   const picked = columns.filter((c) => values[c.column_name])
+  const areas = useAppAreas()
+  // The columns an area picked on the trees can fill, and the axes that reach them.
+  const onTrees = columns.filter((c) => areas.levels.has(linkRowsTable(c) ?? ''))
+  const holds = onTrees.map((c) => linkRowsTable(c)!)
+  const axes = areas.axes.filter((a) => a.levels.some((l) => holds.includes(l.table)))
+  const plain = columns.filter((c) => !onTrees.includes(c))
+  // The level's own name, as an admin screen says it ("Site").
+  const levelName = (c: ColumnDef) => { const l = areas.levels.get(linkRowsTable(c) ?? '')!; return l.adminLabel ?? l.label }
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       <span>· Area</span>
@@ -388,7 +398,13 @@ function AreaPicker({ columns, values, set }: { columns: ColumnDef[]; values: Ro
           {picked.length ? picked.map((c) => <PickedName key={c.column_name} column={c} value={String(values[c.column_name])} />) : 'Pick on the trees'} ▸
         </button>
       )}
-      {picking && columns.map((c) => (
+      {picking && axes.length > 0 && (
+        <span className="basis-full" data-testid="area-trees">
+          <AreaColumns axes={axes} holds={holds} load={areaLoader(areas.levels)} onCancel={() => setPicking(false)}
+            onUse={(area) => { set(onTrees.find((c) => linkRowsTable(c) === area.table)!.column_name, area.row.id); setPicking(false) }} />
+        </span>
+      )}
+      {picking && plain.map((c) => (
         <span key={c.column_name} className="inline-flex items-center gap-1" data-testid="area-picker">
           {columns.length > 1 && <span className="text-ink-muted">{c.label ?? c.column_name}</span>}
           <span className="w-60 min-w-0">
@@ -397,7 +413,20 @@ function AreaPicker({ columns, values, set }: { columns: ColumnDef[]; values: Ro
           </span>
         </span>
       ))}
-      {picking && <button type="button" onClick={() => setPicking(false)} className="px-1 text-action hover:underline">Done</button>}
+      {/* Codex standard round 3: the trees never take the plain picker away. One line under the columns, so a viewer who
+          may not read the levels above, or a row with no parent, still chooses it from a list. */}
+      {picking && axes.length > 0 && (
+        <span className="inline-flex basis-full flex-wrap items-center gap-1.5" data-testid="area-direct">
+          <span className="text-ink-muted">Or choose the {onTrees.map((c) => levelName(c)).join(' or ')} from a list</span>
+          {onTrees.map((c) => (
+            <span key={c.column_name} className="w-60 min-w-0">
+              <LinkControl field={c} value={values[c.column_name] ?? ''} onChange={(v) => set(c.column_name, v)} pickOnly
+                className={FLD} common={{ 'aria-label': levelName(c) }} />
+            </span>
+          ))}
+        </span>
+      )}
+      {picking && plain.length > 0 && <button type="button" onClick={() => setPicking(false)} className="px-1 text-action hover:underline">Done</button>}
     </span>
   )
 }

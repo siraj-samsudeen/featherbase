@@ -76,7 +76,9 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[]; optionalColumns?: Record<string, string[]> } }
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
-  // #1282's 0.13.35 and 0.13.36 (the Map's Why) change no Table and come off first.
+  // #1282's 0.13.38 (the area picker), #1313's 0.13.37 (Report access dates) and #1282's 0.13.35 and 0.13.36 (the Map's Why) change no Table and come off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'area_picker', fromVersion: '0.13.37', operations: [] })
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'report_access_days_in_india', fromVersion: '0.13.36', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'why_app_levels_merged', fromVersion: '0.13.35', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'why_on_the_map', fromVersion: '0.13.34', operations: [] })
   expect(manifest.migrations.pop()).toMatchObject({ id: 'division_head_and_visual_merchandising', fromVersion: '0.13.33', operations: [] })
