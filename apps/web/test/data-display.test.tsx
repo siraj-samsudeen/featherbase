@@ -5,7 +5,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '@featherbase/shop-floor'
-import { fmtCount, fmtDay, fmtExact, fmtINR, fmtNumber, fmtPct, fmtShowing } from '@featherbase/shop-floor'
+import { fmtCount, fmtDate, fmtDay, fmtExact, fmtINR, fmtNumber, fmtPct, fmtShowing } from '@featherbase/shop-floor'
 import { fmtDuration, fmtInstant } from '@featherbase/shop-floor/format'
 import { formatNumber } from '../src/lib/settings'
 import { pageRange } from '../src/components/ListView'
@@ -48,6 +48,14 @@ describe('fmtExact — the precision regime (ADR 750)', () => {
     expect(fmtExact(-4976.857)).toBe('-₹4,976.86')
     expect(fmtExact(null)).toBe('—')
     expect(fmtExact(Number.NaN)).toBe('—')
+  })
+})
+
+describe('fmtDate — an ISO day as DD-Mon-YYYY (ADR 844)', () => {
+  test('a day reads DD-Mon-YYYY; no day is a dash', () => {
+    expect(fmtDate('2026-09-17')).toBe('17-Sep-2026')
+    expect(fmtDate(null)).toBe('—')
+    expect(fmtDate('')).toBe('—')
   })
 })
 
