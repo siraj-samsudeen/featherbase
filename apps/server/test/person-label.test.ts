@@ -236,6 +236,15 @@ describe('#1345: the app that says who people are adds role and place; the platf
       .toEqual({ email: 'left.lately@example.test', standing: 'left', left_on: '2026-08-31', code: 'PL-55001' })
   })
 
+  // UI owner (19-Nov): the code never drops, a leaver's included.
+  test("a leaver whose app answer names no code reads their latest ended code", async ({ admin }) => {
+    const leaver = await makePerson({ full_name: 'Left Uncoded', email: 'left.uncoded@example.test' })
+    await code(leaver, 'PL-55003', '2023-01-01', { until: '2026-03-12' })
+    await describing(admin)
+    said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: null, left_on: '2026-03-12', jobs: [] }))
+    expect((await personLabels([leaver], 'Administrator')).get(leaver)).toMatchObject({ standing: 'left', left_on: '2026-03-12', code: 'PL-55003' })
+  })
+
   test("the app's code never restores one the viewer may not see", async ({ admin, createUser }) => {
     const leaver = await makePerson({ full_name: 'Left Restricted', email: 'left.restricted@example.test' })
     await code(leaver, 'PL-55002', '2024-01-01', { sensitivity: 'Restricted', until: '2026-08-31' })

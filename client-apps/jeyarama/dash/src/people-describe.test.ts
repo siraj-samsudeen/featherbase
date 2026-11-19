@@ -120,6 +120,15 @@ describe('describe_people', () => {
     expect(asha!.jobs.find(j => j.job === 'Team Leader')).toEqual({ job: 'Team Leader', site: { table: 'Site', id: 'LKS', name: 'Lakeside' } })
   })
 
+  // featherbase #1345: "Former Staff · left 12-Mar-2026 · 3999".
+  it('says the day someone who has left left: the end of their last job', async () => {
+    const data: Record<string, Row[]> = { ...DATA, 'Job Assignment': [...DATA['Job Assignment']!,
+      { row_id: 'J9', employee: 'E2', job: 'Cashier', site: 'LKS', starts_on: '2024-01-01', ends_on: '2025-06-30' },
+      { row_id: 'J10', employee: 'E2', job: 'Team Leader', site: 'LKS', starts_on: '2025-07-01', ends_on: '2026-03-12' }] }
+    const [old] = await describePeople({ ...context({ persons: ['p-old'] }), baseTables: tables(data) }, ON)
+    expect(old).toEqual({ person: 'p-old', status: 'left', code: '3999', left_on: '2026-03-12', jobs: [] })
+  })
+
   it('asks nothing for no persons', async () => {
     expect(await describePeople(context({}), ON)).toEqual([])
   })
