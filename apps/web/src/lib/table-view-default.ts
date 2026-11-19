@@ -1,6 +1,6 @@
 import type { ListLayout, TableViewDefault, TableViewSettings } from 'shared'
 import { api } from './api'
-import { dataColumns, defaultColumnNames, isShown, listLeader, type ColumnArrangement } from './list-view-columns'
+import { dataColumns, defaultColumnNames, isShown, viewColumns, type ColumnArrangement } from './list-view-columns'
 import type { TableMeta } from './meta'
 
 // #1282 A4 (UI owner): a Table's default view, set by a System Manager from the View menu. It sits between the
@@ -47,9 +47,9 @@ const BUILT_IN_LABELS: Record<string, string> = { row_id: 'Row ID', created_at: 
 /** The confirm's words for a default, one per setting: "List And Record", "Columns: Name, Site, Status",
  *  "Sorted by Age, oldest first", "Compact rows", "Links: Sections", "Fields beside links". */
 export function describeView(meta: TableMeta, view: TableViewSettings): string[] {
-  const leader = listLeader(meta)
-  const shown = dataColumns(meta).filter((c) => c === leader || isShown(c.column_name, defaultColumnNames(meta), view))
-  const columns = `Columns: ${shown.map((c) => c.label ?? c.column_name).join(', ')}`
+  // In the list's own order: what it leads with first, then each shown column.
+  const shown = viewColumns(meta, view)
+  const columns = `Columns: ${shown.map((c) => c.label).join(', ')}`
   const sorted = (() => {
     if (!view.sort) return 'Sorted as the Table is'
     const col = meta.columns.find((c) => c.column_name === view.sort!.field)

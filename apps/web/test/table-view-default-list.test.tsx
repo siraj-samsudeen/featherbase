@@ -1,7 +1,12 @@
 // #1282 A4: a Table's default view in the real list. A fresh person opens on it; a person's own choice wins; Reset
 // shows only when their view differs and clears only their own choices; Show Retired and a board's grouping are
 // remembered; the team Activity feed offers Undo while a save is the default. Made-up names.
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, renderHook, screen, waitFor, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { setSession } from '../src/lib/api'
+import { useLinksPreference } from '../src/components/RecordLinks'
+import { vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { tableHref } from 'shared'
 import { createUserWithRole } from 'server/test/fixtures'
@@ -37,6 +42,20 @@ test("a fresh person opens on the Table's default: its columns, sort and compact
   expect(headers()).toEqual(['Shelf', 'Bay'])
   // Nothing differs from the default, so there is nothing to reset.
   expect((await openListMenu('View')).queryByRole('button', { name: "Reset to the Table's Default" })).not.toBeInTheDocument()
+})
+
+// Codex adversarial round 2: a default sorted by a column this reader may not read never breaks their list.
+test("a default's sort on a column the reader may not read gives way to the Table's own order", async ({ admin, createUser }) => {
+  await admin.post('/api/table_def', { name: 'Tvd Locker', id_pattern: 'hash', title_column: 'locker_name', columns: [
+    { column_name: 'locker_name', column_type: 'Data', label: 'Locker', in_list_view: true },
+    { column_name: 'code', column_type: 'Data', label: 'Code', tier: 'restricted' },
+  ] })
+  for (const [locker_name, code] of [['North', 'z'], ['South', 'a']]) await admin.post('/api/save_row', { table: 'Tvd Locker', row: { locker_name, code } })
+  await admin.fetch(`/api/table_view_default/${enc('Tvd Locker')}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: { sort: { field: 'code', dir: 'asc' } } }) })
+  const reader = await createUserWithRole(admin, createUser, { role: 'Tvd Basic', table: 'Tvd Locker', tier: 'basic', can_read: true })
+  await renderApp(tableHref('Tvd Locker'), reader)
+  await waitFor(() => expect(within(screen.getByTestId('list-rows')).getAllByRole('link').map((a) => a.textContent).sort()).toEqual(['North', 'South']), T)
+  expect(screen.queryByTestId('list-error')).not.toBeInTheDocument()
 })
 
 test("a person's own sort wins; Reset shows, and clears only their own choices", async ({ admin, createUser }) => {
@@ -83,4 +102,40 @@ test("the team feed's line for a save offers Undo while it is the default", asyn
   await userEvent.click(within(line).getByTestId('feed-undo'))
   await waitFor(async () => expect((await admin.get<{ default: unknown }>(`/api/table_view_default/${enc(DT)}`)).default).toBeNull(), T)
   await waitFor(() => expect(within(feed).queryByTestId('feed-undo')).not.toBeInTheDocument(), T)
+})
+
+// Codex adversarial round 2: Reset goes after a save already on its way, so that save never brings a choice back.
+test('Reset waits for a slow earlier save, so the cleared choice stays cleared', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(tableHref(DT), admin)
+  await waitFor(() => expect(shelves().length).toBe(3), T)
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (init?.method === 'PUT' && url.includes(`/api/user_settings/${enc(DT)}`)) await new Promise((r) => setTimeout(r, 400))
+    return real(input, init)
+  })
+  try {
+    await userEvent.click(screen.getByTestId('compact-rows'))
+    await userEvent.click((await openListMenu('View')).getByRole('button', { name: "Reset to the Table's Default" }))
+    await new Promise((r) => setTimeout(r, 600))
+    await waitFor(async () => expect((await admin.get<{ settings: { compact?: boolean } | null }>(`/api/user_settings/${enc(DT)}`)).settings?.compact).toBeUndefined(), T)
+  } finally { vi.restoreAllMocks() }
+})
+
+// Codex adversarial round 2: a Links choice held on screen gives way once the person's settings are read again
+// (a Reset), where no address names the walk's own choice.
+test("a Links choice held on screen gives way once a Reset is read back", async ({ admin }) => {
+  await seed(admin)
+  setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  const { result } = renderHook(() => useLinksPreference(DT), { wrapper })
+  await waitFor(() => expect(result.current.ready).toBe(true), T)
+  act(() => result.current.setAs('tree'))
+  expect(result.current.as).toBe('tree')
+  await waitFor(async () => expect((await admin.get<{ settings: { links?: { as?: string } } }>(`/api/user_settings/${enc(DT)}`)).settings.links?.as).toBe('tree'), T)
+  await admin.fetch(`/api/user_settings/${enc(DT)}/reset`, { method: 'POST' })
+  await act(() => queryClient.invalidateQueries({ queryKey: ['user-settings', DT] }))
+  await waitFor(() => expect(result.current.as).toBe('sections'), T)
 })

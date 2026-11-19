@@ -26,6 +26,11 @@ const choices = new Map<string, number>()
 /** The keys above: one per sign-in per Table (remembered-filters.ts does the same). */
 const savesKey = (table: string) => `${getToken() ?? ''}\u0000${table}`
 
+/** #1282 A4: resolves once every layout save already queued for this Table has landed, so a reset after it is final. */
+export function layoutSavesSettled(table: string): Promise<unknown> {
+  return (saves.get(savesKey(table)) ?? Promise.resolve()).catch(() => undefined)
+}
+
 export function useListLayout(table: string, asked?: ListLayout) {
   const queryClient = useQueryClient()
   const meta = useMeta(table)

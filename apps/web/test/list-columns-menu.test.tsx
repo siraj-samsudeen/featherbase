@@ -219,7 +219,7 @@ async function confirmDefaultFromView(admin: Admin) {
 test('the confirm names each setting in words before anything is saved', async ({ admin }) => {
   const dialog = await confirmDefaultFromView(admin)
   expect([...within(dialog).getByTestId('table-default-words').children].map((li) => li.textContent))
-    .toEqual(['Table With Panel', 'Columns: Section, Remarks', 'Sorted as the Table is', 'Full rows', 'Links: Sections', 'Fields beside links'])
+    .toEqual(['Table With Panel', 'Columns: Row ID, Section, Remarks', 'Sorted as the Table is', 'Full rows', 'Links: Sections', 'Fields beside links'])
   expect(dialog).toHaveTextContent("People who've changed these keep their own choices.")
   expect((await admin.get(defaultUrl) as Default).default).toBeNull()
   await userEvent.click(within(dialog).getByTestId('table-default-cancel'))

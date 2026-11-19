@@ -12,6 +12,7 @@ import { SaveAsView, ViewBanner } from './TableViews'
 import { dataColumns, isShown, listFields, listLeader, switchColumn, viewColumns, type ColumnArrangement } from '../lib/list-view-columns'
 import { describeView, listDefaultsWith, tableViewDefaultQuery, viewAsDefault } from '../lib/table-view-default'
 import { TableDefaultDialog } from './TableDefaultDialog'
+import { layoutSavesSettled } from '../lib/list-layout'
 import { userSettingsQuery } from './FormArrangement'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings } from '../lib/settings'
@@ -390,7 +391,11 @@ export function ListView({
   const metaSortColumn =
     boundNoRevision && meta.data?.sort_column === 'updated_at' ? '' : (meta.data?.sort_column ?? '')
   // #1282 A4: the person's sort, else the Table's default's, else the Table's own order.
-  const shownSort = sort ?? td.sort ?? null
+  // A default sorted by a column this person may not read gives way to the Table's own order (Codex adversarial
+  // round 2): the server refuses a sort on a column the viewer can't read, which would fail the whole list.
+  const readableSort = (field: string) => ['row_id', 'created_at', 'updated_at'].includes(field)
+    || (meta.data ? dataColumns(meta.data).some((c) => c.column_name === field) : false)
+  const shownSort = sort ?? (td.sort && readableSort(td.sort.field) ? td.sort : null)
   const orderBy = shownSort
     ? `${shownSort.field} ${shownSort.dir}`
     : defaultOrderBy ?? (meta.data
@@ -574,7 +579,15 @@ export function ListView({
     || showRetired)
   const asDefault = () => viewAsDefault(meta.data!, arrangement, td, { layout: layout ?? builtInLayout, sort: shownSort, compact, links: shownLinks })
   async function resetView() {
-    await api.post(`/api/user_settings/${encodeURIComponent(table)}/reset`, {}).catch(() => setSettingsUnsaved(true))
+    // After every save already on its way, so none of them lands after the reset and brings a choice back
+    // (Codex adversarial round 2): this list's own saves, and the layout's.
+    const token = getToken()
+    const done = settingsWrite.current
+      .then(() => layoutSavesSettled(table))
+      .then(() => (getToken() === token ? api.post(`/api/user_settings/${encodeURIComponent(table)}/reset`, {}) : undefined))
+      .catch(() => setSettingsUnsaved(true))
+    settingsWrite.current = done.then(() => undefined)
+    await done
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['list-layout', table] }),
       queryClient.invalidateQueries({ queryKey: ['user-settings', table] }),

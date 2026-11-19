@@ -28,6 +28,10 @@ export function useLinksPreference(table: string, fromPath?: LinksLayout) {
   const { queryKey: key } = userSettingsQuery(table)
   const stored = useQuery(userSettingsQuery(table))
   const [chosen, setChosen] = useState<StoredLinks>({})
+  // A choice made here holds until the person's settings are read again (Codex adversarial round 2): after a Reset
+  // the refreshed settings and the Table's default decide, not a choice the reset cleared. A choice saved here is in
+  // those settings already (update writes it into them), so nothing is lost.
+  useEffect(() => setChosen({}), [stored.dataUpdatedAt])
   // #1282 A4: the person's own choice, else the Table's default, else sections with the fields beside.
   const fallback = useQuery(tableViewDefaultQuery(table)).data?.settings.links ?? {}
   const saved = (stored.data?.settings?.links ?? {}) as StoredLinks

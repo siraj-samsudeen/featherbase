@@ -28,6 +28,11 @@ describe("#1282 A4: a Table's default view", () => {
     expect(saved).toEqual({ layout: 'split', shownCols: ['status'], hiddenCols: ['site'], sort: { field: 'opened_on', dir: 'asc' }, compact: true, links: { as: 'sections', fields: true } })
   })
 
+  test("the confirm names the columns in the list's own order, led by what the list leads with", () => {
+    const led = { ...meta, columns: [meta.columns[1], meta.columns[0], ...meta.columns.slice(2)] } as unknown as TableMeta
+    expect(describeView(led, {})[1]).toBe('Columns: Name, Site')
+  })
+
   test('the confirm names each setting in words', () => {
     expect(describeView(meta, { layout: 'split', shownCols: ['status'], hiddenCols: [], sort: { field: 'opened_on', dir: 'asc' }, compact: true, links: { as: 'sections', fields: true } }))
       .toEqual(['List And Record', 'Columns: Name, Site, Status', 'Sorted by Age, oldest first', 'Compact rows', 'Links: Sections', 'Fields beside links'])
