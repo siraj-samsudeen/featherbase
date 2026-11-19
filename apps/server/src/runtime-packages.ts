@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, syncAppJobs, type AppManifest } from './apps'
 import { applyJobPlan, bindAppJobs, jobsDeclaration, planJobChanges, validateAppJobs } from './app-jobs'
-import { tableDefSchema } from './table-engine'
+import { tableDefSchema, tableRelation } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
@@ -17,9 +17,15 @@ import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } 
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
+import { ROW_ID, dimensionValues, joinRows, readPlan, runPlan, semanticDeclaration, validateSemantic, type SemanticModel } from './semantic-model'
+import { questionToPlan, readAsk, type Turn } from './semantic-question'
+import { closeTurns, openTurns, recordQuestion, type Outcome } from './question-log'
+import { chatDeclaration, validateChat } from './chat-declaration'
+import { SqlFault, questionToSql, runSql, type SqlTable } from './semantic-sql'
+import { planModel } from './plan-model'
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
-import { invalidateMeta } from './meta'
+import { getMeta, invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, countLosses, describeLoss, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
 
 // Public v1 hook contract is structural: packages never import core classes.
@@ -116,6 +122,11 @@ const manifestSchema = z.object({
   // #629: the app's glossary terms, written under the app at install and
   // upgrade.
   glossary: glossaryDeclaration.optional(),
+  // What the app's datasets mean (dimensions, measures, metrics), so a
+  // question can be answered from them by a plan instead of a query.
+  semantic: semanticDeclaration.optional(),
+  // The app's chat panel: its modes, and the app roles that open each.
+  chat: chatDeclaration.optional(),
   // #700: the app's scheduled jobs, each run as its own system actor holding
   // only the grants it declares.
   jobs: jobsDeclaration.optional(),
@@ -278,6 +289,8 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   const digest = await artifactDigest(root)
   validateRoleDefaults(manifest.roleDefaults, manifest.roles)
   validateGlossary(manifest.glossary, manifest.tables, manifest.permissions)
+  validateSemantic(manifest.semantic, manifest.datasets, manifest.reads?.operations, manifest.tables)
+  validateChat(manifest.chat, manifest.roles, manifest.semantic)
   const names = new Set(manifest.tables.map((t) => t.name))
   if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
     throw new Error('Duplicate Tables or unknown entryTable')
@@ -464,6 +477,179 @@ export function runPackageAction(app: string, action: string, input: unknown, us
 
 export function runPackageRead(app: string, read: string, input: unknown, user: string, discovery = false) {
   return executeRuntimeRead(app, read, input, user, () => packages.get(app)?.reads, discovery)
+}
+
+/**
+ * Answers a plan from one of the app's semantic models. It runs as the read
+ * the model names, with the platform's handler in place of the app's: the
+ * same policy, the same places and the same access log as that read, and
+ * rows only from the cached dataset. An app or model that isn't there is
+ * refused the way an undeclared read is.
+ */
+export function runPackageAnalysis(app: string, modelName: string, input: unknown, user: string) {
+  return asModelRead(app, modelName, input, user, model => async (context) => {
+    const plan = readPlan(model, context.payload)
+    const rows = await context.datasets.active(model.dataset)
+    if (!rows) return null
+    await context.recordView({ dataset: model.dataset })
+    return { ...runPlan(model, await withRelationships(model, rows.rows), plan), served: rows.served, at: rows.at,
+      places: (context.authorization.places ?? []).map(place => place.label) }
+  })
+}
+
+// A model's relationships are read by the platform, not as the asker: a
+// reader need not be able to open the app's own Tables for their rows to be
+// labelled from them (as the app's report labels them). Only rows the asker
+// may already see are labelled, and validateSemantic has limited the Tables
+// to the app's own.
+function withRelationships(model: SemanticModel, rows: Parameters<typeof joinRows>[1]) {
+  return joinRows(model, rows, async (table) => {
+    const { row_key: rowKey } = await getMeta(table)
+    return (await sql`select * from ${sql(await tableRelation(table))}`).map(row => ({ ...row, [ROW_ID]: row[rowKey] }))
+  }, new Date().toISOString().slice(0, 10))
+}
+
+// Runs as the read a semantic model names, with the platform's handler in
+// place of the app's.
+function asModelRead(app: string, modelName: string, input: unknown, user: string, handler: (model: SemanticModel) => RuntimeReadHandler) {
+  const pkg = packages.get(app)
+  const model = pkg?.manifest.semantic?.models.find(candidate => candidate.name === modelName)
+  return executeRuntimeRead(app, model?.read ?? modelName, input, user,
+    () => pkg?.reads && model ? { ...pkg.reads, handlers: new Map([[model.read, handler(model)]]) } : undefined)
+}
+
+/**
+ * Answers a question in words from one of the app's semantic models, by SQL
+ * first and by a plan when the SQL cannot be used. The model is the one
+ * named, or another that runs as the same read when the question is about
+ * that one's figures (the language model says which). Who may
+ * ask is decided first, as the model's read decides it, so a person who may
+ * not ask costs no call to the language model. The plan it returns is then
+ * checked and answered exactly as a plan sent directly would be. A follow-up
+ * carries on from the asker's own earlier questions, which the platform keeps
+ * (the question and what it became, never a figure).
+ */
+export async function askPackageQuestion(app: string, modelName: string, input: unknown, user: string, options: {
+  /** The ways to answer, in order: SQL then a plan unless the caller wants one alone (a chat mode does). */
+  paths?: readonly ('sql' | 'plan')[]
+  /** The earlier turns to carry on from, when the caller keeps the conversation itself (the chat does). */
+  history?: readonly Turn[]
+  /** False when the caller keeps its own record of what was asked. */
+  record?: boolean
+} = {}) {
+  const paths = options.paths ?? ['sql', 'plan']
+  const declared = packages.get(app)?.manifest.semantic?.models ?? []
+  const model = declared.find(candidate => candidate.name === modelName)
+  // An app or model that isn't there is refused the way an undeclared read is.
+  if (!model) return runPackageAnalysis(app, modelName, input, user)
+  const { question } = readAsk(input)
+  // The question may be answered from the model named or from any other of the
+  // app's models that runs as the same read: the same people, the same places.
+  const models = [model, ...declared.filter(candidate => candidate !== model && candidate.read === model.read)]
+  const { result: values } = await askerValues(app, modelName, models, user)
+  const language = planModel()
+  const history = options.history ?? await openTurns(app, user)
+  const record = async (outcome: Outcome) => { if (options.record !== false) return recordQuestion(app, user, question, outcome) }
+  // A question that could not be answered is kept too, with why.
+  const refused = async (error: unknown): Promise<never> => {
+    if (error instanceof AppError) await record({ refused: error.message })
+    throw error
+  }
+  // First, SQL: the language model writes one SELECT, run on a private copy of
+  // the asker's own rows. SQL that cannot be used is not an answer and not a
+  // refusal: the question goes on to a plan.
+  const datasets = packages.get(app)?.manifest.datasets ?? []
+  const tables: SqlTable[] = models.map(candidate => ({ model: candidate, dataset: datasets.find(dataset => dataset.name === candidate.dataset)! }))
+  if (paths.includes('sql')) try {
+    const reply = await questionToSql(tables, question, language, values, history)
+    if ('clarify' in reply) {
+      await record({ clarify: reply.clarify })
+      return { question, clarify: reply.clarify }
+    }
+    const { result } = await runPackageSql(app, tables.find(table => table.model.name === reply.model)!, reply.sql, reply.percent, user)
+    if (result?.fault !== undefined) throw new SqlFault(result.fault)
+    await record(result ? { model: reply.model, sql: reply.sql } : { refused: 'The figures were being prepared' })
+    return { question, model: reply.model, sql: reply.sql, result }
+  } catch (error) {
+    if (!(error instanceof SqlFault)) return refused(error)
+    if (!paths.includes('plan')) return refused(new AppError('ValidationError', 'That question could not be worked out from the figures. Try asking it another way.'))
+    console.warn(`[analyst] SQL could not be used, so a plan is tried: ${error.message}`)
+  }
+  // Second, a plan: names chosen from the model, worked out by the platform.
+  let reply: Awaited<ReturnType<typeof questionToPlan>>
+  try {
+    reply = await questionToPlan(models, question, language, values, history)
+  } catch (error) {
+    return refused(error)
+  }
+  // A question that could mean two things is asked back, not guessed at.
+  if ('clarify' in reply) {
+    await record({ clarify: reply.clarify })
+    return { question, clarify: reply.clarify }
+  }
+  const { result } = await runPackageAnalysis(app, reply.model, { payload: reply.plan }, user) as { result: unknown }
+  await record(result ? { model: reply.model, plan: reply.plan } : { refused: 'The figures were being prepared' })
+  return { question, model: reply.model, plan: reply.plan, result }
+}
+
+// Runs the language model's SQL as the read the model names: the same policy,
+// places and access log as that read, over a private copy of the asker's rows
+// of the cached dataset. SQL that cannot be used comes back as a fault, with
+// no view recorded.
+function runPackageSql(app: string, table: SqlTable, text: string, percent: readonly string[] | undefined, user: string) {
+  return asModelRead(app, table.model.name, { payload: {} }, user, model => async (context) => {
+    const rows = await context.datasets.active(model.dataset)
+    if (!rows) return null
+    try {
+      const answer = await runSql(table, await withRelationships(model, rows.rows), text, undefined, percent)
+      await context.recordView({ dataset: model.dataset })
+      return { ...answer, served: rows.served, at: rows.at, places: (context.authorization.places ?? []).map(place => place.label) }
+    } catch (error) {
+      if (error instanceof SqlFault) return { fault: error.message }
+      throw error
+    }
+  }) as Promise<{ result: (Record<string, unknown> & { fault?: string }) | null }>
+}
+
+// The models' read, answering only the asker's own dimension values (names,
+// never figures): the same role and place checks, and no view recorded.
+function askerValues(app: string, modelName: string, models: readonly SemanticModel[], user: string) {
+  return asModelRead(app, modelName, { payload: {} }, user, () => async (context) => {
+    const known: Record<string, Record<string, string[]>> = {}
+    for (const candidate of models) {
+      const rows = await context.datasets.active(candidate.dataset)
+      known[candidate.name] = rows ? dimensionValues(candidate, await withRelationships(candidate, rows.rows)) : {}
+    }
+    return known
+  }) as Promise<{ result: Record<string, Record<string, string[]>> }>
+}
+
+/** A person's own names for each dimension of one of the app's models (names, never figures), as the model's read allows them. */
+export async function packageDimensionValues(app: string, modelName: string, user: string): Promise<Record<string, string[]>> {
+  const model = packages.get(app)?.manifest.semantic?.models.find(candidate => candidate.name === modelName)
+  return (await askerValues(app, modelName, model ? [model] : [], user)).result[modelName] ?? {}
+}
+
+/** The app's declared chat, when it has one. */
+export function packageChat(app: string) {
+  return packages.get(app)?.manifest.chat
+}
+
+// Who may ask a model's questions may see and close their own conversation:
+// the same read, with nothing answered and no view recorded.
+const asAsker = (app: string, modelName: string, user: string) => asModelRead(app, modelName, { payload: {} }, user, () => async () => true)
+
+/** The asker's open conversation with the app: their earlier questions, and the question each was asked back, oldest first. */
+export async function earlierPackageQuestions(app: string, modelName: string, user: string) {
+  await asAsker(app, modelName, user)
+  return { questions: (await openTurns(app, user)).map(({ question, clarify }) => clarify === undefined ? { question } : { question, clarify }) }
+}
+
+/** The asker starts over: their next question follows from nothing. */
+export async function forgetPackageQuestions(app: string, modelName: string, user: string) {
+  await asAsker(app, modelName, user)
+  await closeTurns(app, user)
+  return { questions: [] }
 }
 
 export function declaredPackageActions() {

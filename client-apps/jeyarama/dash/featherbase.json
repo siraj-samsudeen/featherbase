@@ -9,7 +9,12 @@
   "roles": [
     "Feather Dash Reader",
     "Feather Dash Section Editor",
-    "Feather Dash Section Reviewer"
+    "Feather Dash Section Reviewer",
+    "Feather Dash Chat Agent",
+    "Feather Dash Chat Reports",
+    "Feather Dash Chat Ask",
+    "Feather Dash Chat Action",
+    "Feather Dash Chat Reviewer"
   ],
   "roleDefaults": {},
   "settings": [
@@ -175,6 +180,69 @@
       ],
       "keys": [
         "store_code"
+      ],
+      "filters": {
+        "store": "store_code",
+        "subcategory": "subcategory_code"
+      }
+    },
+    {
+      "name": "sales_by_month",
+      "source": "motherduck",
+      "query": "with period as (\n  select cast(date_trunc('month', cast(timezone('Asia/Kolkata', now()) as date)) as date) as period_start,\n         cast(timezone('Asia/Kolkata', now()) as date) as period_end\n),\ncutoff as (\n  select p.period_start,\n         least(p.period_end, coalesce((select max(actuals_as_of_date) from \"marts\".\"sales\".\"target_vs_actual_daily\"), p.period_end)) as effective_end\n  from period p\n),\nmonths as (\n  select cast(k.months_ago as integer) as months_ago,\n         cast(c.period_start - to_months(cast(k.months_ago as integer)) as date) as month_start,\n         cast(c.effective_end - c.period_start as integer) as days_in\n  from cutoff c cross join (select unnest(range(0, 4)) as months_ago) k\n),\nspans as (\n  select m.months_ago, m.month_start,\n         least(cast(m.month_start + m.days_in as date), last_day(m.month_start)) as data_through\n  from months m\n),\nstores as (\n  select store_code, any_value(store_name) as store_name\n  from \"gold\".\"masters\".\"store\" group by 1\n),\nnames as (\n  select material_group_code, any_value(subcategory) as subcategory\n  from \"gold\".\"masters\".\"merchandise_hierarchy\" where material_group_code is not null group by 1\n),\ntargets as (\n  select w.months_ago, t.plant_code, t.hierarchy_code, t.business_date, t.target_daily_before_tax, t.actual_before_tax,\n         t.target_quantity, t.actual_quantity\n  from \"marts\".\"sales\".\"target_vs_actual_daily\" t join spans w on t.business_date between w.month_start and w.data_through\n  where t.hierarchy_level = 'material_group'\n),\nsales as (\n  select w.months_ago, s.store_code as plant_code, lpad(s.material_group, 9, '0') as hierarchy_code, s.business_date,\n         sum(s.sales_before_tax_net) as actual_before_tax, sum(s.qty_net) as actual_quantity\n  from \"gold\".\"sales\".\"sales_item_daily\" s join spans w on s.business_date between w.month_start and w.data_through\n  where s.material_group is not null\n  group by 1, 2, 3, 4\n),\ndays as (\n  select coalesce(t.months_ago, s.months_ago) as months_ago,\n         coalesce(t.plant_code, s.plant_code) as plant_code,\n         coalesce(t.hierarchy_code, s.hierarchy_code) as hierarchy_code,\n         t.target_daily_before_tax as target,\n         case when t.plant_code is not null then t.actual_before_tax else s.actual_before_tax end as actual,\n         t.target_quantity,\n         case when t.plant_code is not null then t.actual_quantity else s.actual_quantity end as actual_quantity\n  from targets t\n  full join sales s on s.plant_code = t.plant_code and s.hierarchy_code = t.hierarchy_code and s.business_date = t.business_date\n)\nselect d.plant_code as store_code, st.store_name,\n       d.hierarchy_code as subcategory_code, n.subcategory,\n       strftime(w.month_start, '%Y-%m') as month_label, w.months_ago, w.month_start, w.data_through,\n       sum(d.target) as target, sum(d.actual) as actual,\n       sum(d.target_quantity) as target_quantity, sum(d.actual_quantity) as actual_quantity\nfrom days d\njoin spans w on w.months_ago = d.months_ago\nleft join stores st on st.store_code = d.plant_code\nleft join names n on n.material_group_code = d.hierarchy_code\ngroup by d.plant_code, st.store_name, d.hierarchy_code, n.subcategory, w.month_start, w.months_ago, w.data_through",
+      "columns": [
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "subcategory",
+          "type": "text"
+        },
+        {
+          "name": "month_label",
+          "type": "text"
+        },
+        {
+          "name": "months_ago",
+          "type": "integer"
+        },
+        {
+          "name": "month_start",
+          "type": "date"
+        },
+        {
+          "name": "data_through",
+          "type": "date"
+        },
+        {
+          "name": "target",
+          "type": "money"
+        },
+        {
+          "name": "actual",
+          "type": "money"
+        },
+        {
+          "name": "target_quantity",
+          "type": "number"
+        },
+        {
+          "name": "actual_quantity",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "store_code",
+        "subcategory_code"
       ],
       "filters": {
         "store": "store_code",
@@ -874,6 +942,110 @@
         "outbound": true
       }
     }
+  },
+  "chat": {
+    "title": "FeatherBot",
+    "modes": {
+      "agent": { "roles": ["Feather Dash Chat Agent"], "model": "sales_vs_target" },
+      "reports": { "roles": ["Feather Dash Chat Reports"], "model": "sales_vs_target" },
+      "ask": { "roles": ["Feather Dash Chat Ask"] },
+      "action": {
+        "roles": ["Feather Dash Chat Action"],
+        "reviewers": ["Feather Dash Chat Reviewer"],
+        "requests": [
+          {
+            "name": "target_review",
+            "title": "Target review",
+            "description": "Ask for a subcategory's sales target for this month to be looked at again, for example when stock arrived late or a section was closed for some days.",
+            "ticket": "TR",
+            "model": "sales_vs_target",
+            "inputs": [
+              { "name": "store", "label": "Store", "description": "the store the target is for", "dimension": "store" },
+              { "name": "subcategory", "label": "Subcategory", "description": "the subcategory whose target should be reviewed", "dimension": "subcategory" },
+              { "name": "reason", "label": "Reason", "description": "why the target should be looked at again" }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "semantic": {
+    "models": [
+      {
+        "name": "sales_vs_target",
+        "description": "Month-to-date sales against target, per store and subcategory.",
+        "dataset": "sales_to_date",
+        "read": "report",
+        "asOf": "data_through",
+        "relationships": [
+          { "name": "placement", "table": "feather_dash.section_subcategory", "on": { "store_code": "store", "subcategory_code": "subcategory" }, "current": { "from": "starts_on", "to": "ends_on" } },
+          { "name": "section", "from": "placement", "table": "feather_dash.section", "on": { "section": "row_id" } },
+          { "name": "department", "from": "section", "table": "feather_dash.department", "on": { "department": "row_id" } }
+        ],
+        "dimensions": [
+          { "name": "store", "column": "store_name", "synonyms": ["branch", "outlet", "shop"] },
+          { "name": "subcategory", "column": "subcategory" },
+          { "name": "section", "relationship": "section", "column": "section_name", "description": "The section of the store a subcategory is sold in" },
+          { "name": "department", "relationship": "department", "column": "name", "description": "The department a section belongs to" }
+        ],
+        "measures": [
+          { "name": "target", "column": "target", "aggregate": "sum", "description": "Sales target before tax, month to date" },
+          { "name": "sales", "column": "actual", "aggregate": "sum", "description": "Sales before tax, month to date", "synonyms": ["actual", "achievement in rupees"] },
+          { "name": "target_quantity", "column": "target_quantity", "aggregate": "sum" },
+          { "name": "sales_quantity", "column": "actual_quantity", "aggregate": "sum", "synonyms": ["units sold", "pieces"] }
+        ],
+        "metrics": [
+          { "name": "gap", "expression": "sales - target", "description": "Sales less target: negative is behind target", "synonyms": ["shortfall", "variance"] },
+          { "name": "achieved", "expression": "100 * sales / target", "unit": "percent", "synonyms": ["achievement", "attainment"] }
+        ],
+        "verified": [
+          { "question": "How is my store doing against target this month?", "plan": { "measures": ["target", "sales", "gap", "achieved"], "groupBy": ["store"] } },
+          { "question": "Which subcategories are furthest behind target?", "plan": { "measures": ["target", "sales", "gap"], "groupBy": ["subcategory"], "having": [{ "measure": "gap", "is": "below", "value": 0 }], "order": [["gap", "asc"]], "limit": 5 } },
+          { "question": "Which sections are furthest behind target?", "plan": { "measures": ["target", "sales", "gap"], "groupBy": ["section"], "having": [{ "measure": "gap", "is": "below", "value": 0 }], "order": [["gap", "asc"]], "limit": 5 } },
+          { "question": "Which subcategories have sold the most?", "plan": { "measures": ["sales", "achieved"], "groupBy": ["subcategory"], "order": [["sales", "desc"]], "limit": 5 } }
+        ]
+      },
+      {
+        "name": "sales_by_month",
+        "description": "Sales against target for this month and the three before it. Every month is counted over the same days of the month as this month so far, so months compare fairly.",
+        "dataset": "sales_by_month",
+        "read": "report",
+        "asOf": "data_through",
+        "relationships": [
+          { "name": "placement", "table": "feather_dash.section_subcategory", "on": { "store_code": "store", "subcategory_code": "subcategory" }, "current": { "from": "starts_on", "to": "ends_on" } },
+          { "name": "section", "from": "placement", "table": "feather_dash.section", "on": { "section": "row_id" } },
+          { "name": "department", "from": "section", "table": "feather_dash.department", "on": { "department": "row_id" } }
+        ],
+        "dimensions": [
+          { "name": "store", "column": "store_name", "synonyms": ["branch", "outlet", "shop"] },
+          { "name": "subcategory", "column": "subcategory" },
+          { "name": "section", "relationship": "section", "column": "section_name", "description": "The section of the store a subcategory was sold in that month" },
+          { "name": "department", "relationship": "department", "column": "name", "description": "The department a section belongs to" },
+          { "name": "month", "column": "month_label", "description": "A calendar month, written YYYY-MM. Group by it only with the month_ figures", "synonyms": ["period"] }
+        ],
+        "measures": [
+          { "name": "sales", "column": "actual", "aggregate": "sum", "where": { "months_ago": 0 }, "description": "Sales before tax, this month to date", "synonyms": ["this month's sales", "actual"] },
+          { "name": "sales_last_month", "column": "actual", "aggregate": "sum", "where": { "months_ago": 1 }, "description": "Sales before tax over the same days of last month", "synonyms": ["previous month's sales"] },
+          { "name": "target", "column": "target", "aggregate": "sum", "where": { "months_ago": 0 }, "description": "Sales target before tax, this month to date" },
+          { "name": "target_last_month", "column": "target", "aggregate": "sum", "where": { "months_ago": 1 }, "description": "Sales target before tax over the same days of last month" },
+          { "name": "month_sales", "column": "actual", "aggregate": "sum", "description": "Sales before tax in each month, over the same days; use it grouped by month", "synonyms": ["monthly sales", "sales trend"] },
+          { "name": "month_target", "column": "target", "aggregate": "sum", "description": "Sales target before tax in each month, over the same days; use it grouped by month", "synonyms": ["monthly target"] }
+        ],
+        "metrics": [
+          { "name": "sales_change", "expression": "sales - sales_last_month", "description": "This month's sales less last month's: negative is a fall", "synonyms": ["change", "difference", "rise", "fall"] },
+          { "name": "sales_growth", "expression": "100 * (sales - sales_last_month) / sales_last_month", "unit": "percent", "description": "The change as a percentage of last month's sales", "synonyms": ["growth", "month on month"] },
+          { "name": "achieved", "expression": "100 * sales / target", "unit": "percent", "synonyms": ["achievement", "attainment"] },
+          { "name": "achieved_last_month", "expression": "100 * sales_last_month / target_last_month", "unit": "percent" },
+          { "name": "month_achieved", "expression": "100 * month_sales / month_target", "unit": "percent", "description": "Each month's sales as a percentage of its target; use it grouped by month" }
+        ],
+        "verified": [
+          { "question": "How do my sales compare with last month?", "plan": { "measures": ["sales", "sales_last_month", "sales_change", "sales_growth"] } },
+          { "question": "Which subcategories have fallen the most since last month?", "plan": { "measures": ["sales", "sales_last_month", "sales_change"], "groupBy": ["subcategory"], "having": [{ "measure": "sales_change", "is": "below", "value": 0 }], "order": [["sales_change", "asc"]], "limit": 5 } },
+          { "question": "Which sections grew the most over last month?", "plan": { "measures": ["sales", "sales_last_month", "sales_growth"], "groupBy": ["section"], "having": [{ "measure": "sales_growth", "is": "above", "value": 0 }], "order": [["sales_growth", "desc"]], "limit": 5 } },
+          { "question": "Show my sales for each of the last four months", "plan": { "measures": ["month_sales", "month_target", "month_achieved"], "groupBy": ["month"], "order": [["month", "asc"]] } }
+        ]
+      }
+    ]
   },
   "migrations": [{"id": "compact_sales_target_dive_v13", "fromVersion": "0.10.0", "toVersion": "0.10.1", "operations": []}]
 }

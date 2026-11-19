@@ -99,6 +99,19 @@ variable.
 | `FEATHERBASE_INSTANCE` | no | no |  | the client instance this image was built for (`<client>/<instance>`), as a build argument and a variable. Set, the pre-deploy step installs or upgrades its apps and applies its settings. See [A client instance](#a-client-instance) |
 | `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
 | `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
+| `ANTHROPIC_API_KEY` | no | yes |  | turns on asking questions of an app's data in words: the key for Anthropic's API, which turns a question into a plan. Unset, questions in words are refused as not set up; plans still work. Never logged or returned |
+| `ANTHROPIC_WORKSPACE_ID` | no | no |  | the Anthropic workspace to send questions to; needed only when `ANTHROPIC_API_KEY` is not scoped to a workspace |
+| `ANALYST_MODEL` | no | no | `claude-sonnet-5-5` | the Claude model that turns questions into plans |
+| `ANALYST_API_BASE` | no | no | `https://api.anthropic.com` | where questions are sent; overridable only for a local stand-in |
+| `CHAT_WRITTEN_ANSWERS` | no | no | `on` | whether an Agent answer in an app's chat also says in words what its table shows. On, the rows of that one answer are sent to the language model to be written about; `off` shows the table and its SQL alone, and no figure leaves the server |
+| `ANALYST_MONTHLY_TOKENS` | no | no | no allowance: use is recorded and never stopped | the most language model tokens (input and output together) the instance may use in a calendar month. The server log is warned at 80%; at 100% every question in words is refused until the month ends, and then opens again by itself |
+| `CHAT_DAILY_MESSAGES` | no | no | `200` | the most messages one person may send to the chats in 24 hours; `0` sets no limit |
+| `EMBEDDING_PROVIDER` | no | no | `local` | what finds the help passages nearest to a question: `local` runs an open embedding model inside the server (no key, no cost per use; the model is downloaded from huggingface.co on first use), `voyage` calls Voyage AI. Answers also need `ANTHROPIC_API_KEY` |
+| `EMBEDDING_MODEL` | no | no | `Snowflake/snowflake-arctic-embed-m-v2.0` (local), `voyage-4` (voyage) | the model that embeds help passages and questions; changing it embeds every passage again |
+| `EMBEDDING_CACHE` | no | no | `storage/embedding-models` beside the server | the folder the local embedding model's files are kept in; set it to a volume so a new deployment does not download them again |
+| `VOYAGE_API_KEY` | no | yes |  | the key for Voyage AI's embeddings API, needed only when `EMBEDDING_PROVIDER` is `voyage` |
+| `EMBEDDING_API_BASE` | no | no | `https://api.voyageai.com` | where Voyage AI is reached; overridable only for a local stand-in |
+| `HELP_SOURCES` | no | no | `help/sources.json` in the repository | the list of help sources (`{ "include": [<paths>] }`, relative to the list); an image that lacks the repository's help folder sets it |
 | `MOTHERDUCK_TOKEN` | no | yes |  | MotherDuck access for the sales-target embed and warehouse reads; never logged, returned or stored |
 | `MOTHERDUCK_API_BASE` | no | no | `https://api.motherduck.com` | MotherDuck API base |
 | `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub |

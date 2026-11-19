@@ -32,6 +32,25 @@ v13 only; every other pin gets the plain scope keys (see "Turning on the
 compact state"). The history behind these is in the client's
 repository (data-warehouse #4486, #4531, #4453).
 
+**FeatherBot, the chat beside the report** (OpenSpec change
+`ask-questions-of-app-data`). The manifest's `semantic` section declares two
+models (`sales_vs_target` over `sales_to_date`, `sales_by_month` over
+`sales_by_month`) and its `chat` section four modes, each opened by its own
+app role:
+
+| Mode | Role | What it does |
+|---|---|---|
+| Agent | Feather Dash Chat Agent | a question about the figures, answered in the chat by SQL over the reader's own rows |
+| Reports | Feather Dash Chat Reports | a question about the figures, drawn as a report on the page |
+| Ask | Feather Dash Chat Ask | how things work, answered from `help/` with its sources |
+| Action | Feather Dash Chat Action | a target review (TR-n), sent once the reader confirms it |
+
+Feather Dash Chat Reviewer approves or rejects target reviews under
+**Requests**. With `--made-up-data` every made-up reader holds the four modes,
+and the Administrator holds Ask and Reviewer alone. The platform's side needs
+`ANTHROPIC_API_KEY`; `ANALYST_MONTHLY_TOKENS` and `CHAT_DAILY_MESSAGES` limit
+use (see DEPLOY.md).
+
 ## Layout
 
 | Path | What it is |
@@ -215,6 +234,15 @@ at the repository root.
   with only `period_start`, `data_through` and `targets_available`, limited
   to the reader the same way. It tells a month that hasn't arrived from a
   section that sold nothing, whose figures are empty either way.
+- **The months side by side, `sales_by_month`**: one row per store, subcategory
+  and month, for this month and the three before it, with target, sales and
+  quantities. Every month is counted over the same days of the month as this
+  month so far, so a month in progress compares fairly with the ones before
+  it. `months_ago` is 0 for this month. It follows `sales_to_date`'s rules
+  month by month (`src/dataset-query.test.ts` proves this month's rows equal
+  `sales_to_date`'s), is limited to the reader the same way, and has no
+  refresh guard yet. Only the `sales_by_month` semantic model reads it, to
+  answer questions such as "how do my sales compare with last month?".
 - **The reads** (`POST /api/app_reads/feather_dash/<read>` with
   `{"payload":{…}}` and the header `X-Featherbase-App-Version:
   feather_dash@<version>`, which the client sends):

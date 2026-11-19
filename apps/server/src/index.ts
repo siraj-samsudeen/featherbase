@@ -76,7 +76,10 @@ import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
-import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { answerHelp } from './help'
+import { chatModes, chatRequests, chatSession, chatSessions, closeChatSession, decideChatRequest, sendChat } from './app-chat'
+import { usageReport } from './model-usage'
+import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, runPackageAnalysis, askPackageQuestion, earlierPackageQuestions, forgetPackageQuestions, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
@@ -765,10 +768,11 @@ app.use('/api/*', async (c, next) => {
     // authorizes (and, unless outbound, runs), so an outbound handler waiting
     // on an outside call holds no lifecycle connection.
     // #642: the top bar's options are app reads too (Codex round 1 on #643).
-    const appRead = c.req.path.startsWith('/api/app_reads/') || c.req.path.startsWith('/api/app_bar/')
+    const appRead = c.req.path.startsWith('/api/app_reads/') || c.req.path.startsWith('/api/app_bar/') || c.req.path.startsWith('/api/app_analyses/')
+      || c.req.path.startsWith('/api/app_questions/') || c.req.path.startsWith('/api/app_chat/')
     return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appRead ? next() : appOperation(next))
   } catch (error) {
-    const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
+    const protectedOperation = /^\/api\/app_(?:reads|actions|analyses|questions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
     if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')
     throw error
   }
@@ -1809,6 +1813,70 @@ app.post('/api/app_actions/:app/:action', async (c) =>
 app.post('/api/app_reads/:app/:read', async (c) => {
   c.header('Cache-Control', 'no-store')
   return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
+})
+// A plan answered from one of the app's semantic models, as the read the
+// model names.
+app.post('/api/app_analyses/:app/:model', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await runPackageAnalysis(c.req.param('app'), c.req.param('model'), await c.req.json(), who(c)))
+})
+// A question in words, turned into a plan for that model and answered as one.
+// The platform keeps the asker's questions, so a follow-up carries on from them.
+app.post('/api/app_questions/:app/:model', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await askPackageQuestion(c.req.param('app'), c.req.param('model'), await c.req.json(), who(c)))
+})
+app.post('/api/app_questions/:app/:model/earlier', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await earlierPackageQuestions(c.req.param('app'), c.req.param('model'), who(c)))
+})
+app.post('/api/app_questions/:app/:model/start_over', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await forgetPackageQuestions(c.req.param('app'), c.req.param('model'), who(c)))
+})
+// An app's chat panel: the modes this person holds, their conversations, and
+// what they say in a mode, answered by the tool that mode names.
+app.post('/api/app_chat/:app/modes', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await chatModes(c.req.param('app'), who(c)))
+})
+app.post('/api/app_chat/:app/sessions', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await chatSessions(c.req.param('app'), who(c)))
+})
+app.post('/api/app_chat/:app/sessions/:id', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await chatSession(c.req.param('app'), c.req.param('id'), who(c)))
+})
+app.post('/api/app_chat/:app/sessions/:id/close', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await closeChatSession(c.req.param('app'), c.req.param('id'), who(c)))
+})
+app.post('/api/app_chat/:app/send', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await sendChat(c.req.param('app'), await c.req.json(), who(c)))
+})
+// Requests sent through the chat's Action mode: the person's own and, for a
+// reviewer, those waiting; and a reviewer's decision on one.
+app.post('/api/app_chat/:app/requests', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await chatRequests(c.req.param('app'), who(c)))
+})
+app.post('/api/app_chat/:app/requests/:id/decide', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await decideChatRequest(c.req.param('app'), c.req.param('id'), await c.req.json(), who(c)))
+})
+// What the language model has used this month against the instance's allowance.
+app.post('/api/analyst/usage', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (!(await getRoles(who(c))).includes('System Manager'))
+    throw new AppError('PermissionError', 'The language model\'s use is shown to a System Manager')
+  return c.json(await usageReport())
+})
+// A question about how things work, answered from the help folder with its sources.
+app.post('/api/help/ask', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await answerHelp(await c.req.json()))
 })
 app.get('/api/app_reads/:app/:read/access', async (c) => {
   c.header('Cache-Control', 'no-store')

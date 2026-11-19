@@ -1,6 +1,9 @@
 // Feather Dash's report page (rendered by main.tsx).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
+import { ReportAnswer } from './ask-panel'
+import { ChatPanel } from './chat-panel'
+import type { Asked, AskResult } from './ask'
 import { MEASURE_LINE, TOTALS_NOTE, noAccessHelp, type NoAccessHelp, headingTitle, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
 import type { Heading, Report, ReportRow, Totals } from './report'
 
@@ -66,17 +69,22 @@ export function FeatherDash() {
   }, [loader])
   const tryAgain = useCallback(() => (checkFailed ? setCheckAttempt : setAttempt)((n) => n + 1), [checkFailed])
   // Only a state of the store now chosen is drawn, whatever reached it (round 8).
+  // The latest report asked for in the chat, drawn on this page until it is closed.
+  const [asked, setAsked] = useState<(Asked & { result: AskResult }) | undefined>(undefined)
   const shown = visibleState(state, store?.value)
   const { report } = shown
   const view = checkFailed && !store ? { kind: 'failed' as const } : pageView(shown)
   const frameAttempt = loader.current()
 
   return (
+    <div className="fd-shell">
     <main className="fd-page" data-testid="feather-dash" data-view={view.kind}>
       {/* The header, in every state with a store on show (#4486): the Dive, the quick view, and each empty state. */}
       {(view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty') && report?.ok && report.value.heading && (
         <ReportHeading heading={report.value.heading} period={report.value} wide={view.kind === 'dive'} />
       )}
+      {/* A report asked for in the chat's Reports mode. */}
+      {asked && <ReportAnswer report={asked} onClose={() => setAsked(undefined)} />}
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}
       {view.kind === 'dive' && (
         <div className="fd-frame-box">
@@ -113,6 +121,9 @@ export function FeatherDash() {
         </Notice>
       )}
     </main>
+    {/* The chat: its modes are the ones this person holds, so it shows itself to no one without any. */}
+    <ChatPanel onReport={setAsked} />
+    </div>
   )
 }
 

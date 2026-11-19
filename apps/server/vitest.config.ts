@@ -83,6 +83,10 @@ export default defineConfig({
       // without one would report a permanent gap that says nothing about the
       // code, so it is counted exactly when its tests can run.
       exclude: [
+        // The local embedding model downloads several hundred megabytes from
+        // huggingface.co before it can run. help-embedding.ts, which calls it,
+        // is covered with a stand-in for what this file loads.
+        'src/help-embedding-local.ts',
         // ADR 0012: this boundary needs the hosted MotherDuck service and a
         // live token. Token validation and query construction remain covered.
         'src/motherduck-hosted.ts',

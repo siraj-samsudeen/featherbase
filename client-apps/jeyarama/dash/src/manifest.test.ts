@@ -15,8 +15,10 @@ const appDir = resolve(import.meta.dirname, '..')
 describe('the featherbase manifest', () => {
   it('is accepted by the platform\'s app loader', () => {
     const server = resolve(checkout, 'apps/server')
-    const output = execFileSync(resolve(server, 'node_modules/.bin/tsx'),
-      [resolve(appDir, 'scripts/platform-loads-app.mts'), checkout, appDir], { cwd: server, encoding: 'utf8' })
+    // tsx's own CLI, run by this node: node_modules/.bin/tsx is a shell
+    // script, which Windows cannot start without a shell.
+    const output = execFileSync(process.execPath, [resolve(server, 'node_modules/tsx/dist/cli.mjs'),
+      resolve(appDir, 'scripts/platform-loads-app.mts'), checkout, appDir], { cwd: server, encoding: 'utf8' })
     expect(JSON.parse(output.trim().split('\n').at(-1)!)).toMatchObject({ name: 'feather_dash', version: pkg.version, accepted: true })
   }, 60_000)
 })

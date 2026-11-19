@@ -82,7 +82,14 @@ await markScopeTables((path: string, init?: RequestInit) => call(path, init))
 const sourceExists = await call('/api/table/Data%20Source/motherduck').then(() => true, () => false)
 if (!sourceExists) await post('/api/table/Data%20Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'FEATHER_DASH_LOCAL_DUCKDB', access: 'read_only' })
 
-// Made-up people, each a Feather Dash Reader.
+// Made-up people, each a Feather Dash Reader with every mode of the chat. The Administrator, who
+// has no store, is given the Ask mode alone: a chat mode is held by its role, never by standing.
+// The Administrator also reviews the requests the others send through the Action mode.
+const CHAT_ROLES = ['Feather Dash Chat Agent', 'Feather Dash Chat Reports', 'Feather Dash Chat Ask', 'Feather Dash Chat Action']
+for (const [row, role, position] of [['administrator-chat-ask', 'Feather Dash Chat Ask', 99], ['administrator-chat-reviewer', 'Feather Dash Chat Reviewer', 98]] as const) {
+  const [held] = await sql`select 1 from has_role where parent = 'Administrator' and parenttype = 'Person' and role = ${role}`
+  if (!held) await sql`insert into has_role ${sql({ row_id: row, parent: 'Administrator', parenttype: 'Person', parentfield: 'roles', role, position } as never)}`
+}
 const people: Record<string, string> = {}
 for (const [key, name] of [['many', 'Asha Many-Stores'], ['one', 'Ravi One-Store'], ['none', 'Nila No-Access'], ['bare', 'Kumar Bare-Store'],
   ['quiet', 'Meena Quiet-Section'], ['sm', 'Selvi Store-Manager'], ['tl2', 'Tara Two-Sections'], ['tl4', 'Faiz Four-Sections'],
@@ -92,7 +99,7 @@ for (const [key, name] of [['many', 'Asha Many-Stores'], ['one', 'Ravi One-Store
   const email = `reader-${key}@example.test`
   const [found] = await sql`select row_id from person where lower(email) = ${email}`
   const id = found ? String(found.row_id) : String((await post('/api/table/Person', { email, full_name: name, enabled: true,
-    roles: [{ role: 'Feather Dash Reader' }] })).row_id)
+    roles: [{ role: 'Feather Dash Reader' }, ...CHAT_ROLES.map(role => ({ role }))] })).row_id)
   await setUserPassword(id, PASSWORD)
   people[key] = id
 }
@@ -228,6 +235,26 @@ async function seed(name: string, rows: Record<string, unknown>[]) {
 }
 await seed('sales_to_date', facts)
 await seed('sales_month', month)
+
+// The months side by side (`sales_by_month`): this month's made-up facts, and for the three months
+// before it the same subcategories with figures a little up or down, each counted to the same day
+// of its month. Bayside's 1,600 lines carry this month and last month only, to keep the seed quick.
+const firstOf = (ago: number) => new Date(Date.UTC(Number(periodStart.slice(0, 4)), Number(periodStart.slice(5, 7)) - 1 - ago, 1))
+const daysIn = Math.max(0, Math.round((Date.parse(dataThrough) - Date.parse(periodStart)) / 86_400_000))
+const sameDay = (ago: number) => {
+  const lastDay = new Date(Date.UTC(firstOf(ago).getUTCFullYear(), firstOf(ago).getUTCMonth() + 1, 0)).getTime()
+  return new Date(Math.min(firstOf(ago).getTime() + daysIn * 86_400_000, lastDay)).toISOString().slice(0, 10)
+}
+const EARLIER = [1, 0.92, 1.07, 0.85]
+const byMonth = facts.filter(fact => fact.period_start === periodStart).flatMap((fact, i) =>
+  [0, 1, 2, 3].filter(ago => fact.store_code !== '9906' || ago < 2).map((ago) => {
+    const factor = ago === 0 ? 1 : EARLIER[ago] + ((i % 5) - 2) * 0.04
+    const scaled = (value: number | null, places: number) => value == null ? null : Math.round(value * factor * 10 ** places) / 10 ** places
+    return { store_code: fact.store_code, store_name: fact.store_name, subcategory_code: fact.subcategory_code, subcategory: fact.subcategory,
+      month_label: firstOf(ago).toISOString().slice(0, 7), months_ago: ago, month_start: firstOf(ago).toISOString().slice(0, 10), data_through: sameDay(ago),
+      target: fact.target, actual: scaled(fact.actual, 2), target_quantity: fact.target_quantity, actual_quantity: scaled(fact.actual_quantity, 3) }
+  }))
+await seed('sales_by_month', byMonth)
 
 // The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
 const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },
