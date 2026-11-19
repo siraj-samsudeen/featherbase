@@ -32,13 +32,15 @@ function failureWords(error: unknown): string {
  * label, "report") that isn't there, may not be opened, or failed to load. Not found leads back (`back`, else
  * the Admin home); no access leads to the Admin home; a failure offers Try again.
  */
-export function CannotShow({ error, what, id, named, back, onRetry }: {
+export function CannotShow({ error, what, id, named, back, home, onRetry }: {
   error: unknown
   what: string
   /** A record's ID, or `named`: a report's or dashboard's name. */
   id?: string
   named?: string
   back?: ReactNode
+  /** The way home where it isn't the Admin home (the Portal's). */
+  home?: ReactNode
   onRetry: () => void
 }) {
   const kind = problemKind(error)
@@ -49,7 +51,7 @@ export function CannotShow({ error, what, id, named, back, onRetry }: {
         kind="not-found"
         title={`This ${what} isn’t here`}
         body={`${asked}It may have been deleted, or the link is wrong.`}
-        action={back ?? <AdminHomeLink />}
+        action={back ?? home ?? <AdminHomeLink />}
       />
     )
   if (kind === 'no-access')
@@ -58,7 +60,7 @@ export function CannotShow({ error, what, id, named, back, onRetry }: {
         kind="no-access"
         title={`You can’t open this ${what}`}
         body={`${refusalWords(error)} Ask your administrator if you need it.`}
-        action={<AdminHomeLink />}
+        action={home ?? <AdminHomeLink />}
       />
     )
   return (

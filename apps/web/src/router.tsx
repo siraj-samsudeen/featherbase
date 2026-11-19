@@ -22,6 +22,7 @@ import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
 import { Card, EmptyState, Notice, ProblemPage, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { AdminHomeLink, CannotShow } from './components/CannotShow'
 import { TopBar } from './components/TopBar'
+import { ThemeChoiceProvider } from './lib/theme-choice'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
 import { isListLayout, useListLayout } from './lib/list-layout'
@@ -151,6 +152,7 @@ function tablePage(Page: ComponentType) {
 }
 
 function TableAddressError({ error }: { error: unknown }) {
+  const inAdmin = useRouterState({ select: (state) => state.location.pathname.startsWith('/featherbase/admin') })
   if (error instanceof ApiError && error.status === 404 && /^Table .* not found$/.test(error.message))
     return <AdminPageNotFound />
   // #871: an old address of a renamed Table says where it went.
@@ -165,10 +167,12 @@ function TableAddressError({ error }: { error: unknown }) {
         />
       </div>
     )
-  // #1327: a deleted Table, a refusal or a failure, said on the shared page.
+  // #1327: a deleted Table, a refusal or a failure, said on the shared page. Outside the Admin (the
+  // Portal) the way forward is Featherbase, not the Admin home.
+  const home = inAdmin ? undefined : <a href="/" className={buttonClasses()}>Go to Featherbase</a>
   if (error instanceof ApiError && error.status === 404)
-    return <ProblemPage kind="not-found" title="This Table isn’t here" body={error.message} action={<AdminHomeLink />} />
-  return <CannotShow error={error} what="Table" onRetry={() => window.location.reload()} />
+    return <ProblemPage kind="not-found" title="This Table isn’t here" body={error.message} action={home ?? <AdminHomeLink />} />
+  return <CannotShow error={error} what="Table" home={home} onRetry={() => window.location.reload()} />
 }
 
 /** Where the root sends someone: sign in, or their landing. Found on staging and production
@@ -323,9 +327,11 @@ function AdminPageNotFound() {
 
 /** #1327 (audit F07): an address outside the Admin that matches nothing, under the shared top bar. */
 function PageNotFound() {
+  // Above the Admin's own providers: the bar needs the theme choice, and a signed-out visitor gets no bar.
   return (
+    <ThemeChoiceProvider>
     <div className="flex min-h-screen flex-col bg-canvas">
-      <TopBar forPerson />
+      {getToken() && <TopBar forPerson />}
       <main className="flex flex-1 items-center justify-center p-4">
         <Card className="w-full max-w-sm">
           <ProblemPage
@@ -337,6 +343,7 @@ function PageNotFound() {
         </Card>
       </main>
     </div>
+    </ThemeChoiceProvider>
   )
 }
 
