@@ -147,6 +147,8 @@ export interface TableMeta {
   correction_path?: string | null
   /** #1346: more columns search matches, besides the key and the title. */
   search_columns?: string[] | null
+  /** #1345: the Reference to Person through which each row is that person's record. */
+  person_column?: string | null
   // #905: archived: readable, never written, out of everyday menus.
   archived_at?: string | Date | null
   archived_by?: string | null
@@ -300,7 +302,11 @@ async function applyMetadataOverrides(name: string, meta: TableMeta): Promise<vo
       // the effective setting is the list of those that are columns here.
       : !o.column_name && o.property === 'search_columns'
         ? o.value.split(/[,\n]/).map((c) => c.trim()).filter((c) => meta.columns.some((x) => x.column_name === c))
-        : o.value
+        // #1345: an override names the Reference to Person through which a row is a person's
+        // record; one naming anything else names none.
+        : !o.column_name && o.property === 'person_column'
+          ? (meta.columns.some((x) => x.column_name === o.value.trim() && x.column_type === 'Reference' && x.reference_table === 'Person') ? o.value.trim() : null)
+          : o.value
     if (o.column_name) {
       const f = meta.columns.find((x) => x.column_name === o.column_name)
       if (f) (f as unknown as Record<string, unknown>)[o.property] = val
