@@ -289,17 +289,19 @@ And choosing it brings back Enchakkal Supermarket in the drill pane
 
 ### Requirement: A row page shows its connections under its name
 
-A row's page SHALL show the rows it points at and the counted groups that point at it directly
-under the row's name, the same as the drill pane does. Opening a row it points at shows it in the
-drill pane; opening a group jumps to that group's section on the row's Links tab.
+A row's page, and the drill pane, SHALL show the rows it points at and then one row of counts
+directly under the row's name: a count for each group with rows that point at it, the number first,
+a hop through a sub-table saying "through" it, and one for each section an installed app works out
+about the row. Opening a row it points at shows it in the drill pane; opening a count opens that
+group's list already filtered to the row. A group with no rows has no count there.
 
 #### Scenario: Enchakkal's page leads with its plants
 
 ```gherkin
 Given the site Enchakkal has three plants
 When the user opens Enchakkal's page
-Then its region Kerala and a group of 3 plants show under its name
-And opening the plants shows them in their section on the Links tab
+Then its region Kerala and a count of 3 plants show under its name
+And opening the count shows Enchakkal's plants as a list
 ```
 
 ### Requirement: A row page has a form, links, a map and activity

@@ -357,21 +357,6 @@ test("after Filter from the pane, the browser's back button lands on the filter'
   expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala', 'Enchakkal · ENK'])
 })
 
-// #1273 (D3): on the row page a group's chip jumps to its section on the Links tab.
-test("opening a group on the row page's own row jumps to its Links section in place, adding no browser history entry", async ({ admin }) => {
-  await seedSites(admin)
-  const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
-  const history = (view.router as unknown as { history: { length: number } }).history
-  const group = await screen.findByRole('button', { name: `${PLANT} 3` })
-  const before = history.length
-  fireEvent.click(group)
-  await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
-  expect(await screen.findByTestId('record-links')).toBeInTheDocument()
-  // Still one step, so no path bar yet (#1013).
-  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
-  expect(history.length).toBe(before)
-})
-
 test('a filter added while a row is in the pane is named on the path by the filter', async ({ admin }) => {
   await openEnchakkal(admin)
   const before = pathSteps().length
@@ -381,4 +366,47 @@ test('a filter added while a row is in the pane is named on the path by the filt
   await waitFor(() => expect(pathSteps()).toHaveLength(before + 1))
   expect(within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button', { current: 'step' })).toHaveTextContent('Region: Kerala')
   expect(await pane('Enchakkal')).toBeInTheDocument()
+})
+
+// #1349 item 1 (boards 3 and 4b): under the record's title, one row of count chips: one per group with rows, the
+// number first ("3 Nv Plants"), a hop through a sub-table saying so; a click opens the linked list already filtered.
+const countRow = (scope: HTMLElement | Document = document) => within(scope as HTMLElement).findByTestId('count-row')
+
+test("the record page leads with a count row: a chip per group with rows, opening that group's list filtered", async ({ admin }) => {
+  await seedSites(admin)
+  await seedVisits(admin)
+  const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const row = await screen.findByTestId('count-row')
+  expect(await within(row).findByRole('link', { name: '1 Nv Visit through Nv Visit Line' })).toBeInTheDocument()
+  const plants = await within(row).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.click(plants)
+  await waitFor(() => expect((view.router.state as { location: { pathname: string } }).location.pathname).toBe(tableHref(PLANT)))
+  await waitFor(() => expect(listed()).toBe(3))
+})
+
+test('a group with no rows gets no chip in the count row', async ({ admin }) => {
+  await seedSites(admin)
+  await seedVisits(admin)
+  await renderApp(`${tableHref(SITE)}/row/MDU`, admin)
+  await screen.findByRole('heading', { level: 1, name: /Madurai/ })
+  await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+  expect(screen.queryByRole('link', { name: /Nv Plant/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: /Nv Visit/ })).not.toBeInTheDocument()
+})
+
+test('the pane carries the same count row under its title', async ({ admin }) => {
+  const { pane: site } = await openEnchakkal(admin)
+  expect(await within(await countRow(site)).findByRole('link', { name: '3 Nv Plants' })).toHaveAttribute('href', expect.stringContaining(tableHref(PLANT)))
+})
+
+test('the count row counts only the rows the viewer may read, and names no Table they cannot open', async ({ admin, createUser }) => {
+  await seedSites(admin)
+  await seedVisits(admin)
+  const viewer = await createUserWithRole(admin, createUser, { role: 'Nv Count Viewer', table: [SITE, REGION], can_read: true })
+  await grantRole(admin, { role: 'Nv Count Viewer', table: PLANT, can_read: true, can_create: true, own_rows_only: true })
+  await viewer.post('/api/save_row', { table: PLANT, row: { row_id: '1701', plant_name: 'Enchakkal Bakery', site: 'ENK' } })
+  await renderApp(`${tableHref(SITE)}/row/ENK`, viewer)
+  const row = await screen.findByTestId('count-row')
+  expect(await within(row).findByRole('link', { name: '1 Nv Plant' })).toBeInTheDocument()
+  expect(within(row).queryByRole('link', { name: /Nv Visit/ })).not.toBeInTheDocument()
 })

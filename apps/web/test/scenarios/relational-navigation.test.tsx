@@ -525,7 +525,7 @@ describe('relational-navigation', () => {
       org = await seedOrganisation(admin)
     })
     await step("the user opens Enchakkal's page", () => openRowPage(admin, SITE, org[SITE]!.Enchakkal!))
-    await step('its region Kerala and a group of 3 plants show under its name', async () => {
+    await step('its region Kerala and a count of 3 plants show under its name', async () => {
       await waitFor(() => expect(heading()).toHaveTextContent('Enchakkal'))
       const kerala = await waitFor(() => {
         const found = [...screen.queryAllByRole('button', { name: /^Kerala\b/ }), ...screen.queryAllByRole('link', { name: /^Kerala\b/ })][0]
@@ -534,18 +534,18 @@ describe('relational-navigation', () => {
       })
       expect(kerala).toBeVisible()
       expect(follows(heading(), kerala)).toBe(true)
-      const plants = await screen.findByRole('button', { name: groupNamed('Plant') })
+      // #1349: the count comes first ("3 Plants") and opens the group's list.
+      const plants = await within(await screen.findByTestId('count-row')).findByRole('link', { name: /^3 Plants$/ })
       expect(countOf(plants)).toBe(3)
       expect(follows(heading(), plants)).toBe(true)
     })
-    await step('opening the plants shows them in their section on the Links tab', async () => {
-      fireEvent.click(screen.getByRole('button', { name: groupNamed('Plant') }))
-      await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
-      const section = await screen.findByRole('region', { name: /^Plants?$/ })
+    await step("opening the count shows Enchakkal's plants as a list", async () => {
+      fireEvent.click(within(screen.getByTestId('count-row')).getByRole('link', { name: /^3 Plants$/ }))
+      const rows = await screen.findByTestId('list-rows')
       await waitFor(() => {
-        const rows = within(section).getAllByTestId('linked-row').map((r) => r.textContent ?? '')
-        for (const name of ENCHAKKAL_PLANTS) expect(rows.some((r) => r.includes(name)), `${name} is on the Links tab`).toBe(true)
+        for (const name of ENCHAKKAL_PLANTS) expect(within(rows).getByRole('link', { name: new RegExp(`^${escape(name)}`) })).toBeInTheDocument()
       })
+      expect(within(rows).getAllByTestId('row-check')).toHaveLength(ENCHAKKAL_PLANTS.length)
     })
   })
 

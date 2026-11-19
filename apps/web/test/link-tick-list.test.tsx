@@ -456,15 +456,3 @@ test('a new link starts with each field as it would be saved: defaults typed, a 
     col('weight', 'Int', '2'), col('ends_on', 'Date', 'Today'), col('note', 'Data', '')])).toEqual({ confirmed: true, flag: false, level: 'Reader', weight: 2 })
 })
 
-test("a Person's page shows its link chips under its header, and a chip jumps to its section", async ({ admin }) => {
-  await seed(admin)
-  await admin.post('/api/table_def', { name: 'Lt Person Note', id_pattern: 'hash', title_column: 'note_text',
-    columns: [{ column_name: 'note_text', column_type: 'Data', label: 'Note' }, { column_name: 'person', column_type: 'Reference', reference_table: 'Person', label: 'Person' }] })
-  await renderApp(rowHref('Person', admin.user!), admin)
-  const chips = await screen.findByRole('region', { name: 'Connections' })
-  fireEvent.click(await within(chips).findByTestId('connections-show-empty'))
-  fireEvent.click(await within(chips).findByRole('button', { name: /^Lt Person Note\s*0$/ }))
-  await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
-  const empty = await screen.findByRole('region', { name: 'Pointed At By' })
-  expect(await within(empty).findByRole('link', { name: '+ New' })).toBeInTheDocument()
-})
