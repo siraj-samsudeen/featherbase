@@ -126,7 +126,9 @@ describe('describe_people', () => {
       { row_id: 'J9', employee: 'E2', job: 'Cashier', site: 'LKS', starts_on: '2024-01-01', ends_on: '2025-06-30' },
       { row_id: 'J10', employee: 'E2', job: 'Team Leader', site: 'LKS', starts_on: '2025-07-01', ends_on: '2026-03-12' }] }
     const [old] = await describePeople({ ...context({ persons: ['p-old'] }), baseTables: tables(data) }, ON)
-    expect(old).toEqual({ person: 'p-old', status: 'left', code: '3999', left_on: '2026-03-12', jobs: [] })
+    // With the field it comes from, so the platform tells it only to someone who may read it (Codex).
+    expect(old).toEqual({ person: 'p-old', status: 'left', code: '3999', left_on: '2026-03-12',
+      left_on_from: { table: 'Job Assignment', id: 'J10', column: 'ends_on' }, jobs: [] })
   })
 
   it('asks nothing for no persons', async () => {

@@ -198,6 +198,13 @@ async function roleAndStore(admin: TestClient, createUser: CreateUserFn) {
   return { viewer }
 }
 
+/** A made-up assignment whose ends_on a leaving day comes from; only the administrator reads it. */
+async function assignment(admin: TestClient) {
+  const table = await makeTable(admin, { name: 'Pl Assignment', id_pattern: 'prompt', columns: [{ column_name: 'ends_on', column_type: 'Date' }] })
+  await admin.post(table.url, { row_id: 'pl-asg-1', ends_on: '2026-03-12' })
+  return { table: 'Pl Assignment', id: 'pl-asg-1', column: 'ends_on' }
+}
+
 const working = (persons: string[], extra: Record<string, unknown> = {}) => persons.map((person) => ({
   person, status: 'current', code: 'APP-CODE',
   jobs: [{ job: 'Store Manager (job words)', site: { table: 'Pl Store', id: 'store-lk', name: 'App words' }, business_role: { table: 'Pl Role', id: 'role-sm', name: 'App words' } }],
@@ -231,7 +238,8 @@ describe('#1345: the app that says who people are adds role and place; the platf
     const leaver = await makePerson({ full_name: 'Left Lately', email: 'left.lately@example.test' })
     await code(leaver, 'PL-55001', '2024-01-01', { until: '2026-08-31' })
     await describing(admin)
-    said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: 'PL-55001', left_on: '2026-08-31', jobs: [] }))
+    const from = await assignment(admin)
+    said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: 'PL-55001', left_on: '2026-08-31', left_on_from: from, jobs: [] }))
     expect((await personLabels([leaver], 'Administrator')).get(leaver))
       .toEqual({ email: 'left.lately@example.test', standing: 'left', left_on: '2026-08-31', code: 'PL-55001' })
   })
@@ -241,8 +249,27 @@ describe('#1345: the app that says who people are adds role and place; the platf
     const leaver = await makePerson({ full_name: 'Left Uncoded', email: 'left.uncoded@example.test' })
     await code(leaver, 'PL-55003', '2023-01-01', { until: '2026-03-12' })
     await describing(admin)
-    said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: null, left_on: '2026-03-12', jobs: [] }))
+    const from = await assignment(admin)
+    said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: null, left_on: '2026-03-12', left_on_from: from, jobs: [] }))
     expect((await personLabels([leaver], 'Administrator')).get(leaver)).toMatchObject({ standing: 'left', left_on: '2026-03-12', code: 'PL-55003' })
+  })
+
+  // Codex (focused round): the app reads the day as its own actor; a viewer is told it only where they may read its field.
+  test('a leaving day reaches only a viewer who may read the field it comes from, in the label and on the Person page', async ({ admin, createUser }) => {
+    const leaver = await makePerson({ full_name: 'Left Quietly', email: 'left.quietly@example.test' })
+    await code(leaver, 'PL-55004', '2023-01-01', { until: '2026-03-12' })
+    await describing(admin)
+    const from = await assignment(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pl Person Only' } })
+    await grantRole(admin, { role: 'Pl Person Only', table: 'Person', can_read: true })
+    const reader = await createUser({ email: 'pl-person-only@example.test', roles: ['Pl Person Only'] })
+    said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: 'PL-55004', left_on: '2026-03-12', left_on_from: from, jobs: [] }))
+    expect((await personLabels([leaver], reader.user!)).get(leaver)).toEqual({ standing: 'left', code: 'PL-55004', email: 'left.quietly@example.test' })
+    expect(await reader.get(`/api/people/${leaver}/standing`)).not.toHaveProperty('left_on')
+    expect(await admin.get(`/api/people/${leaver}/standing`)).toMatchObject({ left_on: '2026-03-12' })
+    // A day the app gives with no field it comes from is told to no one.
+    said().answer = (persons) => persons.map((person) => ({ person, status: 'left', code: 'PL-55004', left_on: '2026-03-12', jobs: [] }))
+    expect((await personLabels([leaver], 'Administrator')).get(leaver)).not.toHaveProperty('left_on')
   })
 
   test("the app's code never restores one the viewer may not see", async ({ admin, createUser }) => {
