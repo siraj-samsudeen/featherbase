@@ -9,6 +9,7 @@ import { sql } from '../src/db'
 import { expectStatus, makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
 import { beginMockApproval } from './google-mock'
+import { configureMicrosoft } from './microsoft-mock'
 
 const PAGE = { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }
 
@@ -77,6 +78,33 @@ describe('a refused Google sign-in lands on the sign-in page', () => {
   test('a forged or expired state is sent back with expired', async ({ api }) => {
     const res = await api.fetch('/api/oauth/google/callback?code=abc&state=forged.signature', { headers: PAGE })
     expect(refusalCode(res)).toBe('expired')
+  })
+})
+
+// #1318: a callback opened again (Back, an old tab, a replayed link) has no
+// sign-in cookie. It is a page whoever opens it, even a client that names no
+// Accept or Sec-Fetch-Mode; only a caller that asks for JSON, or a browser
+// fetch, keeps the JSON error.
+describe('a stale or replayed sign-in callback lands on the sign-in page', () => {
+  const replay = (api: TestClient, provider: 'google' | 'microsoft', headers: Record<string, string> = {}) =>
+    api.fetch(`/api/oauth/${provider}/callback?code=x&state=y`, { headers })
+
+  test('Google and Microsoft, opened without the sign-in cookie and with no Accept, go back with expired', async ({ api }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    await configureMicrosoft({ client_id: 'a-client' })
+    const google = await expectStatus(await replay(api, 'google'), 302)
+    expect(google.headers.get('location')).toBe('/featherbase/login?error=expired')
+    const microsoft = await expectStatus(await replay(api, 'microsoft', { accept: '*/*' }), 302)
+    expect(microsoft.headers.get('location')).toBe('/featherbase/login?error=expired&via=microsoft')
+  })
+
+  test('a caller that asks for JSON, or a browser fetch, still gets the JSON error', async ({ api }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    const json = await expectStatus(await replay(api, 'google', { accept: 'application/json' }), 401)
+    expect(await json.json()).toEqual({
+      error: { type: 'AuthenticationError', message: 'Missing OAuth state cookie — start sign-in again' },
+    })
+    await expectStatus(await replay(api, 'google', { 'sec-fetch-mode': 'cors' }), 401)
   })
 })
 

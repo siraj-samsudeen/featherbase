@@ -70,7 +70,7 @@ export function RecentStrip({
           params={{ table, name: r.label }}
           search={{ prefill: undefined }}
           data-testid="recent-strip-row"
-          className={touchRowClasses('inline-flex items-center rounded-full border border-border-control bg-surface px-2.5 py-0.5 text-xs text-ink-muted hover:border-action hover:text-action')}
+          className={touchRowClasses('inline-flex items-center rounded-full bg-fill px-2.5 py-0.5 text-xs text-ink-muted hover:bg-fill-hover hover:text-action')}
         >
           <RowTitle table={table} rowId={r.label} />
         </Link>

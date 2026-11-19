@@ -44,7 +44,7 @@ import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { StatusPill, buttonClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery, raisedClasses } from '@featherbase/shop-floor'
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
@@ -856,7 +856,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
         data-testid="command-palette"
       >
         {/* A dialog only while open: closed, it is not one on the page. */}
-        <div role={barFocused ? 'dialog' : undefined} aria-label={barFocused ? 'Search or Command' : undefined} className={cardClasses('w-full max-w-2xl p-2 shadow-lg')}>
+        <div role={barFocused ? 'dialog' : undefined} aria-label={barFocused ? 'Search or Command' : undefined} className={raisedClasses('w-full max-w-2xl p-2')}>
           {commandBar}
         </div>
       </div>
@@ -1030,8 +1030,9 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
 const SIDEBAR_ROW_IDLE = ROW_IDLE
 const SIDEBAR_ROW_SELECTED = ROW_SELECTED
 /** #1253: the page is one white panel on the canvas, set off by a soft shadow,
- *  8px from the window's edges; a phone shows it edge to edge. */
-export const PAGE_PANEL = 'min-w-0 flex-1 overflow-auto bg-surface p-3 sm:px-5 sm:py-4 md:my-2 md:mr-2 md:rounded-xl md:shadow-sm'
+ *  8px from the window's edges; a phone shows it edge to edge. #1348: radius 14,
+ *  padding 24/28, and a 16px gutter on a phone. */
+export const PAGE_PANEL = 'min-w-0 flex-1 overflow-auto bg-surface p-4 sm:px-7 sm:py-6 md:my-2 md:mr-2 md:rounded-card md:shadow-panel'
 
 interface SidebarItem {
   to: string
@@ -1230,8 +1231,8 @@ function CommandField({ rail, onOpen }: { rail: boolean; onOpen: () => void }) {
       aria-keyshortcuts="Meta+K Control+K"
       {...shortcutControl(COMMAND_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF.label)}
       className={rail
-        ? `${RAIL_ROW} ${ROW_IDLE} focus-visible:outline-2 focus-visible:outline-focus`
-        : 'flex min-h-8 w-full min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-md bg-border/60 px-2.5 text-sm text-ink-muted hover:bg-border focus-visible:outline-2 focus-visible:outline-focus'}
+        ? `${RAIL_ROW} ${ROW_IDLE} focus-visible:outline-[1.5px] focus-visible:outline-focus`
+        : 'flex min-h-[34px] w-full min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-control bg-border/60 px-3 text-[13px] text-ink-subtle hover:bg-border focus-visible:outline-[1.5px] focus-visible:outline-focus'}
     >
       <Search aria-hidden size={rail ? 18 : 14} className="shrink-0" />
       {!rail && <span className="min-w-0 flex-1 truncate text-left">Search or Command</span>}

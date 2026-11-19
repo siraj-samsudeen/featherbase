@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { cardClasses, cx, type LucideIcon } from '@featherbase/shop-floor'
+import { cx, type LucideIcon, raisedClasses } from '@featherbase/shop-floor'
 import { railMark, railMenuPlace } from '../lib/sidebar-rail'
 
 // #1248: the Admin sidebar's icon rail. Whether the sidebar is collapsed (md+)
@@ -124,7 +124,7 @@ export function RailFold({ label, icon: Icon, testid, tone = 'slate', children }
           aria-label={label}
           onKeyDown={onMenuKey}
           style={{ position: 'fixed', left: place?.left ?? -9999, top: place?.top ?? 0 }}
-          className={cardClasses('z-[61] flex max-h-[calc(100vh-16px)] min-w-56 flex-col gap-px overflow-y-auto p-1.5 shadow-lg')}
+          className={raisedClasses('z-[61] flex max-h-[calc(100vh-16px)] min-w-56 flex-col gap-px overflow-y-auto p-1.5')}
           data-testid="sidebar-rail-menu"
         >
           <div aria-hidden className="px-2 py-1 text-xs text-ink-subtle">{label}</div>

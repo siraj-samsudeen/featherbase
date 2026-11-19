@@ -383,7 +383,7 @@ test('together_groups_active_responsibility: retains a person outside the fetche
   expect(peopleWithTaskResponsibility(
     [{ row_id: 'first@example.test' }],
     [{ assigned_to: 'outside-page@example.test' }],
-    'first@example.test',
+    { row_id: 'first@example.test' },
   )).toEqual([
     { row_id: 'first@example.test' },
     { row_id: 'outside-page@example.test' },

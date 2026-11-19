@@ -570,10 +570,11 @@ describe('list-view', () => {
       signInAfresh()
       await openList(user, SITE)
     })
-    await step('Enchakkal shows by its name with a few key values', async () => {
+    // #1348: Compact Rows is a row height and keeps every column (list-view, "A list's rows are Comfortable or Compact").
+    await step('Enchakkal shows in Compact Rows with every column', async () => {
       await waitFor(() => expect(layout('Compact')).toHaveAttribute('aria-pressed', 'true'))
       await waitFor(() => expect(within(screen.getByRole('main')).getAllByText('Enchakkal', { exact: true })[0]).toBeVisible())
-      await waitFor(() => expect(columnHeaders().length).toBeLessThan(listColumns(SITE).length))
+      await waitFor(() => { for (const label of listColumns(SITE)) expect(columnHeaders()).toContain(label) })
     })
     await step('the list of plants still shows all its columns', async () => {
       await openList(user, 'Plant')

@@ -209,3 +209,19 @@ export function fmtInstant(value: string | Date | null | undefined): string {
     .find((p) => p.type === 'timeZoneName')?.value
   return zone ? `${fmtDateTime(d)} ${zone}` : fmtDateTime(d)
 }
+
+/** #1348: a run time held in milliseconds, in words a person reads: "0.5 s", "1.2 s", "1 min 5 s", "1 h 2 min". */
+export function fmtDuration(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return '—'
+  if (ms === 0) return '0 s'
+  if (ms < 10_000) return `${Math.round(ms / 100) / 10} s`
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds} s`
+  if (seconds < 3600) {
+    const rest = seconds % 60
+    return `${Math.floor(seconds / 60)} min${rest ? ` ${rest} s` : ''}`
+  }
+  const minutes = Math.round(ms / 60_000)
+  const rest = minutes % 60
+  return `${Math.floor(minutes / 60)} h${rest ? ` ${rest} min` : ''}`
+}
