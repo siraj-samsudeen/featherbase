@@ -23,7 +23,8 @@ export const BASE_TABLES = [
   { name: 'Designation', module: 'People', id_pattern: 'field:designation', title_column: 'designation', columns: [data('designation')] },
   { name: 'Employee', module: 'People', id_pattern: 'field:employee_code', title_column: 'name', columns: [data('employee_code'), data('name'), ref('person', 'Person'), choice('status', 'Current', 'Left', 'Test record')] },
   { name: 'Store Floor', module: 'Store Layout', id_pattern: 'prompt', title_column: 'name', columns: [data('name'), ref('site', 'Site')] },
-  { name: 'Section', module: 'Store Layout', id_pattern: 'prompt', title_column: 'name', columns: [data('name'), ref('site', 'Site'), ref('floor', 'Store Floor'), choice('status', 'Active', 'Inactive')] },
+  // #1351: the plant the section's sales are filed under; blank until linked, so a page lists all the site's plants.
+  { name: 'Section', module: 'Store Layout', id_pattern: 'prompt', title_column: 'name', columns: [data('name'), ref('site', 'Site'), ref('floor', 'Store Floor'), choice('status', 'Active', 'Inactive'), ref('plant', 'Plant')] },
   // #1195: a store's departments, each a named group of sections with one manager, both dated.
   { name: 'Department', module: 'Store Layout', id_pattern: 'field:department_id', title_column: 'name', track_changes: true, columns: [data('department_id'), ref('store', 'Site'), data('name'), ref('manager', 'Employee'), date('starts_on'), date('ends_on'), data('source_key')] },
   { name: 'Department Section', module: 'Store Layout', id_pattern: 'field:department_section_id', title_column: 'department_section_id', track_changes: true, columns: [data('department_section_id'), ref('store', 'Site'), ref('department', 'Department'), ref('section', 'Section'), date('starts_on'), date('ends_on'), data('source_key')] },
