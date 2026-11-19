@@ -81,7 +81,10 @@ export function Grid({ label, rows, columns, steps, saved, waiting, onStep, tool
                   <tr><td colSpan={columns.length + 1} className="px-2 pt-3 pb-1"><span className="sticky left-2 font-semibold text-ink" data-testid="grid-group">{group}</span></td></tr>
                 )}
                 <tr className="hover:bg-subtle">
-                  <td data-column="" className="sticky left-0 bg-surface px-2 py-1 whitespace-nowrap text-ink-muted" data-testid="grid-row-title">{row.title}</td>
+                  {/* On a phone the title column is narrow and wraps to two lines, so the cells stay in reach (UI owner). */}
+                  <td data-column="" className="sticky left-0 bg-surface px-2 py-1 whitespace-nowrap text-ink-muted max-md:max-w-30 max-md:whitespace-normal" data-testid="grid-row-title">
+                    <span className="max-md:line-clamp-2">{row.title}</span>
+                  </td>
                   {columns.map((column) => {
                     const key = gridKey(row, column)
                     const isWaiting = waiting.has(key)
