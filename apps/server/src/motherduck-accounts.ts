@@ -13,6 +13,7 @@
 //   own create action, as the master sync raises its tickets), assigned to the
 //   System Settings' MotherDuck reviewer. Once the account has a Person, by
 //   email or by hand, the sync resolves that ticket.
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { sql } from './db'
 import { readVariable } from './env'
@@ -186,10 +187,14 @@ async function ticketAction<T>(actor: string, operation: string, payload: Record
 async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promise<void> {
   const [reviewer] = await sql`select value from single_value where table_name = 'System Settings' and field = 'motherduck_reviewer'`
   const assignee = reviewer?.value ? String(reviewer.value) : null
-  const open = await sql`select row_id, username, email, account_status from motherduck_account
+  const open = await sql`select row_id, updated_at, username, email, account_status from motherduck_account
     where person is null and review_ticket is null and not service_account and account_status <> 'Removed' order by username`
+  // Asked first, not caught: a failed query would end a caller's transaction.
+  const [tickets] = await sql`select to_regclass('tickets.ticket') is not null as present`
+  if (open.length && !tickets?.present) { result.ticket_errors.push('the Tickets app is not installed and on, so no ticket was raised'); return }
   for (const a of open) {
     try {
+      const title = `Link MotherDuck user ${String(a.username)} to a person`
       const people = await candidates(String(a.username))
       const original = [
         `MotherDuck user ${String(a.username)} is not linked to a person in Featherbase.`,
@@ -197,19 +202,21 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
         people.length ? `People whose name it reads as:\n${people.join('\n')}` : 'No person\'s name reads as this username.',
         `Link it by setting Person on the MotherDuck Account ${String(a.username)}; this ticket then closes itself.`,
       ].join('\n\n')
-      const made = await ticketAction<{ ticket: { row_id: string } }>(actor, 'create',
-        { title: `Link MotherDuck user ${String(a.username)} to a person`, original }, `motherduck-account-${String(a.row_id)}`)
-      const ticket = String(made.ticket.row_id)
-      // Recorded at once, so a later run never raises it twice.
-      await sql`update motherduck_account set review_ticket = ${ticket} where row_id = ${a.row_id} and review_ticket is null`
-      result.tickets_raised.push(ticket)
+      // Codex: a run that raised the ticket but stopped before recording it left
+      // it open with no account naming it; it is found again, never raised twice.
+      const [orphan] = await sql`select row_id from tickets.ticket where owner = ${actor} and title = ${title}
+        and ticket_state not in ('Resolved', 'Closed') order by created_at, row_id limit 1`
+      const payload = { title, original }
+      const ticket = orphan ? String(orphan.row_id) : String((await ticketAction<{ ticket: { row_id: string } }>(actor, 'create', payload,
+        `motherduck-account-${String(a.row_id)}-${createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16)}`)).ticket.row_id)
+      await runAsSystemActor(actor, () => saveDoc(MOTHERDUCK_ACCOUNT_TABLE, { row_id: a.row_id, updated_at: a.updated_at }, actor, 'upsert',
+        { managedValues: { review_ticket: ticket } }))
+      if (!orphan) result.tickets_raised.push(ticket)
     } catch (error) {
       if (error instanceof MotherDuckSyncStop) { result.ticket_errors.push(error.message); return }
       result.ticket_errors.push(`${String(a.username)}: ${String(error).slice(0, 200)}`)
     }
   }
-  // Asked first, not caught: a failed query would end a caller's transaction.
-  const [tickets] = await sql`select to_regclass('tickets.ticket') is not null as present`
   if (!tickets?.present) return
   // Each open review ticket nobody is assigned to goes to the reviewer, this run
   // or a later one; one support has reassigned is left as it is.
@@ -218,7 +225,7 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
     where a.person is null and t.assigned_to is null and t.ticket_state not in ('Resolved', 'Closed')`
   for (const t of unassigned) {
     try {
-      await ticketAction(actor, 'edit', { row_id: String(t.row_id), updated_at: iso(t.updated_at), assigned_to: assignee }, `motherduck-account-assign-${String(t.row_id)}`)
+      await ticketAction(actor, 'edit', { row_id: String(t.row_id), updated_at: iso(t.updated_at), assigned_to: assignee }, `motherduck-account-assign-${String(t.row_id)}-${iso(t.updated_at)}`)
     } catch (error) {
       if (error instanceof MotherDuckSyncStop) { result.ticket_errors.push(error.message); return }
       result.ticket_errors.push(`${String(t.username)}: ${String(error).slice(0, 200)}`)
@@ -231,7 +238,7 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
     try {
       await ticketAction(actor, 'resolve', { row_id: String(a.review_ticket), updated_at: iso(a.updated_at),
         reason: `MotherDuck user ${String(a.username)} is now linked to a person.`, reference: `MotherDuck Account ${String(a.username)}` },
-        `motherduck-account-resolve-${String(a.review_ticket)}`)
+        `motherduck-account-resolve-${String(a.review_ticket)}-${iso(a.updated_at)}`)
       result.tickets_resolved.push(String(a.review_ticket))
     } catch (error) {
       result.ticket_errors.push(`${String(a.username)}: ${String(error).slice(0, 200)}`)

@@ -102,6 +102,18 @@ describe('#1346: the MotherDuck account sync', () => {
       ['asha_reports', 'Active', false], ['gone_user', 'Removed', true], ['loader_service_account', 'Active', false], ['ravi_md', 'Deprovisioned', false],
     ])
 
+    // A run that raised a ticket but stopped before recording it: the next run finds that
+    // ticket again, even with the account's details changed, and raises no second one.
+    await sql`update motherduck_account set review_ticket = null, email = 'asha-new@elsewhere.example' where row_id = 'md-asha'`
+    motherduck([[
+      { id: 'md-ravi', username: 'ravi_md', email: 'ravi-1346@example.com', is_deprovisioned: true },
+      { id: 'md-asha', username: 'asha_reports', email: 'asha-new@elsewhere.example' },
+      { id: 'md-bot', username: 'loader_service_account', is_service_account: true },
+    ]])
+    expect(await syncMotherDuckAccounts()).toMatchObject({ tickets_raised: [], ticket_errors: [] })
+    expect(await sql`select count(*)::int as n from tickets.ticket where title like '%asha_reports%'`).toEqual([{ n: 1 }])
+    expect((await accounts()).find((a) => a.username === 'asha_reports')).toMatchObject({ ticketed: true })
+
     // A person links asha_reports by hand; the next run closes its ticket.
     const row = await admin.get<Record<string, unknown>>('/api/table/MotherDuck Account/md-asha')
     await patchDoc(admin, '/api/table/MotherDuck Account/md-asha', { updated_at: row.updated_at, person: asha })
@@ -113,7 +125,7 @@ describe('#1346: the MotherDuck account sync', () => {
     // Search finds the account by its username, and by its email.
     const hits = async (q: string) => ((await searchLines(admin, q)).find((l) => (l as { table?: string }).table === 'MotherDuck Account') as { hits: { title: string }[] } | undefined)?.hits.map((h) => h.title) ?? []
     expect(await hits('asha_reports')).toEqual(['asha_reports'])
-    expect(await hits('asha@elsewhere')).toEqual(['asha_reports'])
+    expect(await hits('asha-new@elsewhere')).toEqual(['asha_reports'])
   })
 
   test('a reappearing account is listed again, Active, with no removal date', async () => {

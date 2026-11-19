@@ -62,6 +62,8 @@ select gen_random_uuid()::text, 'System Settings', 14, 'motherduck_reviewer', 'M
 where not exists (select 1 from featherbase.column_def where parent = 'System Settings' and column_name = 'motherduck_reviewer');
 
 insert into featherbase.scheduled_job ("row_id", "created_by", "updated_by", "submission_status", "position", "method", "cadence", "enabled", "description", "problem_alert_queued")
-values ('sync_motherduck_accounts', 'Administrator', 'Administrator', 'draft', 0, 'sync_motherduck_accounts', 'daily', true,
+-- Off until an instance turns it on: MOTHERDUCK_TOKEN is optional, and a job that
+-- can only refuse would alert every day (Codex). JeyaRama switches it on.
+values ('sync_motherduck_accounts', 'Administrator', 'Administrator', 'draft', 0, 'sync_motherduck_accounts', 'daily', false,
         'Bring MotherDuck Accounts in step with MotherDuck''s list of users, link the ones whose email names one person, and raise a ticket for the rest. It only reads MotherDuck.', false)
 on conflict ("row_id") do nothing;
