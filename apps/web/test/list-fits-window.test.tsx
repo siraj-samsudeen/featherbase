@@ -16,6 +16,7 @@ test("a list's table scrolls in its own box, its header row stays in view, and t
   // The box is capped to the window (jsdom has no layout, so the least height shows).
   expect(box.style.maxHeight).toMatch(/^\d+px$/)
   const main = box.closest('main')!
-  expect(main.className).toContain('sm:px-5')
+  // #1348 board 2: the panel's padding is 24/28.
+  expect(main.className).toContain('sm:px-7')
   expect(main.firstElementChild!.className).not.toMatch(/max-w-\[1280px\]/)
 })

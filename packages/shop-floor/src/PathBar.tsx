@@ -139,7 +139,7 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
     </button>
   )
   return (
-    <div className="@container flex min-w-0 flex-wrap items-center gap-2 bg-surface px-4 py-2">
+    <div className="@container flex min-w-0 flex-wrap items-center gap-2 bg-surface px-4 py-2" data-testid="path-bar">
       <Button onClick={onBack} disabled={current <= 0}>Back</Button>
       <Button onClick={onForward} disabled={current >= steps.length - 1}>Forward</Button>
       <div ref={room} data-path-room className="relative flex min-w-0 flex-1 items-center gap-1 @max-5xl:order-last @max-5xl:basis-full">
