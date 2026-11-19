@@ -17,7 +17,7 @@
 * { box-sizing: border-box; }
 html, body { max-width: 100%; overflow-x: hidden; }
 body { margin: 0; background: var(--color-canvas); color: var(--color-ink); font: var(--text-control)/1.45 var(--font-sans); }
-a { color: var(--color-action); }
+@layer base { a { color: var(--color-action); } }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* The shared sidebar beside the page, together filling the window under the shared top bar. */
