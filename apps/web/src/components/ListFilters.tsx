@@ -507,7 +507,8 @@ export function FilterChips({ meta, filters, onChange, held, picked, onSaveView,
   onSaveView?: () => void
   /** #1289 option C: Clear All Filters in place of `onChange([])` (panel picks clear without a step of the walk). */
   onClearAll?: () => void
-  /** The chips flow in the row around them, as its own items, so a short row never wraps early. */
+  /** The chips keep together as one line beside the filters: the box never shrinks
+   *  below its chips, so it moves down whole rather than splitting (board A). */
   flow?: boolean
   className?: string
 }) {
@@ -515,7 +516,7 @@ export function FilterChips({ meta, filters, onChange, held, picked, onSaveView,
   if (!filters.length) return null
   const nameOf = ([column]: Filter) => (column === 'row_id' ? 'Row ID' : t(meta.columns.find((c) => c.column_name === column)?.label ?? String(column)))
   return (
-    <div className={flow ? 'contents' : `flex flex-wrap items-center gap-2 ${className ?? ''}`} data-testid="filter-chips">
+    <div className={`flex flex-wrap items-center gap-2 ${flow ? 'max-w-full flex-[1_0_auto]' : ''} ${className ?? ''}`} data-testid="filter-chips">
       {filters.map((f, i) => held?.has(i) ? null : picked?.has(i) ? picked.get(i)!.map((chip) => (
         <FilterChip key={`${i}\u0000${chip.key}`} name={chip.name} onRemove={chip.onRemove} tone="picked">{chip.words}</FilterChip>
       )) : (
