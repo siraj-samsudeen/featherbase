@@ -17,6 +17,7 @@ import type { Row } from './form-row'
 import { LinkControl, anyTableFilters } from './LinkControl'
 import { AttachControl } from './AttachControl'
 import { ChildGrid } from './ChildGrid'
+import { NOT_A_LOGIN } from '../lib/not-a-login'
 
 export function FieldControl({
   field,
@@ -101,7 +102,10 @@ export function FieldControl({
   const describedBy = [hintText ? hintId : null, managedHint ? managedId : null, unlinkedTarget ? unlinkedId : null]
     .filter(Boolean)
     .join(' ')
+  // #1364: a record's "Username" or "Full Name" box is not a login. Unmarked, a
+  // password manager filled it on load and an untouched record read as unsaved.
   const common = {
+    ...NOT_A_LOGIN,
     id: controlId,
     'aria-labelledby': labelId,
     ...(describedBy ? { 'aria-describedby': describedBy } : {}),

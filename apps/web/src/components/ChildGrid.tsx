@@ -3,6 +3,7 @@ import { NO_COLUMN_TYPES, useMeta, type ColumnDef } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import type { Row } from './form-row'
 import { LinkControl, anyTableFilters } from './LinkControl'
+import { NOT_A_LOGIN } from '../lib/not-a-login'
 
 const CHILD_CELL_CLASSES = 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'
 
@@ -127,6 +128,7 @@ export function ChildGrid({
                       row={row}
                       setCell={(changes) => setCell(i, changes)}
                       common={{
+                        ...NOT_A_LOGIN,
                         id: `${id}-${rowKey(row)}-${c.column_name}`,
                         'aria-label': `${t(field.label ?? field.column_name)}, ${t(c.label ?? c.column_name)}, row ${i + 1}`,
                         'data-childfield': c.column_name,
@@ -144,6 +146,7 @@ export function ChildGrid({
                     onChange={(e) => setCell(i, c.column_name, c.column_type === 'Check' ? e.target.checked : e.target.value)}
                     className={c.column_type === 'Check' ? 'size-4 pointer-coarse:size-5' : CHILD_CELL_CLASSES}
                     data-childfield={c.column_name}
+                    {...NOT_A_LOGIN}
                     {...cellInvalid(i, row, c)}
                   />
                   </label>
