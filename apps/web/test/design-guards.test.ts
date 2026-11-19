@@ -102,7 +102,7 @@ const ROLES = [
   'opportunity', 'opportunity-tint', 'missing', 'missing-tint',
   'scrim', 'on-scrim', 'series-1', 'series-2', 'series-3', 'series-4', 'series-5',
   // #1348 calmer look: the control fill, the row hover, and the chip tints.
-  'fill', 'fill-hover', 'hover',
+  'fill', 'fill-hover', 'hover', 'tag-ink',
 ]
 // #1348: the chips' hues. The first eight are the category tints, picked by a value's name; green, amber and
 // grey are the status chips (live, not yet, finished); red marks a data problem. Each has a tint and an ink.
@@ -113,7 +113,7 @@ ROLES.push(...CHIP_HUES.flatMap((hue) => [`chip-${hue}`, `chip-${hue}-ink`]))
 describe('the calmer look tokens are board 1, exactly', () => {
   test.each([
     ['canvas', '#f4f5f7'], ['surface', '#ffffff'], ['subtle', '#f6f7f9'], ['fill', '#f1f2f4'], ['hover', '#f1f5ff'],
-    ['tag', '#eef0f3'], ['ink', '#151a23'], ['ink-subtle', '#5b6472'], ['action', '#1d4ed8'], ['action-tint', '#eef2ff'],
+    ['tag', '#eef0f3'], ['tag-ink', '#374151'], ['ink', '#151a23'], ['ink-subtle', '#5b6472'], ['action', '#1d4ed8'], ['action-tint', '#eef2ff'],
     ['chip-green', '#dcfce7'], ['chip-green-ink', '#166534'], ['chip-amber', '#fef3c7'], ['chip-amber-ink', '#92400e'],
     ['chip-grey', '#f1f2f4'], ['chip-grey-ink', '#4b5563'], ['chip-red', '#fee2e2'], ['chip-red-ink', '#991b1b'],
     ['chip-blue', '#dbeafe'], ['chip-teal', '#ccfbf1'], ['chip-violet', '#ede9fe'], ['chip-pink', '#fce7f3'],
@@ -208,7 +208,7 @@ describe.each(themes)('%s tokens', (_mode, t) => {
     ['ink', 'tag'],
     ['ink-muted', 'tag'],
     // #1348: a filled button or input holds ink; a hovered or selected row keeps its links and muted text.
-    ['ink', 'fill'], ['ink', 'fill-hover'], ['ink-muted', 'fill'], ['ink-subtle', 'fill'],
+    ['tag-ink', 'tag'], ['ink', 'fill'], ['ink', 'fill-hover'], ['ink-muted', 'fill'], ['ink-subtle', 'fill'],
     ['ink', 'hover'], ['ink-subtle', 'hover'], ['action', 'hover'], ['action', 'subtle'],
     ...CHIP_HUES.map((hue) => [`chip-${hue}-ink`, `chip-${hue}`] as [string, string]),
   ]

@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, test } from 'vitest'
 import {
-  buttonClasses, cardClasses, cellClasses, Chip, chipHue, headCellClasses, inputClasses, panelClasses, raisedClasses, Segmented, statusHue,
+  buttonClasses, cardClasses, cellClasses, Chip, chipHue, headCellClasses, iconButtonClasses, inputClasses, panelClasses, raisedClasses, Segmented, statusHue, tagClasses,
 } from '@featherbase/shop-floor'
 
 const classes = (s: string) => s.split(' ')
@@ -18,6 +18,10 @@ describe('buttons are fills', () => {
     const c = classes(buttonClasses())
     expect(c).toEqual(expect.arrayContaining(['bg-fill', 'hover:bg-fill-hover', 'font-medium']))
     expect(drawsALine(c)).toBe(false)
+  })
+  test('a button and an icon button show focus as the same 1.5px outline as an input', () => {
+    expect(classes(buttonClasses())).toEqual(expect.arrayContaining(['focus-visible:outline-[1.5px]', 'focus-visible:outline-focus']))
+    expect(classes(iconButtonClasses())).toEqual(expect.arrayContaining(['focus-visible:outline-[1.5px]', 'focus-visible:outline-focus']))
   })
   test('the primary button is the one blue fill', () => {
     expect(classes(buttonClasses({ variant: 'primary' }))).toEqual(expect.arrayContaining(['bg-action', 'border-transparent']))
@@ -42,7 +46,8 @@ describe('inputs are fills; focus is the only outline', () => {
   })
   test('focus draws a 1.5px outline in the focus colour, and no ring', () => {
     const c = classes(inputClasses())
-    expect(c).toEqual(expect.arrayContaining(['focus-visible:outline-[1.5px]', 'focus-visible:outline-focus']))
+    // outline-solid: focus:outline-hidden sets Tailwind's outline-style variable to none, which the width alone reads.
+    expect(c).toEqual(expect.arrayContaining(['focus-visible:outline-[1.5px]', 'focus-visible:outline-solid', 'focus-visible:outline-focus']))
     expect(c.some((x) => x.includes('ring'))).toBe(false)
   })
   test('a field with an error still says so with a red edge', () => {
@@ -102,6 +107,10 @@ describe('chips with meaning', () => {
     rerender(<Chip hue="green" dot compact>Open</Chip>)
     expect(screen.getByText('Open').querySelector('[data-chip-dot]')).toBeNull()
   })
+})
+
+test('the shared tag is #EEF0F3 with #374151 words, no border', () => {
+  expect(classes(tagClasses())).toEqual(expect.arrayContaining(['bg-tag', 'text-tag-ink', 'rounded-md']))
 })
 
 describe('tables: a grey header band and rows told apart by space, never a line', () => {
