@@ -3,7 +3,7 @@ import { GROUP_TONE, RAIL_ROW, ROW_IDLE, ROW_SELECTED, RailFold, RailMenuItem, R
 import { attachRailTips, railMark, sidebarWords } from '../lib/sidebar-rail'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, ownFramePolicyPage, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage, needsEmail, ownFramePolicyPage, rowHref, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { SIDEBAR_VIEWS_KEY, useNavigationSettings } from '../lib/nav-settings'
 import { pathHref } from '../lib/navigation'
 import { encodePath, type NavPath } from '../lib/nav-path'
@@ -44,7 +44,7 @@ import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { PersonLabel, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
@@ -390,6 +390,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     return { ...g, hits }
   })
   const recordHits: (SearchHit & { label: string })[] = recordGroups.flatMap((g) => (g.hits ?? []).map((h) => ({ ...h, label: g.label })))
+  // #1345: people who would still read the same (name and words) add their email.
+  const sameReading = needsEmail(recordGroups.find((g) => g.table === 'Person')?.hits ?? [])
   // Searching from the first keystroke until every group has answered.
   const searching = trimmed !== '' && !(current && streamed.done)
   const pendingGroups = recordGroups.filter((g) => g.hits === undefined)
@@ -475,10 +477,11 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     router.history.push(entry.path)
   }
 
-  function openDoc(hit: SearchHit) {
+  /** A record result, opened here: the link's own address (#1345: results are links). */
+  function openDoc(href: string) {
     recordSearch(search.trim())
     dismissSearch()
-    navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
+    router.history.push(href)
   }
 
   function openPage(page: CommandPageDestination) {
@@ -801,18 +804,26 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                   </div>
                 )
                 : g.hits.map((h) => (
-                  <button
+                  // #1345 (audit F16/F17/F19): a result is a link, so it opens in a new tab too; a plain click opens it here.
+                  <a
                     key={`${h.table}/${h.row_id}`}
                     {...resultProps(`record-${h.table}/${h.row_id}`)}
-                    type="button"
-                    onClick={() => openDoc(h)}
+                    href={rowHref(h.table, h.row_id)}
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+                      e.preventDefault()
+                      openDoc(e.currentTarget.getAttribute('href')!)
+                    }}
                     data-testid="awesomebar-doc"
-                    className="flex min-h-control w-full items-center gap-2 px-3 text-left text-sm text-ink hover:bg-action-tint"
+                    className="flex min-h-control w-full items-center gap-2 px-3 py-1 text-left text-sm text-ink hover:bg-action-tint"
                   >
                     <TableTile name={g.label} />
-                    <span className="min-w-0 flex-1 truncate">{h.title}</span>
+                    {/* #1345: a person reads who they are, so two who share a name are told apart. */}
+                    {h.table === 'Person'
+                      ? <PersonLabel rowId={h.row_id} name={h.title} label={h.person} inLink withEmail={sameReading.has(h)} className="flex-1" />
+                      : <span className="min-w-0 flex-1 truncate">{h.title}</span>}
                     <span className="shrink-0 text-xs text-ink-muted" data-testid="awesomebar-doc-table">{h.kind_label ?? g.label}</span>
-                  </button>
+                  </a>
                 )))}
             </div>
           )}
