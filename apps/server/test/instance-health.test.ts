@@ -241,6 +241,17 @@ describe('the checks (5.1)', () => {
     expect(refused.fix).toContain('Jobs')
   })
 
+  test('scheduled jobs: a long reason is shown whole, and an over-long one is cut at a word (#1360)', async () => {
+    const now = new Date()
+    const reason = `No MotherDuck reviewer is set in System Settings, so 65 review tickets are not assigned to anyone. ${'MotherDuck accounts: 91 listed · 91 added · '.repeat(4)}end`
+    await sql`update scheduled_job set enabled = true, last_run_at = ${now}, last_outcome = 'refused', last_result = ${reason} where method = 'disable_leavers'`
+    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers').message).toBe(`The last run refused to act: ${reason}`)
+    await sql`update scheduled_job set last_result = ${'word '.repeat(150)} where method = 'disable_leavers'`
+    const cut = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers').message
+    expect(cut).toMatch(/: (word )*word…$/)
+    expect(cut.length).toBeLessThanOrEqual('The last run refused to act: '.length + 501)
+  })
+
   test('scheduled jobs: a refusal that gave no reason fails the check all the same', async () => {
     const now = new Date()
     await sql`update scheduled_job set enabled = true, last_run_at = ${now}, last_outcome = 'refused', last_result = '  ' where method = 'disable_leavers'`

@@ -172,7 +172,9 @@ describe('#1346: the MotherDuck account sync', () => {
     expect(await run()).toMatchObject({ outcome: 'success', result: expect.stringMatching(/^MotherDuck accounts: 1 listed · 1 added/) })
     // Without the Tickets app, an account a person uses cannot be put to anyone.
     motherduck([[{ id: 'md-job-bot', username: 'job_service_account', is_service_account: true }, { id: 'md-job-person', username: 'job_person' }]])
-    expect(await run()).toMatchObject({ outcome: 'refused', result: expect.stringContaining('the Tickets app is not installed') })
+    // #1360: the reason leads, as a sentence, and the counts follow, so a cut never loses it.
+    expect(await run()).toMatchObject({ outcome: 'refused',
+      result: expect.stringMatching(/^The Tickets app is not installed and on, so no ticket was raised\. MotherDuck accounts: 2 listed · /) })
     motherduck([], 403)
     expect(await run()).toMatchObject({ outcome: 'refused', result: expect.stringContaining('View all members') })
     // MotherDuck failing outright is an error, retried like any other.
