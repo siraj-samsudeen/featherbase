@@ -53,6 +53,8 @@ export function revertAddDive(manifest: { permissions: Record<string, unknown>[]
   grant.can_read = true
 }
 
+/** #1353's FeatherBot roles, which the latest step brings (given to nobody on install): the upgrade tests of earlier steps compare without them. */
+export const withoutChatRoles = <T,>(list: T[]) => list.filter(entry => !String((entry as { create?: string }).create ?? '').startsWith('Dash Chat '))
 /** #1217's role, which a later step brings: the upgrade tests of earlier steps compare without it. */
 export const TEAM_MANAGER = 'Team Report Manager'
 type Grant = { grant?: { role: string }; withdraw?: { role: string } }

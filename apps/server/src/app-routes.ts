@@ -12,6 +12,7 @@ import { who, type Env } from './route-context'
 import { answerHelp } from './help'
 import { chatModes, chatRequests, chatSession, chatSessions, closeChatSession, decideChatRequest, sendChat } from './app-chat'
 import { usageReport } from './model-usage'
+import { activeViewAs } from './view-as'
 import { explainRecord, whyOffer } from './why'
 import { workedOutFor } from './worked-out'
 
@@ -55,6 +56,16 @@ appRoutes.post('/api/app_reads/:app/:read', async (c) => {
   c.header('Cache-Control', 'no-store')
   return c.json(await runPublicPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
 })
+// #1353: questions are asked and answered only as the signed-in person. While a tester views as someone these
+// routes would run as the tester (view-as.ts runs only reads as the person viewed), so a chat beside the viewed
+// person's report would answer with the tester's own figures and conversations. They are refused until the
+// tester exits View As (Codex adversarial round 1).
+for (const path of ['/api/app_analyses/*', '/api/app_questions/*', '/api/app_chat/*', '/api/help/ask'])
+  appRoutes.use(path, async (c, next) => {
+    if (await activeViewAs(c.get('user'), { told: false }))
+      throw new AppError('PermissionError', 'Questions are asked only as yourself. Exit View As to ask.')
+    return next()
+  })
 // A plan answered from one of the app's semantic models, as the read the
 // model names.
 appRoutes.post('/api/app_analyses/:app/:model', async (c) => {

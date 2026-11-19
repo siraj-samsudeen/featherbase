@@ -103,6 +103,17 @@ test('the tester\'s own person record is read as the tester, anyone else\'s as t
 })
 
 describe('View as on the platform', () => {
+  // #1353: a question is asked only as the signed-in person, so no chat or question route answers while viewing.
+  test('questions in words are refused while viewing as someone, and asked again after Exit', async ({ admin, createUser }) => {
+    const { tester, person } = await install(admin, createUser)
+    expect((await start(tester, person.user)).status).toBe(200)
+    for (const path of ['/api/help/ask', '/api/app_chat/barproof/modes', '/api/app_chat/barproof/send', '/api/app_questions/barproof/any', '/api/app_analyses/barproof/any'])
+      expect(await status(tester.fetch(path, { method: 'POST', headers: json, body: '{}' })), path).toEqual([403, expect.stringContaining('Exit View As to ask')])
+    expect((await tester.fetch('/api/view_as/exit', { method: 'POST' })).status).toBe(200)
+    // After Exit the route answers for itself again: this app declares no chat.
+    expect(await status(tester.fetch('/api/app_chat/barproof/modes', { method: 'POST', headers: json, body: '{}' }))).toEqual([404, expect.stringContaining('barproof has no chat')])
+  })
+
   test('reads run as the person; a change runs as the tester, never as the person', async ({ admin, createUser }) => {
     const { person } = await install(admin, createUser)
     // This tester can also save rows themself, so a change that went through as the person would show.

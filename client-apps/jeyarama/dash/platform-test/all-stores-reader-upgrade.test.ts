@@ -9,7 +9,7 @@ import { test as pgTest } from '../pg-test'
 import { sql } from '../../src/db'
 import { discoverPackages } from '../../src/runtime-packages'
 import { loadInstalledApps } from '../../src/apps'
-import { APP_DIR, VERSION, pinned, revertAddDive, revertPersonIdentity, TEAM_MANAGER, revertTeamReportGiving, withoutTeamManager, revertViewAs, VIEW_AS_TESTER, withoutViewAsTester, withoutBusinessRoles } from './helpers'
+import { withoutChatRoles, APP_DIR, VERSION, pinned, revertAddDive, revertPersonIdentity, TEAM_MANAGER, revertTeamReportGiving, withoutTeamManager, revertViewAs, VIEW_AS_TESTER, withoutViewAsTester, withoutBusinessRoles } from './helpers'
 
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -70,7 +70,7 @@ describe('upgrading production\'s Dash 0.12.10', () => {
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string; roles: unknown; permissions: unknown; migrations: { id: string }[] }>('/api/preview_app_upgrade', { name: 'dash', version: VERSION })
       // #1217's role and grants come with this version too; team-report-upgrade.test.ts checks them.
-      expect([withoutViewAsTester(withoutTeamManager(plan.roles as never[])), withoutBusinessRoles(withoutViewAsTester(withoutTeamManager(plan.permissions as never[]))), plan.migrations.map(m => m.id)])
+      expect([withoutChatRoles(withoutViewAsTester(withoutTeamManager(plan.roles as never[]))), withoutBusinessRoles(withoutViewAsTester(withoutTeamManager(plan.permissions as never[]))), plan.migrations.map(m => m.id)])
         .toEqual([[{ create: ROLE }], [
           { withdraw: { table: 'dash.report', role: 'Report Access Manager', operations: { read: '@basic' } } },
           { grant: { table: 'dash.report', role: ROLE, operations: { read: '@basic' } } },

@@ -168,7 +168,7 @@ export function helpPrompt(passages: readonly Passage[]): string {
   return [
     'You answer questions about how Featherbase and its apps work, for the people who use them.',
     'Answer only from the numbered passages below. Do not use anything else you know, and never make up a figure, a name or a step.',
-    'You never see anyone\'s data: for a question about their own figures, say they can ask about their figures in the chat's Agent mode.',
+    'You never see anyone\'s data: for a question about their own figures, say they can ask about their figures in the Agent mode of the chat.',
     'Write in plain words for a store manager, in at most 150 words. Do not mention passages, numbers in brackets, files or code.',
     '',
     'Reply with one JSON object and nothing else: {"answer": "<the answer>", "sources": [<the numbers of the passages the answer uses>]},',
