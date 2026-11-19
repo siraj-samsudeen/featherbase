@@ -339,7 +339,12 @@ async function administratorPasswordMatches(): Promise<string> {
   const configured = readVariable('ADMIN_PASSWORD')
   if (!configured?.trim()) return 'ADMIN_PASSWORD is not set, so there is no Administrator password to compare'
   if (!(await installed())) return 'Administrator password check skipped (no Person table yet)'
-  const [admin] = await sql`select password_hash from person where row_id = 'Administrator'`
+  // #1336: this runs before the migrations, so on the release that brings
+  // person_credential the hash is still only on person.
+  const [moved] = await sql`select to_regclass(${platformRelation('person_credential')}) is not null as moved`
+  const [admin] = moved?.moved
+    ? await sql`select password_hash from person_credential where person_id = 'Administrator'`
+    : await sql`select password_hash from person where row_id = 'Administrator'`
   if (!admin?.password_hash) return 'the Administrator has no password yet; cli seed sets it from ADMIN_PASSWORD'
   return verifyPassword(configured, String(admin.password_hash))
     ? "ADMIN_PASSWORD is the Administrator's live password"

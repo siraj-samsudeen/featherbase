@@ -2,6 +2,7 @@ import { environment } from './config'
 import { sql } from './db'
 import { hashPassword } from './auth'
 import { readVariable } from './env'
+import { platformRelation } from './platform-schema'
 
 // The first Administrator's password (migration 0002; #130). Only a
 // developer's own machine or a test run has a knowable default; `dev` (a
@@ -11,8 +12,17 @@ export async function bootstrapAdministrator(env: string = environment) {
   const password = configured?.trim() ? configured
     : ['development', 'test'].includes(env) ? 'admin' : null
   if (password === null) return
-  await sql`update person set password_hash = ${hashPassword(password)}
-    where row_id = 'Administrator' and password_hash is null`
+  // #1336: on a fresh install migration 0002 runs this before 0172 creates
+  // person_credential; it writes the column the baseline has, and 0172 moves it.
+  const [moved] = await sql`select to_regclass(${platformRelation('person_credential')}) is not null as moved`
+  if (!moved?.moved) {
+    await sql`update person set password_hash = ${hashPassword(password)}
+      where row_id = 'Administrator' and password_hash is null`
+    return
+  }
+  await sql`insert into person_credential (person_id, password_hash)
+    select row_id, ${hashPassword(password)} from person where row_id = 'Administrator'
+    on conflict (person_id) do nothing`
 }
 
 // The default-password warning is now the "Administrator default password"
@@ -20,7 +30,7 @@ export async function bootstrapAdministrator(env: string = environment) {
 export async function diagnoseAdminBootstrap(env: string = environment) {
   if (['development', 'test'].includes(env)) return
   const [ready] = await sql`select 1 from person u
-    where u.enabled and u.password_hash is not null
+    where u.enabled and exists (select 1 from person_credential c where c.person_id = u.row_id)
       and (u.row_id = 'Administrator' or exists (
         select 1 from has_role r where r.parent = u.row_id and r.role = 'System Manager')) limit 1`
   if (!ready)

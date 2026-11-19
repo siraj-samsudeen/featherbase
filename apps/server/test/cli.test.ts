@@ -145,7 +145,7 @@ describe('PLAT-004: developer CLI', () => {
 
   it('create-person --expects-google-sign-in needs no password and sets the mark', async () => {
     const stdout = await cli(['create-person', GOOGLE_USER, '--roles', 'System Manager', '--expects-google-sign-in'])
-    const [u] = await sql`select row_id, expects_google_sign_in, password_hash is not null as has_pw from person where email = ${GOOGLE_USER}`
+    const [u] = await sql`select row_id, expects_google_sign_in, exists (select 1 from person_credential c where c.person_id = person.row_id) as has_pw from person where email = ${GOOGLE_USER}`
     expect(u).toMatchObject({ expects_google_sign_in: true, has_pw: false })
     expect(stdout).toContain(`created person ${u.row_id as string} (${GOOGLE_USER})`)
     expect(stdout).toContain('expects Google sign-in')
@@ -162,7 +162,7 @@ describe('PLAT-004: developer CLI', () => {
   // a service account gets none either.
   it('create-person with a plain username stores no email', async () => {
     await cli(['create-person', NAME_USER, 'clitestpw123'])
-    const [u] = await sql`select email, password_hash is not null as has_pw from person where username = ${NAME_USER}`
+    const [u] = await sql`select email, exists (select 1 from person_credential c where c.person_id = person.row_id) as has_pw from person where username = ${NAME_USER}`
     expect(u).toEqual({ email: null, has_pw: true })
     const [byEmail] = await sql`select email from person where email = ${USER}`
     expect(byEmail.email).toBe(USER)
@@ -261,7 +261,7 @@ describe('PLAT-004: developer CLI', () => {
       await sql`delete from person where row_id = ${id}`
     }
     const hashOf = async (id: string) =>
-      String((await sql`select password_hash from person where row_id = ${id}`)[0].password_hash)
+      String((await sql`select (select password_hash from person_credential where person_id = ${id}) as password_hash`)[0].password_hash)
     // Session cut-offs are whole seconds (src/auth.ts): step into the next
     // second so a session issued just before the reset is strictly older.
     const nextSecond = () => new Promise((r) => setTimeout(r, 1000 - (Date.now() % 1000) + 50))
