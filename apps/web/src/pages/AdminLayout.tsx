@@ -44,7 +44,7 @@ import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PATH, SetupBanner, useSetupNeeded } from './InstanceHealth'
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
-import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { StatusPill, buttonClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery, raisedClasses } from '@featherbase/shop-floor'
 import { Bell, BookOpen, Bookmark, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Clock, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, COMMAND_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, shortcutControl, useShortcut } from '../lib/shortcuts'
@@ -856,7 +856,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
         data-testid="command-palette"
       >
         {/* A dialog only while open: closed, it is not one on the page. */}
-        <div role={barFocused ? 'dialog' : undefined} aria-label={barFocused ? 'Search or Command' : undefined} className={cardClasses('w-full max-w-2xl p-2 shadow-lg')}>
+        <div role={barFocused ? 'dialog' : undefined} aria-label={barFocused ? 'Search or Command' : undefined} className={raisedClasses('w-full max-w-2xl p-2')}>
           {commandBar}
         </div>
       </div>

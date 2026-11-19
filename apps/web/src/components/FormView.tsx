@@ -50,7 +50,7 @@ import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
-import { ContentTabs, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { ContentTabs, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, raisedClasses } from '@featherbase/shop-floor'
 import type { Row } from './form-row'
 import { FieldControl } from './FieldControl'
 import { usePageTitle } from '../lib/page-title'
@@ -883,7 +883,7 @@ export function FormView({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-row-title"
-            className={cardClasses('w-full max-w-lg p-4')}
+            className={raisedClasses('w-full max-w-lg p-4')}
             data-testid="delete-row-dialog"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1124,7 +1124,7 @@ export function FormView({
           onClick={() => leaveGuard.reset()}
           onKeyDown={(e) => e.key === 'Escape' && leaveGuard.reset()}>
           <div role="dialog" aria-modal="true" aria-labelledby="unsaved-leave-title" data-testid="unsaved-leave-dialog"
-            className={cardClasses('w-full max-w-lg p-4')} onClick={(e) => e.stopPropagation()}>
+            className={raisedClasses('w-full max-w-lg p-4')} onClick={(e) => e.stopPropagation()}>
             <h2 id="unsaved-leave-title" className="mb-2 text-base font-semibold text-ink">{t('Leave without saving?')}</h2>
             <p className="mb-3 text-sm text-ink-muted">{t("Your changes to this form haven't been saved.")}</p>
             <div className="flex flex-wrap justify-end gap-2 [&>button]:whitespace-nowrap">

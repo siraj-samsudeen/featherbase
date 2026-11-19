@@ -460,7 +460,7 @@ describe('the Admin shell', () => {
     expect(palette).toMatch(/\bfixed inset-0\b/)
     expect(palette).toMatch(/\bjustify-center\b/)
     expect(palette).toMatch(/\bbg-scrim\/\d+/)
-    expect(shell).toMatch(/role=\{barFocused \? 'dialog' : undefined\}[^>]*className=\{cardClasses\('w-full max-w-2xl/)
+    expect(shell).toMatch(/role=\{barFocused \? 'dialog' : undefined\}[^>]*className=\{raisedClasses\('w-full max-w-2xl/)
     // The field that opens it: a soft fill, no border, one line.
     const field = /function CommandField[\s\S]*?\n}\n/.exec(shell)?.[0] ?? ''
     expect(field).toMatch(/\bwhitespace-nowrap\b/)

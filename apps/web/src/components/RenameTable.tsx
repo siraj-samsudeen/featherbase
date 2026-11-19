@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
+import { buttonClasses, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 import { tableSlug } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { renameTableInRecents } from '../lib/recents'
@@ -62,7 +62,7 @@ export function RenameTable({ table, noun }: { table: string; noun: 'Table' | 'v
             role="dialog"
             aria-modal="true"
             aria-labelledby="rename-table-title"
-            className={cardClasses('w-full max-w-md p-4')}
+            className={raisedClasses('w-full max-w-md p-4')}
             data-testid="rename-table-dialog"
             onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => {

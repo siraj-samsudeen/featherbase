@@ -86,7 +86,7 @@ export function ResumeStrip() {
               type="button"
               onClick={t.open}
               data-testid={t.testid}
-              className={cardClasses('p-3 text-left transition hover:border-action')}
+              className={cardClasses('p-3 text-left transition hover:bg-hover')}
             >
               <div className="text-xs font-semibold text-ink-subtle">
                 {t.head}

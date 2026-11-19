@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useRouter, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, rememberLogin, type SessionUser } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
+import { buttonClasses, inputClasses, labelClasses, panelClasses } from '@featherbase/shop-floor'
 import { openLanding } from './Login'
 
 // #1257: the target of a password invite. Names the account the link is for,
@@ -58,7 +58,7 @@ export function SetPasswordPage() {
           </span>
           <h1 className="text-lg font-semibold text-ink">Set your password</h1>
         </div>
-        <div className={cardClasses('p-6')}>
+        <div className={panelClasses('p-6')}>
           {refused ? (
             <div className="space-y-4" data-testid="set-password-invalid">
               <p className="text-sm text-ink">{INVALID} Ask the person who invited you to send a new one.</p>

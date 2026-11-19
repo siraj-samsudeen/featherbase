@@ -17,7 +17,7 @@ import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
 import { KeyboardShortcutsItem, ShortcutTeachingHost } from './ShortcutTeaching'
 import { ViewAsBanner, ViewAsButton } from './ViewAs'
-import { RecordLink, TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { RecordLink, TabBar, buttonClasses, iconButtonClasses, labelClasses, touchRowClasses, useMediaQuery, raisedClasses } from '@featherbase/shop-floor'
 import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
@@ -602,7 +602,7 @@ function AccountMenu({ inMenu, inSidebar }: {
         <span className="sr-only">{t('Account')}: {shown}</span>
       </button>
       {open && (
-        <div id={menuId} className={cardClasses(`absolute ${place} z-40 w-64 overflow-hidden py-1`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
+        <div id={menuId} className={raisedClasses(`absolute ${place} z-40 w-64 overflow-hidden py-1`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
           <div className="border-b border-border px-3 py-2 text-sm" data-testid="account-identity">
             {/* #1227: a record shown is a RecordLink — the person's own Person record, for
                 someone who may open it (a System Manager, or a reader of Person). */}
@@ -716,7 +716,7 @@ function FootMenu({ label, icon: Icon, testid, children }: {
         <Icon aria-hidden size={16} />
       </button>
       {open && (
-        <div id={menuId} className={cardClasses('absolute bottom-full left-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
+        <div id={menuId} className={raisedClasses('absolute bottom-full left-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
           {children}
         </div>
       )}

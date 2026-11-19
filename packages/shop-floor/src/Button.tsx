@@ -6,16 +6,17 @@ type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger'
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary: 'border-transparent bg-action text-action-ink hover:bg-action-hover',
-  secondary: 'border-border-control bg-surface text-ink hover:bg-subtle',
+  // #1348: buttons are fills, never boxes: quiet grey, or blue for the page's one primary action.
+  secondary: 'border-transparent bg-fill text-ink hover:bg-fill-hover',
   quiet: 'border-transparent bg-transparent text-action hover:bg-action-tint',
-  danger: 'border-negative bg-surface text-negative hover:bg-negative-tint',
+  danger: 'border-transparent bg-negative-tint text-negative hover:bg-fill-hover',
 }
 
 /**
  * A button whose menu or panel is open (aria-expanded="true") looks pressed:
- * accent border, tint and text, the same in light and dark through the tokens.
+ * the accent's tint and text, never an outline, the same in light and dark through the tokens.
  */
-const OPEN = 'aria-expanded:border-action aria-expanded:bg-action-tint aria-expanded:text-action'
+const OPEN = 'aria-expanded:bg-action-tint aria-expanded:text-action'
 
 /**
  * The button look as a class string, for anything that must stay its own
@@ -29,7 +30,7 @@ export function buttonClasses({
   return recipe(
     cx(
       'inline-flex min-h-control select-none items-center justify-center gap-2 rounded-control border px-control-x',
-      'text-control font-semibold transition-colors',
+      'text-control font-medium transition-colors',
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
       'disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none',
       VARIANT[variant],

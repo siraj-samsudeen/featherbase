@@ -15,7 +15,7 @@ import { formatValue, useSettings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
-import { Button, EmptyState, NARROW_QUERY, Notice, PageHeader, ProblemPage, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
+import { Button, EmptyState, NARROW_QUERY, Notice, PageHeader, ProblemPage, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery, raisedClasses } from '@featherbase/shop-floor'
 import { ChevronDown } from '@featherbase/shop-floor'
 import { Columns3, ListTree, Rows4 } from 'lucide-react'
 import { tableCanRetire } from './RowRetirement'
@@ -821,7 +821,7 @@ export function ListView({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-table-title"
-            className={cardClasses('w-full max-w-md p-4')}
+            className={raisedClasses('w-full max-w-md p-4')}
             data-testid="delete-table-dialog"
             onClick={(e) => e.stopPropagation()}
           >
@@ -886,7 +886,7 @@ export function ListView({
             role="dialog"
             aria-modal="true"
             aria-labelledby="bulk-delete-title"
-            className={cardClasses('w-full max-w-md p-4')}
+            className={raisedClasses('w-full max-w-md p-4')}
             data-testid="bulk-delete-dialog"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1035,7 +1035,7 @@ export function ListView({
                 // so the pop-up opens from its left edge; from sm up it
                 // lines up with the button's right edge as before.
                 ref={colPickerRef}
-                className={cardClasses('absolute left-0 z-10 mt-1 max-h-[calc(100dvh-12rem)] w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
+                className={raisedClasses('absolute left-0 z-10 mt-1 max-h-[calc(100dvh-12rem)] w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
                 style={colPickerMax ? { maxHeight: colPickerMax } : undefined}
                 data-testid="list-columns-popup"
               >
