@@ -69,4 +69,15 @@ describe("the real menus draw their items as rows", () => {
     }
     expect(classes(within(menu).getByTestId('form-delete').className)).toContain('text-negative')
   })
+  test('Record actions keeps its two deletes in a group of their own at the bottom, set apart by space', async ({ admin }) => {
+    await seedSites(admin)
+    await renderApp(rowHref(SITE, 'ENK'), admin)
+    fireEvent.click(await screen.findByRole('button', { name: 'Record actions' }))
+    const menu = screen.getByRole('group', { name: 'Record actions' })
+    const danger = within(menu).getByRole('group', { name: 'Delete' })
+    expect(menu.lastElementChild).toBe(danger)
+    expect(classes(danger.className)).toEqual(expect.arrayContaining(['mt-2', 'first:mt-0']))
+    expect(within(danger).getAllByRole('button').map((b) => b.textContent)).toEqual(['Delete Permanently', 'Delete'])
+    expect(within(menu).getByRole('group', { name: 'Record' })).toHaveTextContent(/Print.*Rename.*Retire/)
+  })
 })
