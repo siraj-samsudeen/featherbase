@@ -70,7 +70,8 @@ for (const fill of plan.fill) {
   }
 }
 const keepUntil = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)
-const at = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')
+// To the millisecond, and never over an existing file: a rerun cannot replace an earlier run's record.
+const at = new Date().toISOString().replace(/[-:T.Z]/g, '')
 const record = join(flag('--out') ?? '.', `section-plants-filled-${at}__keep-until-${keepUntil}.json`)
-writeFileSync(record, JSON.stringify({ filled, skipped }, null, 2))
+writeFileSync(record, JSON.stringify({ filled, skipped }, null, 2), { flag: 'wx' })
 console.log(JSON.stringify({ ...summary, filled: filled.length, skipped, record }, null, 1))
