@@ -109,6 +109,16 @@ describe('the View as button and window', () => {
     expect(screen.queryByTestId('view-as-palette')).toBeNull()
   })
 
+  test('from the sidebar, the shortcut’s window opens over the whole page, not inside the sidebar', async () => {
+    state = { may: true }
+    show(<aside data-testid="sidebar" style={{ transform: 'translateX(0)', width: 280 }}><ViewAsButton compact place="sidebar" /></aside>)
+    await screen.findByTestId('view-as-button')
+    fireEvent.keyDown(document, { key: 'K', ctrlKey: true, shiftKey: true })
+    const palette = screen.getByTestId('view-as-palette')
+    expect(screen.getByTestId('sidebar').contains(palette)).toBe(false)
+    expect(palette.parentElement).toBe(document.body)
+  })
+
   test('while viewing, the banner takes the button’s place; the shortcut still opens the picker', async () => {
     viewingMarker()
     state = viewingAsha()
