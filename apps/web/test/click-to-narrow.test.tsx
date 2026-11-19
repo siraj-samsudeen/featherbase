@@ -62,12 +62,15 @@ test('every list shows a panel with one list per table its rows reach, each valu
   // Two links away, through Store, and named by its table only.
   expect(within(narrowList(REGION)).getByText(`through ${STORE}`)).toBeInTheDocument()
   await waitFor(() => expect(value(REGION, 'Coastal')).toHaveTextContent('3'))
-  // The section with no store is "Not linked to any Store", in red.
-  expect(value(STORE, `Not linked to any ${STORE}`)).toHaveTextContent('1')
+  // The section with no store is "No Store", in red (the heading names the table; the tooltip says it in full).
+  expect(value(STORE, `No ${STORE}`)).toHaveTextContent('1')
   // It closes the list's possible values, and names itself in full on hover.
   const storeValues = within(narrowList(STORE)).getAllByRole('button', { name: / \d+$/ })
-  expect(storeValues.at(-1)).toBe(value(STORE, `Not linked to any ${STORE}`))
-  expect(within(storeValues.at(-1)!).getByText(`Not linked to any ${STORE}`)).toHaveAttribute('title', `Not linked to any ${STORE}`)
+  expect(storeValues.at(-1)).toBe(value(STORE, `No ${STORE}`))
+  expect(within(storeValues.at(-1)!).getByText(`No ${STORE}`)).toHaveAttribute('title', `Not linked to any ${STORE}`)
+  // Picked, its chip says the same.
+  await userEvent.click(value(STORE, `No ${STORE}`))
+  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent(`No ${STORE}`))
 })
 
 test('a click narrows the list and every other list; ruled-out values stay, grey, at 0', async ({ admin }) => {
@@ -171,7 +174,7 @@ test('"Not linked to any" comes before the ruled-out values', async ({ admin }) 
   await userEvent.click(value(FLOOR, 'Ground Floor'))
   await waitFor(() => expect(value(STORE, 'Northgate')).toHaveAttribute('data-state', 'ruled-out'))
   const names = within(narrowList(STORE)).getAllByRole('button', { name: / \d+$/ }).map((b) => b.getAttribute('aria-label'))
-  expect(names).toEqual(['Bayside 1', `Not linked to any ${STORE} 1`, 'Northgate 0'])
+  expect(names).toEqual(['Bayside 1', `No ${STORE} 1`, 'Northgate 0'])
 })
 
 test('Clear All Filters on the panel picks narrows in place too', async ({ admin }) => {
