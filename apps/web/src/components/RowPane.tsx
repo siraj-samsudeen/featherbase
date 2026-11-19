@@ -13,9 +13,9 @@ import { dataColumns } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { push, type NavGroup, type NavPane, type NavPath, type NavStep } from '../lib/nav-path'
 import { useNavigation, type Navigation } from '../lib/navigation'
-import { forwardLinks, groupKey, groupOrder, rowNameText, useBacklinkGroups, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
+import { forwardLinks, groupKey, rowNameText, useBacklinkGroups, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
 import { useConnections } from '../lib/connections'
-import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './FormArrangement'
+import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement, userSettingsQuery } from './FormArrangement'
 import { useI18n } from '../lib/i18n'
 import { ActivityTimeline } from './ActivityTimeline'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
@@ -23,6 +23,8 @@ import { Indicator } from './Indicator'
 import { RecordChips } from './RecordChips'
 import { isCodeColumn, isDurationColumn, isSourceColumn } from '../lib/column-kinds'
 import { WorkedOutCounts, WorkedOutSections, workedOutId } from './WorkedOut'
+import { tableViewDefaultQuery } from '../lib/table-view-default'
+import { listOrder, type ListSort } from '../lib/list-order'
 import { useGroupPlans } from './LinkTickList'
 import { managedBySignIn } from './PersonSignInMethods'
 
@@ -154,7 +156,8 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
                 showAllHref={groupListHref(g, nav)} />)}
               {/* #1282 C10–C11: what an installed app works out about this record (a Person's apps and reports). */}
               <WorkedOutSections table={table} row={row} onOpen={drill} />
-              <PaneSection title="Pointed At By">
+              {/* A record whose only groups are tick lists has nothing to show here (verifier). */}
+              {(cnx.isPending || chipGroups.length > 0 || !tickable.length) && <PaneSection title="Pointed At By">
                 <div className="flex flex-wrap items-center gap-2">
                   {fullChips.map(chip)}
                   {cnx.isPending && <span className="text-sm text-ink-subtle">Loading…</span>}
@@ -163,7 +166,7 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
                   {showEmpty && emptyChips.map(chip)}
                 </div>
                 {open && !tickable.includes(open) && <PanelGroup key={open.key} table={table} row={row} group={open} nav={nav} onOpen={drill} />}
-              </PaneSection>
+              </PaneSection>}
             </div>
           </div>
         </div>
@@ -195,7 +198,8 @@ export function CountRow({ table, row, size = 'page', onSection }: {
   const of = name.state === 'read' ? name.title : undefined
   return (
     // Drawn only when it holds a chip (empty:hidden), so a record nothing links to keeps no gap.
-    <div role="group" aria-label="What links here" data-testid="count-row" className="flex flex-wrap items-center gap-2 empty:hidden">
+    <div role="group" aria-label="What links here" data-testid="count-row"
+      className={cx('flex flex-wrap items-center empty:hidden', size === 'pane' ? 'gap-1.5' : 'gap-2')}>
       {groups.map((g) => {
         const href = nav ? groupListHref(g, nav) : `${tableHref(g.connection.table)}?filters=${encodeURIComponent(JSON.stringify(g.connection.filters))}`
         return <GroupCount key={g.key} group={g} href={href} size={size} of={of} onNavigate={(to = href) => void navigate({ href: to })} />
@@ -240,8 +244,13 @@ const PEEK_ROWS = 5
 function GroupPeek({ group }: { group: BacklinkGroup }) {
   const meta = useMeta(group.connection.table)
   const title = meta.data?.title_column && meta.data.title_column !== 'row_id' ? meta.data.title_column : undefined
+  // In the order of the list "Open all" opens: the person's sort there, else the Table's default, else its own (verifier).
+  const own = useQuery(userSettingsQuery(group.connection.table))
+  const td = useQuery(tableViewDefaultQuery(group.connection.table))
+  const ready = Boolean(meta.data) && !own.isPending && !td.isPending
+  const order = ready ? listOrder(meta.data, (own.data?.settings?.sort ?? null) as ListSort | null, td.data?.settings.sort).orderBy : undefined
   const rows = useGroupRows(group.connection, {
-    fields: ['row_id', ...(title ? [title] : [])], limit: PEEK_ROWS, orderBy: meta.data ? groupOrder(meta.data) : undefined, enabled: Boolean(meta.data),
+    fields: ['row_id', ...(title ? [title] : [])], limit: PEEK_ROWS, orderBy: order, enabled: ready,
   })
   if (!meta.data || !rows.data) return <span className="text-[13px] text-ink-subtle">Loading…</span>
   const shown = rows.data.data as Row[]

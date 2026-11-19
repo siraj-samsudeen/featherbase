@@ -172,6 +172,8 @@ export function useWalkKeys(walk: Walk | null, nav: AddressNavigation | null) {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.defaultPrevented) return
       const target = e.target as HTMLElement | null
       if (target?.closest('input,textarea,select,[contenteditable="true"],[role="listbox"],[role="menu"],[role="dialog"]')) return
+      // An open menu or dialog has the arrows, even while focus is still on the button that opened it (verifier).
+      if (document.querySelector('[role="menu"],[role="dialog"],[role="listbox"]')) return
       const to = e.key === 'ArrowDown' ? walk.next : walk.previous
       if (!to) return
       e.preventDefault()
