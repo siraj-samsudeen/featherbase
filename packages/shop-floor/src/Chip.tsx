@@ -54,6 +54,12 @@ export function chipClasses({ hue, compact = false, className }: { hue: ChipHue;
   )
 }
 
+/** #1348: the shared tag chip for a source, a reach or a level ("from HR", "via Floor Manager", "Team"):
+ *  neutral, never a category tint, never a border. */
+export function tagClasses(className?: string): string {
+  return cx('inline-flex items-center whitespace-nowrap rounded-md bg-tag px-2 py-0.5 text-[12.5px] text-ink-muted', className)
+}
+
 /** A tinted pill. `dot` marks a status; Compact Rows drops the dot and shrinks the chip. */
 export function Chip({ hue, dot = false, compact = false, className, children }: {
   hue: ChipHue

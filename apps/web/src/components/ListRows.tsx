@@ -13,7 +13,7 @@ import { useI18n } from '../lib/i18n'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { PrincipalLink, PrincipalName, usePrincipalLabels } from '../lib/people'
 import { OneLine } from './list-one-line'
-import { Button, DataCards, LinkActions, Select, touchLinkClasses, useRecordHref, type DataColumn } from '@featherbase/shop-floor'
+import { Button, DataCards, LinkActions, Select, touchLinkClasses, useRecordHref, cellClasses, tagClasses, useRowDensity, type DataColumn } from '@featherbase/shop-floor'
 import { ArrowDown, ArrowUp } from '@featherbase/shop-floor'
 import { RetiredBadge } from './RowRetirement'
 import { fmtCount } from '@featherbase/shop-floor'
@@ -34,7 +34,8 @@ const DATE_TYPES = new Set(['Date', 'Datetime'])
 
 export function cell(value: unknown, columnType: string, settings: Settings): string {
   if (value == null || value === '') return '—'
-  if (typeof value === 'boolean') return value ? '✓' : '✗'
+  // #1348 board 2: a yes/no reads Yes or No, in muted grey where it is drawn.
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   return formatValue(columnType, value, settings) || '—'
 }
 
@@ -84,6 +85,7 @@ export function ListRow({
 }) {
   // A title that is a person's id reads as their name.
   const shownTitle = usePrincipalLabels([title])
+  const density = useRowDensity()
   const rowId = String(row.row_id)
   // A click on the line itself, not on a link, button or checkbox in it.
   const select = onOpenPane && ((e: React.MouseEvent) => {
@@ -108,9 +110,9 @@ export function ListRow({
           e.preventDefault()
           onOpenPane({ table, row: rowId })
         })}
-        className={`group ${inPane ? '' : 'hover:bg-subtle'} focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${onOpenPane ? 'cursor-pointer' : ''} ${inPane ? 'bg-action-tint' : ''}`}>
+        className={`group focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus ${onOpenPane ? 'cursor-pointer' : ''}`}>
         {expandable && (
-          <td className="border-b border-border pl-2 group-last:border-b-0">
+          <td className={cellClasses({ density, first: true, className: 'pl-2 pr-0' })}>
             <button
               onClick={onToggleExpand}
               aria-label={expanded ? 'Collapse child rows' : 'Expand child rows'}
@@ -125,7 +127,7 @@ export function ListRow({
           </td>
         )}
         {selectable && (
-          <td className="border-b border-border px-3 py-2 group-last:border-b-0">
+          <td className={cellClasses({ density, first: !expandable })}>
             <label className="cursor-pointer">
               <input
                 type="checkbox"
@@ -138,20 +140,20 @@ export function ListRow({
           </td>
         )}
         {columns.map((col, i) => (
-          <td key={col.column_name} data-title-cell={i === 0 ? '' : undefined} className={`border-b border-border px-3 py-2 group-last:border-b-0 ${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? `sticky left-0 z-[1] border-r group-focus-visible:bg-action-tint ${inPane ? 'bg-action-tint' : 'bg-surface group-hover:bg-subtle'}` : 'group/cell relative'}`}>
+          <td key={col.column_name} data-title-cell={i === 0 ? '' : undefined} className={cellClasses({ density, first: i === 0 && !selectable && !expandable, className: `${isFigure(col) ? 'text-right tabular-nums' : ''} ${i === 0 ? 'sticky left-0 z-[1] bg-surface group-focus-visible:bg-hover' : 'group/cell relative'}` })}>
             <OneLine className={i === 0 ? NAME_CLIP : 'max-w-80'}>
               <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
             </OneLine>
             {i > 0 && <LinkCellActions row={row} col={col} />}
           </td>
         ))}
-        <td aria-hidden className="border-b border-border p-0 group-last:border-b-0" />
+        <td aria-hidden className={cellClasses({ density, last: true, className: 'p-0' })} />
       </tr>
       {expanded && (
         <tr data-testid="expanded-row">
           <td
             colSpan={columns.length + 2 + (selectable ? 1 : 0)}
-            className="border-b border-border bg-subtle py-3 pl-10 pr-4"
+            className="rounded-lg bg-subtle py-3 pl-10 pr-4"
           >
             <InlineChildren table={table} name={String(row.row_id)} childFields={childFields} />
           </td>
@@ -226,10 +228,13 @@ export function ListCell({
   return (
     <span
       // A date never breaks at its hyphens in a narrow cell.
-      className={`${quiet ? 'text-ink-muted' : 'text-ink'} ${DATE_TYPES.has(col.column_type) ? 'whitespace-nowrap' : ''}`}
+      className={`${quiet || col.column_type === 'Check' ? 'text-ink-subtle' : 'text-ink'} ${DATE_TYPES.has(col.column_type) ? 'whitespace-nowrap' : ''}`}
       data-testid={`cell-${col.column_name}`}
     >
-      {col.column_type === 'Choice' && value != null && value !== '' ? (
+      {col.column_type === 'Choice' && value != null && value !== '' && isSourceColumn(col.column_name) ? (
+        // #1348 (spec 12): where a row came from is the shared tag, never a category tint.
+        <span className={tagClasses()}>{choiceLabel(String(value), col.choice_labels, t)}</span>
+      ) : col.column_type === 'Choice' && value != null && value !== '' ? (
         <Indicator value={String(value)} label={choiceLabel(String(value), col.choice_labels, t)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
         // #1224: who made, changed or retired a row is named to anyone who may read the row.
@@ -248,6 +253,12 @@ export function ListCell({
             nav.push({ ...nav.step, pane: { table: col.reference_base ?? col.reference_table!, row: String(value) } })
           }}
         />
+      ) : isBlank(value) ? (
+        // #1348: an empty field stays blank: no dash, no grey box.
+        null
+      ) : col.column_type === 'Data' && isCodeColumn(col.column_name) ? (
+        // #1348 (board 1): a code tells same-named rows apart; small, mono, grey, never blue.
+        <span className="font-mono text-[12.5px] text-ink-subtle">{cell(value, col.column_type, settings)}</span>
       ) : (
         cell(value, col.column_type, settings)
       )}
@@ -256,6 +267,9 @@ export function ListCell({
 }
 
 const isBlank = (v: unknown) => v == null || String(v).trim() === ''
+/** #1348: a column named for a row's source (source, source_system) and one holding a code (code, site_code). */
+const isSourceColumn = (name: string) => /(^|_)source(_|$)/.test(name)
+const isCodeColumn = (name: string) => /(^|_)code$/.test(name)
 
 /** #1276: how a list narrows itself by one link's value, for its link cells'
  *  Filter. Absent where the list's filters are not the person's to change. */
@@ -517,15 +531,15 @@ function InlineChildGrid({
   )
   const currencyCols = cols.filter((c) => c.column_type === 'Currency')
   return (
-    <div className="overflow-hidden rounded-[var(--radius-control)] border border-border bg-surface" data-testid={`inline-children-${field.column_name}`}>
-      <div className="border-b border-border px-3 py-1 text-xs font-semibold text-ink-muted">
+    <div className="overflow-hidden rounded-control bg-surface" data-testid={`inline-children-${field.column_name}`}>
+      <div className="px-3 py-1 text-xs font-semibold text-ink-muted">
         {field.label ?? field.column_name} ({fmtCount(rows.length)})
       </div>
       <table className="w-full text-xs">
         <thead>
           <tr>
             {cols.map((c) => (
-              <th key={c.column_name} className="border-b border-border px-3 py-1 text-left font-medium text-ink-muted">
+              <th key={c.column_name} className="bg-subtle px-3 py-1 text-left font-medium text-ink-subtle">
                 {c.label ?? c.column_name}
               </th>
             ))}
@@ -533,7 +547,7 @@ function InlineChildGrid({
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={String(r.row_id ?? i)} className="border-b border-border last:border-0">
+            <tr key={String(r.row_id ?? i)}>
               {cols.map((c) => (
                 <td key={c.column_name} className="px-3 py-1 text-ink">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
@@ -557,7 +571,7 @@ function InlineChildGrid({
         </tbody>
       </table>
       {currencyCols.length > 0 && rows.length > 0 && (
-        <div className="border-t border-border bg-subtle px-3 py-1 text-xs text-ink-muted">
+        <div className="bg-subtle px-3 py-1 text-xs text-ink-muted">
           {currencyCols
             .map(
               (c) =>

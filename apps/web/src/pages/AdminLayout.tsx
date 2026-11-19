@@ -1030,8 +1030,9 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
 const SIDEBAR_ROW_IDLE = ROW_IDLE
 const SIDEBAR_ROW_SELECTED = ROW_SELECTED
 /** #1253: the page is one white panel on the canvas, set off by a soft shadow,
- *  8px from the window's edges; a phone shows it edge to edge. */
-export const PAGE_PANEL = 'min-w-0 flex-1 overflow-auto bg-surface p-3 sm:px-5 sm:py-4 md:my-2 md:mr-2 md:rounded-xl md:shadow-sm'
+ *  8px from the window's edges; a phone shows it edge to edge. #1348: radius 14,
+ *  padding 24/28, and a 16px gutter on a phone. */
+export const PAGE_PANEL = 'min-w-0 flex-1 overflow-auto bg-surface p-4 sm:px-7 sm:py-6 md:my-2 md:mr-2 md:rounded-card md:shadow-panel'
 
 interface SidebarItem {
   to: string

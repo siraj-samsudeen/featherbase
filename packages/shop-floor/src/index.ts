@@ -2,7 +2,7 @@
 // src/index.css; design-guards.test.ts keeps raw colours and sizes out.
 export { Button, buttonClasses, iconButtonClasses, touchLinkClasses, touchRowClasses, touchTargetClasses } from './Button'
 export { Card, cardClasses, panelClasses, raisedClasses } from './Card'
-export { CATEGORY_HUES, Chip, chipClasses, chipHue, statusHue, type ChipHue } from './Chip'
+export { CATEGORY_HUES, Chip, chipClasses, chipHue, statusHue, tagClasses, type ChipHue } from './Chip'
 export { cx, recipe } from './cx'
 export { EmptyState } from './EmptyState'
 export { ProblemPage, type ProblemKind } from './ProblemPage'
@@ -36,3 +36,4 @@ export { TreeOutline, type TreeNode } from './TreeOutline'
 export { AreaPicker, type AreaAxis, type AreaLevel, type AreaRow, type PickedArea } from './AreaPicker'
 export { Sentence, sentenceText, type SentencePart } from './Sentence'
 export { Grid, PendingBar, gridKey, type GridColumn, type GridRow, type GridStep } from './Grid'
+export { cellClasses, headCellClasses, RowDensityContext, TABLE_CLASSES, useRowDensity, type RowDensity } from './TableLook'
