@@ -724,7 +724,8 @@ export function ListView({
     || Boolean(meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data))
   const hasTableAdministration = Boolean(canShapeColumns || caps?.manage || isSystemManager)
   return (
-    <div data-testid="list-view">
+    // #1282 A4: marks when this person's saved list settings have arrived; changes before then are not kept.
+    <div data-testid="list-view" data-settings={settingsLoaded ? 'loaded' : 'loading'}>
       {/* #1288: the shared page header. The page's own actions first, then the one primary (New), then More. */}
       <PageHeader
         className="mb-2"

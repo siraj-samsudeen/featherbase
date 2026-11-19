@@ -119,6 +119,8 @@ async function openList(as: Client, table: string, search = '') {
   await screen.findByTestId('list-view')
   await waitFor(() => expect(headerCells().length).toBeGreaterThan(0))
   await waitFor(() => expect(settingsReads.get(table) ?? 0).toBeGreaterThan(reads))
+  // #1282 A4: a change before the person's saved settings arrive is not kept, so wait for them.
+  await waitFor(() => expect(screen.getByTestId('list-view')).toHaveAttribute('data-settings', 'loaded'))
   await new Promise((resolve) => setTimeout(resolve, 0))
   return view
 }
