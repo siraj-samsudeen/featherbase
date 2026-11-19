@@ -42,6 +42,15 @@ describe('#1282 A4: a Table\'s default view', () => {
     expect(await current(admin, table.name)).toBeNull()
   })
 
+  test('a body that is not JSON saves nothing and undoes nothing', async ({ admin }) => {
+    const table = await floorTable(admin)
+    const saved = await (await put(admin, table.name, { compact: true })).json() as { id: string }
+    const broken = { headers: { 'content-type': 'application/json' }, body: '{not json' }
+    await expectStatus(await admin.fetch(`/api/table_view_default/${encodeURIComponent(table.name)}`, { method: 'PUT', ...broken }), 417)
+    await expectStatus(await admin.fetch(`/api/table_view_default/${encodeURIComponent(table.name)}/undo`, { method: 'POST', ...broken }), 409)
+    expect(await current(admin, table.name)).toEqual(expect.objectContaining({ id: saved.id, settings: { compact: true } }))
+  })
+
   test('Undo puts the previous default back, only while the save is still the default', async ({ admin }) => {
     const table = await floorTable(admin)
     const first = await (await put(admin, table.name, { compact: true })).json() as { id: string }
