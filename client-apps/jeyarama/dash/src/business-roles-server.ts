@@ -9,6 +9,7 @@ import { reportsReaching, type AccessRow, type BundleMember, type Receiver } fro
 import { ACCESS, MEMBER, all, jobsOf, managesAccess, personNames, whoIs, type AccessContext } from './report-access-server.ts'
 import { PROVIDER_FIELDS, reachOf, type Documents, type Place } from './provider.ts'
 import { EMPLOYEE_STATUS, checked, exact, holdsOn, text } from './values.ts'
+import { mayChangePermissions } from './permission-grid-server.ts'
 import { istToday } from './report.ts'
 import { STARTING_ROLES } from './starting-roles.ts'
 import { opensDashFor, readableByRoles, offered } from './report-eligibility.ts'
@@ -398,11 +399,18 @@ export async function businessRoles(context: AccessContext) {
   const shown = [...new Set([...holdersOf.values()].flatMap(set => [...set].slice(0, HOLDERS_SHOWN)).concat(roles.flatMap(r => [...peopleOf.get(r.id) ?? []].slice(0, HOLDERS_SHOWN))))]
   const names = await personNames(ctx, shown)
   return {
+    // #1282 F1–F6: whether the grid steps for this caller, or is read-only.
+    may_change: mayChangePermissions(ctx),
+    // #1282: the reports grid's rows: every report and bundle the caller may read, and whether they may give them to roles.
+    report_catalog: [...named.values()],
+    may_give_reports: managesAccess(ctx),
     roles: roles.sort((a, b) => a.name.localeCompare(b.name)).sort((a, b) => order(a.name) - order(b.name)).map(role => ({
       id: role.id, name: role.name, description: role.description, by_hand_only: role.by_hand_only, reaches: REACHES_WORDS[role.reaches!] ?? 'Not set',
       permissions: permissions.filter(p => p.role === role.id).map(p => ({ app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach, sentence: permissionSentence(role.name, p), parts: permissionParts(role, p) })),
       reports: [...givenTo].filter(([what, given]) => given.includes(role.id) && named.has(what))
         .map(([what, given]) => grantParts(named.get(what)!, given.flatMap(id => roles.filter(r => r.id === id)))),
+      // #1282: the reports grid's ticks: each report or bundle given to this role, as "dash.report|<key>".
+      given: [...givenTo].filter(([what, given]) => given.includes(role.id) && named.has(what)).map(([what]) => what),
       people: peopleOf.get(role.id)?.size ?? 0,
       people_from: sourceWords(role.id) || 'nobody yet',
       holders: [...peopleOf.get(role.id) ?? []].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone' })),
@@ -641,6 +649,54 @@ const clip = (words: string, most = 120) => words.length > most ? `${words.slice
  * #1282 Why mode: whether the platform's Map may explain this record for this viewer: a Person, for company-wide
  * managers only (as Explain a Person).
  */
+/**
+ * #1282 C10–C11 (UI owner, option A): a person's worked-out sections for the platform's record panel (the Lens), from
+ * Explain a Person's own answer, so the two never disagree: the apps they can open and the reports they see, each with
+ * the roles that give it and the one-line chain Why? opens. Only for someone who may have this person's access
+ * explained, as Why is; anyone else is shown nothing (the platform draws no section). No pronoun: "They", "their".
+ */
+export async function workedOut(context: AccessContext) {
+  if (!mayExplainAccess(context)) return null
+  const person = String((context.payload as { row: string }).row)
+  const explained = await explainPerson({ ...context, payload: { person } })
+  // Every name within the platform's limits (Codex standard round 1): one long name must not refuse both sections.
+  const self = { name: clip(explained.name), record: { table: 'Person', row: person } }
+  const roleLink = (r: { role: string; name: string }) => ({ name: clip(r.name), record: { table: ROLE, row: r.role } })
+  // The role's area as record parts (as Why's boxes carry it), so the platform hides a chain naming an area the viewer may not read.
+  const chainVia = (roles: { role: string; name: string; area: { parts: Part[] } }[]) => roles.slice(0, 1).map(r => ({ ...roleLink(r), ...areaParts(r.area.parts) }))
+  // The person's own roles, in their order, that the names (or ids) given name.
+  const rolesOf = (names: string[]) => explained.roles.filter(r => names.includes(r.name))
+  // UI owner: one row per app, at its highest level (a higher level includes the lower). A lower level is named
+  // ("also Reader") only where a role that does not give the higher one gives it; Why? opens the shown level's chain.
+  const byApp = new Map<string, typeof explained.apps>()
+  for (const a of explained.apps) byApp.set(a.app, [...(byApp.get(a.app) ?? []), a])
+  const apps: WorkedRow[] = [...byApp.values()].slice(0, WORKED_OUT_ROWS).map(levels => {
+    const [top, ...lower] = [...levels].sort((x, y) => levelRank(y.level) - levelRank(x.level))
+    const also = lower.filter(l => l.via.some(name => !top!.via.includes(name)))
+    const via = rolesOf([...new Set([...top!.via, ...also.flatMap(l => l.via)])])
+    return { name: clip(top!.app), app: top!.app.toLowerCase(),
+      detail: clip(`at level ${top!.level}${also.length ? `, also ${also.map(l => l.level).join(', ')}` : ''}`),
+      via: via.slice(0, 6).map(roleLink), why: [self, ...chainVia(rolesOf(top!.via)), { name: clip(`${top!.app} · ${top!.level}`) }] }
+  })
+  const reports: WorkedRow[] = explained.reports.slice(0, WORKED_OUT_ROWS).map(r => {
+    const via = explained.roles.filter(x => r.roles.includes(x.role))
+    const report = { name: clip(r.name), record: { table: 'dash.report', row: r.key } }
+    return { ...report, via: via.slice(0, 6).map(roleLink), why: [self, ...chainVia(via), report] }
+  })
+  return { version: 1, sections: [
+    { heading: 'Apps They Can Open', note: 'worked out from their roles', empty: 'No apps from roles yet', rows: apps },
+    { heading: 'Reports They See', note: 'given to their roles', empty: 'No reports from roles yet', rows: reports },
+  ] }
+}
+/** The most rows one worked-out section holds (the platform's limit). */
+const WORKED_OUT_ROWS = 50
+/** An app level's rank, lowest first: a higher level includes what a lower one gives. A level not listed ranks lowest. */
+const LEVEL_ORDER = ['Reader', 'User', 'Manager']
+const levelRank = (level: string) => LEVEL_ORDER.indexOf(level)
+type Named = { name: string; record?: { table: string; row: string } }
+/** One row of a worked-out section, as the platform's shape has it; `app` names the installed app it is, for its link. */
+type WorkedRow = Named & { app?: string; detail?: string; via: Named[]; why: (Named & { detailParts?: Named[] })[] }
+
 export function mayExplainAccess(context: AccessContext): boolean {
   // The platform always sends a payload; anything that is not { table, row } names no Person.
   const { table, row } = Object(context.payload) as { table?: unknown; row?: unknown }

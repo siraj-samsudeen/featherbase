@@ -32,6 +32,8 @@ const CADENCES = Object.keys(CADENCE_SECONDS) as [string, ...string[]]
 
 const jobSchema = z.object({
   name: identifier,
+  // #1330: how the job reads in lists and links; its name in words when absent.
+  title: z.string().trim().min(1).optional(),
   cadence: z.enum(CADENCES, { error: `A job's cadence must be one of ${CADENCES.join(', ')}` }),
   description: z.string().trim().min(1),
   grants: z.array(z.enum(APP_JOB_GRANTS, { error: `A job grant must be one of ${APP_JOB_GRANTS.join(', ')}` }))
@@ -50,6 +52,11 @@ export const jobsDeclaration = z.array(jobSchema)
   .refine((jobs) => distinct(jobs.map((job) => job.name)), 'Each job has a name of its own')
 
 export type JobDeclaration = z.infer<typeof jobSchema>
+
+/** #1330: a job's title, its manifest's or its name in words, Title Case ("escalate_issues" -> "Escalate Issues"). */
+export function declaredJobTitle(job: Pick<JobDeclaration, 'name' | 'title'>): string {
+  return job.title ?? job.name.split('_').filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')
+}
 
 /** A job's registered name: also its Scheduled Job, and the actor it runs as. */
 export const appJobMethod = (app: string, job: string) => `${app}.${job}`
@@ -112,6 +119,7 @@ interface BindRequest {
 export function bindAppJobs({ app, jobs, handlers, setup, datasets }: BindRequest) {
   return jobs.map((job) => ({
     method: appJobMethod(app, job.name),
+    title: declaredJobTitle(job),
     cadence: job.cadence,
     description: job.description,
     handler: runAppJob(app, job, handlers.get(job.name)!, setup, datasets.filter((d) => job.datasets?.includes(d.name))),
@@ -376,9 +384,10 @@ async function emailSystemManagers(actor: string, message: Readonly<{ subject: s
 // ------------------------------------------------------------- upgrades
 
 export type JobPlanStep =
-  | { add: { name: string; cadence: string; description: string; grants: AppJobGrant[]; documents?: JobDeclaration['documents'] } }
-  | { change: { name: string; cadence?: string; description?: string; grants?: AppJobGrant[]; documents?: JobDeclaration['documents'] | null } }
+  | { add: { name: string; title?: string; cadence: string; description: string; grants: AppJobGrant[]; documents?: JobDeclaration['documents'] } }
+  | { change: { name: string; title?: string; cadence?: string; description?: string; grants?: AppJobGrant[]; documents?: JobDeclaration['documents'] | null } }
   | { remove: { name: string } }
+type JobPlanChange = Extract<JobPlanStep, { change: unknown }>['change']
 
 /** What an upgrade does to the app's jobs. A job the upgrade keeps may lose
  *  grants or identifier systems, never gain one: like a widened table grant
@@ -389,7 +398,7 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
   for (const job of target) {
     const before = prior.find((p) => p.name === job.name)
     if (!before) {
-      steps.push({ add: { name: job.name, cadence: job.cadence, description: job.description, grants: [...jobGrants(job)], ...(job.documents ? { documents: job.documents } : {}) } })
+      steps.push({ add: { name: job.name, ...(job.title ? { title: job.title } : {}), cadence: job.cadence, description: job.description, grants: [...jobGrants(job)], ...(job.documents ? { documents: job.documents } : {}) } })
       continue
     }
     // Grants, identifier systems, datasets and optional secrets are all
@@ -407,7 +416,8 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
     if (wider.length)
       throw new AppError('ValidationError', `The job ${appJobMethod(app, job.name)} would gain ${wider.join(', ')}; ` +
         'a job cannot gain access in an upgrade')
-    const change: { name: string; cadence?: string; description?: string; grants?: AppJobGrant[]; documents?: JobDeclaration['documents'] | null } = { name: job.name }
+    const change: JobPlanChange = { name: job.name }
+    if (declaredJobTitle(job) !== declaredJobTitle(before)) change.title = declaredJobTitle(job)
     if (job.cadence !== before.cadence) change.cadence = job.cadence
     if (job.description !== before.description) change.description = job.description
     if (jobGrants(before).size !== jobGrants(job).size) change.grants = [...jobGrants(job)]
@@ -450,7 +460,7 @@ export async function applyJobPlan(app: string, steps: JobPlanStep[], prior: Job
       const method = appJobMethod(app, step.add.name)
       await assertJobClaimable(app, method)
       await sql`insert into scheduled_job ${sql({
-        row_id: method, created_by: actor, updated_by: actor, method, cadence: step.add.cadence,
+        row_id: method, created_by: actor, updated_by: actor, method, title: declaredJobTitle(step.add), cadence: step.add.cadence,
         enabled: true, description: step.add.description, owner_app: app,
       })} on conflict (method) do nothing`
     } else if ('remove' in step) {
@@ -461,12 +471,13 @@ export async function applyJobPlan(app: string, steps: JobPlanStep[], prior: Job
     } else {
       const method = appJobMethod(app, step.change.name)
       const before = prior.find((p) => p.name === step.change.name)!
-      const [row] = await sql`select row_id, cadence, description from scheduled_job where method = ${method} and owner_app = ${app}`
+      const [row] = await sql`select row_id, title, cadence, description from scheduled_job where method = ${method} and owner_app = ${app}`
       if (!row) continue
       const locked = await managedFieldsOf('Scheduled Job', String(row.row_id))
       const updates: Record<string, string> = {}
       if (step.change.cadence && row.cadence === before.cadence && !locked.includes('cadence')) updates.cadence = step.change.cadence
       if (step.change.description && row.description === before.description && !locked.includes('description')) updates.description = step.change.description
+      if (step.change.title && row.title === declaredJobTitle(before) && !locked.includes('title')) updates.title = step.change.title
       if (Object.keys(updates).length)
         await sql`update scheduled_job set ${sql({ ...updates, updated_by: actor })}, updated_at = now() where method = ${method}`
     }

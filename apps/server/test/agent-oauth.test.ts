@@ -398,11 +398,11 @@ describe('#1207 the token endpoint: a code for a key pair', () => {
   test('a password change that cannot finish ending agent access changes nothing', async ({ createUser }) => {
     const user = await createUser()
     await connected(user)
-    const [before] = await sql`select password_hash from person where row_id = ${user.user!}`
+    const [before] = await sql`select (select password_hash from person_credential where person_id = ${user.user!}) as password_hash`
     await sql`create function pg_temp.refuse_1207() returns trigger language plpgsql as $$ begin raise exception 'refused for the test'; end $$`
     await sql`create trigger refuse_1207 before delete on featherbase.agent_auth_code for each statement execute function pg_temp.refuse_1207()`
     await expect(setUserPassword(user.user!, 'a-new-password-1207')).rejects.toThrow(/refused for the test/)
-    const [after] = await sql`select password_hash from person where row_id = ${user.user!}`
+    const [after] = await sql`select (select password_hash from person_credential where person_id = ${user.user!}) as password_hash`
     expect(after.password_hash).toBe(before.password_hash)
     const [live] = await sql`select count(*)::int as n from agent_connection where person = ${user.user!} and ended_at is null`
     expect(live.n).toBe(1)

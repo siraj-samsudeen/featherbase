@@ -102,7 +102,7 @@ test('Browse a table\'s rows: each listed column is headed by its label', async 
   expect(screen.getByTestId('col-active')).toHaveTextContent('Active')
 })
 
-test('Browse a table\'s rows: a ticked yes/no reads as a tick, an unticked one as no tick', async ({ admin }) => {
+test('Browse a table\'s rows: a ticked yes/no reads Yes, an unticked one No (#1348 board 2)', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: 'Lv Ticks',
     columns: [
@@ -116,8 +116,8 @@ test('Browse a table\'s rows: a ticked yes/no reads as a tick, an unticked one a
   await waitFor(() => expect(cellTexts('city')).toHaveLength(2))
   const activeOf = (city: string) =>
     within(within(rowsEl()).getByText(city).closest('tr') as HTMLElement).getByTestId('cell-active').textContent
-  expect(activeOf('ticked')).toContain('✓')
-  expect(activeOf('unticked')).not.toContain('✓')
+  expect(activeOf('ticked')).toBe('Yes')
+  expect(activeOf('unticked')).toBe('No')
 })
 
 test('Browse a table\'s rows: opening a row takes the user to its full form', async ({ admin }) => {
@@ -475,7 +475,7 @@ test('Dates and numbers read the same way everywhere: dates as day-month-year, a
   expect(cellTexts('amount')[0]).toContain('12,34,567.50')
 })
 
-test('Nothing shown by colour alone: a status in the list is written in words beside its coloured dot', async ({ admin }) => {
+test('Nothing shown by colour alone: a status in the list is a chip with its words, its dot only a mark (#1348)', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: 'Lv Status',
     columns: [
@@ -483,9 +483,10 @@ test('Nothing shown by colour alone: a status in the list is written in words be
       { column_name: 'state', column_type: 'Choice', label: 'State', choices: 'Open\nBlocked', in_list_view: true },
     ],
   })
-  await admin.post('/api/save_row', { table: 'Lv Status', row: { label: 'a', state: 'Blocked' } })
+  await admin.post('/api/save_row', { table: 'Lv Status', row: { label: 'a', state: 'Open' } })
   await openList(admin, 'Lv Status')
-  await waitFor(() => expect(cellTexts('state')).toEqual(['Blocked']))
+  await waitFor(() => expect(cellTexts('state')).toEqual(['Open']))
+  expect(rowsEl().querySelector('[data-testid="cell-state"] [data-chip="green"]')?.textContent).toBe('Open')
   const dot = rowsEl().querySelector('[data-testid="cell-state"] [aria-hidden="true"]')
   expect(dot).not.toBeNull()
   expect(dot?.textContent).toBe('')

@@ -211,7 +211,7 @@ describe('the checks (5.1)', () => {
   test('scheduled jobs: one check per job; the last run failing fails it until a later run succeeds', async () => {
     const now = new Date()
     await sql`update scheduled_job set enabled = true, last_run_at = ${now}, last_outcome = 'success' where method = 'disable_leavers'`
-    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')).toMatchObject({ ok: true, title: 'Scheduled job: disable_leavers' })
+    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')).toMatchObject({ ok: true, title: 'Scheduled Job: Disable Leavers' })
 
     await sql`update scheduled_job set last_outcome = 'error' where method = 'disable_leavers'`
     await sql`insert into job_execution (row_id, created_by, updated_by, job, method, attempt, outcome, error, started_at)
@@ -225,7 +225,7 @@ describe('the checks (5.1)', () => {
     const text = await healthCommand('development', false)
     expect(text.code).toBe(1)
     expect(text.stdout).toContain('Featherbase needs attention.')
-    expect(text.stdout).toContain('fault: Scheduled job: disable_leavers — The last run failed: the warehouse feed is stale')
+    expect(text.stdout).toContain('fault: Scheduled Job: Disable Leavers — The last run failed: the warehouse feed is stale')
     expect(text.stdout).toContain('Next: Open Jobs in Admin to see the error')
 
     await sql`update scheduled_job set last_outcome = 'success' where method = 'disable_leavers'`

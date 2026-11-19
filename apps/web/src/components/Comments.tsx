@@ -3,7 +3,7 @@ import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isOpaqueId, usePrincipalName } from '../lib/people'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { useWhoAmI } from '../lib/session'
-import { buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
+import { buttonClasses, cardClasses, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 
 interface CommentRow {
   row_id: string
@@ -152,7 +152,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
           data-testid="comment-input"
         />
         {mention && candidates.length > 0 && (
-          <div className={cardClasses('absolute z-20 mt-1 w-56 overflow-hidden py-1')} data-testid="mention-list">
+          <div className={raisedClasses('absolute z-20 mt-1 w-56 overflow-hidden py-1')} data-testid="mention-list">
             {candidates.map((u) => (
               <button
                 key={u.row_id}

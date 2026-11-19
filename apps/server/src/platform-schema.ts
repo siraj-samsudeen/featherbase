@@ -17,6 +17,10 @@ const PLATFORM_RELATIONS = new Set([
   'tag_link', 'todo', 'translation', 'user_event', 'user_settings', 'version',
   // person-rename and person-resolution.
   'person', 'service_account', 'sign_in_identity', 'person_id_map',
+  // #1336: a person's password hash, in a table of its own that no Table names.
+  'person_credential',
+  // #1346: users of the MotherDuck warehouse, kept in step daily.
+  'motherduck_account',
   'identifier_system', 'person_identifier', 'person_identifier_fingerprint',
   'person_match', 'person_match_member', 'person_merge',
   'web_form', 'web_page', 'webhook', 'workflow', 'workflow_action',

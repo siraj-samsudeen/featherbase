@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ApiError, api } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '@featherbase/shop-floor'
+import { buttonClasses, inputClasses, labelClasses, raisedClasses } from '@featherbase/shop-floor'
 
 // #72: change the signed-in person's own password. Posts { password } to
 // /api/set_password (the endpoint scopes to the caller when no user is given).
@@ -53,7 +53,7 @@ export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className={cardClasses('w-full max-w-sm p-6')} role="dialog" aria-modal="true" aria-label="Change password">
+      <div className={raisedClasses('w-full max-w-sm p-6')} role="dialog" aria-modal="true" aria-label="Change password">
         <h2 className="mb-4 text-base font-semibold text-ink">Change password</h2>
         {done ? (
           <div className="space-y-4" data-testid="change-password-done">

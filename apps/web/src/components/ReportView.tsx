@@ -6,7 +6,7 @@ import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
 import { FilterBar, type Filter } from './ListFilters'
-import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '@featherbase/shop-floor'
+import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses, raisedClasses } from '@featherbase/shop-floor'
 import { fmtCount, fmtNumber } from '@featherbase/shop-floor'
 
 type Row = Record<string, unknown>
@@ -476,7 +476,7 @@ export function ReportView({
             Columns ({columns.length})
           </button>
           {pickerOpen && (
-            <div className={cardClasses('absolute z-10 mt-1 max-h-72 w-56 overflow-y-auto p-2')}>
+            <div className={raisedClasses('absolute z-10 mt-1 max-h-72 w-56 overflow-y-auto p-2')}>
               {available.map((f) => (
                 <label
                   key={f.column_name}
@@ -543,7 +543,7 @@ export function ReportView({
             Save report
           </button>
           {saveOpen && (
-            <div className={cardClasses('absolute right-0 z-10 mt-1 w-64 p-3')}>
+            <div className={raisedClasses('absolute right-0 z-10 mt-1 w-64 p-3')}>
               <label className={labelClasses()}>Report name</label>
               <input
                 value={saveName}

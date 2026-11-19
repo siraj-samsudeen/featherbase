@@ -17,7 +17,7 @@ export interface FieldGridGroup {
 
 // Labels keep their words whole; values wrap anywhere so a long code never widens the page.
 const GRID = 'grid grid-cols-[minmax(6rem,max-content)_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm'
-const LABEL = 'text-ink-muted break-normal hyphens-none'
+const LABEL = 'text-[13px] text-ink-subtle break-normal hyphens-none'
 const VALUE = 'min-w-0 text-ink wrap-anywhere'
 
 function LongValue({ children }: { children: ReactNode }) {
@@ -46,7 +46,7 @@ const STACKED = 'grid grid-cols-2 gap-x-6 gap-y-3 text-sm'
 function Rows({ fields, stacked = false }: { fields: FieldGridField[]; stacked?: boolean }) {
   if (stacked) return <dl className={STACKED}>
     {fields.map((field, index) => <div key={`${index}-${field.label}`} className={cx('flex min-w-0 flex-col gap-0.5', field.long && 'col-span-2')}>
-      <dt className={cx(LABEL, 'text-xs')}>{field.label}</dt>
+      <dt className={LABEL}>{field.label}</dt>
       <dd className={VALUE}>{field.long ? <LongValue>{field.value}</LongValue> : field.value}</dd>
     </div>)}
   </dl>
@@ -69,12 +69,13 @@ export function FieldGrid({ groups, stacked = false }: {
 }) {
   const empty = groups.flatMap((group) => group.fields.filter((field) => field.empty))
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    // #1348 (spec 17): the fields are the pane's one quiet-fill block; every other group sits on white.
+    <div className="flex min-w-0 flex-col gap-4 rounded-xl bg-subtle p-4" data-testid="field-block">
       {groups.map((group, index) => {
         const filled = group.fields.filter((field) => !field.empty)
         if (!filled.length) return null
         return <section key={`${index}-${group.title ?? ''}`} className="flex flex-col gap-2">
-          {group.title && <h3 className="text-sm font-semibold text-ink">{group.title}</h3>}
+          {group.title && <h3 className="text-[15px] font-semibold text-ink">{group.title}</h3>}
           <Rows fields={filled} stacked={stacked} />
         </section>
       })}

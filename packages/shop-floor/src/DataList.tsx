@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { ChevronDown } from './icons'
 import { Button } from './Button'
 import { cx } from './cx'
+import { cellClasses, headCellClasses, TABLE_CLASSES } from './TableLook'
 import { EmptyState, type EmptyDescriptor } from './EmptyState'
 import { Notice } from './Notice'
 import { Skeleton } from './Skeleton'
@@ -88,22 +89,23 @@ export function DataList<Row>({
       aria-label={caption}
       tabIndex={0}
       className={cx(
-        'overflow-x-auto rounded-card border border-border bg-surface focus-visible:outline-2 focus-visible:outline-focus',
+        'overflow-x-auto focus-visible:outline-2 focus-visible:outline-focus',
         className,
       )}
     >
-      <table className="w-full border-collapse text-control">
+      <table className={cx(TABLE_CLASSES, 'text-control')}>
         <caption className="sr-only">{caption}</caption>
-        <thead className="bg-subtle">
+        <thead>
           <tr>
             {columns.map((c) => (
               <th
                 key={c.key}
                 scope="col"
-                className={cx(
-                  'border-b border-border px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-ink-muted',
-                  c.align === 'end' ? 'text-right' : 'text-left',
-                )}
+                className={headCellClasses({
+                  first: c === columns[0],
+                  last: c === columns[columns.length - 1],
+                  className: c.align === 'end' ? 'text-right' : undefined,
+                })}
               >
                 {c.header}
               </th>
@@ -112,9 +114,9 @@ export function DataList<Row>({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)} data-testid={rowTestId?.(row)} className="border-b border-border last:border-b-0">
+            <tr key={rowKey(row)} data-testid={rowTestId?.(row)} className="group">
               {columns.map((c, i) => {
-                const cls = cx('px-3 py-2.5 text-ink', c.align === 'end' && 'text-right tabular-nums', i === 0 && 'text-left font-semibold')
+                const cls = cellClasses({ first: i === 0, last: i === columns.length - 1, className: cx('text-ink', c.align === 'end' && 'text-right tabular-nums', i === 0 && 'text-left font-medium') })
                 // The first cell names its row for screen readers.
                 return i === 0 ? (
                   <th key={c.key} scope="row" className={cls}>
@@ -189,7 +191,7 @@ export function DataCards<Row>({
           <li
             key={key}
             data-testid={rowTestId?.(row)}
-            className="min-w-0 wrap-anywhere rounded-card border border-border bg-surface p-3.5 [&_*]:whitespace-normal"
+            className="min-w-0 wrap-anywhere rounded-card bg-subtle p-3.5 [&_*]:whitespace-normal"
           >
             <div className="flex items-start gap-2">
               {select && (
@@ -280,7 +282,7 @@ export function DataCards<Row>({
                   {open ? 'Hide nested rows' : 'Show nested rows'}
                 </Button>
                 {open && (
-                  <div className="mt-2 border-t border-border pt-3" data-testid="expanded-row">
+                  <div className="mt-3" data-testid="expanded-row">
                     {expand.render(row)}
                   </div>
                 )}

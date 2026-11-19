@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Notice, buttonClasses, cardClasses, fmtInstant, inputClasses } from '@featherbase/shop-floor'
+import { Notice, buttonClasses, fmtInstant, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
 import { PrincipalLink } from '../lib/people'
 import { isArchived, type TableMeta } from '../lib/meta'
@@ -73,7 +73,7 @@ export function ArchiveTable({ table }: { table: string }) {
             role="dialog"
             aria-modal="true"
             aria-labelledby="archive-table-title"
-            className={cardClasses('w-full max-w-md p-4')}
+            className={raisedClasses('w-full max-w-md p-4')}
             data-testid="archive-table-dialog"
             onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => {

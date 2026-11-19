@@ -41,6 +41,25 @@ describe('Scheduled copied-table refresh', () => {
     expect(await admin.get(path)).toMatchObject({ row_id: schedule.row_id, enabled: false })
   })
 
+  // #1330 (Codex): a schedule made after the titles migration reads by its copied Table, never its code.
+  test("a copied table's schedule reads by the table, and keeps a title an administrator writes", async ({ admin }) => {
+    await makeCopy(admin)
+    const write = '/api/table/Scheduled%20Stores:set_copy_schedule'
+    const schedule = await admin.post<{ row_id: string; title: string; updated_at: string }>(write, { cadence: 'hourly', enabled: true })
+    expect(schedule.title).toBe('Refresh Copy of Scheduled Stores')
+    await admin.post('/api/save_row', { table: 'Scheduled Job', row: { row_id: schedule.row_id, title: 'Our Store Refresh', updated_at: schedule.updated_at } })
+    expect(await admin.post(write, { cadence: 'daily', enabled: true })).toMatchObject({ title: 'Our Store Refresh' })
+  })
+
+  test('the titles migration names an existing copied-table refresh by its table', async ({ admin }) => {
+    await makeCopy(admin)
+    const schedule = await admin.post<{ row_id: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { cadence: 'hourly', enabled: true })
+    await sql`update scheduled_job set title = null where row_id = ${schedule.row_id}`
+    const { readFileSync } = await import('node:fs')
+    await sql.unsafe(readFileSync(new URL('../migrations/0175_scheduled_job_title.sql', import.meta.url), 'utf8'))
+    expect((await sql`select title from scheduled_job where row_id = ${schedule.row_id}`)[0]?.title).toBe('Refresh Copy of Scheduled Stores')
+  })
+
   test('a provisional schedule survives the final migration identity', async ({ admin }) => {
     await makeCopy(admin)
     const schedule = await admin.post<{ method: string }>('/api/table/Scheduled%20Stores:set_copy_schedule', { enabled: true, cadence: 'hourly' })

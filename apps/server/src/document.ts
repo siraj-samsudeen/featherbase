@@ -71,6 +71,9 @@ function columnValues(meta: TableMeta, row: RowValues): RowValues {
   const out: RowValues = {}
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
+    // #1336: a stored secret is never written back from the row as loaded, so a
+    // save racing a password change cannot put the old hash back.
+    if (SENSITIVE_COLUMNS.has(f.column_name)) continue
     if (Object.hasOwn(row, f.column_name)) out[f.column_name] = row[f.column_name]
   }
   return out

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Notice, buttonClasses, cardClasses, inputClasses } from '@featherbase/shop-floor'
+import { Notice, buttonClasses, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 import { ApiError, api } from '../lib/api'
 import { describeViewFilters, isView, type TableMeta } from '../lib/meta'
 
@@ -102,7 +102,7 @@ export function SaveAsView({ table, filters }: { table: string; filters: readonl
             role="dialog"
             aria-modal="true"
             aria-labelledby="save-as-view-title"
-            className={cardClasses('w-full max-w-md p-4')}
+            className={raisedClasses('w-full max-w-md p-4')}
             data-testid="save-as-view-dialog"
             onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => {

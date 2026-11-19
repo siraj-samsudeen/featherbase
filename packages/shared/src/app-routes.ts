@@ -91,7 +91,7 @@ export const ADMIN_PAGES: readonly { slug: string; title: string; manage?: true;
   // #1271: people who have left, or are not employees, and can still sign in.
   { slug: 'leavers-who-can-sign-in', title: 'Leavers Who Can Still Sign In', manage: true },
   { slug: 'apps', title: 'Apps', manage: true },
-  { slug: 'instance-health', title: 'Instance health', manage: true },
+  { slug: 'instance-health', title: 'Instance Health', manage: true },
   { slug: 'jobs', title: 'Jobs', manage: true, unrecorded: true },
   { slug: 'all-tables', title: 'All tables', unrecorded: true },
   { slug: 'import', title: 'Import Data', manage: true, unrecorded: true },
