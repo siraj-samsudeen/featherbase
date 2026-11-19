@@ -10,6 +10,7 @@ import { appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { activeRuntimeVersions, appOperation } from './app-lifecycle'
 import { who, type Env } from './route-context'
 import { explainRecord, whyOffer } from './why'
+import { workedOutFor } from './worked-out'
 
 export const appRoutes = new Hono<Env>()
 
@@ -51,6 +52,8 @@ appRoutes.post('/api/app_reads/:app/:read', async (c) => {
   c.header('Cache-Control', 'no-store')
   return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
 })
+// #1282 C10–C11: the record panel's worked-out sections, an installed app's answer about one record.
+appRoutes.get('/api/worked-out/:table/:row', async (c) => c.json(await workedOutFor(c.req.param('table'), c.req.param('row'), who(c))))
 // #1282 Why mode: whether the Map offers Why for a record, and the app's checked explanation.
 appRoutes.get('/api/why/:table/:row', async (c) => {
   c.header('Cache-Control', 'no-store')

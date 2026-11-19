@@ -40,6 +40,7 @@ export {
   List,
   ListChecks,
   LoaderCircle,
+  Lock,
   LogIn,
   Menu,
   Monitor,
