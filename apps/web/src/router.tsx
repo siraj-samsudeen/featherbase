@@ -576,9 +576,12 @@ function NavigatedList({ table, filters, path, layout: asked }: { table: string;
             key={table}
             table={table}
             filters={nav.step.filters ?? []}
-            onFiltersChange={(next) => {
+            onFiltersChange={(next, how) => {
               const { filters: _, ...step } = nav.step
-              nav.push(next.length ? { ...step, filters: next } : step)
+              const at = next.length ? { ...step, filters: next } : step
+              // #1289 option C: a Click To Narrow tick narrows in place, not a step of the walk per click.
+              if (how?.replace) nav.replace(at)
+              else nav.push(at)
               rememberFilters(table, next)
             }}
             layout={views.layout}

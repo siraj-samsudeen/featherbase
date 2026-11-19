@@ -111,7 +111,8 @@ export function ListView({
 }: {
   table: string
   filters: Filter[]
-  onFiltersChange?: (filters: Filter[]) => void
+  /** `replace`: a Click To Narrow tick, which narrows in place rather than adding a step (#1289). */
+  onFiltersChange?: (filters: Filter[], how?: { replace?: boolean }) => void
   breadcrumb?: ReactNode
   /** The page's heading in place of the Table's name. */
   title?: ReactNode
@@ -446,7 +447,7 @@ export function ListView({
     : undefined
   const narrowPanel = (columns: 1 | 2, className?: string) => onFiltersChange && narrowLists && narrowLists.length > 0 && (
     <NarrowPanel table={table} lists={narrowLists} filters={filters} baseFilters={baseFilters} withRetired={withRetired}
-      onFiltersChange={onFiltersChange} columns={columns} className={className} />
+      onFiltersChange={(next) => onFiltersChange(next, { replace: true })} columns={columns} className={className} />
   )
   const narrowBeside = !narrow && !narrowHidden && Boolean(narrowLists?.length)
 
@@ -961,7 +962,7 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? onFiltersChange} naming={namingView} onNamingChange={setNamingView} />}
+      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? ((next) => onFiltersChange(next))} naming={namingView} onNamingChange={setNamingView} />}
       {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
       {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
       {/* #1289: the filters (and their chips) wrap inside the left part, so the view tools keep the first line. */}
