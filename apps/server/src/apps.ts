@@ -12,7 +12,7 @@ import { reflectTables } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
 import { activeApps, appOperation, provisionApp } from './app-lifecycle'
 import { cadenceSeconds, jobRegistrant, registerJob, syncScheduledJobs, unregisterAppJobs, type Cadence, type JobHandler } from './jobs'
-import { assertJobClaimable, jobClaimRefusal } from './app-jobs'
+import { assertJobClaimable, jobClaimRefusal, jobTitle } from './app-jobs'
 import {
   registerController,
   unregisterController,
@@ -41,6 +41,8 @@ export interface SchedulerEvent {
   // manifest's value is only the default, never re-imposed.
   cadence: Cadence
   description?: string
+  // #1330: how the job reads in lists and links; its method in words when absent.
+  title?: string
 }
 
 // PLAT-004 (#54): a role grant an app declares on a Table. `table` may
@@ -224,6 +226,7 @@ async function ensureSchedulerJobs(manifest: AppManifest, claimed?: Set<string>)
         created_by: 'Administrator',
         updated_by: 'Administrator',
         method: ev.method,
+        title: ev.title ?? jobTitle({ name: ev.method.replace(/^[a-z0-9_]+\./, '') }),
         cadence: ev.cadence,
         enabled: true,
         description: ev.description ?? `Scheduled by app ${manifest.name}.`,
