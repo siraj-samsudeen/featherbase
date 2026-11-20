@@ -13,6 +13,7 @@ import { dataColumns, isShown, listFields, listLeader, switchColumn, viewColumns
 import { describeView, listDefaultsWith, tableViewDefaultQuery, viewAsDefault } from '../lib/table-view-default'
 import { TableDefaultDialog } from './TableDefaultDialog'
 import { layoutSavesSettled } from '../lib/list-layout'
+import { listOrder } from '../lib/list-order'
 import { SIDEBAR_DRAWER_QUERY } from '../lib/sidebar-collapsed'
 import { userSettingsQuery } from './FormArrangement'
 import { useRealtime } from '../lib/realtime'
@@ -26,7 +27,7 @@ import { Columns3, ListTree } from 'lucide-react'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
 import { GlossaryHelp } from './GlossaryHelp'
-import { fmtCount, fmtINR } from '@featherbase/shop-floor'
+import { fmtCount, fmtINR, menuItemClasses, MENU_GROUP_CLASSES, MENU_HEADING_CLASSES } from '@featherbase/shop-floor'
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
@@ -359,6 +360,12 @@ export function ListView({
         if (getToken() !== token) return
         return api.put(`/api/user_settings/${encodeURIComponent(table)}`, snapshot)
       })
+      // #1343: what was saved is what the walk through this list reads (its order), so the cache holds it too.
+      .then(() => {
+        if (getToken() !== token) return
+        queryClient.setQueryData(userSettingsQuery(table).queryKey, (was: { settings?: Record<string, unknown> } | undefined) =>
+          was ? { ...was, settings: { ...(was.settings ?? {}), ...snapshot } } : was)
+      })
       .then(() => { if (getToken() === token) setSettingsUnsaved(false) })
       .catch(() => { if (getToken() === token) setSettingsUnsaved(true) })
   }
@@ -385,27 +392,8 @@ export function ListView({
   const readableColumns = (meta.data ? dataColumns(meta.data) : []).filter((c) => c !== leadingTitle)
   const inListChoices = readableColumns.filter((c) => listDefaults.has(c.column_name))
   const otherChoices = readableColumns.filter((c) => !listDefaults.has(c.column_name))
-  // A bound table only has updated_at when the source table has a modified
-  // column to map (external_modified) — sending it as the explicit order
-  // makes the server refuse EVERY list load (a caller-supplied order_by must
-  // resolve; only server-side defaults fall back to the pk). That covers both
-  // the hardcoded fallback AND a stale stored sort_column ('updated_at' is
-  // the table_def DB default; migration 0075 repairs it, this guards the
-  // window). #176
-  const boundNoRevision = Boolean(meta.data?.data_source && !meta.data.external_modified)
-  const metaSortColumn =
-    boundNoRevision && meta.data?.sort_column === 'updated_at' ? '' : (meta.data?.sort_column ?? '')
-  // #1282 A4: the person's sort, else the Table's default's, else the Table's own order.
-  // A default sorted by a column this person may not read gives way to the Table's own order (Codex adversarial
-  // round 2): the server refuses a sort on a column the viewer can't read, which would fail the whole list.
-  const readableSort = (field: string) => ['row_id', 'created_at', 'updated_at'].includes(field)
-    || (meta.data ? dataColumns(meta.data).some((c) => c.column_name === field) : false)
-  const shownSort = sort ?? (td.sort && readableSort(td.sort.field) ? td.sort : null)
-  const orderBy = shownSort
-    ? `${shownSort.field} ${shownSort.dir}`
-    : defaultOrderBy ?? (meta.data
-      ? `${metaSortColumn || (boundNoRevision ? 'row_id' : 'updated_at')} ${meta.data.sort_order || 'desc'}`
-      : undefined)
+  // #1282 A4: the person's sort, else the Table's default's, else the Table's own order (the walk asks the same).
+  const { shownSort, orderBy } = listOrder(meta.data, sort, td.sort, defaultOrderBy)
 
   // #1276: the column a list totals, as Explore's panes did: money first, then other measures.
   const sumColumn = summableColumn(columns)
@@ -445,27 +433,10 @@ export function ListView({
 
   const rows = list.isError ? [] : list.data?.data ?? []
 
-  // #1259: with a record open beside or over the list, the arrow keys move to
-  // the next or previous row and the record follows (one step, not one per
-  // row); closing it puts the focus back on the same row.
+  // #1259: with a record open beside or over the list, ↑/↓ move to the next or previous row and the record
+  // follows; #1343 made that the path's walk (useWalkKeys), in the list's order across its pages. Closing the record
+  // puts the focus back on the same row.
   const panelled = !treeOn && (layout === 'split' || layout === 'panel')
-  useEffect(() => {
-    if (!panelled || !paneRow) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
-      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.defaultPrevented) return
-      const target = e.target as HTMLElement | null
-      if (target?.closest('input,textarea,select,[contenteditable="true"],[role="listbox"],[role="menu"],[role="dialog"]')) return
-      const at = rows.findIndex((r) => String(r.row_id) === paneRow)
-      const next = at < 0 ? undefined : rows[at + (e.key === 'ArrowDown' ? 1 : -1)]
-      if (!next) return
-      e.preventDefault()
-      // Only a page with the view switch has these views, and it walks the path (nav).
-      nav?.replace({ ...nav.step, pane: { table, row: String(next.row_id) } })
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [panelled, paneRow, rows, nav, table])
   const lastPane = useRef<string | undefined>(undefined)
   useEffect(() => {
     const was = lastPane.current
@@ -793,16 +764,16 @@ export function ListView({
           )}
           {/* #1242 (admin-lists 2): one ⋯ More for what is not the page's own action. */}
           {(hasListActions || hasTableAdministration) && <ActionDisclosure label="More">
-          {hasListActions && <div role="group" aria-label="List actions" className="flex flex-col items-stretch gap-1">
-          <p className="px-1 pt-1 text-xs font-medium text-ink-muted">List actions</p>
-            {table === 'Person' && <Link to="/featherbase/admin/find-person" className={buttonClasses()} data-testid="open-find-person">Find by code</Link>}
-            {!isRowsReadOnly(meta.data) && caps?.manage && <Link to="/featherbase/admin/import" search={{ table }} className={buttonClasses()} data-testid="open-import">Import</Link>}
-            {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && <Button aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>Import conflicts</Button>}
+          {hasListActions && <div role="group" aria-label="List actions" className={MENU_GROUP_CLASSES}>
+          <p className={MENU_HEADING_CLASSES}>List actions</p>
+            {table === 'Person' && <Link to="/featherbase/admin/find-person" className={menuItemClasses()} data-testid="open-find-person">Find by code</Link>}
+            {!isRowsReadOnly(meta.data) && caps?.manage && <Link to="/featherbase/admin/import" search={{ table }} className={menuItemClasses()} data-testid="open-import">Import</Link>}
+            {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && <button type="button" className={menuItemClasses()} aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>Import conflicts</button>}
           </div>}
-          {hasTableAdministration && <div role="group" aria-label="Table administration" className="flex flex-col items-stretch gap-1 pt-2 first:pt-0">
-          <p className="px-1 pt-1 text-xs font-medium text-ink-muted">Table administration</p>
-          {canShapeColumns && <Link to="/featherbase/admin/table/$table/columns" params={{ table }} className={buttonClasses()} data-testid="open-columns">Edit columns</Link>}
-          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && !isView(meta.data) && <Link to="/featherbase/admin/table/$table/merge" params={{ table }} className={buttonClasses()} data-testid="open-merge">Merge into…</Link>}
+          {hasTableAdministration && <div role="group" aria-label="Table administration" className={MENU_GROUP_CLASSES}>
+          <p className={MENU_HEADING_CLASSES}>Table administration</p>
+          {canShapeColumns && <Link to="/featherbase/admin/table/$table/columns" params={{ table }} className={menuItemClasses()} data-testid="open-columns">Edit columns</Link>}
+          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && !isView(meta.data) && <Link to="/featherbase/admin/table/$table/merge" params={{ table }} className={menuItemClasses()} data-testid="open-merge">Merge into…</Link>}
           {isSystemManager && (
             <>
               {/* NAM-001: change how new rows in this Table are named —
@@ -815,7 +786,7 @@ export function ListView({
                 <Link
                   to="/featherbase/admin/table/$table/naming"
                   params={{ table }}
-                  className={buttonClasses()}
+                  className={menuItemClasses()}
                   data-testid="open-naming"
                 >
                   Naming
@@ -825,7 +796,7 @@ export function ListView({
               {!isView(meta.data) && <Link
                 to="/featherbase/admin/table/$table/permissions"
                 params={{ table }}
-                className={buttonClasses()}
+                className={menuItemClasses()}
                 data-testid="open-permissions"
               >
                 Permissions
@@ -842,7 +813,7 @@ export function ListView({
               {!meta.data?.system && !isSystemWritten(meta.data) && (
                 <button
                   onClick={() => setConfirmingDelete(true)}
-                  className={buttonClasses({ variant: 'danger' })}
+                  className={menuItemClasses({ tone: 'negative' })}
                   data-testid="delete-table"
                 >
                   {isView(meta.data) ? 'Delete view' : 'Delete Table'}
@@ -1020,7 +991,7 @@ export function ListView({
           {onFiltersChange && filters.length > 0 && (
             <button
               type="button"
-              className={buttonClasses()}
+              className={menuItemClasses()}
               data-testid="save-view-open"
               onClick={() => {
                 setViewMenuOpen(false)
@@ -1034,7 +1005,7 @@ export function ListView({
             to="/featherbase/admin/table/$table/view/report"
             params={{ table }}
             search={{ report: undefined }}
-            className={buttonClasses()}
+            className={menuItemClasses()}
             data-testid="open-report"
           >
             Report
@@ -1044,7 +1015,7 @@ export function ListView({
               to="/featherbase/admin/table/$table/view/kanban"
               params={{ table }}
               search={{ group_by: undefined }}
-              className={buttonClasses()}
+              className={menuItemClasses()}
               data-testid="open-kanban"
             >
               Kanban
@@ -1054,7 +1025,7 @@ export function ListView({
             <Link
               to="/featherbase/admin/table/$table/view/calendar"
               params={{ table }}
-              className={buttonClasses()}
+              className={menuItemClasses()}
               data-testid="open-calendar"
             >
               Calendar
@@ -1065,7 +1036,7 @@ export function ListView({
             <Link
               to="/featherbase/admin/table/$table/view/gantt"
               params={{ table }}
-              className={buttonClasses()}
+              className={menuItemClasses()}
               data-testid="open-gantt"
             >
               Gantt
@@ -1078,15 +1049,15 @@ export function ListView({
               differs from it goes back to it. */}
           {/* In a group of their own below the other views, set apart by space only (UI owner, #1348's no-lines rule). */}
           {((canShapeColumns && meta.data && settingsLoaded && !ownSettings.isPending) || viewDiffers) && (
-            <div role="group" aria-label="Table default" className="mt-2 flex flex-col items-stretch gap-1" data-testid="view-menu-defaults">
+            <div role="group" aria-label="Table default" className={MENU_GROUP_CLASSES} data-testid="view-menu-defaults">
             {canShapeColumns && meta.data && settingsLoaded && !ownSettings.isPending && (
-              <button type="button" className={buttonClasses()} data-testid="make-table-default"
+              <button type="button" className={menuItemClasses()} data-testid="make-table-default"
                 onClick={() => { setViewMenuOpen(false); setColPickerOpen(false); setConfirmingDefault(true) }}>
                 Make This the Table's Default…
               </button>
             )}
             {viewDiffers && (
-              <button type="button" className={buttonClasses()} data-testid="reset-table-default"
+              <button type="button" className={menuItemClasses()} data-testid="reset-table-default"
                 onClick={() => { setViewMenuOpen(false); void resetView() }}>
                 Reset to the Table's Default
               </button>
@@ -1213,7 +1184,7 @@ export function ListView({
             className={buttonClasses({ variant: 'danger' })}
             data-testid="bulk-purge"
           >
-            Delete permanently
+            Delete With History…
           </button>}
           {bulkError && (
             <span className="text-xs text-negative" data-testid="bulk-error">
@@ -1278,7 +1249,9 @@ export function ListView({
           </div>
         </div>
       ) : (
-      <div className="relative">
+      <div className="relative" data-testid="list-table-area"
+        style={(layout === 'panel' || layout === 'table') && recordPanel ? { minHeight: 'min(640px, 70vh)' } : undefined}>
+      {/* #1349 (UI owner): over a short list the panel still has room; it is only as tall as the table otherwise. */}
       {/* #1259: Table With Panel: the record slides over the table's right side, under its header. */}
       {/* A record the address opens shows here in the Table view too (a pasted link). */}
       {(layout === 'panel' || layout === 'table') && recordPanel && (

@@ -1,124 +1,11 @@
 // Pure public formatting and wording contracts, moved unchanged from
 // page.test.ts. No injected reads, API responses, timers or frame callbacks.
 import { describe, expect, it } from 'vitest'
-import { noAccessHelp, MADE_UP_DATA_COMMAND, MEASURE_LINE, headingTitle, periodLine, whyLine, TOTALS_NOTE, sectionHeading, totalCells, blankNote, signedInr, dataLine, inr, quickBody, subcategoryLabel, subtotalLabel, istTime, percent, shortDay } from './page.ts'
+import { noAccessHelp, MADE_UP_DATA_COMMAND, headingTitle, periodLine, whyLine, shortDay } from './page.ts'
 
 describe('how the page writes', () => {
-  // AGENTS.md "Amount display": figures that must foot (target, sales, gap, subtotals, totals)
-  // show exactly two decimals, Indian-grouped.
-  it('money as rupees with Indian grouping and exactly two decimals', () => {
-    expect(inr(1234567.8)).toBe('₹12,34,567.80')
-  })
-
-  it('a gap that foots against the two figures it comes from', () => {
-    expect([inr(10.49), inr(10.51), inr(10.51 - 10.49)]).toEqual(['₹10.49', '₹10.51', '₹0.02'])
-  })
-
-  it('the footnote for one subcategory with nothing recorded, in the singular', () => {
-    expect(blankNote(1)).toBe('1 subcategory has no target or no sales recorded this month: “—” means nothing was recorded, never ₹0.00.')
-  })
-
-  it('the footnote for several subcategories with nothing recorded, in the plural', () => {
-    expect(blankNote(3)).toBe('3 subcategories have no target or no sales recorded this month: “—” means nothing was recorded, never ₹0.00.')
-  })
-
-  it('a negative gap with a minus sign', () => {
-    expect(inr(-2500)).toBe('−₹2,500.00')
-  })
-
-  it('a missing figure as a dash', () => {
-    expect(inr(null)).toBe('—')
-  })
-
-  // Display parity with the old report's helpers (featherbase lib/inr.ts): achievement to one
-  // decimal, a gap with its sign both ways.
-  it('an achievement to one decimal, as the old report wrote it', () => {
-    expect([percent(80.44), percent(80)]).toEqual(['80.4%', '80%'])
-  })
-
-  it('a gap above target with a plus sign, as the old report wrote it', () => {
-    expect([signedInr(2500), signedInr(-2500), signedInr(0), signedInr(null)]).toEqual(['+₹2,500.00', '−₹2,500.00', '₹0.00', '—'])
-  })
-
-  it("explains that the totals take every sale and every target, as the old report's did", () => {
-    expect(TOTALS_NOTE).toBe('Totals add every target and every sale in the table, including subcategories that have only one of them, so they can differ from the sum of the gaps shown.')
-  })
-
   it('a day as DD-Mon-YYYY', () => {
     expect(shortDay('2026-10-05')).toBe('05-Oct-2026')
-  })
-
-  it('a time as HH:MM IST', () => {
-    expect(istTime('2026-10-15T00:19:00.000Z')).toBe('05:49 IST')
-  })
-
-  it('the cached timestamp line', () => {
-    expect(dataLine({ data_through: '2026-10-14', refreshed_at: '2026-10-15T00:19:00.000Z' })).toBe('Data to 14-Oct-2026 · refreshed 05:49 IST')
-  })
-
-  it('leaves missing cutoff and refresh times as dashes, never an invented date', () => {
-    expect(dataLine({ data_through: null, refreshed_at: null })).toBe('Data to — · refreshed —')
-  })
-
-  it('does not present undefined achievement as a finite percentage', () => {
-    expect([null, NaN, Infinity, -Infinity].map(percent)).toEqual(['—', '—', '—', '—'])
-  })
-
-  it('does not give a minus sign to an amount that rounds to zero paise', () => {
-    expect(inr(-0.001)).toBe('₹0.00')
-  })
-})
-
-describe("the quick view's labels and its empty table", () => {
-  it('names the section in its subtotal, so a scrolled table still says whose total it is', () => {
-    expect(subtotalLabel('Sarees')).toBe('Sarees total')
-  })
-
-  it('shows a subcategory with no name in plain words, never a bare code (#4531)', () => {
-    expect(subcategoryLabel({ code: '010606001', subcategory: null })).toEqual({ name: 'Unnamed subcategory', unnamed: true })
-  })
-
-  it('shows a named subcategory by its name alone, never its code (#4531)', () => {
-    expect(subcategoryLabel({ code: '010101001', subcategory: 'Silk sarees' })).toEqual({ name: 'Silk sarees', unnamed: false })
-  })
-
-  it('says nothing is recorded, rather than drawing a lone Total row, when every row is hidden', () => {
-    const quiet = [{ noTargetNoSale: true }, { noTargetNoSale: true }]
-    expect([quickBody(quiet, false), quickBody(quiet, true), quickBody([{ noTargetNoSale: false }], false)]).toEqual(['nothing', 'table', 'table'])
-  })
-})
-
-describe("a total's cells under the display rule", () => {
-  const totals = (patch: Record<string, number | null>) => ({ target: 0, actual: 0, gap: 0, achievement: null, targets_recorded: 0, sales_recorded: 0, ...patch })
-
-  it('draws "—" for a value none of its rows recorded, never ₹0.00', () => {
-    expect(totalCells(totals({}))).toEqual({ target: '—', sales: '—', gap: '—', achieved: '—' })
-  })
-
-  it('draws the gap and achievement only when the group recorded both a target and sales', () => {
-    expect(totalCells(totals({ target: 0, actual: 12000.75, gap: 12000.75, sales_recorded: 1 }))).toEqual({ target: '—', sales: '₹12,000.75', gap: '—', achieved: '—' })
-  })
-
-  it("draws the old report's sums when both were recorded", () => {
-    expect(totalCells(totals({ target: 1000, actual: 800, gap: -200, achievement: 80, targets_recorded: 1, sales_recorded: 1 })))
-      .toEqual({ target: '₹1,000.00', sales: '₹800.00', gap: '−₹200.00', achieved: '80%' })
-  })
-})
-
-// Wording per issue #4444's checklist (owner-facing, 28-Oct-2026): the group is "No section",
-// its subtotal "No section total"; "No section" never breaks, so a narrow column wraps it as
-// "No section / total".
-describe('the group of subcategories in no section', () => {
-  it('is headed "No section"', () => {
-    expect(sectionHeading(null)).toBe('No section')
-  })
-
-  it('has the subtotal "No section total", kept as "No section" on one line', () => {
-    expect(subtotalLabel(null)).toBe('No\u00a0section total')
-  })
-
-  it('heads a named section by its name', () => {
-    expect(sectionHeading('Sarees')).toBe('Sarees')
   })
 })
 
@@ -278,9 +165,6 @@ describe("the page's header (#4486)", () => {
   })
   it('gives the period as DD-Mon-YYYY to DD-Mon-YYYY', () => {
     expect(periodLine({ period_start: '2026-10-01', period_end: '2026-10-29' })).toBe('01-Oct-2026 to 29-Oct-2026')
-  })
-  it('keeps the measure on its own line, in the old page\'s words', () => {
-    expect(MEASURE_LINE).toBe('Sales before tax, net of returns')
   })
 })
 

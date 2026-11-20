@@ -1,22 +1,19 @@
 // LOCAL DEVELOPMENT ONLY. Fills a throwaway featherbase database, served by a
 // featherbase checkout's dev server with this app on its app path, with
-// made-up core Tables (fixtures/made-up-org-chart.json), three `dash.report` rows and a cached
-// copy of the report's dataset, so every state of the report page can be seen without MotherDuck.
+// made-up core Tables (fixtures/made-up-org-chart.json) and three `dash.report` rows, so the report
+// page's states can be seen without MotherDuck.
 // No real store, person, code or figure.
 //
 // Normally run for you: `pnpm dev jeyarama/dash --made-up-data` (instance.json's
 // `madeUpData`). It needs the server running with a value for every secret the
 // app declares, which that command gives it. It refuses a database that is not
-// stamped `development`, and is safe to rerun: what exists stays, the cached
-// copy is replaced with one dated today, and the made-up Department Managers
+// stamped `development`, and is safe to rerun: what exists stays, and the made-up Department Managers
 // without a seeded department go back to their start (Devi pre-filled, Kiran
 // with the set-up card), so rerunning it restarts a used-up department test.
-import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { madeUpReportDates } from './made-up-report-dates.ts'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const checkout = resolve(appDir, '../../..')
@@ -28,7 +25,6 @@ const api = process.env.FEATHERBASE_API_URL
 const server = (path: string) => import(pathToFileURL(resolve(checkout, 'apps/server/src', path)).href)
 const { sql } = await server('db.ts')
 const { setUserPassword } = await server('auth.ts')
-const { datasetsDeclaration } = await server('app-datasets.ts')
 const { ACCESS_ROWS, BASE_TABLES, LINKED_TABLES, REPORT_ROWS } = await import(pathToFileURL(resolve(appDir, 'platform-test/base-tables.mjs')).href)
 const org = JSON.parse(await readFile(resolve(appDir, 'fixtures/made-up-org-chart.json'), 'utf8'))
 
@@ -73,13 +69,13 @@ const [listed] = linked.data
 if (!listed || listed.value !== JSON.stringify(LINKED_TABLES))
   await save('App Setting', { row_id: 'dash.linked_tables', value: JSON.stringify(LINKED_TABLES), ...(listed ? { updated_at: listed.updated_at } : {}) })
 
-// The instance's MotherDuck source, played by a local DuckDB path that nothing opens: the
-// platform serves the cached copy below without querying it.
+// The instance's MotherDuck source, played by a local DuckDB path that nothing opens: Dash's
+// one dataset, organisation_dives, is read live only by Add a Dive, which says it can't reach it.
 const sourceExists = await call('/api/table/Data%20Source/motherduck').then(() => true, () => false)
 if (!sourceExists) await post('/api/table/Data%20Source', { row_id: 'motherduck', engine: 'duckdb', url_env: 'DASH_LOCAL_DUCKDB', access: 'read_only' })
 
 // Three made-up Dives, one per filter shape. No Dive of these ids exists and no service account is
-// set, so the sales report falls to its quick view and the other two to "This report couldn't open".
+// set, so each says "This report couldn't open".
 for (const row of REPORT_ROWS as { report_key: string }[]) await keep('dash.report', row.report_key, row)
 // #1046: every made-up report goes to everyone holding Dash Reader, as one bundle, so each made-up
 // reader opens them; the Report access page shows the row, and a made-up Report Access Manager.
@@ -112,8 +108,8 @@ const placement = (store: string, subcategory: string, section: string) => {
   return keep('Section Subcategory', section_subcategory_id, { section_subcategory_id, store, subcategory, section, starts_on: '2026-01-01', source_key: 'Made-up' })
 }
 for (const [store, subcategory, section] of org.placements) await placement(store, subcategory, section)
-// #4453: a large store, Bayside 9906, with 1,600 made-up subcategories; two sections name a few of them.
-const LARGE = Array.from({ length: 1600 }, (_, i) => `02${String(Math.floor(i / 100)).padStart(2, '0')}${String(i % 100).padStart(5, '0')}`)
+// #4453: Bayside 9906's made-up subcategories; two sections name them.
+const LARGE = Array.from({ length: 6 }, (_, i) => `02${String(Math.floor(i / 100)).padStart(2, '0')}${String(i % 100).padStart(5, '0')}`)
 for (const code of LARGE.slice(0, 6)) await keep('Subcategory', code, { row_id: code, subcategory: `Made-up line ${Number(LARGE.indexOf(code)) + 1}`, subcategory_type: 'Merchandise' })
 for (const code of LARGE.slice(0, 3)) await placement('BAY', code, 'BAY-S1')
 for (const code of LARGE.slice(3, 6)) await placement('BAY', code, 'BAY-S2')
@@ -170,75 +166,6 @@ for (const head of org.heads.people as { key: string; name: string; code: string
   await keep('Employee', head.code, { employee_code: head.code, name: head.name, person: id, status: 'Current' })
   await setHead('Cluster', head.cluster, 'cluster_manager', head.code)
 }
-
-// Both copies describe the same made-up month to date, including today. Hillview
-// deliberately retains last month's figures to demonstrate the no-data-yet state.
-const { refreshedAt, dataThrough, periodStart, lastMonth, lastMonthEnd } = madeUpReportDates(Date.now())
-// Lakeside and Bayside carry a short code, as the warehouse's store master does; the header still names them by name (#967 point 13).
-const SHORT_CODES: Record<string, string> = { '9901': 'LKS', '9906': 'BYS' }
-const row = (store: string, name: string, code: string, subcategory: string, target: number | null, actual: number | null, month = periodStart, through = dataThrough) => ({
-  store_code: store, store_name: name, short_code: SHORT_CODES[store] ?? null, subcategory_code: code, subcategory, target, actual,
-  days_with_actual: actual == null ? 0 : Number(through.slice(8, 10)), days: Number(through.slice(8, 10)), period_start: month, data_through: through, targets_available: true,
-  // 0.10.0's quantities (#4453): made up from the values, three decimals as the warehouse carries them.
-  target_quantity: target == null ? null : Math.round(target / 1.5) / 1000, actual_quantity: actual == null ? null : Math.round(actual / 1.5) / 1000 })
-// Figures with paise, so the two-decimal totals can be checked by hand.
-const facts = [
-  row('9901', 'Lakeside', '010101001', 'Silk sarees', 1250000.49, 1010000.51),
-  row('9901', 'Lakeside', '010101002', 'Cotton sarees', 400000.25, 455000.10),
-  row('9901', 'Lakeside', '010202001', 'Boys shirts', 300000, null),
-  row('9901', 'Lakeside', '010909001', 'Gift wrap', null, 12000.75),
-  row('9901', 'Lakeside', '010707001', 'Sandals', 80000, 61000.40),
-  row('9901', 'Lakeside', '010808001', 'Wrist watches', 120000, 133500),
-  row('9901', 'Lakeside', '011010001', 'Track pants', 45000, 30010.20),
-  row('9901', 'Lakeside', '011212001', 'Formal shirts', 150000, 162500.75),
-  row('9901', 'Lakeside', '011313001', 'Formal trousers', 110000, 98000.30),
-  // Hillview's copy is of last month: the page says this month's figures haven't arrived.
-  row('9902', 'Hillview', '010404001', 'Belts', 90000, 70000, lastMonth, lastMonthEnd),
-  row('9903', 'Riverside', '010505001', 'Handbags', 50000, 40000),
-  ...LARGE.map((code, i) => row('9906', 'Bayside', code, `Made-up line ${i + 1}`, 20000 + (i % 37) * 1000.25, 15000 + (i % 29) * 1100.5)),
-]
-const STORE_NAMES: Record<string, string> = { '9901': 'Lakeside', '9902': 'Hillview', '9903': 'Riverside', '9906': 'Bayside' }
-// The month's metadata, one row per store and subcategory, of the same refresh. Hillview's is last month's too.
-const month = [
-  ...['010101001', '010101002', '010202001', '010606001', '010909001', '010707001', '010808001', '011010001', '011212001', '011313001'].map(code => ['9901', code, periodStart, dataThrough]),
-  // Northgate 9905 has no row in either copy: its figures are being prepared.
-  ['9902', '010404001', lastMonth, lastMonthEnd],
-  ['9903', '010505001', periodStart, dataThrough],
-  ...LARGE.map(code => ['9906', code, periodStart, dataThrough]),
-].map(([store_code, subcategory_code, period_start, data_through]) => ({ store_code, store_name: STORE_NAMES[store_code], subcategory_code,
-  period_start, data_through, targets_available: true }))
-
-const manifest = JSON.parse(await readFile(resolve(appDir, 'featherbase.json'), 'utf8'))
-const declared = datasetsDeclaration.parse(manifest.datasets) as { name: string }[]
-async function seed(name: string, rows: Record<string, unknown>[]) {
-  const dataset = declared.find(d => d.name === name)!
-  // As the platform keys it (featherbase app-datasets.ts): a guard is not part of the definition.
-  const version = createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16)
-  // A rerun replaces the copy: the earlier ones are made-up too, and nobody can go back to them.
-  await sql`delete from app_dataset_row where snapshot_id in (select row_id from dataset_snapshot where dataset = ${`dash.${name}`})`
-  await sql`delete from dataset_snapshot where dataset = ${`dash.${name}`}`
-  const id = randomUUID()
-  await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, activated_at, row_count)
-    values (${id}, ${`dash.${name}`}, ${version}, 'active', ${refreshedAt}, ${refreshedAt}, ${rows.length})`
-  for (const r of rows) await sql`insert into app_dataset_row (snapshot_id, row) values (${id}, ${sql.json(r)})`
-}
-await seed('sales_to_date', facts)
-await seed('sales_month', month)
-// #750: last month's copies, the whole month, with figures of their own so the two months never agree.
-const lastFacts = [
-  row('9901', 'Lakeside', '010101001', 'Silk sarees', 2400000.80, 2515000.35, lastMonth, lastMonthEnd),
-  row('9901', 'Lakeside', '010101002', 'Cotton sarees', 780000, 702500.60, lastMonth, lastMonthEnd),
-  row('9901', 'Lakeside', '010202001', 'Boys shirts', 560000, 610250, lastMonth, lastMonthEnd),
-  row('9901', 'Lakeside', '010707001', 'Sandals', 150000, 98000.45, lastMonth, lastMonthEnd),
-  row('9901', 'Lakeside', '010808001', 'Wrist watches', 230000, 241000, lastMonth, lastMonthEnd),
-  row('9901', 'Lakeside', '011212001', 'Formal shirts', 290000, 301500.25, lastMonth, lastMonthEnd),
-  row('9902', 'Hillview', '010404001', 'Belts', 90000, 70000, lastMonth, lastMonthEnd),
-]
-await seed('sales_last_month', lastFacts)
-await seed('sales_last_month_meta', [...new Set(month.map(m => `${m.store_code} ${m.subcategory_code}`))].map(key => {
-  const [store_code, subcategory_code] = key.split(' ')
-  return { store_code, store_name: STORE_NAMES[store_code], subcategory_code, period_start: lastMonth, data_through: lastMonthEnd, targets_available: true }
-}))
 
 // #1046: someone who gives reports, and nothing else: the Report access page (/dash/?view=access).
 await person('access-manager@example.test', 'Made-up Access Manager', ['Report Access Manager'], false)

@@ -420,8 +420,7 @@ async function lockedRow(id: string, db: Db) {
 
 // ----------------------------------------------- the employee-code system
 
-/** The StyleHR employee-code system: what sales-target scoping reads
- *  (`currentEmployeeCodes` in sales-target.ts, #408). */
+/** The StyleHR employee-code system (#408). */
 export const EMPLOYEE_CODE_SYSTEM = 'stylehr-employee-code'
 
 /** Whose identifier this is — for the routes' Person read / Data Scope check

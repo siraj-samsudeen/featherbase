@@ -2,6 +2,7 @@
 // src/index.css; design-guards.test.ts keeps raw colours and sizes out.
 export { Button, buttonClasses, iconButtonClasses, touchLinkClasses, touchRowClasses, touchTargetClasses } from './Button'
 export { Card, cardClasses, panelClasses, raisedClasses } from './Card'
+export { menuClasses, menuItemClasses, MENU_GROUP_CLASSES, MENU_HEADING_CLASSES } from './Menu'
 export { CATEGORY_HUES, Chip, chipClasses, chipHue, statusHue, tagClasses, type ChipHue } from './Chip'
 export { cx, recipe } from './cx'
 export { EmptyState } from './EmptyState'
@@ -29,7 +30,8 @@ export { PANE_RIGHT_MIN_WIDTH, PanePlace, resolvePanePlace, SplitWithPane, type 
 export { KindTag, LinkActions, LinkChip, nameAndCode, smallActionClasses } from './LinkChip'
 export { RecordLink, RecordPagesProvider, useRecordHref, type RecordPageFor } from './RecordLink'
 export { PersonLabel } from './PersonLabel'
-export { GroupChip } from './GroupChip'
+export { CountChip, GroupChip, NoneFold } from './GroupChip'
+export { PeekCard } from './PeekCard'
 export { FieldGrid, type FieldGridField, type FieldGridGroup } from './FieldGrid'
 export { DrillPane, PaneSection } from './DrillPane'
 export { PathBar, RecentPaths, type PathStep } from './PathBar'

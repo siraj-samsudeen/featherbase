@@ -1,6 +1,6 @@
 // #1236: the application switcher is a menu button. Its menu lists each app the
 // person can open, with its icon and what it is for (the app's manifest), the
-// current one ticked, and ends with Featherbase Admin after a separator. It is
+// current one ticked, and ends with Featherbase Admin in a group of its own. It is
 // worked by keyboard as a menu is. Choosing an app is app-switcher-closed,
 // admin-shell-extras and the app-navigation scenarios.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
@@ -20,7 +20,7 @@ async function withTasker(admin: Admin) {
   await admitTasker(admin)
 }
 
-const rows = (menu: HTMLElement) => [...menu.querySelectorAll<HTMLElement>('[data-testid="app-switcher-item"], [role="separator"]')]
+const rows = (menu: HTMLElement) => [...menu.querySelectorAll<HTMLElement>('[data-testid="app-switcher-item"]')]
 
 test("each app shows its icon and what it is for; the current one is ticked; Featherbase Admin comes last", async ({ admin }) => {
   await withTasker(admin)
@@ -31,9 +31,10 @@ test("each app shows its icon and what it is for; the current one is ticked; Fea
   expect(tasker).toHaveTextContent('Tasks and store work, with what is due')
   expect(tasker.querySelector('svg')).not.toBeNull()
   expect(tasker).toHaveAttribute('aria-checked', 'false')
-  // The Admin is last, after a separator, and is the one ticked here.
-  const order = rows(menu).map((el) => el.getAttribute('role') === 'separator' ? '—' : el.dataset.title)
-  expect(order.slice(-2)).toEqual(['—', 'Featherbase'])
+  // The Admin is last, in a group of its own set apart by space (#1348: never a line), and is the one ticked here.
+  expect(rows(menu).at(-1)?.dataset.title).toBe('Featherbase')
+  expect(menu.querySelector('[role="separator"]')).toBeNull()
+  expect(menu.querySelector('[data-app="featherbase-admin"]')!.parentElement).toHaveClass('mt-2')
   expect(menu.querySelector('[data-app="featherbase-admin"]')).toHaveAttribute('aria-checked', 'true')
 })
 
@@ -80,8 +81,3 @@ test('choosing the app you are in closes the menu and stays', async ({ admin }) 
   expect((r.router as { state: { location: { pathname: string } } }).state.location.pathname).toBe('/featherbase/admin/all-tables')
 })
 
-test("choosing Featherbase from an app's page on the Admin's own address goes to the Admin", async ({ admin }) => {
-  const r = await renderApp('/featherbase/sales-target', admin)
-  await chooseApp(screen, 'Featherbase', WAIT)
-  await waitFor(() => expect((r.router as { state: { location: { pathname: string } } }).state.location.pathname).toMatch(/^\/featherbase\/admin/), WAIT)
-})

@@ -6,7 +6,7 @@ import type { WorkedOutAnswer } from 'shared'
 
 let answer: WorkedOutAnswer = { sections: [] }
 vi.mock('../src/lib/api', () => ({ api: { get: vi.fn(async () => answer) } }))
-const { WorkedOutSections } = await import('../src/components/WorkedOut')
+const { WorkedOutCounts, WorkedOutSections } = await import('../src/components/WorkedOut')
 
 afterEach(cleanup)
 
@@ -67,5 +67,19 @@ describe('the Lens worked-out sections', () => {
     await show({ sections: [] })
     await new Promise((r) => setTimeout(r, 20))
     expect(screen.queryByTestId('worked-out-section')).toBeNull()
+  })
+})
+
+describe("#1349: the worked-out sections in the count row (board 4b)", () => {
+  test('a chip each, the number first; an empty section a quiet grey chip that leads nowhere', async () => {
+    answer = SECTIONS
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const onSection = vi.fn()
+    render(<QueryClientProvider client={client}><WorkedOutCounts table="Person" row="p1" onSection={onSection} /></QueryClientProvider>)
+    const apps = await screen.findByRole('button', { name: '2 Apps They Can Open' })
+    fireEvent.click(apps)
+    expect(onSection).toHaveBeenCalledWith('Apps They Can Open')
+    expect(screen.getByText('Reports They See').closest('[data-empty]')).toHaveTextContent('0 Reports They See')
+    expect(screen.queryByRole('button', { name: /Reports They See/ })).toBeNull()
   })
 })

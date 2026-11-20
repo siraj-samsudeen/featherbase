@@ -1,8 +1,8 @@
 // Feather Dash's report page (rendered by main.tsx).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accessFacts, read } from './api'
-import { REPORT_TIMEOUT_MS, reachMessage, type ReachMessage, MEASURE_LINE, TOTALS_NOTE, isMonthChoice, monthChooser, monthWords, notArrivedLine, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, sectionHeading, whyLine, storeChooser, totalCells, visibleState, blankNote, dataLine, firstStore, inr, liveFrame, pageView, percent, quickBody, reportLoader, signedInr, subcategoryLabel, subtotalLabel, type LoadState } from './page'
-import type { Heading, Report, ReportRow, Totals } from './report'
+import { REPORT_TIMEOUT_MS, reachMessage, type ReachMessage, isMonthChoice, monthChooser, type MonthChoice, noAccessHelp, type NoAccessHelp, headingParts, periodLine, whyLine, storeChooser, visibleState, firstStore, liveFrame, pageView, reportLoader, type LoadState } from './page'
+import type { Heading } from './report'
 import { DashSidebar, DEPARTMENT_ADDRESS, SECTIONS_ADDRESS, readReports, type ReportLink } from './sections-page'
 import { PrefillBanner, awayLine, capital, sentence, type Setup } from './department-page'
 import { buttonClasses, fmtDate } from '@featherbase/shop-floor'
@@ -52,6 +52,9 @@ function listenForStore(onStore: (store: string) => void): () => void {
 /** The report named in the address; none: the reader's first. A report change reloads the page. */
 const reportInAddress = () => new URLSearchParams(window.location.search).get('report') ?? undefined
 
+/** What the `report` read answers: whether the report can open for the reader, and its header. */
+type ReportAnswer = { state: string; heading?: Heading; period_start?: string; period_end?: string; pickers_in_dive?: boolean }
+
 const NO_FILTER_READS: Readonly<Record<string, string>> = { report: 'report_open', embed_session: 'embed_open' }
 
 export function Dash() {
@@ -74,12 +77,12 @@ export function Dash() {
   // The choosers read the store and month now chosen, not the render's.
   const chosen = useRef<{ store?: string; month: MonthChoice }>({ month })
   const [attempt, setAttempt] = useState(0)
-  const [state, setState] = useState<LoadState<Report>>({ embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false })
+  const [state, setState] = useState<LoadState<ReportAnswer>>({ embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false })
   const frame = useRef<HTMLIFrameElement>(null)
   // One deadline covers the session request and the frame (DIVE_READY_TIMEOUT_MS); past it, the
-  // quick view. A late answer, or one for a store no longer on show, is ignored.
+  // report couldn't open. A late answer, or one for a store no longer on show, is ignored.
   // The Dive sends its ready message to this page's origin (#4453), which only the page knows.
-  const loader = useMemo(() => reportLoader<Report>((name, payload) =>
+  const loader = useMemo(() => reportLoader<ReportAnswer>((name, payload) =>
     read(noFilter.current ? NO_FILTER_READS[name] ?? name : name, { ...payload, ...(named ? { report: named } : {}), ...(name === 'embed_session' ? { app_origin: location.origin } : {}) }), setState), [named])
   // Choosing a store: the store on show, repeated, changes nothing (round 9); another store drops
   // the previous store's answers at once (round 8), and its effect below opens it.
@@ -139,18 +142,15 @@ export function Dash() {
   const frameAttempt = loader.current()
   const frameSrc = liveFrame(shown)
   useEffect(() => setDiveFilters(undefined), [frameSrc])
-  const showsReport = view.kind === 'dive' || view.kind === 'quick' || view.kind === 'empty'
-  // The store and month the cached answer is of, when the page shows it (the quick view or an empty state) rather than the Dive.
-  const cachedView = (view.kind === 'quick' || view.kind === 'empty') && report?.ok && typeof (report.value as { store?: unknown }).store === 'string'
-    ? { store: (report.value as { store: string }).store, month: (report.value as { month?: 'this' | 'last' }).month } : null
+  const showsReport = view.kind === 'dive' || view.kind === 'empty'
 
   return (
     <div className="fd-shell">
     <DashSidebar current="report" />
     <main className="fd-page" data-testid="dash" data-view={view.kind}>
       <ReportPrefill />
-      {/* The header, in every state with a store on show (#4486): the Dive, the quick view, and each empty state. */}
-      {/* #1159: over a Dive with its own pickers the Dive names the store itself; the heading stays for its cached view. */}
+      {/* The header, in every state with a store on show (#4486): the Dive and the empty state. */}
+      {/* #1159: over a Dive with its own pickers the Dive names the store itself. */}
       {/* #1240: "Report an issue" sits on the header's line, right; over a Dive with its own pickers, alone on that line. */}
       <div className="fd-head-row">
       {showsReport && !(view.kind === 'dive' && report?.ok && report.value.pickers_in_dive) && report?.ok && report.value.heading && (report.value.heading.name || report.value.heading.reasons.length > 0) && (
@@ -158,19 +158,18 @@ export function Dash() {
       )}
       {/* Mounted whenever a report is chosen, even while the page is opening or failed, so an unanswered submission survives; hidden then. */}
       {current && (
-        // The cached view, and its empty states, say which store and month they show; a Dive with its own pickers says so itself.
+        // A Dive with its own pickers says which store and month it shows itself.
         <ReportIssue reportKey={current.key} reportName={current.name}
-          store={cachedView?.store ?? store?.value}
-          month={cachedView?.month ?? (current.takes_month ? month : undefined)}
+          store={store?.value}
+          month={current.takes_month ? month : undefined}
           diveFilters={view.kind === 'dive' ? diveFilters : undefined} pickersInDive={!!current.pickers_in_dive && view.kind === 'dive'}
           chosen={`${store?.value ?? ''}|${month}`} hidden={!showsReport} />
       )}
       </div>
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}
-      {/* #1143: one place for the frame, on show or out of sight behind the quick view, so the Dive
+      {/* #1143: one place for the frame, on show or out of sight behind "couldn't open", so the Dive
           that says it is ready after the deadline takes over in the same frame, never reloaded. */}
-      {/* Also behind "being prepared" and "not arrived yet": they speak for the cached copy, but the Dive reads the warehouse itself. */}
-      {frameSrc && (view.kind === 'dive' || view.kind === 'quick' || view.kind === 'failed' || (view.kind === 'empty' && view.why !== 'whole_stores_only')) && (
+      {frameSrc && (view.kind === 'dive' || view.kind === 'failed') && (
         <div className={view.kind === 'dive' ? 'fd-frame-box' : 'fd-frame-box fd-frame-behind'}
           aria-hidden={view.kind === 'dive' ? undefined : true} inert={view.kind !== 'dive'}>
           {view.kind === 'dive' && !shown.diveReady && <p className="fd-opening fd-opening-over">Opening your report…</p>}
@@ -187,13 +186,8 @@ export function Dash() {
           />
         </div>
       )}
-      {view.kind === 'quick' && report?.ok && <QuickView report={report.value} />}
       {view.kind === 'empty' && (
-        <Notice testid={`empty-${view.why}`}>
-          {view.why === 'no_data_yet' && notArrivedLine(month)}
-          {view.why === 'not_built' && 'The figures are being prepared. Try again in a few minutes.'}
-          {view.why === 'whole_stores_only' && "This report covers whole stores, so it isn't available for your job."}
-        </Notice>
+        <Notice testid={`empty-${view.why}`}>This report covers whole stores, so it isn't available for your job.</Notice>
       )}
       {view.kind === 'no_access' && <NoAccess otherReports={!!reports?.length} />}
       {view.kind === 'signed_out' && (
@@ -216,8 +210,8 @@ export function Dash() {
   )
 }
 
-/** The store on show, the period, why the reader sees the store (left out when no reason is known), and what the figures measure. */
-function ReportHeading({ heading, period, wide }: { heading: Heading; period: { period_start?: string; period_end?: string; no_quick_view?: boolean }; wide: boolean }) {
+/** The store on show, the period, and why the reader sees the store (left out when no reason is known). */
+function ReportHeading({ heading, period, wide }: { heading: Heading; period: { period_start?: string; period_end?: string }; wide: boolean }) {
   const why = whyLine(heading)
   const { lead, count } = headingParts(heading)
   const [listOpen, setListOpen] = useState(false)
@@ -229,7 +223,6 @@ function ReportHeading({ heading, period, wide }: { heading: Heading; period: { 
       </h1>
       {period.period_start && period.period_end && <p className="fd-muted" data-testid="period-line">{periodLine({ period_start: period.period_start, period_end: period.period_end })}</p>}
       {why && <p className="fd-muted" data-testid="why-line">{why}</p>}
-      {!period.no_quick_view && <p className="fd-muted" data-testid="measure-line">{MEASURE_LINE}</p>}
       {count && listOpen && <p className="fd-sections" data-testid="sections-list">{heading.sections.join(' · ')}</p>}
     </header>
   )
@@ -311,107 +304,6 @@ function AskForAccess() {
 
 function Notice({ children, testid }: { children: React.ReactNode; testid: string }) {
   return <section className="fd-card fd-notice" data-testid={testid}>{children}</section>
-}
-
-/** Row figures under the display rule: "—" where nothing was recorded, the old report's figure otherwise. */
-function RowFigures({ row }: { row: ReportRow }) {
-  const both = row.targetRecorded && row.salesRecorded
-  return (
-    <>
-      <td className="fd-num">{row.targetRecorded ? inr(row.target) : '—'}</td>
-      <td className="fd-num">{row.salesRecorded ? inr(row.actual) : '—'}</td>
-      <td className={`fd-num ${both && row.gap != null && row.gap < 0 ? 'fd-negative' : ''}`}>{both ? signedInr(row.gap) : '—'}</td>
-      <td className="fd-num">{both ? percent(row.achievement) : '—'}</td>
-    </>
-  )
-}
-
-/** Subtotal and total figures: the old report's sums, drawn under the display rule. */
-function TotalFigures({ t }: { t: Totals }) {
-  const cells = totalCells(t)
-  const both = t.targets_recorded > 0 && t.sales_recorded > 0
-  return (
-    <>
-      <td className="fd-num">{cells.target}</td>
-      <td className="fd-num">{cells.sales}</td>
-      <td className={`fd-num ${both && t.gap != null && t.gap < 0 ? 'fd-negative' : ''}`}>{cells.gap}</td>
-      <td className="fd-num">{cells.achieved}</td>
-    </>
-  )
-}
-
-function QuickView({ report }: { report: Report }) {
-  const [showQuiet, setShowQuiet] = useState(false)
-  // Whether the table is wider than its box (the swipe cue), and whether more of it lies to the
-  // right of what is in view (the edge fade); both re-checked on scroll and resize.
-  const box = useRef<HTMLDivElement>(null)
-  const [overflows, setOverflows] = useState(false)
-  const [moreRight, setMoreRight] = useState(false)
-  const measure = useCallback(() => {
-    const el = box.current
-    setOverflows(!!el && el.scrollWidth > el.clientWidth + 1)
-    setMoreRight(!!el && el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
-  }, [])
-  useEffect(() => {
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [measure, showQuiet, report])
-  const quiet = report.rows.filter((r) => r.noTargetNoSale).length
-  const shown = (r: ReportRow) => showQuiet || !r.noTargetNoSale
-  const blanks = report.rows.filter((r) => shown(r) && (!r.targetRecorded || !r.salesRecorded)).length
-  const body = quickBody(report.rows, showQuiet)
-  return (
-    <section className="fd-card fd-quick" data-testid="quick-view">
-      <header className="fd-quick-head">
-        <p className="fd-muted fd-quick-line">
-          <span data-testid="quick-label">{"Cached · the full report couldn't open"}</span>
-          <span data-testid="data-line">{dataLine(report)}</span>
-        </p>
-        {!report.targets_available && <p className="fd-muted">Targets for {monthWords(report.month)} aren't available yet; sales are shown.</p>}
-      </header>
-      {body === 'nothing' && <p data-testid="quick-nothing">{report.month === 'last' ? 'Nothing was recorded last month for your section.' : 'Nothing recorded this month for your section yet.'}</p>}
-      {body === 'table' && overflows && <p className="fd-muted fd-small" data-testid="scroll-hint">Swipe the table sideways to see Gap and Achieved.</p>}
-      {body === 'table' && (
-        <div className={`fd-table-box${moreRight ? ' fd-more-right' : ''}`} ref={box} onScroll={measure}>
-          <table className="fd-table">
-            <thead>
-              <tr><th scope="col">Subcategory</th><th scope="col" className="fd-num">Target</th><th scope="col" className="fd-num">Sales</th>
-                <th scope="col" className="fd-num">Gap</th><th scope="col" className="fd-num">Achieved</th></tr>
-            </thead>
-            {/* A section whose rows are all hidden (no target and no sales) is hidden with them. */}
-            {report.sections.filter((section) => report.rows.some((r) => r.section === section.section && shown(r))).map((section) => (
-              <tbody key={section.section ?? ''} data-testid="quick-section">
-                <tr className="fd-section-row"><th scope="rowgroup" colSpan={5}><span className="fd-sticky-name">{sectionHeading(section.section)}</span></th></tr>
-                {report.rows.filter((r) => r.section === section.section && shown(r)).map((row) => {
-                  const label = subcategoryLabel(row)
-                  return (
-                    <tr key={row.code}>
-                      <th scope="row" className={`fd-sub${label.unnamed ? ' fd-unnamed' : ''}`}>
-                        {label.name}
-                      </th>
-                      <RowFigures row={row} />
-                    </tr>
-                  )
-                })}
-                <tr className="fd-subtotal"><th scope="row">{subtotalLabel(section.section)}</th><TotalFigures t={section} /></tr>
-              </tbody>
-            ))}
-            <tfoot>
-              <tr className="fd-total"><th scope="row">Total</th><TotalFigures t={report.total} /></tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-      {quiet > 0 && (
-        <button type="button" className="fd-link" onClick={() => setShowQuiet((s) => !s)} data-testid="toggle-quiet">
-          {showQuiet ? `Hide ${quiet} with no target and no sales` : `Show ${quiet} with no target and no sales`}
-        </button>
-      )}
-      {body === 'table' && <p className="fd-muted fd-small" data-testid="totals-note">{TOTALS_NOTE}</p>}
-      {body === 'table' && blanks > 0 && <p className="fd-muted fd-small" data-testid="blank-note">{blankNote(blanks, report.month)}</p>}
-    </section>
-  )
 }
 
 /** #1195: where a Department Manager's set-up stands (none, waiting, turned down), who reviews it, and the way in. */

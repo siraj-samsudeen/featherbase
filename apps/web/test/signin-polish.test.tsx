@@ -7,7 +7,6 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { _setDelegatedFetch } from 'server/src/delegated-login'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
-import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
 import { openIdentifierHistory } from './sign-in-lines'
 
@@ -92,8 +91,8 @@ test('6: the email-and-password form shows its refusal the same way', async () =
 // ── Sign-in methods ──────────────────────────────────────────────────────────
 
 async function viewer(admin: Parameters<typeof renderApp>[1], createUser: (o: { email: string; roles: string[] }) => Promise<Parameters<typeof renderApp>[1]>, email: string) {
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
-  return createUser({ email, roles: [VIEWER_ROLE] })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Store Reader' } })
+  return createUser({ email, roles: ['Store Reader'] })
 }
 
 test('8: the page title is a 24px page title with Change password beside it', async ({ admin, createUser }) => {

@@ -8,7 +8,7 @@ import { businessAccessSummary, giveOldGrantsAction, switchOverLog } from './swi
 import { opensDashByBusinessRoles } from './business-reports.ts'
 import type { Base } from './business-access.ts'
 import { diveFilters, storesOfReport, storesReached, type ReportRecord } from './dive-filters.ts'
-import { MONTH_CHOICES, buildReport, dayLabel, monthLabel, headingOf, istToday, periodOf, storeLabels, storeShortName, type CachedAnswer, type Heading, type Month, type MonthChoice, type SalesRow } from './report.ts'
+import { MONTH_CHOICES, dayLabel, monthLabel, headingOf, istToday, periodOf, storeLabels, type Heading, type MonthChoice } from './report.ts'
 import { actions as sectionActions, reads as sectionReads } from './my-sections.ts'
 import { departmentActions, departmentReads } from './department-setup.ts'
 import { storeActions, storeReads } from './my-store.ts'
@@ -29,22 +29,6 @@ export const validators = accessValidators
 
 /** The places each person covers: by business roles, or by the old rules, as dash.access_source says (#1277). */
 export const scopeProviders = { org_chart: dashScopeProvider() }
-
-/** The cached dataset the report reads (featherbase.json's `datasets`). */
-export const SALES_DATASET = 'sales_to_date'
-
-/** The month's metadata dataset: period, last day of actuals, targets available; no figure. */
-export const MONTH_DATASET = 'sales_month'
-
-/** Last month's two datasets (#750), the same shapes as this month's: the whole month, kept apart so each holds one period. */
-export const LAST_SALES_DATASET = 'sales_last_month'
-export const LAST_MONTH_DATASET = 'sales_last_month_meta'
-
-/** Each month choice's figures and metadata. */
-const DATASETS: Readonly<Record<MonthChoice, { sales: string; month: string }>> = {
-  this: { sales: SALES_DATASET, month: MONTH_DATASET },
-  last: { sales: LAST_SALES_DATASET, month: LAST_MONTH_DATASET },
-}
 
 /** Where MotherDuck serves embedded Dives (featherbase.json's `frameOrigins`) and mints their sessions. */
 export const EMBED_ORIGIN = 'https://embed-motherduck.com'
@@ -70,10 +54,10 @@ interface ReadContext {
   secrets?: Readonly<Record<string, string>>
   reject?(message: string): never
   datasets?: {
-    active(name: string, filters?: unknown): Promise<{ at: string; rows: unknown[] } | null>
     live(name: string, filters?: unknown): Promise<{ at: string; rows: unknown[] }>
   }
-  recordView?(details: { dataset: string }): Promise<void>
+  /** One Access Log row for this reader (`view_report`); with no dataset it names the read. */
+  recordView?(details?: { dataset?: string }): Promise<void>
 }
 type ScopedContext = Required<ReadContext>
 
@@ -97,7 +81,7 @@ const MANAGERS_PAGES = new Set(['dash.business_role', 'dash.report_bundle'])
 /** Dash's own roles (featherbase.json's `roles`): holding any of them opens Dash (#1172). */
 export { DASH_ROLES }
 
-const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'quick_view', 'pickers_in_dive']
+const REPORT_FIELDS = ['report_key', 'report_name', 'dive_id', 'filter_shape', 'store_key', 'subcategory_key', 'whole_store_key', 'month_key', 'ready_signal', 'pickers_in_dive']
 
 /**
  * The one place that decides which reports this person may open: the reports given to them by
@@ -171,23 +155,14 @@ function storeInReach(ctx: ScopedContext): string | undefined {
 
 /**
  * The store a report's page reads: the chosen one. For a Dive with its own pickers, the address's;
- * else where the Dive opens with none named (agreed with v16): the reader's first store A–Z that
- * has figures in the cached copy, or their first A–Z when none has.
+ * else the reader's first store A–Z, where the Dive opens with none named (#1366: no copy is read).
  */
 async function storeOfPage(ctx: ScopedContext, report: ReportRecord): Promise<string | undefined> {
   if (!report.pickers_in_dive) return chosenStore(ctx, report)
   const named = storeInReach(ctx)
   if (named) return named
   const reached = storesReached(placesOf(ctx))
-  const byName = storeLabels(reached, await storeNames(ctx, reached)).map(option => option.value)
-  // The platform limits the cached copy to the reader's places. Figures are rows of the month on
-  // show with a day of actuals, as the quick view counts them; an earlier month's rows are none.
-  const month = chosenMonth(ctx)
-  const { period_start: start } = periodOf(istToday(), month)
-  const cached = await ctx.datasets.active(DATASETS[month].sales).catch(() => null)
-  const withFigures = new Set(((cached?.rows ?? []) as SalesRow[])
-    .filter(row => row.period_start === start && !!row.data_through && row.data_through >= start).map(row => String(row.store_code)))
-  return byName.find(store => withFigures.has(store)) ?? byName[0]
+  return storeLabels(reached, await storeNames(ctx, reached))[0]?.value
 }
 
 /** The month the read is for (#750): `this` (also when none is named) or `last`; anything else is refused. */
@@ -212,29 +187,6 @@ export function appOrigin(value: unknown): string | null {
   }
 }
 
-
-async function cachedRows(ctx: ScopedContext, store: string, month: MonthChoice): Promise<CachedAnswer> {
-  const answer = await ctx.datasets.active(DATASETS[month].sales, { store_code: store })
-  return answer ? { at: answer.at, rows: answer.rows as SalesRow[] } : null
-}
-
-/** The month's metadata as the store's snapshot has it: any of the reader's rows carries the same values. */
-async function monthOf(ctx: ScopedContext, store: string, month: MonthChoice): Promise<Month | null> {
-  const answer = await ctx.datasets.active(DATASETS[month].month, { store_code: store })
-  const row = (answer?.rows as Month[] | undefined)?.[0]
-  return row && answer ? { period_start: row.period_start, data_through: row.data_through, targets_available: row.targets_available, at: answer.at,
-    store_name: row.store_name ?? null } : null
-}
-
-/** The sales target quick view's figures for one store and month. */
-async function salesReport(ctx: ScopedContext, store: string) {
-  const choice = chosenMonth(ctx)
-  const answer = await cachedRows(ctx, store, choice)
-  const month = await monthOf(ctx, store, choice)
-  const report = buildReport({ store, places: placesOf(ctx), answer, month, today: istToday(), choice })
-  const named = (await storeNames(ctx, [store])).get(store) ?? null
-  return { ...report, heading: headingOf(placesOf(ctx), store, storeShortName(report, month, named)) }
-}
 
 /**
  * A store's name from the core Tables, for the page's header and the bar. The owner's rule
@@ -281,8 +233,8 @@ async function reachInWords(ctx: ScopedContext) {
   return { jobs, reach }
 }
 
-/** What a report's first answer says, for a report with no quick view: whether it can open, and its header. */
-type Plain = { state: 'ready'; no_quick_view: true; heading: Heading; period_start?: string; period_end?: string }
+/** What a report's first answer says: whether it can open, and its header. */
+type Plain = { state: 'ready'; heading: Heading; period_start?: string; period_end?: string }
 
 /** A fresh MotherDuck embed session for a report's Dive, opening its latest saved version, with only filters in its state. */
 /** What `embed_session` reads in the transaction: the report, and every Subcategory code when its Dive reads `reach`. */
@@ -325,7 +277,8 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null, everyCo
   const body = JSON.stringify({ username: account, initial_state: filters.state })
   // #1269: the request's size, for whoever runs the instance: the reach is what grows.
   const bytes = Buffer.byteLength(body)
-  let failure: string
+  let failure: string | undefined
+  let session: string | undefined
   let tooLarge = false
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), EMBED_API_TIMEOUT_MS)
@@ -335,20 +288,26 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null, everyCo
       signal: abort.signal,
     })
     const answered = await response.json().catch(() => null) as { session?: unknown } | null
-    if (response.ok && typeof answered?.session === 'string') {
-      // `ready_signal`: the Dive posts { type: 'dash:dive-ready' } once it has drawn, and the
-      // page waits for it rather than trusting the frame's load event.
-      console.info(JSON.stringify({ event: 'dash_embed_session_opened', person: ctx.user, bytes }))
-      return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(answered.session)}`,
-        ...(report.ready_signal ? { ready_signal: true } : {}) }
+    if (response.ok && typeof answered?.session === 'string') session = answered.session
+    else {
+      failure = `embed API answered HTTP ${response.status}`
+      tooLarge = response.status === TOO_LARGE
     }
-    failure = `embed API answered HTTP ${response.status}`
-    tooLarge = response.status === TOO_LARGE
   } catch (error) {
     failure = abort.signal.aborted ? `embed API gave no answer in ${EMBED_API_TIMEOUT_MS} ms`
       : `embed API unreachable: ${(error as Error)?.constructor?.name ?? 'error'}`
   } finally {
     clearTimeout(timer)
+  }
+  if (session !== undefined) {
+    // `ready_signal`: the Dive posts { type: 'dash:dive-ready' } once it has drawn, and the
+    // page waits for it rather than trusting the frame's load event.
+    console.info(JSON.stringify({ event: 'dash_embed_session_opened', person: ctx.user, bytes }))
+    // #1366: every report's open is one Access Log row, for any report, once its Dive's session is
+    // minted. Outside the call's try: an Access Log that can't record fails the open as itself.
+    await ctx.recordView()
+    return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(session)}`,
+      ...(report.ready_signal ? { ready_signal: true } : {}) }
   }
   // For whoever runs the instance: the person's opaque id and the status, never the token or the upstream text.
   console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure, bytes }))
@@ -525,7 +484,7 @@ export const reads = {
       ...await reachInWords(ctx) }
   },
 
-  /** Whether the chosen report can open for this reader, its header, and its quick view's figures if it has one. */
+  /** Whether the chosen report can open for this reader, and its header. */
   async report(context: ReadContext) {
     const ctx = context as ScopedContext
     const report = await chosenReport(ctx)
@@ -535,15 +494,10 @@ export const reads = {
     const period = periodOf(istToday(), month)
     const filters = diveFilters(report, placesOf(ctx), { store, month, periodEnd: period.period_end, appOrigin: null })
     if ('refused' in filters) return { state: filters.refused === 'not_your_store' ? 'no_access' : filters.refused }
-    // #1159: the page draws no heading over a Dive with its own pickers, only over its cached view.
+    // #1159: the page draws no heading over a Dive with its own pickers.
     const marked = report.pickers_in_dive ? { pickers_in_dive: true } : {}
-    if (report.quick_view && store) {
-      const figures = await salesReport(ctx, store)
-      await ctx.recordView({ dataset: DATASETS[figures.month].sales })
-      return { ...figures, ...marked }
-    }
     const names = await storeNames(ctx, store ? [store] : [])
-    const plain: Plain = { state: 'ready', no_quick_view: true, heading: store ? headingOf(placesOf(ctx), store, names.get(store) ?? null) : { name: null, sections: [], reasons: [] },
+    const plain: Plain = { state: 'ready', heading: store ? headingOf(placesOf(ctx), store, names.get(store) ?? null) : { name: null, sections: [], reasons: [] },
       ...(report.month_key ? { period_start: period.period_start, period_end: period.period_end } : {}) }
     return { ...plain, ...marked }
   },
@@ -573,7 +527,7 @@ export const reads = {
   async report_open(context: ReadContext) {
     const report = await chosenReport(context as ScopedContext)
     if (report?.filter_shape !== 'No filter') return { state: 'no_access' }
-    return { state: 'ready', no_quick_view: true, heading: { name: null, sections: [], reasons: [] } } satisfies Plain
+    return { state: 'ready', heading: { name: null, sections: [], reasons: [] } } satisfies Plain
   },
 
   embed_open: Object.assign(async (context: ReadContext) => {

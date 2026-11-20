@@ -165,17 +165,20 @@ tour('Featherbase: from a spreadsheet to an app you can navigate', async ({ stor
     })
   }, 'One sheet, one way of spelling everything.')
 
+  // #1349: the store counts its assets under its name, the number first.
+  const assetsCount = `${n(ROWS)} Assets`
+  // The tree still names a group by its Table, then its count.
   const assetsChip = new RegExp(`^Assets\\s*${n(ROWS)}$`)
   await s.chapter('Find your way around', limit(20_000), async () => {
     await s.step(`Down: T Nagar counts its ${n(ROWS)} assets`, async () => {
       await openTable(page(), 'Stores')
       await page().getByRole('link', { name: 'T Nagar', exact: true }).first().click()
-      await expect(page().getByRole('button', { name: assetsChip }).first()).toBeVisible()
+      await expect(page().getByTestId('count-row').getByRole('link', { name: assetsCount, exact: true })).toBeVisible()
     })
-    // #1273: the chip leads to the store's own Links tab, where its assets are listed.
+    // The store's own Links tab lists its assets.
     const assets = () => page().getByRole('tabpanel', { name: 'Links' }).getByRole('region', { name: 'Assets' })
     await s.step("They list on the store's own page, without leaving it", async () => {
-      await page().getByRole('button', { name: assetsChip }).first().click()
+      await page().getByRole('tab', { name: 'Links' }).click()
       await expect(assets()).toContainText(`Show all ${n(ROWS)}`)
     })
     let tag = ''
@@ -260,6 +263,9 @@ tour('Featherbase: from a spreadsheet to an app you can navigate', async ({ stor
     await s.step(`All ${n(3 * ROWS)} assets go in`, async () => {
       await page().getByTestId('iw-import').click()
       await expect(page().getByTestId('iw-result-0')).toContainText(`Imported ${n(3 * ROWS)} rows`, { timeout: 60_000 })
+      // #1376: the run is over only when the wizard says so; leaving at the
+      // first result can save its unfinished session for the next visit.
+      await expect(page().getByTestId('iw-done')).toContainText('Import complete.')
     })
   }, 'Anna Nagar, T Nagar and Velachery each keep their own sheet.')
 
@@ -345,6 +351,8 @@ tour('Featherbase: from a spreadsheet to an app you can navigate', async ({ stor
       await page().getByTestId('iw-import').click()
       await expect(page().getByTestId('iw-result-0')).toContainText('added 2 rows', { timeout: 60_000 })
       await expect(page().getByTestId('iw-result-0')).toContainText('T. Nagar does not exist')
+      // #1376: and the run is over, so the import history below opens clean.
+      await expect(page().getByTestId('iw-done')).toContainText('1 row was refused')
     })
   })
   await s.gap(

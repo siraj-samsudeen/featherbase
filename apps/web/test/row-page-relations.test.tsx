@@ -27,17 +27,16 @@ test('its region and its counted plants show under its name', async ({ admin }) 
   await renderApp(ENK, admin)
   const chips = await connections()
   expect(await within(chips).findByRole('button', { name: 'Kerala · KL' })).toBeInTheDocument()
-  expect(await within(chips).findByRole('button', { name: `${PLANT} 3` })).toBeInTheDocument()
+  // #1349: counted, the number first, as a link to the plants' list.
+  expect(await within(chips).findByRole('link', { name: '3 Nv Plants' })).toBeInTheDocument()
 })
 
-// #1273 (D3): the chip jumps to the group's section on the Links tab, which takes focus.
-test('opening the plants shows them in their section on the Links tab', async ({ admin }) => {
+test('the Links tab shows the plants in their section', async ({ admin }) => {
   await seedSites(admin)
   await renderApp(ENK, admin)
-  fireEvent.click(await within(await connections()).findByRole('button', { name: `${PLANT} 3` }))
+  fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
   const section = await screen.findByRole('region', { name: PLANT })
   await waitFor(() => expect(within(section).getAllByTestId('linked-row')).toHaveLength(3))
-  await waitFor(() => expect(section.parentElement).toHaveFocus())
 })
 
 test('opening its region shows Kerala in the drill pane', async ({ admin }) => {

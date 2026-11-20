@@ -46,7 +46,6 @@ describe('#737 command destinations', () => {
     expect(pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
     expect(pages).toContainEqual({ label: 'Service accounts', href: '/featherbase/admin/access-tokens?tab=accounts', kind: 'Page' })
     expect(pages).toContainEqual({ label: 'What you can see', href: '/featherbase/account/access/Administrator', kind: 'Account' })
-    expect(pages.map((p) => p.href)).not.toContain('/featherbase/sales-target')
     expect(pages.every((p) => !p.href.includes('$'))).toBe(true)
     expect(new Set(pages.map((p) => p.href)).size).toBe(pages.length)
   })
@@ -85,11 +84,10 @@ describe('#737 command destinations', () => {
 
   test('a reader receives only permitted destinations', async ({ admin, createUser }) => {
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Inventory Reader' } })
-    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Sales Target Viewer' } })
     await grantRole(admin, { table: 'Person', role: 'Inventory Reader', can_read: true })
     await grantRole(admin, { table: 'System Settings', role: 'Inventory Reader', can_read: true })
     await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'inventory-hidden', label: 'Secret inventory page', roles: [{ role: 'System Manager' }] } })
-    const reader = await createUser({ roles: ['Inventory Reader', 'Sales Target Viewer'] })
+    const reader = await createUser({ roles: ['Inventory Reader'] })
     const inventory = await reader.get<Inventory>(PATH)
     expect(inventory.tables.map((t) => t.row_id)).toEqual(['Glossary Term', 'Person', 'System Settings'])
     expect(inventory.tables.every((t) => !t.can_create)).toBe(true)
@@ -99,7 +97,6 @@ describe('#737 command destinations', () => {
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/glossary')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
     expect(inventory.pages).toContainEqual({ label: 'Connected apps', href: '/featherbase/account/connected-apps', kind: 'Account' })
-    expect(inventory.pages).toContainEqual({ label: 'Dash', href: '/featherbase/sales-target', kind: 'Report' })
     // #1325: the account menu's "What you can see" is found, for themselves; Service accounts are a manager's.
     const own = inventory.pages.find((p) => p.label === 'What you can see')
     expect(own).toMatchObject({ kind: 'Account' })

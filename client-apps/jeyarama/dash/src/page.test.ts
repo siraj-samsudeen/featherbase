@@ -1,5 +1,4 @@
-// What the report page shows, decided from what its reads answered, and how it
-// writes money, days and times. Made-up figures.
+// What the report page shows, decided from what its reads answered. Made-up stores.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BAR_STORE_WAIT_MS, DIVE_READY_TIMEOUT_MS, REPORT_TIMEOUT_MS, STORE_CHECK_TIMEOUT_MS, firstStore, pageView, reachMessage, reportAddress, reportLoader } from './page.ts'
 
@@ -15,19 +14,16 @@ describe('the page', () => {
     expect(pageView({ embed: undefined, report: report('ready') })).toEqual({ kind: 'opening' })
   })
 
-  it('shows the quick view when the Dive is not set up', () => {
-    expect(pageView({ embed: { ok: true, value: { not_set_up: true } }, report: report('ready') })).toEqual({ kind: 'quick' })
+  // #1366: there is no quick view; a Dive that can't open says so, with Try again.
+  it.each([
+    ['not set up', { ok: true as const, value: { not_set_up: true } }],
+    ['unreachable', { ok: true as const, value: { unreachable: true } }],
+    ['a failed session read', { ok: false as const, status: 502 }],
+  ])("says the report couldn't open when the Dive is %s", (_why, embed) => {
+    expect(pageView({ embed, report: report('ready') })).toEqual({ kind: 'failed' })
   })
 
-  it('shows the quick view when the Dive is unreachable', () => {
-    expect(pageView({ embed: { ok: true, value: { unreachable: true } }, report: report('ready') })).toEqual({ kind: 'quick' })
-  })
-
-  it('shows the quick view when the embed session read fails', () => {
-    expect(pageView({ embed: { ok: false, status: 502 }, report: report('ready') })).toEqual({ kind: 'quick' })
-  })
-
-  it('waits for the cached report before falling back to the quick view', () => {
+  it("waits for the report read before saying the report couldn't open", () => {
     expect(pageView({ embed: { ok: true, value: { unreachable: true } }, report: undefined })).toEqual({ kind: 'opening' })
   })
 
@@ -39,36 +35,15 @@ describe('the page', () => {
     expect(pageView({ embed: { ok: false, status: 401 }, report: undefined })).toEqual({ kind: 'signed_out' })
   })
 
-  it("says why there is nothing to show before opening the Dive: the month's figures haven't arrived", () => {
-    expect(pageView({ embed: frame, report: report('no_data_yet') })).toEqual({ kind: 'empty', why: 'no_data_yet' })
-  })
-
-  it("opens the Dive when the month can't be confirmed for an empty scope: nothing is hidden needlessly", () => {
-    expect(pageView({ embed: frame, report: report('unconfirmed') })).toMatchObject({ kind: 'dive' })
-  })
-
-  it("says the figures are being prepared when the month can't be confirmed and the Dive can't load", () => {
-    expect(pageView({ embed: { ok: true, value: { not_set_up: true } }, report: report('unconfirmed') })).toEqual({ kind: 'empty', why: 'not_built' })
-  })
-
-  it('opens the Dive while nothing is cached yet: the Dive reads the warehouse itself', () => {
-    expect(pageView({ embed: frame, report: report('not_built') })).toMatchObject({ kind: 'dive' })
-  })
-
-  it('says the figures are being prepared when the Dive cannot load and nothing is cached', () => {
-    expect(pageView({ embed: { ok: true, value: { not_set_up: true } }, report: report('not_built') })).toEqual({ kind: 'empty', why: 'not_built' })
-  })
-
-  it("shows the plain message with Try again when the quick view can't load either", () => {
+  it("says the report couldn't open, with Try again, when the report read fails", () => {
     expect(pageView({ embed: { ok: true, value: { unreachable: true } }, report: { ok: false, status: 500 } })).toEqual({ kind: 'failed' })
   })
 
   // #1269: MotherDuck refused the reader's reach as too large.
   it('says the reach is too large where it would say only "couldn\'t open"', () => {
     const tooLarge = { ok: true as const, value: { too_large: true } }
-    expect([pageView({ embed: tooLarge, report: { ok: true, value: { state: 'ready', no_quick_view: true } } }),
-      pageView({ embed: tooLarge, report: { ok: false, status: 500 } }), pageView({ embed: tooLarge, report: report('ready') })])
-      .toEqual([{ kind: 'too_large' }, { kind: 'too_large' }, { kind: 'quick' }])
+    expect([pageView({ embed: tooLarge, report: report('ready') }), pageView({ embed: tooLarge, report: { ok: false, status: 500 } })])
+      .toEqual([{ kind: 'too_large' }, { kind: 'too_large' }])
   })
 })
 
@@ -77,22 +52,13 @@ describe("the Dive's frame", () => {
   const frame = { ok: true as const, value: { frame: 'https://embed-motherduck.com/sandbox/#session=s' } }
   const ready = { ok: true as const, value: { state: 'ready' } }
 
-  it('shows the quick view, labelled cached, once the frame has failed', () => {
-    expect(pageView({ embed: frame, report: ready, frameFailed: true })).toEqual({ kind: 'quick' })
+  it("says the report couldn't open once the frame has failed", () => {
+    expect(pageView({ embed: frame, report: ready, frameFailed: true })).toEqual({ kind: 'failed' })
   })
 
-  // #1143: past the deadline the cached view stands in, until the Dive says it is ready.
-  it('shows the quick view past the deadline while the Dive has not said it is ready', () => {
-    expect(pageView({ embed: frame, report: ready, timedOut: true })).toEqual({ kind: 'quick' })
-  })
-
-  // #1159: the cached copy's "month hasn't arrived" is about one store and month; a ready Dive,
-  // where the reader may choose another, wins over it.
-  it('says the month has not arrived until the Dive is ready, then shows the Dive', () => {
-    const notArrived = { ok: true as const, value: { state: 'no_data_yet' } }
-    expect([pageView({ embed: frame, report: notArrived }), pageView({ embed: frame, report: notArrived, timedOut: true }),
-      pageView({ embed: frame, report: notArrived, diveReady: true }), pageView({ embed: frame, report: notArrived, frameFailed: true, diveReady: true })])
-      .toEqual([{ kind: 'empty', why: 'no_data_yet' }, { kind: 'empty', why: 'no_data_yet' }, expect.objectContaining({ kind: 'dive' }), { kind: 'empty', why: 'no_data_yet' }])
+  // #1143: past the deadline "couldn't open" stands in, until the Dive says it is ready.
+  it("says the report couldn't open past the deadline while the Dive has not said it is ready", () => {
+    expect(pageView({ embed: frame, report: ready, timedOut: true })).toEqual({ kind: 'failed' })
   })
 
   it('shows the Dive past the deadline once it has said it is ready', () => {
@@ -112,7 +78,7 @@ describe('opening the report (the deadline covers the session request and the fr
   const READY = { state: 'ready' }
   const FRAME = { frame: 'https://embed-motherduck.com/sandbox/#session=s' }
 
-  it('falls back to the quick view when the session request never answers', async () => {
+  it("says the report couldn't open when the session request never answers", async () => {
     vi.useFakeTimers()
     const { pending, read } = reads()
     let view = pageView({ embed: undefined, report: undefined })
@@ -120,7 +86,7 @@ describe('opening the report (the deadline covers the session request and the fr
     loader.open('9901')
     pending.report[0].resolve(READY)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
-    expect(view).toEqual({ kind: 'quick' })
+    expect(view).toEqual({ kind: 'failed' })
   })
 
   it('ignores a session that answers after the deadline', async () => {
@@ -133,7 +99,7 @@ describe('opening the report (the deadline covers the session request and the fr
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
     pending.embed_session[0].resolve(FRAME)
     await flush()
-    expect(view).toEqual({ kind: 'quick' })
+    expect(view).toEqual({ kind: 'failed' })
   })
 
   it("ignores the previous store's session after the reader switches stores", async () => {
@@ -149,7 +115,7 @@ describe('opening the report (the deadline covers the session request and the fr
     expect(view).toEqual({ kind: 'opening' })
   })
 
-  it('falls back to the quick view when the session answers but its frame never loads', async () => {
+  it("says the report couldn't open when the session answers but its frame never loads", async () => {
     vi.useFakeTimers()
     const { pending, read } = reads()
     let view = pageView({ embed: undefined, report: undefined })
@@ -158,7 +124,7 @@ describe('opening the report (the deadline covers the session request and the fr
     pending.report[0].resolve(READY)
     pending.embed_session[0].resolve(FRAME)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
-    expect(view).toEqual({ kind: 'quick' })
+    expect(view).toEqual({ kind: 'failed' })
   })
 
   it('keeps the Dive once its frame has loaded within the deadline', async () => {
@@ -237,10 +203,10 @@ describe("the Dive's ready signal (required only when the instance's `dive_ready
     expect([before, ready()]).toEqual([false, true])
   })
 
-  it('falls back to the quick view when the frame loads but no ready message arrives', async () => {
+  it("says the report couldn't open when the frame loads but no ready message arrives", async () => {
     const { view } = await opened()
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
-    expect(view()).toEqual({ kind: 'quick' })
+    expect(view()).toEqual({ kind: 'failed' })
   })
 
   it('keeps the Dive once the ready message arrives from the Dive\'s origin and frame', async () => {
@@ -254,14 +220,14 @@ describe("the Dive's ready signal (required only when the instance's `dive_ready
     const { loader, view } = await opened()
     loader.message({ origin: 'https://elsewhere.example', source: frameWindow, data: { type: 'dash:dive-ready' } }, frameWindow)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
-    expect(view()).toEqual({ kind: 'quick' })
+    expect(view()).toEqual({ kind: 'failed' })
   })
 
   it('ignores a ready message from another window, even on the right origin', async () => {
     const { loader, view } = await opened()
     loader.message({ origin: 'https://embed-motherduck.com', source: {}, data: { type: 'dash:dive-ready' } }, frameWindow)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
-    expect(view()).toEqual({ kind: 'quick' })
+    expect(view()).toEqual({ kind: 'failed' })
   })
 
   // #1143: a Dive can take longer than the deadline to say it is ready (MotherDuck's session start).
@@ -270,21 +236,21 @@ describe("the Dive's ready signal (required only when the instance's `dive_ready
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
     const atDeadline = view()
     loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'feather-dash:dive-ready' } }, frameWindow)
-    expect([atDeadline, view()]).toEqual([{ kind: 'quick' }, expect.objectContaining({ kind: 'dive' })])
+    expect([atDeadline, view()]).toEqual([{ kind: 'failed' }, expect.objectContaining({ kind: 'dive' })])
   })
 
-  it('keeps the cached view when no ready message ever arrives', async () => {
+  it("keeps saying it couldn't open when no ready message ever arrives", async () => {
     const { view } = await opened()
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS * 4)
-    expect(view()).toEqual({ kind: 'quick' })
+    expect(view()).toEqual({ kind: 'failed' })
   })
 
-  it('keeps the cached view for good once the frame errors, even if a ready message follows', async () => {
+  it("keeps saying it couldn't open once the frame errors, even if a ready message follows", async () => {
     const { loader, view } = await opened()
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
     loader.frameFailed()
     loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'dash:dive-ready' } }, frameWindow)
-    expect(view()).toEqual({ kind: 'quick' })
+    expect(view()).toEqual({ kind: 'failed' })
   })
 
   // #1141: Dives published before #966 renamed the message still post its old name.
@@ -299,12 +265,12 @@ describe("the Dive's ready signal (required only when the instance's `dive_ready
     const { loader, view } = await opened()
     loader.message({ origin: 'https://embed-motherduck.com', source: frameWindow, data: { type: 'feather-dash:dive-loaded' } }, frameWindow)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
-    expect(view()).toEqual({ kind: 'quick' })
+    expect(view()).toEqual({ kind: 'failed' })
   })
 })
 
 
-describe('the cached report has a deadline too', () => {
+describe('the report read has a deadline too', () => {
   afterEach(() => vi.useRealTimers())
   function harness() {
     vi.useFakeTimers()
@@ -329,9 +295,10 @@ describe('the cached report has a deadline too', () => {
     await vi.advanceTimersByTimeAsync(REPORT_TIMEOUT_MS)
     loader.open('9901')
     pending.report[1]({ state: 'ready' })
-    pending.embed_session[1]({ unreachable: true })
+    pending.embed_session[1]({ frame: 'https://embed-motherduck.com/sandbox/#session=s' })
     await vi.advanceTimersByTimeAsync(0)
-    expect(view()).toEqual({ kind: 'quick' })
+    loader.frameLoaded()
+    expect(view()).toMatchObject({ kind: 'dive' })
   })
 
   it('keeps a working Dive when the report never answers', async () => {
@@ -457,23 +424,6 @@ describe('a report whose reader or row refuses it', () => {
 
   it("counts a report whose row isn't set up as failed", () => {
     expect(said('report_not_set_up')).toEqual({ kind: 'failed' })
-  })
-})
-
-describe('a report with no quick view', () => {
-  const plain = { ok: true as const, value: { state: 'ready', no_quick_view: true } }
-
-  it('shows its Dive', () => {
-    expect(pageView({ embed: { ok: true, value: { frame: 'https://embed-motherduck.com/x' } }, report: plain })).toEqual({ kind: 'dive', src: 'https://embed-motherduck.com/x' })
-  })
-
-  it.each<[string, Parameters<typeof pageView>[0]]>([
-    ['the Dive is unreachable', { embed: { ok: true, value: { unreachable: true } }, report: plain }],
-    ['the Dive is not set up', { embed: { ok: true, value: { not_set_up: true } }, report: plain }],
-    ['the session read fails', { embed: { ok: false, status: 502 }, report: plain }],
-    ["the Dive's frame fails", { embed: { ok: true, value: { frame: 'https://embed-motherduck.com/x' } }, report: plain, frameFailed: true }],
-  ])('counts as failed when %s, with nothing to stand in', (_what, input) => {
-    expect(pageView(input)).toEqual({ kind: 'failed' })
   })
 })
 

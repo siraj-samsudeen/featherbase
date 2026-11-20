@@ -11,7 +11,6 @@ import { sql } from 'server/src/db'
 import { applySeedPack } from 'server/src/seed-packs'
 import { addIdentifier } from 'server/src/person-identifiers'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
-import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
 import { openIdentifierHistory } from './sign-in-lines'
 import { openListMenu } from './list-menus'
@@ -37,8 +36,8 @@ test('a System Manager sees codes with their periods and the address; a roster v
 })
 
 test('a person adds their own phone and sees it is not yet verified', async ({ admin, createUser }) => {
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
-  const me = await createUser({ email: 'own.ids@example.com', roles: [VIEWER_ROLE] })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Store Reader' } })
+  const me = await createUser({ email: 'own.ids@example.com', roles: ['Store Reader'] })
   // Their own page: Sign-in methods (account menu), not the Admin Person form.
   await renderApp('/featherbase/account/sign-in-methods', me)
   const panel = await openIdentifierHistory()
