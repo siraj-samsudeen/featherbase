@@ -20,15 +20,14 @@ release PR (ADR 0014, section 4). A client image is built when the app is
 released, not here.
 
 **What the page does today.** The sidebar lists the reader's reports. The header names the store,
-the period, why the reader sees that store, and what the figures measure. Readers never see internal
-codes: the quick view names subcategories without their codes, and the store picker names stores
-without plant codes. The page opens each Dive's latest saved version: no version is pinned anywhere,
-so saving a Dive on MotherDuck releases it (#937). A report with a quick view stands it in when its
-Dive can't load; any other says "This report couldn't open" with Try again. A Dive not up within
-15 s (`DIVE_READY_TIMEOUT_MS`) keeps loading out of sight behind that view, or behind "The figures are
-being prepared" while the cached copy isn't built, or behind "This month's figures haven't arrived
-yet": those speak for the cached copy, and the Dive reads the warehouse itself. If it then says it is
-ready, the page switches to it in the same frame. A frame that errors falls back for good (#1143).
+the period and why the reader sees that store. Readers never see internal codes: the store picker
+names stores without plant codes. The page opens each Dive's latest saved version: no version is
+pinned anywhere, so saving a Dive on MotherDuck releases it (#937). The Dive is the report: Dash
+copies no figures into Featherbase (#1366), so a Dive that can't load says "This report couldn't
+open" with Try again. A Dive not up within 15 s (`DIVE_READY_TIMEOUT_MS`) keeps loading out of sight
+behind that message; if it then says it is ready, the page switches to it in the same frame. A frame
+that errors stays failed (#1143). Every report a reader opens is one `view_report` row in the Access
+Log, written when its Dive's session is opened (#1366).
 
 ## Layout
 
@@ -40,12 +39,12 @@ ready, the page switches to it in the same frame. A frame that errors falls back
 | `src/provider.ts` | the scope provider: `reachOf`, the one place #967's who-sees-what table is written |
 | `src/dive-filters.ts` | a report's row and a reader's places turned into the Dive's filters, or a refusal |
 | `src/my-sections.ts`, `src/sections-page.tsx` | Your sections and Waiting for your approval (#975): the rules and the two pages. They read the instance's base Tables, declared under `baseTables` in the manifest and listed in the `linked_tables` setting, and propose through the platform's Change Proposal. The seam for posting to StyleHR is marked in `decide` and not built |
-| `src/report.ts` | the sales quick view's rules: a reader's scope, the month-to-date rows and totals, the store picker's labels |
-| `src/page.ts`, `src/app.tsx`, `src/main.tsx`, `index.html` | the report page (the Dive, the quick view, the empty states; `page.ts` holds its rules and the async guard), built by Vite to `dist/client` |
+| `src/report.ts` | the report's shared rules: the heading's reasons, the month choices and their periods, the store picker's labels |
+| `src/page.ts`, `src/app.tsx`, `src/main.tsx`, `index.html` | the report page (the Dive and the page's messages; `page.ts` holds its rules and the async guard), built by Vite to `dist/client` |
 | `platform-test/` | tests that run inside this repository's server test harness (`npm run test:platform`), the instance setup step they rely on |
 | `scripts/platform-test.sh` | the platform test runner |
 | `scripts/platform-loads-app.mts` | runs the platform's own app loader over this folder |
-| `scripts/seed-made-up.mts` | local development only: made-up core Tables, three reports and a cached copy, to see every state of the page |
+| `scripts/seed-made-up.mts` | local development only: made-up core Tables, people and three reports, to see the page's states |
 | `scripts/dev-repin.sh` | local development only: re-pins a dev database's install after a server edit |
 | `fixtures/made-up-org-chart.json` | the seed's core-Table rows and people: no real store, person, code or figure |
 
@@ -64,9 +63,8 @@ npm run typecheck
 
 Some tests borrow from the repository around this folder: one runs the
 platform's own loader (what boot discovery and the release guard use) over the
-built folder, one renders the page with `apps/web`'s jsdom, and one runs the
-dataset query on `apps/server`'s DuckDB. So run `pnpm install` at the root and
-build first.
+built folder, and one renders the page with `apps/web`'s jsdom. So run
+`pnpm install` at the root and build first.
 
 The platform tests run inside `apps/server`'s own test harness, against a test
 database of your own (the harness migrates it and empties its job queue):
@@ -80,8 +78,7 @@ npm run test:platform              # or: npm run test:platform -- provider.test.
 
 They prove the provider through the platform's own `resolvePersonScope`, one
 reader per job, and that role grants decide who edits the core Tables; the report reads and the
-Dive's filters under real places; Your sections' rules; and the refresh guard on `sales_to_date` (against a made-up warehouse in an
-in-memory DuckDB, `platform-test/warehouse.ts`). CI runs them when a PR
+Dive's filters under real places and the Access Log row each opening writes; and Your sections' rules. CI runs them when a PR
 touches `client-apps/` or the platform.
 
 ## Local development
@@ -123,14 +120,13 @@ From the repository root:
 pnpm dev jeyarama/dash --made-up-data
 ```
 
-There is no MotherDuck locally, so the Dive can't open; the page shows the quick
-view, built from a made-up cached copy. The command gives the app a made-up
+There is no MotherDuck locally, so the Dive can't open and the page says the report couldn't
+open; the header, the sidebar and the other pages work. The command gives the app a made-up
 `MOTHERDUCK_TOKEN` (every read needs the secret set, and a real one in `.env.local`
 is ignored for this run) and runs `scripts/seed-made-up.mts`, which `../instances/dash/instance.json` names. It is
 safe to rerun, and it refuses a database that isn't stamped `development`.
 
-It prints who to sign in as: `reader-sm@example.test` shows figures, and the others
-each show one state of the page. They all use the password it prints.
+It prints who to sign in as: each made-up person shows one state of the page. They all use the password it prints.
 
 Without the flag the instance has no secret and no core Tables, so readers
 get "couldn't load" and an administrator is told what is missing. To use another
@@ -142,7 +138,7 @@ at the repository root.
 - **`dash.report`**, the entry Table and the only one Dash owns: one row per Dive, from instance
   setup. It holds the Dive's id, the shape of its filters (`One store and subcategories`, `Whole
   stores`, `Stores and subcategories` or `No filter`), the Dive's own state keys, whether the Dive
-  says when it has drawn (`ready_signal`), and its optional `quick_view`. No business data. Every
+  says when it has drawn (`ready_signal`), and `quick_view`, retired and left empty (#1366). No business data. Every
   app role reads it, because the platform opens an app only for people who can read its entry Table.
   - **`pickers_in_dive`** (#1159, off by default): the Dive has its own Store and Month pickers
     (v16 of the sales Dive, data-warehouse#4739). With it on, the embed session's `initial_state` is
@@ -151,8 +147,8 @@ at the repository root.
     (`this` or `last`, from the address, default `this`) and `app_origin`. It carries none of the
     one-store keys, because the Dive takes `reach` beside one of them as a scope error. The bar offers
     no Store or Month for that report, and the page opens at once on the address's store. It draws
-    no heading over the Dive, only over its cached view. That view is for the address's store, or
-    where the Dive opens with none named: the reader's first store A–Z with figures. Turn it on only once the row's Dive reads these keys.
+    no heading over the Dive. With no store named, the Dive opens on the reader's first store A–Z.
+    Turn it on only once the row's Dive reads these keys.
 - **`baseTables.read`**: the core Tables Dash reads by the columns named there. An instance lists all
   eight in the `dash.linked_tables` setting. `baseTables.propose` is what Your sections may propose.
 - **The scope provider, `org_chart`.** It reads the six Tables in `scopeProvider.tables`, each of
@@ -172,37 +168,14 @@ at the repository root.
   A store is sold through its one Store plant, so a place is a plant code. A whole-store place names
   no section. `reach_problem` says why a job reaches nothing, for the page's message.
 - **Roles:** Dash Reader, Dash All-Stores Reader (reaches every store, as a Director's job does; for head-office staff, #1192) and Report Access Manager. `roleDefaults` is empty; part 4 adds the stand-in binding.
-- **The cached dataset, `sales_to_date`**, on the instance's `motherduck` Data
-  Source (which must be marked "Read-scaling token"): one row per store and
-  subcategory, month to date in India Standard Time, with target, sales, the
-  day the data runs to and whether the month has targets. It is today's
-  featherbase query (`datasets/sales-target-mtd.ts`) moved here, cut to month
-  to date. The platform refreshes it, keeps the last good copy, and limits it
-  to each reader's places through `filters` (`store` → `store_code`,
-  `subcategory` → `subcategory_code`). Its `guard` keeps the last good copy
-  too when a refresh has no target at all (`not_all_zero` on `target`), or,
-  within the same `period_start`, when the subcategories with a target
-  (`max_drop_pct: 50`), the month's total target (`max_sum_drop_pct: 50`) or
-  the days with a target (`target_days`, summed: `max_sum_drop_pct: 50`) drop
-  by more than half: the old report's checks, which counted target day rows.
-  `target_days` is for that guard only; nothing shows it. The quick view is all these datasets
-  serve: a Dive opens on live figures of its own. A refresh of a new month
-  is not compared with last month's copy, and one whose rows carry no single
-  `period_start` is refused.
-- **The month's metadata, `sales_month`**: one row per store and subcategory
-  with only `period_start`, `data_through` and `targets_available`, limited
-  to the reader the same way. It tells a month that hasn't arrived from a
-  section that sold nothing, whose figures are empty either way.
-- **Last month's datasets, `sales_last_month` and `sales_last_month_meta`**
-  (#750): the same queries, columns, filters and guards over last month whole
-  (its first day to its last, the data running to its last day with actuals).
-  They are separate datasets, so each refresh holds one `period_start` and the
-  guards still compare within it.
+- **Datasets:** only `organisation_dives`, on the instance's `motherduck` Data Source: the
+  organisation's Dives, read live for Add a Dive (#1169). Dash copies no sales figures into
+  Featherbase (#1366): the Dive reads the warehouse itself.
 - **The month picker** in the bar (`months` → `?month=this|last`, labelled
   "This month · Nov'26" and "Last month · Oct'26"). The value is the choice,
   not the month, so an address keeps meaning "last month". `report` and
-  `embed_session` take `{ month }` (`this` when missing); `report` reads that
-  month's datasets, and the Dive gets the month's last day under its `month_key`. The Dive caps its anchor day at `period_end` (Sales Target Dive
+  `embed_session` take `{ month }` (`this` when missing); `report` answers that
+  month's period, and the Dive gets the month's last day under its `month_key`. The Dive caps its anchor day at `period_end` (Sales Target Dive
   v14, data-warehouse#4630), so it shows last month as it shows this month.
 - **The reads** (`POST /api/app_reads/dash/<read>` with
   `{"payload":{…}}` and the header `X-Featherbase-App-Version:
@@ -220,9 +193,7 @@ at the repository root.
   - `months` `{ report }` → this month and last, `[]` on a report taking no month;
   - `report` `{ report, store, month }` → whether the report can open. `{ state: "no_access" }` for a
     report that doesn't exist or a store that isn't the reader's, `whole_stores_only`, or
-    `report_not_set_up`. With a quick view, its figures, with a `state` of `ready`, `not_built`,
-    `no_data_yet` or `unconfirmed`, and a `heading`. Without one, `{ state: "ready", no_quick_view:
-    true, heading }`. `heading` is the store's name, its sections and the reader's reasons, which the
+    `report_not_set_up`; else `{ state: "ready", heading, period_start?, period_end? }`. `heading` is the store's name, its sections and the reader's reasons, which the
     page turns into one sentence (`whyLine` in `src/page.ts`);
   - `embed_session` `{ report, store, month, app_origin }` (outbound; its `prepare` step reads the
     report's row in the transaction) → `{ frame, ready_signal? }`, `{ refused }`, `{ not_set_up: true }`
@@ -230,11 +201,13 @@ at the repository root.
     (`src/dive-filters.ts`): one store and a section reader's subcategories or the whole-store flag; a
     list of whole stores; or each store's reach (`null` for the whole store). A filter never widens: a
     reach the shape can't express is refused and MotherDuck isn't called. `app_origin` (the page's
-    own plain `http(s)` origin) goes only to a Dive that says when it has drawn.
+    own plain `http(s)` origin) goes only to a Dive that says when it has drawn. Once MotherDuck
+    answers a session, it writes the reader's `view_report` Access Log row (as `embed_open` does
+    for a report taking no filter); a refused or failed open writes none.
 
   `stores`, `report` and `embed_session` are `person_scope` reads for the three app roles.
-- **Settings:** `embed_service_account` (optional: without it a report shows its quick view or
-  "This report couldn't open"), `linked_tables`; the secret `MOTHERDUCK_TOKEN` (every read answers
+- **Settings:** `embed_service_account` (optional: without it a report says "This report couldn't
+  open"), `linked_tables`; the secret `MOTHERDUCK_TOKEN` (every read answers
   "not set up" while it is missing); `frameOrigins: ["https://embed-motherduck.com"]`.
 - **Embed sessions use their own token** (#1139, [ADR 0022](../../../adr/0022-dive-embed-sessions-have-their-own-token.md)).
   The optional secret `MOTHERDUCK_EMBED_TOKEN` is handed only to `embed_session` and `embed_open`,
@@ -242,11 +215,11 @@ at the repository root.
   `motherduck_dive_service_account`, the MotherDuck account that reads and writes Dives and may
   create Dive embed sessions (the Admin preset role has that permission). The service
   account in `embed_service_account` needs only access to the Dive and its data. `MOTHERDUCK_TOKEN`
-  stays the warehouse's read-only token: the quick view and every other read use it, and it can't
+  stays the warehouse's read-only token: every other read uses it, and it can't
   create embed sessions. While `MOTHERDUCK_EMBED_TOKEN` is unset, the two embed reads answer "not set
-  up", MotherDuck isn't called, and the page shows the quick view or "This report couldn't open".
+  up", MotherDuck isn't called, and the page says "This report couldn't open".
   There is deliberately no fallback to `MOTHERDUCK_TOKEN`: on production that is the account
-  MotherDuck refuses (HTTP 403), and a fallback would hide the missing setup behind the same quick view.
+  MotherDuck refuses (HTTP 403), and a fallback would hide the missing setup.
 
 ## Releasing a Dive
 

@@ -1,14 +1,12 @@
-// #1327 (audit F07, F08): one page for what a screen can't show. Not found, No access or
+// #1327 (audit F07): one page for what a screen can't show. Not found, No access or
 // Couldn't open, each in plain words with one way forward, inside the page's own shell.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
-import { VIEWER_ROLE } from 'server/src/sales-target'
 import { grantRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
 const T = { timeout: 8000 }
-const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { pathname: string } } }).state.location.pathname
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -79,26 +77,6 @@ test('an address outside the Admin that matches nothing says so under the top ba
   expect(within(page).getByRole('heading')).toHaveTextContent('Page not found')
   expect(within(page).getByRole('link', { name: 'Go to Featherbase' })).toHaveAttribute('href', '/')
   expect(await screen.findByTestId('top-bar', {}, T)).toBeInTheDocument()
-})
-
-test('a report reader who opens an Admin link is told the Admin is not part of their account, and offered their report', async ({ admin, createUser }) => {
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
-  const reader = await createUser({ email: 'pp-reader@example.com', roles: [VIEWER_ROLE] })
-  const asked: string[] = []
-  const bridge = globalThis.fetch
-  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    if (url.includes('/api/access_request')) asked.push(url)
-    return bridge(input, init)
-  })
-  const app = await renderApp('/featherbase/admin/table/site', reader)
-  const page = await screen.findByTestId('problem-no-access', {}, T)
-  expect(within(page).getByRole('heading')).toHaveTextContent('The Admin isn’t part of your account')
-  expect(within(page).getByRole('link', { name: 'Open your report' })).toHaveAttribute('href', '/featherbase/sales-target')
-  // The address they asked for stays, and nobody was asked for anything.
-  await new Promise((r) => setTimeout(r, 200))
-  expect(pathOf(app)).toBe('/featherbase/admin/table/site')
-  await waitFor(() => expect(asked).toEqual([]))
 })
 
 test('a list whose rows the network drops says it could not load them, and Try again loads them', async ({ admin }) => {

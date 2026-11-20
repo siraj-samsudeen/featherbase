@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabLink } from 'shared'
+import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, appHref, type AppTabLink } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, landingPath, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
 import { pageLoad } from '../lib/page-load'
@@ -30,8 +30,8 @@ import { useCurrentPageTitle } from '../lib/page-title'
 //   left    the Featherbase mark and the name. Admin screens and installed
 //           app pages share the native application dropdown (#759).
 //   middle  the Admin menus, on the Admin screens only (passed in)
-//   right   the theme toggle and Account menu. Legacy interim app addresses
-//           still offer Open Admin; installed apps use the dropdown instead.
+//   right   the theme toggle and Account menu. Featherbase pages on an app's
+//           address still offer Open Admin; installed apps use the dropdown instead.
 //
 // #501: a page is named for where the person belongs, and the bar never
 // offers to go where the person already is.
@@ -94,12 +94,10 @@ export function useOnAppAddress(): boolean | undefined {
 
 function nameOf(context: string, brand: Brand | undefined): string {
   if (context === ADMIN) return ADMIN_NAME
-  if (brand?.opens === context) return brand.app_name
-  return INTERIM_APPS[context]?.title ?? context
+  return brand?.opens === context ? brand.app_name : context
 }
 
-/** The one app a person can belong to without a Table grant of their own:
- *  Feather Dash, the report page until an app is installed under its name. */
+/** The one app a person's own pages are named for: Feather Dash. */
 const DASH = 'dash'
 
 /** #501 item 3: on the Admin side, a page of the person's own (the account
@@ -115,37 +113,29 @@ const DASH = 'dash'
  *  platform's name. */
 function personalName(caps: Capabilities | undefined, apps: OpenableApp[] = [], installed: string[] = []): string | undefined {
   if (!caps) return undefined
-  // #671: once an app is installed under Feather Dash's name, its readers
-  // belong to it; until then, the report role does (design D8).
+  // #671: the readers of an app installed under Feather Dash's name belong to it.
   if (installed.includes(DASH)) {
     const opened = apps.find((entry) => entry.name === DASH)
     if (opened) return opened.title
-  } else if (caps.report) return INTERIM_APPS[DASH].title
+  }
   return PLATFORM_NAME
 }
 
-/** Where the bar's name leads. An app installed under an interim name
- *  replaces its interim page (#671): the interim root stands in only while
- *  no app of that name is installed. */
-function homeHref(context: string, installed: boolean): string {
-  if (context === ADMIN) return FEATHERBASE_ADMIN_DESTINATION.href
-  if (installed) return appHref(context)
-  return INTERIM_APPS[context]?.root ?? appHref(context)
+/** Where the bar's name leads: the Admin, or the app's own root. */
+function homeHref(context: string): string {
+  return context === ADMIN ? FEATHERBASE_ADMIN_DESTINATION.href : appHref(context)
 }
 
 
-/** The tabs the app behind this bar declares: an interim app's from shared,
- *  an installed app's from the catalog (only apps the person can open). */
-function useAppTabs(context: string | undefined, installed: boolean, enabled: boolean): AppTabLink[] {
-  // An app installed under an interim name replaces its interim page (#671).
-  const interim = context && !installed ? INTERIM_APPS[context] : undefined
+/** The tabs the app behind this bar declares, from the catalog (only apps
+ *  the person can open). */
+function useAppTabs(context: string | undefined, enabled: boolean): AppTabLink[] {
   const catalog = useQuery({
     queryKey: ['app-catalog'],
     queryFn: () => api.get<{ name: string; title: string; href: string; tabs?: AppTabLink[] }[]>('/api/app_catalog'),
-    enabled: enabled && Boolean(context && context !== ADMIN && !interim),
+    enabled: enabled && Boolean(context && context !== ADMIN),
   })
   if (!context || context === ADMIN) return []
-  if (interim) return appTabLinks(interim.root, interim.tabs ?? [])
   return catalog.data?.find((app) => app.name === context)?.tabs ?? []
 }
 
@@ -188,10 +178,6 @@ export function TopBar({
   const whoami = useWhoAmI().data
   const caps = whoami?.capabilities
   const apps = whoami?.apps
-  // An app's own page is an installed app's (#650). Elsewhere the link follows
-  // the installation, as the server's address routing does (#671): a disabled
-  // app's root says it is unavailable, never the interim page.
-  const installed = Boolean(app) || Boolean(context && whoami?.installed_apps?.includes(context))
   const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps, apps, whoami?.installed_apps) : nameOf(context, brand)
   // The browser tab carries the bar's name: an app's on its pages and
   // address, "Featherbase Admin" on the Admin screens (#501 item 1), and the
@@ -217,7 +203,7 @@ export function TopBar({
   // the switcher keeps its logo and a chevron that still opens the list.
   const hasControls = useBarControls(caps && controlsOf ? controlsOf : undefined).length > 0
   const compactSwitcher = Boolean(app) && hasControls
-  const tabs = useAppTabs(context, installed, isPhone && Boolean(caps))
+  const tabs = useAppTabs(context, isPhone && Boolean(caps))
   // #1227: the page's sidebar, wherever it is drawn (the Admin's own, or an
   // app's <featherbase-sidebar>), is worked from here, the same on every page.
   const sidebar = useSidebar(getSessionUser()?.row_id)
@@ -225,7 +211,7 @@ export function TopBar({
   // #1227: the switcher on every signed-in page, named for the page's app; a
   // page of the person's own is named for where they belong (#501).
   const switcherApp = app ?? (context && name
-    ? switcherAppFor(context, name, Boolean(forPerson || !caps?.admin), (of) => homeHref(of, of === context ? installed : Boolean(whoami?.installed_apps?.includes(of))))
+    ? switcherAppFor(context, name, Boolean(forPerson || !caps?.admin), homeHref)
     : undefined)
   // Over an app's own page the bar's router is a private one, so the open tab
   // follows the document's own address (#650).
@@ -241,7 +227,7 @@ export function TopBar({
   const rail = sidebar.collapsed && !drawer
   const switcher = left ?? (caps && context && name
     ? <AppSwitcher app={switcherApp} place={rail ? 'rail' : 'sidebar'} />
-    : context && name && <BarName href={homeHref(context, installed)} name={name} />)
+    : context && name && <BarName href={homeHref(context)} name={name} />)
   const phoneTabs = isPhone && caps && name && tabs.length > 0 && (
     <TabBar
       label={name}
@@ -321,7 +307,7 @@ export function TopBar({
         >
           {left ?? (caps && context && name
             ? <AppSwitcher app={switcherApp} compact={compactSwitcher} />
-            : context && name && <BarName href={homeHref(context, installed)} name={name} />)}
+            : context && name && <BarName href={homeHref(context)} name={name} />)}
         </div>
         {sidebar.present > 0 && <SidebarControls sidebar={sidebar} />}
         {caps && controlsOf && <BarControls app={controlsOf} />}
@@ -351,8 +337,7 @@ export function TopBar({
 function switcherAppFor(
   context: string, name: string, personal: boolean, home: (app: string) => string,
 ): { name: string; title: string; href: string } | undefined {
-  // The entry leads where the bar's name always has (homeHref): an interim
-  // page while no app of that name is installed (#671).
+  // The entry leads where the bar's name always has (homeHref).
   if (context !== ADMIN) return { name: context, title: name, href: home(context) }
   if (!personal) return undefined
   return name === PLATFORM_NAME ? { name: '', title: PLATFORM_NAME, href: '/' } : { name: DASH, title: name, href: home(DASH) }

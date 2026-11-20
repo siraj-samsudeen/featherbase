@@ -12,14 +12,13 @@
 // ticket sends the browser to the target's /api/handoff/start, which sets its
 // nonce cookie and sends it back to the source's /api/handoff/bind, which
 // mints the code redeemed at the target's /featherbase/oauth-callback.
+import { appHref } from 'shared'
 import type { SessionUser } from './auth'
 import { config } from './config'
-import { ADMIN, adminAddress, appRoot, matchAddress, type InstanceAddress } from './instance-addresses'
+import { ADMIN, adminAddress, matchAddress, type InstanceAddress } from './instance-addresses'
 import { mintHandoffTicket } from './oauth'
 import { getRoles, tableAccessFor } from './permissions'
 import { appCatalog, appEntryTable } from './runtime-packages'
-import { isInstalled } from './apps'
-import { VIEWER_ROLE } from './sales-target'
 
 /** What a sign-in answer carries besides the session: a path on this address
  *  to open (`landing`), or a URL on another address to go to (`handoff`).
@@ -40,12 +39,10 @@ export async function canUseAdmin(person: string): Promise<boolean> {
   return (await tableAccessFor(person, roles)).admin
 }
 
-/** Can this person open the app an address opens. Until an app named
- *  dash is installed (#671), Dash's interim gate is today's
- *  report gate (design D8); an installed app is open to whoever its catalog
- *  lists, and to no one while it is disabled or not loaded here. */
+/** Can this person open the app an address opens: an installed app is open
+ *  to whoever its catalog lists, and to no one while it is disabled or not
+ *  loaded here. */
 export async function canOpenApp(person: string, app: string): Promise<boolean> {
-  if (app === 'dash' && !(await isInstalled(app))) return (await getRoles(person)).includes(VIEWER_ROLE)
   return (await appCatalog(person)).some((entry) => entry.name === app)
 }
 
@@ -70,9 +67,9 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
 
   // An app's address.
   if (here && here.opens !== ADMIN) {
-    if (await canOpenApp(person, here.opens)) return { landing: appRoot(here.opens, await isInstalled(here.opens)) }
+    if (await canOpenApp(person, here.opens)) return { landing: appHref(here.opens) }
     if (handOff && list && (await canUseAdmin(person))) return handTo(session, here, adminAddress(list))
-    return { landing: appRoot(here.opens, await isInstalled(here.opens)) }
+    return { landing: appHref(here.opens) }
   }
 
   if (await canUseAdmin(person)) return {}
@@ -81,11 +78,6 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
   if (here && list && handOff)
     for (const entry of list)
       if (entry.opens !== ADMIN && (await canOpenApp(person, entry.opens))) return handTo(session, here, entry)
-
-  // No list (development and test), or a host the list does not name: that
-  // host is served as one address holding everything, as before #488, so a
-  // report viewer opens the report right here.
-  if (!here && (await canOpenApp(person, 'dash'))) return { landing: appRoot('dash', await isInstalled('dash')) }
 
   // #659: no Admin and no address handed them on, but an app they can open
   // through a role of their own is served right here (the Admin address
@@ -105,7 +97,7 @@ export async function homeApp(person: string): Promise<string | undefined> {
   const [first] = (await appCatalog(person))
     .filter((entry) => readableByOwnRole.includes(appEntryTable(entry.name) ?? ''))
     .sort((a, b) => a.title.localeCompare(b.title) || a.name.localeCompare(b.name))
-  return first ? appRoot(first.name, true) : undefined
+  return first ? appHref(first.name) : undefined
 }
 
 const ADMIN_ROOT = '/featherbase/admin'

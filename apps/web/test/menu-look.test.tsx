@@ -77,7 +77,7 @@ describe("the real menus draw their items as rows", () => {
     const danger = within(menu).getByRole('group', { name: 'Delete' })
     expect(menu.lastElementChild).toBe(danger)
     expect(classes(danger.className)).toEqual(expect.arrayContaining(['mt-2', 'first:mt-0']))
-    expect(within(danger).getAllByRole('button').map((b) => b.textContent)).toEqual(['Delete Permanently', 'Delete'])
+    expect(within(danger).getAllByRole('button').map((b) => b.textContent)).toEqual(['Delete With History…', 'Delete'])
     expect(within(menu).getByRole('group', { name: 'Record' })).toHaveTextContent(/Print.*Rename.*Retire/)
   })
 })

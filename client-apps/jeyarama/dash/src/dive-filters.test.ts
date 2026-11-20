@@ -6,7 +6,7 @@ import type { Place } from './provider'
 
 const report = (over: Partial<ReportRecord>): ReportRecord => ({
   report_key: 'r', report_name: 'R', dive_id: 'd', filter_shape: 'No filter',
-  store_key: null, subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: false, quick_view: null, pickers_in_dive: false, ...over })
+  store_key: null, subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: false, pickers_in_dive: false, ...over })
 const oneStore = report({ filter_shape: 'One store and subcategories', store_key: 'plant_code', subcategory_key: 'material_groups', whole_store_key: 'whole_store', month_key: 'period_end' })
 const wholeStores = report({ filter_shape: 'Whole stores', store_key: 'store_codes' })
 const perStore = report({ filter_shape: 'Stores and subcategories', store_key: 'reach' })
