@@ -109,6 +109,26 @@ describe('the FigureMatrix', () => {
     expect(screen.getByText('No budget for this month.')).toBeTruthy()
     expect(screen.queryByRole('table')).toBeNull()
   })
+
+  test('with no format it shows two decimals, grouped the Indian way, and a dash for no figure', () => {
+    render(<FigureMatrix label="Plain" rowHeading="Line" columns={COLUMNS} rows={[ROWS[1]]} />)
+    expect(cell('credit', 'hil').textContent).toBe('-52,660.00')
+    expect(cell('credit', 'lak').textContent).toBe('—')
+  })
+  test('with no rows and nothing to say it draws nothing', () => {
+    const { container } = render(<FigureMatrix label="Empty" rowHeading="Line" columns={COLUMNS} rows={[]} />)
+    expect(container.textContent).toBe('')
+  })
+  test('a cell with no figure starts its box empty, and leaving the box leaves the figure', () => {
+    const onEdit = vi.fn()
+    matrix({ onEdit, editable: () => true })
+    fireEvent.click(within(cell('credit', 'lak')).getByRole('button', { name: 'Change Charge To Gold House, Lakeside: —' }))
+    const input = screen.getByRole('textbox', { name: 'Charge To Gold House, Lakeside' }) as HTMLInputElement
+    expect(input.value).toBe('')
+    fireEvent.blur(input)
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(onEdit).not.toHaveBeenCalled()
+  })
 })
 
 describe('FoldToggle', () => {

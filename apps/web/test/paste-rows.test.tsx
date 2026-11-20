@@ -71,4 +71,23 @@ describe('PasteRows', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('This version is approved'))
     expect(screen.getByRole('table')).toBeTruthy()
   })
+  test('two rows to fix are counted in the plural, and a row shorter than the headings is padded', () => {
+    box()
+    paste('Store\tAmount\nHilltop\tabc\nLakeside\txyz\nRiverside')
+    expect(screen.getByRole('alert').textContent).toBe('3 of 3 rows need fixing. Correct them in the sheet and paste again; nothing is saved until every row is good.')
+    expect(within(screen.getAllByRole('row')[3]).getAllByRole('cell').map(c => c.textContent)).toEqual(['3', 'Riverside', '', 'Amount is not a number: undefined'])
+  })
+  test('with no noun it saves rows, one for each pasted row', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<PasteRows label="Budget lines" hint="Paste here." check={check} onSave={onSave} />)
+    paste('Store\tAmount\nHilltop\t18\nLakeside\t9')
+    fireEvent.click(screen.getByRole('button', { name: 'Save 2 Rows' }))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Saved 2 rows.'))
+  })
+  test('a save that fails without saying why says it could not save', async () => {
+    box(vi.fn().mockRejectedValue('offline'))
+    paste('Store\tAmount\nHilltop\t18')
+    fireEvent.click(screen.getByRole('button', { name: 'Save 1 Amount' }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Could not save'))
+  })
 })
