@@ -3,6 +3,7 @@
 // that point at it, a group's rows, and its fields read only. Drilling moves
 // the pane and grows the path; the list underneath stays as it was.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { tableHref } from 'shared'
 import { createUserWithRole, grantRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
@@ -488,4 +489,35 @@ test('a count opens its card on focus; Escape closes it, and so does focus leavi
   await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
   fireEvent.blur(chip, { relatedTarget: document.body })
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+// #1349 (board 4b): a section an app works out is a chip in the count row; its chip goes to that section.
+function workedOut() {
+  const real = globalThis.fetch
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (!String(input).includes('/api/worked-out/')) return real(input, init)
+    return Response.json({ sections: [{ heading: 'Audits It Passed', note: 'worked out from its audits', empty: 'No audits yet',
+      rows: [{ name: 'March audit', via: [] }] }] })
+  })
+}
+
+test("a worked-out section's chip on the record page opens the Links tab at that section", async ({ admin }) => {
+  await seedSites(admin)
+  const fetched = workedOut()
+  try {
+    await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+    fireEvent.click(await within(await screen.findByTestId('count-row')).findByRole('button', { name: '1 Audits It Passed' }))
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
+    await waitFor(() => expect(document.activeElement).toHaveAttribute('aria-label', 'Audits It Passed'))
+  } finally { fetched.mockRestore() }
+})
+
+test("a worked-out section's chip in the pane goes to that section in the pane", async ({ admin }) => {
+  const fetched = workedOut()
+  try {
+    const { pane: site } = await openEnchakkal(admin)
+    fireEvent.click(await within(await countRow(site)).findByRole('button', { name: '1 Audits It Passed' }))
+    await waitFor(() => expect(document.activeElement).toHaveAttribute('aria-label', 'Audits It Passed'))
+    expect(site).toContainElement(document.activeElement as HTMLElement)
+  } finally { fetched.mockRestore() }
 })
