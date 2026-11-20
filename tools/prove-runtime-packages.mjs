@@ -392,7 +392,9 @@ try {
   await expect(page.getByRole('alert').filter({ hasText: 'disabled or unavailable' }).first()).toBeVisible()
   await page.screenshot({ path: resolve(output, 'disabled.png'), fullPage: true })
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Application unavailable' })).toBeVisible()
+  // #1328: a turned-off app's address opens the shared Unavailable page; a System Manager is told it is off.
+  await page.waitForURL(url => url.pathname === '/featherbase/unavailable' && url.searchParams.get('address')?.startsWith('/tasker/'))
+  await expect(page.getByRole('heading', { name: /^Tasker is turned off$/i })).toBeVisible()
   await page.screenshot({ path: resolve(output, 'unavailable.png'), fullPage: true })
   assert.deepEqual((await api('/api/app_catalog')).map(a => a.name), ['other'])
   let other = await api(`/api/table/other.task/${task.row_id}`)
