@@ -240,3 +240,30 @@ test('an account with no P&L line is not used for an adjustment, even when a lin
   await expect(save('monthly_close_adjustment', { monthly_close: made.close.row_id, plant: '9003', gl_account: '49990002', pl_line: made.salaries.row_id, amount: 5, adjustment_type: 'Provision', reason: 'x' }))
     .rejects.toThrow('Not Classified Yet has no P&L line yet: classify it first')
 })
+
+test('a withdrawn version stays withdrawn: its figures are never opened again', async ({ createUser }) => {
+  const { made, save, act, get, editor } = await setup(createUser)
+  await act(editor, 'approve_version', { version: made.version.row_id })
+  let version = await get('budget_version', made.version.row_id)
+  version = await save('budget_version', { row_id: version.row_id, updated_at: version.updated_at, version_state: 'Withdrawn' })
+  for (const state of ['Draft', 'Approved'])
+    await expect(save('budget_version', { row_id: version.row_id, updated_at: version.updated_at, version_state: state })).rejects.toThrow('FY27 Original is withdrawn: it stays as it was; make a new version')
+  await expect(save('budget_version', { row_id: version.row_id, updated_at: version.updated_at, covers_to: '2026-12-01' })).rejects.toThrow('only its note can change')
+})
+
+test('a sales figure: once for a store, month and subcategory, in a month its version covers', async ({ createUser }) => {
+  const { made, save } = await setup(createUser)
+  const cell = { budget_version: made.sales.row_id, plant: '9003', subcategory: '010203001', budget_quantity: 1, budget_value: 5 }
+  await expect(save('sales_budget', { ...cell, budget_month: '2026-10-01' })).rejects.toThrow("FY27 Sales Original already has 010203001 for 9003 in Oct'26: change that amount")
+  await expect(save('sales_budget', { ...cell, budget_month: '2030-01-01' })).rejects.toThrow("Jan'30 is outside the months FY27 Sales Original covers")
+  expect(String((await save('sales_budget', { ...cell, budget_month: '2026-11-20' })).budget_month).slice(0, 10)).toBe('2026-11-01')
+})
+
+test('a save cannot match more than the adjustment, or against its direction', async ({ createUser }) => {
+  const { made, save, get } = await setup(createUser)
+  const line = await get('monthly_close_adjustment', made.adjustment.row_id)
+  const match = (matched_amount: number) => save('monthly_close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, matched_sap_document: '1900019201', matched_amount })
+  await expect(match(99999)).rejects.toThrow('A match settles no more than the adjustment: ₹42,500.00')
+  await expect(match(-1)).rejects.toThrow('A match settles no more than the adjustment: ₹42,500.00')
+  expect(Number((await match(42500)).remaining_amount)).toBe(0)
+})
