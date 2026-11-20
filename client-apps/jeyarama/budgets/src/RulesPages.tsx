@@ -71,7 +71,8 @@ export function AccountsPage() {
               <th scope="row" colSpan={5} className={cellClasses({ density: 'compact', first: true, last: true, className: 'text-left font-medium' })}>
                 <span className="inline-flex items-center gap-2">
                   {editor && <input type="checkbox" aria-label={`Select all of ${groupName(key)}`} checked={all} onChange={() => setChosen(flip(chosen, group.map(a => a.row_id), !all))} />}
-                  <FoldToggle open={isOpen} onToggle={() => setOpen(flip(open, [key]))} count={`${group.length} ${group.length === 1 ? 'account' : 'accounts'}`}>{groupName(key)}</FoldToggle>
+                  <FoldToggle open={isOpen} onToggle={() => setOpen(flip(open, [key]))} label={groupName(key)} />{key === 'none' || key === 'balance' ? <span>{groupName(key)}</span> : <LineLink id={key} />}
+                  <span className="font-normal whitespace-nowrap text-ink-subtle">{group.length} {group.length === 1 ? 'account' : 'accounts'}</span>
                 </span>
               </th>
             </tr>
@@ -93,7 +94,7 @@ export function LinesPage() {
   const [lines, accounts] = [useLines(), useAccounts()]
   const count = (line: string) => (accounts.data ?? []).filter(a => a.pl_line === line).length
   const published = (lines.data ?? []).filter(line => line.level === 'Published')
-  const detail = (kind: string, sign: string, rule: string | null) => (kind === 'Subtotal' ? rule ?? 'Subtotal' : kind === 'Memo' ? 'Memo, not added' : `${kind} ${sign.toLowerCase()}`)
+  const detail = (kind: string, sign: string, rule: string | null) => (kind === 'Subtotal' ? `Subtotal, ${(rule ?? '').toLowerCase()}` : kind === 'Memo' ? 'Memo, not added' : `${kind} ${sign.toLowerCase()}`)
   const rows: FigureRow[] = published.map((line) => {
     const working = (lines.data ?? []).filter(w => w.rolls_into === line.row_id)
     return { id: line.row_id, label: line.line_name, header: <RecordLink table="budgets.pl_line" rowId={line.row_id} name={line.line_name} detail={detail(line.line_kind, line.sign, line.subtotal_rule)} />,
@@ -198,7 +199,7 @@ export function AreasPage() {
           <th scope="col" className={headCellClasses({ className: 'text-right' })}>Area (Sq Ft)</th>
           <th scope="col" className={headCellClasses()}>From</th>
           <th scope="col" className={headCellClasses()}>To</th>
-          <th scope="col" className={headCellClasses({ last: true })}>Note</th>
+          <th scope="col" className={headCellClasses({ last: true })}>Where The Figure Came From</th>
         </tr></thead>
         <tbody>{stores.map((plant) => {
           const history = whole.filter(area => area.plant === plant).sort((a, b) => b.starts_on.localeCompare(a.starts_on))

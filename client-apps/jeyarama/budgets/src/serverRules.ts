@@ -67,17 +67,31 @@ async function prepareVersion(ctx: Context) {
   row.covers_from = monthStart(row.covers_from)
   row.covers_to = monthStart(row.covers_to)
   if (day(row.covers_from) > day(row.covers_to)) ctx.reject('Covers From is after Covers To')
-  const approving = row.version_state === 'Approved' && (ctx.isNew || old?.version_state !== 'Approved')
-  if (approving && row.approved_by !== ctx.user) ctx.reject('Approve a version with Approve, so who and when are recorded')
-  if (!ctx.isNew && old?.version_state === 'Approved' && row.version_state !== 'Withdrawn') {
-    const fixed = ['version_name', 'budget_kind', 'fiscal_year', 'operating_region', 'based_on', 'version_state', 'covers_from', 'covers_to', 'approved_by', 'approved_on']
-    if (fixed.some(column => changed(ctx, column)))
-      ctx.reject(`${old.version_name} is approved: only its note can change, or withdraw it`)
+  if (ctx.isNew || changed(ctx, 'version_name')) {
+    const same = await ctx.documents.list('budgets.budget_version', { filters: [['version_name', '=', row.version_name], ['budget_kind', '=', row.budget_kind]], fields: ['row_id'], limit_page_length: 2 })
+    if (same.some(other => other.row_id !== row.row_id)) ctx.reject(`There is already a ${row.budget_kind} version called ${row.version_name}: give this one another name`)
   }
+  // Who approved and when is the server's word: a save cannot name someone else or another time.
+  if (row.version_state === 'Approved' && (ctx.isNew || old?.version_state !== 'Approved')) {
+    row.approved_by = ctx.user
+    row.approved_at = ctx.now
+  } else if (!ctx.isNew && old?.version_state === 'Approved' && row.version_state !== 'Withdrawn') {
+    const fixed = ['version_name', 'budget_kind', 'fiscal_year', 'operating_region', 'based_on', 'version_state', 'covers_from', 'covers_to', 'approved_by', 'approved_at']
+    if (fixed.some(column => changed(ctx, column))) ctx.reject(`${old.version_name} is approved: only its note can change, or withdraw it`)
+  } else if (row.version_state !== 'Approved' && old?.version_state !== 'Approved') {
+    row.approved_by = null
+    row.approved_at = null
+  }
+}
+
+/** A figure or an adjustment is not moved to another parent: that would take it out of an approved budget or a published close. */
+function stays(ctx: Context, column: string, message: string) {
+  if (!ctx.isNew && changed(ctx, column)) ctx.reject(message)
 }
 
 async function prepareBudget(ctx: Context) {
   const { row } = ctx
+  stays(ctx, 'budget_version', 'A figure stays in the version it was entered in')
   const version = await ctx.documents.get('budgets.budget_version', String(row.budget_version))
   if (version.version_state !== 'Draft') ctx.reject(`${version.version_name} is ${String(version.version_state).toLowerCase()}: revise it to change a figure`)
   if (version.budget_kind !== 'P&L') ctx.reject(`${version.version_name} is a ${version.budget_kind} version: a P&L amount goes on a P&L version`)
@@ -93,6 +107,7 @@ async function prepareBudget(ctx: Context) {
 
 async function prepareSalesBudget(ctx: Context) {
   const { row } = ctx
+  stays(ctx, 'budget_version', 'A figure stays in the version it was entered in')
   const version = await ctx.documents.get('budgets.budget_version', String(row.budget_version))
   if (version.version_state !== 'Draft') ctx.reject(`${version.version_name} is ${String(version.version_state).toLowerCase()}: revise it to change a figure`)
   if (version.budget_kind !== 'Sales') ctx.reject(`${version.version_name} is a ${version.budget_kind} version: a sales amount goes on a Sales version`)
@@ -108,8 +123,19 @@ async function prepareClose(ctx: Context) {
     const same = await ctx.documents.list('budgets.month_close', { filters: [['legal_company', '=', row.legal_company], ['close_month', '=', row.close_month], ['version_no', '=', row.version_no]], fields: ['row_id'], limit_page_length: 2 })
     if (same.some(other => other.row_id !== row.row_id)) ctx.reject(`${fmtMonth(String(row.close_month))} already has version ${row.version_no} for this company: make a new version from it`)
   }
-  const publishing = row.close_state === 'Published' && (ctx.isNew || ctx.old?.close_state !== 'Published')
-  if (publishing && row.published_by !== ctx.user) ctx.reject('Publish a close with Publish, so who and when are recorded')
+  const was = ctx.old?.close_state
+  if (ctx.isNew || was === 'Open') {
+    if (row.close_state === 'Replaced') ctx.reject('Only a published close is replaced, by its next version')
+    // Who published and when is the server's word.
+    if (row.close_state === 'Published') { row.published_by = ctx.user; row.published_at = ctx.now }
+    else { row.published_by = null; row.published_at = null }
+    return
+  }
+  const name = closeName(ctx.old!)
+  if (row.close_state === 'Open') ctx.reject(`${name} is ${String(was).toLowerCase()}: it cannot be opened again; make a new version`)
+  if (was === 'Replaced' && row.close_state !== 'Replaced') ctx.reject(`${name} was replaced by a later version`)
+  const fixed = ['legal_company', 'close_month', 'version_no', 'downloaded_at', 'published_by', 'published_at']
+  if (fixed.some(column => changed(ctx, column))) ctx.reject(`${name} is ${String(was).toLowerCase()}: only its note can change`)
 }
 
 /** The columns matching to SAP and following up change; they stay open after a close is published. */
@@ -117,6 +143,7 @@ const AFTER_PUBLISHING = ['adjustment_state', 'matched_sap_document', 'matched_a
 
 async function prepareAdjustment(ctx: Context) {
   const { row, old } = ctx
+  stays(ctx, 'month_close', 'An adjustment stays with the close that first carried it')
   const close = await ctx.documents.get('budgets.month_close', String(row.month_close))
   if (close.close_state !== 'Open') {
     const kept = ['row_id', 'updated_at', 'updated_by', 'created_at', 'created_by', ...AFTER_PUBLISHING]
@@ -124,10 +151,8 @@ async function prepareAdjustment(ctx: Context) {
       ctx.reject(`${closeName(close)} is ${String(close.close_state).toLowerCase()}: make a new version to add or change its adjustments`)
   }
   const account = await ctx.documents.get('budgets.gl_account', String(row.gl_account))
-  if (!row.pl_line) {
-    if (!account.pl_line) ctx.reject(`${account.account_name} has no P&L line yet: classify it first`)
-    row.pl_line = account.pl_line
-  }
+  if (!account.pl_line) ctx.reject(`${account.account_name} has no P&L line yet: classify it first`)
+  if (!row.pl_line) row.pl_line = account.pl_line
   const left = remaining(Number(row.amount), row.matched_amount == null ? null : Number(row.matched_amount))
   row.remaining_amount = left.remaining
   // Settled once SAP has posted all of it, whether it was still open or carried into a later month. A released line stays released.

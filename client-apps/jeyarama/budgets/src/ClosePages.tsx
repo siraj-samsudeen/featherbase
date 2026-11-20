@@ -1,22 +1,28 @@
 // The monthly close: the list of closes, one close with its manual lines, and every
 // adjustment across months. A Budget Editor pastes lines, changes several together, matches
 // one to its SAP posting, publishes and starts the next version.
-import { Button, DataList, FoldToggle, Notice, PasteRows, RecordLink, Skeleton, TABLE_CLASSES, TextInput, cellClasses, fmtExact, fmtInstantIST, fmtDate, headCellClasses, labelClasses } from '@featherbase/shop-floor'
+import { Button, DataList, FoldToggle, Notice, PasteRows, RecordLink, Skeleton, TABLE_CLASSES, TextInput, cellClasses, fmtExact, fmtInstantIST, headCellClasses, labelClasses } from '@featherbase/shop-floor'
 import { Fragment, useState } from 'react'
 import { runAction } from './api'
 import { canEdit, useAccounts, useAdjustments, useCloses, usePeople, usePlants, useRefresh, type Adjustment, type Close } from './data'
 import { ADJUSTMENT_TYPES, amountOf, checkAdjustments, type AdjustmentValue, type CheckedRow } from './pasteRules'
 import { to, useRoute } from './route'
-import { AccountLink, CloseLink, CompanyLink, LineLink, Page, PersonName, Pick, StatePill, StoreLink, closeName, num, storeName } from './ui'
+import { AccountLink, CloseLink, CompanyLink, LineLink, Page, PersonName, Pick, StatePill, StoreLink, closeName, dayInIndia, num, storeName } from './ui'
 import { fmtMonth } from './words'
 
 const STATES = ['Open', 'Posted In SAP', 'Released', 'Carried Forward']
 const monthKey = (day: string) => `${day.slice(0, 7)}-01`
 
+/** The lines a close carries: its own and those of the month's earlier versions, until one withdraws them. */
+function linesOf(close: Close, closes: Close[], adjustments: Adjustment[]) {
+  const versionOf = new Map(closes.filter(c => c.legal_company === close.legal_company && monthKey(c.close_month) === monthKey(close.close_month)).map(c => [c.row_id, c.version_no]))
+  return adjustments.filter(a => (versionOf.get(a.month_close) ?? Infinity) <= close.version_no && !(a.withdrawn_in && (versionOf.get(a.withdrawn_in) ?? Infinity) <= close.version_no))
+}
+
 export function ClosesPage() {
   const closes = useCloses()
   const adjustments = useAdjustments()
-  const open = (close: Close) => (adjustments.data ?? []).filter(a => a.month_close === close.row_id && a.adjustment_state === 'Open').length
+  const open = (close: Close) => linesOf(close, closes.data ?? [], adjustments.data ?? []).filter(a => a.adjustment_state === 'Open').length
   return <Page title="Month Close" count={`${closes.data?.length ?? 0} closes`} status="One row for each publication of a company's month. The download time is the cut: a later SAP posting is not part of that close.">
     {closes.error && <Notice tone="negative">{closes.error.message}</Notice>}
     <DataList caption="Month closes" rows={[...(closes.data ?? [])].sort((a, b) => b.close_month.localeCompare(a.close_month) || b.version_no - a.version_no)} rowKey={row => row.row_id}
@@ -25,7 +31,7 @@ export function ClosesPage() {
         { key: 'company', header: 'Company', cell: row => <CompanyLink id={row.legal_company} /> },
         { key: 'downloaded', header: 'Trial Balance Downloaded', cell: row => fmtInstantIST(row.downloaded_at) },
         { key: 'state', header: 'State', cell: row => <StatePill state={row.close_state} />, phone: 'status' },
-        { key: 'published', header: 'Published', cell: row => row.published_on ? <>{fmtDate(row.published_on.slice(0, 10))} by <PersonName id={row.published_by} /></> : '' },
+        { key: 'published', header: 'Published', cell: row => row.published_at ? <>{dayInIndia(row.published_at)} by <PersonName id={row.published_by} /></> : '' },
         { key: 'open', header: 'Adjustments Open', align: 'end', cell: row => open(row) || '' },
       ]} />
   </Page>
@@ -34,7 +40,9 @@ export function ClosesPage() {
 type GroupBy = 'reason' | 'adjustment_type' | 'plant' | 'adjustment_state' | 'month'
 
 /** Adjustments as a grouped table: one row per group with its count and total, unfolding to its lines. */
-function AdjustmentTable({ rows, groupBy, editable, label }: { rows: Adjustment[]; groupBy: GroupBy; editable: boolean; label: string }) {
+function AdjustmentTable({ rows, groupBy, editable, label, typeFixed = false }: { rows: Adjustment[]; groupBy: GroupBy; editable: boolean; label: string
+  /** A published close's lines keep their type: only state and owner change together. */
+  typeFixed?: boolean }) {
   const refresh = useRefresh()
   const [plants, people, closes] = [usePlants(), usePeople(), useCloses()]
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
@@ -44,7 +52,7 @@ function AdjustmentTable({ rows, groupBy, editable, label }: { rows: Adjustment[
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const monthOf = (row: Adjustment) => { const close = closes.data?.find(c => c.row_id === row.month_close); return close ? fmtMonth(close.close_month) : '' }
-  const keyOf = (row: Adjustment) => groupBy === 'plant' ? storeName(plants.data, row.plant) : groupBy === 'month' ? monthOf(row) : String(row[groupBy] ?? '')
+  const keyOf = (row: Adjustment) => groupBy === 'plant' ? `${storeName(plants.data, row.plant)} · ${row.plant}` : groupBy === 'month' ? monthOf(row) : String(row[groupBy] ?? '')
   const groups = new Map<string, Adjustment[]>()
   for (const row of rows) groups.set(keyOf(row), [...(groups.get(keyOf(row)) ?? []), row])
   const flip = (set: ReadonlySet<string>, ids: string[], on?: boolean) => { const next = new Set(set); for (const id of ids) (on ?? !next.has(id)) ? next.add(id) : next.delete(id); return next }
@@ -63,14 +71,14 @@ function AdjustmentTable({ rows, groupBy, editable, label }: { rows: Adjustment[
       <span className="self-center text-sm font-medium text-ink">{chosen.size} selected</span>
       <Pick label="State" value={change.adjustment_state} onChange={value => setChange({ ...change, adjustment_state: value })} options={[{ value: '', label: 'Leave As It Is' }, ...STATES.map(s => ({ value: s, label: s }))]} />
       <Pick label="Owner" value={change.owner} onChange={value => setChange({ ...change, owner: value })} options={[{ value: '', label: 'Leave As It Is' }, ...(people.data ?? []).map(p => ({ value: p.row_id, label: p.full_name ?? p.row_id }))]} />
-      <Pick label="Type" value={change.adjustment_type} onChange={value => setChange({ ...change, adjustment_type: value })} options={[{ value: '', label: 'Leave As It Is' }, ...ADJUSTMENT_TYPES.map(t => ({ value: t, label: t }))]} />
+      {!typeFixed && <Pick label="Type" value={change.adjustment_type} onChange={value => setChange({ ...change, adjustment_type: value })} options={[{ value: '', label: 'Leave As It Is' }, ...ADJUSTMENT_TYPES.map(t => ({ value: t, label: t }))]} />}
       <Button variant="primary" loading={busy} disabled={!Object.keys(asked).length} onClick={() => run(() => runAction('set_adjustments', { adjustments: [...chosen], change: asked }), () => { setChosen(new Set()); setChange({ adjustment_state: '', owner: '', adjustment_type: '' }) })}>Change {chosen.size} {chosen.size === 1 ? 'Adjustment' : 'Adjustments'}</Button>
       <Button onClick={() => setChosen(new Set())}>Clear The Selection</Button>
     </div>}
     <div className="max-w-full overflow-auto">
       <table aria-label={label} className={TABLE_CLASSES}>
         <thead><tr>
-          <th scope="col" className={headCellClasses({ first: true })}>{({ reason: 'Reason', adjustment_type: 'Type', plant: 'Store', adjustment_state: 'State', month: 'Month' })[groupBy]}</th>
+          <th scope="col" className={headCellClasses({ first: true })}>{({ reason: 'Reason', adjustment_type: 'Type', plant: 'Store', adjustment_state: 'State', month: 'Month' })[groupBy]}, Then Adjustment</th>
           {columns.map((column, index) => <th key={index} scope="col" className={headCellClasses({ last: index === columns.length - 1, className: ['Amount', 'Remaining'].includes(column) ? 'text-right' : '' })}>{column}</th>)}
         </tr></thead>
         <tbody>
@@ -139,10 +147,8 @@ export function ClosePage({ id }: { id: string }) {
   if (closes.isLoading || adjustments.isLoading) return <Page title="Month Close"><Skeleton label="Loading the close" lines={8} /></Page>
   if (!close) return <Page title="Month Close"><Notice tone="negative">There is no close {id}, or you may not see it.</Notice></Page>
 
-  // A version carries its own lines and those of the month's earlier versions, until one withdraws them.
   const siblings = (closes.data ?? []).filter(c => c.legal_company === close.legal_company && monthKey(c.close_month) === monthKey(close.close_month))
-  const versionOf = new Map(siblings.map(c => [c.row_id, c.version_no]))
-  const lines = (adjustments.data ?? []).filter(a => (versionOf.get(a.month_close) ?? Infinity) <= close.version_no && !(a.withdrawn_in && (versionOf.get(a.withdrawn_in) ?? Infinity) <= close.version_no))
+  const lines = linesOf(close, closes.data ?? [], adjustments.data ?? [])
   const latest = Math.max(...siblings.map(c => c.version_no)) === close.version_no
   const unclassified = (accounts.data ?? []).filter(a => a.statement === 'P&L' && !a.pl_line).length
   const stillOpen = lines.filter(a => a.adjustment_state === 'Open').length
@@ -159,7 +165,7 @@ export function ClosePage({ id }: { id: string }) {
   return <Page title={closeName(close)} count={<StatePill state={close.close_state} />}
     breadcrumb={<a href={to('closes')} className="hover:underline">Month Close</a>}
     status={<>The close of <CompanyLink id={close.legal_company} /> for {fmtMonth(close.close_month)}, from the trial balance downloaded {fmtInstantIST(close.downloaded_at)}.
-      {close.published_on && <> Published {fmtDate(close.published_on.slice(0, 10))} by <PersonName id={close.published_by} />.</>}{' '}
+      {close.published_at && <> Published {dayInIndia(close.published_at)} by <PersonName id={close.published_by} />.</>}{' '}
       <RecordLink table="budgets.month_close" rowId={id} name="Details And History" href={to('record', `month_close/${id}`)} /></>}
     actions={editor && <div className="flex flex-wrap gap-2">
       {close.close_state === 'Open' && <Button onClick={() => setPanel(panel === 'paste' ? '' : 'paste')}>Paste Adjustments</Button>}
@@ -190,7 +196,7 @@ export function ClosePage({ id }: { id: string }) {
       <p className="basis-full text-sm text-ink-muted">Version {close.version_no + 1} carries this version's adjustments and takes new ones. This version is then marked Replaced.</p>
     </form>}
     <h2 className="text-[15px] font-semibold text-ink">Adjustments</h2>
-    <AdjustmentTable rows={lines} groupBy="reason" editable={editor} label={`Adjustments of ${closeName(close)}`} />
+    <AdjustmentTable rows={lines} groupBy="reason" editable={editor} typeFixed={close.close_state !== 'Open'} label={`Adjustments of ${closeName(close)}`} />
   </Page>
 }
 

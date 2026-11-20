@@ -20,8 +20,7 @@ interface ReadContext {
 
 const text = (ctx: ActionContext, value: unknown, what: string) => (typeof value === 'string' && value.trim() ? value.trim() : ctx.reject(`Say ${what}`))
 const list = <T>(ctx: ActionContext, value: unknown, what: string) => (Array.isArray(value) && value.length ? value as T[] : ctx.reject(`Choose ${what}`))
-/** Today in India, where the finance team works. */
-const today = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
+const rupees = (amount: number) => `${amount < 0 ? '-' : ''}₹${Math.abs(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export const actions = {
   /** Budget amounts into a draft version: a store, line and month that is already there is changed, any other is added. */
@@ -40,10 +39,14 @@ export const actions = {
     return { added, changed: changedRows }
   },
 
-  /** A new draft for some of a version's months, starting from that version's figures. */
+  /**
+   * A new draft for some of an approved version's months. Nothing is copied: a revision holds
+   * only the figures it changes, and reads the rest from the version it is based on.
+   */
   async revise_version(ctx: ActionContext) {
     const payload = ctx.payload as { version?: unknown; version_name?: unknown; covers_from?: unknown; covers_to?: unknown }
     const from = await ctx.documents.get('budgets.budget_version', text(ctx, payload.version, 'which version'))
+    if (from.version_state !== 'Approved') ctx.reject(`${from.version_name} is ${from.version_state === 'Draft' ? 'a draft: approve it first, then revise it' : 'withdrawn: revise the version in force'}`)
     const months = monthsBetween(text(ctx, payload.covers_from, 'the first month'), text(ctx, payload.covers_to, 'the last month'))
     if (!months.length || months[0] < day(from.covers_from) || months[months.length - 1].slice(0, 7) > day(from.covers_to).slice(0, 7))
       ctx.reject(`A revision covers months inside the version it revises (${fmtMonth(day(from.covers_from))} to ${fmtMonth(day(from.covers_to))})`)
@@ -51,21 +54,13 @@ export const actions = {
       version_name: text(ctx, payload.version_name, 'what to call the revision'), budget_kind: from.budget_kind, fiscal_year: from.fiscal_year, operating_region: from.operating_region ?? null,
       covers_from: months[0], covers_to: months[months.length - 1], version_state: 'Draft', based_on: from.row_id,
     })
-    const table = from.budget_kind === 'Sales' ? 'budgets.sales_budget' : 'budgets.pl_budget'
-    const columns = from.budget_kind === 'Sales' ? ['plant', 'budget_month', 'subcategory', 'budget_quantity', 'budget_value'] : ['plant', 'budget_month', 'pl_line', 'amount']
-    let copied = 0
-    for (const row of await all(ctx.documents, table, [['budget_version', '=', from.row_id]], columns)) {
-      if (!months.includes(`${day(row.budget_month).slice(0, 7)}-01`)) continue
-      await ctx.documents.create(table, { ...Object.fromEntries(columns.map(column => [column, column === 'budget_month' ? day(row[column]) : row[column]])), budget_version: made.row_id })
-      copied++
-    }
-    return { version: made.row_id, copied }
+    return { version: made.row_id }
   },
 
   async approve_version(ctx: ActionContext) {
     const version = await ctx.documents.get('budgets.budget_version', text(ctx, (ctx.payload as { version?: unknown }).version, 'which version'))
     if (version.version_state !== 'Draft') ctx.reject(`${version.version_name} is already ${String(version.version_state).toLowerCase()}`)
-    await ctx.documents.update('budgets.budget_version', { row_id: version.row_id, updated_at: version.updated_at, version_state: 'Approved', approved_on: today(), approved_by: ctx.user })
+    await ctx.documents.update('budgets.budget_version', { row_id: version.row_id, updated_at: version.updated_at, version_state: 'Approved' })
     return { version: version.row_id }
   },
 
@@ -86,6 +81,9 @@ export const actions = {
     const document = text(ctx, payload.document, 'the SAP document')
     if (typeof payload.amount !== 'number' || !Number.isFinite(payload.amount) || payload.amount === 0) ctx.reject('Say the amount the document settles')
     if (Number(line.remaining_amount) === 0) ctx.reject('Nothing remains to match on this adjustment')
+    const left = Number(line.remaining_amount)
+    if (Math.sign(payload.amount as number) !== Math.sign(left) || Math.abs(payload.amount as number) > Math.abs(left))
+      ctx.reject(`Only ${rupees(left)} remains on this adjustment: a match settles that or less`)
     await ctx.documents.update('budgets.close_adjustment', { row_id: line.row_id, updated_at: line.updated_at,
       matched_sap_document: line.matched_sap_document ? `${line.matched_sap_document}, ${document}` : document,
       matched_amount: Math.round((Number(line.matched_amount ?? 0) + (payload.amount as number)) * 100) / 100 })
@@ -107,7 +105,7 @@ export const actions = {
   async publish_close(ctx: ActionContext) {
     const close = await ctx.documents.get('budgets.month_close', text(ctx, (ctx.payload as { close?: unknown }).close, 'which close'))
     if (close.close_state !== 'Open') ctx.reject(`This close is already ${String(close.close_state).toLowerCase()}`)
-    await ctx.documents.update('budgets.month_close', { row_id: close.row_id, updated_at: close.updated_at, close_state: 'Published', published_on: today(), published_by: ctx.user })
+    await ctx.documents.update('budgets.month_close', { row_id: close.row_id, updated_at: close.updated_at, close_state: 'Published' })
     return { close: close.row_id }
   },
 

@@ -189,7 +189,7 @@ that kind and region. Key: series `BV-.###`.
 | `operating_region` | Reference → Operating Region | Blank when it covers every region |
 | `covers_from`, `covers_to` | Date | First and last month covered |
 | `version_state` | Choice | Draft, Approved, Withdrawn |
-| `approved_on` | Date | |
+| `approved_at` | Datetime | Set by the server on approval; of two approved the same day, the later is in force |
 | `approved_by` | Data | The person's ID; the app shows their name as a link |
 | `based_on` | Reference → Budget Version | The version this one revises |
 | `source_file` | Data | The workbook it was loaded from |
@@ -212,6 +212,10 @@ The budget itself: one amount per version, store, month and published line. Key:
 
 A version, plant, month and line appear once. Subtotals are worked out, not stored, so a
 changed line can never disagree with its total.
+
+A revision holds only the figures it changes. For the months it covers, every other figure
+is read from the version it is based on. So revising is immediate, and a revision's rows are
+exactly what it changed.
 
 Example: `BV-001` · plant 9003 Hilltop · Oct'26 · Manpower Cost · ₹18,40,000.00.
 
@@ -260,7 +264,7 @@ is the cut: a posting entered in SAP after it is not part of this close. Key: se
 | `version_no` | Int | 1, 2, 3 |
 | `downloaded_at` | Datetime | When the trial balance was downloaded. Stored in UTC, shown in IST. |
 | `close_state` | Choice | Open, Published, Replaced |
-| `published_on` | Date | |
+| `published_at` | Datetime | Set by the server on publication |
 | `published_by` | Data | The person's ID |
 | `note` | Text | |
 
@@ -371,11 +375,13 @@ and line, not a sheet per store. Chosen over keeping a sheet-shaped table (twelv
 columns) because every Excel view becomes a pivot of one table, a bulk change is a filter, and
 a new store or line needs no new column. Subtotals are worked out, never stored.
 
-**2. A version covers a range of months.** The budget for a month is the latest approved
-version covering it. Chosen over "a revision is a full copy of the year" because the same rule
-serves a mid-year P&L revision and a one-month sales re-target, and an unchanged month has one
-row, not a copy per revision. Cost: reading the current budget means looking across versions;
-the server does that in one place.
+**2. A version covers a range of months, and a revision holds only what it changes.** The
+budget for a month is the latest approved version covering it; a figure the revision did not
+change is read from the version it is based on. Chosen over "a revision is a full copy"
+because the same rule serves a mid-year P&L revision and a one-month sales re-target, a
+revision's rows are exactly its changes, and revising is immediate (copying a half-year for
+five stores took over a minute). Cost: reading a budget means reading through the versions it
+is based on; one function does that for every page.
 
 **3. P&L lines, both levels and the subtotals, are one table.** Chosen over separate working
 and published tables because the roll-up is then a link and the P&L's order is data the
@@ -418,6 +424,28 @@ Excel P&L does; a figure that must foot is shown exact.
 
 **13. The ticket type is set up on the instance.** The platform has no way for an app to ship a
 row of another app's table, so a System Manager adds "Monthly Closing Follow-up" once.
+
+**14. Nothing is deleted.** A Budget Editor cannot delete a version, a figure, a store plan,
+a close or an adjustment. A wrong figure is changed, a wrong version is withdrawn, and an
+adjustment is withdrawn in a later version of its close. Chosen because the platform's delete
+does not run the rules that protect an approved budget or a published close.
+
+**15. Who and when are the server's word.** Approving a version or publishing a close stamps
+the person and the instant on the server; a save cannot name someone else or another time. A
+published close cannot be opened again, and a figure or an adjustment cannot be moved to
+another version or close.
+
+**16. One Store By Month shows one kind of figure at a time.** Budget, Actual or Variance is
+chosen by a control, so twelve months and the year to date fit one screen. The Excel sheet
+puts budget and actual side by side for every month, which needs sideways scrolling.
+
+**17. Budgets is not yet listed in the client's instance.** Listing it installs it wherever
+the instance is set up, and it installs only where the organisation's tables exist. Until
+the owner decides, a System Manager installs it from Apps on the instance.
+
+Known limit: saving figures costs about 80 ms each on a quiet machine, so a pasted block of
+a few hundred figures takes under a minute and a whole year for every store (about twelve
+thousand) is better loaded through the platform's import than pasted.
 
 Open with the controller, not decided here: whether Gross Margin includes Other Income. The
 P&L's order and each line's kind are data, so either answer is a change to rows.

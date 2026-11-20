@@ -3,10 +3,10 @@
 // actuals from the warehouse, when one is connected.
 import { FigureMatrix, Notice, Segmented, Skeleton, fmtLakhs, type FigureColumn } from '@featherbase/shop-floor'
 import { useMemo } from 'react'
-import { useActuals, useBudget, useCloses, useLines, usePlants, useSites, useVersions, type Actual, type BudgetCell, type Plant, type PlLine } from './data'
-import { budgetInForce, difference, fiscalMonths, statementRows } from './plRules'
+import { useActuals, useBudget, useCloses, useLines, usePlants, useSites, useVersions, withBases, type Actual, type BudgetCell, type BudgetVersion, type Plant, type PlLine } from './data'
+import { budgetInForce, difference, figuresOf, fiscalMonths, statementRows } from './plRules'
 import { to, useRoute } from './route'
-import { Page, Pick, StoreLink, VersionLink, num, storeName } from './ui'
+import { Page, Pick, StoreLink, VersionLink, storeName, withLineLinks } from './ui'
 import { fmtMonth } from './words'
 
 type View = 'stores' | 'store' | 'bridge'
@@ -16,16 +16,16 @@ type Amounts = Map<string, number>
 const thisMonth = () => `${new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 7)}-01`
 const bump = (amounts: Amounts, line: string, amount: number) => amounts.set(line, Math.round(((amounts.get(line) ?? 0) + amount) * 100) / 100)
 
-/** Budget amounts by store and month, taking each month from its own version in force. */
-function budgetBy(cells: BudgetCell[], inForce: Map<string, string>) {
+/** Budget amounts by store and month: each month from its own version in force, a revision read through the version it is based on. */
+function budgetBy(cells: BudgetCell[], versions: BudgetVersion[], inForce: Map<string, string>) {
   const by = new Map<string, Amounts>()
-  for (const cell of cells) {
-    const month = `${cell.budget_month.slice(0, 7)}-01`
-    if (inForce.get(month) !== cell.budget_version) continue
-    const key = `${cell.plant}|${month}`
-    if (!by.has(key)) by.set(key, new Map())
-    bump(by.get(key)!, cell.pl_line, num(cell.amount))
-  }
+  for (const version of new Set(inForce.values()))
+    for (const [key, figure] of figuresOf(versions, cells, version)) {
+      const [plant, month, line] = key.split('|')
+      if (inForce.get(month) !== version) continue
+      if (!by.has(`${plant}|${month}`)) by.set(`${plant}|${month}`, new Map())
+      by.get(`${plant}|${month}`)!.set(line, figure.amount)
+    }
   return by
 }
 
@@ -67,7 +67,7 @@ export function PlPage() {
 
   const inForce = useMemo(() => budgetInForce(versions.data ?? [], 'P&L', region || null, months), [versions.data, region, months.join()])
   const versionIds = [...new Set(inForce.values())]
-  const budget = useBudget(versionIds)
+  const budget = useBudget(withBases(versions.data, versionIds))
   const actuals = useActuals(months)
   const connected = actuals.data?.connected === true
   const show: Show = connected ? ((route.params.get('show') as Show) || 'budget') : 'budget'
@@ -76,8 +76,10 @@ export function PlPage() {
   const failed = lines.error ?? plants.error ?? sites.error ?? versions.error ?? budget.error
   if (failed) return <Page title="P&L"><Notice tone="negative">{failed.message}</Notice></Page>
 
-  const budgets = budgetBy(budget.data ?? [], inForce)
+  const budgets = budgetBy(budget.data ?? [], versions.data ?? [], inForce)
   const actual = actualBy(actuals.data?.rows ?? [], lines.data ?? [], asPosted)
+  // A month has actuals once its close reached the warehouse; before that there is nothing to compare.
+  const closed = new Set((actuals.data?.rows ?? []).map(row => `${row.close_month.slice(0, 7)}-01`))
   const pick = (plant: string, m: string): Amounts => {
     const b = budgets.get(`${plant}|${m}`) ?? EMPTY
     const a = actual.get(`${plant}|${m}`) ?? EMPTY
@@ -90,26 +92,31 @@ export function PlPage() {
   let rows: ReturnType<typeof statementRows> = []
   let label = ''
   if (view === 'stores') {
-    columns = [...shown.map(plant => ({ id: plant.row_id, label: storeName(plants.data, plant.row_id), header: <StoreLink id={plant.row_id} short /> })), { id: 'total', label: `${region} Total`, total: true }]
+    columns = [...shown.map(plant => ({ id: plant.row_id, label: storeName(plants.data, plant.row_id), header: <StoreLink id={plant.row_id} /> })), { id: 'total', label: `${region} Total`, total: true }]
     rows = statementRows(lines.data ?? [], shown.map(plant => ({ id: plant.row_id, amounts: pick(plant.row_id, month) })), 'total')
     label = `P&L by store, ${fmtMonth(month)}, ${region}`
   } else if (view === 'store') {
-    const through = year.filter(m => m <= month)
-    columns = [...year.map(m => ({ id: m, label: fmtMonth(m) })), { id: 'ytd', label: `Year To ${fmtMonth(month)}`, total: true }]
+    // Actual and Variance stop at the last month closed: a month with no close is blank, not nothing.
+    const has = (m: string) => show === 'budget' || closed.has(m)
+    const through = year.filter(m => m <= month && has(m))
+    columns = [...year.map(m => ({ id: m, label: fmtMonth(m) })), { id: 'ytd', label: 'Year To Date', total: true }]
     const byMonth = statementRows(lines.data ?? [], year.map(m => ({ id: m, amounts: pick(store, m) })))
     const ytd = statementRows(lines.data ?? [], through.map(m => ({ id: m, amounts: pick(store, m) })), 'ytd')
-    const merge = (row: (typeof byMonth)[number], other: (typeof ytd)[number] | undefined): (typeof byMonth)[number] => ({ ...row, values: { ...row.values, ytd: other?.values.ytd ?? 0 },
+    const merge = (row: (typeof byMonth)[number], other: (typeof ytd)[number] | undefined): (typeof byMonth)[number] => ({ ...row,
+      values: { ...Object.fromEntries(Object.entries(row.values).map(([m, amount]) => [m, has(m) ? amount : null])) as Record<string, number>, ytd: other?.values.ytd ?? 0 },
       ...(row.children ? { children: row.children.map(child => merge(child, other?.children?.find(c => c.id === child.id))) } : {}) })
     rows = byMonth.map((row, index) => merge(row, ytd[index]))
     label = `P&L of ${storeName(plants.data, store)}, ${fmtMonth(year[0])} to ${fmtMonth(year[11])}`
   } else {
     const sum = (source: Map<string, Amounts>) => shown.reduce((total, plant) => { for (const [line, amount] of source.get(`${plant.row_id}|${month}`) ?? EMPTY) bump(total, line, amount); return total }, new Map<string, number>())
     const [b, a] = [sum(budgets), sum(actual)]
-    columns = connected ? [{ id: 'budget', label: 'Budget' }, { id: 'actual', label: 'Actual' }, { id: 'difference', label: 'Difference', total: true }] : [{ id: 'budget', label: 'Budget' }]
-    rows = statementRows(lines.data ?? [], connected ? [{ id: 'budget', amounts: b }, { id: 'actual', amounts: a }, { id: 'difference', amounts: difference(a, b) }] : [{ id: 'budget', amounts: b }])
+    const compared = connected && closed.has(month)
+    columns = compared ? [{ id: 'budget', label: 'Budget' }, { id: 'actual', label: 'Actual' }, { id: 'difference', label: 'Difference', total: true }] : [{ id: 'budget', label: 'Budget' }]
+    rows = statementRows(lines.data ?? [], compared ? [{ id: 'budget', amounts: b }, { id: 'actual', amounts: a }, { id: 'difference', amounts: difference(a, b) }] : [{ id: 'budget', amounts: b }])
     label = `Bridge from budget to actual, ${fmtMonth(month)}, ${region}`
   }
-  const anyFigure = rows.some(row => Object.values(row.values).some(value => value !== 0))
+  const noActuals = show !== 'budget' && view === 'stores' && !closed.has(month)
+  const anyFigure = !noActuals && rows.some(row => Object.values(row.values).some(value => value != null && value !== 0))
   const monthOptions = [...new Set([...year, ...(closes.data ?? []).map(close => `${close.close_month.slice(0, 7)}-01`), month])].sort().reverse().map(m => ({ value: m, label: fmtMonth(m) }))
 
   return <Page title="P&L" count="₹ lakhs"
@@ -127,9 +134,10 @@ export function PlPage() {
       {connected && (view === 'bridge' || show !== 'budget') && <Segmented label="Actual as" value={asPosted ? 'posted' : 'published'} onChange={value => route.set({ basis: value === 'posted' ? 'posted' : null })} options={[{ value: 'published', label: 'As Published' }, { value: 'posted', label: 'As Posted' }]} />}
     </div>
     {actuals.data && !connected && <Notice tone="info">Actuals are not connected yet.</Notice>}
+    {connected && view === 'bridge' && !closed.has(month) && <Notice tone="info">{`No actuals for ${fmtMonth(month)} yet: its close has not reached the warehouse.`}</Notice>}
     {actuals.error && <Notice tone="negative">{actuals.error.message}</Notice>}
-    <FigureMatrix label={label} rowHeading="Line" columns={columns} rows={anyFigure ? rows : []} format={fmtLakhs}
+    <FigureMatrix label={label} rowHeading="Line" columns={columns} rows={anyFigure ? withLineLinks(rows) : []} format={fmtLakhs}
       cellHref={(row, column) => (show === 'budget' && view === 'stores' && !row.strong && !column.total && inForce.get(month) ? to('version', inForce.get(month)!, { store: column.id }) : undefined)}
-      empty={`No figures for ${view === 'store' ? storeName(plants.data, store) : `${region || 'this region'} in ${fmtMonth(month)}`}.`} />
+      empty={noActuals ? `No actuals for ${fmtMonth(month)} yet: its close has not reached the warehouse.` : `No figures for ${view === 'store' ? storeName(plants.data, store) : `${region || 'this region'} in ${fmtMonth(month)}`}.`} />
   </Page>
 }

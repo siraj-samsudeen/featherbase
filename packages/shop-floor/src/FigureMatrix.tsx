@@ -81,7 +81,7 @@ export function FigureMatrix({ label, rowHeading, columns, rows, format = plain,
         if (event.key === 'Enter') commit()
         if (event.key === 'Escape') setEditing(null)
       }
-      return <input autoFocus aria-label={name} aria-invalid={editing.invalid || undefined} value={editing.text} inputMode="decimal"
+      return <input autoFocus aria-label={name} aria-invalid={editing.invalid || undefined} title={editing.invalid ? 'Type a number' : undefined} value={editing.text} inputMode="decimal"
         onChange={event => setEditing({ key, text: event.target.value, invalid: false })} onKeyDown={onKeyDown} onBlur={() => setEditing(null)}
         className="h-7 w-28 rounded-control bg-fill px-2 text-right tabular-nums outline-2 outline-focus aria-invalid:outline-negative" />
     }

@@ -4,7 +4,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import manifest from '../featherbase.json'
 import { api, listAll, runRead } from './api'
-import type { Line, Version } from './plRules'
+import { chainOf, type Line, type Version } from './plRules'
 
 export interface Me { row_id: string; roles: string[]; capabilities?: { admin?: boolean; manage?: boolean; tables?: string[] } }
 export function me(): Me {
@@ -23,7 +23,7 @@ export type PlLine = Line & Base & { line_key: string }
 export interface Account extends Base { account_code: string; account_name: string; statement: string; pl_line: string | null; store_rule: string | null; falls_back_to_cost_centre: boolean; note: string | null }
 export interface BudgetVersion extends Version, Base { version_name: string; fiscal_year: string; approved_by: string | null; based_on: string | null; source_file: string | null; note: string | null }
 export interface BudgetCell extends Base { budget_version: string; plant: string; budget_month: string; pl_line: string; amount: string | number }
-export interface Close extends Base { legal_company: string; close_month: string; version_no: number; downloaded_at: string; close_state: 'Open' | 'Published' | 'Replaced'; published_on: string | null; published_by: string | null; note: string | null }
+export interface Close extends Base { legal_company: string; close_month: string; version_no: number; downloaded_at: string; close_state: 'Open' | 'Published' | 'Replaced'; published_at: string | null; published_by: string | null; note: string | null }
 export interface Adjustment extends Base { month_close: string; withdrawn_in: string | null; plant: string; gl_account: string; pl_line: string | null; amount: string | number; adjustment_type: string; reason: string
   owner: string | null; corrects_sap_document: string | null; reverses: string | null; adjustment_state: string; matched_sap_document: string | null; matched_amount: string | number | null; remaining_amount: string | number | null; ticket: string | null }
 export interface Rule extends Base { rule_name: string; rule_kind: string; run_order: number; source_plant: string | null; source_line: string | null; target_line: string; basis: string; rate_per_sqft: string | number | null
@@ -36,6 +36,7 @@ export interface Actual { company_code: string; close_month: string; close_versi
 
 /** Every column of one of the app's tables, as its manifest declares them. */
 export const columnsOf = (table: string) => manifest.tables.find(t => t.name === table)?.columns ?? []
+export const titleOf = (table: string) => (manifest.tables.find(t => t.name === table) as { title_column?: string } | undefined)?.title_column
 export const tableLabel = (table: string) => manifest.tables.find(t => t.name === table)?.label ?? table
 const fields = (table: string) => ['row_id', 'updated_at', ...columnsOf(table).map(column => column.column_name)]
 const own = <T,>(name: string, order_by?: string, filters?: unknown[]) => listAll<T>(`budgets.${name}`, { fields: fields(`budgets.${name}`), ...(order_by ? { order_by } : {}), ...(filters ? { filters } : {}) })
@@ -52,6 +53,9 @@ export const useRules = table<Rule>('allocation_rule', 'run_order asc')
 export const useRuleSegments = table<RuleSegment>('allocation_rule_segment')
 export const useRuleStores = table<RuleStore>('allocation_rule_store')
 export const useAreas = table<Area>('store_area', 'starts_on desc')
+
+/** The versions to read to know some versions' figures: each one and every version it is based on. */
+export const withBases = (versions: BudgetVersion[] | undefined, ids: string[]) => [...new Set(ids.flatMap(id => chainOf(versions ?? [], id).map(v => v.row_id)))]
 
 /** The budget amounts of some versions; asked for only once the versions are known. */
 export const useBudget = (versions: string[]) => useQuery({

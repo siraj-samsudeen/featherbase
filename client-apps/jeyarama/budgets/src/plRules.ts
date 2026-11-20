@@ -46,7 +46,8 @@ export interface Version {
   covers_from: string
   covers_to: string
   version_state: 'Draft' | 'Approved' | 'Withdrawn'
-  approved_on: string | null
+  /** The instant it was approved: of two approved the same day, the later one is in force. */
+  approved_at: string | null
 }
 
 const month = (day: string) => day.slice(0, 7)
@@ -56,7 +57,7 @@ export function versionInForce(versions: Version[], kind: Version['budget_kind']
   return versions
     .filter(v => v.version_state === 'Approved' && v.budget_kind === kind && (!v.operating_region || v.operating_region === region)
       && month(v.covers_from) <= month(monthStart) && month(monthStart) <= month(v.covers_to))
-    .sort((a, b) => (b.approved_on ?? '').localeCompare(a.approved_on ?? '') || b.row_id.localeCompare(a.row_id))[0]
+    .sort((a, b) => (b.approved_at ?? '').localeCompare(a.approved_at ?? '') || b.row_id.localeCompare(a.row_id))[0]
 }
 
 /** Each month's version in force; a month no version covers is left out. */
@@ -125,4 +126,35 @@ export function difference(a: ReadonlyMap<string, number>, b: ReadonlyMap<string
   const result = new Map<string, number>()
   for (const key of new Set([...a.keys(), ...b.keys()])) result.set(key, paise((a.get(key) ?? 0) - (b.get(key) ?? 0)))
   return result
+}
+
+export interface VersionLink { row_id: string; based_on: string | null; covers_from: string; covers_to: string }
+export interface CellLike { budget_version: string; plant: string; budget_month: string; pl_line: string; amount: string | number }
+export interface Figure { amount: number; from: string }
+
+/** The versions a version reads through, itself first, then the one it is based on, and so on. */
+export function chainOf(versions: VersionLink[], id: string): VersionLink[] {
+  const chain: VersionLink[] = []
+  for (let at = versions.find(v => v.row_id === id); at && !chain.includes(at); at = versions.find(v => v.row_id === at!.based_on)) chain.push(at)
+  return chain
+}
+
+/**
+ * Every figure of a version, keyed `plant|month|line`. A revision holds only the figures it
+ * changes: for the months it covers, every other figure is the one of the version it is
+ * based on. `from` says which version a figure is held on.
+ */
+export function figuresOf(versions: VersionLink[], cells: CellLike[], id: string): Map<string, Figure> {
+  const chain = chainOf(versions, id)
+  const figures = new Map<string, Figure>()
+  if (!chain.length) return figures
+  const [from, to] = [chain[0].covers_from.slice(0, 7), chain[0].covers_to.slice(0, 7)]
+  // The oldest version first, so each later one writes over it.
+  for (const version of [...chain].reverse())
+    for (const cell of cells) {
+      const month = String(cell.budget_month).slice(0, 7)
+      if (cell.budget_version !== version.row_id || month < from || month > to) continue
+      figures.set(`${cell.plant}|${month}-01|${cell.pl_line}`, { amount: Number(cell.amount), from: version.row_id })
+    }
+  return new Map([...figures].sort(([a], [b]) => a.localeCompare(b)))
 }

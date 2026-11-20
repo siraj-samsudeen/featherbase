@@ -3,7 +3,9 @@ import { DataList, FieldGrid, Notice, RecordLink, Skeleton, fmtDate, fmtExact, f
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { listAll } from './api'
-import { canOpen, columnsOf, tableLabel, useActivity, useRecord } from './data'
+import { canOpen, columnsOf, tableLabel, titleOf, useActivity, useRecord } from './data'
+import { to } from './route'
+import { fmtMonth } from './words'
 import { AccountLink, CloseLink, CompanyLink, LineLink, Page, PersonName, RegionLink, RuleLink, SegmentLink, StatePill, StoreLink, VersionLink, num } from './ui'
 
 const TICKET_TYPE = 'Monthly Closing Follow-up'
@@ -50,12 +52,17 @@ function value(column: { column_name: string; column_type: string; reference_tab
     default: return <RecordLink table={column.reference_table} rowId={id} name={id} canOpen={column.reference_table.startsWith('budgets.') || canOpen(column.reference_table)} />
   }
   if (column.column_type === 'Currency') return fmtExact(num(id))
-  if (column.column_type === 'Date') return fmtDate(id.slice(0, 10))
+  if (column.column_type === 'Date') return /_month$|^covers_/.test(column.column_name) ? fmtMonth(id) : fmtDate(id.slice(0, 10))
+  if (column.column_type === 'Float' || column.column_type === 'Int') return Number(id).toLocaleString('en-IN')
   if (column.column_type === 'Datetime') return fmtInstantIST(id)
   if (column.column_type === 'Check') return raw === true || raw === 1 || raw === '1' ? 'Yes' : 'No'
   return id
 }
-const said = (v: unknown) => (v == null || v === '' ? 'nothing' : String(v))
+
+/** The list a record belongs to, for the way back. */
+const LISTS: Record<string, [string, string]> = { budget_version: ['budgets', 'Budgets'], pl_budget: ['budgets', 'Budgets'], sales_budget: ['budgets', 'Budgets'], budget_store_plan: ['budgets', 'Budgets'],
+  month_close: ['closes', 'Month Close'], close_adjustment: ['adjustments', 'Adjustments'], gl_account: ['accounts', 'Accounts'], gl_account_split: ['accounts', 'Accounts'], pl_line: ['lines', 'P&L Lines'],
+  allocation_rule: ['rules', 'Allocation Rules'], allocation_rule_segment: ['rules', 'Allocation Rules'], allocation_rule_store: ['rules', 'Allocation Rules'], store_area: ['areas', 'Store Areas'] }
 
 export function RecordPage({ path }: { path: string }) {
   const [name, ...rest] = path.split('/')
@@ -64,18 +71,23 @@ export function RecordPage({ path }: { path: string }) {
   const record = useRecord(table, id)
   const activity = useActivity(table, id)
   const columns = columnsOf(table)
-  const label = (column: string) => columns.find(c => c.column_name === column)?.label ?? column
-  if (record.isLoading) return <Page title={tableLabel(table)}><Skeleton label="Loading the record" /></Page>
-  if (record.error || !record.data) return <Page title={tableLabel(table)}><Notice tone="negative">There is no {tableLabel(table)} {id}, or you may not see it.</Notice></Page>
+  const column = (key: string) => columns.find(c => c.column_name === key)
+  const back = LISTS[name] && <a href={to(LISTS[name][0])} className="hover:underline">{LISTS[name][1]}</a>
+  if (record.isLoading) return <Page title={tableLabel(table)} breadcrumb={back}><Skeleton label="Loading the record" /></Page>
+  if (record.error || !record.data) return <Page title={tableLabel(table)} breadcrumb={back}><Notice tone="negative">There is no {tableLabel(table)} {id}, or you may not see it.</Notice></Page>
+  const titleColumn = titleOf(table)
+  const title = titleColumn && record.data[titleColumn] ? String(record.data[titleColumn]) : `${tableLabel(table)} ${id}`
   const changes = [...(activity.data?.versions ?? [])].reverse().filter(version => version.data.changed.length)
-  return <Page title={tableLabel(table)} count={id}>
-    <FieldGrid groups={[{ fields: columns.filter(column => record.data![column.column_name] != null && record.data![column.column_name] !== '').map(column => ({ label: column.label ?? column.column_name, value: value(column, record.data![column.column_name]) })) }]} />
+  // A changed value is said the way the record shows it: a line by its name, an amount as rupees, a day as a day.
+  const said = (key: string, raw: unknown) => { const c = column(key); const shown = c ? value(c, raw) : raw == null ? '' : String(raw); return shown === '' ? 'nothing' : shown }
+  return <Page title={title} count={`${tableLabel(table)} · ${id}`} breadcrumb={back}>
+    <FieldGrid groups={[{ fields: columns.filter(c => record.data![c.column_name] != null && record.data![c.column_name] !== '').map(c => ({ label: c.label ?? c.column_name, value: value(c, record.data![c.column_name]) })) }]} />
     <section aria-label="History" className="flex flex-col gap-2">
       <h2 className="text-[15px] font-semibold text-ink">History</h2>
       {activity.data?.created && <p className="text-sm text-ink-muted">Added {fmtInstantIST(activity.data.created.created_at)} by {activity.data.created.author_name}.</p>}
       {changes.length === 0 ? <p className="text-sm text-ink-subtle">No changes since it was added.</p> : <ul className="flex flex-col gap-1.5 text-sm">
         {changes.map((version, index) => <li key={index}><span className="text-ink-muted">{fmtInstantIST(version.created_at)}, {version.author_name}:</span>{' '}
-          {version.data.changed.map(([column, before, after]) => `${label(column)} from ${said(before)} to ${said(after)}`).join('; ')}</li>)}
+          {version.data.changed.map(([key, before, after], n) => <span key={key}>{n > 0 && '; '}{column(key)?.label ?? key} from {said(key, before)} to {said(key, after)}</span>)}</li>)}
       </ul>}
     </section>
   </Page>

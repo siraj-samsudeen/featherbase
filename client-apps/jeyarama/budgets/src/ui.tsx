@@ -1,6 +1,6 @@
 // The pieces every Budgets page shares: the page frame, and each kind of record as a link
 // with its readable name beside its code.
-import { PageHeader, RecordLink, Select, StatusPill, labelClasses, panelClasses, type StatusTone } from '@featherbase/shop-floor'
+import { PageHeader, RecordLink, Select, StatusPill, fmtDate, labelClasses, type FigureRow, type StatusTone } from '@featherbase/shop-floor'
 import type { ReactNode } from 'react'
 import { canOpen, useAccounts, useCloses, useCompanies, useLines, usePeople, usePlants, useRules, useSegments, useVersions, type Close } from './data'
 import { to } from './route'
@@ -10,7 +10,8 @@ import { fmtMonth } from './words'
 export function Page({ title, count, status, actions, breadcrumb, children }: { title: ReactNode; count?: ReactNode; status?: ReactNode; actions?: ReactNode; breadcrumb?: ReactNode; children: ReactNode }) {
   return <div className="flex min-w-0 flex-col gap-4">
     <PageHeader title={title} count={count} status={status} actions={actions} breadcrumb={breadcrumb} />
-    <section className={panelClasses('flex min-w-0 flex-col gap-4 p-4')}>{children}</section>
+    {/* The app's frame is already the page's one white panel: the content sits straight on it. */}
+    <div className="flex min-w-0 flex-col gap-4">{children}</div>
   </div>
 }
 
@@ -80,6 +81,17 @@ export function pageFor(table: string, rowId: string): string | undefined {
   if (table.startsWith('budgets.')) return to('record', `${table.slice(8)}/${rowId}`)
   return undefined
 }
+
+/** Rows of a statement with each line's name as a link to the line. */
+export function withLineLinks(rows: FigureRow[]): FigureRow[] {
+  return rows.map(row => ({ ...row, header: <LineLink id={row.id} />, ...(row.children ? { children: withLineLinks(row.children) } : {}) }))
+}
+
+/** The day an instant fell on in India, as 20-Nov-2026. */
+export const dayInIndia = (instant: string) => fmtDate(new Date(Date.parse(instant) + 330 * 60_000).toISOString().slice(0, 10))
+
+/** The months a version or a range covers, said once when it is one month. */
+export const monthRange = (from: string, to: string) => (from.slice(0, 7) === to.slice(0, 7) ? fmtMonth(from) : `${fmtMonth(from)} to ${fmtMonth(to)}`)
 
 /** An amount as a number, however the server sent it. */
 export const num = (value: string | number | null | undefined) => (value == null || value === '' ? 0 : Number(value))
