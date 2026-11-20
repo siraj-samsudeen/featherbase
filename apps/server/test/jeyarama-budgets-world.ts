@@ -48,8 +48,8 @@ const INSTANCE_ROWS: [string, Record<string, unknown>][] = [
   ['Plant', { plant_code: '9004', plant_name: 'Lakeside', plant_type: 'Store', site: 'LAK', legal_company: '9000' }],
   ['Plant', { plant_code: '9101', plant_name: 'Northgate Warehouse', plant_type: 'Warehouse', site: 'NGW', legal_company: '9000' }],
   ['Business Line Segment', { code: '10', name: 'Fashion & Lifestyle' }],
-  ['Profit Centre', { profit_centre: '9003100000', name: 'Hilltop Retail', plant: '9003' }],
-  ['Cost Centre', { cost_centre: '9003100001', name: 'Hilltop Retail · Operations', plant: '9003' }],
+  ['Profit Centre', { profit_centre: 'PC-9003-10', name: 'Hilltop Retail', plant: '9003' }],
+  ['Cost Centre', { cost_centre: 'CC-9003-1001', name: 'Hilltop Retail · Operations', plant: '9003' }],
   ['Subcategory', { row_id: '010203001', subcategory: 'Kurti' }],
 ]
 
