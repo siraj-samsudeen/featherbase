@@ -1,7 +1,7 @@
 // #1222: View as in the shared top bar — the button (C), the Ctrl+Shift+K window (B), the picker,
 // the banner, and the reloads that keep one page from mixing two people.
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ViewAsPerson, ViewAsState } from '../src/components/ViewAs'
@@ -142,7 +142,8 @@ describe('the picker', () => {
     show(<ViewAsPicker state={{ ...viewingAsha(), minutes: 30, person_link: true }} />)
     expect(screen.queryByTestId('view-as-frequent')).toBeNull()
     expect(screen.getByTestId('view-as-recent').textContent).not.toContain('Asha')
-    expect(screen.getByTestId('view-as-recent').querySelector('a')).toBeTruthy()
+    // In a picker the row's action wins (hotfix 70c2bec8f): a name views as that person, it never opens their record.
+    expect(screen.getByTestId('view-as-recent').querySelector('a')).toBeNull()
     expect(screen.getByTestId('view-as-picker').textContent).toContain('Ends after 30 minutes')
   })
 
@@ -156,6 +157,17 @@ describe('the picker', () => {
     expect(post).toHaveBeenCalledWith('/api/view_as/start', { person: 'P-2' })
     expect(viewedPerson()).toEqual({ row_id: 'P-2', full_name: 'Mohan Manager' })
     expect(window.localStorage.getItem('featherbase.view-as.changed')).toBeTruthy()
+  })
+
+  // Production, 20-Nov-2026: on Dash a click on a name opened the person's Admin record instead of viewing as them.
+  test('clicking a person\'s name views as them, and opens no record', async () => {
+    show(<ViewAsPicker state={{ may: true, recent: [mohan], frequent: [], person_link: true }} />)
+    const name = within(screen.getByTestId('view-as-recent')).getByTestId('view-as-pick-name')
+    expect(name.tagName).toBe('BUTTON')
+    expect(name.closest('a')).toBeNull()
+    await userEvent.click(within(name).getByText('Mohan Manager'))
+    await waitFor(() => expect(reload).toHaveBeenCalled())
+    expect(post).toHaveBeenCalledWith('/api/view_as/start', { person: 'P-2' })
   })
 
   test('Enter with nothing found does nothing, and says no one was found', async () => {
