@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { setViewedPerson, viewedPerson } from '../lib/viewing-as'
-import { Card, EmptyState, Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, iconButtonClasses, inputClasses, raisedClasses } from '@featherbase/shop-floor'
+import { Card, EmptyState, Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, iconButtonClasses, inputClasses, raisedClasses, useTopLayer } from '@featherbase/shop-floor'
 
 export interface ViewAsPerson {
   person: string
@@ -264,6 +264,10 @@ export function ViewAsButton({ compact, place = 'bar' }: {
   const [open, setOpen] = useState<'dropdown' | 'window' | null>(null)
   const panel = useRef<HTMLDivElement>(null)
   useDismiss(open !== null, () => setOpen(null), panel)
+  // Above the page, an app's panels and iframes included (a Dive report covered it, 20-Nov-2026).
+  const button = useRef<HTMLButtonElement>(null)
+  const dropdown = useRef<HTMLDivElement>(null)
+  useTopLayer(open === 'dropdown', dropdown, button, place === 'bar' ? 'below-end' : 'below-start')
   const may = Boolean(data?.may)
   useEffect(() => {
     if (!may) return
@@ -277,7 +281,7 @@ export function ViewAsButton({ compact, place = 'bar' }: {
   return (
     <div className="relative" ref={open === 'dropdown' ? panel : undefined}>
       {/* While viewing, the banner's Switch and Exit take its place; Ctrl+Shift+K still opens the picker. */}
-      {!data.viewing && <button type="button" onClick={() => setOpen(open === 'dropdown' ? null : 'dropdown')} aria-expanded={open === 'dropdown'} data-testid="view-as-button"
+      {!data.viewing && <button ref={button} type="button" onClick={() => setOpen(open === 'dropdown' ? null : 'dropdown')} aria-expanded={open === 'dropdown'} data-testid="view-as-button"
         aria-label={place === 'bar' && !compact ? undefined : 'View as someone'}
         title="View as someone (Ctrl+Shift+K)"
         className={place === 'bar'
@@ -286,7 +290,7 @@ export function ViewAsButton({ compact, place = 'bar' }: {
         <UserRoundSearch aria-hidden size={place === 'rail' ? 18 : 16} />{place === 'bar' && !compact && <span>View as</span>}
       </button>}
       {open === 'dropdown' && (
-        <div className={raisedClasses(`absolute ${place === 'bar' ? 'right-0' : 'left-0'} top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2`)} role="dialog" aria-label="View as" data-testid="view-as-dropdown">
+        <div ref={dropdown} className={raisedClasses(`absolute ${place === 'bar' ? 'right-0' : 'left-0'} top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2`)} role="dialog" aria-label="View as" data-testid="view-as-dropdown">
           <ViewAsPicker state={data} autoFocus />
         </div>
       )}
