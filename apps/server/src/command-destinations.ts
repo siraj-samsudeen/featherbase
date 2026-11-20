@@ -75,11 +75,11 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
     if (page.slug === 'find-person' && (!readable.has('Person') || !readable.has('Identifier System'))) continue
     add(page.title, `/featherbase/admin/${page.slug}`, 'Page')
   }
-  add('Sign-in methods', ACCOUNT_SIGN_IN_METHODS_PATH, 'Account')
+  add('Sign-In Methods', ACCOUNT_SIGN_IN_METHODS_PATH, 'Account')
   // #1325 (audit F39): the account menu's own words find its pages.
-  add('What you can see', `${ACCOUNT_ROOT}/access/${encodeURIComponent(user)}`, 'Account')
+  add('What You Can See', `${ACCOUNT_ROOT}/access/${encodeURIComponent(user)}`, 'Account')
   if (manage) add('Service accounts', '/featherbase/admin/access-tokens?tab=accounts', 'Page')
-  add('Connected apps', ACCOUNT_CONNECTED_APPS_PATH, 'Account')
+  add('Connected Apps', ACCOUNT_CONNECTED_APPS_PATH, 'Account')
   for (const page of await getVisibleHomePages(user))
     add(page.label || page.row_id, `/featherbase/admin/home/${encodeURIComponent(page.row_id)}`, 'Home Page')
   for (const app of await appCatalog(user)) {

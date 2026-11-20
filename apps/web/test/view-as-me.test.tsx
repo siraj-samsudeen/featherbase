@@ -49,7 +49,7 @@ test('What You Can See, opened at the tester’s own address, shows the viewed p
       ? Promise.resolve({ may: true, viewing: { person: person.user!, name: 'Vas Person', expires_at: new Date(Date.now() + 3_600_000).toISOString() }, recent: [], frequent: [] })
       : realGet(path)) as typeof api.get)
   await renderApp('/featherbase/account/access/Administrator', admin)
-  await waitFor(() => expect(screen.getByTestId('access-explanation-heading')).toHaveTextContent('What you can see'), WAIT)
+  await waitFor(() => expect(screen.getByTestId('access-explanation-heading')).toHaveTextContent('What You Can See'), WAIT)
   expect(window.location.pathname).toBe(`/featherbase/account/access/${encodeURIComponent(person.user!)}`)
   // Checked after the bar has asked whom it views, so no answer can still change it.
   await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/view_as'), WAIT)
@@ -57,7 +57,7 @@ test('What You Can See, opened at the tester’s own address, shows the viewed p
   expect(within(account).getByRole('link', { name: 'What You Can See' })).toHaveAttribute('href', `/featherbase/account/access/${encodeURIComponent(person.user!)}`)
 })
 
-for (const [what, address] of [['Sign-in methods', '/featherbase/account/sign-in-methods'], ['Access tokens', '/featherbase/admin/access-tokens']]) {
+for (const [what, address] of [['Sign-In Methods', '/featherbase/account/sign-in-methods'], ['Access tokens', '/featherbase/admin/access-tokens']]) {
   test(`${what} are the account’s own: not shown while viewing, never the tester’s`, async ({ admin, createUser }) => {
     const person = await createUser({ fullName: 'Vas Person' })
     setViewedPerson({ row_id: person.user!, full_name: 'Vas Person' })

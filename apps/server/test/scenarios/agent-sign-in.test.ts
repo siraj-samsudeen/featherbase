@@ -43,7 +43,7 @@ function expectRefusedAndAskingAgain(agent: OAuthAgent, found: Awaited<ReturnTyp
   expect(agent.pendingAuthorization).toBeDefined()
 }
 
-/** The person's connections, as their Connected apps page lists them. */
+/** The person's connections, as their Connected Apps page lists them. */
 type Connection = { id: string; client_name: string; return_place: string; created_at: string; last_used_at: string }
 const connections = async (user: TestClient) => (await user.get<{ connections: Connection[] }>('/api/agent-connections')).connections
 

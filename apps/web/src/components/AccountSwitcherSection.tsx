@@ -100,12 +100,12 @@ export function AccountSwitcherSection({ onDone }: { onDone: () => void }) {
           onClick={() => { onDone(); pageLoad.assign(`/featherbase/login?add=1&next=${encodeURIComponent(here())}`) }}
           className={MENU_ITEM}
         >
-          <span className="text-action">{t('+ Add another account')}</span>
+          <span className="text-action">{t('+ Add Another Account')}</span>
         </button>
       )}
       {others.length > 0 && (
         <button role="menuitem" type="button" disabled={busy} onClick={() => void signOutAll()} className={MENU_ITEM} data-testid="sign-out-all">
-          {t('Sign out of all accounts')} ({list.accounts.length})
+          {t('Sign Out of All Accounts')} ({list.accounts.length})
         </button>
       )}
     </div>

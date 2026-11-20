@@ -293,7 +293,7 @@ describe('third review round', () => {
     expect(res.methods).toContainEqual({ key: 'stylehr', kind: 'delegated_password', label: 'StyleHR', enabled: false, employees_only: false })
   })
 
-  test('a failed Google link always comes back to the Sign-in methods page, never raw JSON', async ({ api }) => {
+  test('a failed Google link always comes back to the Sign-In Methods page, never raw JSON', async ({ api }) => {
     const lf = await person('link.fail')
     const token = (await issueSession(lf, { method: 'password' })).token
     await sql`update person set password_hash = ${hashPassword('x')} where row_id = ${lf}`

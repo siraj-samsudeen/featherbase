@@ -1,4 +1,4 @@
-// #1224's "What you can see", rendered: how a role's source is said, how a role with many Tables
+// #1224's "What You Can See", rendered: how a role's source is said, how a role with many Tables
 // reads, the every-account line that folds away, the apps the person can open, and the chosen
 // layout surviving a browser that blocks storage. Made-up roles and Tables only.
 import { createElement } from 'react'

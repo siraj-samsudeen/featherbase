@@ -8,7 +8,7 @@ import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 
 test.for([
-  ['the retired Sign-in methods page', '/featherbase/admin/sign-in-methods'],
+  ['the retired Sign-In Methods page', '/featherbase/admin/sign-in-methods'],
   ['a made-up page', '/featherbase/admin/no-such-page-489'],
   ['a row of a made-up Table', '/featherbase/admin/table/no-such-page-489/row/some-row'],
   ['a path deeper than any Admin page', '/featherbase/admin/no/such/page/489'],
