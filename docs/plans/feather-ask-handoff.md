@@ -1,9 +1,14 @@
 # Feather Ask: Handoff For A Fresh Session
 
-Written 20-Nov-2026 so a new Claude project (on another account) can pick the work up cold. The
-earlier project could not be moved. Read this first, then the documents it points to.
+**Last updated:** 20-Nov-2026, 04:50 UTC. To be refreshed before the account switch on 21-Nov-2026.
 
-## Where Things Stand
+A living document so a new Claude project (on another account) can pick the work up cold; the
+earlier project could not be moved. Read this first, then the documents it points to. When
+something changes, update the line above and add to the section it belongs in: Current State,
+Decisions Log, Learnings, Still Open, Next Steps. Add entries with their date; don't rewrite old
+ones.
+
+## Current State
 
 - **Build from issue #1377.** It is the agreed design. #1371 is the first design (the model writes
   SQL), kept only as a record and superseded by #1377. #1372 is the later work. #1353 is the earlier
@@ -79,12 +84,28 @@ A throwaway app (v0.1.1) used as the mockup. It is not the design.
 - To run: own database and ports in `.env.local`, then `pnpm dev jeyarama/dash --made-up-data`
   and open `/ask/`. No AI key needed; the word rules answer.
 
-## Decisions Made Since #1377 Was Written
+## Decisions Log
+
+Decisions taken after #1377 was written. The ones before it are in #1377 and
+`docs/plans/feather-ask-decisions.md`.
 
 - **20-Nov-2026, Siraj: real data may go to GLM.** This closes the "may real figures go to an AI
   provider" question that #1377 and the decisions record list as open, for GLM.
 - **20-Nov-2026, Siraj: a Gemini adapter on Siraj's own API key, for testing,** as another model
   behind plug 1.
+
+## Learnings
+
+Dated facts found while building or testing. Add new ones at the end.
+
+- 19-Nov-2026, real models on made-up data through OpenCode Zen: $0.0003 to $0.0006 a question,
+  two to nine seconds (GLM slowest); GPT, Claude and GLM gave the same correct reading.
+- 19-Nov-2026: thinking models spend the answer allowance on thinking; with a small allowance the
+  reply comes back empty. Give a larger one.
+- 19-Nov-2026: Zen reports each call's cost unasked and refuses OpenRouter's include-cost setting,
+  so that setting goes to OpenRouter only.
+- 19-Nov-2026: handed only the rows that were behind target, a model called four of nine
+  subcategories "all". This is why the model is told what was left out.
 
 ## Still Open (ask the owner, one at a time)
 
@@ -95,7 +116,7 @@ A throwaway app (v0.1.1) used as the mockup. It is not the design.
 4. Where the provider keys live (instance secrets, per environment, who may set them).
 5. Which Table becomes askable after sales versus target.
 
-## The Plan
+## Next Steps
 
 1. **Merge `main` into the branch** and get `./init.sh` booting.
 2. **Rewrite the OpenSpec change for #1377**, replacing the #1371 proposal and design (and adding
@@ -108,7 +129,3 @@ A throwaway app (v0.1.1) used as the mockup. It is not the design.
 5. **Add the real model adapters:** Gemini (Siraj's key) and OpenCode Zen.
 6. **Wire the UI** to the pipeline, lifting from the prototype's screens; then the independent
    verifier against #1377 points 14 to 16, with the RecordLink checklist line.
-
-Real-model findings so far (made-up data, OpenCode Zen): $0.0003 to $0.0006 a question, two to
-nine seconds; GPT, Claude and GLM agree; thinking models need a larger token allowance or the reply
-comes back empty; Zen reports the cost unasked and refuses OpenRouter's include-cost setting.
