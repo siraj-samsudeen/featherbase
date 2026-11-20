@@ -115,6 +115,16 @@ describe('the FigureMatrix', () => {
     expect(cell('credit', 'hil').textContent).toBe('-52,660.00')
     expect(cell('credit', 'lak').textContent).toBe('—')
   })
+  test('more than nine columns are drawn tighter, so a year of months fits without scrolling sideways; fewer are not', () => {
+    const months = Array.from({ length: 13 }, (_, i) => ({ id: `m${i}`, label: `M${i}` }))
+    render(<FigureMatrix label="Year" rowHeading="Line" columns={months} rows={[{ id: 'manpower', label: 'Manpower Cost', values: { m0: 1 } }]} />)
+    expect(screen.getByRole('table', { name: 'Year' }).getAttribute('data-dense')).toBe('true')
+    expect(screen.getByRole('rowheader').getAttribute('title')).toBe('Manpower Cost')
+    cleanup()
+    matrix()
+    expect(screen.getByRole('table', { name: 'P&L by store' }).getAttribute('data-dense')).toBeNull()
+    expect(screen.getAllByRole('rowheader')[0].getAttribute('title')).toBeNull()
+  })
   test('with no rows and nothing to say it draws nothing', () => {
     const { container } = render(<FigureMatrix label="Empty" rowHeading="Line" columns={COLUMNS} rows={[]} />)
     expect(container.textContent).toBe('')
