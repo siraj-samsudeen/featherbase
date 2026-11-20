@@ -3,6 +3,7 @@
 // that point at it, a group's rows, and its fields read only. Drilling moves
 // the pane and grows the path; the list underneath stays as it was.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { tableHref } from 'shared'
 import { createUserWithRole, grantRole } from 'server/test/fixtures'
 import { test, expect, renderApp } from './pg-test'
@@ -14,7 +15,8 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 /** The pane on the row named `name`, which its code may follow ("Enchakkal · ENK"). */
 const pane = (name: string) => screen.findByRole('complementary', { name: new RegExp(`^${escape(name)}( · .+)?$`) })
 const listed = () => within(screen.getByTestId('list-rows')).getAllByTestId('row-check').length
-const pathSteps = () => within(screen.getByRole('navigation', { name: 'Path' })).getAllByRole('button')
+// The path's steps, not the walk's ‹ › beside the last one (#1343).
+const pathSteps = () => within(screen.getByRole('navigation', { name: 'Path' })).getAllByRole('button').filter((b) => !b.closest('[data-testid="walk"]'))
 
 /** Selects a row of the list by clicking a plain cell of its line. */
 async function select(name: string) {
@@ -280,7 +282,7 @@ test('two links from the same table stay separate groups, each with its own coun
   expect(await within(site).findByRole('button', { name: `${PLANT} · Site 3` })).toBeInTheDocument()
   // A group with no rows waits behind Show N empty (#1282, as on the record page), and is still there.
   expect(within(site).queryByRole('button', { name: `${PLANT} · Backup site 0` })).not.toBeInTheDocument()
-  fireEvent.click(within(site).getByRole('button', { name: /^Show \d+ empty$/ }))
+  fireEvent.click(within(site).getByRole('button', { name: /^\+ \d+ tables? with none$/ }))
   expect(within(site).getByRole('button', { name: `${PLANT} · Backup site 0` })).toBeInTheDocument()
 })
 
@@ -356,21 +358,6 @@ test("after Filter from the pane, the browser's back button lands on the filter'
   expect(pathSteps().map((s) => s.textContent)).toEqual([SITE, 'Region: Kerala', 'Enchakkal · ENK'])
 })
 
-// #1273 (D3): on the row page a group's chip jumps to its section on the Links tab.
-test("opening a group on the row page's own row jumps to its Links section in place, adding no browser history entry", async ({ admin }) => {
-  await seedSites(admin)
-  const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
-  const history = (view.router as unknown as { history: { length: number } }).history
-  const group = await screen.findByRole('button', { name: `${PLANT} 3` })
-  const before = history.length
-  fireEvent.click(group)
-  await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
-  expect(await screen.findByTestId('record-links')).toBeInTheDocument()
-  // Still one step, so no path bar yet (#1013).
-  expect(screen.queryByRole('navigation', { name: 'Path' })).not.toBeInTheDocument()
-  expect(history.length).toBe(before)
-})
-
 test('a filter added while a row is in the pane is named on the path by the filter', async ({ admin }) => {
   await openEnchakkal(admin)
   const before = pathSteps().length
@@ -380,4 +367,157 @@ test('a filter added while a row is in the pane is named on the path by the filt
   await waitFor(() => expect(pathSteps()).toHaveLength(before + 1))
   expect(within(screen.getByRole('navigation', { name: 'Path' })).getByRole('button', { current: 'step' })).toHaveTextContent('Region: Kerala')
   expect(await pane('Enchakkal')).toBeInTheDocument()
+})
+
+// #1349 item 1 (boards 3 and 4b): under the record's title, one row of count chips: one per group with rows, the
+// number first ("3 Nv Plants"), a hop through a sub-table saying so; a click opens the linked list already filtered.
+const countRow = (scope: HTMLElement | Document = document) => within(scope as HTMLElement).findByTestId('count-row')
+
+test("the record page leads with a count row: a chip per group with rows, opening that group's list filtered", async ({ admin }) => {
+  await seedSites(admin)
+  await seedVisits(admin)
+  const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const row = await screen.findByTestId('count-row')
+  expect(await within(row).findByRole('link', { name: '1 Nv Visit through Nv Visit Line' })).toBeInTheDocument()
+  const plants = await within(row).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.click(plants)
+  await waitFor(() => expect((view.router.state as { location: { pathname: string } }).location.pathname).toBe(tableHref(PLANT)))
+  await waitFor(() => expect(listed()).toBe(3))
+})
+
+test('a group with no rows gets no chip in the count row', async ({ admin }) => {
+  await seedSites(admin)
+  await seedVisits(admin)
+  await renderApp(`${tableHref(SITE)}/row/MDU`, admin)
+  await screen.findByRole('heading', { level: 1, name: /Madurai/ })
+  await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+  expect(screen.queryByRole('link', { name: /Nv Plant/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: /Nv Visit/ })).not.toBeInTheDocument()
+})
+
+test('the pane carries the same count row under its title', async ({ admin }) => {
+  const { pane: site } = await openEnchakkal(admin)
+  expect(await within(await countRow(site)).findByRole('link', { name: '3 Nv Plants' })).toHaveAttribute('href', expect.stringContaining(tableHref(PLANT)))
+})
+
+test('the count row counts only the rows the viewer may read, and names no Table they cannot open', async ({ admin, createUser }) => {
+  await seedSites(admin)
+  await seedVisits(admin)
+  const viewer = await createUserWithRole(admin, createUser, { role: 'Nv Count Viewer', table: [SITE, REGION], can_read: true })
+  await grantRole(admin, { role: 'Nv Count Viewer', table: PLANT, can_read: true, can_create: true, own_rows_only: true })
+  await viewer.post('/api/save_row', { table: PLANT, row: { row_id: '1701', plant_name: 'Enchakkal Bakery', site: 'ENK' } })
+  await renderApp(`${tableHref(SITE)}/row/ENK`, viewer)
+  const row = await screen.findByTestId('count-row')
+  expect(await within(row).findByRole('link', { name: '1 Nv Plant' })).toBeInTheDocument()
+  expect(within(row).queryByRole('link', { name: /Nv Visit/ })).not.toBeInTheDocument()
+})
+
+// #1349 item 2 (C5): hovering a count shows the shared peek card: the group's first rows, then "Open all N as a list".
+test("hovering a count shows its first rows and the way to all of them; leaving hides it", async ({ admin }) => {
+  await seedSites(admin)
+  await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.pointerEnter(chip.parentElement!)
+  const card = await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
+  expect(await within(card).findByRole('link', { name: 'Enchakkal Supermarket' })).toHaveAttribute('href', expect.stringContaining('/row/1503'))
+  expect(within(card).getByRole('link', { name: 'Open all 3 as a list' })).toHaveAttribute('href', chip.getAttribute('href'))
+  fireEvent.pointerLeave(chip.parentElement!)
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Nv Plants in Enchakkal' })).not.toBeInTheDocument())
+})
+
+test('the card shows at most 5 rows, then how many more', async ({ admin }) => {
+  await seedSites(admin, { profitCentres: 12 })
+  await renderApp(`${tableHref(PLANT)}/row/1503`, admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '12 Nv Profit Centres' })
+  fireEvent.pointerEnter(chip.parentElement!)
+  const card = await screen.findByRole('dialog', { name: /^Nv Profit Centres in / })
+  await waitFor(() => expect(within(card).getAllByRole('link', { name: /^EKL - Retail/ })).toHaveLength(5))
+  expect(card).toHaveTextContent('+ 7 more')
+  expect(within(card).getByRole('link', { name: 'Open all 12 as a list' })).toBeInTheDocument()
+})
+
+test('on touch, the first tap on a count opens its card and the second opens the list', async ({ admin }) => {
+  await seedSites(admin)
+  const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.pointerDown(chip, { pointerType: 'touch' })
+  fireEvent.click(chip)
+  expect(await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })).toBeInTheDocument()
+  const path = () => (view.router.state as { location: { pathname: string } }).location.pathname
+  expect(path()).toBe(`${tableHref(SITE)}/row/ENK`)
+  fireEvent.pointerDown(chip, { pointerType: 'touch' })
+  fireEvent.click(chip)
+  await waitFor(() => expect(path()).toBe(tableHref(PLANT)))
+})
+
+test("the card lists the rows in the order of the list it opens", async ({ admin }) => {
+  await seedSites(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(PLANT)}`, { sort: { field: 'plant_name', dir: 'desc' } })
+  await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.pointerEnter(chip.parentElement!)
+  const card = await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
+  await waitFor(() => expect(within(card).getAllByRole('link', { name: /^Enchakkal / }).map((l) => l.textContent))
+    .toEqual(['Enchakkal Textiles', 'Enchakkal Supermarket', 'Enchakkal Jewellery']))
+})
+
+test("the card's Open all opens the list; a modified click on a count is the browser's", async ({ admin }) => {
+  await seedSites(admin)
+  const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const path = () => (view.router.state as { location: { pathname: string } }).location.pathname
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.click(chip, { ctrlKey: true })
+  expect(path()).toBe(`${tableHref(SITE)}/row/ENK`)
+  fireEvent.pointerEnter(chip.parentElement!)
+  const card = await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
+  fireEvent.click(within(card).getByRole('link', { name: 'Open all 3 as a list' }), { metaKey: true })
+  expect(path()).toBe(`${tableHref(SITE)}/row/ENK`)
+  fireEvent.click(within(card).getByRole('link', { name: 'Open all 3 as a list' }))
+  await waitFor(() => expect(path()).toBe(tableHref(PLANT)))
+})
+
+test('a count opens its card on focus; Escape closes it, and so does focus leaving', async ({ admin }) => {
+  await seedSites(admin)
+  await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.focus(chip)
+  expect(await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })).toBeInTheDocument()
+  fireEvent.keyDown(chip, { key: 'Escape' })
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  fireEvent.keyDown(chip, { key: 'Escape' })
+  fireEvent.focus(chip)
+  await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
+  fireEvent.blur(chip, { relatedTarget: document.body })
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+// #1349 (board 4b): a section an app works out is a chip in the count row; its chip goes to that section.
+function workedOut() {
+  const real = globalThis.fetch
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (!String(input).includes('/api/worked-out/')) return real(input, init)
+    return Response.json({ sections: [{ heading: 'Audits It Passed', note: 'worked out from its audits', empty: 'No audits yet',
+      rows: [{ name: 'March audit', via: [] }] }] })
+  })
+}
+
+test("a worked-out section's chip on the record page opens the Links tab at that section", async ({ admin }) => {
+  await seedSites(admin)
+  const fetched = workedOut()
+  try {
+    await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+    fireEvent.click(await within(await screen.findByTestId('count-row')).findByRole('button', { name: '1 Audits It Passed' }))
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
+    await waitFor(() => expect(document.activeElement).toHaveAttribute('aria-label', 'Audits It Passed'))
+  } finally { fetched.mockRestore() }
+})
+
+test("a worked-out section's chip in the pane goes to that section in the pane", async ({ admin }) => {
+  const fetched = workedOut()
+  try {
+    const { pane: site } = await openEnchakkal(admin)
+    fireEvent.click(await within(await countRow(site)).findByRole('button', { name: '1 Audits It Passed' }))
+    await waitFor(() => expect(document.activeElement).toHaveAttribute('aria-label', 'Audits It Passed'))
+    expect(site).toContainElement(document.activeElement as HTMLElement)
+  } finally { fetched.mockRestore() }
 })

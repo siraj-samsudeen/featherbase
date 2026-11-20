@@ -4,7 +4,7 @@ import { encodePath, type NavPath } from '../lib/nav-path'
 import { usePageNavigation } from '../lib/navigation'
 import { useNavigationSettings } from '../lib/nav-settings'
 import { useCompactWalkLabels, useStepLabels } from '../lib/step-labels'
-import { SidewaysMenu } from './SidewaysMenu'
+import { SidewaysMenu, WalkControl, useWalk, useWalkKeys } from './SidewaysMenu'
 
 // #910 checklist 11–14: the path bar of a list or row page. Its steps are
 // named per viewer; Back, Forward and each step move along the path (each a
@@ -19,6 +19,11 @@ export function NavPathBar() {
   const path = nav.path
   const key = encodePath(path)
   const labels = useStepLabels(path.steps)
+  // #1343 W1–W4, #1349 item 4: the walk through the last step's list or group, and ↑/↓ for it, even where one
+  // step draws no bar (a row peeked over a list).
+  const walk = useWalk(path)
+  const last = path.at === path.steps.length - 1
+  useWalkKeys(last ? walk : null, nav)
   // Every walk the person takes is remembered as they go.
   useEffect(() => {
     if (settings.ready) settings.remember(path)
@@ -38,7 +43,8 @@ export function NavPathBar() {
         onCopyLink={() => navigator.clipboard.writeText(new URL(nav.href(path), window.location.origin).href)}
         recent={<RecentWalks paths={settings.recent} onPick={nav.open} />}
         // #1282 I1: the other rows of the list the last step came from, on the last step only.
-        besideCurrent={path.at === path.steps.length - 1 ? <SidewaysMenu nav={nav} /> : undefined}
+        // #1343 W1: then "‹ 3 of 12 ›" to walk them.
+        besideCurrent={last ? <><SidewaysMenu nav={nav} /><WalkControl walk={walk} nav={nav} /></> : undefined}
       />
     </div>
   )

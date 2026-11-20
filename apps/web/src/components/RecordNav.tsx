@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { buttonClasses, fmtCount } from '@featherbase/shop-floor'
 import { listResource } from '../lib/api'
 import { useNavigation } from '../lib/navigation'
+import { EMPTY_PATH } from '../lib/nav-path'
+import { WalkButtons, useWalk } from './SidewaysMenu'
 
 // Previous / next record on the form: steps through the list the record was
 // opened from, with that list's filters, sort and pages. The list leaves its
@@ -67,6 +68,11 @@ export function RecordNav({ table, name }: { table: string; name: string }) {
     },
   })
 
+  // UI owner (W5): one walk on screen. Where the path bar walks this record, the page's own gives way to it.
+  const path = nav?.addressed ? nav.path : EMPTY_PATH
+  const pathWalk = useWalk(path)
+  const barShown = path.steps.length >= 2 && path.at === path.steps.length - 1
+
   const index = near.data ? near.data.ids.indexOf(name) : -1
   useEffect(() => {
     if (!near.data || index < 0 || !place) return
@@ -74,7 +80,7 @@ export function RecordNav({ table, name }: { table: string; name: string }) {
   }, [near.data, index, place, table])
 
   // Not opened from a list, or the record has moved in it since.
-  if (!near.data || index < 0) return null
+  if (!near.data || index < 0 || (barShown && pathWalk)) return null
   const position = near.data.from + index
   const prev = near.data.ids[index - 1]
   const next = near.data.ids[index + 1]
@@ -84,19 +90,7 @@ export function RecordNav({ table, name }: { table: string; name: string }) {
     else void navigate({ to: '/featherbase/admin/table/$table/row/$name', params: { table, name: id }, search: { prefill: undefined } })
   }
 
-  return (
-    <span className="flex items-center gap-1" data-testid="record-nav">
-      <button type="button" aria-label="Previous record" title="Previous record" disabled={!prev}
-        onClick={() => go(prev!)} className={buttonClasses({ className: 'disabled:opacity-40' })}>
-        ‹
-      </button>
-      <span className="whitespace-nowrap px-1 text-[13px] text-ink-subtle tabular-nums" data-testid="record-position">
-        {fmtCount(position + 1)} of {fmtCount(near.data.total)}
-      </span>
-      <button type="button" aria-label="Next record" title="Next record" disabled={!next}
-        onClick={() => go(next!)} className={buttonClasses({ className: 'disabled:opacity-40' })}>
-        ›
-      </button>
-    </span>
-  )
+  // The path bar's quiet ‹ N of M › (UI owner, W5).
+  return <WalkButtons position={position + 1} total={near.data.total} testId="record-nav" positionTestId="record-position"
+    onPrevious={prev ? () => go(prev) : undefined} onNext={next ? () => go(next) : undefined} />
 }

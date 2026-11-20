@@ -397,7 +397,7 @@ describe('the UI Lab row page', () => {
     await waitFor(() => expect(rowLink('North workshop')).toBeInTheDocument(), WAIT)
     await click(rowLink('North workshop'))
     await screen.findByRole('textbox', { name: 'Region' }, WAIT)
-    await userEvent.click(await screen.findByRole('button', { name: 'Next record' }, WAIT))
+    await userEvent.click(await screen.findByRole('button', { name: 'Next row' }, WAIT))
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'Region' })).toHaveValue('South'), WAIT)
   })
 
