@@ -29,7 +29,6 @@ import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { ActionDisclosure } from '../components/ActionDisclosure'
 import { TopBar } from '../components/TopBar'
-import { CommandField, CommandPalette } from '../components/CommandPalette'
 import { useNavigationHistory } from '../lib/navigation-history'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { metaQuery, tableLabel, useMeta, type TableMeta } from '../lib/meta'
@@ -157,9 +156,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
       () => {},
     )
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
-  // #1385: the command bar is the shared one; the sidebar's recall reads the
-  // same history.
-  const [commandOpen, setCommandOpen] = useState(false)
+  // #1385: the command bar is the shared top bar's; the sidebar's recall reads
+  // the same history.
   const historyReady = useNavigationHistory(user?.row_id)
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown. #1018: on md+ it can
@@ -318,7 +316,6 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
           header with the menu button. */}
       <TopBar
         home="admin"
-        command={<CommandField rail={rail} onOpen={() => setCommandOpen(true)} />}
         beforeRight={
           <div className="relative shrink-0" title="Notifications">
             {/* An indicator, not a control, so it needs no thumb-sized hit area. */}
@@ -337,8 +334,6 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
           </div>
         }
       />
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
-
       <div className="relative flex min-h-0 flex-1">
         <SidebarAside testid="admin-sidebar" user={user?.row_id}>
           {/* #1235 item 7: on the account pages, the Account group leads the sidebar. */}

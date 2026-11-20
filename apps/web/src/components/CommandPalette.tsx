@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useRouter } from '@tanstack/react-router'
+import { useRouter } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { needsEmail, rowHref, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { needsEmail, rowHref, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { PersonLabel, Search, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 import { RAIL_ROW, ROW_IDLE, TableTile } from './SidebarRail'
 import { RecentSub } from './RecentSub'
@@ -47,9 +47,14 @@ export function CommandField({ rail, onOpen }: { rail: boolean; onOpen: () => vo
 
 /** #1253: the command bar (⌘K / Ctrl+K), a wide box in the middle of the
  *  screen while `open`. The field above opens it; so do the shortcut and the
- *  "Last search" tile's prefill event. */
+ *  "Last search" tile's prefill event.
+ *
+ *  #1385: the shared top bar draws it on every page with a sidebar, the
+ *  Admin's and every app's. It goes everywhere by address, through the page's
+ *  router: the Admin's moves within the Admin; an app page's bar router loads
+ *  each address in full (bar/mount.tsx). It offers only what the viewer can
+ *  open: without the Admin, no records, Tables or Admin commands. */
 export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const navigate = useNavigate()
   const signOut = useSignOut()
   const router = useRouter()
   const user = getSessionUser()
@@ -71,9 +76,12 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
     enabled: barFocused,
   })
   const inventory = destinations.isError ? undefined : destinations.data
-  const tables = inventory?.tables
   const caps = useCapabilities()
   const canManage = caps?.manage === true
+  // #1385: someone who cannot use the Admin is offered no Table and no record.
+  const canUseAdmin = caps?.admin === true
+  const tables = canUseAdmin ? inventory?.tables : undefined
+  const go = (href: string) => router.history.push(href)
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
@@ -87,7 +95,8 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
-      if (!commandFormRef.current?.contains(event.target as Node)) {
+      // In an app's page the bar is in a shadow root: the document sees its host as the target.
+      if (!event.composedPath().includes(commandFormRef.current!)) {
         setBarFocused(false)
         setSelection(null)
       }
@@ -134,7 +143,7 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
     return () => clearTimeout(t)
   }, [search])
   // #1265: the record search streams group by group; a newer query aborts the older.
-  const streamed = useStreamedSearch(debounced)
+  const streamed = useStreamedSearch(canUseAdmin ? debounced : '')
 
   // #101: with the bar focused and empty, the dropdown shows Recent (pure
   // recency) and Frequent (frecency) groups; while typing it offers matching
@@ -142,7 +151,7 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
   const trimmed = search.trim()
   // A resolved previous query remains cached during the typing debounce;
   // it is not a result of the text currently in the input.
-  const current = trimmed !== '' && trimmed === debounced && streamed.query === trimmed
+  const current = trimmed !== '' && trimmed === debounced && (!canUseAdmin || streamed.query === trimmed)
   // At most RECORD_CAP rows, taken in group order (ordinary Tables before
   // registries), whatever order the groups answered in.
   let room = RECORD_CAP
@@ -156,7 +165,7 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
   // #1345: people who would still read the same (name and words) add their email.
   const sameReading = needsEmail(recordGroups.find((g) => g.table === 'Person')?.hits ?? [])
   // Searching from the first keystroke until every group has answered.
-  const searching = trimmed !== '' && !(current && streamed.done)
+  const searching = canUseAdmin && trimmed !== '' && !(current && streamed.done)
   const pendingGroups = recordGroups.filter((g) => g.hits === undefined)
   // #1265: after 1.5s the wait is named, group by group.
   const [slowFor, setSlowFor] = useState('')
@@ -212,14 +221,14 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
       return
     }
     dismissSearch()
-    router.history.push(entry.path)
+    go(entry.path)
   }
 
   /** A record result, opened here: the link's own address (#1345: results are links). */
   function openDoc(href: string) {
     recordSearch(search.trim())
     dismissSearch()
-    router.history.push(href)
+    go(href)
   }
 
   function openPage(page: CommandPageDestination) {
@@ -227,7 +236,15 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
     dismissSearch()
     // Runtime apps need a full load.
     if (page.kind === 'App' || page.kind === 'App tab') window.location.assign(page.href)
-    else router.history.push(page.href)
+    else go(page.href)
+  }
+
+  /** A Table or new-row result: a link, so it opens in a new tab too; a plain click opens it here. */
+  function openLink(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+    e.preventDefault()
+    dismissSearch()
+    go(e.currentTarget.getAttribute('href')!)
   }
 
   // Explicit selection uses the same activation as a pointer or Tab/Enter.
@@ -252,7 +269,7 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
     if (exactTable) {
       recordSearch(q)
       dismissSearch()
-      navigate({ to: '/featherbase/admin/table/$table', params: { table: exactTable.row_id }, search: { filters: undefined } })
+      go(tableHref(exactTable.row_id))
       return true
     }
     const exactPage = pageHits.find((page) => [page.label, ...(page.aliases ?? [])].some((label) => label.toLowerCase() === lower))
@@ -284,11 +301,11 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
 
   // Command actions surfaced through the command bar (the ⌘K palette).
   const commands = [
-    ...(canManage ? [{ id: 'new-table', label: 'New Table', run: () => navigate({ to: '/featherbase/admin/new-table' }) }] : []),
+    ...(canManage ? [{ id: 'new-table', label: 'New Table', run: () => go('/featherbase/admin/new-table') }] : []),
     { id: 'theme-light', label: 'Theme: light', run: () => setTheme('light') },
     { id: 'theme-dark', label: 'Theme: dark (dark mode)', run: () => setTheme('dark') },
     { id: 'theme-device', label: 'Theme: same as device', run: () => setTheme('device') },
-    { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/featherbase/admin' }) },
+    ...(canUseAdmin ? [{ id: 'home', label: 'Go to Admin home', run: () => go('/featherbase/admin') }] : []),
     { id: 'logout', label: 'Log out', run: () => void signOut() },
   ]
   const commandHits =
@@ -306,7 +323,7 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
   })
 
   // #1265: once every group has answered and nothing anywhere matched, say so.
-  const noMatch = current && streamed.done && !streamed.failed && recordHits.length === 0 &&
+  const noMatch = current && (!canUseAdmin || (streamed.done && !streamed.failed)) && recordHits.length === 0 &&
     pageHits.length === 0 && commandHits.length === 0 && suggestions.length === 0
 
   // #1253: the command bar, opened from the sidebar's field or ⌘K as a wide box
@@ -496,37 +513,33 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
                 <h2 data-testid="awesomebar-tables-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Tables</h2>
               )}
               {suggestions.map((d) => (
-                <Link
+                <a
                   key={d.row_id}
                   {...resultProps(`table-${d.row_id}`)}
-                  to="/featherbase/admin/table/$table"
-                  params={{ table: d.row_id }}
-                  search={{ filters: undefined }}
-                  onClick={dismissSearch}
+                  href={tableHref(d.row_id)}
+                  onClick={openLink}
                   data-testid="awesomebar-table"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
                   {d.label}
                   <span className="ml-2 text-xs text-ink-muted">{d.module} module · {d.kind === 'settings' ? 'settings' : 'open list'}</span>
-                </Link>
+                </a>
               ))}
               {/* UI-014: "new X" action for matched Tables */}
               {creatableSuggestions.length > 0 && (
                 <h2 data-testid="awesomebar-create-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Create rows</h2>
               )}
               {creatableSuggestions.slice(0, 2).map((d) => (
-                <Link
+                <a
                   key={`new-${d.row_id}`}
                   {...resultProps(`new-${d.row_id}`)}
-                  to="/featherbase/admin/table/$table/new"
-                  search={{ prefill: undefined }}
-                  params={{ table: d.row_id }}
-                  onClick={dismissSearch}
+                  href={`${tableHref(d.row_id)}/new`}
+                  onClick={openLink}
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
                   <span className="text-action">+</span> New {d.label} row
-                </Link>
+                </a>
               ))}
               {/* UI-014: row hits. #1265: by group as each Table answers; a group
                   still on its way shows two quiet rows (the first three only),
