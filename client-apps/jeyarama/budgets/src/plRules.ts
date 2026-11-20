@@ -91,3 +91,38 @@ export function remaining(amount: number, matched: number | null): { remaining: 
   const left = paise(amount - (matched ?? 0))
   return { remaining: left, settled: left === 0 }
 }
+
+export interface FigureRowData { id: string; label: string; values: Record<string, number>; strong?: boolean; quiet?: boolean; children?: FigureRowData[] }
+
+/**
+ * The statement across several columns (stores, months, versions): one row per published
+ * line with a figure per column, its working lines folded under it, and, when `totalId` is
+ * given, a column that adds the others. Each column's subtotals are worked out from that
+ * column's own amounts, and the total's from the summed amounts, so every column foots.
+ */
+export function statementRows(lines: Line[], columns: { id: string; amounts: ReadonlyMap<string, number> }[], totalId?: string): FigureRowData[] {
+  const all = totalId ? [...columns, { id: totalId, amounts: columns.reduce((sum, column) => add(sum, column.amounts), new Map<string, number>()) }] : columns
+  const statements = all.map(column => ({ id: column.id, rows: statement(lines, column.amounts) }))
+  return statements[0]?.rows.map((first, index) => {
+    const values = Object.fromEntries(statements.map(s => [s.id, s.rows[index].amount]))
+    const children = first.working
+      .map((working, w) => ({ id: working.line.row_id, label: working.line.line_name, values: Object.fromEntries(statements.map(s => [s.id, s.rows[index].working[w].amount])) }))
+      .filter(child => Object.values(child.values).some(amount => amount !== 0))
+    return { id: first.line.row_id, label: first.line.line_name, values,
+      ...(first.line.line_kind === 'Subtotal' ? { strong: true } : {}), ...(first.line.line_kind === 'Memo' ? { quiet: true } : {}),
+      ...(children.length ? { children } : {}) }
+  }) ?? []
+}
+
+function add(a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>): Map<string, number> {
+  const sum = new Map(a)
+  for (const [key, amount] of b) sum.set(key, paise((sum.get(key) ?? 0) + amount))
+  return sum
+}
+
+/** One set of amounts less another, line by line: actual less budget, or one version less another. */
+export function difference(a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>): Map<string, number> {
+  const result = new Map<string, number>()
+  for (const key of new Set([...a.keys(), ...b.keys()])) result.set(key, paise((a.get(key) ?? 0) - (b.get(key) ?? 0)))
+  return result
+}

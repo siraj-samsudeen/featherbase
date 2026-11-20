@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { budgetInForce, fiscalMonths, monthsBetween, remaining, statement, versionInForce, type Line, type Version } from './plRules'
+import { budgetInForce, difference, fiscalMonths, monthsBetween, remaining, statement, statementRows, versionInForce, type Line, type Version } from './plRules'
 
 const line = (row_id: string, line_order: number, section: Line['section'], line_kind: Line['line_kind'], sign: Line['sign'], more: Partial<Line> = {}): Line =>
   ({ row_id, line_name: row_id, level: 'Published', rolls_into: null, line_order, section, line_kind, sign, subtotal_rule: null, ...more })
@@ -94,5 +94,30 @@ describe('what remains of an adjustment', () => {
     expect(remaining(42500, 40000)).toEqual({ remaining: 2500, settled: false })
     expect(remaining(42500, 42500)).toEqual({ remaining: 0, settled: true })
     expect(remaining(-1200.1, -1200.1)).toEqual({ remaining: 0, settled: true })
+  })
+})
+
+describe('the statement as rows of figures across columns', () => {
+  const lines = LINES
+  const hilltop = new Map([['sales', 1000], ['cost_of_purchase', 720], ['salaries', 60], ['pf', 8]])
+  const lakeside = new Map([['sales', 500], ['cost_of_purchase', 380], ['salaries', 30]])
+  const rows = statementRows(lines, [{ id: '9003', amounts: hilltop }, { id: '9004', amounts: lakeside }], 'all')
+
+  it('gives each published line one row with a figure per column and a total of the columns', () => {
+    expect(rows.find(row => row.id === 'scan_margin')!.values).toEqual({ 9003: 280, 9004: 120, all: 400 })
+    expect(rows.find(row => row.id === 'store_ebitda')!.values).toEqual({ 9003: 212, 9004: 90, all: 302 })
+  })
+  it('marks subtotals strong and memo lines quiet, and folds working lines under their line', () => {
+    expect(rows.find(row => row.id === 'store_ebitda')!.strong).toBe(true)
+    expect(rows.find(row => row.id === 'net_sales')!.quiet).toBe(true)
+    expect(rows.find(row => row.id === 'manpower_cost')!.children!.map(child => [child.id, child.values])).toEqual([['salaries', { 9003: 60, 9004: 30, all: 90 }], ['pf', { 9003: 8, 9004: 0, all: 8 }]])
+  })
+  it('leaves out working lines nobody has an amount on, and the total when none is asked for', () => {
+    expect(rows.find(row => row.id === 'scan_margin')!.children!.map(child => child.id)).toEqual(['sales', 'cost_of_purchase'])
+    expect(rows.find(row => row.id === 'occupancy')!.children).toBeUndefined()
+    expect(statementRows(lines, [{ id: '9003', amounts: hilltop }])[1].values).toEqual({ 9003: 280 })
+  })
+  it('the difference of two sets of amounts, line by line', () => {
+    expect([...difference(hilltop, lakeside)]).toEqual([['sales', 500], ['cost_of_purchase', 340], ['salaries', 30], ['pf', 8]])
   })
 })
