@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import manifest from '../featherbase.json'
 import { api, listAllResources, uploadRowFile } from './api'
 import { ReasonForm } from './Closure'
+import { go, linkTo, taskAddress, useAddress } from './taskAddress'
 import { DEFAULT_RULES, SEVERITIES, clockMinutes, duration, type ClockMode, type SlaRule } from './sla'
 import { useStores, type Store } from './Stores'
 
@@ -74,7 +75,6 @@ export function useIssues() {
     queryFn: () => listAllResources<Issue>(ISSUE, { fields: FIELDS, order_by: 'raised_at desc', limit_page_length: 500 }) })
 }
 const logOf = (issue: Issue): LogEntry[] => JSON.parse(issue.issue_log || '[]')
-const hashIssueId = () => new URLSearchParams(location.hash.slice(1)).get('issue')
 const left = (issue: Issue) => issue.fix_minutes - Number(issue.on_clock_minutes ?? 0)
 const breached = (issue: Issue) => issue.fix_breached || (ACTIVE.includes(issue.issue_state) && left(issue) < 0)
 
@@ -168,6 +168,7 @@ function Clock({ label, children, tone }: { label: string; children: ReactNode; 
 function IssueDetail({ issue, me, people, nameOf, onSaved }: { issue: Issue; me: string; people: { row_id: string }[]; nameOf: NameOf; onSaved: () => Promise<void> }) {
   const stores = useStores()
   const queryClient = useQueryClient()
+  const address = useAddress()
   const store = stores.find(entry => entry.row_id === issue.store)
   const [form, setForm] = useState<'pause' | 'submit' | 'return' | 'reopen' | null>(null)
   const [pause, setPause] = useState({ reason: '', review: '' })
@@ -199,7 +200,7 @@ function IssueDetail({ issue, me, people, nameOf, onSaved }: { issue: Issue; me:
   return <section aria-label="Issue detail" className="tasker-issue-detail">
     <div className="tasker-issue-detail-head">
       <h2>{issue.issue_title}</h2>
-      <a href="#" className="tasker-issue-close">Close</a>
+      <a {...linkTo({ page: 'issues' })} className="tasker-issue-close">Close</a>
     </div>
     <p className="tasker-issue-facts">
       <span className="tasker-severity" data-severity={issue.severity}>{issue.severity}</span>
@@ -270,7 +271,7 @@ function IssueDetail({ issue, me, people, nameOf, onSaved }: { issue: Issue; me:
         <h3>Corrective tasks</h3>
         <ul aria-label="Corrective tasks" className="tasker-issue-tasks">
           {(tasks.data?.data ?? []).map(task => <li key={task.row_id}>
-            <a href={`#task=${encodeURIComponent(task.row_id)}`}>{task.task_title}</a>
+            <a {...linkTo(taskAddress(address, task))}>{task.task_title}</a>
             <span className="tasker-evidence-by"> · {task.task_state}{task.assigned_to ? ` · ${nameOf(task.assigned_to)}` : ''}</span>
           </li>)}
         </ul>
@@ -393,16 +394,12 @@ const FOR_YOU = ['assigned', 'reminder', 'breach', 'director']
 export function IssuesPage({ me, people, nameOf, onSaved }: { me: string; people: { row_id: string }[]; nameOf: NameOf; onSaved: () => Promise<void> }) {
   const issues = useIssues()
   const stores = useStores()
-  const [selected, setSelected] = useState(hashIssueId)
-  const [mode, setMode] = useState<'list' | 'rules'>('list')
+  const address = useAddress()
+  const selected = address.page === 'issues' ? address.item ?? null : null
+  const mode = address.page === 'sla-rules' ? 'rules' : 'list'
   const [raising, setRaising] = useState(false)
   const [notice, setNotice] = useState('')
   const [showClosed, setShowClosed] = useState(false)
-  useEffect(() => {
-    const change = () => { setSelected(hashIssueId()); if (hashIssueId()) setMode('list') }
-    window.addEventListener('hashchange', change)
-    return () => window.removeEventListener('hashchange', change)
-  }, [])
   const all = issues.data?.data ?? []
   const open = all.filter(issue => issue.issue_state !== 'Closed')
   const order = (issue: Issue) => breached(issue) && ACTIVE.includes(issue.issue_state) ? -100000 + left(issue) : issue.issue_state === SUBMITTED ? 100000 : -Number(issue.used_pct ?? 0)
@@ -423,8 +420,8 @@ export function IssuesPage({ me, people, nameOf, onSaved }: { me: string; people
     <div className="tasker-issues-head">
       <div className="tasker-section-title"><h2 id="issues-heading">Issues</h2><p>Failures and exceptions, each with one owner and its own clocks.</p></div>
       <div className="tasker-issues-modes">
-        <Button type="button" aria-pressed={mode === 'list'} onClick={() => setMode('list')}>Issue list</Button>
-        <Button type="button" aria-pressed={mode === 'rules'} onClick={() => setMode('rules')}>SLA rules and people</Button>
+        <Button type="button" aria-pressed={mode === 'list'} onClick={() => go({ page: 'issues' })}>Issue list</Button>
+        <Button type="button" aria-pressed={mode === 'rules'} onClick={() => go({ page: 'sla-rules' })}>SLA rules and people</Button>
       </div>
     </div>
     {mode === 'rules' ? <SlaRules people={people} nameOf={nameOf} onSaved={refresh} /> : <>
@@ -436,7 +433,7 @@ export function IssuesPage({ me, people, nameOf, onSaved }: { me: string; people
       {notices.length > 0 && <section aria-label="For you" className="tasker-issue-notices">
         <h3>For you</h3>
         <ul>{notices.map(({ issue, entry }, index) => <li key={index} data-kind={entry.kind}>
-          <span>{fmtInstantIST(entry.at)}</span> {LOG_LABELS[entry.kind]} · <a href={`#issue=${encodeURIComponent(issue.row_id)}`}>{issue.issue_title}</a>
+          <span>{fmtInstantIST(entry.at)}</span> {LOG_LABELS[entry.kind]} · <a {...linkTo({ page: 'issues', item: issue.row_id })}>{issue.issue_title}</a>
         </li>)}</ul>
       </section>}
       {current && <IssueDetail key={current.row_id} issue={current} me={me} people={people} nameOf={nameOf} onSaved={refresh} />}
@@ -451,7 +448,7 @@ export function IssuesPage({ me, people, nameOf, onSaved }: { me: string; people
         {listed.map(issue => {
           const clock = clockNote(issue, nameOf)
           return <li key={issue.row_id} aria-label={issue.issue_title} data-selected={issue.row_id === selected || undefined}>
-            <a href={`#issue=${encodeURIComponent(issue.row_id)}`}>{issue.issue_title}</a>
+            <a {...linkTo({ page: 'issues', item: issue.row_id })}>{issue.issue_title}</a>
             <span className="tasker-severity" data-severity={issue.severity}>{issue.severity}</span>
             <span className="tasker-issue-store">{stores.find(store => store.row_id === issue.store)?.store_name ?? 'No store'}</span>
             <span className="tasker-issue-clock-chip" data-tone={clock.tone}>{clock.text}</span>

@@ -83,7 +83,7 @@ test('the verifier finds the task on To verify, returns it with a reason, then a
   const again = await read(ravi, task)
   await ravi.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: again.updated_at, task_state: SUBMITTED, evidence_note: 'Replaced the starter too' } })
   expect(submitted.row_id).toBe(task.row_id)
-  first.unmount(); location.hash = ''
+  first.unmount(); window.history.replaceState(null, '', '/')
   renderTasker(meena)
   await user.click(await screen.findByRole('button', { name: /^To verify/ }))
   await user.click(await within(await screen.findByRole('region', { name: 'To verify' })).findByRole('link', { name: 'Fix the billing counter lights' }))

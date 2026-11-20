@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { discoverPackages } from 'server/src/runtime-packages'
@@ -106,16 +106,16 @@ test('a saved view detail closes back to its exact view without matchMedia suppo
     await user.click(await screen.findByRole('link', { name: 'Inspect 29 cartons' }))
     const details = await screen.findByRole('region', { name: 'Task detail content' })
     await within(details).findByRole('heading', { name: 'Inspect 29 cartons' })
-    expect(location.hash).toBe(`#view=cartons&task=${task.row_id}`)
-    expect(within(details).getByRole('link', { name: 'Close' })).toHaveAttribute('href', expect.stringContaining('#view=cartons'))
+    expect(location.pathname).toBe(`/tasker/views/cartons/tasks/${task.row_id}`)
+    expect(within(details).getByRole('link', { name: 'Close' })).toHaveAttribute('href', '/tasker/views/cartons')
     await user.keyboard('{Tab}{Escape}')
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Task detail content' })).not.toBeInTheDocument())
-    expect(location.hash).toBe('#view=cartons')
+    expect(location.pathname).toBe('/tasker/views/cartons')
     expect(screen.getByRole('heading', { name: 'Carton audit' })).toBeInTheDocument()
     expect(screen.getByRole('searchbox')).toHaveValue('29')
   } finally {
     window.matchMedia = matchMedia
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -154,7 +154,7 @@ test('detail destinations can return a personal task to the Inbox', async ({ adm
     expect(await screen.findByText('Latest: Task fields changed')).toBeInTheDocument()
     await waitFor(async () => expect(await admin.get('/api/user_settings/tasker.preferences')).toEqual({ settings: { mode: 'compact' } }))
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -189,12 +189,12 @@ test('updating one saved view preserves its differently scoped neighbour', async
     expect(await admin.get('/api/user_settings/tasker.saved-views')).toEqual({ settings: { views: [{ ...updated, name: 'Nineteen cartons' }, neighbour] } })
     await user.click(screen.getByRole('button', { name: /Nineteen cartons/ }))
     await user.selectOptions(screen.getByRole('combobox', { name: 'Task view' }), '')
-    await waitFor(() => expect(location.hash).toBe(''))
+    await waitFor(() => expect(location.pathname).toBe('/tasker/views'))
     expect(await screen.findByRole('heading', { name: 'Views' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Private errands/ })).toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'Task view' })).not.toBeInTheDocument()
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -216,7 +216,7 @@ test('a history refresh reports a revoked session without discarding the open ta
     expect(details.getByRole('heading', { name: 'Keep inspection context' })).toBeInTheDocument()
     expect(details.getByRole('textbox', { name: 'Your update' })).toBeInTheDocument()
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -283,14 +283,14 @@ test('Escape cannot dismiss a task draft while its real save response is pending
     await user.keyboard('{Escape}')
     expect(title).toBeDisabled()
     expect(title).toHaveValue('Saved shelf check')
-    expect(location.hash).toBe(`#task=${task.row_id}`)
+    expect(location.pathname).toMatch(new RegExp(`/tasks/${task.row_id}$`))
     release()
     await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Task title' })).not.toBeInTheDocument())
     expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ task_title: 'Saved shelf check' })
   } finally {
     release()
     globalThis.fetch = bridgedFetch
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -355,7 +355,7 @@ test('a keep-my-correction import decision appears as a history event without a 
     expect(await screen.findByText('Task updated')).toBeInTheDocument()
     expect(screen.getByText('Corrected by inspector')).toBeInTheDocument()
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -510,7 +510,7 @@ test('an ended session refuses edits and restores private preferences without lo
   } finally {
     release()
     globalThis.fetch = bridgedFetch
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -725,7 +725,7 @@ test('projects_landing_flow: the directory opens a project and keeps its context
     expect(await screen.findByRole('complementary', { name: 'Task details' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Warehouse review' })).toBeInTheDocument()
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -809,7 +809,7 @@ test('find_and_reuse_task_view: compound project criteria stay visible and save 
       name: 'Urgent open stock work',
       scope: { kind: 'project', projectId: stockProject.row_id },
     })
-    expect(location.hash).toBe(`#view=${stored.settings.views[0].id}`)
+    expect(location.pathname).toBe(`/tasker/views/${stored.settings.views[0].id}`)
     expect(await member.get('/api/user_settings/tasker.saved-views')).toEqual({ settings: null })
     expect(await admin.get(`/api/table/tasker.task/${matching.row_id}`)).toEqual(taskBefore)
 
@@ -853,7 +853,7 @@ test('find_and_reuse_task_view: compound project criteria stay visible and save 
     }))
     expect(await admin.get(`/api/table/tasker.task/${matching.row_id}`)).toEqual(taskBefore)
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -882,7 +882,7 @@ test('saved view names reject case-insensitive collisions on creation and rename
     expect(await screen.findByRole('alert')).toHaveTextContent('A saved view named “SECOND VIEW” already exists')
     expect(await admin.get('/api/user_settings/tasker.saved-views')).toEqual({ settings: { views } })
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1090,7 +1090,7 @@ test('project_coordination_flow: rename, private tabs, and Together retain their
     expect(screen.getByText('Reconcile receiving variance')).toBeInTheDocument()
     expect(screen.queryByText('Archive finished checklist')).not.toBeInTheDocument()
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1135,7 +1135,7 @@ test('project_rename_conflict: a refreshed project cannot rebase an unsaved rena
       project_name: 'Agreed name',
     })
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1166,7 +1166,7 @@ test('project_rename_navigation: switching projects discards the previous rename
     expect(await screen.findByRole('heading', { name: 'First project' })).toBeInTheDocument()
     expect(await admin.get(`/api/table/tasker.project/${first.row_id}`)).toMatchObject({ project_name: 'First project' })
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1244,7 +1244,7 @@ test('take_membership: Take persists responsibility into My Work, not the Person
     expect(await screen.findByRole('link', { name: 'Take membership probe' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /^Personal tasks/ }))
     expect(screen.queryByRole('link', { name: 'Take membership probe' })).not.toBeInTheDocument()
-  } finally { location.hash = ''; await uninstallApp(APP).catch(() => {}) }
+  } finally { window.history.replaceState(null, '', '/'); await uninstallApp(APP).catch(() => {}) }
 })
 
 committedTest('task_correction_flow: save and cancel correct the title and permit an empty description', async ({ admin }) => {
@@ -1288,7 +1288,7 @@ committedTest('task_correction_flow: save and cancel correct the title and permi
     await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Description' })).not.toBeInTheDocument())
     expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ task_title: 'Correct warehouse', description: 'Check 47 receiving bins' })
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1314,7 +1314,7 @@ test('task_correction_conflict: a background refresh cannot rebase an unsaved dr
     expect(screen.getByRole('textbox', { name: 'Task title' })).toHaveValue('Concurrent task draft')
     expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ task_title: 'Concurrent task', description: 'Another editor' })
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1352,7 +1352,7 @@ test('task_detail_flow: one task switches among three detail modes with comments
     expect(screen.getByText('Open Inspector to edit or join the discussion.')).toBeInTheDocument()
     await waitFor(async () => expect(await admin.get('/api/user_settings/tasker.preferences')).toEqual({ settings: { mode: 'compact' } }))
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1385,7 +1385,7 @@ committedTest('switching side panel → full page → summary keeps the same tas
 
     // A reload: a fresh page with nothing cached, and no task open.
     first.unmount()
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     renderTasker(admin)
     await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
     await user.click(await screen.findByRole('link', { name: 'Order more hangers' }))
@@ -1395,7 +1395,7 @@ committedTest('switching side panel → full page → summary keeps the same tas
     expect(screen.queryByRole('complementary', { name: 'Task details' })).not.toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Focused task details' })).not.toBeInTheDocument()
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1433,7 +1433,7 @@ test('a comment and a change made in the task details each show when they were m
     expect(comment).toHaveTextContent(/commented · .*\d{1,2}:\d{2}/)
     expect(change).toHaveTextContent(/edited · .*\d{1,2}:\d{2}/)
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1449,7 +1449,7 @@ test('a comment and a change made in the task details each show the name of the 
     expect(comment).toHaveTextContent('Rani Storekeeper commented')
     expect(change).toHaveTextContent('Rani Storekeeper edited')
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1482,7 +1482,7 @@ test('task details do not carry unsaved text into another task', async ({ admin 
     expect(screen.queryByRole('textbox', { name: 'Description' })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Your update' })).toHaveValue('')
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -1538,7 +1538,7 @@ describe('What the Inbox holds and where a task lives', () => {
       expect(await screen.findByRole('heading', { name: 'Warehouse review' })).toBeInTheDocument()
       expect(await screen.findByText('Order packing tape')).toBeInTheDocument()
     } finally {
-      location.hash = ''
+      window.history.replaceState(null, '', '/')
       await uninstallApp(APP).catch(() => {})
     }
   })
@@ -1607,14 +1607,14 @@ describe('Saved views stay within their list', () => {
         id: 'stock-urgent', name: 'Urgent stock work', scope: { kind: 'project', projectId: stock.row_id },
         setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: ['urgent'], projects: [] } },
       }] })
-      location.hash = '#view=stock-urgent'
+      window.history.replaceState(null, '', '/tasker/views/stock-urgent')
       renderTasker(admin)
 
       expect(await screen.findByRole('heading', { name: 'Urgent stock work' })).toBeInTheDocument()
       expect(await screen.findByText('Recount 37 urgent cartons')).toBeInTheDocument()
       expect(screen.queryByText('Urgent signage for opening')).not.toBeInTheDocument()
     } finally {
-      location.hash = ''
+      window.history.replaceState(null, '', '/')
       await uninstallApp(APP).catch(() => {})
     }
   })
@@ -1651,36 +1651,96 @@ describe('Saved views stay within their list', () => {
       expect(await screen.findByRole('heading', { name: 'Pop-up store work' })).toBeInTheDocument()
       expect(screen.queryByText('Hang 11 shelf labels')).not.toBeInTheDocument()
     } finally {
-      location.hash = ''
+      window.history.replaceState(null, '', '/')
       await uninstallApp(APP).catch(() => {})
     }
   })
 })
 
 describe('Task details keep your place', () => {
-  // Moved from the deleted e2e/runtime-host-shell.spec.ts: under the shared
-  // bar Tasker owns its deep address; opening and closing a task changes only
-  // its #task= hash, never the path or query before it.
-  test('at a deep app address, opening and closing a task changes only the hash', async ({ admin }) => {
+  // #1378 (was e2e/runtime-host-shell.spec.ts): the address follows what is
+  // open, and the query keys Tasker does not own (the shared bar's) stay.
+  test('opening and closing a task moves the address and keeps the bar’s query', async ({ admin }) => {
     await install()
-    const deep = '/tasker/review/37?filter=a%26b&owner=me'
+    const query = '?filter=a%26b&owner=me'
     try {
       const task = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Host shell deep-link proof' } })
-      window.history.replaceState(null, '', deep)
+      window.history.replaceState(null, '', `/tasker/${query}`)
       renderTasker(admin)
       const user = userEvent.setup()
       await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+      expect(`${location.pathname}${location.search}`).toBe(`/tasker/inbox${query}`)
       const link = await screen.findByRole('link', { name: 'Host shell deep-link proof' })
-      expect(link).toHaveAttribute('href', `${deep}#task=${task.row_id}`)
+      expect(link).toHaveAttribute('href', `/tasker/inbox/tasks/${task.row_id}${query}`)
       await user.click(link)
-      await waitFor(() => expect(`${location.pathname}${location.search}${location.hash}`).toBe(`${deep}#task=${task.row_id}`))
+      await waitFor(() => expect(`${location.pathname}${location.search}`).toBe(`/tasker/inbox/tasks/${task.row_id}${query}`))
       const details = await screen.findByRole('complementary', { name: 'Task details' })
       const close = within(details).getByRole('link', { name: 'Close' })
-      expect(close).toHaveAttribute('href', `${deep}#`)
+      expect(close).toHaveAttribute('href', `/tasker/inbox${query}`)
       await user.click(close)
       await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Task details' })).not.toBeInTheDocument())
-      expect(`${location.pathname}${location.search}`).toBe(deep)
-      expect(location.hash).toBe('')
+      expect(`${location.pathname}${location.search}`).toBe(`/tasker/inbox${query}`)
+    } finally {
+      window.history.replaceState(null, '', '/')
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  // #1378: the owner copies the address of a subtask in a project and it reopens there.
+  test('a subtask’s address names its project and parent, and reopens the same subtask', async ({ admin }) => {
+    await install()
+    try {
+      const project = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Shelf reset' } })
+      const parent = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Reset aisle 4', project: project.row_id } })
+      const child = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Move the cereal bay', parent_task: parent.row_id } })
+      window.history.replaceState(null, '', '/tasker/')
+      const first = renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: 'Shelf reset' }, { timeout: 5000 }))
+      expect(location.pathname).toBe(`/tasker/projects/${project.row_id}`)
+      await user.click(await screen.findByRole('link', { name: 'Reset aisle 4' }))
+      expect(location.pathname).toBe(`/tasker/projects/${project.row_id}/tasks/${parent.row_id}`)
+      await user.click(await screen.findByRole('button', { name: 'Move the cereal bay' }))
+      const subtask = `/tasker/projects/${project.row_id}/tasks/${parent.row_id}/subtasks/${child.row_id}`
+      expect(location.pathname).toBe(subtask)
+      expect(await screen.findByRole('heading', { name: 'Move the cereal bay' })).toBeInTheDocument()
+
+      // Pasted into a new tab: the same project, with the same subtask open.
+      first.unmount()
+      window.history.replaceState(null, '', subtask)
+      const second = renderTasker(admin)
+      const details = await screen.findByRole('complementary', { name: 'Task details' })
+      expect(await within(details).findByRole('heading', { name: 'Move the cereal bay' }, { timeout: 8000 })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'Shelf reset' })).toBeInTheDocument()
+      expect(within(details).getByRole('link', { name: 'Open parent task' })).toHaveAttribute('href', `/tasker/projects/${project.row_id}/tasks/${parent.row_id}`)
+
+      // The subtask's own id alone moves under its parent.
+      second.unmount()
+      window.history.replaceState(null, '', `/tasker/tasks/${child.row_id}`)
+      renderTasker(admin)
+      await waitFor(() => expect(location.pathname).toBe(`/tasker/tasks/${parent.row_id}/subtasks/${child.row_id}`), { timeout: 8000 })
+    } finally {
+      window.history.replaceState(null, '', '/')
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('Back returns to the page a task was opened from', async ({ admin }) => {
+    await install()
+    try {
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Back button proof' } })
+      window.history.replaceState(null, '', '/tasker/')
+      renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: /^Inbox/ }))
+      await user.click(await screen.findByRole('link', { name: 'Back button proof' }))
+      await screen.findByRole('complementary', { name: 'Task details' })
+      act(() => {
+        window.history.back()
+      })
+      await waitFor(() => expect(location.pathname).toBe('/tasker/inbox'))
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Task details' })).not.toBeInTheDocument())
+      expect(screen.getByRole('heading', { name: 'Inbox' })).toBeInTheDocument()
     } finally {
       window.history.replaceState(null, '', '/')
       await uninstallApp(APP).catch(() => {})
@@ -1703,7 +1763,7 @@ describe('Task details keep your place', () => {
       expect(screen.getByRole('heading', { name: 'Warehouse review' })).toBeInTheDocument()
       expect(screen.getByRole('link', { name: 'Count closing stock' })).toBeInTheDocument()
     } finally {
-      location.hash = ''
+      window.history.replaceState(null, '', '/')
       await uninstallApp(APP).catch(() => {})
     }
   })
@@ -1825,7 +1885,7 @@ test('task details manage subtasks without automatically finishing the parent', 
     await user.click(child)
     expect(await screen.findByRole('heading', { name: 'Collect receiving figures' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Your update' })).toBeInTheDocument()
-  } finally { location.hash = ''; await uninstallApp(APP).catch(() => {}) }
+  } finally { window.history.replaceState(null, '', '/'); await uninstallApp(APP).catch(() => {}) }
 })
 
 test('a private question does not offer teammates as respondents', async ({ admin, createUser }) => {
@@ -1858,16 +1918,16 @@ test('parent completion is unavailable while a subtask remains open', async ({ a
 
 // #1080, from e2e/runtime-login-return.spec.ts: the address a sign-in returns
 // to opens Tasker with its selected task in the details.
-test('a #task= address opens Tasker with that task in its details', async ({ admin }) => {
+test('a task address opens Tasker with that task in its details', async ({ admin }) => {
   await install()
   const task = await admin.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Selected through sign-in' } })
-  location.hash = `#task=${task.row_id}`
+  window.history.replaceState(null, '', `/tasker/tasks/${task.row_id}`)
   try {
     renderTasker(admin)
     expect(await screen.findByRole('heading', { name: 'Selected through sign-in' }, { timeout: 8000 })).toBeInTheDocument()
     expect(screen.getByRole('complementary', { name: 'Task details' })).toBeInTheDocument()
   } finally {
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
   }
 })
 
@@ -1935,7 +1995,7 @@ describe('Tasker journeys moved down from the browser suite', () => {
       )).data
       expect(advanced.getAttribute('href')).toBe(`/featherbase/admin/table/tasker.task/row/${encodeURIComponent(captured.row_id)}`)
     } finally {
-      location.hash = ''
+      window.history.replaceState(null, '', '/')
       await uninstallApp(APP).catch(() => {})
     }
   })
@@ -1974,7 +2034,7 @@ describe('Tasker journeys moved down from the browser suite', () => {
       await user.type(screen.getByRole('textbox', { name: 'View name' }), 'Open warehouse work')
       await user.click(screen.getByRole('button', { name: 'Save private view' }))
       await waitFor(() => expect(document.getElementById('views-heading')?.textContent).toBe('Open warehouse work'))
-      expect(location.hash).toMatch(/#view=/)
+      expect(location.pathname).toMatch(/^\/tasker\/views\/[^/]+$/)
 
       // A reload: the page starts again from the address and the stored views.
       first.unmount()
@@ -1982,7 +2042,7 @@ describe('Tasker journeys moved down from the browser suite', () => {
       await waitFor(() => expect(document.getElementById('views-heading')?.textContent).toBe('Open warehouse work'), { timeout: 8000 })
       expect(await screen.findByText('Compare September closing stock')).toBeInTheDocument()
     } finally {
-      location.hash = ''
+      window.history.replaceState(null, '', '/')
       await uninstallApp(APP).catch(() => {})
     }
   })
@@ -2102,7 +2162,7 @@ describe('Tasker journeys moved down from the browser suite', () => {
       expect(saved.settings.views[0]).toMatchObject({ name: 'Offline retained private view', scope: { kind: 'inbox' } })
     } finally {
       online()
-      location.hash = ''
+      window.history.replaceState(null, '', '/')
       await uninstallApp(APP).catch(() => {})
     }
   })
@@ -2146,7 +2206,7 @@ describe('Tasker journeys moved down from the browser suite', () => {
       expect(projects.data).toEqual([{ project_name: 'Offline creation retained' }])
     } finally {
       online()
-      location.hash = ''
+      window.history.replaceState(null, '', '/')
       await uninstallApp(APP).catch(() => {})
     }
   })
@@ -2183,7 +2243,7 @@ describe('Tasker journeys moved down from the browser suite', () => {
         task_title: 'Keyboard cancellation count', task_state: 'Not started', project: null,
       })
     } finally {
-      location.hash = ''
+      window.history.replaceState(null, '', '/')
       await uninstallApp(APP).catch(() => {})
     }
   })

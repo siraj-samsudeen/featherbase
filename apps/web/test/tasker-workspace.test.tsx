@@ -202,7 +202,7 @@ test('a task link can be retried once its creator deliberately shares the work',
   const teammate = taskerClient(await createUser({ roles: ['Tasker Member'] }))
   const task = await owner.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Shared after the link arrived' } })
   setSession(teammate.token!, { row_id: teammate.user!, email: null, full_name: null })
-  location.hash = `#task=${task.row_id}`
+  window.history.replaceState(null, '', `/tasker/tasks/${task.row_id}`)
   const { TaskManagementPage } = await import('../../../example-apps/tasker/src/TaskManagement')
   render(<QueryClientProvider client={new QueryClient(clientOptions)}><TaskManagementPage /></QueryClientProvider>)
   try {
@@ -212,7 +212,7 @@ test('a task link can be retried once its creator deliberately shares the work',
     await owner.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, updated_at: task.updated_at, project: project.row_id } })
     await userEvent.click(retry)
     expect(await screen.findByRole('heading', { name: 'Shared after the link arrived' })).toBeInTheDocument()
-  } finally { location.hash = '' }
+  } finally { window.history.replaceState(null, '', '/') }
 })
 
 test('subtasks do not expose an independent recurrence editor', () => {

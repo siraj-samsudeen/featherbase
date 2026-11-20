@@ -9,9 +9,9 @@ import { SUBMITTED } from './verification'
 import { TaskStoreAndDue } from './Stores'
 import { localDay } from './storeWork'
 import type { Project, Task } from './taskRows'
-import { sameDocumentHash, savedViewHash } from './taskHash'
+import { linkTo, taskAddress, useAddress } from './taskAddress'
 
-export function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove, savedViewId }: {
+export function TaskList({ tasks, openChildren, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove }: {
   tasks: Task[]
   openChildren: Map<string, number>
   users: { row_id: string; full_name?: string | null }[]
@@ -22,9 +22,9 @@ export function TaskList({ tasks, openChildren, users, projects, focusSet, me, e
   onPatch: (task: Task, patch: Partial<Task> & { change_reason?: string }) => Promise<void>
   onFocus: (id: string) => Promise<void>
   onMove?: (id: string, offset: -1 | 1) => Promise<void>
-  savedViewId?: string
 }) {
   const queryClient = useQueryClient()
+  const address = useAddress()
   const today = localDay()
   const [explaining, setExplaining] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<string | null>(null)
@@ -65,7 +65,7 @@ export function TaskList({ tasks, openChildren, users, projects, focusSet, me, e
       <article key={task.row_id} className={`tasker-task-row ${task.is_done ? 'is-done' : ''}`}>
         <input aria-label={`Mark ${task.task_title} done`} type="checkbox" disabled={(!task.is_done && Boolean(openChildren.get(task.row_id))) || awaitsVerifier} title={awaitsVerifier ? 'Its verifier closes this task. Submit it from the task details.' : openChildren.get(task.row_id) ? 'Finish or cancel the subtasks first' : undefined} checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
         <div className="tasker-task-copy">
-          <a href={sameDocumentHash(savedViewId ? savedViewHash(savedViewId, task.row_id) : `#task=${encodeURIComponent(task.row_id)}`)} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
+          <a {...linkTo(taskAddress(address, task))} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
           <TaskStoreAndDue task={task} today={today} />
           <ClosureNotes task={task} nameOf={nameOf} />
           {cancelling === task.row_id && <ReasonForm label="Reason for cancelling" action="Cancel task" onClose={() => setCancelling(null)}

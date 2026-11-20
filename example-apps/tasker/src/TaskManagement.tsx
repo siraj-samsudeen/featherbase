@@ -19,7 +19,7 @@ import {
   type TaskViewSetup,
 } from './taskViews'
 import { TASK_FIELDS, type Project, type Task } from './taskRows'
-import { hashSavedViewId, hashTaskId, sameDocumentHash, savedViewHash } from './taskHash'
+import { go, linkTo, openTaskId, pageOf, taskAddress, useAddress, type Address } from './taskAddress'
 import { TaskerIcon, type TaskerIconName } from './TaskerIcon'
 import { Empty } from './Empty'
 import { TaskDetail, type DetailMode, type TaskComment } from './TaskDetail'
@@ -28,6 +28,9 @@ import { TaskViewToolbar } from './TaskViewToolbar'
 import { SavedViewDirectory, savedViewUnavailableReason, scopeLabel } from './SavedViewDirectory'
 
 type View = 'inbox' | 'work' | 'verify' | 'issues' | 'together' | 'stores' | 'projects' | 'personal' | 'views'
+
+// #1378: Projects opens a project as /projects/<project>; Views a saved view as /views/<view>.
+const pageFor = (view: View, item?: string): Address => ({ page: view, ...(item ? { item } : {}) })
 
 const FOCUS_SETTINGS = 'Task Management Focus'
 const PROJECT_SETTINGS = 'tasker.projects'
@@ -38,34 +41,23 @@ export function TaskManagementPage() {
   const queryClient = useQueryClient()
   const session = getSessionUser()
   const me = session?.row_id ?? ''
-  const [view, setView] = useState<View>(() => hashSavedViewId() ? 'views' : new URLSearchParams(location.hash.slice(1)).has('issue') ? 'issues' : 'work')
+  const address = useAddress()
+  const view: View = address.page === 'sla-rules' ? 'issues' : address.page
   const [capture, setCapture] = useState('')
   const [projectName, setProjectName] = useState('')
   const [projectTask, setProjectTask] = useState('')
-  const [selectedProject, setSelectedProject] = useState('')
+  const selectedProject = address.page === 'projects' ? address.item ?? '' : ''
   const personalOwner = me
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [creatingProject, setCreatingProject] = useState(false)
-  const [selectedTask, setSelectedTask] = useState(hashTaskId)
-  const [activeSavedViewId, setActiveSavedViewId] = useState(hashSavedViewId)
+  const selectedTask = openTaskId(address)
+  const activeSavedViewId = address.page === 'views' ? address.item ?? null : null
   const [taskViewSetup, setTaskViewSetup] = useState<TaskViewSetup>(emptyTaskViewSetup)
   const previousSurface = useRef('')
   const preferenceWrites = useRef(new Map<string, {
     saved: unknown; pending: number; tail: Promise<void>; uncertain: boolean
   }>())
-
-  useEffect(() => {
-    const change = () => {
-      setSelectedTask(hashTaskId())
-      const savedViewId = hashSavedViewId()
-      setActiveSavedViewId(savedViewId)
-      if (savedViewId) setView('views')
-      if (new URLSearchParams(location.hash.slice(1)).has('issue')) setView('issues')
-    }
-    window.addEventListener('hashchange', change)
-    return () => window.removeEventListener('hashchange', change)
-  }, [])
 
   const tasks = useQuery({
     queryKey: ['task-management', 'tasks'],
@@ -201,17 +193,12 @@ export function TaskManagementPage() {
 
   function openSavedView(savedView: SavedTaskView) {
     setTaskViewSetup(copySetup(savedView.setup))
-    setActiveSavedViewId(savedView.id)
-    setView('views')
-    location.hash = savedViewHash(savedView.id)
+    go(pageFor('views', savedView.id))
   }
 
   function leaveSavedView(nextView: View, projectId?: string) {
-    if (projectId !== undefined) setSelectedProject(projectId)
-    setActiveSavedViewId(null)
     setTaskViewSetup(emptyTaskViewSetup())
-    setView(nextView)
-    location.hash = ''
+    go(pageFor(nextView, projectId))
   }
 
   useEffect(() => {
@@ -240,9 +227,7 @@ export function TaskManagementPage() {
   }
 
   async function actionCompleted(projectId?: string) {
-    location.hash = ''
-    setSelectedTask(null)
-    if (projectId) { setSelectedProject(projectId); setView('projects') }
+    go(projectId ? pageFor('projects', projectId) : pageOf(address))
     await refresh()
   }
 
@@ -435,7 +420,7 @@ export function TaskManagementPage() {
         row: { project_name: name },
       })
       setProjectName('')
-      setSelectedProject(saved.row_id)
+      go(pageFor('projects', saved.row_id))
       await refresh()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create project')
@@ -490,9 +475,8 @@ export function TaskManagementPage() {
       currentScopeLabel={scopeLabel}
       onOpenSaved={openSavedView}
       onDefault={() => {
-        setActiveSavedViewId(null)
         setTaskViewSetup(emptyTaskViewSetup())
-        if (view === 'views') location.hash = ''
+        if (view === 'views') go(pageFor('views'))
       }}
       onCreate={createSavedView}
       onUpdate={updateSavedView}
@@ -565,7 +549,8 @@ export function TaskManagementPage() {
               try {
                 await createTask(title)
                 setCapture('')
-                setView('inbox')
+                // A capture shows in the Inbox; a task open beside it stays open.
+                go({ page: 'inbox', task: address.task, subtask: address.subtask })
               } catch { /* message is shown above */ }
             }}
           >
@@ -596,7 +581,7 @@ export function TaskManagementPage() {
       {view === 'work' && (
         <section aria-labelledby="work-heading">
           <SectionTitle id="work-heading" title="My Work" hint="Your private focus order, followed by work assigned to you" />
-          <Attention tasks={allTasks} onOpen={(id, question) => { void setDetailMode('inspector'); location.hash = `task=${encodeURIComponent(id)}&question=${encodeURIComponent(question)}` }} />
+          <Attention tasks={allTasks} onOpen={(id, question) => { void setDetailMode('inspector'); go(taskAddress(address, byId.get(id) ?? { row_id: id }, question)) }} />
           {toolbarFor(myWork, filteredMyWork, { kind: 'work' }, 'My Work', true)}
           <h3 className="mt-5 mb-3 font-semibold">My Focus</h3>
           {filteredMyWork.filter(task => focusSet.has(task.row_id)).length === 0 && <p className="text-ink-muted text-sm">Choose Focus on a task to keep it here.</p>}
@@ -609,7 +594,7 @@ export function TaskManagementPage() {
 
       {view === 'issues' && <IssuesPage me={me} people={people} nameOf={nameOf} onSaved={refresh} />}
 
-      {view === 'verify' && <ToVerifyPage tasks={toVerify} nameOf={nameOf} hrefFor={(id) => sameDocumentHash(`#task=${encodeURIComponent(id)}`)} />}
+      {view === 'verify' && <ToVerifyPage tasks={toVerify} nameOf={nameOf} linkFor={(id) => linkTo(taskAddress(address, byId.get(id) ?? { row_id: id }))} />}
 
       {view === 'together' && (
         <section aria-labelledby="together-heading">
@@ -673,7 +658,7 @@ export function TaskManagementPage() {
               </form>
               <div className="tasker-project-directory" aria-label="All projects">
                 {allProjects.map((project) => (
-                  <Button key={project.row_id} type="button" aria-label={`Open project ${project.project_name}`} onClick={() => setSelectedProject(project.row_id)} className="tasker-project-directory-item">
+                  <Button key={project.row_id} type="button" aria-label={`Open project ${project.project_name}`} onClick={() => go(pageFor('projects', project.row_id))} className="tasker-project-directory-item">
                     <span className="tasker-project-directory-icon" aria-hidden="true"><TaskerIcon name="projects" /></span>
                     <span>
                       <strong>{project.project_name}</strong>
@@ -725,11 +710,11 @@ export function TaskManagementPage() {
                 if (!rows.length) return null
                 return <div key={owner ?? 'unassigned'} className="mb-7">
                   <h3 className="mb-2 pointer-fine:text-sm font-semibold">{owner ? personName(people.find(person => person.row_id === owner)) : 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
-                  <TaskList openChildren={openChildren} tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
+                  <TaskList openChildren={openChildren} tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
                 </div>
               })}
             </> : filteredSavedViewTasks.length
-              ? <TaskList openChildren={openChildren} tasks={filteredSavedViewTasks} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
+              ? <TaskList openChildren={openChildren} tasks={filteredSavedViewTasks} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
               : null}
             {!filteredSavedViewTasks.length && <NoTaskMatches total={savedViewBaseTasks.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
           </> : <>

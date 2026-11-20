@@ -4,17 +4,13 @@ import { Button, Field, Select, inputClasses, fmtDateTime, StatusPill } from '@f
 import { api, getSessionUser } from './api'
 import { discussionKey, hasUnreadActivity, lastChanged, needsAttention, questionState, repliesTo, useDiscussions, useMembers, type Message } from './discussions'
 import { Markdown } from './Markdown'
+import { useAddress } from './taskAddress'
 
 const seenKey = ['task-management', 'discussion-seen']
 export function Discussion({ taskId, shared }: { taskId: string; shared: boolean }) {
   const me = getSessionUser()?.row_id ?? ''
-  const [target, setTarget] = useState(() => new URLSearchParams(location.hash.slice(1)).get('question'))
+  const target = useAddress().question ?? null
   const lastScrolled = useRef<string | null>(null)
-  useEffect(() => {
-    const changed = () => setTarget(new URLSearchParams(location.hash.slice(1)).get('question'))
-    window.addEventListener('hashchange', changed)
-    return () => window.removeEventListener('hashchange', changed)
-  }, [])
   const queryClient = useQueryClient()
   const messages = useDiscussions()
   const people = useMembers()

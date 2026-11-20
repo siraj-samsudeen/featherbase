@@ -238,7 +238,7 @@ export class TaskerWorld {
   async as(who: string) {
     const member = await this.member(who)
     cleanup()
-    location.hash = ''
+    window.history.replaceState(null, '', '/')
     setSession(member.token!, { row_id: member.user!, email: member.user!, full_name: null })
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TaskManagementPage /></QueryClientProvider>)
     this.viewer = who
@@ -281,8 +281,8 @@ export class TaskerPage {
 
   /** A task's details, opened by its address. */
   async openTask(id: string, title: string) {
-    location.hash = `task=${encodeURIComponent(id)}`
-    window.dispatchEvent(new HashChangeEvent('hashchange'))
+    window.history.pushState(null, '', `/tasker/tasks/${encodeURIComponent(id)}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
     const detail = await screen.findByRole('region', { name: 'Task detail content' })
     await within(detail).findByRole('heading', { name: title })
     await within(detail).findByRole('combobox', { name: 'Task state' })

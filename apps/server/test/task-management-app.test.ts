@@ -310,7 +310,7 @@ describe('shared team visibility', () => {
     await install()
     try {
       expect(await admin.get('/api/app_catalog')).toEqual([
-        { name: 'tasker', title: 'Tasker', href: '/tasker/', summary: 'Tasks and store work, with what is due', icon: 'checklist' },
+        { name: 'tasker', title: 'Tasker', href: '/tasker/', summary: 'Tasks and store work, with what is due', icon: 'checklist', recordPages: { 'tasker.task': '/tasker/tasks/{row}', 'tasker.project': '/tasker/projects/{row}' } },
       ])
       expect(await sql`select row_id from home_page where module = 'Tasker'`).toEqual([])
     } finally {

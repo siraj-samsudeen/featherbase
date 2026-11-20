@@ -17,7 +17,7 @@ import { SUBMITTED } from './verification'
 import { dueNote, useStores } from './Stores'
 import { calendarDay, dueMark, localDay } from './storeWork'
 import type { Project, Task } from './taskRows'
-import { hashSavedViewId, sameDocumentHash, savedViewHash } from './taskHash'
+import { go, linkTo, pageOf, taskAddress, useAddress } from './taskAddress'
 
 export type DetailMode = 'compact' | 'inspector' | 'focus'
 
@@ -48,10 +48,16 @@ export function TaskDetail({ id, mode, onMode, onSaved, people, projects, onComp
 }) {
   const queryClient = useQueryClient()
   const stores = useStores()
+  const address = useAddress()
   const task = useQuery({ queryKey: ['task-management', 'detail', id],
     queryFn: () => api.get<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`),
     retry: false,
   })
+  // #1378: a subtask opened by its own id alone moves under its parent's address.
+  const parentId = task.data?.row_id === id ? task.data.parent_task : undefined
+  useEffect(() => {
+    if (parentId && address.task === id && !address.subtask) go(taskAddress(address, { row_id: id, parent_task: parentId }), { replace: true })
+  }, [parentId, id, address])
   const parent = useQuery({ queryKey: ['task-management', 'parent', task.data?.parent_task],
     enabled: Boolean(task.data?.parent_task),
     queryFn: () => api.get<Task>(`/api/table/tasker.task/${encodeURIComponent(task.data!.parent_task!)}`),
@@ -99,7 +105,7 @@ export function TaskDetail({ id, mode, onMode, onSaved, people, projects, onComp
   }, [id])
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
-    if (!new URLSearchParams(location.hash.slice(1)).has('question'))
+    if (!address.question)
       detail.current?.querySelector<HTMLElement>('a, button')?.focus()
     return () => { if (previous?.isConnected) previous.focus() }
   }, [id, mode])
@@ -125,7 +131,7 @@ export function TaskDetail({ id, mode, onMode, onSaved, people, projects, onComp
   return <section ref={detail} className="tasker-detail" aria-label="Task detail content" onKeyDown={(event) => {
     if (event.key === 'Escape') {
       if (draft && !saving) cancelDraft()
-      else if (!saving) location.hash = hashSavedViewId() ? savedViewHash(hashSavedViewId()!) : ''
+      else if (!saving) go(pageOf(address))
     }
     if (event.key === 'Tab' && (mode === 'focus' || (mode === 'inspector' && window.matchMedia?.('(max-width: 1100px)').matches))) {
       const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('a[href], summary, button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')]
@@ -136,7 +142,7 @@ export function TaskDetail({ id, mode, onMode, onSaved, people, projects, onComp
     }
   }}>
     <div className="tasker-detail-toolbar">
-      <a href={sameDocumentHash(hashSavedViewId() ? savedViewHash(hashSavedViewId()!) : '#')} className={buttonClasses({ className: "" })} autoFocus>Close</a>
+      <a {...linkTo(pageOf(address))} className={buttonClasses({ className: "" })} autoFocus>Close</a>
       <div className="tasker-mode-switch" aria-label="Task detail view">
         {([['compact', 'Compact'], ['inspector', 'Inspector'], ['focus', 'Focus']] as [DetailMode, string][]).map(([value, label]) =>
           <Button key={value} type="button" aria-pressed={mode === value} onClick={() => void onMode(value)}>{label}</Button>)}
@@ -221,8 +227,8 @@ export function TaskDetail({ id, mode, onMode, onSaved, people, projects, onComp
         <Markdown>{task.data.description || 'No description yet. Add context when it helps.'}</Markdown>
       </div>}
 
-      {task.data.parent_task && <a className="text-action underline" href={sameDocumentHash(`#task=${encodeURIComponent(task.data.parent_task)}`)}>Open parent task</a>}
-      {!task.data.parent_task && <Subtasks taskId={id} shared={task.data.shared} creator={task.data.created_by} parentState={task.data.task_state} onOpen={childId => { location.hash = `task=${encodeURIComponent(childId)}` }} />}
+      {task.data.parent_task && <a className="text-action underline" {...linkTo({ ...pageOf(address), task: task.data.parent_task })}>Open parent task</a>}
+      {!task.data.parent_task && <Subtasks taskId={id} shared={task.data.shared} creator={task.data.created_by} parentState={task.data.task_state} onOpen={childId => go(taskAddress(address, { row_id: childId, parent_task: id }))} />}
       {!task.data.parent_task && <Recurrence task={task.data} onSaved={onSaved} />}
       <p className="mt-4 text-sm text-ink-muted">{effectiveShared ? 'Shared with your team' : 'Only you can see this task'}</p>
       <Discussion key={id} taskId={id} shared={effectiveShared} />

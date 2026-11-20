@@ -129,7 +129,7 @@ test('waiting for a vendor needs the store manager’s approval, then closure go
   await user.click(within(detail).getByRole('button', { name: 'Ask to pause' }))
   await waitFor(async () => expect(await read(suresh, issue.row_id)).toMatchObject({ pause_requested: true, paused: false }))
   expect(await within(detail).findByText(/Pause asked for · the clock runs until the store manager approves/)).toBeInTheDocument()
-  owner.unmount(); location.hash = ''
+  owner.unmount(); window.history.replaceState(null, '', '/')
 
   const manager = renderTasker(meena)
   user = userEvent.setup()
@@ -148,7 +148,7 @@ test('waiting for a vendor needs the store manager’s approval, then closure go
   const acknowledged = await read(meena, issue.row_id)
   await suresh.post('/api/save_row', { table: ISSUE, row: { row_id: issue.row_id, updated_at: acknowledged.updated_at, issue_state: 'Submitted for verification', evidence_note: 'Compressor relay replaced' } })
   // Meena opens Tasker again to see the submission.
-  manager.unmount(); location.hash = ''
+  manager.unmount(); window.history.replaceState(null, '', '/')
   renderTasker(meena)
   await user.click(await screen.findByRole('button', { name: /^Issues/ }))
   await user.click(await within(await screen.findByRole('list', { name: 'Open issues' })).findByRole('link', { name: 'Dairy chiller 2 at 9°C' }))

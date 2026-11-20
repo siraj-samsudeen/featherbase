@@ -145,13 +145,13 @@ export function ProjectVerifier({ project, people, nameOf, onSaved }: {
 }
 
 /** Every submitted task waiting for this person's check, with what was done. */
-export function ToVerifyPage({ tasks, nameOf, hrefFor }: { tasks: VerifiableTask[]; nameOf: NameOf; hrefFor: (id: string) => string }) {
+export function ToVerifyPage({ tasks, nameOf, linkFor }: { tasks: VerifiableTask[]; nameOf: NameOf; linkFor: (id: string) => { href: string; onClick: (event: React.MouseEvent<HTMLAnchorElement>) => void } }) {
   return <section aria-labelledby="verify-heading">
     <div className="tasker-section-title"><h2 id="verify-heading">To verify</h2><p>Work others submitted for your check. Accept it to close it, or return it with a reason.</p></div>
     {!tasks.length && <p className="text-ink-muted">Nothing is waiting for your check.</p>}
     <ul className="tasker-verify-list">
       {tasks.map(task => <li key={task.row_id} className="tasker-verify-card">
-        <a href={hrefFor(task.row_id)}>{task.task_title}</a>
+        <a {...linkFor(task.row_id)}>{task.task_title}</a>
         <Evidence task={task} nameOf={nameOf} />
         {Number(task.return_count ?? 0) > 0 && <p className="tasker-evidence-by">Returned {task.return_count} {task.return_count === 1 ? 'time' : 'times'} before</p>}
       </li>)}

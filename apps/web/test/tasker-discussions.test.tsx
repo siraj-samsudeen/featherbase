@@ -56,9 +56,9 @@ test('Attention opens and focuses the exact question inside the task inspector',
     await userEvent.click(await screen.findByRole('button', { name: 'Which entrance?' }))
     await screen.findByRole('complementary', { name: 'Task details' })
     await waitFor(() => expect(document.getElementById(`question-${question.row_id}`)).toHaveFocus())
-    expect(new URLSearchParams(location.hash.slice(1)).get('question')).toBe(question.row_id)
+    expect(new URLSearchParams(location.search).get('question')).toBe(question.row_id)
     await userEvent.click(screen.getByRole('link', { name: 'Close' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Who will unload?' }))
     await waitFor(() => expect(document.getElementById(`question-${other.row_id}`)).toHaveFocus())
-  } finally { location.hash = '' }
+  } finally { window.history.replaceState(null, '', '/') }
 })
