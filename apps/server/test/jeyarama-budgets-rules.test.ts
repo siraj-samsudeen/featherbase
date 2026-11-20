@@ -38,15 +38,14 @@ test('a budget amount: on a draft P&L version, a published line that is not a su
 })
 const approver = async (createUser: Create) => budgetsClient(await createUser({ roles: EDITOR }))
 
-test('a version: its months are in order, and only Approve approves it', async ({ createUser }) => {
+test('a version: its months are in order, and approving it is stamped by the server', async ({ createUser }) => {
   const { save, made, act, get, editor, viewer } = await setup(createUser)
   await expect(save('budget_version', { version_name: 'Bad', budget_kind: 'P&L', fiscal_year: 'FY27', covers_from: '2026-10-01', covers_to: '2026-04-01' })).rejects.toThrow('Covers From is after Covers To')
-  await expect(save('budget_version', { row_id: made.version.row_id, updated_at: made.version.updated_at, version_state: 'Approved' })).rejects.toThrow('Approve a version with Approve, so who and when are recorded')
   await expect(act(viewer, 'approve_version', { version: made.version.row_id })).rejects.toMatchObject({ status: 403 })
   await act(editor, 'approve_version', { version: made.version.row_id })
   const approved = await get('budget_version', made.version.row_id)
   expect(approved).toMatchObject({ version_state: 'Approved', approved_by: editor.user })
-  expect(String(approved.approved_on).slice(0, 10)).toBe(new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10))
+  expect(Date.now() - Date.parse(String(approved.approved_at))).toBeLessThan(60_000)
   await expect(save('budget_version', { row_id: approved.row_id, updated_at: approved.updated_at, covers_to: '2026-12-01' })).rejects.toThrow('FY27 Original is approved: only its note can change, or withdraw it')
   expect((await save('budget_version', { row_id: approved.row_id, updated_at: approved.updated_at, note: 'Board, April' })).note).toBe('Board, April')
 })
@@ -64,17 +63,18 @@ test('pasted budget amounts are added, and pasted again they change the same row
   expect(kept.map(row => [row.plant, Number(row.amount)]).sort()).toEqual([['9003', 1900000], ['9004', 950000]])
 })
 
-test('revising a version makes a draft for the chosen months with the old figures in it', async ({ createUser }) => {
-  const { made, act, rows, get, editor } = await setup(createUser)
-  await act(editor, 'paste_budget', { version: made.version.row_id, values: [
-    { plant: '9003', pl_line: made.manpower.row_id, budget_month: '2026-09-01', amount: 1 },
-    { plant: '9003', pl_line: made.manpower.row_id, budget_month: '2026-12-01', amount: 3 },
-  ] })
-  const { version } = await act<{ version: string }>(editor, 'revise_version', { version: made.version.row_id, version_name: 'FY27 Revision 1', covers_from: '2026-10-01', covers_to: '2027-03-01' })
+test('revising an approved version makes a draft for the chosen months that holds only what it changes', async ({ createUser }) => {
+  const { made, act, rows, get, save, editor } = await setup(createUser)
+  const revise = (more: Record<string, unknown> = {}) => act<{ version: string }>(editor, 'revise_version', { version: made.version.row_id, version_name: 'FY27 Revision 1', covers_from: '2026-10-01', covers_to: '2027-03-01', ...more })
+  await expect(revise()).rejects.toThrow('FY27 Original is a draft: approve it first, then revise it')
+  await act(editor, 'approve_version', { version: made.version.row_id })
+  const { version } = await revise()
   expect(await get('budget_version', version)).toMatchObject({ version_name: 'FY27 Revision 1', version_state: 'Draft', based_on: made.version.row_id, budget_kind: 'P&L', operating_region: 'North', fiscal_year: 'FY27' })
-  const copied = await rows('pl_budget', [['budget_version', '=', version]])
-  expect(copied.map(row => [String(row.budget_month).slice(0, 7), Number(row.amount)]).sort()).toEqual([['2026-10', 1840000], ['2026-12', 3]])
-  await expect(act(editor, 'revise_version', { version: made.version.row_id, version_name: 'X', covers_from: '2026-01-01', covers_to: '2026-06-01' })).rejects.toThrow("A revision covers months inside the version it revises (Apr'26 to Mar'27)")
+  // Nothing is copied: the revision reads the approved figures until one is changed in it.
+  expect(await rows('pl_budget', [['budget_version', '=', version]])).toEqual([])
+  await expect(revise()).rejects.toThrow('There is already a P&L version called FY27 Revision 1: give this one another name')
+  await expect(revise({ version_name: 'X', covers_from: '2026-01-01', covers_to: '2026-06-01' })).rejects.toThrow("A revision covers months inside the version it revises (Apr'26 to Mar'27)")
+  await expect(save('budget_version', { version_name: 'FY27 Original', budget_kind: 'P&L', fiscal_year: 'FY27', covers_from: '2026-04-01', covers_to: '2027-03-01' })).rejects.toThrow('There is already a P&L version called FY27 Original')
 })
 
 test('an adjustment takes its line from its account and starts with all of it remaining', async ({ createUser }) => {
@@ -109,6 +109,14 @@ test('matching an adjustment to an SAP document leaves what remains, and settles
   line = await get('close_adjustment', id)
   expect([line.adjustment_state, line.matched_sap_document, Number(line.matched_amount), Number(line.remaining_amount)]).toEqual(['Posted In SAP', '1900019201, 1900019388', 42500, 0])
   await expect(act(editor, 'match_adjustment', { adjustment: id, document: '1', amount: 1 })).rejects.toThrow('Nothing remains to match on this adjustment')
+})
+
+test('a match settles no more than what remains, and in the same direction', async ({ createUser }) => {
+  const { made, act, get, editor } = await setup(createUser)
+  const id = made.adjustment.row_id
+  await expect(act(editor, 'match_adjustment', { adjustment: id, document: '1900019201', amount: 999999 })).rejects.toThrow('Only ₹42,500.00 remains on this adjustment: a match settles that or less')
+  await expect(act(editor, 'match_adjustment', { adjustment: id, document: '1900019201', amount: -500 })).rejects.toThrow('Only ₹42,500.00 remains on this adjustment: a match settles that or less')
+  expect(Number((await get('close_adjustment', id)).remaining_amount)).toBe(42500)
 })
 
 test('several adjustments change state, owner or type together', async ({ createUser }) => {
@@ -186,4 +194,49 @@ test('actuals come from the warehouse through the declared dataset, and say so w
   invalidateSources()
   expect(await read({ months: ['2026-10-01'] })).toEqual({ connected: true, rows: [{ company_code: '9000', close_month: '2026-10-01', close_version: 1, plant_code: '9003', line_key: 'salaries', as_posted: 1700000, as_published: 1742500 }] })
   await expect(read({ months: [] })).rejects.toThrow('Say which months')
+})
+
+test('who approved or published, and when, is the server\'s word, whatever a save says', async ({ createUser }) => {
+  const { made, save, get, editor } = await setup(createUser)
+  await save('budget_version', { row_id: made.version.row_id, updated_at: made.version.updated_at, version_state: 'Approved', approved_by: 'someone-else', approved_at: '2020-01-01T00:00:00.000Z' })
+  const approved = await get('budget_version', made.version.row_id)
+  expect(approved.approved_by).toBe(editor.user)
+  expect(Date.now() - Date.parse(String(approved.approved_at))).toBeLessThan(60_000)
+  await save('month_close', { row_id: made.close.row_id, updated_at: made.close.updated_at, close_state: 'Published', published_by: 'someone-else' })
+  expect((await get('month_close', made.close.row_id)).published_by).toBe(editor.user)
+})
+
+test('a published close is not reopened or rewritten by a plain save', async ({ createUser }) => {
+  const { made, save, act, get, editor } = await setup(createUser)
+  await act(editor, 'publish_close', { close: made.close.row_id })
+  const close = await get('month_close', made.close.row_id)
+  const change = (row: Record<string, unknown>) => save('month_close', { row_id: close.row_id, updated_at: close.updated_at, ...row })
+  await expect(change({ close_state: 'Open' })).rejects.toThrow("Oct'26 version 1 is published: it cannot be opened again; make a new version")
+  await expect(change({ downloaded_at: '2026-11-20T00:00:00.000Z' })).rejects.toThrow("Oct'26 version 1 is published: only its note can change")
+  await expect(change({ close_month: '2026-09-01' })).rejects.toThrow('only its note can change')
+  expect((await change({ note: 'Sent to the board' })).note).toBe('Sent to the board')
+})
+
+test('a figure or an adjustment stays with the version or close it was entered in', async ({ createUser }) => {
+  const { made, save, act, get, editor } = await setup(createUser)
+  const draft = await save('budget_version', { version_name: 'Another Draft', budget_kind: 'P&L', fiscal_year: 'FY27', covers_from: '2026-04-01', covers_to: '2027-03-01' })
+  await act(editor, 'approve_version', { version: made.version.row_id })
+  await expect(save('pl_budget', { row_id: made.budget.row_id, updated_at: made.budget.updated_at, budget_version: draft.row_id, amount: 1 })).rejects.toThrow('A figure stays in the version it was entered in')
+  await act(editor, 'publish_close', { close: made.close.row_id })
+  const { close } = await act<{ close: string }>(editor, 'new_close_version', { close: made.close.row_id, downloaded_at: '2026-11-12T06:30:00.000Z' })
+  const line = await get('close_adjustment', made.adjustment.row_id)
+  await expect(save('close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, month_close: close, amount: 1 })).rejects.toThrow('An adjustment stays with the close that first carried it')
+})
+
+test('nobody deletes a version, a figure, a close or an adjustment', async ({ createUser }) => {
+  const { made, editor } = await setup(createUser)
+  for (const [table, row] of [['pl_budget', made.budget], ['close_adjustment', made.adjustment], ['month_close', made.close], ['budget_version', made.version]] as const)
+    await expect(editor.fetch(`/api/table/budgets.${table}/${row.row_id}`, { method: 'DELETE' }).then(r => r.status), table).resolves.toBe(403)
+})
+
+test('an account with no P&L line is not used for an adjustment, even when a line is named', async ({ createUser }) => {
+  const { made, save } = await setup(createUser)
+  await save('gl_account', { account_code: '49990002', account_name: 'Not Classified Yet', statement: 'P&L' })
+  await expect(save('close_adjustment', { month_close: made.close.row_id, plant: '9003', gl_account: '49990002', pl_line: made.salaries.row_id, amount: 5, adjustment_type: 'Provision', reason: 'x' }))
+    .rejects.toThrow('Not Classified Yet has no P&L line yet: classify it first')
 })

@@ -4,6 +4,7 @@ import { describe, expect } from 'vitest'
 import { test } from '../pg-test'
 import { scenarioFor } from '../scenario'
 import { expectRefused } from '../fixtures'
+import { figuresOf } from '../../../../client-apps/jeyarama/budgets/src/plRules'
 import { approve, budgetFor, figures, manpowerInOctober, revision, start, type Row, type World } from './budgets-scenes'
 
 const scenario = scenarioFor(test, 'budget-versions')
@@ -48,7 +49,11 @@ describe('budget-versions', () => {
       made = (await w.act<{ version: string }>(w.editor, 'revise_version', { version: w.made.version.row_id, version_name: 'FY27 Revision 1', covers_from: '2026-10-01', covers_to: '2027-03-01' })).version
     })
     await step('FY27 Revision 1 is a draft', async () => expect(await w.get('budget_version', made)).toMatchObject({ version_name: 'FY27 Revision 1', version_state: 'Draft' }))
-    await step("it holds 18,40,000 for Hilltop's Manpower Cost in October", async () => expect(await manpowerInOctober(w, made)).toEqual([1840000]))
+    await step("it shows 18,40,000 for Hilltop's Manpower Cost in October, held on FY27 Original", async () => {
+      const versions = (await w.rows('budget_version')).map(v => ({ row_id: v.row_id, based_on: (v.based_on as string) ?? null, covers_from: String(v.covers_from).slice(0, 10), covers_to: String(v.covers_to).slice(0, 10) }))
+      const cells = (await w.rows('pl_budget')).map(c => ({ budget_version: String(c.budget_version), plant: String(c.plant), budget_month: String(c.budget_month).slice(0, 10), pl_line: String(c.pl_line), amount: Number(c.amount) }))
+      expect(figuresOf(versions, cells, made).get(`9003|2026-10-01|${w.made.manpower.row_id}`)).toEqual({ amount: 1840000, from: w.made.version.row_id })
+    })
   })
 
   scenario('One bad figure keeps the whole block out', async ({ createUser }, step) => {

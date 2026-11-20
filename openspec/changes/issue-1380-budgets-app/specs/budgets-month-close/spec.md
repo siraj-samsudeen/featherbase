@@ -36,8 +36,8 @@ And version 1 is marked as replaced
 ### Requirement: An adjustment is followed until SAP has posted it
 
 Each adjustment SHALL show what remains of it. Matching it to an SAP document SHALL reduce what
-remains, and it SHALL be settled when nothing remains. Matching SHALL stay possible after the
-close is published.
+remains, and it SHALL be settled when nothing remains. A match SHALL settle no more than what
+remains. Matching SHALL stay possible after the close is published.
 
 #### Scenario: A provision is matched in two parts
 

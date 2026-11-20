@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { budgetInForce, difference, fiscalMonths, monthsBetween, remaining, statement, statementRows, versionInForce, type Line, type Version } from './plRules'
+import { budgetInForce, difference, figuresOf, fiscalMonths, monthsBetween, remaining, statement, statementRows, versionInForce, type Line, type Version } from './plRules'
 
 const line = (row_id: string, line_order: number, section: Line['section'], line_kind: Line['line_kind'], sign: Line['sign'], more: Partial<Line> = {}): Line =>
   ({ row_id, line_name: row_id, level: 'Published', rolls_into: null, line_order, section, line_kind, sign, subtotal_rule: null, ...more })
@@ -52,17 +52,22 @@ describe('statement', () => {
 })
 
 describe('the budget in force', () => {
-  const version = (row_id: string, more: Partial<Version>): Version => ({ row_id, budget_kind: 'P&L', operating_region: 'North', covers_from: '2026-04-01', covers_to: '2027-03-01', version_state: 'Approved', approved_on: '2026-04-20', ...more })
+  const version = (row_id: string, more: Partial<Version>): Version => ({ row_id, budget_kind: 'P&L', operating_region: 'North', covers_from: '2026-04-01', covers_to: '2027-03-01', version_state: 'Approved', approved_at: '2026-04-20T05:00:00.000Z', ...more })
   const original = version('BV-001', {})
-  const revision = version('BV-002', { covers_from: '2026-10-01', approved_on: '2026-10-14' })
-  const draft = version('BV-003', { covers_from: '2026-10-01', version_state: 'Draft', approved_on: null })
-  const south = version('BV-004', { operating_region: 'South', approved_on: '2026-11-01' })
+  const revision = version('BV-002', { covers_from: '2026-10-01', approved_at: '2026-10-14T05:00:00.000Z' })
+  const draft = version('BV-003', { covers_from: '2026-10-01', version_state: 'Draft', approved_at: null })
+  const south = version('BV-004', { operating_region: 'South', approved_at: '2026-11-01T05:00:00.000Z' })
   const all = [original, revision, draft, south]
 
   it('is the latest approved version that covers the month', () => {
     expect(versionInForce(all, 'P&L', 'North', '2026-09-01')?.row_id).toBe('BV-001')
     expect(versionInForce(all, 'P&L', 'North', '2026-10-01')?.row_id).toBe('BV-002')
     expect(versionInForce(all, 'P&L', 'North', '2027-03-01')?.row_id).toBe('BV-002')
+  })
+  it('of two approved on the same day, the one approved later', () => {
+    const morning = version('BV-007', { approved_at: '2026-10-14T04:00:00.000Z' })
+    const evening = version('BV-005', { approved_at: '2026-10-14T12:00:00.000Z' })
+    expect(versionInForce([morning, evening], 'P&L', 'North', '2026-10-01')?.row_id).toBe('BV-005')
   })
   it('never a draft, another region or another kind', () => {
     expect(versionInForce([draft, south], 'P&L', 'North', '2026-10-01')).toBeUndefined()
@@ -119,5 +124,29 @@ describe('the statement as rows of figures across columns', () => {
   })
   it('the difference of two sets of amounts, line by line', () => {
     expect([...difference(hilltop, lakeside)]).toEqual([['sales', 500], ['cost_of_purchase', 340], ['salaries', 30], ['pf', 8]])
+  })
+})
+
+describe('the figures of a version', () => {
+  const v = (row_id: string, based_on: string | null, covers_from: string, covers_to: string) => ({ row_id, based_on, covers_from, covers_to })
+  const versions = [v('BV-001', null, '2026-04-01', '2027-03-01'), v('BV-002', 'BV-001', '2026-10-01', '2027-03-01'), v('BV-003', 'BV-002', '2027-01-01', '2027-03-01')]
+  const cell = (budget_version: string, budget_month: string, pl_line: string, amount: number, plant = '9003') => ({ budget_version, plant, budget_month, pl_line, amount })
+  const cells = [
+    cell('BV-001', '2026-09-01', 'manpower_cost', 10), cell('BV-001', '2026-10-01', 'manpower_cost', 11), cell('BV-001', '2027-01-01', 'manpower_cost', 12), cell('BV-001', '2027-01-01', 'occupancy', 5),
+    cell('BV-002', '2026-10-01', 'manpower_cost', 14), cell('BV-003', '2027-01-01', 'occupancy', 6),
+  ]
+  const read = (id: string) => [...figuresOf(versions, cells, id)].map(([key, figure]) => [key, figure.amount, figure.from])
+
+  it('a first version has its own figures', () => {
+    expect(read('BV-001')).toEqual([['9003|2026-09-01|manpower_cost', 10, 'BV-001'], ['9003|2026-10-01|manpower_cost', 11, 'BV-001'], ['9003|2027-01-01|manpower_cost', 12, 'BV-001'], ['9003|2027-01-01|occupancy', 5, 'BV-001']])
+  })
+  it('a revision shows the figures of the version it is based on for its own months, and its own where it changed one', () => {
+    expect(read('BV-002')).toEqual([['9003|2026-10-01|manpower_cost', 14, 'BV-002'], ['9003|2027-01-01|manpower_cost', 12, 'BV-001'], ['9003|2027-01-01|occupancy', 5, 'BV-001']])
+  })
+  it('a revision of a revision reads through both', () => {
+    expect(read('BV-003')).toEqual([['9003|2027-01-01|manpower_cost', 12, 'BV-001'], ['9003|2027-01-01|occupancy', 6, 'BV-003']])
+  })
+  it('a version it does not know has no figures', () => {
+    expect(read('BV-009')).toEqual([])
   })
 })

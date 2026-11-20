@@ -32,7 +32,8 @@ Then the budget for October is FY27 Original
 ### Requirement: An approved budget is revised, not edited
 
 Approving a budget SHALL record who approved it and when. Its figures SHALL not change after
-that. A revision SHALL start as a draft holding the approved figures for the months it covers.
+that. A revision SHALL start as a draft showing the approved figures for the months it covers, and
+SHALL hold only the figures it changes.
 
 #### Scenario: A figure cannot be changed after approval
 
@@ -51,7 +52,7 @@ Given the FY27 Original budget holds 18,40,000 for Hilltop's Manpower Cost in Oc
 And the budget is approved
 When a Budget Editor revises it for October to March as FY27 Revision 1
 Then FY27 Revision 1 is a draft
-And it holds 18,40,000 for Hilltop's Manpower Cost in October
+And it shows 18,40,000 for Hilltop's Manpower Cost in October, held on FY27 Original
 ```
 
 ### Requirement: Figures brought in together are saved together
