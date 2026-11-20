@@ -1,3 +1,5 @@
+> **Out of date since 20-Nov-2026.** #1377 changed how a figures question is answered (named tools, not SQL written by the model; Featherbase's own database first). Build from #1377. This file is to be rewritten; what was decided and why is in `docs/plans/feather-ask-decisions.md`.
+
 ## Context
 
 Featherbase limits what a person sees by their reach: the stores and subcategories their business role covers. Dash applies it by working out the person's filters and handing them to the report's Dive. An app's server can read only its own Tables, and the warehouse (MotherDuck) is read with one read-only token that can see every store. An earlier draft (#1353) answered from a copy of report data and was reviewed on 19-Nov-2026; three of its ideas are kept (D1, D2, D7's tests).

@@ -1,3 +1,5 @@
+> **Out of date since 20-Nov-2026.** #1377 changed how a figures question is answered (named tools, not SQL written by the model; Featherbase's own database first). Build from #1377. This file is to be rewritten; what was decided and why is in `docs/plans/feather-ask-decisions.md`.
+
 ## Why
 
 People open a report to answer one question, and ask a colleague when the report does not answer it or they do not know which report to open (#1371). One place to ask anything gives each person a quick answer from the figures they are allowed to see, and gives the owner a view of what people need: what they ask, what it costs, and what could not be answered.
