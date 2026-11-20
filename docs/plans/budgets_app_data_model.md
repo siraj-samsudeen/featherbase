@@ -44,7 +44,7 @@ one access list covers all of them.
 | Fashion, Grocery, Home | Business Line Segment | The basis of an allocation rule names segments. |
 | Rented or owned | Building (`tenure`), Rent Contract | Shown beside notional rent; not repeated. |
 | Merchandise level | Subcategory | The sales budget's lowest level. |
-| People | Person | Owner of an adjustment, who approved a version. |
+| People | Person | Owner of an adjustment, who approved a version. Held as the person's ID and shown as a link, because Budgets people cannot read the Person table. |
 | Follow-ups | Ticket, Ticket type | One ticket type, "Monthly Closing Follow-up". |
 
 ## Rules
@@ -190,7 +190,7 @@ that kind and region. Key: series `BV-.###`.
 | `covers_from`, `covers_to` | Date | First and last month covered |
 | `version_state` | Choice | Draft, Approved, Withdrawn |
 | `approved_on` | Date | |
-| `approved_by` | Reference → Person | |
+| `approved_by` | Data | The person's ID; the app shows their name as a link |
 | `based_on` | Reference → Budget Version | The version this one revises |
 | `source_file` | Data | The workbook it was loaded from |
 | `note` | Text | Why it was revised |
@@ -261,7 +261,7 @@ is the cut: a posting entered in SAP after it is not part of this close. Key: se
 | `downloaded_at` | Datetime | When the trial balance was downloaded. Stored in UTC, shown in IST. |
 | `close_state` | Choice | Open, Published, Replaced |
 | `published_on` | Date | |
-| `published_by` | Reference → Person | |
+| `published_by` | Data | The person's ID |
 | `note` | Text | |
 
 A company, month and version appear once.
@@ -283,7 +283,7 @@ One manual line of a close. Key: series `ADJ-.#####`.
 | `amount` | Currency | Positive adds to the line, negative takes away |
 | `adjustment_type` | Choice | Provision, Reallocation, Capitalise, Defer, Recover |
 | `reason` | Data | The same words on every line of one entry, so the list groups by it |
-| `owner` | Reference → Person | Who will see it through |
+| `owner` | Data | The person's ID: who will see it through |
 | `cost_centre`, `profit_centre` | Reference | Optional, as in the trial balance |
 | `corrects_sap_document` | Data | The SAP document this line corrects |
 | `reverses` | Reference → Close Adjustment | Last month's line that this one reverses |
@@ -291,7 +291,7 @@ One manual line of a close. Key: series `ADJ-.#####`.
 | `matched_sap_document` | Data | The SAP posting that settled it |
 | `matched_amount` | Currency | |
 | `remaining_amount` | Currency | Amount less matched amount, kept by the server |
-| `ticket` | Reference → Ticket | A follow-up, if one was raised |
+| `ticket` | Data | The follow-up ticket's ID, if one was raised |
 
 Example: `ADJ-00231` · `CLOSE-0007` · plant 9003 Hilltop · account 49990001 · Staff Welfare ·
 ₹42,500.00 · Provision · "Provision for October electricity bill not received" · owner Asha
@@ -341,6 +341,7 @@ Enforced by the platform's own model, with nothing new:
   with read, write, create and delete; Budget Viewer with read only.
 - **The app itself.** It is listed in the app switcher, and its server answers, only for
   someone who can read its entry table. Its writing operations check for Budget Editor again.
+- **The organisation's tables.** Stores, companies, regions, segments and subcategories are read through the instance's own role for them (Featherbase Viewer on the client's instance). A Budgets person holds that role too; without it they see codes without names and the app's operations refuse them.
 - **Giving a role.** A System Manager maps a person or an instance role to an app role in the
   Admin (Apps → Configure Role Mappings). The app ships no default mapping, so on a fresh
   install nobody has either role until one is given.
