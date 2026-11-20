@@ -3,7 +3,7 @@
 // and a cell changed in place by someone who may.
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { FigureMatrix, fmtLakhs, type FigureColumn, type FigureRow } from '@featherbase/shop-floor'
+import { FigureMatrix, FoldToggle, fmtLakhs, type FigureColumn, type FigureRow } from '@featherbase/shop-floor'
 
 afterEach(cleanup)
 
@@ -57,6 +57,14 @@ describe('the FigureMatrix', () => {
     fireEvent.click(fold)
     expect(screen.queryByText('PF')).toBeNull()
   })
+  test('a line whose heading is a link keeps the link outside the fold control, which is named for the line', () => {
+    render(<FigureMatrix label="Lines" rowHeading="Line" columns={COLUMNS} rows={[{ ...ROWS[0], header: <a href="#line">Manpower Cost</a> }]} />)
+    const fold = screen.getByRole('button', { name: 'Manpower Cost' })
+    expect(within(fold).queryByRole('link')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Manpower Cost' }).getAttribute('href')).toBe('#line')
+    fireEvent.click(fold)
+    expect(screen.getByText('Salaries')).toBeTruthy()
+  })
   test('a line without working rows has no fold control', () => {
     matrix()
     expect(screen.queryByRole('button', { name: 'Store EBITDA' })).toBeNull()
@@ -100,5 +108,23 @@ describe('the FigureMatrix', () => {
     render(<FigureMatrix label="Empty" rowHeading="Line" columns={COLUMNS} rows={[]} empty="No budget for this month." />)
     expect(screen.getByText('No budget for this month.')).toBeTruthy()
     expect(screen.queryByRole('table')).toBeNull()
+  })
+})
+
+describe('FoldToggle', () => {
+  test('is a button that says whether its rows are open, with how many there are beside it', () => {
+    const onToggle = vi.fn()
+    render(<FoldToggle open={false} onToggle={onToggle} count="5 lines">Provision for October</FoldToggle>)
+    const fold = screen.getByRole('button', { name: 'Provision for October' })
+    expect(fold.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByText('5 lines')).toBeTruthy()
+    fireEvent.click(fold)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+  })
+  test('with a label it is the chevron alone, for a heading that is a link beside it', () => {
+    render(<FoldToggle open onToggle={() => undefined} label="Manpower Cost" />)
+    const fold = screen.getByRole('button', { name: 'Manpower Cost' })
+    expect(fold.getAttribute('aria-expanded')).toBe('true')
+    expect(fold.textContent).toBe('')
   })
 })
