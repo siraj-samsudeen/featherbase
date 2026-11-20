@@ -136,6 +136,11 @@ test('several adjustments change state, owner or type together', async ({ create
   expect(await act(editor, 'set_adjustments', { adjustments: ids, change: { adjustment_state: 'Carried Forward', owner: editor.user } })).toEqual({ changed: 2 })
   expect((await rows('close_adjustment')).map(row => [row.adjustment_state, row.owner])).toEqual([['Carried Forward', editor.user], ['Carried Forward', editor.user]])
   await expect(act(editor, 'set_adjustments', { adjustments: ids, change: { amount: 1 } })).rejects.toThrow('Together, adjustments change their state, owner or type')
+  // A line carried into the next month is settled like any other once SAP posts it; a released one stays released.
+  await act(editor, 'match_adjustment', { adjustment: ids[0], document: '1900020001', amount: 42500 })
+  await act(editor, 'set_adjustments', { adjustments: [ids[1]], change: { adjustment_state: 'Released' } })
+  await act(editor, 'match_adjustment', { adjustment: ids[1], document: '1900020002', amount: 7 })
+  expect((await rows('close_adjustment')).map(row => row.adjustment_state)).toEqual(['Posted In SAP', 'Released'])
 })
 
 test('a close is one company, month and version; publishing makes it read-only; a new version replaces it', async ({ createUser }) => {
