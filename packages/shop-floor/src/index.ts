@@ -40,3 +40,4 @@ export { AreaPicker, type AreaAxis, type AreaLevel, type AreaRow, type PickedAre
 export { Sentence, sentenceText, type SentencePart } from './Sentence'
 export { Grid, PendingBar, gridKey, type GridColumn, type GridRow, type GridStep } from './Grid'
 export { cellClasses, headCellClasses, RowDensityContext, TABLE_CLASSES, useRowDensity, type RowDensity } from './TableLook'
+export { useTopLayer, type TopLayerPlace } from './TopLayer'

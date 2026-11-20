@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { setViewedPerson, viewedPerson } from '../lib/viewing-as'
-import { Card, EmptyState, Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, iconButtonClasses, inputClasses, raisedClasses } from '@featherbase/shop-floor'
+import { Card, EmptyState, Eye, History, Search, Clock, UserRoundSearch, RecordLink, buttonClasses, cardClasses, iconButtonClasses, inputClasses, raisedClasses, useTopLayer } from '@featherbase/shop-floor'
 
 export interface ViewAsPerson {
   person: string
@@ -90,7 +90,7 @@ async function changeView(path: string, body: unknown, onError: (message: string
 }
 
 /** One person: their record (a link when the tester may open it, #1227) and the button that views as them. */
-function PersonRow({ person, onPick, linked }: { person: ViewAsPerson; onPick: (person: ViewAsPerson) => void; linked: boolean }) {
+function PersonRow({ person, onPick }: { person: ViewAsPerson; onPick: (person: ViewAsPerson) => void }) {
   return (
     <div className="flex items-center gap-2 rounded-control px-2 py-1.5 hover:bg-action-tint" data-testid="view-as-person">
       {/* In a picker the row's action wins: the name views as this person, it does not open their record. */}
@@ -103,12 +103,12 @@ function PersonRow({ person, onPick, linked }: { person: ViewAsPerson; onPick: (
   )
 }
 
-function Section({ title, icon, people, onPick, testid, linked }: { title: string; icon: ReactNode; people: ViewAsPerson[]; onPick: (p: ViewAsPerson) => void; testid: string; linked: boolean }) {
+function Section({ title, icon, people, onPick, testid }: { title: string; icon: ReactNode; people: ViewAsPerson[]; onPick: (p: ViewAsPerson) => void; testid: string }) {
   if (!people.length) return null
   return (
     <div data-testid={testid}>
       <h3 className="flex items-center gap-1.5 px-2 pb-0.5 pt-2 text-xs font-medium text-ink-subtle">{icon}{title}</h3>
-      {people.map((person) => <PersonRow key={person.person} person={person} onPick={onPick} linked={linked} />)}
+      {people.map((person) => <PersonRow key={person.person} person={person} onPick={onPick} />)}
     </div>
   )
 }
@@ -160,13 +160,13 @@ export function ViewAsPicker({ state, autoFocus = false }: {
           found.isPending ? <p className="px-2 py-2 text-xs text-ink-subtle">Looking…</p>
             : found.data && found.data.length > 0 ? (
               <div data-testid="view-as-results">
-                {found.data.map((person) => <PersonRow key={person.person} person={person} onPick={pick} linked={Boolean(state.person_link)} />)}
+                {found.data.map((person) => <PersonRow key={person.person} person={person} onPick={pick} />)}
               </div>
             ) : <p className="px-2 py-2 text-xs text-ink-subtle" data-testid="view-as-none">No one found. Try a name, an employee code, or a job and a store, like “Team Leader Lakeside”.</p>
         ) : (
           <>
-            <Section title="Recent" icon={<History aria-hidden size={12} />} people={recent} onPick={pick} testid="view-as-recent" linked={Boolean(state.person_link)} />
-            <Section title="Frequently used" icon={<Clock aria-hidden size={12} />} people={frequent} onPick={pick} testid="view-as-frequent" linked={Boolean(state.person_link)} />
+            <Section title="Recent" icon={<History aria-hidden size={12} />} people={recent} onPick={pick} testid="view-as-recent" />
+            <Section title="Frequently used" icon={<Clock aria-hidden size={12} />} people={frequent} onPick={pick} testid="view-as-frequent" />
             {!recent.length && !frequent.length && (
               <p className="px-2 py-2 text-xs text-ink-subtle">You haven’t viewed as anyone yet. Search by name, employee code, or job and store.</p>
             )}
@@ -264,6 +264,10 @@ export function ViewAsButton({ compact, place = 'bar' }: {
   const [open, setOpen] = useState<'dropdown' | 'window' | null>(null)
   const panel = useRef<HTMLDivElement>(null)
   useDismiss(open !== null, () => setOpen(null), panel)
+  // Above the page, an app's panels and iframes included (a Dive report covered it, 20-Nov-2026).
+  const button = useRef<HTMLButtonElement>(null)
+  const dropdown = useRef<HTMLDivElement>(null)
+  useTopLayer(open === 'dropdown', dropdown, button, place === 'bar' ? 'below-end' : 'below-start')
   const may = Boolean(data?.may)
   useEffect(() => {
     if (!may) return
@@ -277,7 +281,7 @@ export function ViewAsButton({ compact, place = 'bar' }: {
   return (
     <div className="relative" ref={open === 'dropdown' ? panel : undefined}>
       {/* While viewing, the banner's Switch and Exit take its place; Ctrl+Shift+K still opens the picker. */}
-      {!data.viewing && <button type="button" onClick={() => setOpen(open === 'dropdown' ? null : 'dropdown')} aria-expanded={open === 'dropdown'} data-testid="view-as-button"
+      {!data.viewing && <button ref={button} type="button" onClick={() => setOpen(open === 'dropdown' ? null : 'dropdown')} aria-expanded={open === 'dropdown'} data-testid="view-as-button"
         aria-label={place === 'bar' && !compact ? undefined : 'View as someone'}
         title="View as someone (Ctrl+Shift+K)"
         className={place === 'bar'
@@ -286,7 +290,7 @@ export function ViewAsButton({ compact, place = 'bar' }: {
         <UserRoundSearch aria-hidden size={place === 'rail' ? 18 : 16} />{place === 'bar' && !compact && <span>View as</span>}
       </button>}
       {open === 'dropdown' && (
-        <div className={raisedClasses(`absolute ${place === 'bar' ? 'right-0' : 'left-0'} top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2`)} role="dialog" aria-label="View as" data-testid="view-as-dropdown">
+        <div ref={dropdown} className={raisedClasses(`absolute ${place === 'bar' ? 'right-0' : 'left-0'} top-full z-40 mt-1 w-[min(26rem,calc(100vw-1rem))] p-2`)} role="dialog" aria-label="View as" data-testid="view-as-dropdown">
           <ViewAsPicker state={data} autoFocus />
         </div>
       )}
