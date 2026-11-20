@@ -4,6 +4,7 @@
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { tableHref } from 'shared'
 import { test, expect, renderApp } from './pg-test'
+import { encodePath, type NavPath } from '../src/lib/nav-path'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -134,5 +135,31 @@ test('no ‹ › where the step came from no list or group', async ({ admin }) =
   await seed(admin)
   await renderApp(`${tableHref('Wk Order')}/row/o02`, admin)
   await screen.findByRole('heading', { level: 1 })
+  expect(screen.queryByTestId('walk-position')).not.toBeInTheDocument()
+})
+
+test('↓ at the last row and other keys move nothing', async ({ admin }) => {
+  await seed(admin)
+  await fromFilteredList(admin, 'Order 01')
+  await waitFor(async () => expect(await position()).toHaveTextContent('6 of 6'))
+  fireEvent.keyDown(document.body, { key: 'ArrowDown' })
+  fireEvent.keyDown(document.body, { key: 'j' })
+  await new Promise((r) => setTimeout(r, 200))
+  expect(await position()).toHaveTextContent('6 of 6')
+  expect(await peeked('Order 01')).toBeInTheDocument()
+})
+
+test("a row its list's filter leaves out has no place to walk from", async ({ admin }) => {
+  await seed(admin)
+  // An address that opens Bala's order over the list of Asha's.
+  const path: NavPath = { steps: [
+    { screen: 'list', table: 'Wk Order' },
+    { screen: 'list', table: 'Wk Order', filters: [['customer', '=', 'c1']], pane: { table: 'Wk Order', row: 'b1' } },
+  ], at: 1 }
+  await renderApp(`${tableHref('Wk Order')}?path=${encodeURIComponent(encodePath(path))}`, admin)
+  await peeked('Bala order')
+  // The ▾ reads the same rows: once they are in, it counts Asha's 6 with no place for Bala's order.
+  fireEvent.click(await within(bar()).findByRole('button', { name: 'Other rows in this list' }))
+  await waitFor(() => expect(screen.getByTestId('sideways-position')).toHaveTextContent(/^6 · Wk Order$/))
   expect(screen.queryByTestId('walk-position')).not.toBeInTheDocument()
 })
