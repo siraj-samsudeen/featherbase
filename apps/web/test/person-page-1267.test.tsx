@@ -180,19 +180,6 @@ test("hovering the save state on load names the row's last change and who made i
   expect(await screen.findByTestId('save-state-detail')).toHaveTextContent(/^Saved \d{2}:\d{2}$/)
 })
 
-test('a record page keeps its empty linked groups behind Show N empty, opened in place', async ({ admin }) => {
-  await seedSites(admin)
-  await renderApp(`${tableHref(SITE)}/row/MDU`, admin)
-  const chips = await screen.findByRole('region', { name: 'Connections' })
-  const toggle = await within(chips).findByTestId('connections-show-empty')
-  expect(toggle).toHaveTextContent('Show 1 empty')
-  expect(within(chips).queryByRole('button', { name: `${PLANT} 0` })).not.toBeInTheDocument()
-  fireEvent.click(toggle)
-  expect(within(chips).getByRole('button', { name: `${PLANT} 0` })).toBeInTheDocument()
-  expect(toggle).toHaveTextContent('Hide empty')
-  expect(toggle).toHaveAttribute('aria-expanded', 'true')
-})
-
 test('a linked Google account is turned off from its line, and the link moves under Show N ended', async ({ admin, createUser }) => {
   const { inviteGoogleRaw } = await import('server/test/identity-fixtures')
   const gita = await createUser({ email: 'gita.1267@example.com' })
@@ -266,12 +253,13 @@ test("a Person's own links lead its linked records, with empty groups a click aw
   const kims = await screen.findByTestId('connections-list')
   // Its own link (Replaced by) leads the list.
   expect(await within(kims).findByText('Replaced by')).toBeInTheDocument()
-  const toggle = await within(kims).findByTestId('connections-show-empty')
-  expect(within(kims).getByText('Nothing links here yet.')).toBeInTheDocument()
+  // #1349: the same fold and words as the pane and the Links tab.
+  const toggle = await within(kims).findByRole('button', { name: /^\+ \d+ tables? with none$/ })
+  expect(within(kims).getByText('Nothing points at this person yet.')).toBeInTheDocument()
   expect(within(kims).queryAllByTestId('linked-rows-group')).toHaveLength(0)
   fireEvent.click(toggle)
   expect(within(kims).getAllByTestId('linked-rows-group').length).toBeGreaterThan(0)
-  expect(within(kims).queryByText('Nothing links here yet.')).not.toBeInTheDocument()
+  expect(within(kims).queryByText('Nothing points at this person yet.')).not.toBeInTheDocument()
 })
 
 test("Google's Set Up dialog can expect the person's own address instead of inviting it", async ({ admin, createUser }) => {

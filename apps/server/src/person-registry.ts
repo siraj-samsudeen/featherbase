@@ -159,8 +159,6 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   view_as_session: { session_id: code, tester: id, person: id },
   role: { '*': code },
   runtime_action_result: { caller: id, app: code, action: code, idempotency_key: code, payload: text, result: text, authorization: text },
-  sales_target_snapshot_name: { '*': code },
-  sales_target_snapshot_row: { '*': code },
   // #1259: layout is one of table, split or panel.
   saved_view: { ref_table: code, label: text, filters: filters('ref_table'), layout: code },
   scheduled_job: { '*': code, description: text },
@@ -172,6 +170,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   single_value: { '*': code },
   sla_priority: { '*': code },
   table_def: { '*': code, description: text, label: text, archived_by: id, archived_note: text },
+  // #1282 A4: settings name only the Table's columns and view choices.
+  table_view_default: { ref_table: code, settings: text, undoes: code },
   tag_link: { ref_table: code, ref_name: on('ref_table'), tag: code },
   todo: { allocated_to: id, ref_table: code, reference_name: on('ref_table'), description: text, todo_status: code, priority: code },
   translation: { language: code, source_text: text, translated_text: text },

@@ -22,15 +22,6 @@ The report SHALL cover the current month from the first through today in India S
 - **WHEN** a reader opens the report just after midnight on the 1st, India time
 - **THEN** the report covers the new month, never the previous one
 
-### Requirement: Say when the month has no data yet
-
-When the warehouse has not yet recorded any day of the current month, the report SHALL say so instead of showing empty figures.
-
-#### Scenario: Early on the 1st
-
-- **WHEN** a reader opens the report on the 1st before that morning's sales have loaded
-- **THEN** they are told no sales are recorded for the month yet, and nothing reads as zero sales
-
 ### Requirement: Subtotals by Section
 
 The report SHALL group subcategories under their Section with a subtotal for each, and SHALL show subcategories that belong to no Section after the named ones.
@@ -48,15 +39,6 @@ The report SHALL tell the reader every reason they see it, such as leading a Sec
 
 - **WHEN** a Team Leader who is also rostered on some subcategories opens the report
 - **THEN** the report gives both reasons
-
-### Requirement: One report on the page
-
-When the live report is available, it SHALL be the report the reader sees. The cached table SHALL be folded away behind a line that says it is the cache and when it was refreshed, and SHALL be shown open only when the live report is not there.
-
-#### Scenario: Live report available
-
-- **WHEN** a reader opens the report and the live report loads
-- **THEN** they see one set of figures, and the cached table is folded away under a line giving its refresh time
 
 ### Requirement: A Store Manager sees the whole store
 
@@ -138,12 +120,12 @@ The report SHALL open on the remembered store when the reader still has it, othe
 
 ### Requirement: The report lists the reader's stores by name
 
-Asking who the reader is SHALL list every store the reader can open, sorted by store code, each with its name, its Sections and why the reader has it, and SHALL name the default store. A store's name SHALL be its Sales Target Assignment label when one is set, else the name the cached figures give that store, else none. The question SHALL NOT take a store, and the assignment it reports SHALL be the default store's.
+Asking who the reader is SHALL list every store the reader can open, sorted by store code, each with its name, its Sections and why the reader has it, and SHALL name the default store. A store's name SHALL be its Sales Target Assignment label when one is set, else the store's own name, else none. The question SHALL NOT take a store, and the assignment it reports SHALL be the default store's.
 
 #### Scenario: A store with no assignment label
 
-- **WHEN** a reader's store comes only from the Store Sections maps and the cached figures name that store
-- **THEN** the store's entry carries that name
+- **WHEN** a reader's store comes only from the Store Sections maps
+- **THEN** the store's entry carries the store's own name
 
 #### Scenario: A reader with no store
 
@@ -171,7 +153,7 @@ The report and the live report session SHALL each take an optional store. An abs
 
 ### Requirement: The Access Log records the store opened
 
-Each report opening SHALL be recorded in the Access Log with the store it was limited to, so that who viewed which store can be answered. The record SHALL also say whether the figures came from the cache or were read live, and which cached copy served them.
+Each report opening SHALL be recorded in the Access Log with the stores it was limited to, so that who viewed which store can be answered.
 
 #### Scenario: A two-store reader opens their second store
 
@@ -219,23 +201,9 @@ A subcategory with ₹0 target and ₹0 sales this month SHALL be hidden by defa
 - **WHEN** a reader's Section lists 120 subcategories and the store traded 20 of them this month
 - **THEN** the 20 are shown, the other 100 are hidden behind the toggle, and the Section subtotal is the same with the toggle on or off
 
-### Requirement: A missing target side is never read as ₹0 targets
-
-When the warehouse holds no material-group target for the month, the report SHALL NOT show ₹0 targets. A cached copy SHALL NOT be refreshed from it, and the last good copy SHALL keep serving; a cached copy SHALL also not be refreshed when it would lose more than half of its target rows. A live read SHALL show sales with the targets left blank and say that targets are not available.
-
-#### Scenario: The target side comes back empty
-
-- **WHEN** a refresh finds sales for the month but no targets
-- **THEN** the refresh is refused and readers keep the last good figures
-
-#### Scenario: A live read with no targets
-
-- **WHEN** a reader opens the report live and the month has no targets
-- **THEN** sales are shown, every target is blank, nothing is hidden, and the page says targets are not available
-
 ### Requirement: Only people given the report can open it
 
-Only people who hold the report's viewer role SHALL open the report or see anything about their own scope. The role SHALL be checked on every request, so taking it away stops the reader's very next request, and a person without it SHALL be told plainly that they have no access, with no figure and no cached table shown.
+Only people who hold the report's viewer role SHALL open the report or see anything about their own scope. The role SHALL be checked on every request, so taking it away stops the reader's very next request, and a person without it SHALL be told plainly that they have no access, with no figure shown.
 
 #### Scenario: A signed-in person without the role
 
@@ -265,84 +233,14 @@ A subcategory with a target but no sales figure recorded yet SHALL show its sale
 - **WHEN** a subcategory has a target but the warehouse holds no sales figure for it yet
 - **THEN** its sales show as a dash, not ₹0, and the report says how many subcategories have no sales figures
 
-### Requirement: Say how current the figures are
-
-The report SHALL show the date the warehouse's sales run through, and when the figures run only to an earlier day than the month's end, SHALL say they are counted through that day. A report served from the cache SHALL also show when the cache was last refreshed; a report read live SHALL show no refresh time, because nothing can be stale.
-
-#### Scenario: Sales loaded through the 15th
-
-- **WHEN** a reader opens the report on the 17th and the warehouse holds sales through the 15th
-- **THEN** the report says "data as of" the 15th and that figures are counted through that day
-
-#### Scenario: A cached report
-
-- **WHEN** a reader opens a report served from the cache
-- **THEN** it shows when the cache was refreshed as well as the warehouse's date
-
-### Requirement: A reader is never left waiting for the cache
-
-When no cached copy of the figures exists yet, the report SHALL be read live from the warehouse and shown at once, and the request SHALL cause a cached copy to be built soon, so the next readers get a quick answer. A burst of such requests SHALL cause one build, not one per reader.
-
-#### Scenario: The first reader of the day
-
-- **WHEN** a reader opens the report and no cached copy exists
-- **THEN** they see correct live figures, and a build of the cache is scheduled
-
-#### Scenario: Several readers at once
-
-- **WHEN** many readers open the report together before the cache exists
-- **THEN** one build is scheduled, not one per reader
-
-### Requirement: The cache is shared but each reader sees only their own
-
-All readers SHALL be served from one cached copy of the store's figures, and each reader's slice SHALL be cut from it at the moment they read it. A change to a person's assignment or role SHALL therefore apply to their next read without waiting for any refresh.
-
-#### Scenario: A changed assignment
-
-- **WHEN** an administrator moves a subcategory from one employee to another
-- **THEN** the next time each opens the report, the first no longer has it and the second does, with no refresh in between
-
-#### Scenario: Two stores, one cache
-
-- **WHEN** a reader at one store and a reader at another open the report from the same cached copy
-- **THEN** each sees only their own store's figures
-
-### Requirement: A failed refresh keeps the last good figures
-
-When a refresh fails, finds nothing, or loses most of the figures, the report SHALL keep serving the last good cached copy and the refresh SHALL show as failed to the people who run the instance. A cached copy built for last month SHALL NOT serve this month's report.
-
-#### Scenario: The warehouse is unreachable
-
-- **WHEN** a scheduled refresh cannot reach the warehouse
-- **THEN** readers keep seeing the previous figures and the refresh run is recorded as failed
-
-#### Scenario: The first of a new month
-
-- **WHEN** a reader opens the report on the 1st, India time, and the only cached copy was built last month
-- **THEN** the report is read live for the new month and a build is scheduled
-
-### Requirement: Operators can see how each refresh went
-
-A System Manager SHALL be able to see each cached copy and each request that found none, with how long the refresh took, what set it off and why a refused one was refused. The cached figures themselves SHALL NOT be readable through the general data screens.
-
-#### Scenario: A refused refresh
-
-- **WHEN** a refresh is refused because it found no targets
-- **THEN** a System Manager can see that refresh, its reason and its timings
-
-#### Scenario: Another person's view
-
-- **WHEN** a report viewer tries to read the record of cached copies or of who opened the report
-- **THEN** they are refused
-
 ### Requirement: The live report fails honestly
 
-When the live report session cannot be started because the instance has no live report set up, the page SHALL quietly show the cached table as the report, with no error. When it is set up but unreachable or refuses, the page SHALL say in one plain sentence that the report couldn't load and offer to try again, without technical detail. The live report's credentials SHALL never be sent to the browser.
+When the live report can't be opened, because the instance has no live report set up or the live report service is unreachable or refuses, the page SHALL say in one plain sentence that the report couldn't load and offer to try again, without technical detail. The live report's credentials SHALL never be sent to the browser.
 
 #### Scenario: No live report on this instance
 
 - **WHEN** the instance has no live report set up
-- **THEN** the cached table is the report, shown open, with no error
+- **THEN** the page says the report couldn't load, and shows no figures of its own
 
 #### Scenario: The live report service is down
 
@@ -367,7 +265,7 @@ The page SHALL open the latest saved version of the instance's Dive, without nam
 - **WHEN** the Dive's owner saves a new version of the Dive on MotherDuck
 - **THEN** the next reader who opens the report sees that version, with no change to the app or its settings
 
-### Requirement: Choose this month or last month, in the interactive report too
+### Requirement: Choose this month or last month
 
 The report SHALL let the reader choose this month, from the first through today in India Standard Time, or last month, from its first day through its last. This month SHALL be the default. The choice SHALL be kept in the page's address, and SHALL keep meaning "this month" or "last month" as the calendar moves on. No earlier month SHALL be offered.
 
@@ -380,8 +278,3 @@ The report SHALL let the reader choose this month, from the first through today 
 
 - **WHEN** a reader chooses last month and the interactive report is set up
 - **THEN** the interactive report opens on last month's dates, ending on its last day
-
-#### Scenario: Last month's copy not ready
-
-- **WHEN** a reader chooses last month and the cached copy still holds the month before it
-- **THEN** the page says last month's figures aren't ready yet, and nothing reads as zero sales

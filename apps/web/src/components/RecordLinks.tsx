@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { tableHref, type ListFilter } from 'shared'
-import { GroupChip } from '@featherbase/shop-floor'
+import { GroupChip, NoneFold } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
-import { useMeta } from '../lib/meta'
+import { tableLabel, useMeta } from '../lib/meta'
 import { useNavigation } from '../lib/navigation'
 import { push, type LinksLayout, type NavPane, type NavStep } from '../lib/nav-path'
 import { useBacklinkGroups, type BacklinkGroup } from '../lib/relations'
 import { useConnections } from '../lib/connections'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
 import { useGroupPlans } from './LinkTickList'
-import { PaneFields } from './RowPane'
+import { NothingPointsAt, PaneFields } from './RowPane'
 import { RowTree } from './RowTree'
 import { MenuChoices, MenuShell, userSettingsQuery } from './FormArrangement'
 import { WorkedOutSections } from './WorkedOut'
+import { tableViewDefaultQuery } from '../lib/table-view-default'
 
 type Row = Record<string, unknown>
 
@@ -27,9 +28,16 @@ export function useLinksPreference(table: string, fromPath?: LinksLayout) {
   const { queryKey: key } = userSettingsQuery(table)
   const stored = useQuery(userSettingsQuery(table))
   const [chosen, setChosen] = useState<StoredLinks>({})
+  // A choice made here holds until the person's settings are read again (Codex adversarial round 2): after a Reset
+  // the refreshed settings and the Table's default decide, not a choice the reset cleared. A choice saved here is in
+  // those settings already (update writes it into them), so nothing is lost.
+  useEffect(() => setChosen({}), [stored.dataUpdatedAt])
+  // #1282 A4: the person's own choice, else the Table's default, else sections with the fields beside.
+  const fallback = useQuery(tableViewDefaultQuery(table)).data?.settings.links ?? {}
   const saved = (stored.data?.settings?.links ?? {}) as StoredLinks
-  const as: LinksLayout = fromPath ?? chosen.as ?? (saved.as === 'tree' ? 'tree' : 'sections')
-  const fields = chosen.fields ?? saved.fields ?? true
+  const own = saved.as === 'tree' || saved.as === 'sections' ? saved.as : undefined
+  const as: LinksLayout = fromPath ?? chosen.as ?? own ?? (fallback.as === 'tree' ? 'tree' : 'sections')
+  const fields = chosen.fields ?? saved.fields ?? fallback.fields ?? true
   const update = (next: StoredLinks) => {
     const links = { as, fields, ...next }
     setChosen(links)
@@ -68,14 +76,11 @@ export const linksSectionId = (group: Pick<BacklinkGroup, 'key'>) => `links-${gr
  * the first 10 then Show all, an empty one greyed with + New, and Open as grid
  * where both sides are small. As the tree: the Tree's unfolding.
  */
-export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }: {
+export function RecordLinks({ table, name, values, pref }: {
   table: string
   name: string
   values: Row | undefined
   pref: LinksPreference
-  /** The group whose chip was chosen: its section scrolls into view and takes focus. */
-  focusGroup?: string | null
-  onFocused?: () => void
 }) {
   const nav = useNavigation()
   const meta = useMeta(table)
@@ -89,16 +94,9 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }
   const sections = groups.filter((g) => rank(g) < 2)
   const empties = groups.filter((g) => rank(g) === 2)
   const [openEmpty, setOpenEmpty] = useState<string | null>(null)
+  // #1349 item 3: the empty groups fold behind one "+ N tables with none".
+  const [showEmpty, setShowEmpty] = useState(false)
   const chosenEmpty = empties.find((g) => g.key === openEmpty)
-  useEffect(() => {
-    if (!focusGroup || !groups.length) return
-    // An empty group's chip opens, so its + New is at hand.
-    if (empties.some((g) => g.key === focusGroup)) setOpenEmpty(focusGroup)
-    const el = document.getElementById(linksSectionId({ key: focusGroup }))
-    el?.scrollIntoView?.({ block: 'start' })
-    el?.focus({ preventScroll: true })
-    onFocused?.()
-  }, [focusGroup, groups.length, onFocused])
   if (pref.as === 'tree') return <RowTree table={table} name={name} />
   const open = (pane: NavPane) => nav?.push({ ...nav.step, pane })
   const listHref = (g: BacklinkGroup) => {
@@ -121,18 +119,20 @@ export function RecordLinks({ table, name, values, pref, focusGroup, onFocused }
           {empties.length > 0 && (
             <section aria-label="Pointed At By" data-testid="links-empty-groups" className="flex min-w-0 flex-col gap-2">
               <h4 className="text-[15px] font-semibold text-ink">Pointed At By</h4>
-              <div className="flex flex-wrap gap-2">
-                {empties.map((g) => (
+              <div className="flex flex-wrap items-center gap-2">
+                {!sections.length && <NothingPointsAt kind={tableLabel(table, meta.data)} />}
+                <NoneFold count={empties.length} open={showEmpty} onToggle={() => setShowEmpty((was) => !was)} />
+                {showEmpty && empties.map((g) => (
                   <span key={g.key} id={linksSectionId(g)} tabIndex={-1} className="scroll-mt-4 rounded-full focus:outline-none focus-visible:outline-2 focus-visible:outline-focus">
                     <GroupChip label={g.label} count={0} selected={openEmpty === g.key} onSelect={() => setOpenEmpty(openEmpty === g.key ? null : g.key)} />
                   </span>
                 ))}
               </div>
-              {chosenEmpty && <LinkedRowsGroup key={chosenEmpty.key} table={table} record={name} group={chosenEmpty} onOpen={open} showAllHref={listHref(chosenEmpty)} heading={false} />}
+              {showEmpty && chosenEmpty && <LinkedRowsGroup key={chosenEmpty.key} table={table} record={name} group={chosenEmpty} onOpen={open} showAllHref={listHref(chosenEmpty)} heading={false} />}
             </section>
           )}
           {cnx.isPending && <p className="text-sm text-ink-subtle">Loading…</p>}
-          {cnx.data && !groups.length && <p className="text-sm text-ink-muted">No rows point at it</p>}
+          {cnx.data && !groups.length && <p><NothingPointsAt kind={tableLabel(table, meta.data)} /></p>}
         </div>
       </div>
     </div>

@@ -26,9 +26,7 @@ The base applies everywhere. `local`, `dev`, `staging` and `prod` hold what diff
   pinned: a report opens its Dive's latest saved version, so saving a Dive releases it (#937).
   Opening a Dive needs the `MOTHERDUCK_EMBED_TOKEN` deployment variable on dev, staging and prod: the token
   of `motherduck_dive_service_account`, which may create Dive embed sessions (the Admin preset
-  role), never the warehouse token. Without it the page shows the quick view (#1139).
-- **Refreshing the cached figures.** Off locally: there is no warehouse to
-  refresh from, and a refresh would only fail.
+  role), never the warehouse token. Without it the page says the report couldn't open (#1139).
 - **The warehouse.** The `motherduck` Data Source names the databases it reads.
   Its token is the `MOTHERDUCK_TOKEN` deployment variable, the one token all of
   Featherbase reads the warehouse with. Featherbase only reads the warehouse, whatever rights that

@@ -55,8 +55,8 @@ async function formAt(app: App, path: string) {
 }
 
 const position = () => screen.findByTestId('record-position', {}, WAIT)
-const prevButton = () => screen.getByRole('button', { name: 'Previous record' })
-const nextButton = () => screen.getByRole('button', { name: 'Next record' })
+const prevButton = () => screen.getByRole('button', { name: 'Previous row' })
+const nextButton = () => screen.getByRole('button', { name: 'Next row' })
 
 test('record nav: Previous and Next follow the filtered list the record was opened from', async ({ admin }) => {
   await seed(admin)

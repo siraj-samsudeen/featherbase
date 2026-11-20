@@ -12,8 +12,8 @@ const PLATFORM_RELATIONS = new Set([
   'metadata_override', 'migration', 'notification_log', 'password_invite', 'password_reset',
   'permission', 'pre_auth_bucket', 'print_format', 'report', 'revoked_session', 'role', 'view_as_session',
   'runtime_action_result',
-  'sales_target_snapshot_name', 'sales_target_snapshot_row', 'saved_view', 'scheduled_job', 'series', 'server_script',
-  'service_level_agreement', 'share', 'sign_in_method', 'single_value', 'sla_priority', 'table_def',
+  'saved_view', 'scheduled_job', 'series', 'server_script',
+  'service_level_agreement', 'share', 'sign_in_method', 'single_value', 'sla_priority', 'table_def', 'table_view_default',
   'tag_link', 'todo', 'translation', 'user_event', 'user_settings', 'version',
   // person-rename and person-resolution.
   'person', 'service_account', 'sign_in_identity', 'person_id_map',

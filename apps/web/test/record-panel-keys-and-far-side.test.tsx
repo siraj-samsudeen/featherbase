@@ -28,10 +28,9 @@ async function seed(admin: Parameters<typeof renderApp>[1]) {
   await admin.post('/api/save_row', { table: ENROL, row: { enrolment_id: 'E1', course: 'C1', student: 'S1' } })
 }
 
-/** #1273 (D3): the group's chip under the title jumps to its section on the Links tab. */
+/** The course's Links tab, where its enrolments are a section (#1349: the count under the title opens their list). */
 async function enrolmentsOnLinks() {
-  const chips = await screen.findByRole('region', { name: 'Connections' })
-  fireEvent.click(await within(chips).findByRole('button', { name: new RegExp(`^${ENROL}`) }))
+  fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
   return screen.findByTestId('record-links')
 }
 

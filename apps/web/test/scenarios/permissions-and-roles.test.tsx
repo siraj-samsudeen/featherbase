@@ -10,7 +10,6 @@ import { rowHref } from 'shared'
 import { sql } from 'server/src/db'
 import { setUserPassword } from 'server/src/auth'
 import { discoverPackages } from 'server/src/runtime-packages'
-import { VIEWER_ROLE } from 'server/src/sales-target'
 import { grantRole } from 'server/test/fixtures'
 import { scenarioFor } from 'server/test/scenario'
 import { test, expect, renderApp, renderSession, byTestId, type Session } from '../pg-test'
@@ -37,7 +36,6 @@ function recordCalls(): string[] {
 
 /** The Roles and Tables the shell scenarios share: a clerk who reads only Shelf Note. */
 async function seedShelf(admin: Admin) {
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
   await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
   await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
@@ -101,42 +99,6 @@ describe('permissions-and-roles', () => {
     })
     await step('the user does not see an empty list', () => {
       expect(screen.queryByText('No rows')).not.toBeInTheDocument()
-    })
-  })
-
-  scenario('A report-only person never meets the administration menu', async ({ admin, createUser }, step) => {
-    let tl!: TestClient
-    let urls: string[] = []
-    let router: unknown
-    await step('the user holds only the Sales Target Viewer role', async () => {
-      await seedShelf(admin)
-      tl = await createUser({ email: 'tl@example.com', roles: [VIEWER_ROLE] })
-    })
-    await step('the user opens an administration address', async () => {
-      urls = recordCalls()
-      ;({ router } = await renderApp('/featherbase/admin/home/home', tl))
-      await screen.findByTestId('problem-no-access', {}, { timeout: 8000 })
-    })
-    await step('the user is told the administration is not part of their account, and offered the report', async () => {
-      // #1327 (audit F08): told, never moved; the address they asked for stays.
-      const page = screen.getByTestId('problem-no-access')
-      expect(page).toHaveTextContent('The Admin isn’t part of your account')
-      expect(within(page).getByRole('link', { name: 'Open your report' })).toHaveAttribute('href', '/featherbase/sales-target')
-      expect(pathOf(router)).toBe('/featherbase/admin/home/home')
-    })
-    await step('no administration menu appears', () => {
-      for (const id of ['new-table-link', 'import-data-link', 'past-imports-link', 'all-tables-link', 'admin-sidebar'])
-        expect(screen.queryByTestId(id), id).not.toBeInTheDocument()
-    })
-    await step('no administration request is made', () => {
-      // /api/brand is the shared top bar asking what this address opens (#489);
-      // /api/app_catalog is its switcher listing the apps this person can open
-      // (#1227). /api/view_as is the bar asking whether this person may view as
-      // anyone (#1222): "no" for them. The closed-app list stays a System Manager's.
-      // /api/user_settings/__shortcuts is the bar reading the person's own
-      // keyboard-shortcut learning (#1251): their record, nobody else's.
-      const adminCalls = urls.filter((u) => !/^\/api\/(whoami|brand|runtime_app_versions|sales_target\/|app_catalog$|view_as$|user_settings\/__shortcuts$)/.test(u))
-      expect(adminCalls).toEqual([])
     })
   })
 

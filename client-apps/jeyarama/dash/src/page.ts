@@ -1,5 +1,5 @@
-// What the report page shows, decided from what its two reads answered, and
-// how it writes figures. Kept apart from the React code so it can be tested.
+// What the report page shows, decided from what its two reads answered. Kept apart from the
+// React code so it can be tested.
 export type Answer<T> = { ok: true; value: T } | { ok: false; status?: number }
 type Embed = { frame?: string; not_set_up?: boolean; unreachable?: boolean; too_large?: boolean; refused?: string; ready_signal?: boolean }
 
@@ -9,13 +9,12 @@ export const DIVE_READY_MESSAGE = 'dash:dive-ready'
 /** #1141: the name Dives published before #966's rename still post. */
 export const LEGACY_DIVE_READY_MESSAGE = 'feather-dash:dive-ready'
 const READY_MESSAGES: readonly unknown[] = [DIVE_READY_MESSAGE, LEGACY_DIVE_READY_MESSAGE]
-type ReportState = { state: string; no_quick_view?: boolean }
+type ReportState = { state: string }
 
 export type View =
   | { kind: 'opening' }
   | { kind: 'dive'; src: string }
-  | { kind: 'quick' }
-  | { kind: 'empty'; why: 'no_data_yet' | 'not_built' | 'whole_stores_only' }
+  | { kind: 'empty'; why: 'whole_stores_only' }
   | { kind: 'no_access' }
   | { kind: 'signed_out' }
   | { kind: 'failed' }
@@ -25,19 +24,17 @@ export type View =
 const refusedBy = (answer: Answer<unknown> | undefined, status: number) => answer?.ok === false && answer.status === status
 
 /**
- * The Dive is the report. Before it opens, the cached report says whether there is
- * anything to show (no figures yet for the month); the
- * quick view stands in only when the Dive can't load, and the plain message only
- * when the quick view can't load either.
+ * The Dive is the report. The `report` read says whether it can open for the reader; when the
+ * Dive can't load, the page says the report couldn't open (#1366: there is no quick view).
  */
 export function pageView({ embed, report, frameFailed = false, timedOut = false, diveReady = false }: {
   embed: Answer<Embed> | undefined
   report: Answer<ReportState> | undefined
-  /** The Dive's frame errored: the quick view stands in for good. */
+  /** The Dive's frame errored: the report couldn't open, for good. */
   frameFailed?: boolean
   /** DIVE_READY_TIMEOUT_MS has passed without the Dive being up (#1143). */
   timedOut?: boolean
-  /** The Dive is up; past the deadline, it takes over from the quick view. */
+  /** The Dive is up; past the deadline, it takes over from "couldn't open". */
   diveReady?: boolean
 }): View {
   if (refusedBy(embed, 401) || refusedBy(report, 401)) return { kind: 'signed_out' }
@@ -46,18 +43,11 @@ export function pageView({ embed, report, frameFailed = false, timedOut = false,
   if (state === 'no_access') return { kind: 'no_access' }
   if (state === 'report_not_set_up') return { kind: 'failed' }
   if (state === 'whole_stores_only') return { kind: 'empty', why: state }
-  // #1159: the cached copy's month not arrived is about one store and month; a ready Dive wins.
-  if (state === 'no_data_yet') return embed?.ok && embed.value.frame && !frameFailed && diveReady
-    ? { kind: 'dive', src: embed.value.frame } : { kind: 'empty', why: state }
   if (embed?.ok && embed.value.frame && !frameFailed && (!timedOut || diveReady)) return { kind: 'dive', src: embed.value.frame }
   // Past the deadline the session request counts as failed, answered or not.
   if ((!embed && !frameFailed && !timedOut) || !report) return { kind: 'opening' }
   // #1269: where the page would say only "couldn't open", it says why when MotherDuck refused the reach as too large.
-  const failed: View = embed?.ok && embed.value.too_large ? { kind: 'too_large' } : { kind: 'failed' }
-  if (!report.ok) return failed
-  if (state === 'not_built' || state === 'unconfirmed') return { kind: 'empty', why: 'not_built' }
-  // A report with no quick view has nothing to stand in for its Dive.
-  return report.value.no_quick_view ? failed : { kind: 'quick' }
+  return embed?.ok && embed.value.too_large ? { kind: 'too_large' } : { kind: 'failed' }
 }
 
 /** What the platform tells a person about their own rights and this app's setup. */
@@ -174,15 +164,10 @@ export function firstStore(inAddress: string | undefined, listen: (onStore: (sto
   return () => { guard.dispose(); stop() }
 }
 
-/** The quick view's footnote for `n` shown subcategories with a "—". */
-export function blankNote(n: number, month?: MonthChoice): string {
-  return `${n} ${n === 1 ? 'subcategory has' : 'subcategories have'} no target or no sales recorded ${monthWords(month)}: “—” means nothing was recorded, never ₹0.00.`
-}
-
-/** How long the cached report has to answer; then it counts as failed and a late answer is ignored. */
+/** How long the `report` read has to answer; then it counts as failed and a late answer is ignored. */
 export const REPORT_TIMEOUT_MS = 15_000
 
-/** How long the Dive has, from the session request to its frame loading, before the page falls back to the quick view. */
+/** How long the Dive has, from the session request to its frame loading, before the page says it couldn't open. */
 export const DIVE_READY_TIMEOUT_MS = 15_000
 
 /**
@@ -223,16 +208,6 @@ export function monthChooser(loader: { select(store: string, month?: string): vo
 export type MonthChoice = 'this' | 'last'
 export const isMonthChoice = (value: unknown): value is MonthChoice => value === 'this' || value === 'last'
 
-/** The month as a sentence names it: "this month" or "last month". */
-export const monthWords = (month: MonthChoice | undefined) => (month === 'last' ? 'last month' : 'this month')
-
-/** The empty state of a month whose figures haven't arrived. */
-export function notArrivedLine(month: MonthChoice | undefined): string {
-  return month === 'last'
-    ? "Last month's figures aren't ready yet. Try again in a few minutes."
-    : "This month's figures haven't arrived yet. They usually arrive by early morning."
-}
-
 /**
  * What may be drawn for the store now chosen: a state published for any other store draws
  * nothing (defence in depth behind `select`, round 8).
@@ -241,71 +216,6 @@ export function visibleState<S extends { store?: string; month?: string; embed: 
   month?: string): S {
   return state.store === store && state.month === month ? state
     : { ...state, store, month, embed: undefined, report: undefined, frameFailed: false, timedOut: false, diveReady: false }
-}
-
-/**
- * Rupees, Indian digit grouping, exactly two decimals: the quick view's figures must foot
- * (gap = sales − target, totals = the rows), so they are never rounded to whole rupees
- * (AGENTS.md "Amount display"). A missing figure is a dash.
- */
-export function inr(value: number | null): string {
-  if (value == null) return '—'
-  const paise = Math.round(Math.abs(value) * 100)
-  const digits = String(Math.floor(paise / 100))
-  const last3 = digits.slice(-3)
-  const rest = digits.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')
-  return `${value < 0 && paise !== 0 ? '−' : ''}₹${rest ? `${rest},${last3}` : last3}.${String(paise % 100).padStart(2, '0')}`
-}
-
-/** An achievement to one decimal, as the old report wrote it. */
-export function percent(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return '—'
-  return `${Math.round(value * 10) / 10}%`
-}
-
-/** A gap with its sign both ways ("+₹2,500.00", "−₹2,500.00"), as the old report wrote it. */
-export function signedInr(value: number | null): string {
-  return value != null && Math.round(value * 100) > 0 ? `+${inr(value)}` : inr(value)
-}
-
-/** Under the quick view's table: what the old report's totals already did, said. */
-export const TOTALS_NOTE = 'Totals add every target and every sale in the table, including subcategories that have only one of them, so they can differ from the sum of the gaps shown.'
-
-/** A section's subtotal names the section, so a table scrolled sideways still says whose total it is. */
-export function subtotalLabel(section: string | null): string {
-  // "No section" never breaks, so a narrow column wraps it as "No section / total".
-  return section ? `${section} total` : 'No\u00a0section total'
-}
-
-/** A section's heading row: its name, or "No section" for subcategories in none. */
-export function sectionHeading(section: string | null): string {
-  return section ?? 'No section'
-}
-
-/**
- * A subtotal's or total's cells under the display rule: "—" for a value none of its rows
- * recorded; the gap and achievement only when the group recorded both. The figures drawn are
- * the old report's sums, unchanged.
- */
-export function totalCells(t: { target: number | null; actual: number | null; gap: number | null; achievement: number | null;
-  targets_recorded: number; sales_recorded: number }) {
-  const both = t.targets_recorded > 0 && t.sales_recorded > 0
-  return {
-    target: t.targets_recorded > 0 ? inr(t.target) : '—',
-    sales: t.sales_recorded > 0 ? inr(t.actual) : '—',
-    gap: both ? signedInr(t.gap) : '—',
-    achieved: both ? percent(t.achievement) : '—',
-  }
-}
-
-/** A subcategory's label: its name alone, never its code (#4531); "Unnamed subcategory" when it has none. */
-export function subcategoryLabel(row: { code: string; subcategory: string | null }) {
-  return row.subcategory ? { name: row.subcategory, unnamed: false } : { name: 'Unnamed subcategory', unnamed: true }
-}
-
-/** The quick view's body: the table, or a sentence when every row is hidden (no target and no sales). */
-export function quickBody(rows: readonly { noTargetNoSale: boolean }[], showQuiet: boolean): 'table' | 'nothing' {
-  return showQuiet || rows.some(r => !r.noTargetNoSale) ? 'table' : 'nothing'
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -317,17 +227,6 @@ export function shortDay(day: string | null): string {
   return `${d}-${MONTHS[Number(m) - 1]}-${y}`
 }
 
-/** An ISO instant as HH:MM IST. */
-export function istTime(instant: string | null): string {
-  if (!instant) return '—'
-  return `${new Date(new Date(instant).getTime() + 330 * 60_000).toISOString().slice(11, 16)} IST`
-}
-
-/** The one timestamp line, in its cached wording. */
-export function dataLine({ data_through, refreshed_at }: { data_through: string | null; refreshed_at: string | null }): string {
-  return `Data to ${shortDay(data_through)} · refreshed ${istTime(refreshed_at)}`
-}
-
 /** What the page has heard so far for the store on show. */
 export interface LoadState<R = unknown, E = Embed> {
   /** The store this state was opened for; rendering ignores a state of another store. */
@@ -336,9 +235,9 @@ export interface LoadState<R = unknown, E = Embed> {
   month?: string
   embed: Answer<E> | undefined
   report: Answer<R> | undefined
-  /** The Dive's frame errored: the quick view for good. */
+  /** The Dive's frame errored: couldn't open, for good. */
   frameFailed: boolean
-  /** The deadline passed with the Dive not up: the quick view, while its frame stays behind it (#1143). */
+  /** The deadline passed with the Dive not up: couldn't open, while its frame stays behind it (#1143). */
   timedOut: boolean
   /** The Dive is up: its frame loaded (no ready signal) or it said it is ready. */
   diveReady: boolean
@@ -346,7 +245,7 @@ export interface LoadState<R = unknown, E = Embed> {
 
 /**
  * The Dive's frame address while it may still be shown (#1143): on show, or kept out of sight
- * behind the quick view past the deadline, so a Dive that says it is ready late still takes over.
+ * behind "couldn't open" past the deadline, so a Dive that says it is ready late still takes over.
  * None once the frame errored.
  */
 export function liveFrame(state: Pick<LoadState, 'embed' | 'frameFailed'>): string | null {
@@ -362,9 +261,9 @@ function answered<T>(promise: Promise<T>): Promise<Answer<T>> {
 }
 
 /**
- * Opens the report for a store: the cached report and the Dive's session are asked for
+ * Opens the report for a store: the `report` read and the Dive's session are asked for
  * together, and one deadline (DIVE_READY_TIMEOUT_MS) covers the session request and the
- * frame loading. Past it, the page shows the quick view, and a session that answers late is
+ * frame loading. Past it, the page says the report couldn't open, and a session that answers late is
  * ignored; a frame already given keeps loading out of sight, and takes over if the Dive says it
  * is ready (#1143). Opening another store ignores everything the previous one still has in flight.
  */
@@ -396,7 +295,7 @@ export function reportLoader<R = unknown>(read: (name: string, payload: Record<s
       publish(state)
       const payload = { ...(store ? { store } : {}), ...(month ? { month } : {}) }
       deadline = guard.after(opened, timeoutMs, () => update(opened, { timedOut: true }))
-      // The cached report gets its own deadline: past it, it counts as failed (the page then shows
+      // The `report` read gets its own deadline: past it, it counts as failed (the page then shows
       // the Dive if it works, or "couldn't load" with Try again), and a late answer is ignored.
       const reportDeadline = guard.after(opened, reportTimeoutMs, () => { if (!state.report) update(opened, { report: { ok: false } }) })
       guard.settle(opened, answered(read('report', payload) as Promise<R>), report => {
@@ -444,9 +343,6 @@ export function reportLoader<R = unknown>(read: (name: string, payload: Record<s
     close() { token = guard.bump() },
   }
 }
-
-/** The page header's last line: what the figures measure, in the old page's words (#4486). */
-export const MEASURE_LINE = 'Sales before tax, net of returns'
 
 /** The period the figures cover, DD-Mon-YYYY to DD-Mon-YYYY. */
 export function periodLine({ period_start, period_end }: { period_start: string; period_end: string }): string {

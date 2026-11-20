@@ -20,7 +20,7 @@ async function waitingPerson(name: string, email: string, app = 'featherbase') {
 
 test('a System Manager sees the count and the list, with the App, and opens a request', async ({ admin }) => {
   await waitingPerson('Waiting Person', 'waiting.person@staff.example.com')
-  await waitingPerson('Second Person', 'second.person@staff.example.com', 'dash')
+  await waitingPerson('Second Person', 'second.person@staff.example.com')
   await renderApp('/featherbase/admin/waiting-for-access', admin)
 
   const link = await screen.findByTestId('waiting-for-access-link')
@@ -33,7 +33,6 @@ test('a System Manager sees the count and the list, with the App, and opens a re
   await waitFor(() => expect(within(page).getByTestId('list-total')).toHaveTextContent('2 total'))
   expect(page).toHaveTextContent('waiting.person@staff.example.com')
   await waitFor(() => expect(page).toHaveTextContent('Waiting Person'))
-  expect(page).toHaveTextContent('Dash')
   expect(page).toHaveTextContent('Featherbase')
   expect(page.textContent).not.toMatch(/psn_[a-z2-7]{20}/)
   // A list's own tools: filters and column choice.
@@ -47,7 +46,7 @@ test('a System Manager sees the count and the list, with the App, and opens a re
 
 test('Tree of all on Waiting for access lists each request as a line', async ({ admin }) => {
   await waitingPerson('Waiting Person', 'waiting.person@staff.example.com')
-  await waitingPerson('Second Person', 'second.person@staff.example.com', 'dash')
+  await waitingPerson('Second Person', 'second.person@staff.example.com')
   await renderApp('/featherbase/admin/waiting-for-access', admin)
   const page = await screen.findByTestId('waiting-for-access')
   await waitFor(() => expect(within(page).getByTestId('list-total')).toHaveTextContent('2 total'))
@@ -58,17 +57,17 @@ test('Tree of all on Waiting for access lists each request as a line', async ({ 
 
 test('a filter on Waiting for access is kept in the address', async ({ admin }) => {
   await waitingPerson('Waiting Person', 'waiting.person@staff.example.com')
-  await waitingPerson('Second Person', 'second.person@staff.example.com', 'dash')
+  await waitingPerson('Second Person', 'second.person@staff.example.com')
   const app = await renderApp('/featherbase/admin/waiting-for-access', admin)
   const page = await screen.findByTestId('waiting-for-access')
   await waitFor(() => expect(within(page).getByTestId('list-total')).toHaveTextContent('2 total'))
   await userEvent.click(within(page).getByTestId('filter-toggle'))
   await userEvent.selectOptions(within(page).getByTestId('filter-field'), 'app')
-  await userEvent.type(within(page).getByTestId('filter-value'), 'dash')
+  await userEvent.type(within(page).getByTestId('filter-value'), 'featherbase')
   await userEvent.click(within(page).getByTestId('filter-add'))
-  await waitFor(() => expect(within(page).getByTestId('filter-chip')).toHaveTextContent('dash'))
+  await waitFor(() => expect(within(page).getByTestId('filter-chip')).toHaveTextContent('featherbase'))
   const search = (app.router.state as { location: { search: { filters?: string } } }).location.search
-  expect(JSON.parse(search.filters!)).toEqual([['app', expect.any(String), expect.stringContaining('dash')]])
+  expect(JSON.parse(search.filters!)).toEqual([['app', expect.any(String), expect.stringContaining('featherbase')]])
 })
 
 test('nobody waiting: an empty state and no badge', async ({ admin }) => {

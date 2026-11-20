@@ -1,3 +1,4 @@
+import { unavailableHref } from 'shared'
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { config } from '../src/config'
@@ -5,11 +6,10 @@ import { parseInstanceAddresses } from '../src/instance-addresses'
 import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
 import { beginMockApproval, mockOAuth } from './google-mock'
 import { withTimeFromNow } from './clock'
-import { saveDoc } from '../src/document'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { alertAccessRequest } from '../src/waiting-for-access'
-import { expectStatus, makePerson } from './fixtures'
+import { expectStatus, grantRole, makePerson } from './fixtures'
 import { issueSession, resolveToken, setPasswordFromShell } from '../src/auth'
 import { mintHandoffTicket } from '../src/oauth'
 import { preAuthPolicy } from '../src/pre-auth-rate-limit'
@@ -23,7 +23,7 @@ const setGoogleOpen = () => configureGoogle({ allowed_email_domains: '*' })
 
 const DASH = 'https://dash.example.com'
 const ADMIN = 'https://featherbase.example.com'
-const ROOT = '/featherbase/sales-target' // dash's interim root (design D8)
+const ROOT = '/dash/' // the root of the app the address opens
 const ADDRESSES = parseInstanceAddresses(
   JSON.stringify([
     { address: DASH, opens: 'dash', emails: true },
@@ -35,9 +35,12 @@ const ADDRESSES = parseInstanceAddresses(
 beforeEach(() => {
   config.instanceAddresses = ADDRESSES
 })
-afterEach(() => {
+afterEach(async () => {
   config.instanceAddresses = null
   vi.unstubAllEnvs()
+  // An app installed by a test stays loaded in this process after its rows roll back.
+  const { discoverPackages } = await import('../src/runtime-packages')
+  await discoverPackages([])
 })
 
 const redirectUriOf = (res: Response) =>
@@ -141,8 +144,8 @@ describe('on an address that opens an app', () => {
     expect(res.headers.get('location')).toBe(ROOT)
   })
 
-  test("the sign-in pages, the bar's script and the app root are served", async ({ api }) => {
-    for (const path of ['/featherbase/login?next=x', '/featherbase/reset-password?key=k', '/featherbase/oauth-callback?code=c', '/featherbase/bar.js', ROOT, `${ROOT}/`])
+  test("the sign-in pages and the bar's script are served", async ({ api }) => {
+    for (const path of ['/featherbase/login?next=x', '/featherbase/reset-password?key=k', '/featherbase/oauth-callback?code=c', '/featherbase/bar.js'])
       expect([path, (await get(api, `${DASH}${path}`)).status]).not.toEqual([path, 302])
   })
 
@@ -181,7 +184,7 @@ describe('on an address that opens an app', () => {
     expect((await get(api, `${ADMIN}/featherbase/admin`)).status).not.toBe(302)
   })
 
-  test('an app that is not installed shows "Application unavailable"', async ({ admin }) => {
+  test('an app that is not installed goes to the shared page that says nothing is there (#1328)', async ({ admin }) => {
     config.instanceAddresses = parseInstanceAddresses(
       JSON.stringify([{ address: DASH, opens: 'not_installed', emails: true }, { address: ADMIN, opens: 'admin' }]),
       'test',
@@ -189,8 +192,8 @@ describe('on an address that opens an app', () => {
     const home = await get(admin, `${DASH}/`)
     expect(home.headers.get('location')).toBe('/not_installed/')
     const root = await get(admin, `${DASH}/not_installed/`)
-    await expectStatus(root, 404)
-    expect(await root.text()).toContain('Application unavailable')
+    expect(root.status).toBe(302)
+    expect(root.headers.get('location')).toBe('/featherbase/unavailable?address=%2Fnot_installed%2F')
   })
 })
 
@@ -198,14 +201,24 @@ describe('on an address that opens an app', () => {
 
 type SignedIn = { token: string; user: { row_id: string }; landing?: string; handoff?: string }
 
-async function viewerRole() {
-  const [have] = await sql`select 1 from role where row_id = 'Sales Target Viewer'`
-  if (!have) await saveDoc('Role', { row_id: 'Sales Target Viewer' }, 'Administrator')
+/** The role that opens the app at DASH: test-apps/fixtures/dash-stand-in,
+ *  installed and opened to this role alone (its manifest opens it to All). */
+const VIEWER = 'Dash Reader'
+async function viewerRole(admin: TestClient) {
+  const [installed] = await sql`select 1 from installed_app where name = 'dash'`
+  if (installed) return
+  const { discoverPackages } = await import('../src/runtime-packages')
+  const { resolve } = await import('node:path')
+  expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'dash' })
+  await sql`delete from permission where ref_table = 'dash.note' and role = 'All'`
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER } })
+  await grantRole(admin, { table: 'dash.note', role: VIEWER, can_read: true })
 }
 
 /** A person with a password and these roles; returns their id and login name. */
 async function personWith(admin: TestClient, name: string, roles: string[]) {
-  await viewerRole()
+  if (roles.includes(VIEWER)) await viewerRole(admin)
   const id = await makePerson({ email: `${name}@example.com`, full_name: name, roles: roles.map((role) => ({ role })) })
   await admin.post('/api/set_password', { user: id, password: 'landing-pw-1' })
   return { id, usr: `${name}@example.com` }
@@ -236,7 +249,7 @@ function redeemOn(api: TestClient, origin: string, code: string | null, cookie =
 
 describe('landing after sign-in', () => {
   test("on an app's address, a person who can open the app stays on its root", async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.stays', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.stays', [VIEWER])
     const { body } = await signIn(api, DASH, viewer.usr)
     expect(body).toMatchObject({ landing: ROOT })
     expect(body.handoff).toBeUndefined()
@@ -249,14 +262,14 @@ describe('landing after sign-in', () => {
   })
 
   test('on the admin address, a person who can use Admin stays', async ({ api, admin }) => {
-    const manager = await personWith(admin, 'manager.stays', ['System Manager', 'Sales Target Viewer'])
+    const manager = await personWith(admin, 'manager.stays', ['System Manager', VIEWER])
     const { body } = await signIn(api, ADMIN, manager.usr)
     expect(body.handoff).toBeUndefined()
     expect(body.landing).toBeUndefined()
   })
 
   test("on the admin address, a person who can only open an app is handed to the app's address", async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.handed', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.handed', [VIEWER])
     const { body } = await signIn(api, ADMIN, viewer.usr)
     expect(body.handoff).toMatch(new RegExp(`^${DASH}/api/handoff/start\\?ticket=`))
   })
@@ -275,10 +288,10 @@ describe('landing after sign-in', () => {
     expect(body.landing).toBe(ROOT)
   })
 
-  test('a Google sign-in on the admin address hands a report viewer to the app address', async ({ api }) => {
+  test('a Google sign-in on the admin address hands an app reader to the app address', async ({ api, admin }) => {
     await setGoogleOpen()
-    await viewerRole()
-    const viewer = await makePerson({ email: 'google.viewer@example.com', full_name: 'Google Viewer', roles: [{ role: 'Sales Target Viewer' }] })
+    await viewerRole(admin)
+    const viewer = await makePerson({ email: 'google.viewer@example.com', full_name: 'Google Viewer', roles: [{ role: VIEWER }] })
     await inviteGoogleRaw(viewer, 'google.viewer@example.com')
     const { callback, cookie } = await mockCallbackUrl(api, ADMIN, 'google.viewer@example.com')
     const back = await api.fetch(`${ADMIN}${callback}`, { headers: { cookie } })
@@ -294,7 +307,7 @@ describe('landing after sign-in', () => {
 
 describe('the hand-off between addresses', () => {
   test('missing unknown wrong-address and spent tickets refuse without account changes while a genuine transfer succeeds', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.ticket.refusals', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.ticket.refusals', [VIEWER])
     const source = await signIn(api, ADMIN, viewer.usr)
     await expectStatus(source.res, 200)
     const handoff = new URL(source.body.handoff!)
@@ -369,7 +382,7 @@ describe('the hand-off between addresses', () => {
   })
 
   test('the target sets a host-only, HttpOnly nonce cookie and sends the browser back to the source', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.round.trip', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.round.trip', [VIEWER])
     const { body } = await signIn(api, ADMIN, viewer.usr)
     const start = await api.fetch(body.handoff!)
     await expectStatus(start, 302)
@@ -381,7 +394,7 @@ describe('the hand-off between addresses', () => {
   })
 
   test('the browser that started it redeems the code on the target and gets a new session there', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.redeems', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.redeems', [VIEWER])
     const { body: source, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, source.handoff!, sid)
     const res = await redeemOn(api, DASH, code, nonce)
@@ -394,14 +407,14 @@ describe('the hand-off between addresses', () => {
   })
 
   test('a code redeemed by another browser, with no nonce cookie, is refused', async ({ api, admin }) => {
-    const attacker = await personWith(admin, 'attacker.no.nonce', ['Sales Target Viewer'])
+    const attacker = await personWith(admin, 'attacker.no.nonce', [VIEWER])
     const { body, sid } = await signIn(api, ADMIN, attacker.usr)
     const { code } = await followHandoff(api, body.handoff!, sid)
     await expectStatus(await redeemOn(api, DASH, code), 401)
   })
 
   test("a code redeemed by another browser, with that browser's own nonce cookie, is refused", async ({ api, admin }) => {
-    const attacker = await personWith(admin, 'attacker.other.nonce', ['Sales Target Viewer'])
+    const attacker = await personWith(admin, 'attacker.other.nonce', [VIEWER])
     const mine = await signIn(api, ADMIN, attacker.usr)
     const { code } = await followHandoff(api, mine.body.handoff!, mine.sid)
     const theirs = await signIn(api, ADMIN, attacker.usr)
@@ -410,7 +423,7 @@ describe('the hand-off between addresses', () => {
   })
 
   test('a hand-off link opened in another browser is refused at the source, which has no session for it', async ({ api, admin }) => {
-    const attacker = await personWith(admin, 'attacker.link', ['Sales Target Viewer'])
+    const attacker = await personWith(admin, 'attacker.link', [VIEWER])
     const { body } = await signIn(api, ADMIN, attacker.usr)
     const { bind, code } = await followHandoff(api, body.handoff!, '')
     await expectStatus(bind, 401)
@@ -418,7 +431,7 @@ describe('the hand-off between addresses', () => {
   })
 
   test('a replayed code is refused', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.replays', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.replays', [VIEWER])
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
     await expectStatus(await redeemOn(api, DASH, code, nonce), 200)
@@ -426,7 +439,7 @@ describe('the hand-off between addresses', () => {
   })
 
   test('a code redeemed on another host is refused, and spent', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.wrong.host', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.wrong.host', [VIEWER])
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
     await expectStatus(await redeemOn(api, ADMIN, code, nonce), 401)
@@ -434,7 +447,7 @@ describe('the hand-off between addresses', () => {
   })
 
   test('a code older than one minute is refused', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.late', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.late', [VIEWER])
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
     await withTimeFromNow(61_000, async () => {
@@ -443,7 +456,7 @@ describe('the hand-off between addresses', () => {
   })
 
   test('a code is refused once the source session has signed out', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.source.out', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.source.out', [VIEWER])
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
     await api.fetch(`${ADMIN}/api/logout`, { method: 'POST', headers: { cookie: sid } })
@@ -451,7 +464,7 @@ describe('the hand-off between addresses', () => {
   })
 
   test("a code is refused once an operator's password reset ends the person's sessions", async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.source.reset', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.source.reset', [VIEWER])
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
     // The shell reset ends sessions issued before it, to the second, and its
@@ -475,23 +488,23 @@ describe('a handed-over session keeps how the source was opened', () => {
   }
 
   test('a preview session stays a preview, opened by no method', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.preview.handed', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.preview.handed', [VIEWER])
     const source = await issueSession(viewer.id, { preview: true })
     expect(await handOver(api, source.token)).toMatchObject({ preview: true, method: null, test_mode: false })
   })
 
   test('a test-mode session stays in test mode', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.testmode.handed', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.testmode.handed', [VIEWER])
     const source = await issueSession(viewer.id, { method: 'password', testMode: true })
     expect(await handOver(api, source.token)).toMatchObject({ test_mode: true, method: 'password', preview: false })
   })
 })
 
 describe('the hand-off budget', () => {
-  test('as many Google sign-ins as the OAuth budget allows, from one source, each finish a full hand-off', async ({ api }) => {
+  test('as many Google sign-ins as the OAuth budget allows, from one source, each finish a full hand-off', async ({ api, admin }) => {
     await setGoogleOpen()
-    await viewerRole()
-    const viewer = await makePerson({ email: 'burst.viewer@example.com', full_name: 'Burst Viewer', roles: [{ role: 'Sales Target Viewer' }] })
+    await viewerRole(admin)
+    const viewer = await makePerson({ email: 'burst.viewer@example.com', full_name: 'Burst Viewer', roles: [{ role: VIEWER }] })
     await inviteGoogleRaw(viewer, 'burst.viewer@example.com')
     const { limits } = preAuthPolicy()
     const outcomes: number[] = []
@@ -516,7 +529,7 @@ describe('sessions stay per address', () => {
   })
 
   test('signing out on one address ends only that address’s session', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.signs.out', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.signs.out', [VIEWER])
     const { body: source, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, source.handoff!, sid)
     const target = (await (await redeemOn(api, DASH, code, nonce)).json()) as SignedIn
@@ -529,14 +542,15 @@ describe('sessions stay per address', () => {
 })
 
 describe('the brand', () => {
-  test("on an app's address, /api/brand names the app", async ({ api }) => {
-    expect(((await (await api.fetch(`${DASH}/api/brand`)).json()) as { app_name: string }).app_name).toBe('Dash')
+  test("on an app's address, /api/brand names the app", async ({ api, admin }) => {
+    await viewerRole(admin)
+    expect(((await (await api.fetch(`${DASH}/api/brand`)).json()) as { app_name: string }).app_name).toBe('Dash stand-in')
   })
 
   test('on the admin address, /api/brand names the instance', async ({ api }) => {
     const instance = ((await (await api.fetch('/api/brand')).json()) as { app_name: string }).app_name
     expect(((await (await api.fetch(`${ADMIN}/api/brand`)).json()) as { app_name: string }).app_name).toBe(instance)
-    expect(instance).not.toBe('Dash')
+    expect(instance).not.toBe('Dash stand-in')
   })
 })
 
@@ -629,10 +643,9 @@ describe('an address that opens an installed app package', () => {
   })
 })
 
-// #671: INTERIM_APPS stands in for Feather Dash only until an app of that name
-// is installed (design D8, "Interim target"). From then on its address opens
-// the app, names it, and signs its readers in to it.
-describe('an address whose app is installed under the interim name', () => {
+// #671: an address opens the app installed under its name, names it, and
+// signs its readers in to it.
+describe('an address whose app is installed', () => {
   const APP_ROOT = '/dash/'
   const get = (api: TestClient, url: string) => api.fetch(url, { headers: { accept: 'text/html' } })
 
@@ -645,20 +658,9 @@ describe('an address whose app is installed under the interim name', () => {
     await admin.post('/api/install_app', { name: 'dash' })
   }
 
-  // The installed app stays loaded in this process after its rows roll back.
-  afterEach(async () => {
-    const { discoverPackages } = await import('../src/runtime-packages')
-    await discoverPackages([])
-  })
-
   test('/ redirects to the app root', async ({ api, admin }) => {
     await installDashApp(admin)
     expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(APP_ROOT)
-  })
-
-  test('the interim page redirects to the app root', async ({ api, admin }) => {
-    await installDashApp(admin)
-    expect((await get(api, `${DASH}${ROOT}`)).headers.get('location')).toBe(APP_ROOT)
   })
 
   test("the address's brand is the installed app's title", async ({ api, admin }) => {
@@ -666,18 +668,10 @@ describe('an address whose app is installed under the interim name', () => {
     expect(await (await api.fetch(`${DASH}/api/brand`)).json()).toMatchObject({ app_name: 'Dash stand-in', opens: 'dash' })
   })
 
-  test('a person who can open the app, without the report role, lands on its root', async ({ api, admin }) => {
+  test('a person who can open the app lands on its root', async ({ api, admin }) => {
     await installDashApp(admin)
     const reader = await personWith(admin, 'dash.app.reader', [])
     const { body } = await signIn(api, DASH, reader.usr)
-    expect(body).toMatchObject({ landing: APP_ROOT })
-  })
-
-  test('with no list, a person who can open the app lands on its root', async ({ api, admin }) => {
-    await installDashApp(admin)
-    config.instanceAddresses = null
-    const reader = await personWith(admin, 'dash.app.unlisted', [])
-    const { body } = await signIn(api, 'http://localhost', reader.usr)
     expect(body).toMatchObject({ landing: APP_ROOT })
   })
 
@@ -698,10 +692,11 @@ describe('an address whose app is installed under the interim name', () => {
     await installDashApp(admin)
     await disable(admin)
     const res = await get(admin, `${DASH}${APP_ROOT}`)
-    expect([res.status, res.headers.get('location')]).toEqual([404, null])
+    // #1328: the shared page that says nothing is available there.
+    expect([res.status, res.headers.get('location')]).toEqual([302, unavailableHref(APP_ROOT)])
   })
 
-  test("a disabled app's address is not named for the interim page", async ({ api, admin }) => {
+  test("a disabled app's address is still named for the installed app", async ({ api, admin }) => {
     await installDashApp(admin)
     await disable(admin)
     expect(await (await api.fetch(`${DASH}/api/brand`)).json()).toMatchObject({ app_name: 'Dash stand-in' })
@@ -723,14 +718,19 @@ describe('an address whose app is installed under the interim name', () => {
     expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(APP_ROOT)
   })
 
-  // Another replica, or this one before it loads the app: the database says
-  // installed while this process serves nothing. Both sides still agree on the
-  // app root, so no two processes can send a browser back and forth.
-  test('a process that has not loaded the installed app keeps the interim page on the app root', async ({ api, admin }) => {
-    const { discoverPackages } = await import('../src/runtime-packages')
+  // #1328 (Codex adversarial round 1): on the app's own address the page is served, never sent back to the root.
+  test("on the app's own address, a disabled app's visitors reach the shared page and stay there, signed in or out", async ({ api, admin }) => {
     await installDashApp(admin)
-    await discoverPackages([])
-    expect((await get(api, `${DASH}${ROOT}`)).headers.get('location')).toBe(APP_ROOT)
+    await disable(admin)
+    for (const client of [admin, api]) {
+      const first = await get(client, `${DASH}${APP_ROOT}`)
+      expect([first.status, first.headers.get('location')]).toEqual([302, unavailableHref(APP_ROOT)])
+      const page = await get(client, `${DASH}${unavailableHref(APP_ROOT)}`)
+      expect(page.status).not.toBe(302)
+    }
+    // Its way forward is Featherbase's own address, never this app's root (Codex adversarial round 2).
+    expect(await (await api.fetch(`${DASH}/api/brand`)).json()).toMatchObject({ home: ADMIN })
+    expect(await (await api.fetch(`${ADMIN}/api/brand`)).json()).toMatchObject({ home: null })
   })
 
   test("a process that has not loaded the installed app answers at the app's root that it is unavailable", async ({ admin }) => {
@@ -738,23 +738,14 @@ describe('an address whose app is installed under the interim name', () => {
     await installDashApp(admin)
     await discoverPackages([])
     const res = await get(admin, `${DASH}${APP_ROOT}`)
-    expect([res.status, res.headers.get('location')]).toEqual([404, null])
-  })
-
-  // A runtime app cannot be uninstalled through the API ("Use disable"), so the
-  // installation record is removed directly: with none, the interim is back.
-  test('once its installation record is gone, / goes to the interim page again', async ({ api, admin }) => {
-    const { discoverPackages } = await import('../src/runtime-packages')
-    await installDashApp(admin)
-    await discoverPackages([])
-    await sql`delete from installed_app where name = 'dash'`
-    expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(ROOT)
+    // #1328: the shared page that says nothing is available there.
+    expect([res.status, res.headers.get('location')]).toEqual([302, unavailableHref(APP_ROOT)])
   })
 })
 
 describe('a hand-off whose source address left the list', () => {
   test('the target refuses a ticket from an address no longer listed', async ({ api, admin }) => {
-    const viewer = await personWith(admin, 'viewer.delisted', ['Sales Target Viewer'])
+    const viewer = await personWith(admin, 'viewer.delisted', [VIEWER])
     const source = await signIn(api, ADMIN, viewer.usr)
     const handoff = source.body.handoff!
     config.instanceAddresses = parseInstanceAddresses(JSON.stringify([{ address: DASH, opens: 'dash', emails: true }, { address: 'https://new-admin.example.com', opens: 'admin' }]), 'test')

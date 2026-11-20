@@ -10,7 +10,7 @@ import {
   useParams,
   useRouter,
 } from '@tanstack/react-router'
-import { parseFilters, tableHref, tableSlug, type ListLayout } from 'shared'
+import { UNAVAILABLE_PATH, parseFilters, tableHref, tableSlug, type ListLayout } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { SetPasswordPage } from './pages/SetPassword'
@@ -19,17 +19,17 @@ import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
 import { GoingToApp, ManageOnly } from './pages/RestrictedShell'
-import { Card, EmptyState, Notice, ProblemPage, buttonClasses, fmtDate } from '@featherbase/shop-floor'
+import { Card, EmptyState, Notice, ProblemPage, ToastProvider, buttonClasses, fmtDate } from '@featherbase/shop-floor'
 import { AdminHomeLink, CannotShow } from './components/CannotShow'
 import { TopBar } from './components/TopBar'
+import { UnavailablePage } from './pages/Unavailable'
 import { ThemeChoiceProvider } from './lib/theme-choice'
 import { useCapabilities } from './lib/session'
 import { ApiError, api, getToken, landingPath, loginHref } from './lib/api'
 import { isListLayout, useListLayout } from './lib/list-layout'
 import { rememberFilters, useRememberedFilters } from './lib/remembered-filters'
-import { useQuery } from '@tanstack/react-query'
-import { crossesFramePolicy } from './lib/document-path'
-import { SalesTargetPage } from './pages/SalesTarget'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { userSettingsQuery } from './components/FormArrangement'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
 import { metaQuery, useMeta, type TableMeta } from './lib/meta'
@@ -78,15 +78,10 @@ import { PaneSplit, RecordPanel } from './components/RowPane'
 import { NavigationProvider, useAddressNavigation } from './lib/navigation'
 import type { NavStep } from './lib/nav-path'
 
-// #642 (E4): a page with a frame policy of its own (the Sales Target report)
-// is entered and left by a full load, so each document carries the policy the
-// server set for the page it shows. Checked on every navigation.
 const rootRoute = createRootRoute({
-  component: Outlet,
+  // #1282 A4: short confirmations (Saved as the Table's default · Undo) for every page.
+  component: () => <ToastProvider><Outlet /></ToastProvider>,
   notFoundComponent: () => <PageNotFound />,
-  beforeLoad: ({ location }) => {
-    if (crossesFramePolicy(location.pathname)) throw redirect({ href: location.href, reloadDocument: true })
-  },
 })
 
 // #87: every search param below is a string to the app, but TanStack's default
@@ -265,18 +260,6 @@ function PortalDocRouteComponent() {
   return <PortalRowPage key={`${table}/${name}`} table={table} name={name} />
 }
 
-// #3755: the personalised sales-target report — outside the Admin shell, one
-// page per signed-in employee, no selector. The server resolves the
-// assignment and mints the embed session; the page only frames it.
-const salesTargetRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/featherbase/sales-target',
-  beforeLoad: ({ location }) => {
-    if (!getToken()) throw redirect({ href: loginHref(location.href) })
-  },
-  component: SalesTargetPage,
-})
-
 // SET-002: public password-reset page (target of the emailed link).
 const resetPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -348,6 +331,18 @@ function PageNotFound() {
     </ThemeChoiceProvider>
   )
 }
+
+// #1328 (audit F09): where the server sends an address it cannot open as an app.
+// The address is read as text only (askedAddress), never followed.
+const unavailableRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: UNAVAILABLE_PATH,
+  validateSearch: (search: Record<string, unknown>) => ({ address: typeof search.address === 'string' ? search.address : undefined }),
+  component: function Unavailable() {
+    const { address } = unavailableRoute.useSearch()
+    return <UnavailablePage address={address} />
+  },
+})
 
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
 const printRoute = createRoute({
@@ -637,13 +632,21 @@ function KanbanPage() {
   const { table } = useTableAddress()
   const { group_by } = kanbanRoute.useSearch()
   const navigate = kanbanRoute.useNavigate()
+  // #1282 A4: the board's grouping is remembered for this person on this Table; the address still wins.
+  const queryClient = useQueryClient()
+  const stored = useQuery(userSettingsQuery(table))
+  const remembered = typeof stored.data?.settings?.groupBy === 'string' ? stored.data.settings.groupBy : undefined
   return (
     <div data-testid="table-page">
       <KanbanView
         key={table}
         table={table}
-        groupBy={group_by}
-        onGroupByChange={(f) => navigate({ search: { group_by: f }, replace: true })}
+        groupBy={group_by ?? remembered}
+        onGroupByChange={(f) => {
+          navigate({ search: { group_by: f }, replace: true })
+          queryClient.setQueryData(userSettingsQuery(table).queryKey, { settings: { ...(stored.data?.settings ?? {}), groupBy: f } })
+          api.put(`/api/user_settings/${encodeURIComponent(table)}`, { groupBy: f ?? null }).catch(() => {})
+        }}
       />
     </div>
   )
@@ -1157,6 +1160,7 @@ const exploreRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
+  unavailableRoute,
   featherbaseIndexRoute,
   loginRoute,
   agentConnectRoute,
@@ -1166,7 +1170,6 @@ export const routeTree = rootRoute.addChildren([
   oauthCallbackRoute,
   portalListRoute,
   portalDocRoute,
-  salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
   adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),

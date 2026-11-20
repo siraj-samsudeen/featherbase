@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { buttonClasses, inputClasses, raisedClasses } from '@featherbase/shop-floor'
+import { buttonClasses, menuItemClasses, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 import { tableSlug } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { renameTableInRecents } from '../lib/recents'
@@ -47,7 +47,7 @@ export function RenameTable({ table, noun }: { table: string; noun: 'Table' | 'v
           setName(table)
           setOpen(true)
         }}
-        className={buttonClasses()}
+        className={menuItemClasses()}
         data-testid="rename-table"
       >
         Rename {noun}

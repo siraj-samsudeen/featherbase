@@ -127,6 +127,20 @@
         "row_id": "dash.department_setup",
         "mode": "Apply now, review after"
       }
+    ],
+    "Metadata Override": [
+      {
+        "row_id": "employee-person-column",
+        "table_name": "Employee",
+        "property": "person_column",
+        "value": "person"
+      },
+      {
+        "row_id": "employee-search-columns",
+        "table_name": "Employee",
+        "property": "search_columns",
+        "value": "employee_code"
+      }
     ]
   },
   "environments": {

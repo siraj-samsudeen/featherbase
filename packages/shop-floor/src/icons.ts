@@ -15,6 +15,7 @@ export {
   CalendarDays,
   ChartColumn,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,

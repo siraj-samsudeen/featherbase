@@ -95,8 +95,9 @@ test('a group in the pane shows its first 4 rows, then + N more', async ({ admin
   expect(within(panel()).getByRole('link', { name: '+ 3 more' })).toHaveAttribute('href', expect.stringContaining(tableHref('Pk Order')))
 })
 
-// UI owner's polish: the pane's Pointed At By shows only groups with rows; the empty ones wait behind Show N empty.
-test("the pane's empty groups wait behind Show N empty, as on the record page", async ({ admin }) => {
+// #1349 item 3 (board 4b): the pane's Pointed At By shows only groups with rows; the empty ones fold behind one
+// muted "+ N tables with none".
+test("the pane's empty groups fold behind + N tables with none", async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/table_def', {
     name: 'Pk Note', id_pattern: 'prompt', title_column: 'title',
@@ -107,10 +108,18 @@ test("the pane's empty groups wait behind Show N empty, as on the record page", 
   await screen.findByRole('complementary', { name: /Anu Rep/ })
   expect(await within(panel()).findByRole('button', { name: /^Pk Order/ })).toBeInTheDocument()
   expect(within(panel()).queryByRole('button', { name: /^Pk Note/ })).not.toBeInTheDocument()
-  fireEvent.click(within(panel()).getByRole('button', { name: 'Show 1 empty' }))
+  fireEvent.click(within(panel()).getByRole('button', { name: '+ 1 table with none' }))
   expect(within(panel()).getByRole('button', { name: /^Pk Note/ })).toBeInTheDocument()
-  fireEvent.click(within(panel()).getByRole('button', { name: 'Hide empty' }))
+  fireEvent.click(within(panel()).getByRole('button', { name: 'Hide 1 table with none' }))
   expect(within(panel()).queryByRole('button', { name: /^Pk Note/ })).not.toBeInTheDocument()
+})
+
+test('a record nothing points at says so, with the empty tables folded beside the words', async ({ admin }) => {
+  await seed(admin)
+  // Nothing links to an order.
+  await peekFromLinks(admin)
+  const pointed = within(panel()).getByRole('heading', { name: 'Pointed At By' }).parentElement!
+  await waitFor(() => expect(pointed).toHaveTextContent('Nothing points at this pk order yet.'))
 })
 
 // #1348 board 4: the pane draws a record's values as the list does: a status chip under the name (and not in

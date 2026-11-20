@@ -313,8 +313,13 @@ async function cmdSettingsSet(io: CommandIO, positional: string[], flags: Record
     if (flags[key] !== undefined && typeof flags[key] !== 'string') throw new Error(`--${key} takes a value`)
   const { INSTANCE_SETTINGS_TABLES } = await import('shared')
   const table = (flags.table as string | undefined) ?? 'System Settings'
-  if (!(INSTANCE_SETTINGS_TABLES as readonly string[]).includes(table))
-    throw new Error(`settings:set writes ${INSTANCE_SETTINGS_TABLES.slice(0, -1).join(', ')} or ${INSTANCE_SETTINGS_TABLES[INSTANCE_SETTINGS_TABLES.length - 1]}, not ${table}`)
+  // #1345: a Metadata Override is set by the settings file alone, through its allowlist of properties;
+  // break glass writes a row directly, so it would skip that list.
+  if (table === 'Metadata Override')
+    throw new Error('settings:set does not write Metadata Override: set it in the settings file, which allows only some properties')
+  const writable = INSTANCE_SETTINGS_TABLES.filter((t) => t !== 'Metadata Override')
+  if (!(writable as readonly string[]).includes(table))
+    throw new Error(`settings:set writes ${writable.slice(0, -1).join(', ')} or ${writable[writable.length - 1]}, not ${table}`)
   const meta = await getMeta(table)
   const row = flags.row as string | undefined
   if (meta.kind === 'settings' && row !== undefined) throw new Error(`${table} has one row; leave out --row`)

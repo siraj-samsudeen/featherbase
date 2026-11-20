@@ -139,8 +139,8 @@ test('opening Search or Command with the mouse three times brings its tip', asyn
   expect(tip).toHaveTextContent(/Press (⌘K|Ctrl\+K) to search or run a command from anywhere\./)
 })
 
-test('? opens the panel on a page without a sidebar too (Sales Target)', async ({ admin }) => {
-  await renderApp('/featherbase/sales-target', admin)
+test('? opens the panel on a page without a sidebar too (the Portal)', async ({ admin }) => {
+  await renderApp('/featherbase/portal/person', admin)
   await screen.findByTestId('shortcut-teaching', {}, WAIT)
   fireEvent.keyDown(document.body, { key: '?', shiftKey: true })
   expect(panel()).toBeInTheDocument()

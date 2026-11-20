@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-router'
 import { CannotShow } from './CannotShow'
@@ -37,7 +37,8 @@ import { ActionDisclosure } from './ActionDisclosure'
 import { RetireDialog, RetiredBadge, RetiredNotice, reactivateRow } from './RowRetirement'
 import { PurgeDialog } from './PurgeDialog'
 import { WorkflowActions } from './WorkflowActions'
-import { RowConnections } from './RowPane'
+import { RowConnections, scrollToWhenShown } from './RowPane'
+import { workedOutId } from './WorkedOut'
 import { OpenInApp } from './OpenInApp'
 import { RecordNav } from './RecordNav'
 import { RowMap } from './RowMap'
@@ -50,7 +51,7 @@ import { ChangeRecord } from './ChangeRecord'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 import { INSTANCE_HEALTH_QUERY_KEY } from '../pages/InstanceHealth'
 import { ArchivedBanner } from './ArchiveTable'
-import { ContentTabs, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, raisedClasses } from '@featherbase/shop-floor'
+import { ContentTabs, buttonClasses, menuItemClasses, MENU_GROUP_CLASSES, cardClasses, inputClasses, pillClasses, touchLinkClasses, raisedClasses } from '@featherbase/shop-floor'
 import { RecordChips } from './RecordChips'
 import type { Row } from './form-row'
 import { FieldControl } from './FieldControl'
@@ -185,8 +186,6 @@ export function FormView({
   useEffect(() => { if (pathView) setLocalArea(tabOf(pathView)) }, [pathView])
   // #1273 (A3, D3): how the Links tab reads, and the group a title chip jumps to.
   const linksPref = useLinksPreference(table, rowNav?.step.linksAs)
-  const [jumpTo, setJumpTo] = useState<string | null>(null)
-  const jumped = useCallback(() => setJumpTo(null), [])
   // C9: a tick saved on the Links tab shows in the record's one save state.
   const linkSave = useMemo(() => ({ saved: () => { setBanner('Saved'); setSavedAt(new Date()) } }), [])
   const setLinksAs = (as: 'sections' | 'tree') => {
@@ -620,7 +619,7 @@ export function FormView({
   return (
     <div data-testid="form-view" className={`min-w-0 [overflow-wrap:anywhere] ${unsaved && !rowsReadOnly ? 'pb-20' : ''}`}>
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
-        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
+        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>{meta.data?.module || 'Home'}</RouterLink>
         <span aria-hidden="true">/</span>
         <RouterLink
           to="/featherbase/admin/table/$table"
@@ -696,13 +695,14 @@ export function FormView({
           )}
           {!isNew && baseline.retired_at != null && <RetiredBadge />}
           {!isNew && <ActionDisclosure label="Record actions" open={recordActionsOpen} onOpenChange={setRecordActionsOpen}>
+          <div role="group" aria-label="Record" className={MENU_GROUP_CLASSES}>
           {!isNew && (
             <RouterLink
               to="/featherbase/print/$table/$name"
               params={{ table, name }}
               search={{ format: undefined }}
               data-testid="form-print"
-              className={buttonClasses()}
+              className={menuItemClasses()}
             >
               Print
             </RouterLink>
@@ -715,7 +715,7 @@ export function FormView({
                 setRenaming(true)
               }}
               data-testid="form-rename"
-              className={buttonClasses()}
+              className={menuItemClasses()}
             >
               Rename
             </button>
@@ -745,7 +745,7 @@ export function FormView({
                 setRetiring(true)
               }}
               data-testid="form-retire"
-              className={buttonClasses()}
+              className={menuItemClasses()}
             >
               {t('Retire')}
             </button>
@@ -764,11 +764,14 @@ export function FormView({
                 }
               }}
               data-testid="form-reactivate"
-              className={buttonClasses()}
+              className={menuItemClasses()}
             >
               {t('Reactivate')}
             </button>
           )}
+          </div>
+          {/* #1348 (UI owner): the two deletes sit in a group of their own at the bottom, set apart by space. */}
+          {((!isNew && access.data?.purge && !rowManaged) || (!isNew && access.data?.delete && !rowManaged && m.kind !== 'settings' && m.kind !== 'sub_table')) && <div role="group" aria-label="Delete" className={MENU_GROUP_CLASSES}>
           {/* #859: a System Manager's way out of the history rule. */}
           {!isNew && access.data?.purge && !rowManaged && (
             <button
@@ -777,9 +780,9 @@ export function FormView({
                 setPurging(true)
               }}
               data-testid="form-purge"
-              className={buttonClasses({ variant: 'danger' })}
+              className={menuItemClasses({ tone: 'negative' })}
             >
-              {t('Delete permanently')}
+              {t('Delete With History…')}
             </button>
           )}
           {/* TLC-J2.1: the row I am looking at is the row I can remove.
@@ -799,11 +802,12 @@ export function FormView({
                   setConfirmingDelete(true)
                 }}
                 data-testid="form-delete"
-                className={buttonClasses({ variant: 'danger' })}
+                className={menuItemClasses({ tone: 'negative' })}
               >
                 {t('Delete')}
               </button>
             )}
+          </div>}
           </ActionDisclosure>}
           {!rowsReadOnly && (
             <button
@@ -846,7 +850,7 @@ export function FormView({
       </div>
       {/* #1273 (verifier): a Person's page shows its link chips under its header too, to jump from (D3). */}
       {!isNew && <RowConnections table={table} row={name} values={doc.data}
-        onGroup={(key) => { setArea('Links'); setJumpTo(key) }} />}
+        onSection={(heading) => { setArea('Links'); scrollToWhenShown(workedOutId(heading)) }} />}
       {storage && (
         <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
           <span className="font-medium">Storage</span>
@@ -900,12 +904,16 @@ export function FormView({
               {/* #959: the row as its heading names it. */}
               Delete {tableLabel(table, meta.data)}: <RowTitle table={table} rowId={name} />?
             </h2>
-            <p className="mb-3 text-sm text-ink-muted">
+            {/* #1348 (UI owner): once refused nothing has happened, so the warning goes. */}
+            {!deleteOffersRetire && <p className="mb-3 text-sm text-ink-muted">
               This cannot be undone.
-            </p>
+            </p>}
             {deleteError && (
-              <p className="mb-3 text-sm text-negative" data-testid="delete-row-error">
+              // A refusal that names a way out is advice, in body text; red stays for a real failure (spec item 13).
+              <p className={`mb-3 text-sm ${deleteOffersRetire ? 'text-ink' : 'text-negative'}`} data-testid="delete-row-error">
                 {deleteError}
+                {/* #1348 (UI owner): the line that offers Retire names a System Manager's other way out. */}
+                {deleteOffersRetire && access.data?.purge && ' Or Delete With History (System Managers).'}
               </p>
             )}
             <div className="flex flex-wrap justify-end gap-2 [&>button]:whitespace-nowrap">
@@ -919,7 +927,7 @@ export function FormView({
                   className={buttonClasses({ variant: 'danger' })}
                   data-testid="delete-row-purge-instead"
                 >
-                  Delete permanently
+                  Delete With History…
                 </button>
               )}
               {deleteOffersRetire && access.data?.retire && (
@@ -932,7 +940,7 @@ export function FormView({
                   className={buttonClasses({ variant: 'primary' })}
                   data-testid="delete-row-retire-instead"
                 >
-                  Retire instead
+                  Retire Instead
                 </button>
               )}
               <button
@@ -1091,7 +1099,7 @@ export function FormView({
         // Drawn only while open: its sections ask for every group's rows and choices.
         { id: 'Links', label: 'Links', content: area !== 'Links' ? null : (
           <LinkSaveContext.Provider value={linkSave}>
-            <RecordLinks table={table} name={name} values={doc.data} pref={linksPref} focusGroup={jumpTo} onFocused={jumped} />
+            <RecordLinks table={table} name={name} values={doc.data} pref={linksPref} />
           </LinkSaveContext.Provider>
         ) },
         { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },

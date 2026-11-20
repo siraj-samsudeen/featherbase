@@ -6,7 +6,8 @@ import { fmtClockTime, fmtTimelineDay, timelineDayKey } from '@featherbase/shop-
 import { KindIcon } from '../lib/kind-icons'
 import { useRealtime } from '../lib/realtime'
 import { useIsSystemManager } from '../lib/session'
-import { cardClasses, touchRowClasses } from '@featherbase/shop-floor'
+import { undoTableDefault } from './TableDefaultDialog'
+import { cardClasses, touchLinkClasses, touchRowClasses } from '@featherbase/shop-floor'
 
 interface FeedItem {
   /** Display name (#440). The feed carries no person id, by design. */
@@ -24,6 +25,8 @@ interface FeedItem {
   at: string
   /** Back-to-back repeats collapsed into this row (server-side); 1 = single. */
   count?: number
+  /** #1282 A4: a Table default save still in force, which this line can undo. */
+  undo?: string
 }
 
 // #101 Phase 4: the homepage activity feed. Two tabs with a deliberate
@@ -40,6 +43,7 @@ const KIND_VERB: Record<string, string> = {
   search: 'searched',
   change: 'changed',
   login: 'signed in',
+  table_default: 'set the default view of',
 }
 
 /** The verb for a row: a list open says "filtered" only if a filter existed. */
@@ -152,6 +156,14 @@ export function ActivityFeed() {
                   <span className="shrink-0 text-xs text-ink-subtle" data-testid="feed-count">
                     · {item.count}×
                   </span>
+                )}
+                {/* #1282 A4 (UI owner): while this save is still the Table's default, it can be put back from here too. */}
+                {item.undo && (
+                  <button type="button" className={touchLinkClasses('relative shrink-0 text-xs font-medium text-action hover:underline')} data-testid="feed-undo"
+                    onClick={() => void undoTableDefault(queryClient, item.label, item.undo!)
+                      .finally(() => queryClient.invalidateQueries({ queryKey: ['activity-feed'] }))}>
+                    Undo
+                  </button>
                 )}
               </span>
               <time

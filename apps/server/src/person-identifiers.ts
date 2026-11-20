@@ -91,7 +91,7 @@ function isoDate(v: unknown, field: string): string | null {
 // ------------------------------------------------------------- who may
 
 /** Can this principal read restricted identifiers (D9)? */
-async function readsRestricted(viewer: string, person?: string): Promise<boolean> {
+export async function readsRestricted(viewer: string, person?: string): Promise<boolean> {
   if (await isPrivileged(viewer)) return true
   if ((await getRoles(viewer)).includes('Data Quality Manager')) return true
   const scope = await permissionScope(viewer, 'Person', 'read_identifiers')
@@ -420,8 +420,7 @@ async function lockedRow(id: string, db: Db) {
 
 // ----------------------------------------------- the employee-code system
 
-/** The StyleHR employee-code system: what sales-target scoping reads
- *  (`currentEmployeeCodes` in sales-target.ts, #408). */
+/** The StyleHR employee-code system (#408). */
 export const EMPLOYEE_CODE_SYSTEM = 'stylehr-employee-code'
 
 /** Whose identifier this is — for the routes' Person read / Data Scope check

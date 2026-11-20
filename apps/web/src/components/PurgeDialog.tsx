@@ -138,7 +138,7 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
         data-testid="purge-dialog"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="purge-title" className="mb-2 text-base font-semibold text-ink">Delete permanently</h2>
+        <h2 id="purge-title" className="mb-2 text-base font-semibold text-ink">Delete With History</h2>
         {plan.isLoading && <p className="text-sm text-ink-muted">Working out what this removes…</p>}
         {plan.isError && (
           <p className="mb-3 text-sm text-negative" data-testid="purge-preview-error">
@@ -215,7 +215,7 @@ export function PurgeDialog({ table, ids, runId, onClose, onDone }: {
             className={buttonClasses({ variant: 'danger', className: 'disabled:opacity-40' })}
             data-testid="purge-confirm"
           >
-            {busy ? 'Deleting…' : 'Delete permanently'}
+            {busy ? 'Deleting…' : 'Delete With History'}
           </button>
         </div>
       </div>

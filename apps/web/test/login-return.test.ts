@@ -52,8 +52,8 @@ describe('opening the landing after sign-in', () => {
   test('a Featherbase page is opened inside the SPA', () => {
     const pushed: string[] = []
     const loaded: string[] = []
-    openLanding(user('/featherbase/sales-target'), (p) => pushed.push(p), (p) => loaded.push(p))
-    expect([pushed, loaded]).toEqual([['/featherbase/sales-target'], []])
+    openLanding(user('/featherbase/account/sign-in-methods'), (p) => pushed.push(p), (p) => loaded.push(p))
+    expect([pushed, loaded]).toEqual([['/featherbase/account/sign-in-methods'], []])
   })
 })
 

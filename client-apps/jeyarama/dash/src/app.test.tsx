@@ -2,7 +2,7 @@
 // dependency of the app's own), with the platform's reads played
 // by a stand-in `fetch` (the network boundary). Codex round 8: choosing a store invalidates the
 // previous store's answers AT ONCE, so an answer that lands between the choice and React's
-// effect never draws the previous store's figures under the new one. Made-up stores and figures.
+// effect never draws the previous store's report under the new one. Made-up stores.
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -58,17 +58,13 @@ beforeAll(() => {
 afterAll(() => teardown())
 
 const settle = async () => { for (let i = 0; i < 10; i++) await Promise.resolve() }
-const report = (store: string, name: string) => {
-  const totals = { target: 1000, actual: 800, gap: -200, achievement: 80, missing: 0, no_target_no_sale: 0, n: 1, targets_recorded: 1, sales_recorded: 1 }
-  return { state: 'ready', store, store_name: 'Made-up', short_code: null, period_start: '2026-10-01', period_end: '2026-10-15',
-    refreshed_at: '2026-10-15T00:19:00.000Z', data_through: '2026-10-14', targets_available: true,
-    rows: [{ code: '010101001', subcategory: name, section: 'Sarees', target: 1000, actual: 800, gap: -200, achievement: 80,
-      missingActual: false, noTargetNoSale: false, targetRecorded: true, salesRecorded: true }],
-    sections: [{ section: 'Sarees', ...totals }], total: totals }
-}
+/** The `report` read's answer for a store: it can open, its period, and a header naming `name`. */
+const report = (_store: string, name: string) => ({ state: 'ready', period_start: '2026-10-01', period_end: '2026-10-15',
+  heading: { name, sections: ['Sarees'], reasons: [] } })
+const FRAME = { frame: 'https://embed-motherduck.com/sandbox/#session=made-up' }
 
 describe('choosing another store on the rendered page', () => {
-  it("never draws the previous store's figures under the new store, even for an answer that lands before the new store opens", async () => {
+  it("never draws the previous store's report under the new store, even for an answer that lands before the new store opens", async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
     const { Dash } = await import('./app')
@@ -87,17 +83,18 @@ describe('choosing another store on the rendered page', () => {
       history.pushState(null, '', '?store=9902')
       const DomEvent = (window as unknown as { CustomEvent: typeof CustomEvent }).CustomEvent
       window.dispatchEvent(new DomEvent('featherbase:bar-change', { detail: { key: 'store', value: '9902' } }))
-      for (const c of old) c.answer.resolve(c.name === 'report' ? report('9901', 'Old store silk') : { not_set_up: true })
+      for (const c of old) c.answer.resolve(c.name === 'report' ? report('9901', 'Old store silk') : { frame: 'https://embed-motherduck.com/sandbox/#session=old' })
       await settle()
     })
     await act(async () => { await settle() })
     for (const r of observer.takeRecords()) for (const node of r.addedNodes) drawn.push(node.textContent ?? '')
-    expect([drawn.some(text => text.includes('Old store silk')), container.textContent?.includes('Old store silk')]).toEqual([false, false])
+    expect([drawn.some(text => text.includes('Old store silk')), container.textContent?.includes('Old store silk'),
+      container.querySelector('[data-testid=report-frame]')?.getAttribute('src')?.endsWith('=old') ?? false]).toEqual([false, false, false])
   })
 
   // Codex round 9: the bar, or Back/Forward, repeating the store on show must never leave the
   // page waiting with nothing in flight.
-  async function openOn9901({ answer = true, embed = { not_set_up: true } as Record<string, unknown> } = {}) {
+  async function openOn9901({ answer = true, embed = FRAME as Record<string, unknown> } = {}) {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
     const { Dash } = await import('./app')
@@ -118,39 +115,39 @@ describe('choosing another store on the rendered page', () => {
   }
   const DomEvent = () => (window as unknown as { CustomEvent: typeof CustomEvent; PopStateEvent: typeof PopStateEvent })
 
-  it('stays on its figures when the bar repeats the store on show', async () => {
+  it('stays on its report when the bar repeats the store on show', async () => {
     const { act, container, unmount } = await openOn9901()
     await act(async () => {
       window.dispatchEvent(new (DomEvent().CustomEvent)('featherbase:bar-change', { detail: { key: 'store', value: '9901' } }))
       await settle()
     })
-    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('dive')
     await unmount()
   })
 
-  it('stays on its figures when history moves between two addresses of the same store', async () => {
+  it('stays on its report when history moves between two addresses of the same store', async () => {
     const { act, container, unmount } = await openOn9901()
     await act(async () => {
       history.pushState(null, '', '?store=9901&from=back')
       window.dispatchEvent(new (DomEvent().PopStateEvent)('popstate'))
       await settle()
     })
-    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('dive')
     await unmount()
   })
 
-  it('still reaches its figures when the bar repeats the store while it is loading', async () => {
+  it('still reaches its report when the bar repeats the store while it is loading', async () => {
     const { act, container, answerAll, unmount } = await openOn9901({ answer: false })
     await act(async () => {
       window.dispatchEvent(new (DomEvent().CustomEvent)('featherbase:bar-change', { detail: { key: 'store', value: '9901' } }))
       await settle()
     })
     await answerAll()
-    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('dive')
     await unmount()
   })
 
-  it('still reaches its figures when history repeats the store while it is loading', async () => {
+  it('still reaches its report when history repeats the store while it is loading', async () => {
     const { act, container, answerAll, unmount } = await openOn9901({ answer: false })
     await act(async () => {
       history.pushState(null, '', '?store=9901&from=back')
@@ -158,7 +155,7 @@ describe('choosing another store on the rendered page', () => {
       await settle()
     })
     await answerAll()
-    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('quick')
+    expect(container.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('dive')
     await unmount()
   })
 
@@ -166,17 +163,6 @@ describe('choosing another store on the rendered page', () => {
   it("sends the page's own origin with the Dive's session request", async () => {
     const { unmount } = await openOn9901()
     expect(calls.find(c => c.name === 'embed_session')?.payload.app_origin).toBe('http://localhost')
-    await unmount()
-  })
-
-  // #950 checklist 7: the top of the page goes to the figures; the cached table says what it is in one line.
-  it('says why the cached table shows and how fresh it is in one line, under no title of its own', async () => {
-    const { container, unmount } = await openOn9901({ embed: { unreachable: true } })
-    const quick = container.querySelector('[data-testid=quick-view]')!
-    expect(quick.querySelector('h1, h2, h3')).toBeNull()
-    const label = quick.querySelector('[data-testid=quick-label]')!
-    expect(label.parentElement).toBe(quick.querySelector('[data-testid=data-line]')!.parentElement)
-    expect(label.parentElement?.tagName).toBe('P')
     await unmount()
   })
 
@@ -216,7 +202,7 @@ describe("the page's header", () => {
   const withHeading = (store: string, heading: unknown) => ({ ...report(store, `Silk ${store}`), heading })
   const text = (container: Element, id: string) => container.querySelector(`[data-testid=${id}]`)?.textContent ?? null
 
-  it('says why the reader sees the store chosen, under the period and above the measure, and changes with the store', async () => {
+  it('says why the reader sees the store chosen, under the period, and changes with the store', async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
     const { Dash } = await import('./app')
@@ -229,18 +215,17 @@ describe("the page's header", () => {
     await act(async () => { await settle() })
     const answer = async (store: string, heading: unknown) => {
       for (const c of calls.filter(c => c.store === store))
-        c.answer.resolve(c.name === 'report' ? withHeading(store, heading) : { not_set_up: true })
+        c.answer.resolve(c.name === 'report' ? withHeading(store, heading) : FRAME)
       await act(async () => { await settle() })
     }
     await answer('9901', { name: 'LKS', sections: ['Alpha'], reasons: [{ basis: 'team_leader', sections: ['Alpha'] }] })
     const lines = [...container.querySelectorAll('[data-testid=report-heading] > *')].map(e => e.getAttribute('data-testid'))
-    expect(lines).toEqual(['heading-title', 'period-line', 'why-line', 'measure-line'])
-    expect([text(container, 'heading-title'), text(container, 'period-line'), text(container, 'why-line'), text(container, 'measure-line')]).toEqual([
-      'LKS · Alpha', '01-Oct-2026 to 15-Oct-2026', 'You see Alpha at LKS because you are their Team Leader.', 'Sales before tax, net of returns'])
+    expect(lines).toEqual(['heading-title', 'period-line', 'why-line'])
+    expect([text(container, 'heading-title'), text(container, 'period-line'), text(container, 'why-line')]).toEqual([
+      'LKS · Alpha', '01-Oct-2026 to 15-Oct-2026', 'You see Alpha at LKS because you are their Team Leader.'])
     expect(container.querySelector('[data-testid=why-line]')?.className).toBe('fd-muted')
-    // #4531: no subcategory or plant code anywhere on the page, the quick view's rows included.
-    expect(container.textContent).toContain('Silk 9901')
-    expect(container.textContent?.replace('Silk 9901', '')).not.toMatch(/\d{9}|\b9901\b/)
+    // #4531: no subcategory or plant code anywhere on the page.
+    expect(container.textContent).not.toMatch(/\d{9}|\b9901\b/)
 
     await act(async () => {
       history.pushState(null, '', '?store=9902')
@@ -265,7 +250,7 @@ describe("the page's header", () => {
     await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     for (const c of calls.filter(c => c.store === '9901'))
-      c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections, reasons: [] }) : { not_set_up: true })
+      c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections, reasons: [] }) : FRAME)
     await act(async () => { await settle() })
     return { act, container, unmount: () => act(async () => root.unmount()) }
   }
@@ -323,10 +308,10 @@ describe("the page's header", () => {
     await act(async () => { root.render(<Dash />) })
     await act(async () => { await settle() })
     for (const c of calls.filter(c => c.store === '9901'))
-      c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections: ['Alpha'], reasons: [] }) : { not_set_up: true })
+      c.answer.resolve(c.name === 'report' ? withHeading('9901', { name: 'LKS', sections: ['Alpha'], reasons: [] }) : FRAME)
     await act(async () => { await settle() })
     const lines = [...container.querySelectorAll('[data-testid=report-heading] > *')].map(e => e.getAttribute('data-testid'))
-    expect(lines).toEqual(['heading-title', 'period-line', 'measure-line'])
+    expect(lines).toEqual(['heading-title', 'period-line'])
     expect(container.textContent).not.toContain('because')
     await act(async () => root.unmount())
   })
@@ -353,7 +338,7 @@ describe('a report on the rendered page', () => {
     return { container, answer, view, unmount: () => act(async () => root.unmount()) }
   }
   const asked = (name: string) => calls.filter(c => c.name === name).map(c => c.payload)
-  const plain = { state: 'ready', no_quick_view: true, heading: { name: null, sections: [], reasons: [] } }
+  const plain = { state: 'ready', heading: { name: null, sections: [], reasons: [] } }
   const frame = { frame: 'https://embed-motherduck.com/sandbox/#session=made-up' }
 
   // #1159: the Dive has its own Store and Month pickers; the page passes it the address's choice.
@@ -373,14 +358,6 @@ describe('a report on the rendered page', () => {
       await unmount()
     })
 
-    it('names the store over the cached view while the Dive is not there', async () => {
-      reportsAnswer = [PICKERS]
-      const { answer, view, container, unmount } = await open('?store=9901')
-      await answer('report', headed)
-      await answer('embed_session', { unreachable: true })
-      expect([view(), container.querySelector('[data-testid=heading-title]')?.textContent]).toEqual(['quick', 'Lakeside'])
-      await unmount()
-    })
   })
 
   it('opens a report taking no store at once, naming the report, with no store and no store check', async () => {
@@ -423,9 +400,9 @@ describe('a report on the rendered page', () => {
     await unmount()
   })
 
-  // #1143: the cached view stands in at the deadline, and the same frame, kept out of sight, takes
+  // #1143: "couldn't open" stands in at the deadline, and the same frame, kept out of sight, takes
   // over when the Dive says it is ready (MotherDuck's session start can take longer than the deadline).
-  it('keeps the Dive behind the cached view past the deadline, and shows that same frame once it is ready', async () => {
+  it('keeps the Dive behind "couldn\'t open" past the deadline, and shows that same frame once it is ready', async () => {
     const { act } = await import('react')
     const { createRoot } = await import('react-dom/client')
     const { Dash } = await import('./app')
@@ -446,7 +423,7 @@ describe('a report on the rendered page', () => {
       await act(async () => { vi.advanceTimersByTime(DIVE_READY_TIMEOUT_MS); await settle() })
       const view = () => container.querySelector('[data-testid=dash]')?.getAttribute('data-view')
       const frame = container.querySelector('[data-testid=report-frame]') as HTMLIFrameElement | null
-      const behind = [view(), frame?.closest('[aria-hidden=true]') !== null, container.textContent?.includes('Silk')]
+      const behind = [view(), frame?.closest('[aria-hidden=true]') !== null, container.querySelector('[data-testid=failed]') !== null]
       await act(async () => {
         // jsdom's MessageEvent: Node has a global one of its own, which a jsdom window rejects as a source.
         const JsdomMessageEvent = (window as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent
@@ -455,86 +432,14 @@ describe('a report on the rendered page', () => {
       })
       const shown = container.querySelector('[data-testid=report-frame]')
       expect([behind, [view(), shown === frame, shown?.closest('[aria-hidden=true]') ?? null]])
-        .toEqual([['quick', true, true], ['dive', true, null]])
+        .toEqual([['failed', true, true], ['dive', true, null]])
       await act(async () => root.unmount())
     } finally {
       vi.useRealTimers()
     }
   })
 
-  // #1143, found on production: past the deadline with the cached copy not built yet, the page says
-  // the figures are being prepared; a Dive that is ready later must still take over, in the same frame.
-  it('keeps the Dive behind "being prepared" past the deadline, and shows that same frame once it is ready', async () => {
-    const { act } = await import('react')
-    const { createRoot } = await import('react-dom/client')
-    const { Dash } = await import('./app')
-    const { DIVE_READY_TIMEOUT_MS } = await import('./page')
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      history.replaceState(null, '', '?store=9901')
-      calls.length = 0
-      const container = document.createElement('div')
-      document.body.appendChild(container)
-      const root = createRoot(container)
-      await act(async () => { root.render(<Dash />) })
-      await act(async () => { await settle() })
-      for (const c of calls.filter(c => c.store === '9901'))
-        c.answer.resolve(c.name === 'report' ? { ...report('9901', 'Silk'), state: 'not_built', rows: [] }
-          : { frame: 'https://embed-motherduck.com/sandbox/#session=made-up', ready_signal: true })
-      await act(async () => { await settle() })
-      await act(async () => { vi.advanceTimersByTime(DIVE_READY_TIMEOUT_MS); await settle() })
-      const view = () => container.querySelector('[data-testid=dash]')?.getAttribute('data-view')
-      const frame = container.querySelector('[data-testid=report-frame]') as HTMLIFrameElement | null
-      const behind = [view(), container.querySelector('[data-testid=empty-not_built]') !== null, !!frame && frame.closest('[aria-hidden=true]') !== null]
-      await act(async () => {
-        const JsdomMessageEvent = (window as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent
-        window.dispatchEvent(new JsdomMessageEvent('message', { origin: 'https://embed-motherduck.com', source: frame?.contentWindow ?? null, data: { type: 'dash:dive-ready' } }))
-        await settle()
-      })
-      expect([behind, [view(), container.querySelector('[data-testid=report-frame]') === frame]]).toEqual([['empty', true, true], ['dive', true]])
-      await act(async () => root.unmount())
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  // #1159: "this month's figures haven't arrived" is about the cached copy of one store and month; a
-  // ready Dive, where the reader may choose another, takes over from it in the same frame.
-  it('keeps the Dive behind "not arrived yet", and shows that same frame once it is ready', async () => {
-    const { act } = await import('react')
-    const { createRoot } = await import('react-dom/client')
-    const { Dash } = await import('./app')
-    const { DIVE_READY_TIMEOUT_MS } = await import('./page')
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      history.replaceState(null, '', '?store=9901')
-      calls.length = 0
-      const container = document.createElement('div')
-      document.body.appendChild(container)
-      const root = createRoot(container)
-      await act(async () => { root.render(<Dash />) })
-      await act(async () => { await settle() })
-      for (const c of calls.filter(c => c.store === '9901'))
-        c.answer.resolve(c.name === 'report' ? { ...report('9901', 'Silk'), state: 'no_data_yet', rows: [] }
-          : { frame: 'https://embed-motherduck.com/sandbox/#session=made-up', ready_signal: true })
-      await act(async () => { await settle() })
-      await act(async () => { vi.advanceTimersByTime(DIVE_READY_TIMEOUT_MS); await settle() })
-      const view = () => container.querySelector('[data-testid=dash]')?.getAttribute('data-view')
-      const frame = container.querySelector('[data-testid=report-frame]') as HTMLIFrameElement | null
-      const behind = [view(), container.querySelector('[data-testid=empty-no_data_yet]') !== null, !!frame && frame.closest('[aria-hidden=true]') !== null]
-      await act(async () => {
-        const JsdomMessageEvent = (window as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent
-        window.dispatchEvent(new JsdomMessageEvent('message', { origin: 'https://embed-motherduck.com', source: frame?.contentWindow ?? null, data: { type: 'dash:dive-ready' } }))
-        await settle()
-      })
-      expect([behind, [view(), container.querySelector('[data-testid=report-frame]') === frame]]).toEqual([['empty', true, true], ['dive', true]])
-      await act(async () => root.unmount())
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it("says this report couldn't open, with Try again, when it has no quick view and its Dive fails", async () => {
+  it("says this report couldn't open, with Try again, when its Dive fails", async () => {
     const { answer, container, unmount } = await open('?report=whole')
     await answer('report', plain)
     await answer('embed_session', { unreachable: true })

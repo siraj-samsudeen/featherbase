@@ -25,15 +25,6 @@ export function fmtExact(x: number | null | undefined): string {
   )
 }
 
-/**
- * Above or below target, with an explicit sign BOTH ways. A gap that reads
- * "₹10,000.00" is ambiguous about direction; "+₹10,000.00" is not.
- */
-export function fmtSigned(x: number | null | undefined): string {
-  if (x == null || Number.isNaN(x)) return '—'
-  return (x > 0 ? '+' : '') + fmtExact(x)
-}
-
 /** Achievement percentage, one decimal, Indian-grouped. */
 export function fmtPct(x: number | null | undefined): string {
   if (x == null || Number.isNaN(x) || !Number.isFinite(x)) return '—'
@@ -224,4 +215,21 @@ export function fmtDuration(ms: number | null | undefined): string {
   const minutes = Math.round(ms / 60_000)
   const rest = minutes % 60
   return `${Math.floor(minutes / 60)} h${rest ? ` ${rest} min` : ''}`
+}
+
+/** #1349: a Table's label counted, as the count row reads it: "1 Plant", "3 Plants", "31 People", "214 Subcategories".
+ *  English rules on the last word, with the irregular words Featherbase's Tables use. */
+export function countedLabel(label: string, count: number): string {
+  if (count === 1) return label
+  const words = label.split(' ')
+  const last = words.pop() ?? ''
+  const lower = last.toLowerCase()
+  const IRREGULAR: Record<string, string> = { person: 'people', child: 'children', staff: 'staff', data: 'data' }
+  // A Table already named in the plural ("Assets") stays so; "Status" and "Glass" are singular.
+  if (/[^su]s$/i.test(last)) return label
+  const plural = IRREGULAR[lower] !== undefined ? IRREGULAR[lower]!.replace(/^./, (c) => (last[0] === last[0]!.toUpperCase() ? c.toUpperCase() : c))
+    : /[^aeiou]y$/i.test(last) ? `${last.slice(0, -1)}ies`
+    : /(s|x|z|ch|sh)$/i.test(last) ? `${last}es`
+    : `${last}s`
+  return [...words, plural].join(' ')
 }

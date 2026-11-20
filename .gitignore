@@ -25,6 +25,10 @@ storage/
 # Playwright MCP scratch output (screenshots land at the repo root)
 .playwright-mcp/
 /*.png
+# An agent's throwaway shot and verifier scripts, and a signed-in browser state they save (never committed).
+apps/web/.shot-*.mjs
+apps/web/.verify-*
+apps/web/.probe*
 
 # Merged web coverage (ADR 0012): raw inputs, the merged map, the report.
 apps/web/.nyc_output/

@@ -17,6 +17,9 @@ const TABLES: Record<string, Record<string, unknown>[]> = {
   'Store Floor': [{ row_id: 'SE1', name: 'First floor', site: 'SE' }],
 }
 let answers: Record<string, unknown> = {}
+/** #1282 A4: the person's settings for the business roles Table, as the platform keeps them. */
+let stored: Record<string, unknown> | null = null
+const saves: unknown[] = []
 let teardown: () => void = () => {}
 let dom: { window: Record<string, unknown> & { close(): void } }
 
@@ -43,6 +46,10 @@ beforeAll(() => {
       const rows = (TABLES[decodeURIComponent(listed[1]!)] ?? []).filter(r => filters.every(([c, , v]) => r[c] === v))
       return new Response(JSON.stringify({ data: rows.slice(0, Number(query.get('limit_page_length') ?? 500)), total: rows.length }), { status: 200 })
     }
+    if (/\/api\/user_settings\/dash\.business_role$/.test(String(url))) {
+      if (init?.method === 'PUT') { const body = JSON.parse(String(init.body)); saves.push(body); stored = { ...(stored ?? {}), ...body } }
+      return new Response(JSON.stringify(init?.method === 'PUT' ? { ok: true } : { settings: stored }), { status: 200 })
+    }
     const match = /app_(reads|actions)\/dash\/(.+)$/.exec(String(url))
     if (!match) return new Response('{}', { status: 404 })
     calls.push({ kind: match[1], name: match[2], payload: JSON.parse(String(init.body)).payload })
@@ -53,6 +60,8 @@ beforeAll(() => {
   teardown = () => { for (const key of added) delete (globalThis as Record<string, unknown>)[key]; dom.window.close() }
 })
 afterAll(() => teardown())
+// Each test starts with no remembered view (#1282 A4).
+beforeEach(() => { stored = null; saves.length = 0 })
 
 const NONE = { kinds: [], stores_gained: [], stores_lost: [], stores_changed: [], gained: [], lost: [], decisions: [] }
 const SELVI = {
@@ -309,6 +318,16 @@ describe('Business Roles', () => {
     expect([cellButton(all, 'Edit Sections', 'r-sm').textContent, cellButton(all, 'Edit Sections', 'r-tl').textContent]).toEqual(['Area', '—'])
     expect(cellButton(all, 'Edit Sections', 'r-sm').getAttribute('title')).toBe('Store Managers can edit sections — in their area')
     expect(cellButton(all, 'Edit Sections', 'r-tl').getAttribute('title')).toBe("Team Leaders can't edit sections")
+  })
+
+  // #1282 A4 (UI owner, option A): the Roles page opens on the view the person last chose.
+  it('remembers the view the person last chose, and opens on it next time', async () => {
+    answers = GRID()
+    const { click } = await render('roles')
+    await click(viewButton('Grid: Permissions'))
+    expect(saves).toEqual([{ rolesView: 'grid' }])
+    await render('roles')
+    expect(viewButton('Grid: Permissions').getAttribute('aria-pressed')).toBe('true')
   })
 
   it('steps a cell, waits with the dark bar, and Discard puts it back; stepping back to the saved value is no change', async () => {
