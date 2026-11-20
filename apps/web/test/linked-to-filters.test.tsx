@@ -282,7 +282,10 @@ test('an old Explore address opens the matching filtered list', async ({ admin }
   const r = await renderApp(`/featherbase/admin/explore?root=${enc(VEHICLE)}&chain=${chain}&select=${enc(JSON.stringify([v1]))}`, admin)
   await waitFor(() => expect(searchOf(r).pathname).toBe(`/featherbase/admin/table/${tableSlug(CLAIM)}`))
   await screen.findByText('Claim rear bump')
-  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent(`Linked to ${ACCIDENT} › ${VEHICLE}: Truck 1`))
+  // #1289 option C: the chain is the Vehicle list's pick, through Accident, so it reads as that
+  // list's green chip once the panel's lists are known; its step counts stay the tooltip.
+  await waitFor(() => expect(screen.getByTestId('filter-chip')).toHaveTextContent(`${VEHICLE}: Truck 1`))
+  expect(screen.getByTestId('filter-chip')).toHaveAttribute('data-tone', 'picked')
 })
 
 test('Explore is gone from the sidebar and the list’s View menu', async ({ admin }) => {
