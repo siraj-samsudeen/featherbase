@@ -73,6 +73,13 @@ async function prepareVersion(ctx: Context) {
     const same = await ctx.documents.list('budgets.budget_version', { filters: [['version_name', '=', row.version_name], ['budget_kind', '=', row.budget_kind]], fields: ['row_id'], limit_page_length: 2 })
     if (same.some(other => other.row_id !== row.row_id)) ctx.reject(`There is already a ${row.budget_kind} version called ${row.version_name}: give this one another name`)
   }
+  // A revision reads its unchanged figures from its base, so the base must be one that can no longer change.
+  if (row.based_on && (ctx.isNew || changed(ctx, 'based_on'))) {
+    if (row.based_on === row.row_id) ctx.reject('A version is not based on itself')
+    const base = await ctx.documents.get('budgets.budget_version', String(row.based_on))
+    if (base.version_state === 'Draft') ctx.reject(`${base.version_name} is a draft: a version is based on an approved one`)
+    if (base.budget_kind !== row.budget_kind) ctx.reject(`${base.version_name} is a ${base.budget_kind} version: a ${row.budget_kind} version is based on a ${row.budget_kind} one`)
+  }
   if (!ctx.isNew && old?.version_state === 'Withdrawn') {
     // Other versions may read their figures through this one, so it is never opened again.
     if (row.version_state !== 'Withdrawn') ctx.reject(`${old.version_name} is withdrawn: it stays as it was; make a new version`)
@@ -83,8 +90,9 @@ async function prepareVersion(ctx: Context) {
   if (row.version_state === 'Approved' && (ctx.isNew || old?.version_state !== 'Approved')) {
     row.approved_by = ctx.user
     row.approved_at = ctx.now
-  } else if (!ctx.isNew && old?.version_state === 'Approved' && row.version_state !== 'Withdrawn') {
-    if (['version_state', ...FIXED_ONCE_APPROVED].some(column => changed(ctx, column))) ctx.reject(`${old.version_name} is approved: only its note can change, or withdraw it`)
+  } else if (!ctx.isNew && old?.version_state === 'Approved') {
+    // Withdrawing is the one change of state allowed; nothing else moves with it.
+    if ((row.version_state !== 'Withdrawn' && changed(ctx, 'version_state')) || FIXED_ONCE_APPROVED.some(column => changed(ctx, column))) ctx.reject(`${old.version_name} is approved: only its note can change, or withdraw it`)
   } else if (row.version_state !== 'Approved' && old?.version_state !== 'Approved') {
     row.approved_by = null
     row.approved_at = null
@@ -158,6 +166,19 @@ async function prepareAdjustment(ctx: Context) {
     const kept = ['row_id', 'updated_at', 'updated_by', 'created_at', 'created_by', ...AFTER_PUBLISHING]
     if (ctx.isNew || Object.keys(row).some(column => !kept.includes(column) && !sameValue(row[column], old?.[column])))
       ctx.reject(`${closeName(close)} is ${String(close.close_state).toLowerCase()}: make a new version to add or change its adjustments`)
+  }
+  if (ctx.isNew ? row.withdrawn_in : changed(ctx, 'withdrawn_in')) {
+    // Undoing a withdrawal a published version already shows would change that publication.
+    if (old?.withdrawn_in) {
+      const was = await ctx.documents.get('budgets.monthly_close', String(old.withdrawn_in))
+      if (was.close_state !== 'Open') ctx.reject(`${closeName(was)} is ${String(was.close_state).toLowerCase()}: this adjustment's withdrawal stays as published`)
+    }
+    if (row.withdrawn_in) {
+      const target = await ctx.documents.get('budgets.monthly_close', String(row.withdrawn_in))
+      const later = target.legal_company === close.legal_company && day(target.close_month) === day(close.close_month) && Number(target.version_no) > Number(close.version_no)
+      if (!later) ctx.reject(`An adjustment is withdrawn in a later version of its month, not in ${closeName(target)}`)
+      if (target.close_state !== 'Open') ctx.reject(`${closeName(target)} is ${String(target.close_state).toLowerCase()}: withdraw an adjustment in a version that is still open`)
+    }
   }
   const account = await ctx.documents.get('budgets.gl_account', String(row.gl_account))
   if (!account.pl_line) ctx.reject(`${account.account_name} has no P&L line yet: classify it first`)
