@@ -130,7 +130,8 @@ async function prepareAdjustment(ctx: Context) {
   }
   const left = remaining(Number(row.amount), row.matched_amount == null ? null : Number(row.matched_amount))
   row.remaining_amount = left.remaining
-  if (left.settled && row.matched_sap_document && row.adjustment_state === 'Open') row.adjustment_state = 'Posted In SAP'
+  // Settled once SAP has posted all of it, whether it was still open or carried into a later month. A released line stays released.
+  if (left.settled && row.matched_sap_document && ['Open', 'Carried Forward'].includes(String(row.adjustment_state))) row.adjustment_state = 'Posted In SAP'
 }
 
 async function prepareArea(ctx: Context) {
