@@ -105,10 +105,15 @@ describe('#737 command destinations', () => {
     expect(inventory.pages.map((p) => p.label)).not.toContain('Service accounts')
   })
 
-  test('people without Admin access cannot obtain the Admin inventory', async ({ createUser }) => {
+  // #1385: the command bar is on every page; someone who cannot use the Admin
+  // is offered only what they can open: their apps and their account pages.
+  test('people without Admin access receive their account pages and no Admin inventory', async ({ admin, createUser }) => {
+    await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'inventory-open', label: 'Open inventory page' } })
     const outsider = await createUser({ roles: [] })
-    const res = await outsider.fetch(PATH)
-    await expectStatus(res, 403)
+    const inventory = await outsider.get<Inventory>(PATH)
+    expect(inventory.tables).toEqual([])
+    expect(inventory.pages.map((p) => p.label).sort()).toEqual(['Connected apps', 'Sign-in methods', 'What you can see'])
+    expect(inventory.pages.every((p) => p.kind === 'Account')).toBe(true)
   })
 
   test('a legacy override refusal preserves the permitted navigation inventory', async ({ admin, createUser }) => {
