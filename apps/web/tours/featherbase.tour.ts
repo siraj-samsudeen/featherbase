@@ -165,17 +165,20 @@ tour('Featherbase: from a spreadsheet to an app you can navigate', async ({ stor
     })
   }, 'One sheet, one way of spelling everything.')
 
+  // #1349: the store counts its assets under its name, the number first.
+  const assetsCount = `${n(ROWS)} Assets`
+  // The tree still names a group by its Table, then its count.
   const assetsChip = new RegExp(`^Assets\\s*${n(ROWS)}$`)
   await s.chapter('Find your way around', limit(20_000), async () => {
     await s.step(`Down: T Nagar counts its ${n(ROWS)} assets`, async () => {
       await openTable(page(), 'Stores')
       await page().getByRole('link', { name: 'T Nagar', exact: true }).first().click()
-      await expect(page().getByRole('button', { name: assetsChip }).first()).toBeVisible()
+      await expect(page().getByTestId('count-row').getByRole('link', { name: assetsCount, exact: true })).toBeVisible()
     })
-    // #1273: the chip leads to the store's own Links tab, where its assets are listed.
+    // The store's own Links tab lists its assets.
     const assets = () => page().getByRole('tabpanel', { name: 'Links' }).getByRole('region', { name: 'Assets' })
     await s.step("They list on the store's own page, without leaving it", async () => {
-      await page().getByRole('button', { name: assetsChip }).first().click()
+      await page().getByRole('tab', { name: 'Links' }).click()
       await expect(assets()).toContainText(`Show all ${n(ROWS)}`)
     })
     let tag = ''

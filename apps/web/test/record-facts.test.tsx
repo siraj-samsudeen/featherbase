@@ -71,7 +71,8 @@ test("the record page says the app's header line, and its chips carry the app's 
   await openRecord(admin)
   expect(screen.getByTestId('record-header-line')).toHaveTextContent('Note · 15 people · from HR and by hand')
   const chips = await screen.findByRole('region', { name: 'Connections' })
-  await waitFor(() => expect(within(chips).getByRole('button', { name: /What It Says/ })).toBeInTheDocument())
+  // #1349: a link group's chip opens its list; the app's own group's chip goes to its section on the Links tab.
+  await waitFor(() => expect(within(chips).getByRole('link', { name: /What It Says/ })).toBeInTheDocument())
   expect(within(chips).getByRole('button', { name: /People/ })).toHaveTextContent('15')
   fireEvent.click(within(chips).getByRole('button', { name: /People/ }))
   expect(await screen.findByRole('region', { name: 'People' })).toHaveAttribute('data-testid', 'app-link-group')
@@ -83,7 +84,7 @@ test("a link group's jump chip counts as the app does", async ({ admin }) => {
   await admin.post('/api/save_row', { table: NOTE_TAG, row: { note: 'n1', tag: 't2', removed: true } })
   await openRecord(admin)
   const chips = await screen.findByRole('region', { name: 'Connections' })
-  await waitFor(() => expect(within(chips).getByRole('button', { name: /Tags It Has/ })).toHaveTextContent('1'))
+  await waitFor(() => expect(within(chips).getByRole('link', { name: /Tags It Has/ })).toHaveTextContent('1'))
 })
 
 test("the Links tab draws the app's groups in its order: a link group in its words, a tick list with notes, and its own group", async ({ admin }) => {

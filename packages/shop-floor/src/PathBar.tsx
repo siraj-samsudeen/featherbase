@@ -82,6 +82,8 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
   const [shown, setShown] = useState<Shown>({ from: 0, to: steps.length - 1 })
   const room = useRef<HTMLDivElement>(null)
   const measure = useRef<HTMLDivElement>(null)
+  // #1349 (verifier): what sits beside the current step (its ▾, the walk's ‹ 3 of 12 ›) takes room from the steps.
+  const beside = useRef<HTMLSpanElement>(null)
   const labels = steps.map(stepText).join('\u0000')
   // Which whole steps fit: the current one, then as many before it, then after it.
   useLayoutEffect(() => {
@@ -90,7 +92,7 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
       const ruler = measure.current
       if (!box || !ruler || !steps.length) return
       const width = (el: Element | null) => el?.getBoundingClientRect().width ?? 0
-      const space = width(box)
+      const space = width(box) - width(beside.current)
       const each = steps.map((_, i) => width(ruler.querySelector(`[data-measure-step="${i}"]`)))
       const more = width(ruler.querySelector('[data-measure-more]'))
       const at = Math.min(Math.max(current, 0), steps.length - 1)
@@ -109,6 +111,7 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
     fit()
     const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit)
     if (room.current) watch?.observe(room.current)
+    if (beside.current) watch?.observe(beside.current)
     return () => watch?.disconnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, labels])
@@ -163,7 +166,7 @@ export function PathBar({ steps, current, onStep, onBack, onForward, onCopyLink,
               <li key={step.key} className="flex min-w-0 shrink-0 items-center gap-1">
                 {index > from && <ChevronRight aria-hidden size={14} className="text-ink-subtle" />}
                 {stepButton(step, index, index === current ? shown.short : undefined)}
-                {index === current && besideCurrent}
+                {index === current && besideCurrent && <span ref={beside} className="flex shrink-0 items-center">{besideCurrent}</span>}
               </li>
             ))}
           </ol>

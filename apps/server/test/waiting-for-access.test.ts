@@ -188,9 +188,10 @@ describe('opening something without access is the request', () => {
 
   test('an app that is not installed is still unavailable, and asks nothing', async ({ admin, createUser }) => {
     const priya = await createUser({ email: 'priya.none@example.com', roles: [] })
-    const page = await priya.fetch('/not_installed/', { headers: { accept: 'text/html' } })
-    await expectStatus(page, 404)
-    expect(await page.text()).toContain('Application unavailable')
+    // #1328: the shared page, which says nothing is there.
+    const page = await priya.fetch('/not_installed/', { headers: { accept: 'text/html' }, redirect: 'manual' })
+    expect(page.status).toBe(302)
+    expect(page.headers.get('location')).toBe('/featherbase/unavailable?address=%2Fnot_installed%2F')
     expect((await list(admin)).total).toBe(0)
   })
 

@@ -43,6 +43,12 @@ export async function getRolesMany(principals: string[]): Promise<Map<string, st
   return roles
 }
 
+/** #1328: the roles `principal` holds itself (and everyone's roles), never one held only through an App Role
+ *  Binding: what a binding may carry a role from, one level, as normal resolution allows. */
+export async function directRoles(principal: string): Promise<string[]> {
+  return (await heldRoleRows([principal])).filter((r) => r.app === null).map((r) => String(r.role))
+}
+
 /** The roles held directly (app null), then the app roles bound to them (#620, D4), per principal. */
 function heldRoleRows(principals: string[]) {
   return sql`

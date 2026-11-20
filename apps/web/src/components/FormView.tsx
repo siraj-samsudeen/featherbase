@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-router'
 import { CannotShow } from './CannotShow'
@@ -37,11 +37,12 @@ import { ActionDisclosure } from './ActionDisclosure'
 import { RetireDialog, RetiredBadge, RetiredNotice, reactivateRow } from './RowRetirement'
 import { PurgeDialog } from './PurgeDialog'
 import { WorkflowActions } from './WorkflowActions'
-import { RowConnections } from './RowPane'
+import { RowConnections, scrollToWhenShown } from './RowPane'
+import { workedOutId } from './WorkedOut'
 import { OpenInApp } from './OpenInApp'
 import { RecordNav } from './RecordNav'
 import { RowMap } from './RowMap'
-import { LinksViewMenu, RecordLinks, useLinksPreference } from './RecordLinks'
+import { LinksViewMenu, RecordLinks, linksSectionId, useLinksPreference } from './RecordLinks'
 import { LinkSaveContext } from './LinkTickList'
 import { useRecordFacts } from '../lib/record-facts'
 import { useNavigation } from '../lib/navigation'
@@ -186,8 +187,6 @@ export function FormView({
   useEffect(() => { if (pathView) setLocalArea(tabOf(pathView)) }, [pathView])
   // #1273 (A3, D3): how the Links tab reads, and the group a title chip jumps to.
   const linksPref = useLinksPreference(table, rowNav?.step.linksAs)
-  const [jumpTo, setJumpTo] = useState<string | null>(null)
-  const jumped = useCallback(() => setJumpTo(null), [])
   // #1340: what the app describing this Table says of this record: its header line and its Links groups.
   const facts = useRecordFacts(table, name, !isNew)
   const appGroups = facts.data?.facts.rows[name]?.groups
@@ -624,8 +623,7 @@ export function FormView({
   return (
     <div data-testid="form-view" className={`min-w-0 [overflow-wrap:anywhere] ${unsaved && !rowsReadOnly ? 'pb-20' : ''}`}>
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
-        {/* #1340: the path starts where the Table's list does, at its module. */}
-        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')} data-testid="breadcrumb-module">{meta.data?.module || 'Admin'}</RouterLink>
+        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')} data-testid="breadcrumb-module">{meta.data?.module || 'Home'}</RouterLink>
         <span aria-hidden="true">/</span>
         <RouterLink
           to="/featherbase/admin/table/$table"
@@ -860,7 +858,8 @@ export function FormView({
       </div>
       {/* #1273 (verifier): a Person's page shows its link chips under its header too, to jump from (D3). */}
       {!isNew && <RowConnections table={table} row={name} values={doc.data} appGroups={appGroups}
-        onGroup={(key) => { setArea('Links'); setJumpTo(key) }} />}
+        onSection={(heading) => { setArea('Links'); scrollToWhenShown(workedOutId(heading)) }}
+        onGroup={(key) => { setArea('Links'); scrollToWhenShown(linksSectionId({ key })) }} />}
       {storage && (
         <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
           <span className="font-medium">Storage</span>
@@ -914,11 +913,13 @@ export function FormView({
               {/* #959: the row as its heading names it. */}
               Delete {tableLabel(table, meta.data)}: <RowTitle table={table} rowId={name} />?
             </h2>
-            <p className="mb-3 text-sm text-ink-muted">
+            {/* #1348 (UI owner): once refused nothing has happened, so the warning goes. */}
+            {!deleteOffersRetire && <p className="mb-3 text-sm text-ink-muted">
               This cannot be undone.
-            </p>
+            </p>}
             {deleteError && (
-              <p className="mb-3 text-sm text-negative" data-testid="delete-row-error">
+              // A refusal that names a way out is advice, in body text; red stays for a real failure (spec item 13).
+              <p className={`mb-3 text-sm ${deleteOffersRetire ? 'text-ink' : 'text-negative'}`} data-testid="delete-row-error">
                 {deleteError}
                 {/* #1348 (UI owner): the line that offers Retire names a System Manager's other way out. */}
                 {deleteOffersRetire && access.data?.purge && ' Or Delete With History (System Managers).'}
@@ -948,7 +949,7 @@ export function FormView({
                   className={buttonClasses({ variant: 'primary' })}
                   data-testid="delete-row-retire-instead"
                 >
-                  Retire instead
+                  Retire Instead
                 </button>
               )}
               <button
@@ -1107,7 +1108,7 @@ export function FormView({
         // Drawn only while open: its sections ask for every group's rows and choices.
         { id: 'Links', label: 'Links', content: area !== 'Links' ? null : (
           <LinkSaveContext.Provider value={linkSave}>
-            <RecordLinks table={table} name={name} values={doc.data} pref={linksPref} focusGroup={jumpTo} onFocused={jumped} appGroups={appGroups} />
+            <RecordLinks table={table} name={name} values={doc.data} pref={linksPref} appGroups={appGroups} />
           </LinkSaveContext.Provider>
         ) },
         { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },

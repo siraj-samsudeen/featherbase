@@ -8,8 +8,10 @@ import { pageLoad } from '../lib/page-load'
 import { flushPendingEvents } from '../lib/recents'
 import { returnOrLanding } from '../pages/Login'
 import { AccountAvatar, accountWayIn, useBrowserAccounts } from './AccountChooser'
+import { menuItemClasses } from '@featherbase/shop-floor'
 
-const MENU_ITEM = 'flex min-h-control w-full items-center gap-2 px-3 text-left text-sm text-ink hover:bg-action-tint disabled:opacity-60'
+// #1348: the shared menu rows.
+const MENU_ITEM = menuItemClasses()
 
 /** Where the page goes as another account: this page if they can open it, else their landing. */
 function here(): string {
@@ -76,7 +78,7 @@ export function AccountSwitcherSection({ onDone }: { onDone: () => void }) {
                 className={`${MENU_ITEM} py-1`}
               >
                 <AccountAvatar account={account} size="size-6" />
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 whitespace-normal">
                   <span className="block break-words">{account.name ?? account.sign_in_id}</span>
                   <span className="block break-words text-xs text-ink-muted">{live ? accountWayIn(account) : account.reason_text}</span>
                 </span>
@@ -96,9 +98,9 @@ export function AccountSwitcherSection({ onDone }: { onDone: () => void }) {
           disabled={busy}
           data-testid="add-account"
           onClick={() => { onDone(); pageLoad.assign(`/featherbase/login?add=1&next=${encodeURIComponent(here())}`) }}
-          className={`${MENU_ITEM} text-action`}
+          className={MENU_ITEM}
         >
-          {t('+ Add another account')}
+          <span className="text-action">{t('+ Add another account')}</span>
         </button>
       )}
       {others.length > 0 && (

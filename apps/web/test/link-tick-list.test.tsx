@@ -198,9 +198,11 @@ describe('relational-navigation', () => {
   scenario('A first note for a member', async ({ admin }, step) => {
     await step('a member has no notes, and the user may add notes', () => seed(admin))
     await step("the user opens the member's Links tab", () => openLinks(admin))
-    await step('the notes group shows greyed with + New', async () => {
-      // Empty groups are one compact row of greyed chips; opening one offers + New.
+    await step('the notes group waits behind the tables with none, and shows greyed with + New once they show', async () => {
+      // Empty groups fold behind "+ N tables with none" (#1349); opened, a greyed chip offers + New.
       const empty = await screen.findByRole('region', { name: 'Pointed At By' })
+      expect(within(empty).queryByRole('button', { name: `${NOTE} 0` })).not.toBeInTheDocument()
+      fireEvent.click(await within(empty).findByRole('button', { name: /^\+ \d+ tables? with none$/ }))
       fireEvent.click(await within(empty).findByRole('button', { name: `${NOTE} 0` }))
       expect(await within(empty).findByRole('link', { name: '+ New' })).toBeInTheDocument()
     })
@@ -265,9 +267,9 @@ test('the record panel puts a tick list beside the fields, and the other groups 
   expect(ticks).toHaveAttribute('aria-label', GIVEN)
   await waitFor(() => expect(within(ticks).getByTestId('tick-count')).toHaveTextContent('2 of 7'))
   const pointed = within(panel).getByRole('heading', { name: 'Pointed At By' }).parentElement!
-  // #1282 (UI owner): an empty group waits behind Show N empty, as on the record page.
+  // #1349 item 3: an empty group waits behind "+ N tables with none", as on the Links tab.
   expect(within(pointed).queryByRole('button', { name: `${NOTE} 0` })).not.toBeInTheDocument()
-  fireEvent.click(await within(pointed).findByRole('button', { name: /^Show \d+ empty$/ }))
+  fireEvent.click(await within(pointed).findByRole('button', { name: /^\+ \d+ tables? with none$/ }))
   expect(await within(pointed).findByRole('button', { name: `${NOTE} 0` })).toBeInTheDocument()
   expect(within(pointed).queryByRole('button', { name: new RegExp(`^${GIVEN}`) })).not.toBeInTheDocument()
   // C1: the header reads the record's name, then its Table and its code.
@@ -454,15 +456,3 @@ test('a new link starts with each field as it would be saved: defaults typed, a 
     col('weight', 'Int', '2'), col('ends_on', 'Date', 'Today'), col('note', 'Data', '')])).toEqual({ confirmed: true, flag: false, level: 'Reader', weight: 2 })
 })
 
-test("a Person's page shows its link chips under its header, and a chip jumps to its section", async ({ admin }) => {
-  await seed(admin)
-  await admin.post('/api/table_def', { name: 'Lt Person Note', id_pattern: 'hash', title_column: 'note_text',
-    columns: [{ column_name: 'note_text', column_type: 'Data', label: 'Note' }, { column_name: 'person', column_type: 'Reference', reference_table: 'Person', label: 'Person' }] })
-  await renderApp(rowHref('Person', admin.user!), admin)
-  const chips = await screen.findByRole('region', { name: 'Connections' })
-  fireEvent.click(await within(chips).findByTestId('connections-show-empty'))
-  fireEvent.click(await within(chips).findByRole('button', { name: /^Lt Person Note\s*0$/ }))
-  await waitFor(() => expect(screen.getByRole('tab', { name: 'Links' })).toHaveAttribute('aria-selected', 'true'))
-  const empty = await screen.findByRole('region', { name: 'Pointed At By' })
-  expect(await within(empty).findByRole('link', { name: '+ New' })).toBeInTheDocument()
-})

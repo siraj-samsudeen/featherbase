@@ -15,6 +15,7 @@ import { importCustomizations } from '../src/customizations'
 import { getMeta, invalidateMeta } from '../src/meta'
 import { app } from '../src/index'
 import { expectRefused, expectStatus } from './fixtures'
+import { unavailableHref } from 'shared'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(taskerClient(admin)),
@@ -525,9 +526,10 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await expectStatus(await member.fetch(`/other/${path}`), 404)
     await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
     expect(await member.get('/api/app_catalog')).toEqual([])
+    // #1328: a turned-off app's address opens the shared Unavailable page.
     const unavailable = await member.fetch('/other/')
-    await expectStatus(unavailable, 404)
-    expect(await unavailable.text()).toContain('Disabling an application preserves its data')
+    await expectStatus(unavailable, 302)
+    expect(unavailable.headers.get('location')).toBe(unavailableHref('/other/'))
   })
 
   test('PKG-J2: restart without compatible code fails closed, restoring code preserves data', async ({ admin }) => {
@@ -988,7 +990,10 @@ describe('An app declares its phone tabs', () => {
       // A broken deployed entry must not expose a directory or answer as a working page.
       await rm(resolve(directory, 'client/index.html'))
       await mkdir(resolve(directory, 'client/index.html'))
-      await expectStatus(await admin.fetch('/other/', { headers: { accept: 'text/html' } }), 404)
+      // #1328: the address opens the shared Unavailable page instead.
+      const broken = await admin.fetch('/other/', { headers: { accept: 'text/html' } })
+      await expectStatus(broken, 302)
+      expect(broken.headers.get('location')).toBe(unavailableHref('/other/'))
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
