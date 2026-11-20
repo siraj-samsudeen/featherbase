@@ -225,6 +225,8 @@ export function countedLabel(label: string, count: number): string {
   const last = words.pop() ?? ''
   const lower = last.toLowerCase()
   const IRREGULAR: Record<string, string> = { person: 'people', child: 'children', staff: 'staff', data: 'data' }
+  // A Table already named in the plural ("Assets") stays so; "Status" and "Glass" are singular.
+  if (/[^su]s$/i.test(last)) return label
   const plural = IRREGULAR[lower] !== undefined ? IRREGULAR[lower]!.replace(/^./, (c) => (last[0] === last[0]!.toUpperCase() ? c.toUpperCase() : c))
     : /[^aeiou]y$/i.test(last) ? `${last.slice(0, -1)}ies`
     : /(s|x|z|ch|sh)$/i.test(last) ? `${last}es`

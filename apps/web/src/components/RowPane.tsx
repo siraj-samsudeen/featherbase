@@ -188,7 +188,7 @@ export function NothingPointsAt({ kind }: { kind: string }) {
  * A group with no rows has no chip (it waits behind "+ N tables with none"); every count is the viewer's own.
  */
 export function CountRow({ table, row, size = 'page', onSection }: {
-  table: string; row: string; size?: 'page' | 'pane'; onSection: (heading: string) => void
+  table: string; row: string; size?: 'page' | 'pane'; onSection?: (heading: string) => void
 }) {
   const nav = useNavigation()
   const navigate = useNavigate()
@@ -593,7 +593,7 @@ export function RowConnections({ table, row, values, layout = 'chips', onSection
           </span>
         ))}
       </div>}
-      <CountRow table={table} row={row} onSection={onSection ?? ((heading) => scrollToWhenShown(workedOutId(heading)))} />
+      <CountRow table={table} row={row} onSection={onSection} />
     </section>
   )
 }

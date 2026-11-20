@@ -1249,7 +1249,8 @@ export function ListView({
           </div>
         </div>
       ) : (
-      <div className={(layout === 'panel' || layout === 'table') && recordPanel ? 'relative min-h-[min(640px,70vh)]' : 'relative'} data-testid="list-table-area">
+      <div className="relative" data-testid="list-table-area"
+        style={(layout === 'panel' || layout === 'table') && recordPanel ? { minHeight: 'min(640px, 70vh)' } : undefined}>
       {/* #1349 (UI owner): over a short list the panel still has room; it is only as tall as the table otherwise. */}
       {/* #1259: Table With Panel: the record slides over the table's right side, under its header. */}
       {/* A record the address opens shows here in the Table view too (a pasted link). */}

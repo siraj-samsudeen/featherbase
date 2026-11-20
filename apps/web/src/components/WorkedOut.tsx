@@ -26,11 +26,11 @@ export const workedOutId = (heading: string) => `worked-out-${heading.replace(/[
 /** #1349 (board 4b): each worked-out section as a chip in the count row, "3 Apps They Can Open"; an empty one quiet
  *  and grey, since its section below says the check ran. */
 export function WorkedOutCounts({ table, row, onSection, size }: {
-  table: string; row: string; onSection: (heading: string) => void; size?: 'page' | 'pane'
+  table: string; row: string; onSection?: (heading: string) => void; size?: 'page' | 'pane'
 }) {
   const answer = useWorkedOut(table, row)
   return <>{(answer.data?.sections ?? []).map((section) => (
-    <CountChip key={section.heading} count={section.rows.length} label={section.heading} size={size} onSelect={() => onSection(section.heading)} />
+    <CountChip key={section.heading} count={section.rows.length} label={section.heading} size={size} onSelect={onSection && (() => onSection(section.heading))} />
   ))}</>
 }
 
