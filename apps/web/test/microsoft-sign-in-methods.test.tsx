@@ -1,5 +1,5 @@
 // Sign in with Microsoft on the account and admin pages (microsoft-sign-in):
-// the person's Sign-in methods page offers to link Microsoft and explains
+// the person's Sign-In Methods page offers to link Microsoft and explains
 // each link outcome naming the provider; the administrator's person panel
 // shows an expected Microsoft sign-in and a linked Microsoft account by its
 // address.
@@ -31,7 +31,7 @@ async function outcomeText(person: Client, query: string) {
   return text
 }
 
-test('the Sign-in methods page offers to link Microsoft until a Microsoft account is linked', async ({ admin, createUser }) => {
+test('the Sign-In Methods page offers to link Microsoft until a Microsoft account is linked', async ({ admin, createUser }) => {
   await configureGoogle({ enabled: true, client_id: '', self_link: true })
   await configureMicrosoft({ self_link: true })
   const person = await member(admin, createUser, 'asha.methods@bisquared.example')

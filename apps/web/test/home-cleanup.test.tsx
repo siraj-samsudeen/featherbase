@@ -154,7 +154,7 @@ test('a System Manager sees Data and People & Access in Title Case, each link wi
   expect(groupLinks('sidebar-group-data')).toEqual(['All Tables', 'New Table', 'Import Data', 'Glossary', 'Past Imports'])
   const access = screen.getByTestId('sidebar-group-access')
   expect(within(access).getByTestId('sidebar-group-heading')).toHaveTextContent(/^People & Access$/)
-  // #489 item 6: Sign-in methods is in the Account menu only.
+  // #489 item 6: Sign-In Methods is in the Account menu only.
   expect(groupLinks('sidebar-group-access')).toEqual(['Access Tokens', 'Waiting For Access', 'Leavers Who Can Still Sign In'])
   for (const link of within(screen.getByTestId('admin-sidebar')).getAllByRole('link').filter((a) => a.closest('[data-testid^="sidebar-group-"]')))
     expect(within(link).getByTestId('sidebar-item-icon').getAttribute('class')).toMatch(/\btext-group-[a-z]+\b/)

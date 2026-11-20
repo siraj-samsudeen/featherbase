@@ -391,8 +391,11 @@ try {
   await capture.press('Enter')
   await expect(page.getByRole('alert').filter({ hasText: 'disabled or unavailable' }).first()).toBeVisible()
   await page.screenshot({ path: resolve(output, 'disabled.png'), fullPage: true })
+  const taskerAddress = page.url()
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Application unavailable' })).toBeVisible()
+  // #1328: a turned-off app's address opens the shared Unavailable page; a System Manager is told it is off.
+  await page.waitForURL(url => url.pathname === '/featherbase/unavailable' && url.searchParams.get('address')?.startsWith('/tasker/'))
+  await expect(page.getByRole('heading', { name: /^Tasker is turned off$/i })).toBeVisible()
   await page.screenshot({ path: resolve(output, 'unavailable.png'), fullPage: true })
   assert.deepEqual((await api('/api/app_catalog')).map(a => a.name), ['other'])
   let other = await api(`/api/table/other.task/${task.row_id}`)
@@ -408,7 +411,8 @@ try {
   assert.equal((await api(`/api/table/tasker.task/${task.row_id}`)).task_state, 'In progress')
   other = await api('/api/save_row', { table: 'other.task', row: { ...other, quantity: 19 } }, 201)
   assert.equal(other.validation_runs, 3)
-  await page.reload()
+  // #1328: the browser is on the Unavailable page now; the Tasker address it asked for opens again.
+  await page.goto(taskerAddress)
   await expect(page.getByText('Package-delivered stock review')).toBeVisible()
   await stop()
   // #642 E7: outside development, missing exact installed code refuses boot;
