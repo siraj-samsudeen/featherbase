@@ -93,9 +93,10 @@ async function changeView(path: string, body: unknown, onError: (message: string
 function PersonRow({ person, onPick, linked }: { person: ViewAsPerson; onPick: (person: ViewAsPerson) => void; linked: boolean }) {
   return (
     <div className="flex items-center gap-2 rounded-control px-2 py-1.5 hover:bg-action-tint" data-testid="view-as-person">
-      <span className="min-w-0 flex-1 truncate text-sm">
-        <RecordLink table="Person" rowId={person.person} name={person.name} detail={identityLine(person)} layout="two-lines" canOpen={linked} />
-      </span>
+      {/* In a picker the row's action wins: the name views as this person, it does not open their record. */}
+      <button type="button" onClick={() => onPick(person)} data-testid="view-as-pick-name" className="min-w-0 flex-1 truncate text-left text-sm">
+        <RecordLink table="Person" rowId={person.person} name={person.name} detail={identityLine(person)} layout="two-lines" canOpen={false} />
+      </button>
       <button type="button" onClick={() => onPick(person)} aria-label={`View as ${person.name}`} data-testid="view-as-pick"
         className={buttonClasses({ variant: 'secondary', className: 'shrink-0 px-2 text-xs max-sm:min-h-11' })}>View as</button>
     </div>
