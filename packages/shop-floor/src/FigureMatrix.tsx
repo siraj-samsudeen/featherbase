@@ -59,6 +59,9 @@ export function FigureMatrix({ label, rowHeading, columns, rows, format = plain,
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
   const [editing, setEditing] = useState<{ key: string; text: string; invalid: boolean } | null>(null)
+  // Many columns (a year of months and its total) are drawn tighter so they fit the page without scrolling sideways.
+  const dense = columns.length > 9
+  const tight = dense && 'px-1.5! text-xs!'
   if (!rows.length) return empty ? <p className="text-sm text-ink-subtle">{empty}</p> : null
 
   const toggle = (id: string) => setOpen((was) => {
@@ -100,8 +103,9 @@ export function FigureMatrix({ label, rowHeading, columns, rows, format = plain,
     return [
       <tr key={row.id} className="group">
         <th scope="row" className={cellClasses({ density: 'compact', first: true,
-          className: cx('sticky left-0 z-10 bg-surface text-left font-normal whitespace-nowrap group-even:bg-subtle', row.strong && 'font-semibold', (row.quiet || depth > 0) && 'text-ink-subtle') })}
-          style={depth ? { paddingLeft: 12 + depth * 20 } : undefined}>
+          className: cx('sticky left-0 z-10 bg-surface text-left font-normal whitespace-nowrap group-even:bg-subtle', row.strong && 'font-semibold', (row.quiet || depth > 0) && 'text-ink-subtle',
+            dense && 'max-w-44 overflow-hidden text-ellipsis text-xs!') })}
+          title={dense ? row.label : undefined} style={depth ? { paddingLeft: 12 + depth * 20 } : undefined}>
           {folds
             ? <span className="inline-flex items-center gap-1">{row.header
                 ? <><FoldToggle open={isOpen} onToggle={() => toggle(row.id)} label={row.label} />{row.header}</>
@@ -111,7 +115,7 @@ export function FigureMatrix({ label, rowHeading, columns, rows, format = plain,
         {columns.map((column, index) => (
           <td key={column.id} data-testid={`figure-${row.id}-${column.id}`}
             className={cellClasses({ density: 'compact', last: index === columns.length - 1,
-              className: cx('text-right tabular-nums whitespace-nowrap', (row.strong || column.total) && 'font-semibold', (row.quiet || depth > 0) && 'text-ink-subtle') })}>
+              className: cx('text-right tabular-nums whitespace-nowrap', tight, (row.strong || column.total) && 'font-semibold', (row.quiet || depth > 0) && 'text-ink-subtle') })}>
             {figure(row, column)}
           </td>
         ))}
@@ -122,12 +126,12 @@ export function FigureMatrix({ label, rowHeading, columns, rows, format = plain,
 
   return (
     <div className={cx('max-w-full overflow-auto', className)}>
-      <table aria-label={label} className={TABLE_CLASSES}>
+      <table aria-label={label} data-dense={dense || undefined} className={TABLE_CLASSES}>
         <thead className="sticky top-0 z-20">
           <tr>
             <th scope="col" className={headCellClasses({ first: true, className: 'sticky left-0 z-10 pl-[30px]' })}>{rowHeading}</th>
             {columns.map((column, index) => (
-              <th key={column.id} scope="col" className={headCellClasses({ last: index === columns.length - 1, className: cx('text-right', column.total && 'font-semibold text-ink') })}>{column.header ?? column.label}</th>
+              <th key={column.id} scope="col" className={headCellClasses({ last: index === columns.length - 1, className: cx('text-right', tight, column.total && 'font-semibold text-ink') })}>{column.header ?? column.label}</th>
             ))}
           </tr>
         </thead>
