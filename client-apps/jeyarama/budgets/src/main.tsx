@@ -18,7 +18,7 @@ async function boot() {
     paintTheme(THEMES.includes(user.theme) ? user.theme : 'device')
     localStorage.setItem('fc_user', JSON.stringify(user))
     root.render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } } })}>
-      <BudgetsApp roles={user.roles ?? []} />
+      <BudgetsApp />
     </QueryClientProvider>)
   } catch (error) {
     // Signed out: come back to the same page after sign-in.
