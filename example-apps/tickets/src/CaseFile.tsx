@@ -21,6 +21,7 @@ import { RulesCard, type Rule } from './rules'
 import { CoveredRowsCard, coveredFact, type Covered } from './covered-rows'
 import { RecordLink } from '@featherbase/shop-floor'
 import { useOpenablePeople } from './record-link'
+import { Avatar } from './inbox'
 
 function Facts({ values, title }: { values: RecordData; title?: string }) {
   const shown = Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== '')
@@ -64,6 +65,8 @@ function History({
     <div className="timeline">
       {events.map((event, i) => (
         <div className="event" key={String(event.row_id ?? i)}>
+          {/* #1379: each event reads as a message in the ticket's conversation, under its author's initials. */}
+          <Avatar id={event.actor ?? event.by ?? event.owner} size="sm" />
           <span className="privacy">{privacy}</span>
           <h4>
             {stateLabel(
@@ -592,7 +595,12 @@ export function CaseFile({
                 {/* #1233 (UX spec 5): the message is a reading card; who may read it is a small hint, not an eyebrow. */}
                 <section className="card request-message" aria-label="Original Message">
                   <div className="request-message-head">
-                    <h3>Original Message</h3>
+                    {/* #1379: the ticket's own words read as the first message of its conversation. */}
+                    <Avatar id={ticket.owner} />
+                    <span className="message-from">
+                      <RecordLink table="Person" rowId={ticket.owner} name={person(ticket.owner)} canOpen={openPeople.has(ticket.owner)} />
+                      <h3>Original Message</h3>
+                    </span>
                     <span className="privacy-hint">
                       {configured?.details_visible_to === 'everyone'
                         ? 'Shown to everyone who can see the ticket'

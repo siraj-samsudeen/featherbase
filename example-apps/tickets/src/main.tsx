@@ -18,10 +18,11 @@ import {
   type RecordData,
 } from './api'
 import './style.css'
-import { configuredTypes, connectionNames, kindLabel, kinds, learnNames, learnTypes, person, short, stateLabel } from './ticket-words'
+import { configuredTypes, connectionNames, kindLabel, kinds, learnNames, learnTypes, person, short, stateLabel, time } from './ticket-words'
 import { StatePill, isDone, tone } from './ticket-state'
 import { CreateTicket } from './CreateTicket'
 import { CaseFile, SETTINGS_HREF } from './CaseFile'
+import { Avatar, ago, useInboxKeys } from './inbox'
 
 /** #1233: a sidebar count; none reads quieter than some. */
 // #1248: a count the shared sidebar shows as a badge on its icon when it is a rail.
@@ -244,6 +245,21 @@ function App() {
   const unconfigured = Object.entries(connections)
     .filter(([, status]) => status !== 'configured')
     .map(([key]) => connectionNames[key] ?? stateLabel(key))
+  // #1379: the list moves by keyboard, as a shared inbox does.
+  const searchBox = useRef<HTMLInputElement>(null)
+  const openFromKeys = (id: string) => {
+    if (busy) return
+    setSelected(id)
+    setNotice('')
+    requestAnimationFrame(() => document.querySelector('.ticket-list .ticket.selected')?.scrollIntoView?.({ block: 'nearest' }))
+  }
+  useInboxKeys({
+    ids: visible.map((ticket) => ticket.row_id),
+    selected,
+    open: openFromKeys,
+    search: () => searchBox.current?.focus(),
+    create: () => session && setCreate(true),
+  })
   const newTicket = (
     <button
       className="primary"
@@ -316,37 +332,6 @@ function App() {
         </>,
       )}
       <main className="tickets-main">
-        <div className="toolbar">
-          <h1>
-            <span className="toolbar-name">
-              {viewName}
-              {kind && <span className="toolbar-type"> · {kindLabel(kind)}</span>}
-            </span>
-            <span className="count">{visible.length}</span>
-          </h1>
-          <input
-            type="search"
-            aria-label="Search tickets"
-            placeholder="Search tickets"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <select
-            aria-label="Filter by state"
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-          >
-            <option value="">
-              {view === 'assigned' ? 'Open work' : 'All states'}
-            </option>
-            {stateOptions.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-          <span className="toolbar-end">{newTicket}</span>
-        </div>
         {error && (
           <div role="alert" className="error banner">
             {error}
@@ -369,6 +354,40 @@ function App() {
           </p>
         )}
         <section className={`split phone-${phone}`}>
+          {/* #1379: the list column carries its own header, as in a shared inbox. */}
+          <div className="list-pane">
+            <div className="toolbar">
+              <h1>
+                <span className="toolbar-name">
+                  {viewName}
+                  {kind && <span className="toolbar-type"> · {kindLabel(kind)}</span>}
+                </span>
+                <span className="count">{visible.length}</span>
+              </h1>
+              <span className="toolbar-end">{newTicket}</span>
+              <input
+                ref={searchBox}
+                type="search"
+                aria-label="Search tickets"
+                placeholder="Search tickets"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <select
+                aria-label="Filter by state"
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+              >
+                <option value="">
+                  {view === 'assigned' ? 'Open work' : 'All states'}
+                </option>
+                {stateOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </div>
           <div
             className="ticket-list"
             aria-busy={loading}
@@ -399,17 +418,28 @@ function App() {
                   }
                 }}
               >
-                {/* #1233 (UX spec 1): the summary leads; ID · type · assignee follow; the state at the right. */}
-                <span className="ticket-top">
-                  <span className="ticket-title" title={ticket.title}>{ticket.title}</span>
-                  <StatePill ticket={ticket} />
-                </span>
-                <span className="ticket-meta">
-                  {[short(ticket.row_id), kindLabel(ticket.kind), ticket.assigned_to ? person(ticket.assigned_to) : 'Unassigned']
-                    .map((part, i) => <span key={i}>{i > 0 && ' · '}<span className={i === 2 && !ticket.assigned_to ? 'meta-part unassigned' : 'meta-part'}>{part}</span></span>)}
+                {/* #1379: who raised it and when it last moved; the summary; then ID · type · assignee and the state. */}
+                <Avatar id={ticket.owner} />
+                <span className="ticket-body">
+                  <span className="ticket-from">
+                    <span className="ticket-requester">{person(ticket.owner)}</span>
+                    <time className="ticket-when" dateTime={ticket.updated_at} title={time(ticket.updated_at)}>{ago(ticket.updated_at)}</time>
+                  </span>
+                  <span className="ticket-top">
+                    <span className="ticket-title" title={ticket.title}>{ticket.title}</span>
+                  </span>
+                  <span className="ticket-foot">
+                    <span className="ticket-meta">
+                      {[short(ticket.row_id), kindLabel(ticket.kind), ticket.assigned_to ? person(ticket.assigned_to) : 'Unassigned']
+                        .map((part, i) => <span key={i}>{i > 0 && ' · '}<span className={i === 2 && !ticket.assigned_to ? 'meta-part unassigned' : 'meta-part'}>{part}</span></span>)}
+                    </span>
+                    <StatePill ticket={ticket} />
+                  </span>
                 </span>
               </button>
             ))}
+          </div>
+          <p className="list-keys" aria-hidden="true"><kbd>j</kbd> <kbd>k</kbd> move · <kbd>/</kbd> search · <kbd>c</kbd> new ticket</p>
           </div>
           <article className="detail" aria-busy={detailLoading || busy}>
             <button type="button" className="link-button back-to-list" onClick={() => setPhone('list')}>← All tickets</button>

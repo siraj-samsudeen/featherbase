@@ -329,3 +329,87 @@ input[type='search']::-webkit-search-cancel-button { filter: grayscale(1); }
   /* The list is what shows first: no ticket reads as chosen until one is tapped. */
   .split.phone-list .ticket.selected { background: transparent; box-shadow: none; }
 }
+
+/* #1379: a shared inbox, as Front lays one out. Three columns (the shared sidebar, the list, the
+   open ticket), each with its own header and no page-wide toolbar; dense lines; flat chrome. */
+.split { grid-template-columns: 360px minmax(0, 1fr); }
+.list-pane { display: flex; min-width: 0; min-height: 0; flex-direction: column; border-right: 1px solid var(--color-border); background: var(--color-surface); }
+.list-pane .ticket-list { flex: 1; border-right: 0; }
+.list-pane .toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 12px 14px; }
+.list-pane .toolbar h1 { display: flex; min-width: 0; align-items: baseline; margin: 0; font-size: 16px; }
+.list-pane .toolbar-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-pane .toolbar input[type='search'] { max-width: none; padding: 5px 9px; font-size: 13px; }
+.list-pane .toolbar select { padding: 5px 8px; font-size: 13px; }
+.list-pane .toolbar-end { margin-left: 0; }
+.list-pane .toolbar-end button { padding: 5px 12px; font-size: 13px; }
+.list-keys { margin: 0; padding: 6px 14px; border-top: 1px solid var(--color-border); color: var(--color-ink-subtle); font-size: 11px; }
+kbd { display: inline-block; min-width: 16px; padding: 0 4px; border: 1px solid var(--color-border-control); border-radius: 4px; background: var(--color-subtle); color: var(--color-ink-muted); font: 600 10px/15px var(--font-sans); text-align: center; }
+
+/* A line: initials, then who and when, the summary, and ID · type · assignee with the state. */
+.ticket { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 14px 11px; }
+.ticket-body { display: grid; min-width: 0; gap: 1px; }
+.ticket-from { display: flex; min-width: 0; gap: 8px; align-items: baseline; justify-content: space-between; }
+.ticket-requester { min-width: 0; overflow: hidden; color: var(--color-ink); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ticket-when { flex: none; color: var(--color-ink-subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ticket .ticket-title { display: block; overflow: hidden; color: var(--color-ink); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; -webkit-line-clamp: unset; }
+.ticket-foot { display: flex; min-width: 0; gap: 8px; align-items: center; justify-content: space-between; margin-top: 2px; }
+.ticket .ticket-meta { min-width: 0; overflow: hidden; color: var(--color-ink-subtle); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.ticket .pill { flex: none; padding: 0 8px; font-size: 11px; line-height: 18px; }
+.ticket.done .ticket-title, .ticket.done .ticket-requester { color: var(--color-ink-muted); font-weight: 400; }
+.ticket.done .avatar { opacity: .6; }
+
+.avatar { display: inline-flex; flex: none; align-items: center; justify-content: center; border-radius: 50%; font-weight: 700; letter-spacing: .02em; user-select: none; }
+.avatar-md { width: 32px; height: 32px; font-size: 12px; }
+.avatar-sm { width: 24px; height: 24px; font-size: 10px; }
+.avatar-hue-0 { background: var(--color-action-tint); color: var(--color-action); }
+.avatar-hue-1 { background: var(--color-opportunity-tint); color: var(--color-opportunity); }
+.avatar-hue-2 { background: var(--color-positive-tint); color: var(--color-positive); }
+.avatar-hue-3 { background: var(--color-caution-tint); color: var(--color-caution); }
+
+/* The open ticket: a flat header bar, compact tabs, and a conversation at a readable width. */
+.detail { padding: 0; background: var(--color-canvas); }
+.ticket-header { position: sticky; z-index: 5; top: 0; padding: 14px 24px 12px; border: 0; border-bottom: 1px solid var(--color-border); border-radius: 0; background: var(--color-surface); }
+.ticket-kicker { font-size: 12px; color: var(--color-ink-subtle); }
+.ticket-title-row { margin: 2px 0 10px; }
+.ticket-title-row h2 { font-size: 18px; font-weight: 650; }
+.ticket-title-row .pill { margin-top: 2px; padding: 2px 10px; font-size: 12px; }
+.ticket-facts { gap: 4px 22px; font-size: 13px; }
+.ticket-facts > div { display: flex; gap: 6px; align-items: baseline; }
+.ticket-facts dt { font-size: 12px; }
+.ticket-facts dd, .ticket-facts dd .link-button { font-size: 13px; }
+.header-actions { margin-top: 10px; padding-top: 0; border-top: 0; }
+.header-actions button, .header-actions-ruler button { padding: 4px 10px; font-size: 13px; }
+.tabs { gap: 18px; margin: 0; padding: 0 24px; background: var(--color-surface); }
+.tabs button { padding: 9px 0; font-size: 13px; }
+#case-panel { max-width: 808px; padding: 18px 24px 40px; }
+.card { padding: 14px 16px; }
+
+.request-message-head { align-items: center; justify-content: flex-start; gap: 10px; }
+.message-from { display: grid; min-width: 0; margin-right: auto; line-height: 1.3; }
+.message-from a, .message-from > span { font-size: 14px; font-weight: 600; }
+.request-message-head .message-from h3 { margin: 0; color: var(--color-ink-subtle); font-size: 12px; font-weight: 500; }
+.request-message .request-body { margin-top: 4px; padding-left: 42px; font-size: 15px; }
+
+.timeline { margin: 10px 0 18px; padding: 0; border-left: 0; }
+.event { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 10px; margin: 0; padding: 10px 0; border-bottom: 1px solid var(--color-border); }
+.event:last-child { border-bottom: 0; }
+.event::before { content: none; }
+.event > .avatar { grid-row: 1 / span 8; margin-top: 2px; }
+.event > :not(.avatar) { grid-column: 2; }
+.event h4 { margin: 0 0 2px; }
+.event .facts { margin: 6px 0 0; }
+
+@media (48rem <= width < 75rem) {
+  .split { grid-template-columns: 300px minmax(0, 1fr); }
+}
+@media (width < 48rem) {
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .list-pane { border-right: 0; }
+  .split.phone-ticket .list-pane, .split.phone-list .detail { display: none; }
+  .split.phone-ticket .ticket-list { display: block; }
+  .list-keys { display: none; }
+  .back-to-list { margin: 10px 16px 0; }
+  .ticket-header { position: static; padding: 12px 16px; }
+  .tabs { padding: 0 16px; }
+  #case-panel { padding: 14px 16px 24px; }
+}
