@@ -3,13 +3,10 @@
 // while any row has a problem.
 import { fmtMonth } from './words'
 
+export { pastedCells } from '@featherbase/shop-floor/pasted'
+
 export interface CheckedRow<V> { cells: string[]; problem?: string; values: V[] }
 export interface Checked<V> { headings: string[]; rows: CheckedRow<V>[]; problem?: string }
-
-/** The pasted text as rows of trimmed cells, without blank rows. */
-export function pastedCells(text: string): string[][] {
-  return text.split(/\r?\n/).map(row => row.split('\t').map(cell => cell.trim())).filter(row => row.some(cell => cell))
-}
 
 /** An amount as Excel shows it: grouped, with ₹, in brackets when negative, a dash for nothing. */
 export function amountOf(text: string): number | null {
