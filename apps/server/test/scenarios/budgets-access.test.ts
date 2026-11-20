@@ -18,7 +18,7 @@ describe('budgets-access', () => {
     await step('the FY27 Original budget holds a figure for Hilltop', async () => { w = await start(createUser) })
     await step("an administrator who is not a Budgets person asks for the budget's figures", () => { asked = budgetsClient(w.admin).get('/api/table/budgets.pl_budget?fields=["amount"]'); asked.catch(() => undefined) })
     await step('they are refused', () => expectRefused(asked, 403))
-    await step('Budgets is not among the apps they can open', async () => expect((await appCatalog(w.admin.user)).map(app => app.name)).not.toContain('budgets'))
+    await step('Budgets is not among the apps they can open', async () => expect((await appCatalog(w.admin.user!)).map(app => app.name)).not.toContain('budgets'))
   })
 
   scenario('A viewer cannot approve a budget', async ({ createUser }, step) => {

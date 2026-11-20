@@ -32,7 +32,7 @@ test('a person with neither role reads no Budgets table, a System Manager includ
 test('the app is listed only for someone holding one of its roles', async ({ createUser }) => {
   const admin = await createUser({ roles: ['System Manager'] })
   await installBudgets(admin)
-  const opens = async (client: TestClient) => (await appCatalog(client.user)).some(app => app.name === 'budgets')
+  const opens = async (client: TestClient) => (await appCatalog(client.user!)).some(app => app.name === 'budgets')
   expect(await opens(await createUser({ roles: VIEWER }))).toBe(true)
   expect(await opens(await createUser({ roles: EDITOR }))).toBe(true)
   expect(await opens(await createUser({ roles: ['Featherbase Viewer'] }))).toBe(false)

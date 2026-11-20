@@ -13,7 +13,7 @@ export const manpowerInOctober = async (w: World, version: string) =>
 export const approve = (w: World, version: string) => w.act(w.editor, 'approve_version', { version })
 export const budgetFor = async (w: World, month: string) => {
   const versions = (await w.rows('budget_version')).map(v => ({ ...v, covers_from: String(v.covers_from).slice(0, 10), covers_to: String(v.covers_to).slice(0, 10), approved_at: v.approved_at ? new Date(String(v.approved_at)).toISOString() : null })) as unknown as (Version & Row)[]
-  return versionInForce(versions, 'P&L', 'North', month)?.version_name
+  return versionInForce<Version & Row>(versions, 'P&L', 'North', month)?.version_name
 }
 /** FY27 Revision 1, a draft for October to March, made a moment after the original was approved. */
 export async function revision(w: World) {

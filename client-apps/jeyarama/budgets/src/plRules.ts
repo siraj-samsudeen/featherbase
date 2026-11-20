@@ -53,7 +53,7 @@ export interface Version {
 const month = (day: string) => day.slice(0, 7)
 
 /** The budget for a month: the latest approved version of that kind covering it, for the region or for every region. */
-export function versionInForce(versions: Version[], kind: Version['budget_kind'], region: string | null, monthStart: string): Version | undefined {
+export function versionInForce<V extends Version>(versions: V[], kind: Version['budget_kind'], region: string | null, monthStart: string): V | undefined {
   return versions
     .filter(v => v.version_state === 'Approved' && v.budget_kind === kind && (!v.operating_region || v.operating_region === region)
       && month(v.covers_from) <= month(monthStart) && month(monthStart) <= month(v.covers_to))

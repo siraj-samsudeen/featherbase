@@ -218,9 +218,14 @@ function budgetValues(region: string, months: string[], lift = 1) {
   }
   return values
 }
-/** One store at a time: each figure is saved under the app's rules, so a year for every store in one request is slow. */
+/** One store and one quarter at a time: each figure is saved under the app's rules, so a year for every store in one request is slow. */
 async function paste(version: string, values: ReturnType<typeof budgetValues>) {
-  for (const plant of new Set(values.map(value => value.plant))) await act('paste_budget', { version, values: values.filter(value => value.plant === plant) })
+  const chunks = new Map<string, typeof values>()
+  for (const value of values) {
+    const key = `${value.plant}|${Math.floor(MONTHS.indexOf(value.budget_month) / 3)}`
+    chunks.set(key, [...(chunks.get(key) ?? []), value])
+  }
+  for (const chunk of chunks.values()) await act('paste_budget', { version, values: chunk })
 }
 const versionRow = (row: Record<string, unknown>) => own('budget_version', { budget_kind: 'P&L', fiscal_year: 'FY27', covers_from: MONTHS[0], covers_to: MONTHS[11], ...row })
 const original = await versionRow({ version_name: 'FY27 Original', operating_region: 'North', source_file: 'North Budget FY27 v3.xlsx' })
