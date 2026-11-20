@@ -62,6 +62,8 @@ async function prepareAccount(ctx: Context) {
   if (line.level !== 'Working') ctx.reject(`${line.line_name} is a published line: classify an account to one of its working lines`)
 }
 
+const FIXED_ONCE_APPROVED = ['version_name', 'budget_kind', 'fiscal_year', 'operating_region', 'based_on', 'covers_from', 'covers_to', 'approved_by', 'approved_at']
+
 async function prepareVersion(ctx: Context) {
   const { row, old } = ctx
   row.covers_from = monthStart(row.covers_from)
@@ -71,13 +73,18 @@ async function prepareVersion(ctx: Context) {
     const same = await ctx.documents.list('budgets.budget_version', { filters: [['version_name', '=', row.version_name], ['budget_kind', '=', row.budget_kind]], fields: ['row_id'], limit_page_length: 2 })
     if (same.some(other => other.row_id !== row.row_id)) ctx.reject(`There is already a ${row.budget_kind} version called ${row.version_name}: give this one another name`)
   }
+  if (!ctx.isNew && old?.version_state === 'Withdrawn') {
+    // Other versions may read their figures through this one, so it is never opened again.
+    if (row.version_state !== 'Withdrawn') ctx.reject(`${old.version_name} is withdrawn: it stays as it was; make a new version`)
+    if (FIXED_ONCE_APPROVED.some(column => changed(ctx, column))) ctx.reject(`${old.version_name} is withdrawn: only its note can change`)
+    return
+  }
   // Who approved and when is the server's word: a save cannot name someone else or another time.
   if (row.version_state === 'Approved' && (ctx.isNew || old?.version_state !== 'Approved')) {
     row.approved_by = ctx.user
     row.approved_at = ctx.now
   } else if (!ctx.isNew && old?.version_state === 'Approved' && row.version_state !== 'Withdrawn') {
-    const fixed = ['version_name', 'budget_kind', 'fiscal_year', 'operating_region', 'based_on', 'version_state', 'covers_from', 'covers_to', 'approved_by', 'approved_at']
-    if (fixed.some(column => changed(ctx, column))) ctx.reject(`${old.version_name} is approved: only its note can change, or withdraw it`)
+    if (['version_state', ...FIXED_ONCE_APPROVED].some(column => changed(ctx, column))) ctx.reject(`${old.version_name} is approved: only its note can change, or withdraw it`)
   } else if (row.version_state !== 'Approved' && old?.version_state !== 'Approved') {
     row.approved_by = null
     row.approved_at = null
@@ -89,30 +96,32 @@ function stays(ctx: Context, column: string, message: string) {
   if (!ctx.isNew && changed(ctx, column)) ctx.reject(message)
 }
 
-async function prepareBudget(ctx: Context) {
+/**
+ * What holds for every budget figure, P&L or sales: it goes on a draft version of its own
+ * kind, in a month that version covers, once for its store, month and `what` (a P&L line or
+ * a subcategory), and it stays in the version it was entered in.
+ */
+async function prepareFigure(ctx: Context, kind: 'P&L' | 'Sales', table: string, what: string, said: string) {
   const { row } = ctx
   stays(ctx, 'budget_version', 'A figure stays in the version it was entered in')
   const version = await ctx.documents.get('budgets.budget_version', String(row.budget_version))
   if (version.version_state !== 'Draft') ctx.reject(`${version.version_name} is ${String(version.version_state).toLowerCase()}: revise it to change a figure`)
-  if (version.budget_kind !== 'P&L') ctx.reject(`${version.version_name} is a ${version.budget_kind} version: a P&L amount goes on a P&L version`)
-  const line = await ctx.documents.get('budgets.pl_line', String(row.pl_line))
-  if (line.level !== 'Published') ctx.reject(`${line.line_name} is a working line: a budget is held on published lines`)
-  if (line.line_kind === 'Subtotal') ctx.reject(`${line.line_name} is a subtotal: it is worked out, not budgeted`)
+  if (version.budget_kind !== kind) ctx.reject(`${version.version_name} is a ${version.budget_kind} version: a ${kind === 'P&L' ? 'P&L' : 'sales'} amount goes on a ${kind} version`)
   row.budget_month = monthStart(row.budget_month)
   const month = String(row.budget_month)
   if (month < monthStart(version.covers_from) || month > monthStart(version.covers_to)) ctx.reject(`${fmtMonth(month)} is outside the months ${version.version_name} covers`)
-  const same = await ctx.documents.list('budgets.pl_budget', { filters: [['budget_version', '=', row.budget_version], ['plant', '=', row.plant], ['pl_line', '=', row.pl_line], ['budget_month', '=', month]], fields: ['row_id'], limit_page_length: 2 })
-  if (same.some(other => other.row_id !== row.row_id)) ctx.reject(`${version.version_name} already has ${line.line_name} for ${row.plant} in ${fmtMonth(month)}: change that amount`)
+  const same = await ctx.documents.list(table, { filters: [['budget_version', '=', row.budget_version], ['plant', '=', row.plant], [what, '=', row[what]], ['budget_month', '=', month]], fields: ['row_id'], limit_page_length: 2 })
+  if (same.some(other => other.row_id !== row.row_id)) ctx.reject(`${version.version_name} already has ${said} for ${row.plant} in ${fmtMonth(month)}: change that amount`)
 }
 
-async function prepareSalesBudget(ctx: Context) {
-  const { row } = ctx
-  stays(ctx, 'budget_version', 'A figure stays in the version it was entered in')
-  const version = await ctx.documents.get('budgets.budget_version', String(row.budget_version))
-  if (version.version_state !== 'Draft') ctx.reject(`${version.version_name} is ${String(version.version_state).toLowerCase()}: revise it to change a figure`)
-  if (version.budget_kind !== 'Sales') ctx.reject(`${version.version_name} is a ${version.budget_kind} version: a sales amount goes on a Sales version`)
-  row.budget_month = monthStart(row.budget_month)
+async function prepareBudget(ctx: Context) {
+  const line = await ctx.documents.get('budgets.pl_line', String(ctx.row.pl_line))
+  if (line.level !== 'Published') ctx.reject(`${line.line_name} is a working line: a budget is held on published lines`)
+  if (line.line_kind === 'Subtotal') ctx.reject(`${line.line_name} is a subtotal: it is worked out, not budgeted`)
+  await prepareFigure(ctx, 'P&L', 'budgets.pl_budget', 'pl_line', String(line.line_name))
 }
+
+const prepareSalesBudget = (ctx: Context) => prepareFigure(ctx, 'Sales', 'budgets.sales_budget', 'subcategory', String(ctx.row.subcategory))
 
 const closeName = (close: Row) => `${fmtMonth(day(close.close_month))} version ${close.version_no}`
 
@@ -153,6 +162,10 @@ async function prepareAdjustment(ctx: Context) {
   const account = await ctx.documents.get('budgets.gl_account', String(row.gl_account))
   if (!account.pl_line) ctx.reject(`${account.account_name} has no P&L line yet: classify it first`)
   if (!row.pl_line) row.pl_line = account.pl_line
+  const [amount, matched] = [Number(row.amount), row.matched_amount == null ? 0 : Number(row.matched_amount)]
+  // However it is saved, a match settles no more than the adjustment, and in its direction.
+  if (matched !== 0 && (Math.sign(matched) !== Math.sign(amount) || Math.abs(matched) > Math.abs(amount)))
+    ctx.reject(`A match settles no more than the adjustment: ${amount < 0 ? '-' : ''}₹${Math.abs(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
   const left = remaining(Number(row.amount), row.matched_amount == null ? null : Number(row.matched_amount))
   row.remaining_amount = left.remaining
   // Settled once SAP has posted all of it, whether it was still open or carried into a later month. A released line stays released.
