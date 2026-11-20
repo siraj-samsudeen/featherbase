@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent, type ReactNode } from 'react'
 import { cx } from './cx'
-import { ChevronRight } from './icons'
+import { FoldToggle } from './FoldToggle'
 import { TABLE_CLASSES, cellClasses, headCellClasses } from './TableLook'
 
 export interface FigureColumn {
@@ -102,10 +102,9 @@ export function FigureMatrix({ label, rowHeading, columns, rows, format = plain,
           className: cx('sticky left-0 z-10 bg-surface text-left font-normal whitespace-nowrap group-even:bg-subtle', row.strong && 'font-semibold', (row.quiet || depth > 0) && 'text-ink-subtle') })}
           style={depth ? { paddingLeft: 12 + depth * 20 } : undefined}>
           {folds
-            ? <button type="button" aria-expanded={isOpen} onClick={() => toggle(row.id)}
-                className="inline-flex items-center gap-1 rounded-control text-left hover:text-action focus-visible:outline-2 focus-visible:outline-focus">
-                <ChevronRight aria-hidden size={14} className={cx('shrink-0 text-ink-subtle transition-transform', isOpen && 'rotate-90')} />{row.header ?? row.label}
-              </button>
+            ? <span className="inline-flex items-center gap-1">{row.header
+                ? <><FoldToggle open={isOpen} onToggle={() => toggle(row.id)} label={row.label} />{row.header}</>
+                : <FoldToggle open={isOpen} onToggle={() => toggle(row.id)}>{row.label}</FoldToggle>}</span>
             : <span className={cx(depth === 0 && 'pl-[18px]')}>{row.header ?? row.label}</span>}
         </th>
         {columns.map((column, index) => (
