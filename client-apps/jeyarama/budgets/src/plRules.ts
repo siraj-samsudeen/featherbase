@@ -1,0 +1,93 @@
+// The P&L's arithmetic, kept free of the server and the screen so both use the same sums.
+
+export interface Line {
+  row_id: string
+  line_name: string
+  level: 'Working' | 'Published'
+  rolls_into: string | null
+  line_order: number
+  section: 'Sales' | 'Margin' | 'Store Opex' | 'Below Store EBITDA' | 'Below EBITDA'
+  line_kind: 'Posted' | 'Allocated' | 'Standing Charge' | 'Subtotal' | 'Memo'
+  sign: 'Income' | 'Cost'
+  subtotal_rule: 'Running Total' | 'Section Total' | null
+}
+
+export interface StatementRow { line: Line; amount: number; working: { line: Line; amount: number }[] }
+
+const byOrder = (a: Line, b: Line) => a.line_order - b.line_order
+const paise = (amount: number) => Math.round(amount * 100) / 100
+
+/**
+ * The P&L for one set of amounts (a store and month, or any total of them): published lines
+ * in order, each with its working lines, and every subtotal worked out. `amounts` is keyed by
+ * line; a cost is a positive amount.
+ */
+export function statement(lines: Line[], amounts: ReadonlyMap<string, number>): StatementRow[] {
+  const published = lines.filter(line => line.level === 'Published').sort(byOrder)
+  const rows: StatementRow[] = published.map((line) => {
+    const working = lines.filter(w => w.level === 'Working' && w.rolls_into === line.row_id).sort(byOrder)
+      .map(w => ({ line: w, amount: amounts.get(w.row_id) ?? 0 }))
+    const rolled = working.reduce((sum, w) => sum + (w.line.sign === line.sign ? w.amount : -w.amount), 0)
+    return { line, working, amount: paise((amounts.get(line.row_id) ?? 0) + rolled) }
+  })
+  for (const [index, row] of rows.entries()) {
+    if (row.line.line_kind !== 'Subtotal') continue
+    const counted = rows.slice(0, index).filter(above => above.line.line_kind !== 'Subtotal' && above.line.line_kind !== 'Memo'
+      && (row.line.subtotal_rule !== 'Section Total' || above.line.section === row.line.section))
+    row.amount = paise(counted.reduce((sum, above) => sum + (above.line.sign === row.line.sign ? above.amount : -above.amount), 0))
+  }
+  return rows
+}
+
+export interface Version {
+  row_id: string
+  budget_kind: 'P&L' | 'Sales'
+  operating_region: string | null
+  covers_from: string
+  covers_to: string
+  version_state: 'Draft' | 'Approved' | 'Withdrawn'
+  approved_on: string | null
+}
+
+const month = (day: string) => day.slice(0, 7)
+
+/** The budget for a month: the latest approved version of that kind covering it, for the region or for every region. */
+export function versionInForce(versions: Version[], kind: Version['budget_kind'], region: string | null, monthStart: string): Version | undefined {
+  return versions
+    .filter(v => v.version_state === 'Approved' && v.budget_kind === kind && (!v.operating_region || v.operating_region === region)
+      && month(v.covers_from) <= month(monthStart) && month(monthStart) <= month(v.covers_to))
+    .sort((a, b) => (b.approved_on ?? '').localeCompare(a.approved_on ?? '') || b.row_id.localeCompare(a.row_id))[0]
+}
+
+/** Each month's version in force; a month no version covers is left out. */
+export function budgetInForce(versions: Version[], kind: Version['budget_kind'], region: string | null, months: string[]): Map<string, string> {
+  const result = new Map<string, string>()
+  for (const monthStart of months) {
+    const version = versionInForce(versions, kind, region, monthStart)
+    if (version) result.set(monthStart, version.row_id)
+  }
+  return result
+}
+
+const first = (year: number, monthIndex: number) => `${year + Math.floor(monthIndex / 12)}-${String((monthIndex % 12) + 1).padStart(2, '0')}-01`
+
+/** The twelve months, April to March, of the fiscal year a month falls in. */
+export function fiscalMonths(monthStart: string): string[] {
+  const [year, monthNo] = [Number(monthStart.slice(0, 4)), Number(monthStart.slice(5, 7))]
+  const start = monthNo >= 4 ? year : year - 1
+  return Array.from({ length: 12 }, (_, i) => first(start, 3 + i))
+}
+
+/** Every month from one to another, both in. */
+export function monthsBetween(from: string, to: string): string[] {
+  const months: string[] = []
+  const [year, monthNo] = [Number(from.slice(0, 4)), Number(from.slice(5, 7))]
+  for (let i = 0; first(year, monthNo - 1 + i).slice(0, 7) <= to.slice(0, 7) && i < 240; i++) months.push(first(year, monthNo - 1 + i))
+  return months
+}
+
+/** What is left of an adjustment once part of it is matched to an SAP posting. */
+export function remaining(amount: number, matched: number | null): { remaining: number; settled: boolean } {
+  const left = paise(amount - (matched ?? 0))
+  return { remaining: left, settled: left === 0 }
+}
