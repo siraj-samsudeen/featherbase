@@ -547,7 +547,7 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
     { id: 'theme-dark', label: 'Theme: dark (dark mode)', run: () => setTheme('dark') },
     { id: 'theme-device', label: 'Theme: same as device', run: () => setTheme('device') },
     { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/featherbase/admin' }) },
-    { id: 'logout', label: 'Log out', run: () => void signOut() },
+    { id: 'logout', label: 'Log Out', run: () => void signOut() },
   ]
   const commandHits =
     search.trim().length > 1
@@ -1259,9 +1259,9 @@ export function AccountSidebarGroup() {
       tone="indigo"
       testid="sidebar-group-account"
       items={[
-        { to: ACCOUNT_SIGN_IN_METHODS_PATH, label: 'Sign-in methods', icon: LogIn, testid: 'sidebar-sign-in-methods' },
-        { to: ACCOUNT_CONNECTED_APPS_PATH, label: 'Connected apps', icon: Cable, testid: 'sidebar-connected-apps' },
-        ...(user ? [{ to: `/featherbase/account/access/${encodeURIComponent(user.row_id)}`, label: 'What you can see', icon: Eye, testid: 'sidebar-access-explanation' }] : []),
+        { to: ACCOUNT_SIGN_IN_METHODS_PATH, label: 'Sign-In Methods', icon: LogIn, testid: 'sidebar-sign-in-methods' },
+        { to: ACCOUNT_CONNECTED_APPS_PATH, label: 'Connected Apps', icon: Cable, testid: 'sidebar-connected-apps' },
+        ...(user ? [{ to: `/featherbase/account/access/${encodeURIComponent(user.row_id)}`, label: 'What You Can See', icon: Eye, testid: 'sidebar-access-explanation' }] : []),
       ]}
     />
   )

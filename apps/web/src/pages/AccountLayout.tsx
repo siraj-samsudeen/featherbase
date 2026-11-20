@@ -13,17 +13,18 @@ import { ThemeChoiceProvider } from '../lib/theme-choice'
 export function AccountLayout() {
   return (
     <ThemeChoiceProvider>
-      <AccountFrame />
+      <PersonFrame account />
     </ThemeChoiceProvider>
   )
 }
 
 /** #1006: someone who can use Admin, where Admin is, stays in its frame. Anyone
- *  else has no Admin to return to, so the plain bar is all their frame. */
-function AccountFrame() {
+ *  else has no Admin to return to, so the plain bar is all their frame. `account`: the account pages' own
+ *  sidebar group; without it (#1328's Unavailable page) the frame is the person's ordinary one. */
+export function PersonFrame({ account = false }: { account?: boolean }) {
   const kind = useShellKind()
   const onAppAddress = useOnAppAddress()
-  if (kind === 'admin' && onAppAddress === false) return <AdminShell fillHeight={false} account />
+  if (kind === 'admin' && onAppAddress === false) return <AdminShell fillHeight={false} account={account} />
   // The page waits for the frame: swapping frames under it would remount it.
   const deciding = kind === 'loading' || onAppAddress === undefined
   return (
@@ -33,7 +34,7 @@ function AccountFrame() {
           the shared x (32px from the sidebar, left-aligned, at most 880px). */}
       <div className="relative flex min-h-0 flex-1">
         <SidebarAside testid="account-sidebar" user={getSessionUser()?.row_id}>
-          <AccountSidebarGroup />
+          {account && <AccountSidebarGroup />}
         </SidebarAside>
         <main className={PAGE_PANEL} data-testid="page-panel">
           <PagePickerSlot />

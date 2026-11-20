@@ -626,7 +626,7 @@ function AccountMenu({ inMenu, inSidebar }: {
             data-testid="account-sign-in-methods"
             className={MENU_ITEM}
           >
-            {t('Sign-in methods')}
+            {t('Sign-In Methods')}
           </Link>
           <Link
             role="menuitem"
@@ -635,7 +635,7 @@ function AccountMenu({ inMenu, inSidebar }: {
             data-testid="account-connected-apps"
             className={MENU_ITEM}
           >
-            {t('Connected apps')}
+            {t('Connected Apps')}
           </Link>
           {user && (
             <Link
@@ -647,11 +647,11 @@ function AccountMenu({ inMenu, inSidebar }: {
               className={MENU_ITEM}
             >
               {/* #1224's verifier: the menu uses the page's own words. */}
-              {t('What you can see')}
+              {t('What You Can See')}
             </Link>
           )}
           <button role="menuitem" type="button" onClick={() => void signOutNow()} data-testid="logout" className={MENU_ITEM}>
-            {t('Log out')}
+            {t('Log Out')}
           </button>
         </div>
       )}

@@ -500,10 +500,10 @@ describe('linked identity validation and lifecycle through the public APIs', () 
   })
 })
 
-// #833: the Person's Sign-in methods card starts a Google invite from the
+// #833: the Person's Sign-In Methods card starts a Google invite from the
 // Person's own address, explains an expected Google sign-in, and says where an
 // invitation went: "emailed" only when an SMTP server is set.
-describe('#833: what the Sign-in methods card is told', () => {
+describe('#833: what the Sign-In Methods card is told', () => {
   const read = (admin: TestClient, person: string) =>
     admin.get<{ email: string | null; expects_google_sign_in: boolean; mail_transport: string }>(`/api/people/${person}/identities`)
   const smtp = process.env.SMTP_HOST

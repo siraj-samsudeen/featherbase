@@ -1,4 +1,4 @@
-// The bar's two actions that leave the page: Open Admin (#489) and Log out
+// The bar's two actions that leave the page: Open Admin (#489) and Log Out
 // (#411). Gaps the merged web coverage report (ADR 0012) showed: Open Admin
 // was only ever looked at, never pressed, and no test met a sign-out the
 // server could not complete. The failures are real: a grant withdrawn after

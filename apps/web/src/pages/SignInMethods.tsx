@@ -56,9 +56,9 @@ const LINK_OUTCOMES: Record<string, { tone: 'positive' | 'negative' | 'caution';
 const when = (iso: string | null) => (iso ? fmtInstantIST(iso) : 'never')
 
 export function SignInMethods() {
-  usePageTitle('Sign-in methods')
+  usePageTitle('Sign-In Methods')
   // #1222: these are the signed-in account's own; never the tester's while the page is someone else's.
-  return viewedPerson() ? <NotWhileViewing what="Sign-in methods" /> : <OwnSignInMethods />
+  return viewedPerson() ? <NotWhileViewing what="Sign-In Methods" /> : <OwnSignInMethods />
 }
 
 function OwnSignInMethods() {
@@ -96,7 +96,7 @@ function OwnSignInMethods() {
     <div className="space-y-4" data-testid="sign-in-methods">
       {/* UI standard: 24px from the page header to the first content. */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
-        <h1 className="text-2xl font-semibold text-ink">{t('Sign-in methods')}</h1>
+        <h1 className="text-2xl font-semibold text-ink">{t('Sign-In Methods')}</h1>
         <Button onClick={() => setChangingPassword(true)} data-testid="account-change-password">
           {t('Change password')}
         </Button>

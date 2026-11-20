@@ -45,7 +45,7 @@ describe('#737 command destinations', () => {
     expect(pages.filter((p) => p.label.startsWith('Inventory board '))).toHaveLength(501)
     expect(pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
     expect(pages).toContainEqual({ label: 'Service accounts', href: '/featherbase/admin/access-tokens?tab=accounts', kind: 'Page' })
-    expect(pages).toContainEqual({ label: 'What you can see', href: '/featherbase/account/access/Administrator', kind: 'Account' })
+    expect(pages).toContainEqual({ label: 'What You Can See', href: '/featherbase/account/access/Administrator', kind: 'Account' })
     expect(pages.every((p) => !p.href.includes('$'))).toBe(true)
     expect(new Set(pages.map((p) => p.href)).size).toBe(pages.length)
   })
@@ -96,9 +96,9 @@ describe('#737 command destinations', () => {
     expect(inventory.pages.map((p) => p.label)).not.toContain('Secret inventory page')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/glossary')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
-    expect(inventory.pages).toContainEqual({ label: 'Connected apps', href: '/featherbase/account/connected-apps', kind: 'Account' })
-    // #1325: the account menu's "What you can see" is found, for themselves; Service accounts are a manager's.
-    const own = inventory.pages.find((p) => p.label === 'What you can see')
+    expect(inventory.pages).toContainEqual({ label: 'Connected Apps', href: '/featherbase/account/connected-apps', kind: 'Account' })
+    // #1325: the account menu's "What You Can See" is found, for themselves; Service accounts are a manager's.
+    const own = inventory.pages.find((p) => p.label === 'What You Can See')
     expect(own).toMatchObject({ kind: 'Account' })
     expect(own!.href).toMatch(/^\/featherbase\/account\/access\/[^/]+$/)
     expect(own!.href).not.toBe('/featherbase/account/access/Administrator')

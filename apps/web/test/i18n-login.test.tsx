@@ -16,7 +16,7 @@ const here = (r: { router: unknown }) =>
 
 test('I18N-002: a stored language is applied on sign-in, and a date renders in the display format', async ({ admin, createUser }) => {
   const user = userEvent.setup()
-  for (const [source, translated] of [['Log out', 'Déconnexion'], ['Save', 'Enregistrer']])
+  for (const [source, translated] of [['Log Out', 'Déconnexion'], ['Save', 'Enregistrer']])
     await admin.post('/api/save_row', {
       table: 'Translation',
       row: { row_id: `fr-login-${source}`, language: 'fr', source_text: source, translated_text: translated },
@@ -36,7 +36,7 @@ test('I18N-002: a stored language is applied on sign-in, and a date renders in t
   await user.click(screen.getByRole('button', { name: 'Sign in' }))
   await waitFor(() => expect(here(app)).toMatch(/^\/featherbase\/admin/), { timeout: 8000 })
 
-  // Log out lives in the account menu (#72); there is no language picker (#380).
+  // Log Out lives in the account menu (#72); there is no language picker (#380).
   await user.click(await screen.findByTestId('session-user', {}, { timeout: 8000 }))
   await waitFor(() => expect(screen.getByTestId('logout')).toHaveTextContent('Déconnexion'))
 

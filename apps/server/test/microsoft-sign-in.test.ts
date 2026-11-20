@@ -1,6 +1,6 @@
 // Sign in with Microsoft (microsoft-sign-in): what the scenarios don't show.
 // The real authorize and token exchange (Microsoft faked at fetch), the method
-// turned off, linking from the Sign-in methods page, the expected mark being
+// turned off, linking from the Sign-In Methods page, the expected mark being
 // a System Manager's, the domain rule re-checked on a domain-ruled link, and
 // the tenant setting.
 import { afterEach, describe, expect, vi } from 'vitest'
@@ -124,7 +124,7 @@ describe('turned off', () => {
   })
 })
 
-describe('linking from the Sign-in methods page', () => {
+describe('linking from the Sign-In Methods page', () => {
   test('a person links their own Microsoft account, kept by tenant + object ID', async ({ api }) => {
     await configureMicrosoft({ allowed_email_domains: DOMAIN, self_link: true })
     const person = await makePerson({ email: `asha@${DOMAIN}` })
