@@ -5,11 +5,14 @@ in and is cleaned. This document says what an app is, how apps add to Featherbas
 upgrades work, and how instances share data.
 
 Agreed between the owner and Claude in a design session on 18 and 19 November 2026, separate from the one
-that produced `BIG-PICTURE.md`. Nothing here is built. Every decision is written with the alternatives
+that produced `BIG-PICTURE.md`. A third session on 19 and 20 November rethought both halves from first
+principles; its decisions are in section 11 and change several things in this document and in
+`BIG-PICTURE.md`. Nothing here is built. Every decision is written with the alternatives
 that were weighed and why each was chosen or rejected, so that it does not have to be re-argued from a
 one-line summary. Read it before any design choice that touches apps, access, upgrades or instances.
 
-Where this document and the rest of this branch differ, the rest of this branch wins (see section 2).
+Where this document and the rest of this branch differ, neither wins by default: the difference is
+brought to the owner (see section 2).
 
 ## 0. How to read this
 
@@ -21,6 +24,8 @@ Where this document and the rest of this branch differ, the rest of this branch 
 - Siraj's own words are quoted where they carry the reason. Several were dictated, so quotes are lightly
   cleaned.
 - Nothing here is built. A first attempt at code from that session was discarded (section 8).
+- Decisions 30 to 47 come from the first-principles review and are in section 11. Each says which
+  earlier decision it re-examines.
 
 ## 1. What Siraj wants, in his words
 
@@ -57,17 +62,20 @@ So ADRs 0011, 0013, 0014 and decisions D1–D11 / S1–S13 of the old system are
 
 **Where the two design sessions agree:** Bun, ElysiaJS, Postgres, Drizzle; HTML rendered by the server
 with htmx, React only where a screen needs it; folders by feature; tests from outside only; each promise
-tested once and 100% coverage; start from Excel; a Table can move between `main` and an app in one
+tested once and 100% coverage; start from Excel; a Table can move between `masters` and an app in one
 deliberate step.
 
-**This branch's rules win.** Its folder map, its testing rules, its vocabulary and its data model (the
-source part and the Featherbase part, anchors, browse → curate → own) were agreed with the owner over two
-days and are more careful than anything in the second session.
+**Neither half wins by default.** This section first said that this branch's rules win. The owner
+changed that on 19-Nov-2026: where the two halves differ, the difference is brought to him as a
+question, one at a time, with options and a recommendation. Section 11 holds the answers so far. The
+branch's folder map, testing rules and vocabulary have not been re-examined yet and stand until they
+are.
 
 **Deliberate decisions of this branch that the second session questioned. They are NOT open.** The owner
 confirmed on 19-Nov-2026 that each was a conscious choice:
 
-- People, sign-in and access rules come later, "when people sign in".
+- People, sign-in and access rules come later, "when people sign in". Decision 42 keeps this timing and
+  adds one thing: the gate itself exists from the first build.
 - The first import is a comma-separated file with dates written `2015-01-01`.
 - Delete really removes the row in the first build; soft delete comes later.
 - The import is one transaction and runs while the person waits.
@@ -77,7 +85,7 @@ One finding from the second session is worth carrying to the day people and acce
 information and not as an objection: in the old system a token carried no limits and the server forgot
 which token made a request, and row permissions were checked in five separate layers. Sharing between
 instances (decisions 5 to 7, 16, 17) needs every read and write to pass one gate that knows the person
-and the token.
+and the token. Decisions 42 to 47 now design that gate.
 
 **Still to reconcile between the two halves:**
 
@@ -661,14 +669,14 @@ short or there are too many things, clean-up should be able to focus on that are
   area, in its own schema. It shows under "My work", never in the shared lists, and the person can share
   it with named people. It is never sent to the warehouse: the change-data-capture package skips those
   schemas. Each area shows its size and when it was last used. A good Table is *promoted*: someone who
-  designs reviews its name, key and types, then moves it to `main` or an app. *For:* names can't collide
+  designs reviews its name, key and types, then moves it to `masters` or an app. *For:* names can't collide
   (two people's "Budget" are different Tables); the designed side stays clean; clean-up has one obvious
   place to look; when a person leaves, their area is one thing to review. *Against:* many small schemas;
   a shared draft still has a single owner.
 - **B. One shared drafts area for everyone.** *For:* simplest; people can discover each other's drafts.
   *Against:* names collide between people; with no clear owner per area it becomes the junk drawer he
   fears.
-- **C. No separate area, a "draft" mark on Tables in `main`.** *For:* nothing moves on promotion.
+- **C. No separate area, a "draft" mark on Tables in `masters`.** *For:* nothing moves on promotion.
   *Against:* drafts and designed Tables share one list and one set of names, which is the collision he
   wants to avoid; and the warehouse would need a filter per Table.
 
@@ -678,11 +686,11 @@ person, kept apart from designed Tables and from the warehouse); the details bel
 **Why A, beyond his stated worry.** `BIG-PICTURE.md` says the physical shape of every Table is read by
 the change-data-capture package. A separate schema lets that package ignore drafts wholesale; a draft
 mark would have to be respected Table by Table. And promotion needs nothing new: it is the "moving a
-Table between `main` and an app is one deliberate step" that `BIG-PICTURE.md` already describes, with a
+Table between `masters` and an app is one deliberate step" that `BIG-PICTURE.md` already describes, with a
 name history, plus a review in front of it.
 
 **How it fits the rest.** A Table can now live in three kinds of place: a person's work area, the shared
-`main`, or an app. `BIG-PICTURE.md` already says "later a person picks the schema"; this decides what the
+`masters` (decision 37), or an app. `BIG-PICTURE.md` already says "later a person picks the schema"; this decides what the
 default is for a file someone brings in for themselves.
 
 **Open** (also listed in section 9): who may promote; whether others can see that a work area's Tables
@@ -731,13 +739,14 @@ Grouped by when each is needed. Bring them to him one at a time.
 
 **Needed early. They block no build, but they shape all the work.**
 
-1. **The old system while the rebuild grows.** 82% of its commits landed in the six weeks to 18-Nov.
-   Every feature added to the old `main` is one more thing the rebuild must match before the client's
-   app can move. Bug fixes only, or features too, and who decides?
-2. **What "ready to move Dash" means.** Nobody has written the list of what Dash uses. Without it the
-   rebuild has no finish line. `background/old-capabilities-ledger.md` is a starting point.
+1. **The old system while the rebuild grows.** *Answered, decision 33:* no formal limit; client
+   requests and bug fixes continue and the owner keeps it small himself.
+2. **What "ready to move Dash" means.** *Answered, decision 34:* a short list of the big pieces now,
+   the full list when the move is planned. The short list is owed by Claude.
 3. **The words.** `AGENTS.md` has a table of agreed words, and a folder is named exactly as its word.
    This half added *package*, *contribution*, *slot*, *Connection* and *work area*. None is approved.
+   The review added *Masters*, *gate* and *sentence* (a rule the gate reads); *Masters* is the
+   owner's own choice (decision 37).
 4. **Does each build still start from a GitHub issue?** `TESTING.md` drops OpenSpec on this branch; the
    old repository's rules required an issue and an OpenSpec change.
 
@@ -747,7 +756,8 @@ Grouped by when each is needed. Bring them to him one at a time.
 6. Can other people see that a work area's Tables exist before they are shared? ("Not private in the
    data access sense" suggests yes.)
 7. What does sharing a work-area Table grant: read only, or edit too?
-8. What are the area and its schema called?
+8. What are the area and its schema called? (The shared area is now Masters, decision 37; the
+   person's own area is still unnamed.)
 
 **When packages are planned.**
 
@@ -773,7 +783,8 @@ Grouped by when each is needed. Bring them to him one at a time.
     package makes, or both? A separate design-study session is producing a charts mock-up in
     `features/foundations/pages/`.
 
-**When people and sharing between instances are planned.**
+**When people and sharing between instances are planned.** Decisions 42 to 47 have started on people
+and access.
 
 17. Which sign-in methods? The old production uses Google and Microsoft sign-in. Design this together
     with signing in to another instance (decision 7).
@@ -786,15 +797,447 @@ Grouped by when each is needed. Bring them to him one at a time.
 20. The planned move of one client's apps to a private repository (11-Nov). With a fresh install
     planned for production, is it still needed in that form?
 
+**From the first-principles review (section 11).**
+
+21. **The workbook for the links build.** An Excel file with several sheets that point at each other
+    (decision 31). Not on this branch; the owner is to supply it.
+22. **Does Featherbase also make a visible running code for a row,** beside its own id? (decision 38)
+23. **What happens to the anchor and to "a source part and a Featherbase part"** now that every
+    worked-on outside Table is a copy in Featherbase's Postgres (decision 41)? `BIG-PICTURE.md` still
+    describes both as first written.
+24. **Reading between instances: live or a copy?** Decision 6 says live by default; decision 41 says
+    always a copy for outside sources. Not yet re-examined together.
+25. **"Where" (decision 46):** the remaining cases, among them a role held along two lines at once,
+    a role given by hand, and a corrected role.
+26. **A link that changes over time,** as a built-in kind of Column: it shows today's value as a plain
+    Column, keeps the dated history, and can answer "as of" a date. An idea noted from real data,
+    where several "which belongs to which" Tables turned out to be history. Not discussed.
+27. **The old vision against this design** (section 11, opening): Table definitions as portable JSON
+    against "readable code over large JSON" (section 10, item 3); where Flows sit against checks and
+    reactions (decision 9); and when each enters the build order.
+28. **Review areas not reached yet:** apps and packages, sharing between instances, how we build
+    (including the first build's handover), and the build order.
+
+**Sentences on this branch that still follow the earlier answers.** They drive tests, so each is
+changed when its build is planned with the owner, not here:
+
+- `main` as the shared schema and in addresses: `features/foundations/database/database.md`,
+  `features/foundations/pages/pages.md` and the mock-up (decision 37).
+- A key picked at import, and rows listed in key order: `proposing.md`, `confirming.md`,
+  `changing.md`, `browsing.md`, journey 2, `samples/employees/README.md`, and the word "Key" in
+  `AGENTS.md` (decision 38).
+- "Who created or changed a row is added when people sign in" in `database.md` (decision 42 allows
+  it from the start).
+
 ## 10. A suggested order, for the owner and the planning session to challenge
 
-This branch's first two builds stand: the home page on a fresh install, then importing a clean master,
-then import and clean-up. After those, a suggestion for where this half enters:
+The first builds, as decided in section 11:
 
-1. Editing in a list people can work in (filter, sort, search, links between Tables).
-2. People, sign-in and access, whenever the owner schedules them, built as one gate (section 2).
+- The home page on a fresh install, with the one gate already in place (decision 42).
+- Importing a clean CSV into Masters (decisions 31, 36, 37).
+- Links between Tables, from a clean workbook; a link with no match refuses the import (decision 32).
+- Import and clean-up; the refusal softens into an Issue (decision 32).
+
+Where the journey "Claude Code does the same" sits among these was not re-asked. After those, a
+suggestion for where this half enters. The review has not reached this list yet:
+
+1. Editing in a list people can work in (filter, sort, search).
+2. People, sign-in and access, whenever the owner schedules them, on the gate that already exists
+   (decisions 42 to 47).
 3. Packages: a readable definition file (the owner prefers readable code to large JSON), installed by
    comparison, with declared uses and the instance check.
 4. Extension points: sections first (HTML fragments), then events, then fields, then package slots.
 5. Instance to instance, starting with the Connection ceiling.
 6. Dash and the data move.
+
+## 11. The first-principles review (19 and 20 November 2026)
+
+A third session. Siraj asked for everything to be rethought from first principles across both halves
+of the design, one question at a time. Each decision below names the earlier decision it re-examines.
+The question numbers are the ones used in that session.
+
+The review is not finished. It has covered purpose, the old system, the Table, and most of people and
+access. Apps and packages, sharing between instances, how we build, and the build order are still to
+come.
+
+**Two rules that changed for the review:**
+
+- Neither half of the design wins by default any more. Each conflict is brought to Siraj (section 2).
+- The old vision document is a fifth input, beside the two halves, the shared roles brief and the
+  first build's handover. Siraj on 20-Nov: keep most of its ideas in mind. Flows (action, loop,
+  condition) as the one idea for automation. Table definitions as portable JSON. An AI chat that
+  builds Tables and apps, with a person doing the same by hand as an equal way in. Developers and
+  non-technical users are equal citizens. Where these meet earlier decisions is open (section 9).
+
+### Purpose and the first real use
+
+#### Decision 30 (Question 1) — What is the first real use the rebuild must serve?
+
+**Re-examines:** "start from Excel" in `BIG-PICTURE.md` and the suggested order in section 10. The
+inputs pulled three ways: a master-data tool, a platform for many apps, and a client's live app.
+
+**Options.**
+- **A. The owner's own warehouse clean-up.** A sheet he maintains today is imported, cleaned, edited
+  and reaches the warehouse. *For:* he is the first user, so feedback is fast; it exercises the core;
+  it needs no roles or packages to be useful. *Against:* the client's app stays on the old system
+  longer.
+- **B. Replacing the client's app in production.** *For:* ends the cost of two systems soonest.
+  *Against:* it needs nearly everything at once, and the import core gets built last.
+- **C. The app platform.** *For:* outside contributors can start early. *Against:* it builds the frame
+  before there is a proven Table, list or form to extend.
+
+**Chosen: A.** By Siraj, on my recommendation. **Firmness: leaning.**
+
+#### Decision 31 (Question 2) — Which data is the first target?
+
+**Options offered:** the employee master; a sheet that exists only in Excel today; budgets.
+
+**Chosen: none of them yet. Made-up data first.** By Siraj, his own answer: "we cooked up some ideal
+simple csv to start with then an excel with multiple sheets to demonstrate links." So the clean CSV in
+`samples/employees/` comes first, then a workbook with several sheets that shows links between Tables.
+A real sheet follows those. **Firmness: firm.**
+
+**Owed:** the workbook is not on this branch. Siraj is to supply it (section 9).
+
+#### Decision 32 (Question 3) — After the clean CSV, which build comes next?
+
+**Re-examines:** the order in `BIG-PICTURE.md`, which put clean-up second and left links for later.
+
+**Options.**
+- **A. Links second, clean-up third.** *For:* links are what make it a database and not a spreadsheet.
+  *Against:* a link to a missing row is itself a clean-up problem, so links are hard to get right
+  before bad cells are handled.
+- **B. Clean-up second, links third.** *For:* Issues are designed once, and a broken link becomes one
+  more kind of Issue. *Against:* two builds on one flat Table before anything relational shows.
+- **C. Links second, with clean files only.** A link that finds no match refuses the import. Clean-up
+  comes third and softens that refusal into an Issue. *For:* links are seen early without designing
+  Issues twice. *Against:* the workbook must be perfectly clean until the third build.
+
+**Chosen: C.** By Siraj, on my recommendation. **Firmness: leaning.**
+
+### The old system while the rebuild grows
+
+#### Decision 33 (Question 4) — What may still be added to the old system?
+
+**Re-examines:** section 9, item 1.
+
+**Options.**
+- **A. Bug fixes only.** *For:* the gap stops growing at once. *Against:* the client waits for the
+  rebuild for anything new.
+- **B. Only what the client needs in production, each addition logged.** *For:* the client is never
+  blocked, the platform stops growing, and the log becomes the finish line. *Against:* someone has to
+  say no to platform ideas.
+- **C. No limit.** *For:* nothing changes for anyone. *Against:* the rebuild chases a moving target.
+
+**Chosen: C.** By Siraj, **against my recommendation of B**. His words: "we have to respond to the
+client requests and bug fixes. but i will keep it minimal." **Firmness: firm.** There is no log of
+additions; he keeps the old system small himself.
+
+#### Decision 34 (Question 5) — When is "what the client's app needs before it can move" written down?
+
+**Re-examines:** section 9, item 2.
+
+**Options.**
+- **A. The full list now.** *For:* shows early how far away the move is. *Against:* goes stale with
+  every change to the app.
+- **B. The full list when the move is planned.** *For:* written once and correct. *Against:* a large
+  surprise could come late.
+- **C. A short list of the big pieces now, the full list later.** One line per area the app depends
+  on. *For:* catches large surprises for almost no effort, and names areas, so it does not go stale.
+  *Against:* it is not a finish line that can be ticked off.
+
+**Chosen: C.** By Siraj, on my recommendation. He added: "the core parts of dash is done, so you can
+take it from there for now." **Firmness: leaning.**
+
+**Owed:** Claude drafts those lines from the app's manifest and brings them with the build order.
+
+### What a Table is and where it lives
+
+#### Decision 35 (Question 6) — What is a Table, physically?
+
+**Re-examines:** the storage decision in `BIG-PICTURE.md`, which everything else rests on.
+
+**Options.**
+- **A. One real Postgres table per Table, one real column per Column.** *For:* the
+  change-data-capture package reads an ordinary table; real types and unique rules; plain SQL; fast
+  sorting and filtering. *Against:* adding a Column or importing a file changes the database's
+  structure while people use it, and every rename is a change to the warehouse contract.
+- **B. One shared table for all rows, values held as JSON.** *For:* no structure changes ever.
+  *Against:* the warehouse receives one opaque table; no real types or unique rules; slow filters.
+- **C. Real tables for designed Tables, JSON for drafts.** *For:* drafts never touch the structure.
+  *Against:* two engines, the old system's worst problem.
+
+**Chosen: A.** By Siraj, on my recommendation. **Firmness: firm.** It confirms what was already
+written.
+
+#### Decision 36 (Question 7) — Where does an imported file land before people sign in?
+
+**Re-examines:** a conflict between the halves. `BIG-PICTURE.md` sends an import to the shared
+schema. Decision 29 sends a file someone brings in for themselves to their own work area. The early
+builds have no sign-in, so there is no person yet to own an area.
+
+**Options.**
+- **A. The shared area until people sign in; work areas arrive with sign-in.** *For:* nothing is
+  built for a person who does not exist yet, and moving a Table between schemas is one cheap step.
+  *Against:* for a while experiments sit beside designed Tables, and the change-data-capture package
+  would see them.
+- **B. A work area from the first build,** with a promote step to reach the shared area. *For:* the
+  separation holds from day one. *Against:* one more step and screen in the very first demo.
+- **C. The person chooses at import.** *For:* flexible. *Against:* it asks a design question of
+  someone who only wants to drop a file.
+
+**Chosen: A.** By Siraj, on my recommendation. **Firmness: leaning.** Recommended with it: the
+change-data-capture package is not pointed at the shared area until work areas exist or Siraj says
+so. Decision 29 stands for the time after sign-in.
+
+#### Decision 37 (Question 8) — What are the places a Table can live called?
+
+**Re-examines:** `database.md`, which put people's Tables in schema `main` and Featherbase's own
+tables in schema `featherbase`. Siraj's concern: "Featherbase" meant both the whole system and one
+area inside it, and "sometimes even I get confused" which one a person means. He also wants upkeep
+tables kept out of sight: "When I want users to browse their tables, I don't want them to see system
+tables."
+
+**Options.**
+- **A. Main and featherbase.** A shared Table is `main.site`; upkeep is `featherbase.uploads`.
+  *For:* already written; "Featherbase" only means the whole system. *Against:* "Main" says nothing
+  about what belongs there.
+- **B. Masters and featherbase.** A shared Table is `masters.site`; upkeep is `featherbase.uploads`.
+  *For:* it names the ideal use, so people know what belongs there. *Against:* not everything shared
+  is a master.
+- **C. Featherbase and system.** A shared Table is `featherbase.site`; upkeep is `system.uploads`.
+  *For:* no change to what people say today. *Against:* it keeps the double meaning.
+
+**Chosen: B.** By Siraj, **against my recommendation of A**. **Firmness: firm.** His reason: "My
+ideal usage for Featherbase is a master data management system... masters fits the scene." On the
+"against": something shared that is not a master, such as a budget, belongs to an app, and that is
+fine because every app's Tables are usable inside the instance wall (decision 1).
+
+**So there are four kinds of place:**
+- **Masters,** schema `masters`. The shared, designed Tables. The default for an import until
+  sign-in exists.
+- **An app's own schema,** named after the app.
+- **A person's work area** (decision 29), from the day people sign in.
+- **`featherbase`,** Featherbase's own upkeep tables (uploads, raw rows, the list of Tables and
+  Columns). Never shown when browsing Tables, to anyone.
+
+"Featherbase" now means only the whole system. One consequence carried forward: making a small app
+must be cheap, because an app is the home for anything shared that is not a master.
+
+`masters` replaces `main` everywhere, including the address a person sees (`/masters/employees`) and
+the mock-up.
+
+#### Decision 38 (Question 9) — Must every Table have a key?
+
+**Re-examines:** the rule that a key is always picked on the proposal screen, and that only a Column
+that is never blank and never repeats can be picked.
+
+**Options offered.** A, always required. B, optional, with a Table that has none losing re-import
+and links. C, required, and Featherbase makes a running code when the file has none.
+
+**Chosen: Siraj's own framing, none of the three as written.** "Let's not make the normal thing that
+I expect people to do, which is to upload any Excel hard." **Firmness: firm.**
+
+- Any Excel imports. A missing key never blocks an import.
+- Every row gets an id made by Featherbase (`_id`). That is what tells rows apart.
+- **What makes a record unique is a separate question from the id.** It can be one Column or several.
+  It can be set at import, later, or when a re-import asks how to match and remove duplicates.
+
+**Left open:** whether Featherbase also makes a visible running code (section 9).
+
+#### Decision 39 (Question 10) — How does one Table point at another?
+
+New, because links now come second (decision 32). Example: an Employees sheet has a Department column
+holding "Sales", and a Departments sheet has a row for Sales.
+
+**Options.**
+- **A. Store the other row's id.** The screen shows "Sales". *For:* a rename needs no change anywhere
+  else; works when uniqueness is several Columns; the warehouse joins on the id. *Against:* the raw
+  column, here and in the warehouse, is an unreadable id.
+- **B. Store the word.** *For:* readable everywhere with no join. *Against:* a rename must rewrite
+  every pointing row in every Table and app; cannot work when uniqueness is several Columns.
+- **C. Store both.** The id decides; a second column keeps a readable copy. *For:* stable and
+  readable. *Against:* two columns per link in every Table and in the warehouse, and the copy can go
+  stale.
+
+**Chosen: C.** By Siraj, **against my recommendation of A**. **Firmness: firm.** What follows from
+it: Featherbase refreshes the readable copy in the same save whenever the other row is renamed, so it
+cannot go stale through normal use.
+
+**Stated with it and not contested:** the import matches the sheet's "Sales" to the Departments row
+by that Table's uniqueness rule, so a Table that others point at needs one.
+
+#### Decision 40 (Question 11) — What happens when someone deletes a row that others point at?
+
+**Re-examines:** nothing. The 16-Nov choice stands: delete really removes the row in the first build,
+and soft delete comes later as a switch. This is the case that choice did not cover.
+
+**Options.**
+- **A. Refuse, and say who points at it.** "Sales can't be deleted: 3 Employees use it." *For:*
+  nothing is left pointing at nothing, here or in the warehouse. *Against:* clearing a well-used row
+  takes several steps.
+- **B. Delete it and empty the links.** *For:* one step. *Against:* silent data loss in other Tables,
+  possibly another app's.
+- **C. Delete it and everything pointing at it.** *Against:* one click removes rows across several
+  Tables.
+- **D. Retire it, don't remove it.** The row stays, is hidden from pick lists, and still shows where
+  it is used. *For:* what a master usually needs. *Against:* it is the soft delete that was put off.
+
+**Chosen: A now; D arrives when soft delete is switched on.** By Siraj, on my recommendation.
+**Firmness: leaning.**
+
+#### Decision 41 (Question 12) — How does Featherbase read data it does not own?
+
+**Re-examines:** point 3 of `BIG-PICTURE.md`, "three ways to read a source part" (live, cached copy,
+brought over). The concern: the old system's worst problem was two engines, one for its own Tables
+and a weaker one for outside Tables. Live reading brings the second engine back.
+
+**Options.**
+- **A. All three ways.** *For:* nothing is copied that need not be; always current. *Against:* two
+  read engines from the day live reading is built.
+- **B. Always a copy in Featherbase's Postgres.** Everything a person works on is in Postgres.
+  Warehouse tables too large to copy are only browsed. *For:* one engine; lists, filters, links and
+  people's additions work the same everywhere; a file import and a warehouse copy are one mechanism
+  with different sources. *Against:* a copy can be stale, so each shows its "as of" time.
+- **C. Decide when the warehouse work is planned.** *Against:* early builds could close a path
+  without anyone noticing.
+
+**Chosen: B.** By Siraj, on my recommendation. **Firmness: leaning.**
+
+- **A copied Table can be refreshed,** on demand or on a schedule. Siraj added this himself. A
+  refresh works like a re-import: the source's Columns are updated and what people added is kept.
+- **The warehouse is a read-only browser.** Pick a database, schema and table, page through rows,
+  sort and filter simply. No edits, comments, links, own Columns or corrections there. To add any of
+  those, the table is copied in and becomes an ordinary Table.
+- **Live reading** is added later only if a real case cannot be served by a copy.
+
+This is about outside *sources*. Claude's note, not a decision: decision 6 says reading between two
+Featherbase instances is live by default, which points the other way. It has not been re-examined
+yet (section 9).
+
+### People, roles and access
+
+#### Decision 42 (Question 13) — When does Featherbase start knowing who is acting?
+
+**Re-examines:** "people, sign-in and access rules come later" (section 2). The timing of sign-in is
+not questioned. The lesson is from the old system, where access was checked in five layers because
+it was added around code that already existed.
+
+**Options.**
+- **A. As written.** No notion of a person until sign-in is built. *Against:* every route, page and
+  agent tool written before then is reopened to pass through the gate.
+- **B. Real sign-in from the first build.** *Against:* delays the first Table anyone can see.
+- **C. The gate from the first build, sign-in later.** Every read and write passes one place that
+  asks who this is and whether they may. Until sign-in exists the answer is always "the owner, yes".
+  No sign-in screen and no roles. *For:* almost no work now, and only the gate changes when sign-in
+  arrives. *Against:* a little structure before it visibly pays off.
+
+**Chosen: C.** By Siraj, on my recommendation. **Firmness: leaning.** With it: who created and who
+changed a row can be recorded from the start.
+
+#### Decision 43 (Question 14) — What does the gate understand?
+
+**Re-examines:** the old system's access design, where at least nine separate mechanisms decided
+access.
+
+**Options.**
+- **A. One sentence form.** *A role* can *do something* to *a Table*, optionally *only for certain
+  rows*. Example: "Store Managers can edit Sections in their area." The gate knows nothing about any
+  business. A roles package answers two questions for it: which roles does this person hold, and
+  where. *For:* one mechanism to build, test and explain; "why can this person see this?" always has
+  a one-sentence answer. *Against:* a few old behaviours do not fit, such as sharing one row with
+  one person.
+- **B. Carry the old mechanisms over, behind the one gate.** *Against:* nine mechanisms again, two
+  of which contradict each other.
+- **C. Each app decides in its own code.** *Against:* no single answer to "who can see this row",
+  which sharing between instances needs.
+
+**Chosen: A.** By Siraj, on my recommendation. **Firmness: leaning.** A second form is added only if
+a real case appears.
+
+#### Decision 44 (Question 15) — What can an administrator see?
+
+**Re-examines:** two old rules that contradicted each other. One said an administrator can do
+anything on any Table. The other said private work stays private with no administrator exception.
+
+**Options.**
+- **A. Everything, always.** *For:* simplest. *Against:* nothing can be private from an
+  administrator, including a client's own.
+- **B. Everything by default, except Tables an app marks private.** The administrator role starts
+  with the sentence "can do everything to every Table". On a private Table only that Table's own
+  sentences apply, to administrators too. An administrator can still change the rules and so let
+  themself in, and every rule change is recorded with who and when. *For:* daily work is as easy as
+  A, and getting in leaves a visible trace. *Against:* it deters and records; it does not prevent.
+- **C. Nothing by default.** Administrators manage structure and rules, and must give themselves a
+  role to see rows. *Against:* constant friction for the person configuring an instance.
+
+**Chosen: B.** By Siraj, on my recommendation. **Firmness: leaning.**
+
+#### Decision 45 (Question 16) — Where do the "what a role may do" sentences live?
+
+**Re-examines:** the old arrangement, where each app keeps its own table of what each role may do in
+it.
+
+**Options.**
+- **A. One rule list in the platform; each package ships its starting sentences.** Installing a
+  package adds its sentences to the one list, after showing them. An administrator edits them in one
+  grid covering every app. *For:* one place answers "what can this role do, everywhere?", and the
+  gate reads one list. *Against:* an upgrade must not overwrite a sentence someone changed by hand,
+  so each sentence remembers whether it was edited.
+- **B. Each app keeps its own table of sentences.** *For:* matches the old system. *Against:* the
+  gate reads one table per app, and nobody sees a role's whole picture on one screen.
+
+**Chosen: A.** By Siraj, on my recommendation. **Firmness: leaning.** It applies to the rebuild
+only; the old system is unchanged.
+
+**The split that follows.** The platform holds the gate and its rule list. It holds no business
+roles. Roles, the mapping from job titles to roles, changes made by hand, the working-out of who
+holds what and where, and the screens for all of these belong to a shared roles package. That
+package is generic in shape, and a business's own role names are rows in it. Its design is kept with
+the package, not in this repository. Put to Siraj with this question and not objected to.
+
+#### Decision 46 (Question 17) — How is "where" expressed? In progress.
+
+"A Store Manager **at one store**" and "can edit Sections **in their area**" both need a notion of
+where. Siraj: "this is one of the most important things to get right and be flexible, yet somehow
+keep it simple... Let's go extremely slow." It is being worked through real cases one at a time, and
+is not settled as a whole.
+
+**Options first offered.**
+- **A. Fixed levels built into the roles package** (for example region, cluster, store). *Against:*
+  the next business has different levels, and a role that reaches by merchandise has no answer.
+- **B. A tree of places with parent links.** *Against:* the shape of places belongs to the source
+  systems, so Featherbase would keep a second copy of the hierarchy.
+- **C. A role is held at a row of any Table, and access follows links** from a row to that place.
+  *For:* no new hierarchy; it uses the links the data already has; place and merchandise work the
+  same way.
+
+**Not chosen yet.** C is the idea under test: a role is held at a place, a place is a row, and a row
+is in your area when it hangs off that place by links.
+
+**Confirmed so far** (Siraj, 20-Nov: "yes exactly"). **Firmness: firm on the direction.**
+
+- Row-level access is the larger question, not which Tables a role may open.
+- The gate adds a filter to each Table before any list or save.
+- "My things" (me, the places I hold roles at) are worked out once per request.
+- Each reach is a plain filter or join:
+  - **Own:** a Column on the row equals me.
+  - **Team:** a join through who reports to whom.
+  - **Area:** a Column on the row, or a join up from it, reaches one of my places.
+  - **Handed:** a join to a list of grants.
+  - **All:** no filter.
+
+**Still to walk through:** the remaining cases, including a role held along two lines at once (a kind
+of merchandise and a region together), a role given by hand, and a role that was corrected.
+
+#### Decision 47 (Question 17a) — Who states how a row leads to a place?
+
+**Options.**
+- **A. Each sentence states the path.**
+- **B. Once per Table.** The Table carries "belongs to" facts: a Section belongs to a Site by its
+  site Column, to a Floor by its floor Column, and to a Department through another Table. A sentence
+  only says "in their area". The gate picks the path that matches the kind of place the role is held
+  at.
+- **C. In code.**
+
+**Chosen: B.** By Siraj, on my recommendation. **Firmness: leaning.**
