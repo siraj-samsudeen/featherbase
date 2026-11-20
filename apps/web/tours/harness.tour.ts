@@ -7,7 +7,9 @@ tour('the watchdog fails a tour whose page throws', async ({ story }) => {
   tour.fail()
   const s = await story({ user: ADMIN.user, password: ADMIN.password, fullName: 'Administrator' })
   await s.chapter('A page throws an error nobody asserts on', 10_000, async () => {
+    // Waits for the throw itself, not for a guessed time.
+    const thrown = s.page.waitForEvent('pageerror')
     await s.page.evaluate(() => setTimeout(() => { throw new Error('thrown by the page') }, 0))
-    await s.page.waitForTimeout(300)
+    await thrown
   })
 })
