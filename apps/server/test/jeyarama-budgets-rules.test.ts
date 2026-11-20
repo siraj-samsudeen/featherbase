@@ -267,3 +267,37 @@ test('a save cannot match more than the adjustment, or against its direction', a
   await expect(match(-1)).rejects.toThrow('A match settles no more than the adjustment: ₹42,500.00')
   expect(Number((await match(42500)).remaining_amount)).toBe(0)
 })
+
+test('a version is based only on an approved version of its own kind, never on a draft or itself', async ({ createUser }) => {
+  const { made, save, act, editor } = await setup(createUser)
+  const draft = { version_name: 'Hand Made', budget_kind: 'P&L', fiscal_year: 'FY27', covers_from: '2026-10-01', covers_to: '2027-03-01' }
+  await expect(save('budget_version', { ...draft, based_on: made.version.row_id })).rejects.toThrow('FY27 Original is a draft: a version is based on an approved one')
+  await act(editor, 'approve_version', { version: made.version.row_id })
+  await expect(save('budget_version', { ...draft, budget_kind: 'Sales', based_on: made.version.row_id })).rejects.toThrow('FY27 Original is a P&L version: a Sales version is based on a Sales one')
+  const child = await save('budget_version', { ...draft, based_on: made.version.row_id })
+  await expect(save('budget_version', { row_id: child.row_id, updated_at: child.updated_at, based_on: child.row_id })).rejects.toThrow('A version is not based on itself')
+})
+
+test('withdrawing an approved version changes its state and nothing else', async ({ createUser }) => {
+  const { made, save, act, get, editor } = await setup(createUser)
+  await act(editor, 'approve_version', { version: made.version.row_id })
+  const version = await get('budget_version', made.version.row_id)
+  await expect(save('budget_version', { row_id: version.row_id, updated_at: version.updated_at, version_state: 'Withdrawn', covers_to: '2026-12-01' })).rejects.toThrow('FY27 Original is approved: only its note can change, or withdraw it')
+  await expect(save('budget_version', { row_id: version.row_id, updated_at: version.updated_at, version_state: 'Withdrawn', approved_by: 'someone-else' })).rejects.toThrow('only its note can change')
+  expect((await save('budget_version', { row_id: version.row_id, updated_at: version.updated_at, version_state: 'Withdrawn' })).version_state).toBe('Withdrawn')
+})
+
+test('an adjustment is withdrawn only in a later, open version of its own month', async ({ createUser }) => {
+  const { made, save, act, get, editor } = await setup(createUser)
+  await act(editor, 'publish_close', { close: made.close.row_id })
+  let line = await get('monthly_close_adjustment', made.adjustment.row_id)
+  const withdraw = (close: string) => save('monthly_close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, withdrawn_in: close })
+  await expect(withdraw(made.close.row_id)).rejects.toThrow("An adjustment is withdrawn in a later version of its month, not in Oct'26 version 1")
+  const other = await save('monthly_close', { legal_company: '9000', close_month: '2026-11-01', version_no: 1, downloaded_at: '2026-12-08T05:00:00.000Z' })
+  await expect(withdraw(other.row_id)).rejects.toThrow("An adjustment is withdrawn in a later version of its month, not in Nov'26 version 1")
+  const { close } = await act<{ close: string }>(editor, 'new_close_version', { close: made.close.row_id, downloaded_at: '2026-11-12T06:30:00.000Z' })
+  line = await withdraw(close)
+  expect(line.withdrawn_in).toBe(close)
+  await act(editor, 'publish_close', { close })
+  await expect(save('monthly_close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, withdrawn_in: null })).rejects.toThrow("Oct'26 version 2 is published: this adjustment's withdrawal stays as published")
+})
