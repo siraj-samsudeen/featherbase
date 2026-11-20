@@ -1,0 +1,14 @@
+{
+  "format": "featherbase.table/1",
+  "name": "masters.floor",
+  "label": "Floor",
+  "title": "floor_name",
+  "key": ["site", "floor_name"],
+  "columns": [
+    { "name": "site", "label": "Site", "type": "Link", "to": "masters.site", "required": true },
+    { "name": "floor_name", "label": "Floor name", "type": "Text", "required": true }
+  ],
+  "belongs_to": [
+    { "by": "site" }
+  ]
+}

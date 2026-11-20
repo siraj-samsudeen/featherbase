@@ -1,0 +1,21 @@
+{
+  "format": "featherbase.table/1",
+  "name": "masters.employees",
+  "label": "Employees",
+  "title": "name",
+  "key": ["employee_code"],
+  "columns": [
+    { "name": "employee_code", "label": "Employee Code", "type": "Text", "required": true },
+    { "name": "name", "label": "Name", "type": "Text", "required": true },
+    {
+      "name": "department",
+      "label": "Department",
+      "type": "Choice",
+      "choices": ["Accounts", "Billing", "Sales", "Stores", "Tailoring"]
+    },
+    { "name": "date_of_joining", "label": "Date of Joining", "type": "Date", "required": true },
+    { "name": "date_of_leaving", "label": "Date of Leaving", "type": "Date" },
+    { "name": "active", "label": "Active", "type": "Yes/No" },
+    { "name": "weekly_hours", "label": "Weekly Hours", "type": "Number" }
+  ]
+}

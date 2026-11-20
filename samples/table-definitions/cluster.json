@@ -1,0 +1,16 @@
+{
+  "format": "featherbase.table/1",
+  "name": "masters.cluster",
+  "label": "Cluster",
+  "about": "A group of nearby stores looked after by one cluster manager. Not every store is in one.",
+  "title": "cluster_name",
+  "key": ["cluster_name"],
+  "columns": [
+    { "name": "cluster_name", "label": "Cluster name", "type": "Text", "required": true },
+    { "name": "region", "label": "Region", "type": "Link", "to": "masters.region", "required": true },
+    { "name": "cluster_manager", "label": "Cluster manager", "type": "Link", "to": "masters.person" }
+  ],
+  "belongs_to": [
+    { "by": "region" }
+  ]
+}

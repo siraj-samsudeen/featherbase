@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Featherbase Table definition, draft 1",
+  "description": "A draft, for discussion. See TABLE-DEFINITIONS.md at the top of the repository.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "name", "columns"],
+  "properties": {
+    "format": { "const": "featherbase.table/1" },
+    "name": { "$ref": "#/$defs/tableAddress" },
+    "label": { "type": "string", "minLength": 1 },
+    "about": { "type": "string", "minLength": 1 },
+    "title": { "$ref": "#/$defs/columnName" },
+    "key": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/columnName" }
+    },
+    "dated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["starts", "ends"],
+      "properties": {
+        "starts": { "$ref": "#/$defs/columnName" },
+        "ends": { "$ref": "#/$defs/columnName" }
+      }
+    },
+    "columns": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/column" }
+    },
+    "belongs_to": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [{ "$ref": "#/$defs/belongsBy" }, { "$ref": "#/$defs/belongsThrough" }]
+      }
+    },
+    "formerly": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/tableAddress" }
+    }
+  },
+  "$defs": {
+    "tableAddress": {
+      "description": "area.table, or the table's name alone.",
+      "type": "string",
+      "pattern": "^([a-z][a-z0-9]*(_[a-z0-9]+)*\\.)?[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+    },
+    "columnName": {
+      "description": "Lower case with single underscores. A leading underscore is Featherbase's own; a double underscore is a Column a package adds to another package's Table.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+    },
+    "column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "$ref": "#/$defs/columnName" },
+        "label": { "type": "string", "minLength": 1 },
+        "about": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["Text", "Number", "Date", "Yes/No", "Choice", "Link"] },
+        "required": { "type": "boolean" },
+        "choices": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "to": { "$ref": "#/$defs/tableAddress" },
+        "dated": { "type": "boolean" },
+        "formerly": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/columnName" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "Choice" } } },
+          "then": { "required": ["choices"] },
+          "else": { "properties": { "choices": false } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "Link" } } },
+          "then": { "required": ["to"] },
+          "else": { "properties": { "to": false, "dated": false } }
+        }
+      ]
+    },
+    "belongsBy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["by"],
+      "properties": {
+        "by": { "$ref": "#/$defs/columnName" }
+      }
+    },
+    "belongsThrough": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["to", "through"],
+      "properties": {
+        "to": { "$ref": "#/$defs/tableAddress" },
+        "through": { "$ref": "#/$defs/tableAddress" },
+        "from": { "$ref": "#/$defs/columnName" },
+        "onward": { "$ref": "#/$defs/columnName" }
+      },
+      "dependentRequired": { "from": ["onward"], "onward": ["from"] }
+    }
+  }
+}

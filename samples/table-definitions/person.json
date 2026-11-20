@@ -1,0 +1,15 @@
+{
+  "format": "featherbase.table/1",
+  "name": "masters.person",
+  "label": "Person",
+  "title": "full_name",
+  "key": ["person_code"],
+  "columns": [
+    { "name": "person_code", "label": "Person code", "type": "Text", "required": true },
+    { "name": "full_name", "label": "Full name", "type": "Text", "required": true }
+  ],
+  "belongs_to": [
+    { "to": "masters.site", "through": "masters.job_assignment", "from": "person", "onward": "site" },
+    { "to": "masters.person", "through": "masters.job_assignment", "from": "person", "onward": "reports_to" }
+  ]
+}

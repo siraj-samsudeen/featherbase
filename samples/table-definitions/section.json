@@ -1,0 +1,26 @@
+{
+  "format": "featherbase.table/1",
+  "name": "masters.section",
+  "label": "Section",
+  "about": "A selling area inside a store, such as Menswear.",
+  "title": "section_name",
+  "key": ["site", "section_name"],
+  "columns": [
+    { "name": "site", "label": "Site", "type": "Link", "to": "masters.site", "required": true },
+    { "name": "section_name", "label": "Section name", "type": "Text", "required": true },
+    { "name": "floor", "label": "Floor", "type": "Link", "to": "masters.floor" },
+    {
+      "name": "department",
+      "label": "Department",
+      "type": "Link",
+      "to": "masters.department",
+      "dated": true,
+      "about": "Sections move between departments. The dates of each move are kept."
+    }
+  ],
+  "belongs_to": [
+    { "by": "site" },
+    { "by": "floor" },
+    { "by": "department" }
+  ]
+}

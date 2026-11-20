@@ -1,0 +1,11 @@
+{
+  "format": "featherbase.table/1",
+  "name": "masters.region",
+  "label": "Region",
+  "about": "A part of the country the company trades in.",
+  "title": "region_name",
+  "key": ["region_name"],
+  "columns": [
+    { "name": "region_name", "label": "Region name", "type": "Text", "required": true }
+  ]
+}

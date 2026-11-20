@@ -4,6 +4,7 @@ An app builder on a database, rebuilt from scratch on this branch.
 
 - **What it is becoming:** `BIG-PICTURE.md`
 - **Apps, packages, extension points, upgrades and sharing between instances:** `APPS-AND-SHARING.md`
+- **A draft of the portable Table definition, not yet decided:** `TABLE-DEFINITIONS.md`
 - **How the repository is laid out, and how to work in it:** `AGENTS.md`
 - **How it is tested:** `TESTING.md`
 - **The demos:** `journeys/`
