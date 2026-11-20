@@ -55,12 +55,17 @@ A report that takes no filter SHALL open for someone given it even when their jo
 - **THEN** the first opens and the second is refused
 
 ### Requirement: A report that can't open says so
-A report whose Dive can't open SHALL show its quick view when it has one, and otherwise say the report couldn't open, with a way to try again. A report the reader can't open, or that doesn't exist, SHALL say they can't open it.
+A report whose Dive can't open SHALL say the report couldn't open, with a way to try again. A report the reader can't open, or that doesn't exist, SHALL say they can't open it.
 
 #### Scenario: An unknown report
 
 - **WHEN** a reader with reports opens an address naming a report that doesn't exist
 - **THEN** they are told they can't open this report, and their own reports stay listed
+
+#### Scenario: The Dive can't be reached
+
+- **WHEN** a Team Leader opens the sales report and MotherDuck refuses its Dive
+- **THEN** the page says the report couldn't open and offers to try again, and shows no figures of its own
 
 ### Requirement: Staff screens name stores, never codes
 Dash SHALL name a store by its name and a subcategory by its name on every staff screen, never by a plant, short or subcategory code.
@@ -110,3 +115,16 @@ The ticket SHALL be raised in Tickets by the reader themselves, and a retried Se
 - **GIVEN** a reader's Send reached Tickets but its answer was lost
 - **WHEN** they press Send again without changing anything
 - **THEN** Tickets answers with the same ticket and raises no second one
+
+### Requirement: Every report opened is recorded
+Each time a reader opens a report, Dash SHALL record it once in the Access Log, whichever report it is, so that who looked at reports, and when, can be answered. A report that is refused, or whose Dive can't open, SHALL NOT be recorded as opened.
+
+#### Scenario: A Team Leader opens two reports
+
+- **WHEN** a Team Leader opens the sales report, then the vendor report
+- **THEN** the Access Log shows two openings by them
+
+#### Scenario: A whole-stores report refused
+
+- **WHEN** the same Team Leader opens the whole-stores report from its address
+- **THEN** nothing is added to the Access Log

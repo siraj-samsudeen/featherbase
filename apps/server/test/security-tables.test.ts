@@ -149,9 +149,9 @@ describe("#437: a Person's roles and enabled flag", () => {
   })
 })
 
-// The Sales Target scope tables are ordinary Tables an instance creates; make
+// The store-scope tables are ordinary Tables an instance creates; make
 // one so the guard has something to refuse.
-const SCOPE_TABLES = ['Sales Target Assignment', 'Employee Section Map', 'Section Ownership', 'Store Manager', 'Section Merchandise Map', 'Section Name Alias']
+const SCOPE_TABLES = ['Employee Section Map', 'Section Ownership', 'Store Manager', 'Section Merchandise Map', 'Section Name Alias']
 
 describe('#437: the security tables refuse non-privileged writes, whatever Permission says', () => {
   test('the guarded set names every access-deciding table', () => {
@@ -196,7 +196,7 @@ describe('#437: the security tables refuse non-privileged writes, whatever Permi
     await expectRefused(patchDoc(user, tableRef('Sign In Method').rowUrl('password'), { updated_at: pw.updated_at, new_person: 'create' }), 403)
   })
 
-  test('the Sales Target scope tables refuse a non-manager writer, but reads follow the grant', async ({ admin, createUser }) => {
+  test('the store-scope tables refuse a non-manager writer, but reads follow the grant', async ({ admin, createUser }) => {
     await makeTable(admin, { name: 'Store Manager', columns: ['store_code', 'employee_code'] })
     const role = 'Scope Writer 437'
     const user = await createUserWithRole(admin, createUser, { role, table: ['Store Manager'], ...ALL_ACTIONS })

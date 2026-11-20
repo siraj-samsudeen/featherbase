@@ -1,27 +1,22 @@
-// Dash's reads over a stand-in for what the platform hands a read handler (the reader's places, the
-// cached dataset, the report rows, the core Tables, settings, secrets, recordView), and a stand-in
+// Dash's reads over a stand-in for what the platform hands a read handler (the reader's places, its
+// datasets, the report rows, the core Tables, settings, secrets, recordView), and a stand-in
 // for MotherDuck's embed API (the network boundary). Made-up stores, people and figures.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EMBED_API_TIMEOUT_MS, LAST_MONTH_DATASET, LAST_SALES_DATASET, MONTH_DATASET, appOrigin, reads, setEmbedFetch, SALES_DATASET } from './server'
+import { EMBED_API_TIMEOUT_MS, appOrigin, reads, setEmbedFetch } from './server'
 import type { Place } from './provider.ts'
-import type { SalesRow } from './report.ts'
 
 const AT = '2026-10-15T00:19:00.000Z'
 const place = (label: string, store: string, subcategory?: string[]): Place =>
   ({ label, filters: subcategory ? { store: [store], subcategory } : { store: [store] } })
-const row = (store: string, code: string, name: string | null = 'Lakeside'): SalesRow => ({
-  store_code: store, store_name: name, short_code: null, subcategory_code: code, subcategory: `Name ${code}`, target: 1000, actual: 800,
-  days_with_actual: 14, days: 15, period_start: '2026-10-01', data_through: '2026-10-14', targets_available: true, target_days: 15,
-  target_quantity: 10, actual_quantity: 8 })
 
 type Row = Record<string, unknown>
 /** The three made-up Dives, each taking a different shape of filters. */
 const SALES = { report_key: 'sales', report_name: 'Sales versus target', dive_id: 'dive-sales', filter_shape: 'One store and subcategories', store_key: 'plant_code',
-  subcategory_key: 'material_groups', whole_store_key: 'whole_store', month_key: 'period_end', ready_signal: 0, quick_view: 'Sales target' }
+  subcategory_key: 'material_groups', whole_store_key: 'whole_store', month_key: 'period_end', ready_signal: 0 }
 const WHOLE = { report_key: 'whole', report_name: 'Store target month to date', dive_id: 'dive-whole', filter_shape: 'Whole stores', store_key: 'plant_codes',
-  subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0, quick_view: null }
+  subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0 }
 const VENDORS = { report_key: 'vendors', report_name: 'Vendor sales by city', dive_id: 'dive-vendors', filter_shape: 'Stores and subcategories', store_key: 'reach',
-  subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0, quick_view: null }
+  subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0 }
 
 /** The platform's table reads: the filters and paging `list` is given, over in-memory rows. */
 function reader(tables: Record<string, Row[]>, throws: boolean | string[] = false) {
@@ -46,15 +41,8 @@ const STORES = {
 
 interface Options {
   places?: Place[]
-  rows?: SalesRow[] | null
   payload?: Record<string, unknown>
   settings?: Record<string, string>
-  /** The cache read throws (its source is not set up, say). */
-  cacheThrows?: boolean
-  /** What a live read of the dataset answers: the warehouse, as the platform limits it to the reader's places. */
-  live?: SalesRow[]
-  /** The month's metadata rows (`sales_month`); none when it isn't built. */
-  month?: Record<string, unknown>[] | null
   /** The rows of `dash.report`. */
   reports?: Row[]
   /** The core Tables as the app's base Table reads see them. */
@@ -68,8 +56,8 @@ const DIVE = { embed_service_account: 'svc-made-up' }
 /** The warehouse token every read uses, and the separate one only the embed call uses (#1139). */
 const TOKENS = { MOTHERDUCK_TOKEN: 'token-made-up', MOTHERDUCK_EMBED_TOKEN: 'embed-token-made-up' }
 
-function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001'])], rows = [row('9901', '010101001')], payload = {}, settings = DIVE,
-  cacheThrows = false, live = [], month = null, reports = [SALES], core = STORES, coreThrows = false, secrets = TOKENS }: Options = {}) {
+function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001'])], payload = {}, settings = DIVE,
+  reports = [SALES], core = STORES, coreThrows = false, secrets = TOKENS }: Options = {}) {
   const views: unknown[] = []
   const asked: unknown[] = []
   return {
@@ -83,21 +71,19 @@ function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001
       baseTables: reader({ 'dash.report_access': reports.map(r => ({ row_id: `a-${String(r.report_key)}`, report: r.report_key, role: 'Dash Reader' })),
         'dash.report_bundle_member': [], ...core }, coreThrows),
       reject(message: string): never { throw new Error(message) },
+      // #1366: Dash copies no figures; any dataset read is recorded, so a test can say none was made.
       datasets: {
         async active(name: string, filters?: Record<string, unknown>) {
           asked.push([name, filters])
-          if (cacheThrows) throw new Error('not set up')
-          if (name === MONTH_DATASET || name === LAST_MONTH_DATASET) return month && { dataset: name, served: 'cached', at: AT, rows: month }
-          if (rows === null) return null
-          const store = filters?.store_code
-          return { dataset: name, served: 'cached', at: AT, rows: store ? rows.filter(r => r.store_code === store) : rows }
+          return null
         },
         async live(name: string, filters?: Record<string, unknown>) {
           asked.push(['live', name, filters])
-          return { dataset: name, served: 'live', at: AT, rows: live.filter(r => r.store_code === filters?.store_code) }
+          return { dataset: name, served: 'live', at: AT, rows: [] }
         },
       },
-      async recordView(details: unknown) { views.push(details) },
+      /** Each call's arguments: the Access Log view takes none (#1366). */
+      async recordView(...args: unknown[]) { views.push(args) },
     },
   }
 }
@@ -126,7 +112,7 @@ afterEach(() => {
 })
 
 describe('a report taking no filter', () => {
-  const OPEN = { report_key: 'open', report_name: 'Open', dive_id: 'dive-open', filter_shape: 'No filter', store_key: null, subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0, quick_view: null }
+  const OPEN = { report_key: 'open', report_name: 'Open', dive_id: 'dive-open', filter_shape: 'No filter', store_key: null, subcategory_key: null, whole_store_key: null, month_key: null, ready_signal: 0 }
   const noReach = { 'Employee': [], ...STORES }
   const nobody = (over: Options) => { const made = context({ reports: [SALES, WHOLE, VENDORS, OPEN], core: noReach, ...over }); (made.ctx.authorization as { places?: unknown }).places = undefined; return made }
   let posted: { url: string; body: unknown }[]
@@ -179,11 +165,12 @@ describe('a report taking no filter', () => {
     expect(answer.map(r => [r.key, r.no_filter])).toEqual([['open', true]])
   })
 
-  it('opens for them with empty filters', async () => {
-    const { ctx } = nobody({ payload: { report: 'open' } })
+  it('opens for them with empty filters, recording the open in the Access Log (#1366)', async () => {
+    const { ctx, views } = nobody({ payload: { report: 'open' } })
     const prepared = await reads.embed_open.prepare(ctx)
     expect(await reads.embed_open({ ...ctx, prepared })).toMatchObject({ frame: expect.any(String) })
     expect(posted).toEqual([{ url: expect.stringContaining('/dives/dive-open/'), body: { username: 'svc-made-up', initial_state: {} } }])
+    expect(views).toEqual([[]])
   })
 
   it('no store-filtered report opens through these reads, even for someone with reach', async () => {
@@ -258,7 +245,7 @@ describe("the reports read (Dash's sidebar)", () => {
   })
 
   it('answers only a report taking no filter when the reader\'s reach can\'t be read', async () => {
-    const OPEN = { ...SALES, report_key: 'open', report_name: 'Open', filter_shape: 'No filter', store_key: null, subcategory_key: null, whole_store_key: null, month_key: null, quick_view: null }
+    const OPEN = { ...SALES, report_key: 'open', report_name: 'Open', filter_shape: 'No filter', store_key: null, subcategory_key: null, whole_store_key: null, month_key: null }
     const { ctx } = context({ reports: [...ALL, OPEN], core: jobOf({ job: 'Store Manager' }), coreThrows: ['Site'], places: [] })
     expect((await reads.reports(ctx)).map(r => r.key)).toEqual(['open'])
   })
@@ -378,8 +365,8 @@ describe("the stores read (the bar's store picker)", () => {
     })
   })
 
-  it('never reads the cached figures, so a failing cache leaves the picker whole', async () => {
-    const { ctx, asked } = context({ places: TWO, cacheThrows: true })
+  it('reads no dataset (#1366)', async () => {
+    const { ctx, asked } = context({ places: TWO })
     expect(await reads.stores(ctx)).toEqual([{ value: '9902', label: 'Hillview' }, { value: '9901', label: 'Lakeside' }])
     expect(asked).toEqual([])
   })
@@ -389,11 +376,6 @@ describe("the stores read (the bar's store picker)", () => {
     expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Store 1' }, { value: '9902', label: 'Store 2' }])
   })
 
-  it('names a store the same for a reader with no cached figures', async () => {
-    const { ctx } = context({ rows: null })
-    expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside' }])
-  })
-
   it('offers a lone store as "Your store", never its plant code, when the core Tables name none (#4531)', async () => {
     const { ctx } = context({ core: { Plant: [], Site: [] } })
     expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Your store' }])
@@ -401,11 +383,6 @@ describe("the stores read (the bar's store picker)", () => {
 
   it('numbers two stores of one name', async () => {
     const { ctx } = context({ places: TWO, core: SAME_NAME })
-    expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside (1)' }, { value: '9902', label: 'Lakeside (2)' }])
-  })
-
-  it('keeps every store when the cached figures fail while telling stores apart', async () => {
-    const { ctx } = context({ places: TWO, core: SAME_NAME, cacheThrows: true })
     expect(await reads.stores(ctx)).toEqual([{ value: '9901', label: 'Lakeside (1)' }, { value: '9902', label: 'Lakeside (2)' }])
   })
 
@@ -457,52 +434,40 @@ describe('a report whose Dive has its own pickers', () => {
     expect(body().initial_state).toEqual({ reach: { 9901: ['010101001'], 9902: null }, month: 'this' })
   })
 
-  // As the Dive opens with no store named: the first store A–Z that has figures (agreed with v16).
-  it("shows the cached view for the address's store, else the first store A–Z with figures, naming it", async () => {
-    const named = async (payload: Record<string, unknown>, rows: ReturnType<typeof row>[] | null = [row('9901', '010101001')]) => {
-      const answer = await reads.report(context({ places: TWO, reports: [PICKERS], payload, rows }).ctx) as { heading: { name: string }; pickers_in_dive?: boolean }
-      return [answer.heading.name, answer.pickers_in_dive]
+  // #1366: as the Dive opens with no store named, the reader's first store A–Z; no copy is read.
+  it("heads the page with the address's store, else the reader's first store A–Z, reading no dataset", async () => {
+    const named = async (payload: Record<string, unknown>) => {
+      const { ctx, asked } = context({ places: TWO, reports: [PICKERS], payload })
+      const answer = await reads.report(ctx) as { heading: { name: string }; pickers_in_dive?: boolean }
+      return [answer.heading.name, answer.pickers_in_dive, asked.length]
     }
-    expect([await named({ store: '9902' }), await named({}), await named({ store: '9999' }),
-      await named({}, [row('9901', '010101001'), row('9902', '010101001', 'Hillview')]), await named({}, null),
-      // Rows of an earlier month are no figures for this one (the report shows "not arrived yet").
-      await named({}, [row('9901', '010101001'), { ...row('9902', '010101001', 'Hillview'), period_start: '2026-09-01', data_through: '2026-09-30' }])])
-      .toEqual([['Hillview', true], ['Lakeside', true], ['Lakeside', true], ['Hillview', true], ['Hillview', true], ['Lakeside', true]])
+    expect([await named({ store: '9901' }), await named({}), await named({ store: '9999' })])
+      .toEqual([['Lakeside', true, 0], ['Hillview', true, 0], ['Hillview', true, 0]])
   })
 })
 
 describe('the report read', () => {
-  it("answers the chosen store's report", async () => {
+  it("answers that the chosen store's report can open, with its header named from the core Tables, and the period", async () => {
     const { ctx } = context({ payload: { store: '9901' } })
-    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', store: '9901', rows: [{ code: '010101001', section: 'Sarees' }] })
+    expect(await reads.report(ctx)).toEqual({ state: 'ready', period_start: '2026-10-01', period_end: '2026-10-15',
+      heading: { name: 'Lakeside', sections: ['Sarees'], reasons: [] } })
   })
 
   it("answers the reader's first store when none is chosen", async () => {
     const { ctx } = context({ places: [place('9902 / Section: Belts', '9902', ['010404001']), place('9901 / Section: Sarees', '9901', ['010101001'])] })
-    expect((await reads.report(ctx) as { store: string }).store).toBe('9901')
+    expect(await reads.report(ctx)).toMatchObject({ heading: { name: 'Lakeside', sections: ['Sarees'] } })
   })
 
-  it('reads only the chosen store from the cached dataset', async () => {
-    const { ctx, asked } = context({ payload: { store: '9901' } })
+  // #1366: no copy of the figures is read, and opening the Dive, not this read, is what is logged.
+  it('reads no dataset, cached or live, and records no view', async () => {
+    const { ctx, asked, views } = context({ payload: { store: '9901' } })
     await reads.report(ctx)
-    expect(asked).toEqual([[SALES_DATASET, { store_code: '9901' }], [MONTH_DATASET, { store_code: '9901' }]])
+    expect([asked, views]).toEqual([[], []])
   })
 
   it("refuses a store that is not one of the reader's", async () => {
     const { ctx } = context({ payload: { store: '9909' } })
     await expect(reads.report(ctx)).rejects.toThrow(/not one of your stores/)
-  })
-
-  it("answers a quiet section as ready from the month's metadata, the Dive allowed", async () => {
-    const month = [{ store_code: '9901', subcategory_code: '010101001', period_start: '2026-10-01', data_through: '2026-10-14', targets_available: true }]
-    const { ctx } = context({ payload: { store: '9901' }, rows: [], month })
-    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', rows: [{ code: '010101001', target: 0, actual: 0, targetRecorded: false, salesRecorded: false }] })
-  })
-
-  it('records who viewed the report', async () => {
-    const { ctx, views } = context({ payload: { store: '9901' } })
-    await reads.report(ctx)
-    expect(views).toEqual([{ dataset: SALES_DATASET }])
   })
 
   it('answers no_access for a report that does not exist, reading nothing else', async () => {
@@ -518,7 +483,7 @@ describe('the report read', () => {
 
   it("opens the one-store report for a Store Manager, whose place names the store and no section", async () => {
     const { ctx } = context({ places: [place('9901', '9901')], payload: { store: '9901' } })
-    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', rows: [{ code: '010101001', section: null }] })
+    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', heading: { name: 'Lakeside', sections: [] } })
   })
 
   it("says a whole-stores report isn't for someone without a whole store", async () => {
@@ -532,21 +497,15 @@ describe('the report read', () => {
     expect(await reads.report(ctx)).toEqual({ state: 'report_not_set_up' })
   })
 
-  it('reads no figures for a report with no quick view: it answers only that it can open, and its header', async () => {
+  it('answers only that a whole-stores report can open, and an empty header', async () => {
     const { ctx, asked, views } = context({ reports: [WHOLE], places: [place('9901', '9901')] })
-    expect(await reads.report(ctx)).toEqual({ state: 'ready', no_quick_view: true, heading: { name: null, sections: [], reasons: [] } })
+    expect(await reads.report(ctx)).toEqual({ state: 'ready', heading: { name: null, sections: [], reasons: [] } })
     expect([asked, views]).toEqual([[], []])
-  })
-
-  it('names the store from the core Tables on a one-store report with no quick view', async () => {
-    const { ctx } = context({ reports: [{ ...SALES, quick_view: null }], payload: { store: '9901' } })
-    expect(await reads.report(ctx)).toEqual({ state: 'ready', no_quick_view: true, period_start: '2026-10-01', period_end: '2026-10-15',
-      heading: { name: 'Lakeside', sections: ['Sarees'], reasons: [] } })
   })
 
   it('answers the period only on a report taking a month', async () => {
     const { ctx } = context({ reports: [{ ...VENDORS, month_key: 'period_end' }], payload: { month: 'last' } })
-    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', no_quick_view: true, period_start: '2026-09-01', period_end: '2026-09-30' })
+    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', period_start: '2026-09-01', period_end: '2026-09-30' })
   })
 })
 
@@ -572,40 +531,21 @@ describe("the months read (the bar's month picker)", () => {
 })
 
 describe('a report of last month (#750)', () => {
-  const september = (store: string, code: string): SalesRow => ({ ...row(store, code), period_start: '2026-09-01', data_through: '2026-09-30', days: 30, days_with_actual: 30 })
-  const lastMonth = (options: Options = {}) => context({ rows: [september('9901', '010101001')], ...options, payload: { store: '9901', month: 'last', ...options.payload } })
-
-  it("reads last month's datasets, never this month's", async () => {
-    const { ctx, asked } = lastMonth()
-    await reads.report(ctx)
-    expect(asked).toEqual([[LAST_SALES_DATASET, { store_code: '9901' }], [LAST_MONTH_DATASET, { store_code: '9901' }]])
-  })
+  const lastMonth = (options: Options = {}) => context({ ...options, payload: { store: '9901', month: 'last', ...options.payload } })
 
   it('answers the whole of last month', async () => {
     const { ctx } = lastMonth()
-    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', month: 'last', period_start: '2026-09-01', period_end: '2026-09-30', data_through: '2026-09-30' })
+    expect(await reads.report(ctx)).toMatchObject({ state: 'ready', period_start: '2026-09-01', period_end: '2026-09-30' })
   })
 
-  it("answers this month's datasets when the month says this", async () => {
-    const { ctx, asked } = context({ payload: { store: '9901', month: 'this' } })
-    expect(await reads.report(ctx)).toMatchObject({ month: 'this', period_start: '2026-10-01' })
-    expect(asked.map(a => (a as unknown[])[0])).toEqual([SALES_DATASET, MONTH_DATASET])
-  })
-
-  it('records the view against the dataset it read', async () => {
-    const { ctx, views } = lastMonth()
-    await reads.report(ctx)
-    expect(views).toEqual([{ dataset: LAST_SALES_DATASET }])
+  it('answers this month to date when the month says this', async () => {
+    const { ctx } = context({ payload: { store: '9901', month: 'this' } })
+    expect(await reads.report(ctx)).toMatchObject({ period_start: '2026-10-01', period_end: '2026-10-15' })
   })
 
   it.each([['next'], [1], [{}]])('refuses any other month (%j)', async month => {
     const { ctx } = context({ payload: { store: '9901', month } })
     await expect(reads.report(ctx)).rejects.toThrow('Choose this month or last month')
-  })
-
-  it("says last month hasn't arrived while its copy still holds the month before", async () => {
-    const { ctx } = context({ rows: [row('9901', '010101001')], payload: { store: '9901', month: 'last' } })
-    expect((await reads.report(ctx) as { state: string }).state).toBe('no_data_yet')
   })
 
   const upstream = () => {
@@ -642,6 +582,35 @@ describe('the embed_session read', () => {
     upstream(ok)
     const { ctx } = context({ payload: { store: '9901' } })
     expect(await embedSession(ctx)).toEqual({ frame: 'https://embed-motherduck.com/sandbox/#session=session-made-up' })
+  })
+
+  // #1366: every report's open is one Access Log row, whichever report; a session refused or
+  // never minted is not an open.
+  it('records one Access Log view when the Dive opens, for any report', async () => {
+    upstream(ok)
+    const opened = await Promise.all(([[SALES, { store: '9901' }], [VENDORS, {}]] as const).map(async ([report, payload]) => {
+      const { ctx, views } = context({ reports: [report], payload })
+      await embedSession(ctx)
+      return views
+    }))
+    expect(opened).toEqual([[[]], [[]]])
+  })
+
+  it('records no view when MotherDuck refuses the session, or the report is refused', async () => {
+    upstream(() => Promise.resolve(new Response('no', { status: 500 })))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const failed = context({ payload: { store: '9901' } })
+    await embedSession(failed.ctx)
+    const refused = context({ payload: { store: '9909' } })
+    await expect(embedSession(refused.ctx)).rejects.toThrow(/not one of your stores/)
+    expect([failed.views, refused.views]).toEqual([[], []])
+  })
+
+  it("fails the open when the Access Log can't record it, rather than open unrecorded", async () => {
+    upstream(ok)
+    const { ctx } = context({ payload: { store: '9901' } })
+    ctx.recordView = async () => { throw new Error('Required access audit is unavailable') }
+    await expect(embedSession(ctx)).rejects.toThrow('Required access audit is unavailable')
   })
 
   it("asks MotherDuck for a session of the report's Dive's latest version, as its service account, with the reader's state", async () => {
@@ -797,14 +766,13 @@ describe('the embed_session read', () => {
 
   it('reads no dataset, cached or live: the Dive opens on live figures of its own', async () => {
     upstream(ok)
-    const { ctx, asked } = context({ payload: { store: '9901' }, rows: [row('9901', '010101001')] })
+    const { ctx, asked } = context({ payload: { store: '9901' } })
     await embedSession(ctx)
     expect(asked).toEqual([])
   })
 
   describe("a whole-store reader's Dive", () => {
     const manager = [place('9901', '9901'), place('9901 / Section: Sarees', '9901', ['010101001'])]
-    const warehouse = [row('9901', '010101001'), row('9901', '010909001')]
     const state = async (options: Options) => {
       const calls = upstream(ok)
       await embedSession(context({ payload: { store: '9901' }, ...options }).ctx)
@@ -820,15 +788,15 @@ describe('the embed_session read', () => {
       expect(await state({ places: [place('9901', '9901'), place('9901 / Section: All', '9901', many)] })).toEqual({ plant_code: '9901', whole_store: true, period_end: '2026-10-15' })
     })
 
-    it('asks the warehouse for nothing live, even with nothing cached', async () => {
-      const { ctx, asked } = context({ payload: { store: '9901' }, places: manager, rows: null, live: warehouse })
+    it('asks the warehouse for nothing live', async () => {
+      const { ctx, asked } = context({ payload: { store: '9901' }, places: manager })
       upstream(ok)
       await embedSession(ctx)
       expect(asked.filter(a => (a as unknown[])[0] === 'live')).toEqual([])
     })
 
     it("never widens a section-scoped reader's Dive", async () => {
-      const s = await state({ rows: null, live: warehouse })
+      const s = await state({})
       expect([s.whole_store, s.material_groups]).toEqual([undefined, ['010101001']])
     })
 
@@ -932,23 +900,11 @@ describe("the report read's heading", () => {
   const PLACES = [based('9901 / Section: Sarees', '9901', ['010101001'], 'team_leader'), based('9902', '9902', undefined, 'store_manager')]
   type Answered = { state: string; heading: unknown }
 
-  it("answers the chosen store's reasons and sections, named by the cached rows", async () => {
+  it("answers the chosen store's reasons and sections, named from the core Tables", async () => {
     const { ctx } = context({ places: PLACES, payload: { store: '9901' } })
     expect((await reads.report(ctx) as Answered).heading).toEqual({ name: 'Lakeside', sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] })
   })
 
-  it("names the store from the month's metadata when the reader has no row of figures", async () => {
-    const monthRow = { store_code: '9902', store_name: 'Hillview', subcategory_code: '010404001', period_start: '2026-10-01', data_through: '2026-10-14', targets_available: true }
-    const { ctx } = context({ places: PLACES, payload: { store: '9902' }, rows: [], month: [monthRow] })
-    expect((await reads.report(ctx) as Answered).heading).toEqual({ name: 'Hillview', sections: [], reasons: [{ basis: 'store_manager', sections: [] }] })
-  })
-
-  it('still answers the heading while nothing is cached yet (the figures are being prepared)', async () => {
-    const { ctx } = context({ places: PLACES, payload: { store: '9901' }, rows: null })
-    const report = await reads.report(ctx) as Answered
-    // The store's name comes from the core Tables, never a code (#967 point 13).
-    expect([report.state, report.heading]).toEqual(['not_built', { name: 'Lakeside', sections: ['Sarees'], reasons: [{ basis: 'team_leader', sections: ['Sarees'] }] }])
-  })
 })
 
 describe('the Report access reads (#1046)', () => {
@@ -1026,9 +982,9 @@ describe('the report read at its edges', () => {
     expect((await reads.reports(ctx) as { key: string }[]).map(r => r.key)).toEqual(['sales'])
   })
 
-  it('opens a Dive with its own pickers on the first store A–Z when the cached figures fail', async () => {
-    const PLAIN = { ...SALES, pickers_in_dive: 1, quick_view: null }
-    const { ctx } = context({ places: [place('9902', '9902'), place('9901', '9901')], reports: [PLAIN], cacheThrows: true })
+  it('opens a Dive with its own pickers on the first store A–Z', async () => {
+    const PLAIN = { ...SALES, pickers_in_dive: 1 }
+    const { ctx } = context({ places: [place('9902', '9902'), place('9901', '9901')], reports: [PLAIN] })
     expect(await reads.report(ctx)).toMatchObject({ state: 'ready', pickers_in_dive: true, heading: { name: 'Hillview' } })
   })
 
@@ -1038,11 +994,9 @@ describe('the report read at its edges', () => {
     expect(await reads.report(ctx)).toEqual({ state: 'no_access' })
   })
 
-  it('names a store whose site the core Tables lack from its figures, or not at all without them', async () => {
+  it('names a store whose site the core Tables lack not at all, never by its code', async () => {
     const core = { Plant: [{ row_id: '9901', site: 'ZZZ', plant_type: 'Store' }], Site: STORES.Site }
-    expect(await reads.report(context({ payload: { store: '9901' }, core }).ctx)).toMatchObject({ store: '9901', heading: { name: 'Lakeside' } })
-    expect(await reads.report(context({ reports: [{ ...SALES, quick_view: null }], payload: { store: '9901' }, core }).ctx))
-      .toMatchObject({ state: 'ready', no_quick_view: true, heading: { name: null } })
+    expect(await reads.report(context({ payload: { store: '9901' }, core }).ctx)).toMatchObject({ state: 'ready', heading: { name: null } })
   })
 
   it('says the Dive is unreachable when the call fails with no error at all', async () => {

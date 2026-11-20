@@ -195,17 +195,14 @@ Then the user sees a message that they can't read it
 And the user does not see an empty list
 ```
 
-### Requirement: The screen shows only what a person can use
+### Requirement: Show only the tools a person can use
 
 After signing in, a person SHALL see only the tools they can use, decided by
 the server from their current roles and grants.
 
 #### Normative details for the whole requirement
 
-Someone whose only access is
-the Sales Target report SHALL get a bare screen — the report, their name,
-their own sign-in methods and sign-out — with no administration menu, and
-without the page asking for anything they would be refused. Someone with no
+Someone with no
 role of use at all SHALL get a plain page saying they have no access yet and
 that an admin has been told, with sign-out; until they are given a role they
 cannot manage their own sign-in methods. Building tables and importing data
@@ -218,16 +215,6 @@ use for their own tables) makes its table appear in lists but does not by itself
 open the administration to someone. Someone with no grant of their own, only a row shared
 with them, SHALL be told how such rows reach them rather than shown an empty
 screen.
-
-#### Scenario: A report-only person never meets the administration menu
-
-```gherkin
-Given the user holds only the Sales Target Viewer role
-When the user opens an administration address
-Then the user is told the administration is not part of their account, and offered the report
-And no administration menu appears
-And no administration request is made
-```
 
 #### Scenario: A person with no access is told so
 

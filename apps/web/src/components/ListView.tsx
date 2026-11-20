@@ -1213,7 +1213,7 @@ export function ListView({
             className={buttonClasses({ variant: 'danger' })}
             data-testid="bulk-purge"
           >
-            Delete Permanently
+            Delete With History…
           </button>}
           {bulkError && (
             <span className="text-xs text-negative" data-testid="bulk-error">

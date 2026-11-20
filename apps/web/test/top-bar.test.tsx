@@ -1,6 +1,5 @@
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
-// platform, on the Admin screens, the Sales Target page, the Portal, the
-// no-access page and the account pages. The address names it; the right side
+// platform, on the Admin screens, the Portal, the no-access page and the account pages. The address names it; the right side
 // is "Open Admin" (app addresses, people who can use Admin), the theme toggle
 // and the Account menu. What jsdom cannot see (pixels: the bar's height and
 // frame on both addresses, sideways scroll, wrapping, and a real browser
@@ -13,7 +12,6 @@ import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_SIGN_IN_METHODS_PATH, rowHref } fr
 import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { discoverPackages } from 'server/src/runtime-packages'
-import { VIEWER_ROLE } from 'server/src/sales-target'
 import { PHONE_QUERY } from '../src/components/TopBar'
 import { recordAction } from '../src/lib/recents'
 import { followDevice } from '../src/lib/theme'
@@ -44,14 +42,12 @@ function onAddressThatOpens(opens: string) {
   )
 }
 
-async function viewerOnly(admin: Client, createUser: (o: { email?: string; roles?: string[] }) => Promise<Client>, email: string) {
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
-  return createUser({ email, roles: [VIEWER_ROLE] })
-}
-
 /** #1253: the platform's chrome. A page with a sidebar has no top bar: the
  *  switcher is at the sidebar's top and the account at its foot. A page
- *  without one (the Sales Target page, the Portal, no access) keeps the bar. */
+ *  without one (the Portal, no access, an account page on an app's address)
+ *  keeps the bar. */
+/** A Featherbase page outside the Admin shell, drawn under the plain bar. */
+const PORTAL = '/featherbase/portal/person'
 const bar = () => waitFor(() =>
   document.querySelector<HTMLElement>('[data-testid="admin-sidebar"], [data-testid="account-sidebar"]') ?? screen.getByTestId('top-bar'))
 const nameElement = async () => within(await bar()).findByTestId('top-bar-name')
@@ -79,15 +75,11 @@ test('on the Admin screens the bar is named Featherbase', async ({ admin }) => {
   expect(await barName()).toHaveTextContent('Featherbase')
 })
 
-test('on the Sales Target page the bar is named for the app, Dash', async ({ admin }) => {
-  await renderApp('/featherbase/sales-target', admin)
-  expect(await barName()).toHaveTextContent('Dash')
-})
-
 test("on an app's address the account page is named for the app", async ({ admin }) => {
+  await installDashApp(admin)
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await waitFor(async () => expect(await barName()).toHaveTextContent('Dash'))
+  await waitFor(async () => expect(await barName()).toHaveTextContent('Dash stand-in'))
 })
 
 // #1006: someone who can use Admin stays in its frame on their account pages.
@@ -102,24 +94,10 @@ test('on the Admin address the account page has the Admin frame for someone who 
 // app, and app content never shows under the Admin name.
 test("on an app's address the account page's tab title is the app's name", async ({ admin }) => {
   document.title = 'Featherbase'
+  await installDashApp(admin)
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await waitFor(() => expect(document.title).toBe('Sign-in methods · Dash'))
-})
-
-test('the Sales Target page on the Admin address is named Dash in its bar', async ({ admin }) => {
-  onAddressThatOpens('admin')
-  await renderApp('/featherbase/sales-target', admin)
-  await settledBar()
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  expect(await barName()).toHaveTextContent('Dash')
-})
-
-test("the Sales Target page on the Admin address has Dash as its tab title", async ({ admin }) => {
-  document.title = 'Featherbase'
-  onAddressThatOpens('admin')
-  await renderApp('/featherbase/sales-target', admin)
-  await waitFor(() => expect(document.title).toBe('Dash'))
+  await waitFor(() => expect(document.title).toBe('Sign-in methods · Dash stand-in'))
 })
 
 // #758: the platform destination has one name, Featherbase.
@@ -146,21 +124,14 @@ test('on the Admin address the account page tab title is Featherbase for someone
 
 // #501 item 3: on the Admin address the account page is named for where the
 // person belongs.
-test('on the Admin address the account page is named for the app a person who cannot use Admin can open', async ({ admin, createUser }) => {
-  onAddressThatOpens('admin')
-  const viewer = await viewerOnly(admin, createUser, 'viewer.account@example.com')
-  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
-  await settledBar()
-  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Dash$/))
-})
-
 test("on the Admin address the account page's tab title names the app a person who cannot use Admin can open", async ({ admin, createUser }) => {
   document.title = 'Featherbase'
+  await installDashApp(admin)
   onAddressThatOpens('admin')
-  const viewer = await viewerOnly(admin, createUser, 'viewer.account.tab@example.com')
-  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
+  const reader = await createUser({ email: 'viewer.account.tab@example.com' })
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Sign-in methods · Dash'))
+  await waitFor(() => expect(document.title).toBe('Sign-in methods · Dash stand-in'))
 })
 
 test('on the Admin address the account page is named Featherbase for someone who can open nothing', async ({ createUser }) => {
@@ -180,17 +151,17 @@ test("on the Admin address the account page's tab title is Featherbase for someo
   await waitFor(() => expect(document.title).toBe('Sign-in methods · Featherbase'))
 })
 
-test("on an app's address the account page stays named for the app for someone who cannot use Admin", async ({ createUser }) => {
+test("on an app's address the account page stays named for the app for someone who cannot use Admin", async ({ admin, createUser }) => {
+  await installDashApp(admin)
   onAddressThatOpens('dash')
   const nobody = await createUser({ email: 'nobody.dash.account@example.com' })
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, nobody)
   await settledBar()
-  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Dash$/))
+  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Dash stand-in$/))
 })
 
-// ---- 2b. an installed app of the interim name (#671) -----------------------------
-// INTERIM_APPS stands in for Feather Dash only until an app of that name is
-// installed (design D8): from then on the bar leads to the app's own root.
+// ---- 2b. an app installed under Feather Dash's name (#671) -----------------------
+// The bar leads to the app's own root.
 
 const DASH_STAND_IN = resolve('../..', 'test-apps/fixtures/dash-stand-in')
 
@@ -213,7 +184,7 @@ test("on an app's address whose app is installed, the bar's name leads to the ap
 // app can be opened right now; a disabled app's root says it is unavailable.
 // #501 names the account page for the app a person belongs to: an app that
 // everyone can open (Tasker grants All) is no one's in particular, so only the
-// app installed under the interim name takes Feather Dash's place (e2e
+// app installed under Feather Dash's name takes its place (e2e
 // top-bar.spec.ts, items 3).
 const OTHER_APP = resolve('../..', 'test-apps/other')
 
@@ -227,16 +198,6 @@ test('on the Admin address the account page is Featherbase for someone who can o
   await waitFor(async () => expect(await barName()).toHaveTextContent(/^Featherbase$/))
 })
 
-test('on the Admin address the account page names Dash for a report viewer who can also open an app open to everyone', async ({ admin, createUser }) => {
-  expect(await discoverPackages([OTHER_APP])).toEqual([])
-  await admin.post('/api/install_app', { name: 'other' })
-  onAddressThatOpens('admin')
-  const viewer = await viewerOnly(admin, createUser, 'viewer.other.app@example.com')
-  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
-  await settledBar()
-  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Dash$/))
-})
-
 test("on an app's address whose installed app is disabled, the bar's name still leads to the app's root", async ({ admin }) => {
   await installDashApp(admin)
   await admin.post('/api/set_app_enabled', { name: 'dash', enabled: false })
@@ -244,13 +205,6 @@ test("on an app's address whose installed app is disabled, the bar's name still 
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledName('Dash stand-in')
   expect(await barHome()).toHaveAttribute('href', '/dash/')
-})
-
-test("on an app's address whose app is not installed, the bar's name leads to the interim page", async ({ admin }) => {
-  onAddressThatOpens('dash')
-  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await settledName('Dash')
-  expect(await barHome()).toHaveAttribute('href', '/featherbase/sales-target')
 })
 
 test('on the Admin address the account page is named for the installed app a person who cannot use Admin can open', async ({ admin, createUser }) => {
@@ -265,6 +219,7 @@ test('on the Admin address the account page is named for the installed app a per
 // ---- 3. Admin menus on the Admin screens only ---------------------------------
 
 test("on an app's address the account page has the bar and no Admin menus, even for someone who can use Admin", async ({ admin }) => {
+  await installDashApp(admin)
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
@@ -275,26 +230,21 @@ test("on an app's address the account page has the bar and no Admin menus, even 
   expect(screen.getByTestId('account-sidebar')).toBeInTheDocument()
 })
 
-test('the Sales Target page has no Admin menus in its bar', async ({ admin }) => {
-  await renderApp('/featherbase/sales-target', admin)
-  await settledBar()
-  for (const id of ['awesomebar', 'notif-bell', 'sidebar-toggle', 'admin-app-switcher'])
-    expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-})
-
 // ---- 4. the right side, and "Open Admin" ---------------------------------------
 
 test("Open Admin is offered on an app's address to a person who can use Admin", async ({ admin }) => {
+  await installDashApp(admin)
   onAddressThatOpens('dash')
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
   expect(await within(await settledBar()).findByTestId('open-admin')).toHaveTextContent('Open Admin')
 })
 
 test('Open Admin is not offered to a person who cannot use Admin', async ({ admin, createUser }) => {
+  await installDashApp(admin)
   onAddressThatOpens('dash')
-  const viewer = await viewerOnly(admin, createUser, 'viewer.bar@example.com')
-  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
-  await waitFor(async () => expect(await barName()).toHaveTextContent('Dash'))
+  const reader = await createUser({ email: 'viewer.bar@example.com' })
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  await waitFor(async () => expect(await barName()).toHaveTextContent('Dash stand-in'))
   expect(within(await settledBar()).queryByTestId('open-admin')).not.toBeInTheDocument()
 })
 
@@ -311,12 +261,6 @@ const settledName = async (name: string) => {
   return bar
 }
 
-test('Open Admin is not offered on the Sales Target page opened on the Admin address', async ({ admin }) => {
-  onAddressThatOpens('admin')
-  await renderApp('/featherbase/sales-target', admin)
-  expect(within(await settledName('Dash')).queryByTestId('open-admin')).not.toBeInTheDocument()
-})
-
 test('Open Admin is not offered on the account page on the Admin address', async ({ admin }) => {
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
@@ -324,21 +268,26 @@ test('Open Admin is not offered on the account page on the Admin address', async
 })
 
 test('Open Admin is not offered on a host the list does not name, which holds the Admin', async ({ admin }) => {
-  await renderApp('/featherbase/sales-target', admin)
-  expect(within(await settledName('Dash')).queryByTestId('open-admin')).not.toBeInTheDocument()
+  await renderApp(PORTAL, admin)
+  const bar = await settledBar()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(within(bar).queryByTestId('open-admin')).not.toBeInTheDocument()
 })
 
 test('at phone width Open Admin is not in the Account menu on the Admin address', async ({ admin }) => {
   phoneWidth()
   onAddressThatOpens('admin')
-  await renderApp('/featherbase/sales-target', admin)
-  await settledName('Dash')
+  await renderApp(PORTAL, admin)
+  await settledBar()
+  await new Promise((resolve) => setTimeout(resolve, 50))
   expect(within(await openAccountMenu()).queryByTestId('open-admin')).not.toBeInTheDocument()
 })
 
 test('the right side reads Open Admin, the theme toggle, then the Account menu', async ({ admin }) => {
+  await installDashApp(admin)
   onAddressThatOpens('dash')
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
+  await within(await settledBar()).findByTestId('open-admin')
   const right = within(await settledBar()).getByTestId('top-bar-right')
   const order = [...right.querySelectorAll('[data-testid="open-admin"], [data-testid="theme-toggle"], [data-testid="session-user"]')]
     .map((el) => el.getAttribute('data-testid'))
@@ -348,7 +297,7 @@ test('the right side reads Open Admin, the theme toggle, then the Account menu',
 // ---- 5. the Account menu --------------------------------------------------------
 
 test('the Account menu holds the name, + Add another account (#1255), Sign-in methods, Connected apps (#1207), What you can see (#628), then Log out', async ({ admin }) => {
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
   const menu = await openAccountMenu()
   const order = [...menu.querySelectorAll('[data-testid="account-identity"], [role="menuitem"]')].map((el) => el.getAttribute('data-testid'))
   expect(order).toEqual(['account-identity', 'add-account', 'account-sign-in-methods', 'account-connected-apps', 'account-access-explanation', 'logout'])
@@ -382,8 +331,9 @@ test("the person's name in the Account menu links to their Person record for som
   await waitFor(() => expect(within(identity).getByRole('link')).toHaveAttribute("href", rowHref("Person", admin.user!)))
 })
 
-test("for someone who may not open Person records, the name in the Account menu is plain text", async ({ createUser }) => {
+test("for someone who may not open Person records, the name in the Account menu is plain text", async ({ admin, createUser }) => {
   const reader = await createUser({ email: 'menu.reader@example.com', roles: [] })
+  await installDashApp(admin)
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   await openAccountMenu()
@@ -398,7 +348,6 @@ test("for someone who may not open Person records, the name in the Account menu 
 // ---- 6. no loose Sign-in methods or Log out --------------------------------------
 
 test.for([
-  ['the Sales Target page', '/featherbase/sales-target'],
   ['the Portal', '/featherbase/portal/person'],
   ['the Admin screens', '/featherbase/admin'],
 ] as const)('%s has no Sign-in methods or Log out outside the Account menu', async ([, path], { admin }) => {
@@ -430,14 +379,6 @@ test('the no-access Admin address names the platform in the bar and tab, retaini
   expect(within(menu).getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument()
 })
 
-// ---- 7. the Sales Target page's identity line ---------------------------------
-
-test("the Sales Target page's identity line sits below the bar, not in it", async ({ admin }) => {
-  await renderApp('/featherbase/sales-target', admin)
-  const identity = await screen.findByTestId('identity')
-  expect((await bar()).contains(identity)).toBe(false)
-})
-
 // ---- 9. phone width --------------------------------------------------------------
 
 function phoneWidth() {
@@ -449,8 +390,9 @@ function phoneWidth() {
 
 test('at phone width Open Admin and the theme toggle move into the Account menu, above Sign-in methods', async ({ admin }) => {
   phoneWidth()
+  await installDashApp(admin)
   onAddressThatOpens('dash')
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
   const right = within(await settledBar()).getByTestId('top-bar-right')
   expect(within(right).queryByTestId('open-admin')).toBeNull()
   expect(within(right).queryByTestId('theme-toggle')).toBeNull()
@@ -464,7 +406,7 @@ test('at phone width Open Admin and the theme toggle move into the Account menu,
 // phone menu; it reads "Device" there, and keeps the full accessible name.
 test("at phone width the menu's device choice reads Device and is named Same as device", async ({ admin }) => {
   phoneWidth()
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
   await settledBar()
   const menu = await openAccountMenu()
   const device = within(menu).getByTestId('theme-device')
@@ -484,7 +426,7 @@ test('at phone width a theme chosen in the Account menu sticks after the menu cl
     if (url.includes('/api/set_theme')) await held
     return real(input, init)
   })
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
   await settledBar()
   const menu = await openAccountMenu()
   await userEvent.click(within(menu).getByTestId('theme-dark'))
@@ -534,7 +476,7 @@ test("a slow theme save from the person before does not hide the next person's t
     if (url.includes('/api/set_theme')) await held // the write lands; its answer is slow
     return answer
   })
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
   await settledBar()
   await userEvent.click(screen.getByTestId('theme-dark'))
   await openAccountMenu()
@@ -563,15 +505,17 @@ test('while whoami loads the bar shows its name and nothing on the right', async
     String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).includes('/api/whoami')
       ? new Promise<Response>(() => {})
       : real(input, init))
-  await renderApp('/featherbase/sales-target', admin)
-  expect(await barName()).toHaveTextContent('Dash')
+  await installDashApp(admin)
+  onAddressThatOpens('dash')
+  await renderApp(PORTAL, admin)
+  expect(await barName()).toHaveTextContent('Dash stand-in')
   expect(within(await bar()).getByTestId('top-bar-right')).toBeEmptyDOMElement()
 })
 
 // ---- 11. keyboard -------------------------------------------------------------------
 
 test('Escape closes the Account menu and returns focus to the avatar', async ({ admin }) => {
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
   await openAccountMenu()
   screen.getByTestId('logout').focus()
   await userEvent.keyboard('{Escape}')
@@ -590,14 +534,14 @@ test("Tab from the Admin command bar reaches its recents instead of closing them
 })
 
 test('Enter on the avatar opens the Account menu', async ({ admin }) => {
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
   ;(await screen.findByTestId('session-user')).focus()
   await userEvent.keyboard('{Enter}')
   expect(await screen.findByTestId('account-menu')).toBeInTheDocument()
 })
 
 test('Space on the avatar opens the Account menu', async ({ admin }) => {
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
   ;(await screen.findByTestId('session-user')).focus()
   await userEvent.keyboard(' ')
   expect(await screen.findByTestId('account-menu')).toBeInTheDocument()
@@ -633,8 +577,9 @@ test('the Admin bar stays named and its Account menu usable when the brand endpo
 })
 
 test("Tab walks the bar on an app's address: Open Admin, the three theme choices, then the Account menu", async ({ admin }) => {
+  await installDashApp(admin)
   onAddressThatOpens('dash')
-  await renderApp('/featherbase/sales-target', admin)
+  await renderApp(PORTAL, admin)
   await within(await settledBar()).findByTestId('open-admin')
   ;(await nameElement()).focus()
   const reached: string[] = []
@@ -669,10 +614,11 @@ test('at phone width the account page on the Admin address has no Open Admin in 
 const barScope = async () => within(await settledBar())
 
 test("on an app's address the account pages show the app switcher, on that app", async ({ admin }) => {
+  await installDashApp(admin)
   onAddressThatOpens('dash')
   for (const page of [ACCOUNT_SIGN_IN_METHODS_PATH, `/featherbase/account/access/${admin.user}`]) {
     await renderApp(page, admin)
-    await waitFor(async () => expect(await currentApp(await barScope())).toBe('Dash'))
+    await waitFor(async () => expect(await currentApp(await barScope())).toBe('Dash stand-in'))
     // Featherbase is one of the choices for someone who can use it.
     await waitFor(async () => expect(await appChoices(await barScope())).toContain('Featherbase'))
     cleanup()
@@ -680,10 +626,11 @@ test("on an app's address the account pages show the app switcher, on that app",
 })
 
 test('on the Admin address a person who cannot use Admin sees the switcher on the app they belong to', async ({ admin, createUser }) => {
+  await installDashApp(admin)
   onAddressThatOpens('admin')
-  const viewer = await viewerOnly(admin, createUser, 'viewer.switcher@example.com')
-  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
-  await waitFor(async () => expect(await currentApp(await barScope())).toBe('Dash'))
+  const reader = await createUser({ email: 'viewer.switcher@example.com' })
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  await waitFor(async () => expect(await currentApp(await barScope())).toBe('Dash stand-in'))
   expect(await appChoices(await barScope())).not.toContain('Featherbase')
 })
 
@@ -698,6 +645,7 @@ test('someone who belongs to no app sees the switcher on the neutral Featherbase
 // #1235 item 7 (UI standard §4): the account pages have the shared sidebar, with
 // its Account group; since #1248 its collapse control is its own, as on every page.
 test('the account pages have the shared sidebar, with its own collapse control', async ({ admin }) => {
+  await installDashApp(admin)
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()

@@ -8,16 +8,27 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
 import { SIGN_OUT_INCOMPLETE, getToken } from '../src/lib/api'
 import { sql } from 'server/src/db'
+import { resolve } from 'node:path'
 import { config } from 'server/src/config'
+import { discoverPackages } from 'server/src/runtime-packages'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { test, expect, renderApp } from './pg-test'
 import { grantRole } from 'server/test/fixtures'
 import { chooseApp } from './app-switcher'
 
-afterEach(() => {
+afterEach(async () => {
+  // An app installed by a test stays loaded in this process after its rows roll back.
+  await discoverPackages([])
   config.instanceAddresses = null
   vi.restoreAllMocks()
 })
+
+/** An app open to everyone, installed under the name dash, whose
+ *  address the bar's actions hand a person away from. */
+async function installDashApp(admin: Parameters<typeof renderApp>[1]) {
+  expect(await discoverPackages([resolve('../..', 'test-apps/fixtures/dash-stand-in')])).toEqual([])
+  await admin.post('/api/install_app', { name: 'dash' })
+}
 
 const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { pathname: string } } }).state.location.pathname
 
@@ -39,7 +50,8 @@ test("Open Admin on an app's address hands the person over to the Admin's addres
     return res
   })
   vi.spyOn(console, 'error').mockImplementation(() => {}) // jsdom cannot follow a cross-address navigation
-  await renderApp('/featherbase/sales-target', admin)
+  await installDashApp(admin)
+  await renderApp('/featherbase/portal/person', admin)
   await userEvent.click(await within(await screen.findByTestId('top-bar')).findByTestId('open-admin', {}, { timeout: 8000 }))
   await waitFor(() => expect(answers).toHaveLength(1))
   expect(answers[0].handoff).toMatch(/^http:\/\/elsewhere\.example\.test\//)
@@ -63,7 +75,8 @@ test("choosing Featherbase in the switcher on an app's address hands the person 
     return res
   })
   vi.spyOn(console, 'error').mockImplementation(() => {}) // jsdom cannot follow a cross-address navigation
-  await renderApp('/featherbase/sales-target', admin)
+  await installDashApp(admin)
+  await renderApp('/featherbase/portal/person', admin)
   await chooseApp(screen, 'Featherbase', { timeout: 8000 })
   await waitFor(() => expect(answers).toHaveLength(1))
   expect(answers[0].handoff).toMatch(/^http:\/\/elsewhere\.example\.test\//)

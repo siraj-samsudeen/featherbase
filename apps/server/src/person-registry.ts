@@ -159,8 +159,6 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   view_as_session: { session_id: code, tester: id, person: id },
   role: { '*': code },
   runtime_action_result: { caller: id, app: code, action: code, idempotency_key: code, payload: text, result: text, authorization: text },
-  sales_target_snapshot_name: { '*': code },
-  sales_target_snapshot_row: { '*': code },
   // #1259: layout is one of table, split or panel.
   saved_view: { ref_table: code, label: text, filters: filters('ref_table'), layout: code },
   scheduled_job: { '*': code, description: text },

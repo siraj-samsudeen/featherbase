@@ -217,8 +217,7 @@ describe('random interleavings of checks, reads, picks, Try again and timeouts',
         if (state.embed?.ok && state.embed.value.frame) expect([seed, step, 'accepted', state.embed.value.frame.split('#store=')[1]]).toEqual([seed, step, 'accepted', state.store])
         const seen = visibleState(state, shown)
         const view = pageView(seen)
-        const figuresFor = view.kind === 'quick' && seen.report?.ok ? seen.report.value.store
-          : view.kind === 'dive' ? view.src.split('#store=')[1] : undefined
+        const figuresFor = view.kind === 'dive' ? view.src.split('#store=')[1] : undefined
         if (figuresFor !== undefined) expect([seed, step, figuresFor]).toEqual([seed, step, address])
         // Never stuck: once a store is open, "Opening…" always has an attempt running (or its
         // effect queued), so it ends in figures, an empty state or couldn't-load with Try again.

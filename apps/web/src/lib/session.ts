@@ -7,7 +7,6 @@ import { api, getSessionUser, listResource } from './api'
 // grants. Display only — the server still refuses what the person cannot do.
 export interface Capabilities {
   manage: boolean // System Manager: build Tables, import, issue access tokens
-  report: boolean // the Sales Target report
   admin: boolean // can use the Admin screens: manages them, or holds a Table grant of their own or a shared row
   own_grant: boolean // holds a Table grant of their own (not only a shared row)
   tables: string[] // Tables the person can read (empty for a System Manager: they read the Table list)
@@ -65,7 +64,7 @@ export function useIsSystemManager(): boolean {
   return q.data?.roles?.includes('System Manager') ?? false
 }
 
-type ShellKind = 'loading' | 'failed' | 'admin' | 'report-only' | 'no-access'
+type ShellKind = 'loading' | 'failed' | 'admin' | 'no-access'
 
 /**
  * Which layout the person gets (#410). Pure so the rule is testable: an error
@@ -75,8 +74,7 @@ type ShellKind = 'loading' | 'failed' | 'admin' | 'report-only' | 'no-access'
 export function shellKindOf(q: { isError: boolean; data?: { capabilities?: Capabilities } }): ShellKind {
   const caps = q.data?.capabilities
   if (!caps) return q.isError ? 'failed' : 'loading'
-  if (caps.admin) return 'admin'
-  return caps.report ? 'report-only' : 'no-access'
+  return caps.admin ? 'admin' : 'no-access'
 }
 
 export function useShellKind(): ShellKind {

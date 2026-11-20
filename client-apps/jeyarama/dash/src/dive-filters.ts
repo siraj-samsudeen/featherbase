@@ -22,8 +22,6 @@ export interface ReportRecord {
   month_key: string | null
   /** The Dive posts a message once it has drawn, so it needs the page's origin. */
   ready_signal: boolean
-  /** Which built-in quick view stands in when the Dive can't load; empty for none. */
-  quick_view: string | null
   /** #1159: the Dive has its own Store and Month pickers: Dash sends the reader's reach and where to open. */
   pickers_in_dive: boolean
 }

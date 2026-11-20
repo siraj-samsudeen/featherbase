@@ -1,4 +1,4 @@
-// Delete Permanently (#859) at its edges: what the summary counts as going
+// Delete With History (#859) at its edges: what the summary counts as going
 // with the rows, many rows asked, lines and many rows pointing at them, rows
 // pointing at them that can be neither deleted nor unlinked, and the network
 // dropping the preview or the delete. The plan is the real server's.
@@ -21,7 +21,7 @@ async function bins(admin: Admin, count: number) {
   })
 }
 
-/** The Bin list with its first `n` rows sent to Delete Permanently. */
+/** The Bin list with its first `n` rows sent to Delete With History. */
 async function purge(admin: Admin, n: number) {
   await renderApp(tableHref(BIN), admin)
   const rows = await screen.findByTestId('list-rows', {}, T)

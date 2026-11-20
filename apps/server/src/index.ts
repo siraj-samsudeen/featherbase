@@ -32,11 +32,10 @@ import { countWaitingForAccess, noAccessYetPage, peekAccess, requestAccess } fro
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser, noLinkCarries, recordToName } from './delegated-login'
 import { hold, rosterFirstSignIn } from './roster-first-sign-in'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, OAUTH_CALLBACK_PATH, mintHandoffCode, redeemHandoffCode, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
-import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost, adminLinkOrigin } from './instance-addresses'
+import { ADMIN, addressRedirect, linkAddress, matchAddress, requestHost, adminLinkOrigin } from './instance-addresses'
 import { USERNAME_RE, methodOfKind, type SignInMethod } from './identities'
 import { assertPermission, assertSystemManager, getRoles, includesColumn, permissionScope, permittedColumns, tableAccessFor } from './permissions'
 import { getVisibleHomePages } from './home-pages'
-import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
 import { landingAfterSignIn, openAdminFor } from './landing'
 import { saveUpload, signFileUrl } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
@@ -97,7 +96,7 @@ import { packageTitle, appCatalog, appAsset } from './runtime-packages'
 import { discoverAppLibrary } from './app-library'
 import { appPathsFromEnvironment, deliverApp, deliveryKeyMatches } from './app-delivery'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage, rowHref, tableHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, rowHref, tableHref } from 'shared'
 import { appOperation, appOperationApart, withAppClientVersion, withInstalledAppVersions } from './app-lifecycle'
 import { agentMark } from './agent-context'
 import { composeRuntimeShell } from './runtime-shell'
@@ -153,13 +152,6 @@ app.use('*', async (c, next) => {
   c.res.headers.set('Content-Security-Policy', ["frame-src 'self'", ...(c.get('frameOrigins') ?? [])].join(' '))
 })
 app.use('*', secureHeaders())
-// #3755: until the report moves into its app (B9), its page frames
-// MotherDuck's embed sandbox: that page alone, not the instance, with or
-// without a trailing slash (Codex round 2 on #643).
-app.use('*', async (c, next) => {
-  if (ownFramePolicyPage(c.req.path)) c.set('frameOrigins', [EMBED_ORIGIN])
-  await next()
-})
 app.use(
   '/api/*',
   cors({
@@ -208,7 +200,7 @@ app.get('/api/brand', async (c) => {
   // #488: on an address that opens an app, the sign-in page and the document
   // title carry the app's name; elsewhere the instance's.
   const opened = matchAddress(config.instanceAddresses, requestHost(c.req.url))?.opens
-  const appTitle = opened && opened !== ADMIN ? (interimApp(opened, await isInstalled(opened))?.title ?? packageTitle(opened)) : undefined
+  const appTitle = opened && opened !== ADMIN ? packageTitle(opened) : undefined
   return c.json({
     app_name: appTitle ?? s.app_name,
     // #380: named only when it is a public file this instance serves; a
@@ -894,9 +886,7 @@ app.get('*', (c, next) => {
 app.get('*', async (c, next) => {
   const entry = matchAddress(config.instanceAddresses, requestHost(c.req.url))
   if (!entry || entry.opens === ADMIN) return next()
-  // #671: by the installation every process shares, never this process's
-  // serving state, so replicas agree and a disabled app keeps its root.
-  const target = addressRedirect(entry, c.req.path, await isInstalled(entry.opens))
+  const target = addressRedirect(entry, c.req.path)
   return target ? c.redirect(target, 302) : next()
 })
 
@@ -969,9 +959,6 @@ app.get('*', async (c, next) => {
   })
 })
 
-// #3755: personalised sales-target report (identity + embed-session minting).
-app.route('/api/sales_target', salesTargetRoutes)
-
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
   const [row] = await sql`select theme, language from person where row_id = ${user.row_id}`
@@ -997,7 +984,7 @@ app.get('/api/whoami', async (c) => {
   return c.json({
     ...user,
     roles,
-    capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable, deletable: access.deletable, archived },
+    capabilities: { manage, admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable, deletable: access.deletable, archived },
     // #671: the installed apps this person can open, so the shared top bar can
     // lead to and name them without asking an Admin endpoint.
     apps: (await appCatalog(user.row_id)).map(({ name, title }) => ({ name, title })),

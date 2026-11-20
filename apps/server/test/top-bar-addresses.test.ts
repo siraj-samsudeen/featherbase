@@ -53,8 +53,8 @@ describe('/api/brand says what the address opens', () => {
 type Opened = { handoff?: string; landing?: string }
 
 async function viewerRole() {
-  const [have] = await sql`select 1 from role where row_id = 'Sales Target Viewer'`
-  if (!have) await saveDoc('Role', { row_id: 'Sales Target Viewer' }, 'Administrator')
+  const [have] = await sql`select 1 from role where row_id = 'Store Reader'`
+  if (!have) await saveDoc('Role', { row_id: 'Store Reader' }, 'Administrator')
 }
 
 const cookieOf = (res: Response, name: string) => res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`))?.split(';')[0] ?? ''
@@ -93,14 +93,14 @@ async function follow(api: TestClient, handoff: string, sourceSid: string): Prom
 
 describe('POST /api/open_admin', () => {
   test("on an app's address, a person who can use Admin is handed to the admin address", async ({ api, admin }) => {
-    const both = await signedIn(api, admin, 'both.opens', ['System Manager', 'Sales Target Viewer'], DASH)
+    const both = await signedIn(api, admin, 'both.opens', ['System Manager', 'Store Reader'], DASH)
     const res = await both.openAdmin(DASH)
     await expectStatus(res, 200)
     expect(((await res.json()) as Opened).handoff).toMatch(new RegExp(`^${ADMIN}/api/handoff/start\\?ticket=`))
   })
 
   test('the hand-off signs the same person in on the admin address', async ({ api, admin }) => {
-    const both = await signedIn(api, admin, 'both.redeems', ['System Manager', 'Sales Target Viewer'], DASH)
+    const both = await signedIn(api, admin, 'both.redeems', ['System Manager', 'Store Reader'], DASH)
     const { handoff } = (await (await both.openAdmin(DASH)).json()) as Opened
     const res = await follow(api, handoff!, both.sid)
     expect(res?.status).toBe(200)
@@ -108,13 +108,13 @@ describe('POST /api/open_admin', () => {
   })
 
   test('the hand-off cannot be completed by a browser without that session', async ({ api, admin }) => {
-    const both = await signedIn(api, admin, 'both.stolen', ['System Manager', 'Sales Target Viewer'], DASH)
+    const both = await signedIn(api, admin, 'both.stolen', ['System Manager', 'Store Reader'], DASH)
     const { handoff } = (await (await both.openAdmin(DASH)).json()) as Opened
     expect(await follow(api, handoff!, '')).toBeNull()
   })
 
   test('a person who cannot use Admin is refused', async ({ api, admin }) => {
-    const viewer = await signedIn(api, admin, 'viewer.refused', ['Sales Target Viewer'], DASH)
+    const viewer = await signedIn(api, admin, 'viewer.refused', ['Store Reader'], DASH)
     await expectStatus(await viewer.openAdmin(DASH), 403)
   })
 
@@ -136,7 +136,7 @@ describe('POST /api/open_admin', () => {
   // A token is for scripts (access-tokens spec): revoking it must stop it at
   // once, so it can never become a browser session that outlives it.
   test("a script's access token cannot be turned into a browser session on the admin address", async ({ api, admin }) => {
-    const both = await signedIn(api, admin, 'both.token', ['System Manager', 'Sales Target Viewer'], DASH)
+    const both = await signedIn(api, admin, 'both.token', ['System Manager', 'Store Reader'], DASH)
     const issued = await api.fetch(`${DASH}/api/access_tokens`, { method: 'POST', headers: { authorization: `Bearer ${both.token}` }, body: JSON.stringify({ label: 'script' }) })
     const { token } = (await (await expectStatus(issued, 201)).json()) as { token: string }
 
@@ -157,7 +157,7 @@ type Session = { token: string; user: { sign_in: { expires_at: number } } }
 /** `between` runs after the source sign-in and before the hand-off is redeemed.
  *  `cookieSeconds` is the Max-Age of the sid cookie the target set. */
 async function handedOverAfter(api: TestClient, admin: TestClient, name: string, minutesAgo: number, between?: () => Promise<unknown>) {
-  const both = await signedIn(api, admin, name, ['System Manager', 'Sales Target Viewer'], DASH, minutesAgo)
+  const both = await signedIn(api, admin, name, ['System Manager', 'Store Reader'], DASH, minutesAgo)
   await between?.()
   const { handoff } = (await (await both.openAdmin(DASH)).json()) as Opened
   const res = await follow(api, handoff!, both.sid)
@@ -225,7 +225,7 @@ describe('#396: the sign-in records the client address', () => {
 
   test('the session a hand-off opens on the other address records where its redeeming request came from', async ({ api, admin }) => {
     vi.stubEnv('CLIENT_ADDRESS_HEADER', 'x-real-ip')
-    const both = await signedIn(api, admin, 'both.address', ['System Manager', 'Sales Target Viewer'], DASH)
+    const both = await signedIn(api, admin, 'both.address', ['System Manager', 'Store Reader'], DASH)
     const { handoff } = (await (await both.openAdmin(DASH)).json()) as Opened
     const start = await api.fetch(handoff!)
     const nonce = cookieOf(start, 'handoff_nonce')
