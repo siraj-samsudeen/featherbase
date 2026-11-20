@@ -30,7 +30,7 @@ Every name, person and amount in this document is made up.
                  actual figures are read from the warehouse, never stored here
 ```
 
-Three groups, twelve tables. Every table is named `budgets.<name>` and belongs to the app, so
+Three groups, thirteen tables. Every table is named `budgets.<name>` and belongs to the app, so
 one access list covers all of them.
 
 ## What Is Linked, Not Copied
