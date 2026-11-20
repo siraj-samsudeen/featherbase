@@ -11,6 +11,11 @@ describe('a counted label', () => {
     expect(countedLabel('Branch', 2)).toBe('Branches')
     expect(countedLabel('Status', 2)).toBe('Statuses')
   })
+  test('a Table already named in the plural stays so', () => {
+    expect(countedLabel('Assets', 120)).toBe('Assets')
+    expect(countedLabel('Store Assets', 3)).toBe('Store Assets')
+    expect(countedLabel('Glass', 2)).toBe('Glasses')
+  })
   test("the irregular words Featherbase's Tables use", () => {
     expect(countedLabel('Person', 31)).toBe('People')
     expect(countedLabel('Sales person', 2)).toBe('Sales people')

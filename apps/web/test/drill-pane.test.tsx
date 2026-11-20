@@ -459,3 +459,33 @@ test("the card lists the rows in the order of the list it opens", async ({ admin
   await waitFor(() => expect(within(card).getAllByRole('link', { name: /^Enchakkal / }).map((l) => l.textContent))
     .toEqual(['Enchakkal Textiles', 'Enchakkal Supermarket', 'Enchakkal Jewellery']))
 })
+
+test("the card's Open all opens the list; a modified click on a count is the browser's", async ({ admin }) => {
+  await seedSites(admin)
+  const view = await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const path = () => (view.router.state as { location: { pathname: string } }).location.pathname
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.click(chip, { ctrlKey: true })
+  expect(path()).toBe(`${tableHref(SITE)}/row/ENK`)
+  fireEvent.pointerEnter(chip.parentElement!)
+  const card = await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
+  fireEvent.click(within(card).getByRole('link', { name: 'Open all 3 as a list' }), { metaKey: true })
+  expect(path()).toBe(`${tableHref(SITE)}/row/ENK`)
+  fireEvent.click(within(card).getByRole('link', { name: 'Open all 3 as a list' }))
+  await waitFor(() => expect(path()).toBe(tableHref(PLANT)))
+})
+
+test('a count opens its card on focus; Escape closes it, and so does focus leaving', async ({ admin }) => {
+  await seedSites(admin)
+  await renderApp(`${tableHref(SITE)}/row/ENK`, admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.focus(chip)
+  expect(await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })).toBeInTheDocument()
+  fireEvent.keyDown(chip, { key: 'Escape' })
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  fireEvent.keyDown(chip, { key: 'Escape' })
+  fireEvent.focus(chip)
+  await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
+  fireEvent.blur(chip, { relatedTarget: document.body })
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
