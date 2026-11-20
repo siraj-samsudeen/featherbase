@@ -80,3 +80,16 @@ The ticket page SHALL show feedback on a report under "From the report", the rep
 - **GIVEN** a reader raised two pieces of feedback on Sales versus target and one on Stock on hand
 - **WHEN** they ask for their open feedback on Sales versus target
 - **THEN** they get the two, newest first, and nobody else's
+
+### Requirement: The ticket address names what is open
+Tickets' address SHALL name the view, the open ticket or the New ticket form, and the search, type and state filters, and SHALL change as the user moves, so that the address opened again shows the same thing and Back returns to the previous one.
+
+#### Scenario: A copied ticket address reopens the ticket
+
+- **WHEN** support opens a ticket and a colleague opens the address support copied
+- **THEN** the colleague sees that ticket open
+
+#### Scenario: Filters travel with the address
+
+- **WHEN** the user opens a Tickets address that carries a search
+- **THEN** the search box holds it and the list is filtered by it
