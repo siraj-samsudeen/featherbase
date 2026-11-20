@@ -19,8 +19,21 @@ function unavailable(error: unknown): boolean {
 export async function commandDestinations(user: string): Promise<CommandDestinations> {
   const roles = await getRoles(user)
   const manage = user === 'Administrator' || roles.includes('System Manager')
-  if (!manage && !(await tableAccessFor(user, roles)).admin)
-    throw new AppError('PermissionError', 'Admin access required')
+  // #1385: the command bar is on every page. Someone who cannot use the Admin
+  // is offered only what they can open: their apps and their account pages.
+  const pages = new Map<string, CommandPageDestination>()
+  function add(label: string, href: string, kind: string) {
+    const key = href.replace(/\/$/, '')
+    const existing = pages.get(key)
+    if (existing) {
+      if (existing.label !== label) existing.aliases = [...new Set([...(existing.aliases ?? []), label])]
+    } else pages.set(key, { label, href, kind })
+  }
+  if (!manage && !(await tableAccessFor(user, roles)).admin) {
+    accountPages(user, add)
+    for (const app of await appCatalog(user)) appPages(app, add)
+    return { tables: [], pages: [...pages.values()] }
+  }
 
   const tables: CommandDestinations['tables'] = []
   const invalidMetadata = new Set<string>()
@@ -61,31 +74,17 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
     }
   }
 
-  const pages = new Map<string, CommandPageDestination>()
-  function add(label: string, href: string, kind: string) {
-    const key = href.replace(/\/$/, '')
-    const existing = pages.get(key)
-    if (existing) {
-      if (existing.label !== label) existing.aliases = [...new Set([...(existing.aliases ?? []), label])]
-    } else pages.set(key, { label, href, kind })
-  }
   const readable = new Set(tables.map((table) => table.row_id))
   for (const page of ADMIN_PAGES) {
     if (page.manage && !manage || page.administrator && user !== 'Administrator') continue
     if (page.slug === 'find-person' && (!readable.has('Person') || !readable.has('Identifier System'))) continue
     add(page.title, `/featherbase/admin/${page.slug}`, 'Page')
   }
-  add('Sign-in methods', ACCOUNT_SIGN_IN_METHODS_PATH, 'Account')
-  // #1325 (audit F39): the account menu's own words find its pages.
-  add('What you can see', `${ACCOUNT_ROOT}/access/${encodeURIComponent(user)}`, 'Account')
+  accountPages(user, add)
   if (manage) add('Service accounts', '/featherbase/admin/access-tokens?tab=accounts', 'Page')
-  add('Connected apps', ACCOUNT_CONNECTED_APPS_PATH, 'Account')
   for (const page of await getVisibleHomePages(user))
     add(page.label || page.row_id, `/featherbase/admin/home/${encodeURIComponent(page.row_id)}`, 'Home Page')
-  for (const app of await appCatalog(user)) {
-    add(app.title, app.href, 'App')
-    for (const tab of app.tabs ?? []) add(`${app.title} — ${tab.label}`, tab.href, 'App tab')
-  }
+  for (const app of await appCatalog(user)) appPages(app, add)
 
   // Named resources use the normal list read: own rows, Data Scopes and
   // column tiers remain enforced. Page deterministically through all rows.
@@ -121,4 +120,20 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
       add(String(row.title || row.row_id), `/featherbase/form/${encodeURIComponent(row.route)}`, 'Web Form')
   })
   return { tables, pages: [...pages.values()] }
+}
+
+type AddPage = (label: string, href: string, kind: string) => void
+
+/** The person's own pages, which everyone can open. */
+function accountPages(user: string, add: AddPage) {
+  add('Sign-in methods', ACCOUNT_SIGN_IN_METHODS_PATH, 'Account')
+  // #1325 (audit F39): the account menu's own words find its pages.
+  add('What you can see', `${ACCOUNT_ROOT}/access/${encodeURIComponent(user)}`, 'Account')
+  add('Connected apps', ACCOUNT_CONNECTED_APPS_PATH, 'Account')
+}
+
+/** An app the person can open, and the tabs it declares. */
+function appPages(app: Awaited<ReturnType<typeof appCatalog>>[number], add: AddPage) {
+  add(app.title, app.href, 'App')
+  for (const tab of app.tabs ?? []) add(`${app.title} — ${tab.label}`, tab.href, 'App tab')
 }
