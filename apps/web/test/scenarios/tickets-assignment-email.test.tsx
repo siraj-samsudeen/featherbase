@@ -21,7 +21,7 @@ const confirmRow = () => screen.queryByRole('group', { name: 'Confirm the assign
 
 /** That person's ticket screen, open on this ticket. */
 async function openOnScreen(x: TicketsAssignmentEmail, actor: string): Promise<{ session: Session }> {
-  const { session } = await openTickets(x.t.people[actor]!, `?ticket=${x.t.ticket.row_id}`)
+  const { session } = await openTickets(x.t.people[actor]!, `all/${x.t.ticket.row_id}`)
   await ticketOpens(session).within('header.ticket-header', (header) => header.assertText(x.title))
   return { session }
 }
@@ -63,9 +63,9 @@ describe('tickets-assignment-email', () => {
     await step('the link in the email opens that ticket for Colleague', async () => {
       const [{ body }] = await x.t.mailTo('Colleague')
       const link = new URL(/Open it here: (\S+)/.exec(body)![1]!)
-      expect(link.pathname).toBe('/tickets/')
+      expect(link.pathname).toBe(`/tickets/all/${x.t.ticket.row_id}`)
       expect((await x.t.read('queue', {}, 'Colleague')).tickets[0].row_id).not.toBe(x.t.ticket.row_id)
-      const { session } = await openTickets(x.t.people.Colleague!, link.search)
+      const { session } = await openTickets(x.t.people.Colleague!, link.pathname.slice('/tickets/'.length))
       // After the queue has loaded, and it isn't the first ticket in it: the link chose it.
       await ticketOpens(session
         .until('the queue has loaded', () => !document.body.textContent?.includes('Loading queue')))

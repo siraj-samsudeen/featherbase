@@ -52,7 +52,7 @@ describe('tickets-assignment-email', () => {
       const [{ body }] = await x.t.mailTo('Colleague')
       expect(body).toContain(x.title)
       expect(body).toContain('assigned this ticket to you.')
-      expect(body).toContain(`/tickets/?ticket=${x.t.ticket.row_id}`)
+      expect(body).toContain(`/tickets/all/${x.t.ticket.row_id}`)
     })
     await step('the email to Colleague includes the description', async () => expect((await x.t.mailTo('Colleague'))[0]!.body).toContain(x.description))
   })

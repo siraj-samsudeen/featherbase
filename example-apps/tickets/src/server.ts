@@ -425,7 +425,7 @@ async function tellAssignee(ctx: Context, ticket: Row, assignee: string, descrip
   await ctx.mail.toPerson(assignee, {
     subject: `Ticket assigned to you: ${String(ticket.title)}`,
     body: `${ctx.userName} assigned this ticket to you.\n\nTicket: ${String(ticket.title)}\n\n${visible ? `Description:\n${String(description)}` : 'Its description is private, so it is left out of this email.'}`,
-    path: `?ticket=${encodeURIComponent(id)}`, ref_table: 'tickets.ticket', reference_name: id,
+    path: `all/${encodeURIComponent(id)}`, ref_table: 'tickets.ticket', reference_name: id,
   })
 }
 // ---- #1196: data quality rules: a gap that one filter describes, counted live ----

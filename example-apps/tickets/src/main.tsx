@@ -22,6 +22,7 @@ import { configuredTypes, connectionNames, kindLabel, kinds, learnNames, learnTy
 import { StatePill, isDone, tone } from './ticket-state'
 import { CreateTicket } from './CreateTicket'
 import { CaseFile, SETTINGS_HREF } from './CaseFile'
+import { formatAddress, parseAddress, type View } from './address'
 
 /** #1233: a sidebar count; none reads quieter than some. */
 // #1248: a count the shared sidebar shows as a badge on its icon when it is a rail.
@@ -50,21 +51,47 @@ function App() {
     [tickets, setTickets] = useState<Ticket[]>([]),
     [everything, setEverything] = useState<Ticket[]>([]),
     [detail, setDetail] = useState<Detail | null>(null)
-  // #1001: an emailed link opens its ticket.
-  const [selected, setSelected] = useState(() => new URLSearchParams(window.location.search).get('ticket') ?? ''),
-    [search, setSearch] = useState(''),
-    [kind, setKind] = useState(''),
-    [state, setState] = useState(''),
-    [view, setView] = useState('all')
+  // #1001, #1378: the address opens what it names: a view, a ticket, the New ticket form, the filters.
+  const [opened] = useState(() => parseAddress(window.location.pathname, window.location.search))
+  const [selected, setSelected] = useState(opened.ticket),
+    [search, setSearch] = useState(opened.search),
+    [kind, setKind] = useState(opened.type),
+    [state, setState] = useState(opened.state),
+    [view, setView] = useState<View>(opened.view)
   const [error, setError] = useState(''),
     [loading, setLoading] = useState(true),
     [detailLoading, setDetailLoading] = useState(false),
     [busy, setBusy] = useState(false),
-    [create, setCreate] = useState(false),
+    [create, setCreate] = useState(opened.creating),
     [notice, setNotice] = useState('')
   const [reload, setReload] = useState(0)
   // #1233: at phone width the list and a ticket show one at a time; an emailed link opens the ticket.
-  const [phone, setPhone] = useState<'list' | 'ticket'>(() => (new URLSearchParams(window.location.search).get('ticket') ? 'ticket' : 'list'))
+  const [phone, setPhone] = useState<'list' | 'ticket'>(opened.ticket ? 'ticket' : 'list')
+  // #1378: a person's own move is a new history entry; what the page settles
+  // by itself (the first ticket shown, a filter typed) rewrites the current one.
+  const moved = useRef(false)
+  const move = () => { moved.current = true }
+  useEffect(() => {
+    const target = formatAddress({ view, ticket: selected, creating: create, search, type: kind, state }, window.location.search)
+    const push = moved.current
+    moved.current = false
+    if (target === `${window.location.pathname}${window.location.search}`) return
+    window.history[push ? 'pushState' : 'replaceState'](null, '', target)
+  }, [view, selected, create, search, kind, state])
+  useEffect(() => {
+    const follow = () => {
+      const address = parseAddress(window.location.pathname, window.location.search)
+      setView(address.view)
+      setSelected(address.ticket)
+      setCreate(address.creating)
+      setSearch(address.search)
+      setKind(address.type)
+      setState(address.state)
+      if (address.ticket) setPhone('ticket')
+    }
+    window.addEventListener('popstate', follow)
+    return () => window.removeEventListener('popstate', follow)
+  }, [])
   const queueSequence = useRef(0),
     detailSequence = useRef(0)
   const userId = session
@@ -248,7 +275,7 @@ function App() {
     <button
       className="primary"
       disabled={!session}
-      onClick={() => setCreate(true)}
+      onClick={() => { move(); setCreate(true) }}
     >
       + New ticket
     </button>
@@ -264,7 +291,7 @@ function App() {
               key={key}
               type="button"
               aria-current={view === key ? 'page' : undefined}
-              onClick={() => setView(key)}
+              onClick={() => { move(); setView(key as View) }}
             >
               <SidebarIcon name={key} />
               <span>{name}</span>
@@ -284,7 +311,7 @@ function App() {
               type="button"
               data-depth="1"
               aria-current={kind === key ? 'page' : undefined}
-              onClick={() => setKind((current) => (current === key ? '' : key))}
+              onClick={() => { move(); setKind((current) => (current === key ? '' : key)) }}
             >
               <span>{kindLabel(key)}</span>
               <Count n={typeCounts.get(key) ?? 0} />
@@ -334,7 +361,7 @@ function App() {
           <select
             aria-label="Filter by state"
             value={state}
-            onChange={(e) => setState(e.target.value)}
+            onChange={(e) => { move(); setState(e.target.value) }}
           >
             <option value="">
               {view === 'assigned' ? 'Open work' : 'All states'}
@@ -393,6 +420,7 @@ function App() {
                 aria-pressed={selected === ticket.row_id}
                 onClick={() => {
                   if (!busy) {
+                    move()
                     setSelected(ticket.row_id)
                     setPhone('ticket')
                     setNotice('')
@@ -435,7 +463,7 @@ function App() {
       </main>
       {create && (
         <CreateTicket
-          close={() => setCreate(false)}
+          close={() => { move(); setCreate(false) }}
           created={async (id) => {
             setSelected(id)
             setReload((n) => n + 1)

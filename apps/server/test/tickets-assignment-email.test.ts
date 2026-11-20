@@ -81,7 +81,7 @@ describe('Tickets: assigning a ticket emails the person assigned (#1001)', () =>
     expect(mail[0].body).toContain('Plant address is wrong')
     expect(mail[0].body).toContain(DESCRIPTION)
     // A development server has no address list, so it links to the dev web origin.
-    expect(mail[0].body).toContain(`http://localhost:5173/tickets/?ticket=${ticket.row_id}`)
+    expect(mail[0].body).toContain(`http://localhost:5173/tickets/all/${ticket.row_id}`)
     expect(mail[0].body).not.toContain(worker.user)
   })
 
