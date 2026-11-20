@@ -1,4 +1,4 @@
-# budget-versions Specification
+# Budget Versions
 
 ## Purpose
 A budget changes during the year. Each change is kept as a version, so the team can always say

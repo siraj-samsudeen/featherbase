@@ -1,6 +1,6 @@
 // The close's rules: which line and store rule each account has, the P&L's lines, how shared
 // costs are spread, and each store's area over time.
-import { Button, DataList, FigureMatrix, FoldToggle, Notice, RecordLink, Skeleton, TABLE_CLASSES, TextInput, cellClasses, fmtDate, fmtExact, headCellClasses, labelClasses, type FigureRow } from '@featherbase/shop-floor'
+import { Button, DataList, FigureMatrix, FoldToggle, Notice, RecordLink, Skeleton, TABLE_CLASSES, TextInput, cellClasses, fmtDate, fmtAsStored, fmtExact, headCellClasses, labelClasses, type FigureRow } from '@featherbase/shop-floor'
 import { Fragment, useState } from 'react'
 import { runAction } from './api'
 import { canEdit, useAccounts, useAreas, useLines, usePlants, useRefresh, useRuleSegments, useRuleStores, useRules, type Account, type Rule } from './data'
@@ -159,7 +159,7 @@ export function RulePage({ id }: { id: string }) {
           { key: 'treatment', header: 'Treatment', cell: row => row.treatment },
           { key: 'share', header: 'Share %', align: 'end', cell: row => row.share_percent ?? '' },
           { key: 'amount', header: 'Amount', align: 'end', cell: row => (row.amount == null ? '' : fmtExact(num(row.amount))) },
-          { key: 'area', header: 'Area Charged (Sq Ft)', align: 'end', cell: row => (row.area_sqft == null ? '' : Number(row.area_sqft).toLocaleString('en-IN')) },
+          { key: 'area', header: 'Area Charged (Sq Ft)', align: 'end', cell: row => (row.area_sqft == null ? '' : fmtAsStored(Number(row.area_sqft))) },
         ]} />
     </section>
   </Page>
@@ -211,7 +211,7 @@ export function AreasPage() {
                 className="rounded-control text-[13px] text-action hover:underline focus-visible:outline-2 focus-visible:outline-focus">{earlier.length} earlier</button>}</span>
                 : <RecordLink table="budgets.store_area" rowId={area.row_id} name="Earlier area" />}
             </th>
-            <td className={cellClasses({ density: 'compact', className: 'text-right tabular-nums' })}>{Number(area.area_sqft).toLocaleString('en-IN')}</td>
+            <td className={cellClasses({ density: 'compact', className: 'text-right tabular-nums' })}>{fmtAsStored(Number(area.area_sqft))}</td>
             <td className={cellClasses({ density: 'compact', className: 'whitespace-nowrap' })}>{fmtDate(area.starts_on.slice(0, 10))}</td>
             <td className={cellClasses({ density: 'compact', className: 'whitespace-nowrap' })}>{area.ends_on ? fmtDate(area.ends_on.slice(0, 10)) : ''}</td>
             <td className={cellClasses({ density: 'compact', last: true, className: 'text-ink-muted' })}>{area.note ?? ''}</td>

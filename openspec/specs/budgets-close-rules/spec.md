@@ -1,4 +1,4 @@
-# budgets-close-rules Specification
+# Budgets Close Rules
 
 ## Purpose
 The close is worked out from rules the financial controller keeps: the P&L line each account

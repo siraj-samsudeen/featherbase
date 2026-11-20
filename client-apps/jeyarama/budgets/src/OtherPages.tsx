@@ -1,5 +1,5 @@
 // Follow-ups, and the page for any one Budgets record: its fields and its history.
-import { DataList, FieldGrid, Notice, RecordLink, Skeleton, fmtDate, fmtExact, fmtInstantIST } from '@featherbase/shop-floor'
+import { DataList, FieldGrid, Notice, RecordLink, Skeleton, fmtDate, fmtAsStored, fmtExact, fmtInstantIST } from '@featherbase/shop-floor'
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { listAll } from './api'
@@ -53,7 +53,7 @@ function value(column: { column_name: string; column_type: string; reference_tab
   }
   if (column.column_type === 'Currency') return fmtExact(num(id))
   if (column.column_type === 'Date') return /_month$|^covers_/.test(column.column_name) ? fmtMonth(id) : fmtDate(id.slice(0, 10))
-  if (column.column_type === 'Float' || column.column_type === 'Int') return Number(id).toLocaleString('en-IN')
+  if (column.column_type === 'Float' || column.column_type === 'Int') return fmtAsStored(Number(id))
   if (column.column_type === 'Datetime') return fmtInstantIST(id)
   if (column.column_type === 'Check') return raw === true || raw === 1 || raw === '1' ? 'Yes' : 'No'
   return id

@@ -1,4 +1,4 @@
-# budgets-access Specification
+# Budgets Access
 
 ## Purpose
 Budgets holds the company's budgets and the working of its monthly close. Only the people

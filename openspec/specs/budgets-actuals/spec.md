@@ -1,4 +1,4 @@
-# budgets-actuals Specification
+# Budgets Actuals
 
 ## Purpose
 Actual figures stay in the company's data warehouse, where the ledger is. Budgets reads them

@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent, type ReactNode } from 'react'
 import { cx } from './cx'
 import { FoldToggle } from './FoldToggle'
+import { fmtNumber } from './format'
 import { TABLE_CLASSES, cellClasses, headCellClasses } from './TableLook'
 
 export interface FigureColumn {
@@ -28,7 +29,7 @@ export interface FigureRow {
   children?: FigureRow[]
 }
 
-const plain = (x: number | null | undefined) => (x == null ? '—' : x.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+const plain = (x: number | null | undefined) => (x == null ? '—' : fmtNumber(x, 2))
 
 /**
  * Figures as a statement: lines down, columns across (stores, months, versions), every figure
