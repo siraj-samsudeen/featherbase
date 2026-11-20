@@ -216,3 +216,15 @@ export function fmtDuration(ms: number | null | undefined): string {
   const rest = minutes % 60
   return `${Math.floor(minutes / 60)} h${rest ? ` ${rest} min` : ''}`
 }
+
+/**
+ * Rupees as lakhs to two decimals, Indian-grouped, with no unit: `18.40`. Only for a column
+ * or a whole table whose heading says "₹ lakhs" once, as a P&L does, where every cell shares
+ * the unit so the figures can be compared down and across. Anywhere else use `fmtINR`, whose
+ * ladder never shows ₹850 as 0.01.
+ */
+export function fmtLakhs(x: number | null | undefined): string {
+  if (x == null || Number.isNaN(x) || !Number.isFinite(x)) return '—'
+  const lakhs = Math.round(x / 1_000) / 100
+  return (lakhs === 0 ? 0 : lakhs).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
