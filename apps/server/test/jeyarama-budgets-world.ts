@@ -3,9 +3,23 @@
 // installed, and one row in each Budgets table. Every name and figure is invented.
 import { resolve } from 'node:path'
 import { expect } from 'vitest'
-import type { TestClient } from 'feather-testing-postgres'
+import { makeClient, type TestClient } from 'feather-testing-postgres'
+import { version } from '../../../client-apps/jeyarama/budgets/package.json'
 import { installApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
+import { grantRole } from './fixtures'
+
+// A client built with the Budgets app, as the Assets tests model theirs.
+export function budgetsClient(client: TestClient): TestClient {
+  return makeClient({ request: (path, init) => client.fetch(String(path), {
+    ...init,
+    headers: { 'X-Featherbase-App-Version': `budgets@${version}`, ...init?.headers },
+  }) }, client.token, client.user)
+}
+
+/** As the real instance has it: the organisation's tables are read through an instance role, which Budgets people hold beside their Budgets role. */
+export const EDITOR = ['Budget Editor', 'Featherbase Viewer']
+export const VIEWER = ['Budget Viewer', 'Featherbase Viewer']
 
 export type Row = { row_id: string; updated_at: string; [field: string]: unknown }
 
@@ -42,6 +56,7 @@ const INSTANCE_ROWS: [string, Record<string, unknown>][] = [
 export async function installBudgets(admin: TestClient) {
   for (const table of INSTANCE_TABLES) await admin.post('/api/table_def', table)
   for (const [table, row] of INSTANCE_ROWS) await admin.post('/api/save_row', { table, row })
+  await grantRole(admin, { role: 'Featherbase Viewer', table: INSTANCE_TABLES.map(table => table.name), can_read: true })
   expect(await discoverPackages([resolve('../..', 'client-apps/jeyarama/budgets')])).toEqual([])
   await installApp('budgets')
 }
