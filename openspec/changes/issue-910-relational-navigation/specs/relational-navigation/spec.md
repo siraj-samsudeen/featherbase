@@ -95,6 +95,31 @@ search the rest. Choosing a row SHALL replace the step in place, adding none.
 - **THEN** that order shows in its place, the path has the same number of steps, and orders of
   other customers are not offered
 
+### Requirement: Walk the list one row at a time
+
+Beside the path's last step, where it came from a list or a group, the path bar SHALL say where the
+row sits ("4 of 6") between a way to the previous row and a way to the next, in the order the rows
+were seen: the list's sort as the user sees it, or the group's own order. Each SHALL replace the step
+in place, adding none, and the first and last rows SHALL have nowhere further to go rather than
+wrap.
+
+#### Scenario: The next of Asha's orders
+
+- **WHEN** the user, on the list of Asha's orders, has her fourth order open and goes to the next row
+- **THEN** her fifth order shows in its place, the path bar reads 5 of 6, and the path has the same
+  number of steps
+
+### Requirement: The arrow keys walk the list too
+
+The up and down arrow keys SHALL go to the previous and next row as the path bar does, including for
+a row open beside a list, while focus is not in a field, a menu or a dialog.
+
+#### Scenario: The arrow keys walk the list
+
+- **WHEN** the user has an order open beside the list and presses the down arrow, then the up arrow
+- **THEN** the next order shows, then the one before it again, and an arrow pressed while typing in
+  a field moves nothing
+
 ### Requirement: Pick an area on the trees
 
 Where an installed app declares an area's levels (Location, Merchandise), picking a link's area
@@ -264,17 +289,19 @@ And choosing it brings back Enchakkal Supermarket in the drill pane
 
 ### Requirement: A row page shows its connections under its name
 
-A row's page SHALL show the rows it points at and the counted groups that point at it directly
-under the row's name, the same as the drill pane does. Opening a row it points at shows it in the
-drill pane; opening a group jumps to that group's section on the row's Links tab.
+A row's page, and the drill pane, SHALL show the rows it points at and then one row of counts
+directly under the row's name: a count for each group with rows that point at it, the number first,
+a hop through a sub-table saying "through" it, and one for each section an installed app works out
+about the row. Opening a row it points at shows it in the drill pane; opening a count opens that
+group's list already filtered to the row. A group with no rows has no count there.
 
 #### Scenario: Enchakkal's page leads with its plants
 
 ```gherkin
 Given the site Enchakkal has three plants
 When the user opens Enchakkal's page
-Then its region Kerala and a group of 3 plants show under its name
-And opening the plants shows them in their section on the Links tab
+Then its region Kerala and a count of 3 plants show under its name
+And opening the count shows Enchakkal's plants as a list
 ```
 
 ### Requirement: A row page has a form, links, a map and activity
@@ -514,15 +541,17 @@ Then the member no longer holds Buyer, and the page says it is saved
 
 ### Requirement: An empty group stays, greyed, and offers a new row
 
-A group with no rows SHALL still show, greyed, and offer + New, which opens a new row already
-linked to the row, to a user who may add rows to its Table.
+The groups with no rows SHALL fold behind one quiet "+ N tables with none", on the Links tab and in
+the drill pane; where nothing with rows points at the row, the words "Nothing points at this …
+yet." SHALL say so beside it. Opened, a group with no rows SHALL show greyed and offer + New, which
+opens a new row already linked to the row, to a user who may add rows to its Table.
 
 #### Scenario: A first note for a member
 
 ```gherkin
 Given a member has no notes, and the user may add notes
 When the user opens the member's Links tab
-Then the notes group shows greyed with + New
+Then the notes group waits behind the tables with none, and shows greyed with + New once they show
 And + New opens a new note already linked to the member
 ```
 

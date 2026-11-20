@@ -228,3 +228,20 @@ export function fmtLakhs(x: number | null | undefined): string {
   const lakhs = Math.round(x / 1_000) / 100
   return (lakhs === 0 ? 0 : lakhs).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
+
+/** #1349: a Table's label counted, as the count row reads it: "1 Plant", "3 Plants", "31 People", "214 Subcategories".
+ *  English rules on the last word, with the irregular words Featherbase's Tables use. */
+export function countedLabel(label: string, count: number): string {
+  if (count === 1) return label
+  const words = label.split(' ')
+  const last = words.pop() ?? ''
+  const lower = last.toLowerCase()
+  const IRREGULAR: Record<string, string> = { person: 'people', child: 'children', staff: 'staff', data: 'data' }
+  // A Table already named in the plural ("Assets") stays so; "Status" and "Glass" are singular.
+  if (/[^su]s$/i.test(last)) return label
+  const plural = IRREGULAR[lower] !== undefined ? IRREGULAR[lower]!.replace(/^./, (c) => (last[0] === last[0]!.toUpperCase() ? c.toUpperCase() : c))
+    : /[^aeiou]y$/i.test(last) ? `${last.slice(0, -1)}ies`
+    : /(s|x|z|ch|sh)$/i.test(last) ? `${last}es`
+    : `${last}s`
+  return [...words, plural].join(' ')
+}

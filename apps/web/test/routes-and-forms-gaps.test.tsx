@@ -120,9 +120,8 @@ test('a yes/no in a related group\'s rows reads ✓ or ✗', async ({ admin }) =
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: true } })
   await admin.post('/api/save_row', { table: 'Rfg Audit', row: { store: store.row_id, passed: false } })
   await renderApp(`/featherbase/admin/table/rfg-store/row/${store.row_id}`, admin)
-  // #910: the row's groups lead its page; #1273: a group's chip jumps to its section on Links.
-  const chips = await screen.findByRole('region', { name: 'Connections' })
-  await userEvent.click(await within(chips).findByRole('button', { name: /^Rfg Audit\s*2$/ }))
+  // The group's rows are a section on the Links tab.
+  await userEvent.click(await screen.findByRole('tab', { name: 'Links' }))
   // #1218: a group's rows are one line each; a yes/no reads with its label beneath.
   const pane = await screen.findByRole('region', { name: 'Rfg Audit' })
   await waitFor(() => expect(within(pane).getAllByTestId('linked-row')).toHaveLength(2))

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { expect, fn, userEvent, within } from 'storybook/test'
-import { GroupChip } from './GroupChip'
+import { CountChip, GroupChip, NoneFold } from './GroupChip'
 
 const GROUPS: [string, string, number | undefined][] = [['fields', 'Fields', undefined], ['shelf', 'Shelf', 3], ['count', 'Stock count', 125000], ['spare', 'Spare shelf', 0]]
 
@@ -43,5 +43,54 @@ export const ARowOfGroups: Story = {
     await userEvent.click(canvas.getByRole('button', { name: /Stock count/ }))
     await expect(canvas.getByRole('button', { name: /Stock count/ })).toHaveAttribute('aria-pressed', 'true')
     await expect(canvas.getByRole('button', { name: /^Shelf/ })).toHaveAttribute('aria-pressed', 'false')
+  },
+}
+
+function Folded() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-[13.5px] text-ink-muted">Nothing points at this shelf yet.</span>
+      <NoneFold count={2} open={open} onToggle={() => setOpen(!open)} />
+      {open && <><GroupChip label="Spare shelf" count={0} onSelect={() => {}} /><GroupChip label="Returns" count={0} onSelect={() => {}} /></>}
+    </div>
+  )
+}
+
+/** #1349: groups with no rows wait behind one muted "+ N tables with none". */
+export const TablesWithNone: Story = {
+  name: 'Tables with none, folded',
+  render: () => <Folded />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.queryByRole('button', { name: /Spare shelf/ })).not.toBeInTheDocument()
+    await userEvent.click(canvas.getByRole('button', { name: '+ 2 tables with none' }))
+    await expect(canvas.getByRole('button', { name: /Spare shelf/ })).toBeInTheDocument()
+    await expect(canvas.getByRole('button', { name: 'Hide 2 tables with none' })).toHaveAttribute('aria-expanded', 'true')
+  },
+}
+
+/** #1349 (boards 3 and 4b): the count row under a record's title, the number first; a hop says "through"; an empty
+ *  worked-out section is a quiet grey chip; the pane's row is a little smaller. */
+export const CountRow: Story = {
+  name: 'The count row under a title',
+  render: () => (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-2">
+        <CountChip count={4} label="Store Floors" href="#floors" />
+        <CountChip count={42} label="Sections" href="#sections" />
+        <CountChip count={5} label="Divisions" through="Sections" href="#divisions" />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <CountChip size="pane" count={1} label="Employee" href="#employee" />
+        <CountChip size="pane" count={3} label="Apps They Can Open" onSelect={() => {}} />
+        <CountChip size="pane" count={0} label="Reports They See" />
+      </div>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByRole('link', { name: '5 Divisions through Sections' })).toHaveAttribute('href', '#divisions')
+    await expect(canvas.queryByRole('button', { name: /Reports They See/ })).toBeNull()
   },
 }

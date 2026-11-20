@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-router'
 import { CannotShow } from './CannotShow'
@@ -37,7 +37,8 @@ import { ActionDisclosure } from './ActionDisclosure'
 import { RetireDialog, RetiredBadge, RetiredNotice, reactivateRow } from './RowRetirement'
 import { PurgeDialog } from './PurgeDialog'
 import { WorkflowActions } from './WorkflowActions'
-import { RowConnections } from './RowPane'
+import { RowConnections, scrollToWhenShown } from './RowPane'
+import { workedOutId } from './WorkedOut'
 import { OpenInApp } from './OpenInApp'
 import { RecordNav } from './RecordNav'
 import { RowMap } from './RowMap'
@@ -185,8 +186,6 @@ export function FormView({
   useEffect(() => { if (pathView) setLocalArea(tabOf(pathView)) }, [pathView])
   // #1273 (A3, D3): how the Links tab reads, and the group a title chip jumps to.
   const linksPref = useLinksPreference(table, rowNav?.step.linksAs)
-  const [jumpTo, setJumpTo] = useState<string | null>(null)
-  const jumped = useCallback(() => setJumpTo(null), [])
   // C9: a tick saved on the Links tab shows in the record's one save state.
   const linkSave = useMemo(() => ({ saved: () => { setBanner('Saved'); setSavedAt(new Date()) } }), [])
   const setLinksAs = (as: 'sections' | 'tree') => {
@@ -620,7 +619,7 @@ export function FormView({
   return (
     <div data-testid="form-view" className={`min-w-0 [overflow-wrap:anywhere] ${unsaved && !rowsReadOnly ? 'pb-20' : ''}`}>
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
-        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
+        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>{meta.data?.module || 'Home'}</RouterLink>
         <span aria-hidden="true">/</span>
         <RouterLink
           to="/featherbase/admin/table/$table"
@@ -851,7 +850,7 @@ export function FormView({
       </div>
       {/* #1273 (verifier): a Person's page shows its link chips under its header too, to jump from (D3). */}
       {!isNew && <RowConnections table={table} row={name} values={doc.data}
-        onGroup={(key) => { setArea('Links'); setJumpTo(key) }} />}
+        onSection={(heading) => { setArea('Links'); scrollToWhenShown(workedOutId(heading)) }} />}
       {storage && (
         <section aria-label="Storage" data-testid="table-storage" className={cardClasses('mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-sm')}>
           <span className="font-medium">Storage</span>
@@ -1100,7 +1099,7 @@ export function FormView({
         // Drawn only while open: its sections ask for every group's rows and choices.
         { id: 'Links', label: 'Links', content: area !== 'Links' ? null : (
           <LinkSaveContext.Provider value={linkSave}>
-            <RecordLinks table={table} name={name} values={doc.data} pref={linksPref} focusGroup={jumpTo} onFocused={jumped} />
+            <RecordLinks table={table} name={name} values={doc.data} pref={linksPref} />
           </LinkSaveContext.Provider>
         ) },
         { id: 'Map', label: 'Map', content: <RowMap table={table} name={name} /> },

@@ -1,10 +1,10 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { choiceLabel, rowHref, tableHref, type ListFilter } from 'shared'
+import { choiceLabel, rowDisplayTitle, rowHref, tableHref, type ListFilter } from 'shared'
 import {
-  FieldGrid, GroupChip, LinkChip, PaneSection, Plus, RecordLink, SplitWithPane, X,
-  buttonClasses, cx, fmtCount, fmtDuration, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, tagClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
+  CountChip, FieldGrid, GroupChip, LinkChip, NoneFold, PaneSection, PeekCard, Plus, RecordLink, SplitWithPane, X,
+  buttonClasses, countedLabel, cx, fmtCount, fmtDuration, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, tagClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
   type FieldGridGroup,
 } from '@featherbase/shop-floor'
 import { api } from '../lib/api'
@@ -13,16 +13,18 @@ import { dataColumns } from '../lib/list-view-columns'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { push, type NavGroup, type NavPane, type NavPath, type NavStep } from '../lib/nav-path'
 import { useNavigation, type Navigation } from '../lib/navigation'
-import { forwardLinks, groupKey, rowNameText, useBacklinkGroups, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
+import { forwardLinks, groupKey, rowNameText, useBacklinkGroups, useGroupRows, useRowName, type BacklinkGroup, type ForwardLink } from '../lib/relations'
 import { useConnections } from '../lib/connections'
-import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement } from './FormArrangement'
+import { arrangeFields, isBookkeeping, isEmpty, useFormArrangement, userSettingsQuery } from './FormArrangement'
 import { useI18n } from '../lib/i18n'
 import { ActivityTimeline } from './ActivityTimeline'
 import { LinkedRowsGroup } from './LinkedRowsGroup'
 import { Indicator } from './Indicator'
 import { RecordChips } from './RecordChips'
 import { isCodeColumn, isDurationColumn, isSourceColumn } from '../lib/column-kinds'
-import { WorkedOutSections } from './WorkedOut'
+import { WorkedOutCounts, WorkedOutSections, workedOutId } from './WorkedOut'
+import { tableViewDefaultQuery } from '../lib/table-view-default'
+import { listOrder, type ListSort } from '../lib/list-order'
 import { useGroupPlans } from './LinkTickList'
 import { managedBySignIn } from './PersonSignInMethods'
 
@@ -116,11 +118,15 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
   const statusIsChip = Boolean(meta.data?.columns.some((c) => c.column_name === 'status' && c.column_type === 'Choice'))
   const subtitle = [kind, statusIsChip ? undefined : status, code].filter(Boolean).join(' · ')
   const tickable = groups.filter((g) => plans.get(g.key)?.tick)
-  // UI owner (#1282): as on the record page, groups with no rows wait behind "Show N empty".
+  // #1349 item 3 (board 4b): groups with no rows fold behind one muted "+ N tables with none".
   const chipGroups = groups.filter((g) => !plans.get(g.key)?.tick)
   const emptyChips = chipGroups.filter((g) => g.count === 0)
-  const chips = showEmpty ? chipGroups : chipGroups.filter((g) => g.count > 0)
+  const fullChips = chipGroups.filter((g) => g.count > 0)
   const levels = peekLevels(nav.path)
+  const chip = (g: BacklinkGroup) => (
+    <GroupChip key={g.key} label={g.label} count={g.count} selected={open?.key === g.key}
+      onSelect={() => choose(open?.key === g.key ? undefined : { table: g.connection.table, column: g.connection.column, via: g.connection.via })} />
+  )
   return (
     <RecordFrame kind={subtitle} title={title} place={place} framed={framed} onClose={close}
       chips={readable && doc.data ? <RecordChips meta={meta.data} values={doc.data} className="mt-2" /> : null}
@@ -137,6 +143,8 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
         <p className="text-sm text-ink-subtle">Loading…</p>
       ) : <>
         <PointsAt links={forwardLinks(meta.data, doc.data)} nav={nav} onOpen={drill} editHref={pageHref} />
+        {/* #1349 item 1 (board 4b): what links here, counted, before the fields. */}
+        <CountRow table={table} row={row} size="pane" onSection={(heading) => scrollToWhenShown(workedOutId(heading))} />
         {/* Two columns when the panel is wide, one when narrow (C1). */}
         <div className="@container" data-testid="record-panel-body">
           <div className="grid gap-5 @2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
@@ -148,23 +156,17 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
                 showAllHref={groupListHref(g, nav)} />)}
               {/* #1282 C10–C11: what an installed app works out about this record (a Person's apps and reports). */}
               <WorkedOutSections table={table} row={row} onOpen={drill} />
-              <PaneSection title="Pointed At By">
-                <div className="flex flex-wrap gap-2">
-                  {chips.map((g) => (
-                    <GroupChip key={g.key} label={g.label} count={g.count} selected={open?.key === g.key}
-                      onSelect={() => choose(open?.key === g.key ? undefined : { table: g.connection.table, column: g.connection.column, via: g.connection.via })} />
-                  ))}
-                  {emptyChips.length > 0 && (
-                    <button type="button" onClick={() => setShowEmpty((was) => !was)} aria-expanded={showEmpty}
-                      className={touchLinkClasses('text-sm text-ink-muted hover:text-ink hover:underline')}>
-                      {showEmpty ? 'Hide empty' : `Show ${fmtCount(emptyChips.length)} empty`}
-                    </button>
-                  )}
+              {/* A record whose only groups are tick lists has nothing to show here (verifier). */}
+              {(cnx.isPending || chipGroups.length > 0 || !tickable.length) && <PaneSection title="Pointed At By">
+                <div className="flex flex-wrap items-center gap-2">
+                  {fullChips.map(chip)}
                   {cnx.isPending && <span className="text-sm text-ink-subtle">Loading…</span>}
-                  {!cnx.isPending && !groups.length && <span className="text-sm text-ink-muted">No rows point at it</span>}
+                  {!cnx.isPending && !fullChips.length && !tickable.length && <NothingPointsAt kind={kind} />}
+                  {emptyChips.length > 0 && <NoneFold count={emptyChips.length} open={showEmpty} onToggle={() => setShowEmpty((was) => !was)} />}
+                  {showEmpty && emptyChips.map(chip)}
                 </div>
                 {open && !tickable.includes(open) && <PanelGroup key={open.key} table={table} row={row} group={open} nav={nav} onOpen={drill} />}
-              </PaneSection>
+              </PaneSection>}
             </div>
           </div>
         </div>
@@ -173,6 +175,104 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
       </>}
     </RecordFrame>
   )
+}
+
+/** #1349 (board 4b): said once the counts are in and nothing with rows points at the record. */
+export function NothingPointsAt({ kind }: { kind: string }) {
+  return <span className="text-[13.5px] text-ink-muted">Nothing points at this {kind.toLowerCase()} yet.</span>
+}
+
+/**
+ * #1349 item 1 (boards 3 and 4b): one row of counts under a record's title: a chip per group with rows, the number
+ * first, each opening that group's list already filtered; then a chip per section an app works out about the record.
+ * A group with no rows has no chip (it waits behind "+ N tables with none"); every count is the viewer's own.
+ */
+export function CountRow({ table, row, size = 'page', onSection }: {
+  table: string; row: string; size?: 'page' | 'pane'; onSection?: (heading: string) => void
+}) {
+  const nav = useNavigation()
+  const navigate = useNavigate()
+  const cnx = useConnections(table, row)
+  const groups = useBacklinkGroups(cnx.data?.connections).filter((g) => g.count > 0)
+  const name = useRowName(table, row)
+  const of = name.state === 'read' ? name.title : undefined
+  return (
+    // Drawn only when it holds a chip (empty:hidden), so a record nothing links to keeps no gap.
+    <div role="group" aria-label="What links here" data-testid="count-row"
+      className={cx('flex flex-wrap items-center empty:hidden', size === 'pane' ? 'gap-1.5' : 'gap-2')}>
+      {groups.map((g) => {
+        const href = nav ? groupListHref(g, nav) : `${tableHref(g.connection.table)}?filters=${encodeURIComponent(JSON.stringify(g.connection.filters))}`
+        return <GroupCount key={g.key} group={g} href={href} size={size} of={of} onNavigate={(to = href) => void navigate({ href: to })} />
+      })}
+      <WorkedOutCounts table={table} row={row} size={size} onSection={onSection} />
+    </div>
+  )
+}
+
+/** A group's chip in the count row: "3 Plants", or "1 Visit through Visit Line" for a hop through a sub-table. */
+function GroupCount({ group, href, size, of, onNavigate }: {
+  group: BacklinkGroup; href: string; size: 'page' | 'pane'
+  /** The record's name, for the card's heading ("Plants in Bayside"). */
+  of?: string
+  onNavigate: (href?: string) => void
+}) {
+  const via = group.connection.via
+  const viaMeta = useMeta(via ?? '', Boolean(via))
+  // Two links from one Table read "Orders · Customer": the Table's word is the one counted.
+  const [head, ...rest] = group.label.split(' · ')
+  const label = [countedLabel(head!, group.count), ...rest].join(' · ')
+  const heading = of ? `${label} in ${of}` : label
+  // #1349 item 2 (C5): hovering shows the shared peek card with the group's first rows.
+  return (
+    <PeekCard label={heading} trigger={<CountChip count={group.count} label={label} through={via ? tableLabel(via, viaMeta.data) : undefined}
+      href={href} onNavigate={() => onNavigate()} size={size} />}>
+      <b className="text-sm font-semibold text-ink">{heading}</b>
+      <GroupPeek group={group} />
+      <a href={href} className={touchLinkClasses('self-start text-[13px] text-action hover:underline')} onClick={(e) => {
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+        e.preventDefault()
+        onNavigate()
+      }}>Open all {fmtCount(group.count)} as a list</a>
+    </PeekCard>
+  )
+}
+
+/** How many of a group's rows its card shows. */
+const PEEK_ROWS = 5
+
+/** The card's rows: the group's first few, in its own order, each a link to its row. */
+function GroupPeek({ group }: { group: BacklinkGroup }) {
+  const meta = useMeta(group.connection.table)
+  const title = meta.data?.title_column && meta.data.title_column !== 'row_id' ? meta.data.title_column : undefined
+  // In the order of the list "Open all" opens: the person's sort there, else the Table's default, else its own (verifier).
+  const own = useQuery(userSettingsQuery(group.connection.table))
+  const td = useQuery(tableViewDefaultQuery(group.connection.table))
+  const ready = Boolean(meta.data) && !own.isPending && !td.isPending
+  const order = ready ? listOrder(meta.data, (own.data?.settings?.sort ?? null) as ListSort | null, td.data?.settings.sort).orderBy : undefined
+  const rows = useGroupRows(group.connection, {
+    fields: ['row_id', ...(title ? [title] : [])], limit: PEEK_ROWS, orderBy: order, enabled: ready,
+  })
+  if (!meta.data || !rows.data) return <span className="text-[13px] text-ink-subtle">Loading…</span>
+  const shown = rows.data.data as Row[]
+  const more = group.count - shown.length
+  // UI owner: the rows as RecordLinks, no fills inside the raised card, then a muted "+ N more".
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13.5px]">
+      {shown.map((r) => (
+        <RecordLink key={String(r.row_id)} table={group.connection.table} rowId={String(r.row_id)} name={rowDisplayTitle(meta.data!, r, String(r.row_id))} />
+      ))}
+      {more > 0 && <span className="text-[13px] text-ink-subtle">+ {fmtCount(more)} more</span>}
+    </div>
+  )
+}
+
+/** Scrolls to a section once it is on screen (it may wait on a tab switch or a read), and gives it focus. */
+export function scrollToWhenShown(id: string, tries = 40) {
+  const el = document.getElementById(id)
+  if (el) {
+    el.scrollIntoView?.({ block: 'start' })
+    el.focus({ preventScroll: true })
+  } else if (tries > 0) setTimeout(() => scrollToWhenShown(id, tries - 1), 50)
 }
 
 /** A group's rows as a list, on the path when the panel is on one. */
@@ -440,12 +540,12 @@ function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: u
  * rows it points at and the counted groups that point at it, the same chips
  * as the drill pane. Opening one shows it in the pane.
  */
-export function RowConnections({ table, row, values, layout = 'chips', onGroup }: {
+export function RowConnections({ table, row, values, layout = 'chips', onSection }: {
   table: string; row: string; values: Row | undefined
   /** #1267: 'list' is a Person page's right column, one group per line with its count. */
   layout?: 'chips' | 'list'
-  /** #1273 (D3): a group's chip jumps to its section on the Links tab, by the group's key. */
-  onGroup?: (key: string) => void
+  /** #1349: a worked-out section's chip in the count row goes to that section. */
+  onSection?: (heading: string) => void
 }) {
   const nav = useNavigation()
   const meta = useMeta(table)
@@ -455,24 +555,17 @@ export function RowConnections({ table, row, values, layout = 'chips', onGroup }
   const [showEmpty, setShowEmpty] = useState(false)
   if (!nav || !meta.data || !values) return null
   const links = forwardLinks(meta.data, values)
-  if (!links.length && !groups.length) return null
   const step = nav.step
   const open = (pane: NavPane) => nav.push({ ...step, pane })
-  const chosen = step.pane?.table === table && step.pane.row === row ? step.pane.group : undefined
   const full = groups.filter((g) => g.count > 0)
   const empty = groups.filter((g) => g.count === 0)
   const shown = showEmpty ? [...full, ...empty] : full
-  const choose = (g: BacklinkGroup) => onGroup ? onGroup(g.key) : open({ table, row, group: { table: g.connection.table, column: g.connection.column, via: g.connection.via } })
-  const isChosen = (g: BacklinkGroup) => (!onGroup && chosen ? groupKey(chosen) === g.key : false)
-  const emptyToggle = empty.length > 0 && (
-    <button type="button" onClick={() => setShowEmpty((was) => !was)} aria-expanded={showEmpty} data-testid="connections-show-empty"
-      className={touchLinkClasses('text-sm text-ink-muted hover:text-ink hover:underline')}>
-      {showEmpty ? 'Hide empty' : `Show ${fmtCount(empty.length)} empty`}
-    </button>
-  )
+  // #1349 (consistency check): the same fold as the pane and the Links tab.
+  const emptyToggle = empty.length > 0 && <NoneFold count={empty.length} open={showEmpty} onToggle={() => setShowEmpty((was) => !was)} />
   // #1267 on #1218 slice 1: a Person's right column draws each group with
   // LinkedRowsGroup, its rows named by what they point to; rows open in the pane.
-  if (layout === 'list')
+  if (layout === 'list') {
+    if (!links.length && !groups.length) return null
     return (
       <section aria-labelledby="connections-heading" data-testid="connections-list" className="flex min-w-0 flex-col gap-4">
         <h2 id="connections-heading" className="text-sm font-medium text-ink-muted">Linked Records</h2>
@@ -484,24 +577,23 @@ export function RowConnections({ table, row, values, layout = 'chips', onGroup }
         ))}
         {shown.map((g) => <LinkedRowsGroup key={g.key} table={table} record={row} group={g} onOpen={open} />)}
         {/* Said only once the counts are in, never while they load. */}
-        {cnx.data && !full.length && !showEmpty && <p className="text-sm text-ink-subtle">Nothing links here yet.</p>}
-        {emptyToggle && <span className="px-2">{emptyToggle}</span>}
+        {cnx.data && !full.length && !showEmpty && <p><NothingPointsAt kind={tableLabel(table, meta.data)} /></p>}
+        {emptyToggle && <span className="self-start">{emptyToggle}</span>}
       </section>
     )
+  }
+  // #1349 item 1 (board 3): what the row points at, then the count row; a group with no rows has no chip here.
   return (
-    <section aria-label="Connections" className="mb-4 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-      {links.map((link) => (
-        <span key={link.column} className="inline-flex min-w-0 items-center gap-2 text-sm">
-          <span className="text-ink-muted">{link.label}</span>
-          <PaneLink table={link.table} rowId={link.row_id} onOpen={open} />
-        </span>
-      ))}
-      {groups.length > 0 && <span className="flex flex-wrap items-center gap-2">
-        {shown.map((g) => (
-          <GroupChip key={g.key} label={g.label} count={g.count} selected={isChosen(g)} onSelect={() => choose(g)} />
+    <section aria-label="Connections" className="mb-4 flex min-w-0 flex-col gap-3">
+      {links.length > 0 && <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+        {links.map((link) => (
+          <span key={link.column} className="inline-flex min-w-0 items-center gap-2 text-sm">
+            <span className="text-ink-muted">{link.label}</span>
+            <PaneLink table={link.table} rowId={link.row_id} onOpen={open} />
+          </span>
         ))}
-        {emptyToggle}
-      </span>}
+      </div>}
+      <CountRow table={table} row={row} onSection={onSection} />
     </section>
   )
 }

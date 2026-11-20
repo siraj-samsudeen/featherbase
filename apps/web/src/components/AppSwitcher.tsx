@@ -6,7 +6,7 @@ import { api } from '../lib/api'
 import { useWhoAmI } from '../lib/session'
 import { APP_ICON } from '../lib/app-icons'
 import { Logo } from './Logo'
-import { Check, ChevronDown, cx, iconButtonClasses, raisedClasses } from '@featherbase/shop-floor'
+import { Check, ChevronDown, MENU_GROUP_CLASSES, cx, iconButtonClasses, menuItemClasses, raisedClasses } from '@featherbase/shop-floor'
 import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 
 /** Keep the server's cross-address sign-in handoff when leaving an app. */
@@ -127,7 +127,8 @@ export function AppSwitcher({ app, compact = false, place = 'bar' }: {
     }
   }
 
-  const row = 'flex w-full items-center gap-3 rounded-control px-2 py-2 text-left hover:bg-subtle focus-visible:bg-subtle focus-visible:outline-none'
+  // #1348: the shared menu row; an app's row is two lines (its name and what it is for).
+  const row = menuItemClasses({ className: 'py-2' })
   return (
     <div className={cx('relative flex min-w-0 items-center', place === 'bar' ? 'gap-1' : 'gap-0.5')} ref={wrapper}>
       {place !== 'rail' && (
@@ -187,7 +188,7 @@ export function AppSwitcher({ app, compact = false, place = 'bar' }: {
                 className={row}
               >
                 <AppMark icon={item.icon} accent={item.accent} />
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 whitespace-normal">
                   <span className="block truncate text-sm font-medium text-ink">{item.title}</span>
                   {item.summary && <span className="line-clamp-2 block text-[13px] text-ink-muted" title={item.summary}>{item.summary}</span>}
                 </span>
@@ -196,8 +197,8 @@ export function AppSwitcher({ app, compact = false, place = 'bar' }: {
             )
           })}
           {offersAdmin && (
-            <>
-              {choices.length > 0 && <div role="separator" className="my-1 border-t border-border" />}
+            // #1348: Featherbase Admin is a group of its own, set apart by 8px of space, never a line.
+            <div role="none" className={MENU_GROUP_CLASSES}>
               <button
                 type="button"
                 role="menuitemradio"
@@ -210,13 +211,13 @@ export function AppSwitcher({ app, compact = false, place = 'bar' }: {
                 className={row}
               >
                 <AppMark admin />
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 whitespace-normal">
                   <span className="block truncate text-sm font-medium text-ink">{FEATHERBASE_ADMIN_DESTINATION.label}</span>
                   <span className="block truncate text-[13px] text-ink-muted">Tables, people and access</span>
                 </span>
                 {current === FEATHERBASE_ADMIN_DESTINATION.href && <Check aria-hidden size={16} className="shrink-0 text-action" />}
               </button>
-            </>
+            </div>
           )}
         </div>
       )}
