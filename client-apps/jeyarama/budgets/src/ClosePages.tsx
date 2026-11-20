@@ -25,7 +25,7 @@ export function ClosesPage() {
   const open = (close: Close) => linesOf(close, closes.data ?? [], adjustments.data ?? []).filter(a => a.adjustment_state === 'Open').length
   return <Page title="Monthly Close" count={`${closes.data?.length ?? 0} closes`} status="One row for each publication of a company's month. The download time is the cut: a later SAP posting is not part of that close.">
     {closes.error && <Notice tone="negative">{closes.error.message}</Notice>}
-    <DataList caption="Month closes" rows={[...(closes.data ?? [])].sort((a, b) => b.close_month.localeCompare(a.close_month) || b.version_no - a.version_no)} rowKey={row => row.row_id}
+    <DataList caption="Monthly closes" rows={[...(closes.data ?? [])].sort((a, b) => b.close_month.localeCompare(a.close_month) || b.version_no - a.version_no)} rowKey={row => row.row_id}
       state={closes.isLoading ? 'loading' : 'ready'} empty={{ title: 'No Close Yet', body: 'A Budget Editor adds a month’s first close in Featherbase; later versions are made from its page here.' }} columns={[
         { key: 'close', header: 'Close', cell: row => <CloseLink id={row.row_id} />, phone: 'title' },
         { key: 'company', header: 'Company', cell: row => <CompanyLink id={row.legal_company} /> },
