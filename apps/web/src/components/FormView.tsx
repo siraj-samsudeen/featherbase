@@ -619,7 +619,7 @@ export function FormView({
   return (
     <div data-testid="form-view" className={`min-w-0 [overflow-wrap:anywhere] ${unsaved && !rowsReadOnly ? 'pb-20' : ''}`}>
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
-        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
+        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>{meta.data?.module || 'Home'}</RouterLink>
         <span aria-hidden="true">/</span>
         <RouterLink
           to="/featherbase/admin/table/$table"
@@ -904,11 +904,13 @@ export function FormView({
               {/* #959: the row as its heading names it. */}
               Delete {tableLabel(table, meta.data)}: <RowTitle table={table} rowId={name} />?
             </h2>
-            <p className="mb-3 text-sm text-ink-muted">
+            {/* #1348 (UI owner): once refused nothing has happened, so the warning goes. */}
+            {!deleteOffersRetire && <p className="mb-3 text-sm text-ink-muted">
               This cannot be undone.
-            </p>
+            </p>}
             {deleteError && (
-              <p className="mb-3 text-sm text-negative" data-testid="delete-row-error">
+              // A refusal that names a way out is advice, in body text; red stays for a real failure (spec item 13).
+              <p className={`mb-3 text-sm ${deleteOffersRetire ? 'text-ink' : 'text-negative'}`} data-testid="delete-row-error">
                 {deleteError}
                 {/* #1348 (UI owner): the line that offers Retire names a System Manager's other way out. */}
                 {deleteOffersRetire && access.data?.purge && ' Or Delete With History (System Managers).'}
@@ -938,7 +940,7 @@ export function FormView({
                   className={buttonClasses({ variant: 'primary' })}
                   data-testid="delete-row-retire-instead"
                 >
-                  Retire instead
+                  Retire Instead
                 </button>
               )}
               <button

@@ -1,3 +1,4 @@
+import { unavailableHref } from 'shared'
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { config } from '../src/config'
@@ -183,7 +184,7 @@ describe('on an address that opens an app', () => {
     expect((await get(api, `${ADMIN}/featherbase/admin`)).status).not.toBe(302)
   })
 
-  test('an app that is not installed shows "Application unavailable"', async ({ admin }) => {
+  test('an app that is not installed goes to the shared page that says nothing is there (#1328)', async ({ admin }) => {
     config.instanceAddresses = parseInstanceAddresses(
       JSON.stringify([{ address: DASH, opens: 'not_installed', emails: true }, { address: ADMIN, opens: 'admin' }]),
       'test',
@@ -191,8 +192,8 @@ describe('on an address that opens an app', () => {
     const home = await get(admin, `${DASH}/`)
     expect(home.headers.get('location')).toBe('/not_installed/')
     const root = await get(admin, `${DASH}/not_installed/`)
-    await expectStatus(root, 404)
-    expect(await root.text()).toContain('Application unavailable')
+    expect(root.status).toBe(302)
+    expect(root.headers.get('location')).toBe('/featherbase/unavailable?address=%2Fnot_installed%2F')
   })
 })
 
@@ -691,7 +692,8 @@ describe('an address whose app is installed', () => {
     await installDashApp(admin)
     await disable(admin)
     const res = await get(admin, `${DASH}${APP_ROOT}`)
-    expect([res.status, res.headers.get('location')]).toEqual([404, null])
+    // #1328: the shared page that says nothing is available there.
+    expect([res.status, res.headers.get('location')]).toEqual([302, unavailableHref(APP_ROOT)])
   })
 
   test("a disabled app's address is still named for the installed app", async ({ api, admin }) => {
@@ -716,12 +718,28 @@ describe('an address whose app is installed', () => {
     expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(APP_ROOT)
   })
 
+  // #1328 (Codex adversarial round 1): on the app's own address the page is served, never sent back to the root.
+  test("on the app's own address, a disabled app's visitors reach the shared page and stay there, signed in or out", async ({ api, admin }) => {
+    await installDashApp(admin)
+    await disable(admin)
+    for (const client of [admin, api]) {
+      const first = await get(client, `${DASH}${APP_ROOT}`)
+      expect([first.status, first.headers.get('location')]).toEqual([302, unavailableHref(APP_ROOT)])
+      const page = await get(client, `${DASH}${unavailableHref(APP_ROOT)}`)
+      expect(page.status).not.toBe(302)
+    }
+    // Its way forward is Featherbase's own address, never this app's root (Codex adversarial round 2).
+    expect(await (await api.fetch(`${DASH}/api/brand`)).json()).toMatchObject({ home: ADMIN })
+    expect(await (await api.fetch(`${ADMIN}/api/brand`)).json()).toMatchObject({ home: null })
+  })
+
   test("a process that has not loaded the installed app answers at the app's root that it is unavailable", async ({ admin }) => {
     const { discoverPackages } = await import('../src/runtime-packages')
     await installDashApp(admin)
     await discoverPackages([])
     const res = await get(admin, `${DASH}${APP_ROOT}`)
-    expect([res.status, res.headers.get('location')]).toEqual([404, null])
+    // #1328: the shared page that says nothing is available there.
+    expect([res.status, res.headers.get('location')]).toEqual([302, unavailableHref(APP_ROOT)])
   })
 })
 

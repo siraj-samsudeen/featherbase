@@ -9,7 +9,7 @@
 // configuration: a request's Host header can only SELECT one of its entries,
 // never add one, and every absolute URL the server builds comes from here.
 
-import { ACCOUNT_ROOT, APP_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from 'shared'
+import { ACCOUNT_ROOT, APP_ROOT_PATTERN, RESERVED_APP_ROOTS, UNAVAILABLE_PATH, appHref } from 'shared'
 import { DEV_ENVIRONMENTS } from './env'
 import { BAR_SCRIPT } from './runtime-shell'
 
@@ -168,6 +168,8 @@ const SERVED_EVERYWHERE = [
   '/featherbase/form',
   ACCOUNT_ROOT,
   BAR_SCRIPT,
+  // #1328: where an address nothing answers is sent; sending it back to the app's root would loop (Codex).
+  UNAVAILABLE_PATH,
 ]
 
 const under = (path: string, root: string) => {
