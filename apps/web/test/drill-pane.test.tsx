@@ -522,15 +522,12 @@ test("a worked-out section's chip in the pane goes to that section in the pane",
   } finally { fetched.mockRestore() }
 })
 
-test("a count's card in the pane is shown in the top layer, where the pane can't cut it off", async ({ admin }) => {
+test("a count's card in the pane stays open while the pointer crosses into it, and Escape closes it", async ({ admin }) => {
   const { pane: site } = await openEnchakkal(admin)
   const chip = await within(await countRow(site)).findByRole('link', { name: '3 Nv Plants' })
   fireEvent.pointerEnter(chip.parentElement!)
   const card = await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
-  // Placed in the window, not in the pane's box. (A browser also lifts it into the top layer as a popover; jsdom has
-  // no top layer, so the headless check covers that.)
-  expect(card).toHaveClass('fixed')
-  expect(card).toHaveAttribute('data-side', 'below')
+  // Where it floats (the top layer, kept in the window) is useTopLayer's below-fit (top-layer.test.tsx).
   // The pointer may cross from the chip into the card without it closing.
   fireEvent.pointerLeave(chip.parentElement!)
   fireEvent.pointerEnter(card)
