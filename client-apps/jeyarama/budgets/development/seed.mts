@@ -218,16 +218,20 @@ function budgetValues(region: string, months: string[], lift = 1) {
   }
   return values
 }
+/** One store at a time: each figure is saved under the app's rules, so a year for every store in one request is slow. */
+async function paste(version: string, values: ReturnType<typeof budgetValues>) {
+  for (const plant of new Set(values.map(value => value.plant))) await act('paste_budget', { version, values: values.filter(value => value.plant === plant) })
+}
 const versionRow = (row: Record<string, unknown>) => own('budget_version', { budget_kind: 'P&L', fiscal_year: 'FY27', covers_from: MONTHS[0], covers_to: MONTHS[11], ...row })
 const original = await versionRow({ version_name: 'FY27 Original', operating_region: 'North', source_file: 'North Budget FY27 v3.xlsx' })
-await act('paste_budget', { version: original.row_id, values: budgetValues('North', MONTHS) })
+await paste(original.row_id, budgetValues('North', MONTHS))
 await act('approve_version', { version: original.row_id })
 const { version: revised } = await act<{ version: string }>('revise_version', { version: original.row_id, version_name: 'FY27 Revision 1', covers_from: MONTHS[6], covers_to: MONTHS[11] })
-await act('paste_budget', { version: revised, values: budgetValues('North', MONTHS.slice(6), 1.04).filter(v => ['gross_sales', 'net_sales', 'scan_margin', 'manpower_cost', 'marketing'].includes(v.pl_line)) })
+await paste(revised, budgetValues('North', MONTHS.slice(6), 1.04).filter(v => ['gross_sales', 'net_sales', 'scan_margin', 'manpower_cost', 'marketing'].includes(v.pl_line)))
 await act('approve_version', { version: revised })
 await act('revise_version', { version: revised, version_name: 'FY27 Revision 2', covers_from: MONTHS[9], covers_to: MONTHS[11] })
 const south = await versionRow({ version_name: 'FY27 South Original', operating_region: 'South', source_file: 'South P&L Projection FY27.xlsx' })
-await act('paste_budget', { version: south.row_id, values: budgetValues('South', MONTHS) })
+await paste(south.row_id, budgetValues('South', MONTHS))
 await act('approve_version', { version: south.row_id })
 await own('budget_store_plan', { budget_version: original.row_id, plant: '9007', planned_opening_on: '2026-08-01', planned_area_sqft: 27600, note: 'Opened two weeks later than planned.' })
 const sales = await versionRow({ version_name: 'FY27 Sales Original', budget_kind: 'Sales', source_file: 'Sales Budget FY27.xlsx' })
