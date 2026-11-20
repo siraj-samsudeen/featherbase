@@ -4,6 +4,10 @@ What Featherbase is becoming, beyond the first build. Agreed between the owner a
 discussion of 15 and 16 November 2026. Nothing here is built. Read it so that what you build now does not
 close off what comes later.
 
+A review on 19 and 20 November 2026 rethought this document from first principles. Where an answer
+changed something here, the text below is already changed and names the decision. The decisions
+themselves, with the options weighed, are in section 11 of `APPS-AND-SHARING.md`.
+
 Featherbase is an app builder on a database: a better Airtable and a better Frappe. Its core is bringing data
 in, cleaning it, and managing it as master data. It replaces an earlier system, reviewed in
 `background/old-system-review.md`.
@@ -25,10 +29,18 @@ touched.
    Featherbase part is everything people add (own Columns, comments, links, identifiers, merges, issues,
    corrections, history, access rules), always in Featherbase's Postgres, attached by the row's key. A managed
    Table has no source part.
-3. **Three ways to read a source part:** live, cached copy, or brought over (copied once, then owned).
-4. **A declared key, possibly several Columns,** is required before anything can be attached to an outside row.
-5. **A warehouse is browsed as a catalogue** (database, schema, table) with access granted on containers; a
-   Table is made from a catalogue entry when one is needed.
+3. **An outside Table is always read as a copy in Featherbase's Postgres** (decision 41). The copy
+   shows its "as of" time and can be refreshed, on demand or on a schedule. A refresh works like a
+   re-import: the source's Columns are updated and what people added is kept. This replaces "three ways
+   to read a source part" (live, cached copy, brought over). Live reading is added later only if a real
+   case cannot be served by a copy.
+4. **What makes a record unique, possibly several Columns,** is needed wherever rows have to be matched:
+   a re-import, a refresh, or another Table pointing at this one. It is never needed just to import
+   (decision 38).
+5. **A warehouse is browsed as a catalogue** (database, schema, table) in a read-only viewer, with access
+   granted on containers. Rows can be paged, sorted and filtered simply, and nothing can be added to them
+   there. A Table is made from a catalogue entry, by copying it in, when someone needs to add anything
+   (decision 41).
 6. **Dropped:** changing the shape of an outside database, and editing rows of a Table Featherbase does not
    own.
 7. **"Seeds" means curation data,** not an app's starting rows: identifiers, merges and own attributes.
@@ -54,7 +66,11 @@ touched.
 Default working answers, to confirm: alerts on control-plane rows by polling about once a minute; corrections
 to single transactions (the barcode case) held as an Issue plus an override.
 
-**Keys.** Featherbase gives each source row it attaches anything to its own permanent
+**Keys.** Every row of every Table has an id made by Featherbase (`_id`), and that is what tells rows
+apart. No key has to be picked to import a file. What makes a record unique is a separate rule, one
+Column or several, set at import, later, or when a re-import asks how to match (decision 38). The rest
+of this paragraph is as first written, for outside rows; how the anchor looks now that an outside Table
+is always a copy has not been re-discussed (`APPS-AND-SHARING.md`, section 9, item 23). Featherbase gives each source row it attaches anything to its own permanent
 id (an anchor). The source's key is stored beside it as plain Columns, one per key Column, unique together.
 An anchor is created when something is first attached, not for every source row. A source key is the same
 concept as an Identifier: the values by which one system knows the row. Two source rows with one key share an
@@ -67,10 +83,28 @@ Featherbase reads, discusses, raises tickets), curate (Featherbase adds decision
 (identifier, merge, own attribute, override, exclude, and create at the third stage), out to the warehouse
 through the owner's change-data-capture package, out to the source as a detached send, re-check.
 
-**First build, chosen by the owner:** start from Excel.
+**Links between Tables.** A link is two columns: the id of the row it points at, which decides, and a
+readable copy of that row's name, which Featherbase refreshes in the same save whenever the row is
+renamed (decision 39). Deleting a row that others point at is refused, with the list of who points at
+it; retiring a row arrives with soft delete (decision 40).
+
+**Where a Table is kept.** One real Postgres table per Table, one real column per Column (decision 35,
+confirming what was written). Shared, designed Tables are in schema `masters`; each app has its own
+schema; each person gets a work area once people sign in; Featherbase's own upkeep tables are in schema
+`featherbase` and never show when browsing (decisions 36 and 37). Until sign-in exists an import lands
+in `masters`.
+
+**Who is acting.** Every read and write passes one gate from the first build. Until sign-in exists its
+answer is always "the owner, yes" (decision 42).
+
+**First real use, chosen by the owner:** his own warehouse clean-up, before replacing a client's app and
+before the app platform (decision 30). Start from Excel, with made-up data first (decision 31).
 1. Import a clean master from a spreadsheet: the file is kept, the rows become a Table, people browse it.
-2. Import and clean up: Issues are recorded, people correct them, clean rows go in, a re-import keeps their
-   decisions. The owner calls this "the very core of everything we do".
+2. Links between Tables, from a clean workbook with several sheets. A link that finds no match refuses
+   the import (decision 32).
+3. Import and clean up: Issues are recorded, people correct them, clean rows go in, a re-import keeps their
+   decisions. The owner calls this "the very core of everything we do". The refused link of step 2
+   becomes an Issue here.
 
 The warehouse catalogue, curation of warehouse entities and sending to source systems follow on the same
 mechanism.
@@ -83,9 +117,9 @@ packages are added to the session.
 
 - **Regrouping is free.** A module is a label on a Table for menus and lists; changing it touches nothing in
   Postgres.
-- **Moving a Table between `main` and an app, or renaming a schema, is one deliberate step** in one
+- **Moving a Table between `masters` and an app, or renaming a schema, is one deliberate step** in one
   transaction. Postgres moves a table to another schema without copying data.
-- **A name history** records every move and rename (this Table was `main.employees` until this date, then
+- **A name history** records every move and rename (this Table was `masters.employees` until this date, then
   `hr.employees`). It travels to MotherDuck through the change-data-capture package so the pipeline can follow
   a Table across a rename and rewrite itself. Old addresses are answered from it.
 - **A preview before a move**, and a refusal when the new name is already taken.
