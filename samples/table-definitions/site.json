@@ -1,0 +1,25 @@
+{
+  "format": "featherbase.table/1",
+  "name": "masters.site",
+  "label": "Site",
+  "about": "A store, warehouse or office.",
+  "title": "site_name",
+  "key": ["site_code"],
+  "columns": [
+    { "name": "site_code", "label": "Site code", "type": "Text", "required": true },
+    { "name": "site_name", "label": "Site name", "type": "Text", "required": true },
+    { "name": "region", "label": "Region", "type": "Link", "to": "masters.region", "required": true },
+    {
+      "name": "cluster",
+      "label": "Cluster",
+      "type": "Link",
+      "to": "masters.cluster",
+      "about": "Blank for a store that is in no cluster."
+    },
+    { "name": "open", "label": "Open", "type": "Yes/No" }
+  ],
+  "belongs_to": [
+    { "by": "region" },
+    { "by": "cluster" }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "format": "featherbase.table/1",
+  "name": "helpdesk.ticket",
+  "label": "Ticket",
+  "about": "Something a person at a store asks to have fixed.",
+  "title": "subject",
+  "columns": [
+    { "name": "subject", "label": "Subject", "type": "Text", "required": true },
+    { "name": "status", "label": "Status", "type": "Choice", "choices": ["Open", "In progress", "Closed"], "required": true },
+    { "name": "site", "label": "Site", "type": "Link", "to": "masters.site", "required": true },
+    { "name": "raised_by", "label": "Raised by", "type": "Link", "to": "masters.person", "required": true },
+    { "name": "assigned_to", "label": "Assigned to", "type": "Link", "to": "masters.person" }
+  ],
+  "belongs_to": [
+    { "by": "site" },
+    { "by": "raised_by" }
+  ]
+}

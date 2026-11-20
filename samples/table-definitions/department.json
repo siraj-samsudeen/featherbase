@@ -1,0 +1,16 @@
+{
+  "format": "featherbase.table/1",
+  "name": "masters.department",
+  "label": "Department",
+  "about": "A group of sections in one store under one department manager. It cuts across floors.",
+  "title": "department_name",
+  "key": ["site", "department_name"],
+  "columns": [
+    { "name": "site", "label": "Site", "type": "Link", "to": "masters.site", "required": true },
+    { "name": "department_name", "label": "Department name", "type": "Text", "required": true },
+    { "name": "manager", "label": "Manager", "type": "Link", "to": "masters.person" }
+  ],
+  "belongs_to": [
+    { "by": "site" }
+  ]
+}

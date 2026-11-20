@@ -1,0 +1,19 @@
+{
+  "format": "featherbase.table/1",
+  "name": "masters.job_assignment",
+  "label": "Job Assignment",
+  "about": "One person doing one job at one site, from a date until a date. A person's history is several rows.",
+  "dated": { "starts": "starts_on", "ends": "ends_on" },
+  "columns": [
+    { "name": "person", "label": "Person", "type": "Link", "to": "masters.person", "required": true },
+    { "name": "job_title", "label": "Job title", "type": "Text", "required": true },
+    { "name": "site", "label": "Site", "type": "Link", "to": "masters.site", "required": true },
+    { "name": "reports_to", "label": "Reports to", "type": "Link", "to": "masters.person" },
+    { "name": "starts_on", "label": "Starts on", "type": "Date", "required": true },
+    { "name": "ends_on", "label": "Ends on", "type": "Date" }
+  ],
+  "belongs_to": [
+    { "by": "person" },
+    { "by": "site" }
+  ]
+}
