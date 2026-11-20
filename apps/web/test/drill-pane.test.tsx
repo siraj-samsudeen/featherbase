@@ -521,3 +521,21 @@ test("a worked-out section's chip in the pane goes to that section in the pane",
     expect(site).toContainElement(document.activeElement as HTMLElement)
   } finally { fetched.mockRestore() }
 })
+
+test("a count's card in the pane is shown in the top layer, where the pane can't cut it off", async ({ admin }) => {
+  const { pane: site } = await openEnchakkal(admin)
+  const chip = await within(await countRow(site)).findByRole('link', { name: '3 Nv Plants' })
+  fireEvent.pointerEnter(chip.parentElement!)
+  const card = await screen.findByRole('dialog', { name: 'Nv Plants in Enchakkal' })
+  // Placed in the window, not in the pane's box. (A browser also lifts it into the top layer as a popover; jsdom has
+  // no top layer, so the headless check covers that.)
+  expect(card).toHaveClass('fixed')
+  expect(card).toHaveAttribute('data-side', 'below')
+  // The pointer may cross from the chip into the card without it closing.
+  fireEvent.pointerLeave(chip.parentElement!)
+  fireEvent.pointerEnter(card)
+  await new Promise((r) => setTimeout(r, 250))
+  expect(screen.getByRole('dialog', { name: 'Nv Plants in Enchakkal' })).toBeInTheDocument()
+  fireEvent.keyDown(card, { key: 'Escape' })
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
