@@ -31,7 +31,7 @@ export { KindTag, LinkActions, LinkChip, nameAndCode, smallActionClasses } from 
 export { RecordLink, RecordPagesProvider, useRecordHref, type RecordPageFor } from './RecordLink'
 export { PersonLabel } from './PersonLabel'
 export { CountChip, GroupChip, NoneFold } from './GroupChip'
-export { PeekCard } from './PeekCard'
+export { PeekCard, placeCard } from './PeekCard'
 export { FieldGrid, type FieldGridField, type FieldGridGroup } from './FieldGrid'
 export { DrillPane, PaneSection } from './DrillPane'
 export { PathBar, RecentPaths, type PathStep } from './PathBar'
