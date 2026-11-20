@@ -1,4 +1,4 @@
-// The two password forms' refusals: Change password (Sign-in methods page)
+// The two password forms' refusals: Change password (Sign-In Methods page)
 // and Reset password (the emailed link). Gaps the merged web coverage report
 // (ADR 0012) showed: an empty new password, a mismatched confirmation on the
 // reset page, and the server refusing either form or the network dropping it.

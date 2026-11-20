@@ -66,8 +66,8 @@ test('#628 the account menu opens your own page; an empty section says so', asyn
   const me = await createUser({ roles: [] })
   await renderApp('/featherbase/account/sign-in-methods', me)
   await userEvent.click(await screen.findByTestId('session-user', {}, WAIT))
-  await userEvent.click(within(await screen.findByTestId('account-menu')).getByRole('menuitem', { name: 'What you can see' }))
-  await waitFor(() => expect(screen.getByTestId('access-explanation-heading')).toHaveTextContent('What you can see'), WAIT)
+  await userEvent.click(within(await screen.findByTestId('account-menu')).getByRole('menuitem', { name: 'What You Can See' }))
+  await waitFor(() => expect(screen.getByTestId('access-explanation-heading')).toHaveTextContent('What You Can See'), WAIT)
   // #1224 spec item 8: an empty section is one muted line, not a card.
   expect(await screen.findByTestId('access-shares-empty', {}, WAIT)).toHaveTextContent('no rows are shared directly with you.')
   expect(screen.queryByTestId('access-shares')).toBeNull()

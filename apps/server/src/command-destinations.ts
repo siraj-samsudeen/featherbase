@@ -126,10 +126,10 @@ type AddPage = (label: string, href: string, kind: string) => void
 
 /** The person's own pages, which everyone can open. */
 function accountPages(user: string, add: AddPage) {
-  add('Sign-in methods', ACCOUNT_SIGN_IN_METHODS_PATH, 'Account')
+  add('Sign-In Methods', ACCOUNT_SIGN_IN_METHODS_PATH, 'Account')
   // #1325 (audit F39): the account menu's own words find its pages.
-  add('What you can see', `${ACCOUNT_ROOT}/access/${encodeURIComponent(user)}`, 'Account')
-  add('Connected apps', ACCOUNT_CONNECTED_APPS_PATH, 'Account')
+  add('What You Can See', `${ACCOUNT_ROOT}/access/${encodeURIComponent(user)}`, 'Account')
+  add('Connected Apps', ACCOUNT_CONNECTED_APPS_PATH, 'Account')
 }
 
 /** An app the person can open, and the tabs it declares. */

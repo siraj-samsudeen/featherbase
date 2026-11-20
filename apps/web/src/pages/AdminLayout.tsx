@@ -700,9 +700,9 @@ export function AccountSidebarGroup() {
       tone="indigo"
       testid="sidebar-group-account"
       items={[
-        { to: ACCOUNT_SIGN_IN_METHODS_PATH, label: 'Sign-in methods', icon: LogIn, testid: 'sidebar-sign-in-methods' },
-        { to: ACCOUNT_CONNECTED_APPS_PATH, label: 'Connected apps', icon: Cable, testid: 'sidebar-connected-apps' },
-        ...(user ? [{ to: `/featherbase/account/access/${encodeURIComponent(user.row_id)}`, label: 'What you can see', icon: Eye, testid: 'sidebar-access-explanation' }] : []),
+        { to: ACCOUNT_SIGN_IN_METHODS_PATH, label: 'Sign-In Methods', icon: LogIn, testid: 'sidebar-sign-in-methods' },
+        { to: ACCOUNT_CONNECTED_APPS_PATH, label: 'Connected Apps', icon: Cable, testid: 'sidebar-connected-apps' },
+        ...(user ? [{ to: `/featherbase/account/access/${encodeURIComponent(user.row_id)}`, label: 'What You Can See', icon: Eye, testid: 'sidebar-access-explanation' }] : []),
       ]}
     />
   )

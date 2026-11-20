@@ -44,7 +44,7 @@ import { Jobs } from './pages/Jobs'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { AccessExplanation } from './pages/AccessExplanation'
-import { AccountLayout } from './pages/AccountLayout'
+import { AccountLayout, PersonFrame } from './pages/AccountLayout'
 import { AgentConnectPage } from './pages/AgentConnect'
 import { ConnectedApps } from './pages/ConnectedApps'
 import { FindPerson } from './pages/FindPerson'
@@ -334,8 +334,18 @@ function PageNotFound() {
 
 // #1328 (audit F09): where the server sends an address it cannot open as an app.
 // The address is read as text only (askedAddress), never followed.
-const unavailableRoute = createRoute({
+// Signed in, the page sits in the person's own frame (the sidebar, the white panel), as the account pages do;
+// signed out there is no frame, only the page.
+const personFrameRoute = createRoute({
   getParentRoute: () => rootRoute,
+  id: 'person-frame',
+  component: function PersonFrameLayout() {
+    return getToken() ? <ThemeChoiceProvider><PersonFrame /></ThemeChoiceProvider> : <Outlet />
+  },
+})
+
+const unavailableRoute = createRoute({
+  getParentRoute: () => personFrameRoute,
   path: UNAVAILABLE_PATH,
   validateSearch: (search: Record<string, unknown>) => ({ address: typeof search.address === 'string' ? search.address : undefined }),
   component: function Unavailable() {
@@ -1160,7 +1170,7 @@ const exploreRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
-  unavailableRoute,
+  personFrameRoute.addChildren([unavailableRoute]),
   featherbaseIndexRoute,
   loginRoute,
   agentConnectRoute,

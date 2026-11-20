@@ -1,4 +1,4 @@
-// #1235: the sign-in page and the Sign-in methods page after the 16-Nov UI
+// #1235: the sign-in page and the Sign-In Methods page after the 16-Nov UI
 // standard (docs/design/specs/signin-account.md). Test names carry the spec's
 // item numbers. Items 1 and 6's remembered-ID half live in
 // remember-delegated-id.test.tsx; item 7 (the app shell) belongs to #1227.
@@ -88,7 +88,7 @@ test('6: the email-and-password form shows its refusal the same way', async () =
   expect(screen.getByLabelText('Email or username')).toHaveValue('nobody@example.com')
 })
 
-// ── Sign-in methods ──────────────────────────────────────────────────────────
+// ── Sign-In Methods ──────────────────────────────────────────────────────────
 
 async function viewer(admin: Parameters<typeof renderApp>[1], createUser: (o: { email: string; roles: string[] }) => Promise<Parameters<typeof renderApp>[1]>, email: string) {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Store Reader' } })
@@ -98,7 +98,7 @@ async function viewer(admin: Parameters<typeof renderApp>[1], createUser: (o: { 
 test('8: the page title is a 24px page title with Change password beside it', async ({ admin, createUser }) => {
   const me = await viewer(admin, createUser, 'polish.title@example.com')
   await renderApp('/featherbase/account/sign-in-methods', me)
-  const title = await screen.findByRole('heading', { level: 1, name: 'Sign-in methods' })
+  const title = await screen.findByRole('heading', { level: 1, name: 'Sign-In Methods' })
   expect(title).toHaveClass('text-2xl', 'font-semibold')
   expect(screen.getByTestId('account-change-password')).toHaveTextContent('Change password')
 })

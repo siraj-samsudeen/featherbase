@@ -306,7 +306,7 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
     { id: 'theme-dark', label: 'Theme: dark (dark mode)', run: () => setTheme('dark') },
     { id: 'theme-device', label: 'Theme: same as device', run: () => setTheme('device') },
     ...(canUseAdmin ? [{ id: 'home', label: 'Go to Admin home', run: () => go('/featherbase/admin') }] : []),
-    { id: 'logout', label: 'Log out', run: () => void signOut() },
+    { id: 'logout', label: 'Log Out', run: () => void signOut() },
   ]
   const commandHits =
     search.trim().length > 1
