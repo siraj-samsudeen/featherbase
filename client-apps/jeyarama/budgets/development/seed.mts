@@ -239,7 +239,7 @@ for (const month of MONTHS) for (const [subcategory, base] of [['010203001', 31]
   await own('sales_budget', { budget_version: sales.row_id, plant: '9003', budget_month: month, subcategory, budget_quantity: Math.round(base * 40 * SEASON[MONTHS.indexOf(month)]), budget_value: round(base * SEASON[MONTHS.indexOf(month)]) })
 
 // 8. Closes and their manual lines.
-const close = (row: Record<string, unknown>) => own('month_close', { legal_company: '9000', version_no: 1, ...row })
+const close = (row: Record<string, unknown>) => own('monthly_close', { legal_company: '9000', version_no: 1, ...row })
 const north = stores('North').map(([plant]) => plant)
 const september = await close({ close_month: '2026-09-01', downloaded_at: '2026-10-08T12:40:00.000Z' })
 await act('paste_adjustments', { close: september.row_id, values: north.slice(0, 4).map(plant => ({ plant, gl_account: accountOf.get('electricity'), amount: 180000 + 20000 * wobble(plant), adjustment_type: 'Provision', reason: 'Provision for September electricity bills not received' })) })
@@ -259,7 +259,7 @@ await act('paste_adjustments', { close: october.row_id, values: [
   { plant: '9006', gl_account: accountOf.get('insurance'), amount: -150000, adjustment_type: 'Defer', reason: 'Annual insurance premium paid in October, spread over the year' },
 ] })
 await act('publish_close', { close: october.row_id })
-const { data: octoberLines } = await call<{ data: Row[] }>(`/api/table/budgets.close_adjustment?fields=["row_id","amount","reason","plant"]&limit_page_length=200&filters=${encodeURIComponent(JSON.stringify([['month_close', '=', october.row_id]]))}`)
+const { data: octoberLines } = await call<{ data: Row[] }>(`/api/table/budgets.monthly_close_adjustment?fields=["row_id","amount","reason","plant"]&limit_page_length=200&filters=${encodeURIComponent(JSON.stringify([['monthly_close', '=', october.row_id]]))}`)
 for (const line of octoberLines.filter(l => String(l.reason).includes('salary arrears')).slice(0, 3)) await act('match_adjustment', { adjustment: line.row_id, document: `19000${Math.abs(Math.round(Number(line.amount))) % 100000}`, amount: Number(line.amount) })
 const half = octoberLines.find(l => String(l.reason).includes('electricity bills') && l.plant === '9003')
 if (half) await act('match_adjustment', { adjustment: half.row_id, document: '1900041207', amount: Math.round(Number(half.amount) * 0.6) })

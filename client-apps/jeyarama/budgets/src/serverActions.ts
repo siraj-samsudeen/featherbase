@@ -70,21 +70,21 @@ export const actions = {
     const close = text(ctx, payload.close, 'which close')
     const values = list<Row>(ctx, payload.values, 'at least one line')
     for (const value of values)
-      await ctx.documents.create('budgets.close_adjustment', { month_close: close, plant: value.plant, gl_account: value.gl_account, amount: value.amount, adjustment_type: value.adjustment_type, reason: value.reason, owner: value.owner ?? ctx.user })
+      await ctx.documents.create('budgets.monthly_close_adjustment', { monthly_close: close, plant: value.plant, gl_account: value.gl_account, amount: value.amount, adjustment_type: value.adjustment_type, reason: value.reason, owner: value.owner ?? ctx.user })
     return { added: values.length }
   },
 
   /** An SAP posting settles some or all of an adjustment. */
   async match_adjustment(ctx: ActionContext) {
     const payload = ctx.payload as { adjustment?: unknown; document?: unknown; amount?: unknown }
-    const line = await ctx.documents.get('budgets.close_adjustment', text(ctx, payload.adjustment, 'which adjustment'))
+    const line = await ctx.documents.get('budgets.monthly_close_adjustment', text(ctx, payload.adjustment, 'which adjustment'))
     const document = text(ctx, payload.document, 'the SAP document')
     if (typeof payload.amount !== 'number' || !Number.isFinite(payload.amount) || payload.amount === 0) ctx.reject('Say the amount the document settles')
     if (Number(line.remaining_amount) === 0) ctx.reject('Nothing remains to match on this adjustment')
     const left = Number(line.remaining_amount)
     if (Math.sign(payload.amount as number) !== Math.sign(left) || Math.abs(payload.amount as number) > Math.abs(left))
       ctx.reject(`Only ${rupees(left)} remains on this adjustment: a match settles that or less`)
-    await ctx.documents.update('budgets.close_adjustment', { row_id: line.row_id, updated_at: line.updated_at,
+    await ctx.documents.update('budgets.monthly_close_adjustment', { row_id: line.row_id, updated_at: line.updated_at,
       matched_sap_document: line.matched_sap_document ? `${line.matched_sap_document}, ${document}` : document,
       matched_amount: Math.round((Number(line.matched_amount ?? 0) + (payload.amount as number)) * 100) / 100 })
     return { adjustment: line.row_id }
@@ -96,29 +96,29 @@ export const actions = {
     const change = payload.change ?? {}
     if (!Object.keys(change).length || Object.keys(change).some(column => !['adjustment_state', 'owner', 'adjustment_type'].includes(column))) ctx.reject('Together, adjustments change their state, owner or type')
     for (const id of ids) {
-      const line = await ctx.documents.get('budgets.close_adjustment', id)
-      await ctx.documents.update('budgets.close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, ...change })
+      const line = await ctx.documents.get('budgets.monthly_close_adjustment', id)
+      await ctx.documents.update('budgets.monthly_close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, ...change })
     }
     return { changed: ids.length }
   },
 
   async publish_close(ctx: ActionContext) {
-    const close = await ctx.documents.get('budgets.month_close', text(ctx, (ctx.payload as { close?: unknown }).close, 'which close'))
+    const close = await ctx.documents.get('budgets.monthly_close', text(ctx, (ctx.payload as { close?: unknown }).close, 'which close'))
     if (close.close_state !== 'Open') ctx.reject(`This close is already ${String(close.close_state).toLowerCase()}`)
-    await ctx.documents.update('budgets.month_close', { row_id: close.row_id, updated_at: close.updated_at, close_state: 'Published' })
+    await ctx.documents.update('budgets.monthly_close', { row_id: close.row_id, updated_at: close.updated_at, close_state: 'Published' })
     return { close: close.row_id }
   },
 
   /** The next version of a month, from its latest one, which it replaces. Adjustments stay with the version that first carried them. */
   async new_close_version(ctx: ActionContext) {
     const payload = ctx.payload as { close?: unknown; downloaded_at?: unknown }
-    const close = await ctx.documents.get('budgets.month_close', text(ctx, payload.close, 'which close'))
-    const versions = await all(ctx.documents, 'budgets.month_close', [['legal_company', '=', close.legal_company], ['close_month', '=', day(close.close_month)]], ['row_id', 'version_no'])
+    const close = await ctx.documents.get('budgets.monthly_close', text(ctx, payload.close, 'which close'))
+    const versions = await all(ctx.documents, 'budgets.monthly_close', [['legal_company', '=', close.legal_company], ['close_month', '=', day(close.close_month)]], ['row_id', 'version_no'])
     const latest = Math.max(...versions.map(v => Number(v.version_no)))
     if (Number(close.version_no) !== latest) ctx.reject(`Make a new version from the latest one, version ${latest}`)
     if (close.close_state === 'Open') ctx.reject('Publish this version before making the next one')
-    await ctx.documents.update('budgets.month_close', { row_id: close.row_id, updated_at: close.updated_at, close_state: 'Replaced' })
-    const made = await ctx.documents.create('budgets.month_close', { legal_company: close.legal_company, close_month: day(close.close_month), version_no: latest + 1,
+    await ctx.documents.update('budgets.monthly_close', { row_id: close.row_id, updated_at: close.updated_at, close_state: 'Replaced' })
+    const made = await ctx.documents.create('budgets.monthly_close', { legal_company: close.legal_company, close_month: day(close.close_month), version_no: latest + 1,
       downloaded_at: text(ctx, payload.downloaded_at, 'when the trial balance was downloaded'), close_state: 'Open' })
     return { close: made.row_id }
   },

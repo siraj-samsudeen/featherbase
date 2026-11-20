@@ -11,7 +11,7 @@ import { pageFor } from './ui'
 const NAV = [
   { page: 'pl', label: 'P&L' },
   { page: 'budgets', label: 'Budgets' },
-  { page: 'closes', label: 'Month Close' },
+  { page: 'closes', label: 'Monthly Close' },
   { page: 'adjustments', label: 'Adjustments' },
   { page: 'accounts', label: 'Accounts' },
   { page: 'lines', label: 'P&L Lines' },
@@ -21,7 +21,7 @@ const NAV = [
 ]
 /** The sidebar item a page belongs under. */
 const UNDER: Record<string, string> = { version: 'budgets', close: 'closes', rule: 'rules' }
-const RECORD_UNDER: Record<string, string> = { budget_version: 'budgets', pl_budget: 'budgets', sales_budget: 'budgets', budget_store_plan: 'budgets', month_close: 'closes', close_adjustment: 'adjustments',
+const RECORD_UNDER: Record<string, string> = { budget_version: 'budgets', pl_budget: 'budgets', sales_budget: 'budgets', budget_store_plan: 'budgets', monthly_close: 'closes', monthly_close_adjustment: 'adjustments',
   gl_account: 'accounts', gl_account_split: 'accounts', pl_line: 'lines', allocation_rule: 'rules', allocation_rule_segment: 'rules', allocation_rule_store: 'rules', store_area: 'areas' }
 
 export function BudgetsApp() {

@@ -24,7 +24,7 @@ export interface Account extends Base { account_code: string; account_name: stri
 export interface BudgetVersion extends Version, Base { version_name: string; fiscal_year: string; approved_by: string | null; based_on: string | null; source_file: string | null; note: string | null }
 export interface BudgetCell extends Base { budget_version: string; plant: string; budget_month: string; pl_line: string; amount: string | number }
 export interface Close extends Base { legal_company: string; close_month: string; version_no: number; downloaded_at: string; close_state: 'Open' | 'Published' | 'Replaced'; published_at: string | null; published_by: string | null; note: string | null }
-export interface Adjustment extends Base { month_close: string; withdrawn_in: string | null; plant: string; gl_account: string; pl_line: string | null; amount: string | number; adjustment_type: string; reason: string
+export interface Adjustment extends Base { monthly_close: string; withdrawn_in: string | null; plant: string; gl_account: string; pl_line: string | null; amount: string | number; adjustment_type: string; reason: string
   owner: string | null; corrects_sap_document: string | null; reverses: string | null; adjustment_state: string; matched_sap_document: string | null; matched_amount: string | number | null; remaining_amount: string | number | null; ticket: string | null }
 export interface Rule extends Base { rule_name: string; rule_kind: string; run_order: number; source_plant: string | null; source_line: string | null; target_line: string; basis: string; rate_per_sqft: string | number | null
   operating_region: string | null; starts_on: string; ends_on: string | null; note: string | null }
@@ -47,8 +47,8 @@ const table = <T,>(name: string, order_by?: string) => () => useQuery({ queryKey
 export const useLines = table<PlLine>('pl_line', 'line_order asc')
 export const useAccounts = table<Account>('gl_account', 'account_code asc')
 export const useVersions = table<BudgetVersion>('budget_version', 'covers_from desc')
-export const useCloses = table<Close>('month_close', 'close_month desc')
-export const useAdjustments = table<Adjustment>('close_adjustment', 'created_at asc')
+export const useCloses = table<Close>('monthly_close', 'close_month desc')
+export const useAdjustments = table<Adjustment>('monthly_close_adjustment', 'created_at asc')
 export const useRules = table<Rule>('allocation_rule', 'run_order asc')
 export const useRuleSegments = table<RuleSegment>('allocation_rule_segment')
 export const useRuleStores = table<RuleStore>('allocation_rule_store')

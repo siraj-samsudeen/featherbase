@@ -1,4 +1,4 @@
-# Budgets Month Close
+# Budgets Monthly Close
 
 ## Purpose
 Each month the financial controller closes the books from a trial balance and adds manual

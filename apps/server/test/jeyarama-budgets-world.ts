@@ -79,8 +79,8 @@ export async function world(editor: TestClient) {
   await save('budget_store_plan', { budget_version: version.row_id, plant: '9004', planned_opening_on: '2027-01-15', planned_area_sqft: 31000 })
   const sales = await save('budget_version', { version_name: 'FY27 Sales Original', budget_kind: 'Sales', fiscal_year: 'FY27', covers_from: '2026-04-01', covers_to: '2027-03-01' })
   await save('sales_budget', { budget_version: sales.row_id, plant: '9003', budget_month: '2026-10-01', subcategory: '010203001', budget_quantity: 420, budget_value: 315000 })
-  const close = await save('month_close', { legal_company: '9000', close_month: '2026-10-01', version_no: 1, downloaded_at: '2026-11-09T13:05:44.000Z' })
-  const adjustment = await save('close_adjustment', { month_close: close.row_id, plant: '9003', gl_account: account.row_id, amount: 42500, adjustment_type: 'Provision', reason: 'Provision for October electricity bill not received' })
+  const close = await save('monthly_close', { legal_company: '9000', close_month: '2026-10-01', version_no: 1, downloaded_at: '2026-11-09T13:05:44.000Z' })
+  const adjustment = await save('monthly_close_adjustment', { monthly_close: close.row_id, plant: '9003', gl_account: account.row_id, amount: 42500, adjustment_type: 'Provision', reason: 'Provision for October electricity bill not received' })
   return { manpower, salaries, warehouse, account, split, rule, area, version, budget, sales, close, adjustment }
 }
 

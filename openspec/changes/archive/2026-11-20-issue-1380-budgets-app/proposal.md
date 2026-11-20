@@ -36,7 +36,7 @@ The data model, the two roles and the decisions taken while the owner was away a
 
 - `budgets-access`: who opens Budgets, and what a viewer can and cannot do
 - `budget-versions`: budgets as versions that are approved, then revised, never edited
-- `budgets-month-close`: a month's close, its manual lines and matching them to SAP
+- `budgets-monthly-close`: a month's close, its manual lines and matching them to SAP
 - `budgets-close-rules`: the accounts, lines and areas a close is worked out from
 - `budgets-actuals`: actual figures read from the warehouse
 

@@ -8,7 +8,7 @@ import { to } from './route'
 import { fmtMonth } from './words'
 import { AccountLink, CloseLink, CompanyLink, LineLink, Page, PersonName, RegionLink, RuleLink, SegmentLink, StatePill, StoreLink, VersionLink, num } from './ui'
 
-const TICKET_TYPE = 'Monthly Closing Follow-up'
+const TICKET_TYPE = 'Monthly Close Follow-up'
 interface Ticket { row_id: string; title: string; ticket_state: string; assigned_to: string | null; kind: string }
 
 export function FollowUpsPage() {
@@ -17,7 +17,7 @@ export function FollowUpsPage() {
   const tickets = useQuery({ queryKey: ['budgets', 'follow-ups', type?.type_key], enabled: !!type, retry: false,
     queryFn: () => listAll<Ticket>('tickets.ticket', { fields: ['row_id', 'title', 'ticket_state', 'assigned_to', 'kind'], filters: [['kind', '=', type!.type_key]], order_by: 'created_at desc' }) })
   const open = (tickets.data ?? []).filter(ticket => !['Done', 'Closed', 'Resolved'].includes(ticket.ticket_state))
-  return <Page title="Follow-ups" count={type ? `${open.length} open` : undefined} status="Action items raised during a close, as tickets of the type Monthly Closing Follow-up.">
+  return <Page title="Follow-ups" count={type ? `${open.length} open` : undefined} status="Action items raised during a close, as tickets of the type Monthly Close Follow-up.">
     {types.isLoading ? <Skeleton label="Loading follow-ups" />
       : !type ? <Notice tone="info">The ticket type “{TICKET_TYPE}” is not set up on this instance yet. A System Manager adds it once, in the Tickets app's Ticket Types, with that name. Follow-ups raised with it are then listed here.</Notice>
       : <DataList caption="Open follow-ups" rows={open} rowKey={row => row.row_id} state={tickets.isLoading ? 'loading' : tickets.error ? 'error' : 'ready'} error={tickets.error?.message}
@@ -46,7 +46,7 @@ function value(column: { column_name: string; column_type: string; reference_tab
     case 'budgets.pl_line': return <LineLink id={id} />
     case 'budgets.gl_account': return <AccountLink id={id} />
     case 'budgets.budget_version': return <VersionLink id={id} />
-    case 'budgets.month_close': return <CloseLink id={id} />
+    case 'budgets.monthly_close': return <CloseLink id={id} />
     case 'budgets.allocation_rule': return <RuleLink id={id} />
     case undefined: break
     default: return <RecordLink table={column.reference_table} rowId={id} name={id} canOpen={column.reference_table.startsWith('budgets.') || canOpen(column.reference_table)} />
@@ -61,7 +61,7 @@ function value(column: { column_name: string; column_type: string; reference_tab
 
 /** The list a record belongs to, for the way back. */
 const LISTS: Record<string, [string, string]> = { budget_version: ['budgets', 'Budgets'], pl_budget: ['budgets', 'Budgets'], sales_budget: ['budgets', 'Budgets'], budget_store_plan: ['budgets', 'Budgets'],
-  month_close: ['closes', 'Month Close'], close_adjustment: ['adjustments', 'Adjustments'], gl_account: ['accounts', 'Accounts'], gl_account_split: ['accounts', 'Accounts'], pl_line: ['lines', 'P&L Lines'],
+  monthly_close: ['closes', 'Monthly Close'], monthly_close_adjustment: ['adjustments', 'Adjustments'], gl_account: ['accounts', 'Accounts'], gl_account_split: ['accounts', 'Accounts'], pl_line: ['lines', 'P&L Lines'],
   allocation_rule: ['rules', 'Allocation Rules'], allocation_rule_segment: ['rules', 'Allocation Rules'], allocation_rule_store: ['rules', 'Allocation Rules'], store_area: ['areas', 'Store Areas'] }
 
 export function RecordPage({ path }: { path: string }) {

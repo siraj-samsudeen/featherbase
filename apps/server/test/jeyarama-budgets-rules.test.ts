@@ -79,10 +79,10 @@ test('revising an approved version makes a draft for the chosen months that hold
 
 test('an adjustment takes its line from its account and starts with all of it remaining', async ({ createUser }) => {
   const { made, save, get } = await setup(createUser)
-  expect(await get('close_adjustment', made.adjustment.row_id)).toMatchObject({ pl_line: made.salaries.row_id, adjustment_state: 'Open' })
-  expect(Number((await get('close_adjustment', made.adjustment.row_id)).remaining_amount)).toBe(42500)
+  expect(await get('monthly_close_adjustment', made.adjustment.row_id)).toMatchObject({ pl_line: made.salaries.row_id, adjustment_state: 'Open' })
+  expect(Number((await get('monthly_close_adjustment', made.adjustment.row_id)).remaining_amount)).toBe(42500)
   const unclassified = await save('gl_account', { account_code: '49990002', account_name: 'Not Classified Yet', statement: 'P&L' })
-  await expect(save('close_adjustment', { month_close: made.close.row_id, plant: '9003', gl_account: unclassified.row_id, amount: 5, adjustment_type: 'Provision', reason: 'x' }))
+  await expect(save('monthly_close_adjustment', { monthly_close: made.close.row_id, plant: '9003', gl_account: unclassified.row_id, amount: 5, adjustment_type: 'Provision', reason: 'x' }))
     .rejects.toThrow('Not Classified Yet has no P&L line yet: classify it first')
 })
 
@@ -94,7 +94,7 @@ test('pasted adjustments become lines of the close; a viewer cannot paste', asyn
   ]
   await expect(act(viewer, 'paste_adjustments', { close: made.close.row_id, values })).rejects.toMatchObject({ status: 403 })
   expect(await act(editor, 'paste_adjustments', { close: made.close.row_id, values })).toEqual({ added: 2 })
-  const moved = (await rows('close_adjustment', [['reason', '=', 'Moved from head office']]))
+  const moved = (await rows('monthly_close_adjustment', [['reason', '=', 'Moved from head office']]))
   expect(moved.map(row => [row.plant, Number(row.amount), Number(row.remaining_amount), row.pl_line])).toEqual([['9003', 1200, 1200, made.salaries.row_id], ['9004', -1200, -1200, made.salaries.row_id]])
 })
 
@@ -103,10 +103,10 @@ test('matching an adjustment to an SAP document leaves what remains, and settles
   const id = made.adjustment.row_id
   await expect(act(viewer, 'match_adjustment', { adjustment: id, document: '1900019201', amount: 40000 })).rejects.toMatchObject({ status: 403 })
   await act(editor, 'match_adjustment', { adjustment: id, document: '1900019201', amount: 40000 })
-  let line = await get('close_adjustment', id)
+  let line = await get('monthly_close_adjustment', id)
   expect([line.adjustment_state, line.matched_sap_document, Number(line.matched_amount), Number(line.remaining_amount)]).toEqual(['Open', '1900019201', 40000, 2500])
   await act(editor, 'match_adjustment', { adjustment: id, document: '1900019388', amount: 2500 })
-  line = await get('close_adjustment', id)
+  line = await get('monthly_close_adjustment', id)
   expect([line.adjustment_state, line.matched_sap_document, Number(line.matched_amount), Number(line.remaining_amount)]).toEqual(['Posted In SAP', '1900019201, 1900019388', 42500, 0])
   await expect(act(editor, 'match_adjustment', { adjustment: id, document: '1', amount: 1 })).rejects.toThrow('Nothing remains to match on this adjustment')
 })
@@ -116,40 +116,40 @@ test('a match settles no more than what remains, and in the same direction', asy
   const id = made.adjustment.row_id
   await expect(act(editor, 'match_adjustment', { adjustment: id, document: '1900019201', amount: 999999 })).rejects.toThrow('Only ₹42,500.00 remains on this adjustment: a match settles that or less')
   await expect(act(editor, 'match_adjustment', { adjustment: id, document: '1900019201', amount: -500 })).rejects.toThrow('Only ₹42,500.00 remains on this adjustment: a match settles that or less')
-  expect(Number((await get('close_adjustment', id)).remaining_amount)).toBe(42500)
+  expect(Number((await get('monthly_close_adjustment', id)).remaining_amount)).toBe(42500)
 })
 
 test('several adjustments change state, owner or type together', async ({ createUser }) => {
   const { made, act, rows, editor } = await setup(createUser)
   await act(editor, 'paste_adjustments', { close: made.close.row_id, values: [{ plant: '9004', gl_account: '49990001', amount: 7, adjustment_type: 'Provision', reason: 'Second' }] })
-  const ids = (await rows('close_adjustment')).map(row => row.row_id)
+  const ids = (await rows('monthly_close_adjustment')).map(row => row.row_id)
   expect(await act(editor, 'set_adjustments', { adjustments: ids, change: { adjustment_state: 'Carried Forward', owner: editor.user } })).toEqual({ changed: 2 })
-  expect((await rows('close_adjustment')).map(row => [row.adjustment_state, row.owner])).toEqual([['Carried Forward', editor.user], ['Carried Forward', editor.user]])
+  expect((await rows('monthly_close_adjustment')).map(row => [row.adjustment_state, row.owner])).toEqual([['Carried Forward', editor.user], ['Carried Forward', editor.user]])
   await expect(act(editor, 'set_adjustments', { adjustments: ids, change: { amount: 1 } })).rejects.toThrow('Together, adjustments change their state, owner or type')
   // A line carried into the next month is settled like any other once SAP posts it; a released one stays released.
   await act(editor, 'match_adjustment', { adjustment: ids[0], document: '1900020001', amount: 42500 })
   await act(editor, 'set_adjustments', { adjustments: [ids[1]], change: { adjustment_state: 'Released' } })
   await act(editor, 'match_adjustment', { adjustment: ids[1], document: '1900020002', amount: 7 })
-  expect((await rows('close_adjustment')).map(row => row.adjustment_state)).toEqual(['Posted In SAP', 'Released'])
+  expect((await rows('monthly_close_adjustment')).map(row => row.adjustment_state)).toEqual(['Posted In SAP', 'Released'])
 })
 
 test('a close is one company, month and version; publishing makes it read-only; a new version replaces it', async ({ createUser }) => {
   const { made, save, act, get, rows, editor, viewer } = await setup(createUser)
-  await expect(save('month_close', { legal_company: '9000', close_month: '2026-10-01', version_no: 1, downloaded_at: '2026-11-10T05:00:00.000Z' }))
+  await expect(save('monthly_close', { legal_company: '9000', close_month: '2026-10-01', version_no: 1, downloaded_at: '2026-11-10T05:00:00.000Z' }))
     .rejects.toThrow("Oct'26 already has version 1 for this company: make a new version from it")
   await expect(act(viewer, 'publish_close', { close: made.close.row_id })).rejects.toMatchObject({ status: 403 })
   await act(editor, 'publish_close', { close: made.close.row_id })
-  expect(await get('month_close', made.close.row_id)).toMatchObject({ close_state: 'Published', published_by: editor.user })
-  await expect(save('close_adjustment', { month_close: made.close.row_id, plant: '9003', gl_account: '49990001', amount: 5, adjustment_type: 'Provision', reason: 'Late' }))
+  expect(await get('monthly_close', made.close.row_id)).toMatchObject({ close_state: 'Published', published_by: editor.user })
+  await expect(save('monthly_close_adjustment', { monthly_close: made.close.row_id, plant: '9003', gl_account: '49990001', amount: 5, adjustment_type: 'Provision', reason: 'Late' }))
     .rejects.toThrow("Oct'26 version 1 is published: make a new version to add or change its adjustments")
-  const line = await get('close_adjustment', made.adjustment.row_id)
-  await expect(save('close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, amount: 1 })).rejects.toThrow("Oct'26 version 1 is published")
+  const line = await get('monthly_close_adjustment', made.adjustment.row_id)
+  await expect(save('monthly_close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, amount: 1 })).rejects.toThrow("Oct'26 version 1 is published")
   // Matching to SAP is what happens after a close is published, so it stays open to that.
   await act(editor, 'match_adjustment', { adjustment: line.row_id, document: '1900019201', amount: 42500 })
   const { close } = await act<{ close: string }>(editor, 'new_close_version', { close: made.close.row_id, downloaded_at: '2026-11-12T06:30:00.000Z' })
-  expect(await get('month_close', close)).toMatchObject({ version_no: 2, close_state: 'Open', legal_company: '9000' })
-  expect((await get('month_close', made.close.row_id)).close_state).toBe('Replaced')
-  expect((await rows('close_adjustment', [['month_close', '=', made.close.row_id]])).length).toBe(1)
+  expect(await get('monthly_close', close)).toMatchObject({ version_no: 2, close_state: 'Open', legal_company: '9000' })
+  expect((await get('monthly_close', made.close.row_id)).close_state).toBe('Replaced')
+  expect((await rows('monthly_close_adjustment', [['monthly_close', '=', made.close.row_id]])).length).toBe(1)
   await expect(act(editor, 'new_close_version', { close: made.close.row_id, downloaded_at: '2026-11-13T06:30:00.000Z' })).rejects.toThrow("Make a new version from the latest one, version 2")
 })
 
@@ -202,15 +202,15 @@ test('who approved or published, and when, is the server\'s word, whatever a sav
   const approved = await get('budget_version', made.version.row_id)
   expect(approved.approved_by).toBe(editor.user)
   expect(Date.now() - Date.parse(String(approved.approved_at))).toBeLessThan(60_000)
-  await save('month_close', { row_id: made.close.row_id, updated_at: made.close.updated_at, close_state: 'Published', published_by: 'someone-else' })
-  expect((await get('month_close', made.close.row_id)).published_by).toBe(editor.user)
+  await save('monthly_close', { row_id: made.close.row_id, updated_at: made.close.updated_at, close_state: 'Published', published_by: 'someone-else' })
+  expect((await get('monthly_close', made.close.row_id)).published_by).toBe(editor.user)
 })
 
 test('a published close is not reopened or rewritten by a plain save', async ({ createUser }) => {
   const { made, save, act, get, editor } = await setup(createUser)
   await act(editor, 'publish_close', { close: made.close.row_id })
-  const close = await get('month_close', made.close.row_id)
-  const change = (row: Record<string, unknown>) => save('month_close', { row_id: close.row_id, updated_at: close.updated_at, ...row })
+  const close = await get('monthly_close', made.close.row_id)
+  const change = (row: Record<string, unknown>) => save('monthly_close', { row_id: close.row_id, updated_at: close.updated_at, ...row })
   await expect(change({ close_state: 'Open' })).rejects.toThrow("Oct'26 version 1 is published: it cannot be opened again; make a new version")
   await expect(change({ downloaded_at: '2026-11-20T00:00:00.000Z' })).rejects.toThrow("Oct'26 version 1 is published: only its note can change")
   await expect(change({ close_month: '2026-09-01' })).rejects.toThrow('only its note can change')
@@ -224,19 +224,19 @@ test('a figure or an adjustment stays with the version or close it was entered i
   await expect(save('pl_budget', { row_id: made.budget.row_id, updated_at: made.budget.updated_at, budget_version: draft.row_id, amount: 1 })).rejects.toThrow('A figure stays in the version it was entered in')
   await act(editor, 'publish_close', { close: made.close.row_id })
   const { close } = await act<{ close: string }>(editor, 'new_close_version', { close: made.close.row_id, downloaded_at: '2026-11-12T06:30:00.000Z' })
-  const line = await get('close_adjustment', made.adjustment.row_id)
-  await expect(save('close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, month_close: close, amount: 1 })).rejects.toThrow('An adjustment stays with the close that first carried it')
+  const line = await get('monthly_close_adjustment', made.adjustment.row_id)
+  await expect(save('monthly_close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, monthly_close: close, amount: 1 })).rejects.toThrow('An adjustment stays with the close that first carried it')
 })
 
 test('nobody deletes a version, a figure, a close or an adjustment', async ({ createUser }) => {
   const { made, editor } = await setup(createUser)
-  for (const [table, row] of [['pl_budget', made.budget], ['close_adjustment', made.adjustment], ['month_close', made.close], ['budget_version', made.version]] as const)
+  for (const [table, row] of [['pl_budget', made.budget], ['monthly_close_adjustment', made.adjustment], ['monthly_close', made.close], ['budget_version', made.version]] as const)
     await expect(editor.fetch(`/api/table/budgets.${table}/${row.row_id}`, { method: 'DELETE' }).then(r => r.status), table).resolves.toBe(403)
 })
 
 test('an account with no P&L line is not used for an adjustment, even when a line is named', async ({ createUser }) => {
   const { made, save } = await setup(createUser)
   await save('gl_account', { account_code: '49990002', account_name: 'Not Classified Yet', statement: 'P&L' })
-  await expect(save('close_adjustment', { month_close: made.close.row_id, plant: '9003', gl_account: '49990002', pl_line: made.salaries.row_id, amount: 5, adjustment_type: 'Provision', reason: 'x' }))
+  await expect(save('monthly_close_adjustment', { monthly_close: made.close.row_id, plant: '9003', gl_account: '49990002', pl_line: made.salaries.row_id, amount: 5, adjustment_type: 'Provision', reason: 'x' }))
     .rejects.toThrow('Not Classified Yet has no P&L line yet: classify it first')
 })

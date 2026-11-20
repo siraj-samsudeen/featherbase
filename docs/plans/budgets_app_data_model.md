@@ -17,7 +17,7 @@ Every name, person and amount in this document is made up.
  ┌──────┴─────────┐   ┌───────┴────────────────────────────┐   ┌────────────┴───────────┐
  │  THE CLOSE     │   │  BUDGETS                           │   │  RULES                 │
  │                │   │                                    │   │                        │
- │ Month Close    │   │ Budget Version                     │   │ P&L Line  (self-link)  │
+ │ Monthly Close    │   │ Budget Version                     │   │ P&L Line  (self-link)  │
  │   │            │   │   ├─ P&L Budget   (plant×month×line)│   │   ▲                    │
  │   └─ Close     │   │   ├─ Sales Budget (plant×month×     │   │ GL Account             │
  │      Adjustment│   │   │                subcategory)     │   │   └─ GL Account Split  │
@@ -39,13 +39,13 @@ one access list covers all of them.
 |---|---|---|
 | The store | Plant | Every figure is held against a plant. The store's name, site, format and company are read through the link. |
 | Opening date, planned or open | Site (`opened_on`, `status`) | Read through Plant → Site. Not repeated. |
-| Company of a close | Legal Company | Month Close links to it. |
-| Where SAP books a cost | Cost Centre, Profit Centre | Optional links on a Close Adjustment, as in the trial balance. |
+| Company of a close | Legal Company | Monthly Close links to it. |
+| Where SAP books a cost | Cost Centre, Profit Centre | Optional links on a Monthly Close Adjustment, as in the trial balance. |
 | Fashion, Grocery, Home | Business Line Segment | The basis of an allocation rule names segments. |
 | Rented or owned | Building (`tenure`), Rent Contract | Shown beside notional rent; not repeated. |
 | Merchandise level | Subcategory | The sales budget's lowest level. |
 | People | Person | Owner of an adjustment, who approved a version. Held as the person's ID and shown as a link, because Budgets people cannot read the Person table. |
-| Follow-ups | Ticket, Ticket type | One ticket type, "Monthly Closing Follow-up". |
+| Follow-ups | Ticket, Ticket type | One ticket type, "Monthly Close Follow-up". |
 
 ## Rules
 
@@ -251,7 +251,7 @@ Example: `BV-003` · plant 9003 Hilltop · Oct'26 · subcategory Kurti · 420 ·
 
 ## The Close
 
-### Month Close (`budgets.month_close`)
+### Monthly Close (`budgets.monthly_close`)
 
 One publication of one company's month. Republishing makes the next version. The download time
 is the cut: a posting entered in SAP after it is not part of this close. Key: series
@@ -273,14 +273,14 @@ A company, month and version appear once.
 Example: `CLOSE-0007` · company 9000 Example Retail · Oct'26 · version 2 · downloaded
 09-Nov-2026 18:35 IST · Published 11-Nov-2026.
 
-### Close Adjustment (`budgets.close_adjustment`)
+### Monthly Close Adjustment (`budgets.monthly_close_adjustment`)
 
 One manual line of a close. Key: series `ADJ-.#####`.
 
 | Column | Type | Notes |
 |---|---|---|
-| `month_close` | Reference → Month Close | The version that first carried it. Later versions of the month carry it too, until it is withdrawn. |
-| `withdrawn_in` | Reference → Month Close | The version that dropped it |
+| `monthly_close` | Reference → Monthly Close | The version that first carried it. Later versions of the month carry it too, until it is withdrawn. |
+| `withdrawn_in` | Reference → Monthly Close | The version that dropped it |
 | `plant` | Reference → Plant | The store |
 | `gl_account` | Reference → GL Account | |
 | `pl_line` | Reference → P&L Line | Starts as the account's line; changed for a regrouping |
@@ -290,7 +290,7 @@ One manual line of a close. Key: series `ADJ-.#####`.
 | `owner` | Data | The person's ID: who will see it through |
 | `cost_centre`, `profit_centre` | Reference | Optional, as in the trial balance |
 | `corrects_sap_document` | Data | The SAP document this line corrects |
-| `reverses` | Reference → Close Adjustment | Last month's line that this one reverses |
+| `reverses` | Reference → Monthly Close Adjustment | Last month's line that this one reverses |
 | `adjustment_state` | Choice | Open, Posted In SAP, Released, Carried Forward |
 | `matched_sap_document` | Data | The SAP posting that settled it |
 | `matched_amount` | Currency | |
@@ -301,20 +301,20 @@ Example: `ADJ-00231` · `CLOSE-0007` · plant 9003 Hilltop · account 49990001 �
 ₹42,500.00 · Provision · "Provision for October electricity bill not received" · owner Asha
 Verma · Open · remaining ₹42,500.00.
 
-### Ticket Type: Monthly Closing Follow-up
+### Ticket Type: Monthly Close Follow-up
 
-A row in the Tickets app's Ticket type table, not a table of its own. A Close Adjustment or a
-Month Close links to the ticket raised for it. Open follow-ups are a list in the Budgets app.
+A row in the Tickets app's Ticket type table, not a table of its own. A Monthly Close Adjustment or a
+Monthly Close links to the ticket raised for it. Open follow-ups are a list in the Budgets app.
 
 ## Dated And Versioned
 
 | Table | How change over time is held |
 |---|---|
-| Budget Version, Month Close | Numbered versions; an old version is never edited after it is approved or published |
+| Budget Version, Monthly Close | Numbered versions; an old version is never edited after it is approved or published |
 | P&L Budget, Sales Budget, Budget Store Plan | Belong to a version |
 | Store Area, Allocation Rule, GL Account Split | `starts_on` and `ends_on` |
 | GL Account, P&L Line | The current value, with the platform's row history |
-| Close Adjustment | State, plus the version that first carried it and the one that withdrew it |
+| Monthly Close Adjustment | State, plus the version that first carried it and the one that withdrew it |
 
 ## What Is Not Stored Here
 
@@ -358,7 +358,7 @@ What a Viewer sees on each screen:
 |---|---|---|
 | P&L, Store P&L, Bridge | Open, change month, region and version, drill into a figure | Nothing to change here |
 | Budgets | Open a version, compare versions | Revise, edit a figure, import, approve |
-| Month Close | Open a close, read its adjustments and after-close postings | Add or paste adjustments, match a posting, publish |
+| Monthly Close | Open a close, read its adjustments and after-close postings | Add or paste adjustments, match a posting, publish |
 | Accounts, P&L Lines | Read, group, filter | Classify, bulk change |
 | Allocation Rules, Store Areas | Read | Add, change, end |
 | Follow-ups | Read | Raise or close a ticket |
@@ -423,7 +423,7 @@ components for every app.
 Excel P&L does; a figure that must foot is shown exact.
 
 **13. The ticket type is set up on the instance.** The platform has no way for an app to ship a
-row of another app's table, so a System Manager adds "Monthly Closing Follow-up" once.
+row of another app's table, so a System Manager adds "Monthly Close Follow-up" once.
 
 **14. Nothing is deleted.** A Budget Editor cannot delete a version, a figure, a store plan,
 a close or an adjustment. A wrong figure is changed, a wrong version is withdrawn, and an
@@ -443,9 +443,34 @@ puts budget and actual side by side for every month, which needs sideways scroll
 the instance is set up, and it installs only where the organisation's tables exist. Until
 the owner decides, a System Manager installs it from Apps on the instance.
 
+**18. One family of names for the close: Monthly Close.** The table is Monthly Close, its
+manual line is Monthly Close Adjustment, and the ticket type is Monthly Close Follow-up. The
+owner's words were "monthly closing follow-up or something like that"; one stem is used so the
+same thing has the same word everywhere. On screen a line is called an adjustment once the
+page has said which close it belongs to.
+
 Known limit: saving figures costs about 80 ms each on a quiet machine, so a pasted block of
 a few hundred figures takes under a minute and a whole year for every store (about twelve
 thousand) is better loaded through the platform's import than pasted.
 
 Open with the controller, not decided here: whether Gross Margin includes Other Income. The
 P&L's order and each line's kind are data, so either answer is a change to rows.
+
+## Names And Their Siblings
+
+| New name | Where | Nearest existing sibling | Rule it follows |
+|---|---|---|---|
+| Budgets (`budgets`) | The app | Assets (`equipment`), Tickets (`tickets`) | An app is a plain plural noun; its tables are `<app>.<name>` |
+| Budget Editor, Budget Viewer | Roles | Assets Manager, Dash Reader, Featherbase Viewer | The owner's own names. Siblings start with the app's name as written ("Budgets ..."); these use the singular, as he said them |
+| Monthly Close, Monthly Close Adjustment, Monthly Close Follow-up | Two tables and a ticket type | Verification Count and Count Line (Assets) | One stem for one thing; a child's name starts with its parent's |
+| P&L Line, GL Account, GL Account Split, Allocation Rule, Allocation Rule Segment, Allocation Rule Store, Store Area, Budget Version, P&L Budget, Sales Budget, Budget Store Plan | Tables | Cost Centre, Profit Centre, Business Line Segment | Singular, Title Case, the finance team's own words |
+| `plant`, `legal_company`, `operating_region`, `business_line_segment`, `subcategory`, `cost_centre`, `profit_centre` | Link columns | The same column names on Profit Centre, Cost Centre and Site | A link is named after the table it links to |
+| `account_code`, `account_name`, `line_key`, `line_name`, `rule_name`, `version_name` | Key and title columns | `asset_name`, `type_name`, `class_name` (Assets) | An app table prefixes its name column with the thing; a code keeps the word "code" |
+| `starts_on`, `ends_on`, `planned_opening_on` | Day columns | `starts_on`, `ends_on` (Department, Job Assignment), `opened_on` (Site) | A calendar day ends in `_on` |
+| `downloaded_at`, `approved_at`, `published_at` | Instant columns | `approved_at`, `issued_at` (Assets) | An instant ends in `_at` |
+| `covers_from`, `covers_to` | A version's months | `freeze_from`, `freeze_to` (Assets), `valid_from` (Cost Centre) | A range is a `_from` and `_to` pair |
+| `version_state`, `close_state`, `adjustment_state` | State columns | `count_state`, `exception_state` (Assets), `ticket_state` (Tickets) | An app table's state is `<thing>_state` |
+| `budget_month`, `close_month` | Month columns | none | A month is held as its first day and named `_month` |
+| `area_sqft`, `rate_per_sqft`, `share_percent` | Measures | none | The unit is in the name |
+| FigureMatrix, PasteRows, FoldToggle, `fmtLakhs`, `pastedCells` | Shared components and helpers | DataList, FieldGrid, PathBar, `fmtINR`, `fmtExact` | A component is a PascalCase noun for what it shows; a formatter is `fmt` and its unit |
+| P&L, Budgets, Monthly Close, Adjustments, Accounts, P&L Lines, Allocation Rules, Store Areas, Follow-ups | Screens | Repair Jobs, Counts, Transfers (Assets) | Title Case, the plural of what the page lists |

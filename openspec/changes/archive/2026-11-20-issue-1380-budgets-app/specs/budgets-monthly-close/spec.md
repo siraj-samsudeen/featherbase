@@ -1,4 +1,4 @@
-# Budgets Month Close
+# Budgets Monthly Close
 
 ## Purpose
 

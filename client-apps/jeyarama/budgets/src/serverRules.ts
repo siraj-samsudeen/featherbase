@@ -120,7 +120,7 @@ async function prepareClose(ctx: Context) {
   const { row } = ctx
   row.close_month = monthStart(row.close_month)
   if (ctx.isNew || changed(ctx, 'close_month') || changed(ctx, 'version_no') || changed(ctx, 'legal_company')) {
-    const same = await ctx.documents.list('budgets.month_close', { filters: [['legal_company', '=', row.legal_company], ['close_month', '=', row.close_month], ['version_no', '=', row.version_no]], fields: ['row_id'], limit_page_length: 2 })
+    const same = await ctx.documents.list('budgets.monthly_close', { filters: [['legal_company', '=', row.legal_company], ['close_month', '=', row.close_month], ['version_no', '=', row.version_no]], fields: ['row_id'], limit_page_length: 2 })
     if (same.some(other => other.row_id !== row.row_id)) ctx.reject(`${fmtMonth(String(row.close_month))} already has version ${row.version_no} for this company: make a new version from it`)
   }
   const was = ctx.old?.close_state
@@ -143,8 +143,8 @@ const AFTER_PUBLISHING = ['adjustment_state', 'matched_sap_document', 'matched_a
 
 async function prepareAdjustment(ctx: Context) {
   const { row, old } = ctx
-  stays(ctx, 'month_close', 'An adjustment stays with the close that first carried it')
-  const close = await ctx.documents.get('budgets.month_close', String(row.month_close))
+  stays(ctx, 'monthly_close', 'An adjustment stays with the close that first carried it')
+  const close = await ctx.documents.get('budgets.monthly_close', String(row.monthly_close))
   if (close.close_state !== 'Open') {
     const kept = ['row_id', 'updated_at', 'updated_by', 'created_at', 'created_by', ...AFTER_PUBLISHING]
     if (ctx.isNew || Object.keys(row).some(column => !kept.includes(column) && !sameValue(row[column], old?.[column])))
@@ -171,7 +171,7 @@ export const validators = {
   'budgets.budget_version': prepareVersion,
   'budgets.pl_budget': prepareBudget,
   'budgets.sales_budget': prepareSalesBudget,
-  'budgets.month_close': prepareClose,
-  'budgets.close_adjustment': prepareAdjustment,
+  'budgets.monthly_close': prepareClose,
+  'budgets.monthly_close_adjustment': prepareAdjustment,
   'budgets.store_area': prepareArea,
 }

@@ -61,7 +61,7 @@ export function VersionLink({ id }: { id: string | null | undefined }) {
 export const closeName = (close: Pick<Close, 'close_month' | 'version_no'>) => `${fmtMonth(close.close_month)} Version ${close.version_no}`
 export function CloseLink({ id }: { id: string | null | undefined }) {
   const close = useCloses().data?.find(c => c.row_id === id)
-  return id ? <RecordLink table="budgets.month_close" rowId={id} name={close ? closeName(close) : id} /> : null
+  return id ? <RecordLink table="budgets.monthly_close" rowId={id} name={close ? closeName(close) : id} /> : null
 }
 export function RuleLink({ id }: { id: string }) {
   const rule = useRules().data?.find(r => r.row_id === id)
@@ -76,7 +76,7 @@ export function PersonName({ id }: { id: string | null | undefined }) {
 /** Where each of the app's own records opens: its page here. */
 export function pageFor(table: string, rowId: string): string | undefined {
   if (table === 'budgets.budget_version') return to('version', rowId)
-  if (table === 'budgets.month_close') return to('close', rowId)
+  if (table === 'budgets.monthly_close') return to('close', rowId)
   if (table === 'budgets.allocation_rule') return to('rule', rowId)
   if (table.startsWith('budgets.')) return to('record', `${table.slice(8)}/${rowId}`)
   return undefined
