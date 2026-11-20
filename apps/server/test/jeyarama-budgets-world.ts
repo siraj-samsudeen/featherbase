@@ -4,6 +4,7 @@
 import { resolve } from 'node:path'
 import { expect } from 'vitest'
 import { makeClient, type TestClient } from 'feather-testing-postgres'
+import manifest from '../../../client-apps/jeyarama/budgets/featherbase.json'
 import { version } from '../../../client-apps/jeyarama/budgets/package.json'
 import { installApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
@@ -81,4 +82,21 @@ export async function world(editor: TestClient) {
   const close = await save('month_close', { legal_company: '9000', close_month: '2026-10-01', version_no: 1, downloaded_at: '2026-11-09T13:05:44.000Z' })
   const adjustment = await save('close_adjustment', { month_close: close.row_id, plant: '9003', gl_account: account.row_id, amount: 42500, adjustment_type: 'Provision', reason: 'Provision for October electricity bill not received' })
   return { manpower, salaries, warehouse, account, split, rule, area, version, budget, sales, close, adjustment }
+}
+
+export type Create = (options: { roles: string[] }) => Promise<TestClient>
+/** The app installed, an editor and a viewer, the made-up world, and the calls the tests make. */
+export async function setup(createUser: Create) {
+  const admin = await createUser({ roles: ['System Manager'] })
+  await installBudgets(admin)
+  const editor = budgetsClient(await createUser({ roles: EDITOR }))
+  const viewer = budgetsClient(await createUser({ roles: VIEWER }))
+  const made = await world(editor)
+  const save = (table: string, row: Record<string, unknown>) => editor.post<Row>('/api/save_row', { table: `budgets.${table}`, row })
+  const act = <T = Record<string, unknown>>(client: TestClient, name: string, payload: unknown) =>
+    client.post<{ result: T }>(`/api/app_actions/budgets/${name}`, { idempotencyKey: crypto.randomUUID(), payload }).then(r => r.result)
+  const rows = (table: string, filters: unknown[] = []) =>
+    editor.get<{ data: Row[] }>(`/api/table/budgets.${table}?fields=${encodeURIComponent(JSON.stringify(['row_id', 'updated_at', ...manifest.tables.find(t => t.name === `budgets.${table}`)!.columns.map(c => c.column_name)]))}&filters=${encodeURIComponent(JSON.stringify(filters))}&order_by=${encodeURIComponent('created_at asc')}`).then(r => r.data)
+  const get = async (table: string, id: string) => (await rows(table, [['row_id', '=', id]]))[0]
+  return { admin, editor, viewer, made, save, act, rows, get }
 }

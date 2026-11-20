@@ -3,27 +3,9 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect } from 'vitest'
-import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import manifest from '../../../client-apps/jeyarama/budgets/featherbase.json'
 import { invalidateSources } from '../src/sources/registry'
-import { budgetsClient, EDITOR, installBudgets, VIEWER, world, type Row } from './jeyarama-budgets-world'
-
-type Create = (options: { roles: string[] }) => Promise<TestClient>
-async function setup(createUser: Create) {
-  const admin = await createUser({ roles: ['System Manager'] })
-  await installBudgets(admin)
-  const editor = budgetsClient(await createUser({ roles: EDITOR }))
-  const viewer = budgetsClient(await createUser({ roles: VIEWER }))
-  const made = await world(editor)
-  const save = (table: string, row: Record<string, unknown>) => editor.post<Row>('/api/save_row', { table: `budgets.${table}`, row })
-  const act = <T = Record<string, unknown>>(client: TestClient, name: string, payload: unknown) =>
-    client.post<{ result: T }>(`/api/app_actions/budgets/${name}`, { idempotencyKey: crypto.randomUUID(), payload }).then(r => r.result)
-  const rows = (table: string, filters: unknown[] = []) =>
-    editor.get<{ data: Row[] }>(`/api/table/budgets.${table}?fields=${encodeURIComponent(JSON.stringify(['row_id', 'updated_at', ...manifest.tables.find(t => t.name === `budgets.${table}`)!.columns.map(c => c.column_name)]))}&filters=${encodeURIComponent(JSON.stringify(filters))}&order_by=${encodeURIComponent('created_at asc')}`).then(r => r.data)
-  const get = async (table: string, id: string) => (await rows(table, [['row_id', '=', id]]))[0]
-  return { admin, editor, viewer, made, save, act, rows, get }
-}
+import { budgetsClient, EDITOR, setup, type Create } from './jeyarama-budgets-world'
 
 test('a P&L line: a working line rolls into a published line, and a subtotal says how it adds', async ({ createUser }) => {
   const { save, made } = await setup(createUser)
