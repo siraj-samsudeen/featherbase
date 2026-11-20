@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 import { askedAddress, unavailableHref } from 'shared'
 import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
+import { sql } from '../src/db'
 import { expectStatus } from './fixtures'
 import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { afterEach } from 'vitest'
@@ -113,6 +114,16 @@ describe('#1328: whether an app is turned off is said only to someone who could 
     const reader = await createUser({ email: 'ua-gated@example.test', roles: ['Bar Reader'] })
     expect(await status(reader, '/barproof/')).toBeNull()
     expect(await status(admin, '/barproof/')).toEqual({ title: 'Bar proof' })
+  })
+
+  // An installation record with no manifest (none to read a title or grants from): named by its name, and said
+  // to be off only to a System Manager. An address with no app in it names nothing.
+  test('an app whose record carries no manifest is named by its name, and only a System Manager is told', async ({ admin, createUser }) => {
+    await sql`insert into installed_app (name, enabled, manifest) values ('uabare', false, null)`
+    const stranger = await createUser({ email: 'ua-bare@example.test', roles: [] })
+    expect(await status(admin, '/uabare/')).toEqual({ title: 'uabare' })
+    expect(await status(stranger, '/uabare/')).toBeNull()
+    expect(await status(admin, '/')).toBeNull()
   })
 
   test('only a plain address is answered about, and only to someone signed in', async ({ api, admin }) => {

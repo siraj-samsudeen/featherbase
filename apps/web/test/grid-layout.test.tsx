@@ -97,8 +97,8 @@ test('UI-016: breadcrumbs navigate and the title bar tracks saved state', async 
   const app = await renderApp(rowPath(DT, id), admin)
   await waitFor(() => expect(field('title')).toHaveValue('grid fixture'), { timeout: 8000 })
   const crumbs = screen.getByTestId('breadcrumbs')
-  // The first crumb is the Table's module, as on its list page; this fixture has none, so Home.
-  expect(within(crumbs).getAllByRole('link')[0]).toHaveTextContent(/^Home$/)
+  // The first crumb is the Table's module (this fixture's is Core), as on its list page, never "Admin".
+  expect(within(crumbs).getAllByRole('link')[0]).toHaveTextContent(/^Core$/)
   expect(crumbs).toHaveTextContent(DT)
   // #476: the row is named by its title, never by its internal id.
   await waitFor(() => expect(crumbs).toHaveTextContent('grid fixture'))
