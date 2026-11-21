@@ -193,18 +193,6 @@ async function prepareAdjustment(ctx: Context) {
   if (left.settled && row.matched_sap_document && ['Open', 'Carried Forward'].includes(String(row.adjustment_state))) row.adjustment_state = 'Posted In SAP'
 }
 
-async function prepareArea(ctx: Context) {
-  const { row } = ctx
-  if (row.ends_on && day(row.ends_on) < day(row.starts_on)) ctx.reject(`This area ends before it starts (${fmtDay(day(row.starts_on))})`)
-  if (!(Number(row.area_sqft) > 0)) ctx.reject('An area is more than nothing', { area_sqft: 'Say the area in sq ft' })
-  // One area at a time for a store (or for one of its segments), whichever road the save takes.
-  const [from, to] = [day(row.starts_on), row.ends_on ? day(row.ends_on) : '9999-12-31']
-  const others = await all(ctx.documents, 'budgets.store_area', [['plant', '=', row.plant]], ['row_id', 'starts_on', 'ends_on', 'business_line_segment'])
-  const clash = others.find(other => other.row_id !== row.row_id && (other.business_line_segment ?? null) === (row.business_line_segment ?? null)
-    && day(other.starts_on) <= to && (other.ends_on ? day(other.ends_on) : '9999-12-31') >= from)
-  if (clash) ctx.reject(`This store already has an area from ${fmtDay(day(clash.starts_on))}${clash.ends_on ? ` to ${fmtDay(day(clash.ends_on))}` : ' with no end'}: end it first, or use Add An Area`)
-}
-
 export const validators = {
   'budgets.pl_line': prepareLine,
   'budgets.gl_account': prepareAccount,
@@ -213,5 +201,4 @@ export const validators = {
   'budgets.sales_budget': prepareSalesBudget,
   'budgets.monthly_close': prepareClose,
   'budgets.monthly_close_adjustment': prepareAdjustment,
-  'budgets.store_area': prepareArea,
 }

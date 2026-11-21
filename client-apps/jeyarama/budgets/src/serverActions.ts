@@ -134,22 +134,6 @@ export const actions = {
     }
     return { changed: ids.length }
   },
-
-  /** A store's area from a date; the area before it ends the day before. */
-  async add_store_area(ctx: ActionContext) {
-    const payload = ctx.payload as { plant?: unknown; starts_on?: unknown; area_sqft?: unknown; note?: unknown }
-    const plant = text(ctx, payload.plant, 'which store')
-    const starts = text(ctx, payload.starts_on, 'the day it starts')
-    const open = (await all(ctx.documents, 'budgets.store_area', [['plant', '=', plant]], ['row_id', 'updated_at', 'starts_on', 'ends_on', 'business_line_segment']))
-      .filter(row => !row.ends_on && !row.business_line_segment)
-    for (const before of open) {
-      if (day(before.starts_on) >= starts) ctx.reject(`This store already has an area from ${fmtDay(day(before.starts_on))}: a new one starts after it`)
-      const end = new Date(Date.parse(`${starts}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
-      await ctx.documents.update('budgets.store_area', { row_id: before.row_id, updated_at: before.updated_at, ends_on: end })
-    }
-    const made = await ctx.documents.create('budgets.store_area', { plant, starts_on: starts, area_sqft: payload.area_sqft, note: payload.note ?? null })
-    return { area: made.row_id }
-  },
 }
 
 const NOT_SET_UP = 'NotSetUpError'

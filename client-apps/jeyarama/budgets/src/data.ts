@@ -30,7 +30,8 @@ export interface Rule extends Base { rule_name: string; rule_kind: string; run_o
   operating_region: string | null; starts_on: string; ends_on: string | null; note: string | null }
 export interface RuleSegment extends Base { allocation_rule: string; business_line_segment: string }
 export interface RuleStore extends Base { allocation_rule: string; plant: string; treatment: string; share_percent: number | null; amount: string | number | null; area_sqft: number | null }
-export interface Area extends Base { plant: string; starts_on: string; ends_on: string | null; area_sqft: number; business_line_segment: string | null; note: string | null }
+/** A row of Organisation's Store Area: a store's area from a day. It has no end; the row in force is the latest that has started. */
+export interface Area { row_id: string; plant: string; starts_on: string; total_sqft: number | null; fashion_sqft: number | null; grocery_sqft: number | null; home_sqft: number | null; gold_sqft: number | null; note: string | null }
 export interface Person { row_id: string; full_name?: string | null; name?: string | null; email?: string | null }
 export interface Actual { company_code: string; close_month: string; close_version: number; plant_code: string; line_key: string; as_posted: number; as_published: number }
 
@@ -52,7 +53,6 @@ export const useAdjustments = table<Adjustment>('monthly_close_adjustment', 'cre
 export const useRules = table<Rule>('allocation_rule', 'run_order asc')
 export const useRuleSegments = table<RuleSegment>('allocation_rule_segment')
 export const useRuleStores = table<RuleStore>('allocation_rule_store')
-export const useAreas = table<Area>('store_area', 'starts_on desc')
 
 /** The versions to read to know some versions' figures: each one and every version it is based on. */
 export const withBases = (versions: BudgetVersion[] | undefined, ids: string[]) => [...new Set(ids.flatMap(id => chainOf(versions ?? [], id).map(v => v.row_id)))]
@@ -68,6 +68,8 @@ export const usePlants = instance<Plant>('Plant', ['plant_name', 'plant_type', '
 export const useSites = instance<Site>('Site', ['name', 'operating_region', 'opened_on'])
 export const useCompanies = instance<Named>('Legal Company', ['name'])
 export const useSegments = instance<Named>('Business Line Segment', ['name'])
+/** Store areas are the organisation's, not Budgets': read here, kept there. */
+export const useAreas = instance<Area>('Store Area', ['plant', 'starts_on', 'total_sqft', 'fashion_sqft', 'grocery_sqft', 'home_sqft', 'gold_sqft', 'note'])
 
 /** The people who can open Budgets: who an adjustment can belong to, and the names behind the IDs the tables hold. */
 export const usePeople = () => useQuery({ queryKey: [KEY, 'people'], staleTime: 300_000, queryFn: () => api.get<{ data: Person[] }>('/api/table_members/budgets.budget_version').then(result => result.data) })

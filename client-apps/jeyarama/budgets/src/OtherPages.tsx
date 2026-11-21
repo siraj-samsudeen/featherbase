@@ -62,7 +62,7 @@ function value(column: { column_name: string; column_type: string; reference_tab
 /** The list a record belongs to, for the way back. */
 const LISTS: Record<string, [string, string]> = { budget_version: ['budgets', 'Budgets'], pl_budget: ['budgets', 'Budgets'], sales_budget: ['budgets', 'Budgets'], budget_store_plan: ['budgets', 'Budgets'],
   monthly_close: ['closes', 'Monthly Close'], monthly_close_adjustment: ['adjustments', 'Adjustments'], gl_account: ['accounts', 'Accounts'], gl_account_split: ['accounts', 'Accounts'], pl_line: ['lines', 'P&L Lines'],
-  allocation_rule: ['rules', 'Allocation Rules'], allocation_rule_segment: ['rules', 'Allocation Rules'], allocation_rule_store: ['rules', 'Allocation Rules'], store_area: ['areas', 'Store Areas'] }
+  allocation_rule: ['rules', 'Allocation Rules'], allocation_rule_segment: ['rules', 'Allocation Rules'], allocation_rule_store: ['rules', 'Allocation Rules'] }
 
 export function RecordPage({ path }: { path: string }) {
   const [name, ...rest] = path.split('/')

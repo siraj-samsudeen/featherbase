@@ -23,14 +23,14 @@ Every name, person and amount in this document is made up.
  │      Adjustment│   │   │                subcategory)     │   │   └─ GL Account Split  │
  │        │       │   │   └─ Budget Store Plan              │   │ Allocation Rule        │
  │        └─ Ticket   │                                    │   │   ├─ Rule Segment      │
- │  (Monthly      │   │ Store Area (plant × from-date)      │   │   └─ Rule Store        │
+ │  (Monthly      │   │                                    │   │   └─ Rule Store        │
  │   Closing      │   │                                    │   │                        │
  │   Follow-up)   │   └────────────────────────────────────┘   └────────────────────────┘
  └────────────────┘
                  actual figures are read from the warehouse, never stored here
 ```
 
-Three groups, thirteen tables. Every table is named `budgets.<name>` and belongs to the app, so
+Three groups, twelve tables. Every table is named `budgets.<name>` and belongs to the app, so
 one access list covers all of them.
 
 ## What Is Linked, Not Copied
@@ -43,6 +43,7 @@ one access list covers all of them.
 | Where SAP books a cost | Cost Centre, Profit Centre | Optional links on a Monthly Close Adjustment, as in the trial balance. |
 | Fashion, Grocery, Home | Business Line Segment | The basis of an allocation rule names segments. |
 | Rented or owned | Building (`tenure`), Rent Contract | Shown beside notional rent; not repeated. |
+| A store's area over time | Store Area (Organisation) | Read for area-based allocation and every per-sq-ft charge, and shown read-only on the Store Areas screen with a link to the record. Kept in Organisation because every report needs it, not only finance. |
 | Merchandise level | Subcategory | The sales budget's lowest level. |
 | People | Person | Owner of an adjustment, who approved a version. Held as the person's ID and shown as a link, because Budgets people cannot read the Person table. |
 | Follow-ups | Ticket, Ticket type | One ticket type, "Monthly Close Follow-up". |
@@ -121,7 +122,7 @@ entry. Key: series `RULE-.###`.
 | `source_plant` | Reference → Plant | The pool: a warehouse's or head office's whole cost. Blank when the pool is a line. |
 | `source_line` | Reference → P&L Line | The pool: one line across the region, such as Marketing |
 | `target_line` | Reference → P&L Line | The line the stores receive it on |
-| `basis` | Choice | Store Area, Net Sales, Net Sales Of Named Segments, Inventory, Rate Per Sq Ft, Fixed Share |
+| `basis` | Choice | Store Area, Net Sales, Net Sales Of Named Segments, Inventory, Rate Per Sq Ft, Fixed Share. Store Area and Rate Per Sq Ft read Organisation's Store Area: the row in force is the latest `starts_on` on or before the day. |
 | `rate_per_sqft` | Currency | Rate Per Sq Ft only: rupees per sq ft a month |
 | `operating_region` | Reference → Operating Region | The stores that receive it |
 | `starts_on`, `ends_on` | Date | A changed rule is a new row from a date; the old one ends |
@@ -156,22 +157,6 @@ A store treated differently by one rule. Key: series.
 | `area_sqft` | Float | The area this rule charges for, when it is not the store's whole area |
 
 Example: `RULE-009` Notional Rent · plant 9003 Hilltop · Included.
-
-### Store Area (`budgets.store_area`)
-
-A store's trading area from a date. Area drives head office cost, notional rent and every
-per-sq-ft figure, and it changes when a floor opens. Key: series `AREA-.####`.
-
-| Column | Type | Notes |
-|---|---|---|
-| `plant` | Reference → Plant | |
-| `starts_on` | Date | |
-| `ends_on` | Date | Blank on the current row |
-| `area_sqft` | Float | |
-| `business_line_segment` | Reference → Business Line Segment | Blank for the whole store |
-| `note` | Text | Where the figure came from |
-
-Example: plant 9003 Hilltop · from 01-Apr-2026 · 24,500 sq ft.
 
 ## Budgets
 
@@ -312,7 +297,7 @@ Monthly Close links to the ticket raised for it. Open follow-ups are a list in t
 |---|---|
 | Budget Version, Monthly Close | Numbered versions; an old version is never edited after it is approved or published |
 | P&L Budget, Sales Budget, Budget Store Plan | Belong to a version |
-| Store Area, Allocation Rule, GL Account Split | `starts_on` and `ends_on` |
+| Allocation Rule, GL Account Split | `starts_on` and `ends_on` |
 | GL Account, P&L Line | The current value, with the platform's row history |
 | Monthly Close Adjustment | State, plus the version that first carried it and the one that withdrew it |
 
@@ -360,7 +345,8 @@ What a Viewer sees on each screen:
 | Budgets | Open a version, compare versions | Revise, edit a figure, import, approve |
 | Monthly Close | Open a close, read its adjustments and after-close postings | Add or paste adjustments, match a posting, publish |
 | Accounts, P&L Lines | Read, group, filter | Classify, bulk change |
-| Allocation Rules, Store Areas | Read | Add, change, end |
+| Allocation Rules | Read | Add, change, end |
+| Store Areas | Read, and open the Organisation record where they may | Nothing to change here: nobody edits a store's area in Budgets |
 | Follow-ups | Read | Raise or close a ticket |
 
 A control a person may not use is not drawn.
@@ -449,6 +435,14 @@ owner's words were "monthly closing follow-up or something like that"; one stem 
 same thing has the same word everywhere. On screen a line is called an adjustment once the
 page has said which close it belongs to.
 
+**19. Store area lives in Organisation, not in Budgets.** Budgets first had its own Store Area
+table. It is removed: a store's area feeds every reader (sales per sq ft, store format), so it
+cannot sit behind the finance ceiling, and one thing has one home. Budgets reads Organisation's
+Store Area (`plant`, `starts_on`, `total_sqft`, `fashion_sqft`, `grocery_sqft`, `home_sqft`,
+`gold_sqft`, `note`; no end date, the row in force is the latest that has started) and shows it
+read-only. A Budget Editor does not edit it. An allocation rule's own `area_sqft` for one
+store stays in Budgets: it is the part of a store a rule charges for, not the store's area.
+
 Known limit: saving figures costs about 80 ms each on a quiet machine, so a pasted block of
 a few hundred figures takes under a minute and a whole year for every store (about twelve
 thousand) is better loaded through the platform's import than pasted.
@@ -463,7 +457,7 @@ P&L's order and each line's kind are data, so either answer is a change to rows.
 | Budgets (`budgets`) | The app | Assets (`equipment`), Tickets (`tickets`) | An app is a plain plural noun; its tables are `<app>.<name>` |
 | Budget Editor, Budget Viewer | Roles | Assets Manager, Dash Reader, Featherbase Viewer | The owner's own names. Siblings start with the app's name as written ("Budgets ..."); these use the singular, as he said them |
 | Monthly Close, Monthly Close Adjustment, Monthly Close Follow-up | Two tables and a ticket type | Verification Count and Count Line (Assets) | One stem for one thing; a child's name starts with its parent's |
-| P&L Line, GL Account, GL Account Split, Allocation Rule, Allocation Rule Segment, Allocation Rule Store, Store Area, Budget Version, P&L Budget, Sales Budget, Budget Store Plan | Tables | Cost Centre, Profit Centre, Business Line Segment | Singular, Title Case, the finance team's own words |
+| P&L Line, GL Account, GL Account Split, Allocation Rule, Allocation Rule Segment, Allocation Rule Store, Budget Version, P&L Budget, Sales Budget, Budget Store Plan | Tables | Cost Centre, Profit Centre, Business Line Segment | Singular, Title Case, the finance team's own words |
 | `plant`, `legal_company`, `operating_region`, `business_line_segment`, `subcategory`, `cost_centre`, `profit_centre` | Link columns | The same column names on Profit Centre, Cost Centre and Site | A link is named after the table it links to |
 | `account_code`, `account_name`, `line_key`, `line_name`, `rule_name`, `version_name` | Key and title columns | `asset_name`, `type_name`, `class_name` (Assets) | An app table prefixes its name column with the thing; a code keeps the word "code" |
 | `starts_on`, `ends_on`, `planned_opening_on` | Day columns | `starts_on`, `ends_on` (Department, Job Assignment), `opened_on` (Site) | A calendar day ends in `_on` |

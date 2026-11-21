@@ -62,6 +62,9 @@ const ORGANISATION = [
   { name: 'Profit Centre', module: 'Organisation', id_pattern: 'field:profit_centre', title_column: 'name', columns: [data('profit_centre'), data('name'), ref('plant', 'Plant')] },
   { name: 'Cost Centre', module: 'Organisation', id_pattern: 'field:cost_centre', title_column: 'name', columns: [data('cost_centre'), data('name'), ref('plant', 'Plant')] },
   { name: 'Subcategory', module: 'Merchandising', id_pattern: 'prompt', title_column: 'subcategory', columns: [data('subcategory')] },
+  // Organisation's Store Area, with exactly its columns. It has no end date: the row in force is the latest that has started.
+  { name: 'Store Area', module: 'Organisation', id_pattern: 'AREA-.####', columns: [ref('plant', 'Plant'), { column_name: 'starts_on', column_type: 'Date' },
+    ...['total_sqft', 'fashion_sqft', 'grocery_sqft', 'home_sqft', 'gold_sqft'].map(column_name => ({ column_name, column_type: 'Float' })), { column_name: 'note', column_type: 'Text' }] },
 ]
 const fresh = new Set<string>()
 for (const table of ORGANISATION) if (!(await exists(table.name))) { await call('/api/table_def', table); fresh.add(table.name) }
@@ -85,6 +88,13 @@ await org('Legal Company', { code: '9000', name: 'Example Retail' })
 for (const [plant, name, type, site, region, opened] of PLACES) {
   await org('Site', { code: site, name, operating_region: region, ...(opened ? { opened_on: opened } : {}) })
   await org('Plant', { plant_code: plant, plant_name: name, plant_type: type, site, legal_company: '9000' })
+}
+// Store areas are the organisation's: one store with a floor added mid-year.
+for (const [plant, , type, , , , area] of PLACES) {
+  if (type !== 'Store') continue
+  const split = (total: number) => ({ total_sqft: total, fashion_sqft: Math.round(total * 0.45), grocery_sqft: Math.round(total * 0.35), home_sqft: Math.round(total * 0.2), gold_sqft: 0 })
+  if (plant === '9003') await org('Store Area', { plant, starts_on: '2019-06-01', ...split(21000), note: 'Lease plan' })
+  await org('Store Area', { plant, starts_on: plant === '9003' ? '2026-07-01' : '2016-01-01', ...split(area), note: plant === '9003' ? 'Second floor opened' : 'Lease plan' })
 }
 for (const [code, name] of [['10', 'Fashion & Lifestyle'], ['11', 'Grocery'], ['12', 'Home']]) await org('Business Line Segment', { code, name })
 for (const [id, name] of [['010203001', 'Kurti'], ['010203002', 'Saree'], ['020101001', 'Rice'], ['020101002', 'Pulses'], ['030101001', 'Cookware']]) await org('Subcategory', { row_id: id, subcategory: name })
@@ -174,15 +184,6 @@ for (const name of ['Drinking Water', 'Pallet Purchases', 'Festival Decoration']
 for (const name of ['Salary Payable', 'Capital Work In Progress']) await own('gl_account', { account_code: String(accountNo += 7), account_name: name, statement: 'Balance Sheet' })
 await own('gl_account_split', { gl_account: accountOf.get('staff_welfare'), plant: '9004', pl_line: 'electricity', share_percent: 70, starts_on: '2026-04-01' })
 await own('gl_account_split', { gl_account: accountOf.get('staff_welfare'), plant: '9004', pl_line: 'staff_welfare', share_percent: 30, starts_on: '2026-04-01' })
-
-// 5. Store areas, one store with a floor added mid-year.
-for (const [plant, , type, , , , area] of PLACES) {
-  if (type !== 'Store') continue
-  if (plant === '9003') {
-    await act('add_store_area', { plant, starts_on: '2019-06-01', area_sqft: 21000, note: 'Lease plan' })
-    await act('add_store_area', { plant, starts_on: '2026-07-01', area_sqft: area, note: 'Second floor opened' })
-  } else await act('add_store_area', { plant, starts_on: '2016-01-01', area_sqft: area, note: 'Lease plan' })
-}
 
 // 6. Allocation rules and standing charges.
 const rule = (row: Record<string, unknown>) => own('allocation_rule', { starts_on: '2026-04-01', ...row })

@@ -3,7 +3,7 @@
 import { Button, DataList, FigureMatrix, FoldToggle, Notice, RecordLink, Skeleton, TABLE_CLASSES, TextInput, cellClasses, fmtDate, fmtAsStored, fmtExact, headCellClasses, labelClasses, type FigureRow } from '@featherbase/shop-floor'
 import { Fragment, useState } from 'react'
 import { runAction } from './api'
-import { canEdit, useAccounts, useAreas, useLines, usePlants, useRefresh, useRuleSegments, useRuleStores, useRules, type Account, type Rule } from './data'
+import { canEdit, canOpen, useAccounts, useAreas, useLines, usePlants, useRefresh, useRuleSegments, useRuleStores, useRules, type Account, type Rule } from './data'
 import { to, useRoute } from './route'
 import { AccountLink, LineLink, Page, Pick, RegionLink, RuleLink, SegmentLink, StoreLink, num, storeName } from './ui'
 
@@ -166,57 +166,40 @@ export function RulePage({ id }: { id: string }) {
 }
 
 export function AreasPage() {
-  const refresh = useRefresh()
   const [areas, plants] = [useAreas(), usePlants()]
-  const [adding, setAdding] = useState<{ plant: string; starts_on: string; area_sqft: string; note: string } | null>(null)
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const whole = (areas.data ?? []).filter(area => !area.business_line_segment)
-  const stores = [...new Set(whole.map(area => area.plant))].sort()
-  const editor = canEdit()
-
-  async function add() {
-    setBusy(true); setError('')
-    try { await runAction('add_store_area', { plant: adding!.plant, starts_on: adding!.starts_on, area_sqft: Number(adding!.area_sqft), note: adding!.note || null }); setAdding(null); await refresh() }
-    catch (err) { setError(err instanceof Error ? err.message : 'Could not save') } finally { setBusy(false) }
-  }
-  return <Page title="Store Areas" count={`${stores.length} stores`} status="Each store's trading area, from the day it applied. Area drives head office cost, notional rent and every per-sq-ft figure."
-    actions={editor && <Button variant="primary" onClick={() => setAdding(adding ? null : { plant: plants.data?.find(p => p.plant_type === 'Store')?.row_id ?? '', starts_on: '', area_sqft: '', note: '' })}>Add An Area</Button>}>
-    {(areas.error || error) && <Notice tone="negative">{areas.error?.message ?? error}</Notice>}
-    {adding && <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void add() }}>
-      <Pick label="Store" value={adding.plant} onChange={value => setAdding({ ...adding, plant: value })} options={(plants.data ?? []).map(plant => ({ value: plant.row_id, label: `${storeName(plants.data, plant.row_id)} · ${plant.row_id}` }))} />
-      <label><span className={labelClasses('mb-1')}>From</span><TextInput type="date" required value={adding.starts_on} onChange={event => setAdding({ ...adding, starts_on: event.target.value })} /></label>
-      <label><span className={labelClasses('mb-1')}>Area (Sq Ft)</span><TextInput required inputMode="decimal" value={adding.area_sqft} onChange={event => setAdding({ ...adding, area_sqft: event.target.value })} /></label>
-      <label className="min-w-64 flex-1"><span className={labelClasses('mb-1')}>Where The Figure Came From</span><TextInput value={adding.note} onChange={event => setAdding({ ...adding, note: event.target.value })} /></label>
-      <Button type="submit" variant="primary" loading={busy}>Save The Area</Button>
-      <p className="basis-full text-sm text-ink-muted">The store's area before this one ends the day before.</p>
-    </form>}
-    {areas.isLoading ? <Skeleton label="Loading areas" lines={6} /> : !stores.length ? <p className="text-sm text-ink-subtle">No store has an area yet.</p> : <div className="max-w-full overflow-auto">
+  const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
+  const stores = [...new Set((areas.data ?? []).map(area => area.plant))].sort()
+  const sqft = (value: number | null) => (value == null ? '' : fmtAsStored(Number(value)))
+  const openable = canOpen('Store Area')
+  return <Page title="Store Areas" count={`${stores.length} stores`}
+    status="Each store's area, from the day it applied. Area drives head office cost, notional rent and every per-sq-ft figure. It is kept in Organisation, for every report; here it is read only.">
+    {areas.error && <Notice tone="info">Store areas are kept in Organisation's Store Area table, which this instance does not have yet or which you may not read.</Notice>}
+    {areas.isLoading ? <Skeleton label="Loading areas" lines={6} /> : !stores.length ? !areas.error && <p className="text-sm text-ink-subtle">No store has an area yet.</p> : <div className="max-w-full overflow-auto">
       <table aria-label="Store areas" className={TABLE_CLASSES}>
         <thead><tr>
           <th scope="col" className={headCellClasses({ first: true })}>Store</th>
-          <th scope="col" className={headCellClasses({ className: 'text-right' })}>Area (Sq Ft)</th>
           <th scope="col" className={headCellClasses()}>From</th>
-          <th scope="col" className={headCellClasses()}>To</th>
-          <th scope="col" className={headCellClasses({ last: true })}>Where The Figure Came From</th>
+          {['Total', 'Fashion', 'Grocery', 'Home', 'Gold'].map(name => <th key={name} scope="col" className={headCellClasses({ className: 'text-right' })}>{name} (Sq Ft)</th>)}
+          <th scope="col" className={headCellClasses({ last: true })}>Note</th>
         </tr></thead>
         <tbody>{stores.map((plant) => {
-          const history = whole.filter(area => area.plant === plant).sort((a, b) => b.starts_on.localeCompare(a.starts_on))
-          const [current, ...earlier] = history
+          // The row in force is the latest that has started; later rows are planned, earlier ones history.
+          const history = (areas.data ?? []).filter(area => area.plant === plant).sort((a, b) => b.starts_on.localeCompare(a.starts_on))
+          const current = history.find(area => area.starts_on.slice(0, 10) <= today) ?? history[history.length - 1]
+          const others = history.filter(area => area !== current)
           const isOpen = open.has(plant)
           const row = (area: typeof current, first: boolean) => <tr key={area.row_id} className="group">
             <th scope="row" className={cellClasses({ density: 'compact', first: true, className: first ? 'text-left font-normal whitespace-nowrap' : 'pl-9 text-left font-normal text-ink-subtle' })}>
-              {first ? <span className="inline-flex items-center gap-2"><StoreLink id={plant} />{earlier.length > 0 && <button type="button" aria-expanded={isOpen} onClick={() => { const next = new Set(open); if (!next.delete(plant)) next.add(plant); setOpen(next) }}
-                className="rounded-control text-[13px] text-action hover:underline focus-visible:outline-2 focus-visible:outline-focus">{earlier.length} earlier</button>}</span>
-                : <RecordLink table="budgets.store_area" rowId={area.row_id} name="Earlier area" />}
+              {first ? <span className="inline-flex items-center gap-2"><StoreLink id={plant} />{others.length > 0 && <FoldToggle open={isOpen} onToggle={() => { const next = new Set(open); if (!next.delete(plant)) next.add(plant); setOpen(next) }}
+                count={undefined}>{others.length} other {others.length === 1 ? 'date' : 'dates'}</FoldToggle>}</span>
+                : area.starts_on.slice(0, 10) > today ? 'Planned' : 'Earlier'}
             </th>
-            <td className={cellClasses({ density: 'compact', className: 'text-right tabular-nums' })}>{fmtAsStored(Number(area.area_sqft))}</td>
-            <td className={cellClasses({ density: 'compact', className: 'whitespace-nowrap' })}>{fmtDate(area.starts_on.slice(0, 10))}</td>
-            <td className={cellClasses({ density: 'compact', className: 'whitespace-nowrap' })}>{area.ends_on ? fmtDate(area.ends_on.slice(0, 10)) : ''}</td>
+            <td className={cellClasses({ density: 'compact', className: 'whitespace-nowrap' })}><RecordLink table="Store Area" rowId={area.row_id} name={fmtDate(area.starts_on.slice(0, 10))} canOpen={openable} /></td>
+            {[area.total_sqft, area.fashion_sqft, area.grocery_sqft, area.home_sqft, area.gold_sqft].map((value, index) => <td key={index} className={cellClasses({ density: 'compact', className: 'text-right tabular-nums' })}>{sqft(value)}</td>)}
             <td className={cellClasses({ density: 'compact', last: true, className: 'text-ink-muted' })}>{area.note ?? ''}</td>
           </tr>
-          return <Fragment key={plant}>{row(current, true)}{isOpen && earlier.map(area => row(area, false))}</Fragment>
+          return <Fragment key={plant}>{row(current, true)}{isOpen && others.map(area => row(area, false))}</Fragment>
         })}</tbody>
       </table>
     </div>}
