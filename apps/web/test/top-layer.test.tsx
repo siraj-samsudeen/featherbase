@@ -83,3 +83,18 @@ test('closed, the panel is gone and nothing is called again; a browser without t
   expect(screen.getByTestId('panel').getAttribute('popover')).toBeNull()
   expect(screen.getByTestId('panel').style.position).toBe('')
 })
+
+// #1349 (production, 20-Nov-2026): a count's peek card from a chip near a side panel's edge ran off the window.
+// `below-fit` keeps it in: placeCard's place, in the top layer.
+test('below-fit: under its control, and shifted left to stay in the window near the right edge', () => {
+  render(<Menu place="below-fit" />)
+  fireEvent.click(screen.getByText('Open'))
+  const panel = screen.getByTestId('panel')
+  expect(panel.getAttribute('popover')).toBe('manual')
+  expect([panel.style.left, panel.style.top, panel.style.width, panel.dataset.side]).toEqual(['20px', '136px', '340px', 'below'])
+  cleanup()
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ top: 400, bottom: 430, left: 1300, right: 1420, width: 120, height: 30, x: 1300, y: 400, toJSON: () => ({}) })
+  render(<Menu place="below-fit" />)
+  fireEvent.click(screen.getByText('Open'))
+  expect(screen.getByTestId('panel').style.left).toBe(`${1440 - 340 - 8}px`)
+})
