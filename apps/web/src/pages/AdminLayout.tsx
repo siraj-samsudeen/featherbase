@@ -14,7 +14,6 @@ import { ApiError, api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
   ago,
-  connectEventSink,
   frequentActions,
   displayEntry,
   recentActions,
@@ -48,33 +47,6 @@ import { walkShortLabel } from '../lib/step-labels'
 
 
 
-// #101 Phase 3: recorded actions also stream to the server's user_event log
-// (batched; a beacon carries the final batch through unload). The sink is
-// injected here so lib/recents stays network-free for unit tests. Auth rides
-// the bearer token for fetches and the sid cookie for beacons — sendBeacon
-// cannot set headers.
-connectEventSink({
-  // The queue fail-closes on this identity: only events recorded FOR this
-  // user are ever posted with this user's credentials.
-  currentUser: () => getSessionUser()?.row_id ?? null,
-  post: (events, recorded) => {
-    void api.post<{ timestamps: number[] }>('/api/events', { events }).then(
-      ({ timestamps }) => {
-        recorded(timestamps)
-        window.dispatchEvent(new Event('navigation-history-updated'))
-      },
-    ).catch(
-      () => {},
-    )
-  },
-  beacon: (events) => {
-    try {
-      navigator.sendBeacon('/api/events', new Blob([JSON.stringify({ events })], { type: 'application/json' }))
-    } catch {
-      /* best-effort */
-    }
-  },
-})
 
 // Admin shell: top navbar (brand + command bar + avatar) and a
 // home page sidebar. All Tables render inside <Outlet/>.

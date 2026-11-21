@@ -357,6 +357,8 @@ interface Ticket {
   sourceToken: string
   sourceHost: string
   targetHost: string
+  /** #1385: the Admin page the person chose on the source address, opened once signed in on the target. */
+  next?: string
 }
 const tickets = new Map<string, { ticket: Ticket; expires: number }>()
 
@@ -398,11 +400,11 @@ export function mintHandoffCode(session: HandoffSession): string {
 
 /** Step 1: a ticket for handing the session `sourceToken`, signed in on
  *  `sourceHost`, over to `targetHost`. */
-export function mintHandoffTicket(sourceToken: string, sourceHost: string, targetHost: string): string {
+export function mintHandoffTicket(sourceToken: string, sourceHost: string, targetHost: string, next?: string): string {
   const now = Date.now()
   sweep(tickets, now)
   const id = randomBytes(32).toString('base64url')
-  tickets.set(id, { ticket: { sourceToken, sourceHost, targetHost }, expires: now + HANDOFF_TTL_MS })
+  tickets.set(id, { ticket: { sourceToken, sourceHost, targetHost, ...(next ? { next } : {}) }, expires: now + HANDOFF_TTL_MS })
   return id
 }
 
@@ -418,13 +420,13 @@ export function ticketForTarget(id: string | undefined, host: string): Ticket {
 /** Step 3: on the source host, with this browser's sid cookie, spend the
  *  ticket and mint the code for its target, bound to the nonce's hash. Any
  *  refusal spends the ticket too. */
-export function bindHandoffTicket(id: string | undefined, sid: string | undefined, host: string, hash: string | undefined): { code: string; targetHost: string } {
+export function bindHandoffTicket(id: string | undefined, sid: string | undefined, host: string, hash: string | undefined): { code: string; targetHost: string; next?: string } {
   const held = id ? tickets.get(id) : undefined
   if (id) tickets.delete(id)
   if (!held || held.expires <= Date.now()) throw invalid()
   const { ticket } = held
   if (ticket.sourceHost !== host || !hash || !sameSecret(sid, ticket.sourceToken)) throw invalid()
-  return { code: mint({ kind: 'address', host: ticket.targetHost, nonceHash: hash, sourceToken: ticket.sourceToken }), targetHost: ticket.targetHost }
+  return { code: mint({ kind: 'address', host: ticket.targetHost, nonceHash: hash, sourceToken: ticket.sourceToken }), targetHost: ticket.targetHost, ...(ticket.next ? { next: ticket.next } : {}) }
 }
 
 // One code, one use. The entry is deleted whatever the outcome — an expired,

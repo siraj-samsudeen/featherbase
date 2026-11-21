@@ -5,7 +5,7 @@ import { needsEmail, rowHref, tableHref, type CommandDestinations, type CommandP
 import { PersonLabel, Search, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 import { RAIL_ROW, ROW_IDLE, TableTile } from './SidebarRail'
 import { RecentSub } from './RecentSub'
-import { useSignOut } from './TopBar'
+import { useOnAppAddress, useSignOut } from './TopBar'
 import { api, getSessionUser } from '../lib/api'
 import { ago, displayEntry, frequentActions, recentActions, recentSearches, recordAction, uniqueByDisplay, type RecentEntry } from '../lib/recents'
 import { useNavigationHistory } from '../lib/navigation-history'
@@ -82,7 +82,16 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
   // #1385: someone who cannot use the Admin is offered no Table and no record.
   const canUseAdmin = caps?.admin === true
   const tables = canUseAdmin ? inventory?.tables : undefined
-  const go = (href: string) => router.history.push(href)
+  // #1385 (Codex): on an app's own address the Admin is another address; an Admin destination opens there
+  // through the sign-in hand-off, which carries the page chosen (Open Admin's route).
+  const onAppAddress = useOnAppAddress()
+  const go = (href: string) => {
+    if (!onAppAddress || !/^\/featherbase\/admin(?:[/?#]|$)/.test(href)) return router.history.push(href)
+    void api.post<{ handoff?: string; landing?: string }>('/api/open_admin', { next: href }).then(
+      (to) => (to.handoff ? window.location.assign(to.handoff) : router.history.push(to.landing ?? href)),
+      () => router.history.push(href),
+    )
+  }
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)

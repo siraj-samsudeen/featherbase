@@ -75,7 +75,9 @@ async function signedIn(api: TestClient, admin: TestClient, name: string, roles:
     id,
     sid,
     token,
-    openAdmin: (at: string) => api.fetch(`${at}/api/open_admin`, { method: 'POST', headers: { authorization: `Bearer ${token}`, cookie: sid } }),
+    openAdmin: (at: string, next?: unknown) => api.fetch(`${at}/api/open_admin`, {
+      method: 'POST', headers: { authorization: `Bearer ${token}`, cookie: sid }, ...(next === undefined ? {} : { body: JSON.stringify({ next }) }),
+    }),
   }
 }
 
@@ -121,6 +123,30 @@ describe('POST /api/open_admin', () => {
   test('on the admin address, Admin is this address', async ({ api, admin }) => {
     const manager = await signedIn(api, admin, 'manager.here', ['System Manager'], ADMIN)
     expect(await (await manager.openAdmin(ADMIN)).json()).toEqual({ landing: '/featherbase/admin' })
+  })
+
+  // #1385 (Codex): a page chosen in the command bar on an app's address opens once signed in on the Admin address.
+  test('the page chosen on an app\'s address travels through the hand-off to the Admin address', async ({ api, admin }) => {
+    const both = await signedIn(api, admin, 'both.chooses', ['System Manager', 'Store Reader'], DASH)
+    const page = '/featherbase/admin/table/person?filters=%5B%5D'
+    const { handoff } = (await (await both.openAdmin(DASH, page)).json()) as Opened
+    const start = await api.fetch(handoff!)
+    const bind = await api.fetch(start.headers.get('location')!, { headers: { cookie: both.sid } })
+    const callback = new URL(bind.headers.get('location')!)
+    expect(callback.origin + callback.pathname).toBe(`${ADMIN}/featherbase/oauth-callback`)
+    expect(callback.searchParams.get('next')).toBe(page)
+    // Without a page, the hand-off carries none (the Admin's home opens).
+    const plain = (await (await both.openAdmin(DASH)).json()) as Opened
+    const plainStart = await api.fetch(plain.handoff!)
+    const plainBind = await api.fetch(plainStart.headers.get('location')!, { headers: { cookie: both.sid } })
+    expect(new URL(plainBind.headers.get('location')!).searchParams.has('next')).toBe(false)
+  })
+
+  test('only a plain page of Featherbase\'s own is carried; anything else opens the Admin\'s home', async ({ api, admin }) => {
+    const manager = await signedIn(api, admin, 'manager.next', ['System Manager'], ADMIN)
+    expect(await (await manager.openAdmin(ADMIN, '/featherbase/admin/jobs')).json()).toEqual({ landing: '/featherbase/admin/jobs' })
+    for (const next of ['//evil.example/featherbase/', 'https://evil.example/featherbase/', '/dash/', '/featherbase//evil', '/featherbase/a\\b', '/featherbase/a\nb', `/featherbase/${'a'.repeat(2000)}`, 42])
+      expect(await (await manager.openAdmin(ADMIN, next)).json(), String(next)).toEqual({ landing: '/featherbase/admin' })
   })
 
   test('with no list, Admin is this address', async ({ api, admin }) => {
