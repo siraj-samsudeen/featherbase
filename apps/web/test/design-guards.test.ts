@@ -458,6 +458,8 @@ describe('the Admin shell', () => {
   // #489: the shared bar, which the Admin screens wear; #1253: drawn into the sidebar.
   const topBar = source('src/components/TopBar.tsx')
   const rail = source('src/components/SidebarRail.tsx')
+  // #1385 (slice 2): Recently Opened, Frequent and Saved Views, the platform's sidebar defaults.
+  const defaults = source('src/components/SidebarDefaults.tsx')
   test("#1253: a page with a sidebar has no top bar: the bar draws into the sidebar's top and foot", () => {
     expect(topBar).toMatch(/createPortal\([\s\S]{0,800}slots\.top/)
     expect(topBar).toMatch(/createPortal\([\s\S]{0,800}slots\.foot/)
@@ -506,7 +508,7 @@ describe('the Admin shell', () => {
     expect(heading).toMatch(/\btext-ink-muted\b/)
     expect(heading).not.toMatch(/\bfont-(?:semibold|bold|medium)\b|\buppercase\b/)
     expect(tagWith(shell, 'sidebar-group-heading')).toMatch(/className=\{SIDEBAR_HEADING\}/)
-    expect(tagWith(shell, 'sidebar-recents-heading')).toMatch(/className=\{SIDEBAR_HEADING\}/)
+    expect(tagWith(defaults, 'sidebar-recents-heading')).toMatch(/className=\{SIDEBAR_HEADING\}/)
     expect(tagWith(shell, 'sidebar-item-icon')).toMatch(/GROUP_TONE/)
     expect(/ROW_SELECTED = '([^']+)'/.exec(rail)?.[1]).toMatch(/\bbg-surface\b.*\bshadow-sm\b/)
     expect(shell).not.toMatch(/border-t border-border px-2/)
@@ -542,18 +544,19 @@ describe('Home and the sidebar speak one kind vocabulary', () => {
       expect(kinds).toMatch(new RegExp(`${kind}: \\{ label: '[^']+', Icon: ${icon}, tint: 'bg-${tint}-tint text-${tint}' \\}`))
   })
   test('the feed, the sidebar and the command bar draw kinds from it, never their own labels', () => {
-    // #1385: the command bar is the shared CommandPalette; the sidebar stays in AdminLayout.
+    // #1385: the command bar is the shared CommandPalette; the sidebar's recall is SidebarDefaults.
     for (const file of ['src/components/ActivityFeed.tsx', 'src/components/CommandPalette.tsx']) {
       const text = source(file)
       expect(text).toMatch(/<KindIcon kind=/)
       expect(text).not.toMatch(/KIND_LABEL|KIND_STYLE|RECENT_KIND_LABEL/)
     }
-    expect(source('src/pages/AdminLayout.tsx')).not.toMatch(/KIND_LABEL|KIND_STYLE|RECENT_KIND_LABEL/)
+    for (const file of ['src/pages/AdminLayout.tsx', 'src/components/SidebarDefaults.tsx'])
+      expect(source(file)).not.toMatch(/KIND_LABEL|KIND_STYLE|RECENT_KIND_LABEL/)
   })
   test('section headings on Home and in the sidebar are sentence case, never all capitals', () => {
     for (const file of ['src/components/HomeRecall.tsx', 'src/components/HomePageView.tsx', 'src/components/ActivityFeed.tsx'])
       expect(source(file)).not.toMatch(/\buppercase\b/)
-    const shell = source('src/pages/AdminLayout.tsx')
-    expect(tagWith(shell, 'sidebar-recents-heading')).not.toMatch(/\buppercase\b/)
+    const defaults = source('src/components/SidebarDefaults.tsx')
+    expect(tagWith(defaults, 'sidebar-recents-heading')).not.toMatch(/\buppercase\b/)
   })
 })

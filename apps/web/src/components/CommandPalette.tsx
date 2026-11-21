@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { useRouter } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { needsEmail, rowHref, tableHref, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { PersonLabel, Search, inputClasses, raisedClasses } from '@featherbase/shop-floor'
 import { RAIL_ROW, ROW_IDLE, TableTile } from './SidebarRail'
 import { RecentSub } from './RecentSub'
-import { useOnAppAddress, useSignOut } from './TopBar'
+import { useSignOut } from './TopBar'
+import { useGoTo } from './go-to'
 import { api, getSessionUser } from '../lib/api'
 import { ago, displayEntry, frequentActions, recentActions, recentSearches, recordAction, uniqueByDisplay, type RecentEntry } from '../lib/recents'
 import { useNavigationHistory } from '../lib/navigation-history'
@@ -56,7 +56,6 @@ export function CommandField({ rail, onOpen }: { rail: boolean; onOpen: () => vo
  *  open: without the Admin, no records, Tables or Admin commands. */
 export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const signOut = useSignOut()
-  const router = useRouter()
   const user = getSessionUser()
   // The command bar's theme commands; the bar's own toggle is in TopBar.
   const { set: setTheme } = useThemeChoice()
@@ -82,16 +81,8 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
   // #1385: someone who cannot use the Admin is offered no Table and no record.
   const canUseAdmin = caps?.admin === true
   const tables = canUseAdmin ? inventory?.tables : undefined
-  // #1385 (Codex): on an app's own address the Admin is another address; an Admin destination opens there
-  // through the sign-in hand-off, which carries the page chosen (Open Admin's route).
-  const onAppAddress = useOnAppAddress()
-  const go = (href: string) => {
-    if (!onAppAddress || !/^\/featherbase\/admin(?:[/?#]|$)/.test(href)) return router.history.push(href)
-    void api.post<{ handoff?: string; landing?: string }>('/api/open_admin', { next: href }).then(
-      (to) => (to.handoff ? window.location.assign(to.handoff) : router.history.push(to.landing ?? href)),
-      () => router.history.push(href),
-    )
-  }
+  // #1385: by address, with the hand-off on an app's own address (go-to.ts).
+  const go = useGoTo()
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
