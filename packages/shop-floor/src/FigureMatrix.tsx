@@ -107,8 +107,8 @@ export function FigureMatrix({ label, rowHeading, columns, rows, format = plain,
             dense && 'max-w-44 overflow-hidden text-ellipsis text-xs!') })}
           title={dense ? row.label : undefined} style={depth ? { paddingLeft: 12 + depth * 20 } : undefined}>
           {folds
-            ? <span className="inline-flex items-center gap-1">{row.header
-                ? <><FoldToggle open={isOpen} onToggle={() => toggle(row.id)} label={row.label} />{row.header}</>
+            ? <span className="flex max-w-full min-w-0 items-center gap-1">{row.header
+                ? <><FoldToggle open={isOpen} onToggle={() => toggle(row.id)} label={row.label} className="shrink-0" /><span className="min-w-0 truncate">{row.header}</span></>
                 : <FoldToggle open={isOpen} onToggle={() => toggle(row.id)}>{row.label}</FoldToggle>}</span>
             : <span className={cx(depth === 0 && 'pl-[18px]')}>{row.header ?? row.label}</span>}
         </th>

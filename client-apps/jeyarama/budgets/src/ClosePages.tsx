@@ -7,7 +7,7 @@ import { runAction } from './api'
 import { canEdit, useAccounts, useAdjustments, useCloses, usePeople, usePlants, useRefresh, type Adjustment, type Close } from './data'
 import { ADJUSTMENT_TYPES, amountOf, checkAdjustments, type AdjustmentValue, type CheckedRow } from './pasteRules'
 import { to, useRoute } from './route'
-import { AccountLink, CloseLink, CompanyLink, LineLink, Page, PersonName, Pick, StatePill, StoreLink, closeName, dayInIndia, num, storeName } from './ui'
+import { AccountLink, CloseLink, CompanyLink, Page, PersonName, Pick, StatePill, StoreLink, closeName, dayInIndia, num, storeName } from './ui'
 import { fmtMonth } from './words'
 
 const STATES = ['Open', 'Posted In SAP', 'Released', 'Carried Forward']
@@ -63,7 +63,8 @@ function AdjustmentTable({ rows, groupBy, editable, label, typeFixed = false }: 
   }
   const asked = Object.fromEntries(Object.entries(change).filter(([, value]) => value))
   if (!rows.length) return <p className="text-sm text-ink-subtle">No adjustments here.</p>
-  const columns = ['Store', 'Account', 'P&L Line', 'Type', 'Amount', 'State', 'Remaining', 'Owner', ...(editable ? [''] : [])]
+  // The P&L line is the account's, and is on the adjustment's own page: leaving it out keeps an open group inside the page.
+  const columns = ['Store', 'Account', 'Type', 'Amount', 'State', 'Remaining', 'Owner', ...(editable ? [''] : [])]
 
   return <div className="flex min-w-0 flex-col gap-3">
     {error && <Notice tone="negative">{error}</Notice>}
@@ -76,10 +77,12 @@ function AdjustmentTable({ rows, groupBy, editable, label, typeFixed = false }: 
       <Button onClick={() => setChosen(new Set())}>Clear The Selection</Button>
     </div>}
     <div className="max-w-full overflow-auto">
-      <table aria-label={label} className={TABLE_CLASSES}>
+      {/* A fixed layout: the table is exactly as wide as its space, text wraps inside its column, and amounts stay on one line. */}
+      <table aria-label={label} className={`${TABLE_CLASSES} table-fixed`}>
+        <colgroup>{(editable ? [15, 11, 13, 11, 12, 12, 12, 8, 6] : [18, 12, 14, 12, 12, 11, 12, 9]).map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}</colgroup>
         <thead><tr>
-          <th scope="col" className={headCellClasses({ first: true })}>{({ reason: 'Reason', adjustment_type: 'Type', plant: 'Store', adjustment_state: 'State', month: 'Month' })[groupBy]}, Then Adjustment</th>
-          {columns.map((column, index) => <th key={index} scope="col" className={headCellClasses({ last: index === columns.length - 1, className: ['Amount', 'Remaining'].includes(column) ? 'text-right' : '' })}>{column}</th>)}
+          <th scope="col" className={headCellClasses({ first: true })}>Adjustment</th>
+          {columns.map((column, index) => <th key={index} scope="col" className={headCellClasses({ last: index === columns.length - 1, className: `px-2! ${['Amount', 'Remaining'].includes(column) ? 'text-right' : ''}` })}>{column}</th>)}
         </tr></thead>
         <tbody>
           {[...groups.entries()].map(([group, lines]) => {
@@ -88,35 +91,38 @@ function AdjustmentTable({ rows, groupBy, editable, label, typeFixed = false }: 
             const types = [...new Set(lines.map(line => line.adjustment_type))]
             return <Fragment key={group}>
               <tr className="group">
-                <th scope="row" colSpan={4} className={cellClasses({ density: 'compact', first: true, className: 'text-left font-medium' })}>
-                  <span className="inline-flex items-center gap-2">
-                    {editable && <input type="checkbox" aria-label={`Select all of ${group}`} checked={all} onChange={() => setChosen(flip(chosen, lines.map(l => l.row_id), !all))} />}
-                    <FoldToggle open={isOpen} onToggle={() => setOpen(flip(open, [group]))} count={`${lines.length} ${lines.length === 1 ? 'line' : 'lines'}`}>{group || 'No Reason Given'}</FoldToggle>
+                <th scope="row" colSpan={3} className={cellClasses({ density: 'compact', first: true, className: 'h-auto! py-1.5 text-left font-medium' })}>
+                  {/* The checkbox stays beside the first line of a reason that wraps; the count follows the words. */}
+                  <span className="flex items-start gap-2">
+                    {editable && <input type="checkbox" className="mt-1 shrink-0" aria-label={`Select all of ${group}`} checked={all} onChange={() => setChosen(flip(chosen, lines.map(l => l.row_id), !all))} />}
+                    <span className="min-w-0 [&>button]:mr-2 [&>button]:items-start [&>button>svg]:mt-1">
+                      <FoldToggle open={isOpen} onToggle={() => setOpen(flip(open, [group]))} count={`${lines.length} ${lines.length === 1 ? 'line' : 'lines'}`}>{group || 'No Reason Given'}</FoldToggle>
+                    </span>
                   </span>
                 </th>
-                <td className={cellClasses({ density: 'compact', className: 'text-ink-subtle' })}>{groupBy === 'adjustment_type' ? '' : types.join(', ')}</td>
-                <td className={cellClasses({ density: 'compact', className: 'text-right font-semibold tabular-nums whitespace-nowrap' })}>{fmtExact(lines.reduce((sum, line) => sum + num(line.amount), 0))}</td>
+                <td className={cellClasses({ density: 'compact', className: 'px-2! text-ink-subtle' })}>{groupBy === 'adjustment_type' ? '' : types.join(', ')}</td>
+                <td className={cellClasses({ density: 'compact', className: 'px-2! text-right font-semibold tabular-nums whitespace-nowrap' })}>{fmtExact(lines.reduce((sum, line) => sum + num(line.amount), 0))}</td>
                 <td className={cellClasses({ density: 'compact' })} />
-                <td className={cellClasses({ density: 'compact', className: 'text-right font-semibold tabular-nums whitespace-nowrap' })}>{fmtExact(lines.reduce((sum, line) => sum + num(line.remaining_amount), 0))}</td>
+                <td className={cellClasses({ density: 'compact', className: 'px-2! text-right font-semibold tabular-nums whitespace-nowrap' })}>{fmtExact(lines.reduce((sum, line) => sum + num(line.remaining_amount), 0))}</td>
                 <td className={cellClasses({ density: 'compact', last: !editable })} />{editable && <td className={cellClasses({ density: 'compact', last: true })} />}
               </tr>
               {isOpen && lines.map(line => <Fragment key={line.row_id}>
                 <tr className="group">
-                  <td className={cellClasses({ density: 'compact', first: true, className: 'pl-9 whitespace-nowrap' })}>
+                  <td className={cellClasses({ density: 'compact', first: true, className: 'h-auto! py-1.5 pl-6' })}>
                     <span className="inline-flex items-center gap-2">
                       {editable && <input type="checkbox" aria-label={`Select ${line.row_id}`} checked={chosen.has(line.row_id)} onChange={() => setChosen(flip(chosen, [line.row_id]))} />}
                       <RecordLink table="budgets.monthly_close_adjustment" rowId={line.row_id} name={line.row_id} detail={groupBy === 'reason' ? undefined : line.reason} />
                     </span>
                   </td>
-                  <td className={cellClasses({ density: 'compact', className: 'whitespace-nowrap' })}><StoreLink id={line.plant} /></td>
-                  <td className={cellClasses({ density: 'compact', className: 'whitespace-nowrap' })}><AccountLink id={line.gl_account} /></td>
-                  <td className={cellClasses({ density: 'compact', className: 'whitespace-nowrap' })}><LineLink id={line.pl_line} /></td>
-                  <td className={cellClasses({ density: 'compact' })}>{line.adjustment_type}</td>
-                  <td className={cellClasses({ density: 'compact', className: 'text-right tabular-nums whitespace-nowrap' })}>{fmtExact(num(line.amount))}</td>
-                  <td className={cellClasses({ density: 'compact' })}><StatePill state={line.adjustment_state} /></td>
-                  <td className={cellClasses({ density: 'compact', className: 'text-right tabular-nums whitespace-nowrap' })}>{fmtExact(num(line.remaining_amount))}</td>
-                  <td className={cellClasses({ density: 'compact', last: !editable, className: 'whitespace-nowrap' })}><PersonName id={line.owner} /></td>
-                  {editable && <td className={cellClasses({ density: 'compact', last: true })}>{num(line.remaining_amount) !== 0 && <Button variant="quiet" onClick={() => setMatching({ id: line.row_id, document: '', amount: String(num(line.remaining_amount)) })}>Match To SAP</Button>}</td>}
+                  <td className={cellClasses({ density: 'compact', className: 'h-auto! px-2! py-1.5' })}><StoreLink id={line.plant} /></td>
+                  <td className={cellClasses({ density: 'compact', className: 'h-auto! px-2! py-1.5' })}><AccountLink id={line.gl_account} /></td>
+                  <td className={cellClasses({ density: 'compact', className: 'px-2!' })}>{line.adjustment_type}</td>
+                  <td className={cellClasses({ density: 'compact', className: 'px-2! text-right tabular-nums whitespace-nowrap' })}>{fmtExact(num(line.amount))}</td>
+                  <td className={cellClasses({ density: 'compact', className: 'px-2!' })}><StatePill state={line.adjustment_state} /></td>
+                  <td className={cellClasses({ density: 'compact', className: 'px-2! text-right tabular-nums whitespace-nowrap' })}>{fmtExact(num(line.remaining_amount))}</td>
+                  <td className={cellClasses({ density: 'compact', last: !editable, className: 'h-auto! px-2! py-1.5' })}><PersonName id={line.owner} /></td>
+                  {editable && <td className={cellClasses({ density: 'compact', last: true, className: 'px-2!' })}>{num(line.remaining_amount) !== 0 && <button type="button" aria-label={`Match ${line.row_id} to SAP`} onClick={() => setMatching({ id: line.row_id, document: '', amount: String(num(line.remaining_amount)) })}
+                    className="rounded-control text-[13px] whitespace-nowrap text-action hover:underline focus-visible:outline-2 focus-visible:outline-focus">Match</button>}</td>}
                 </tr>
                 {matching?.id === line.row_id && <tr><td colSpan={columns.length + 1} className="px-9 py-3">
                   <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void run(() => runAction('match_adjustment', { adjustment: line.row_id, document: matching.document, amount: amountOf(matching.amount) }), () => setMatching(null)) }}>

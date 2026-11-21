@@ -94,7 +94,7 @@ export function LinesPage() {
   const [lines, accounts] = [useLines(), useAccounts()]
   const count = (line: string) => (accounts.data ?? []).filter(a => a.pl_line === line).length
   const published = (lines.data ?? []).filter(line => line.level === 'Published')
-  const detail = (kind: string, sign: string, rule: string | null) => (kind === 'Subtotal' ? `Subtotal, ${(rule ?? '').toLowerCase()}` : kind === 'Memo' ? 'Memo, not added' : `${kind} ${sign.toLowerCase()}`)
+  const detail = (kind: string, sign: string, rule: string | null) => (kind === 'Subtotal' ? `Subtotal, ${(rule ?? '').toLowerCase()}` : kind === 'Memo' ? 'Memo, not added' : `${kind[0]}${kind.slice(1).toLowerCase()} ${sign.toLowerCase()}`)
   const rows: FigureRow[] = published.map((line) => {
     const working = (lines.data ?? []).filter(w => w.rolls_into === line.row_id)
     return { id: line.row_id, label: line.line_name, header: <RecordLink table="budgets.pl_line" rowId={line.row_id} name={line.line_name} detail={detail(line.line_kind, line.sign, line.subtotal_rule)} />,
@@ -129,9 +129,9 @@ export function RulesPage() {
     <DataList caption="Allocation rules in run order" rows={rules.data ?? []} rowKey={row => row.row_id} state={rules.isLoading ? 'loading' : 'ready'}
       empty={{ title: 'No Rules Yet', body: 'A Budget Editor adds allocation rules in Featherbase.' }} columns={[
         { key: 'order', header: 'Order', align: 'end', cell: row => row.run_order },
-        { key: 'rule', header: 'Rule', cell: row => <RuleLink id={row.row_id} />, phone: 'title' },
+        { key: 'rule', header: 'Rule', cell: row => <span className="whitespace-nowrap"><RuleLink id={row.row_id} /></span>, phone: 'title' },
         { key: 'says', header: 'What It Does', cell: row => <RuleSentence rule={row} /> },
-        { key: 'from', header: 'In Force', cell: row => `${fmtDate(row.starts_on.slice(0, 10))}${row.ends_on ? ` to ${fmtDate(row.ends_on.slice(0, 10))}` : ' onwards'}${row.ends_on && row.ends_on.slice(0, 10) < today ? ' (ended)' : ''}` },
+        { key: 'from', header: 'In Force', cell: row => <span className="whitespace-nowrap">{`${fmtDate(row.starts_on.slice(0, 10))}${row.ends_on ? ` to ${fmtDate(row.ends_on.slice(0, 10))}` : ' onwards'}${row.ends_on && row.ends_on.slice(0, 10) < today ? ' (ended)' : ''}`}</span> },
       ]} />
   </Page>
 }
