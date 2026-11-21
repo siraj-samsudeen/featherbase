@@ -8,7 +8,6 @@ import { ApiError, api, getSessionUser } from '../lib/api'
 import { actionForLocation, recordAction } from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
 import { useCapabilities, useShellKind } from '../lib/session'
-import { useRealtime } from '../lib/realtime'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { ActionDisclosure } from '../components/ActionDisclosure'
 import { TopBar } from '../components/TopBar'
@@ -23,7 +22,7 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, iconButtonClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { Bell, BookOpen, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { BookOpen, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, useShortcut } from '../lib/shortcuts'
 
@@ -119,17 +118,6 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
   // #1248: collapsed (md+), the sidebar is an icon rail; each group draws its rail form.
   const drawerWidth = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const rail = collapsedChoice && !drawerWidth
-
-  // RT-003: unread notification count, live-updated when a realtime
-  // 'notification' event arrives for this user.
-  const unread = useQuery({
-    queryKey: ['unread-count'],
-    queryFn: () => api.get<{ count: number }>('/api/unread_count'),
-  })
-  useRealtime(user ? [`user:${user.row_id}`] : [], (e) => {
-    if (e.event === 'notification')
-      void queryClient.invalidateQueries({ queryKey: ['unread-count'] })
-  })
 
   const caps = useCapabilities()
   const canManage = caps?.manage === true
@@ -228,29 +216,10 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
       <HealthBanner enabled={canManage} />
       <SetupBanner enabled={canManage} />
       {/* #1253: no top bar. The shared bar draws the Admin's switcher, the
-          notification bell and the "Search or Command" field at the top of
+          notification bell (#1385: the platform's, on every page) and the "Search or Command" field at the top of
           the sidebar, and the account at its foot; a phone keeps a slim
           header with the menu button. */}
-      <TopBar
-        home="admin"
-        beforeRight={
-          <div className="relative shrink-0" title="Notifications">
-            {/* An indicator, not a control, so it needs no thumb-sized hit area. */}
-            <span className="flex size-8 items-center justify-center text-ink-muted" data-testid="notif-bell">
-              <Bell aria-hidden size={16} />
-              <span className="sr-only">Notifications</span>
-            </span>
-            {(unread.data?.count ?? 0) > 0 && (
-              <span
-                className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-negative px-1 text-xs font-semibold text-action-ink"
-                data-testid="unread-count"
-              >
-                {unread.data?.count}
-              </span>
-            )}
-          </div>
-        }
-      />
+      <TopBar home="admin" />
       <div className="relative flex min-h-0 flex-1">
         <SidebarAside testid="admin-sidebar" user={user?.row_id}>
           {/* #1235 item 7: on the account pages, the Account group leads the sidebar. */}

@@ -23,6 +23,7 @@ import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSide
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
 import { CommandField, CommandPalette } from './CommandPalette'
+import { NotificationBell } from './SidebarDefaults'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's
@@ -156,7 +157,6 @@ export function TopBar({
   forPerson,
   left,
   children,
-  beforeRight,
 }: {
   /** #650: the bar over an installed app's own page (the bar bundle): the app
    *  the page belongs to, on whatever address it is opened. The app's page
@@ -170,8 +170,6 @@ export function TopBar({
   left?: ReactNode
   /** The Admin menus, between the name and the right side. */
   children?: ReactNode
-  /** Admin-only indicators that lead the right side (the notification bell). */
-  beforeRight?: ReactNode
 }) {
   const address = useBarContext(app ? app.name : home)
   const { brand } = address
@@ -270,7 +268,8 @@ export function TopBar({
               <div className={rail ? 'contents' : 'min-w-0 flex-1'}>{switcher}</div>
               {/* #1222: View as, an action, at the top beside the bell (Ctrl+Shift+K everywhere). */}
               {caps && <ViewAsButton compact place={rail ? 'rail' : 'sidebar'} />}
-              {!rail && caps && beforeRight}
+              {/* #1385: the bell is the platform's, for someone who can use the Admin (its notifications are there). */}
+              {!rail && canUseAdmin && <NotificationBell />}
             </div>
             {caps && <CommandField rail={rail} onOpen={() => setCommandOpen(true)} />}
           </div>,
@@ -321,7 +320,6 @@ export function TopBar({
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:gap-2" data-testid="top-bar-right">
           {caps && (
             <>
-              {beforeRight}
               {offerAdmin && !isPhone && <OpenAdminButton />}
               <ViewAsButton compact={isPhone} />
               {!isPhone && <ThemeToggle />}

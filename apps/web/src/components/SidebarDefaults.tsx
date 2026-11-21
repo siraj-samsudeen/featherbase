@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { tableHref } from 'shared'
 import { Route } from 'lucide-react'
-import { Bookmark, Clock, touchRowClasses } from '@featherbase/shop-floor'
+import { Bell, Bookmark, Clock, touchRowClasses } from '@featherbase/shop-floor'
 import { GROUP_TONE, RailFold, RailMenuItem, SIDEBAR_HEADING, TableTile, useSidebarRail } from './SidebarRail'
 import { RecentSub } from './RecentSub'
 import { useSidebarWalkLabels } from './NavPathBar'
@@ -15,12 +15,45 @@ import { useNavigationHistory } from '../lib/navigation-history'
 import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
 import { tableLabel, useMeta } from '../lib/meta'
 import { setSidebarDrawerOpen } from '../lib/sidebar-collapsed'
+import { useRealtime } from '../lib/realtime'
 import { walkShortLabel } from '../lib/step-labels'
 
 // #1385 (slice 2): the platform's sidebar defaults, the same components in the
 // Admin's sidebar and in every app's. Recently Opened and Frequent recall the
 // person's history (the command bar starts its read; these wait for it), Saved
 // Views their own and starred views. Each row opens by address (useGoTo).
+
+/** RT-003: the notification bell at the sidebar's top, with the unread count,
+ *  live-updated when a realtime 'notification' event arrives for this person. */
+export function NotificationBell() {
+  const user = getSessionUser()
+  const queryClient = useQueryClient()
+  const unread = useQuery({
+    queryKey: ['unread-count'],
+    queryFn: () => api.get<{ count: number }>('/api/unread_count'),
+  })
+  useRealtime(user ? [`user:${user.row_id}`] : [], (e) => {
+    if (e.event === 'notification')
+      void queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+  })
+  return (
+    <div className="relative shrink-0" title="Notifications">
+      {/* An indicator, not a control, so it needs no thumb-sized hit area. */}
+      <span className="flex size-8 items-center justify-center text-ink-muted" data-testid="notif-bell">
+        <Bell aria-hidden size={16} />
+        <span className="sr-only">Notifications</span>
+      </span>
+      {(unread.data?.count ?? 0) > 0 && (
+        <span
+          className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-negative px-1 text-xs font-semibold text-action-ink"
+          data-testid="unread-count"
+        >
+          {unread.data?.count}
+        </span>
+      )}
+    </div>
+  )
+}
 
 /** #1253 (style A): a one-line sidebar item: its tile, its name, its detail on the right. */
 const SIDEBAR_LINE = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm'
