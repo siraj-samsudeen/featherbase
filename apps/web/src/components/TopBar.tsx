@@ -22,6 +22,7 @@ import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@fe
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
+import { CommandField, CommandPalette } from './CommandPalette'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's
@@ -156,7 +157,6 @@ export function TopBar({
   left,
   children,
   beforeRight,
-  command,
 }: {
   /** #650: the bar over an installed app's own page (the bar bundle): the app
    *  the page belongs to, on whatever address it is opened. The app's page
@@ -172,8 +172,6 @@ export function TopBar({
   children?: ReactNode
   /** Admin-only indicators that lead the right side (the notification bell). */
   beforeRight?: ReactNode
-  /** #1253: the Admin's "Search or Command" field, under the switcher in the sidebar. */
-  command?: ReactNode
 }) {
   const address = useBarContext(app ? app.name : home)
   const { brand } = address
@@ -228,6 +226,9 @@ export function TopBar({
   const pickerSlot = usePickerSlot()
   const drawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const rail = sidebar.collapsed && !drawer
+  // #1385: Search or Command is the platform's: every page with a sidebar, the
+  // Admin's and every app's, draws the same field and command bar (⌘K).
+  const [commandOpen, setCommandOpen] = useState(false)
   const switcher = left ?? (caps && context && name
     ? <AppSwitcher app={switcherApp} place={rail ? 'rail' : 'sidebar'} />
     : context && name && <BarName href={homeHref(context)} name={name} />)
@@ -271,7 +272,7 @@ export function TopBar({
               {caps && <ViewAsButton compact place={rail ? 'rail' : 'sidebar'} />}
               {!rail && caps && beforeRight}
             </div>
-            {caps && command}
+            {caps && <CommandField rail={rail} onOpen={() => setCommandOpen(true)} />}
           </div>,
           slots.top,
         )}
@@ -284,6 +285,8 @@ export function TopBar({
           </div>,
           slots.foot,
         )}
+        {/* #1385: the command bar, in the bar's own tree (an app's bar draws in its own shadow root). */}
+        {caps && <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />}
         {/* #1251: the shortcut teaching, once per page (Admin and apps alike). */}
         {caps && <ShortcutTeachingHost />}
         {phoneTabs}

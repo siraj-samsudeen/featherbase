@@ -224,8 +224,10 @@ test("on an app's address the account page has the bar and no Admin menus, even 
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
   expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
-  for (const id of ['awesomebar', 'admin-sidebar', 'notif-bell'])
+  for (const id of ['admin-sidebar', 'notif-bell'])
     expect(screen.queryByTestId(id)).not.toBeInTheDocument()
+  // #1385: Search or Command is the platform's, on every page with a sidebar.
+  expect(await screen.findByTestId('command-field')).toBeInTheDocument()
   // #1235 item 7: the shared sidebar is not the Admin's: only the Account group.
   expect(screen.getByTestId('account-sidebar')).toBeInTheDocument()
 })
