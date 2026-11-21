@@ -86,7 +86,7 @@ describe('#1282 A4: a Table\'s default view', () => {
     const table = await floorTable(admin)
     const one = await createUserWithRole(admin, createUser, { role: 'Tvd Reset', table: table.name, can_read: true })
     const two = await createUser({ roles: ['Tvd Reset'] })
-    const mine = { sort: { field: 'section_name', dir: 'asc' }, compact: true, showRetired: true, groupBy: 'floor', form: { order: ['floor'] } }
+    const mine = { sort: { field: 'section_name', dir: 'asc' }, compact: true, showRetired: true, groupBy: 'floor', narrowHidden: true, form: { order: ['floor'] } }
     for (const who of [one, two]) await who.fetch(`/api/user_settings/${encodeURIComponent(table.name)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(mine) })
     await expectStatus(await one.fetch(`/api/user_settings/${encodeURIComponent(table.name)}/reset`, { method: 'POST' }), 200)
     const settingsOf = async (who: TestClient) => (await (await who.fetch(`/api/user_settings/${encodeURIComponent(table.name)}`)).json() as { settings: unknown }).settings
