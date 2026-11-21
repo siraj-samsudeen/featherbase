@@ -336,10 +336,12 @@ describe('relational-navigation', () => {
     await step("the user opens the section's job assignments in the drill pane", async () => {
       await renderApp(tableHref('Sc Section'), admin)
       await select('Ladies Wear')
-      await openGroup('Ladies Wear', 'Sc Job Assignment')
+      // An admin may change these links, so once the group's plan is read the pane shows them
+      // open, as a tick list (#1273); before that the group is a chip under Pointed At By. Wait
+      // for the settled pane rather than opening a chip that is about to become the tick list.
+      await waitFor(async () => expect(within(await pane('Ladies Wear')).queryByRole('button', { name: groupNamed('Sc Job Assignment') })).toBeNull())
     })
     await step("each line is the employee's name, a link to the employee", async () => {
-      await waitFor(async () => expect(await groupRows('Ladies Wear')).toHaveLength(2))
       for (const [id, name] of [['E1001', 'Anitha'], ['E1002', 'Bindu']])
         await waitFor(async () => expect(within(await pane('Ladies Wear')).getByRole('link', { name: named(name) }))
           .toHaveAttribute('href', expect.stringContaining(`/row/${id}`)))
