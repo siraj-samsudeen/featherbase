@@ -18,10 +18,14 @@ export type View =
   | { kind: 'no_access' }
   | { kind: 'signed_out' }
   | { kind: 'failed' }
+  /** #1391: a read got no answer at all (it failed on the way, or ran out of time): the connection, not the report. */
+  | { kind: 'offline' }
   /** #1269: MotherDuck refused the reader's reach as too large to open the Dive with. */
   | { kind: 'too_large' }
 
 const refusedBy = (answer: Answer<unknown> | undefined, status: number) => answer?.ok === false && answer.status === status
+/** No answer at all: the request failed before any server answered, or ran out of time. */
+const unanswered = (answer: Answer<unknown> | undefined) => answer?.ok === false && answer.status === undefined
 
 /**
  * The Dive is the report. The `report` read says whether it can open for the reader; when the
@@ -47,7 +51,10 @@ export function pageView({ embed, report, frameFailed = false, timedOut = false,
   // Past the deadline the session request counts as failed, answered or not.
   if ((!embed && !frameFailed && !timedOut) || !report) return { kind: 'opening' }
   // #1269: where the page would say only "couldn't open", it says why when MotherDuck refused the reach as too large.
-  return embed?.ok && embed.value.too_large ? { kind: 'too_large' } : { kind: 'failed' }
+  if (embed?.ok && embed.value.too_large) return { kind: 'too_large' }
+  // #1391: a read that got no answer, or a session request still unanswered at the deadline, is the
+  // connection; an answer that refuses, or MotherDuck's error, is the report.
+  return unanswered(report) || unanswered(embed) || (timedOut && !embed) ? { kind: 'offline' } : { kind: 'failed' }
 }
 
 /** What the platform tells a person about their own rights and this app's setup. */

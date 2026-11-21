@@ -3621,6 +3621,12 @@
           }
         }
       ]
+    },
+    {
+      "id": "dive_failure_detail",
+      "fromVersion": "0.13.45",
+      "toVersion": "0.13.46",
+      "operations": []
     }
   ],
   "baseTables": {

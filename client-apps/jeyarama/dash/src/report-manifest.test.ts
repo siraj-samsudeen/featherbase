@@ -298,12 +298,14 @@ describe('the version step for Dash All-Stores Reader', () => {
       // the list, setup runs and access decisions are kept, each log line names its run, and the role Tables and their
       // columns read in Title Case.
       ['business_roles_in_featherbase', '0.13.44', '0.13.45', 31],
+      // #1391: which report and Dive failed, in the log, and a lost connection told apart on the page; no Table change.
+      ['dive_failure_detail', '0.13.45', '0.13.46', 0],
     ])
     expect(manifest.actions.operations.put_back).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read['Section Subcategory']).not.toContain('updated_by')
     expect(manifest.people).toEqual({ describe: 'describe_people', sections: 'worked_out' })
     expect(manifest.reads.operations.describe_people).toEqual({ policy: { kind: 'table' }, authorization: { kind: 'generic' } })
     expect(manifest.baseTables.read.Site).toEqual(['name', 'is_store', 'cluster', 'operating_region', 'site_kind', 'status'])
-    expect(pkg.version).toBe('0.13.45')
+    expect(pkg.version).toBe('0.13.46')
   })
 })

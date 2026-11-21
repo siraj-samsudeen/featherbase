@@ -84,6 +84,8 @@ type Revertable = { migrations: { id: string }[]; tables?: { name: string; decid
  *  role's two columns back on its list, and no setup runs or access decisions. It comes off before all the others. */
 export const RUN_TABLES = ['dash.setup_run', 'dash.access_decision']
 export function revertRolesInFeatherbase(manifest: Revertable) {
+  // #1391's 0.13.46 (which report and Dive failed, and a lost connection told apart) changes no Table and comes off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'dive_failure_detail', fromVersion: '0.13.45', operations: [] })
   const step = manifest.migrations.pop() as unknown as { operations: { kind: string; table: string; column?: string; from?: { label?: string } }[] }
   expect(step).toMatchObject({ id: 'business_roles_in_featherbase', fromVersion: '0.13.44', toVersion: '0.13.45' })
   // Each column the step relabelled reads as it did before it.
