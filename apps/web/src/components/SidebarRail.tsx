@@ -74,6 +74,11 @@ export function RailFold({ label, icon: Icon, testid, tone = 'slate', children }
   const button = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const items = () => Array.from(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
+  // #1385: in an app's sidebar the fold is in a shadow root, which holds the platform's styles: the menu is
+  // drawn there, and events and focus are read through it (an event's target outside it is the host).
+  const root = () => button.current?.getRootNode()
+  const layer = () => { const at = root(); return at instanceof ShadowRoot ? at : document.body }
+  const focused = () => { const at = root(); return at instanceof ShadowRoot ? at.activeElement : document.activeElement }
 
   useLayoutEffect(() => {
     if (!open || !button.current) return
@@ -83,8 +88,8 @@ export function RailFold({ label, icon: Icon, testid, tone = 'slate', children }
   useEffect(() => {
     if (!open) return
     const outside = (event: PointerEvent) => {
-      const target = event.target as Node
-      if (!menu.current?.contains(target) && !button.current?.contains(target)) setOpen(false)
+      const path = event.composedPath()
+      if (!path.includes(menu.current!) && !path.includes(button.current!)) setOpen(false)
     }
     document.addEventListener('pointerdown', outside, true)
     return () => document.removeEventListener('pointerdown', outside, true)
@@ -93,7 +98,7 @@ export function RailFold({ label, icon: Icon, testid, tone = 'slate', children }
   const close = () => setOpen(false)
   function onMenuKey(event: KeyboardEvent<HTMLDivElement>) {
     const all = items()
-    const at = all.indexOf(document.activeElement as HTMLElement)
+    const at = all.indexOf(focused() as HTMLElement)
     if (event.key === 'Escape' || event.key === 'ArrowLeft') {
       event.preventDefault()
       setOpen(false)
@@ -130,7 +135,7 @@ export function RailFold({ label, icon: Icon, testid, tone = 'slate', children }
           <div aria-hidden className="px-2 py-1 text-xs text-ink-subtle">{label}</div>
           {children(close)}
         </div>,
-        document.body,
+        layer(),
       )}
     </div>
   )
