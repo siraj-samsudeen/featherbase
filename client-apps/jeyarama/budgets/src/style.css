@@ -1,0 +1,13 @@
+@import '@featherbase/shop-floor/styles.css';
+@source './';
+@source '../../../../packages/shop-floor/src';
+@source not '../../../../packages/shop-floor/src/**/*.stories.tsx';
+
+/* The page is the platform's: the shared components carry every look. This file only lays
+   out the shell, the sidebar beside the content, which fills the rest of the width. */
+* { box-sizing: border-box; }
+html, body { max-width: 100%; overflow-x: hidden; }
+body { margin: 0; background: var(--color-canvas); color: var(--color-ink); font: var(--text-control)/1.45 var(--font-sans); }
+
+.budgets-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
+.budgets-main { min-width: 0; padding: 24px; }

@@ -8,6 +8,7 @@
     "./styles.css": "./src/styles.css",
     "./theme": "./src/theme.ts",
     "./format": "./src/format.ts",
+    "./pasted": "./src/pasted.ts",
     "./hierarchy": "./hierarchy/index.ts"
   },
   "peerDependencies": {
