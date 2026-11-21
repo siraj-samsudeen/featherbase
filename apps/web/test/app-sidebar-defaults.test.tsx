@@ -6,7 +6,7 @@
 // Mounted the way an app's served document mounts the bar and its sidebar
 // (app-command-bar.test.tsx).
 import { resolve } from 'node:path'
-import { act, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { tableHref } from 'shared'
@@ -15,7 +15,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { setSession } from '../src/lib/api'
 import { mountBar } from '../src/bar/mount'
 import { FeatherbaseSidebar } from '../src/bar/sidebar'
-import { test, expect } from './pg-test'
+import { test, expect, renderApp } from './pg-test'
 import { bridgeRealtime } from './realtime-bridge'
 
 if (!customElements.get('featherbase-sidebar')) customElements.define('featherbase-sidebar', FeatherbaseSidebar)
@@ -248,4 +248,32 @@ test("in the rail a platform group's icon on an app's page is named by its toolt
   const { inside, fold } = await railedAppPage(admin)
   fireEvent.pointerOver(fold)
   expect(inside.getByRole('tooltip')).toHaveTextContent('Recently Opened')
+})
+
+test("at phone width, choosing a Recently Opened row closes an app's drawer", async ({ admin }) => {
+  vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
+    matches: q === '(width < 48rem)', media: q, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  }) as MediaQueryList)
+  await installBarProof(admin)
+  await admin.post('/api/events', { events: [openedTable('Person')] })
+  const leave = vi.fn()
+  const { sidebar, inside } = openAppPage(admin, leave)
+  await userEvent.click(await within(document.querySelector('featherbase-bar')!.shadowRoot as unknown as HTMLElement).findByTestId('sidebar-toggle', {}, WAIT))
+  expect(sidebar.hasAttribute('data-open')).toBe(true)
+  await userEvent.click(await within(await inside.findByTestId('sidebar-recents', {}, WAIT)).findByRole('link', { name: /Person/ }, WAIT))
+  expect(sidebar.hasAttribute('data-open')).toBe(false)
+  expect(leave).toHaveBeenCalledWith(tableHref('Person'))
+})
+
+test("the Admin's sidebar keeps its groups once each, in their order", async ({ admin }) => {
+  await admin.post('/api/events', { events: [openedTable('Person')] })
+  await admin.post('/api/saved_views', { table: 'Person', label: 'Example People', filters: [['email', 'like', '%@example.com']] })
+  await renderApp('/featherbase/admin', admin)
+  const aside = await screen.findByTestId('admin-sidebar', {}, WAIT)
+  await within(aside).findByTestId('sidebar-recents', {}, WAIT)
+  await within(aside).findByTestId('sidebar-saved-views', {}, WAIT)
+  const groups = [...aside.querySelectorAll('[data-testid="home-page-nav"], [data-testid^="sidebar-recents"], [data-testid="sidebar-saved-views"], [data-testid^="sidebar-group-"]')]
+    .map((el) => el.getAttribute('data-testid')).filter((id) => id !== 'sidebar-recents-heading' && id !== 'sidebar-group-heading')
+  expect(groups).toEqual(['home-page-nav', 'sidebar-recents', 'sidebar-saved-views', 'sidebar-group-data', 'sidebar-group-sources', 'sidebar-group-access', 'sidebar-group-instance'])
 })
