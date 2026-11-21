@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event'
 import { tableSlug } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 import { decodePath } from '../src/lib/nav-path'
+import { openListMenu } from './list-menus'
 
 configure({ asyncUtilTimeout: 10_000 })
 type Admin = Parameters<typeof renderApp>[1]
@@ -118,6 +119,18 @@ test('the panel can be hidden, and stays hidden for this person and Table', asyn
   await screen.findByText('Ethnic Wear')
   await waitFor(() => expect(screen.getByRole('button', { name: 'Click To Narrow' })).toHaveAttribute('aria-pressed', 'false'))
   expect(screen.queryByRole('complementary', { name: 'Click To Narrow' })).toBeNull()
+})
+
+test("Reset to the Table's Default shows a hidden panel again, as it clears Show Retired", async ({ admin }) => {
+  await seed(admin)
+  await renderApp(listPath(SECTION), admin)
+  await screen.findByRole('complementary', { name: 'Click To Narrow' })
+  await userEvent.click(screen.getByRole('button', { name: 'Click To Narrow' }))
+  await waitFor(async () => expect((await admin.get<{ settings: { narrowHidden?: boolean } }>(`/api/user_settings/${enc(SECTION)}`)).settings.narrowHidden).toBe(true))
+  await userEvent.click((await openListMenu('View')).getByRole('button', { name: "Reset to the Table's Default" }))
+  await screen.findByRole('complementary', { name: 'Click To Narrow' })
+  expect(screen.getByRole('button', { name: 'Click To Narrow' })).toHaveAttribute('aria-pressed', 'true')
+  expect((await admin.get<{ settings: { narrowHidden?: boolean } }>(`/api/user_settings/${enc(SECTION)}`)).settings.narrowHidden).toBeUndefined()
 })
 
 test('ticks narrow the list in place: the walk gains no step per click', async ({ admin }) => {

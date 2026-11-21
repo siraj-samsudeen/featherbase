@@ -64,3 +64,9 @@ SHALL open as a Narrow By sheet from the filter row.
 
 - **WHEN** the user hides Click To Narrow and opens the list again
 - **THEN** the panel stays hidden
+
+#### Scenario: Reset shows it again
+
+- **GIVEN** the user hid Click To Narrow on a list
+- **WHEN** they reset to the Table's default
+- **THEN** the panel shows again, as Show Retired turns off
