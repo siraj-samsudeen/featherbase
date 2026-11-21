@@ -157,3 +157,42 @@ test("an app's page asks nothing for the defaults of someone who cannot use the 
   await new Promise((done) => setTimeout(done, 300))
   expect(urls.filter((u) => /\/api\/(saved_views\/sidebar|events\/summary|unread_count)/.test(u))).toEqual([])
 })
+
+// On an app's own address the Admin is another address (app-command-bar.test.tsx): a sidebar row opens through
+// the sign-in hand-off, which carries the page chosen.
+test("on an app's own address, a Recently Opened Table opens through the hand-off, carrying the page chosen", async ({ admin }) => {
+  await installBarProof(admin)
+  await admin.post('/api/events', { events: [openedTable('Person')] })
+  const bridge = globalThis.fetch
+  const asked: unknown[] = []
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url.endsWith('/api/brand')) {
+      const brand = await (await bridge(input, init)).json()
+      return new Response(JSON.stringify({ ...brand, opens: 'barproof' }), { headers: { 'content-type': 'application/json' } })
+    }
+    if (url.endsWith('/api/open_admin')) {
+      asked.push(JSON.parse(String(init?.body)))
+      return new Response(JSON.stringify({ landing: '/featherbase/admin/table/person' }), { headers: { 'content-type': 'application/json' } })
+    }
+    return bridge(input, init)
+  })
+  const leave = vi.fn()
+  const { inside } = openAppPage(admin, leave)
+  fireEvent.click(await within(await inside.findByTestId('sidebar-recents', {}, WAIT)).findByRole('link', { name: /Person/ }, WAIT))
+  await waitFor(() => expect(leave).toHaveBeenCalledWith('/featherbase/admin/table/person'), WAIT)
+  expect(asked).toEqual([{ next: tableHref('Person') }])
+})
+
+test("a record in an app's Recently Opened is a RecordLink", async ({ admin }) => {
+  await installBarProof(admin)
+  const path = `/featherbase/admin/table/person/row/${encodeURIComponent(admin.user!)}`
+  await admin.post('/api/events', { events: [{ kind: 'row', key: `row:Person/${admin.user}`, label: admin.user, sub: 'Person', path, at: Date.now() }] })
+  const { inside } = openAppPage(admin)
+  const row = await within(await inside.findByTestId('sidebar-recents', {}, WAIT)).findByTestId('sidebar-recent', {}, WAIT)
+  expect(row).toHaveAttribute('href', path)
+  const record = row.querySelector('[data-record-link]')
+  expect(record).toHaveAttribute('data-table', 'Person')
+  expect(record).toHaveAttribute('data-row', admin.user)
+  expect(record).toHaveTextContent('Administrator')
+})
