@@ -301,3 +301,25 @@ test('an adjustment is withdrawn only in a later, open version of its own month'
   await act(editor, 'publish_close', { close })
   await expect(save('monthly_close_adjustment', { row_id: line.row_id, updated_at: line.updated_at, withdrawn_in: null })).rejects.toThrow("Oct'26 version 2 is published: this adjustment's withdrawal stays as published")
 })
+
+test('a revision cannot change kind away from the version it is based on', async ({ createUser }) => {
+  const { made, save, act, get, editor } = await setup(createUser)
+  await act(editor, 'approve_version', { version: made.version.row_id })
+  const { version } = await act<{ version: string }>(editor, 'revise_version', { version: made.version.row_id, version_name: 'FY27 Revision 1', covers_from: '2026-10-01', covers_to: '2027-03-01' })
+  const revision = await get('budget_version', version)
+  await expect(save('budget_version', { row_id: revision.row_id, updated_at: revision.updated_at, budget_kind: 'Sales' })).rejects.toThrow('FY27 Original is a P&L version: a Sales version is based on a Sales one')
+})
+
+test('a store has one area at a time, however it is saved', async ({ createUser }) => {
+  const { made, save, get } = await setup(createUser)
+  const area = { plant: '9003', area_sqft: 26000 }
+  await expect(save('store_area', { ...area, starts_on: '2026-10-15' })).rejects.toThrow('This store already has an area from 01-Apr-2026 with no end: end it first, or use Add An Area')
+  await expect(save('store_area', { ...area, starts_on: '2026-01-01', ends_on: '2026-06-30' })).rejects.toThrow('This store already has an area from 01-Apr-2026')
+  expect((await save('store_area', { ...area, starts_on: '2026-01-01', ends_on: '2026-03-31' })).row_id).toBeTruthy()
+  const first = await get('store_area', made.area.row_id)
+  await save('store_area', { row_id: first.row_id, updated_at: first.updated_at, ends_on: '2026-10-14' })
+  expect((await save('store_area', { ...area, starts_on: '2026-10-15' })).row_id).toBeTruthy()
+  // Another store, and the same store's area for one segment, are separate histories.
+  expect((await save('store_area', { plant: '9004', area_sqft: 18200, starts_on: '2026-04-01' })).row_id).toBeTruthy()
+  expect((await save('store_area', { ...area, starts_on: '2026-04-01', business_line_segment: '10', area_sqft: 9000 })).row_id).toBeTruthy()
+})
