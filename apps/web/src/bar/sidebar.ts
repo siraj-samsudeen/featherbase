@@ -2,8 +2,10 @@ import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 import platformCss from '../index.css?inline'
 import { shadowCss } from './style'
 import { getSignedInUser } from '../lib/api'
-import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerPickerSlot, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
-import { attachRailTips, railMark, railMenuPlace, rowCount, rowLabel } from '../lib/sidebar-rail'
+import { SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, offerSidebarSlots, readSidebar, registerSidebar, setSidebarDrawerOpen, subscribeSidebar, toggleSidebarCollapsed } from '../lib/sidebar-collapsed'
+import { attachRailTips } from '../lib/sidebar-rail'
+import { attachAppRows, type AppRows } from './app-rows'
+import { attachPickersHost, type PickersHost } from './pickers-host'
 
 /** Admin's sidebar widths (AdminLayout: md:w-60, the rail md:w-14, a w-64 drawer), for every app (#1227, #1248). */
 const WIDTH = 240
@@ -12,52 +14,6 @@ const DRAWER_WIDTH = 256
 
 const COLLAPSE_ICON = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17-5-5 5-5M18 17l-5-5 5-5"/></svg>'
 const EXPAND_ICON = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 17 5-5-5-5M6 17l5-5-5-5"/></svg>'
-
-/** The rail's rules for the app's own rows. They live in the app's document,
- *  scoped to this element's name, because a shadow's ::slotted() reaches a row
- *  but not the label or count inside it. Labels are hidden by clipping, never
- *  removed, so every row keeps its accessible name. */
-const RAIL_ROWS_CSS = `
-featherbase-sidebar[data-collapsed] > :is(button, a) > :not(svg):not([data-sidebar-count]),
-featherbase-sidebar[data-collapsed] > [data-rail-fold] > :not(svg) {
-  position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important;
-  overflow:hidden !important; clip-path:inset(50%) !important; white-space:nowrap !important; border:0 !important; }
-featherbase-sidebar[data-collapsed] > :is(button, a)[data-rail-mark] > svg { display:none !important; }
-featherbase-sidebar[data-collapsed] > :is(button, a)[data-rail-mark]::before {
-  content:attr(data-rail-mark); display:grid; place-items:center; width:26px; height:26px; box-sizing:border-box;
-  background:color-mix(in srgb, currentColor 15%, transparent); border-radius:7px; font-size:12px; font-weight:700; letter-spacing:.02em; line-height:1; }
-featherbase-sidebar[data-collapsed] > :is(button, a) [data-sidebar-count] {
-  position:absolute !important; top:-2px !important; right:-4px !important; min-width:18px; height:18px; padding:0 4px !important; box-sizing:border-box;
-  border-radius:8px !important; background:var(--color-action) !important; color:var(--color-action-ink) !important;
-  font-size:12px !important; font-weight:700 !important; line-height:18px !important; text-align:center; margin:0 !important; }
-featherbase-sidebar[data-collapsed] > :is(button, a) [data-sidebar-count][data-rail-zero] { display:none !important; }
-featherbase-sidebar[data-collapsed] > [data-depth="1"] { display:none !important; }
-featherbase-sidebar[data-collapsed] > :not(button):not(a):not([data-rail-fold]) {
-  font-size:0 !important; line-height:0 !important; height:1px !important; min-height:0 !important; padding:0 !important;
-  margin:8px 12px !important; background:transparent !important; overflow:hidden !important; border:0 !important; }
-featherbase-sidebar[data-collapsed] > [data-rail-fold] {
-  display:flex !important; align-items:center; justify-content:center; width:40px; height:40px; margin:4px auto !important; padding:0 !important;
-  border-radius:var(--radius-control, 10px); color:var(--color-ink-muted); cursor:pointer; position:relative; }
-featherbase-sidebar[data-collapsed] > [data-rail-fold]:hover, featherbase-sidebar[data-collapsed] > [data-rail-fold][aria-expanded="true"] {
-  background:color-mix(in srgb, var(--color-border) 50%, transparent); color:var(--color-ink); }
-featherbase-sidebar[data-collapsed] > [data-rail-fold]:focus-visible { outline:2px solid var(--color-focus); outline-offset:1px; }
-featherbase-sidebar:not([data-collapsed]) > [data-rail-fold] > svg { display:none; }
-/* #1253 (Quiet Canvas): beside the sidebar, the app's page is one white panel on
-   the grey canvas, set off by a soft shadow, 8px from the window's edges. The
-   gap wins over an app's own margin on its page (Dash centres it with auto). */
-@media (width >= 48rem) {
-  featherbase-sidebar + * { background:var(--color-surface); border-radius:12px; margin:8px 8px 8px 0 !important; width:auto !important; min-width:0;
-    box-shadow:0 1px 3px color-mix(in srgb, var(--color-scrim) 10%, transparent), 0 1px 2px -1px color-mix(in srgb, var(--color-scrim) 10%, transparent); }
-}
-`
-
-function ensureRailRowsCss() {
-  if (document.getElementById('featherbase-sidebar-rail')) return
-  const style = document.createElement('style')
-  style.id = 'featherbase-sidebar-rail'
-  style.textContent = RAIL_ROWS_CSS
-  document.head.append(style)
-}
 
 /** Apps supply direct buttons/links and keep their own handlers and state.
  *  The platform owns the navigation frame, row presentation and, since #1227,
@@ -72,40 +28,16 @@ function ensureRailRowsCss() {
  *  button whose menu lists the `data-depth="1"` rows after it. */
 export class FeatherbaseSidebar extends HTMLElement {
   private themeObserver?: MutationObserver
-  private rowsObserver?: MutationObserver
   private leave?: () => void
   private unsubscribe?: () => void
   private untips?: () => void
   private unslot?: () => void
-  private unpickers?: () => void
-  private pickers?: HTMLElement
-  private pickersRoot?: HTMLElement
-  private panelObserver?: MutationObserver
-  private pickersObserver?: MutationObserver
+  private pickers?: PickersHost
+  private rows?: AppRows
   private drawerWidth?: MediaQueryList
   private control?: HTMLButtonElement
-  private layer?: HTMLElement
-  private menu?: { el: HTMLElement; heading: HTMLElement; close: (focus: boolean) => void }
-  private rail = false
   private readonly onWidth = () => this.sync()
-  private readonly onClick = (event: Event) => {
-    // A folded heading in the rail opens its menu.
-    const heading = this.foldOf(event.target)
-    if (heading) { this.toggleMenu(heading); return }
-    // Choosing a destination in the drawer closes it, as in the Admin.
-    if (event.composedPath().some((node) => node instanceof HTMLElement && node !== this && (node.tagName === 'A' || node.tagName === 'BUTTON')))
-      setSidebarDrawerOpen(false)
-  }
-  private readonly onKey = (event: KeyboardEvent) => {
-    const heading = this.foldOf(event.target)
-    if (heading && (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowRight')) {
-      event.preventDefault()
-      this.openMenu(heading)
-    }
-  }
-
   connectedCallback() {
-    ensureRailRowsCss()
     const shadow = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
     const style = document.createElement('style')
     style.textContent = `${shadowCss(platformCss)}
@@ -222,7 +154,6 @@ export class FeatherbaseSidebar extends HTMLElement {
     layer.className = 'rail-layer'
     nav.append(foot, edge, layer)
     this.control = control
-    this.layer = layer
     // UI-025: on a phone, a backdrop over the page closes the drawer.
     const backdrop = document.createElement('div')
     backdrop.className = 'sidebar-backdrop'
@@ -234,59 +165,20 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.unsubscribe?.()
     this.unslot?.()
     this.unslot = offerSidebarSlots({ top, foot: account, defaults })
-    // #1253 (Siraj, 17-Nov): the app's declared pickers sit inside its white
-    // panel, at the top and right-aligned: a host the platform keeps as the
-    // first child of the app's page column, styled in its own shadow.
-    if (!this.pickers) {
-      const host = document.createElement('div')
-      host.dataset.featherbasePickers = ''
-      const pickerShadow = host.attachShadow({ mode: 'open' })
-      const pickerStyle = document.createElement('style')
-      pickerStyle.textContent = `${shadowCss(platformCss)}
-        :host { display:block; }
-        .pickers-root { color:var(--color-ink); font:14px/1.45 var(--font-sans); }
-        .pickers-root:empty { display:none; }
-        .pickers-root:not(:empty) { padding:12px 16px 0; }`
-      const root = document.createElement('div')
-      root.className = 'pickers-root'
-      root.dataset.testid = 'page-picker-slot'
-      pickerShadow.append(pickerStyle, root)
-      this.pickers = host
-      this.pickersRoot = root
-      // Only an app that declares pickers gets the host in its page column; an
-      // app's own React tree is left untouched otherwise (Tasker's tour, #1253).
-      this.pickersObserver = new MutationObserver(() => this.placePickers())
-      this.pickersObserver.observe(root, { childList: true })
-    }
-    this.unpickers?.()
-    this.unpickers = offerPickerSlot(this.pickersRoot!)
-    this.placePickers()
-    this.panelObserver?.disconnect()
-    this.panelObserver = new MutationObserver(() => this.placePickers())
-    if (this.parentElement) this.panelObserver.observe(this.parentElement, { childList: true, subtree: false })
+    this.pickers?.detach()
+    this.pickers = attachPickersHost(this)
+    this.rows?.detach()
+    this.rows = attachAppRows(this, layer)
     this.leave = registerSidebar(getSignedInUser()?.row_id)
     this.unsubscribe = subscribeSidebar(this.onWidth)
     this.drawerWidth = typeof window.matchMedia === 'function' ? window.matchMedia(SIDEBAR_DRAWER_QUERY) : undefined
     this.drawerWidth?.addEventListener?.('change', this.onWidth)
-    this.addEventListener('click', this.onClick)
-    this.addEventListener('keydown', this.onKey)
     this.untips?.()
     this.untips = attachRailTips({
       root: this, layer,
-      active: () => this.rail,
-      rowOf: (target) => {
-        const element = target instanceof Element ? target : null
-        // #1385: a row of the platform's groups, below the app's own.
-        const platform = element?.closest<HTMLElement>('.sidebar-defaults :is(a, button)')
-        if (platform) return platform
-        const row = (element?.closest('featherbase-sidebar > *') ?? null) as HTMLElement | null
-        return row && row.parentElement === this && (row.matches('button, a') || row.hasAttribute('data-rail-fold')) && !this.menu ? row : null
-      },
+      active: () => this.hasAttribute('data-collapsed'),
+      rowOf: (target) => this.rows!.rowOf(target),
     })
-    // The app redraws its rows (a new report, a changed count): the rail marks follow.
-    this.rowsObserver?.disconnect()
-    this.rowsObserver = new MutationObserver(() => { if (this.rail) this.markRows(true) })
-    this.rowsObserver.observe(this, { childList: true, subtree: true, characterData: true })
     this.sync()
 
     // Observe the platform bar, not the app document: switching navigation's
@@ -297,30 +189,15 @@ export class FeatherbaseSidebar extends HTMLElement {
     // painted theme, so the accent's dark block matches after a switch.
     const accent = host?.dataset.accent ?? document.documentElement.getAttribute(APP_ACCENT_ATTRIBUTE)
     if (accent) nav.setAttribute(APP_ACCENT_ATTRIBUTE, accent)
-    if (accent) this.pickersRoot?.setAttribute(APP_ACCENT_ATTRIBUTE, accent)
     const syncTheme = () => {
       const theme = bar?.querySelector<HTMLElement>('[data-testid=bar-theme-root]')?.dataset.theme
       if (theme) nav.dataset.theme = theme
-      if (theme && this.pickersRoot) this.pickersRoot.dataset.theme = theme
+      this.pickers?.paint(theme, accent)
     }
     syncTheme()
     if (bar) {
       this.themeObserver = new MutationObserver(syncTheme)
       this.themeObserver.observe(bar, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-theme'] })
-    }
-  }
-
-  /** Keeps the pickers host first in the app's page column (the sidebar's next sibling). */
-  private placePickers() {
-    // Called only once the host exists (connectedCallback makes it first).
-    const host = this.pickers!
-    const panel = this.nextElementSibling as HTMLElement | null
-    if (!this.pickersRoot?.firstChild) host.remove()
-    else if (panel && panel.firstChild !== host) {
-      this.panelObserver?.disconnect()
-      panel.prepend(host)
-      this.panelObserver?.observe(this.parentElement!, { childList: true, subtree: false })
-      this.panelObserver?.observe(panel, { childList: true, subtree: false })
     }
   }
 
@@ -344,139 +221,20 @@ export class FeatherbaseSidebar extends HTMLElement {
       this.control.title = `${collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'} · ${SIDEBAR_SHORTCUT}`
       this.control.innerHTML = collapsed ? EXPAND_ICON : `${COLLAPSE_ICON}<span class="words">Collapse</span><kbd>${SIDEBAR_SHORTCUT}</kbd>`
     }
-    if (this.rail !== collapsed) {
-      this.rail = collapsed
-      this.menu?.close(false)
-      this.markRows(collapsed)
-    }
-  }
-
-  /** The rail's marks on the app's rows: initials where a row has no icon of
-   *  its own (or asks for them), a zero count without a badge, and a folding
-   *  heading made a button. Taken off again when the sidebar opens. */
-  private markRows(rail: boolean) {
-    this.rowsObserver?.disconnect()
-    for (const row of Array.from(this.children) as HTMLElement[]) {
-      if (row.matches('button, a')) {
-        const mark = rail && (row.hasAttribute('data-rail-initials') || !row.querySelector('svg')) ? railMark(rowLabel(row)) : ''
-        if (mark) row.setAttribute('data-rail-mark', mark)
-        else row.removeAttribute('data-rail-mark')
-        row.querySelectorAll('[data-sidebar-count]').forEach((count) => count.toggleAttribute('data-rail-zero', rail && rowCount(row) === '0'))
-      } else if (row.hasAttribute('data-rail-fold')) {
-        if (rail) {
-          row.setAttribute('role', 'button')
-          row.setAttribute('tabindex', '0')
-          row.setAttribute('aria-haspopup', 'menu')
-          row.setAttribute('aria-expanded', 'false')
-          row.removeAttribute('aria-label')
-          row.setAttribute('aria-label', rowLabel(row))
-        } else for (const name of ['role', 'tabindex', 'aria-haspopup', 'aria-expanded', 'aria-label']) row.removeAttribute(name)
-      }
-    }
-    this.rowsObserver?.observe(this, { childList: true, subtree: true, characterData: true })
-  }
-
-  private foldOf(target: EventTarget | null): HTMLElement | null {
-    if (!this.rail || !(target instanceof Element)) return null
-    const heading = target.closest('[data-rail-fold]') as HTMLElement | null
-    return heading && heading.parentElement === this ? heading : null
-  }
-
-  /** The nested rows a folded heading stands for: those after it, up to the next row that is not nested. */
-  private foldedRows(heading: HTMLElement): HTMLElement[] {
-    const rows: HTMLElement[] = []
-    for (let next = heading.nextElementSibling; next; next = next.nextElementSibling) {
-      if (!next.matches('[data-depth="1"]')) break
-      rows.push(next as HTMLElement)
-    }
-    return rows
-  }
-
-  private toggleMenu(heading: HTMLElement) {
-    if (this.menu?.heading === heading) this.menu.close(false)
-    else this.openMenu(heading)
-  }
-
-  private openMenu(heading: HTMLElement) {
-    this.menu?.close(false)
-    // Connected, the element always has its layer. The menu takes the tooltip's place beside the heading.
-    const layer = this.layer!
-    layer.querySelector('.featherbase-rail-tip')?.remove()
-    const label = rowLabel(heading)
-    const menu = document.createElement('div')
-    menu.className = 'rail-menu'
-    menu.setAttribute('role', 'menu')
-    menu.setAttribute('aria-label', label)
-    const title = document.createElement('div')
-    title.className = 'heading'
-    title.textContent = label
-    title.setAttribute('aria-hidden', 'true')
-    menu.append(title)
-    const items = this.foldedRows(heading).map((row) => {
-      const item = document.createElement('button')
-      item.type = 'button'
-      item.setAttribute('role', 'menuitem')
-      item.tabIndex = -1
-      if (row.getAttribute('aria-current')) item.setAttribute('aria-current', row.getAttribute('aria-current')!)
-      const name = document.createElement('span')
-      name.textContent = rowLabel(row)
-      item.append(name)
-      const count = rowCount(row)
-      if (count !== undefined) {
-        const n = document.createElement('span')
-        n.className = 'count'
-        n.textContent = count
-        item.append(n)
-      }
-      item.addEventListener('click', () => { close(false); row.click() })
-      return item
-    })
-    menu.append(...items)
-    const close = (focus: boolean) => {
-      menu.remove()
-      heading.setAttribute('aria-expanded', 'false')
-      document.removeEventListener('pointerdown', outside, true)
-      if (this.menu?.el === menu) this.menu = undefined
-      if (focus) heading.focus()
-    }
-    const outside = (event: Event) => {
-      if (!event.composedPath().includes(menu) && !event.composedPath().includes(heading)) close(false)
-    }
-    menu.addEventListener('keydown', (event) => {
-      const at = items.indexOf((this.shadowRoot?.activeElement ?? null) as HTMLButtonElement)
-      if (event.key === 'Escape' || event.key === 'ArrowLeft') { event.preventDefault(); close(true) }
-      else if (event.key === 'ArrowDown') { event.preventDefault(); items[(at + 1) % items.length]?.focus() }
-      else if (event.key === 'ArrowUp') { event.preventDefault(); items[(at - 1 + items.length) % items.length]?.focus() }
-      else if (event.key === 'Tab') close(false)
-    })
-    layer.append(menu)
-    const place = railMenuPlace(heading, menu.getBoundingClientRect().height)
-    menu.style.left = `${place.left}px`
-    menu.style.top = `${place.top}px`
-    heading.setAttribute('aria-expanded', 'true')
-    document.addEventListener('pointerdown', outside, true)
-    this.menu = { el: menu, heading, close }
-    items[0]?.focus()
+    this.rows?.setRail(collapsed)
   }
 
   disconnectedCallback() {
-    this.menu?.close(false)
+    this.rows?.detach()
+    this.rows = undefined
     this.themeObserver?.disconnect()
-    this.rowsObserver?.disconnect()
     this.untips?.()
     this.untips = undefined
     this.unslot?.()
     this.unslot = undefined
-    this.unpickers?.()
-    this.unpickers = undefined
-    this.panelObserver?.disconnect()
-    this.pickersObserver?.disconnect()
-    this.pickersObserver = undefined
-    this.pickers?.remove()
+    this.pickers?.detach()
     this.pickers = undefined
     this.drawerWidth?.removeEventListener?.('change', this.onWidth)
-    this.removeEventListener('click', this.onClick)
-    this.removeEventListener('keydown', this.onKey)
     this.unsubscribe?.()
     this.unsubscribe = undefined
     this.leave?.()
