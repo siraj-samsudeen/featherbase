@@ -259,6 +259,17 @@ async function everySubcategoryCode(ctx: ScopedContext): Promise<string[] | unde
   }
 }
 
+/** #1391: how much of MotherDuck's answer to a refused session the log keeps. */
+export const LOGGED_ANSWER_CHARS = 500
+
+/** MotherDuck's answer for the log: every secret the read holds blanked, then cut short. */
+function loggedAnswer(text: string, secrets: Readonly<Record<string, string>>): string {
+  let safe = text
+  // Longest first, so a secret that contains another is blanked whole.
+  for (const secret of Object.values(secrets).filter(Boolean).sort((a, b) => b.length - a.length)) safe = safe.split(secret).join('[secret]')
+  return safe.slice(0, LOGGED_ANSWER_CHARS)
+}
+
 /** MotherDuck's answer to an embed request too large to take: the page says so, not "couldn't open". */
 const TOO_LARGE = 413
 
@@ -279,6 +290,7 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null, everyCo
   // #1269: the request's size, for whoever runs the instance: the reach is what grows.
   const bytes = Buffer.byteLength(body)
   let failure: string | undefined
+  let answer: string | undefined
   let session: string | undefined
   let tooLarge = false
   const abort = new AbortController()
@@ -288,10 +300,12 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null, everyCo
       method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body,
       signal: abort.signal,
     })
-    const answered = await response.json().catch(() => null) as { session?: unknown } | null
+    const text = await response.text().catch(() => '')
+    const answered = (() => { try { return JSON.parse(text) as { session?: unknown } | null } catch { return null } })()
     if (response.ok && typeof answered?.session === 'string') session = answered.session
     else {
       failure = `embed API answered HTTP ${response.status}`
+      answer = loggedAnswer(text, ctx.secrets)
       tooLarge = response.status === TOO_LARGE
     }
   } catch (error) {
@@ -310,8 +324,10 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null, everyCo
     return { frame: `${EMBED_ORIGIN}/sandbox/#session=${encodeURIComponent(session)}`,
       ...(report.ready_signal ? { ready_signal: true } : {}) }
   }
-  // For whoever runs the instance: the person's opaque id and the status, never the token or the upstream text.
-  console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, message: failure, bytes }))
+  // For whoever runs the instance (#1391): the person's opaque id, which report and Dive, the status and
+  // MotherDuck's answer, cut short with every secret blanked.
+  console.error(JSON.stringify({ event: 'dash_embed_session_failed', person: ctx.user, report: report.report_key, dive: report.dive_id,
+    message: failure, ...(answer === undefined ? {} : { body: answer }), bytes }))
   return tooLarge ? { too_large: true } : { unreachable: true }
 }
 
