@@ -29,6 +29,8 @@ export function useNavigationHistory(user: string | undefined): boolean {
     },
     enabled: Boolean(user),
     retry: false,
+    // Read again each time a shell mounts, as before #1385 (a page that comes back after a lost connection asks again).
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })

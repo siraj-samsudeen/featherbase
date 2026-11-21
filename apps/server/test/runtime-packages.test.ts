@@ -949,7 +949,7 @@ describe('An app declares its phone tabs', () => {
       expect(own.pages.filter((p) => p.href.startsWith('/other/')).map((p) => p.href).sort())
         .toEqual(['/other/', '/other/checks/open', '/other/targets'])
       expect(own.pages.filter((p) => p.href.startsWith('/featherbase/admin'))).toEqual([])
-      expect(new Set(own.pages.map((p) => p.kind))).toEqual(new Set(['App', 'App tab', 'Account']))
+      expect(new Set(own.pages.map((p) => (p as { kind?: string }).kind))).toEqual(new Set(['App', 'App tab', 'Account']))
 
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
       const disabled = await admin.get<Inventory>('/api/command_destinations')
