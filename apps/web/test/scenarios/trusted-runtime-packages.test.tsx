@@ -312,7 +312,8 @@ describe('trusted-runtime-packages', () => {
       const root = bar.getByTestId('bar-theme-root')
       await waitFor(() => expect(root).toHaveAttribute('data-theme', 'dark'))
       expect(root).toHaveAttribute('data-featherbase-accent', 'green')
-      frame.remove()
+      // A new sidebar on the page (#1385, slice 3: the frame is React's, so the element goes, not its frame).
+      ;(frame.getRootNode() as ShadowRoot).host.remove()
       const after = sidebarFrame()
       expect([after.dataset.theme, after.getAttribute('data-featherbase-accent')]).toEqual(['dark', 'green'])
       expect(green.dark()).not.toBe(blue.dark())

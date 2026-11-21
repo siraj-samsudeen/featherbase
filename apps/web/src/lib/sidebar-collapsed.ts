@@ -66,10 +66,6 @@ export function subscribeSidebar(listener: () => void): () => void {
   return () => listeners.delete(listener)
 }
 
-export function readSidebar(user: string | undefined): SidebarState {
-  return stateFor(user)
-}
-
 /** #1251: every toggle but the key's is a mouse or touch control (the bar's
  *  icon, the rail's footer and edge); each use is noted for the shortcut tips. */
 export function toggleSidebarCollapsed(user: string | undefined, via: 'key' | 'mouse' = 'mouse'): void {

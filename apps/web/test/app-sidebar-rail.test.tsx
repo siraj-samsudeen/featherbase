@@ -227,3 +227,31 @@ test('a sidebar the app does not name is called Application navigation', async (
   document.body.append(bare)
   expect(bare).toHaveAttribute('aria-label', 'Application navigation')
 })
+
+// #1385 (slice 3): one frame. The app's sidebar draws the Admin's frame component
+// (SidebarAside), its rows projected into the links that scroll between the top and the foot.
+test("an app's rows and the platform's groups sit in the shared frame's links", async ({ admin }) => {
+  const { sidebar } = openAppPage(admin)
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
+  const links = shadow(sidebar).getByTestId('sidebar-links')
+  expect([links.querySelector('slot'), links.querySelector('[data-testid=sidebar-slot-defaults]')].every(Boolean)).toBe(true)
+})
+
+test('a sidebar the app moves within its page keeps its frame', async ({ admin }) => {
+  const { sidebar } = openAppPage(admin)
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
+  const frame = sidebar.shadowRoot!.querySelector('.sidebar-frame')
+  document.body.append(sidebar)
+  await act(async () => {})
+  expect(sidebar.shadowRoot!.querySelector('.sidebar-frame')).toBe(frame)
+})
+
+test('a sidebar the app takes out and puts back draws its frame again', async ({ admin }) => {
+  const { sidebar } = openAppPage(admin)
+  await within(sidebar.shadowRoot as unknown as HTMLElement).findByTestId('session-user')
+  sidebar.remove()
+  await act(async () => {})
+  expect(sidebar.shadowRoot!.querySelector('.sidebar-frame')).toBeNull()
+  document.body.append(sidebar)
+  expect(shadow(sidebar).getByTestId('sidebar-collapse')).toHaveAccessibleName('Collapse sidebar')
+})
