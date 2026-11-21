@@ -6,9 +6,10 @@ type Answer = { entries: unknown[] }
 const pending: { resolve: (a: Answer) => void; reject: (e: unknown) => void }[] = []
 vi.mock('../src/lib/api', () => ({
   api: { get: vi.fn(() => new Promise<Answer>((resolve, reject) => pending.push({ resolve, reject }))) },
+  getSessionUser: () => null,
 }))
 const replaced = vi.fn()
-vi.mock('../src/lib/recents', () => ({ replaceServerEntries: (...args: unknown[]) => replaced(...args) }))
+vi.mock('../src/lib/recents', () => ({ replaceServerEntries: (...args: unknown[]) => replaced(...args), connectEventSink: vi.fn() }))
 
 const { useNavigationHistory } = await import('../src/lib/navigation-history')
 
