@@ -15,13 +15,13 @@ afterEach(() => {
   clearSession()
 })
 
-function signIn(code: string, redeemed: Record<string, unknown>) {
+function signIn(code: string, redeemed: Record<string, unknown>, next?: string) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     const body = url.includes('/api/oauth/session') ? redeemed : {}
     return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
   })
-  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [`/featherbase/oauth-callback?code=${code}`] }) })
+  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [`/featherbase/oauth-callback?code=${code}${next ? `&next=${encodeURIComponent(next)}` : ''}`] }) })
   render(<QueryClientProvider client={new QueryClient()}><RouterProvider router={router as never} /></QueryClientProvider>)
   return router
 }
@@ -40,4 +40,19 @@ test('a Google sign-in of someone who belongs on another address goes there to s
   })
   // jsdom cannot load another document; it reports the attempt instead.
   await waitFor(() => expect(errors.mock.calls.some((c) => /Not implemented: navigation/.test(String((c[0] as Error)?.message ?? c[0])))).toBe(true))
+})
+
+// #1385 (Codex): a hand-off from an app's address carries the Admin page chosen there in the command bar.
+test('a hand-off that carries a page opens it once signed in here', async () => {
+  const router = signIn('carried-code', {
+    token: 'carried-token', user: { row_id: 'Administrator', full_name: 'Administrator' }, landing: '/featherbase/admin',
+  }, '/featherbase/admin/jobs')
+  await waitFor(() => expect(router.state.location.pathname).toBe('/featherbase/admin/jobs'))
+})
+
+test('a carried page that is not a plain path of this address is ignored: the landing opens', async () => {
+  const router = signIn('unsafe-code', {
+    token: 'unsafe-token', user: { row_id: 'Administrator', full_name: 'Administrator' }, landing: '/featherbase/account/sign-in-methods',
+  }, '//evil.example/featherbase/admin')
+  await waitFor(() => expect(router.state.location.pathname).toBe('/featherbase/account/sign-in-methods'))
 })

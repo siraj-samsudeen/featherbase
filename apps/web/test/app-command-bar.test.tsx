@@ -203,3 +203,60 @@ test('someone who cannot use the Admin is offered no Admin command', async ({ ad
   await waitFor(() => expect(bar.getByTestId('search-no-match')).toBeInTheDocument(), WAIT)
   expect(bar.queryByTestId('awesomebar-cmd-home')).not.toBeInTheDocument()
 })
+
+// #1385 (Codex): on an app's own address the Admin is another address. An Admin destination goes through the
+// sign-in hand-off (Open Admin's), which carries the page chosen; it never pushes an Admin path on the app's address.
+function onAppsOwnAddress(openAdmin: () => Promise<Response>) {
+  const bridge = globalThis.fetch
+  const asked: unknown[] = []
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url.endsWith('/api/brand')) {
+      const brand = await (await bridge(input, init)).json()
+      return new Response(JSON.stringify({ ...brand, opens: 'barproof' }), { headers: { 'content-type': 'application/json' } })
+    }
+    if (url.endsWith('/api/open_admin')) { asked.push(JSON.parse(String(init?.body))); return openAdmin() }
+    return bridge(input, init)
+  })
+  return asked
+}
+const answer = (body: unknown, status = 200) => async () => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+async function chooseTable(admin: TestClient, leave: (href: string) => void) {
+  await installBarProof(admin)
+  const page = openAppPage(admin, leave)
+  await page.sidebar.findByTestId('command-field', {}, WAIT)
+  type(await openWithKeys(page), 'Person')
+  const person = await waitFor(() => {
+    const hit = page.bar.getAllByTestId('awesomebar-table').find((e) => e.getAttribute('href') === tableHref('Person'))
+    expect(hit).toBeDefined()
+    return hit!
+  }, WAIT)
+  fireEvent.click(person)
+}
+
+test("on an app's own address, an Admin destination opens through the hand-off, carrying the page chosen", async ({ admin }) => {
+  const asked = onAppsOwnAddress(answer({ handoff: 'https://admin.example.test/api/handoff/start?ticket=t' }))
+  const assign = vi.fn()
+  vi.stubGlobal('location', { ...window.location, assign })
+  const leave = vi.fn()
+  await chooseTable(admin, leave)
+  await waitFor(() => expect(assign).toHaveBeenCalledWith('https://admin.example.test/api/handoff/start?ticket=t'), WAIT)
+  expect(asked).toEqual([{ next: tableHref('Person') }])
+  expect(leave).not.toHaveBeenCalled()
+  vi.unstubAllGlobals()
+})
+
+test("on an app's own address with no hand-off needed, the landing the server names opens", async ({ admin }) => {
+  onAppsOwnAddress(answer({ landing: '/featherbase/admin/table/person' }))
+  const leave = vi.fn()
+  await chooseTable(admin, leave)
+  await waitFor(() => expect(leave).toHaveBeenCalledWith('/featherbase/admin/table/person'), WAIT)
+})
+
+test("on an app's own address, a refused hand-off still opens the page asked for", async ({ admin }) => {
+  onAppsOwnAddress(answer({ error: { type: 'PermissionError', message: 'no' } }, 403))
+  const leave = vi.fn()
+  await chooseTable(admin, leave)
+  await waitFor(() => expect(leave).toHaveBeenCalledWith(tableHref('Person')), WAIT)
+})

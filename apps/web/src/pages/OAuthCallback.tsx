@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { openLanding, openReturnPath, takeLoginNext } from './Login'
+import { openLanding, openReturnPath, safeLoginNext, takeLoginNext } from './Login'
 import { api, rememberLogin, type SessionUser } from '../lib/api'
 
 // PLAT-006: the OAuth callback landing. The server redirects here with a
@@ -24,7 +24,7 @@ function redeemOnce(code: string) {
   return redemption.session
 }
 
-export function OAuthCallbackPage({ code }: { code?: string }) {
+export function OAuthCallbackPage({ code, next }: { code?: string; next?: string }) {
   const navigate = useNavigate()
   const router = useRouter()
   useEffect(() => {
@@ -41,7 +41,8 @@ export function OAuthCallbackPage({ code }: { code?: string }) {
         if (!live) return
         const user = rememberLogin(redeemed)
         // A deep link the person was headed to before Google (see Login).
-        const returnTo = takeLoginNext()
+        // #1385: else the Admin page chosen on an app's address, carried through the hand-off (checked as any return path).
+        const returnTo = takeLoginNext() ?? safeLoginNext(next)
         // #488: this person belongs on another address; go and sign in there.
         if (user.handoff) window.location.assign(user.handoff)
         else if (returnTo) openReturnPath(returnTo, (path) => router.history.push(path))
@@ -53,7 +54,7 @@ export function OAuthCallbackPage({ code }: { code?: string }) {
     return () => {
       live = false
     }
-  }, [code, navigate, router])
+  }, [code, next, navigate, router])
 
   return (
     <div className="flex min-h-screen items-center justify-center text-sm text-ink-muted" data-testid="oauth-callback">
