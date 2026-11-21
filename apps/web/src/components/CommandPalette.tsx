@@ -69,7 +69,7 @@ export function CommandPalette({ open: barFocused, onOpenChange: setBarFocused }
     setSelection(null)
   }
   // Remembered visits are Admin destinations: someone who cannot use the Admin neither reads nor is offered them.
-  const historyReady = useNavigationHistory(useCapabilities()?.admin === true ? user?.row_id : undefined)
+  const historyReady = useNavigationHistory(useCapabilities()?.admin === true ? user?.row_id : undefined, true)
 
   const destinations = useQuery({
     queryKey: ['command-destinations', user?.row_id],
