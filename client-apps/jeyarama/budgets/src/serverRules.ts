@@ -74,10 +74,10 @@ async function prepareVersion(ctx: Context) {
     if (same.some(other => other.row_id !== row.row_id)) ctx.reject(`There is already a ${row.budget_kind} version called ${row.version_name}: give this one another name`)
   }
   // A revision reads its unchanged figures from its base, so the base must be one that can no longer change.
-  if (row.based_on && (ctx.isNew || changed(ctx, 'based_on'))) {
+  if (row.based_on && (ctx.isNew || changed(ctx, 'based_on') || changed(ctx, 'budget_kind'))) {
     if (row.based_on === row.row_id) ctx.reject('A version is not based on itself')
     const base = await ctx.documents.get('budgets.budget_version', String(row.based_on))
-    if (base.version_state === 'Draft') ctx.reject(`${base.version_name} is a draft: a version is based on an approved one`)
+    if (base.version_state === 'Draft' && (ctx.isNew || changed(ctx, 'based_on'))) ctx.reject(`${base.version_name} is a draft: a version is based on an approved one`)
     if (base.budget_kind !== row.budget_kind) ctx.reject(`${base.version_name} is a ${base.budget_kind} version: a ${row.budget_kind} version is based on a ${row.budget_kind} one`)
   }
   if (!ctx.isNew && old?.version_state === 'Withdrawn') {
@@ -197,6 +197,12 @@ async function prepareArea(ctx: Context) {
   const { row } = ctx
   if (row.ends_on && day(row.ends_on) < day(row.starts_on)) ctx.reject(`This area ends before it starts (${fmtDay(day(row.starts_on))})`)
   if (!(Number(row.area_sqft) > 0)) ctx.reject('An area is more than nothing', { area_sqft: 'Say the area in sq ft' })
+  // One area at a time for a store (or for one of its segments), whichever road the save takes.
+  const [from, to] = [day(row.starts_on), row.ends_on ? day(row.ends_on) : '9999-12-31']
+  const others = await all(ctx.documents, 'budgets.store_area', [['plant', '=', row.plant]], ['row_id', 'starts_on', 'ends_on', 'business_line_segment'])
+  const clash = others.find(other => other.row_id !== row.row_id && (other.business_line_segment ?? null) === (row.business_line_segment ?? null)
+    && day(other.starts_on) <= to && (other.ends_on ? day(other.ends_on) : '9999-12-31') >= from)
+  if (clash) ctx.reject(`This store already has an area from ${fmtDay(day(clash.starts_on))}${clash.ends_on ? ` to ${fmtDay(day(clash.ends_on))}` : ' with no end'}: end it first, or use Add An Area`)
 }
 
 export const validators = {
