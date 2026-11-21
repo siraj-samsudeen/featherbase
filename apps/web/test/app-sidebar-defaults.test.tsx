@@ -227,3 +227,19 @@ test("a rail group's icon on an app's page closes its own open menu", async ({ a
   await userEvent.click(fold)
   expect(inside.queryByRole('menu')).not.toBeInTheDocument()
 })
+
+test("the arrow keys move through a rail menu's items on an app's page", async ({ admin }) => {
+  await admin.post('/api/events', { events: [openedTable('Role', Date.now() - 1000)] })
+  const { inside, fold } = await railedAppPage(admin)
+  await userEvent.click(fold)
+  const menu = inside.getByRole('menu', { name: 'Recently Opened' })
+  const [first, second] = await waitFor(() => {
+    const all = within(menu).getAllByRole('menuitem')
+    expect(all).toHaveLength(2)
+    return all
+  }, WAIT)
+  const shadow = fold.getRootNode() as ShadowRoot
+  await waitFor(() => expect(shadow.activeElement).toBe(first))
+  fireEvent.keyDown(first, { key: 'ArrowDown' })
+  expect(shadow.activeElement).toBe(second)
+})
