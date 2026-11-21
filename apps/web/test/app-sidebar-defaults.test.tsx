@@ -243,3 +243,9 @@ test("the arrow keys move through a rail menu's items on an app's page", async (
   fireEvent.keyDown(first, { key: 'ArrowDown' })
   expect(shadow.activeElement).toBe(second)
 })
+
+test("in the rail a platform group's icon on an app's page is named by its tooltip", async ({ admin }) => {
+  const { inside, fold } = await railedAppPage(admin)
+  fireEvent.pointerOver(fold)
+  expect(inside.getByRole('tooltip')).toHaveTextContent('Recently Opened')
+})
