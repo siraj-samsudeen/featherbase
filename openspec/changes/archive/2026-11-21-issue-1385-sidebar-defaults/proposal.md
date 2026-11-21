@@ -16,4 +16,4 @@ The bell, Recently Opened, Frequent and Saved Views were drawn only in the Admin
 
 ### Modified Capabilities
 
-- `app-navigation`: every page's sidebar carries the platform's defaults.
+- `app-navigation`: the Admin's sidebar and every app's carry the platform's defaults.
