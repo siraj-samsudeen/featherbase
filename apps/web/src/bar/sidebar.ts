@@ -275,11 +275,11 @@ export class FeatherbaseSidebar extends HTMLElement {
       root: this, layer,
       active: () => this.rail,
       rowOf: (target) => {
-        if (!(target instanceof Element)) return null
+        const element = target instanceof Element ? target : null
         // #1385: a row of the platform's groups, below the app's own.
-        const platform = target.closest<HTMLElement>('.sidebar-defaults :is(a, button)')
+        const platform = element?.closest<HTMLElement>('.sidebar-defaults :is(a, button)')
         if (platform) return platform
-        const row = target.closest('featherbase-sidebar > *') as HTMLElement | null
+        const row = (element?.closest('featherbase-sidebar > *') ?? null) as HTMLElement | null
         return row && row.parentElement === this && (row.matches('button, a') || row.hasAttribute('data-rail-fold')) && !this.menu ? row : null
       },
     })
