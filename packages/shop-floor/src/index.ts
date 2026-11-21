@@ -42,4 +42,4 @@ export { Grid, PendingBar, gridKey, type GridColumn, type GridRow, type GridStep
 export { LinkLine, LinkSection, TickMark, ToneChip, type ChipTone } from './LinkLine'
 export { FindingCard, type FindingTone } from './FindingCard'
 export { cellClasses, headCellClasses, RowDensityContext, TABLE_CLASSES, useRowDensity, type RowDensity } from './TableLook'
-export { useTopLayer, type TopLayerPlace } from './TopLayer'
+export { placeCard, useTopLayer, type TopLayerPlace } from './TopLayer'
