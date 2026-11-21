@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { tableHref } from 'shared'
 import { Route } from 'lucide-react'
-import { Bell, Bookmark, Clock, touchRowClasses } from '@featherbase/shop-floor'
+import { Bell, Bookmark, Clock, RecordLink, touchRowClasses } from '@featherbase/shop-floor'
 import { GROUP_TONE, RailFold, RailMenuItem, SIDEBAR_HEADING, TableTile, useSidebarRail } from './SidebarRail'
 import { RecentSub } from './RecentSub'
 import { useSidebarWalkLabels } from './NavPathBar'
@@ -12,7 +12,7 @@ import { SIDEBAR_VIEWS_KEY, useNavigationSettings } from '../lib/nav-settings'
 import { pathHref } from '../lib/navigation'
 import { encodePath, type NavPath } from '../lib/nav-path'
 import { useNavigationHistory } from '../lib/navigation-history'
-import { EntryLabel, useLiveDestinations } from '../lib/row-titles'
+import { EntryLabel, useLiveDestinations, useRowTitle } from '../lib/row-titles'
 import { tableLabel, useMeta } from '../lib/meta'
 import { setSidebarDrawerOpen } from '../lib/sidebar-collapsed'
 import { useRealtime } from '../lib/realtime'
@@ -297,7 +297,7 @@ function SidebarRecentRow({
       <span className="min-w-0 flex-1 truncate">
         {differs(entry, shared)
           ? <span data-testid="recent-differs"><RecentSub entry={entry} /></span>
-          : <EntryLabel entry={entry} />}
+          : shown.row ? <RecentRecord table={shown.row.table} rowId={shown.row.rowId} /> : <EntryLabel entry={entry} />}
       </span>
       {frequent && <span aria-hidden className={`text-xs ${GROUP_TONE.amber}`}>★</span>}
       <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{meta}</span>
@@ -305,3 +305,9 @@ function SidebarRecentRow({
   )
 }
 
+
+/** A remembered record, inside its row's link (AGENTS.md § UI rules: every record shown is a RecordLink).
+ *  The sidebar offers only rows the server still titles for this reader (#898), so the title is there. */
+function RecentRecord({ table, rowId }: { table: string; rowId: string }) {
+  return <RecordLink inLink table={table} rowId={rowId} name={useRowTitle(table, rowId)} />
+}
