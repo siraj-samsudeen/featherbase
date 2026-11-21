@@ -124,6 +124,8 @@ export class FeatherbaseSidebar extends HTMLElement {
       :host([data-collapsed]) .sidebar-links { overflow-x:hidden; }
       /* A row keeps its height; one with margin-top:auto sits at the foot. */
       ::slotted(*) { flex-shrink:0; }
+      /* #1385: the platform's groups, drawn as in the Admin's sidebar, which has no padding of its own. */
+      .sidebar-defaults { flex-shrink:0; margin:0 -8px; }
       ::slotted(button), ::slotted(a) {
         display:flex !important; align-items:center !important; gap:10px !important;
         box-sizing:border-box !important; width:100% !important; min-height:40px !important;
@@ -190,7 +192,11 @@ export class FeatherbaseSidebar extends HTMLElement {
     top.dataset.testid = 'sidebar-slot-top'
     const links = document.createElement('div')
     links.className = 'sidebar-links'
-    links.append(document.createElement('slot'))
+    // #1385 (slice 2): the platform's defaults follow the app's own rows.
+    const defaults = document.createElement('div')
+    defaults.className = 'sidebar-defaults'
+    defaults.dataset.testid = 'sidebar-slot-defaults'
+    links.append(document.createElement('slot'), defaults)
     const account = document.createElement('div')
     account.dataset.testid = 'sidebar-slot-foot'
     nav.append(top, links)
@@ -227,7 +233,7 @@ export class FeatherbaseSidebar extends HTMLElement {
     this.leave?.()
     this.unsubscribe?.()
     this.unslot?.()
-    this.unslot = offerSidebarSlots({ top, foot: account })
+    this.unslot = offerSidebarSlots({ top, foot: account, defaults })
     // #1253 (Siraj, 17-Nov): the app's declared pickers sit inside its white
     // panel, at the top and right-aligned: a host the platform keeps as the
     // first child of the app's page column, styled in its own shadow.

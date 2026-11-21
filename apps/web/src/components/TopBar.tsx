@@ -23,7 +23,8 @@ import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSide
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
 import { CommandField, CommandPalette } from './CommandPalette'
-import { NotificationBell } from './SidebarDefaults'
+import { NotificationBell, SidebarRecall, SidebarSavedViews } from './SidebarDefaults'
+import { SidebarRailContext } from './SidebarRail'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's
@@ -274,6 +275,15 @@ export function TopBar({
             {caps && <CommandField rail={rail} onOpen={() => setCommandOpen(true)} />}
           </div>,
           slots.top,
+        )}
+        {/* #1385 (slice 2): below an app's own rows, the platform's recall, as in the Admin.
+            They list Admin destinations: only someone who can use the Admin gets them. */}
+        {canUseAdmin && slots.defaults && createPortal(
+          <SidebarRailContext.Provider value={rail}>
+            <SidebarRecall />
+            <SidebarSavedViews />
+          </SidebarRailContext.Provider>,
+          slots.defaults,
         )}
         {caps && createPortal(
           // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen.
