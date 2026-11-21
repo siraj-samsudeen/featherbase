@@ -10,56 +10,394 @@
   "client": "dist/client",
   "entryTable": "forecasting.number",
   "tables": [
-    {"name": "forecasting.number", "label": "Forecast number", "module": "Forecasting", "id_pattern": "FN-.#####", "title_column": "scope_name", "columns": [
-      {"column_name": "month", "label": "Month", "column_type": "Data", "reqd": true, "in_list_view": true},
-      {"column_name": "run", "label": "Engine Run", "column_type": "Data"},
-      {"column_name": "store", "label": "Store", "column_type": "Data", "reqd": true, "in_list_view": true},
-      {"column_name": "section", "label": "Section", "column_type": "Data", "in_list_view": true},
-      {"column_name": "scope_level", "label": "Level", "column_type": "Choice", "choices": "Store\nSection\nCategory\nSubcategory", "reqd": true},
-      {"column_name": "scope_name", "label": "For", "column_type": "Data", "reqd": true, "in_list_view": true},
-      {"column_name": "kind", "label": "How", "column_type": "Choice", "choices": "Engine\nSet a figure\nChange the weights\nChange by a percent\nClosure", "reqd": true, "in_list_view": true},
-      {"column_name": "value", "label": "Figure, before tax", "column_type": "Currency", "reqd": true, "in_list_view": true},
-      {"column_name": "weights_json", "label": "Weights (%, by basis)", "column_type": "Long Text"},
-      {"column_name": "entered_by", "label": "Entered by", "column_type": "Data", "reqd": true, "in_list_view": true},
-      {"column_name": "entered_by_role", "label": "Their job", "column_type": "Data"},
-      {"column_name": "entered_on", "label": "Entered on", "column_type": "Data"},
-      {"column_name": "reason", "label": "Why", "column_type": "Text"},
-      {"column_name": "status", "label": "Status", "column_type": "Choice", "choices": "Waiting\nApplied\nReference\nNot approved", "reqd": true, "in_list_view": true},
-      {"column_name": "waiting_on", "label": "Waiting on", "column_type": "Data"}
-    ]},
-    {"name": "forecasting.decision", "label": "Number history", "module": "Forecasting", "id_pattern": "FD-.######", "columns": [
-      {"column_name": "number", "label": "Number", "column_type": "Reference", "reference_table": "forecasting.number", "in_list_view": true},
-      {"column_name": "month", "label": "Month", "column_type": "Data", "reqd": true},
-      {"column_name": "store", "label": "Store", "column_type": "Data", "reqd": true, "in_list_view": true},
-      {"column_name": "scope_name", "label": "For", "column_type": "Data", "reqd": true, "in_list_view": true},
-      {"column_name": "decision", "label": "What happened", "column_type": "Choice", "choices": "Sent for approval\nSent up\nApproved and applied\nKept as reference\nNot approved\nComment\nThis is wrong", "reqd": true, "in_list_view": true},
-      {"column_name": "decided_by", "label": "By", "column_type": "Data", "reqd": true, "in_list_view": true},
-      {"column_name": "decided_by_role", "label": "Their job", "column_type": "Data"},
-      {"column_name": "note", "label": "Note", "column_type": "Text"},
-      {"column_name": "decided_on", "label": "On", "column_type": "Data", "in_list_view": true}
-    ]},
-    {"name": "forecasting.review_question", "label": "Review question", "module": "Forecasting", "id_pattern": "FQ-.####", "title_column": "question", "columns": [
-      {"column_name": "month", "label": "Month reviewed", "column_type": "Data", "reqd": true, "in_list_view": true},
-      {"column_name": "topic", "label": "Topic", "column_type": "Data", "in_list_view": true},
-      {"column_name": "question", "label": "Question", "column_type": "Text", "reqd": true},
-      {"column_name": "asked_by", "label": "Asked by", "column_type": "Data", "in_list_view": true},
-      {"column_name": "answer", "label": "Answer", "column_type": "Text"},
-      {"column_name": "answered_by", "label": "Answered by", "column_type": "Data"},
-      {"column_name": "status", "label": "Status", "column_type": "Choice", "choices": "Open\nAnswered\nDecided", "reqd": true, "in_list_view": true}
-    ]},
-    {"name": "forecasting.idea", "label": "Idea", "module": "Forecasting", "id_pattern": "FI-.####", "title_column": "title", "columns": [
-      {"column_name": "title", "label": "Idea", "column_type": "Data", "reqd": true, "in_list_view": true},
-      {"column_name": "kind", "label": "Kind", "column_type": "Choice", "choices": "Trial\nModel\nCheck\nQuestion", "reqd": true, "in_list_view": true},
-      {"column_name": "source", "label": "Came from", "column_type": "Data"},
-      {"column_name": "owner", "label": "Owner", "column_type": "Data", "in_list_view": true},
-      {"column_name": "status", "label": "Status", "column_type": "Choice", "choices": "Idea\nPlanned\nRunning\nKept\nDropped", "reqd": true, "in_list_view": true},
-      {"column_name": "result", "label": "What it showed", "column_type": "Text"}
-    ]}
+    {
+      "name": "forecasting.number",
+      "label": "Forecast number",
+      "module": "Forecasting",
+      "id_pattern": "FN-.#####",
+      "title_column": "scope_name",
+      "columns": [
+        {
+          "column_name": "month",
+          "label": "Month",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "run",
+          "label": "Engine Run",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "section",
+          "label": "Section",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "scope_level",
+          "label": "Level",
+          "column_type": "Choice",
+          "choices": "Store\nDivision\nCategory\nSubcategory",
+          "reqd": true
+        },
+        {
+          "column_name": "weeks",
+          "label": "Weeks (1–5; blank = the whole month)",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "scope_name",
+          "label": "For",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "kind",
+          "label": "How",
+          "column_type": "Choice",
+          "choices": "Engine\nSet a total\nChange by a percent\nClosure or event\nChange the weights",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "value",
+          "label": "Figure, before tax",
+          "column_type": "Currency",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "weights_json",
+          "label": "Weights (%, by basis)",
+          "column_type": "Long Text"
+        },
+        {
+          "column_name": "entered_by",
+          "label": "Entered by",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "entered_by_role",
+          "label": "Their job",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "entered_on",
+          "label": "Entered on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "reason",
+          "label": "Why",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "status",
+          "label": "Status",
+          "column_type": "Choice",
+          "choices": "Waiting\nApplied\nReference\nNot approved",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "waiting_on",
+          "label": "Waiting on",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.decision",
+      "label": "Number history",
+      "module": "Forecasting",
+      "id_pattern": "FD-.######",
+      "columns": [
+        {
+          "column_name": "number",
+          "label": "Number",
+          "column_type": "Reference",
+          "reference_table": "forecasting.number",
+          "in_list_view": true
+        },
+        {
+          "column_name": "month",
+          "label": "Month",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "scope_name",
+          "label": "For",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "decision",
+          "label": "What happened",
+          "column_type": "Choice",
+          "choices": "Sent for approval\nSent up\nApproved and applied\nKept as reference\nNot approved\nComment\nThis is wrong",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "decided_by",
+          "label": "By",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "decided_by_role",
+          "label": "Their job",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "note",
+          "label": "Note",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "decided_on",
+          "label": "On",
+          "column_type": "Data",
+          "in_list_view": true
+        }
+      ]
+    },
+    {
+      "name": "forecasting.review_question",
+      "label": "Review question",
+      "module": "Forecasting",
+      "id_pattern": "FQ-.####",
+      "title_column": "question",
+      "columns": [
+        {
+          "column_name": "ref",
+          "label": "Ref",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "month",
+          "label": "Month reviewed",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "scope",
+          "label": "About",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "question",
+          "label": "Question",
+          "column_type": "Text",
+          "reqd": true
+        },
+        {
+          "column_name": "detail",
+          "label": "What they saw",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "asked_by",
+          "label": "Asked by",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "asked_on",
+          "label": "Asked on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "answer",
+          "label": "Answer",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "answered_by",
+          "label": "Answered by",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "answered_on",
+          "label": "Answered on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "outcome",
+          "label": "Outcome",
+          "column_type": "Choice",
+          "choices": "Open\nBeing worked on\nForecast changed\nNo change\nWaiting on the asker\nParked",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "impact",
+          "label": "Effect on the forecast",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "follow_up",
+          "label": "Follow-up",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "idea_ref",
+          "label": "Idea",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.idea",
+      "label": "Idea",
+      "module": "Forecasting",
+      "id_pattern": "FI-.####",
+      "title_column": "title",
+      "columns": [
+        {
+          "column_name": "ref",
+          "label": "Ref",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "label",
+          "label": "Short name",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "title",
+          "label": "Idea",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "kind",
+          "label": "Came from",
+          "column_type": "Choice",
+          "choices": "Engine trial\nBusiness suggestion\nModel comparison\nMonth check",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "raised_by",
+          "label": "Raised by",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "raised_on",
+          "label": "Raised on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "why",
+          "label": "Why it came up",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "tried",
+          "label": "What we tried",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "found",
+          "label": "What we found",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "verdict",
+          "label": "Verdict",
+          "column_type": "Choice",
+          "choices": "Waiting\nKept\nRejected\nAlready in the model\nNot tested",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "outcome",
+          "label": "In a few words",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "status_note",
+          "label": "Where it stands",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "decided_on",
+          "label": "Decided on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "revisit",
+          "label": "Look again when",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "areas",
+          "label": "Areas",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "evidence",
+          "label": "Evidence",
+          "column_type": "Long Text"
+        }
+      ]
+    }
   ],
   "permissions": [
-    {"table": "forecasting.number", "role": "All", "can_read": true, "can_write": true, "can_create": true},
-    {"table": "forecasting.decision", "role": "All", "can_read": true, "can_create": true},
-    {"table": "forecasting.review_question", "role": "All", "can_read": true, "can_write": true, "can_create": true},
-    {"table": "forecasting.idea", "role": "All", "can_read": true, "can_write": true, "can_create": true}
+    {
+      "table": "forecasting.number",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.decision",
+      "role": "All",
+      "can_read": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.review_question",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.idea",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    }
   ]
 }

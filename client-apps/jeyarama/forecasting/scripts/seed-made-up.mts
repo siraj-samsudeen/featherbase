@@ -7,7 +7,7 @@
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { SUBS, fromWeights, type Code } from '../src/madeUp.ts'
+import { SUBS, engineFor, fromWeights, parseWeeks, type Code, type Scope } from '../src/madeUp.ts'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const checkout = resolve(appDir, '../../..')
@@ -16,6 +16,7 @@ if (!process.env.DATABASE_URL || !process.env.FEATHERBASE_API_URL)
 const api = process.env.FEATHERBASE_API_URL
 const { sql } = await import(pathToFileURL(resolve(checkout, 'apps/server/src/db.ts')).href)
 const records = JSON.parse(await readFile(resolve(appDir, 'fixtures/made-up-records.json'), 'utf8'))
+const register = JSON.parse(await readFile(resolve(appDir, 'fixtures/made-up-register.json'), 'utf8'))
 const version = JSON.parse(await readFile(resolve(appDir, 'package.json'), 'utf8')).version
 
 const [stamp] = await sql`select value from featherbase.internal_metadata where key = 'environment'`.catch(() => [])
@@ -44,23 +45,35 @@ if (existing.data.length) {
   process.exit(0)
 }
 
-type Seed = { key: string; month: string; store: string; scope_name: string; kind: string; value?: number; percent?: number; weights?: Partial<Record<Code, number>>;
-  history: [string, string, string, string][] } & Record<string, unknown>
+type Seed = { key: string; month: string; store: string; scope_level: Scope['level']; scope_name: string; weeks: string; kind: string; value?: number; percent?: number;
+  weights?: Partial<Record<Code, number>>; history: [string, string, string, string][] } & Record<string, unknown>
 for (const n of records.numbers as Seed[]) {
+  const scope: Scope = { store: n.store, level: n.scope_level, name: n.scope_name, weeks: parseWeeks(n.weeks) }
+  const base = engineFor(scope, n.month)
   const sub = SUBS.find(s => s.store === n.store && s.name === n.scope_name)
-  const base = n.month === '2026-10' ? sub?.octEngine ?? 0 : sub?.engine ?? 0
   // A weights or percent number's figure is worked out the way the page works it out.
-  const figure = n.weights && sub ? Math.round(fromWeights(sub, n.weights)) : n.percent ? Math.round(base * (1 + n.percent / 100)) : n.value
+  const figure = n.weights && sub ? Math.round(fromWeights(sub, n.weights)) : n.percent != null ? Math.round(base * (1 + n.percent / 100)) : n.value
   const { key: _key, history, weights, percent: _percent, ...row } = n
   const id = await save('forecasting.number', { ...row, value: figure, weights_json: weights ? JSON.stringify(weights) : null })
   for (const [decision, by, on, note] of history)
     await save('forecasting.decision', { number: id, month: n.month, store: n.store, scope_name: n.scope_name, decision, decided_by: by, decided_on: on, note })
 }
 for (const c of records.comments) await save('forecasting.decision', c)
-for (const q of records.questions) await save('forecasting.review_question', q)
-for (const i of records.ideas) await save('forecasting.idea', i)
 
-console.log(`Forecasting: ${records.numbers.length} made-up numbers, ${records.questions.length} Review questions and ${records.ideas.length} ideas.
+const OUTCOME: Record<string, string> = { changed: 'Forecast changed', nochange: 'No change', progress: 'Being worked on', waiting: 'Waiting on the asker', parked: 'Parked', open: 'Open' }
+/** Both date spellings the register arrived in, as YYYY-MM-DD. */
+const day = (d: string) => (!d ? null : /^\d{4}-/.test(d) ? d : iso(d))
+const iso = (d: string) => { const [day, mon, y] = d.split('-'); return `${y}-${String(['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(mon) + 1).padStart(2, '0')}-${day}` }
+for (const q of register.questions) await save('forecasting.review_question', {
+  ref: q.id, month: '2026-11', scope: q.scope, question: q.q, detail: q.ask, asked_by: 'Kumar', asked_on: iso(q.asked),
+  answer: q.ans || null, answered_by: q.ans ? 'Farah' : null, answered_on: q.answered ? iso(q.answered) : null,
+  outcome: OUTCOME[q.st] ?? 'Open', impact: q.impact === '—' ? null : q.impact, follow_up: q.follow || null, idea_ref: q.idea })
+for (const i of register.ideas) await save('forecasting.idea', {
+  ref: i.id, label: i.label, title: i.title, kind: i.kind === 'November check' ? 'Month check' : i.kind, raised_by: i.raised_by, raised_on: day(i.raised_on),
+  why: i.why, tried: i.tried, found: i.found, verdict: i.verdict, outcome: i.outcome, status_note: i.status, decided_on: day(i.decided_on),
+  revisit: i.revisit || null, areas: (i.tags ?? []).join(', '), evidence: (i.evidence ?? []).join('\n') || null })
+
+console.log(`Forecasting: ${records.numbers.length} made-up numbers, ${register.questions.length} Review questions and ${register.ideas.length} ideas.
     Open:  ${api.replace(/:\d+$/, ':' + (process.env.WEB_PORT ?? ''))}/forecasting/  as Administrator / admin (development only)
     Pick a made-up person under "Viewing as" to see the page as they would.`)
 await sql.end?.()  // the open pool would keep this script, and so the dev command, waiting
