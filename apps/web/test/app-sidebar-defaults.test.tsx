@@ -90,3 +90,27 @@ test("an @mention shows the unread count on an app page's bell with no reload", 
   await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: DT, ref_name: 'asd-mention', content: 'ping @asd.user ' } })
   expect((await inside.findByTestId('unread-count', {}, WAIT)).textContent).toMatch(/[1-9]/)
 })
+
+/** What the Admin records when someone opens a Table's list (lib/recents). */
+const openedTable = (table: string, at = Date.now()) => ({ kind: 'list', key: `list:${table}?`, label: table, path: tableHref(table), at })
+
+test("an app's sidebar lists a Table the person opened under Recently Opened, below the app's own rows", async ({ admin }) => {
+  await installBarProof(admin)
+  await admin.post('/api/events', { events: [openedTable('Person')] })
+  const { inside } = openAppPage(admin)
+  const recents = await inside.findByTestId('sidebar-recents', {}, WAIT)
+  expect(within(recents).getByTestId('sidebar-recents-heading')).toHaveTextContent('Recently Opened')
+  expect(await within(recents).findByRole('link', { name: /Person/ }, WAIT)).toHaveAttribute('href', tableHref('Person'))
+  // The platform's groups follow the app's own rows (its <slot>).
+  const rows = (recents.getRootNode() as ShadowRoot).querySelector('slot')!
+  expect(rows.compareDocumentPosition(recents) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
+test('a Recently Opened Table on an app page opens with a full page load', async ({ admin }) => {
+  await installBarProof(admin)
+  await admin.post('/api/events', { events: [openedTable('Person')] })
+  const leave = vi.fn()
+  const { inside } = openAppPage(admin, leave)
+  fireEvent.click(await within(await inside.findByTestId('sidebar-recents', {}, WAIT)).findByRole('link', { name: /Person/ }, WAIT))
+  expect(leave).toHaveBeenCalledWith(tableHref('Person'))
+})
