@@ -599,7 +599,7 @@ export function ListView({
     || JSON.stringify(shownSort) !== JSON.stringify(td.sort ?? null)
     || compact !== (td.compact ?? false)
     || shownLinks.as !== (td.links?.as ?? 'sections') || shownLinks.fields !== (td.links?.fields ?? true)
-    || showRetired)
+    || showRetired || narrowHidden)
   // On a phone the saved layout is the person's own desktop choice, else the default's: never the phone's Table.
   const ownLayout = ownSettings.data?.settings?.layout
   const savedLayout = phoneWidth
