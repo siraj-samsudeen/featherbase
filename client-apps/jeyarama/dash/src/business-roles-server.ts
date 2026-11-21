@@ -16,7 +16,7 @@ import { opensDashFor, readableByRoles, offered } from './report-eligibility.ts'
 import { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, businessAccess, businessModel, every as everyRow, isStore, readsDesignations, type Base, type HandRow, type Mine } from './business-access.ts'
 import { openStore, siteKindRead, siteStoreFields } from './site-kind.ts'
 import { businessReports, businessRolesOpen, opensDashByBusinessRoles } from './business-reports.ts'
-import { carriedOver, ensureStartingRoles, logger } from './switch-over.ts'
+import { carriedOver, ensureStartingRoles, logger, startingRolesSummary } from './switch-over.ts'
 
 export { DESIGNATION, PERMISSION, ROLE, ROLE_ASSIGNMENT, TITLE_MAP, type Base }
 type Row = Record<string, unknown>
@@ -362,7 +362,8 @@ const HOLDER_WORDS: Record<Source, string> = {
 }
 const joined = (words: string[]) => words.length <= 1 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
 
-export async function businessRoles(context: AccessContext) {
+/** `allHoldersOf`: one role whose people are all wanted (its own page), not only the first ones. */
+export async function businessRoles(context: AccessContext, { allHoldersOf }: { allHoldersOf?: string } = {}) {
   const ctx = managersOnly(context)
   const world = await shadowWorld(ctx.baseTables)
   const { roles, permissions } = world.model
@@ -375,10 +376,13 @@ export async function businessRoles(context: AccessContext) {
   const bulk = await shadowWorld(ctx.baseTables, world.today, { bulk: true })
   const peopleOf = new Map<string, Set<string>>()
   const sourcesOf = new Map<string, Set<string>>()
+  // #1340: how each holder came to hold the role, for the role page's source chips: by hand wins over HR.
+  const handOf = new Map<string, Set<string>>()
   for (const person of await population(bulk)) {
     for (const held of (await businessAccess(bulk.docs, person, bulk.today, bulk)).held) {
       peopleOf.set(held.role, (peopleOf.get(held.role) ?? new Set()).add(person))
       sourcesOf.set(held.role, (sourcesOf.get(held.role) ?? new Set()).add(HOLDER_WORDS[held.source]))
+      if (BY_HAND.has(held.source)) handOf.set(held.role, (handOf.get(held.role) ?? new Set()).add(person))
     }
   }
   const sourceWords = (role: string) => joined(Object.values(HOLDER_WORDS).filter((w, i, all) => all.indexOf(w) === i && sourcesOf.get(role)?.has(w)))
@@ -396,7 +400,8 @@ export async function businessRoles(context: AccessContext) {
     const what = row.report ? `dash.report|${row.report}` : `dash.report_bundle|${row.report_bundle}`
     if (row.business_role) givenTo.set(what, [...new Set([...givenTo.get(what) ?? [], row.business_role])])
   }
-  const shown = [...new Set([...holdersOf.values()].flatMap(set => [...set].slice(0, HOLDERS_SHOWN)).concat(roles.flatMap(r => [...peopleOf.get(r.id) ?? []].slice(0, HOLDERS_SHOWN))))]
+  const shownOf = (role: string) => [...peopleOf.get(role) ?? []].slice(0, role === allHoldersOf ? undefined : HOLDERS_SHOWN)
+  const shown = [...new Set([...holdersOf.values()].flatMap(set => [...set].slice(0, HOLDERS_SHOWN)).concat(roles.flatMap(r => shownOf(r.id))))]
   const names = await personNames(ctx, shown)
   return {
     // #1282 F1–F6: whether the grid steps for this caller, or is read-only.
@@ -413,7 +418,9 @@ export async function businessRoles(context: AccessContext) {
       given: [...givenTo].filter(([what, given]) => given.includes(role.id) && named.has(what)).map(([what]) => what),
       people: peopleOf.get(role.id)?.size ?? 0,
       people_from: sourceWords(role.id) || 'nobody yet',
-      holders: [...peopleOf.get(role.id) ?? []].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone' })),
+      holders: shownOf(role.id).map(person => ({ person, name: names.get(person) ?? 'Someone', by_hand: handOf.get(role.id)?.has(person) ?? false })),
+      /** #1340: how its people came to hold it, in short words for the list ("HR title + by hand"). */
+      given_by: [...sourcesOf.get(role.id) ?? []],
     })),
     titles: titleList(inUse, world.model).map(t => ({ ...t, role_name: nameOf.get(t.role!) ?? null,
       holders: [...holdersOf.get(t.title.toLowerCase()) ?? []].slice(0, HOLDERS_SHOWN).map(person => ({ person, name: names.get(person) ?? 'Someone' })) })),
@@ -480,13 +487,29 @@ export async function explainPerson(context: AccessContext) {
       direct: shadow.nextWhy.get(key)!.some(w => w.person === true) })),
     permissions: world.model.permissions.filter(p => shadow.held.some(h => h.role === p.role))
       .map(p => ({ role: p.role, app: p.app, level: p.level, verb: p.verb, thing: p.thing, reach: p.reach })),
-    today: { opens: shadow.today.opens, reports: shadow.today.reports.length, stores: new Set(Object.keys(shadow.today.places).map(s => plants.get(s))).size },
-    next: { opens: shadow.next.opens, reports: shadow.next.reports.length, stores: new Set(Object.keys(shadow.next.places).map(s => plants.get(s))).size },
+    today: sideCounts(shadow.today, plants),
+    next: sideCounts(shadow.next, plants),
     change: await changeWords(world, reports, found, shadow.everyReport),
+    // #1340: the owner has decided they are to lose Dash (Let Them Lose Dash).
+    decided: (await decidedToLose(ctx.baseTables)).has(person),
     choices: world.model.roles.map(r => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name)),
     // The Correct form's places: every store, their job's first.
     places: { stores, default: jobs.map(j => exact(j.site)).find(id => stores.some(s => s.id === id)) ?? null },
   }
+}
+
+/** One side of a comparison as counts: whether Dash opens, how many reports, how many stores (a store's plants count once). */
+function sideCounts(side: { opens: boolean; reports: string[]; places: Record<string, unknown> }, plants: Map<string, string>) {
+  return { opens: side.opens, reports: side.reports.length, stores: new Set(Object.keys(side.places).map(s => plants.get(s))).size }
+}
+
+/** #1340: the owner's decisions on Who Would Gain Or Lose Access, by person. */
+export const ACCESS_DECISION = 'dash.access_decision'
+
+/** #1340: the people the owner has decided are to lose Dash with business roles. A decision taken back is not one. */
+export async function decidedToLose(base: Documents): Promise<Set<string>> {
+  return new Set((await everyRow(base, ACCESS_DECISION, ['person', 'decision', 'removed']))
+    .filter(r => !checked(r.removed) && text(r.decision) === 'Lose Dash').map(r => exact(r.person)))
 }
 
 const GROUPS = ['loses_dash', 'gains_dash', 'stores', 'reports', 'decision', 'needs_dash_role'] as const
@@ -528,6 +551,7 @@ export async function accessChanges(context: AccessContext) {
   const people = await population(world)
   const platformRoles = await platformRolesOf(ctx.people, people)
   const roleName = new Map(world.model.roles.map(r => [r.id, r.name]))
+  const plants = new Map((await world.docs.rows('Plant')).map(p => [exact(p.row_id), exact(p.site)]))
   const changed = []
   const losing: { receiver: Receiver; lost: string[] }[] = []
   for (const person of people) {
@@ -535,11 +559,15 @@ export async function accessChanges(context: AccessContext) {
     if (!found.kind) continue
     // Every report they get today and would not under business roles, whether lost or awaiting a decision.
     losing.push({ receiver: shadow.receiver, lost: shadow.today.reports.filter(k => !shadow.next.reports.includes(k)) })
-    changed.push({ person, kind: found.kind, roles: [...new Set(shadow.held.map(h => roleName.get(h.role)!))].sort(), ...await changeWords(world, reports, found, shadow.everyReport) })
+    changed.push({ person, kind: found.kind, roles: [...new Set(shadow.held.map(h => roleName.get(h.role)!))].sort(), ...await changeWords(world, reports, found, shadow.everyReport),
+      // #1340: today and with business roles, counted as Explain A Person counts them.
+      today: sideCounts(shadow.today, plants), next: sideCounts(shadow.next, plants) })
   }
   const names = await personNames(ctx, changed.map(c => c.person))
-  const who = await whoIs(ctx.baseTables, changed.map(c => c.person), world.today)
-  const rows = changed.map(c => ({ ...c, name: names.get(c.person) ?? 'Someone', who: who.get(c.person)! })).sort((a, b) => a.name.localeCompare(b.name))
+  // #1340: with each job's site as a record, so the list links it.
+  const who = await whoIs(ctx.baseTables, changed.map(c => c.person), world.today, { sites: true })
+  const decided = await decidedToLose(ctx.baseTables)
+  const rows = changed.map(c => ({ ...c, name: names.get(c.person) ?? 'Someone', who: who.get(c.person)!, decided: decided.has(c.person) })).sort((a, b) => a.name.localeCompare(b.name))
   return { people: people.length, changed: rows.length, groups: GROUPS.map(kind => ({ kind, people: rows.filter(r => r.kinds.includes(kind)) })),
     not_carried_over: await notCarriedOver(ctx, world, reports, losing, new Map(rows.map(r => [r.person, r.name]))) }
 }
@@ -617,7 +645,11 @@ export async function mapTitle(context: AccessContext) {
  */
 export async function addStartingRoles(context: AccessContext) {
   const ctx = managersOnly(context)
-  return ensureStartingRoles(ctx.baseTables, ctx.documents as never, await logger(ctx.baseTables, ctx.documents as never))
+  const log = await logger(ctx.baseTables, ctx.documents as never)
+  const added = await ensureStartingRoles(ctx.baseTables, ctx.documents as never, log)
+  // #1340: each run kept as one record, whatever it added.
+  const run = await log.finish('Add The Starting Roles', startingRolesSummary(added), { added: added.roles + added.titles }, text(context.user) || null)
+  return { ...added, run }
 }
 
 /** Where a role came from, as the Why map says it: HR's own facts, or someone's hand. */

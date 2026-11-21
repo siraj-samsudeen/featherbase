@@ -34,7 +34,7 @@ afterEach(async () => {
 })
 
 /** bar-proof with View as: `Bar Tester` may view as someone, and `people` finds them. */
-async function viewable(viewAs: Record<string, unknown> = { role: TESTER, people: 'people' }, roles = ['Bar Reader', TESTER]) {
+async function viewable(viewAs: Record<string, unknown> = { role: TESTER, people: 'people' }, roles = ['Bar Reader', TESTER], records = false) {
   const directory = await mkdtemp(resolve('test/.b5-1222-view-as-'))
   directories.push(directory)
   await cp(BAR_PROOF, directory, { recursive: true })
@@ -44,6 +44,8 @@ async function viewable(viewAs: Record<string, unknown> = { role: TESTER, people
   manifest.permissions = [...manifest.permissions, { table: 'barproof.note', role: TESTER, can_read: true }]
   manifest.reads.operations = { ...manifest.reads.operations, people: tableRead }
   manifest.viewAs = viewAs
+  // #1340: an app that describes its notes, saying whose roles it was asked with.
+  if (records) { manifest.reads.operations.describe_notes = tableRead; manifest.records = { 'barproof.note': { describe: 'describe_notes' } } }
   await writeFile(file, JSON.stringify(manifest))
   // People are made up from the payload. Each answer carries an email the picker must never show.
   await appendFile(resolve(directory, 'server.mjs'), `
@@ -55,6 +57,7 @@ reads.people = ({ payload, roles, reject }) => {
   const ids = payload.persons ?? (payload.q ? globalThis.__viewAsPeople ?? [] : [])
   return ids.map(person => ({ person, name: 'Made-up ' + person.slice(-4), code: 'C-' + person.slice(-4), jobs: ['Team Leader · Lakeside'], email: 'secret@example.test' }))
 }
+${records ? "reads.describe_notes = ({ payload, roles }) => ({ version: 1, rows: Object.fromEntries(payload.rows.map(r => [r, { header: roles.includes('" + TESTER + "') ? 'Asked as the tester' : 'Asked as the person viewed' }])) })" : ''}
 `)
   return directory
 }
@@ -88,9 +91,25 @@ describe('View as: what an app declares', () => {
 })
 
 describe('View as: which requests run as the person viewed', () => {
+  // #1340 (Codex round 3): an app's facts, asked while viewing, are the person viewed's, not the tester's.
+  test("an app's facts about a record, asked while viewing as someone, are asked as them", async ({ admin, createUser }) => {
+    expect(await discoverPackages([await viewable(undefined, undefined, true)])).toEqual([])
+    await admin.post('/api/install_app', { name: 'barproof' })
+    await admin.post('/api/save_row', { table: 'barproof.note', row: { row_id: 'n1', body: 'kept' } })
+    const tester = await createUser({ email: 'facts-tester@example.test', roles: [TESTER] })
+    const person = await createUser({ email: 'facts-person@example.test', roles: ['Bar Reader'] })
+    ;(globalThis as Record<string, unknown>).__viewAsPeople = [person.user]
+    const describe = () => tester.post<{ facts: { rows: Record<string, { header: string }> } }>('/api/records/barproof.note/describe', { rows: ['n1'] })
+    expect((await describe()).facts.rows.n1!.header).toBe('Asked as the tester')
+    expect((await start(tester, person.user)).status).toBe(200)
+    expect((await describe()).facts.rows.n1!.header).toBe('Asked as the person viewed')
+  })
+
   test.for([['GET', '/api/table/ToDo', 'read'], ['POST', '/api/app_reads/dash/reports', 'read'], ['POST', '/api/dashboard/count', 'read'], ['POST', '/api/row_titles', 'read'], ['POST', '/api/access_log', 'read'], ['POST', '/api/people/actor_names', 'read'],
     ['POST', '/api/save_row', 'tester'], ['POST', '/api/app_actions/dash/give_report', 'tester'], ['DELETE', '/api/table/ToDo/x', 'tester'], ['POST', '/api/view_as/exit', 'tester'], ['GET', '/api/me/sign_in_methods', 'tester'], ['GET', '/api/oauth/google/link', 'tester'], ['DELETE', '/api/me/password', 'tester'], ['GET', '/api/view_as', 'tester'], ['POST', '/api/events', 'drop'],
     // #1207: connecting an agent and Connected Apps are the signed-in person's own, as the account pages are.
+    // #1340 (Codex round 3): an app's facts and an action's preview are reads, so they answer as the person viewed.
+    ['POST', '/api/records/dash.business_role/describe', 'read'], ['GET', '/api/records/dash.business_role/preview/give_old_grants_to_roles', 'read'],
     ['GET', '/api/agent-auth/request', 'tester'], ['POST', '/api/agent-auth/decision', 'tester'], ['GET', '/api/agent-connections', 'tester'], ['DELETE', '/api/agent-connections/con_x', 'tester']] as const)(
     '%s %s is handled as %s', ([method, path, route]) => {
       expect(viewAsRoute(method, path)).toBe(route)

@@ -104,6 +104,7 @@ export async function ensureHomePageForTable(table: string, module: string): Pro
     parenttype: 'Home Page',
     parentfield: 'links',
     position: Number(next),
+    // Its Table's name: the page says the Table's label in its place while no one has given the link one (#1340).
     label: table,
     type: 'Link',
     link_to: table,
@@ -191,11 +192,15 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     for (const s of parseShortcuts(p.shortcuts))
       if (!s.type || s.type === 'table') targets.add(s.link_to)
   const existing = new Set<string>()
+  const tableLabels = new Map<string, string>()
   if (targets.size > 0) {
     const rows = await sql`
-      select name from table_def where name in ${sql([...targets])} and kind != 'sub_table'
+      select name, label from table_def where name in ${sql([...targets])} and kind != 'sub_table'
         and archived_at is null`
-    for (const r of rows) existing.add(r.name as string)
+    for (const r of rows) {
+      existing.add(r.name as string)
+      if (r.label) tableLabels.set(r.name as string, r.label as string)
+    }
   }
 
   // A user who cannot read a Table does not
@@ -241,7 +246,8 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
         cards.push(current)
       }
       current.links.push({
-        label: isSystem ? await systemTableLabel(l.link_to) : l.label || l.link_to,
+        // #1340: a link labelled only with its Table's name says the Table's label, as its list is headed.
+        label: isSystem ? await systemTableLabel(l.link_to) : l.label && l.label !== l.link_to ? l.label : tableLabels.get(l.link_to) ?? l.link_to,
         link_to: l.link_to,
       })
     }

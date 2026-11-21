@@ -55,6 +55,8 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/admin/source/$name/copy': 'requires a selected warehouse database, schema and table',
   '/featherbase/admin/dashboard/$name': 'scoped readable Dashboards',
   '/featherbase/admin/table/$table/naming': 'requires a selected Table',
+  // #1340: an app's action previewed before it runs, reached from that Table's Record actions.
+  '/featherbase/admin/table/$table/run/$action': 'requires a selected Table and an action its app offers',
   '/featherbase/admin/table/$table/permissions': 'requires a selected Table',
   '/featherbase/admin/explore': 'retired (#1276): only redirects to the filtered list',
 }

@@ -399,7 +399,7 @@ describe("Dash's sidebar", () => {
     answers = { reports: REPORTS }
     const container = await sidebar('/dash/')
     const texts = [...container.querySelectorAll('featherbase-sidebar > *')].map(e => e.textContent)
-    expect(texts).toEqual(['Reports', 'Sales versus target', 'Store target month to date', 'Your work', 'Your sections'])
+    expect(texts).toEqual(['Reports', 'Sales versus target', 'Store target month to date', 'Your work', 'Your Sections'])
   })
 
   it('marks the first report when the address names none, and the one it names otherwise', async () => {

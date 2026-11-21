@@ -1,4 +1,5 @@
 import { useFitToWindow } from '../lib/fit-to-window'
+import { ModuleCrumb } from './ModuleCrumb'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
@@ -31,6 +32,8 @@ import { fmtCount, fmtINR, menuItemClasses, MENU_GROUP_CLASSES, MENU_HEADING_CLA
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
+import { AppRecordActions } from './AppRecordActions'
+import { useListFacts } from '../lib/record-facts'
 import { RenameTable } from './RenameTable'
 import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
 import { rememberListPlace } from './RecordNav'
@@ -439,6 +442,11 @@ export function ListView({
   }, [knownTotal, start])
 
   const rows = list.isError ? [] : list.data?.data ?? []
+  // #1340: what the app describing this Table says about the rows shown: its columns after the Table's own, and its
+  // Record actions. Nothing when no app describes it, or not to this viewer.
+  const listFacts = useListFacts(table, rows.map((r) => String(r.row_id)), Boolean(meta.data) && !list.isPending)
+  const described = listFacts.data ?? null
+  const factColumns = compact ? [] : described?.facts.columns ?? []
   // #1289 option C: Click To Narrow, on a list whose filters the person changes.
   const narrowLists = useNarrowLists(table, meta.data, Boolean(onFiltersChange))
   const narrowPicks = narrowLists && narrowLists.length ? splitPicks(narrowLists, filters) : null
@@ -745,9 +753,7 @@ export function ListView({
       <PageHeader
         className="mb-2"
         breadcrumb={breadcrumb ?? <div className="text-xs text-ink-subtle" data-testid="list-breadcrumb">
-            <Link to="/featherbase/admin" className="hover:text-ink">
-              {meta.data?.module || 'Home'}
-            </Link>
+            <ModuleCrumb meta={meta.data} className="hover:text-ink" />
             {' / '}
             {label}
           </div>}
@@ -801,6 +807,7 @@ export function ListView({
               New {titleWords(label)}
             </Link>
           )}
+          {described?.facts.actions?.length ? <AppRecordActions described={described} table={table} /> : null}
           {/* #1242 (admin-lists 2): one ⋯ More for what is not the page's own action. */}
           {(hasListActions || hasTableAdministration) && <ActionDisclosure label="More">
           {hasListActions && <div role="group" aria-label="List actions" className={MENU_GROUP_CLASSES}>
@@ -1354,6 +1361,12 @@ export function ListView({
                   </button>
                 </th>
               ))}
+              {/* #1340: the app's columns, after the Table's own; worked out, so not sortable. */}
+              {factColumns.map((c) => (
+                <th key={`fact-${c.key}`} className={headCellClasses({ className: 'text-left' })} data-testid={`fact-col-${c.key}`}>
+                  <OneLine className="max-w-80">{c.label}</OneLine>
+                </th>
+              ))}
               {/* Takes the spare width, so columns stay as wide as their content. */}
               <td aria-hidden className={headCellClasses({ last: true, className: 'w-full p-0' })} />
             </tr>
@@ -1378,13 +1391,15 @@ export function ListView({
                 inPane={paneRow === String(row.row_id)}
                 onOpenPane={openPane}
                 titleOpensPane={Boolean(onRowOpen)}
+                factColumns={factColumns}
+                facts={described?.facts.rows[String(row.row_id)]?.facts}
               />
             ))}
             {!rows.length && (
               <tr>
                 <td
                   colSpan={
-                    columns.length + 1 +
+                    columns.length + 1 + factColumns.length +
                     (expandable ? 1 : 0) +
                     (isRowsReadOnly(meta.data) ? 0 : 1)
                   }

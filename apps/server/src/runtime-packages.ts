@@ -133,6 +133,16 @@ const manifestSchema = z.object({
     may: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/),
     label: z.string().max(40).optional(),
   }).strict()).optional(),
+  // #1340: the app describes rows of one of its Tables, by a read run as the viewer with
+  // { table, rows, page }: the list's extra columns and Record actions, the record page's
+  // header line and Links groups. `previews` names, for an action the list offers as a page,
+  // the read that says what it would do before it runs.
+  // A Table named here, even with no describer, is Featherbase's to show on its own pages (its list and record
+  // page), so someone granted it reaches Featherbase for it although the app has pages of its own.
+  records: z.record(z.string().min(1), z.object({
+    describe: z.string().regex(/^[a-z][a-z0-9_]{0,60}$/).optional(),
+    previews: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,60}$/), z.string().regex(/^[a-z][a-z0-9_]{0,60}$/)).optional(),
+  }).strict()).optional(),
   // #1282 C10–C11: sections the app works out about a record of a Table (a Person's apps and reports from their
   // roles), by one of its reads run as the viewer with { table, row }; the record panel draws them.
   // #1282 G1–G6: the areas people pick on the trees: each axis a list of levels,
@@ -512,6 +522,20 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (why.label !== undefined && !WHY_LABEL.test(why.label))
       throw new Error(`The app's Why label for ${table} must read "Why: …" in Title Case, like "${WHY_DEFAULT_LABEL}"`)
   }
+  // #1340: facts only read: a describer and each preview are the app's reads; what a preview previews is its action;
+  // the Table described is the app's own.
+  for (const [table, records] of Object.entries(manifest.records ?? {})) {
+    if (!manifest.tables.some(t => t.name === table))
+      throw new Error(`The app describes ${table}, which is not one of its Tables`)
+    if (records.describe && !Object.hasOwn(readOperations, records.describe))
+      throw new Error(`The app's ${table} rows are described by ${records.describe}, which is not one of the app's reads`)
+    for (const [action, preview] of Object.entries(records.previews ?? {})) {
+      if (!Object.hasOwn(actionOperations, action))
+        throw new Error(`The app previews ${action}, which is not one of the app's actions`)
+      if (!Object.hasOwn(readOperations, preview))
+        throw new Error(`The app's preview of ${action} is ${preview}, which is not one of the app's reads`)
+    }
+  }
   if (manifest.access?.gate && !Object.hasOwn(readOperations, manifest.access.gate))
     throw new Error(`The app's gate is its read ${manifest.access.gate}, which is not one of the app's reads`)
   const strangers = (manifest.access?.approvers ?? []).filter(role => !(manifest.roles ?? []).includes(role))
@@ -725,6 +749,8 @@ export function runPackageRead(app: string, read: string, input: unknown, user: 
 export function runPublicPackageRead(app: string, read: string, input: unknown, user: string, discovery = false) {
   if (packages.get(app)?.manifest.people?.sections === read)
     throw new AppError('PermissionError', "This read answers only through the record panel's worked-out sections")
+  // #1340: a record describer or preview answers only through /api/records, which checks and scrubs it.
+  if (isRecordsRead(app, read)) throw new AppError('PermissionError', "This read answers only through Featherbase's record pages")
   return runPackageRead(app, read, input, user, discovery)
 }
 
@@ -907,7 +933,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           if (gone.length)
             await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${gone.length} contributions)`.slice(0, 140))
         }
-        const losses = await applyMigrations(prepared.pending, name, actor, { ownsClient: typeof prepared.target.manifest.client === 'string' })
+        const losses = await applyMigrations(prepared.pending, name, actor, { ownsClient: typeof prepared.target.manifest.client === 'string', featherbase: Object.keys(prepared.target.manifest.records ?? {}) })
         // Counts only, never values: what each destructive step removed.
         for (const loss of losses)
           await logActivity(actor, `app_data_removed ${name}@${version}: ${describeLoss(loss)}`.slice(0, 140))
@@ -965,6 +991,7 @@ export async function shippedUpgrades(installed: Record<string, unknown>[], path
     if (!newest) return []
     return [{ name: String(row.name), from: String(row.package_version), to: newest.version,
       ownsClient: typeof newest.manifest.client === 'string',
+      featherbase: Object.keys(newest.manifest.records ?? {}),
       migrations: newest.manifest.migrations.slice((row.migration_ledger as unknown[]).length) }]
   })
 }
@@ -977,7 +1004,7 @@ const removesData = (loss: Loss) => (loss.rows ?? 0) + (loss.childRows ?? 0) + (
 export async function upgradeLossWarning(upgrade: Awaited<ReturnType<typeof shippedUpgrades>>[number]): Promise<string | null> {
   let losses: Loss[]
   try {
-    losses = (await countLosses(upgrade.name, upgrade.migrations, { ownsClient: upgrade.ownsClient })).filter(removesData)
+    losses = (await countLosses(upgrade.name, upgrade.migrations, { ownsClient: upgrade.ownsClient, featherbase: upgrade.featherbase })).filter(removesData)
   } catch (error) {
     return `WARNING: upgrading app ${upgrade.name} from ${upgrade.from} to ${upgrade.to} would fail here: ${(error as Error).message}`
   }
@@ -997,7 +1024,7 @@ export async function rehearseAppUpgrades(paths: string[]): Promise<string[]> {
     const label = `app ${upgrade.name} ${upgrade.from} to ${upgrade.to}`
     try {
       const losses = (await sql.begin(() => provisionApp(upgrade.name, () =>
-        applyMigrations(upgrade.migrations, upgrade.name, 'Administrator', { ownsClient: upgrade.ownsClient })))).filter(removesData)
+        applyMigrations(upgrade.migrations, upgrade.name, 'Administrator', { ownsClient: upgrade.ownsClient, featherbase: upgrade.featherbase })))).filter(removesData)
       lines.push(`${label}: rehearsed; ${losses.length ? `it removes ${losses.map(describeLoss).join('; ')}` : 'it removes no data'}`)
     } catch (error) {
       lines.push(`${label}: the upgrade would fail: ${errorMessage(error)}`)
@@ -1126,6 +1153,26 @@ export async function whyDeclarationFor(table: string, user: string): Promise<{ 
     if (!item.active || !pkg || !why) continue
     if (!(await hasPermission(user, pkg.entryTable, 'read')) || !(await passesGate(pkg, user))) return null
     return { app: pkg.name, version: pkg.version, explain: why.explain, may: why.may, label: why.label ?? WHY_DEFAULT_LABEL }
+  }
+  return null
+}
+
+/** #1340: whether `read` describes or previews rows of one of `app`'s Tables (its manifest's `records`). Such a read
+ *  answers only through /api/records, which checks who may read what and scrubs its answer; run raw it would skip both. */
+export function isRecordsRead(app: string, read: string): boolean {
+  const records = packages.get(app)?.manifest.records ?? {}
+  return Object.values(records).some((r) => r.describe === read || Object.values(r.previews ?? {}).includes(read))
+}
+
+/** #1340: the app that describes rows of `table` (its manifest's `records`), for `user`, on the same terms as a
+ *  Why: an installed, active app the user may open. None when no such app declares one. */
+export async function recordsDeclarationFor(table: string, user: string): Promise<{ app: string; version: string; describe?: string; previews: Record<string, string> } | null> {
+  for (const item of await listInstalledApps()) {
+    const pkg = packages.get(item.name)
+    const records = pkg && Object.hasOwn(pkg.manifest.records ?? {}, table) ? pkg.manifest.records![table]! : undefined
+    if (!item.active || !pkg || !records) continue
+    if (!(await hasPermission(user, pkg.entryTable, 'read')) || !(await passesGate(pkg, user))) return null
+    return { app: pkg.name, version: pkg.version, describe: records.describe, previews: records.previews ?? {} }
   }
   return null
 }

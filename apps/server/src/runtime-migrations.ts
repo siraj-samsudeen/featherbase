@@ -44,13 +44,15 @@ const alterable = z.object({
   default_value: z.string().nullable(),
   hidden: z.boolean().nullable(),
   description: z.string().nullable(),
+  // #1340: whether the shared list shows the column; what people read only.
+  in_list_view: z.boolean().nullable(),
   column_type: z.enum(COLUMN_TYPE_VALUES),
   // #911: named only when a text column becomes a link, or a link text.
   reference_table: z.string().nullable(),
 }).partial().strict()
 // What only changes what people read: a step naming nothing else writes the
 // definition and no row (#663).
-const DISPLAY_ONLY = new Set(['label', 'description', 'hidden', 'choice_labels'])
+const DISPLAY_ONLY = new Set(['label', 'description', 'hidden', 'choice_labels', 'in_list_view'])
 const displayOnly = (to: z.infer<typeof alterable>) => Object.keys(to).every(key => DISPLAY_ONLY.has(key))
 
 // #651: every operation carries what it removes or replaces (a dropped Table
@@ -71,6 +73,8 @@ export const operationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('renameTable'), from: z.string(), to: ownedTableName }).strict(),
   // #1256: what people call a Table; no row and no storage changes.
   z.object({ kind: z.literal('relabelTable'), table: z.string(), from: tableLabel, to: tableLabel }).strict(),
+  // #1340: the module a Table is listed under in the sidebar; no row and no storage changes.
+  z.object({ kind: z.literal('moveTable'), table: z.string(), from: tableLabel, to: tableLabel }).strict(),
   // #1277: an app's own Table its scope provider comes to read is marked as deciding scope, which makes it a
   // security Table (only a System Manager writes it). No row changes. The mark is never taken off by a step.
   z.object({ kind: z.literal('markDecidesScope'), table: z.string() }).strict(),
@@ -293,6 +297,14 @@ function forward(app: string, state: TableDef[], op: Operation) {
       table.label = op.to
       return
     }
+    case 'moveTable': {
+      const what = `moveTable ${op.table}`
+      mustOwn(app, op.table)
+      const table = tableIn(state, op.table, what)
+      if (table.module !== op.from) refuse(`${what} is not in the module ${JSON.stringify(op.from)}`)
+      table.module = op.to
+      return
+    }
     case 'markDecidesScope': {
       const what = `markDecidesScope ${op.table}`
       mustOwn(app, op.table)
@@ -358,6 +370,13 @@ function backward(state: TableDef[], op: Operation) {
       const table = tableIn(state, op.table, what)
       if (table.label !== op.to) refuse(`${what}: the Table as declared after it does not hold the label ${JSON.stringify(op.to)}`)
       table.label = op.from
+      return
+    }
+    case 'moveTable': {
+      const what = `moveTable ${op.table}`
+      const table = tableIn(state, op.table, what)
+      if (table.module !== op.to) refuse(`${what}: the Table as declared after it is not in the module ${JSON.stringify(op.to)}`)
+      table.module = op.from
       return
     }
     case 'markDecidesScope': {
@@ -467,7 +486,7 @@ const DRY_RUN = new Error('counting what an upgrade removes')
  *  transaction that is always rolled back, so each one meets the rows the
  *  steps before it left, and a step the upgrade would refuse is refused here
  *  too. Counts only, never values. */
-export async function countLosses(owner: string, migrations: PackageMigration[], opts: { ownsClient?: boolean } = {}): Promise<Loss[]> {
+export async function countLosses(owner: string, migrations: PackageMigration[], opts: { ownsClient?: boolean; featherbase?: string[] } = {}): Promise<Loss[]> {
   let losses: Loss[] = []
   try {
     await withTransaction(() => provisionApp(owner, async () => {
@@ -525,7 +544,7 @@ async function writeFill(found: Stored, table: string, column: Column, value: un
   await sql.unsafe(`update ${found.relation} set ${quoteIdent(name)} = $1 where ${isEmpty(name)}`, [(parsed.data as Record<string, never>)[name]])
 }
 
-async function applyOperation(owner: string, op: Operation, actor: string, base: Omit<Loss, 'table'>, ownsClient: boolean): Promise<Loss | null> {
+async function applyOperation(owner: string, op: Operation, actor: string, base: Omit<Loss, 'table'>, ownsClient: boolean, featherbase: string[] = []): Promise<Loss | null> {
   switch (op.kind) {
     case 'addAccessPolicy': {
       await owned(op.table, owner, 'addAccessPolicy')
@@ -540,7 +559,8 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       await sql`update installed_app set tables = tables || ${sql.json([meta.name])} where name = ${owner}`
       // As an install does: an app without its own client keeps the
       // generated Table home page as its usable UI.
-      if (!ownsClient && meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
+      // #1340: so does a Table an app with its own client hands to Featherbase's pages (its `records`).
+      if ((!ownsClient || featherbase.includes(meta.name)) && meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
       return null
     }
     case 'dropTable': {
@@ -652,6 +672,14 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       invalidateMeta(op.table)
       return null
     }
+    case 'moveTable': {
+      await owned(op.table, owner, `moveTable ${op.table}`)
+      await sql`update table_def set module = ${op.to}, updated_at = ${new Date()} where name = ${op.table}`
+      invalidateMeta(op.table)
+      // Moved into a module, it is listed on that module's home page, as a Table added there is.
+      await ensureHomePageForTable(op.table, op.to)
+      return null
+    }
     case 'markDecidesScope': {
       await owned(op.table, owner, `markDecidesScope ${op.table}`)
       await sql`update table_def set decides_scope = true, updated_at = ${new Date()} where name = ${op.table}`
@@ -665,12 +693,12 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
  *  inside the caller's transaction (a failing step rolls back the whole
  *  upgrade). Answers what the destructive steps removed. */
 export async function applyMigrations(migrations: PackageMigration[], owner: string, actor = 'Administrator',
-  opts: { ownsClient?: boolean } = {}): Promise<Loss[]> {
+  opts: { ownsClient?: boolean; featherbase?: string[] } = {}): Promise<Loss[]> {
   const losses: Loss[] = []
   try {
     for (const migration of migrations) for (const [index, op] of migration.operations.entries()) {
       const base = { migration: migration.id, operation: index + 1, kind: op.kind, destructive: 'destructive' in op && op.destructive === true }
-      const loss = await applyOperation(owner, op, actor, base, opts.ownsClient ?? false)
+      const loss = await applyOperation(owner, op, actor, base, opts.ownsClient ?? false, opts.featherbase)
       if (loss) losses.push(loss)
     }
   } finally {
