@@ -140,7 +140,7 @@ describe('Your department', () => {
   it('offers Try again when it cannot load', async () => {
     answers.department_setup = new Error('offline')
     const page = await render('YourDepartment')
-    expect(page.button('Try again')).toBeTruthy()
+    expect(page.button('Try Again')).toBeTruthy()
     await page.done()
   })
 
