@@ -36,7 +36,9 @@ export function AppRecordActions({ described, table }: { described: NonNullable<
   return (
     <div className="flex flex-col items-end gap-1" data-testid="app-record-actions" data-table={table}>
       <ActionDisclosure label="Record actions" open={open} onOpenChange={setOpen}>
-        <div role="group" aria-label="Record actions" className="flex w-full flex-col items-stretch gap-0.5 whitespace-normal">
+        {/* A menu is as wide as its longest item (#1348): the explanations wrap within a bounded width instead, so the
+            menu never runs past the window's edge (verifier round 4). */}
+        <div role="group" aria-label="Record actions" data-testid="record-actions-list" className="flex w-[min(26rem,calc(100vw-2rem))] flex-col items-stretch gap-0.5 whitespace-normal">
           {actions.map((action) => {
             const body = <>
               <span className="text-sm font-medium text-ink">{busy === action.key ? `${action.label}…` : action.label}</span>

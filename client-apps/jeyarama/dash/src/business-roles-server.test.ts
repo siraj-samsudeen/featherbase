@@ -1903,6 +1903,8 @@ describe('business roles described for Featherbase (#1340)', () => {
     expect(JSON.stringify(tables)).toBe(before)
     expect(preview.rows.map(r => [r.filter, (r.cells.what as { text: string }).text])).toEqual([
       ['not', 'Not carried over'], ['add', 'Will be added'], ['person', 'Stays with the person'], ['add', 'Will be added']])
+    // #1340 (verifier round 4): the filters are labels, in Title Case.
+    expect(preview.filters.map(f => f.label)).toEqual(['Will Be Added', 'Already There', 'Not Carried Over', 'Stays With The Person'])
     // Said with code · role · place, so two of one name are told apart.
     expect(preview.rows[2]!.cells.old_grant).toEqual({ parts: ['Person: ', { record: { table: 'Person', row: 'st', name: 'Siva' } }, ' E-ST · Staff · Lakeside'] })
     expect(preview.rows[3]!.cells.report).toEqual({ parts: ['A bundle no longer listed'] })

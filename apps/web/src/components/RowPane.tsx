@@ -186,7 +186,7 @@ function appCounted(groups: BacklinkGroup[], appGroups: RecordGroup[] | undefine
   if (!appGroups?.length) return groups
   return inAppOrder(groups.map((g) => {
     const app = appGroupFor(appGroups, g.connection.table)
-    return app ? { ...g, count: app.count ?? g.count, label: app.heading } : g
+    return app ? { ...g, count: app.count ?? g.count, label: app.heading, worded: true } : g
   }), appGroups)
 }
 
@@ -238,8 +238,9 @@ function GroupCount({ group, href, size, of, onNavigate }: {
   const via = group.connection.via
   const viaMeta = useMeta(via ?? '', Boolean(via))
   // Two links from one Table read "Orders · Customer": the Table's word is the one counted.
-  const [head, ...rest] = group.label.split(' · ')
-  const label = [countedLabel(head!, group.count), ...rest].join(' · ')
+  const [head, ...rest] = group.worded ? [group.label] : group.label.split(' · ')
+  // An app's own words are said as it wrote them (#1340); a Table's name is counted.
+  const label = [group.worded ? head! : countedLabel(head!, group.count), ...rest].join(' · ')
   const heading = of ? `${label} in ${of}` : label
   // #1349 item 2 (C5): hovering shows the shared peek card with the group's first rows.
   return (
@@ -274,11 +275,13 @@ function GroupPeek({ group }: { group: BacklinkGroup }) {
   if (!meta.data || !rows.data) return <span className="text-[13px] text-ink-subtle">Loading…</span>
   const shown = rows.data.data as Row[]
   const more = group.count - shown.length
+  // #1340: in an app's group, a row of a Table with no title column is named by the app's words and its id.
+  const untitled = !title && group.worded ? group.label : undefined
   // UI owner: the rows as RecordLinks, no fills inside the raised card, then a muted "+ N more".
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13.5px]">
       {shown.map((r) => (
-        <RecordLink key={String(r.row_id)} table={group.connection.table} rowId={String(r.row_id)} name={rowDisplayTitle(meta.data!, r, String(r.row_id))} />
+        <RecordLink key={String(r.row_id)} table={group.connection.table} rowId={String(r.row_id)} name={untitled ? `${untitled} ${String(r.row_id)}` : rowDisplayTitle(meta.data!, r, String(r.row_id))} />
       ))}
       {more > 0 && <span className="text-[13px] text-ink-subtle">+ {fmtCount(more)} more</span>}
     </div>

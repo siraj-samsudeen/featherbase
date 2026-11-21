@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ModuleCrumb } from './ModuleCrumb'
 import { Link } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Card, DataList, Notice, PageHeader, Segmented, Sentence, buttonClasses, fmtCount, type DataColumn } from '@featherbase/shop-floor'
@@ -63,7 +64,7 @@ export function ActionPreview({ table, action }: { table: string; action: string
     <div className="flex flex-col gap-4" data-testid="action-preview">
       <PageHeader
         // The path starts where the Table's list and record do, at its module.
-        breadcrumb={<><Link to="/featherbase/admin" className="hover:text-ink">{meta.data?.module || 'Admin'}</Link> / <Link to="/featherbase/admin/table/$table" params={{ table }} search={{} as never} className="hover:text-ink">{label}</Link> / {data?.title ?? 'Preview'}</>}
+        breadcrumb={<><ModuleCrumb meta={meta.data} className="hover:text-ink" /> / <Link to="/featherbase/admin/table/$table" params={{ table }} search={{} as never} className="hover:text-ink">{label}</Link> / {data?.title ?? 'Preview'}</>}
         title={data?.title ?? preview.data?.label ?? 'Preview'}
         // After a run the page reads again: what it lists is now a second run.
         status={said?.tone === 'positive' ? 'Done · the list now shows what running it again would do' : data?.status}

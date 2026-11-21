@@ -69,7 +69,9 @@ async function readableKeys(table: string, groups: { table?: string; rows?: Reco
 /** POST /api/records/:table/describe { rows, page }: the app's facts about those rows, for `user`, or none. */
 export async function describeRows(table: string, body: unknown, user: string): Promise<RecordFactsAnswer | { facts: null }> {
   const asked = body && typeof body === 'object' ? body as { rows?: unknown; page?: unknown } : {}
-  const rows = Array.isArray(asked.rows) ? [...new Set(asked.rows.filter((r): r is string => typeof r === 'string' && r.length > 0 && r.length <= 200))] : []
+  // A row id sent as a whole number names the same row as its text (#1340, verifier round 4).
+  const ids = Array.isArray(asked.rows) ? asked.rows.map((r) => (typeof r === 'number' && Number.isSafeInteger(r) && r >= 0 ? String(r) : r)) : []
+  const rows = [...new Set(ids.filter((r): r is string => typeof r === 'string' && r.length > 0 && r.length <= 200))]
   if (rows.length > RECORD_FACTS_LIMITS.rows) throw new AppError('ValidationError', `Describe at most ${RECORD_FACTS_LIMITS.rows} rows at once`)
   const page = asked.page === true
   // A record page asks about its one row.

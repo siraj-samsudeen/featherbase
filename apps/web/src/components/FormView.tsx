@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ModuleCrumb } from './ModuleCrumb'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useBlocker, useNavigate } from '@tanstack/react-router'
 import { CannotShow } from './CannotShow'
@@ -623,7 +624,7 @@ export function FormView({
   return (
     <div data-testid="form-view" className={`min-w-0 [overflow-wrap:anywhere] ${unsaved && !rowsReadOnly ? 'pb-20' : ''}`}>
       <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
-        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')} data-testid="breadcrumb-module">{meta.data?.module || 'Home'}</RouterLink>
+        <ModuleCrumb meta={meta.data} className={touchLinkClasses('hover:underline')} testid="breadcrumb-module" />
         <span aria-hidden="true">/</span>
         <RouterLink
           to="/featherbase/admin/table/$table"

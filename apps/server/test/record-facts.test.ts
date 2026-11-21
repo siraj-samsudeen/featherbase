@@ -136,6 +136,16 @@ describe('Record facts: the answer', () => {
     expect(body.facts.actions[0].label).toBe('Tidy The Notes')
   })
 
+  // #1340 (verifier round 4): a row id sent as a number is the same row as its text; it was silently left out.
+  test('a row id sent as a number is asked about as the row it names', async ({ admin, createUser }) => {
+    await install(admin)
+    await admin.post('/api/save_row', { table: NOTE, row: { row_id: '7', body: 'Seven' } })
+    const [, describer] = await people(createUser)
+    const response = await describeRows(describer, { rows: [7, 'n1', 7.5, -1] })
+    await expectStatus(response, 200)
+    expect(hook().asked).toEqual([{ table: NOTE, rows: ['7', 'n1'], page: false }])
+  })
+
   test('a record page asks about its one row and gets its groups', async ({ admin, createUser }) => {
     await install(admin)
     const [, describer] = await people(createUser)

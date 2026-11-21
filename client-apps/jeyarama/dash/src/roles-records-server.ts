@@ -207,7 +207,7 @@ export async function giveOldGrantsPreview(context: AccessContext) {
       : "Preview · nothing is saved until Run · nobody's access changes until the switch is set",
     sentence: [sentence],
     runLabel: 'Run',
-    filters: (['add', 'there', 'not', 'person'] as const).map(key => ({ key, label: { add: 'Will be added', there: 'Already there', not: 'Not carried over', person: 'Stays with the person' }[key], count: all.filter(r => r.filter === key).length })),
+    filters: (['add', 'there', 'not', 'person'] as const).map(key => ({ key, label: { add: 'Will Be Added', there: 'Already There', not: 'Not Carried Over', person: 'Stays With The Person' }[key], count: all.filter(r => r.filter === key).length })),
     total: all.length,
     // The report and what happens are kept on one line; the old grant and the roles take the wrap.
     columns: [{ key: 'report', label: 'Report', nowrap: true }, { key: 'old_grant', label: 'Old Grant' }, { key: 'given_to', label: 'Given To' }, { key: 'what', label: 'What Happens', nowrap: true }],

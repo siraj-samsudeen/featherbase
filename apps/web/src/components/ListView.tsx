@@ -1,4 +1,5 @@
 import { useFitToWindow } from '../lib/fit-to-window'
+import { ModuleCrumb } from './ModuleCrumb'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
@@ -713,9 +714,7 @@ export function ListView({
       <PageHeader
         className="mb-2"
         breadcrumb={breadcrumb ?? <div className="text-xs text-ink-subtle" data-testid="list-breadcrumb">
-            <Link to="/featherbase/admin" className="hover:text-ink">
-              {meta.data?.module || 'Home'}
-            </Link>
+            <ModuleCrumb meta={meta.data} className="hover:text-ink" />
             {' / '}
             {label}
           </div>}

@@ -5,7 +5,7 @@ import { configure, fireEvent, screen, waitFor, within } from '@testing-library/
 import { tableHref } from 'shared'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
-import { NOTE, NOTE_TAG, PREVIEW, hook, installFacts } from './record-facts-fixture'
+import { NOTE, NOTE_TAG, PREVIEW, factsFor, hook, installFacts } from './record-facts-fixture'
 
 configure({ asyncUtilTimeout: 10_000 })
 
@@ -31,6 +31,9 @@ test('Record actions say each action in a line; one runs the app action in place
   await renderApp(tableHref(NOTE), admin)
   fireEvent.click(await screen.findByRole('button', { name: 'Record actions' }))
   expect(screen.getByTestId('record-action-tidy')).toHaveTextContent('Tidy The NotesTidies every note. Running it again changes nothing.')
+  // #1340 (verifier round 4): a menu is as wide as its longest item (#1348), so the explanations keep the menu to a
+  // bounded width; unbounded, the long lines pushed it past the window's left edge.
+  expect(screen.getByTestId('record-actions-list')).toHaveClass('w-[min(26rem,calc(100vw-2rem))]')
   fireEvent.click(screen.getByTestId('record-action-tidy'))
   expect(await screen.findByTestId('record-action-said')).toHaveTextContent('Tidy The Notes: done.')
   expect(hook().runs).toBe(1)
@@ -85,6 +88,40 @@ test("a link group's jump chip counts as the app does", async ({ admin }) => {
   await openRecord(admin)
   const chips = await screen.findByRole('region', { name: 'Connections' })
   await waitFor(() => expect(within(chips).getByRole('link', { name: /Tags It Has/ })).toHaveTextContent('1'))
+})
+
+// #1340 (verifier round 4): the count row says an app's heading as the app wrote it, never pluralised again ("What They
+// Can Dos"), and a row of a Table with no title column is named by the group's words and its id, not the Table's name.
+test("the count row says the app's heading as given, and its peek names an untitled row by the group's words", async ({ admin }) => {
+  await installFacts(admin)
+  await admin.post('/api/save_row', { table: NOTE_TAG, row: { note: 'n1', tag: 't2' } })
+  const facts = factsFor(['n1'], true) as { rows: Record<string, { groups: { key: string; heading: string; count?: number }[] }> }
+  const tags = facts.rows.n1!.groups.find((g) => g.key === 'tags')!
+  tags.heading = 'What It Can Do'
+  tags.count = 2
+  hook().facts = facts
+  await openRecord(admin)
+  const chip = await within(await screen.findByTestId('count-row')).findByRole('link', { name: '2 What It Can Do' })
+  fireEvent.pointerEnter(chip.parentElement!)
+  const card = await screen.findByRole('dialog', { name: /^What It Can Do in / })
+  await waitFor(() => expect(within(card).getAllByRole('link', { name: /^What It Can Do / })).toHaveLength(2))
+  expect(card).not.toHaveTextContent(NOTE_TAG)
+})
+
+// #1340 (verifier round 4): the first crumb is the Table's module and opens that module's home page, on the list, the
+// record and the action's preview alike.
+test("the module crumb opens the module's home page on the list, the record and the preview", async ({ admin }) => {
+  await installFacts(admin)
+  const home = /^\/featherbase\/admin\/home\/[^/?]+$/
+  const view = await renderApp(tableHref(NOTE), admin)
+  await waitFor(() => expect(within(screen.getByTestId('list-breadcrumb')).getAllByRole('link')[0]).toHaveAttribute('href', expect.stringMatching(home)))
+  view.unmount()
+  const record = await openRecord(admin)
+  await waitFor(() => expect(screen.getByTestId('breadcrumb-module')).toHaveAttribute('href', expect.stringMatching(home)))
+  record.unmount()
+  await renderApp(`${tableHref(NOTE)}/run/tidy`, admin)
+  await screen.findByTestId('action-preview-sentence')
+  await waitFor(() => expect(within(screen.getByTestId('page-header-breadcrumb')).getAllByRole('link')[0]).toHaveAttribute('href', expect.stringMatching(home)))
 })
 
 test("the Links tab draws the app's groups in its order: a link group in its words, a tick list with notes, and its own group", async ({ admin }) => {
