@@ -47,13 +47,4 @@ describe('budgets-close-rules', () => {
       expect(history.versions.map(version => [version.created_by, version.data.changed])).toEqual([[w.editor.user, [['pl_line', null, w.made.salaries.row_id]]]])
     })
   })
-
-  scenario('A second floor opens', async ({ createUser }, step) => {
-    let w!: World
-    const areas = async () => (await w.rows('store_area', [['plant', '=', '9003']])).map(row => [Number(row.area_sqft), String(row.starts_on).slice(0, 10), row.ends_on ? String(row.ends_on).slice(0, 10) : null])
-    await step('Hilltop has an area of 24,500 sq ft from 01-Apr-2026', async () => { w = await start(createUser); expect(await areas()).toEqual([[24500, '2026-04-01', null]]) })
-    await step('a Budget Editor records 26,000 sq ft from 15-Oct-2026', () => w.act(w.editor, 'add_store_area', { plant: '9003', starts_on: '2026-10-15', area_sqft: 26000 }))
-    await step('the 24,500 sq ft area ends on 14-Oct-2026', async () => expect((await areas())[0]).toEqual([24500, '2026-04-01', '2026-10-14']))
-    await step("Hilltop's area from 15-Oct-2026 is 26,000 sq ft", async () => expect((await areas())[1]).toEqual([26000, '2026-10-15', null]))
-  })
 })

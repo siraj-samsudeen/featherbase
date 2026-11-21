@@ -73,7 +73,6 @@ export async function world(editor: TestClient) {
   const rule = await save('allocation_rule', { rule_name: 'Northgate Warehouse Cost', rule_kind: 'Allocate A Cost Pool', run_order: 20, source_plant: '9101', target_line: warehouse.row_id, basis: 'Net Sales Of Named Segments', operating_region: 'North', starts_on: '2026-04-01' })
   await save('allocation_rule_segment', { allocation_rule: rule.row_id, business_line_segment: '10' })
   await save('allocation_rule_store', { allocation_rule: rule.row_id, plant: '9004', treatment: 'Excluded' })
-  const area = await save('store_area', { plant: '9003', starts_on: '2026-04-01', area_sqft: 24500 })
   const version = await save('budget_version', { version_name: 'FY27 Original', budget_kind: 'P&L', fiscal_year: 'FY27', operating_region: 'North', covers_from: '2026-04-01', covers_to: '2027-03-01' })
   const budget = await save('pl_budget', { budget_version: version.row_id, plant: '9003', budget_month: '2026-10-01', pl_line: manpower.row_id, amount: 1840000 })
   await save('budget_store_plan', { budget_version: version.row_id, plant: '9004', planned_opening_on: '2027-01-15', planned_area_sqft: 31000 })
@@ -81,7 +80,7 @@ export async function world(editor: TestClient) {
   await save('sales_budget', { budget_version: sales.row_id, plant: '9003', budget_month: '2026-10-01', subcategory: '010203001', budget_quantity: 420, budget_value: 315000 })
   const close = await save('monthly_close', { legal_company: '9000', close_month: '2026-10-01', version_no: 1, downloaded_at: '2026-11-09T13:05:44.000Z' })
   const adjustment = await save('monthly_close_adjustment', { monthly_close: close.row_id, plant: '9003', gl_account: account.row_id, amount: 42500, adjustment_type: 'Provision', reason: 'Provision for October electricity bill not received' })
-  return { manpower, salaries, warehouse, account, split, rule, area, version, budget, sales, close, adjustment }
+  return { manpower, salaries, warehouse, account, split, rule, version, budget, sales, close, adjustment }
 }
 
 export type Create = (options: { roles: string[] }) => Promise<TestClient>

@@ -2,7 +2,7 @@
 
 ## Purpose
 The close is worked out from rules the financial controller keeps: the P&L line each account
-belongs to, the lines that add up to each published line, and each store's area. A rule can
+belongs to, and the lines that add up to each published line. A rule can
 be changed at any time without approval, and every change is kept.
 
 ## Requirements
@@ -34,18 +34,4 @@ Given the accounts "Staff Tea And Snacks" and "Staff Uniform"
 When a Budget Editor gives both the line Salaries in one step
 Then both accounts are on Salaries
 And the history of "Staff Uniform" says who changed its line
-```
-
-### Requirement: A store's area is kept from a date
-
-A store's area SHALL be recorded from the day it applies. Recording a new area SHALL end the
-one before it on the day before.
-
-#### Scenario: A second floor opens
-
-```gherkin
-Given Hilltop has an area of 24,500 sq ft from 01-Apr-2026
-When a Budget Editor records 26,000 sq ft from 15-Oct-2026
-Then the 24,500 sq ft area ends on 14-Oct-2026
-And Hilltop's area from 15-Oct-2026 is 26,000 sq ft
 ```
