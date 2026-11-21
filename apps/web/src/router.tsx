@@ -228,12 +228,14 @@ const oauthCallbackRoute = createRoute({
   path: '/featherbase/oauth-callback',
   validateSearch: (search: Record<string, unknown>) => ({
     code: searchString(search.code),
+    // #1385: the Admin page chosen on an app's address, carried through the hand-off.
+    next: searchString(search.next),
   }),
   component: OAuthCallbackRouteComponent,
 })
 function OAuthCallbackRouteComponent() {
-  const { code } = oauthCallbackRoute.useSearch()
-  return <OAuthCallbackPage code={code} />
+  const { code, next } = oauthCallbackRoute.useSearch()
+  return <OAuthCallbackPage code={code} next={next} />
 }
 
 // WEB-003: customer portal — a logged-in website user sees only their own

@@ -1,6 +1,34 @@
 import { useEffect, useState } from 'react'
-import { api } from './api'
-import { replaceServerEntries, type ServerRecentEntry } from './recents'
+import { api, getSessionUser } from './api'
+import { connectEventSink, replaceServerEntries, type ServerRecentEntry } from './recents'
+
+// #101 Phase 3 (#1385: here, so app pages send theirs too, not only the Admin): recorded actions also stream to the server's user_event log
+// (batched; a beacon carries the final batch through unload). The sink is
+// injected here so lib/recents stays network-free for unit tests. Auth rides
+// the bearer token for fetches and the sid cookie for beacons — sendBeacon
+// cannot set headers.
+connectEventSink({
+  // The queue fail-closes on this identity: only events recorded FOR this
+  // user are ever posted with this user's credentials.
+  currentUser: () => getSessionUser()?.row_id ?? null,
+  post: (events, recorded) => {
+    void api.post<{ timestamps: number[] }>('/api/events', { events }).then(
+      ({ timestamps }) => {
+        recorded(timestamps)
+        window.dispatchEvent(new Event('navigation-history-updated'))
+      },
+    ).catch(
+      () => {},
+    )
+  },
+  beacon: (events) => {
+    try {
+      navigator.sendBeacon('/api/events', new Blob([JSON.stringify({ events })], { type: 'application/json' }))
+    } catch {
+      /* best-effort */
+    }
+  },
+})
 
 /** #101 / #1385: the person's navigation history, reconciled with the server each time a page's shell
  *  mounts. The command bar (on every page with a sidebar) starts the read; the Admin sidebar's Recently
