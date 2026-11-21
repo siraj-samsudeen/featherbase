@@ -1,7 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { choiceLabel, rowDisplayTitle, rowHref, tableHref, type ListFilter } from 'shared'
+import { choiceLabel, rowDisplayTitle, rowHref, tableHref, type ListFilter, type RecordGroup } from 'shared'
+import { appGroupFor, appGroupKey, inAppOrder } from './AppLinkGroup'
 import {
   CountChip, FieldGrid, GroupChip, LinkChip, NoneFold, PaneSection, PeekCard, Plus, RecordLink, SplitWithPane, X,
   buttonClasses, countedLabel, cx, fmtCount, fmtDuration, iconButtonClasses, nameAndCode, resolvePanePlace, smallActionClasses, tagClasses, touchLinkClasses, useMediaQuery, PANE_RIGHT_MIN_WIDTH,
@@ -177,6 +178,18 @@ export function RecordPanel({ nav, pane, place = 'right', onFocus, framed = fals
   )
 }
 
+/**
+ * #1340: a group's count and heading are the app's where it describes the record (rows it marks taken away do not
+ * count), and the groups come in its order.
+ */
+function appCounted(groups: BacklinkGroup[], appGroups: RecordGroup[] | undefined): BacklinkGroup[] {
+  if (!appGroups?.length) return groups
+  return inAppOrder(groups.map((g) => {
+    const app = appGroupFor(appGroups, g.connection.table)
+    return app ? { ...g, count: app.count ?? g.count, label: app.heading, worded: true } : g
+  }), appGroups)
+}
+
 /** #1349 (board 4b): said once the counts are in and nothing with rows points at the record. */
 export function NothingPointsAt({ kind }: { kind: string }) {
   return <span className="text-[13.5px] text-ink-muted">Nothing points at this {kind.toLowerCase()} yet.</span>
@@ -187,13 +200,18 @@ export function NothingPointsAt({ kind }: { kind: string }) {
  * first, each opening that group's list already filtered; then a chip per section an app works out about the record.
  * A group with no rows has no chip (it waits behind "+ N tables with none"); every count is the viewer's own.
  */
-export function CountRow({ table, row, size = 'page', onSection }: {
+export function CountRow({ table, row, size = 'page', onSection, appGroups, onGroup }: {
   table: string; row: string; size?: 'page' | 'pane'; onSection?: (heading: string) => void
+  /** #1340: the app's groups: its counts and headings on the chips, all in its order. */
+  appGroups?: RecordGroup[]
+  /** #1340: given, each of the app's own groups is a chip too, going to its section on the Links tab. */
+  onGroup?: (key: string) => void
 }) {
   const nav = useNavigation()
   const navigate = useNavigate()
   const cnx = useConnections(table, row)
-  const groups = useBacklinkGroups(cnx.data?.connections).filter((g) => g.count > 0)
+  const groups = appCounted(useBacklinkGroups(cnx.data?.connections), appGroups).filter((g) => g.count > 0)
+  const own = onGroup ? (appGroups ?? []).filter((g) => !g.table && (g.count ?? g.lines?.length ?? 0) > 0) : []
   const name = useRowName(table, row)
   const of = name.state === 'read' ? name.title : undefined
   return (
@@ -204,6 +222,7 @@ export function CountRow({ table, row, size = 'page', onSection }: {
         const href = nav ? groupListHref(g, nav) : `${tableHref(g.connection.table)}?filters=${encodeURIComponent(JSON.stringify(g.connection.filters))}`
         return <GroupCount key={g.key} group={g} href={href} size={size} of={of} onNavigate={(to = href) => void navigate({ href: to })} />
       })}
+      {own.map((g) => <CountChip key={appGroupKey(g)} count={g.count ?? g.lines?.length ?? 0} label={g.heading} size={size} onSelect={() => onGroup!(appGroupKey(g))} />)}
       <WorkedOutCounts table={table} row={row} size={size} onSection={onSection} />
     </div>
   )
@@ -219,8 +238,9 @@ function GroupCount({ group, href, size, of, onNavigate }: {
   const via = group.connection.via
   const viaMeta = useMeta(via ?? '', Boolean(via))
   // Two links from one Table read "Orders · Customer": the Table's word is the one counted.
-  const [head, ...rest] = group.label.split(' · ')
-  const label = [countedLabel(head!, group.count), ...rest].join(' · ')
+  const [head, ...rest] = group.worded ? [group.label] : group.label.split(' · ')
+  // An app's own words are said as it wrote them (#1340); a Table's name is counted.
+  const label = [group.worded ? head! : countedLabel(head!, group.count), ...rest].join(' · ')
   const heading = of ? `${label} in ${of}` : label
   // #1349 item 2 (C5): hovering shows the shared peek card with the group's first rows.
   return (
@@ -255,11 +275,13 @@ function GroupPeek({ group }: { group: BacklinkGroup }) {
   if (!meta.data || !rows.data) return <span className="text-[13px] text-ink-subtle">Loading…</span>
   const shown = rows.data.data as Row[]
   const more = group.count - shown.length
+  // #1340: in an app's group, a row of a Table with no title column is named by the app's words and its id.
+  const untitled = !title && group.worded ? group.label : undefined
   // UI owner: the rows as RecordLinks, no fills inside the raised card, then a muted "+ N more".
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[13.5px]">
       {shown.map((r) => (
-        <RecordLink key={String(r.row_id)} table={group.connection.table} rowId={String(r.row_id)} name={rowDisplayTitle(meta.data!, r, String(r.row_id))} />
+        <RecordLink key={String(r.row_id)} table={group.connection.table} rowId={String(r.row_id)} name={untitled ? `${untitled} ${String(r.row_id)}` : rowDisplayTitle(meta.data!, r, String(r.row_id))} />
       ))}
       {more > 0 && <span className="text-[13px] text-ink-subtle">+ {fmtCount(more)} more</span>}
     </div>
@@ -540,12 +562,16 @@ function FieldValue({ col, value, settings, onOpen }: { col: ColumnDef; value: u
  * rows it points at and the counted groups that point at it, the same chips
  * as the drill pane. Opening one shows it in the pane.
  */
-export function RowConnections({ table, row, values, layout = 'chips', onSection }: {
+export function RowConnections({ table, row, values, layout = 'chips', onSection, onGroup, appGroups }: {
   table: string; row: string; values: Row | undefined
+  /** #1340: the app's groups: its headings on the chips, its own groups as chips too, all in its order. */
+  appGroups?: RecordGroup[]
   /** #1267: 'list' is a Person page's right column, one group per line with its count. */
   layout?: 'chips' | 'list'
   /** #1349: a worked-out section's chip in the count row goes to that section. */
   onSection?: (heading: string) => void
+  /** #1340: an app's own group's chip goes to its section on the Links tab, by the group's key. */
+  onGroup?: (key: string) => void
 }) {
   const nav = useNavigation()
   const meta = useMeta(table)
@@ -557,8 +583,9 @@ export function RowConnections({ table, row, values, layout = 'chips', onSection
   const links = forwardLinks(meta.data, values)
   const step = nav.step
   const open = (pane: NavPane) => nav.push({ ...step, pane })
-  const full = groups.filter((g) => g.count > 0)
-  const empty = groups.filter((g) => g.count === 0)
+  const ordered = appCounted(groups, appGroups)
+  const full = ordered.filter((g) => g.count > 0)
+  const empty = ordered.filter((g) => g.count === 0)
   const shown = showEmpty ? [...full, ...empty] : full
   // #1349 (consistency check): the same fold as the pane and the Links tab.
   const emptyToggle = empty.length > 0 && <NoneFold count={empty.length} open={showEmpty} onToggle={() => setShowEmpty((was) => !was)} />
@@ -593,7 +620,7 @@ export function RowConnections({ table, row, values, layout = 'chips', onSection
           </span>
         ))}
       </div>}
-      <CountRow table={table} row={row} onSection={onSection} />
+      <CountRow table={table} row={row} onSection={onSection} appGroups={appGroups} onGroup={onGroup} />
     </section>
   )
 }

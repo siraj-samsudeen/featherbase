@@ -523,7 +523,7 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
   // operation, and installed_app's primary key refuses a second row anyway.
   await assertNoSettingsFixtures(manifest)
   const provisioned = await provisionSources(manifest)
-  const runtimeManifest = manifest.runtime_manifest as { client?: unknown } | undefined
+  const runtimeManifest = manifest.runtime_manifest as { client?: unknown; records?: Record<string, unknown> } | undefined
   const ownsClientRoot = manifest.runtime_package && typeof runtimeManifest?.client === 'string'
   // Reflected Tables are the app's tables for teardown purposes.
   const created: string[] = [...provisioned.tables]
@@ -545,7 +545,8 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
     created.push(meta.name)
     // A runtime application with its own client owns normal navigation. Apps
     // without one retain the generated Table home page as their usable UI.
-    if (meta.kind !== 'sub_table' && !ownsClientRoot)
+    // #1340: a Table such an app hands to Featherbase's own pages (its `records`) is listed on its module's home too.
+    if (meta.kind !== 'sub_table' && (!ownsClientRoot || Object.hasOwn(runtimeManifest?.records ?? {}, meta.name)))
       await ensureHomePageForTable(meta.name, meta.module)
   }
   const access = await provisionAccess(manifest)

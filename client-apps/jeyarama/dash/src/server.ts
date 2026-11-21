@@ -16,6 +16,7 @@ import { buyerSectionActions, buyerSectionReads } from './buyer-sections.ts'
 import { coverageReads } from './coverage.ts'
 import { prefillActions } from './department-prefill.ts'
 import { changePermissions } from './permission-grid-server.ts'
+import { decideAccess, describeBusinessRoles, giveOldGrantsPreview } from './roles-records-server.ts'
 import { changeReportGrants } from './report-grid-server.ts'
 import { accessPage, addReport, addToBundle, diveChoices, diveChoicesPrepared, giveReport, grantOptions, makeBundle, managesAccess, managesTeamAccess, personLookup, personSearch, removeAccess, removeFromBundle, reportsGivenNow, validators as accessValidators, type AccessContext } from './report-access-server.ts'
 import { TEAM_MANAGER } from './team-access.ts'
@@ -348,6 +349,8 @@ export const actions = {
   add_starting_roles: (context: AccessContext) => addStartingRoles(context),
   /** #1277 (J3): the old grants given to business roles, logged, only when a System Manager asks; rerunning adds nothing. */
   give_old_grants_to_roles: (context: AccessContext) => giveOldGrantsAction(context),
+  // #1340: Let Them Lose Dash records the owner's decision; it changes no access.
+  decide_access: (context: AccessContext) => decideAccess(context),
 }
 
 export const reads = {
@@ -412,6 +415,9 @@ export const reads = {
   why_access_offered: (context: ReadContext) => mayExplainAccess(context as AccessContext),
   why_access: (context: ReadContext) => whyAccess(context as AccessContext),
   access_changes: (context: ReadContext) => accessChanges(context as AccessContext),
+  // #1340: business roles in Featherbase's own list and record page, and Give Old Grants' preview.
+  describe_business_roles: (context: ReadContext) => describeBusinessRoles(context as AccessContext),
+  give_old_grants_preview: (context: ReadContext) => giveOldGrantsPreview(context as AccessContext),
   /** #1277: what decides Dash access now, and the business roles log. Company-wide managers only. */
   access_source: (context: ReadContext) => businessAccessSummary(context as AccessContext),
   switch_over_log: (context: ReadContext) => switchOverLog(context as AccessContext),

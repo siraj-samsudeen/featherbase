@@ -64,6 +64,8 @@ export interface BacklinkGroup {
   label: string
   count: number
   connection: Connection
+  /** #1340: the label is an app's own words for the group, said as given: never made plural, and naming its rows. */
+  worded?: boolean
 }
 
 export const groupKey = (c: { table: string; column: string; via?: string | null }) => `${c.table}|${c.column}|${c.via ?? ''}`

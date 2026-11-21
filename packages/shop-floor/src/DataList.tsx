@@ -116,7 +116,7 @@ export function DataList<Row>({
           {rows.map((row) => (
             <tr key={rowKey(row)} data-testid={rowTestId?.(row)} className="group">
               {columns.map((c, i) => {
-                const cls = cellClasses({ first: i === 0, last: i === columns.length - 1, className: cx('text-ink', c.align === 'end' && 'text-right tabular-nums', i === 0 && 'text-left font-medium') })
+                const cls = cellClasses({ first: i === 0, last: i === columns.length - 1, className: cx('text-ink wrap-break-word [&_*]:wrap-break-word', c.align === 'end' && 'text-right tabular-nums', i === 0 && 'text-left font-medium') })
                 // The first cell names its row for screen readers.
                 return i === 0 ? (
                   <th key={c.key} scope="row" className={cls}>

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { choiceLabel, rowDisplayTitle, tableHref, wallTimeToInstant, type ListFilter } from 'shared'
-import { AreaPicker as AreaColumns, RecordLink, cx, fmtCount } from '@featherbase/shop-floor'
+import { AreaPicker as AreaColumns, RecordLink, Sentence, TickMark, ToneChip, cx, fmtCount, type SentencePart } from '@featherbase/shop-floor'
 import { ApiError, api, listResource } from '../lib/api'
 import { forwardLinks, ALL_ROWS, useRowName, UNSEEN_ROW, type BacklinkGroup } from '../lib/relations'
 import { linkRowsTable, metaQuery, tableLabel, type ColumnDef, type TableMeta } from '../lib/meta'
@@ -113,7 +113,6 @@ export function useGroupPlan(table: string, record: string, group: BacklinkGroup
 /** #1273: a record page tells its one save state when a tick saves (C9). */
 export const LinkSaveContext = createContext<{ saved: () => void } | null>(null)
 
-const SRC = 'inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-[7px] py-px font-mono text-xs'
 const BOX = 'grid size-4 shrink-0 place-items-center rounded-[4px] border-[1.5px] text-xs leading-none'
 
 /**
@@ -124,7 +123,7 @@ const BOX = 'grid size-4 shrink-0 place-items-center rounded-[4px] border-[1.5px
  * names a correction path. Ticking an unticked choice opens the inline form
  * under it; nothing is saved until Add. Unticking a hand-given link removes it.
  */
-export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
+export function LinkTickList({ table, record, group, plan, onOpen, gridHref, heading, notes, fallback, removedColumn, tickFields }: {
   table: string
   record: string
   group: BacklinkGroup
@@ -132,11 +131,20 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
   onOpen?: (pane: NavPane) => void
   /** Open as grid: the group's list, until the grid comes (C12). */
   gridHref?: string
+  /** #1340: the app's heading for the group, and a note for each choice (by its id): who else holds it. */
+  heading?: string
+  notes?: Record<string, string | SentencePart[]>
+  /** #1340: what draws the group when a row names no choice (it points elsewhere, a bundle beside reports): the list. */
+  fallback?: ReactNode
+  /** #1340: a Check column marking a row taken away: hidden, not ticked; unticking sets it, ticking again clears it. */
+  removedColumn?: string
+  /** #1340: the only fields a tick asks for; none, and a tick gives the link at once. */
+  tickFields?: string[]
 }) {
   const { connection } = group
   const { linkMeta, column, farTable, farMeta, choices } = plan
   const backLink = connection.column
-  const fields = formColumns(linkMeta, [backLink, column.column_name])
+  const fields = formColumns(linkMeta, [backLink, column.column_name]).filter((c) => !tickFields || tickFields.includes(c.column_name))
   // A ticked link shows every readable area and date, whatever the viewer may give a new one (Codex review).
   const facts = shownColumns(linkMeta, [backLink, column.column_name])
   const otherLinks = facts.filter((c) => c.column_type === 'Reference')
@@ -147,13 +155,16 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
     queryKey: ['group-rows', connection.table, JSON.stringify(connection.filters), 'ticks'],
     queryFn: () => listResource(connection.table, {
       filters: connection.filters,
-      fields: [...new Set(['row_id', 'updated_at', 'created_by', backLink, column.column_name, ...fields.map((c) => c.column_name), ...facts.map((c) => c.column_name),
+      fields: [...new Set(['row_id', 'updated_at', 'created_by', backLink, column.column_name, ...(removedColumn ? [removedColumn] : []), ...fields.map((c) => c.column_name), ...facts.map((c) => c.column_name),
         // Correct's address may name any readable column of the row (Codex review).
         ...correctionColumns(linkMeta)])],
       limit_page_length: ALL_ROWS,
     }),
   })
-  const data = rows.data?.data ?? []
+  const read = rows.data?.data ?? []
+  // A row taken away is history, not a link: it is neither shown nor ticked (Codex round 3).
+  const takenAway = (r: Row) => Boolean(removedColumn) && [true, 1, '1', 'true'].includes(r[removedColumn!] as never)
+  const data = read.filter((r) => !takenAway(r))
   const sources = useRowSources(connection.table, data.map((r) => String(r.row_id)), rows.isSuccess)
   const [opened, setOpened] = useState<string | null>(null)
   const [all, setAll] = useState(false)
@@ -162,7 +173,7 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
   const lines = tickLines(choices, data, column.column_name)
   const total = lines.ticked.length + lines.unticked.length
   // The section bears its chip's name, so a chip and its section read the same (verifier).
-  const farLabel = group.label
+  const farLabel = heading ?? group.label
 
   const refresh = async () => {
     await Promise.all([
@@ -190,19 +201,27 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
       return false
     }
   }
+  const mark = (row: Row, removed: boolean) =>
+    api.patch(`/api/table/${encodeURIComponent(connection.table)}/${encodeURIComponent(String(row.row_id))}`, { [removedColumn!]: removed, updated_at: row.updated_at })
   const untick = (row: Row) => change(() => {
+    // Where the app keeps a taken-away row, unticking marks it, so its history stays.
+    if (removedColumn) return mark(row, true)
     const stamp = row.updated_at == null ? '' : `?updated_at=${encodeURIComponent(String(row.updated_at))}`
     return api.delete(`/api/table/${encodeURIComponent(connection.table)}/${encodeURIComponent(String(row.row_id))}${stamp}`)
   })
-  const add = (choice: Choice, values: Row) => change(() =>
-    api.post(`/api/table/${encodeURIComponent(connection.table)}`, newLinkRow(backLink, record, column.column_name, choice.id, values)))
-    .then((ok) => { if (ok) setOpened(null) })
+  const add = (choice: Choice, values: Row) => change(() => {
+    // Ticking a choice taken away earlier gives its row back, rather than a second row for the same link.
+    const earlier = read.find((r) => takenAway(r) && String(r[column.column_name]) === choice.id)
+    return earlier ? mark(earlier, false) : api.post(`/api/table/${encodeURIComponent(connection.table)}`, newLinkRow(backLink, record, column.column_name, choice.id, values))
+  }).then((ok) => { if (ok) setOpened(null) })
 
   const shown: ({ kind: 'ticked'; line: TickedLine } | { kind: 'unticked'; choice: Choice })[] = [
     ...lines.ticked.map((line) => ({ kind: 'ticked' as const, line })),
     ...lines.unticked.map((choice) => ({ kind: 'unticked' as const, choice })),
   ]
   const visible = all ? shown : shown.slice(0, FOLD_AFTER)
+  // A row that names no choice cannot be ticked or counted: the group is a list, every row said as it is.
+  if (rows.isSuccess && data.some((r) => r[column.column_name] == null || r[column.column_name] === '')) return <>{fallback}</>
   return (
     <section aria-label={farLabel} data-testid="tick-list" data-group={group.key} className="flex min-w-0 flex-col gap-1.5">
       <div className="flex min-w-0 items-center gap-2">
@@ -219,11 +238,11 @@ export function LinkTickList({ table, record, group, plan, onOpen, gridHref }: {
         : rows.isPending ? <p className="text-sm text-ink-subtle">Loading…</p> : (
         <ul className="grid gap-0.5">
           {visible.map((item) => item.kind === 'ticked'
-            ? <TickedLineView key={String(item.line.row.row_id)} line={item.line} farTable={farTable} linkMeta={linkMeta}
+            ? <TickedLineView key={String(item.line.row.row_id)} line={item.line} farTable={farTable} linkMeta={linkMeta} note={notes?.[item.line.choice.id]}
                 otherLinks={otherLinks} dates={dates} source={sources.data?.sources[String(item.line.row.row_id)]}
                 sourceKnown={sources.isSuccess} onUntick={() => untick(item.line.row)} onOpen={onOpen} busy={status === 'saving'} />
-            : <UntickedLineView key={item.choice.id} choice={item.choice} farTable={farTable} open={opened === item.choice.id}
-                onTick={() => setOpened(opened === item.choice.id ? null : item.choice.id)} onCancel={() => setOpened(null)}
+            : <UntickedLineView key={item.choice.id} choice={item.choice} farTable={farTable} open={opened === item.choice.id} note={notes?.[item.choice.id]}
+                onTick={() => (fields.length ? setOpened(opened === item.choice.id ? null : item.choice.id) : add(item.choice, {}))} onCancel={() => setOpened(null)}
                 fields={fields} onAdd={(values) => add(item.choice, values)} busy={status === 'saving'} />)}
         </ul>
       )}
@@ -247,8 +266,10 @@ export function GridButton({ href }: { href: string }) {
   )
 }
 
-function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, sourceKnown, onUntick, onOpen, busy }: {
+function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, sourceKnown, onUntick, onOpen, busy, note }: {
   line: TickedLine
+  /** #1340: the app's note on this choice: words, or a sentence whose records are links. */
+  note?: string | SentencePart[]
   farTable: string
   linkMeta: TableMeta
   otherLinks: ColumnDef[]
@@ -275,10 +296,9 @@ function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, s
     <li className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-subtle" data-testid="tick-line" data-ticked="true">
       {/* A feed's link is locked: it changes only through Correct (C7). Undecided while its source loads. */}
       {fromFeed || !sourceKnown
-        ? <span className={cx(BOX, 'cursor-not-allowed border-caution bg-caution-tint text-caution')}
-            // With no correction path, the feed itself is where it changes (verifier).
-            title={fromFeed ? (correct ? `From ${source}: change it with Correct` : `Comes from ${source}: change it there`) : undefined}
-            role="img" aria-label={`${title}, from ${source ?? 'a feed'}, locked`} data-testid="tick-locked">✓</span>
+        // With no correction path, the feed itself is where it changes (verifier).
+        ? <TickMark state="locked" label={`${title}, from ${source ?? 'a feed'}, locked`}
+            title={fromFeed ? (correct ? `From ${source}: change it with Correct` : `Comes from ${source}: change it there`) : undefined} />
         : <button type="button" onClick={onUntick} disabled={busy || !mayUntick} aria-label={`Untick ${title}`} data-testid="tick-box"
             title={caps.data && !mayUntick ? 'You may not remove this one' : undefined}
             // A tick the viewer may not remove reads locked and grey, not a faded blue (verifier).
@@ -289,6 +309,7 @@ function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, s
           ? <RecordLink table={farTable} rowId={choice.id} name={UNSEEN_ROW} canOpen={false} />
           : <RecordLink table={farTable} rowId={choice.id} name={title} className="self-start"
               onNavigate={onOpen ? () => onOpen({ table: farTable, row: choice.id }) : undefined} />}
+        {note && <span className="text-xs text-ink-muted" data-testid="tick-note">{typeof note === 'string' ? note : <Sentence parts={note} />}</span>}
         {(areas.length > 0 || facts.length > 0) && (
           <span className="text-xs text-ink-muted" data-testid="tick-meta">
             {areas.map((c, i) => <span key={c.column_name}>{i > 0 && ' · '}<AreaName column={c} value={String(row[c.column_name])} /></span>)}
@@ -298,8 +319,8 @@ function TickedLineView({ line, farTable, linkMeta, otherLinks, dates, source, s
       </span>
       <span className="flex items-center gap-1">
         {sourceKnown && (fromFeed
-          ? <span className={cx(SRC, 'bg-action-tint text-action')} data-testid="source-chip">from {source}</span>
-          : <span className={cx(SRC, 'bg-caution-tint text-caution')} data-testid="source-chip">given by hand</span>)}
+          ? <ToneChip tone="neutral">from {source}</ToneChip>
+          : <ToneChip tone="caution">given by hand</ToneChip>)}
         {correct && <a href={correct} data-testid="correct-link" className="px-1 text-xs text-action hover:underline focus-visible:outline-2 focus-visible:outline-focus">Correct</a>}
       </span>
     </li>
@@ -313,8 +334,9 @@ function AreaName({ column, value }: { column: ColumnDef; value: string }) {
   return <RecordLink table={table} rowId={value} name={name.state === 'read' ? name.title : UNSEEN_ROW} canOpen={name.state === 'read'} className="text-ink-muted" />
 }
 
-function UntickedLineView({ choice, farTable, open, onTick, onCancel, fields, onAdd, busy }: {
+function UntickedLineView({ choice, farTable, open, onTick, onCancel, fields, onAdd, busy, note }: {
   choice: Choice
+  note?: string | SentencePart[]
   farTable: string
   open: boolean
   onTick: () => void
@@ -328,7 +350,10 @@ function UntickedLineView({ choice, farTable, open, onTick, onCancel, fields, on
       <button type="button" onClick={onTick} aria-label={`Tick ${choice.title}`} aria-expanded={open} data-testid="tick-box"
         className={cx(BOX, 'cursor-pointer border-border-control bg-surface focus-visible:outline-2 focus-visible:outline-focus')} />
       {/* Unticked choices are greyed: the name still opens its record. */}
-      <RecordLink table={farTable} rowId={choice.id} name={choice.title} className="self-start !font-normal !text-ink-muted" />
+      <span className="flex min-w-0 flex-col">
+        <RecordLink table={farTable} rowId={choice.id} name={choice.title} className="self-start !font-normal !text-ink-muted" />
+        {note && <span className="text-xs text-ink-muted" data-testid="tick-note">{typeof note === 'string' ? note : <Sentence parts={note} />}</span>}
+      </span>
       <span />
       {open && <AlsoGiveForm choice={choice} fields={fields} onAdd={onAdd} onCancel={onCancel} busy={busy} />}
     </li>
