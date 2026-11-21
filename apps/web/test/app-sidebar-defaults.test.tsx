@@ -114,3 +114,46 @@ test('a Recently Opened Table on an app page opens with a full page load', async
   fireEvent.click(await within(await inside.findByTestId('sidebar-recents', {}, WAIT)).findByRole('link', { name: /Person/ }, WAIT))
   expect(leave).toHaveBeenCalledWith(tableHref('Person'))
 })
+
+test("a saved view is in an app's sidebar and opens its list with a full page load", async ({ admin }) => {
+  await installBarProof(admin)
+  const filters = [['email', 'like', '%@example.com']]
+  await admin.post('/api/saved_views', { table: 'Person', label: 'Example People', filters })
+  const leave = vi.fn()
+  const { inside } = openAppPage(admin, leave)
+  const view = await within(await inside.findByTestId('sidebar-saved-views', {}, WAIT)).findByRole('link', { name: /Example People/ }, WAIT)
+  fireEvent.click(view)
+  expect(leave).toHaveBeenCalledWith(`${tableHref('Person')}?filters=${encodeURIComponent(JSON.stringify(filters))}`)
+})
+
+/** Every URL the page asks the server for, from now on. */
+function recordCalls(): string[] {
+  const urls: string[] = []
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    urls.push(typeof input === 'string' ? input : input instanceof URL ? input.pathname + input.search : (input as Request).url)
+    return real(input, init)
+  })
+  return urls
+}
+
+test("someone who cannot use the Admin gets no bell, recall or saved views on an app's page", async ({ admin, createUser }) => {
+  await installBarProof(admin)
+  const reader = await createUser({ roles: ['Bar Reader'] })
+  await reader.post('/api/events', { events: [openedTable('barproof.note')] })
+  const { inside } = openAppPage(reader)
+  // The page is drawn: its Search or Command field is there.
+  await inside.findByTestId('command-field', {}, WAIT)
+  await new Promise((done) => setTimeout(done, 300))
+  for (const id of ['notif-bell', 'sidebar-recents', 'sidebar-saved-views']) expect(inside.queryByTestId(id)).not.toBeInTheDocument()
+})
+
+test("an app's page asks nothing for the defaults of someone who cannot use the Admin", async ({ admin, createUser }) => {
+  await installBarProof(admin)
+  const reader = await createUser({ roles: ['Bar Reader'] })
+  const urls = recordCalls()
+  const { inside } = openAppPage(reader)
+  await inside.findByTestId('command-field', {}, WAIT)
+  await new Promise((done) => setTimeout(done, 300))
+  expect(urls.filter((u) => /\/api\/(saved_views\/sidebar|events\/summary|unread_count)/.test(u))).toEqual([])
+})
