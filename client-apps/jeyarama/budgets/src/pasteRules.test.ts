@@ -75,6 +75,11 @@ describe('pasted adjustment lines', () => {
       'Type is one of Provision, Reallocation, Capitalise, Defer, Recover: not Guess', 'Say the reason',
     ])
   })
+  it('keeps a close to the plants of its own company', () => {
+    const mixed = [{ row_id: '9003', plant_name: 'Hilltop', legal_company: '9000' }, { row_id: '9901', plant_name: 'Gold House', legal_company: '9900' }, { row_id: '9005', plant_name: 'Riverside', legal_company: null }]
+    const checked = checkAdjustments([['Store', 'Account', 'Amount', 'Type', 'Reason'], ['Gold House', '49990001', '5', 'Provision', 'x'], ['Hilltop', '49990001', '5', 'Provision', 'x'], ['Riverside', '49990001', '5', 'Provision', 'x']], { plants: mixed, accounts, company: '9000' })
+    expect(checked.rows.map(row => row.problem)).toEqual(['Gold House belongs to another company than this close', undefined, undefined])
+  })
   it('refuses other headings', () => {
     expect(checkAdjustments([['Store', 'Amount']], { plants, accounts }).problem).toBe('The first row needs the headings Store, Account, Amount, Type, Reason')
   })

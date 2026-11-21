@@ -323,3 +323,9 @@ test('a store has one area at a time, however it is saved', async ({ createUser 
   expect((await save('store_area', { plant: '9004', area_sqft: 18200, starts_on: '2026-04-01' })).row_id).toBeTruthy()
   expect((await save('store_area', { ...area, starts_on: '2026-04-01', business_line_segment: '10', area_sqft: 9000 })).row_id).toBeTruthy()
 })
+
+test('two versions of one kind never share a name, even by changing a draft\'s kind', async ({ createUser }) => {
+  const { save } = await setup(createUser)
+  const twin = await save('budget_version', { version_name: 'FY27 Original', budget_kind: 'Sales', fiscal_year: 'FY27', covers_from: '2026-04-01', covers_to: '2027-03-01' })
+  await expect(save('budget_version', { row_id: twin.row_id, updated_at: twin.updated_at, budget_kind: 'P&L' })).rejects.toThrow('There is already a P&L version called FY27 Original')
+})
