@@ -7,6 +7,7 @@
 // (app-command-bar.test.tsx).
 import { resolve } from 'node:path'
 import { act, fireEvent, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { tableHref } from 'shared'
 import { discoverPackages } from 'server/src/runtime-packages'
@@ -195,4 +196,34 @@ test("a record in an app's Recently Opened is a RecordLink", async ({ admin }) =
   expect(record).toHaveAttribute('data-table', 'Person')
   expect(record).toHaveAttribute('data-row', admin.user)
   expect(record).toHaveTextContent('Administrator')
+})
+
+// #1248: collapsed, the platform's groups take the Admin's rail forms: one icon each, whose menu lists them.
+// The menu is drawn in the sidebar's own shadow root, where the platform's styles are.
+async function railedAppPage(admin: TestClient, leave: (href: string) => void = () => {}) {
+  await installBarProof(admin)
+  await admin.post('/api/events', { events: [openedTable('Person')] })
+  const page = openAppPage(admin, leave)
+  await page.inside.findByTestId('sidebar-recents', {}, WAIT)
+  await userEvent.click(page.inside.getByTestId('sidebar-collapse'))
+  return { ...page, fold: await page.inside.findByRole('button', { name: 'Recently Opened' }, WAIT) }
+}
+
+test("collapsed, an app's sidebar folds Recently Opened into one icon whose menu opens the Table with a full page load", async ({ admin }) => {
+  const leave = vi.fn()
+  const { inside, fold } = await railedAppPage(admin, leave)
+  expect(fold).toHaveAttribute('aria-haspopup', 'menu')
+  await userEvent.click(fold)
+  const menu = inside.getByRole('menu', { name: 'Recently Opened' })
+  await userEvent.click(await within(menu).findByRole('menuitem', { name: /Person/ }, WAIT))
+  expect(leave).toHaveBeenCalledWith(tableHref('Person'))
+  expect(inside.queryByRole('menu')).not.toBeInTheDocument()
+})
+
+test("a rail group's icon on an app's page closes its own open menu", async ({ admin }) => {
+  const { inside, fold } = await railedAppPage(admin)
+  await userEvent.click(fold)
+  expect(inside.getByRole('menu', { name: 'Recently Opened' })).toBeInTheDocument()
+  await userEvent.click(fold)
+  expect(inside.queryByRole('menu')).not.toBeInTheDocument()
 })
