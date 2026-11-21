@@ -176,7 +176,7 @@ export function Dash() {
           <iframe
             data-testid="report-frame"
             title={current?.name ?? 'Report'}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts allow-same-origin allow-downloads"
             src={frameSrc}
             ref={frame}
             // The frame names the attempt it belongs to: a frame of an earlier store is ignored.
