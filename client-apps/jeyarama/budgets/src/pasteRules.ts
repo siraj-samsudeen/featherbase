@@ -37,7 +37,7 @@ export function monthOf(heading: string): string | null {
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
 const headed = (headings: string[], wanted: string[]) => wanted.every((name, index) => same(headings[index] ?? '', name))
 
-export interface PlantName { row_id: string; plant_name: string | null }
+export interface PlantName { row_id: string; plant_name: string | null; legal_company?: string | null }
 const plantOf = (plants: PlantName[], cell: string) => plants.find(p => same(p.row_id, cell) || same(p.plant_name ?? '', cell))
 
 export interface BudgetValue { plant: string; pl_line: string; budget_month: string; amount: number }
@@ -82,7 +82,7 @@ export interface AdjustmentValue { plant: string; gl_account: string; pl_line: s
 interface AccountName { row_id: string; account_name: string; pl_line: string | null }
 
 /** Rows of Store, Account, Amount, Type, Reason. The P&L line is the account's. */
-export function checkAdjustments(cells: string[][], known: { plants: PlantName[]; accounts: AccountName[] }): Checked<AdjustmentValue> {
+export function checkAdjustments(cells: string[][], known: { plants: PlantName[]; accounts: AccountName[]; company?: string }): Checked<AdjustmentValue> {
   const headings = cells[0] ?? []
   if (!headed(headings, ['Store', 'Account', 'Amount', 'Type', 'Reason']))
     return { headings, rows: [], problem: 'The first row needs the headings Store, Account, Amount, Type, Reason' }
@@ -92,6 +92,8 @@ export function checkAdjustments(cells: string[][], known: { plants: PlantName[]
     const [store = '', accountCell = '', amountCell = '', typeCell = '', reason = ''] = row
     const plant = plantOf(known.plants, store)
     if (!plant) return bad(`No store is called ${store || '(blank)'}`)
+    // A close is one company's: a plant on another company's books has no place in it.
+    if (known.company && plant.legal_company && plant.legal_company !== known.company) return bad(`${plant.plant_name ?? plant.row_id} belongs to another company than this close`)
     const account = known.accounts.find(a => same(a.row_id, accountCell) || same(a.account_name, accountCell))
     if (!account) return bad(`No account is called ${accountCell || '(blank)'}`)
     if (!account.pl_line) return bad(`${account.account_name} has no P&L line yet: classify it first`)

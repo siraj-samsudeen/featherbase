@@ -69,7 +69,7 @@ async function prepareVersion(ctx: Context) {
   row.covers_from = monthStart(row.covers_from)
   row.covers_to = monthStart(row.covers_to)
   if (day(row.covers_from) > day(row.covers_to)) ctx.reject('Covers From is after Covers To')
-  if (ctx.isNew || changed(ctx, 'version_name')) {
+  if (ctx.isNew || changed(ctx, 'version_name') || changed(ctx, 'budget_kind')) {
     const same = await ctx.documents.list('budgets.budget_version', { filters: [['version_name', '=', row.version_name], ['budget_kind', '=', row.budget_kind]], fields: ['row_id'], limit_page_length: 2 })
     if (same.some(other => other.row_id !== row.row_id)) ctx.reject(`There is already a ${row.budget_kind} version called ${row.version_name}: give this one another name`)
   }

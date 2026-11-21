@@ -186,7 +186,7 @@ export function ClosePage({ id }: { id: string }) {
     </div>
     {panel === 'paste' && <PasteRows<CheckedRow<AdjustmentValue>> label="Adjustment lines" noun="adjustment"
       hint="Copy rows from Excel with the headings Store, Account, Amount, Type, Reason and paste them here. Amounts are in rupees; each line takes its P&L line from its account."
-      check={pasted => checkAdjustments(pasted, { plants: plants.data ?? [], accounts: accounts.data ?? [] })}
+      check={pasted => checkAdjustments(pasted, { plants: plants.data ?? [], accounts: accounts.data ?? [], company: close.legal_company })}
       onSave={async (checked) => { await runAction('paste_adjustments', { close: id, values: checked.flatMap(row => row.values) }); await refresh() }} />}
     {panel === 'publish' && <div className="flex flex-wrap items-center gap-3">
       <p className="text-sm text-ink">Publish {closeName(close)}? Its adjustments can then be matched to SAP and followed up, but not added to or changed.</p>
