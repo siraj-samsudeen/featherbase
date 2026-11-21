@@ -263,13 +263,13 @@ export function TopBar({
           <div className="relative flex justify-end" data-testid="page-pickers"><BarControls app={controlsOf!} /></div>,
           pickerSlot,
         )}
+        {/* #1385: the bell is the platform's, for someone who can use the Admin (its notifications are there). */}
         {createPortal(
           <div className={rail ? 'flex flex-col items-center gap-1 px-2 pb-2 pt-3' : 'flex flex-col gap-2 px-2 pb-2 pt-3'} data-testid="sidebar-top">
             <div className={rail ? 'contents' : 'flex min-w-0 items-center gap-1'}>
               <div className={rail ? 'contents' : 'min-w-0 flex-1'}>{switcher}</div>
               {/* #1222: View as, an action, at the top beside the bell (Ctrl+Shift+K everywhere). */}
               {caps && <ViewAsButton compact place={rail ? 'rail' : 'sidebar'} />}
-              {/* #1385: the bell is the platform's, for someone who can use the Admin (its notifications are there). */}
               {!rail && canUseAdmin && <NotificationBell />}
             </div>
             {caps && <CommandField rail={rail} onOpen={() => setCommandOpen(true)} />}
