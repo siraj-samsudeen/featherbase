@@ -30,6 +30,12 @@
   --color-raised: #ffffff; /* #1348: a surface that floats (the pane, a menu); lighter than the panel in dark */
   --color-tag: #eef0f3; /* a quiet tag's fill: one step below the canvas, seen on every surface */
   --color-tag-ink: #374151; /* #1348: a tag's words ("from HR", "Team") */
+  /* #1289 option C, Click To Narrow (board A): the panel, its bars and a ruled-out value. */
+  --color-narrow-fill: #f8f9fb; /* the Click To Narrow panel */
+  --color-count-bar: #c7d7fe;
+  --color-picked-bar: #86efac;
+  --color-ruled-out-ink: #646b78;
+  --color-ruled-out-bar: #e3e6ea;
   --color-border: #e5e7eb; /* hairlines between content */
   --color-border-control: #6b7280; /* the edge of something you type into or press */
   --color-ink: #151a23; /* primary text */
@@ -175,6 +181,11 @@
     --color-raised: #222d45;
     --color-tag: #24304a;
     --color-tag-ink: #c3cddb;
+    --color-narrow-fill: #18233a;
+    --color-count-bar: #3b5cb0;
+    --color-picked-bar: #22c55e;
+    --color-ruled-out-ink: #94a3b8;
+    --color-ruled-out-bar: #2b3650;
     --color-border: #24314a;
     --color-border-control: #66768e;
     --color-ink: #f1f5f9;
@@ -313,3 +324,4 @@ body {
   background: var(--color-border-control);
   border-radius: 8px;
 }
+
