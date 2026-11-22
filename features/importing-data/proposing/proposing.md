@@ -26,3 +26,4 @@ Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.
    means at least 9 filled cells in 10 share their value with another cell.
 6. The first Column that is never blank and never repeats is suggested as the key.
 7. A file saved on Windows reads the same as one saved anywhere else.
+8. The file's name and its headers are shown exactly as written, even when they look like HTML.
