@@ -29,10 +29,7 @@ test("A Column's type is worked out from its filled cells and shown as the chose
 });
 
 test("A Text Column whose values mostly repeat is proposed as a Choice.", async () => {
-  const nineInTenRepeat = await give(
-    "things.csv",
-    aFileWithAColumnOf(cells({ Sales: 5, Billing: 4, Stores: 1 })),
-  );
+  const nineInTenRepeat = await give("things.csv", aFileWithAColumnOf(cells({ Sales: 5, Billing: 4, Stores: 1 })));
   expect(await typeOfTheColumnOn(nineInTenRepeat)).toBe("Choice");
 
   const eightInTenRepeat = await give(
@@ -90,6 +87,19 @@ test("Beside each Column, Featherbase says what it saw in the cells, with a few 
 test('For the Column chosen as the key it says "Never blank, never repeats."', async () => {
   const page = await give("things.csv", ["Code,Thing", "E1,Pen", "E2,Ink", "E3,Pad", "E4,Cap"]);
   expect(await whatFeatherbaseSawIn("Code", page)).toBe("Never blank, never repeats. E1, E2, E3");
+});
+
+test('Under "How The First Rows Will Look", the first five rows are shown as the list will show them.', async () => {
+  const days = ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05", "2026-01-06"];
+  const page = await give("days.csv", aFileWithAColumnOf(days.join(", ")));
+  const firstRows = page.getByRole("region", { name: "How The First Rows Will Look" });
+  expect(await firstRows.locator("td:nth-child(2)").allInnerTexts()).toEqual([
+    "01-Jan-2026",
+    "02-Jan-2026",
+    "03-Jan-2026",
+    "04-Jan-2026",
+    "05-Jan-2026",
+  ]);
 });
 
 function savedOnWindows(lines: string[]) {
