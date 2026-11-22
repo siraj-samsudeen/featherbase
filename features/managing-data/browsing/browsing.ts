@@ -1,19 +1,20 @@
 import type { Table } from "../../importing-data/proposing/proposing.ts";
-import { asText, page } from "../../../page.ts";
+import { asText } from "../../../page.ts";
 
 const rowsOnAPage = 10;
 
-export function listPage(table: Table, pageNumber: number) {
+export function listView(table: Table, pageNumber: number) {
   const first = (pageNumber - 1) * rowsOnAPage + 1;
   const last = Math.min(pageNumber * rowsOnAPage, table.rows.length);
   const shown = table.rows.slice(first - 1, last);
   const next = last < table.rows.length ? `<a href="?page=${pageNumber + 1}">Next</a>` : "";
-  return page(
-    asText(table.name),
-    `<h1>${asText(table.name)}</h1><p>${first} to ${last} of ${table.rows.length}</p>` +
+  return {
+    title: table.name,
+    html:
+      `<h1>${asText(table.name)}</h1><p>${first} to ${last} of ${table.rows.length}</p>` +
       `<table><thead>${rowOf("th", table.columns.map(nameOf))}</thead>` +
       `<tbody>${shown.map((row) => rowOf("td", row)).join("")}</tbody></table>${next}`,
-  );
+  };
 }
 
 function nameOf(column: { name: string }) {

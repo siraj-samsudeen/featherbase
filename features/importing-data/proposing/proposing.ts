@@ -1,4 +1,4 @@
-import { asText, page } from "../../../page.ts";
+import { asText } from "../../../page.ts";
 
 type Column = { name: string; type: string; key: string };
 
@@ -16,10 +16,11 @@ export function tableProposedFrom(fileName: string, text: string) {
 
 export type Table = ReturnType<typeof tableProposedFrom>;
 
-export function proposalPage(proposed: Table) {
-  return page(
-    "Import data",
-    `<h1>Import data</h1><h2>${asText(proposed.name)}</h2>` +
+export function proposalView(proposed: Table) {
+  return {
+    title: "Import data",
+    html:
+      `<h1>Import data</h1><h2>${asText(proposed.name)}</h2>` +
       `<p>${proposed.rows.length} rows, ${proposed.columns.length} Columns</p>` +
       "<table><thead><tr><th>Column</th><th>Type</th><th>Key</th></tr></thead>" +
       `<tbody>${proposed.columns.map(columnRow).join("")}</tbody></table>` +
@@ -27,7 +28,7 @@ export function proposalPage(proposed: Table) {
       `<input type="hidden" name="fileName" value="${asText(proposed.fileName)}">` +
       `<input type="hidden" name="text" value="${asText(proposed.text)}">` +
       "<button>Create</button></form>",
-  );
+  };
 }
 
 function columnRow(column: Column) {
