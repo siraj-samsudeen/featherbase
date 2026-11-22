@@ -78,7 +78,7 @@ export function proposalView(proposed: Proposal, uploadId: string, nameRefusal =
           </section>
           <section class="sect" aria-labelledby="first-rows">
             <h2 id="first-rows">How The First Rows Will Look</h2>
-            <div class="tbox">${tableOf(proposed.columns, proposed.rows.slice(0, 5))}</div>
+            <div class="tbox">${tableOf(proposed.columns, proposed.rows.slice(0, 5).map((cells) => ({ cells })))}</div>
           </section>
         </div>
         <div class="footbar">
