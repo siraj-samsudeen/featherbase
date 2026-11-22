@@ -6,7 +6,7 @@ The file is `samples/employees/employees.csv`.
 
 1. Open Featherbase and choose "Import data".
 2. Give it `employees.csv`.
-3. Featherbase shows the Table it would make: "Employees", 24 rows, 7 Columns.
+3. Featherbase shows the Table it would make: Table name "Employees", 24 rows, 7 Columns.
 
    | Column | Type | Key |
    |---|---|---|

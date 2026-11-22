@@ -29,7 +29,7 @@ async function giveItTheEmployeesFile() {
 }
 
 async function seeTheTableFeatherbaseWouldMake() {
-  await sees("Employees");
+  expect(await page.getByLabel("Table name").inputValue()).toBe("Employees");
   await sees("24 rows");
   await sees("7 Columns");
   expect(await tableOn(page)).toEqual(tableWrittenIn(journey));
