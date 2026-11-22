@@ -55,6 +55,12 @@ test("A file saved on Windows reads the same as one saved anywhere else.", async
   expect(await typeOfTheColumnOn(page)).toBe("Number");
 });
 
+test("The file's name and its headers are shown exactly as written, even when they look like HTML.", async () => {
+  const page = await give("<b>People</b> & teams.csv", ["<i>Name</i>", "Asha"]);
+  expect(await tableNameOn(page)).toBe("<b>People</b> & teams");
+  expect(await columnNamesOn(page)).toEqual(["<i>Name</i>"]);
+});
+
 function savedOnWindows(lines: string[]) {
   const lastLineIsEndedToo = "";
   return [...lines.map((line) => `${line}\r`), lastLineIsEndedToo];
