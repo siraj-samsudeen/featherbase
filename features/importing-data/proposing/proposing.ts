@@ -1,4 +1,4 @@
-import { asText, homeCrumb, importDataCrumb, wayBack } from "../../../page.ts";
+import { asText, bar, homeCrumb, importDataCrumb } from "../../../page.ts";
 
 type Column = { name: string; type: string; key: string };
 
@@ -18,21 +18,44 @@ export type Table = ReturnType<typeof tableProposedFrom>;
 
 export function proposalView(proposed: Table) {
   return {
-    title: "Import data",
-    html:
-      `${wayBack([homeCrumb, importDataCrumb, { name: proposed.fileName }])}<h1>Import data</h1><label for="table-name">Table name</label><input type="text" id="table-name" value="${asText(proposed.name)}" readonly>` +
-      `<p>${proposed.rows.length} rows, ${proposed.columns.length} Columns</p>` +
-      "<table><thead><tr><th>Column</th><th>Type</th><th>Key</th></tr></thead>" +
-      `<tbody>${proposed.columns.map(columnRow).join("")}</tbody></table>` +
-      '<form method="post" action="/tables">' +
-      `<input type="hidden" name="fileName" value="${asText(proposed.fileName)}">` +
-      `<input type="hidden" name="text" value="${asText(proposed.text)}">` +
-      "<button>Create</button></form>",
+    title: proposed.fileName,
+    html: `
+      <form class="view" method="post" action="/tables">
+        ${bar(proposed.fileName, [homeCrumb, importDataCrumb, { name: proposed.fileName }])}
+        <div class="page wide">
+          <p class="lead">
+            Featherbase read <b>${proposed.rows.length} rows, ${proposed.columns.length} Columns</b>.
+            This is the Table it would make.
+          </p>
+          <div class="namerow">
+            <div class="f">
+              <label for="table-name">Table name</label>
+              <input type="text" id="table-name" value="${asText(proposed.name)}" readonly>
+            </div>
+          </div>
+          <div class="sect">
+            <h2>Columns</h2>
+            <div class="tbox cols">
+              <table>
+                <thead><tr><th>Column</th><th>Type</th><th class="keyc">Key</th></tr></thead>
+                <tbody>${proposed.columns.map(columnRow).join("")}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="footbar">
+          <input type="hidden" name="fileName" value="${asText(proposed.fileName)}">
+          <input type="hidden" name="text" value="${asText(proposed.text)}">
+          <button type="submit" class="btn primary">Create</button>
+          <a class="btn" href="${importDataCrumb.address}">Cancel</a>
+          <span class="hint">Nothing is created until you press Create.</span>
+        </div>
+      </form>`,
   };
 }
 
 function columnRow(column: Column) {
-  return `<tr><td>${asText(column.name)}</td><td>${column.type}</td><td>${column.key}</td></tr>`;
+  return `<tr><td>${asText(column.name)}</td><td>${column.type}</td><td class="keyc">${column.key}</td></tr>`;
 }
 
 function tableNameFrom(fileName: string) {

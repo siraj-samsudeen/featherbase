@@ -18,18 +18,37 @@ export function page(view: View, tables: TableLink[], here = home) {
   );
 }
 
+const feather =
+  '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M14 5c-4.5 1-7 4.5-7.5 10M9 9.5l3.5.5M7.5 12l2.5.5" ' +
+  'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
 function sidebar(tables: TableLink[], here: string) {
-  return (
-    `<nav class="side" aria-label="Featherbase"><a href="${home}">Featherbase</a><a href="${home}"${markIf(here === home)}>Home</a>` +
-    `${tables.map((table) => tableLink(table, here)).join("")}</nav>`
-  );
+  return `
+    <nav class="side" aria-label="Featherbase">
+      <a class="brand" href="${home}">${feather}Featherbase</a>
+      <div class="nav"><a href="${home}"${markIf(here === home)}>Home</a></div>
+      ${tables.length > 0 ? tablesGroup(tables, here) : ""}
+    </nav>`;
 }
 
-function tableLink(table: TableLink, here: string) {
-  return (
-    `<a href="${table.address}"${markIf(here === table.address)}>` +
-    `${asText(table.name)} <span>${table.rows}</span></a>`
-  );
+function tablesGroup(tables: TableLink[], here: string) {
+  return `
+    <div class="group">
+      <h2>Tables</h2>
+      <div class="nav">${tables.map((table, index) => tableLink(table, index, here)).join("")}</div>
+    </div>`;
+}
+
+function tableLink(table: TableLink, index: number, here: string) {
+  return `
+    <a href="${table.address}"${markIf(here === table.address)}>
+      <span class="ico ${tintNumbered(index)}" aria-hidden="true">${asText(table.name.slice(0, 2))}</span>
+      ${asText(table.name)} <span>${table.rows}</span>
+    </a>`;
+}
+
+export function tintNumbered(index: number) {
+  return `c${(index % 8) + 1}`;
 }
 
 function markIf(thisIsWhereThePersonIs: boolean) {
@@ -38,7 +57,11 @@ function markIf(thisIsWhereThePersonIs: boolean) {
 
 export type Crumb = { name: string; address?: string };
 
-export function wayBack(crumbs: Crumb[]) {
+export function bar(title: string, crumbs: Crumb[] = [], beside = "") {
+  return `<div class="bar">${crumbs.length > 0 ? wayBack(crumbs) : ""}<h1>${asText(title)}</h1>${beside}</div>`;
+}
+
+function wayBack(crumbs: Crumb[]) {
   return `<nav class="crumbs" aria-label="You are here">${crumbs.map(crumb).join(" / ")}</nav>`;
 }
 
