@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Page } from "playwright";
-import { featherbaseInABrowser } from "../../../testing.ts";
+import { featherbaseInABrowser, tableWrittenIn } from "../../../testing.ts";
 
 const { openInNewTab } = featherbaseInABrowser();
 
@@ -18,6 +18,30 @@ test("Each header becomes a Column, in the file's order.", async () => {
   const page = await give("people.csv", ["Name,City,Age", "Asha,Chennai,31"]);
   expect(await columnNamesOn(page)).toEqual(["Name", "City", "Age"]);
 });
+
+test("A Column's type is worked out from its filled cells. A blank cell does not count.", async () => {
+  for (const [cells, type] of casesWrittenIn("features/importing-data/proposing/proposing.md")) {
+    const page = await give("things.csv", aFileWithAColumnOf(cells));
+    expect(await typeOfTheColumnOn(page), cells).toBe(type);
+  }
+});
+
+function casesWrittenIn(markdownFile: string) {
+  return tableWrittenIn(markdownFile).slice(1);
+}
+
+function aFileWithAColumnOf(cellsAsWritten: string) {
+  const cells = cellsAsWritten.split(", ").map(withoutBackticks).map(blankAsNothing);
+  return ["Row,Thing", ...cells.map((cell, index) => `${index + 1},${cell}`)];
+}
+
+function withoutBackticks(cell: string) {
+  return cell.replaceAll("`", "");
+}
+
+function blankAsNothing(cell: string) {
+  return cell === "blank" ? "" : cell;
+}
 
 async function give(fileName: string, lines: string[]) {
   const { page } = await openInNewTab("/import");
@@ -41,4 +65,8 @@ function textOn(page: Page) {
 
 function columnNamesOn(page: Page) {
   return page.locator("tbody tr td:first-child").allInnerTexts();
+}
+
+function typeOfTheColumnOn(page: Page) {
+  return page.locator("tbody tr", { hasText: "Thing" }).locator("td").nth(1).innerText();
 }
