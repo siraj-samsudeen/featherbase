@@ -1,8 +1,8 @@
 import { asText, bar } from "../../../page.ts";
-import type { Column, StoredTable } from "../../foundations/database/store.ts";
+import type { Column, Row, StoredTable } from "../../foundations/database/store.ts";
 import { cellWriterFor, headingFor } from "./showing.ts";
 
-export function listView(table: StoredTable, rows: string[][]) {
+export function listView(table: StoredTable, rows: Row[]) {
   const count = `<span class="count">${table.rowCount} rows</span>`;
   return {
     title: table.name,
@@ -11,22 +11,18 @@ export function listView(table: StoredTable, rows: string[][]) {
         ${bar(table.name, [], count)}
         <div class="work">
           <div class="gridbox" tabindex="0" aria-label="${asText(table.name)}">
-            ${tableOf(table.columns, rows, rows)}
+            ${tableOf(table.columns, rows.map((row) => row.cells))}
           </div>
         </div>
       </section>`,
   };
 }
 
-export function tableOf(columns: Column[], everyRow: string[][], rowsToShow: string[][]) {
-  const write = columns.map((column, index) => cellWriterFor(column, cellsUnder(index, everyRow)));
+export function tableOf(columns: Column[], rows: string[][]) {
+  const write = columns.map(cellWriterFor);
   return `
     <table>
       <thead><tr>${columns.map(headingFor).join("")}</tr></thead>
-      <tbody>${rowsToShow.map((row) => `<tr>${row.map((cell, index) => write[index](cell)).join("")}</tr>`).join("")}</tbody>
+      <tbody>${rows.map((row) => `<tr>${row.map((cell, index) => write[index](cell)).join("")}</tr>`).join("")}</tbody>
     </table>`;
-}
-
-function cellsUnder(columnIndex: number, rows: string[][]) {
-  return rows.map((row) => row[columnIndex]);
 }

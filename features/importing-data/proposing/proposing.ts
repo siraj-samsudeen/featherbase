@@ -13,7 +13,7 @@ const whatFits: Record<string, (filledCells: string[]) => boolean> = {
 const types = Object.keys(whatFits);
 const typesInTheOrderTheyAreProposed = ["Yes/No", "Number", "Date", "Choice", "Text"];
 
-type ProposedColumn = Column & { typesThatFit: string[]; canBeTheKey: boolean; saw: string };
+type ProposedColumn = Column & { typesThatFit: string[]; canBeTheKey: boolean; saw: string; differentValues: string[] };
 
 export function tableProposedFrom(fileName: string, text: string) {
   const [header, ...rows] = linesOf(text).map(cellsOf);
@@ -26,7 +26,9 @@ export function tableProposedFrom(fileName: string, text: string) {
 function columnFrom(name: string, cells: string[], key: boolean): ProposedColumn {
   const typesThatFit = typesThatFitThe(cells.filter(isFilled));
   const type = typesInTheOrderTheyAreProposed.find((type) => typesThatFit.includes(type)) as string;
-  return { name, type, typesThatFit, key, canBeTheKey: canBeTheKey(cells), saw: whatFeatherbaseSawIn({ type, key, cells }) };
+  const differentValues = differentValuesIn(cells);
+  const saw = whatFeatherbaseSawIn({ type, key, cells });
+  return { name, type, typesThatFit, key, canBeTheKey: canBeTheKey(cells), saw, differentValues, choices: choicesOf(type, differentValues) };
 }
 
 function typesThatFitThe(filledCells: string[]) {
@@ -37,11 +39,11 @@ function typesThatFitThe(filledCells: string[]) {
 export type Proposal = ReturnType<typeof tableProposedFrom>;
 
 export function withChoices(proposed: Proposal, choices: Record<string, string>): Proposal {
-  const columns = proposed.columns.map((column, index) => ({
-    ...column,
-    type: column.typesThatFit.includes(choices[`type-${index}`]) ? choices[`type-${index}`] : column.type,
-    key: column.canBeTheKey && choices.key === column.name,
-  }));
+  const columns = proposed.columns.map((column, index) => {
+    const type = column.typesThatFit.includes(choices[`type-${index}`]) ? choices[`type-${index}`] : column.type;
+    const key = column.canBeTheKey && choices.key === column.name;
+    return { ...column, type, key, choices: choicesOf(type, column.differentValues) };
+  });
   return { ...proposed, name: choices.name.trim(), columns };
 }
 
@@ -76,7 +78,7 @@ export function proposalView(proposed: Proposal, uploadId: string, nameRefusal =
           </section>
           <section class="sect" aria-labelledby="first-rows">
             <h2 id="first-rows">How The First Rows Will Look</h2>
-            <div class="tbox">${tableOf(proposed.columns, proposed.rows, proposed.rows.slice(0, 5))}</div>
+            <div class="tbox">${tableOf(proposed.columns, proposed.rows.slice(0, 5))}</div>
           </section>
         </div>
         <div class="footbar">
@@ -128,6 +130,14 @@ function cellsOf(line: string) {
 
 function cellsUnder(columnIndex: number, rows: string[][]) {
   return rows.map((row) => row[columnIndex]);
+}
+
+function differentValuesIn(cells: string[]) {
+  return [...new Set(cells.filter(isFilled))].sort();
+}
+
+function choicesOf(type: string, differentValues: string[]) {
+  return type === "Choice" ? differentValues : [];
 }
 
 function canBeTheKey(cells: string[]) {

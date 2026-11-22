@@ -1,10 +1,10 @@
 import { SQL } from "bun";
 
-export type Column = { name: string; type: string; key: boolean };
+export type Column = { name: string; type: string; key: boolean; choices: string[] };
 export type Table = { name: string; fileName: string; columns: Column[] };
 export type StoredTable = Table & { addressName: string; rowCount: number; place: string; columns: StoredColumn[] };
-type StoredColumn = Column & { place: string };
-
+export type StoredColumn = Column & { place: string };
+export type Row = { id: string; cells: string[]; uploadRow: number | null };
 export type Upload = { id: string; fileName: string; rowCount: number; arrivedOn: string };
 
 export type Store = Awaited<ReturnType<typeof openStore>>;
@@ -39,6 +39,8 @@ const postgresType: Record<string, string> = {
   "Yes/No": "boolean",
 };
 
+const uploadFields = "_id, file_name, row_count, to_char(_created_at, 'YYYY-MM-DD') as arrived_on";
+
 export async function openStore(databaseAddress: string) {
   const sql = new SQL(databaseAddress);
   await sql.unsafe(featherbaseOwnTables);
@@ -65,10 +67,9 @@ export async function openStore(databaseAddress: string) {
     };
   }
 
-  async function rowsOf(table: StoredTable): Promise<string[][]> {
-    const cells = table.columns.map((column, index) => `"${column.place}"::text as c${index}`);
-    const found = await sql.unsafe(`select ${cells.join(", ")} from main."${table.place}" order by _id`);
-    return found.map((row: Record<string, string | null>) => table.columns.map((_, index) => row[`c${index}`] ?? ""));
+  async function rowsOf(table: StoredTable): Promise<Row[]> {
+    const found = await sql.unsafe(`select ${rowFields(table)} from main."${table.place}" order by _id`);
+    return found.map((row: FoundRow) => rowFrom(row, table));
   }
 
   async function keepUpload(fileName: string, content: Uint8Array, rowCount: number): Promise<string> {
@@ -85,7 +86,7 @@ export async function openStore(databaseAddress: string) {
   }
 
   async function uploadAt(id: string) {
-    if (!/^\d+$/.test(id)) return undefined;
+    if (!isANumberOfARow(id)) return undefined;
     const found = await sql.unsafe(
       `select ${uploadFields}, convert_from(content, 'UTF8') as text from featherbase.uploads where _id = $1`,
       [id],
@@ -97,12 +98,16 @@ export async function openStore(databaseAddress: string) {
     const place = freePlaceFor(table.name, await placesTaken());
     const columns = withPlaces(table.columns);
     await sql.begin(async (step) => {
-      await step.unsafe(`create table main."${place}" (${[...ownColumns, ...columns.map(columnDefinition)].join(", ")})`);
+      await step.unsafe(
+        `create table main."${place}" (${[...ownColumns, ...columns.map(columnDefinition)].join(", ")})`,
+      );
       await step.unsafe(
         "insert into featherbase.tables (address_name, name, file_name, place, columns, upload_id) values ($1, $2, $3, $4, $5::jsonb, $6)",
         [addressNameOf(table), table.name, table.fileName, place, JSON.stringify(columns), uploadId],
       );
-      for (const row of rows) await step.unsafe(insertInto(place, columns), row.map(blankAsNull));
+      for (const [index, row] of rows.entries()) {
+        await step.unsafe(insertInto(place, columns), [...row.map(blankAsNull), sheetRowOf(index)]);
+      }
     });
     return (await tableAt(addressNameOf(table))) as StoredTable;
   }
@@ -119,16 +124,44 @@ export async function openStore(databaseAddress: string) {
   return { allTables, tableAt, rowsOf, make, keepUpload, allUploads, uploadAt, close };
 }
 
-const uploadFields = "_id, file_name, row_count, to_char(_created_at, 'YYYY-MM-DD') as arrived_on";
+function isANumberOfARow(id: string) {
+  return /^\d+$/.test(id);
+}
 
 function uploadFrom(found: Record<string, string>): Upload {
-  return { id: String(found._id), fileName: found.file_name, rowCount: Number(found.row_count), arrivedOn: found.arrived_on };
+  return {
+    id: String(found._id),
+    fileName: found.file_name,
+    rowCount: Number(found.row_count),
+    arrivedOn: found.arrived_on,
+  };
+}
+
+type FoundRow = Record<string, string | null>;
+
+function rowFields(table: StoredTable) {
+  const cells = table.columns.map((column, index) => `"${column.place}"::text as c${index}`);
+  return ["_id", "_upload_row", ...cells].join(", ");
+}
+
+function rowFrom(found: FoundRow, table: StoredTable): Row {
+  return {
+    id: String(found._id),
+    cells: table.columns.map((_, index) => found[`c${index}`] ?? ""),
+    uploadRow: found._upload_row === null ? null : Number(found._upload_row),
+  };
+}
+
+function sheetRowOf(indexAmongTheRows: number) {
+  const theHeaderIsRowOne = 2;
+  return indexAmongTheRows + theHeaderIsRowOne;
 }
 
 const ownColumns = [
   "_id bigint generated always as identity primary key",
   "_created_at timestamptz not null default now()",
   "_updated_at timestamptz not null default now()",
+  "_upload_row int",
 ];
 
 function columnDefinition(column: StoredColumn) {
@@ -136,9 +169,9 @@ function columnDefinition(column: StoredColumn) {
 }
 
 function insertInto(place: string, columns: StoredColumn[]) {
-  const names = columns.map((column) => `"${column.place}"`);
+  const names = [...columns.map((column) => `"${column.place}"`), "_upload_row"];
   const values = columns.map((column, index) => `$${index + 1}::${postgresType[column.type]}`);
-  return `insert into main."${place}" (${names.join(", ")}) values (${values.join(", ")})`;
+  return `insert into main."${place}" (${names.join(", ")}) values (${[...values, `$${columns.length + 1}`].join(", ")})`;
 }
 
 function blankAsNull(cell: string) {
