@@ -1,4 +1,5 @@
 import { afterAll, beforeAll } from "bun:test";
+import { readFileSync } from "node:fs";
 import { type Browser, chromium } from "playwright";
 import { createFeatherbase } from "./featherbase.ts";
 
@@ -42,4 +43,31 @@ export function featherbaseInABrowser() {
   }
 
   return { openInNewTab };
+}
+
+export function tableWrittenIn(markdownFile: string) {
+  return linesOf(markdownFile)
+    .filter(isATableRow)
+    .filter(isNotTheRuleUnderTheHeader)
+    .map(cellsOfATableRow);
+}
+
+function linesOf(file: string) {
+  return readFileSync(file, "utf8").split("\n");
+}
+
+function isATableRow(line: string) {
+  return line.trim().startsWith("|");
+}
+
+function isNotTheRuleUnderTheHeader(line: string) {
+  return !line.includes("---");
+}
+
+function cellsOfATableRow(line: string) {
+  return line
+    .trim()
+    .slice(1, -1)
+    .split("|")
+    .map((cell) => cell.trim());
 }

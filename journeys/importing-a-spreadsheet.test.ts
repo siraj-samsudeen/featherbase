@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import type { Page } from "playwright";
-import { featherbaseInABrowser } from "../testing.ts";
+import { featherbaseInABrowser, tableWrittenIn } from "../testing.ts";
 
 const journey = "journeys/importing-a-spreadsheet.md";
 const employeesFile = "samples/employees/employees.csv";
@@ -56,13 +56,6 @@ function tableOnThePage() {
     .evaluateAll((rows) => rows.map((row) => [...row.children].map((cell) => cell.textContent?.trim() ?? "")));
 }
 
-function tableWrittenIn(markdownFile: string) {
-  return linesOf(markdownFile)
-    .filter(isATableRow)
-    .filter(isNotTheRuleUnderTheHeader)
-    .map(cellsOfATableRow);
-}
-
 function headerAndFirstRowsOf(csvFile: string, count: number) {
   return linesOf(csvFile)
     .slice(0, count + 1)
@@ -71,22 +64,6 @@ function headerAndFirstRowsOf(csvFile: string, count: number) {
 
 function linesOf(file: string) {
   return readFileSync(file, "utf8").split("\n");
-}
-
-function isATableRow(line: string) {
-  return line.trim().startsWith("|");
-}
-
-function isNotTheRuleUnderTheHeader(line: string) {
-  return !line.includes("---");
-}
-
-function cellsOfATableRow(line: string) {
-  return line
-    .trim()
-    .slice(1, -1)
-    .split("|")
-    .map((cell) => cell.trim());
 }
 
 async function inOrder(...steps: (() => Promise<void>)[]) {
