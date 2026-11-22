@@ -1,16 +1,14 @@
-import { afterAll, expect, test } from "bun:test";
-
-let featherbase: ReturnType<typeof Bun.spawn> | undefined;
-
-afterAll(() => {
-  stopFeatherbase();
-});
+import { expect, test } from "bun:test";
 
 test("Running `bun start` opens Featherbase on the port it is given.", async () => {
   const port = aFreePort();
-  runBunStartOn(port);
-  const page = await pageOnceItAnswers(`http://localhost:${port}`);
-  expect(page).toContain("Welcome to Featherbase");
+  const featherbase = runBunStartOn(port);
+  try {
+    const page = await pageOnceItAnswers(`http://localhost:${port}`);
+    expect(page).toContain("Welcome to Featherbase");
+  } finally {
+    featherbase.kill();
+  }
 });
 
 function aFreePort() {
@@ -21,7 +19,7 @@ function aFreePort() {
 }
 
 function runBunStartOn(port: number | undefined) {
-  featherbase = Bun.spawn(["bun", "start"], {
+  return Bun.spawn(["bun", "start"], {
     env: { ...process.env, PORT: String(port) },
     stdout: "ignore",
     stderr: "ignore",
@@ -39,8 +37,4 @@ async function pageOnceItAnswers(address: string) {
     if (Date.now() > giveUpAt) throw new Error(`bun start did not open Featherbase at ${address}`);
     await Bun.sleep(50);
   }
-}
-
-function stopFeatherbase() {
-  featherbase?.kill();
 }
