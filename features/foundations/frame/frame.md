@@ -10,4 +10,4 @@ Proposed by Claude while building the frame. Not yet agreed by Siraj.
 1. Every page has the sidebar: Featherbase, Home, and each Table with its number of rows.
 2. The sidebar marks where the person is: the Table whose list is open, otherwise Home.
 3. On a wide screen the sidebar sits to the left of the page.
-4. The Import data page and the proposal show the way back: "Home / Import data".
+4. The Import Data page and the proposal show the way back: "Home / Import Data".

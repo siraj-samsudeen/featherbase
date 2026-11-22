@@ -27,14 +27,14 @@ test("On a wide screen the sidebar sits to the left of the page.", async () => {
   expect(sidebar.y).toBe(content.y);
 });
 
-test('The Import data page and the proposal show the way back: "Home / Import data".', async () => {
+test('The Import Data page and the proposal show the way back: "Home / Import Data".', async () => {
   const importData = (await openInNewTab("/import")).page;
-  expect(await wayBackOn(importData)).toBe("Home / Import data");
+  expect(await wayBackOn(importData)).toBe("Home / Import Data");
 
   const proposal = await give("people.csv", ["Name", "Asha"]);
-  expect(await wayBackOn(proposal)).toBe("Home / Import data / people.csv");
+  expect(await wayBackOn(proposal)).toBe("Home / Import Data / people.csv");
 
-  await youAreHereOn(proposal).getByRole("link", { name: "Import data" }).click();
+  await youAreHereOn(proposal).getByRole("link", { name: "Import Data" }).click();
   await proposal.waitForURL("**/import");
 });
 
@@ -58,7 +58,7 @@ async function markedInTheSidebarAt(address: string) {
 
 async function aTableIsMadeFrom(fileName: string, lines: string[]) {
   const page = await give(fileName, lines);
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create Table" }).click();
   await page.waitForURL("**/tables/*");
   return page;
 }

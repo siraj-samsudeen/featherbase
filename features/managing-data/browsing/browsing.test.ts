@@ -42,7 +42,7 @@ function next(page: Page) {
 
 async function listOfATableMadeFrom(fileName: string, lines: string[]) {
   const page = await give(fileName, lines);
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create Table" }).click();
   await page.waitForURL("**/tables/*");
   return page;
 }

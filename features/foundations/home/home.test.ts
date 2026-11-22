@@ -4,9 +4,9 @@ import { featherbaseInABrowser } from "../../../testing.ts";
 
 const { give, openInNewTab } = featherbaseInABrowser();
 
-test('Opening Featherbase shows "Welcome to Featherbase".', async () => {
+test('Opening Featherbase shows "Welcome To Featherbase".', async () => {
   const visit = await openInNewTab("/");
-  expect(await textOn(visit.page)).toContain("Welcome to Featherbase");
+  expect(await textOn(visit.page)).toContain("Welcome To Featherbase");
 });
 
 test('Opening an address Featherbase does not have shows "Page not found".', async () => {
@@ -15,15 +15,15 @@ test('Opening an address Featherbase does not have shows "Page not found".', asy
   expect(await textOn(visit.page)).toContain("Page not found");
 });
 
-test('Home has a link "Import data" that opens the Import data page.', async () => {
+test('Home has a link "Import Data" that opens the Import Data page.', async () => {
   const visit = await openInNewTab("/");
-  await visit.page.getByRole("link", { name: "Import data" }).click();
-  expect(await headingOn(visit.page)).toBe("Import data");
+  await visit.page.getByRole("link", { name: "Import Data" }).click();
+  expect(await headingOn(visit.page)).toBe("Import Data");
 });
 
 test("Home lists each Table with its number of rows, and its name opens the list.", async () => {
   const proposal = await give("pens.csv", ["Pen", "Blue", "Red"]);
-  await proposal.getByRole("button", { name: "Create" }).click();
+  await proposal.getByRole("button", { name: "Create Table" }).click();
   await proposal.waitForURL("**/tables/*");
 
   const { page } = await openInNewTab("/");
