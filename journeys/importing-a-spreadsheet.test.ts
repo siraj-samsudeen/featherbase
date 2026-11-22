@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { type Browser, type Page, chromium } from "playwright";
 import { createFeatherbase } from "../featherbase.ts";
+
+const journey = "journeys/importing-a-spreadsheet.md";
+const employeesFile = "samples/employees/employees.csv";
 
 let featherbase: ReturnType<typeof createFeatherbase>;
 let browser: Browser;
@@ -20,61 +24,82 @@ afterAll(async () => {
 
 test.failing("Journey: importing a spreadsheet", async () => {
   await inOrder(
-    priyaOpensFeatherbaseAndChoosesImportData,
-    sheGivesItTheEmployeesFile,
-    sheSeesWhatFeatherbaseUnderstood,
-    sheChangesNothingAndPressesCreate,
-    theEmployeesListOpens,
+    openFeatherbaseAndChooseImportData,
+    giveItTheEmployeesFile,
+    seeTheTableFeatherbaseWouldMake,
+    pressCreateWithoutChangingAnything,
+    seeTheEmployeesList,
   );
 });
 
-async function priyaOpensFeatherbaseAndChoosesImportData() {
+async function openFeatherbaseAndChooseImportData() {
   await page.goto("/");
   await page.getByRole("link", { name: "Import data" }).click();
 }
 
-async function sheGivesItTheEmployeesFile() {
-  await page.locator('input[type="file"]').setInputFiles("samples/employees/employees.csv");
+async function giveItTheEmployeesFile() {
+  await page.locator('input[type="file"]').setInputFiles(employeesFile);
 }
 
-async function sheSeesWhatFeatherbaseUnderstood() {
+async function seeTheTableFeatherbaseWouldMake() {
   await sees("Employees");
   await sees("24 rows");
   await sees("7 Columns");
-  await seesColumn("Employee Code", "Text");
-  await seesColumn("Employee Code", "Key");
-  await seesColumn("Name", "Text");
-  await seesColumn("Department", "Choice");
-  await seesColumn("Department", "5 values");
-  await seesColumn("Date of Joining", "Date");
-  await seesColumn("Date of Leaving", "Date");
-  await seesColumn("Active", "Yes/No");
-  await seesColumn("Weekly Hours", "Number");
+  expect(await tableOnThePage()).toEqual(tableWrittenIn(journey));
 }
 
-async function sheChangesNothingAndPressesCreate() {
+async function pressCreateWithoutChangingAnything() {
   await page.getByRole("button", { name: "Create" }).click();
 }
 
-async function theEmployeesListOpens() {
+async function seeTheEmployeesList() {
   await page.getByRole("heading", { name: "Employees" }).waitFor();
   await sees("1 to 10 of 24");
-  await sees("Asha Raman");
-  await sees("Jacob Thomas");
-  await doesNotSee("Kavya Iyer");
+  expect(await tableOnThePage()).toEqual(headerAndFirstRowsOf(employeesFile, 10));
   await page.getByRole("link", { name: "Next" }).waitFor();
 }
 
 async function sees(words: string) {
-  await page.getByText(words, { exact: false }).first().waitFor();
+  await page.getByText(words).first().waitFor();
 }
 
-async function doesNotSee(words: string) {
-  expect(await page.getByText(words).count()).toBe(0);
+function tableOnThePage() {
+  return page
+    .locator("tr")
+    .evaluateAll((rows) => rows.map((row) => [...row.children].map((cell) => cell.textContent?.trim() ?? "")));
 }
 
-async function seesColumn(name: string, words: string) {
-  await page.locator("tr, li").filter({ hasText: name }).filter({ hasText: words }).first().waitFor();
+function tableWrittenIn(markdownFile: string) {
+  return linesOf(markdownFile)
+    .filter(isATableRow)
+    .filter(isNotTheRuleUnderTheHeader)
+    .map(cellsOfATableRow);
+}
+
+function headerAndFirstRowsOf(csvFile: string, count: number) {
+  return linesOf(csvFile)
+    .slice(0, count + 1)
+    .map((line) => line.split(","));
+}
+
+function linesOf(file: string) {
+  return readFileSync(file, "utf8").split("\n");
+}
+
+function isATableRow(line: string) {
+  return line.trim().startsWith("|");
+}
+
+function isNotTheRuleUnderTheHeader(line: string) {
+  return !line.includes("---");
+}
+
+function cellsOfATableRow(line: string) {
+  return line
+    .trim()
+    .slice(1, -1)
+    .split("|")
+    .map((cell) => cell.trim());
 }
 
 async function inOrder(...steps: (() => Promise<void>)[]) {

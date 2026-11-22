@@ -1,13 +1,23 @@
 # Journey: importing a spreadsheet
 
-Priya has an employee list in a spreadsheet. Two minutes later it is a working Table.
+An employee list in a spreadsheet becomes a working Table in two minutes.
 
 The file is `samples/employees/employees.csv`.
 
-1. Priya opens Featherbase and chooses "Import data".
-2. She gives it `employees.csv`.
-3. She sees what Featherbase understood: a Table called "Employees", 24 rows, seven Columns. Date of Joining
-   and Date of Leaving are Dates, Active is Yes/No, Weekly Hours is a Number, Department is a Choice of five
-   values, and the others are Text. It suggests Employee Code as the key.
-4. She changes nothing and presses Create.
-5. The Employees list opens: the first 10 of 24 people, with the next page a click away.
+1. Open Featherbase and choose "Import data".
+2. Give it `employees.csv`.
+3. Featherbase shows the Table it would make: "Employees", 24 rows, 7 Columns.
+
+   | Column | Type | Key |
+   |---|---|---|
+   | Employee Code | Text | suggested |
+   | Name | Text | |
+   | Department | Choice (5 values) | |
+   | Date of Joining | Date | |
+   | Date of Leaving | Date | |
+   | Active | Yes/No | |
+   | Weekly Hours | Number | |
+
+4. Press Create without changing anything.
+5. The Employees list opens. It says "1 to 10 of 24", shows the file's first 10 rows, and has "Next" for the
+   rest.
