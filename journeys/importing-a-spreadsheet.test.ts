@@ -9,7 +9,7 @@ const employeesFile = "samples/employees/employees.csv";
 const { openInNewTab } = featherbaseInABrowser();
 let page: Page;
 
-test.failing("Journey: importing a spreadsheet", async () => {
+test("Journey: importing a spreadsheet", async () => {
   await inOrder(
     openFeatherbaseAndChooseImportData,
     giveItTheEmployeesFile,
