@@ -1,6 +1,7 @@
 import { html } from "@elysiajs/html";
 import { Elysia, NotFoundError } from "elysia";
-import { type Table, proposalView, tableProposedFrom, withChoices } from "./features/importing-data/proposing/proposing.ts";
+import { type StoredTable, addressNameOf, openStore } from "./features/foundations/database/store.ts";
+import { proposalView, tableProposedFrom, withChoices } from "./features/importing-data/proposing/proposing.ts";
 import { listView } from "./features/managing-data/browsing/browsing.ts";
 import { type TableLink, type View, asText, bar, homeCrumb, page, stylesheetAddress, stylesheetFile } from "./page.ts";
 
@@ -79,14 +80,14 @@ const notFoundView = {
 };
 
 export function createFeatherbase() {
-  const tables = new Map<string, Table>();
+  const store = openStore();
 
-  function tableLinks() {
-    return [...tables].map(linkToTable);
+  async function show(view: View, here?: string) {
+    return page(view, await tableLinks(), here);
   }
 
-  function show(view: View, here?: string) {
-    return page(view, tableLinks(), here);
+  async function tableLinks() {
+    return (await store.allTables()).map(linkTo);
   }
 
   return new Elysia()
@@ -95,40 +96,35 @@ export function createFeatherbase() {
       if (code === "NOT_FOUND") return show(notFoundView);
     })
     .get(stylesheetAddress, () => Bun.file(stylesheetFile))
-    .get("/", () => show(homeView(tableLinks())))
+    .get("/", async () => show(homeView(await tableLinks())))
     .get("/import", () => show(importDataView))
     .post("/import", async ({ body }) => {
       const { file } = body as { file: File };
       return show(proposalView(tableProposedFrom(file.name, await file.text())));
     })
-    .post("/tables", ({ body, redirect }) => {
+    .post("/tables", async ({ body, redirect }) => {
       const choices = body as Record<string, string>;
-      const table = withChoices(tableProposedFrom(choices.fileName, choices.text), choices);
-      if (tables.has(addressNameOf(table))) return show(proposalView(table, `${table.name} is already used.`));
-      tables.set(addressNameOf(table), table);
-      return redirect(addressOf(addressNameOf(table)));
+      const chosen = withChoices(tableProposedFrom(choices.fileName, choices.text), choices);
+      if (await store.tableAt(addressNameOf(chosen))) return show(proposalView(chosen, `${chosen.name} is already used.`));
+      return redirect(addressOf(await store.make(chosen, chosen.rows)));
     })
-    .get("/tables/:name", ({ params }) => {
-      const table = tables.get(params.name);
+    .get("/tables/:name", async ({ params }) => {
+      const table = await store.tableAt(params.name);
       if (!table) throw new NotFoundError();
-      return show(listView(table), addressOf(params.name));
+      return show(listView(table, await store.rowsOf(table)), addressOf(table));
     });
 }
 
-function linkToTable([addressName, table]: [string, Table]) {
+function linkTo(table: StoredTable) {
   return {
     name: table.name,
-    address: addressOf(addressName),
-    rows: table.rows.length,
+    address: addressOf(table),
+    rows: table.rowCount,
     columns: table.columns.length,
     key: table.columns.find((column) => column.key)?.name,
   };
 }
 
-function addressOf(addressName: string) {
-  return `/tables/${encodeURIComponent(addressName)}`;
-}
-
-function addressNameOf(table: Table) {
-  return table.name.toLowerCase();
+function addressOf(table: StoredTable) {
+  return `/tables/${encodeURIComponent(table.addressName)}`;
 }
