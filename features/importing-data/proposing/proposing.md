@@ -56,3 +56,4 @@ Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.
     | `48`, `40`, `37.5`, `36` | Every cell is a number. 48, 40, 37.5 |
     | `48`, blank, `36.5` | 2 numbers, 1 blank. 48 |
     | blank, blank | Every cell is blank. |
+12. Under "How The First Rows Will Look", the first five rows are shown as the list will show them.
