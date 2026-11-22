@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lesson 5: Letting the tests see the code</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="tutorial.css">
+</head>
+<body>
+<main>
+<div class="top"><a href="index.html">All lessons</a><span class="eyebrow" style="margin:0">Lesson 5 of 8</span></div><h1>Letting the tests see the code</h1><p class="lead">We want to know which lines no test proves. The tool for that is called coverage, and the first time we switch it on it shows us nothing at all. This lesson finds out why and fixes it.</p><div class="meta"><span class="chip blue">Commit: refactor</span><span class="chip ">About 10 minutes</span></div><div class="box stop"><span class="tag">Before you start: recall the last lesson</span><p>Answer from memory first, then open each one. A little effort here is what moves it into long-term memory.</p></div><details><summary>What makes a change a refactor?</summary><div class="in"><p>The tests pass before and after, and the tests' expectations are not changed.</p></div></details><details><summary>How do our tests start Featherbase at this point?</summary><div class="in"><p>They run <code>bun start</code> as a separate program on port 3210 and wait until it answers.</p></div></details><h2><span class="q">Question 1</span>What is coverage?</h2><p>While the tests run, the test tool notes which lines of your code actually ran. A line that never ran is a line that no test proves. Coverage is the report of that.</p><h2><span class="q">Question 2</span>What happened when we switched it on?</h2><div class="box stop"><span class="tag">Predict before you look</span><p>Our two tests pass, and between them they exercise every line of the program. We run <code>bun test --coverage</code>. What percentage do you expect?</p></div><details><summary>Show the result</summary><div class="in"><pre><code> 2 pass
+ 0 fail</code></pre><p>No percentage. No table at all. The report was empty.</p><p>The reason: the tests start Featherbase as a <strong>separate program</strong>. Bun measures only the program that runs the tests. It was watching the test file and nothing else.</p></div></details><h2><span class="q">Question 3</span>What can we do about it?</h2><div class="opt"><h3>A. Keep the separate program and measure that</h3><p>It would keep the tests exactly as they are.</p><p class="bites"><b>Problem:</b> Bun measures coverage only inside <code>bun test</code>. A dead end.</p></div><div class="opt chosen"><h3>B. Start Featherbase inside the test's own program <span class="pick">We chose this</span></h3><p>Split the file in two: one builds the app, a tiny one starts it. The test takes the built app and starts it itself.</p><p class="bites"><b>Costs:</b> the test now takes one thing from our code. And the tiny start file is no longer exercised by these tests.</p></div><div class="opt"><h3>C. Adopt a testing library that does B for us</h3><p>Less code in the tests.</p><p class="bites"><b>Why not yet:</b> it hides what is going on. Better to do it once by hand and know what such a library saves.</p></div><div class="opt"><h3>D. Do not measure lines; only check every criterion has a test</h3><p>Simple.</p><p class="bites"><b>Bites later:</b> it cannot find code that no criterion asked for, which is the main thing coverage catches.</p></div><h2><span class="q">Question 4</span>What does the split look like?</h2><p class="file">featherbase.ts  (builds the app)</p>
+<pre><code>import { html } from &quot;@elysiajs/html&quot;;
+import { Elysia } from &quot;elysia&quot;;
+
+const welcomePage = &quot;&lt;!doctype html&gt;&lt;title&gt;Featherbase&lt;/title&gt;&lt;h1&gt;Welcome to Featherbase&lt;/h1&gt;&quot;;
+const notFoundPage = &quot;&lt;!doctype html&gt;&lt;title&gt;Page not found&lt;/title&gt;&lt;h1&gt;Page not found&lt;/h1&gt;&quot;;
+
+export function createFeatherbase() {
+  return new Elysia()
+    .use(html())
+    .get(&quot;/&quot;, () =&gt; welcomePage)
+    .onError(({ code }) =&gt; {
+      if (code === &quot;NOT_FOUND&quot;) return notFoundPage;
+    });
+}</code></pre><p class="file">start.ts  (only starts it)</p>
+<pre><code>import { createFeatherbase } from &quot;./featherbase.ts&quot;;
+
+createFeatherbase().listen(Number(process.env.PORT ?? 3000));</code></pre><p><code>export</code> means other files may use <code>createFeatherbase</code>. In the test file, two helpers change:</p><p class="file">features/foundations/home/home.test.ts</p>
+<pre><code>function startFeatherbaseOnAFreePort() {
+  featherbase = createFeatherbase().listen(0);
+  address = `http://localhost:${featherbase.server?.port}`;
+}
+
+async function stopFeatherbase() {
+  await featherbase.stop();
+}</code></pre><p><code>listen(0)</code> means "pick any free port". The next line asks which one was picked.</p><p>Two things we wrote in lesson 1 simply disappear: the fixed port 3210, which would have clashed as soon as two test files ran, and the wait loop, because the app is ready the moment <code>listen</code> returns.</p><h2><span class="q">Question 5</span>Can coverage see the code now?</h2><pre class="ok"><code>File            | % Funcs | % Lines
+All files       |  100.00 |  100.00
+ featherbase.ts |  100.00 |  100.00
+
+ 2 pass
+ 0 fail</code></pre><p>Yes. Every line of <code>featherbase.ts</code> is run by the two tests. The two tests themselves were not changed, so this is a <code>refactor:</code> commit.</p><div class="box stop"><span class="tag">Look closer</span><p>Look at that table once more. One of our files is missing from it. Which one, and what does its absence mean?</p></div><details><summary>Show the answer</summary><div class="in"><p><code>start.ts</code> is missing. It is not at 100%. It is <strong>not measured at all</strong>, because no test loads it any more. A coverage report only lists files the tests touched. Silence in a report is not the same as a pass. Lesson 7 closes this gap.</p></div></details><div class="box key"><span class="tag">The habit to take away</span><p>When a report looks clean, ask what it is not showing you. An empty or shorter-than-expected report is a finding in itself.</p></div><div class="box pro"><span class="tag">If you have done this before</span><p>This is the in-process versus out-of-process trade. In-process gives coverage, free ports and no readiness polling, at the cost of the test importing a composition root. Keep one out-of-process smoke test for the real entry point, which is exactly where this series goes next.</p></div><h3>Try it yourself</h3><pre><code>git checkout d7022ca &amp;&amp; bun install &amp;&amp; bun test --coverage   # no table
+git checkout 936ed93 &amp;&amp; bun install &amp;&amp; bun test --coverage   # the table appears</code></pre><p>Seeing the empty report yourself is worth more than reading about it.</p><hr><h2><span class="q">Check yourself</span>Close your eyes and answer, then open each one</h2><details><summary>What does coverage tell you?</summary><div class="in"><p>Which lines of your code ran while the tests ran. Lines that never ran are proven by no test.</p></div></details><details><summary>Why was the first coverage report empty?</summary><div class="in"><p>Featherbase ran as a separate program, and Bun measures only the program running the tests.</p></div></details><details><summary>What does <code>listen(0)</code> do?</summary><div class="in"><p>It starts the app on any free port chosen by the computer.</p></div></details><details><summary>Which two pieces of lesson 1's test disappeared, and why?</summary><div class="in"><p>The fixed port, since the computer now picks a free one, and the wait loop, since the app is ready as soon as <code>listen</code> returns.</p></div></details><details><summary>Why is <code>start.ts</code> missing from the table, and is that good news?</summary><div class="in"><p>No test loads it, so it is not measured. It is a gap, not a pass.</p></div></details><div class="next"><b>Next: Lesson 6, a gate that says no</b>Carry this question with you: coverage is now measured. What stops someone adding an unproven line tomorrow?</div><div class="pager"><a href="lesson-4.html">Back: lesson 4</a><a href="lesson-6.html">Lesson 6</a></div>
+</main>
+</body>
+</html>
