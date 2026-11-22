@@ -1,19 +1,34 @@
 import { asText, bar, homeCrumb, importDataCrumb } from "../../../page.ts";
 
-const types = ["Text", "Number", "Date", "Yes/No", "Choice"];
+const whatFits: Record<string, (filledCells: string[]) => boolean> = {
+  Text: () => true,
+  Number: (filled) => filled.every(isANumber),
+  Date: (filled) => filled.every(isARealDate),
+  "Yes/No": (filled) => filled.every(isYesOrNo),
+  Choice: mostlyRepeat,
+};
+const types = Object.keys(whatFits);
+const typesInTheOrderTheyAreProposed = ["Yes/No", "Number", "Date", "Choice", "Text"];
 
-type Column = { name: string; type: string; key: boolean };
+type Column = { name: string; type: string; typesThatFit: string[]; key: boolean; canBeTheKey: boolean };
 
 export function tableProposedFrom(fileName: string, text: string) {
   const [header, ...rows] = linesOf(text).map(cellsOf);
   const cellsOfEachColumn = header.map((_, index) => cellsUnder(index, rows));
   const keyIndex = cellsOfEachColumn.findIndex(canBeTheKey);
-  const columns = header.map((name, index) => ({
-    name,
-    type: typeOf(cellsOfEachColumn[index]),
-    key: index === keyIndex,
-  }));
+  const columns = header.map((name, index) => columnFrom(name, cellsOfEachColumn[index], index === keyIndex));
   return { name: tableNameFrom(fileName), columns, rows, fileName, text };
+}
+
+function columnFrom(name: string, cells: string[], key: boolean): Column {
+  const typesThatFit = typesThatFitThe(cells.filter(isFilled));
+  const type = typesInTheOrderTheyAreProposed.find((type) => typesThatFit.includes(type)) as string;
+  return { name, type, typesThatFit, key, canBeTheKey: canBeTheKey(cells) };
+}
+
+function typesThatFitThe(filledCells: string[]) {
+  if (filledCells.length === 0) return ["Text"];
+  return types.filter((type) => whatFits[type](filledCells));
 }
 
 export type Table = ReturnType<typeof tableProposedFrom>;
@@ -63,13 +78,20 @@ function columnRow(column: Column, index: number) {
       <td>${name}</td>
       <td>
         <select name="type-${index}" aria-label="Type of ${name}">
-          ${types.map((type) => `<option${type === column.type ? " selected" : ""}>${type}</option>`).join("")}
+          ${types.map((type) => typeOption(type, column)).join("")}
         </select>
       </td>
       <td class="keyc">
-        <input type="radio" name="key" value="${name}" aria-label="${name} is the key"${column.key ? " checked" : ""}>
+        <input type="radio" name="key" value="${name}" aria-label="${name} is the key"
+          ${column.key ? "checked" : ""} ${column.canBeTheKey ? "" : "disabled"}>
       </td>
     </tr>`;
+}
+
+function typeOption(type: string, column: Column) {
+  const chosen = type === column.type ? " selected" : "";
+  const fits = column.typesThatFit.includes(type) ? "" : " disabled";
+  return `<option${chosen}${fits}>${type}</option>`;
 }
 
 function tableNameFrom(fileName: string) {
@@ -91,16 +113,6 @@ function cellsUnder(columnIndex: number, rows: string[][]) {
 
 function canBeTheKey(cells: string[]) {
   return cells.every(isFilled) && new Set(cells).size === cells.length;
-}
-
-function typeOf(cells: string[]) {
-  const filled = cells.filter(isFilled);
-  if (filled.length === 0) return "Text";
-  if (filled.every(isYesOrNo)) return "Yes/No";
-  if (filled.every(isANumber)) return "Number";
-  if (filled.every(isARealDate)) return "Date";
-  if (mostlyRepeat(filled)) return "Choice";
-  return "Text";
 }
 
 function mostlyRepeat(filled: string[]) {
