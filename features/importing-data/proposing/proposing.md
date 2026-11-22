@@ -10,7 +10,7 @@ Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.
    labelled "Table name".
 2. It says how many rows and how many columns the file has: "24 rows and 7 columns".
 3. Each header becomes a Column, in the file's order.
-4. A Column's type is worked out from its filled cells. A blank cell does not count.
+4. A Column's type is worked out from its filled cells and shown as the chosen type. A blank cell does not count.
 
    | Cells in the Column | Type |
    |---|---|
@@ -23,8 +23,8 @@ Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.
    | `Asha`, `Bala`, `Chitra` | Text |
    | blank, blank | Text |
 
-5. A Text Column whose values mostly repeat is a Choice, and says how many different values it has. "Mostly"
-   means at least 9 filled cells in 10 share their value with another cell.
-6. The first Column that is never blank and never repeats is suggested as the key.
+5. A Text Column whose values mostly repeat is proposed as a Choice. "Mostly" means at least 9 filled cells in
+   10 share their value with another cell.
+6. The first Column that is never blank and never repeats is chosen as the key.
 7. A file saved on Windows reads the same as one saved anywhere else.
 8. The file's name and its headers are shown exactly as written, even when they look like HTML.
