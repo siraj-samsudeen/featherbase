@@ -40,9 +40,19 @@ function typesThatFitThe(filledCells: string[]) {
   return types.filter((type) => whatFits[type](filledCells));
 }
 
-export type Table = ReturnType<typeof tableProposedFrom>;
+export type Proposal = ReturnType<typeof tableProposedFrom>;
+export type Table = Pick<Proposal, "name" | "rows" | "fileName"> & { columns: Pick<Column, "name" | "type" | "key">[] };
 
-export function proposalView(proposed: Table) {
+export function withChoices(proposed: Proposal, choices: Record<string, string>): Proposal {
+  const columns = proposed.columns.map((column, index) => ({
+    ...column,
+    type: column.typesThatFit.includes(choices[`type-${index}`]) ? choices[`type-${index}`] : column.type,
+    key: column.canBeTheKey && choices.key === column.name,
+  }));
+  return { ...proposed, name: choices.name.trim(), columns };
+}
+
+export function proposalView(proposed: Proposal, nameRefusal = "") {
   return {
     title: proposed.fileName,
     html: `
@@ -51,13 +61,16 @@ export function proposalView(proposed: Table) {
         <div class="page wide">
           <p class="lead">
             Featherbase read <b>${proposed.rows.length} rows</b> and <b>${proposed.columns.length} columns</b>.
-            This is the Table it would make.
+            This is the Table it would make. Change anything that looks wrong.
           </p>
           <div class="namerow">
             <div class="f">
               <label for="table-name">Table name</label>
-              <input type="text" id="table-name" value="${asText(proposed.name)}" readonly>
+              <input type="text" id="table-name" name="name" value="${asText(proposed.name)}" autocomplete="off"
+                ${nameRefusal ? 'aria-invalid="true"' : ""}>
+              ${nameRefusal ? `<p class="err">${asText(nameRefusal)}</p>` : ""}
             </div>
+            <span class="tag">main</span>
           </div>
           <section class="sect" aria-labelledby="columns">
             <h2 id="columns">Columns</h2>
