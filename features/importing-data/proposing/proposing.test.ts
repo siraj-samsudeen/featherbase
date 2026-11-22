@@ -9,9 +9,9 @@ test('The Table\'s name comes from the file name: `employees.csv` gives "Employe
   expect(await tableNameOn(page)).toBe("Employees");
 });
 
-test("It says how many rows and how many Columns the file has.", async () => {
+test('It says how many rows and how many columns the file has: "24 rows and 7 columns".', async () => {
   const page = await give("people.csv", ["Name,City,Age", "Asha,Chennai,31", "Bala,Madurai,45"]);
-  expect(await textOn(page)).toContain("2 rows, 3 Columns");
+  expect(await textOn(page)).toContain("2 rows and 3 columns");
 });
 
 test("Each header becomes a Column, in the file's order.", async () => {

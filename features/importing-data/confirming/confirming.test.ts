@@ -3,9 +3,9 @@ import { featherbaseInABrowser, tableOn } from "../../../testing.ts";
 
 const { give } = featherbaseInABrowser();
 
-test("Pressing Create makes the Table with every row and opens its list.", async () => {
+test("Pressing Create Table makes the Table with every row and opens its list.", async () => {
   const page = await give("people.csv", ["Name,City", "Asha,Chennai", "Bala,Madurai"]);
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create Table" }).click();
   await page.locator("h1", { hasText: "People" }).waitFor();
   expect(await tableOn(page)).toEqual([
     ["Name", "City"],
@@ -16,7 +16,7 @@ test("Pressing Create makes the Table with every row and opens its list.", async
 
 test("The Table keeps the name it was shown with, whatever spaces and marks the file's name has.", async () => {
   const page = await give("staff list & <b>teams</b> 50%.csv", ["Name", "Asha"]);
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create Table" }).click();
   await page.waitForURL("**/tables/*");
   expect(await page.innerText("h1")).toBe("Staff list & <b>teams</b> 50%");
 });

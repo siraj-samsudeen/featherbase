@@ -21,7 +21,7 @@ test("Journey: importing a spreadsheet", async () => {
 
 async function openFeatherbaseAndChooseImportData() {
   page = (await openInNewTab("/")).page;
-  await page.getByRole("link", { name: "Import data" }).click();
+  await page.getByRole("link", { name: "Import Data" }).click();
 }
 
 async function giveItTheEmployeesFile() {
@@ -31,12 +31,12 @@ async function giveItTheEmployeesFile() {
 async function seeTheTableFeatherbaseWouldMake() {
   expect(await page.getByLabel("Table name").inputValue()).toBe("Employees");
   await sees("24 rows");
-  await sees("7 Columns");
+  await sees("7 columns");
   expect(await tableOn(page)).toEqual(tableWrittenIn(journey));
 }
 
 async function pressCreateWithoutChangingAnything() {
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create Table" }).click();
 }
 
 async function seeTheEmployeesList() {
