@@ -27,6 +27,25 @@ test("On a wide screen the sidebar sits to the left of the page.", async () => {
   expect(sidebar.y).toBe(content.y);
 });
 
+test('The Import data page and the proposal show the way back: "Home / Import data".', async () => {
+  const importData = (await openInNewTab("/import")).page;
+  expect(await wayBackOn(importData)).toBe("Home / Import data");
+
+  const proposal = await give("people.csv", ["Name", "Asha"]);
+  expect(await wayBackOn(proposal)).toBe("Home / Import data / people.csv");
+
+  await youAreHereOn(proposal).getByRole("link", { name: "Import data" }).click();
+  await proposal.waitForURL("**/import");
+});
+
+async function wayBackOn(page: Page) {
+  return onOneLine(await youAreHereOn(page).innerText());
+}
+
+function youAreHereOn(page: Page) {
+  return page.getByRole("navigation", { name: "You are here" });
+}
+
 async function placeOf(part: Locator) {
   return (await part.boundingBox()) as { x: number; y: number; width: number; height: number };
 }
