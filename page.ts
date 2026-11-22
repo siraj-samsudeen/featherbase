@@ -55,6 +55,10 @@ function markIf(thisIsWhereThePersonIs: boolean) {
   return thisIsWhereThePersonIs ? ' aria-current="page"' : "";
 }
 
+export function chip(value: string, index: number) {
+  return `<span class="chip ${tintNumbered(index)}">${asText(value)}</span>`;
+}
+
 export type Crumb = { name: string; address?: string };
 
 export function bar(title: string, crumbs: Crumb[] = [], beside = "") {
