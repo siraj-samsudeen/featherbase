@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import type { Page } from "playwright";
-import { featherbaseInABrowser, tableWrittenIn } from "../../../testing.ts";
+import { aFileWithAColumnOf, casesIn, featherbaseInABrowser } from "../../../testing.ts";
+
+const proposing = "features/importing-data/proposing/proposing.md";
 
 const { give } = featherbaseInABrowser();
 
@@ -20,7 +22,7 @@ test("Each header becomes a Column, in the file's order.", async () => {
 });
 
 test("A Column's type is worked out from its filled cells and shown as the chosen type. A blank cell does not count.", async () => {
-  for (const [cells, type] of casesWithTheLastHeading("Type")) {
+  for (const [cells, type] of casesIn(proposing, "Type")) {
     const page = await give("things.csv", aFileWithAColumnOf(cells));
     expect(await typeOfTheColumnOn(page), cells).toBe(type);
   }
@@ -62,7 +64,7 @@ test("The file's name and its headers are shown exactly as written, even when th
 });
 
 test("A type can be chosen only if every filled cell fits it. Choice fits when the values mostly repeat.", async () => {
-  for (const [cells, types] of casesWithTheLastHeading("Types that can be chosen")) {
+  for (const [cells, types] of casesIn(proposing, "Types that can be chosen")) {
     const page = await give("things.csv", aFileWithAColumnOf(cells));
     expect(await typesThatCanBeChosenOn(page), cells).toEqual(types.split(", "));
   }
@@ -79,7 +81,7 @@ test("Only a Column that is never blank and never repeats can be chosen as the k
 });
 
 test("Beside each Column, Featherbase says what it saw in the cells, with a few of them as examples.", async () => {
-  for (const [cells, saw] of casesWithTheLastHeading("What Featherbase saw")) {
+  for (const [cells, saw] of casesIn(proposing, "What Featherbase saw")) {
     const page = await give("things.csv", aFileWithAColumnOf(cells));
     expect(await whatFeatherbaseSawIn("Thing", page), cells).toBe(saw);
   }
@@ -99,23 +101,6 @@ function cells(timesEachValueAppears: Record<string, number>) {
   return Object.entries(timesEachValueAppears)
     .flatMap(([value, times]) => Array(times).fill(value))
     .join(", ");
-}
-
-function casesWithTheLastHeading(lastHeading: string) {
-  return tableWrittenIn("features/importing-data/proposing/proposing.md", lastHeading).slice(1);
-}
-
-function aFileWithAColumnOf(cellsAsWritten: string) {
-  const cells = cellsAsWritten.split(", ").map(withoutBackticks).map(blankAsNothing);
-  return ["Row,Thing", ...cells.map((cell, index) => `${index + 1},${cell}`)];
-}
-
-function withoutBackticks(cell: string) {
-  return cell.replaceAll("`", "");
-}
-
-function blankAsNothing(cell: string) {
-  return cell === "blank" ? "" : cell;
 }
 
 function tableNameOn(page: Page) {
