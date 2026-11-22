@@ -3,7 +3,7 @@ import { Elysia, NotFoundError } from "elysia";
 import { type Row, type StoredTable, type Upload, addressNameOf, openStore } from "./features/foundations/database/store.ts";
 import { proposalView, tableProposedFrom, withChoices } from "./features/importing-data/proposing/proposing.ts";
 import { type OpenRecord, listView } from "./features/managing-data/browsing/browsing.ts";
-import { cellsTypedInto, nameOf, recordForm, refusalsOf } from "./features/managing-data/changing/changing.ts";
+import { aNewRecordFor, cellsTypedInto, nameOf, recordForm, refusalsOf } from "./features/managing-data/changing/changing.ts";
 import { type View, bar, page, stylesheetAddress, stylesheetFile } from "./page.ts";
 import { homeView } from "./features/foundations/home/home.ts";
 import { importDataView } from "./features/importing-data/uploading/uploading.ts";
@@ -52,8 +52,13 @@ export async function createFeatherbase(databaseAddress: string) {
   }
 
   async function showRecord(table: StoredTable, row: Row, said: Said, typed = {}) {
-    const record = { ...row, title: nameOf(table, row.cells), ...typed };
+    const record = { ...row, title: nameOf(table, row.cells), deleteAt: `${addressOf(table)}/rows/${row.id}/delete`, ...typed };
     return showList(table, said, { form: recordForm(table, addressOf(table), record), rowId: row.id });
+  }
+
+  async function showNewRecord(table: StoredTable, said: Said, typed = {}) {
+    const record = { ...aNewRecordFor(table), ...typed };
+    return showList(table, said, { form: recordForm(table, addressOf(table), record) });
   }
 
   return new Elysia()
@@ -90,6 +95,23 @@ export async function createFeatherbase(databaseAddress: string) {
       const refusals = await refusalsOf(table, cells, (key) => store.keyIsUsed(table, key, row.id));
       if (refusals.some(Boolean)) return showRecord(table, row, cookie.said, { cells, refusals });
       await store.changeRow(table, row.id, cells);
+      say(cookie.said, "Saved");
+      return redirect(addressOf(table));
+    })
+    .post("/tables/:name/rows/:id/delete", async ({ params, cookie, redirect }) => {
+      const table = await tableAt(params.name);
+      const row = await rowAt(table, params.id);
+      await store.takeOutRow(table, row.id);
+      say(cookie.said, `Deleted ${nameOf(table, row.cells)}`);
+      return redirect(addressOf(table));
+    })
+    .get("/tables/:name/new", async ({ params, cookie }) => showNewRecord(await tableAt(params.name), cookie.said))
+    .post("/tables/:name/new", async ({ params, body, cookie, redirect }) => {
+      const table = await tableAt(params.name);
+      const cells = cellsTypedInto(table, body as Typed);
+      const refusals = await refusalsOf(table, cells, (key) => store.keyIsUsed(table, key, "0"));
+      if (refusals.some(Boolean)) return showNewRecord(table, cookie.said, { cells, refusals });
+      await store.addRow(table, cells);
       say(cookie.said, "Saved");
       return redirect(addressOf(table));
     });

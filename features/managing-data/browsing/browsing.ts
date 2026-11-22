@@ -1,5 +1,6 @@
 import { asText, bar } from "../../../page.ts";
 import type { Column, Row, StoredTable } from "../../foundations/database/store.ts";
+import { addingTo } from "../changing/changing.ts";
 import { cellWriterFor, headingFor, indexOfTheName } from "./showing.ts";
 
 export type ShownRow = { cells: string[]; address?: string; marked?: boolean };
@@ -12,11 +13,15 @@ export function listView(table: StoredTable, address: string, rows: Row[], open?
     address: `${address}/rows/${row.id}`,
     marked: row.id === open?.rowId,
   }));
+  const buttons = `
+    <span class="grow"></span>
+    <a class="btn optional" href="/import">Import</a>
+    <a class="btn primary" href="${address}/new">${asText(addingTo(table))}</a>`;
   return {
     title: table.name,
     html: `
       <section class="view">
-        ${bar(table.name, [], count)}
+        ${bar(table.name, [], count + buttons)}
         <div class="work"${open ? ' data-open="panel"' : ""}>
           <div class="gridbox" tabindex="0" aria-label="${asText(table.name)}">
             ${tableOf(table.columns, shown)}

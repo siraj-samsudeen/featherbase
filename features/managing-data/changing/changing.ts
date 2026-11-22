@@ -3,7 +3,7 @@ import type { StoredColumn, StoredTable } from "../../foundations/database/store
 import { isANumber } from "../../importing-data/proposing/proposing.ts";
 import { indexOfTheName } from "../browsing/showing.ts";
 
-type Record = { title: string; cells: string[]; uploadRow: number | null; refusals?: string[] };
+type Record = { title: string; cells: string[]; uploadRow: number | null; refusals?: string[]; deleteAt?: string };
 type Field = { column: StoredColumn; id: string; cell: string; refusal: string };
 
 const placeInTheForm: { [type: string]: number } = { Date: 1, "Yes/No": 2 };
@@ -20,12 +20,51 @@ export function recordForm(table: StoredTable, listAddress: string, record: Reco
       </header>
       <div class="fields">
         ${fieldsInFormOrder(table, record).map(field).join("")}
-        <p class="from wide"><span class="tag">from ${asText(table.fileName)}</span> row ${record.uploadRow}</p>
+        <p class="from wide">${whereItCameFrom(table, record)}</p>
       </div>
-      <footer>
-        <button type="submit" class="btn primary">Save</button><a class="btn" href="${listAddress}">Cancel</a>
-      </footer>
-    </form>`;
+      <footer>${record.deleteAt ? buttonsToChange(listAddress) : buttonsToAdd(listAddress)}</footer>
+    </form>
+    ${record.deleteAt ? askingBeforeADelete(record.title, record.deleteAt) : ""}`;
+}
+
+function whereItCameFrom(table: StoredTable, { uploadRow }: Record) {
+  if (uploadRow === null) return '<span class="tag">given by hand</span>';
+  return `<span class="tag">from ${asText(table.fileName)}</span> row ${uploadRow}`;
+}
+
+function buttonsToChange(listAddress: string) {
+  return `
+    <button type="submit" class="btn primary">Save</button><a class="btn" href="${listAddress}">Cancel</a>
+    <span class="grow"></span>
+    <button type="button" class="btn danger" popovertarget="confirm-delete">Delete</button>`;
+}
+
+function buttonsToAdd(listAddress: string) {
+  return `<button type="submit" class="btn primary">Create</button><a class="btn" href="${listAddress}">Cancel</a>`;
+}
+
+function askingBeforeADelete(title: string, deleteAt: string) {
+  return `
+    <div class="confirm" id="confirm-delete" popover>
+      <p><b>Delete ${asText(title)}?</b>This can't be undone.</p>
+      <form class="btns" method="post" action="${deleteAt}">
+        <button type="button" class="btn" popovertarget="confirm-delete" popovertargetaction="hide">Keep</button>
+        <button type="submit" class="btn danger sure">Delete</button>
+      </form>
+    </div>`;
+}
+
+export function aNewRecordFor(table: StoredTable) {
+  const cells = table.columns.map((column) => (column.type === "Yes/No" && !column.key ? "true" : ""));
+  return { title: addingTo(table), cells, uploadRow: null };
+}
+
+export function addingTo(table: { name: string }) {
+  return `New ${oneOf(table.name)}`;
+}
+
+function oneOf(tableName: string) {
+  return tableName.replace(/ies$/, "y").replace(/([^s])s$/, "$1");
 }
 
 export function nameOf(table: StoredTable, cells: string[]) {

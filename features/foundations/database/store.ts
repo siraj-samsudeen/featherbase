@@ -95,6 +95,14 @@ export async function openStore(databaseAddress: string) {
     );
   }
 
+  async function addRow(table: StoredTable, cells: string[]) {
+    await sql.unsafe(insertInto(table.place, table.columns), [...cells.map(blankAsNull), null]);
+  }
+
+  async function takeOutRow(table: StoredTable, id: string) {
+    await sql.unsafe(`delete from main."${table.place}" where _id = $1`, [id]);
+  }
+
   async function keepUpload(fileName: string, content: Uint8Array, rowCount: number): Promise<string> {
     const [{ _id }] = await sql.unsafe(
       "insert into featherbase.uploads (file_name, content, row_count) values ($1, $2, $3) returning _id",
@@ -144,7 +152,7 @@ export async function openStore(databaseAddress: string) {
     return sql.close();
   }
 
-  return { allTables, tableAt, rowsOf, rowAt, keyIsUsed, changeRow, make, keepUpload, allUploads, uploadAt, close };
+  return { allTables, tableAt, rowsOf, rowAt, keyIsUsed, changeRow, addRow, takeOutRow, make, keepUpload, allUploads, uploadAt, close };
 }
 
 function isANumberOfARow(id: string) {
