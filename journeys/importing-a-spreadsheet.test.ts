@@ -63,7 +63,7 @@ function headerAndFirstRowsOf(csvFile: string, count: number) {
 }
 
 function linesOf(file: string) {
-  return readFileSync(file, "utf8").split("\n");
+  return readFileSync(file, "utf8").split(/\r?\n/);
 }
 
 async function inOrder(...steps: (() => Promise<void>)[]) {
