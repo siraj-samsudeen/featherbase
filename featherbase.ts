@@ -21,8 +21,20 @@ export function createFeatherbase() {
     });
 }
 
-function proposalPage(file: File) {
-  return page("Import data", `<h1>Import data</h1><h2>${tableNameFrom(file.name)}</h2>`);
+async function proposalPage(file: File) {
+  const [header, ...rows] = linesOf(await file.text()).map(cellsOf);
+  return page(
+    "Import data",
+    `<h1>Import data</h1><h2>${tableNameFrom(file.name)}</h2><p>${rows.length} rows, ${header.length} Columns</p>`,
+  );
+}
+
+function linesOf(text: string) {
+  return text.split("\n").filter((line) => line !== "");
+}
+
+function cellsOf(line: string) {
+  return line.split(",");
 }
 
 function tableNameFrom(fileName: string) {
