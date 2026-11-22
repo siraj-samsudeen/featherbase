@@ -78,6 +78,15 @@ export async function openStore(databaseAddress: string) {
     return found.length > 0 ? rowFrom(found[0], table) : undefined;
   }
 
+  async function keyIsUsed(table: StoredTable, value: string, byAnyRowBut: string) {
+    const key = table.columns.find((column) => column.key) as StoredColumn;
+    const found = await sql.unsafe(
+      `select 1 from main."${table.place}" where "${key.place}" = ${valueNumbered(1, key)} and _id <> $2`,
+      [value, byAnyRowBut],
+    );
+    return found.length > 0;
+  }
+
   async function changeRow(table: StoredTable, id: string, cells: string[]) {
     const settings = table.columns.map((column, index) => `"${column.place}" = ${valueNumbered(index + 1, column)}`);
     await sql.unsafe(
@@ -135,7 +144,7 @@ export async function openStore(databaseAddress: string) {
     return sql.close();
   }
 
-  return { allTables, tableAt, rowsOf, rowAt, changeRow, make, keepUpload, allUploads, uploadAt, close };
+  return { allTables, tableAt, rowsOf, rowAt, keyIsUsed, changeRow, make, keepUpload, allUploads, uploadAt, close };
 }
 
 function isANumberOfARow(id: string) {

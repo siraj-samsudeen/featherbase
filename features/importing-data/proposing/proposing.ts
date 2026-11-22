@@ -157,7 +157,7 @@ function isYesOrNo(cell: string) {
   return cell === "true" || cell === "false";
 }
 
-function isANumber(cell: string) {
+export function isANumber(cell: string) {
   return /^-?\d+(\.\d+)?$/.test(cell);
 }
 
