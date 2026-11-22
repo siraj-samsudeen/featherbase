@@ -1,4 +1,5 @@
 import { type Frame, type TableLink, type UploadLink, asText, bar } from "../../../page.ts";
+import { tag } from "../../../parts.ts";
 import { dayMonthYear } from "../../managing-data/browsing/showing.ts";
 
 const importPicture =
@@ -57,7 +58,7 @@ function tableItem(table: TableLink) {
   const keyedBy = table.key ? `, keyed by ${asText(table.key)}` : "";
   return `
     <a class="item" href="${table.address}">
-      <b>${asText(table.name)}</b><span class="tag">main</span>
+      <b>${asText(table.name)}</b>${tag("main")}
       <span class="dim">${table.columns} Columns${keyedBy}</span>
       <span class="grow"></span><span class="cnt">${table.rows} rows</span>
       <span class="dim">changed ${table.changed}</span>

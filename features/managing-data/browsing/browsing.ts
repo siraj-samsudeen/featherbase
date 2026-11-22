@@ -1,4 +1,5 @@
 import { asText, bar } from "../../../page.ts";
+import { linkButton } from "../../../parts.ts";
 import type { Column, Row, StoredTable } from "../../foundations/database/store.ts";
 import { addingTo } from "../changing/changing.ts";
 import { cellWriterFor, headingFor, indexOfTheName } from "./showing.ts";
@@ -16,8 +17,8 @@ export function listView(table: StoredTable, address: string, rows: Row[], layou
   }));
   const buttons = `
     <span class="grow"></span>
-    <a class="btn optional" href="/import">Import</a>
-    <a class="btn primary" href="${address}/new">${asText(addingTo(table))}</a>`;
+    ${linkButton("Import", "/import", " optional")}
+    ${linkButton(addingTo(table), `${address}/new`, " primary")}`;
   return {
     title: table.name,
     html: `

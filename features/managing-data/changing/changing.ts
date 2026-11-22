@@ -1,4 +1,5 @@
 import { asText } from "../../../page.ts";
+import { button, linkButton, tag } from "../../../parts.ts";
 import type { StoredColumn, StoredTable } from "../../foundations/database/store.ts";
 import { isANumber } from "../../importing-data/proposing/proposing.ts";
 import { indexOfTheName } from "../browsing/showing.ts";
@@ -28,19 +29,19 @@ export function recordForm(table: StoredTable, listAddress: string, record: Reco
 }
 
 function whereItCameFrom(table: StoredTable, { uploadRow }: Record) {
-  if (uploadRow === null) return '<span class="tag">given by hand</span>';
-  return `<span class="tag">from ${asText(table.fileName)}</span> row ${uploadRow}`;
+  if (uploadRow === null) return tag("given by hand");
+  return `${tag(`from ${table.fileName}`)} row ${uploadRow}`;
 }
 
 function buttonsToChange(listAddress: string) {
   return `
-    <button type="submit" class="btn primary">Save</button><a class="btn" href="${listAddress}">Cancel</a>
+    ${button("Save", " primary")}${linkButton("Cancel", listAddress)}
     <span class="grow"></span>
-    <button type="button" class="btn danger" popovertarget="confirm-delete">Delete</button>`;
+    ${button("Delete", " danger", 'type="button" popovertarget="confirm-delete"')}`;
 }
 
 function buttonsToAdd(listAddress: string) {
-  return `<button type="submit" class="btn primary">Create</button><a class="btn" href="${listAddress}">Cancel</a>`;
+  return `${button("Create", " primary")}${linkButton("Cancel", listAddress)}`;
 }
 
 function askingBeforeADelete(title: string, deleteAt: string) {
@@ -48,8 +49,8 @@ function askingBeforeADelete(title: string, deleteAt: string) {
     <div class="confirm" id="confirm-delete" popover>
       <p><b>Delete ${asText(title)}?</b>This can't be undone.</p>
       <form class="btns" method="post" action="${deleteAt}">
-        <button type="button" class="btn" popovertarget="confirm-delete" popovertargetaction="hide">Keep</button>
-        <button type="submit" class="btn danger sure">Delete</button>
+        ${button("Keep", "", 'type="button" popovertarget="confirm-delete" popovertargetaction="hide"')}
+        ${button("Delete", " danger sure")}
       </form>
     </div>`;
 }
