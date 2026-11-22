@@ -1,5 +1,5 @@
 import type { Table } from "../../importing-data/proposing/proposing.ts";
-import { page } from "../../../page.ts";
+import { asText, page } from "../../../page.ts";
 
 const rowsOnAPage = 10;
 
@@ -21,5 +21,5 @@ function nameOf(column: { name: string }) {
 }
 
 function rowOf(cellTag: string, cells: string[]) {
-  return `<tr>${cells.map((cell) => `<${cellTag}>${cell}</${cellTag}>`).join("")}</tr>`;
+  return `<tr>${cells.map((cell) => `<${cellTag}>${asText(cell)}</${cellTag}>`).join("")}</tr>`;
 }
