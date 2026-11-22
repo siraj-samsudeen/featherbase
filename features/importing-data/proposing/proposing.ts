@@ -14,7 +14,9 @@ export function tableProposedFrom(fileName: string, text: string) {
   return { name: tableNameFrom(fileName), columns, rows, fileName, text };
 }
 
-export function proposalPage(proposed: ReturnType<typeof tableProposedFrom>) {
+export type Table = ReturnType<typeof tableProposedFrom>;
+
+export function proposalPage(proposed: Table) {
   return page(
     "Import data",
     `<h1>Import data</h1><h2>${proposed.name}</h2>` +
