@@ -45,7 +45,13 @@ function typeOf(cells: string[]) {
   if (filled.every(isYesOrNo)) return "Yes/No";
   if (filled.every(isANumber)) return "Number";
   if (filled.every(isARealDate)) return "Date";
+  if (mostlyRepeat(filled)) return `Choice (${new Set(filled).size} values)`;
   return "Text";
+}
+
+function mostlyRepeat(filled: string[]) {
+  const repeating = filled.filter((cell) => filled.indexOf(cell) !== filled.lastIndexOf(cell));
+  return repeating.length >= 0.9 * filled.length;
 }
 
 function isFilled(cell: string) {
