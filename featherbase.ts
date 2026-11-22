@@ -3,7 +3,7 @@ import { Elysia, NotFoundError } from "elysia";
 import { type StoredTable, type Upload, addressNameOf, openStore } from "./features/foundations/database/store.ts";
 import { proposalView, tableProposedFrom, withChoices } from "./features/importing-data/proposing/proposing.ts";
 import { type OpenRecord, listView } from "./features/managing-data/browsing/browsing.ts";
-import { recordForm } from "./features/managing-data/changing/changing.ts";
+import { cellsTypedInto, recordForm } from "./features/managing-data/changing/changing.ts";
 import { type View, bar, page, stylesheetAddress, stylesheetFile } from "./page.ts";
 import { homeView } from "./features/foundations/home/home.ts";
 import { importDataView } from "./features/importing-data/uploading/uploading.ts";
@@ -20,8 +20,8 @@ const notFoundView = {
 export async function createFeatherbase(databaseAddress: string) {
   const store = await openStore(databaseAddress);
 
-  async function show(view: View, here?: string) {
-    return page(view, await frame(), here);
+  async function show(view: View, here?: string, said?: string) {
+    return page(view, { ...(await frame()), said }, here);
   }
 
   async function frame() {
@@ -46,8 +46,9 @@ export async function createFeatherbase(databaseAddress: string) {
     return row;
   }
 
-  async function showList(table: StoredTable, open?: OpenRecord) {
-    return show(listView(table, addressOf(table), await store.rowsOf(table), open), addressOf(table));
+  async function showList(table: StoredTable, said: Said, open?: OpenRecord) {
+    const view = listView(table, addressOf(table), await store.rowsOf(table), open);
+    return show(view, addressOf(table), whatWasSaid(said));
   }
 
   return new Elysia()
@@ -72,12 +73,32 @@ export async function createFeatherbase(databaseAddress: string) {
       if (refusal) return show(proposalView(chosen, choices.upload, refusal));
       return redirect(addressOf(await store.make(chosen, chosen.rows, choices.upload)));
     })
-    .get("/tables/:name", async ({ params }) => showList(await tableAt(params.name)))
-    .get("/tables/:name/rows/:id", async ({ params }) => {
+    .get("/tables/:name", async ({ params, cookie }) => showList(await tableAt(params.name), cookie.said))
+    .get("/tables/:name/rows/:id", async ({ params, cookie }) => {
       const table = await tableAt(params.name);
       const row = await rowAt(table, params.id);
-      return showList(table, { form: recordForm(table, addressOf(table), row), rowId: row.id });
+      return showList(table, cookie.said, { form: recordForm(table, addressOf(table), row), rowId: row.id });
+    })
+    .post("/tables/:name/rows/:id", async ({ params, body, cookie, redirect }) => {
+      const table = await tableAt(params.name);
+      const row = await rowAt(table, params.id);
+      await store.changeRow(table, row.id, cellsTypedInto(table, body as Typed));
+      say(cookie.said, "Saved");
+      return redirect(addressOf(table));
     });
+}
+
+type Typed = { [field: string]: string | undefined };
+type Said = { value: unknown; set(to: { value: string; path: string }): unknown; remove(): unknown };
+
+function say(said: Said, words: string) {
+  said.set({ value: words, path: "/" });
+}
+
+function whatWasSaid(said: Said) {
+  const words = said.value as string | undefined;
+  if (words) said.remove();
+  return words;
 }
 
 function linkToUpload(upload: Upload) {
