@@ -5,11 +5,20 @@ export type Table = { name: string; fileName: string; columns: Column[] };
 export type StoredTable = Table & { addressName: string; rowCount: number; place: string; columns: StoredColumn[] };
 type StoredColumn = Column & { place: string };
 
+export type Upload = { id: string; fileName: string; rowCount: number; arrivedOn: string };
+
 export type Store = Awaited<ReturnType<typeof openStore>>;
 
 const featherbaseOwnTables = `
   create schema if not exists featherbase;
   create schema if not exists main;
+  create table if not exists featherbase.uploads (
+    _id bigint generated always as identity primary key,
+    file_name text not null,
+    content bytea not null,
+    row_count int not null,
+    _created_at timestamptz not null default now()
+  );
   create table if not exists featherbase.tables (
     _id bigint generated always as identity primary key,
     address_name text not null unique,
@@ -17,6 +26,7 @@ const featherbaseOwnTables = `
     file_name text not null,
     place text not null unique,
     columns jsonb not null,
+    upload_id bigint not null references featherbase.uploads (_id),
     _created_at timestamptz not null default now(),
     _updated_at timestamptz not null default now()
   );`;
@@ -61,14 +71,36 @@ export async function openStore(databaseAddress: string) {
     return found.map((row: Record<string, string | null>) => table.columns.map((_, index) => row[`c${index}`] ?? ""));
   }
 
-  async function make(table: Table, rows: string[][]) {
+  async function keepUpload(fileName: string, content: Uint8Array, rowCount: number): Promise<string> {
+    const [{ _id }] = await sql.unsafe(
+      "insert into featherbase.uploads (file_name, content, row_count) values ($1, $2, $3) returning _id",
+      [fileName, content, rowCount],
+    );
+    return _id;
+  }
+
+  async function allUploads(): Promise<Upload[]> {
+    const found = await sql.unsafe(`select ${uploadFields} from featherbase.uploads order by _id desc`);
+    return found.map(uploadFrom);
+  }
+
+  async function uploadAt(id: string) {
+    if (!/^\d+$/.test(id)) return undefined;
+    const found = await sql.unsafe(
+      `select ${uploadFields}, convert_from(content, 'UTF8') as text from featherbase.uploads where _id = $1`,
+      [id],
+    );
+    return found.length > 0 ? { ...uploadFrom(found[0]), text: found[0].text as string } : undefined;
+  }
+
+  async function make(table: Table, rows: string[][], uploadId: string) {
     const place = freePlaceFor(table.name, await placesTaken());
     const columns = withPlaces(table.columns);
     await sql.begin(async (step) => {
       await step.unsafe(`create table main."${place}" (${[...ownColumns, ...columns.map(columnDefinition)].join(", ")})`);
       await step.unsafe(
-        "insert into featherbase.tables (address_name, name, file_name, place, columns) values ($1, $2, $3, $4, $5::jsonb)",
-        [addressNameOf(table), table.name, table.fileName, place, JSON.stringify(columns)],
+        "insert into featherbase.tables (address_name, name, file_name, place, columns, upload_id) values ($1, $2, $3, $4, $5::jsonb, $6)",
+        [addressNameOf(table), table.name, table.fileName, place, JSON.stringify(columns), uploadId],
       );
       for (const row of rows) await step.unsafe(insertInto(place, columns), row.map(blankAsNull));
     });
@@ -84,7 +116,13 @@ export async function openStore(databaseAddress: string) {
     return sql.close();
   }
 
-  return { allTables, tableAt, rowsOf, make, close };
+  return { allTables, tableAt, rowsOf, make, keepUpload, allUploads, uploadAt, close };
+}
+
+const uploadFields = "_id, file_name, row_count, to_char(_created_at, 'YYYY-MM-DD') as arrived_on";
+
+function uploadFrom(found: Record<string, string>): Upload {
+  return { id: String(found._id), fileName: found.file_name, rowCount: Number(found.row_count), arrivedOn: found.arrived_on };
 }
 
 const ownColumns = [

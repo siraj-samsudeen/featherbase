@@ -27,7 +27,7 @@ export function valuesInOrder(cells: string[]) {
   return [...new Set(cells.filter((cell) => cell !== ""))].sort();
 }
 
-function dayMonthYear(yearMonthDay: string) {
+export function dayMonthYear(yearMonthDay: string) {
   const [year, month, day] = yearMonthDay.split("-");
   return `${day}-${months[Number(month) - 1]}-${year}`;
 }

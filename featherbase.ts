@@ -1,15 +1,16 @@
 import { html } from "@elysiajs/html";
 import { Elysia, NotFoundError } from "elysia";
-import { type StoredTable, addressNameOf, openStore } from "./features/foundations/database/store.ts";
+import { type StoredTable, type Upload, addressNameOf, openStore } from "./features/foundations/database/store.ts";
 import { proposalView, tableProposedFrom, withChoices } from "./features/importing-data/proposing/proposing.ts";
 import { listView } from "./features/managing-data/browsing/browsing.ts";
-import { type TableLink, type View, asText, bar, homeCrumb, page, stylesheetAddress, stylesheetFile } from "./page.ts";
+import { dayMonthYear } from "./features/managing-data/browsing/showing.ts";
+import { type Frame, type TableLink, type UploadLink, type View, asText, bar, homeCrumb, page, stylesheetAddress, stylesheetFile } from "./page.ts";
 
 const importPicture =
   '<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 12V3M5.5 6.5L9 3l3.5 3.5M3 12v3h12v-3" fill="none" ' +
   'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-function homeView(tables: TableLink[]) {
+function homeView({ tables, uploads }: Frame) {
   return {
     title: "Featherbase",
     html: `
@@ -30,9 +31,26 @@ function homeView(tables: TableLink[]) {
             <h2 id="your-tables">Your Tables</h2>
             ${tables.length > 0 ? `<div class="items">${tables.map(tableItem).join("")}</div>` : noTablesYet}
           </section>
+          ${uploads.length > 0 ? recentUploads(uploads) : ""}
         </div>
       </section>`,
   };
+}
+
+function recentUploads(uploads: UploadLink[]) {
+  return `
+    <section class="sect" aria-labelledby="recent-uploads">
+      <h2 id="recent-uploads">Recent Uploads</h2>
+      <div class="items">${uploads.map(uploadItem).join("")}</div>
+    </section>`;
+}
+
+function uploadItem(upload: UploadLink) {
+  return `
+    <a class="item" href="${upload.address}">
+      <b>${asText(upload.name)}</b><span class="grow"></span>
+      <span class="dim">${upload.rows} rows</span><span class="dim">${dayMonthYear(upload.arrivedOn)}</span>
+    </a>`;
 }
 
 const noTablesYet = '<p class="none">No Tables yet. Your first one will appear here.</p>';
@@ -83,11 +101,17 @@ export async function createFeatherbase(databaseAddress: string) {
   const store = await openStore(databaseAddress);
 
   async function show(view: View, here?: string) {
-    return page(view, await tableLinks(), here);
+    return page(view, await frame(), here);
   }
 
-  async function tableLinks() {
-    return (await store.allTables()).map(linkTo);
+  async function frame() {
+    return { tables: (await store.allTables()).map(linkTo), uploads: (await store.allUploads()).map(linkToUpload) };
+  }
+
+  async function proposalFor(uploadId: string) {
+    const upload = await store.uploadAt(uploadId);
+    if (!upload) throw new NotFoundError();
+    return tableProposedFrom(upload.fileName, upload.text);
   }
 
   return new Elysia()
@@ -97,23 +121,30 @@ export async function createFeatherbase(databaseAddress: string) {
       if (code === "NOT_FOUND") return show(notFoundView);
     })
     .get(stylesheetAddress, () => Bun.file(stylesheetFile))
-    .get("/", async () => show(homeView(await tableLinks())))
+    .get("/", async () => show(homeView(await frame())))
     .get("/import", () => show(importDataView))
-    .post("/import", async ({ body }) => {
+    .post("/import", async ({ body, redirect }) => {
       const { file } = body as { file: File };
-      return show(proposalView(tableProposedFrom(file.name, await file.text())));
+      const rowCount = tableProposedFrom(file.name, await file.text()).rows.length;
+      return redirect(`/uploads/${await store.keepUpload(file.name, await file.bytes(), rowCount)}`);
     })
+    .get("/uploads/:id", async ({ params }) => show(proposalView(await proposalFor(params.id), params.id)))
     .post("/tables", async ({ body, redirect }) => {
       const choices = body as Record<string, string>;
-      const chosen = withChoices(tableProposedFrom(choices.fileName, choices.text), choices);
-      if (await store.tableAt(addressNameOf(chosen))) return show(proposalView(chosen, `${chosen.name} is already used.`));
-      return redirect(addressOf(await store.make(chosen, chosen.rows)));
+      const chosen = withChoices(await proposalFor(choices.upload), choices);
+      const refusal = (await store.tableAt(addressNameOf(chosen))) ? `${chosen.name} is already used.` : "";
+      if (refusal) return show(proposalView(chosen, choices.upload, refusal));
+      return redirect(addressOf(await store.make(chosen, chosen.rows, choices.upload)));
     })
     .get("/tables/:name", async ({ params }) => {
       const table = await store.tableAt(params.name);
       if (!table) throw new NotFoundError();
       return show(listView(table, await store.rowsOf(table)), addressOf(table));
     });
+}
+
+function linkToUpload(upload: Upload) {
+  return { name: upload.fileName, address: `/uploads/${upload.id}`, rows: upload.rowCount, arrivedOn: upload.arrivedOn };
 }
 
 function linkTo(table: StoredTable) {
