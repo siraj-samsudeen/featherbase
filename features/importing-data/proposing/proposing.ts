@@ -11,7 +11,7 @@ export function tableProposedFrom(fileName: string, text: string) {
     type: typeOf(cellsOfEachColumn[index]),
     key: index === keyIndex ? "suggested" : "",
   }));
-  return { name: tableNameFrom(fileName), columns, rows };
+  return { name: tableNameFrom(fileName), columns, rows, fileName, text };
 }
 
 export function proposalPage(proposed: ReturnType<typeof tableProposedFrom>) {
@@ -20,7 +20,11 @@ export function proposalPage(proposed: ReturnType<typeof tableProposedFrom>) {
     `<h1>Import data</h1><h2>${proposed.name}</h2>` +
       `<p>${proposed.rows.length} rows, ${proposed.columns.length} Columns</p>` +
       "<table><thead><tr><th>Column</th><th>Type</th><th>Key</th></tr></thead>" +
-      `<tbody>${proposed.columns.map(columnRow).join("")}</tbody></table>`,
+      `<tbody>${proposed.columns.map(columnRow).join("")}</tbody></table>` +
+      '<form method="post" action="/tables">' +
+      `<input type="hidden" name="fileName" value="${proposed.fileName}">` +
+      `<input type="hidden" name="text" value="${proposed.text}">` +
+      "<button>Create</button></form>",
   );
 }
 
