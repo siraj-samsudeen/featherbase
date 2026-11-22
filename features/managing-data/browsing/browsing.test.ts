@@ -1,29 +1,23 @@
 import { expect, test } from "bun:test";
 import type { Page } from "playwright";
-import { featherbaseInABrowser } from "../../../testing.ts";
+import { aFileWithAColumnOf, casesIn, featherbaseInABrowser } from "../../../testing.ts";
 
 const { make, openInNewTab } = featherbaseInABrowser();
 
-test('The list shows the rows in the file\'s order, 10 at a time, and says which rows of how many: "1 to 10 of 24".', async () => {
+test('The list shows every row in the file\'s order and says how many there are: "24 rows".', async () => {
   const page = await make("items.csv", ["Item", ...itemsNumbered(1, 24)]);
-  await sees(page, "1 to 10 of 24");
-  expect(await firstCellsOn(page)).toEqual(itemsNumbered(1, 10));
+  await sees(page, "24 rows");
+  expect(await firstCellsOn(page)).toEqual(itemsNumbered(1, 24));
 });
 
-test('"Next" opens the rows that follow. The last rows have no "Next".', async () => {
-  const page = await make("items.csv", ["Item", ...itemsNumbered(1, 24)]);
-
-  await next(page).click();
-  await sees(page, "11 to 20 of 24");
-  expect(await firstCellsOn(page)).toEqual(itemsNumbered(11, 20));
-
-  await next(page).click();
-  await sees(page, "21 to 24 of 24");
-  expect(await firstCellsOn(page)).toEqual(itemsNumbered(21, 24));
-  expect(await next(page).count()).toBe(0);
+test("Each value is shown the way its type reads best. A blank cell is shown as a dash.", async () => {
+  for (const [cells, shown] of casesIn("features/managing-data/browsing/browsing.md", "Shown as")) {
+    const page = await make("things.csv", aFileWithAColumnOf(cells));
+    expect(await secondCellsOn(page), cells).toEqual(shown.split(", "));
+  }
 });
 
-test("A cell is shown exactly as it was written in the file, even when it looks like HTML.", async () => {
+test("Text is shown exactly as it was written in the file, even when it looks like HTML.", async () => {
   const asWritten = ['<b>Bold</b> & "quoted"', "<script>document.body.remove()</script>"];
   const page = await make("items.csv", ["Item <i>header</i>", ...asWritten]);
   expect(await page.locator("th").innerText()).toBe("Item <i>header</i>");
@@ -36,10 +30,6 @@ test('Opening a Table Featherbase does not have shows "Page not found".', async 
   expect(await visit.page.innerText("body")).toContain("Page not found");
 });
 
-function next(page: Page) {
-  return page.getByRole("link", { name: "Next" });
-}
-
 function itemsNumbered(first: number, last: number) {
   return Array.from({ length: last - first + 1 }, (_, index) => `Item ${first + index}`);
 }
@@ -50,4 +40,8 @@ async function sees(page: Page, words: string) {
 
 function firstCellsOn(page: Page) {
   return page.locator("tbody td:first-child").allInnerTexts();
+}
+
+function secondCellsOn(page: Page) {
+  return page.locator("tbody td:nth-child(2)").allInnerTexts();
 }
