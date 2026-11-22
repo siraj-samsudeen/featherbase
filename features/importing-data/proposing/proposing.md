@@ -28,3 +28,16 @@ Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.
 6. The first Column that is never blank and never repeats is chosen as the key.
 7. A file saved on Windows reads the same as one saved anywhere else.
 8. The file's name and its headers are shown exactly as written, even when they look like HTML.
+9. A type can be chosen only if every filled cell fits it. Choice fits when the values mostly repeat.
+
+   | Cells in the Column | Types that can be chosen |
+   |---|---|
+   | `48`, `40`, `48`, `40` | Text, Number, Choice |
+   | `48`, `37.5`, `-3` | Text, Number |
+   | `true`, `false`, `true`, `false` | Text, Yes/No, Choice |
+   | `2015-01-01`, `2024-12-31` | Text, Date |
+   | `Sales`, `Billing`, `Sales`, `Billing` | Text, Choice |
+   | `Asha`, `Bala` | Text |
+   | blank, blank | Text |
+
+10. Only a Column that is never blank and never repeats can be chosen as the key.
