@@ -1,4 +1,5 @@
 import { asText, bar, homeCrumb, importDataCrumb } from "../../../page.ts";
+import { tableOf } from "../../managing-data/browsing/browsing.ts";
 import { whatFeatherbaseSawIn } from "./what-featherbase-saw.ts";
 
 const whatFits: Record<string, (filledCells: string[]) => boolean> = {
@@ -66,6 +67,10 @@ export function proposalView(proposed: Table) {
                 <tbody>${proposed.columns.map(columnRow).join("")}</tbody>
               </table>
             </div>
+          </section>
+          <section class="sect" aria-labelledby="first-rows">
+            <h2 id="first-rows">How The First Rows Will Look</h2>
+            <div class="tbox">${tableOf(proposed, proposed.rows.slice(0, 5))}</div>
           </section>
         </div>
         <div class="footbar">
