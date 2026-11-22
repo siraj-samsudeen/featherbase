@@ -1,19 +1,19 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { type Browser, type Page, chromium } from "playwright";
+import { createFeatherbase } from "../../../featherbase.ts";
 
-const address = "http://localhost:3210";
-let featherbase: ReturnType<typeof Bun.spawn>;
+let featherbase: ReturnType<typeof createFeatherbase>;
+let address: string;
 let browser: Browser;
 
 beforeAll(async () => {
-  startFeatherbase();
-  await waitUntilFeatherbaseAnswers();
+  startFeatherbaseOnAFreePort();
   await openBrowser();
 });
 
 afterAll(async () => {
   await closeBrowser();
-  stopFeatherbase();
+  await stopFeatherbase();
 });
 
 test('Opening Featherbase shows "Welcome to Featherbase".', async () => {
@@ -27,23 +27,9 @@ test('Opening an address Featherbase does not have shows "Page not found".', asy
   expect(await textOn(visit.page)).toContain("Page not found");
 });
 
-function startFeatherbase() {
-  featherbase = Bun.spawn(["bun", "start"], { env: { ...process.env, PORT: "3210" } });
-}
-
-async function waitUntilFeatherbaseAnswers() {
-  const giveUpAt = Date.now() + 3000;
-  while (!(await featherbaseAnswers())) {
-    if (Date.now() > giveUpAt) throw new Error(`Featherbase did not start at ${address}`);
-    await Bun.sleep(100);
-  }
-}
-
-function featherbaseAnswers() {
-  return fetch(address).then(
-    () => true,
-    () => false,
-  );
+function startFeatherbaseOnAFreePort() {
+  featherbase = createFeatherbase().listen(0);
+  address = `http://localhost:${featherbase.server?.port}`;
 }
 
 async function openBrowser() {
@@ -64,6 +50,6 @@ async function closeBrowser() {
   await browser?.close();
 }
 
-function stopFeatherbase() {
-  featherbase.kill();
+async function stopFeatherbase() {
+  await featherbase.stop();
 }
