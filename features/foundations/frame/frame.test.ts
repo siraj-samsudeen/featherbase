@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Page } from "playwright";
+import type { Locator, Page } from "playwright";
 import { featherbaseInABrowser } from "../../../testing.ts";
 
 const { give, openInNewTab } = featherbaseInABrowser();
@@ -18,6 +18,18 @@ test("The sidebar marks where the person is: the Table whose list is open, other
   expect(await markedInTheSidebarAt("/")).toEqual(["Home"]);
   expect(await markedInTheSidebarAt("/import")).toEqual(["Home"]);
 });
+
+test("On a wide screen the sidebar sits to the left of the page.", async () => {
+  const { page } = await openInNewTab("/");
+  const sidebar = await placeOf(sidebarOf(page));
+  const content = await placeOf(page.getByRole("main"));
+  expect(sidebar.x + sidebar.width).toBeLessThanOrEqual(content.x);
+  expect(sidebar.y).toBe(content.y);
+});
+
+async function placeOf(part: Locator) {
+  return (await part.boundingBox()) as { x: number; y: number; width: number; height: number };
+}
 
 async function markedInTheSidebarAt(address: string) {
   const { page } = await openInNewTab(address);
