@@ -2,7 +2,8 @@ import { html } from "@elysiajs/html";
 import { Elysia, NotFoundError } from "elysia";
 import { type StoredTable, type Upload, addressNameOf, openStore } from "./features/foundations/database/store.ts";
 import { proposalView, tableProposedFrom, withChoices } from "./features/importing-data/proposing/proposing.ts";
-import { listView } from "./features/managing-data/browsing/browsing.ts";
+import { type OpenRecord, listView } from "./features/managing-data/browsing/browsing.ts";
+import { recordForm } from "./features/managing-data/changing/changing.ts";
 import { type View, bar, page, stylesheetAddress, stylesheetFile } from "./page.ts";
 import { homeView } from "./features/foundations/home/home.ts";
 import { importDataView } from "./features/importing-data/uploading/uploading.ts";
@@ -33,6 +34,22 @@ export async function createFeatherbase(databaseAddress: string) {
     return tableProposedFrom(upload.fileName, upload.text);
   }
 
+  async function tableAt(addressName: string) {
+    const table = await store.tableAt(addressName);
+    if (!table) throw new NotFoundError();
+    return table;
+  }
+
+  async function rowAt(table: StoredTable, id: string) {
+    const row = await store.rowAt(table, id);
+    if (!row) throw new NotFoundError();
+    return row;
+  }
+
+  async function showList(table: StoredTable, open?: OpenRecord) {
+    return show(listView(table, addressOf(table), await store.rowsOf(table), open), addressOf(table));
+  }
+
   return new Elysia()
     .use(html())
     .onStop(() => store.close())
@@ -55,10 +72,11 @@ export async function createFeatherbase(databaseAddress: string) {
       if (refusal) return show(proposalView(chosen, choices.upload, refusal));
       return redirect(addressOf(await store.make(chosen, chosen.rows, choices.upload)));
     })
-    .get("/tables/:name", async ({ params }) => {
-      const table = await store.tableAt(params.name);
-      if (!table) throw new NotFoundError();
-      return show(listView(table, await store.rowsOf(table)), addressOf(table));
+    .get("/tables/:name", async ({ params }) => showList(await tableAt(params.name)))
+    .get("/tables/:name/rows/:id", async ({ params }) => {
+      const table = await tableAt(params.name);
+      const row = await rowAt(table, params.id);
+      return showList(table, { form: recordForm(table, addressOf(table), row), rowId: row.id });
     });
 }
 
