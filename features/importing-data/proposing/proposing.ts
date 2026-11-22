@@ -4,10 +4,11 @@ type Column = { name: string; type: string; key: string };
 
 export function tableProposedFrom(fileName: string, text: string) {
   const [header, ...rows] = linesOf(text).map(cellsOf);
-  const keyIndex = header.findIndex((_, index) => canBeTheKey(cellsUnder(index, rows)));
+  const cellsOfEachColumn = header.map((_, index) => cellsUnder(index, rows));
+  const keyIndex = cellsOfEachColumn.findIndex(canBeTheKey);
   const columns = header.map((name, index) => ({
     name,
-    type: typeOf(cellsUnder(index, rows)),
+    type: typeOf(cellsOfEachColumn[index]),
     key: index === keyIndex ? "suggested" : "",
   }));
   return { name: tableNameFrom(fileName), columns, rows };
