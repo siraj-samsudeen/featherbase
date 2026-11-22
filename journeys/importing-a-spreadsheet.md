@@ -8,16 +8,15 @@ The file is `samples/employees/employees.csv`.
 2. Give it `employees.csv`.
 3. Featherbase shows the Table it would make: Table name "Employees", 24 rows and 7 columns.
 
-   | Column | Type | Key |
-   |---|---|---|
-   | Employee Code | Text | key |
-   | Name | Text | |
-   | Department | Choice | |
-   | Date of Joining | Date | |
-   | Date of Leaving | Date | |
-   | Active | Yes/No | |
-   | Weekly Hours | Number | |
+   | Column | Type | Key | In the first row |
+   |---|---|---|---|
+   | Employee Code | Text | key | E0007 |
+   | Name | Text | | Asha Raman |
+   | Department | Choice | | Sales |
+   | Date of Joining | Date | | 01-Jan-2015 |
+   | Date of Leaving | Date | | — |
+   | Active | Yes/No | | Yes |
+   | Weekly Hours | Number | | 48 |
 
 4. Press Create Table without changing anything.
-5. The Employees list opens. It says "1 to 10 of 24", shows the file's first 10 rows, and has "Next" for the
-   rest.
+5. The Employees list opens with all 24 rows. The first row reads as the last column of the table above.

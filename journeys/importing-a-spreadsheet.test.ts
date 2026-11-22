@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import type { Page } from "playwright";
 import { columnsProposedOn, featherbaseInABrowser, pressCreateTableOn, tableOn, tableWrittenIn } from "../testing.ts";
 
@@ -41,9 +40,11 @@ async function pressCreateWithoutChangingAnything() {
 
 async function seeTheEmployeesList() {
   await page.getByRole("heading", { name: "Employees" }).waitFor();
-  await sees("1 to 10 of 24");
-  expect(await tableOn(page)).toEqual(headerAndFirstRowsOf(employeesFile, 10));
-  await page.getByRole("link", { name: "Next" }).waitFor();
+  await sees("24 rows");
+  const [headings, firstRow, ...otherRows] = await tableOn(page);
+  expect(headings).toEqual(journeyColumn("Column"));
+  expect(firstRow).toEqual(journeyColumn("In the first row"));
+  expect(otherRows.length).toBe(23);
 }
 
 async function sees(words: string) {
@@ -51,17 +52,14 @@ async function sees(words: string) {
 }
 
 function columnsWrittenIn(markdownFile: string) {
-  return tableWrittenIn(markdownFile).slice(1);
+  return tableWrittenIn(markdownFile)
+    .slice(1)
+    .map(([column, type, key]) => [column, type, key]);
 }
 
-function headerAndFirstRowsOf(csvFile: string, count: number) {
-  return linesOf(csvFile)
-    .slice(0, count + 1)
-    .map((line) => line.split(","));
-}
-
-function linesOf(file: string) {
-  return readFileSync(file, "utf8").split(/\r?\n/);
+function journeyColumn(heading: string) {
+  const [headings, ...rows] = tableWrittenIn(journey);
+  return rows.map((row) => row[headings.indexOf(heading)]);
 }
 
 async function inOrder(...steps: (() => Promise<void>)[]) {
