@@ -9,6 +9,11 @@ test('The Table\'s name comes from the file name: `employees.csv` gives "Employe
   expect(await tableNameOn(page)).toBe("Employees");
 });
 
+test("It says how many rows and how many Columns the file has.", async () => {
+  const page = await give("people.csv", ["Name,City,Age", "Asha,Chennai,31", "Bala,Madurai,45"]);
+  expect(await textOn(page)).toContain("2 rows, 3 Columns");
+});
+
 async function give(fileName: string, lines: string[]) {
   const { page } = await openInNewTab("/import");
   await page.locator('input[type="file"]').setInputFiles(fileOf(fileName, lines));
@@ -21,4 +26,8 @@ function fileOf(name: string, lines: string[]) {
 
 function tableNameOn(page: Page) {
   return page.innerText("h2");
+}
+
+function textOn(page: Page) {
+  return page.innerText("body");
 }
