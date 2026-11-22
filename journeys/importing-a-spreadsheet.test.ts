@@ -1,26 +1,13 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { type Browser, type Page, chromium } from "playwright";
-import { createFeatherbase } from "../featherbase.ts";
+import type { Page } from "playwright";
+import { featherbaseInABrowser } from "../testing.ts";
 
 const journey = "journeys/importing-a-spreadsheet.md";
 const employeesFile = "samples/employees/employees.csv";
 
-let featherbase: ReturnType<typeof createFeatherbase>;
-let browser: Browser;
+const { openInNewTab } = featherbaseInABrowser();
 let page: Page;
-
-beforeAll(async () => {
-  featherbase = createFeatherbase().listen(0);
-  browser = await chromium.launch();
-  page = await browser.newPage({ baseURL: `http://localhost:${featherbase.server?.port}` });
-  page.setDefaultTimeout(1000);
-});
-
-afterAll(async () => {
-  await browser?.close();
-  await featherbase.stop();
-});
 
 test.failing("Journey: importing a spreadsheet", async () => {
   await inOrder(
@@ -33,7 +20,7 @@ test.failing("Journey: importing a spreadsheet", async () => {
 });
 
 async function openFeatherbaseAndChooseImportData() {
-  await page.goto("/");
+  page = (await openInNewTab("/")).page;
   await page.getByRole("link", { name: "Import data" }).click();
 }
 

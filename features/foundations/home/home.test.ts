@@ -1,20 +1,8 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
-import { type Browser, type Page, chromium } from "playwright";
-import { createFeatherbase } from "../../../featherbase.ts";
+import { expect, test } from "bun:test";
+import type { Page } from "playwright";
+import { featherbaseInABrowser } from "../../../testing.ts";
 
-let featherbase: ReturnType<typeof createFeatherbase>;
-let address: string;
-let browser: Browser;
-
-beforeAll(async () => {
-  startFeatherbaseOnAFreePort();
-  await openBrowser();
-});
-
-afterAll(async () => {
-  await closeBrowser();
-  await stopFeatherbase();
-});
+const { openInNewTab } = featherbaseInABrowser();
 
 test('Opening Featherbase shows "Welcome to Featherbase".', async () => {
   const visit = await openInNewTab("/");
@@ -33,34 +21,10 @@ test('Home has a link "Import data" that opens the Import data page.', async () 
   expect(await headingOn(visit.page)).toBe("Import data");
 });
 
-function startFeatherbaseOnAFreePort() {
-  featherbase = createFeatherbase().listen(0);
-  address = `http://localhost:${featherbase.server?.port}`;
-}
-
-async function openBrowser() {
-  browser = await chromium.launch();
-}
-
-async function openInNewTab(path: string) {
-  const page = await browser.newPage();
-  page.setDefaultTimeout(1000);
-  const response = await page.goto(address + path);
-  return { page, status: response?.status() };
-}
-
 function textOn(page: Page) {
   return page.innerText("body");
 }
 
 function headingOn(page: Page) {
   return page.innerText("h1");
-}
-
-async function closeBrowser() {
-  await browser?.close();
-}
-
-async function stopFeatherbase() {
-  await featherbase.stop();
 }
