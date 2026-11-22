@@ -4,11 +4,11 @@ import { featherbaseInABrowser } from "../../../testing.ts";
 
 const { give, make, openInNewTab } = featherbaseInABrowser();
 
-test("Every page has the sidebar: Featherbase, Home, and each Table with its number of rows.", async () => {
+test("Every page has the sidebar: Featherbase, Home, then each Table and each upload with its number of rows.", async () => {
   await make("items.csv", ["Item", "Pen", "Ink", "Paper"]);
   for (const address of ["/", "/import", "/tables/items", "/no-such-page"]) {
     const { page } = await openInNewTab(address);
-    expect(await linksInTheSidebarOf(page), address).toEqual(["Featherbase", "Home", "Items 3"]);
+    expect(await linksInTheSidebarOf(page), address).toEqual(["Featherbase", "Home", "Items 3", "items.csv 3"]);
   }
 });
 
