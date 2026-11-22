@@ -25,8 +25,13 @@ async function proposalPage(file: File) {
   const [header, ...rows] = linesOf(await file.text()).map(cellsOf);
   return page(
     "Import data",
-    `<h1>Import data</h1><h2>${tableNameFrom(file.name)}</h2><p>${rows.length} rows, ${header.length} Columns</p>`,
+    `<h1>Import data</h1><h2>${tableNameFrom(file.name)}</h2><p>${rows.length} rows, ${header.length} Columns</p>` +
+      `<table><thead><tr><th>Column</th></tr></thead><tbody>${header.map(columnRow).join("")}</tbody></table>`,
   );
+}
+
+function columnRow(name: string) {
+  return `<tr><td>${name}</td></tr>`;
 }
 
 function linesOf(text: string) {
