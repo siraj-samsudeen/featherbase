@@ -27,7 +27,7 @@ export function createFeatherbase() {
       const { fileName, text } = body as { fileName: string; text: string };
       const table = tableProposedFrom(fileName, text);
       tables.set(addressNameOf(table), table);
-      return redirect(`/tables/${addressNameOf(table)}`);
+      return redirect(`/tables/${encodeURIComponent(addressNameOf(table))}`);
     })
     .get("/tables/:name", ({ params, query }) => listPage(tables.get(params.name) as Table, Number(query.page ?? 1)))
     .onError(({ code }) => {

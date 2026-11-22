@@ -24,7 +24,7 @@ export function proposalPage(proposed: Table) {
       "<table><thead><tr><th>Column</th><th>Type</th><th>Key</th></tr></thead>" +
       `<tbody>${proposed.columns.map(columnRow).join("")}</tbody></table>` +
       '<form method="post" action="/tables">' +
-      `<input type="hidden" name="fileName" value="${proposed.fileName}">` +
+      `<input type="hidden" name="fileName" value="${asText(proposed.fileName)}">` +
       `<input type="hidden" name="text" value="${asText(proposed.text)}">` +
       "<button>Create</button></form>",
   );
