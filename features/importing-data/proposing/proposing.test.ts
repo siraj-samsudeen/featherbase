@@ -40,6 +40,16 @@ test("A Text Column whose values mostly repeat is a Choice, and says how many di
   expect(await typeOfTheColumnOn(eightInTenRepeat)).toBe("Text");
 });
 
+test("The first Column that is never blank and never repeats is suggested as the key.", async () => {
+  const page = await give("people.csv", [
+    "Department,Badge,Email,Phone",
+    "Sales,B1,asha@example.com,111",
+    "Sales,,bala@example.com,222",
+    "Stores,B3,chitra@example.com,333",
+  ]);
+  expect(await columnsSuggestedAsKeyOn(page)).toEqual(["Email"]);
+});
+
 function cells(timesEachValueAppears: Record<string, number>) {
   return Object.entries(timesEachValueAppears)
     .flatMap(([value, times]) => Array(times).fill(value))
@@ -89,4 +99,8 @@ function columnNamesOn(page: Page) {
 
 function typeOfTheColumnOn(page: Page) {
   return page.locator("tbody tr", { hasText: "Thing" }).locator("td").nth(1).innerText();
+}
+
+function columnsSuggestedAsKeyOn(page: Page) {
+  return page.locator("tbody tr", { hasText: "suggested" }).locator("td:first-child").allInnerTexts();
 }
