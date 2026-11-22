@@ -34,7 +34,7 @@ function tableNameFrom(fileName: string) {
 }
 
 function linesOf(text: string) {
-  return text.split("\n").filter((line) => line !== "");
+  return text.split(/\r?\n/).filter((line) => line !== "");
 }
 
 function cellsOf(line: string) {
