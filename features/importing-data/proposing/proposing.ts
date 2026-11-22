@@ -24,7 +24,7 @@ export function proposalView(proposed: Table) {
         ${bar(proposed.fileName, [homeCrumb, importDataCrumb, { name: proposed.fileName }])}
         <div class="page wide">
           <p class="lead">
-            Featherbase read <b>${proposed.rows.length} rows, ${proposed.columns.length} Columns</b>.
+            Featherbase read <b>${proposed.rows.length} rows</b> and <b>${proposed.columns.length} columns</b>.
             This is the Table it would make.
           </p>
           <div class="namerow">
@@ -46,7 +46,7 @@ export function proposalView(proposed: Table) {
         <div class="footbar">
           <input type="hidden" name="fileName" value="${asText(proposed.fileName)}">
           <input type="hidden" name="text" value="${asText(proposed.text)}">
-          <button type="submit" class="btn primary">Create</button>
+          <button type="submit" class="btn primary">Create Table</button>
           <a class="btn" href="${importDataCrumb.address}">Cancel</a>
           <span class="hint">Nothing is created until you press Create.</span>
         </div>
