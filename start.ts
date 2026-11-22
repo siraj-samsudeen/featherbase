@@ -1,3 +1,4 @@
 import { createFeatherbase } from "./featherbase.ts";
 
-createFeatherbase().listen(Number(process.env.PORT ?? 3000));
+const featherbase = await createFeatherbase(process.env.DATABASE_URL as string);
+featherbase.listen(Number(process.env.PORT ?? 3000));

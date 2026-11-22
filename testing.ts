@@ -1,25 +1,29 @@
+import { SQL } from "bun";
 import { afterAll, beforeAll } from "bun:test";
 import { readFileSync } from "node:fs";
 import { type Browser, type Locator, type Page, chromium } from "playwright";
 import { createFeatherbase } from "./featherbase.ts";
 
 export function featherbaseInABrowser() {
-  let featherbase: ReturnType<typeof createFeatherbase>;
+  let database: Awaited<ReturnType<typeof aFreshDatabase>>;
+  let featherbase: Awaited<ReturnType<typeof createFeatherbase>>;
   let address: string;
   let browser: Browser;
 
   beforeAll(async () => {
-    startFeatherbaseOnAFreePort();
+    database = await aFreshDatabase();
+    await startFeatherbaseOnAFreePort();
     await openBrowser();
   });
 
   afterAll(async () => {
     await closeBrowser();
     await stopFeatherbase();
+    await database.remove();
   });
 
-  function startFeatherbaseOnAFreePort() {
-    featherbase = createFeatherbase().listen(0);
+  async function startFeatherbaseOnAFreePort() {
+    featherbase = (await createFeatherbase(database.address)).listen(0);
     address = `http://localhost:${featherbase.server?.port}`;
   }
 
@@ -51,6 +55,11 @@ export function featherbaseInABrowser() {
     return pressCreateTableOn(await give(fileName, lines));
   }
 
+  async function restartFeatherbase() {
+    await stopFeatherbase();
+    await startFeatherbaseOnAFreePort();
+  }
+
   async function closeBrowser() {
     await browser?.close();
   }
@@ -59,7 +68,23 @@ export function featherbaseInABrowser() {
     await featherbase.stop();
   }
 
-  return { openInNewTab, give, make };
+  return { openInNewTab, give, make, restartFeatherbase };
+}
+
+export async function aFreshDatabase() {
+  const server = process.env.DATABASE_URL ?? "postgres://postgres@localhost:5432/postgres";
+  const name = `featherbase_test_${crypto.randomUUID().replaceAll("-", "")}`;
+  await onThe(server, `create database ${name}`);
+  return {
+    address: new URL(`/${name}`, server).href,
+    remove: () => onThe(server, `drop database ${name} with (force)`),
+  };
+}
+
+async function onThe(server: string, command: string) {
+  const sql = new SQL(server);
+  await sql.unsafe(command);
+  await sql.close();
 }
 
 export async function pressCreateTableOn(proposal: Page) {

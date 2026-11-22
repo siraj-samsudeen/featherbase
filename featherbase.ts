@@ -79,8 +79,8 @@ const notFoundView = {
     </section>`,
 };
 
-export function createFeatherbase() {
-  const store = openStore();
+export async function createFeatherbase(databaseAddress: string) {
+  const store = await openStore(databaseAddress);
 
   async function show(view: View, here?: string) {
     return page(view, await tableLinks(), here);
@@ -92,6 +92,7 @@ export function createFeatherbase() {
 
   return new Elysia()
     .use(html())
+    .onStop(() => store.close())
     .onError(({ code }) => {
       if (code === "NOT_FOUND") return show(notFoundView);
     })

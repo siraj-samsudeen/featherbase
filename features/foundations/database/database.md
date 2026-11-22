@@ -2,6 +2,12 @@
 
 How Tables, rows and Featherbase's own records are stored.
 
+## Acceptance criteria
+
+Proposed by Claude while building the journey. Not yet agreed by Siraj.
+
+1. Tables and their rows are still there after Featherbase is stopped and started again.
+
 ## Decided
 
 **Runtime and framework.** Bun, ElysiaJS, Postgres 18.6

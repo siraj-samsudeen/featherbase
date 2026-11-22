@@ -1,13 +1,17 @@
 import { expect, test } from "bun:test";
+import { aFreshDatabase } from "../../../testing.ts";
 
-test("Running `bun start` opens Featherbase on the port it is given.", async () => {
+test("Running `bun start` opens Featherbase on the port and the database it is given.", async () => {
   const port = aFreePort();
-  const featherbase = runBunStartOn(port);
+  const database = await aFreshDatabase();
+  const featherbase = runBunStartOn(port, database.address);
   try {
     const page = await pageOnceItAnswers(`http://localhost:${port}`);
     expect(page).toContain("Welcome To Featherbase");
   } finally {
     featherbase.kill();
+    await featherbase.exited;
+    await database.remove();
   }
 });
 
@@ -18,9 +22,9 @@ function aFreePort() {
   return port;
 }
 
-function runBunStartOn(port: number | undefined) {
+function runBunStartOn(port: number | undefined, databaseAddress: string) {
   return Bun.spawn(["bun", "start"], {
-    env: { ...process.env, PORT: String(port) },
+    env: { ...process.env, PORT: String(port), DATABASE_URL: databaseAddress },
     stdout: "ignore",
     stderr: "ignore",
   });
