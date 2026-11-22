@@ -90,11 +90,20 @@ async function nameTypeAndKeyOf(row: Locator) {
   ];
 }
 
-export function tableWrittenIn(markdownFile: string) {
-  return linesOf(markdownFile)
-    .filter(isATableRow)
-    .filter(isNotTheRuleUnderTheHeader)
-    .map(cellsOfATableRow);
+export function tableWrittenIn(markdownFile: string, lastHeading?: string) {
+  const tables = tablesWrittenIn(markdownFile);
+  return tables.find((table) => table[0].at(-1) === lastHeading) ?? tables[0];
+}
+
+function tablesWrittenIn(markdownFile: string) {
+  const tables: string[][][] = [];
+  let inATable = false;
+  for (const line of linesOf(markdownFile)) {
+    if (isATableRow(line) && !inATable) tables.push([]);
+    inATable = isATableRow(line);
+    if (inATable && isNotTheRuleUnderTheHeader(line)) tables.at(-1)?.push(cellsOfATableRow(line));
+  }
+  return tables;
 }
 
 function linesOf(file: string) {

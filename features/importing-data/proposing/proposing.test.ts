@@ -20,7 +20,7 @@ test("Each header becomes a Column, in the file's order.", async () => {
 });
 
 test("A Column's type is worked out from its filled cells and shown as the chosen type. A blank cell does not count.", async () => {
-  for (const [cells, type] of casesWrittenIn("features/importing-data/proposing/proposing.md")) {
+  for (const [cells, type] of casesWithTheLastHeading("Type")) {
     const page = await give("things.csv", aFileWithAColumnOf(cells));
     expect(await typeOfTheColumnOn(page), cells).toBe(type);
   }
@@ -61,6 +61,23 @@ test("The file's name and its headers are shown exactly as written, even when th
   expect(await columnNamesOn(page)).toEqual(["<i>Name</i>"]);
 });
 
+test("A type can be chosen only if every filled cell fits it. Choice fits when the values mostly repeat.", async () => {
+  for (const [cells, types] of casesWithTheLastHeading("Types that can be chosen")) {
+    const page = await give("things.csv", aFileWithAColumnOf(cells));
+    expect(await typesThatCanBeChosenOn(page), cells).toEqual(types.split(", "));
+  }
+});
+
+test("Only a Column that is never blank and never repeats can be chosen as the key.", async () => {
+  const page = await give("people.csv", [
+    "Department,Badge,Email,Phone",
+    "Sales,B1,asha@example.com,111",
+    "Sales,,bala@example.com,222",
+    "Stores,B3,chitra@example.com,333",
+  ]);
+  expect(await columnsThatCanBeTheKeyOn(page)).toEqual(["Email", "Phone"]);
+});
+
 function savedOnWindows(lines: string[]) {
   const lastLineIsEndedToo = "";
   return [...lines.map((line) => `${line}\r`), lastLineIsEndedToo];
@@ -72,8 +89,8 @@ function cells(timesEachValueAppears: Record<string, number>) {
     .join(", ");
 }
 
-function casesWrittenIn(markdownFile: string) {
-  return tableWrittenIn(markdownFile).slice(1);
+function casesWithTheLastHeading(lastHeading: string) {
+  return tableWrittenIn("features/importing-data/proposing/proposing.md", lastHeading).slice(1);
 }
 
 function aFileWithAColumnOf(cellsAsWritten: string) {
@@ -107,4 +124,13 @@ function typeOfTheColumnOn(page: Page) {
 
 function keyChosenOn(page: Page) {
   return page.getByRole("radio", { checked: true }).getAttribute("value");
+}
+
+function typesThatCanBeChosenOn(page: Page) {
+  return page.getByLabel("Type of Thing").locator("option:not([disabled])").allInnerTexts();
+}
+
+async function columnsThatCanBeTheKeyOn(page: Page) {
+  const radios = await page.getByRole("radio", { disabled: false }).all();
+  return Promise.all(radios.map((radio) => radio.getAttribute("value")));
 }
