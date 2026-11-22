@@ -20,7 +20,7 @@ export function proposalView(proposed: Table) {
   return {
     title: "Import data",
     html:
-      `${wayBack([homeCrumb, importDataCrumb, { name: proposed.fileName }])}<h1>Import data</h1><h2>${asText(proposed.name)}</h2>` +
+      `${wayBack([homeCrumb, importDataCrumb, { name: proposed.fileName }])}<h1>Import data</h1><label for="table-name">Table name</label><input type="text" id="table-name" value="${asText(proposed.name)}" readonly>` +
       `<p>${proposed.rows.length} rows, ${proposed.columns.length} Columns</p>` +
       "<table><thead><tr><th>Column</th><th>Type</th><th>Key</th></tr></thead>" +
       `<tbody>${proposed.columns.map(columnRow).join("")}</tbody></table>` +
