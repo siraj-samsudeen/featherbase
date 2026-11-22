@@ -1,6 +1,6 @@
 import { afterAll, beforeAll } from "bun:test";
 import { readFileSync } from "node:fs";
-import { type Browser, chromium } from "playwright";
+import { type Browser, type Page, chromium } from "playwright";
 import { createFeatherbase } from "./featherbase.ts";
 
 export function featherbaseInABrowser() {
@@ -34,6 +34,14 @@ export function featherbaseInABrowser() {
     return { page, status: response?.status() };
   }
 
+  async function give(fileName: string, lines: string[]) {
+    const { page } = await openInNewTab("/import");
+    const proposalShown = page.waitForEvent("load");
+    await page.locator('input[type="file"]').setInputFiles(fileOf(fileName, lines));
+    await proposalShown;
+    return page;
+  }
+
   async function closeBrowser() {
     await browser?.close();
   }
@@ -42,7 +50,16 @@ export function featherbaseInABrowser() {
     await featherbase.stop();
   }
 
-  return { openInNewTab };
+  return { openInNewTab, give };
+}
+
+function fileOf(name: string, lines: string[]) {
+  return { name, mimeType: "text/csv", buffer: Buffer.from(lines.join("\n")) };
+}
+
+export async function tableOn(page: Page) {
+  const rows = await page.locator("tr").all();
+  return Promise.all(rows.map((row) => row.locator("th, td").allInnerTexts()));
 }
 
 export function tableWrittenIn(markdownFile: string) {
