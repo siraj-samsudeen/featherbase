@@ -12,6 +12,19 @@ test("Every page has the sidebar: Featherbase, Home, and each Table with its num
   }
 });
 
+test("The sidebar marks where the person is: the Table whose list is open, otherwise Home.", async () => {
+  await aTableIsMadeFrom("pens.csv", ["Pen", "Blue", "Red"]);
+  expect(await markedInTheSidebarAt("/tables/pens")).toEqual(["Pens 2"]);
+  expect(await markedInTheSidebarAt("/")).toEqual(["Home"]);
+  expect(await markedInTheSidebarAt("/import")).toEqual(["Home"]);
+});
+
+async function markedInTheSidebarAt(address: string) {
+  const { page } = await openInNewTab(address);
+  const marked = await sidebarOf(page).locator("[aria-current]").evaluateAll(wordsOfEachWithoutItsPicture);
+  return marked.map(onOneLine);
+}
+
 async function aTableIsMadeFrom(fileName: string, lines: string[]) {
   const page = await give(fileName, lines);
   await page.getByRole("button", { name: "Create" }).click();

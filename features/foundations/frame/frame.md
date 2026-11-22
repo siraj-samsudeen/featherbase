@@ -8,3 +8,4 @@ sidebar on the left and the page on the right. Its look comes from `features/fou
 Proposed by Claude while building the frame. Not yet agreed by Siraj.
 
 1. Every page has the sidebar: Featherbase, Home, and each Table with its number of rows.
+2. The sidebar marks where the person is: the Table whose list is open, otherwise Home.
