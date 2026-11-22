@@ -1,6 +1,8 @@
 import { asText, bar, homeCrumb, importDataCrumb } from "../../../page.ts";
 
-type Column = { name: string; type: string; key: string };
+const types = ["Text", "Number", "Date", "Yes/No", "Choice"];
+
+type Column = { name: string; type: string; key: boolean };
 
 export function tableProposedFrom(fileName: string, text: string) {
   const [header, ...rows] = linesOf(text).map(cellsOf);
@@ -9,7 +11,7 @@ export function tableProposedFrom(fileName: string, text: string) {
   const columns = header.map((name, index) => ({
     name,
     type: typeOf(cellsOfEachColumn[index]),
-    key: index === keyIndex ? "suggested" : "",
+    key: index === keyIndex,
   }));
   return { name: tableNameFrom(fileName), columns, rows, fileName, text };
 }
@@ -33,15 +35,15 @@ export function proposalView(proposed: Table) {
               <input type="text" id="table-name" value="${asText(proposed.name)}" readonly>
             </div>
           </div>
-          <div class="sect">
-            <h2>Columns</h2>
+          <section class="sect" aria-labelledby="columns">
+            <h2 id="columns">Columns</h2>
             <div class="tbox cols">
               <table>
                 <thead><tr><th>Column</th><th>Type</th><th class="keyc">Key</th></tr></thead>
                 <tbody>${proposed.columns.map(columnRow).join("")}</tbody>
               </table>
             </div>
-          </div>
+          </section>
         </div>
         <div class="footbar">
           <input type="hidden" name="fileName" value="${asText(proposed.fileName)}">
@@ -54,8 +56,20 @@ export function proposalView(proposed: Table) {
   };
 }
 
-function columnRow(column: Column) {
-  return `<tr><td>${asText(column.name)}</td><td>${column.type}</td><td class="keyc">${column.key}</td></tr>`;
+function columnRow(column: Column, index: number) {
+  const name = asText(column.name);
+  return `
+    <tr>
+      <td>${name}</td>
+      <td>
+        <select name="type-${index}" aria-label="Type of ${name}">
+          ${types.map((type) => `<option${type === column.type ? " selected" : ""}>${type}</option>`).join("")}
+        </select>
+      </td>
+      <td class="keyc">
+        <input type="radio" name="key" value="${name}" aria-label="${name} is the key"${column.key ? " checked" : ""}>
+      </td>
+    </tr>`;
 }
 
 function tableNameFrom(fileName: string) {
@@ -85,7 +99,7 @@ function typeOf(cells: string[]) {
   if (filled.every(isYesOrNo)) return "Yes/No";
   if (filled.every(isANumber)) return "Number";
   if (filled.every(isARealDate)) return "Date";
-  if (mostlyRepeat(filled)) return `Choice (${new Set(filled).size} values)`;
+  if (mostlyRepeat(filled)) return "Choice";
   return "Text";
 }
 

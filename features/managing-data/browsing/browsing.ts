@@ -37,7 +37,7 @@ function dresserFor(column: Column, cells: string[]) {
   if (column.key) return (cell: string) => `<td class="code">${asText(cell)}</td>`;
   if (column.type === "Number") return (cell: string) => `<td class="num">${asText(cell)}</td>`;
   if (column.type === "Date") return (cell: string) => `<td class="date">${asText(cell)}</td>`;
-  if (column.type.startsWith("Choice")) return chipDresser([...new Set(cells)].sort());
+  if (column.type === "Choice") return chipDresser([...new Set(cells)].sort());
   return (cell: string) => `<td>${asText(cell)}</td>`;
 }
 
