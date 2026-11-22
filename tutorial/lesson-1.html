@@ -16,13 +16,11 @@
   <div class="meta">
     <span class="chip red">Commit: red</span>
     <span class="chip">About 12 minutes</span>
-    <span class="chip">You need: nothing but curiosity</span>
   </div>
 
   <div class="box stop">
     <span class="tag">Stop and guess first</span>
     <p>You are asked to build a web page that says "Welcome". What is the very first file you would create: the page, or something else?</p>
-    <p>Say your answer out loud before you scroll. Guessing first, even wrongly, makes the real answer stick far better than just reading it.</p>
   </div>
 
   <h2><span class="q">Question 1</span>What exactly are we trying to prove?</h2>
@@ -75,7 +73,7 @@ The scene: a person opens Featherbase.
   <p>Because this is the first test of the project. Its job is to prove, once, that everything is connected: the program starts, a browser reaches it, and the words appear. Later tests can use faster ways, because this one already guards the chain.</p>
 
   <div class="box pro">
-    <span class="tag">If you have done this before</span>
+    <span class="tag">A step further</span>
     <p>This is the "walking skeleton" idea: the first test goes end to end through the thinnest possible slice, so the tooling is forced into existence by a real need. Most later criteria should drop to way 2. Keep way 4 for a handful of journeys.</p>
   </div>
 
@@ -212,8 +210,7 @@ bun test</code></pre>
 
   <hr>
 
-  <h2><span class="q">Check yourself</span>Close your eyes and answer, then open each one</h2>
-  <p>Answering from memory is what makes this stay. Rereading feels easier, and works much less.</p>
+  <h2><span class="q">Check yourself</span>Answer, then open each one</h2>
   <details><summary>What is an acceptance criterion?</summary><div class="in"><p>One plain sentence saying what must be true for the work to be accepted. Here: opening Featherbase shows "Welcome to Featherbase".</p></div></details>
   <details><summary>Name two of the three simpler ways to test the page, and how each one bites later.</summary><div class="in"><p>Calling the page's code directly tests the inside and proves nothing about starting. Asking the app with no browser cannot see what a browser does. Fetching from the started program is still blind to the browser.</p></div></details>
   <details><summary>Why did we install only Playwright?</summary><div class="in"><p>It is the only outside tool the test imports. A tool enters when a test needs it, not before.</p></div></details>
@@ -222,7 +219,7 @@ bun test</code></pre>
 
   <div class="box key">
     <span class="tag">Explain it to a friend</span>
-    <p>Tell someone, in three sentences and without looking, what "red" means and why it comes first. If you get stuck, that is the part to read again.</p>
+    <p>In three sentences, without looking: what does "red" mean, and why does it come first?</p>
   </div>
 
   
