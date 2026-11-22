@@ -1,12 +1,9 @@
 # Browsing
 
-The scene: a Table exists and a person opens it.
+The scene: a Table exists and a person opens its list.
 
-## Sentences
+## Acceptance criteria
 
-One sentence per rule, in everyday words. Each sentence has exactly one test, named with the sentence word
-for word. Where a sentence has a table, the test runs the table's rows as written here. See `TESTING.md`.
+Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.md`. Not yet agreed by Siraj.
 
-1. The list shows the rows in key order, 10 at a time, and says how many there are in all.
-2. Opening a row shows all its values and where it came from.
-3. Dates are shown as 01-Jan-2015.
+1. The list shows the rows in the file's order, 10 at a time, and says which rows of how many: "1 to 10 of 24".
