@@ -41,3 +41,18 @@ Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.
    | blank, blank | Text |
 
 10. Only a Column that is never blank and never repeats can be chosen as the key.
+11. Beside each Column, Featherbase says what it saw in the cells, with a few of them as examples. For the
+    Column chosen as the key it says "Never blank, never repeats."
+
+    | Cells in the Column | What Featherbase saw |
+    |---|---|
+    | `Asha`, `Bala`, `Chitra` | 3 different values. Asha, Bala |
+    | `Asha`, blank, `Chitra` | 2 different values, 1 blank. Asha |
+    | `Sales`, `Billing`, `Sales`, `Billing` | 2 values, each used several times: Billing Sales |
+    | `2015-01-01`, `2016-06-04`, `2017-11-07` | Every cell is a date. 2015-01-01, 2016-06-04 |
+    | `2025-05-09`, blank, blank | 1 date, 2 blank. 2025-05-09 |
+    | `true`, `false`, `true` | Every cell is true or false |
+    | `true`, blank, `false` | 2 cells are true or false, 1 blank |
+    | `48`, `40`, `37.5`, `36` | Every cell is a number. 48, 40, 37.5 |
+    | `48`, blank, `36.5` | 2 numbers, 1 blank. 48 |
+    | blank, blank | Every cell is blank. |
