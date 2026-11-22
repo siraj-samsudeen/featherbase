@@ -1,6 +1,6 @@
 export type TableLink = { name: string; address: string; rows: number; columns: number; changed: string; key?: string };
 export type UploadLink = { name: string; address: string; rows: number; arrivedOn: string };
-export type Frame = { tables: TableLink[]; uploads: UploadLink[]; said?: string };
+export type Frame = { tables: TableLink[]; uploads: UploadLink[]; said?: string; compact?: boolean };
 export type View = { title: string; html: string };
 
 const home = "/";
@@ -12,7 +12,7 @@ export const stylesheetFile = `${import.meta.dir}/features/foundations/pages/pag
 
 export function page(view: View, frame: Frame, here = home) {
   return (
-    '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+    `<!doctype html><html lang="en"${frame.compact ? ' data-density="compact"' : ""}><head><meta charset="utf-8">` +
     '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
     `<title>${asText(view.title)}</title>` +
     `<link rel="stylesheet" href="${fonts}"><link rel="stylesheet" href="${stylesheetAddress}"></head>` +
