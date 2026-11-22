@@ -23,6 +23,13 @@ test('"Next" opens the rows that follow. The last rows have no "Next".', async (
   expect(await next(page).count()).toBe(0);
 });
 
+test("A cell is shown exactly as it was written in the file, even when it looks like HTML.", async () => {
+  const asWritten = ['<b>Bold</b> & "quoted"', "<script>document.body.remove()</script>"];
+  const page = await listOfATableMadeFrom("items.csv", ["Item <i>header</i>", ...asWritten]);
+  expect(await page.locator("th").innerText()).toBe("Item <i>header</i>");
+  expect(await firstCellsOn(page)).toEqual(asWritten);
+});
+
 function next(page: Page) {
   return page.getByRole("link", { name: "Next" });
 }
