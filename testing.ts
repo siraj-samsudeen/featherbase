@@ -125,3 +125,23 @@ function cellsOfATableRow(line: string) {
     .split("|")
     .map((cell) => cell.trim());
 }
+
+export function casesIn(markdownFile: string, lastHeading: string) {
+  return tableWrittenIn(markdownFile, lastHeading).slice(1);
+}
+
+export function aFileWithAColumnOf(cellsAsWritten: string) {
+  return ["Row,Thing", ...cellsFrom(cellsAsWritten).map((cell, index) => `${index + 1},${cell}`)];
+}
+
+export function cellsFrom(cellsAsWritten: string) {
+  return cellsAsWritten.split(", ").map(withoutBackticks).map(blankAsNothing);
+}
+
+function withoutBackticks(cell: string) {
+  return cell.replaceAll("`", "");
+}
+
+function blankAsNothing(cell: string) {
+  return cell === "blank" ? "" : cell;
+}
