@@ -11,15 +11,16 @@ test('The list shows every row in the file\'s order and says how many there are:
 });
 
 test("Each value is shown the way its type reads best. A blank cell is shown as a dash.", async () => {
-  for (const [cells, shown] of casesIn("features/managing-data/browsing/browsing.md", "Shown as")) {
-    const page = await make("things.csv", aFileWithAColumnOf(cells));
+  const cases = casesIn("features/managing-data/browsing/browsing.md", "Shown as");
+  for (const [number, [cells, shown]] of cases.entries()) {
+    const page = await make(`things ${number}.csv`, aFileWithAColumnOf(cells));
     expect(await secondCellsOn(page), cells).toEqual(shown.split(", "));
   }
 });
 
 test("Text is shown exactly as it was written in the file, even when it looks like HTML.", async () => {
   const asWritten = ['<b>Bold</b> & "quoted"', "<script>document.body.remove()</script>"];
-  const page = await make("items.csv", ["Item <i>header</i>", ...asWritten]);
+  const page = await make("marks.csv", ["Item <i>header</i>", ...asWritten]);
   expect(await page.locator("th").innerText()).toBe("Item <i>header</i>");
   expect(await firstCellsOn(page)).toEqual(asWritten);
 });
