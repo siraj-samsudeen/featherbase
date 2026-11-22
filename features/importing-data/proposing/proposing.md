@@ -22,3 +22,5 @@ Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.
    | `Asha`, `Bala`, `Chitra` | Text |
    | blank, blank | Text |
 
+5. A Text Column whose values mostly repeat is a Choice, and says how many different values it has. "Mostly"
+   means at least 9 filled cells in 10 share their value with another cell.

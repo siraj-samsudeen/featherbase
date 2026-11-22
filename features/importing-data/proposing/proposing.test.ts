@@ -26,6 +26,26 @@ test("A Column's type is worked out from its filled cells. A blank cell does not
   }
 });
 
+test("A Text Column whose values mostly repeat is a Choice, and says how many different values it has.", async () => {
+  const nineInTenRepeat = await give(
+    "things.csv",
+    aFileWithAColumnOf(cells({ Sales: 5, Billing: 4, Stores: 1 })),
+  );
+  expect(await typeOfTheColumnOn(nineInTenRepeat)).toBe("Choice (3 values)");
+
+  const eightInTenRepeat = await give(
+    "things.csv",
+    aFileWithAColumnOf(cells({ Sales: 4, Billing: 4, Stores: 1, Tailoring: 1 })),
+  );
+  expect(await typeOfTheColumnOn(eightInTenRepeat)).toBe("Text");
+});
+
+function cells(timesEachValueAppears: Record<string, number>) {
+  return Object.entries(timesEachValueAppears)
+    .flatMap(([value, times]) => Array(times).fill(value))
+    .join(", ");
+}
+
 function casesWrittenIn(markdownFile: string) {
   return tableWrittenIn(markdownFile).slice(1);
 }
