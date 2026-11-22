@@ -1,5 +1,5 @@
 import type { Table } from "../../importing-data/proposing/proposing.ts";
-import { asText, bar, tintNumbered } from "../../../page.ts";
+import { asText, bar, chip } from "../../../page.ts";
 
 type Column = Table["columns"][number];
 
@@ -43,10 +43,6 @@ function dresserFor(column: Column, cells: string[]) {
 
 function chipDresser(values: string[]) {
   return (cell: string) => `<td>${cell === "" ? "" : chip(cell, values.indexOf(cell))}</td>`;
-}
-
-function chip(value: string, index: number) {
-  return `<span class="chip ${tintNumbered(index)}">${asText(value)}</span>`;
 }
 
 function cellsUnder(columnIndex: number, rows: string[][]) {

@@ -1,4 +1,5 @@
 import { asText, bar, homeCrumb, importDataCrumb } from "../../../page.ts";
+import { whatFeatherbaseSawIn } from "./what-featherbase-saw.ts";
 
 const whatFits: Record<string, (filledCells: string[]) => boolean> = {
   Text: () => true,
@@ -10,7 +11,14 @@ const whatFits: Record<string, (filledCells: string[]) => boolean> = {
 const types = Object.keys(whatFits);
 const typesInTheOrderTheyAreProposed = ["Yes/No", "Number", "Date", "Choice", "Text"];
 
-type Column = { name: string; type: string; typesThatFit: string[]; key: boolean; canBeTheKey: boolean };
+type Column = {
+  name: string;
+  type: string;
+  typesThatFit: string[];
+  key: boolean;
+  canBeTheKey: boolean;
+  saw: string;
+};
 
 export function tableProposedFrom(fileName: string, text: string) {
   const [header, ...rows] = linesOf(text).map(cellsOf);
@@ -23,7 +31,7 @@ export function tableProposedFrom(fileName: string, text: string) {
 function columnFrom(name: string, cells: string[], key: boolean): Column {
   const typesThatFit = typesThatFitThe(cells.filter(isFilled));
   const type = typesInTheOrderTheyAreProposed.find((type) => typesThatFit.includes(type)) as string;
-  return { name, type, typesThatFit, key, canBeTheKey: canBeTheKey(cells) };
+  return { name, type, typesThatFit, key, canBeTheKey: canBeTheKey(cells), saw: whatFeatherbaseSawIn({ type, key, cells }) };
 }
 
 function typesThatFitThe(filledCells: string[]) {
@@ -54,7 +62,7 @@ export function proposalView(proposed: Table) {
             <h2 id="columns">Columns</h2>
             <div class="tbox cols">
               <table>
-                <thead><tr><th>Column</th><th>Type</th><th class="keyc">Key</th></tr></thead>
+                <thead><tr><th>Column</th><th>Type</th><th>What Featherbase saw</th><th class="keyc">Key</th></tr></thead>
                 <tbody>${proposed.columns.map(columnRow).join("")}</tbody>
               </table>
             </div>
@@ -81,6 +89,7 @@ function columnRow(column: Column, index: number) {
           ${types.map((type) => typeOption(type, column)).join("")}
         </select>
       </td>
+      <td class="saw">${column.saw}</td>
       <td class="keyc">
         <input type="radio" name="key" value="${name}" aria-label="${name} is the key"
           ${column.key ? "checked" : ""} ${column.canBeTheKey ? "" : "disabled"}>
