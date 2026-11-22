@@ -1,4 +1,5 @@
 import { asText, bar, homeCrumb, importDataCrumb } from "../../../page.ts";
+import type { Column } from "../../foundations/database/store.ts";
 import { tableOf } from "../../managing-data/browsing/browsing.ts";
 import { whatFeatherbaseSawIn } from "./what-featherbase-saw.ts";
 
@@ -12,14 +13,7 @@ const whatFits: Record<string, (filledCells: string[]) => boolean> = {
 const types = Object.keys(whatFits);
 const typesInTheOrderTheyAreProposed = ["Yes/No", "Number", "Date", "Choice", "Text"];
 
-type Column = {
-  name: string;
-  type: string;
-  typesThatFit: string[];
-  key: boolean;
-  canBeTheKey: boolean;
-  saw: string;
-};
+type ProposedColumn = Column & { typesThatFit: string[]; canBeTheKey: boolean; saw: string };
 
 export function tableProposedFrom(fileName: string, text: string) {
   const [header, ...rows] = linesOf(text).map(cellsOf);
@@ -29,7 +23,7 @@ export function tableProposedFrom(fileName: string, text: string) {
   return { name: tableNameFrom(fileName), columns, rows, fileName, text };
 }
 
-function columnFrom(name: string, cells: string[], key: boolean): Column {
+function columnFrom(name: string, cells: string[], key: boolean): ProposedColumn {
   const typesThatFit = typesThatFitThe(cells.filter(isFilled));
   const type = typesInTheOrderTheyAreProposed.find((type) => typesThatFit.includes(type)) as string;
   return { name, type, typesThatFit, key, canBeTheKey: canBeTheKey(cells), saw: whatFeatherbaseSawIn({ type, key, cells }) };
@@ -41,7 +35,6 @@ function typesThatFitThe(filledCells: string[]) {
 }
 
 export type Proposal = ReturnType<typeof tableProposedFrom>;
-export type Table = Pick<Proposal, "name" | "rows" | "fileName"> & { columns: Pick<Column, "name" | "type" | "key">[] };
 
 export function withChoices(proposed: Proposal, choices: Record<string, string>): Proposal {
   const columns = proposed.columns.map((column, index) => ({
@@ -83,7 +76,7 @@ export function proposalView(proposed: Proposal, nameRefusal = "") {
           </section>
           <section class="sect" aria-labelledby="first-rows">
             <h2 id="first-rows">How The First Rows Will Look</h2>
-            <div class="tbox">${tableOf(proposed, proposed.rows.slice(0, 5))}</div>
+            <div class="tbox">${tableOf(proposed.columns, proposed.rows, proposed.rows.slice(0, 5))}</div>
           </section>
         </div>
         <div class="footbar">
@@ -97,7 +90,7 @@ export function proposalView(proposed: Proposal, nameRefusal = "") {
   };
 }
 
-function columnRow(column: Column, index: number) {
+function columnRow(column: ProposedColumn, index: number) {
   const name = asText(column.name);
   return `
     <tr>
@@ -115,7 +108,7 @@ function columnRow(column: Column, index: number) {
     </tr>`;
 }
 
-function typeOption(type: string, column: Column) {
+function typeOption(type: string, column: ProposedColumn) {
   const chosen = type === column.type ? " selected" : "";
   const fits = column.typesThatFit.includes(type) ? "" : " disabled";
   return `<option${chosen}${fits}>${type}</option>`;
