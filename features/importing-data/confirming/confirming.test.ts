@@ -13,3 +13,10 @@ test("Pressing Create makes the Table with every row and opens its list.", async
     ["Bala", "Madurai"],
   ]);
 });
+
+test("The Table keeps the name it was shown with, whatever spaces and marks the file's name has.", async () => {
+  const page = await give("staff list & <b>teams</b> 50%.csv", ["Name", "Asha"]);
+  await page.getByRole("button", { name: "Create" }).click();
+  await page.waitForURL("**/tables/*");
+  expect(await page.innerText("h1")).toBe("Staff list & <b>teams</b> 50%");
+});
