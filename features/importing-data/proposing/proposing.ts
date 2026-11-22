@@ -19,7 +19,7 @@ export type Table = ReturnType<typeof tableProposedFrom>;
 export function proposalPage(proposed: Table) {
   return page(
     "Import data",
-    `<h1>Import data</h1><h2>${proposed.name}</h2>` +
+    `<h1>Import data</h1><h2>${asText(proposed.name)}</h2>` +
       `<p>${proposed.rows.length} rows, ${proposed.columns.length} Columns</p>` +
       "<table><thead><tr><th>Column</th><th>Type</th><th>Key</th></tr></thead>" +
       `<tbody>${proposed.columns.map(columnRow).join("")}</tbody></table>` +
@@ -31,7 +31,7 @@ export function proposalPage(proposed: Table) {
 }
 
 function columnRow(column: Column) {
-  return `<tr><td>${column.name}</td><td>${column.type}</td><td>${column.key}</td></tr>`;
+  return `<tr><td>${asText(column.name)}</td><td>${column.type}</td><td>${column.key}</td></tr>`;
 }
 
 function tableNameFrom(fileName: string) {
