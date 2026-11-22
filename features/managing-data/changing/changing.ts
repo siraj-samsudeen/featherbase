@@ -22,7 +22,17 @@ export function recordForm(table: StoredTable, listAddress: string, record: Reco
         ${fieldsInFormOrder(table, record.cells).map(field).join("")}
         <p class="from wide"><span class="tag">from ${asText(table.fileName)}</span> row ${record.uploadRow}</p>
       </div>
+      <footer>
+        <button type="submit" class="btn primary">Save</button><a class="btn" href="${listAddress}">Cancel</a>
+      </footer>
     </form>`;
+}
+
+export function cellsTypedInto(table: StoredTable, form: { [field: string]: string | undefined }) {
+  return table.columns.map((column, index) => {
+    const typed = form[`cell-${index}`];
+    return column.type === "Yes/No" && !column.key ? String(typed !== undefined) : (typed ?? "").trim();
+  });
 }
 
 function fieldsInFormOrder(table: StoredTable, cells: string[]) {

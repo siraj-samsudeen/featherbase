@@ -1,6 +1,6 @@
 export type TableLink = { name: string; address: string; rows: number; columns: number; key?: string };
 export type UploadLink = { name: string; address: string; rows: number; arrivedOn: string };
-export type Frame = { tables: TableLink[]; uploads: UploadLink[] };
+export type Frame = { tables: TableLink[]; uploads: UploadLink[]; said?: string };
 export type View = { title: string; html: string };
 
 const home = "/";
@@ -16,8 +16,12 @@ export function page(view: View, frame: Frame, here = home) {
     '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' +
     `<title>${asText(view.title)}</title>` +
     `<link rel="stylesheet" href="${fonts}"><link rel="stylesheet" href="${stylesheetAddress}"></head>` +
-    `<body><div class="app">${sidebar(frame, here)}<main class="main">${view.html}</main></div></body></html>`
+    `<body><div class="app">${sidebar(frame, here)}<main class="main">${view.html}${toast(frame.said)}</main></div></body></html>`
   );
+}
+
+function toast(said?: string) {
+  return said ? `<p class="toast" role="status">${asText(said)}</p>` : "";
 }
 
 const feather =

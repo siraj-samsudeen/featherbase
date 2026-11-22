@@ -78,6 +78,14 @@ export async function openStore(databaseAddress: string) {
     return found.length > 0 ? rowFrom(found[0], table) : undefined;
   }
 
+  async function changeRow(table: StoredTable, id: string, cells: string[]) {
+    const settings = table.columns.map((column, index) => `"${column.place}" = ${valueNumbered(index + 1, column)}`);
+    await sql.unsafe(
+      `update main."${table.place}" set ${settings.join(", ")}, _updated_at = now() where _id = $${cells.length + 1}`,
+      [...cells.map(blankAsNull), id],
+    );
+  }
+
   async function keepUpload(fileName: string, content: Uint8Array, rowCount: number): Promise<string> {
     const [{ _id }] = await sql.unsafe(
       "insert into featherbase.uploads (file_name, content, row_count) values ($1, $2, $3) returning _id",
@@ -127,7 +135,7 @@ export async function openStore(databaseAddress: string) {
     return sql.close();
   }
 
-  return { allTables, tableAt, rowsOf, rowAt, make, keepUpload, allUploads, uploadAt, close };
+  return { allTables, tableAt, rowsOf, rowAt, changeRow, make, keepUpload, allUploads, uploadAt, close };
 }
 
 function isANumberOfARow(id: string) {
@@ -176,8 +184,12 @@ function columnDefinition(column: StoredColumn) {
 
 function insertInto(place: string, columns: StoredColumn[]) {
   const names = [...columns.map((column) => `"${column.place}"`), "_upload_row"];
-  const values = columns.map((column, index) => `$${index + 1}::${postgresType[column.type]}`);
+  const values = columns.map((column, index) => valueNumbered(index + 1, column));
   return `insert into main."${place}" (${names.join(", ")}) values (${[...values, `$${columns.length + 1}`].join(", ")})`;
+}
+
+function valueNumbered(number: number, column: Column) {
+  return `$${number}::${postgresType[column.type]}`;
 }
 
 function blankAsNull(cell: string) {
