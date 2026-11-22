@@ -17,8 +17,14 @@ afterAll(async () => {
 });
 
 test('Opening Featherbase shows "Welcome to Featherbase".', async () => {
-  const page = await openFeatherbaseInNewTab();
-  expect(await textOn(page)).toContain("Welcome to Featherbase");
+  const visit = await openInNewTab("/");
+  expect(await textOn(visit.page)).toContain("Welcome to Featherbase");
+});
+
+test('Opening an address Featherbase does not have shows "Page not found".', async () => {
+  const visit = await openInNewTab("/no-such-page");
+  expect(visit.status).toBe(404);
+  expect(await textOn(visit.page)).toContain("Page not found");
 });
 
 function startFeatherbase() {
@@ -44,10 +50,10 @@ async function openBrowser() {
   browser = await chromium.launch();
 }
 
-async function openFeatherbaseInNewTab() {
+async function openInNewTab(path: string) {
   const page = await browser.newPage();
-  await page.goto(address);
-  return page;
+  const response = await page.goto(address + path);
+  return { page, status: response?.status() };
 }
 
 function textOn(page: Page) {
