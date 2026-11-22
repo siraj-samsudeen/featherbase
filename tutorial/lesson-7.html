@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lesson 7: Proving the front door</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="tutorial.css">
+</head>
+<body>
+<main>
+<div class="top"><a href="index.html">All lessons</a><span class="eyebrow" style="margin:0">Lesson 7 of 8</span></div><h1>Proving the front door</h1><p class="lead">Two lines of our project are checked by nothing: the file that starts Featherbase. This lesson tests it, and deals honestly with a test that passes the first time it is run.</p><div class="meta"><span class="chip ">Commit: test</span><span class="chip blue">Commit: refactor</span><span class="chip ">About 12 minutes</span></div><div class="box stop"><span class="tag">Before you start: recall the last lesson</span><p>Answer from memory first, then open each one. A little effort here is what moves it into long-term memory.</p></div><details><summary>Which file was missing from the coverage table, and why?</summary><div class="in"><p><code>start.ts</code>. No test loads it, so it is not measured.</p></div></details><details><summary>What should you do before trusting a safety check?</summary><div class="in"><p>See it fail. Break something on purpose and watch the check catch it.</p></div></details><h2><span class="q">Question 1</span>What is the gap?</h2><p><code>start.ts</code> is two lines, and <code>package.json</code> has one line that points at it. A typo in either would pass every test and the coverage gate, and would be found only when someone tries to run Featherbase. It is the one command every person and every deployment depends on.</p><h2><span class="q">Question 2</span>What are the options?</h2><div class="opt"><h3>A. Leave it</h3><p>Two lines, rarely touched.</p><p class="bites"><b>Bites later:</b> the most important command is the only thing with no proof.</p></div><div class="opt chosen"><h3>B. One test that runs the real <code>bun start</code> and asks for the home page <span class="pick">We chose this</span></h3><p>No browser. Start the program, wait until it answers, check the welcome words.</p><p class="bites"><b>Costs:</b> the wait loop from lesson 1 comes back, but only here, where a separate program really does take a moment to start.</p></div><div class="opt"><h3>C. Let the deployment catch it</h3><p>No work now.</p><p class="bites"><b>Bites later:</b> that is the most expensive place to find a typo.</p></div><h2><span class="q">Question 3</span>Where does the criterion go?</h2><p>It is not about the Home page. So it gets its own small folder, named for the action:</p><p class="file">features/foundations/starting/starting.md</p>
+<pre><code># Starting
+
+The scene: someone runs Featherbase.
+
+## Acceptance criteria
+
+1. Running `bun start` opens Featherbase on the port it is given.</code></pre><p>"The port it is given" is how a hosting service tells a program where to listen.</p><h2><span class="q">Question 4</span>What does the test look like?</h2><p class="file">features/foundations/starting/starting.test.ts</p>
+<pre><code>import { afterAll, expect, test } from &quot;bun:test&quot;;
+
+let featherbase: ReturnType&lt;typeof Bun.spawn&gt; | undefined;
+
+afterAll(() =&gt; {
+  stopFeatherbase();
+});
+
+test(&quot;Running `bun start` opens Featherbase on the port it is given.&quot;, async () =&gt; {
+  const port = aFreePort();
+  runBunStartOn(port);
+  const page = await pageOnceItAnswers(`http://localhost:${port}`);
+  expect(page).toContain(&quot;Welcome to Featherbase&quot;);
+});</code></pre><p>Four lines tell the story: get a free port, run <code>bun start</code> on it, fetch the page once it answers, expect the welcome words.</p><details><summary>Show me the helpers</summary><div class="in"><pre><code>function aFreePort() {
+  const probe = Bun.serve({ port: 0, fetch: () =&gt; new Response() });
+  const port = probe.port;
+  probe.stop(true);
+  return port;
+}
+
+function runBunStartOn(port: number | undefined) {
+  featherbase = Bun.spawn([&quot;bun&quot;, &quot;start&quot;], {
+    env: { ...process.env, PORT: String(port) },
+    stdout: &quot;ignore&quot;,
+    stderr: &quot;ignore&quot;,
+  });
+}
+
+async function pageOnceItAnswers(address: string) {
+  const giveUpAt = Date.now() + 3000;
+  while (true) {
+    const page = await fetch(address).then(
+      (response) =&gt; response.text(),
+      () =&gt; undefined,
+    );
+    if (page !== undefined) return page;
+    if (Date.now() &gt; giveUpAt) throw new Error(`bun start did not open Featherbase at ${address}`);
+    await Bun.sleep(50);
+  }
+}
+
+function stopFeatherbase() {
+  featherbase?.kill();
+}</code></pre><p><code>aFreePort</code> opens a throwaway server on "any port", notes which port the computer chose, and closes it.</p></div></details><details><summary>Why is there no <code>beforeAll</code> here, when the other test file has one?</summary><div class="in"><p>In the Home tests, starting Featherbase is preparation that two tests share, and neither test is about starting. Here, starting is the very thing being tested. Hidden in <code>beforeAll</code>, the test body would have nothing left to say.</p></div></details><h2><span class="q">Question 5</span>It passed the first time. Is that a problem?</h2><div class="box stop"><span class="tag">Stop and guess first</span><p>Every earlier test was seen failing before it passed. This one passed on its first run, because the code it checks already existed. Can we trust it? What would you do?</p></div><p>A test that has never failed proves nothing by itself. So we make it fail on purpose.</p><p>A typo in <code>start.ts</code>, <code>lisen</code> for <code>listen</code>:</p><pre class="out"><code>error: bun start did not open Featherbase at http://localhost:39035
+ 2 pass
+ 1 fail</code></pre><p>A typo in the <code>start</code> line of <code>package.json</code> gives the same failure. With both restored, all three tests pass. Now the test has earned its trust.</p><p>There is no red commit this time, and the history says so honestly: the commit starts with <code>test:</code>, meaning a test added for code that already existed, shown to fail when that code is broken.</p><h2><span class="q">Question 6</span>Why not stop the program right at the end of the test?</h2><p>It is a natural question. The test starts the program, so why does a separate <code>afterAll</code> stop it? Because of what happens on failure. If these were the last two lines:</p><pre><code>  expect(page).toContain(&quot;Welcome to Featherbase&quot;);
+  stopFeatherbase();</code></pre><p>and the <code>expect</code> fails, the test ends at that line. The stop never runs, and a stray Featherbase keeps running on the machine. <code>afterAll</code> runs whether the test passed or failed.</p><p>But there is a way to keep start and stop together and still be safe:</p><pre><code>test(&quot;Running `bun start` opens Featherbase on the port it is given.&quot;, async () =&gt; {
+  const port = aFreePort();
+  const featherbase = runBunStartOn(port);
+  try {
+    const page = await pageOnceItAnswers(`http://localhost:${port}`);
+    expect(page).toContain(&quot;Welcome to Featherbase&quot;);
+  } finally {
+    featherbase.kill();
+  }
+});</code></pre><p><code>try ... finally</code> means: do this part, and whatever happens, pass or fail, do the <code>finally</code> part afterwards. For this, <code>runBunStartOn</code> hands back the program it started, by saying <code>return Bun.spawn(...)</code>. The variable at the top of the file, the <code>afterAll</code> block and <code>stopFeatherbase</code> all disappear. This became a small <code>refactor:</code> commit.</p><p>Which is better? It depends on who owns the thing being cleaned up. One test owns this program, so the clean-up sits inside that test. In the Home tests, two tests share one browser, so <code>beforeAll</code> and <code>afterAll</code> still fit there.</p><div class="box key"><span class="tag">The habit to take away</span><p>Whatever a test starts, it must stop, even when it fails. Put the clean-up where failure cannot skip it, and as close to the start as sharing allows.</p></div><div class="box pro"><span class="tag">If you have done this before</span><p>The honest gap that remains: the default port, 3000, is untested, because it may be busy on any machine that runs the suite. Name such gaps in writing. An acknowledged gap is a decision. An unnoticed one is a bug waiting.</p></div><h3>Try it yourself</h3><pre><code>git checkout a25532c &amp;&amp; bun install &amp;&amp; bun test      # 3 pass
+sed -i &#x27;s/listen/lisen/&#x27; start.ts &amp;&amp; bun test       # the starting test fails
+git checkout start.ts &amp;&amp; bun test                    # 3 pass again</code></pre><p>You have just done by hand what the lesson describes: made a passing test prove itself.</p><hr><h2><span class="q">Check yourself</span>Close your eyes and answer, then open each one</h2><details><summary>Why was a typo in <code>start.ts</code> invisible to every check before this lesson?</summary><div class="in"><p>No test loaded the file, and coverage only measures files the tests load.</p></div></details><details><summary>What do you do with a test that passes the first time it is run?</summary><div class="in"><p>Break the code on purpose and confirm the test fails, then restore it.</p></div></details><details><summary>What does a <code>test:</code> commit tell the reader?</summary><div class="in"><p>A test was added for code that already existed, and was shown to fail when that code is broken.</p></div></details><details><summary>Why is stopping the program on the line after <code>expect</code> unsafe?</summary><div class="in"><p>If the <code>expect</code> fails, the test ends there and the stop never runs.</p></div></details><details><summary>When is <code>try ... finally</code> the better fit, and when <code>afterAll</code>?</summary><div class="in"><p><code>try ... finally</code> when one test owns what it started. <code>afterAll</code> when several tests share it.</p></div></details><div class="next"><b>Next: Lesson 8, a machine that never forgets</b>Carry this question with you: all of this runs on one machine, when someone remembers to run it. What if they forget?</div><div class="pager"><a href="lesson-6.html">Back: lesson 6</a><a href="lesson-8.html">Lesson 8</a></div>
+</main>
+</body>
+</html>

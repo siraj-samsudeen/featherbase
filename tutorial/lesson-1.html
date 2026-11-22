@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lesson 1: The first failing test</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="tutorial.css">
+</head>
+<body>
+<main>
+<div class="top"><a href="index.html">All lessons</a><span class="eyebrow" style="margin:0">Lesson 1 of 8</span></div>
+  
+  <h1>The first failing test</h1>
+  <p class="lead">We want a page that says "Welcome to Featherbase". In this lesson we write no page at all. We write the proof that the page is missing, and we save that failure on purpose.</p>
+  <div class="meta">
+    <span class="chip red">Commit: red</span>
+    <span class="chip">About 12 minutes</span>
+    <span class="chip">You need: nothing but curiosity</span>
+  </div>
+
+  <div class="box stop">
+    <span class="tag">Stop and guess first</span>
+    <p>You are asked to build a web page that says "Welcome". What is the very first file you would create: the page, or something else?</p>
+    <p>Say your answer out loud before you scroll. Guessing first, even wrongly, makes the real answer stick far better than just reading it.</p>
+  </div>
+
+  <h2><span class="q">Question 1</span>What exactly are we trying to prove?</h2>
+  <p>One thing, written as one plain sentence:</p>
+  <pre><code>Opening Featherbase shows "Welcome to Featherbase".</code></pre>
+  <p>This sentence is called an <strong>acceptance criterion</strong>. It means: the work is accepted when this is true. Not when the code looks clever, and not when the programmer says it is done.</p>
+  <p>Before any code, we write it into a small text file that a non-programmer can read:</p>
+  <p class="file">features/foundations/home/home.md</p>
+  <pre><code># Home
+
+The scene: a person opens Featherbase.
+
+## Acceptance criteria
+
+1. Opening Featherbase shows "Welcome to Featherbase".</code></pre>
+
+  <details>
+    <summary>Why a separate file? The test will say the same thing.</summary>
+    <div class="in">
+      <p>Because the two files have different readers. The <code>.md</code> file is for the person who decides what the product must do. They approve it before any code exists. The test is the proof, written for the computer.</p>
+      <p>The cost is one sentence typed twice. A later lesson adds a check that fails if the two ever differ.</p>
+    </div>
+  </details>
+
+  <h2><span class="q">Question 2</span>What are the ways to test that a page shows some words?</h2>
+  <p>There are at least four. They run from simple to thorough, and the simple ones each hide a trap.</p>
+
+  <div class="opt">
+    <h3>1. Call the code that makes the page</h3>
+    <p>The test calls a function and checks the text it gives back. Three lines.</p>
+    <p class="bites"><b>Bites later:</b> it tests the inside. It never proves the program starts, or that anyone can reach the page. Rearranging the code breaks the test even when nothing is wrong.</p>
+  </div>
+  <div class="opt">
+    <h3>2. Ask the app directly, with no browser</h3>
+    <p>The test hands the app a request and reads the page it returns. Very fast.</p>
+    <p class="bites"><b>Bites later:</b> it cannot see what only a browser shows, such as a button that works by script.</p>
+  </div>
+  <div class="opt">
+    <h3>3. Start the real program and fetch the page</h3>
+    <p>Proves the program starts and answers.</p>
+    <p class="bites"><b>Bites later:</b> still blind to what a browser does with the page.</p>
+  </div>
+  <div class="opt chosen">
+    <h3>4. Start the real program and open it in a real browser <span class="pick">We chose this</span></h3>
+    <p>Proves the whole chain, the way you would check it by hand.</p>
+    <p class="bites"><b>Costs:</b> the slowest, about a second, and the most setup code.</p>
+  </div>
+
+  <h3>Why the slowest one?</h3>
+  <p>Because this is the first test of the project. Its job is to prove, once, that everything is connected: the program starts, a browser reaches it, and the words appear. Later tests can use faster ways, because this one already guards the chain.</p>
+
+  <div class="box pro">
+    <span class="tag">If you have done this before</span>
+    <p>This is the "walking skeleton" idea: the first test goes end to end through the thinnest possible slice, so the tooling is forced into existence by a real need. Most later criteria should drop to way 2. Keep way 4 for a handful of journeys.</p>
+  </div>
+
+  <h2><span class="q">Question 3</span>What does the test look like?</h2>
+  <p>Read only the top of the file first. It is written to read like a table of contents.</p>
+  <p class="file">features/foundations/home/home.test.ts</p>
+<pre><code>beforeAll(async () => {
+  startFeatherbase();
+  await waitUntilFeatherbaseAnswers();
+  await openBrowser();
+});
+
+afterAll(async () => {
+  await closeBrowser();
+  stopFeatherbase();
+});
+
+test('Opening Featherbase shows "Welcome to Featherbase".', async () => {
+  const page = await openFeatherbaseInNewTab();
+  expect(await textOn(page)).toContain("Welcome to Featherbase");
+});</code></pre>
+  <p>Three blocks, and you can read each one aloud:</p>
+  <ul>
+    <li><strong>Before the tests:</strong> start Featherbase, wait until it answers, open the browser.</li>
+    <li><strong>After the tests:</strong> close the browser, stop Featherbase.</li>
+    <li><strong>The test:</strong> open Featherbase in a new tab and expect the welcome words.</li>
+  </ul>
+  <p>Notice the test's name. It is the acceptance criterion, word for word.</p>
+
+  <details>
+    <summary>Show me how each step is done</summary>
+    <div class="in">
+<pre><code>function startFeatherbase() {
+  featherbase = Bun.spawn(["bun", "start"], { env: { ...process.env, PORT: "3210" } });
+}
+
+async function waitUntilFeatherbaseAnswers() {
+  const giveUpAt = Date.now() + 3000;
+  while (!(await featherbaseAnswers())) {
+    if (Date.now() > giveUpAt) throw new Error(`Featherbase did not start at ${address}`);
+    await Bun.sleep(100);
+  }
+}
+
+function featherbaseAnswers() {
+  return fetch(address).then(
+    () => true,
+    () => false,
+  );
+}
+
+async function openBrowser() {
+  browser = await chromium.launch();
+}
+
+async function openFeatherbaseInNewTab() {
+  const page = await browser.newPage();
+  await page.goto(address);
+  return page;
+}
+
+function textOn(page: Page) {
+  return page.innerText("body");
+}
+
+async function closeBrowser() {
+  await browser?.close();
+}
+
+function stopFeatherbase() {
+  featherbase.kill();
+}</code></pre>
+      <p><code>Bun.spawn(["bun", "start"])</code> runs the command <code>bun start</code> as a separate program, exactly as you would type it in a terminal. A program needs a moment to start, so the next function asks the address every 100 milliseconds and gives up after 3 seconds with a clear message.</p>
+    </div>
+  </details>
+
+  <div class="box key">
+    <span class="tag">The habit to take away</span>
+    <p>There is not one comment in that file. Each small function has a name that says what it does, even when its body is a single line. If you feel the need to write a comment, try naming a function instead.</p>
+  </div>
+
+  <h2><span class="q">Question 4</span>What do we install?</h2>
+  <p>Only what the test needs in order to run. The test imports one outside tool, Playwright, which drives a real browser. So one package goes in:</p>
+  <p class="file">package.json</p>
+<pre><code>{
+  "name": "featherbase",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}</code></pre>
+  <p>There is no web framework, no database and no settings file. Nothing has asked for them yet. Each tool enters the project in the lesson where a test first needs it.</p>
+
+  <h2><span class="q">Question 5</span>What happens when we run it?</h2>
+  <div class="box stop">
+    <span class="tag">Predict before you look</span>
+    <p>We have a test, and no app at all. We run <code>bun test</code>. Will it pass, fail, or refuse to run? And what will the message say?</p>
+  </div>
+  <details>
+    <summary>Show the result</summary>
+    <div class="in">
+<pre class="out"><code>error: Script not found "start"
+error: Featherbase did not start at http://localhost:3210
+
+ 0 pass
+ 1 fail</code></pre>
+      <p>It fails, and it fails for the right reason. The second line is our own message, from <code>waitUntilFeatherbaseAnswers</code>. There is nothing to start, so nothing answers.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Wait. If <code>bun test</code> works, why does <code>bun start</code> not?</summary>
+    <div class="in">
+      <p><code>bun test</code> is built into Bun. It finds every file ending in <code>.test.ts</code> and runs it.</p>
+      <p><code>bun start</code> is not built in. It means "run the script named <code>start</code> in <code>package.json</code>". Ours has no scripts yet, so Bun says "Script not found". Creating it is the job of the next lesson.</p>
+    </div>
+  </details>
+
+  <h2><span class="q">Question 6</span>Why would anyone save a failing test?</h2>
+  <p>We commit now, while the test is failing. The commit message starts with the word <code>red:</code>.</p>
+  <ul>
+    <li><strong>A test that has never failed proves nothing.</strong> It might pass for the wrong reason. Seeing it fail first shows that it can tell "missing" from "present".</li>
+    <li><strong>The failure is the to-do list.</strong> It says exactly what to build next: something that answers when we run <code>bun start</code>.</li>
+    <li><strong>The history becomes a lesson.</strong> Anyone can go back to this commit, run the test and watch it fail.</li>
+  </ul>
+
+  <h3>Try it yourself</h3>
+<pre><code>git checkout b35d387
+bun install
+bunx playwright install chromium
+bun test</code></pre>
+  <p>You should see the two error lines above. If you do, you have reproduced a red.</p>
+
+  <hr>
+
+  <h2><span class="q">Check yourself</span>Close your eyes and answer, then open each one</h2>
+  <p>Answering from memory is what makes this stay. Rereading feels easier, and works much less.</p>
+  <details><summary>What is an acceptance criterion?</summary><div class="in"><p>One plain sentence saying what must be true for the work to be accepted. Here: opening Featherbase shows "Welcome to Featherbase".</p></div></details>
+  <details><summary>Name two of the three simpler ways to test the page, and how each one bites later.</summary><div class="in"><p>Calling the page's code directly tests the inside and proves nothing about starting. Asking the app with no browser cannot see what a browser does. Fetching from the started program is still blind to the browser.</p></div></details>
+  <details><summary>Why did we install only Playwright?</summary><div class="in"><p>It is the only outside tool the test imports. A tool enters when a test needs it, not before.</p></div></details>
+  <details><summary>Why commit while the test is failing?</summary><div class="in"><p>To prove the test can fail, to let the failure say what to build next, and so anyone can replay it from the history.</p></div></details>
+  <details><summary>In your own words: why are there no comments in the test file?</summary><div class="in"><p>Small functions with clear names say what each step does, so the top of the file reads like a table of contents.</p></div></details>
+
+  <div class="box key">
+    <span class="tag">Explain it to a friend</span>
+    <p>Tell someone, in three sentences and without looking, what "red" means and why it comes first. If you get stuck, that is the part to read again.</p>
+  </div>
+
+  
+<div class="next"><b>Next: Lesson 2, the least code that passes</b>Carry this question with you: what is the smallest thing you could write that turns this failure into a pass? Hint: it is smaller than you think, and it needs no new package.</div><div class="pager"><span></span><a href="lesson-2.html">Lesson 2</a></div>
+</main>
+</body>
+</html>
