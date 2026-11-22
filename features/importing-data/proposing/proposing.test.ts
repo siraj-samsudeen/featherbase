@@ -78,6 +78,18 @@ test("Only a Column that is never blank and never repeats can be chosen as the k
   expect(await columnsThatCanBeTheKeyOn(page)).toEqual(["Email", "Phone"]);
 });
 
+test("Beside each Column, Featherbase says what it saw in the cells, with a few of them as examples.", async () => {
+  for (const [cells, saw] of casesWithTheLastHeading("What Featherbase saw")) {
+    const page = await give("things.csv", aFileWithAColumnOf(cells));
+    expect(await whatFeatherbaseSawIn("Thing", page), cells).toBe(saw);
+  }
+});
+
+test('For the Column chosen as the key it says "Never blank, never repeats."', async () => {
+  const page = await give("things.csv", ["Code,Thing", "E1,Pen", "E2,Ink", "E3,Pad", "E4,Cap"]);
+  expect(await whatFeatherbaseSawIn("Code", page)).toBe("Never blank, never repeats. E1, E2, E3");
+});
+
 function savedOnWindows(lines: string[]) {
   const lastLineIsEndedToo = "";
   return [...lines.map((line) => `${line}\r`), lastLineIsEndedToo];
@@ -133,4 +145,9 @@ function typesThatCanBeChosenOn(page: Page) {
 async function columnsThatCanBeTheKeyOn(page: Page) {
   const radios = await page.getByRole("radio", { disabled: false }).all();
   return Promise.all(radios.map((radio) => radio.getAttribute("value")));
+}
+
+async function whatFeatherbaseSawIn(columnName: string, page: Page) {
+  const row = page.getByRole("region", { name: "Columns" }).locator("tbody tr", { hasText: columnName });
+  return (await row.locator("td").nth(2).innerText()).replace(/\s+/g, " ").trim();
 }
