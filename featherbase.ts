@@ -1,5 +1,5 @@
 import { html } from "@elysiajs/html";
-import { Elysia } from "elysia";
+import { Elysia, NotFoundError } from "elysia";
 import { type Table, proposalPage, tableProposedFrom } from "./features/importing-data/proposing/proposing.ts";
 import { listPage } from "./features/managing-data/browsing/browsing.ts";
 import { page } from "./page.ts";
@@ -17,6 +17,9 @@ export function createFeatherbase() {
   const tables = new Map<string, Table>();
   return new Elysia()
     .use(html())
+    .onError(({ code }) => {
+      if (code === "NOT_FOUND") return notFoundPage;
+    })
     .get("/", () => welcomePage)
     .get("/import", () => importDataPage)
     .post("/import", async ({ body }) => {
@@ -29,9 +32,10 @@ export function createFeatherbase() {
       tables.set(addressNameOf(table), table);
       return redirect(`/tables/${encodeURIComponent(addressNameOf(table))}`);
     })
-    .get("/tables/:name", ({ params, query }) => listPage(tables.get(params.name) as Table, Number(query.page ?? 1)))
-    .onError(({ code }) => {
-      if (code === "NOT_FOUND") return notFoundPage;
+    .get("/tables/:name", ({ params, query }) => {
+      const table = tables.get(params.name);
+      if (!table) throw new NotFoundError();
+      return listPage(table, Number(query.page ?? 1));
     });
 }
 
