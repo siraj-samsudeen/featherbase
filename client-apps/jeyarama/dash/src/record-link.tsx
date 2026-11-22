@@ -68,7 +68,6 @@ export const DASH_PAGES: Readonly<Record<string, (id: string) => string>> = {
   Section: id => `?view=coverage&section=${encodeURIComponent(id)}`,
   // #1218 verifier: Dash's own records open on the Dash page that shows them, never on an admin row page.
   'dash.report': id => `?report=${encodeURIComponent(id)}`,
-  'dash.business_role': id => `?view=roles&role=${encodeURIComponent(id)}`,
   'dash.report_bundle': id => `?view=access&section=bundles&bundle=${encodeURIComponent(id)}`,
 }
 /** For RecordPagesProvider: a Dash page for the record, else undefined (its Featherbase record). */

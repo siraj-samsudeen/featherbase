@@ -32,8 +32,8 @@ export const tableViewSettingsSchema = z.object({
 }).strict()
 export type TableViewSettings = z.infer<typeof tableViewSettingsSchema>
 /** The keys "Reset to the Table's Default" clears from a person's own settings for a Table: the view the default
- *  sets, and the person-only Show Retired and board grouping. Their form arrangement stays. */
-export const VIEW_SETTING_KEYS = ['layout', 'shownCols', 'hiddenCols', 'sort', 'compact', 'links', 'showRetired', 'groupBy'] as const
+ *  sets, and the person-only Show Retired, board grouping and hidden Click To Narrow. Their form arrangement stays. */
+export const VIEW_SETTING_KEYS = ['layout', 'shownCols', 'hiddenCols', 'sort', 'compact', 'links', 'showRetired', 'groupBy', 'narrowHidden'] as const
 
 /** GET /api/table_view_default/:table: the Table's default view, or none; who set it and when. */
 export interface TableViewDefault { id: string; settings: TableViewSettings; by: string; at: string; undoes?: string }

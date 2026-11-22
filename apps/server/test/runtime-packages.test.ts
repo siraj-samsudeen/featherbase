@@ -244,7 +244,8 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         await writeFile(resolve(root, 'featherbase.json'), JSON.stringify({ ...manifest, migrations: migrations.slice(0, index + 1) }))
       }
       const rows = await sql`select name, package_version, migration_ledger from installed_app where name = 'other'`
-      const expected = [{ name: 'other', from: '0.0.1', to: '1.10.0', ownsClient: true, migrations }]
+      // #1340: with the Tables the app hands to Featherbase's pages, none here.
+      const expected = [{ name: 'other', from: '0.0.1', to: '1.10.0', ownsClient: true, featherbase: [], migrations }]
       expect(await shippedUpgrades(rows, roots)).toEqual(expected)
       expect(await shippedUpgrades(rows, [...roots].reverse())).toEqual(expected)
       expect(await sql`select package_version, migration_ledger from installed_app where name = 'other'`)
@@ -940,11 +941,16 @@ describe('An app declares its phone tabs', () => {
         .toEqual(['/other/', '/other/checks/open', '/other/targets'])
       expect(inventory.tables.map((t) => t.row_id)).toContain('other.task')
 
-      // An app-only reader never acquires Admin simply by asking for its
-      // inventory, even though the app's own catalogue is open to them.
+      // #1385: an app-only reader's inventory is their apps, the apps' tabs
+      // and their account pages: never a Table or an Admin page.
       const appOnly = await createUser({ roles: [] })
       expect(await appOnly.get('/api/app_catalog')).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'other' })]))
-      await expectStatus(await appOnly.fetch('/api/command_destinations'), 403)
+      const own = await appOnly.get<Inventory & { pages: { kind: string }[] }>('/api/command_destinations')
+      expect(own.tables).toEqual([])
+      expect(own.pages.filter((p) => p.href.startsWith('/other/')).map((p) => p.href).sort())
+        .toEqual(['/other/', '/other/checks/open', '/other/targets'])
+      expect(own.pages.filter((p) => p.href.startsWith('/featherbase/admin'))).toEqual([])
+      expect(new Set(own.pages.map((p) => (p as { kind?: string }).kind))).toEqual(new Set(['App', 'App tab', 'Account']))
 
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
       const disabled = await admin.get<Inventory>('/api/command_destinations')

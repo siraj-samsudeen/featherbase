@@ -24,8 +24,9 @@ the period and why the reader sees that store. Readers never see internal codes:
 names stores without plant codes. The page opens each Dive's latest saved version: no version is
 pinned anywhere, so saving a Dive on MotherDuck releases it (#937). The Dive is the report: Dash
 copies no figures into Featherbase (#1366), so a Dive that can't load says "This report couldn't
-open" with Try again. A Dive not up within 15 s (`DIVE_READY_TIMEOUT_MS`) keeps loading out of sight
-behind that message; if it then says it is ready, the page switches to it in the same frame. A frame
+open" with Try Again; a request that got no answer at all (it failed on the way or ran out of
+time) says "Couldn't reach Dash. Check your connection, then Try Again." instead (#1391). A Dive not
+up within 15 s (`DIVE_READY_TIMEOUT_MS`) keeps loading out of sight behind that message; if it then says it is ready, the page switches to it in the same frame. A frame
 that errors stays failed (#1143). Every report a reader opens is one `view_report` row in the Access
 Log, written when its Dive's session is opened (#1366).
 
@@ -204,6 +205,8 @@ at the repository root.
     own plain `http(s)` origin) goes only to a Dive that says when it has drawn. Once MotherDuck
     answers a session, it writes the reader's `view_report` Access Log row (as `embed_open` does
     for a report taking no filter); a refused or failed open writes none.
+    A failed open logs `dash_embed_session_failed` with the person, the report key, the Dive id, the
+    status and MotherDuck's answer (`body`), cut to 500 characters with every secret blanked (#1391).
 
   `stores`, `report` and `embed_session` are `person_scope` reads for the three app roles.
 - **Settings:** `embed_service_account` (optional: without it a report says "This report couldn't

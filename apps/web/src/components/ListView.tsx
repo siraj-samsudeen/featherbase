@@ -1,4 +1,5 @@
 import { useFitToWindow } from '../lib/fit-to-window'
+import { ModuleCrumb } from './ModuleCrumb'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
@@ -22,7 +23,7 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { ChecklistSwitch } from './ChecklistView'
 import { MoreColumnsHint, OneLine, useMoreToTheRight } from './list-one-line'
 import { Button, EmptyState, NARROW_QUERY, Notice, PageHeader, ProblemPage, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses, useMediaQuery, raisedClasses, headCellClasses, RowDensityContext, Segmented, TABLE_CLASSES } from '@featherbase/shop-floor'
-import { ChevronDown } from '@featherbase/shop-floor'
+import { ChevronDown, PanelLeft } from '@featherbase/shop-floor'
 import { Columns3, ListTree } from 'lucide-react'
 import { tableCanRetire } from './RowRetirement'
 import { PurgeDialog, tableCanPurge } from './PurgeDialog'
@@ -31,11 +32,15 @@ import { fmtCount, fmtINR, menuItemClasses, MENU_GROUP_CLASSES, MENU_HEADING_CLA
 import { failureMessage } from '../lib/import-run'
 import { ImportConflicts } from './ImportConflicts'
 import { ActionDisclosure } from './ActionDisclosure'
+import { AppRecordActions } from './AppRecordActions'
+import { useListFacts } from '../lib/record-facts'
 import { RenameTable } from './RenameTable'
 import { ArchiveTable, ArchivedBanner, canArchive } from './ArchiveTable'
 import { rememberListPlace } from './RecordNav'
 import { FilterBar, FilterChips, ListSearch, StandardFilters, hasFieldBoxes, heldByBoxes, type Filter } from './ListFilters'
 import { SavedViewsBar } from './SavedViewsBar'
+import { NarrowPanel, NarrowPickWords, useNarrowLists } from './NarrowPanel'
+import { setPick, splitPicks } from '../lib/narrow'
 import { LayoutSwitch } from './LayoutSwitch'
 import { RecordCards } from './RecordCards'
 import { RecentStrip } from './RecentStrip'
@@ -109,7 +114,8 @@ export function ListView({
 }: {
   table: string
   filters: Filter[]
-  onFiltersChange?: (filters: Filter[]) => void
+  /** `replace`: a Click To Narrow tick, which narrows in place rather than adding a step (#1289). */
+  onFiltersChange?: (filters: Filter[], how?: { replace?: boolean }) => void
   breadcrumb?: ReactNode
   /** The page's heading in place of the Table's name. */
   title?: ReactNode
@@ -193,6 +199,9 @@ export function ListView({
   const [confirmingDefault, setConfirmingDefault] = useState(false)
   // Bumped by Reset, so this person's settings load again from what the server now holds.
   const [settingsEpoch, setSettingsEpoch] = useState(0)
+  // #1289 option C: Click To Narrow sits left of the table unless this person hid it here.
+  const [narrowHidden, setNarrowHidden] = useState(false)
+  const [narrowSheet, setNarrowSheet] = useState(false)
   // #1289: Save View… in the View menu opens the saved views' name form.
   const [namingView, setNamingView] = useState(false)
   const [viewMenuOpen, setViewMenuOpen] = useState(false)
@@ -315,7 +324,7 @@ export function ListView({
     setArrangement({ shownCols: [], hiddenCols: [] })
     setShowRetired(false)
     api
-      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[]; compact?: boolean; showRetired?: boolean } | null }>(
+      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[]; shownCols?: string[]; compact?: boolean; showRetired?: boolean; narrowHidden?: boolean } | null }>(
         `/api/user_settings/${encodeURIComponent(table)}`,
       )
       .then((res) => {
@@ -326,6 +335,7 @@ export function ListView({
         setSort(s.sort ?? null)
         setOwnCompact(typeof s.compact === 'boolean' ? s.compact : undefined)
         setShowRetired(s.showRetired === true)
+        setNarrowHidden(s.narrowHidden === true)
         setArrangement({
           shownCols: Array.isArray(s.shownCols) ? s.shownCols : [],
           hiddenCols: Array.isArray(s.hiddenCols) ? s.hiddenCols : [],
@@ -345,7 +355,7 @@ export function ListView({
   // Persist settings whenever the user changes them (after the initial load).
   // A save that fails is said, not swallowed (#546): the change still shows
   // now, but the list would open the old way next time.
-  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement>; compact?: boolean; showRetired?: boolean }) {
+  function persist(next: { sort?: typeof sort; arrangement?: Required<ColumnArrangement>; compact?: boolean; showRetired?: boolean; narrowHidden?: boolean }) {
     // A change before this person's saved settings arrive is not saved: what they saved wins.
     if (!settingsLoaded) return
     const token = getToken()
@@ -432,6 +442,36 @@ export function ListView({
   }, [knownTotal, start])
 
   const rows = list.isError ? [] : list.data?.data ?? []
+  // #1340: what the app describing this Table says about the rows shown: its columns after the Table's own, and its
+  // Record actions. Nothing when no app describes it, or not to this viewer.
+  const listFacts = useListFacts(table, rows.map((r) => String(r.row_id)), Boolean(meta.data) && !list.isPending)
+  const described = listFacts.data ?? null
+  const factColumns = compact ? [] : described?.facts.columns ?? []
+  // #1289 option C: Click To Narrow, on a list whose filters the person changes.
+  const narrowLists = useNarrowLists(table, meta.data, Boolean(onFiltersChange))
+  const narrowPicks = narrowLists && narrowLists.length ? splitPicks(narrowLists, filters) : null
+  // One green chip per picked value, as board A draws them; removing one keeps the list's other picks.
+  // A saved view or a recent filter is a step of the walk, so it pushes (no `replace`).
+  const applyFilters = (next: Filter[]) => onFiltersChange?.(next)
+  const pickedChips = narrowPicks && narrowLists && onFiltersChange
+    ? new Map(narrowPicks.owner.flatMap((i, k) => {
+      if (i === null) return []
+      const list = narrowLists[i]
+      const picked = narrowPicks.picks[i]
+      const values: (string | null)[] = picked === 'none' ? [null] : picked ?? []
+      return [[k, values.map((v) => ({
+        key: v ?? '\u0000none',
+        name: list.label,
+        words: <NarrowPickWords list={list} value={v} />,
+        onRemove: () => onFiltersChange(setPick(narrowLists, filters, i, v === null || !Array.isArray(picked) ? null : picked.filter((x) => x !== v)), { replace: true }),
+      }))] as const]
+    }))
+    : undefined
+  const narrowPanel = (columns: 1 | 2, className?: string) => onFiltersChange && narrowLists && narrowLists.length > 0 && (
+    <NarrowPanel table={table} lists={narrowLists} filters={filters} baseFilters={baseFilters} withRetired={withRetired} refreshedAt={list.dataUpdatedAt}
+      onFiltersChange={(next) => onFiltersChange(next, { replace: true })} columns={columns} className={className} />
+  )
+  const narrowBeside = !narrow && !narrowHidden && Boolean(narrowLists?.length)
 
   // #1259: with a record open beside or over the list, ↑/↓ move to the next or previous row and the record
   // follows; #1343 made that the path's walk (useWalkKeys), in the list's order across its pages. Closing the record
@@ -502,6 +542,13 @@ export function ListView({
     // Not yet loaded is not empty: "No rows" would alarm someone whose
     // Table holds data (#871, a list reopened after its rename).
     'Loading…'
+  ) : filters.length && onFiltersChange ? (
+    // #1289 option C: the person's filters (or Click To Narrow picks) left nothing; the Table is not empty.
+    <EmptyState
+      title="No Rows Match These Filters"
+      body="Take a filter off, or clear them all."
+      action={<Button onClick={() => onFiltersChange([], { replace: true })} data-testid="list-empty-clear">Clear All Filters</Button>}
+    />
   ) : empty ?? (
     // #1242 (admin-lists 9): an empty Table shows the way forward (TLC-J1.2):
     // New, and Import data for those who may import.
@@ -552,7 +599,7 @@ export function ListView({
     || JSON.stringify(shownSort) !== JSON.stringify(td.sort ?? null)
     || compact !== (td.compact ?? false)
     || shownLinks.as !== (td.links?.as ?? 'sections') || shownLinks.fields !== (td.links?.fields ?? true)
-    || showRetired)
+    || showRetired || narrowHidden)
   // On a phone the saved layout is the person's own desktop choice, else the default's: never the phone's Table.
   const ownLayout = ownSettings.data?.settings?.layout
   const savedLayout = phoneWidth
@@ -706,9 +753,7 @@ export function ListView({
       <PageHeader
         className="mb-2"
         breadcrumb={breadcrumb ?? <div className="text-xs text-ink-subtle" data-testid="list-breadcrumb">
-            <Link to="/featherbase/admin" className="hover:text-ink">
-              {meta.data?.module || 'Home'}
-            </Link>
+            <ModuleCrumb meta={meta.data} className="hover:text-ink" />
             {' / '}
             {label}
           </div>}
@@ -762,6 +807,7 @@ export function ListView({
               New {titleWords(label)}
             </Link>
           )}
+          {described?.facts.actions?.length ? <AppRecordActions described={described} table={table} /> : null}
           {/* #1242 (admin-lists 2): one ⋯ More for what is not the page's own action. */}
           {(hasListActions || hasTableAdministration) && <ActionDisclosure label="More">
           {hasListActions && <div role="group" aria-label="List actions" className={MENU_GROUP_CLASSES}>
@@ -944,8 +990,8 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? onFiltersChange} naming={namingView} onNamingChange={setNamingView} />}
-      {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={onFiltersChange} />}
+      {onFiltersChange && <SavedViewsBar table={table} filters={filters} layout={layout} onApply={onApplyView ?? applyFilters} naming={namingView} onNamingChange={setNamingView} />}
+      {onFiltersChange && <RecentStrip table={table} meta={meta.data} withRetired={withRetired} onApply={applyFilters} />}
       {/* #1017: filters, Add filter and the list's layouts share a line, so the rows start high up. */}
       {/* #1289: the filters (and their chips) wrap inside the left part, so the view tools keep the first line. */}
       {/* #1348 (UI owner): at phone width the view tools wrap under the search; they never cover it. */}
@@ -960,7 +1006,14 @@ export function ListView({
               <ChevronDown aria-hidden data-chevron size={18} />
             </Button>
             {/* #1289: the active filters as big chips, in this same row. */}
-            <FilterChips meta={meta.data} filters={filters} onChange={onFiltersChange} held={heldByBoxes(meta.data, filters)} />
+            {/* #1289 option C: on a phone Click To Narrow is a sheet, opened from here. */}
+            {narrow && Boolean(narrowLists?.length) && (
+              <Button aria-expanded={narrowSheet} onClick={() => setNarrowSheet(true)} data-testid="narrow-sheet-open" className="whitespace-nowrap">Narrow By</Button>
+            )}
+            <FilterChips meta={meta.data} filters={filters} onChange={onFiltersChange} held={heldByBoxes(meta.data, filters)}
+              picked={pickedChips} onSaveView={filters.length ? () => setNamingView(true) : undefined}
+              onClearAll={narrowPicks && narrowPicks.base.length === 0 ? () => onFiltersChange([], { replace: true }) : undefined}
+              flow />
           </>
         )}
         </div>
@@ -985,6 +1038,13 @@ export function ListView({
               />
               Show Retired
             </label>
+          )}
+          {/* #1289 option C: Click To Narrow shows or hides, remembered for this person and Table. */}
+          {!narrow && Boolean(narrowLists?.length) && (
+            <Button aria-pressed={!narrowHidden} aria-label="Click To Narrow" title="Click To Narrow" data-testid="narrow-toggle" onClick={() => {
+              setNarrowHidden(!narrowHidden)
+              persist({ narrowHidden: !narrowHidden })
+            }} className={iconToggle(!narrowHidden)}><PanelLeft aria-hidden size={18} /></Button>
           )}
           {/* #1242 (admin-lists 2-3): the other ways to see this Table. */}
           <ActionDisclosure label="View" open={viewMenuOpen} onOpenChange={setViewMenuOpen}>
@@ -1193,6 +1253,10 @@ export function ListView({
           )}
         </div>
       )}
+      {/* #1289 option C (board A): the panel left of the rows, 18px apart. */}
+      <div className={narrowBeside ? 'flex items-start gap-[18px]' : undefined}>
+      {narrowBeside && narrowPanel(2, 'min-w-[300px] flex-[0_1_576px]')}
+      <div className={narrowBeside ? 'min-w-0 flex-[1_1_520px]' : undefined}>
       {treeOn ? (
         <div className="flex min-h-0 items-start gap-3" data-testid="list-tree">
           <div className={cardClasses('min-w-0 flex-1 p-3')}>
@@ -1297,6 +1361,12 @@ export function ListView({
                   </button>
                 </th>
               ))}
+              {/* #1340: the app's columns, after the Table's own; worked out, so not sortable. */}
+              {factColumns.map((c) => (
+                <th key={`fact-${c.key}`} className={headCellClasses({ className: 'text-left' })} data-testid={`fact-col-${c.key}`}>
+                  <OneLine className="max-w-80">{c.label}</OneLine>
+                </th>
+              ))}
               {/* Takes the spare width, so columns stay as wide as their content. */}
               <td aria-hidden className={headCellClasses({ last: true, className: 'w-full p-0' })} />
             </tr>
@@ -1321,13 +1391,15 @@ export function ListView({
                 inPane={paneRow === String(row.row_id)}
                 onOpenPane={openPane}
                 titleOpensPane={Boolean(onRowOpen)}
+                factColumns={factColumns}
+                facts={described?.facts.rows[String(row.row_id)]?.facts}
               />
             ))}
             {!rows.length && (
               <tr>
                 <td
                   colSpan={
-                    columns.length + 1 +
+                    columns.length + 1 + factColumns.length +
                     (expandable ? 1 : 0) +
                     (isRowsReadOnly(meta.data) ? 0 : 1)
                   }
@@ -1371,6 +1443,26 @@ export function ListView({
         </button>
         </>}
       </div>
+      </div>
+      </div>
+      {narrowSheet && narrow && (
+        <div className="fixed inset-0 z-50 bg-scrim/40" onClick={() => setNarrowSheet(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Narrow By"
+            className="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col gap-3 rounded-t-card bg-surface p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="narrow-sheet"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-ink">Narrow By</h2>
+              <Button onClick={() => setNarrowSheet(false)} data-testid="narrow-sheet-done">Done</Button>
+            </div>
+            <div className="min-h-0 overflow-y-auto">{narrowPanel(1)}</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

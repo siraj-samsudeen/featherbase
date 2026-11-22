@@ -1,4 +1,4 @@
-// mcp-oauth-connect (#1207, items 10-11): Connected apps, the person's own
+// mcp-oauth-connect (#1207, items 10-11): Connected Apps, the person's own
 // account page listing the agents they connected, with Disconnect. The agents
 // connect for real through the MCP SDK's OAuth client
 // (server/test/agent-oauth-driver), against the in-process server.

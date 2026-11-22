@@ -282,6 +282,24 @@ function StepRows({ from, fromFilters, option, picked, search, next, onPick, onS
   )
 }
 
+/** How many rows each step of a chain holds for this viewer, as a chip's
+ *  tooltip: "Vehicle: 1 linked · …". Undefined until every count is read. */
+export function useChainCountTip(steps: ChainStep[]): string | undefined {
+  const tables = chainTables(steps)
+  const metas = useQueries({ queries: tables.map((t) => ({ ...metaQuery(t), retry: false })) })
+  const metaOf = (t: string) => metas[tables.indexOf(t)]?.data
+  const counts = useQueries({
+    queries: steps.map((step, i) => ({
+      queryKey: ['linked-chip-count', step.table, JSON.stringify(stepFilters(steps, i))],
+      retry: false,
+      queryFn: () => api.post<{ count: number }>('/api/dashboard/count', { table: step.table, filters: stepFilters(steps, i) }),
+    })),
+  })
+  return steps.every((_, i) => counts[i]?.data)
+    ? steps.map((s, i) => `${tableLabel(s.table, metaOf(s.table))}: ${fmtCount(counts[i]!.data!.count)} linked`).join(' · ')
+    : undefined
+}
+
 /** A Linked to chain as its chip reads, in the same words as the path bar
  *  (chainText). How many rows each step holds for this viewer is its tooltip. */
 export function LinkedFilterWords({ chain }: { chain: NonNullable<ReturnType<typeof parseChain>> }) {
@@ -292,16 +310,7 @@ export function LinkedFilterWords({ chain }: { chain: NonNullable<ReturnType<typ
   const names = useRowNames(refs)
   // A filter names its rows by their titles, as every filter does (#792): never an id.
   const nameOf = (r: { table: string; row_id: string }) => filterRowName(names[refs.findIndex((x) => x.table === r.table && x.row_id === r.row_id)])
-  const counts = useQueries({
-    queries: chain.steps.map((step, i) => ({
-      queryKey: ['linked-chip-count', step.table, JSON.stringify(stepFilters(chain.steps, i))],
-      retry: false,
-      queryFn: () => api.post<{ count: number }>('/api/dashboard/count', { table: step.table, filters: stepFilters(chain.steps, i) }),
-    })),
-  })
-  const tip = chain.steps.every((_, i) => counts[i]?.data)
-    ? chain.steps.map((s, i) => `${tableLabel(s.table, metaOf(s.table))}: ${fmtCount(counts[i]!.data!.count)} linked`).join(' · ')
-    : undefined
+  const tip = useChainCountTip(chain.steps)
   return (
     <span data-testid="linked-words" title={tip}>
       {chainText(chain, (t) => tableLabel(t, metaOf(t)), nameOf, metaOf)}

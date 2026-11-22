@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -17,11 +17,14 @@ import { AppSwitcher, useOpenAdmin } from './AppSwitcher'
 import { Logo } from './Logo'
 import { KeyboardShortcutsItem, ShortcutTeachingHost } from './ShortcutTeaching'
 import { ViewAsBanner, ViewAsButton } from './ViewAs'
-import { RecordLink, TabBar, buttonClasses, iconButtonClasses, labelClasses, menuItemClasses, touchRowClasses, useMediaQuery, raisedClasses } from '@featherbase/shop-floor'
+import { RecordLink, TabBar, buttonClasses, iconButtonClasses, labelClasses, menuItemClasses, touchRowClasses, useMediaQuery, raisedClasses , useTopLayer } from '@featherbase/shop-floor'
 import { CircleHelp, List, Menu, Monitor, Moon, Sun, type LucideIcon } from '@featherbase/shop-floor'
 import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSidebarKeys, offerPickerSlot, usePickerSlot, useSidebar, useSidebarSlots } from '../lib/sidebar-collapsed'
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
+import { CommandField, CommandPalette } from './CommandPalette'
+import { NotificationBell, SidebarRecall, SidebarSavedViews } from './SidebarDefaults'
+import { SidebarRailContext } from './SidebarRail'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's
@@ -155,8 +158,6 @@ export function TopBar({
   forPerson,
   left,
   children,
-  beforeRight,
-  command,
 }: {
   /** #650: the bar over an installed app's own page (the bar bundle): the app
    *  the page belongs to, on whatever address it is opened. The app's page
@@ -170,10 +171,6 @@ export function TopBar({
   left?: ReactNode
   /** The Admin menus, between the name and the right side. */
   children?: ReactNode
-  /** Admin-only indicators that lead the right side (the notification bell). */
-  beforeRight?: ReactNode
-  /** #1253: the Admin's "Search or Command" field, under the switcher in the sidebar. */
-  command?: ReactNode
 }) {
   const address = useBarContext(app ? app.name : home)
   const { brand } = address
@@ -228,6 +225,9 @@ export function TopBar({
   const pickerSlot = usePickerSlot()
   const drawer = useMediaQuery(SIDEBAR_DRAWER_QUERY)
   const rail = sidebar.collapsed && !drawer
+  // #1385: Search or Command is the platform's: every page with a sidebar, the
+  // Admin's and every app's, draws the same field and command bar (⌘K).
+  const [commandOpen, setCommandOpen] = useState(false)
   const switcher = left ?? (caps && context && name
     ? <AppSwitcher app={switcherApp} place={rail ? 'rail' : 'sidebar'} />
     : context && name && <BarName href={homeHref(context)} name={name} />)
@@ -263,17 +263,27 @@ export function TopBar({
           <div className="relative flex justify-end" data-testid="page-pickers"><BarControls app={controlsOf!} /></div>,
           pickerSlot,
         )}
+        {/* #1385: the bell is the platform's, for someone who can use the Admin (its notifications are there). */}
         {createPortal(
           <div className={rail ? 'flex flex-col items-center gap-1 px-2 pb-2 pt-3' : 'flex flex-col gap-2 px-2 pb-2 pt-3'} data-testid="sidebar-top">
             <div className={rail ? 'contents' : 'flex min-w-0 items-center gap-1'}>
               <div className={rail ? 'contents' : 'min-w-0 flex-1'}>{switcher}</div>
               {/* #1222: View as, an action, at the top beside the bell (Ctrl+Shift+K everywhere). */}
               {caps && <ViewAsButton compact place={rail ? 'rail' : 'sidebar'} />}
-              {!rail && caps && beforeRight}
+              {!rail && canUseAdmin && <NotificationBell />}
             </div>
-            {caps && command}
+            {caps && <CommandField rail={rail} onOpen={() => setCommandOpen(true)} />}
           </div>,
           slots.top,
+        )}
+        {/* #1385 (slice 2): below an app's own rows, the platform's recall, as in the Admin.
+            They list Admin destinations: only someone who can use the Admin gets them. */}
+        {canUseAdmin && slots.defaults && createPortal(
+          <SidebarRailContext.Provider value={rail}>
+            <SidebarRecall />
+            <SidebarSavedViews />
+          </SidebarRailContext.Provider>,
+          slots.defaults,
         )}
         {caps && createPortal(
           // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen.
@@ -284,6 +294,8 @@ export function TopBar({
           </div>,
           slots.foot,
         )}
+        {/* #1385: the command bar, in the bar's own tree (an app's bar draws in its own shadow root). */}
+        {caps && <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />}
         {/* #1251: the shortcut teaching, once per page (Admin and apps alike). */}
         {caps && <ShortcutTeachingHost />}
         {phoneTabs}
@@ -318,7 +330,6 @@ export function TopBar({
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:gap-2" data-testid="top-bar-right">
           {caps && (
             <>
-              {beforeRight}
               {offerAdmin && !isPhone && <OpenAdminButton />}
               <ViewAsButton compact={isPhone} />
               {!isPhone && <ThemeToggle />}
@@ -563,6 +574,9 @@ function AccountMenu({ inMenu, inSidebar }: {
   const place = !inSidebar
     ? 'right-0 top-full mt-1'
     : inSidebar.rail ? 'bottom-0 left-full ml-2' : 'bottom-full left-0 mb-1'
+  // Above the page, an app's panels and iframes included (useTopLayer).
+  const menu = useRef<HTMLDivElement>(null)
+  useTopLayer(open, menu, wrapper, !inSidebar ? 'below-end' : inSidebar.rail ? 'right-end' : 'above-start')
   return (
     <div className={named ? 'relative min-w-0 flex-1' : 'relative'} ref={wrapper}>
       <button
@@ -591,7 +605,7 @@ function AccountMenu({ inMenu, inSidebar }: {
         <span className="sr-only">{t('Account')}: {shown}</span>
       </button>
       {open && (
-        <div id={menuId} className={raisedClasses(`absolute ${place} z-40 w-64 overflow-hidden p-1.5`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
+        <div ref={menu} id={menuId} className={raisedClasses(`absolute ${place} z-40 w-64 overflow-hidden p-1.5`)} data-testid="account-menu" role="menu" aria-label={t('Account')}>
           <div className="px-3 py-2 text-sm" data-testid="account-identity">
             {/* #1227: a record shown is a RecordLink — the person's own Person record, for
                 someone who may open it (a System Manager, or a reader of Person). */}
@@ -626,7 +640,7 @@ function AccountMenu({ inMenu, inSidebar }: {
             data-testid="account-sign-in-methods"
             className={MENU_ITEM}
           >
-            {t('Sign-in methods')}
+            {t('Sign-In Methods')}
           </Link>
           <Link
             role="menuitem"
@@ -635,7 +649,7 @@ function AccountMenu({ inMenu, inSidebar }: {
             data-testid="account-connected-apps"
             className={MENU_ITEM}
           >
-            {t('Connected apps')}
+            {t('Connected Apps')}
           </Link>
           {user && (
             <Link
@@ -647,11 +661,11 @@ function AccountMenu({ inMenu, inSidebar }: {
               className={MENU_ITEM}
             >
               {/* #1224's verifier: the menu uses the page's own words. */}
-              {t('What you can see')}
+              {t('What You Can See')}
             </Link>
           )}
           <button role="menuitem" type="button" onClick={() => void signOutNow()} data-testid="logout" className={MENU_ITEM}>
-            {t('Log out')}
+            {t('Log Out')}
           </button>
         </div>
       )}
@@ -670,6 +684,10 @@ function FootMenu({ label, icon: Icon, testid, children }: {
   const wrapper = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
   const menuId = useId()
+  // Above the page (useTopLayer), anchored as before to the foot row's left edge.
+  const menu = useRef<HTMLDivElement>(null)
+  const footRow = useCallback(() => wrapper.current?.closest<HTMLElement>('[data-testid=sidebar-account]') ?? wrapper.current, [])
+  useTopLayer(open, menu, footRow, 'above-start')
   useEffect(() => {
     if (!open) return
     function onDown(e: MouseEvent) {
@@ -705,7 +723,7 @@ function FootMenu({ label, icon: Icon, testid, children }: {
         <Icon aria-hidden size={16} />
       </button>
       {open && (
-        <div id={menuId} className={raisedClasses('absolute bottom-full left-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
+        <div ref={menu} id={menuId} className={raisedClasses('absolute bottom-full left-0 z-40 mb-1 w-60 overflow-hidden py-1')} data-testid={`${testid}-menu`}>
           {children}
         </div>
       )}

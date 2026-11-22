@@ -89,22 +89,56 @@ And Tasker is offered beside it
 ### Requirement: An address nothing answers says so
 
 An address the server cannot open as an app SHALL lead to the shared page that
-says nothing is available there, under the top bar, in the person's theme. The
-address is repeated as text only. That an app is turned off is said only to
-someone who could use it; signed out, or without access, nothing tells whether
-an app exists. The page offers one way forward (#1328).
+says nothing is available there. Signed in, it is the message in the white
+panel of the person's own frame; signed out, the page alone. The address is
+repeated as text only. That an app is turned off is said only to someone who
+could use it; signed out, or without access, nothing tells whether an app
+exists. The page offers one way forward (#1328).
 
 #### Scenario: A mistyped address
 
 - **WHEN** an administrator opens `/equipment/`
-- **THEN** the page reads "Nothing is available at /equipment/" with "Go to Featherbase"
+- **THEN** the page reads "Nothing Is Available at /equipment/" with "Go to Featherbase", in the sidebar's frame
 
 #### Scenario: An app that is turned off
 
 - **WHEN** an administrator opens a turned-off app's address
-- **THEN** the page reads "<App> is turned off" and asks them to ask their system manager
+- **THEN** the page reads "<App> Is Turned Off" and asks them to ask their System Manager
 
 #### Scenario: Signed out
 
 - **WHEN** someone signed out opens a turned-off app's address
-- **THEN** the page reads "Nothing is available at" that address, with no top bar, exactly as for an address no app has
+- **THEN** the page reads "Nothing Is Available at" that address, with no frame, exactly as for an address no app has
+
+### Requirement: Every page offers Search or Command
+
+Every signed-in page with a sidebar, the Admin's and every app's, SHALL offer the same Search or Command field at the top of its sidebar, opened by the same ⌘K / Ctrl+K (never with Shift, which is View As). The command bar SHALL offer only what the viewer can open: someone who cannot use the Admin finds their apps, the apps' tabs and their account pages, and no Table, record or Admin page (#1385).
+
+#### Scenario: An app's page
+
+- **WHEN** someone who can use the Admin presses Ctrl+K on an app's page and types a Table's name
+- **THEN** the command bar opens and lists that Table
+
+#### Scenario: Someone who cannot use the Admin
+
+- **WHEN** someone who can open only an app searches the command bar for that app
+- **THEN** it lists the app and their account pages, and no Table or Admin page
+
+#### Scenario: View As keeps its key
+
+- **WHEN** someone presses Ctrl+Shift+K
+- **THEN** the command bar stays closed
+
+### Requirement: Every sidebar carries the platform's defaults
+
+For someone who can use the Admin, the Admin's sidebar and every app's SHALL carry the platform's defaults: the bell, Recently Opened, Frequent and Saved Views, in an app drawn by the platform below the app's own rows, each opening by address. Someone who cannot use the Admin SHALL get none of them, and the page SHALL ask for none of them (#1385).
+
+#### Scenario: Recently Opened on an app's page
+
+- **WHEN** someone who can use the Admin opens a Table, then an app's page
+- **THEN** the app's sidebar lists that Table under Recently Opened, and choosing it loads the Table's page
+
+#### Scenario: No defaults without the Admin
+
+- **WHEN** someone who can open only an app opens its page
+- **THEN** its sidebar has no bell, no Recently Opened and no Saved Views, and the page asks for neither list

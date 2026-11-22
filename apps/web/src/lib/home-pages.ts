@@ -32,3 +32,14 @@ export function useHomePages() {
     queryFn: () => api.get<{ pages: HomePage[] }>('/api/home_pages'),
   })
 }
+
+/**
+ * #1340 (verifier round 4): the home page a Table's module crumb opens: the page that lists the Table, else its
+ * module's page (as the sidebar marks it). None while they load or when there is none: the crumb opens Admin's home.
+ */
+export function useModuleHomePage(meta: { name: string; module?: string | null } | undefined): string | undefined {
+  const pages = useHomePages().data?.pages ?? []
+  if (!meta) return undefined
+  return (pages.find((p) => p.cards.some((card) => card.links.some((link) => link.link_to === meta.name)))
+    ?? pages.find((p) => p.module && p.module === meta.module))?.row_id
+}

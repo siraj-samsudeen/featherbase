@@ -11,8 +11,8 @@ import { AreaCards } from './my-store-page'
 import { RECORD, RecordLink } from './record-link'
 import { AlsoWith, ReviewerIdentity, ReviewerNames, type Reviewer } from './person-identity'
 
-export type DashView = 'report' | 'sections' | 'approvals' | 'access' | 'unplaced' | 'department' | 'store' | 'coverage' | 'roles' | 'explain' | 'changes'
-const VIEWS: readonly string[] = ['sections', 'approvals', 'access', 'unplaced', 'department', 'store', 'coverage', 'roles', 'explain', 'changes']
+export type DashView = 'report' | 'sections' | 'approvals' | 'access' | 'unplaced' | 'department' | 'store' | 'coverage' | 'roles-grid' | 'explain' | 'changes'
+const VIEWS: readonly string[] = ['sections', 'approvals', 'access', 'unplaced', 'department', 'store', 'coverage', 'roles-grid', 'explain', 'changes']
 export function currentView(search = window.location.search): DashView {
   const view = new URLSearchParams(search).get('view')
   return view && VIEWS.includes(view) ? view as DashView : 'report'
@@ -181,7 +181,7 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
     <span className="fd-sidebar-group" data-testid="your-work-group">Your work</span>,
     <a href={SECTIONS_ADDRESS} {...here('sections')}>
       <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
-      <span>Your sections</span>
+      <span>Your Sections</span>
     </a>,
     (waiting > 0 || current === 'approvals') && (
       <a href={APPROVALS_ADDRESS} {...here('approvals')} data-testid="approvals-link">
@@ -217,14 +217,10 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
     (manages || current === 'access') && (
       <a href={ACCESS_ADDRESS} {...here('access')} data-testid="access-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m13 10v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></svg>
-        <span>Report access</span>
+        <span>Report Access</span>
       </a>
     ),
     ...(managesRoles ? [
-      <a key="roles" href="?view=roles" {...here('roles')} data-testid="roles-link">
-        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /></svg>
-        <span>Business Roles</span>
-      </a>,
       <a key="explain" href="?view=explain" {...here('explain')} data-testid="explain-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8m-7 9a7 7 0 0 1 14 0" /></svg>
         <span>Explain A Person</span>
@@ -232,6 +228,11 @@ export function DashSidebar({ current, count, refresh = 0 }: { current: DashView
       <a key="changes" href="?view=changes" {...here('changes')} data-testid="changes-link">
         <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M7 7h13l-4-4M17 17H4l4 4" /></svg>
         <span>Who Would Gain Or Lose Access</span>
+      </a>,
+      // #1340: the business roles themselves are set up in Featherbase, on its own pages.
+      <a key="roles" href="/featherbase/admin/table/dash.business_role" data-testid="roles-link">
+        <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /></svg>
+        <span>Business Roles ↗</span>
       </a>] : []))
 }
 
@@ -265,7 +266,7 @@ export function useAnswer<T>(name: string) {
 
 export const Loading = () => <div className="flex flex-col gap-3" data-testid="loading"><Skeleton label="Opening your sections" lines={6} /></div>
 export const LoadFailed = ({ onRetry }: { onRetry: () => void }) => (
-  <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={onRetry}>Try again</Button>} /></Card>
+  <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={onRetry}>Try Again</Button>} /></Card>
 )
 export const NotSetUp = () => (
   <Card data-testid="not-set-up">

@@ -24,6 +24,8 @@ let delayedResponse: { path: string; untilReleased: Promise<void>; release(): vo
 let root: Root | undefined
 /** MotherDuck's embed API refuses every session while set. */
 let motherDuckRefuses = false
+/** A request to this path fails on the way, before any server answers (#1391). */
+let failOnTheWay: string | undefined
 let dom: InstanceType<typeof JSDOM>
 const originals = new Map<string, PropertyDescriptor | undefined>()
 
@@ -39,6 +41,7 @@ beforeAll(() => {
       if (String(input).startsWith('https://api.motherduck.com/'))
         return motherDuckRefuses ? new Response('{}', { status: 500 }) : new Response(JSON.stringify({ session: 'made-up-session' }), { status: 200 })
       if (!input.startsWith('/api/')) throw new Error(`Unexpected external fetch: ${input}`)
+      if (input === failOnTheWay) throw new TypeError('Failed to fetch')
       const headers = new Headers(init?.headers)
       if (token) headers.set('Authorization', `Bearer ${token}`)
       // One sandbox connection cannot interleave independent request savepoints.
@@ -72,6 +75,7 @@ const test = sandboxed.extend<{ browser: void }>({
   browser: [async ({ db: _db }, use) => {
     token = undefined
     motherDuckRefuses = false
+    failOnTheWay = undefined
     requests.length = 0
     dom.reconfigure({ url: 'http://localhost/dash/' })
     history.replaceState(null, '', '/dash/')
@@ -280,7 +284,7 @@ describe('Dash against the real platform', () => {
     let release!: () => void
     delayedResponse = { path: '/api/app_reads/dash/stores', untilReleased: new Promise<void>(resolve => { release = resolve }), release: () => release() }
     await open()
-    await waitForText("This report couldn't open.", 12000)
+    await waitForText("Couldn't reach Dash. Check your connection, then Try Again.", 12000)
     expect(requests.filter(r => /\/(report|embed_session)$/.test(r.path))).toEqual([])
     expect(document.querySelector('table')).toBeNull()
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
@@ -387,21 +391,21 @@ describe('Dash against the real platform', () => {
     })
   }
 
-  installed('a report-read database deadline stays failed when late answers arrive, then Try again opens the Dive', async ({ dash: _dash }) => {
+  installed("a report-read database deadline says Dash couldn't be reached, stays so when late answers arrive, then Try Again opens the Dive", async ({ dash: _dash }) => {
     history.replaceState(null, '', '/dash/')
     await open()
     await reportsAnswered()
     const busy = sql`select pg_sleep(16)`.execute()
     const reads = () => requests.filter(r => /\/(report|embed_session)$/.test(r.path))
     await act(async () => window.dispatchEvent(new dom.window.CustomEvent('featherbase:bar-change', { detail: { key: 'store', value: '9901' } })))
-    await waitForText("This report couldn't open.", 17000)
+    await waitForText("Couldn't reach Dash. Check your connection, then Try Again.", 17000)
     expect(reads()).toEqual([])
     await act(async () => {
       await busy
       while (inFlight.size) await Promise.all([...inFlight])
     })
     expect(reads().map(r => r.status)).toEqual([200, 200])
-    expect(document.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('failed')
+    expect(document.querySelector('[data-testid=dash]')?.getAttribute('data-view')).toBe('offline')
     expect(document.querySelector('table')).toBeNull()
     await act(async () => (document.querySelector('button') as HTMLButtonElement).click())
     await waitForDive()
@@ -472,12 +476,24 @@ describe('Dash against the real platform', () => {
     expect(document.body.textContent).not.toMatch(/9901|010101001/)
   })
 
-  installed("says a report couldn't open, with Try again, when MotherDuck refuses its Dive", async ({ dash: _dash }) => {
+  installed("says a report couldn't open, with Try Again, when MotherDuck refuses its Dive", async ({ dash: _dash }) => {
     motherDuckRefuses = true
     history.replaceState(null, '', '/dash/?report=vendor_sales')
     await open()
     await waitForText("This report couldn't open.")
-    expect(document.querySelector('[data-testid=failed] button')?.textContent).toBe('Try again')
+    expect(document.querySelector('[data-testid=failed] button')?.textContent).toBe('Try Again')
+    expect(document.querySelector('[data-testid=offline]')).toBeNull()
+  })
+
+  // #1391: the reader's request never reached the server: the page says so, not that the report failed.
+  installed("says Dash couldn't be reached when the Dive's request fails on the way, and Try Again opens it", async ({ dash: _dash }) => {
+    failOnTheWay = '/api/app_reads/dash/embed_session'
+    await open()
+    await waitForText("Couldn't reach Dash. Check your connection, then Try Again.")
+    expect(document.querySelector('[data-testid=failed]')).toBeNull()
+    failOnTheWay = undefined
+    await act(async () => (document.querySelector('[data-testid=offline] button') as HTMLButtonElement).click())
+    await waitForDive()
   })
 
   installed('shows no-access for a report that does not exist', async ({ dash: _dash }) => {

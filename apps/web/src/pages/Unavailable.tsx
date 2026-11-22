@@ -5,14 +5,14 @@ import { Card, ProblemPage, Skeleton, buttonClasses } from '@featherbase/shop-fl
 import { api, getSessionUser, getToken } from '../lib/api'
 import { usePageTitle } from '../lib/page-title'
 import { useShellKind } from '../lib/session'
-import { TopBar, useBrand } from '../components/TopBar'
-import { ThemeChoiceProvider } from '../lib/theme-choice'
+import { useBrand } from '../components/TopBar'
 
 const TITLE = 'Not Available'
 
 /**
  * #1328 (audit F09): what an address the server cannot open as an app shows (a mistyped root, an app that
- * is off or missing), under the shared top bar, in the person's theme. The address is repeated as text
+ * is off or missing). Signed in, it is the message in the white panel of the person's own frame (the route's
+ * layout draws the frame); signed out, the page alone. The address is repeated as text
  * only. That an app is turned off is the server's answer, given only to someone who could use it; anyone
  * else, and anyone signed out, reads that nothing is available there.
  */
@@ -29,30 +29,29 @@ export function UnavailablePage({ address }: { address: unknown }) {
   usePageTitle(TITLE)
   // Signed out, there is no top bar to write the tab.
   useEffect(() => { if (!signedIn) document.title = `${TITLE} · Featherbase` }, [signedIn])
+  if (signedIn)
+    return shown !== null && status.isPending
+      ? <Skeleton label="Checking the address" className="w-full" />
+      : <Answer shown={shown} off={status.data?.turned_off ?? null} signedIn />
   return (
-    <ThemeChoiceProvider>
-      <div className="flex min-h-screen flex-col bg-canvas">
-        {signedIn && <TopBar forPerson />}
-        <main className="flex flex-1 items-center justify-center p-4">
-          <Card className="w-full max-w-sm">
-            {signedIn && shown !== null && status.isPending
-              ? <Skeleton label="Checking the address" className="w-full" />
-              : <Answer shown={shown} off={status.data?.turned_off ?? null} signedIn={signedIn} />}
-          </Card>
-        </main>
-      </div>
-    </ThemeChoiceProvider>
+    <div className="flex min-h-screen flex-col bg-canvas">
+      <main className="flex flex-1 items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <Answer shown={shown} off={null} signedIn={false} />
+        </Card>
+      </main>
+    </div>
   )
 }
 
 function Answer({ shown, off, signedIn }: { shown: string | null; off: { title: string } | null; signedIn: boolean }) {
   const action = <WayForward signedIn={signedIn} />
   if (off)
-    return <ProblemPage kind="not-found" title={`${off.title} is turned off`} body="Ask your system manager to turn it on again." action={action} />
+    return <ProblemPage kind="not-found" title={`${off.title} Is Turned Off`} body="Ask your System Manager to turn it on again." action={action} />
   return (
     <ProblemPage
       kind="not-found"
-      title={`Nothing is available at ${shown ?? 'the address you asked for'}`}
+      title={`Nothing Is Available at ${shown ?? 'the Address You Asked For'}`}
       body="Check the address for a typo."
       action={action}
     />
@@ -65,6 +64,6 @@ function WayForward({ signedIn }: { signedIn: boolean }) {
   // On an app's own address, "/" is that app: the way forward is Featherbase's own address (the server's
   // configured origin, never anything from the URL).
   const home = useBrand().data?.home
-  const words = signedIn && kind !== 'admin' && kind !== 'loading' && kind !== 'failed' ? 'Open your apps' : 'Go to Featherbase'
+  const words = signedIn && kind !== 'admin' && kind !== 'loading' && kind !== 'failed' ? 'Open Your Apps' : 'Go to Featherbase'
   return <a href={home ? `${home}/` : '/'} className={buttonClasses()}>{words}</a>
 }

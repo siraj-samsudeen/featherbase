@@ -79,7 +79,15 @@ async function filterEquals(page: Page, column: string, value: string): Promise<
   const input = page.getByTestId('filter-value')
   if ((await input.evaluate((el) => el.tagName)) === 'SELECT') await input.selectOption(value)
   else await input.fill(value)
+  // The list keeps its old rows on screen while the filtered page loads, and Select All ticks the rows on
+  // screen. Wait for the filtered page itself (not the narrow counts or the sum) before anything selects.
+  const filtered = page.waitForResponse((r) => {
+    const url = new URL(r.url())
+    return /^\/api\/table\/[^:]+$/.test(url.pathname) && url.searchParams.has('limit_page_length')
+      && (url.searchParams.get('filters') ?? '').includes(value)
+  })
   await page.getByTestId('filter-add').click()
+  await filtered
   // #1289: a filter shows once: in its own box above the list (with its ✕) when the column has one, else as a chip.
   await expect(page.getByTestId('filter-chip').filter({ hasText: value }).or(page.getByTestId(`std-filter-clear-${column}`)).first()).toBeVisible()
 }

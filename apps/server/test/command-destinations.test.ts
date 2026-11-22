@@ -45,7 +45,7 @@ describe('#737 command destinations', () => {
     expect(pages.filter((p) => p.label.startsWith('Inventory board '))).toHaveLength(501)
     expect(pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
     expect(pages).toContainEqual({ label: 'Service accounts', href: '/featherbase/admin/access-tokens?tab=accounts', kind: 'Page' })
-    expect(pages).toContainEqual({ label: 'What you can see', href: '/featherbase/account/access/Administrator', kind: 'Account' })
+    expect(pages).toContainEqual({ label: 'What You Can See', href: '/featherbase/account/access/Administrator', kind: 'Account' })
     expect(pages.every((p) => !p.href.includes('$'))).toBe(true)
     expect(new Set(pages.map((p) => p.href)).size).toBe(pages.length)
   })
@@ -96,19 +96,24 @@ describe('#737 command destinations', () => {
     expect(inventory.pages.map((p) => p.label)).not.toContain('Secret inventory page')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/admin/glossary')
     expect(inventory.pages.map((p) => p.href)).toContain('/featherbase/account/sign-in-methods')
-    expect(inventory.pages).toContainEqual({ label: 'Connected apps', href: '/featherbase/account/connected-apps', kind: 'Account' })
-    // #1325: the account menu's "What you can see" is found, for themselves; Service accounts are a manager's.
-    const own = inventory.pages.find((p) => p.label === 'What you can see')
+    expect(inventory.pages).toContainEqual({ label: 'Connected Apps', href: '/featherbase/account/connected-apps', kind: 'Account' })
+    // #1325: the account menu's "What You Can See" is found, for themselves; Service accounts are a manager's.
+    const own = inventory.pages.find((p) => p.label === 'What You Can See')
     expect(own).toMatchObject({ kind: 'Account' })
     expect(own!.href).toMatch(/^\/featherbase\/account\/access\/[^/]+$/)
     expect(own!.href).not.toBe('/featherbase/account/access/Administrator')
     expect(inventory.pages.map((p) => p.label)).not.toContain('Service accounts')
   })
 
-  test('people without Admin access cannot obtain the Admin inventory', async ({ createUser }) => {
+  // #1385: the command bar is on every page; someone who cannot use the Admin
+  // is offered only what they can open: their apps and their account pages.
+  test('people without Admin access receive their account pages and no Admin inventory', async ({ admin, createUser }) => {
+    await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'inventory-open', label: 'Open inventory page' } })
     const outsider = await createUser({ roles: [] })
-    const res = await outsider.fetch(PATH)
-    await expectStatus(res, 403)
+    const inventory = await outsider.get<Inventory>(PATH)
+    expect(inventory.tables).toEqual([])
+    expect(inventory.pages.map((p) => p.label).sort()).toEqual(['Connected Apps', 'Sign-In Methods', 'What You Can See'])
+    expect(inventory.pages.every((p) => p.kind === 'Account')).toBe(true)
   })
 
   test('a legacy override refusal preserves the permitted navigation inventory', async ({ admin, createUser }) => {

@@ -74,7 +74,8 @@ export function attachRailTips({ root, layer, active, rowOf }: {
     if (!tip.isConnected) layer.append(tip)
     shownFor = row
   }
-  const over = (event: Event) => { const row = rowOf(event.target); if (row) show(row) }
+  // The innermost target, inside a shadow root too (an app's sidebar draws the platform's groups in its own).
+  const over = (event: Event) => { const row = rowOf(event.composedPath()[0] ?? event.target); if (row) show(row) }
   const out = (event: Event) => {
     const to = (event as PointerEvent | FocusEvent).relatedTarget
     if (shownFor && to instanceof Node && shownFor.contains(to)) return

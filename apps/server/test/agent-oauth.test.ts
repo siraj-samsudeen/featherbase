@@ -517,7 +517,7 @@ describe('#1207 connection keys beside hand-made access tokens (D10, D11)', () =
   })
 })
 
-describe('#1207 Connected apps', () => {
+describe('#1207 Connected Apps', () => {
   test('a person lists only their own live connections', async ({ createUser }) => {
     const user = await createUser()
     const other = await createUser()

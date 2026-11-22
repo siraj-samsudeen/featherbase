@@ -17,8 +17,8 @@ test('Admin → Apps says who an app opens for, in each case', () => {
 test('a page that gives no title leaves the tab to the app name', () => {
   const { result } = renderHook(() => { usePageTitle(undefined); return useCurrentPageTitle() })
   expect(result.current).toBeUndefined()
-  const named = renderHook(() => { usePageTitle('Sign-in methods'); return useCurrentPageTitle() })
-  expect(named.result.current).toBe('Sign-in methods')
+  const named = renderHook(() => { usePageTitle('Sign-In Methods'); return useCurrentPageTitle() })
+  expect(named.result.current).toBe('Sign-In Methods')
   named.unmount()
   expect(renderHook(() => useCurrentPageTitle()).result.current).toBeUndefined()
 })

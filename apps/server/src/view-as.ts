@@ -326,7 +326,8 @@ export function viewAsRoute(method: string, path: string, tester?: string): 'rea
   // So are the parts of those pages about the tester's own person record.
   if (tester && path.startsWith(`/api/people/${encodeURIComponent(tester)}/`)) return 'tester'
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return 'read'
-  if (method === 'POST' && (/^\/api\/app_reads\/[^/]+\/[^/]+$/.test(path) || READ_POSTS.has(path))) return 'read'
+  // #1340: an app's facts about rows of its Table are a read sent as POST, answered as the person viewed.
+  if (method === 'POST' && (/^\/api\/app_reads\/[^/]+\/[^/]+$/.test(path) || /^\/api\/records\/[^/]+\/describe$/.test(path) || READ_POSTS.has(path))) return 'read'
   if (method === 'POST' && path === '/api/events') return 'drop'
   return 'tester'
 }

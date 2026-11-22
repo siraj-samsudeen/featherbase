@@ -259,6 +259,41 @@ describe('relabelTable', () => {
   })
 })
 
+// #1340: the module a Table is listed under moves; nothing else changes.
+describe('moveTable', () => {
+  const placed = { ...supplier, module: 'Shop' }
+  test('a move replays both ways', () => {
+    expect(() => validateMigrations('shop', '0.2.0', [item(), { ...placed, module: 'People' }],
+      [step([{ kind: 'moveTable', table: 'shop.supplier', from: 'Shop', to: 'People' }])])).not.toThrow()
+  })
+
+  test('a move must start from the module the history holds', () => {
+    expect(refusal(() => replayForward('shop', [placed], [{ kind: 'moveTable', table: 'shop.supplier', from: 'Elsewhere', to: 'People' }])))
+      .toMatch(/moveTable shop\.supplier is not in the module "Elsewhere"/)
+  })
+
+  test('a move must end at the module the version declares', () => {
+    expect(refusal(() => validateMigrations('shop', '0.2.0', [item(), { ...placed, module: 'Other' }],
+      [step([{ kind: 'moveTable', table: 'shop.supplier', from: 'Shop', to: 'People' }])])))
+      .toMatch(/moveTable shop\.supplier: the Table as declared after it is not in the module "People"/)
+  })
+
+  test('moving a Table outside the app is refused', () => {
+    expect(refusal(() => replayForward('shop', [placed], [{ kind: 'moveTable', table: 'other.supplier', from: 'Shop', to: 'People' }])))
+      .toMatch(/only its own Tables/)
+  })
+})
+
+// #1340: whether the list shows a column is what people read: it takes no backfill.
+describe('alterColumn in_list_view', () => {
+  test('showing a column in the list replays, and takes no backfill', () => {
+    const listed = { ...supplier, columns: [{ ...supplier.columns[0]!, in_list_view: true }] }
+    expect(() => validateMigrations('shop', '0.2.0', [item(), listed],
+      [step([{ kind: 'alterColumn', table: 'shop.supplier', column: 'supplier_name', from: { in_list_view: null }, to: { in_list_view: true } }])])).not.toThrow()
+    expect(() => step([{ kind: 'alterColumn', table: 'shop.supplier', column: 'supplier_name', from: { in_list_view: null }, to: { in_list_view: true }, backfill: 'x' }])).toThrow()
+  })
+})
+
 // #1277: an app Table its scope provider comes to read is marked as deciding scope.
 describe('markDecidesScope', () => {
   test('a mark replays both ways', () => {

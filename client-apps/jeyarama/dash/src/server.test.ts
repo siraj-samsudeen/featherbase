@@ -743,6 +743,35 @@ describe('the embed_session read', () => {
     expect(JSON.stringify(logged.mock.calls)).not.toContain('token-made-up')
   })
 
+  // #1391: a failure says which report and Dive it was, and what MotherDuck answered.
+  it("logs the report, its Dive and MotherDuck's answer when the session is refused", async () => {
+    upstream(() => Promise.resolve(new Response('{"error":"Dive not found"}', { status: 404 })))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await embedSession(context({ payload: { store: '9901' } }).ctx)
+    expect(JSON.parse(String(logged.mock.calls[0][0]))).toEqual({ event: 'dash_embed_session_failed', person: 'psn_103',
+      report: 'sales', dive: 'dive-sales', message: 'embed API answered HTTP 404', body: '{"error":"Dive not found"}', bytes: expect.any(Number) })
+  })
+
+  it("cuts MotherDuck's answer to 500 characters and blanks every secret in it", async () => {
+    const answer = `token-made-up and embed-token-made-up ${'x'.repeat(900)}`
+    upstream(() => Promise.resolve(new Response(answer, { status: 500 })))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await embedSession(context({ payload: { store: '9901' } }).ctx)
+    const { body } = JSON.parse(String(logged.mock.calls[0][0])) as { body: string }
+    expect([body.length, body.startsWith('[secret] and [secret] x'), JSON.stringify(logged.mock.calls).includes('token-made-up')]).toEqual([500, true, false])
+  })
+
+  it('logs the report and its Dive, with no answer, when MotherDuck cannot be reached; a report taking no filter too', async () => {
+    setEmbedFetch(() => Promise.reject(new TypeError('fetch failed')))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const OPEN = { ...WHOLE, report_key: 'open', dive_id: 'dive-open', filter_shape: 'No filter', store_key: null }
+    const { ctx } = context({ reports: [OPEN], payload: { report: 'open' } })
+    const prepared = await reads.embed_open.prepare(ctx)
+    expect(await reads.embed_open({ ...ctx, prepared })).toEqual({ unreachable: true })
+    expect(JSON.parse(String(logged.mock.calls[0][0]))).toEqual({ event: 'dash_embed_session_failed', person: 'psn_103',
+      report: 'open', dive: 'dive-open', message: 'embed API unreachable: TypeError', bytes: expect.any(Number) })
+  })
+
   it('gives up on a MotherDuck that never answers, after its own timeout', async () => {
     vi.useRealTimers()
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })

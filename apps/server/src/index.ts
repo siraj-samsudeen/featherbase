@@ -61,6 +61,7 @@ import './actions/row-connections'
 import './actions/row-sources'
 import './actions/collection-aggregate'
 import './actions/collection-summary'
+import './actions/collection-narrow'
 import './actions/collection-purge'
 import './actions/collection-bulk'
 import { renderPdf, renderPrintHtml } from './print'
@@ -715,9 +716,10 @@ app.get('/api/handoff/start', publicLimit('HANDOFF'), (c) => {
 // gets a code, bound to the nonce the target gave it.
 app.get('/api/handoff/bind', publicLimit('HANDOFF'), async (c) => {
   const sid = getCookie(c, 'sid')
-  const { code, targetHost } = bindHandoffTicket(c.req.query('ticket'), sid, requestHost(c.req.url), c.req.query('nonce'))
+  const { code, targetHost, next } = bindHandoffTicket(c.req.query('ticket'), sid, requestHost(c.req.url), c.req.query('nonce'))
   await resolveToken(`Bearer ${sid}`) // the source session must still be live
-  return c.redirect(`${listedAddress(targetHost).address}/featherbase/oauth-callback?code=${encodeURIComponent(code)}`)
+  const onward = next ? `&next=${encodeURIComponent(next)}` : ''
+  return c.redirect(`${listedAddress(targetHost).address}/featherbase/oauth-callback?code=${encodeURIComponent(code)}${onward}`)
 })
 
 // A dev-preview deployment's click-through sign-in (see preview.ts). Public
@@ -1013,7 +1015,9 @@ app.post('/api/open_admin', async (c) => {
   // Only a browser session is handed over. An access token carries no sign-in:
   // handed over, it would become a session that outlives its revocation.
   if (!c.get('user').sign_in) throw new AppError('PermissionError', 'An access token cannot open the Admin screens')
-  const opened = await openAdminFor({ token, user: c.get('user') }, requestHost(c.req.url))
+  // #1385: the Admin page chosen in the command bar on an app's address, opened once signed in there.
+  const { next } = (await c.req.json().catch(() => ({}))) as { next?: unknown }
+  const opened = await openAdminFor({ token, user: c.get('user') }, requestHost(c.req.url), next)
   if (!opened) throw new AppError('PermissionError', 'You cannot use the Admin screens')
   return c.json(opened)
 })
@@ -1129,6 +1133,9 @@ app.get('/api/activity_feed', async (c) => {
     const rowRef = (i: (typeof items)[number]) =>
       i.kind === 'row' && i.sub && i.ref_key === `row:${i.sub}/${i.label}` ? { table: i.sub, row_id: i.label } : {}
     const titleOf = await feedRowTitles(user, items.map(rowRef))
+    // #1340: a list is said by its Table's label, as the list is headed, not by the Table's internal name.
+    const listed = [...new Set(items.filter((i) => i.kind === 'list').map((i) => i.label))]
+    const tableLabels = new Map(listed.length ? (await sql`select name, label from table_def where name = any(${listed})`).map((r) => [String(r.name), String(r.label ?? r.name)]) : [])
     return c.json({
       items: items.map(({ ref_key, ...i }) => {
         const base = { who_name: whoName, ...(me.role ? { who_role: me.role } : {}), path: i.path, at: i.at, count: i.count }
@@ -1140,7 +1147,7 @@ app.get('/api/activity_feed', async (c) => {
         return {
           ...base,
           kind: i.kind,
-          label: i.label,
+          label: (i.kind === 'list' && tableLabels.get(i.label)) || i.label,
           ...(title ? { title } : {}),
           sub: i.sub,
           ...(i.kind === 'list' ? { filtered: listKeyHasFilter(ref_key) } : {}),

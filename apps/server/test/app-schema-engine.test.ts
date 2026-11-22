@@ -4,6 +4,7 @@ import { describe, expect } from 'vitest'
 import { resolve } from 'node:path'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { getVisibleHomePages } from '../src/home-pages'
 import { provisionApp } from '../src/app-lifecycle'
 import { discoverPackages } from '../src/runtime-packages'
 import { changeColumnType, createTable, deleteTable } from '../src/table-engine'
@@ -361,6 +362,26 @@ describe('relabelTable', () => {
   shopTest('it counts no losses', async () => {
     await registered()
     expect(await countLosses('shop', [step([{ kind: 'relabelTable', table: 'shop.supplier', from: 'Supplier', to: 'Vendor' }])])).toEqual([])
+  })
+})
+
+// #1340: the new module is written to the definition and no row is touched.
+describe('moveTable', () => {
+  shopTest('the Table records its new module and keeps its rows', async () => {
+    await registered()
+    const [{ module }] = await sql`select module from table_def where name = 'shop.supplier'`
+    const rows = await sql`select row_id, ctid::text as at from shop.supplier order by row_id`
+    await run({ kind: 'moveTable', table: 'shop.supplier', from: module ?? 'Shop', to: 'People' })
+    expect(await sql`select module from table_def where name = 'shop.supplier'`).toEqual([{ module: 'People' }])
+    // Listed on its new module's home page, said by the Table's label as its list is headed, and still so once relabelled.
+    const linkOf = async () => (await getVisibleHomePages('Administrator')).flatMap((p) => p.cards.flatMap((c) => c.links)).find((l) => l.link_to === 'shop.supplier')
+    expect(await linkOf()).toEqual({ link_to: 'shop.supplier', label: 'Supplier' })
+    await run({ kind: 'relabelTable', table: 'shop.supplier', from: 'Supplier', to: 'Vendor' })
+    expect(await linkOf()).toEqual({ link_to: 'shop.supplier', label: 'Vendor' })
+    // A label someone gave the link is kept.
+    await sql`update home_page_link set label = 'Our Vendors' where link_to = 'shop.supplier'`
+    expect(await linkOf()).toEqual({ link_to: 'shop.supplier', label: 'Our Vendors' })
+    expect(await sql`select row_id, ctid::text as at from shop.supplier order by row_id`).toEqual(rows)
   })
 })
 
