@@ -10,9 +10,9 @@ The file is `samples/employees/employees.csv`.
 
    | Column | Type | Key |
    |---|---|---|
-   | Employee Code | Text | suggested |
+   | Employee Code | Text | key |
    | Name | Text | |
-   | Department | Choice (5 values) | |
+   | Department | Choice | |
    | Date of Joining | Date | |
    | Date of Leaving | Date | |
    | Active | Yes/No | |

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll } from "bun:test";
 import { readFileSync } from "node:fs";
-import { type Browser, type Page, chromium } from "playwright";
+import { type Browser, type Locator, type Page, chromium } from "playwright";
 import { createFeatherbase } from "./featherbase.ts";
 
 export function featherbaseInABrowser() {
@@ -75,6 +75,19 @@ function fileOf(name: string, lines: string[]) {
 export async function tableOn(page: Page) {
   const rows = await page.locator("tr").all();
   return Promise.all(rows.map((row) => row.locator("th, td").allInnerTexts()));
+}
+
+export async function columnsProposedOn(page: Page) {
+  const rows = await page.getByRole("region", { name: "Columns" }).locator("tbody tr").all();
+  return Promise.all(rows.map(nameTypeAndKeyOf));
+}
+
+async function nameTypeAndKeyOf(row: Locator) {
+  return [
+    await row.locator("td").first().innerText(),
+    await row.getByRole("combobox").inputValue(),
+    (await row.getByRole("radio").isChecked()) ? "key" : "",
+  ];
 }
 
 export function tableWrittenIn(markdownFile: string) {

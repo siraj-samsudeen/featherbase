@@ -19,19 +19,19 @@ test("Each header becomes a Column, in the file's order.", async () => {
   expect(await columnNamesOn(page)).toEqual(["Name", "City", "Age"]);
 });
 
-test("A Column's type is worked out from its filled cells. A blank cell does not count.", async () => {
+test("A Column's type is worked out from its filled cells and shown as the chosen type. A blank cell does not count.", async () => {
   for (const [cells, type] of casesWrittenIn("features/importing-data/proposing/proposing.md")) {
     const page = await give("things.csv", aFileWithAColumnOf(cells));
     expect(await typeOfTheColumnOn(page), cells).toBe(type);
   }
 });
 
-test("A Text Column whose values mostly repeat is a Choice, and says how many different values it has.", async () => {
+test("A Text Column whose values mostly repeat is proposed as a Choice.", async () => {
   const nineInTenRepeat = await give(
     "things.csv",
     aFileWithAColumnOf(cells({ Sales: 5, Billing: 4, Stores: 1 })),
   );
-  expect(await typeOfTheColumnOn(nineInTenRepeat)).toBe("Choice (3 values)");
+  expect(await typeOfTheColumnOn(nineInTenRepeat)).toBe("Choice");
 
   const eightInTenRepeat = await give(
     "things.csv",
@@ -40,14 +40,14 @@ test("A Text Column whose values mostly repeat is a Choice, and says how many di
   expect(await typeOfTheColumnOn(eightInTenRepeat)).toBe("Text");
 });
 
-test("The first Column that is never blank and never repeats is suggested as the key.", async () => {
+test("The first Column that is never blank and never repeats is chosen as the key.", async () => {
   const page = await give("people.csv", [
     "Department,Badge,Email,Phone",
     "Sales,B1,asha@example.com,111",
     "Sales,,bala@example.com,222",
     "Stores,B3,chitra@example.com,333",
   ]);
-  expect(await columnsSuggestedAsKeyOn(page)).toEqual(["Email"]);
+  expect(await keyChosenOn(page)).toBe("Email");
 });
 
 test("A file saved on Windows reads the same as one saved anywhere else.", async () => {
@@ -98,13 +98,13 @@ function textOn(page: Page) {
 }
 
 function columnNamesOn(page: Page) {
-  return page.locator("tbody tr td:first-child").allInnerTexts();
+  return page.getByRole("region", { name: "Columns" }).locator("tbody td:first-child").allInnerTexts();
 }
 
 function typeOfTheColumnOn(page: Page) {
-  return page.locator("tbody tr", { hasText: "Thing" }).locator("td").nth(1).innerText();
+  return page.getByLabel("Type of Thing").inputValue();
 }
 
-function columnsSuggestedAsKeyOn(page: Page) {
-  return page.locator("tbody tr", { hasText: "suggested" }).locator("td:first-child").allInnerTexts();
+function keyChosenOn(page: Page) {
+  return page.getByRole("radio", { checked: true }).getAttribute("value");
 }
