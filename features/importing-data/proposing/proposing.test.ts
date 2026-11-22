@@ -14,9 +14,16 @@ test("It says how many rows and how many Columns the file has.", async () => {
   expect(await textOn(page)).toContain("2 rows, 3 Columns");
 });
 
+test("Each header becomes a Column, in the file's order.", async () => {
+  const page = await give("people.csv", ["Name,City,Age", "Asha,Chennai,31"]);
+  expect(await columnNamesOn(page)).toEqual(["Name", "City", "Age"]);
+});
+
 async function give(fileName: string, lines: string[]) {
   const { page } = await openInNewTab("/import");
+  const proposalShown = page.waitForEvent("load");
   await page.locator('input[type="file"]').setInputFiles(fileOf(fileName, lines));
+  await proposalShown;
   return page;
 }
 
@@ -30,4 +37,8 @@ function tableNameOn(page: Page) {
 
 function textOn(page: Page) {
   return page.innerText("body");
+}
+
+function columnNamesOn(page: Page) {
+  return page.locator("tbody tr td:first-child").allInnerTexts();
 }

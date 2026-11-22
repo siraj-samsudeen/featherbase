@@ -8,3 +8,4 @@ Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.
 
 1. The Table's name comes from the file name: `employees.csv` gives "Employees".
 2. It says how many rows and how many Columns the file has.
+3. Each header becomes a Column, in the file's order.
