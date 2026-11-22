@@ -29,7 +29,7 @@ export function createFeatherbase() {
       tables.set(addressNameOf(table), table);
       return redirect(`/tables/${addressNameOf(table)}`);
     })
-    .get("/tables/:name", ({ params }) => listPage(tables.get(params.name) as Table))
+    .get("/tables/:name", ({ params, query }) => listPage(tables.get(params.name) as Table, Number(query.page ?? 1)))
     .onError(({ code }) => {
       if (code === "NOT_FOUND") return notFoundPage;
     });
