@@ -1,10 +1,15 @@
 import { page } from "../../../page.ts";
 
-type Column = { name: string; type: string };
+type Column = { name: string; type: string; key: string };
 
 export function tableProposedFrom(fileName: string, text: string) {
   const [header, ...rows] = linesOf(text).map(cellsOf);
-  const columns = header.map((name, index) => ({ name, type: typeOf(cellsUnder(index, rows)) }));
+  const keyIndex = header.findIndex((_, index) => canBeTheKey(cellsUnder(index, rows)));
+  const columns = header.map((name, index) => ({
+    name,
+    type: typeOf(cellsUnder(index, rows)),
+    key: index === keyIndex ? "suggested" : "",
+  }));
   return { name: tableNameFrom(fileName), columns, rows };
 }
 
@@ -13,13 +18,13 @@ export function proposalPage(proposed: ReturnType<typeof tableProposedFrom>) {
     "Import data",
     `<h1>Import data</h1><h2>${proposed.name}</h2>` +
       `<p>${proposed.rows.length} rows, ${proposed.columns.length} Columns</p>` +
-      "<table><thead><tr><th>Column</th><th>Type</th></tr></thead>" +
+      "<table><thead><tr><th>Column</th><th>Type</th><th>Key</th></tr></thead>" +
       `<tbody>${proposed.columns.map(columnRow).join("")}</tbody></table>`,
   );
 }
 
 function columnRow(column: Column) {
-  return `<tr><td>${column.name}</td><td>${column.type}</td></tr>`;
+  return `<tr><td>${column.name}</td><td>${column.type}</td><td>${column.key}</td></tr>`;
 }
 
 function tableNameFrom(fileName: string) {
@@ -37,6 +42,10 @@ function cellsOf(line: string) {
 
 function cellsUnder(columnIndex: number, rows: string[][]) {
   return rows.map((row) => row[columnIndex]);
+}
+
+function canBeTheKey(cells: string[]) {
+  return cells.every(isFilled) && new Set(cells).size === cells.length;
 }
 
 function typeOf(cells: string[]) {
