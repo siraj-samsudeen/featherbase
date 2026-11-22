@@ -33,6 +33,19 @@ test('Home lists each Table with its Columns, its key and its number of rows: "2
   expect(await headingOn(page)).toBe("Pens");
 });
 
+test('Home says when each Table last changed: "changed today".', async () => {
+  await make("inks.csv", ["Ink", "Black", "Blue"]);
+  const { page } = await openInNewTab("/");
+  const inks = page.getByRole("region", { name: "Your Tables" }).getByRole("link", { name: "Inks" });
+  expect(await inks.innerText()).toContain("changed today");
+});
+
+test("Once there is a Table, the welcome gives way to the lists.", async () => {
+  await make("nibs.csv", ["Nib", "Fine", "Broad"]);
+  const { page } = await openInNewTab("/");
+  expect(await textOn(page)).not.toContain("Welcome To Featherbase");
+});
+
 function textOn(page: Page) {
   return page.innerText("body");
 }
