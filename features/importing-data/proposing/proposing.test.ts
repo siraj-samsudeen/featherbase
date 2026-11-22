@@ -90,7 +90,7 @@ function blankAsNothing(cell: string) {
 }
 
 function tableNameOn(page: Page) {
-  return page.innerText("h2");
+  return page.getByLabel("Table name").inputValue();
 }
 
 function textOn(page: Page) {
