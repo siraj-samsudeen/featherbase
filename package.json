@@ -9,6 +9,7 @@
     "playwright": "1.63.0"
   },
   "dependencies": {
+    "@elysiajs/html": "1.4.2",
     "elysia": "1.4.30"
   }
 }
