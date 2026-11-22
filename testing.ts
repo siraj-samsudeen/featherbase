@@ -30,8 +30,13 @@ export function featherbaseInABrowser() {
   async function openInNewTab(path: string) {
     const page = await browser.newPage({ baseURL: address });
     page.setDefaultTimeout(1000);
+    await page.route(isOutsideFeatherbase, (request) => request.abort());
     const response = await page.goto(path);
     return { page, status: response?.status() };
+  }
+
+  function isOutsideFeatherbase(url: URL) {
+    return !url.href.startsWith(address);
   }
 
   async function give(fileName: string, lines: string[]) {

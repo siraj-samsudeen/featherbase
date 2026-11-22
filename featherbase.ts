@@ -2,7 +2,7 @@ import { html } from "@elysiajs/html";
 import { Elysia, NotFoundError } from "elysia";
 import { type Table, proposalView, tableProposedFrom } from "./features/importing-data/proposing/proposing.ts";
 import { listView } from "./features/managing-data/browsing/browsing.ts";
-import { type View, page } from "./page.ts";
+import { type View, page, stylesheetAddress, stylesheetFile } from "./page.ts";
 
 const welcomeView = {
   title: "Featherbase",
@@ -29,6 +29,7 @@ export function createFeatherbase() {
     .onError(({ code }) => {
       if (code === "NOT_FOUND") return show(notFoundView);
     })
+    .get(stylesheetAddress, () => Bun.file(stylesheetFile))
     .get("/", () => show(welcomeView))
     .get("/import", () => show(importDataView))
     .post("/import", async ({ body }) => {
