@@ -2,7 +2,7 @@ import { html } from "@elysiajs/html";
 import { Elysia, NotFoundError } from "elysia";
 import { type Table, proposalView, tableProposedFrom } from "./features/importing-data/proposing/proposing.ts";
 import { listView } from "./features/managing-data/browsing/browsing.ts";
-import { type View, page, stylesheetAddress, stylesheetFile } from "./page.ts";
+import { type View, homeCrumb, page, stylesheetAddress, stylesheetFile, wayBack } from "./page.ts";
 
 const welcomeView = {
   title: "Featherbase",
@@ -11,7 +11,7 @@ const welcomeView = {
 const importDataView = {
   title: "Import data",
   html:
-    "<h1>Import data</h1>" +
+    `${wayBack([homeCrumb, { name: "Import data" }])}<h1>Import data</h1>` +
     '<form method="post" enctype="multipart/form-data">' +
     '<input type="file" name="file" onchange="this.form.submit()"></form>',
 };

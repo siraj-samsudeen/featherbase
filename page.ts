@@ -36,6 +36,19 @@ function markIf(thisIsWhereThePersonIs: boolean) {
   return thisIsWhereThePersonIs ? ' aria-current="page"' : "";
 }
 
+export type Crumb = { name: string; address?: string };
+
+export function wayBack(crumbs: Crumb[]) {
+  return `<nav class="crumbs" aria-label="You are here">${crumbs.map(crumb).join(" / ")}</nav>`;
+}
+
+function crumb({ name, address }: Crumb) {
+  return address ? `<a href="${address}">${asText(name)}</a>` : asText(name);
+}
+
+export const homeCrumb = { name: "Home", address: home };
+export const importDataCrumb = { name: "Import data", address: "/import" };
+
 export function asText(written: string) {
   return Bun.escapeHTML(written);
 }

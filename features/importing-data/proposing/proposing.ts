@@ -1,4 +1,4 @@
-import { asText } from "../../../page.ts";
+import { asText, homeCrumb, importDataCrumb, wayBack } from "../../../page.ts";
 
 type Column = { name: string; type: string; key: string };
 
@@ -20,7 +20,7 @@ export function proposalView(proposed: Table) {
   return {
     title: "Import data",
     html:
-      `<h1>Import data</h1><h2>${asText(proposed.name)}</h2>` +
+      `${wayBack([homeCrumb, importDataCrumb, { name: proposed.fileName }])}<h1>Import data</h1><h2>${asText(proposed.name)}</h2>` +
       `<p>${proposed.rows.length} rows, ${proposed.columns.length} Columns</p>` +
       "<table><thead><tr><th>Column</th><th>Type</th><th>Key</th></tr></thead>" +
       `<tbody>${proposed.columns.map(columnRow).join("")}</tbody></table>` +
