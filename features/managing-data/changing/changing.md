@@ -1,19 +1,13 @@
 # Changing
 
-The scene: a person is looking at a Table and adds, changes or deletes a row.
+The scene: a person is looking at a Table's list and opens, changes, adds or deletes a row.
 
-## Sentences
+## Acceptance criteria
 
-One sentence per rule, in everyday words. Each sentence has exactly one test, named with the sentence word
-for word. Where a sentence has a table, the test runs the table's rows as written here. See `TESTING.md`.
+Proposed by Claude while building the mock-up screens for real. Not yet agreed by Siraj.
 
-1. A person can change a row's values and save them.
-2. A value that isn't in a Choice's list is refused.
-3. The form stops a value that doesn't fit its Column's type before it is sent, and says which Column.
-    An agent using the API has no form, so there the same value is refused, with the Column named.
-4. The key can't be blank, or the same as another row's.
-5. A person can add a row. It says it was added by hand.
-6. A person can delete a row, after confirming.
+1. Pressing a row's name opens that row beside the list, with every value in a field that suits its type, and marks the row in the list.
+2. The record says where its row came from: "from stock.csv row 3".
 
 ## Decided
 
