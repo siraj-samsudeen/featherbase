@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { Page } from "playwright";
 import { featherbaseInABrowser } from "../../../testing.ts";
 
-const { give, openInNewTab } = featherbaseInABrowser();
+const { make, openInNewTab } = featherbaseInABrowser();
 
 test('Opening Featherbase shows "Welcome To Featherbase".', async () => {
   const visit = await openInNewTab("/");
@@ -22,9 +22,7 @@ test('Home has a link "Import Data" that opens the Import Data page.', async () 
 });
 
 test("Home lists each Table with its number of rows, and its name opens the list.", async () => {
-  const proposal = await give("pens.csv", ["Pen", "Blue", "Red"]);
-  await proposal.getByRole("button", { name: "Create Table" }).click();
-  await proposal.waitForURL("**/tables/*");
+  await make("pens.csv", ["Pen", "Blue", "Red"]);
 
   const { page } = await openInNewTab("/");
   const yourTables = page.getByRole("region", { name: "Your Tables" });

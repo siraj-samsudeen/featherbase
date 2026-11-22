@@ -47,6 +47,10 @@ export function featherbaseInABrowser() {
     return page;
   }
 
+  async function make(fileName: string, lines: string[]) {
+    return pressCreateTableOn(await give(fileName, lines));
+  }
+
   async function closeBrowser() {
     await browser?.close();
   }
@@ -55,7 +59,13 @@ export function featherbaseInABrowser() {
     await featherbase.stop();
   }
 
-  return { openInNewTab, give };
+  return { openInNewTab, give, make };
+}
+
+export async function pressCreateTableOn(proposal: Page) {
+  await proposal.getByRole("button", { name: "Create Table" }).click();
+  await proposal.waitForURL("**/tables/*");
+  return proposal;
 }
 
 function fileOf(name: string, lines: string[]) {

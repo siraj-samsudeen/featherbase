@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import type { Page } from "playwright";
-import { featherbaseInABrowser, tableOn, tableWrittenIn } from "../testing.ts";
+import { featherbaseInABrowser, pressCreateTableOn, tableOn, tableWrittenIn } from "../testing.ts";
 
 const journey = "journeys/importing-a-spreadsheet.md";
 const employeesFile = "samples/employees/employees.csv";
@@ -36,7 +36,7 @@ async function seeTheTableFeatherbaseWouldMake() {
 }
 
 async function pressCreateWithoutChangingAnything() {
-  await page.getByRole("button", { name: "Create Table" }).click();
+  await pressCreateTableOn(page);
 }
 
 async function seeTheEmployeesList() {

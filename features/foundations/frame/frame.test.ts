@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import type { Locator, Page } from "playwright";
 import { featherbaseInABrowser } from "../../../testing.ts";
 
-const { give, openInNewTab } = featherbaseInABrowser();
+const { give, make, openInNewTab } = featherbaseInABrowser();
 
 test("Every page has the sidebar: Featherbase, Home, and each Table with its number of rows.", async () => {
-  await aTableIsMadeFrom("items.csv", ["Item", "Pen", "Ink", "Paper"]);
+  await make("items.csv", ["Item", "Pen", "Ink", "Paper"]);
   for (const address of ["/", "/import", "/tables/items", "/no-such-page"]) {
     const { page } = await openInNewTab(address);
     expect(await linksInTheSidebarOf(page), address).toEqual(["Featherbase", "Home", "Items 3"]);
@@ -13,7 +13,7 @@ test("Every page has the sidebar: Featherbase, Home, and each Table with its num
 });
 
 test("The sidebar marks where the person is: the Table whose list is open, otherwise Home.", async () => {
-  await aTableIsMadeFrom("pens.csv", ["Pen", "Blue", "Red"]);
+  await make("pens.csv", ["Pen", "Blue", "Red"]);
   expect(await markedInTheSidebarAt("/tables/pens")).toEqual(["Pens 2"]);
   expect(await markedInTheSidebarAt("/")).toEqual(["Home"]);
   expect(await markedInTheSidebarAt("/import")).toEqual(["Home"]);
@@ -54,13 +54,6 @@ async function markedInTheSidebarAt(address: string) {
   const { page } = await openInNewTab(address);
   const marked = await sidebarOf(page).locator("[aria-current]").evaluateAll(wordsOfEachWithoutItsPicture);
   return marked.map(onOneLine);
-}
-
-async function aTableIsMadeFrom(fileName: string, lines: string[]) {
-  const page = await give(fileName, lines);
-  await page.getByRole("button", { name: "Create Table" }).click();
-  await page.waitForURL("**/tables/*");
-  return page;
 }
 
 async function linksInTheSidebarOf(page: Page) {
