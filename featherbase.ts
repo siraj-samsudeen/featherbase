@@ -104,10 +104,10 @@ export function createFeatherbase() {
       tables.set(addressNameOf(table), table);
       return redirect(addressOf(addressNameOf(table)));
     })
-    .get("/tables/:name", ({ params, query }) => {
+    .get("/tables/:name", ({ params }) => {
       const table = tables.get(params.name);
       if (!table) throw new NotFoundError();
-      return show(listView(table, Number(query.page ?? 1)), addressOf(params.name));
+      return show(listView(table), addressOf(params.name));
     });
 }
 
