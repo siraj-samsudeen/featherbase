@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Locator, Page } from "playwright";
-import { featherbaseInABrowser, tableOn } from "../../../testing.ts";
+import { casesIn, cellsFrom, featherbaseInABrowser, tableOn } from "../../../testing.ts";
 
 const { make } = featherbaseInABrowser();
 
@@ -46,6 +46,37 @@ test('Save keeps the changed values, goes back to the list and says "Saved".', a
   expect((await tableOn(page))[2]).toEqual(["S2", "Brass Hinge, Large", "A", "10-Feb-2026", "Yes", "9"]);
   expect(page.url()).toEndWith("/tables/stock%20changed");
 });
+
+test("A value that cannot be kept is refused: the record comes back with what was typed, says why under that field, and nothing is saved.", async () => {
+  const page = await make("stock refused.csv", stock);
+  const asItWas = await tableOn(page);
+  for (const [label, typedAsWritten, refusal] of casesIn("features/managing-data/changing/changing.md", "Refused with")) {
+    const [typed] = cellsFrom(typedAsWritten);
+    const record = await openTheRecordOf("Brass Hinge", page);
+    await record.getByLabel(label).fill(typed);
+    await record.getByRole("button", { name: "Save" }).click();
+    await page.getByText(refusal).waitFor();
+    expect(await theRefusedFieldOn(page), refusal).toEqual([label, typed, refusal]);
+    await page.getByRole("link", { name: "Cancel" }).click();
+    expect(await tableOn(page), refusal).toEqual(asItWas);
+  }
+});
+
+test("Cancel goes back to the list and keeps nothing.", async () => {
+  const page = await make("stock left alone.csv", stock);
+  const asItWas = await tableOn(page);
+  const record = await openTheRecordOf("Brass Hinge", page);
+  await record.getByLabel("Item").fill("Something Else");
+  await record.getByRole("link", { name: "Cancel" }).click();
+  await record.waitFor({ state: "detached" });
+  expect(await tableOn(page)).toEqual(asItWas);
+});
+
+async function theRefusedFieldOn(page: Page) {
+  const field = page.locator('.rec [aria-invalid="true"]');
+  const label = await page.locator(`label[for="${await field.getAttribute("id")}"]`).innerText();
+  return [label.replace(" · key", ""), await field.inputValue(), await page.getByRole("form").locator(".err").innerText()];
+}
 
 async function openTheRecordOf(name: string, page: Page) {
   await page.getByRole("link", { name }).click();
