@@ -70,7 +70,7 @@ function crumb({ name, address }: Crumb) {
 }
 
 export const homeCrumb = { name: "Home", address: home };
-export const importDataCrumb = { name: "Import data", address: "/import" };
+export const importDataCrumb = { name: "Import Data", address: "/import" };
 
 export function asText(written: string) {
   return Bun.escapeHTML(written);

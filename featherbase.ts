@@ -16,13 +16,13 @@ function homeView(tables: TableLink[]) {
         ${bar("Home")}
         <div class="page">
           <div class="hello">
-            <h2>Welcome to Featherbase</h2>
+            <h2>Welcome To Featherbase</h2>
             <p>Bring in a spreadsheet and it becomes a Table you can browse.</p>
           </div>
           <div class="sect">
             <h2>Start</h2>
             <div class="acts">
-              <a class="act" href="/import">${importPicture}<b>Import data</b><span>Turn a CSV file into a Table.</span></a>
+              <a class="act" href="/import">${importPicture}<b>Import Data</b><span>Turn a CSV file into a Table.</span></a>
             </div>
           </div>
           <section class="sect" aria-labelledby="your-tables">
@@ -44,10 +44,10 @@ function tableItem(table: TableLink) {
 }
 
 const importDataView = {
-  title: "Import data",
+  title: "Import Data",
   html: `
     <section class="view">
-      ${bar("Import data", [homeCrumb, { name: "Import data" }])}
+      ${bar("Import Data", [homeCrumb, { name: "Import Data" }])}
       <div class="page">
         <form class="drop" method="post" enctype="multipart/form-data">
           <strong>Choose a CSV file</strong>

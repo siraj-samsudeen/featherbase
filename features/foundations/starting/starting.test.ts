@@ -5,7 +5,7 @@ test("Running `bun start` opens Featherbase on the port it is given.", async () 
   const featherbase = runBunStartOn(port);
   try {
     const page = await pageOnceItAnswers(`http://localhost:${port}`);
-    expect(page).toContain("Welcome to Featherbase");
+    expect(page).toContain("Welcome To Featherbase");
   } finally {
     featherbase.kill();
   }
