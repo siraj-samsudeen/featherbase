@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { Page } from "playwright";
 import { featherbaseInABrowser } from "../../../testing.ts";
 
-const { give } = featherbaseInABrowser();
+const { give, openInNewTab } = featherbaseInABrowser();
 
 test('The list shows the rows in the file\'s order, 10 at a time, and says which rows of how many: "1 to 10 of 24".', async () => {
   const page = await listOfATableMadeFrom("items.csv", ["Item", ...itemsNumbered(1, 24)]);
@@ -28,6 +28,12 @@ test("A cell is shown exactly as it was written in the file, even when it looks 
   const page = await listOfATableMadeFrom("items.csv", ["Item <i>header</i>", ...asWritten]);
   expect(await page.locator("th").innerText()).toBe("Item <i>header</i>");
   expect(await firstCellsOn(page)).toEqual(asWritten);
+});
+
+test('Opening a Table Featherbase does not have shows "Page not found".', async () => {
+  const visit = await openInNewTab("/tables/no-such-table");
+  expect(visit.status).toBe(404);
+  expect(await visit.page.innerText("body")).toContain("Page not found");
 });
 
 function next(page: Page) {
