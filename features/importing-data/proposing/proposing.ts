@@ -1,4 +1,4 @@
-import { page } from "../../../page.ts";
+import { asText, page } from "../../../page.ts";
 
 type Column = { name: string; type: string; key: string };
 
@@ -25,7 +25,7 @@ export function proposalPage(proposed: Table) {
       `<tbody>${proposed.columns.map(columnRow).join("")}</tbody></table>` +
       '<form method="post" action="/tables">' +
       `<input type="hidden" name="fileName" value="${proposed.fileName}">` +
-      `<input type="hidden" name="text" value="${proposed.text}">` +
+      `<input type="hidden" name="text" value="${asText(proposed.text)}">` +
       "<button>Create</button></form>",
   );
 }
