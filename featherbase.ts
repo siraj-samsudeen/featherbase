@@ -20,8 +20,8 @@ const notFoundView = { title: "Page not found", html: "<h1>Page not found</h1>" 
 export function createFeatherbase() {
   const tables = new Map<string, Table>();
 
-  function show(view: View) {
-    return page(view, [...tables].map(linkToTable));
+  function show(view: View, here?: string) {
+    return page(view, [...tables].map(linkToTable), here);
   }
 
   return new Elysia()
@@ -44,7 +44,7 @@ export function createFeatherbase() {
     .get("/tables/:name", ({ params, query }) => {
       const table = tables.get(params.name);
       if (!table) throw new NotFoundError();
-      return show(listView(table, Number(query.page ?? 1)));
+      return show(listView(table, Number(query.page ?? 1)), addressOf(params.name));
     });
 }
 
