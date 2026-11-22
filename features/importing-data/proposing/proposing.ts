@@ -45,7 +45,7 @@ export function withChoices(proposed: Proposal, choices: Record<string, string>)
   return { ...proposed, name: choices.name.trim(), columns };
 }
 
-export function proposalView(proposed: Proposal, nameRefusal = "") {
+export function proposalView(proposed: Proposal, uploadId: string, nameRefusal = "") {
   return {
     title: proposed.fileName,
     html: `
@@ -80,8 +80,7 @@ export function proposalView(proposed: Proposal, nameRefusal = "") {
           </section>
         </div>
         <div class="footbar">
-          <input type="hidden" name="fileName" value="${asText(proposed.fileName)}">
-          <input type="hidden" name="text" value="${asText(proposed.text)}">
+          <input type="hidden" name="upload" value="${uploadId}">
           <button type="submit" class="btn primary">Create Table</button>
           <a class="btn" href="${importDataCrumb.address}">Cancel</a>
           <span class="hint">Nothing is created until you press Create.</span>
