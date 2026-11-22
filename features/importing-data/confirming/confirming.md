@@ -12,3 +12,4 @@ Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.
 4. The Table is made with the type the person chose for each Column.
 5. The Table is made with the key the person chose.
 6. A name that a Table already has is refused: the proposal comes back saying so, and nothing is made.
+7. The list that opens says what was made: "Created Stores with 2 rows".

@@ -53,6 +53,13 @@ test("A name that a Table already has is refused: the proposal comes back saying
   expect(await homeSaysOf("Stores")).toContain("2 rows");
 });
 
+test('The list that opens says what was made: "Created Stores with 2 rows".', async () => {
+  const page = await pressCreateTableOn(await give("depots.csv", ["Depot", "North", "South"]));
+  await page.getByRole("status").getByText("Created Depots with 2 rows").waitFor();
+  await page.reload();
+  expect(await page.getByRole("status").count()).toBe(0);
+});
+
 async function homeSaysOf(tableName: string) {
   const { page }: { page: Page } = await openInNewTab("/");
   return page.getByRole("region", { name: "Your Tables" }).getByRole("link", { name: tableName }).innerText();
