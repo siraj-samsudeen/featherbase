@@ -50,6 +50,16 @@ test("The first Column that is never blank and never repeats is suggested as the
   expect(await columnsSuggestedAsKeyOn(page)).toEqual(["Email"]);
 });
 
+test("A file saved on Windows reads the same as one saved anywhere else.", async () => {
+  const page = await give("things.csv", savedOnWindows(["Row,Thing", "1,48", "2,36"]));
+  expect(await typeOfTheColumnOn(page)).toBe("Number");
+});
+
+function savedOnWindows(lines: string[]) {
+  const lastLineIsEndedToo = "";
+  return [...lines.map((line) => `${line}\r`), lastLineIsEndedToo];
+}
+
 function cells(timesEachValueAppears: Record<string, number>) {
   return Object.entries(timesEachValueAppears)
     .flatMap(([value, times]) => Array(times).fill(value))
