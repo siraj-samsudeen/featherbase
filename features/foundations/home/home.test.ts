@@ -21,12 +21,13 @@ test('Home has a link "Import Data" that opens the Import Data page.', async () 
   expect(await headingOn(visit.page)).toBe("Import Data");
 });
 
-test("Home lists each Table with its number of rows, and its name opens the list.", async () => {
-  await make("pens.csv", ["Pen", "Blue", "Red"]);
+test('Home lists each Table with its Columns, its key and its number of rows: "2 Columns, keyed by Code", "3 rows".', async () => {
+  await make("pens.csv", ["Code,Colour", "P1,Blue", "P2,Red", "P3,Black"]);
 
   const { page } = await openInNewTab("/");
   const yourTables = page.getByRole("region", { name: "Your Tables" });
-  expect(await yourTables.innerText()).toContain("2 rows");
+  expect(await yourTables.innerText()).toContain("2 Columns, keyed by Code");
+  expect(await yourTables.innerText()).toContain("3 rows");
   await yourTables.getByRole("link", { name: "Pens" }).click();
   await page.waitForURL("**/tables/pens");
   expect(await headingOn(page)).toBe("Pens");
