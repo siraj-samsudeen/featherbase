@@ -1,4 +1,4 @@
-export type TableLink = { name: string; address: string; rows: number };
+export type TableLink = { name: string; address: string; rows: number; columns: number; key?: string };
 export type View = { title: string; html: string };
 
 const home = "/";

@@ -1,6 +1,6 @@
 import { html } from "@elysiajs/html";
 import { Elysia, NotFoundError } from "elysia";
-import { type Table, proposalView, tableProposedFrom } from "./features/importing-data/proposing/proposing.ts";
+import { type Table, proposalView, tableProposedFrom, withChoices } from "./features/importing-data/proposing/proposing.ts";
 import { listView } from "./features/managing-data/browsing/browsing.ts";
 import { type TableLink, type View, asText, bar, homeCrumb, page, stylesheetAddress, stylesheetFile } from "./page.ts";
 
@@ -37,9 +37,12 @@ function homeView(tables: TableLink[]) {
 const noTablesYet = '<p class="none">No Tables yet. Your first one will appear here.</p>';
 
 function tableItem(table: TableLink) {
+  const keyedBy = table.key ? `, keyed by ${asText(table.key)}` : "";
   return `
     <a class="item" href="${table.address}">
-      <b>${asText(table.name)}</b><span class="grow"></span><span class="cnt">${table.rows} rows</span>
+      <b>${asText(table.name)}</b><span class="tag">main</span>
+      <span class="dim">${table.columns} Columns${keyedBy}</span>
+      <span class="grow"></span><span class="cnt">${table.rows} rows</span>
     </a>`;
 }
 
@@ -99,8 +102,9 @@ export function createFeatherbase() {
       return show(proposalView(tableProposedFrom(file.name, await file.text())));
     })
     .post("/tables", ({ body, redirect }) => {
-      const { fileName, text } = body as { fileName: string; text: string };
-      const table = tableProposedFrom(fileName, text);
+      const choices = body as Record<string, string>;
+      const table = withChoices(tableProposedFrom(choices.fileName, choices.text), choices);
+      if (tables.has(addressNameOf(table))) return show(proposalView(table, `${table.name} is already used.`));
       tables.set(addressNameOf(table), table);
       return redirect(addressOf(addressNameOf(table)));
     })
@@ -112,7 +116,13 @@ export function createFeatherbase() {
 }
 
 function linkToTable([addressName, table]: [string, Table]) {
-  return { name: table.name, address: addressOf(addressName), rows: table.rows.length };
+  return {
+    name: table.name,
+    address: addressOf(addressName),
+    rows: table.rows.length,
+    columns: table.columns.length,
+    key: table.columns.find((column) => column.key)?.name,
+  };
 }
 
 function addressOf(addressName: string) {
