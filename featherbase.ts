@@ -6,7 +6,7 @@ import { type Layout, type OpenRecord, listView } from "./features/managing-data
 import { aNewRecordFor, cellsTypedInto, nameOf, recordForm, refusalsOf } from "./features/managing-data/changing/changing.ts";
 import { type View, bar, page, stylesheetAddress, stylesheetFile } from "./page.ts";
 import { homeView } from "./features/foundations/home/home.ts";
-import { importDataView } from "./features/importing-data/uploading/uploading.ts";
+import { importDataView, sampleAddress, sampleFile, sampleName } from "./features/importing-data/uploading/uploading.ts";
 
 const notFoundView = {
   title: "Page not found",
@@ -32,6 +32,11 @@ export async function createFeatherbase(databaseAddress: string) {
     const upload = await store.uploadAt(uploadId);
     if (!upload) throw new NotFoundError();
     return tableProposedFrom(upload.fileName, upload.text);
+  }
+
+  async function keptAt(fileName: string, file: Blob) {
+    const rowCount = tableProposedFrom(fileName, await file.text()).rows.length;
+    return `/uploads/${await store.keepUpload(fileName, await file.bytes(), rowCount)}`;
   }
 
   async function tableAt(addressName: string) {
@@ -73,9 +78,9 @@ export async function createFeatherbase(databaseAddress: string) {
     .get("/import", () => show(importDataView))
     .post("/import", async ({ body, redirect }) => {
       const { file } = body as { file: File };
-      const rowCount = tableProposedFrom(file.name, await file.text()).rows.length;
-      return redirect(`/uploads/${await store.keepUpload(file.name, await file.bytes(), rowCount)}`);
+      return redirect(await keptAt(file.name, file));
     })
+    .post(sampleAddress, async ({ redirect }) => redirect(await keptAt(sampleName, Bun.file(sampleFile))))
     .get("/uploads/:id", async ({ params }) => show(proposalView(await proposalFor(params.id), params.id)))
     .post("/tables", async ({ body, cookie, redirect }) => {
       const choices = body as Record<string, string>;
