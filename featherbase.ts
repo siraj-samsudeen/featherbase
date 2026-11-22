@@ -76,12 +76,14 @@ export async function createFeatherbase(databaseAddress: string) {
       return redirect(`/uploads/${await store.keepUpload(file.name, await file.bytes(), rowCount)}`);
     })
     .get("/uploads/:id", async ({ params }) => show(proposalView(await proposalFor(params.id), params.id)))
-    .post("/tables", async ({ body, redirect }) => {
+    .post("/tables", async ({ body, cookie, redirect }) => {
       const choices = body as Record<string, string>;
       const chosen = withChoices(await proposalFor(choices.upload), choices);
       const refusal = (await store.tableAt(addressNameOf(chosen))) ? `${chosen.name} is already used.` : "";
       if (refusal) return show(proposalView(chosen, choices.upload, refusal));
-      return redirect(addressOf(await store.make(chosen, chosen.rows, choices.upload)));
+      const made = await store.make(chosen, chosen.rows, choices.upload);
+      say(cookie.said, `Created ${made.name} with ${made.rowCount} rows`);
+      return redirect(addressOf(made));
     })
     .get("/tables/:name", async ({ params, cookie }) => showList(await tableAt(params.name), cookie.said))
     .get("/tables/:name/rows/:id", async ({ params, cookie }) => {
@@ -140,6 +142,7 @@ function linkTo(table: StoredTable) {
     address: addressOf(table),
     rows: table.rowCount,
     columns: table.columns.length,
+    changed: table.changed,
     key: table.columns.find((column) => column.key)?.name,
   };
 }

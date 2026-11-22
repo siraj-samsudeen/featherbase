@@ -1,4 +1,4 @@
-export type TableLink = { name: string; address: string; rows: number; columns: number; key?: string };
+export type TableLink = { name: string; address: string; rows: number; columns: number; changed: string; key?: string };
 export type UploadLink = { name: string; address: string; rows: number; arrivedOn: string };
 export type Frame = { tables: TableLink[]; uploads: UploadLink[]; said?: string };
 export type View = { title: string; html: string };

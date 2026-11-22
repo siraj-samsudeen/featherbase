@@ -36,7 +36,7 @@ function itemsNumbered(first: number, last: number) {
 }
 
 async function sees(page: Page, words: string) {
-  await page.getByText(words).waitFor();
+  await page.getByText(words, { exact: true }).waitFor();
 }
 
 function firstCellsOn(page: Page) {

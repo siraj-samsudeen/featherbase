@@ -2,7 +2,7 @@ import { SQL } from "bun";
 
 export type Column = { name: string; type: string; key: boolean; choices: string[] };
 export type Table = { name: string; fileName: string; columns: Column[] };
-export type StoredTable = Table & { addressName: string; rowCount: number; place: string; columns: StoredColumn[] };
+export type StoredTable = Table & { addressName: string; changed: string; rowCount: number; place: string; columns: StoredColumn[] };
 export type StoredColumn = Column & { place: string };
 export type Row = { id: string; cells: string[]; uploadRow: number | null };
 export type Upload = { id: string; fileName: string; rowCount: number; arrivedOn: string };
@@ -39,6 +39,8 @@ const postgresType: Record<string, string> = {
   "Yes/No": "boolean",
 };
 
+const tableFields =
+  "*, case when _updated_at::date = current_date then 'today' else to_char(_updated_at, 'DD-Mon-YYYY') end as changed";
 const uploadFields = "_id, file_name, row_count, to_char(_created_at, 'YYYY-MM-DD') as arrived_on";
 
 export async function openStore(databaseAddress: string) {
@@ -46,12 +48,12 @@ export async function openStore(databaseAddress: string) {
   await sql.unsafe(featherbaseOwnTables);
 
   async function allTables() {
-    const found = await sql.unsafe("select * from featherbase.tables order by _id");
+    const found = await sql.unsafe(`select ${tableFields} from featherbase.tables order by _id`);
     return Promise.all(found.map(storedTableFrom));
   }
 
   async function tableAt(addressName: string) {
-    const found = await sql.unsafe("select * from featherbase.tables where address_name = $1", [addressName]);
+    const found = await sql.unsafe(`select ${tableFields} from featherbase.tables where address_name = $1`, [addressName]);
     return found.length > 0 ? storedTableFrom(found[0]) : undefined;
   }
 
@@ -61,6 +63,7 @@ export async function openStore(databaseAddress: string) {
       name: found.name,
       fileName: found.file_name,
       addressName: found.address_name,
+      changed: found.changed,
       place: found.place,
       columns: typeof found.columns === "string" ? JSON.parse(found.columns) : found.columns,
       rowCount: count,
@@ -93,14 +96,21 @@ export async function openStore(databaseAddress: string) {
       `update main."${table.place}" set ${settings.join(", ")}, _updated_at = now() where _id = $${cells.length + 1}`,
       [...cells.map(blankAsNull), id],
     );
+    await noteAChangeTo(table);
   }
 
   async function addRow(table: StoredTable, cells: string[]) {
     await sql.unsafe(insertInto(table.place, table.columns), [...cells.map(blankAsNull), null]);
+    await noteAChangeTo(table);
   }
 
   async function takeOutRow(table: StoredTable, id: string) {
     await sql.unsafe(`delete from main."${table.place}" where _id = $1`, [id]);
+    await noteAChangeTo(table);
+  }
+
+  async function noteAChangeTo(table: StoredTable) {
+    await sql.unsafe("update featherbase.tables set _updated_at = now() where place = $1", [table.place]);
   }
 
   async function keepUpload(fileName: string, content: Uint8Array, rowCount: number): Promise<string> {

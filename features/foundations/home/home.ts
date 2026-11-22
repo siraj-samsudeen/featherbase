@@ -12,10 +12,7 @@ export function homeView({ tables, uploads }: Frame) {
       <section class="view">
         ${bar("Home")}
         <div class="page">
-          <div class="hello">
-            <h2>Welcome To Featherbase</h2>
-            <p>Bring in a spreadsheet and it becomes a Table you can browse.</p>
-          </div>
+          ${tables.length > 0 ? "" : welcome}
           <div class="sect">
             <h2>Start</h2>
             <div class="acts">
@@ -31,6 +28,12 @@ export function homeView({ tables, uploads }: Frame) {
       </section>`,
   };
 }
+
+const welcome = `
+  <div class="hello">
+    <h2>Welcome To Featherbase</h2>
+    <p>There is nothing here yet. Bring in a spreadsheet and it becomes a Table you can browse and edit.</p>
+  </div>`;
 
 function recentUploads(uploads: UploadLink[]) {
   return `
@@ -57,5 +60,6 @@ function tableItem(table: TableLink) {
       <b>${asText(table.name)}</b><span class="tag">main</span>
       <span class="dim">${table.columns} Columns${keyedBy}</span>
       <span class="grow"></span><span class="cnt">${table.rows} rows</span>
+      <span class="dim">changed ${table.changed}</span>
     </a>`;
 }
