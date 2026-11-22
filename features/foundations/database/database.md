@@ -7,6 +7,7 @@ How Tables, rows and Featherbase's own records are stored.
 Proposed by Claude while building the journey. Not yet agreed by Siraj.
 
 1. Tables and their rows are still there after Featherbase is stopped and started again.
+2. Columns whose names differ only in capitals, spaces or marks each keep their own values.
 
 ## Decided
 
