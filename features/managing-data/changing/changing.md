@@ -8,6 +8,7 @@ Proposed by Claude while building the mock-up screens for real. Not yet agreed b
 
 1. Pressing a row's name opens that row beside the list, with every value in a field that suits its type, and marks the row in the list.
 2. The record says where its row came from: "from stock.csv row 3".
+3. Save keeps the changed values, goes back to the list and says "Saved".
 
 ## Decided
 
