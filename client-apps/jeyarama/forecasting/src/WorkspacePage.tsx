@@ -114,7 +114,7 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
     return (
       <td className={weeks.length === 5 ? 'bg-subtle/60' : ''}>
         <button type="button" onClick={() => { setSel(sc); setMode('views') }} aria-pressed={!!on}
-          className={`flex min-h-11 w-full flex-col items-end justify-center px-2.5 py-1.5 tabular-nums hover:bg-subtle ${on ? 'bg-action-tint ring-2 ring-action ring-inset' : ''}`}>
+          className={`flex min-h-11 w-full flex-col items-end justify-center px-2.5 py-1.5 whitespace-nowrap tabular-nums hover:bg-subtle ${on ? 'bg-action-tint ring-2 ring-action ring-inset' : ''}`}>
           {changed && <span className="text-[11px] text-ink-muted line-through">{fmtINR(was)}</span>}
           <span className={changed ? 'font-semibold text-action' : ''}>{fmtINR(now)}</span>
           {views.length > 0 && <span className="mt-0.5 flex gap-1">{views.map(v => <span key={v.row_id} title={`${v.entered_by}: ${v.status}`}
@@ -139,8 +139,8 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-opportunity" />Reference</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-negative" />Not approved</span>
       </div>
-      {/* The cell panel sits beside the grid from 1280 px, so a 1440 px screen shows both. */}
-      <div className={`grid items-start gap-4 ${sel ? 'xl:grid-cols-[minmax(0,1fr)_25rem] 2xl:grid-cols-[minmax(0,1fr)_30rem]' : ''}`}>
+      {/* The cell panel sits beside the grid from 1280 px, so a 1440 px screen shows both (the grid needs about 772 px). */}
+      <div className={`grid items-start gap-4 ${sel ? 'xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_30rem]' : ''}`}>
         <Card>
           <div className="overflow-x-auto p-2">
             <table className="w-full min-w-[720px] border-collapse text-sm" data-testid="grid">
