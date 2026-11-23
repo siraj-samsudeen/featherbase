@@ -39,9 +39,16 @@ const save = (table: string, row: Record<string, unknown>) =>
 const [installed] = await sql`select 1 from installed_app where name = 'forecasting'`
 if (!installed) await call('/api/install_app', { method: 'POST', body: JSON.stringify({ name: 'forecasting' }) })
 
+// The Administrator's way in from the Admin sidebar: an app with its own pages gets no module page, so
+// this local instance adds one, "Forecasting", whose shortcut opens the app. Added once; a rerun keeps it.
+const signIn = `${api.replace(/:\d+$/, ':' + (process.env.WEB_PORT ?? ''))}/featherbase/login?next=%2Fforecasting%2F`
+const page = await fetch(`${api}/api/table/${encodeURIComponent('Home Page')}/forecasting`, { headers: { authorization: `Bearer ${login.token}` } })
+if (page.status === 404) await save('Home Page', { row_id: 'forecasting', label: 'Forecasting', module: 'Forecasting', sequence: 10,
+  shortcuts: JSON.stringify([{ label: 'Open Forecasting', type: 'url', link_to: '/forecasting/' }]) })
+
 const existing = await call<{ data: unknown[] }>('/api/table/forecasting.number?limit_page_length=1')
 if (existing.data.length) {
-  console.log('Forecasting: made-up numbers are already there; nothing added.')
+  console.log(`Forecasting: made-up numbers are already there; nothing added.\n    Sign in and open the app:  ${signIn}  as Administrator / admin (development only)`)
   await sql.end?.()
   process.exit(0)
 }
@@ -75,7 +82,8 @@ for (const i of register.ideas) await save('forecasting.idea', {
   revisit: i.revisit || null, areas: (i.tags ?? []).join(', '), evidence: (i.evidence ?? []).join('\n') || null })
 
 console.log(`Forecasting: ${records.numbers.length} made-up numbers, ${register.questions.length} Review questions and ${register.ideas.length} ideas.
-    Open:  ${api.replace(/:\d+$/, ':' + (process.env.WEB_PORT ?? ''))}/forecasting/  as Administrator / admin (development only)
+    Sign in and open the app:  ${signIn}  as Administrator / admin (development only)
+    In the Admin, the sidebar's Modules list has Forecasting.
     Pick a made-up person under "Viewing as" to see the page as they would.`)
 await sql.end?.()  // the open pool would keep this script, and so the dev command, waiting
 process.exit(0)

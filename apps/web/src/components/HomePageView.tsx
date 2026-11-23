@@ -96,7 +96,14 @@ export function HomePageView({ name }: { name: string }) {
       {/* Legacy UI-027 shortcuts, still rendered as navigable cards. */}
       {page.shortcuts.length > 0 && (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3" data-testid="home-page-shortcuts">
-          {page.shortcuts.map((s) => (
+          {page.shortcuts.map((s) => s.type === 'url' && !s.link_to.startsWith('/featherbase/') ? (
+            // An address outside the Admin (an app's own pages) is a page of its own: a plain link loads it,
+            // where the Admin's router would answer "Page not found".
+            <a key={s.label} href={s.link_to} data-testid={`shortcut-${s.label}`} className={cardClasses('block p-4 text-left transition hover:bg-hover')}>
+              <div className="text-sm font-medium text-ink">{s.label}</div>
+              <div className="mt-1 text-xs text-ink-muted">{s.type}</div>
+            </a>
+          ) : (
             <button
               key={s.label}
               data-testid={`shortcut-${s.label}`}
