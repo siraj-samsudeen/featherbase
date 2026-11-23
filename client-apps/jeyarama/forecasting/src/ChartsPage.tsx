@@ -9,6 +9,7 @@ import { ALL_STORES, CHART_SUBS, REGIONS, UPLIFT, type Sub } from './madeUp'
 import { EVENTS, completeTo, daysFor, totalsTo, type DayRow } from './sales'
 import { dateOf, type Month } from './months'
 import { DailyChart, GapBars, Legend, bias, pct1, signedINR } from './charts'
+import { CheckRow, ChoiceRow, Dropdown, Heading } from './pickers'
 import { NoRunYet, Page, type Ctx } from './App'
 
 type View = 'all' | 'region' | 'stores' | 'subcategory'
@@ -17,7 +18,7 @@ const VIEWS: { value: View; label: string }[] = [
 const NAMES = [...new Set(CHART_SUBS.map(s => s.name))]
 const TOPS = [3, 5, 8, 10]
 
-interface Choice { chart: View; region: string; stores: string[]; subs: string[]; pick: 'largest' | 'search'; top: number; within: string; bars: '' | 'store' | 'subcategory' }
+interface Choice { chart: View; region: string; stores: string[]; subs: string[]; pick: 'largest' | 'chosen'; top: number; within: string; bars: '' | 'store' | 'subcategory' }
 /** The page's choices live in the address beside ?view= and ?month=, so a link opens the same chart. */
 function fromAddress(): Choice {
   const q = new URLSearchParams(window.location.search)
@@ -26,14 +27,14 @@ function fromAddress(): Choice {
   const stores = list('stores').filter(s => ALL_STORES.includes(s)), subs = list('subs').filter(s => NAMES.includes(s))
   return { chart, region: REGIONS.some(r => r.name === q.get('region')) ? q.get('region')! : REGIONS[0].name,
     stores: q.has('stores') ? stores : ['Lakeside', 'Hillview'], subs: q.has('subs') ? subs : ['Girls Jean', 'Men Formal Shirt'],
-    pick: q.get('pick') === 'search' ? 'search' : 'largest', top: TOPS.includes(Number(q.get('top'))) ? Number(q.get('top')) : 5,
+    pick: q.get('pick') === 'chosen' ? 'chosen' : 'largest', top: TOPS.includes(Number(q.get('top'))) ? Number(q.get('top')) : 5,
     within: q.get('within') ?? '', bars: q.get('bars') === 'store' || q.get('bars') === 'subcategory' ? q.get('bars') as Choice['bars'] : '' }
 }
 function toAddress(c: Choice) {
   const q = new URLSearchParams(window.location.search)
   const set = (k: string, v: string) => (v ? q.set(k, v) : q.delete(k))
   set('chart', c.chart); set('region', c.chart === 'region' ? c.region : ''); set('stores', c.chart === 'stores' ? c.stores.join(',') || ',' : '')
-  set('subs', c.chart === 'subcategory' && c.pick === 'search' ? c.subs.join(',') || ',' : ''); set('pick', c.chart === 'subcategory' ? c.pick : '')
+  set('subs', c.chart === 'subcategory' && c.pick === 'chosen' ? c.subs.join(',') || ',' : ''); set('pick', c.chart === 'subcategory' ? c.pick : '')
   set('top', c.chart === 'subcategory' && c.pick === 'largest' ? String(c.top) : ''); set('within', c.chart === 'subcategory' ? c.within : ''); set('bars', c.bars)
   history.replaceState(null, '', `?${q}`)
 }
@@ -108,8 +109,10 @@ export function ChartsPage({ ctx }: { ctx: Ctx }) {
       <Card>
         <div className="flex flex-wrap items-end gap-x-5 gap-y-3 p-4" data-testid="chart-controls">
           <Field label="View"><Segmented label="View" value={choice.chart} onChange={v => change({ chart: v, bars: '' })} options={VIEWS} /></Field>
-          {choice.chart === 'region' && <Field label="Region"><Segmented label="Region" value={choice.region} onChange={v => change({ region: v, bars: '' })} options={REGIONS.map(r => ({ value: r.name, label: `${r.name} region` }))} /></Field>}
-          {choice.chart === 'stores' && <StorePicker chosen={choice.stores} onChange={s => change({ stores: s, bars: '' })} />}
+          {choice.chart === 'region' && <div className="w-52"><Field label="Region"><Select value={choice.region} onChange={e => change({ region: e.target.value, bars: '' })} data-testid="region">
+            {REGIONS.map(r => <option key={r.name} value={r.name}>{r.name} region</option>)}
+          </Select></Field></div>}
+          {choice.chart === 'stores' && <StoresDropdown chosen={choice.stores} onChange={s => change({ stores: s, bars: '' })} />}
           {choice.chart === 'subcategory' && <SubcategoryPicker choice={choice} chosen={pick.names} change={change} />}
         </div>
       </Card>
@@ -170,31 +173,31 @@ function Tile({ label, value, note, testId }: { label: string; value: number; no
   )
 }
 
-function StorePicker({ chosen, onChange }: { chosen: string[]; onChange: (stores: string[]) => void }) {
+/** One store, several or all, from a dropdown of checkboxes grouped by region. */
+function StoresDropdown({ chosen, onChange }: { chosen: string[]; onChange: (stores: string[]) => void }) {
   const flip = (s: string) => onChange(chosen.includes(s) ? chosen.filter(x => x !== s) : ALL_STORES.filter(x => x === s || chosen.includes(x)))
+  const all = chosen.length === ALL_STORES.length
+  const summary = all ? `All stores (${ALL_STORES.length})` : !chosen.length ? 'No store' : chosen.length <= 2 ? listText(chosen) : `${chosen.length} stores`
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-sm font-medium">Stores <span className="font-normal text-ink-muted">· {chosen.length} of {ALL_STORES.length}</span></span>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        {REGIONS.map(r => (
-          <div key={r.name} role="group" aria-label={`${r.name} region`} className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[13px] text-ink-muted">{r.name}</span>
-            {r.stores.map(s => <Toggle key={s} on={chosen.includes(s)} onClick={() => flip(s)} testId={`store-${s}`}>{s}</Toggle>)}
-          </div>))}
-        <span className="flex gap-1.5">
-          <button type="button" className="text-[13px] font-semibold text-action" onClick={() => onChange([...ALL_STORES])}>All</button>
-          <button type="button" className="text-[13px] font-semibold text-action" onClick={() => onChange([])}>Clear</button>
-        </span>
-      </div>
-    </div>
+    <Dropdown label="Stores" summary={summary} testId="stores" className="w-64">
+      <CheckRow checked={all} mixed={!all && chosen.length > 0} onChange={() => onChange(all ? [] : [...ALL_STORES])} testId="stores-all">All stores</CheckRow>
+      {REGIONS.map(r => (
+        <div key={r.name} className="mt-1.5 flex flex-col">
+          <Heading>{r.name} region</Heading>
+          {r.stores.map(s => <CheckRow key={s} checked={chosen.includes(s)} onChange={() => flip(s)} testId={`store-${s}`}>{s}</CheckRow>)}
+        </div>))}
+    </Dropdown>
   )
 }
 
+/** Within the business, a region or a store; then the largest N subcategories, or several found by search. */
 function SubcategoryPicker({ choice, chosen, change }: { choice: Choice; chosen: string[]; change: (c: Partial<Choice>) => void }) {
   const [q, setQ] = useState('')
   const words = q.toLowerCase().split(/\s+/).filter(Boolean)
   const found = NAMES.filter(n => words.every(w => n.toLowerCase().includes(w)))
-  const flip = (n: string) => change({ subs: choice.subs.includes(n) ? choice.subs.filter(x => x !== n) : [...choice.subs, n] })
+  // Ticking a subcategory starts from what is drawn now, so "the 5 largest" becomes those five, then edited.
+  const flip = (n: string) => change({ pick: 'chosen', subs: chosen.includes(n) ? chosen.filter(x => x !== n) : [...chosen, n] })
+  const summary = choice.pick === 'largest' ? `The ${choice.top} largest` : !chosen.length ? 'None chosen' : chosen.length <= 2 ? chosen.join(', ') : `${chosen.length} subcategories`
   return (
     <>
       <div className="w-52"><Field label="Within"><Select value={choice.within} onChange={e => change({ within: e.target.value })} data-testid="within">
@@ -202,28 +205,21 @@ function SubcategoryPicker({ choice, chosen, change }: { choice: Choice; chosen:
         {REGIONS.map(r => <option key={r.name} value={`region:${r.name}`}>{r.name} region</option>)}
         {ALL_STORES.map(s => <option key={s} value={`store:${s}`}>{s}</option>)}
       </Select></Field></div>
-      <Field label="Pick"><Segmented label="Pick subcategories" value={choice.pick} onChange={v => change({ pick: v })} options={[{ value: 'largest', label: 'The largest' }, { value: 'search', label: 'By search' }]} /></Field>
-      {choice.pick === 'largest' ? (
-        <div className="w-40"><Field label="How many" hint="Largest by final for the month"><Select value={String(choice.top)} onChange={e => change({ top: Number(e.target.value) })} data-testid="top">
-          {TOPS.map(n => <option key={n} value={n}>{n}</option>)}
-        </Select></Field></div>
-      ) : (
-        <div className="flex basis-full flex-col gap-1.5">
-          <div className="max-w-md"><Field label="Find subcategories"><SearchInput value={q} placeholder="Try: girls, veg, shirt" onChange={e => setQ(e.target.value)} data-testid="sub-search" /></Field></div>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Subcategories">
-            {(words.length ? found : NAMES).map(n => <Toggle key={n} on={choice.subs.includes(n)} onClick={() => flip(n)} testId={`sub-${n}`}>{n}</Toggle>)}
-            {words.length > 0 && !found.length && <span className="text-[13px] text-ink-muted">No subcategory matches.</span>}
-          </div>
+      <Dropdown label="Subcategories" summary={summary} testId="subs" className="w-72">
+        <div className="px-1.5 pb-1.5"><SearchInput value={q} placeholder="Find: girls, veg, shirt" aria-label="Find subcategories" onChange={e => setQ(e.target.value)} data-testid="sub-search" /></div>
+        {!words.length && <>
+          <Heading>The largest, by final for the month</Heading>
+          {TOPS.map(n => <ChoiceRow key={n} on={choice.pick === 'largest' && choice.top === n} onClick={() => change({ pick: 'largest', top: n })} testId={`top-${n}`}>The {n} largest</ChoiceRow>)}
+        </>}
+        <div className="mt-1.5 flex flex-col">
+          <Heading>{words.length ? `${found.length} found` : 'Or choose'}</Heading>
+          {(words.length ? found : NAMES).map(n => <CheckRow key={n} checked={chosen.includes(n)} onChange={() => flip(n)} testId={`sub-${n}`}>{n}</CheckRow>)}
+          {words.length > 0 && !found.length && <p className="px-3 py-1.5 text-[13px] text-ink-muted">No subcategory matches.</p>}
         </div>
-      )}
-      {choice.pick === 'largest' && <p className="basis-full text-[13px] text-ink-muted">Drawn: {listText(chosen)}.</p>}
+      </Dropdown>
+      <p className="basis-full text-[13px] text-ink-muted">Drawn: {chosen.length ? listText(chosen) : 'nothing yet'}.</p>
     </>
   )
-}
-
-function Toggle({ on, onClick, children, testId }: { on: boolean; onClick: () => void; children: ReactNode; testId?: string }) {
-  return <button type="button" aria-pressed={on} onClick={onClick} data-testid={testId}
-    className={`rounded-full px-2.5 py-1 text-[13px] font-semibold ${on ? 'bg-ink text-surface' : 'bg-fill text-ink-muted hover:text-ink'}`}>{children}</button>
 }
 
 /** The table view: every day's figures, exact, footing to the tiles. */
