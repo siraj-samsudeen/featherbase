@@ -2,11 +2,11 @@
 // and the scorecard), Review (each month's questions and answers) and the Idea Register (every idea
 // for making the forecast better, and what became of it). Each follows the month picked beside "Viewing as",
 // but the Idea Register, whose ideas span months.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button, Card, DataList, EmptyState, Field, Headline, SearchInput, Segmented, Select, StatusPill, TextInput, buttonClasses, fmtINR, type DataColumn, type StatusTone } from '@featherbase/shop-floor'
 import { ALL_WEEKS, RUNS, SUBS, TARGETS, parseWeeks, type Run, type TargetVersion } from './madeUp'
 import { actualFor, engineFor, finalWeeks } from './sales'
-import { MONTHS, todayIST, type Month } from './months'
+import { MONTHS, nowIST, todayIST, type Month } from './months'
 import { NoRunYet, Page, address, waitingFor, type Ctx, type IdeaRow, type NumberRow, type QuestionRow } from './App'
 import { STATUS_TONE, Who, scopeText, when } from './WorkspacePage'
 
@@ -191,7 +191,7 @@ export function ReviewPage({ ctx }: { ctx: Ctx }) {
   const m = ctx.month
   const all = ctx.data.questions.filter(x => x.month === m.key).sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }))
   const [filter, setFilter] = useState('All')
-  const [selRef, setSel] = useState(all[0]?.ref)
+  const [selRef, setSel] = useState(new URLSearchParams(window.location.search).get('question') ?? all[0]?.ref)
   const [asking, setAsking] = useState(false)
   const [q, setQ] = useState({ scope: '', question: '', detail: '' })
   const shown = all.filter(x => filter === 'All' || x.outcome === filter)
@@ -271,12 +271,18 @@ function Question({ ctx, x }: { ctx: Ctx; x: QuestionRow }) {
   )
 }
 
-const VERDICT_TONE: Record<string, StatusTone> = { Waiting: 'caution', Kept: 'positive', Rejected: 'negative', 'Already in the model': 'neutral', 'Not tested': 'missing' }
+/** An idea's life: Raised → Being tested → Kept or Rejected; or Waiting, Already in the model, Not tested. */
+const VERDICT_TONE: Record<string, StatusTone> = { Raised: 'neutral', 'Being tested': 'opportunity', Kept: 'positive', Rejected: 'negative', Waiting: 'caution', 'Already in the model': 'neutral', 'Not tested': 'missing' }
 /** An idea's areas. A new idea may have none: the column then comes back empty (null), never a list. */
 export const areasOf = (i: Pick<IdeaRow, 'areas'>) => (i.areas ?? '').split(', ').filter(Boolean)
+const refsOf = (s: string | null) => (s ?? '').split(/[,\s]+/).filter(Boolean)
+/** Due: its "look again on" date has come. */
+const isDue = (i: IdeaRow) => !!i.revisit_on && i.revisit_on <= todayIST()
 export function IdeasPage({ ctx }: { ctx: Ctx }) {
-  const [q, setQ] = useState(new URLSearchParams(window.location.search).get('q') ?? '')
-  const [verdict, setVerdict] = useState(''), [kind, setKind] = useState(''), [area, setArea] = useState('')
+  const params = new URLSearchParams(window.location.search)
+  const target = params.get('idea')
+  const [q, setQ] = useState(target ? '' : params.get('q') ?? '')
+  const [verdict, setVerdict] = useState(''), [kind, setKind] = useState(''), [area, setArea] = useState(''), [due, setDue] = useState(false)
   const [adding, setAdding] = useState(false)
   const [idea, setIdea] = useState({ title: '', why: '' })
   const ideas = ctx.data.ideas
@@ -285,21 +291,28 @@ export function IdeasPage({ ctx }: { ctx: Ctx }) {
     return [...c.entries()].sort((a, b) => b[1] - a[1]).map(([a]) => a)
   }, [ideas])
   const words = q.toLowerCase().split(/\s+/).filter(Boolean)
-  const shown = ideas.filter(i => (!verdict || i.verdict === verdict) && (!kind || i.kind === kind) && (!area || areasOf(i).includes(area))
-    && words.every(w => [i.ref, i.label, i.title, i.why, i.tried, i.found, i.status_note, ...areasOf(i)].join(' ').toLowerCase().includes(w)))
+  const shown = ideas.filter(i => (!verdict || i.verdict === verdict) && (!kind || i.kind === kind) && (!area || areasOf(i).includes(area)) && (!due || isDue(i))
+    && words.every(w => [i.ref, i.label, i.title, i.why, i.tried, i.found, i.status_note, i.reason, ...areasOf(i)].join(' ').toLowerCase().includes(w)))
+  // A link to one idea (from Review, or a related idea) opens that idea itself.
+  useEffect(() => { if (target) document.getElementById(`idea-${target}`)?.scrollIntoView({ block: 'start' }) }, [target])
   const add = async () => {
-    await ctx.save('forecasting.idea', { ref: `ID-${ideas.length + 1}`, label: '', title: idea.title, why: idea.why, kind: 'Business suggestion', raised_by: ctx.viewer.name, raised_on: todayIST(), verdict: 'Not tested', areas: '' })
+    // A new reference: one past the highest ID- number, never a count (ideas come and go).
+    const top = Math.max(0, ...ideas.map(i => Number(/^ID-(\d+)$/.exec(i.ref)?.[1] ?? 0)))
+    await ctx.save('forecasting.idea', { ref: `ID-${top + 1}`, label: '', title: idea.title, why: idea.why, kind: 'Business suggestion', raised_by: ctx.viewer.name, raised_on: todayIST(), verdict: 'Raised', areas: '' })
     setIdea({ title: '', why: '' }); setAdding(false); await ctx.reload()
   }
+  const chip = (on: boolean) => `min-w-32 rounded-card p-3 text-start shadow-raised ${on ? 'bg-ink text-surface' : 'bg-surface'}`
   return (
     <Page title="Idea Register" actions={<Button variant="primary" onClick={() => setAdding(!adding)}>Add an idea</Button>}>
-      <p className="-mt-2 text-sm text-ink-muted">Every idea for improving the forecast, wherever it came from (a business suggestion, an engine trial, a model comparison, a month check), with why it came up, what was tried, what was found, and why it was kept or dropped. Search here before testing anything.</p>
+      <p className="-mt-2 text-sm text-ink-muted">Every idea for improving the forecast, wherever it came from (a business suggestion, an engine trial, a model comparison, a month check), with why it came up, what was tried, what was found, and why it was kept or dropped. Search here before testing anything. Ideas span months, so the month picker does not filter them.</p>
       <div className="flex flex-wrap gap-2">
         {Object.keys(VERDICT_TONE).map(v => (
-          <button key={v} type="button" aria-pressed={verdict === v} onClick={() => setVerdict(verdict === v ? '' : v)}
-            className={`min-w-32 rounded-card p-3 text-start shadow-raised ${verdict === v ? 'bg-ink text-surface' : 'bg-surface'}`}>
+          <button key={v} type="button" aria-pressed={verdict === v} onClick={() => setVerdict(verdict === v ? '' : v)} className={chip(verdict === v)}>
             <b className="block text-2xl tabular-nums">{ideas.filter(i => i.verdict === v).length}</b><span className="text-[13px]">{v}</span>
           </button>))}
+        <button type="button" aria-pressed={due} onClick={() => setDue(!due)} className={chip(due)} data-testid="due-chip">
+          <b className="block text-2xl tabular-nums">{ideas.filter(isDue).length}</b><span className="text-[13px]">Due to look at again</span>
+        </button>
       </div>
       {adding && (
         <Card><div className="grid gap-2 p-4 md:grid-cols-2">
@@ -312,7 +325,7 @@ export function IdeasPage({ ctx }: { ctx: Ctx }) {
         <div className="flex flex-col gap-2.5 bg-subtle p-4">
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-72 flex-1"><Field label="Search ideas, reasons and results"><SearchInput value={q} placeholder="Try: weekday, festival, onion, weights, food court" onChange={e => setQ(e.target.value)} data-testid="idea-search" /></Field></div>
-            <div className="w-48"><Field label="Verdict"><Select value={verdict} onChange={e => setVerdict(e.target.value)}><option value="">Every verdict</option>{Object.keys(VERDICT_TONE).map(v => <option key={v}>{v}</option>)}</Select></Field></div>
+            <div className="w-48"><Field label="Status"><Select value={verdict} onChange={e => setVerdict(e.target.value)}><option value="">Every status</option>{Object.keys(VERDICT_TONE).map(v => <option key={v}>{v}</option>)}</Select></Field></div>
             <div className="w-52"><Field label="Came from"><Select value={kind} onChange={e => setKind(e.target.value)}><option value="">Every source</option>{['Engine trial', 'Business suggestion', 'Model comparison', 'Month check'].map(v => <option key={v}>{v}</option>)}</Select></Field></div>
           </div>
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Areas">
@@ -322,30 +335,74 @@ export function IdeasPage({ ctx }: { ctx: Ctx }) {
         </div>
         <p className="px-4 py-2.5 text-[13px] text-ink-muted">{shown.length} of {ideas.length} ideas</p>
         <div className="flex flex-col" data-testid="ideas">
-          {shown.map(i => <Idea key={i.row_id} i={i} open={words.length > 0 && shown.length <= 3} onArea={setArea} />)}
+          {shown.map(i => <Idea key={i.row_id} ctx={ctx} i={i} open={i.ref === target || (words.length > 0 && shown.length <= 3)} onArea={setArea} />)}
         </div>
       </Card>
     </Page>
   )
 }
 
-function Idea({ i, open, onArea }: { i: IdeaRow; open: boolean; onArea: (a: string) => void }) {
+function Idea({ ctx, i, open, onArea }: { ctx: Ctx; i: IdeaRow; open: boolean; onArea: (a: string) => void }) {
+  const [editing, setEditing] = useState(false)
+  const history = ctx.data.ideaHistory.filter(h => h.idea === i.row_id).sort((a, b) => a.changed_on.localeCompare(b.changed_on))
+  const known = new Set(ctx.data.ideas.map(x => x.ref))
   const F = ({ k, v, wide }: { k: string; v?: string | null; wide?: boolean }) => (v ? <div className={wide ? 'md:col-span-2' : ''}><div className="text-[11.5px] font-semibold tracking-wide text-ink-muted uppercase">{k}</div><p className="text-sm whitespace-pre-line">{v}</p></div> : null)
+  const H = ({ k }: { k: string }) => <div className="text-[11.5px] font-semibold tracking-wide text-ink-muted uppercase">{k}</div>
   return (
-    <details className="border-t border-border" open={open}>
+    <details className="border-t border-border scroll-mt-4" open={open} id={`idea-${i.ref}`} data-testid={`idea-${i.ref}`}>
       <summary className="grid cursor-pointer list-none gap-x-4 gap-y-1 px-4 py-3 hover:bg-subtle md:grid-cols-[8rem_minmax(0,1fr)_10rem]">
-        <span><StatusPill tone={VERDICT_TONE[i.verdict] ?? 'neutral'}>{i.verdict}</StatusPill></span>
-        <span><span className="font-semibold">{i.title}</span><span className="block text-[13px] text-ink-muted">{i.outcome}</span></span>
+        <span className="flex flex-col items-start gap-1"><StatusPill tone={VERDICT_TONE[i.verdict] ?? 'neutral'}>{i.verdict}</StatusPill>{isDue(i) && <StatusPill tone="caution">Due</StatusPill>}</span>
+        <span><span className="font-semibold">{i.title}</span><span className="block text-[13px] text-ink-muted">{i.ref}{i.outcome ? ` · ${i.outcome}` : ''}</span></span>
         <span className="text-[13px] text-ink-muted md:text-end">{i.kind}{i.label ? ` · ${i.label}` : ''}<br />{i.raised_on && when(i.raised_on)}</span>
       </summary>
-      <div className="grid gap-x-6 gap-y-3.5 px-4 pt-1 pb-4 md:grid-cols-2">
-        <F k="Why it came up" v={i.why} /><F k="Raised by" v={i.raised_by} />
-        <F k="What we tried" v={i.tried} wide /><F k="What we found" v={i.found} wide />
-        <F k="Where it stands" v={i.status_note} /><F k="Look again when" v={i.revisit} />
-        <F k="Evidence" v={i.evidence} />
-        {areasOf(i).length > 0 && <div><div className="text-[11.5px] font-semibold tracking-wide text-ink-muted uppercase">Areas</div>
-          <div className="mt-1 flex flex-wrap gap-1.5">{areasOf(i).map(a => <button key={a} type="button" onClick={() => onArea(a)} className="rounded-control bg-subtle px-2 py-0.5 text-[13px]">{a}</button>)}</div></div>}
-      </div>
+      {editing ? <IdeaEditor ctx={ctx} i={i} onDone={() => setEditing(false)} /> : (
+        <div className="grid gap-x-6 gap-y-3.5 px-4 pt-1 pb-4 md:grid-cols-2">
+          <F k="Why it came up" v={i.why} /><F k="Raised by" v={i.raised_by} />
+          <F k="What we tried" v={i.tried} wide /><F k="What we found" v={i.found} wide />
+          <F k="Why that verdict" v={i.reason} /><F k="Decided" v={i.decided_by || i.decided_on ? [i.decided_by, i.decided_on && when(i.decided_on)].filter(Boolean).join(' · ') : null} />
+          <F k="Where it stands" v={i.status_note} /><F k="Look again when" v={i.revisit} />
+          {i.revisit_on && <div><H k="Look again on" /><p className="text-sm">{when(i.revisit_on)}{isDue(i) ? ' · due now' : ''}</p></div>}
+          <F k="Evidence" v={i.evidence} />
+          {refsOf(i.related).length > 0 && <div><H k="Related ideas" /><div className="mt-1 flex flex-wrap gap-2 text-sm">{refsOf(i.related).map(r => known.has(r)
+            ? <a key={r} href={address('ideas', { idea: r })}>{r}</a> : <span key={r} className="text-ink-muted">{r}</span>)}</div></div>}
+          {i.question_ref && <div><H k="Review question" /><a className="text-sm" href={address('review', { question: i.question_ref })}>{i.question_ref} in Review</a></div>}
+          {areasOf(i).length > 0 && <div><H k="Areas" />
+            <div className="mt-1 flex flex-wrap gap-1.5">{areasOf(i).map(a => <button key={a} type="button" onClick={() => onArea(a)} className="rounded-control bg-subtle px-2 py-0.5 text-[13px]">{a}</button>)}</div></div>}
+          {history.length > 0 && <div className="md:col-span-2"><H k="History" />
+            <ol className="mt-1 flex flex-col gap-1 border-l-2 border-border pl-3 text-[13px]">{history.map(h => <li key={h.row_id}><span className="text-ink-muted">{when(h.changed_on)}</span> · <b>{h.changed_by}</b>: {h.change}</li>)}</ol></div>}
+          <div className="md:col-span-2"><Button variant="secondary" onClick={() => setEditing(true)} data-testid="edit-idea">Edit this idea</Button></div>
+        </div>)}
     </details>
+  )
+}
+
+const FIELDS = [['tried', 'What we tried'], ['found', 'What we found'], ['evidence', 'Evidence'], ['reason', 'Why that verdict'], ['revisit_on', 'Look again on'], ['related', 'Related ideas'], ['question_ref', 'Review question']] as const
+/** Edit an idea through its life. Choosing a verdict sets who decided and when; every change goes in its history. */
+function IdeaEditor({ ctx, i, onDone }: { ctx: Ctx; i: IdeaRow; onDone: () => void }) {
+  const [f, setF] = useState({ verdict: i.verdict, tried: i.tried ?? '', found: i.found ?? '', evidence: i.evidence ?? '', reason: i.reason ?? '', revisit_on: i.revisit_on ?? '', related: i.related ?? '', question_ref: i.question_ref ?? '' })
+  const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
+  const area = 'w-full rounded-control border border-border-control bg-surface px-3 py-2 text-control text-ink'
+  const save = async () => {
+    const changes = [...(f.verdict !== i.verdict ? [`Status: ${i.verdict} → ${f.verdict}`] : []),
+      ...FIELDS.filter(([k]) => (f[k] || '') !== ((i[k] as string | null) || '')).map(([k, label]) => k === 'revisit_on' ? `${label}: ${f[k] ? when(f[k]) : 'none'}` : `${label}: changed`)]
+    if (!changes.length) return onDone()
+    const decided = f.verdict !== i.verdict ? { decided_by: ctx.viewer.name, decided_on: todayIST() } : {}
+    await ctx.save('forecasting.idea', { ...i, ...f, revisit_on: f.revisit_on || null, ...decided })
+    await ctx.save('forecasting.idea_history', { idea: i.row_id, changed_by: ctx.viewer.name, changed_on: nowIST(), change: changes.join('; ') })
+    await ctx.reload(); onDone()
+  }
+  return (
+    <div className="grid gap-3 px-4 pt-1 pb-4 md:grid-cols-2" data-testid="idea-editor">
+      <Field label="Status"><Select value={f.verdict} onChange={set('verdict')} data-testid="idea-status">{Object.keys(VERDICT_TONE).map(v => <option key={v}>{v}</option>)}</Select></Field>
+      <Field label="Look again on" hint="Back on the list as due from that day."><TextInput type="date" value={f.revisit_on} onChange={set('revisit_on')} data-testid="idea-revisit" /></Field>
+      <Field label="What we tried"><textarea rows={2} className={area} value={f.tried} onChange={set('tried')} /></Field>
+      <Field label="What we found"><textarea rows={2} className={area} value={f.found} onChange={set('found')} data-testid="idea-found" /></Field>
+      <Field label="Evidence"><textarea rows={2} className={area} value={f.evidence} onChange={set('evidence')} /></Field>
+      <Field label="Why that verdict"><textarea rows={2} className={area} value={f.reason} onChange={set('reason')} data-testid="idea-reason" /></Field>
+      <Field label="Related ideas" hint="Their references, e.g. ID-3, ID-12"><TextInput value={f.related} onChange={set('related')} data-testid="idea-related" /></Field>
+      <Field label="Review question"><Select value={f.question_ref} onChange={set('question_ref')} data-testid="idea-question"><option value="">None</option>
+        {[...ctx.data.questions].sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true })).map(x => <option key={x.row_id} value={x.ref}>{x.ref} · {x.question.slice(0, 60)}</option>)}</Select></Field>
+      <div className="flex gap-2 md:col-span-2"><Button variant="primary" onClick={() => void save()} data-testid="idea-save">Save</Button><Button variant="secondary" onClick={onDone}>Cancel</Button></div>
+    </div>
   )
 }

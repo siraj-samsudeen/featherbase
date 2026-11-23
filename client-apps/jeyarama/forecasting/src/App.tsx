@@ -24,9 +24,12 @@ export interface DecisionRow { row_id: string; number: string | null; month: str
 export interface QuestionRow { row_id: string; ref: string; month: string; scope: string; question: string; detail: string | null; asked_by: string; asked_on: string
   answer: string | null; answered_by: string | null; answered_on: string | null; outcome: string; impact: string | null; follow_up: string | null; idea_ref: string | null }
 export interface IdeaRow { row_id: string; ref: string; label: string; title: string; kind: string; raised_by: string; raised_on: string; why: string; tried: string; found: string
-  verdict: string; outcome: string; status_note: string; decided_on: string; revisit: string | null; areas: string | null; evidence: string | null }
+  verdict: string; outcome: string; status_note: string; decided_on: string; revisit: string | null; areas: string | null; evidence: string | null
+  decided_by: string | null; reason: string | null; revisit_on: string | null; related: string | null; question_ref: string | null }
+/** One change to an idea, kept in its history. */
+export interface IdeaChange { row_id: string; idea: string; changed_by: string; changed_on: string; change: string }
 
-export interface Data { numbers: NumberRow[]; decisions: DecisionRow[]; questions: QuestionRow[]; ideas: IdeaRow[] }
+export interface Data { numbers: NumberRow[]; decisions: DecisionRow[]; questions: QuestionRow[]; ideas: IdeaRow[]; ideaHistory: IdeaChange[] }
 export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => Promise<void>; save: typeof saveRow }
 
 const VIEWS = [
@@ -44,7 +47,7 @@ type View = typeof VIEWS[number]['key']
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
   q.set('view', view)
-  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', ...CHART_KEYS]) q.delete(k)
+  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', ...CHART_KEYS]) q.delete(k)
   for (const [k, v] of Object.entries(extra)) q.set(k, v)
   return `?${q}`
 }
@@ -144,13 +147,14 @@ export function ForecastingApp() {
 
   const reload = useCallback(async () => {
     try {
-      const [numbers, decisions, questions, ideas] = await Promise.all([
+      const [numbers, decisions, questions, ideas, ideaHistory] = await Promise.all([
         listAll<NumberRow>('forecasting.number', ['month', 'run', 'store', 'section', 'scope_level', 'scope_name', 'weeks', 'kind', 'value', 'weights_json', 'entered_by', 'entered_by_role', 'entered_on', 'reason', 'status', 'waiting_on', 'changed_by']),
         listAll<DecisionRow>('forecasting.decision', ['number', 'month', 'store', 'scope_level', 'scope_name', 'weeks', 'decision', 'decided_by', 'decided_by_role', 'note', 'decided_on']),
         listAll<QuestionRow>('forecasting.review_question', ['ref', 'month', 'scope', 'question', 'detail', 'asked_by', 'asked_on', 'answer', 'answered_by', 'answered_on', 'outcome', 'impact', 'follow_up', 'idea_ref']),
-        listAll<IdeaRow>('forecasting.idea', ['ref', 'label', 'title', 'kind', 'raised_by', 'raised_on', 'why', 'tried', 'found', 'verdict', 'outcome', 'status_note', 'decided_on', 'revisit', 'areas', 'evidence'])])
+        listAll<IdeaRow>('forecasting.idea', ['ref', 'label', 'title', 'kind', 'raised_by', 'raised_on', 'why', 'tried', 'found', 'verdict', 'outcome', 'status_note', 'decided_on', 'revisit', 'areas', 'evidence', 'decided_by', 'reason', 'revisit_on', 'related', 'question_ref']),
+        listAll<IdeaChange>('forecasting.idea_history', ['idea', 'changed_by', 'changed_on', 'change'])])
       // A Currency column comes back as text ("750000.00"); the pages add and compare it.
-      setData({ numbers: numbers.map(n => ({ ...n, value: Number(n.value) })), decisions, questions, ideas }); setFailed(false)
+      setData({ numbers: numbers.map(n => ({ ...n, value: Number(n.value) })), decisions, questions, ideas, ideaHistory }); setFailed(false)
     } catch (e) {
       if ((e as { status?: number }).status === 401) window.location.href = `/featherbase/login?next=${encodeURIComponent(location.pathname + location.search)}`
       setFailed(true)

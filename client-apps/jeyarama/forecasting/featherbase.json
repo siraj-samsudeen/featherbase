@@ -102,6 +102,105 @@
           }
         }
       ]
+    },
+    {
+      "id": "idea_register_editing",
+      "fromVersion": "0.6.0",
+      "toVersion": "0.7.0",
+      "operations": [
+        {
+          "kind": "alterColumn",
+          "table": "forecasting.idea",
+          "column": "verdict",
+          "from": {
+            "choices": "Waiting\nKept\nRejected\nAlready in the model\nNot tested"
+          },
+          "to": {
+            "choices": "Raised\nBeing tested\nKept\nRejected\nWaiting\nAlready in the model\nNot tested"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.idea",
+          "column": {
+            "column_name": "decided_by",
+            "label": "Decided by",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.idea",
+          "column": {
+            "column_name": "reason",
+            "label": "Why that verdict",
+            "column_type": "Text"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.idea",
+          "column": {
+            "column_name": "revisit_on",
+            "label": "Look again on",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.idea",
+          "column": {
+            "column_name": "related",
+            "label": "Related ideas",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.idea",
+          "column": {
+            "column_name": "question_ref",
+            "label": "Review question",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.idea_history",
+            "label": "Idea history",
+            "module": "Forecasting",
+            "id_pattern": "FH-.######",
+            "columns": [
+              {
+                "column_name": "idea",
+                "label": "Idea",
+                "column_type": "Reference",
+                "reference_table": "forecasting.idea",
+                "in_list_view": true
+              },
+              {
+                "column_name": "changed_by",
+                "label": "By",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "changed_on",
+                "label": "On",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "change",
+                "label": "What changed",
+                "column_type": "Text",
+                "in_list_view": true
+              }
+            ]
+          }
+        }
+      ]
     }
   ],
   "tables": [
@@ -444,7 +543,7 @@
           "column_name": "verdict",
           "label": "Verdict",
           "column_type": "Choice",
-          "choices": "Waiting\nKept\nRejected\nAlready in the model\nNot tested",
+          "choices": "Raised\nBeing tested\nKept\nRejected\nWaiting\nAlready in the model\nNot tested",
           "reqd": true,
           "in_list_view": true
         },
@@ -477,6 +576,64 @@
           "column_name": "evidence",
           "label": "Evidence",
           "column_type": "Long Text"
+        },
+        {
+          "column_name": "decided_by",
+          "label": "Decided by",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "reason",
+          "label": "Why that verdict",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "revisit_on",
+          "label": "Look again on",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "related",
+          "label": "Related ideas",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "question_ref",
+          "label": "Review question",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.idea_history",
+      "label": "Idea history",
+      "module": "Forecasting",
+      "id_pattern": "FH-.######",
+      "columns": [
+        {
+          "column_name": "idea",
+          "label": "Idea",
+          "column_type": "Reference",
+          "reference_table": "forecasting.idea",
+          "in_list_view": true
+        },
+        {
+          "column_name": "changed_by",
+          "label": "By",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "changed_on",
+          "label": "On",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "change",
+          "label": "What changed",
+          "column_type": "Text",
+          "in_list_view": true
         }
       ]
     }
@@ -504,6 +661,13 @@
     },
     {
       "table": "forecasting.idea",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.idea_history",
       "role": "All",
       "can_read": true,
       "can_write": true,
