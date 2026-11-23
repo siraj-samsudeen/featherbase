@@ -33,6 +33,9 @@ function prepareNumber(ctx: Context) {
   if (ctx.isNew) return inArea(ctx, row.entered_by, row.store, row.scope_level, row.scope_name)
   const acted = ['status', 'value', 'waiting_on', 'reason', 'kind'].some(k => String(row[k] ?? '') !== String(old?.[k] ?? ''))
   if (acted) inArea(ctx, row.changed_by, row.store, row.scope_level, row.scope_name)
+  // The Chief Executive's applied number is replaced by the Chief Executive alone.
+  if (old?.status === 'Applied' && row.status !== 'Applied' && old.entered_by_role === 'Chief Executive' && personNamed(row.changed_by)?.role !== 'Chief Executive')
+    ctx.reject("Only the Chief Executive can replace the Chief Executive's applied number")
 }
 
 /** A step in a number's history is taken by someone whose area the number is in; a comment is anyone's. */
@@ -41,6 +44,7 @@ function prepareDecision(ctx: Context) {
   if (!row.number || row.decision === 'Comment' || row.decision === 'This is wrong') return
   if (!row.scope_level) ctx.reject("A step on a number names the number's scope", { scope_level: 'Required' })
   inArea(ctx, row.decided_by, row.store, row.scope_level, row.scope_name)
+  if (row.decision === 'Made the applied number' && !String(row.note ?? '').trim()) ctx.reject('Say why this becomes the applied number', { note: 'Required' })
 }
 
 export const platformVersion = '2026-10'

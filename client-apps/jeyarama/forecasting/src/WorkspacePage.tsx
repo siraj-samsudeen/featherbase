@@ -279,8 +279,11 @@ function NumberCard({ ctx, n, engine, sold, siblings }: { ctx: Ctx; n: NumberRow
     for (const o of others) { await ctx.save('forecasting.number', { ...o, status: 'Reference', waiting_on: null, changed_by: ctx.viewer.name }); await log(o, 'Kept as reference', `${n.entered_by}'s number was applied instead.`) }
     await ctx.reload()
   }
-  // Anyone senior can make a Reference number the applied one; the applied one it replaces becomes Reference.
+  // Anyone senior can make a Reference number the applied one, inside their area, saying why; the applied one it
+  // replaces becomes Reference. Only the Chief Executive replaces the Chief Executive's applied number.
   const canPromote = open && n.status === 'Reference' && (!up || ['Store Manager', 'Chief Executive', 'Operations Head'].includes(ctx.viewer.role))
+  const ceoHolds = siblings.some(o => o.row_id !== n.row_id && o.status === 'Applied' && o.entered_by_role === 'Chief Executive') && ctx.viewer.role !== 'Chief Executive'
+  const [why, setWhy] = useState('')
   return (
     <li className={`flex flex-col gap-2 rounded-card p-3 ${n.status === 'Applied' ? 'bg-positive-tint' : 'bg-subtle'}`} data-testid="number-card">
       <div className="flex items-start justify-between gap-2">
@@ -308,14 +311,23 @@ function NumberCard({ ctx, n, engine, sold, siblings }: { ctx: Ctx; n: NumberRow
           <span className="text-sm font-medium">This waits for you</span>
           <TextInput placeholder="A note (needed to say no)" value={note} onChange={e => setNote(e.target.value)} />
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={() => void decide('Approved and applied', { status: 'Applied', waiting_on: null }, settle)}>Approve and apply</Button>
+            <Button variant="primary" disabled={ceoHolds} onClick={() => void decide('Approved and applied', { status: 'Applied', waiting_on: null }, settle)}>Approve and apply</Button>
             {up && <Button variant="secondary" onClick={() => void decide('Sent up', { waiting_on: up.name })}>Send up to {up.name}</Button>}
             <Button variant="secondary" disabled={!note.trim()} onClick={() => void decide('Not approved', { status: 'Not approved', waiting_on: null })}>Not approved</Button>
           </div>
-          {settle.length > 0 && <span className="text-[13px] text-ink-muted">Approving this keeps {settle.map(o => `${o.entered_by}'s ${fmtINR(o.value)}`).join(' and ')} as reference.</span>}
+          {ceoHolds ? <span className="text-[13px] text-ink-muted">The Chief Executive's number is applied here; only the Chief Executive can replace it. You can send this up or say no.</span>
+            : settle.length > 0 && <span className="text-[13px] text-ink-muted">Approving this keeps {settle.map(o => `${o.entered_by}'s ${fmtINR(o.value)}`).join(' and ')} as reference.</span>}
         </div>
       )}
-      {canPromote && <div><Button variant="secondary" onClick={() => void decide('Approved and applied', { status: 'Applied', waiting_on: null }, siblings.filter(o => o.status === 'Applied'))}>Make this the applied number</Button></div>}
+      {canPromote && (ceoHolds
+        ? <p className="text-[13px] text-ink-muted" data-testid="ceo-holds">The Chief Executive's number is applied here; only the Chief Executive can replace it.</p>
+        : <div className="flex flex-col gap-2 rounded-control bg-surface p-2" data-testid="promote">
+          <TextInput placeholder="Why make this the applied number? (required)" value={why} onChange={e => setWhy(e.target.value)} data-testid="promote-why" />
+          <div><Button variant="secondary" disabled={!why.trim()} onClick={() => { void (async () => {
+            await ctx.save('forecasting.number', { ...n, status: 'Applied', waiting_on: null, changed_by: ctx.viewer.name }); await log(n, 'Made the applied number', why)
+            for (const o of siblings.filter(o => o.row_id !== n.row_id && o.status === 'Applied')) { await ctx.save('forecasting.number', { ...o, status: 'Reference', changed_by: ctx.viewer.name }); await log(o, 'Kept as reference', `${n.entered_by}'s number was made the applied one instead.`) }
+            await ctx.reload() })() }}>Make this the applied number</Button></div>
+        </div>)}
     </li>
   )
 }
