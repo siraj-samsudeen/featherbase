@@ -1,0 +1,22 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "ask",
+  "title": "Ask",
+  "summary": "Ask about your data, your Tables and Featherbase",
+  "icon": "message_question",
+  "server": "dist/server.mjs",
+  "client": "dist/client",
+  "entryTable": "ask.chat",
+  "reads": {"version": 1, "tables": ["ask.chat"], "operations": {
+    "ask": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+  }},
+  "tables": [
+    {"name": "ask.chat", "label": "Chat", "module": "Ask", "title_column": "title", "columns": [
+      {"column_name": "title", "label": "Title", "column_type": "Data", "reqd": true, "in_list_view": true}
+    ]}
+  ],
+  "permissions": [
+    {"table": "ask.chat", "role": "All", "own_rows_only": true, "can_read": true}
+  ]
+}
