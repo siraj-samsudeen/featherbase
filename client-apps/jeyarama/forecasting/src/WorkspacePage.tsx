@@ -78,7 +78,15 @@ function rowsFor(store: string, open: Set<string>): Row[] {
 export function WorkspacePage({ ctx }: { ctx: Ctx }) {
   const m = ctx.month, closed = m.state === 'closed'
   const params = new URLSearchParams(window.location.search)
-  const [store, setStore] = useState(params.get('store') ?? 'Lakeside')
+  const [store, setStore] = useState(STORES.includes(params.get('store') ?? '') ? params.get('store')! : 'Lakeside')
+  /** The store is kept in the address (?store=), so a reload or a shared link opens the same store. */
+  const chooseStore = (v: string) => {
+    setStore(v); setSel(null)
+    const q = new URLSearchParams(window.location.search)
+    q.set('store', v)
+    for (const k of ['level', 'name', 'weeks', 'pane']) q.delete(k)
+    history.replaceState(null, '', `?${q}`)
+  }
   const [open, setOpen] = useState(new Set(['Fashion', 'Women Ethnic Wear', 'Girls Bottom']))
   const [sel, setSel] = useState<Scope | null>(() => ({ store: params.get('store') ?? 'Lakeside', level: (params.get('level') as Scope['level']) ?? 'Category',
     name: params.get('name') ?? 'Women Ethnic Wear', weeks: params.get('weeks') ? parseWeeks(params.get('weeks')) : ALL_WEEKS }))
@@ -117,7 +125,7 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
   }
 
   return (
-    <Page title="Workspace" actions={<Segmented label="Store" value={store} onChange={v => { setStore(v); setSel(null) }} options={STORES.map(v => ({ value: v, label: v }))} />}>
+    <Page title="Workspace" actions={<Segmented label="Store" value={store} onChange={chooseStore} options={STORES.map(v => ({ value: v, label: v }))} />}>
       <p className="-mt-2 text-sm text-ink-muted">{m.label}{closed ? ' · closed' : ''} · engine Run of {m.origin} ({m.run}) · ₹ before tax · weeks shown here, days on Charts</p>
       {closed && <Notice><span data-testid="closed-month">{m.label} is closed. Its numbers and the grid can be seen, but nothing new can be added or approved. Open a cell to see each number against what sold.</span></Notice>}
       <Headline label={`${m.label} · ${store}`} tone={act >= fc ? 'positive' : 'caution'}
@@ -131,10 +139,11 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-opportunity" />Reference</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-negative" />Not approved</span>
       </div>
-      <div className={`grid items-start gap-4 ${sel ? '2xl:grid-cols-[minmax(0,1fr)_30rem]' : ''}`}>
+      {/* The cell panel sits beside the grid from 1280 px, so a 1440 px screen shows both. */}
+      <div className={`grid items-start gap-4 ${sel ? 'xl:grid-cols-[minmax(0,1fr)_25rem] 2xl:grid-cols-[minmax(0,1fr)_30rem]' : ''}`}>
         <Card>
           <div className="overflow-x-auto p-2">
-            <table className="w-full min-w-[760px] border-collapse text-sm" data-testid="grid">
+            <table className="w-full min-w-[720px] border-collapse text-sm" data-testid="grid">
               <thead><tr className="text-[12px] text-ink-muted">
                 <th className="px-2.5 py-2 text-start font-semibold">{store}</th>
                 {weeksOf(m).map(w => <th key={w} className="px-2.5 py-2 text-end font-semibold whitespace-nowrap">{w}</th>)}
