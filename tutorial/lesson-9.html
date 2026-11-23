@@ -3,31 +3,79 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lesson 9: A machine that never forgets</title>
+<title>Lesson 9: Proving the front door</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="tutorial.css">
 <script src="tutorial.js" defer></script>
 </head>
 <body>
 <main>
-<div class="top"><a href="index.html">All lessons</a><span class="eyebrow" style="margin:0">Lesson 9 of 9</span></div><h1>A machine that never forgets</h1><p class="lead">Every check so far runs only when a person runs it. This last lesson hands the job to GitHub, so that every push is tested on a clean machine without anyone remembering.</p><div class="meta"><span class="chip ">Commit: chore</span><span class="chip ">About 6 minutes</span></div><h2><span class="q">From the last lesson</span>Answer, then open each one</h2><details><summary>Name the kinds of commit this series has used.</summary><div class="in"><p><code>red:</code> a failing test. <code>green:</code> the least code that passes. <code>refactor:</code> same behaviour, built differently. <code>chore:</code> tooling. <code>test:</code> a test for code that already existed.</p></div></details><details><summary>What must a test do with anything it starts?</summary><div class="in"><p>Stop it, even when the test fails.</p></div></details><h2><span class="q">Question 1</span>What is CI?</h2><p>CI stands for continuous integration. In plain words: a service runs your checks by itself every time code is pushed, on a fresh machine, and marks the result green or red next to the commit.</p><p>It catches two things a person cannot. "It works on my machine", because the fresh machine has nothing of yours on it. And forgetting, because it never does.</p><h2><span class="q">Question 2</span>What should it run?</h2><div class="opt chosen"><h3>A. Only <code>bun test</code> <span class="pick">We chose this</span></h3><p>Exactly what we have proven by hand. The coverage gate comes along, since it is part of <code>bun test</code>.</p><p class="bites"><b>Costs:</b> none yet. Other checks can join later.</p></div><div class="opt"><h3>B. A plus a type check</h3><p>It would catch wrong types, which Bun does not check when running TypeScript.</p><p class="bites"><b>Why not now:</b> nothing has bitten us yet, so it waits for a felt need.</p></div><p>Each further check joins CI in the same commit that creates it.</p><h2><span class="q">Question 3</span>What does the file say?</h2><p class="file">.github/workflows/checks.yml</p>
-<pre><code>name: Checks
+<div class="top"><a href="index.html">All lessons</a><span class="eyebrow" style="margin:0">Lesson 9 of 10</span></div><h1>Proving the front door</h1><p class="lead">Two lines of our project are checked by nothing: the file that starts Featherbase. This lesson tests it, and deals honestly with a test that passes the first time it is run.</p><div class="meta"><span class="chip ">Commit: test</span><span class="chip blue">Commit: refactor</span><span class="chip ">About 12 minutes</span></div><h2><span class="q">From the last lesson</span>Answer, then open each one</h2><details><summary>Which file was missing from the coverage table, and why?</summary><div class="in"><p><code>start.ts</code>. No test loads it, so it is not measured.</p></div></details><details><summary>What should you do before trusting a safety check?</summary><div class="in"><p>See it fail. Break something on purpose and watch the check catch it.</p></div></details><h2><span class="q">Question 1</span>What is the gap?</h2><p><code>start.ts</code> is two lines, and <code>package.json</code> has one line that points at it. A typo in either would pass every test and the coverage gate, and would be found only when someone tries to run Featherbase. It is the one command every person and every deployment depends on.</p><h2><span class="q">Question 2</span>What are the options?</h2><div class="opt"><h3>A. Leave it</h3><p>Two lines, rarely touched.</p><p class="bites"><b>Bites later:</b> the most important command is the only thing with no proof.</p></div><div class="opt chosen"><h3>B. One test that runs the real <code>bun start</code> and asks for the home page <span class="pick">We chose this</span></h3><p>No browser. Start the program, wait until it answers, check the welcome words.</p><p class="bites"><b>Costs:</b> the wait loop from lesson 1 comes back, but only here, where a separate program really does take a moment to start.</p></div><div class="opt"><h3>C. Let the deployment catch it</h3><p>No work now.</p><p class="bites"><b>Bites later:</b> that is the most expensive place to find a typo.</p></div><h2><span class="q">Question 3</span>Where does the criterion go?</h2><p>It is not about the Home page. So it gets its own small folder, named for the action:</p><p class="file">features/foundations/starting/starting.md</p>
+<pre><code># Starting
 
-on: push
+The scene: someone runs Featherbase.
 
-jobs:
-  tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.4
-      - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
-      - run: bun test</code></pre><ul><li><code>on: push</code>: run this every time anything is pushed.</li><li><code>runs-on: ubuntu-latest</code>: a fresh Linux machine each time.</li><li><code>timeout-minutes: 10</code>: stop a stuck run.</li><li>The steps: fetch the code, install Bun at our version, install our packages exactly as recorded, install the Chromium browser, then run the tests.</li></ul><details><summary>What does <code>--frozen-lockfile</code> mean?</summary><div class="in"><p>When you install packages, Bun records the exact versions in a file called <code>bun.lock</code>. <code>--frozen-lockfile</code> says: install exactly those, and fail if that is not possible. So the clean machine tests the same versions you tested.</p></div></details><div class="box stop"><span class="tag">Predict before you look</span><p>Our history contains <code>red:</code> commits, which fail on purpose. Will CI mark the project as broken because of them?</p></div><details><summary>Show the answer</summary><div class="in"><p>No. CI runs on the newest commit of each push. A red commit in the middle of the history is never the newest one once its green follows. The red commits remain there for anyone to check out and learn from.</p></div></details><h2><span class="q">Question 4</span>Did it work?</h2><pre class="ok"><code>tests   completed   success</code></pre><p>Three tests passed on a machine none of us own, on the first run.</p><div class="box key"><span class="tag">The habit to take away</span><p>If a check matters, a machine should run it. Rules that depend on people remembering get forgotten on exactly the day they are needed.</p></div><hr><h2><span class="q">The whole journey</span>What did these lessons build?</h2><p>Very little product: one page that says welcome, and one that says not found. But around it, a way of working:</p><ol><li>Say what must be true, in one plain sentence, before any code.</li><li>Write the test first and watch it fail.</li><li>Write the least code that passes.</li><li>Improve the code with the tests standing guard.</li><li>Bring in each tool only when its absence hurts.</li><li>Before every choice, lay out the options and what each will cost later.</li><li>Never trust a check you have not seen fail.</li><li>Hand the checks to a machine.</li></ol><div class="box key"><span class="tag">Come back in three days</span><p>Three days from now, without opening the lessons, write those eight points from memory and explain one of them to someone. Then check. Do it again a week later.</p></div><h3>Try it yourself</h3><pre><code>git checkout 83028f3
-git log --oneline --reverse</code></pre><p>Read the list top to bottom. Each line is one small, named step. That list is the real lesson.</p><hr><h2><span class="q">Check yourself</span>Answer, then open each one</h2><details><summary>What two problems does CI catch that a careful person cannot?</summary><div class="in"><p>"Works on my machine", and forgetting to run the checks.</p></div></details><details><summary>Why do the red commits not break CI?</summary><div class="in"><p>CI judges the newest commit of a push, and a red is always followed by its green.</p></div></details><details><summary>What does <code>--frozen-lockfile</code> guarantee?</summary><div class="in"><p>The clean machine installs exactly the versions recorded in <code>bun.lock</code>.</p></div></details><details><summary>From memory: name at least five of the eight habits.</summary><div class="in"><p>Sentence first. Test first and see it fail. Least code. Refactor under green tests. Tools when needed. Options before choices. See every check fail once. Let a machine run the checks.</p></div></details><div class="pager"><a href="lesson-8.html">Back: lesson 8</a><a href="index.html">All lessons</a></div>
+## Acceptance criteria
+
+1. Running `bun start` opens Featherbase on the port it is given.</code></pre><p>"The port it is given" is how a hosting service tells a program where to listen.</p><h2><span class="q">Question 4</span>What does the test look like?</h2><p class="file">features/foundations/starting/starting.test.ts</p>
+<pre><code>import { afterAll, expect, test } from &quot;bun:test&quot;;
+
+let featherbase: ReturnType&lt;typeof Bun.spawn&gt; | undefined;
+
+afterAll(() =&gt; {
+  stopFeatherbase();
+});
+
+test(&quot;Running `bun start` opens Featherbase on the port it is given.&quot;, async () =&gt; {
+  const port = aFreePort();
+  runBunStartOn(port);
+  const page = await pageOnceItAnswers(`http://localhost:${port}`);
+  expect(page).toContain(&quot;Welcome to Featherbase&quot;);
+});</code></pre><p>Four lines tell the story: get a free port, run <code>bun start</code> on it, fetch the page once it answers, expect the welcome words.</p><details><summary>Show me the helpers</summary><div class="in"><pre><code>function aFreePort() {
+  const probe = Bun.serve({ port: 0, fetch: () =&gt; new Response() });
+  const port = probe.port;
+  probe.stop(true);
+  return port;
+}
+
+function runBunStartOn(port: number | undefined) {
+  featherbase = Bun.spawn([&quot;bun&quot;, &quot;start&quot;], {
+    env: { ...process.env, PORT: String(port) },
+    stdout: &quot;ignore&quot;,
+    stderr: &quot;ignore&quot;,
+  });
+}
+
+async function pageOnceItAnswers(address: string) {
+  const giveUpAt = Date.now() + 3000;
+  while (true) {
+    const page = await fetch(address).then(
+      (response) =&gt; response.text(),
+      () =&gt; undefined,
+    );
+    if (page !== undefined) return page;
+    if (Date.now() &gt; giveUpAt) throw new Error(`bun start did not open Featherbase at ${address}`);
+    await Bun.sleep(50);
+  }
+}
+
+function stopFeatherbase() {
+  featherbase?.kill();
+}</code></pre><p><code>aFreePort</code> opens a throwaway server on "any port", notes which port the computer chose, and closes it.</p></div></details><details><summary>Why is there no <code>beforeAll</code> here, when the other test file has one?</summary><div class="in"><p>In the Home tests, starting Featherbase is preparation that two tests share, and neither test is about starting. Here, starting is the very thing being tested. Hidden in <code>beforeAll</code>, the test body would have nothing left to say.</p></div></details><h2><span class="q">Question 5</span>It passed the first time. Is that a problem?</h2><div class="box stop"><span class="tag">Stop and guess first</span><p>Every earlier test was seen failing before it passed. This one passed on its first run, because the code it checks already existed. Can we trust it? What would you do?</p></div><p>A test that has never failed proves nothing by itself. So we make it fail on purpose.</p><p>A typo in <code>start.ts</code>, <code>lisen</code> for <code>listen</code>:</p><pre class="out"><code>error: bun start did not open Featherbase at http://localhost:39035
+ 2 pass
+ 1 fail</code></pre><p>A typo in the <code>start</code> line of <code>package.json</code> gives the same failure. With both restored, all three tests pass. Now the test has earned its trust.</p><p>There is no red commit this time, and the history says so honestly: the commit starts with <code>test:</code>, meaning a test added for code that already existed, shown to fail when that code is broken.</p><h2><span class="q">Question 6</span>Why not stop the program right at the end of the test?</h2><p>It is a natural question. The test starts the program, so why does a separate <code>afterAll</code> stop it? Because of what happens on failure. If these were the last two lines:</p><pre><code>  expect(page).toContain(&quot;Welcome to Featherbase&quot;);
+  stopFeatherbase();</code></pre><p>and the <code>expect</code> fails, the test ends at that line. The stop never runs, and a stray Featherbase keeps running on the machine. <code>afterAll</code> runs whether the test passed or failed.</p><p>But there is a way to keep start and stop together and still be safe:</p><pre><code>test(&quot;Running `bun start` opens Featherbase on the port it is given.&quot;, async () =&gt; {
+  const port = aFreePort();
+  const featherbase = runBunStartOn(port);
+  try {
+    const page = await pageOnceItAnswers(`http://localhost:${port}`);
+    expect(page).toContain(&quot;Welcome to Featherbase&quot;);
+  } finally {
+    featherbase.kill();
+  }
+});</code></pre><p><code>try ... finally</code> means: do this part, and whatever happens, pass or fail, do the <code>finally</code> part afterwards. For this, <code>runBunStartOn</code> hands back the program it started, by saying <code>return Bun.spawn(...)</code>. The variable at the top of the file, the <code>afterAll</code> block and <code>stopFeatherbase</code> all disappear. This became a small <code>refactor:</code> commit.</p><p>Which is better? It depends on who owns the thing being cleaned up. One test owns this program, so the clean-up sits inside that test. In the Home tests, two tests share one browser, so <code>beforeAll</code> and <code>afterAll</code> still fit there.</p><div class="box key"><span class="tag">The habit to take away</span><p>Whatever a test starts, it must stop, even when it fails. Put the clean-up where failure cannot skip it, and as close to the start as sharing allows.</p></div><div class="box pro"><span class="tag">A step further</span><p>The honest gap that remains: the default port, 3000, is untested, because it may be busy on any machine that runs the suite. Name such gaps in writing. An acknowledged gap is a decision. An unnoticed one is a bug waiting.</p></div><h3>Try it yourself</h3><pre><code>git checkout a25532c &amp;&amp; bun install &amp;&amp; bun test      # 3 pass
+sed -i &#x27;s/listen/lisen/&#x27; start.ts &amp;&amp; bun test       # the starting test fails
+git checkout start.ts &amp;&amp; bun test                    # 3 pass again</code></pre><p>Pass, fail, pass.</p><hr><h2><span class="q">Check yourself</span>Answer, then open each one</h2><details><summary>Why was a typo in <code>start.ts</code> invisible to every check before this lesson?</summary><div class="in"><p>No test loaded the file, and coverage only measures files the tests load.</p></div></details><details><summary>What do you do with a test that passes the first time it is run?</summary><div class="in"><p>Break the code on purpose and confirm the test fails, then restore it.</p></div></details><details><summary>What does a <code>test:</code> commit tell the reader?</summary><div class="in"><p>A test was added for code that already existed, and was shown to fail when that code is broken.</p></div></details><details><summary>Why is stopping the program on the line after <code>expect</code> unsafe?</summary><div class="in"><p>If the <code>expect</code> fails, the test ends there and the stop never runs.</p></div></details><details><summary>When is <code>try ... finally</code> the better fit, and when <code>afterAll</code>?</summary><div class="in"><p><code>try ... finally</code> when one test owns what it started. <code>afterAll</code> when several tests share it.</p></div></details><div class="next"><b>Next: Lesson 10, a machine that never forgets</b>Carry this question with you: all of this runs on one machine, when someone remembers to run it. What if they forget?</div><div class="pager"><a href="lesson-8.html">Back: lesson 8</a><a href="lesson-10.html">Lesson 10</a></div>
 </main>
 </body>
 </html>

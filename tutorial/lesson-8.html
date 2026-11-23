@@ -3,79 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lesson 8: Proving the front door</title>
+<title>Lesson 8: A gate that says no</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="tutorial.css">
 <script src="tutorial.js" defer></script>
 </head>
 <body>
 <main>
-<div class="top"><a href="index.html">All lessons</a><span class="eyebrow" style="margin:0">Lesson 8 of 9</span></div><h1>Proving the front door</h1><p class="lead">Two lines of our project are checked by nothing: the file that starts Featherbase. This lesson tests it, and deals honestly with a test that passes the first time it is run.</p><div class="meta"><span class="chip ">Commit: test</span><span class="chip blue">Commit: refactor</span><span class="chip ">About 12 minutes</span></div><h2><span class="q">From the last lesson</span>Answer, then open each one</h2><details><summary>Which file was missing from the coverage table, and why?</summary><div class="in"><p><code>start.ts</code>. No test loads it, so it is not measured.</p></div></details><details><summary>What should you do before trusting a safety check?</summary><div class="in"><p>See it fail. Break something on purpose and watch the check catch it.</p></div></details><h2><span class="q">Question 1</span>What is the gap?</h2><p><code>start.ts</code> is two lines, and <code>package.json</code> has one line that points at it. A typo in either would pass every test and the coverage gate, and would be found only when someone tries to run Featherbase. It is the one command every person and every deployment depends on.</p><h2><span class="q">Question 2</span>What are the options?</h2><div class="opt"><h3>A. Leave it</h3><p>Two lines, rarely touched.</p><p class="bites"><b>Bites later:</b> the most important command is the only thing with no proof.</p></div><div class="opt chosen"><h3>B. One test that runs the real <code>bun start</code> and asks for the home page <span class="pick">We chose this</span></h3><p>No browser. Start the program, wait until it answers, check the welcome words.</p><p class="bites"><b>Costs:</b> the wait loop from lesson 1 comes back, but only here, where a separate program really does take a moment to start.</p></div><div class="opt"><h3>C. Let the deployment catch it</h3><p>No work now.</p><p class="bites"><b>Bites later:</b> that is the most expensive place to find a typo.</p></div><h2><span class="q">Question 3</span>Where does the criterion go?</h2><p>It is not about the Home page. So it gets its own small folder, named for the action:</p><p class="file">features/foundations/starting/starting.md</p>
-<pre><code># Starting
+<div class="top"><a href="index.html">All lessons</a><span class="eyebrow" style="margin:0">Lesson 8 of 10</span></div><h1>A gate that says no</h1><p class="lead">Measuring is not enforcing. This lesson makes the test run fail whenever any line is unproven, and shows how to prove that a setting works when there is nothing to write a test about.</p><div class="meta"><span class="chip ">Commit: chore</span><span class="chip ">About 7 minutes</span></div><h2><span class="q">From the last lesson</span>Answer, then open each one</h2><details><summary>Why can coverage see our code now?</summary><div class="in"><p>The tests build the app and start it inside their own program, which is the program Bun measures.</p></div></details><details><summary>What does a missing file in a coverage report mean?</summary><div class="in"><p>No test loaded it. It is unmeasured, which is a gap, not a pass.</p></div></details><h2><span class="q">Question 1</span>What is a gate?</h2><p>A gate is a check that fails the whole run when a rule is broken. Our rule: coverage must be 100%. With a gate, an unproven line cannot slip in quietly. The only two ways forward are to write a criterion and test for that line, or to delete it.</p><h2><span class="q">Question 2</span>What are the ways to build one?</h2><div class="opt chosen"><h3>A. The gate built into Bun <span class="pick">We chose this</span></h3><p>Three lines in a settings file. No code of ours.</p><p class="bites"><b>Bites later:</b> when it fails, no sentence says why. You see "0 fail" and a failed run, and must spot the percentage in the table yourself.</p></div><div class="opt"><h3>B. Our own small script</h3><p>It runs the tests, reads the report and prints a plain line naming the file and lines.</p><p class="bites"><b>Costs:</b> about 40 lines of our own code, which then need their own criteria and tests.</p></div><p>We chose A, the least thing that gives a real gate, and wrote down its weakness. If the silent failure ever confuses someone, that is the felt need that justifies B.</p><h2><span class="q">Question 3</span>What is the setting?</h2><p class="file">bunfig.toml</p>
+<pre><code>[test]
+coverage = true
+coverageThreshold = 1.0</code></pre><ul><li><code>bunfig.toml</code> is Bun's settings file. <code>[test]</code> means these apply to <code>bun test</code>.</li><li><code>coverage = true</code> measures on every run, with nothing extra to type.</li><li><code>coverageThreshold = 1.0</code> means 100%. Anything less fails the run.</li></ul><h2><span class="q">Question 4</span>How do you prove a setting works?</h2><p>A settings file has no behaviour of the product to write a criterion about. So we do not invent a test. We prove it by hand, in three moves, and show the evidence.</p><h3>Move 1. Without the gate, add a function nobody calls</h3><pre><code>export function nobodyCallsThis() {
+  return &quot;unproven&quot;;
+}</code></pre><pre><code> 2 pass
+ 0 fail</code></pre><p>The run passes. That is the problem we are solving.</p><h3>Move 2. Add the three lines and run again</h3><pre class="out"><code>File            | % Funcs | % Lines | Uncovered Line #s
+All files       |   75.00 |   84.62 |
+ featherbase.ts |   75.00 |   84.62 | 16-17
 
-The scene: someone runs Featherbase.
-
-## Acceptance criteria
-
-1. Running `bun start` opens Featherbase on the port it is given.</code></pre><p>"The port it is given" is how a hosting service tells a program where to listen.</p><h2><span class="q">Question 4</span>What does the test look like?</h2><p class="file">features/foundations/starting/starting.test.ts</p>
-<pre><code>import { afterAll, expect, test } from &quot;bun:test&quot;;
-
-let featherbase: ReturnType&lt;typeof Bun.spawn&gt; | undefined;
-
-afterAll(() =&gt; {
-  stopFeatherbase();
-});
-
-test(&quot;Running `bun start` opens Featherbase on the port it is given.&quot;, async () =&gt; {
-  const port = aFreePort();
-  runBunStartOn(port);
-  const page = await pageOnceItAnswers(`http://localhost:${port}`);
-  expect(page).toContain(&quot;Welcome to Featherbase&quot;);
-});</code></pre><p>Four lines tell the story: get a free port, run <code>bun start</code> on it, fetch the page once it answers, expect the welcome words.</p><details><summary>Show me the helpers</summary><div class="in"><pre><code>function aFreePort() {
-  const probe = Bun.serve({ port: 0, fetch: () =&gt; new Response() });
-  const port = probe.port;
-  probe.stop(true);
-  return port;
-}
-
-function runBunStartOn(port: number | undefined) {
-  featherbase = Bun.spawn([&quot;bun&quot;, &quot;start&quot;], {
-    env: { ...process.env, PORT: String(port) },
-    stdout: &quot;ignore&quot;,
-    stderr: &quot;ignore&quot;,
-  });
-}
-
-async function pageOnceItAnswers(address: string) {
-  const giveUpAt = Date.now() + 3000;
-  while (true) {
-    const page = await fetch(address).then(
-      (response) =&gt; response.text(),
-      () =&gt; undefined,
-    );
-    if (page !== undefined) return page;
-    if (Date.now() &gt; giveUpAt) throw new Error(`bun start did not open Featherbase at ${address}`);
-    await Bun.sleep(50);
-  }
-}
-
-function stopFeatherbase() {
-  featherbase?.kill();
-}</code></pre><p><code>aFreePort</code> opens a throwaway server on "any port", notes which port the computer chose, and closes it.</p></div></details><details><summary>Why is there no <code>beforeAll</code> here, when the other test file has one?</summary><div class="in"><p>In the Home tests, starting Featherbase is preparation that two tests share, and neither test is about starting. Here, starting is the very thing being tested. Hidden in <code>beforeAll</code>, the test body would have nothing left to say.</p></div></details><h2><span class="q">Question 5</span>It passed the first time. Is that a problem?</h2><div class="box stop"><span class="tag">Stop and guess first</span><p>Every earlier test was seen failing before it passed. This one passed on its first run, because the code it checks already existed. Can we trust it? What would you do?</p></div><p>A test that has never failed proves nothing by itself. So we make it fail on purpose.</p><p>A typo in <code>start.ts</code>, <code>lisen</code> for <code>listen</code>:</p><pre class="out"><code>error: bun start did not open Featherbase at http://localhost:39035
  2 pass
- 1 fail</code></pre><p>A typo in the <code>start</code> line of <code>package.json</code> gives the same failure. With both restored, all three tests pass. Now the test has earned its trust.</p><p>There is no red commit this time, and the history says so honestly: the commit starts with <code>test:</code>, meaning a test added for code that already existed, shown to fail when that code is broken.</p><h2><span class="q">Question 6</span>Why not stop the program right at the end of the test?</h2><p>It is a natural question. The test starts the program, so why does a separate <code>afterAll</code> stop it? Because of what happens on failure. If these were the last two lines:</p><pre><code>  expect(page).toContain(&quot;Welcome to Featherbase&quot;);
-  stopFeatherbase();</code></pre><p>and the <code>expect</code> fails, the test ends at that line. The stop never runs, and a stray Featherbase keeps running on the machine. <code>afterAll</code> runs whether the test passed or failed.</p><p>But there is a way to keep start and stop together and still be safe:</p><pre><code>test(&quot;Running `bun start` opens Featherbase on the port it is given.&quot;, async () =&gt; {
-  const port = aFreePort();
-  const featherbase = runBunStartOn(port);
-  try {
-    const page = await pageOnceItAnswers(`http://localhost:${port}`);
-    expect(page).toContain(&quot;Welcome to Featherbase&quot;);
-  } finally {
-    featherbase.kill();
-  }
-});</code></pre><p><code>try ... finally</code> means: do this part, and whatever happens, pass or fail, do the <code>finally</code> part afterwards. For this, <code>runBunStartOn</code> hands back the program it started, by saying <code>return Bun.spawn(...)</code>. The variable at the top of the file, the <code>afterAll</code> block and <code>stopFeatherbase</code> all disappear. This became a small <code>refactor:</code> commit.</p><p>Which is better? It depends on who owns the thing being cleaned up. One test owns this program, so the clean-up sits inside that test. In the Home tests, two tests share one browser, so <code>beforeAll</code> and <code>afterAll</code> still fit there.</p><div class="box key"><span class="tag">The habit to take away</span><p>Whatever a test starts, it must stop, even when it fails. Put the clean-up where failure cannot skip it, and as close to the start as sharing allows.</p></div><div class="box pro"><span class="tag">A step further</span><p>The honest gap that remains: the default port, 3000, is untested, because it may be busy on any machine that runs the suite. Name such gaps in writing. An acknowledged gap is a decision. An unnoticed one is a bug waiting.</p></div><h3>Try it yourself</h3><pre><code>git checkout a25532c &amp;&amp; bun install &amp;&amp; bun test      # 3 pass
-sed -i &#x27;s/listen/lisen/&#x27; start.ts &amp;&amp; bun test       # the starting test fails
-git checkout start.ts &amp;&amp; bun test                    # 3 pass again</code></pre><p>Pass, fail, pass.</p><hr><h2><span class="q">Check yourself</span>Answer, then open each one</h2><details><summary>Why was a typo in <code>start.ts</code> invisible to every check before this lesson?</summary><div class="in"><p>No test loaded the file, and coverage only measures files the tests load.</p></div></details><details><summary>What do you do with a test that passes the first time it is run?</summary><div class="in"><p>Break the code on purpose and confirm the test fails, then restore it.</p></div></details><details><summary>What does a <code>test:</code> commit tell the reader?</summary><div class="in"><p>A test was added for code that already existed, and was shown to fail when that code is broken.</p></div></details><details><summary>Why is stopping the program on the line after <code>expect</code> unsafe?</summary><div class="in"><p>If the <code>expect</code> fails, the test ends there and the stop never runs.</p></div></details><details><summary>When is <code>try ... finally</code> the better fit, and when <code>afterAll</code>?</summary><div class="in"><p><code>try ... finally</code> when one test owns what it started. <code>afterAll</code> when several tests share it.</p></div></details><div class="next"><b>Next: Lesson 9, a machine that never forgets</b>Carry this question with you: all of this runs on one machine, when someone remembers to run it. What if they forget?</div><div class="pager"><a href="lesson-7.html">Back: lesson 7</a><a href="lesson-9.html">Lesson 9</a></div>
+ 0 fail</code></pre><p>Now the run is marked failed, and lines 16-17 are exactly the function we added.</p><h3>Move 3. Remove the function</h3><pre class="ok"><code>All files       |  100.00 |  100.00 |
+
+ 2 pass
+ 0 fail</code></pre><p>Only the settings file is committed, as <code>chore:</code>. That word marks a change to the project's tooling, not to what the product does. The throwaway function never enters the history.</p><div class="box key"><span class="tag">The habit to take away</span><p>Never trust a safety check you have not seen fail. Break something on purpose, watch the check catch it, then undo the break.</p></div><div class="box pro"><span class="tag">A step further</span><p>100% line and function coverage is a floor, not a proof of correctness. Its real value under this workflow is as a detector of code nobody asked for. Treat a coverage failure as "which criterion is missing, or which code should go?"</p></div><h3>Try it yourself</h3><pre><code>git checkout 5f85d70 &amp;&amp; bun install
+printf &#x27;\nexport function nobodyCallsThis() {\n  return 1;\n}\n&#x27; &gt;&gt; featherbase.ts
+bun test; echo &quot;exit code: $?&quot;
+git checkout featherbase.ts</code></pre><p>The exit code is 1, which is how a program says "I failed". The last line removes your experiment.</p><hr><h2><span class="q">Check yourself</span>Answer, then open each one</h2><details><summary>What is the difference between measuring coverage and gating on it?</summary><div class="in"><p>Measuring reports the number. A gate fails the run when the number is below the rule.</p></div></details><details><summary>What are the only two answers when the gate fails?</summary><div class="in"><p>Write a criterion and test for the unproven code, or delete the code.</p></div></details><details><summary>What is the weakness of Bun's built-in gate?</summary><div class="in"><p>It fails without a sentence saying why. You have to read the table.</p></div></details><details><summary>How did we prove the gate works without writing a test?</summary><div class="in"><p>Added an uncalled function: passed without the gate, failed with it, passed again once removed.</p></div></details><details><summary>What does a <code>chore:</code> commit mean?</summary><div class="in"><p>A change to the project's tooling or settings, not to the product's behaviour.</p></div></details><div class="next"><b>Next: Lesson 9, proving the front door</b>Carry this question with you: remember the file missing from the coverage table. How could a typo in it survive every check we have?</div><div class="pager"><a href="lesson-7.html">Back: lesson 7</a><a href="lesson-9.html">Lesson 9</a></div>
 </main>
 </body>
 </html>
