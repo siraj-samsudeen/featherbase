@@ -1,6 +1,6 @@
 // MADE-UP DATA. No real store, person, code or figure. It stands in for what the warehouse will serve
 // the app (the engine's Runs, each basis's value, actual sales), so every state of the pages can be
-// seen on a local instance. Codes start with 9 so none can be mistaken for an SAP subcategory code.
+// seen on a local instance. Subcategory codes are MS-1nn, a scheme no real code uses.
 
 export type Code = 'B1' | 'B2' | 'B3' | 'B4' | 'B5' | 'B6'
 export const BASES: { code: Code; name: string }[] = [
@@ -47,23 +47,23 @@ export interface Sub {
 // [division, category, section, subcategory, code, rough month size, weights B6/B1/B2/B3/B4/B5, how it runs to the 20th, October error]
 type Seed = [string, string, string, string, string, number, number[], number, number]
 const TREE: Seed[] = [
-  ['Fashion', 'Men Top', 'Men Top', 'Men Formal Shirt', '910401002', 410000, [0.26, 0.33, 0.41, 0, 0, 0], 0.13, 0.05],
-  ['Fashion', 'Men Top', 'Men Top', 'Men Casual Shirt', '910401001', 330000, [0.5, 0.22, 0.17, 0.07, 0.04, 0], 0.15, -0.03],
-  ['Fashion', 'Men Top', 'Men Top', 'Men T Shirt', '910401003', 210000, [0.58, 0.16, 0.14, 0.08, 0.04, 0], -0.05, -0.05],
-  ['Fashion', 'Women Ethnic Wear', 'Women Ethnic', 'Women Kurti', '910501001', 360000, [0.45, 0.2, 0.25, 0.1, 0, 0], 0.04, -0.07],
-  ['Fashion', 'Women Ethnic Wear', 'Women Ethnic', 'Churidar', '910501002', 130000, [0.4, 0.3, 0.3, 0, 0, 0], -0.08, 0.02],
-  ['Fashion', 'Women Ethnic Wear', 'Women Ethnic', 'Women Palazzo Set', '910501003', 90000, [0.6, 0.2, 0.2, 0, 0, 0], 0.02, 0.04],
-  ['Fashion', 'Girls Bottom', 'Girls Bottoms', 'Girls Jean', '910202002', 497700, [0.5, 0.24, 0.26, 0, 0, 0], 0.47, 0.11],
-  ['Fashion', 'Girls Bottom', 'Girls Bottoms', 'Girls Short', '910202009', 297582, [0.66, 0.09, 0.25, 0, 0, 0], -0.07, -0.06],
-  ['Fashion', 'Girls Bottom', 'Girls Bottoms', 'Girls Leggings', '910202003', 157288, [1, 0, 0, 0, 0, 0], -0.16, -0.07],
-  ['Fashion', 'Girls Bottom', 'Girls Bottoms', 'Girls Skirt', '910202010', 140004, [0.56, 0, 0.31, 0.09, 0.04, 0], 0.16, 0.11],
-  ['Grocery', 'Fresh Vegetables', 'Fresh', 'Onion', '930201001', 210000, [0.1, 0.1, 0.1, 0.5, 0.2, 0], -0.12, 0.18],
-  ['Grocery', 'Fresh Vegetables', 'Fresh', 'Root Veg', '930201002', 160000, [0.1, 0.15, 0.15, 0.4, 0.2, 0], 0.03, -0.04],
-  ['Grocery', 'Fresh Vegetables', 'Fresh', 'Basic Veg', '930201003', 135000, [0.1, 0.1, 0.1, 0.5, 0.2, 0], -0.09, -0.08],
-  ['Grocery', 'Health Drinks', 'Girls Bottoms', 'Malt Drinks', '930304001', 94529, [0.04, 0.04, 0.05, 0.72, 0.11, 0.04], -0.1, 0.03],
-  ['Home', 'Cookware', 'Home', 'Steel Utensils', '920101001', 320000, [0.3, 0.3, 0.3, 0.1, 0, 0], 0.06, -0.02],
-  ['Home', 'Cookware', 'Home', 'Non Stick Cookware', '920101002', 95000, [0.3, 0.3, 0.2, 0.2, 0, 0], -0.02, 0.06],
-  ['Home', 'Cookware', 'Home', 'Brass Utensils', '920101003', 120000, [0.5, 0.25, 0.25, 0, 0, 0], 0.09, -0.1],
+  ['Fashion', 'Men Top', 'Men Top', 'Men Formal Shirt', 'MS-101', 410000, [0.26, 0.33, 0.41, 0, 0, 0], 0.13, 0.05],
+  ['Fashion', 'Men Top', 'Men Top', 'Men Casual Shirt', 'MS-102', 330000, [0.5, 0.22, 0.17, 0.07, 0.04, 0], 0.15, -0.03],
+  ['Fashion', 'Men Top', 'Men Top', 'Men T Shirt', 'MS-103', 210000, [0.58, 0.16, 0.14, 0.08, 0.04, 0], -0.05, -0.05],
+  ['Fashion', 'Women Ethnic Wear', 'Women Ethnic', 'Women Kurti', 'MS-104', 360000, [0.45, 0.2, 0.25, 0.1, 0, 0], 0.04, -0.07],
+  ['Fashion', 'Women Ethnic Wear', 'Women Ethnic', 'Churidar', 'MS-105', 130000, [0.4, 0.3, 0.3, 0, 0, 0], -0.08, 0.02],
+  ['Fashion', 'Women Ethnic Wear', 'Women Ethnic', 'Women Palazzo Set', 'MS-106', 90000, [0.6, 0.2, 0.2, 0, 0, 0], 0.02, 0.04],
+  ['Fashion', 'Girls Bottom', 'Girls Bottoms', 'Girls Jean', 'MS-107', 486000, [0.5, 0.24, 0.26, 0, 0, 0], 0.47, 0.11],
+  ['Fashion', 'Girls Bottom', 'Girls Bottoms', 'Girls Short', 'MS-108', 288000, [0.66, 0.09, 0.25, 0, 0, 0], -0.07, -0.06],
+  ['Fashion', 'Girls Bottom', 'Girls Bottoms', 'Girls Leggings', 'MS-109', 149000, [1, 0, 0, 0, 0, 0], -0.16, -0.07],
+  ['Fashion', 'Girls Bottom', 'Girls Bottoms', 'Girls Skirt', 'MS-110', 132000, [0.56, 0, 0.31, 0.09, 0.04, 0], 0.16, 0.11],
+  ['Grocery', 'Fresh Vegetables', 'Fresh', 'Onion', 'MS-111', 210000, [0.1, 0.1, 0.1, 0.5, 0.2, 0], -0.12, 0.18],
+  ['Grocery', 'Fresh Vegetables', 'Fresh', 'Root Veg', 'MS-112', 160000, [0.1, 0.15, 0.15, 0.4, 0.2, 0], 0.03, -0.04],
+  ['Grocery', 'Fresh Vegetables', 'Fresh', 'Basic Veg', 'MS-113', 135000, [0.1, 0.1, 0.1, 0.5, 0.2, 0], -0.09, -0.08],
+  ['Grocery', 'Health Drinks', 'Health Drinks', 'Malt Drinks', 'MS-114', 98000, [0.04, 0.04, 0.05, 0.72, 0.11, 0.04], -0.1, 0.03],
+  ['Home', 'Cookware', 'Home', 'Steel Utensils', 'MS-115', 320000, [0.3, 0.3, 0.3, 0.1, 0, 0], 0.06, -0.02],
+  ['Home', 'Cookware', 'Home', 'Non Stick Cookware', 'MS-116', 95000, [0.3, 0.3, 0.2, 0.2, 0, 0], -0.02, 0.06],
+  ['Home', 'Cookware', 'Home', 'Brass Utensils', 'MS-117', 120000, [0.5, 0.25, 0.25, 0, 0, 0], 0.09, -0.1],
 ]
 const CODES: Code[] = ['B6', 'B1', 'B2', 'B3', 'B4', 'B5']
 

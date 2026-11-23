@@ -134,13 +134,13 @@
    "entered_on": "2026-11-21",
    "reason": "A price drop on leggings starts on the 24th across the East. Expect a pickup in the last week.",
    "status": "Waiting",
-   "waiting_on": "Mani",
+   "waiting_on": "Kumar",
    "history": [
     [
      "Sent for approval",
      "Bina",
      "2026-11-21 14:20",
-     "To Mani, who looks after Lakeside's Girls Bottoms"
+     "To Kumar"
     ]
    ],
    "weeks": ""
@@ -246,7 +246,7 @@
    "entered_by": "Asha",
    "entered_by_role": "Team Leader",
    "entered_on": "2026-10-03",
-   "reason": "Pooja holidays fall in the first week this year.",
+   "reason": "The autumn holidays fall in the first week this year.",
    "status": "Applied",
    "history": [
     [
@@ -377,11 +377,11 @@
      "Sent for approval",
      "Bina",
      "2026-10-06 10:00",
-     "To Mani"
+     "To Kumar"
     ],
     [
      "Kept as reference",
-     "Mani",
+     "Kumar",
      "2026-10-06 17:00",
      "Lakeside did not see that in September."
     ]
@@ -508,7 +508,7 @@
    "entered_by": "Kumar",
    "entered_by_role": "Chief Executive",
    "entered_on": "2026-10-02",
-   "reason": "Pooja holidays: ethnic wear peaks.",
+   "reason": "The autumn holidays: ethnic wear peaks.",
    "status": "Applied",
    "history": [
     [
