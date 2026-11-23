@@ -50,11 +50,21 @@ export function combine(numbers: NumberRow[], store: string, m: Month) {
  */
 export function figureOf(n: NumberRow, numbers: NumberRow[]) {
   if (!isPercent(n)) return n.value
+  return percentParts(n, numbers).reduce((t, { v, held, f }) => t + (held ? v : v * f), 0)
+}
+
+/** What a percent itself moves (₹): the cells of its scope that no more specific Applied number holds, times the percent. */
+export function percentEffect(n: NumberRow, numbers: NumberRow[]) {
+  return percentParts(n, numbers).reduce((t, { v, held, f }) => t + (held ? 0 : v * (f - 1)), 0)
+}
+
+/** Each cell of a percent's scope after the more specific Applied numbers inside it, and whether one of them holds it. */
+function percentParts(n: NumberRow, numbers: NumberRow[]) {
   const inner = numbers.filter(o => o.row_id !== n.row_id && o.status === 'Applied' && o.month === n.month && o.store === n.store && specificity(o) > specificity(n))
   const { adj } = combine(inner, n.store, monthOf(n.month))
-  const held = new Set(inner.flatMap(o => cellsOf(scopeOf(o))))
+  const heldBy = new Set(inner.flatMap(o => cellsOf(scopeOf(o))))
   const f = 1 + (n.percent ?? 0) / 100
-  return cellsOf(scopeOf(n)).reduce((t, c) => { const [s, w] = c.split(':'); const v = adj.get(s)![Number(w) - 1]; return t + (held.has(c) ? v : v * f) }, 0)
+  return cellsOf(scopeOf(n)).map(c => { const [s, w] = c.split(':'); return { v: adj.get(s)![Number(w) - 1], held: heldBy.has(c), f } })
 }
 
 /** The business's month after every Applied number: the proposed target. Nested numbers are counted once. */

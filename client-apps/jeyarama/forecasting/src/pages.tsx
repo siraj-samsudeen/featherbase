@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Card, DataList, EmptyState, Field, Headline, SearchInput, Segmented, Select, StatusPill, TextInput, buttonClasses, fmtINR, type DataColumn, type StatusTone } from '@featherbase/shop-floor'
 import { ALL_WEEKS, RUNS, STORES, SUBS, TARGETS, parseWeeks, type Run, type TargetVersion } from './madeUp'
-import { figureOf, isPercent, percentText, proposedTotal } from './combine'
+import { figureOf, isPercent, percentEffect, percentText, proposedTotal } from './combine'
 import { actualFor, engineFor, finalWeeks } from './sales'
 import { MONTHS, nowIST, todayIST, type Month } from './months'
 import { NoRunYet, Page, address, waitingFor, type Ctx, type IdeaRow, type NumberRow, type QuestionRow } from './App'
@@ -28,7 +28,7 @@ export function NumbersPage({ ctx }: { ctx: Ctx }) {
     { key: 'by', header: 'Who', phone: 'meta', cell: n => <div className="w-52"><Who name={n.entered_by} /></div> },
     { key: 'for', header: 'Scope', phone: 'title', cell: n => <a href={link(n)} className="font-medium">{scopeText(n)}</a> },
     { key: 'how', header: 'Change', phone: 'hidden', cell: n => { const f = figureOf(n, ctx.data.numbers); return <span className="whitespace-nowrap">{isPercent(n)
-      ? <>{n.kind} · {percentText(n.percent)} <span className="text-ink-muted">({f >= engineOf(n) ? '+' : '−'}{fmtINR(Math.abs(f - engineOf(n)))})</span></> : <>{n.kind} · {signed(Math.round((f / engineOf(n) - 1) * 100))}</>}</span> } },
+      ? (e => <>{n.kind} · {percentText(n.percent)} <span className="text-ink-muted">({e >= 0 ? '+' : '−'}{fmtINR(Math.abs(e))})</span></>)(percentEffect(n, ctx.data.numbers)) :<>{n.kind} · {signed(Math.round((f / engineOf(n) - 1) * 100))}</>}</span> } },
     { key: 'value', header: 'Figure', align: 'end', phone: 'value', cell: n => <span className="font-semibold whitespace-nowrap">{fmtINR(figureOf(n, ctx.data.numbers))}</span> },
     { key: 'status', header: 'Status Now', phone: 'status', cell: n => <StatusPill tone={STATUS_TONE[n.status]}>{n.status === 'Waiting' ? `Waiting for ${n.waiting_on}` : n.status}</StatusPill> },
     { key: 'why', header: 'Reason', phone: 'hidden', cell: n => <span className="text-sm text-ink-muted">{n.reason}</span> },
