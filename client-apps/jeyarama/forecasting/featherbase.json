@@ -9,6 +9,29 @@
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "forecasting.number",
+  "reads": {
+    "version": 1,
+    "tables": [
+      "forecasting.number"
+    ],
+    "operations": {
+      "months": {
+        "policy": {
+          "kind": "table"
+        },
+        "authorization": {
+          "kind": "generic"
+        }
+      }
+    }
+  },
+  "bar": [
+    {
+      "picker": "Month",
+      "options": "months",
+      "sets": "month"
+    }
+  ],
   "tables": [
     {
       "name": "forecasting.number",

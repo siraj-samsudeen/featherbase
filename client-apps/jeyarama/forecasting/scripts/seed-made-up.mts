@@ -7,7 +7,8 @@
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { SUBS, engineFor, fromWeights, parseWeeks, type Code, type Scope } from '../src/madeUp.ts'
+import { SUBS, fromWeights, parseWeeks, type Code, type Scope } from '../src/madeUp.ts'
+import { engineFor } from '../src/sales.ts'
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const checkout = resolve(appDir, '../../..')

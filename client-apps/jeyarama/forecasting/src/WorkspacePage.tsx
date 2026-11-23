@@ -2,18 +2,21 @@
 // engine. Click a cell to see every number held for that scope and add your own. An Applied number
 // changes the forecast the business runs on (after approval up the reporting line; the Chief
 // Executive's at once); a Reference number is kept as a view. Every number is graded at month end.
+// The month is the shared top bar's: a closed month can be seen but not changed, and its cell panel
+// shows each number against what sold; a month with no Run yet has no grid.
 import { useMemo, useState } from 'react'
 import {
   Button, Card, DrillPane, Field, Headline, Notice, PaneSection, PersonLabel, Segmented, StatusPill, TextInput,
   fmtINR, type StatusTone,
 } from '@featherbase/shop-floor'
 import {
-  ALL_WEEKS, BASES, STORES, SUBS, UPLIFT, WEEKS, engineFor, engineWeek, fromWeights, inScope, parseWeeks, person, personByName,
+  ALL_WEEKS, BASES, BASES_MONTH, STORES, SUBS, UPLIFT, fromWeights, inScope, parseWeeks, person, personByName,
   value, weightOf, type Code, type Person, type Scope, type Sub,
 } from './madeUp'
-import { Page, type Ctx, type DecisionRow, type NumberRow } from './App'
+import { actualFor, completeTo, daysFor, engineFor, finalWeeks, totalsTo } from './sales'
+import { dateOf, monthOf, weeksOf, type Month } from './months'
+import { NoRunYet, Page, type Ctx, type DecisionRow, type NumberRow } from './App'
 
-const MONTH = '2026-11'
 const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : 0)
 const signed = (p: number) => `${p >= 0 ? '+' : ''}${p}%`
 export const STATUS_TONE: Record<string, StatusTone> = { Applied: 'positive', Waiting: 'caution', Reference: 'opportunity', 'Not approved': 'negative' }
@@ -23,9 +26,9 @@ export const when = (s: string) => {
   const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]
   return `${String(day).padStart(2, '0')}-${mon}-${y}${t ? ` ${t}` : ''}`
 }
-export const weeksText = (w: string | null | undefined) => (!w ? 'the month' : parseWeeks(w).map(n => WEEKS[n - 1]).join(', '))
-export const scopeText = (n: Pick<NumberRow, 'store' | 'scope_level' | 'scope_name' | 'weeks'>) =>
-  `${n.scope_level === 'Store' ? n.store : `${n.store} · ${n.scope_name}`} · ${weeksText(n.weeks)}`
+export const weeksText = (w: string | null | undefined, m: Month) => (!w ? 'the month' : parseWeeks(w).map(n => weeksOf(m)[n - 1]).join(', '))
+export const scopeText = (n: Pick<NumberRow, 'month' | 'store' | 'scope_level' | 'scope_name' | 'weeks'>) =>
+  `${n.scope_level === 'Store' ? n.store : `${n.store} · ${n.scope_name}`} · ${weeksText(n.weeks, monthOf(n.month))}`
 
 export function Who({ name, className = 'w-full' }: { name: string; className?: string }) {
   const p = personByName(name)
@@ -37,11 +40,11 @@ const sameScope = (n: NumberRow, sc: Scope) => n.store === sc.store && n.scope_l
 const RANK = { Store: 0, Division: 1, Category: 2, Subcategory: 3 }
 
 /** Every subcategory-week after the Applied numbers: the most specific wins, each spread by the engine's shape. */
-function adjusted(numbers: NumberRow[], store: string) {
+function adjusted(numbers: NumberRow[], store: string, m: Month) {
   const subs = SUBS.filter(s => s.store === store)
-  const adj = new Map(subs.map(s => [s.name, ALL_WEEKS.map(w => engineWeek(s, w - 1))]))
+  const adj = new Map(subs.map(s => [s.name, ALL_WEEKS.map(w => finalWeeks(s, m, [w]))]))
   const held = new Set<string>()
-  const applied = numbers.filter(n => n.month === MONTH && n.store === store && n.status === 'Applied')
+  const applied = numbers.filter(n => n.month === m.key && n.store === store && n.status === 'Applied')
     .sort((a, b) => RANK[b.scope_level] * 10 - parseWeeks(b.weeks).length - (RANK[a.scope_level] * 10 - parseWeeks(a.weeks).length))
   for (const n of applied) {
     const cells = subs.filter(s => inScope(s, { store, level: n.scope_level, name: n.scope_name })).flatMap(s => parseWeeks(n.weeks).map(w => [s.name, w - 1] as const))
@@ -73,19 +76,26 @@ function rowsFor(store: string, open: Set<string>): Row[] {
 }
 
 export function WorkspacePage({ ctx }: { ctx: Ctx }) {
+  const m = ctx.month, closed = m.state === 'closed'
   const params = new URLSearchParams(window.location.search)
   const [store, setStore] = useState(params.get('store') ?? 'Lakeside')
   const [open, setOpen] = useState(new Set(['Fashion', 'Women Ethnic Wear', 'Girls Bottom']))
   const [sel, setSel] = useState<Scope | null>(() => ({ store: params.get('store') ?? 'Lakeside', level: (params.get('level') as Scope['level']) ?? 'Category',
     name: params.get('name') ?? 'Women Ethnic Wear', weeks: params.get('weeks') ? parseWeeks(params.get('weeks')) : ALL_WEEKS }))
-  const [mode, setMode] = useState<'views' | 'why' | 'comments'>((params.get('pane') as 'views') ?? 'views')
-  const adj = useMemo(() => adjusted(ctx.data.numbers, store), [ctx.data.numbers, store])
+  const [chosenMode, setMode] = useState<'views' | 'why' | 'comments'>((params.get('pane') as 'views') ?? 'views')
+  const hasWhy = sel?.level === 'Subcategory' && m.key === BASES_MONTH
+  const mode = chosenMode === 'why' && !hasWhy ? 'views' : chosenMode
+  const adj = useMemo(() => adjusted(ctx.data.numbers, store, m), [ctx.data.numbers, store, m])
+  if (m.state === 'empty') return <Page title="Workspace"><NoRunYet month={m} what="The grid opens then, and numbers can be added to it." /></Page>
   const rows = rowsFor(store, open)
-  const sum = (subs: Sub[], weeks: number[], engine = false) => subs.reduce((t, s) => t + weeks.reduce((u, w) => u + (engine ? engineWeek(s, w - 1) : adj.get(s.name)![w - 1]), 0), 0)
-  const mine = (sc: Scope) => ctx.data.numbers.filter(n => n.month === MONTH && sameScope(n, sc))
+  const sum = (subs: Sub[], weeks: number[], engine = false) => subs.reduce((t, s) => t + weeks.reduce((u, w) => u + (engine ? finalWeeks(s, m, [w]) : adj.get(s.name)![w - 1]), 0), 0)
+  const mine = (sc: Scope) => ctx.data.numbers.filter(n => n.month === m.key && sameScope(n, sc))
   const storeSubs = SUBS.filter(s => s.store === store)
   const total = sum(storeSubs, ALL_WEEKS), engine = sum(storeSubs, ALL_WEEKS, true)
-  const act = storeSubs.reduce((t, s) => t + s.act20, 0), fc = storeSubs.reduce((t, s) => t + s.fc20, 0)
+  // What sold against the engine: the current month to its last day loaded in full, a closed month whole.
+  const to = completeTo(daysFor(m, storeSubs))
+  const soldTo = (subs: Sub[]) => totalsTo(daysFor(m, subs), to)
+  const { actual: act, final: fc } = soldTo(storeSubs)
 
   const Cell = ({ r, weeks }: { r: Row; weeks: number[] }) => {
     const sc: Scope = { store, level: r.level, name: r.name, weeks }
@@ -108,11 +118,12 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
 
   return (
     <Page title="Workspace" actions={<Segmented label="Store" value={store} onChange={v => { setStore(v); setSel(null) }} options={STORES.map(v => ({ value: v, label: v }))} />}>
-      <p className="-mt-2 text-sm text-ink-muted">November 2026 · engine Run of 30-Oct-2026 (demo_2026_11_official) · ₹ before tax · weeks shown, days in the full build</p>
-      <Headline label={`November 2026 · ${store}`} tone={act >= fc ? 'positive' : 'caution'}
-        conclusion={`${fmtINR(act)} sold to 20-Nov, ${Math.abs(pct(act, fc))}% ${act >= fc ? 'ahead of' : 'behind'} the forecast`}
+      <p className="-mt-2 text-sm text-ink-muted">{m.label}{closed ? ' · closed' : ''} · engine Run of {m.origin} ({m.run}) · ₹ before tax · weeks shown here, days on Charts</p>
+      {closed && <Notice><span data-testid="closed-month">{m.label} is closed. Its numbers and the grid can be seen, but nothing new can be added or approved. Open a cell to see each number against what sold.</span></Notice>}
+      <Headline label={`${m.label} · ${store}`} tone={act >= fc ? 'positive' : 'caution'}
+        conclusion={`${fmtINR(act)} sold ${closed ? `in ${m.name}` : `to ${dateOf(m, to)}`}, ${Math.abs(pct(act, fc))}% ${act >= fc ? 'ahead of' : 'behind'} the forecast`}
         detail={<>Applied for the month {fmtINR(total)} · engine {fmtINR(engine)}{Math.abs(total - engine) > 1 ? ` · people's numbers change it by ${total > engine ? '+' : '−'}${fmtINR(Math.abs(total - engine))}` : ' · no number applied yet'}</>}
-        progress={{ value: Math.round((act / total) * 1000) / 10, marker: Math.round((fc / total) * 1000) / 10, label: 'Sold so far against the applied month figure' }} />
+        progress={{ value: Math.round((act / total) * 1000) / 10, marker: Math.round((fc / total) * 1000) / 10, label: closed ? 'Sold against the applied month figure' : 'Sold so far against the applied month figure' }} />
       <div className="flex flex-wrap items-center gap-3 text-[13px] text-ink-muted">
         <span>A struck-through figure is the engine's; the one below it is after the Applied numbers.</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-positive" />Applied</span>
@@ -126,13 +137,13 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
             <table className="w-full min-w-[760px] border-collapse text-sm" data-testid="grid">
               <thead><tr className="text-[12px] text-ink-muted">
                 <th className="px-2.5 py-2 text-start font-semibold">{store}</th>
-                {WEEKS.map(w => <th key={w} className="px-2.5 py-2 text-end font-semibold whitespace-nowrap">{w}</th>)}
-                <th className="px-2.5 py-2 text-end font-semibold">November</th>
-                <th className="px-2.5 py-2 text-end font-semibold whitespace-nowrap">Running</th>
+                {weeksOf(m).map(w => <th key={w} className="px-2.5 py-2 text-end font-semibold whitespace-nowrap">{w}</th>)}
+                <th className="px-2.5 py-2 text-end font-semibold">{m.name}</th>
+                <th className="px-2.5 py-2 text-end font-semibold whitespace-nowrap">{closed ? 'Month end' : 'Running'}</th>
               </tr></thead>
               <tbody>
                 {rows.map(r => {
-                  const a = r.subs.reduce((t, s) => t + s.act20, 0), f = r.subs.reduce((t, s) => t + s.fc20, 0)
+                  const { actual: a, final: f } = soldTo(r.subs)
                   const canOpen = r.level === 'Division' || r.level === 'Category'
                   return (
                     <tr key={`${r.level}-${r.name}`} className="border-t border-border">
@@ -153,13 +164,13 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
         </Card>
         {sel && sel.store === store && (
           <div className="sticky top-4 overflow-hidden rounded-card">
-            <DrillPane place="right" kind={`${store} · ${weeksText(weeksKey(sel.weeks))}`} title={sel.level === 'Store' ? `${store}, whole store` : sel.name} onClose={() => setSel(null)}
+            <DrillPane place="right" kind={`${store} · ${weeksText(weeksKey(sel.weeks), m)}`} title={sel.level === 'Store' ? `${store}, whole store` : sel.name} onClose={() => setSel(null)}
               actions={<Segmented label="Pane" value={mode} onChange={setMode} options={[
                 { value: 'views', label: `Views (${mine(sel).length + 1})` },
-                ...(sel.level === 'Subcategory' ? [{ value: 'why' as const, label: 'Why' }] : []),
+                ...(hasWhy ? [{ value: 'why' as const, label: 'Why' }] : []),
                 { value: 'comments', label: 'Comments' }]} />}>
-              {mode === 'views' && <Views key={JSON.stringify(sel)} ctx={ctx} sc={sel} now={sum(SUBS.filter(s => inScope(s, sel)), sel.weeks)} numbers={mine(sel)} />}
-              {mode === 'why' && sel.level === 'Subcategory' && <Why s={SUBS.find(s => s.store === store && s.name === sel.name)!} />}
+              {mode === 'views' && <Views key={`${m.key}${JSON.stringify(sel)}`} ctx={ctx} sc={sel} now={sum(SUBS.filter(s => inScope(s, sel)), sel.weeks)} numbers={mine(sel)} />}
+              {mode === 'why' && hasWhy && <Why s={SUBS.find(s => s.store === store && s.name === sel.name)!} />}
               {mode === 'comments' && <Comments ctx={ctx} sc={sel} />}
             </DrillPane>
           </div>
@@ -197,26 +208,34 @@ const nextUp = (p: Person) => (p.reportsTo ? person(p.reportsTo) : null)
 const stamp = () => new Date().toISOString().slice(0, 16).replace('T', ' ')
 
 function Views({ ctx, sc, now, numbers }: { ctx: Ctx; sc: Scope; now: number; numbers: NumberRow[] }) {
-  const engine = engineFor(sc)
+  const m = ctx.month, closed = m.state === 'closed'
+  const engine = engineFor(sc, m.key)
+  // A closed month's numbers are each set against what sold, for the same scope and weeks.
+  const sold = closed ? actualFor(sc, m.key) : null
   const sorted = [...numbers].sort((a, b) => a.entered_on.localeCompare(b.entered_on))
   const anyApplied = sorted.some(n => n.status === 'Applied')
   const [adding, setAdding] = useState(false)
   return (
     <>
-      <div className="grid grid-cols-2 gap-2 rounded-card bg-subtle p-3 text-sm">
+      <div className={`grid gap-2 rounded-card bg-subtle p-3 text-sm ${sold != null ? 'grid-cols-3' : 'grid-cols-2'}`}>
         <div><div className="text-[13px] text-ink-muted">Engine</div><div className="text-lg font-semibold tabular-nums">{fmtINR(engine)}</div></div>
         <div><div className="text-[13px] text-ink-muted">After Applied numbers</div><div className="text-lg font-semibold tabular-nums">{fmtINR(now)} <span className="text-sm font-normal text-ink-muted">{Math.abs(now - engine) > 1 ? signed(pct(now, engine)) : ''}</span></div></div>
+        {sold != null && <div data-testid="sold"><div className="text-[13px] text-ink-muted">What sold</div><div className="text-lg font-semibold tabular-nums">{fmtINR(sold)}</div></div>}
       </div>
       <ol className="flex flex-col gap-3" data-testid="views-list">
-        <li className="flex items-center justify-between gap-2 rounded-card bg-subtle p-3">
-          <span className="flex items-center gap-2"><span className="font-medium">Engine</span><StatusPill tone={anyApplied ? 'neutral' : 'positive'}>{anyApplied ? 'Model' : 'Applied'}</StatusPill></span>
-          <span className="font-semibold tabular-nums">{fmtINR(engine)}</span>
+        <li className="flex flex-col gap-1 rounded-card bg-subtle p-3">
+          <span className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2"><span className="font-medium">Engine</span><StatusPill tone={anyApplied ? 'neutral' : 'positive'}>{anyApplied ? 'Model' : 'Applied'}</StatusPill></span>
+            <span className="font-semibold tabular-nums">{fmtINR(engine)}</span>
+          </span>
+          {sold != null && <span className="text-[13px] text-ink-muted">{signed(pct(engine, sold))} on what sold</span>}
         </li>
-        {sorted.map(n => <NumberCard key={n.row_id} ctx={ctx} n={n} engine={engine} siblings={sorted} />)}
+        {sorted.map(n => <NumberCard key={n.row_id} ctx={ctx} n={n} engine={engine} sold={sold} siblings={sorted} />)}
       </ol>
       {now !== engine && !anyApplied && <Notice>This scope moved because an Applied number above or below it was spread here.</Notice>}
-      {adding ? <AddNumber ctx={ctx} sc={sc} engine={engine} onDone={() => setAdding(false)} />
-        : <div><Button variant="primary" onClick={() => setAdding(true)} data-testid="add-number">Add your number</Button></div>}
+      {closed ? <p className="text-[13px] text-ink-muted" data-testid="closed-no-add">{m.label} is closed: no number can be added or approved.</p>
+        : adding ? <AddNumber ctx={ctx} sc={sc} engine={engine} onDone={() => setAdding(false)} />
+          : <div><Button variant="primary" onClick={() => setAdding(true)} data-testid="add-number">Add your number</Button></div>}
     </>
   )
 }
@@ -229,9 +248,10 @@ const howText = (n: NumberRow) => {
   return n.kind
 }
 
-function NumberCard({ ctx, n, engine, siblings }: { ctx: Ctx; n: NumberRow; engine: number; siblings: NumberRow[] }) {
+function NumberCard({ ctx, n, engine, sold, siblings }: { ctx: Ctx; n: NumberRow; engine: number; sold: number | null; siblings: NumberRow[] }) {
   const history = ctx.data.decisions.filter(d => d.number === n.row_id).sort((a, b) => a.decided_on.localeCompare(b.decided_on))
-  const waitsForMe = n.status === 'Waiting' && n.waiting_on === ctx.viewer.name
+  const open = ctx.month.state === 'current'
+  const waitsForMe = open && n.status === 'Waiting' && n.waiting_on === ctx.viewer.name
   const [note, setNote] = useState('')
   const up = nextUp(ctx.viewer)
   const log = (row: NumberRow, decision: string, text: string) => ctx.save('forecasting.decision', { number: row.row_id, month: row.month, store: row.store, scope_name: row.scope_name,
@@ -243,7 +263,7 @@ function NumberCard({ ctx, n, engine, siblings }: { ctx: Ctx; n: NumberRow; engi
     await ctx.reload()
   }
   // Anyone senior can make a Reference number the applied one; the applied one it replaces becomes Reference.
-  const canPromote = n.status === 'Reference' && (!up || ['Store Manager', 'Chief Executive', 'Operations Head'].includes(ctx.viewer.role))
+  const canPromote = open && n.status === 'Reference' && (!up || ['Store Manager', 'Chief Executive', 'Operations Head'].includes(ctx.viewer.role))
   return (
     <li className={`flex flex-col gap-2 rounded-card p-3 ${n.status === 'Applied' ? 'bg-positive-tint' : 'bg-subtle'}`} data-testid="number-card">
       <div className="flex items-start justify-between gap-2">
@@ -255,6 +275,12 @@ function NumberCard({ ctx, n, engine, siblings }: { ctx: Ctx; n: NumberRow; engi
         <span className="text-[13px] text-ink-muted">{howText(n)} · {signed(pct(n.value, engine))} on the engine · {when(n.entered_on)}</span>
       </div>
       <p className="text-sm">{n.reason}</p>
+      {sold != null && (
+        <div className="flex flex-wrap items-center gap-2 text-[13px]" data-testid="against-sold">
+          <span>{signed(pct(n.value, sold))} on what sold ({fmtINR(sold)}); the engine {signed(pct(engine, sold))}</span>
+          <StatusPill tone={Math.abs(n.value - sold) < Math.abs(engine - sold) ? 'positive' : 'negative'}>{Math.abs(n.value - sold) < Math.abs(engine - sold) ? 'Closer than the engine' : 'Further than the engine'}</StatusPill>
+        </div>
+      )}
       {history.length > 0 && (
         <ol className="flex flex-col gap-1 border-l-2 border-border pl-3 text-[13px]">
           {history.map(h => <li key={h.row_id}><span className="text-ink-muted">{when(h.decided_on)}</span> · <b>{h.decided_by}</b>: {h.decision}{h.note ? ` · ${h.note}` : ''}</li>)}
@@ -295,13 +321,13 @@ function AddNumber({ ctx, sc, engine, onDone }: { ctx: Ctx; sc: Scope; engine: n
     const direct = mode === 'reference' || !up
     const status = mode === 'reference' ? 'Reference' : direct ? 'Applied' : 'Waiting'
     const saved = await ctx.save('forecasting.number', {
-      month: MONTH, run: 'demo_2026_11_official', store: sc.store, section: sub?.section ?? '', scope_level: sc.level, scope_name: sc.name, weeks: weeksKey(sc.weeks),
+      month: ctx.month.key, run: ctx.month.run, store: sc.store, section: sub?.section ?? '', scope_level: sc.level, scope_name: sc.name, weeks: weeksKey(sc.weeks),
       kind, value: next, weights_json: kind === 'Change the weights' ? JSON.stringify(w) : null,
       entered_by: ctx.viewer.name, entered_by_role: ctx.viewer.role, entered_on: stamp().slice(0, 10), reason, status, waiting_on: status === 'Waiting' ? up!.name : null })
-    await ctx.save('forecasting.decision', { number: saved.row_id, month: MONTH, store: sc.store, scope_name: sc.name, decided_by: ctx.viewer.name, decided_by_role: ctx.viewer.role, decided_on: stamp(),
+    await ctx.save('forecasting.decision', { number: saved.row_id, month: ctx.month.key, store: sc.store, scope_name: sc.name, decided_by: ctx.viewer.name, decided_by_role: ctx.viewer.role, decided_on: stamp(),
       decision: status === 'Reference' ? 'Kept as reference' : status === 'Applied' ? 'Approved and applied' : 'Sent for approval',
       note: status === 'Waiting' ? `To ${up!.name}` : status === 'Applied' ? "The Chief Executive's number applies without approval." : 'Held as a view.' })
-    if (status === 'Applied') for (const o of ctx.data.numbers.filter(o => o.month === MONTH && sameScope(o, sc) && o.status === 'Applied')) await ctx.save('forecasting.number', { ...o, status: 'Reference' })
+    if (status === 'Applied') for (const o of ctx.data.numbers.filter(o => o.month === ctx.month.key && sameScope(o, sc) && o.status === 'Applied')) await ctx.save('forecasting.number', { ...o, status: 'Reference' })
     await ctx.reload(); onDone()
   }
   return (
@@ -310,7 +336,7 @@ function AddNumber({ ctx, sc, engine, onDone }: { ctx: Ctx; sc: Scope; engine: n
         {kinds.map(k => <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}
           className={`rounded-control border px-2.5 py-1.5 text-start text-[13px] ${kind === k ? 'border-action font-semibold text-action' : 'border-transparent bg-surface'}`}>{k}</button>)}
       </div>
-      {kind === 'Set a total' && <Field label={`Total for ${weeksText(weeksKey(sc.weeks))}, before tax (₹)`} hint="Spread across the cells below by the engine's own shape."><TextInput data-testid="figure" inputMode="numeric" value={figure} placeholder={String(Math.round(engine))} onChange={e => setFigure(e.target.value)} /></Field>}
+      {kind === 'Set a total' && <Field label={`Total for ${weeksText(weeksKey(sc.weeks), ctx.month)}, before tax (₹)`} hint="Spread across the cells below by the engine's own shape."><TextInput data-testid="figure" inputMode="numeric" value={figure} placeholder={String(Math.round(engine))} onChange={e => setFigure(e.target.value)} /></Field>}
       {kind === 'Change by a percent' && <Field label="Change on the engine (%)"><TextInput data-testid="percent" inputMode="numeric" value={percent} placeholder="+10 or −5" onChange={e => setPercent(e.target.value)} /></Field>}
       {kind === 'Closure or event' && <Field label="Effect (%)" hint="−100 for a closure; a smaller change for an event such as road work or a refit."><TextInput data-testid="percent" inputMode="numeric" value={percent} placeholder="−100" onChange={e => setPercent(e.target.value)} /></Field>}
       {kind === 'Change the weights' && sub && (
@@ -343,11 +369,11 @@ function AddNumber({ ctx, sc, engine, onDone }: { ctx: Ctx; sc: Scope; engine: n
 }
 
 function Comments({ ctx, sc }: { ctx: Ctx; sc: Scope }) {
-  const notes: DecisionRow[] = ctx.data.decisions.filter(d => !d.number && d.month === MONTH && d.store === sc.store && d.scope_name === (sc.level === 'Store' ? sc.store : sc.name))
+  const notes: DecisionRow[] = ctx.data.decisions.filter(d => !d.number && d.month === ctx.month.key && d.store === sc.store && d.scope_name === (sc.level === 'Store' ? sc.store : sc.name))
   const [kind, setKind] = useState<'Comment' | 'This is wrong'>('Comment')
   const [text, setText] = useState('')
   const post = async () => {
-    await ctx.save('forecasting.decision', { month: MONTH, store: sc.store, scope_name: sc.level === 'Store' ? sc.store : sc.name, decision: kind, decided_by: ctx.viewer.name, decided_by_role: ctx.viewer.role, decided_on: stamp(), note: text })
+    await ctx.save('forecasting.decision', { month: ctx.month.key, store: sc.store, scope_name: sc.level === 'Store' ? sc.store : sc.name, decision: kind, decided_by: ctx.viewer.name, decided_by_role: ctx.viewer.role, decided_on: stamp(), note: text })
     setText(''); await ctx.reload()
   }
   return (
@@ -361,11 +387,11 @@ function Comments({ ctx, sc }: { ctx: Ctx; sc: Scope }) {
             <p className="text-sm">{n.note}</p>
           </li>))}
       </ol>
-      <div className="flex flex-col gap-2">
+      {ctx.month.state === 'closed' ? <p className="text-[13px] text-ink-muted">{ctx.month.label} is closed: its comments can be read, not added to.</p> : <div className="flex flex-col gap-2">
         <Segmented label="Kind" value={kind} onChange={setKind} options={[{ value: 'Comment', label: 'Comment' }, { value: 'This is wrong', label: 'This is wrong' }]} />
         <textarea rows={3} value={text} onChange={e => setText(e.target.value)} placeholder={kind === 'This is wrong' ? 'What is wrong, and what should it be?' : 'Write a comment'} className="w-full rounded-control border border-border-control bg-surface px-3 py-2 text-control text-ink" />
         <div><Button variant="primary" disabled={!text.trim()} onClick={() => void post()}>Post</Button></div>
-      </div>
+      </div>}
     </>
   )
 }

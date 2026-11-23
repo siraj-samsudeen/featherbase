@@ -1,10 +1,12 @@
 // The Forecasting app: one frame (the shared sidebar beside the page) and six pages, chosen by ?view=.
-// Baseline on made-up data (#4870 in the warehouse repo): Runs, bases and sales come from madeUp.ts;
-// numbers, their history, Review questions and ideas are Featherbase rows.
+// Baseline on made-up data (#4870 in the warehouse repo): Runs, bases and sales come from madeUp.ts and
+// sales.ts; numbers, their history, Review questions and ideas are Featherbase rows. The month comes
+// from the shared top bar's Month picker (?month=, filled by the app's `months` read), as in Dash.
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '@featherbase/shop-floor'
 import { listAll, saveRow } from './api'
 import { PEOPLE, person, type Person } from './madeUp'
+import { monthOf, type Month } from './months'
 import { WorkspacePage } from './WorkspacePage'
 import { IdeasPage, NumbersPage, ResultsPage, ReviewPage, RunsPage } from './pages'
 
@@ -20,7 +22,7 @@ export interface IdeaRow { row_id: string; ref: string; label: string; title: st
   verdict: string; outcome: string; status_note: string; decided_on: string; revisit: string | null; areas: string; evidence: string | null }
 
 export interface Data { numbers: NumberRow[]; decisions: DecisionRow[]; questions: QuestionRow[]; ideas: IdeaRow[] }
-export interface Ctx { data: Data; viewer: Person; reload: () => Promise<void>; save: typeof saveRow }
+export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => Promise<void>; save: typeof saveRow }
 
 const VIEWS = [
   { key: 'forecasts', label: 'Workspace', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 3v18' },
@@ -38,6 +40,25 @@ export const address = (view: View, extra: Record<string, string> = {}) => {
   for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q']) q.delete(k)
   for (const [k, v] of Object.entries(extra)) q.set(k, v)
   return `?${q}`
+}
+
+/** The month the bar's Month picker keeps in the address (?month=); none or an unknown one: the current month. */
+const monthInAddress = () => monthOf(new URLSearchParams(window.location.search).get('month')).key
+
+/** The bar's month choices, announced as `featherbase:bar-change`, and Back/Forward. */
+function useBarMonth() {
+  const [key, setKey] = useState(monthInAddress)
+  useEffect(() => {
+    const fromBar = (event: Event) => {
+      const { key: changed, value } = (event as CustomEvent<{ key: string; value: string }>).detail ?? {}
+      if (changed === 'month' && value) setKey(monthOf(value).key)
+    }
+    const fromHistory = () => setKey(monthInAddress())
+    window.addEventListener('featherbase:bar-change', fromBar)
+    window.addEventListener('popstate', fromHistory)
+    return () => { window.removeEventListener('featherbase:bar-change', fromBar); window.removeEventListener('popstate', fromHistory) }
+  }, [])
+  return monthOf(key)
 }
 
 /** Waiting for this person: numbers whose next step is theirs. */
@@ -84,6 +105,11 @@ export function Page({ title, actions, children }: { title: string; actions?: Re
   )
 }
 
+/** A month with no engine Run yet: nothing to show or change until it is in. */
+export function NoRunYet({ month, what }: { month: Month; what: string }) {
+  return <Card><EmptyState title={`${month.label} has no Run yet`} body={`The engine writes ${month.name}'s official Run at the end of ${month.before}. ${what}`} /></Card>
+}
+
 export function ForecastingApp() {
   const params = new URLSearchParams(window.location.search)
   const view = (VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : 'forecasts') as View
@@ -91,6 +117,7 @@ export function ForecastingApp() {
   const [data, setData] = useState<Data | null>(null)
   const [failed, setFailed] = useState(false)
   const viewer = person(PEOPLE.some(p => p.id === viewerId) ? viewerId : 'asha')
+  const month = useBarMonth()
 
   const reload = useCallback(async () => {
     try {
@@ -114,7 +141,7 @@ export function ForecastingApp() {
     const q = new URLSearchParams(window.location.search); q.set('as', id); history.replaceState(null, '', `?${q}`)
   }
 
-  const ctx: Ctx | null = data ? { data, viewer, reload, save: saveRow } : null
+  const ctx: Ctx | null = data ? { data, viewer, month, reload, save: saveRow } : null
   return (
     <div className="fc-shell">
       <Sidebar current={view} waiting={data ? waitingFor(data, viewer).length : 0} />

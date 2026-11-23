@@ -1,20 +1,26 @@
 // Ledger (approvals and every number), Runs & Targets, Results (each scope's views against what sold,
 // and the scorecard), Review (each month's questions and answers) and the Idea Register (every idea
-// for making the forecast better, and what became of it).
+// for making the forecast better, and what became of it). Each follows the shared top bar's month,
+// but the Idea Register, whose ideas span months.
 import { useMemo, useState } from 'react'
-import { Button, Card, DataList, Field, Headline, SearchInput, Segmented, Select, StatusPill, TextInput, fmtINR, type DataColumn, type StatusTone } from '@featherbase/shop-floor'
-import { RUNS, SUBS, TARGETS, actualFor, engineFor, parseWeeks, type Run, type TargetVersion } from './madeUp'
-import { Page, address, waitingFor, type Ctx, type IdeaRow, type NumberRow, type QuestionRow } from './App'
+import { Button, Card, DataList, EmptyState, Field, Headline, SearchInput, Segmented, Select, StatusPill, TextInput, buttonClasses, fmtINR, type DataColumn, type StatusTone } from '@featherbase/shop-floor'
+import { ALL_WEEKS, RUNS, SUBS, TARGETS, parseWeeks, type Run, type TargetVersion } from './madeUp'
+import { actualFor, engineFor, finalWeeks } from './sales'
+import { MONTHS, type Month } from './months'
+import { NoRunYet, Page, address, waitingFor, type Ctx, type IdeaRow, type NumberRow, type QuestionRow } from './App'
 import { STATUS_TONE, Who, scopeText, when } from './WorkspacePage'
 
 const link = (n: NumberRow) => address('forecasts', { store: n.store, level: n.scope_level, name: n.scope_name, ...(n.weeks ? { weeks: n.weeks } : {}), pane: 'views' })
 const engineOf = (n: NumberRow) => engineFor({ store: n.store, level: n.scope_level, name: n.scope_name, weeks: parseWeeks(n.weeks) }, n.month)
 const signed = (p: number) => `${p >= 0 ? '+' : ''}${p}%`
+/** Runs and targets name their month as "Nov 2026". */
+const runMonth = (m: Month) => `${m.mon} ${m.year}`
 
 export function NumbersPage({ ctx }: { ctx: Ctx }) {
   const [status, setStatus] = useState<'All' | NumberRow['status']>('All')
   const mine = waitingFor(ctx.data, ctx.viewer)
-  const rows = ctx.data.numbers.filter(n => n.month === '2026-11' && (status === 'All' || n.status === status)).sort((a, b) => b.entered_on.localeCompare(a.entered_on))
+  const m = ctx.month
+  const rows = ctx.data.numbers.filter(n => n.month === m.key && (status === 'All' || n.status === status)).sort((a, b) => b.entered_on.localeCompare(a.entered_on))
   const columns: DataColumn<NumberRow>[] = [
     { key: 'on', header: 'Entered', phone: 'meta', cell: n => <span className="whitespace-nowrap">{when(n.entered_on)}</span> },
     { key: 'by', header: 'Who', phone: 'meta', cell: n => <div className="w-52"><Who name={n.entered_by} /></div> },
@@ -33,9 +39,10 @@ export function NumbersPage({ ctx }: { ctx: Ctx }) {
             empty={{ title: 'Nothing waits for you', body: `No number waits for ${ctx.viewer.name}. Switch "Viewing as" to Mani or Kumar to see an approver's queue.` }} />
         </div>
       </Card>
-      <Card title="Every Number, November 2026" actions={<Segmented label="Status" value={status} onChange={setStatus}
+      <Card title={`Every Number, ${m.label}`} actions={<Segmented label="Status" value={status} onChange={setStatus}
         options={(['All', 'Waiting', 'Applied', 'Reference', 'Not approved'] as const).map(v => ({ value: v, label: v }))} />}>
-        <div className="px-4 pb-4"><DataList caption="Every number" rows={rows} columns={columns} rowKey={n => n.row_id} layout="table" empty={{ title: 'No numbers', body: 'No number has this status.' }} /></div>
+        <div className="px-4 pb-4"><DataList caption="Every number" rows={rows} columns={columns} rowKey={n => n.row_id} layout="table"
+          empty={{ title: 'No numbers', body: m.state === 'empty' ? `${m.label} has no Run yet, so no number can be entered.` : status === 'All' ? `No number was entered for ${m.label}.` : 'No number has this status.' }} /></div>
       </Card>
       <Card title="How Numbers Combine">
         <ol className="flex list-decimal flex-col gap-2 px-9 pb-4 text-sm">
@@ -53,6 +60,7 @@ export function NumbersPage({ ctx }: { ctx: Ctx }) {
 }
 
 export function RunsPage({ ctx }: { ctx: Ctx }) {
+  const m = ctx.month
   const tone: Record<Run['purpose'], StatusTone> = { official: 'positive', trial: 'opportunity', baseline: 'neutral' }
   const runCols: DataColumn<Run>[] = [
     { key: 'id', header: 'Run', phone: 'title', cell: r => <code className="text-[13px]">{r.id}</code> },
@@ -63,9 +71,11 @@ export function RunsPage({ ctx }: { ctx: Ctx }) {
     { key: 'wape', header: 'Error (WAPE)', align: 'end', phone: 'meta', cell: r => (r.wape == null ? <span className="text-ink-muted">month not over</span> : `${(r.wape * 100).toFixed(1)}%`) },
     { key: 'note', header: 'What It Is', phone: 'hidden', cell: r => <span className="text-sm text-ink-muted">{r.note}</span> },
   ]
-  const nov = SUBS.reduce((n, s) => n + s.engine, 0), oct = SUBS.reduce((n, s) => n + s.octEngine, 0)
-  const applied = ctx.data.numbers.filter(n => n.month === '2026-11' && n.status === 'Applied').reduce((t, n) => t + n.value - engineOf(n), 0)
-  const targets = TARGETS.map(t => ({ ...t, total: t.month === 'Oct 2026' ? oct : t.revision === 6 ? nov + applied : nov }))
+  // A target is the official Run; a proposed one adds the numbers applied in its month since.
+  const official = SUBS.reduce((n, s) => n + finalWeeks(s, m, ALL_WEEKS), 0)
+  const applied = ctx.data.numbers.filter(n => n.month === m.key && n.status === 'Applied').reduce((t, n) => t + n.value - engineOf(n), 0)
+  const runs = RUNS.filter(r => r.month === runMonth(m))
+  const targets = TARGETS.filter(t => t.month === runMonth(m)).map(t => ({ ...t, total: t.loaded === 'next build' ? official + applied : official }))
   const tCols: DataColumn<TargetVersion & { total: number }>[] = [
     { key: 'month', header: 'Month', phone: 'title', cell: t => <span className="font-medium">{t.month}</span> },
     { key: 'rev', header: 'Version', phone: 'status', cell: t => <StatusPill tone={t.loaded === 'next build' ? 'caution' : t.revision === 5 ? 'positive' : 'neutral'}>{`revision ${t.revision}${t.loaded === 'next build' ? ' · proposed' : t.revision === 5 ? ' · current' : ''}`}</StatusPill> },
@@ -74,12 +84,15 @@ export function RunsPage({ ctx }: { ctx: Ctx }) {
     { key: 'total', header: 'Total, Both Stores', align: 'end', phone: 'value', cell: t => fmtINR(t.total) },
     { key: 'note', header: 'What Changed', phone: 'hidden', cell: t => <span className="text-sm text-ink-muted">{t.note}</span> },
   ]
+  const current = MONTHS.find(x => x.state === 'current')
+  if (m.state === 'empty') return <Page title="Runs & Targets"><NoRunYet month={m} what="Its target versions follow from it." /></Page>
   return (
     <Page title="Runs & Targets">
-      <Card title="Engine Runs"><div className="px-4 pb-4"><DataList caption="Engine Runs" rows={RUNS} columns={runCols} rowKey={r => r.id} layout="table" empty={{ title: 'No Runs', body: 'The engine has not written a Run yet.' }} /></div></Card>
-      <Card title="Target Versions">
+      <Card title={`Engine Runs, ${m.label}`}><div className="px-4 pb-4"><DataList caption="Engine Runs" rows={runs} columns={runCols} rowKey={r => r.id} layout="table" empty={{ title: 'No Runs', body: 'The engine has not written a Run yet.' }} /></div></Card>
+      <Card title={`Target Versions, ${m.label}`}>
         <div className="flex flex-col gap-2 px-4 pb-4">
           <p className="text-sm text-ink-muted">The final forecast is the target. Each version is the official Run with the numbers applied when it was built; reports read the highest version.</p>
+          {current && m.key !== current.key && <p className="text-sm text-ink-muted">{m.label} is closed: its last version is the target it was measured against.</p>}
           <DataList caption="Target versions" rows={targets} columns={tCols} rowKey={t => `${t.month}-${t.revision}`} layout="table" empty={{ title: 'No targets', body: 'No target has been built yet.' }} />
         </div>
       </Card>
@@ -89,9 +102,10 @@ export function RunsPage({ ctx }: { ctx: Ctx }) {
 
 interface Graded { n: NumberRow; engine: number; actual: number; off: number; engineOff: number; closer: number }
 export function ResultsPage({ ctx }: { ctx: Ctx }) {
-  const graded: Graded[] = ctx.data.numbers.filter(n => n.month === '2026-10').map(n => {
+  const m = ctx.month
+  const graded: Graded[] = ctx.data.numbers.filter(n => n.month === m.key && m.state === 'closed').map(n => {
     const sc = { store: n.store, level: n.scope_level, name: n.scope_name }
-    const engine = engineFor({ ...sc, weeks: parseWeeks(n.weeks) }, '2026-10'), actual = actualFor(sc)
+    const engine = engineFor({ ...sc, weeks: parseWeeks(n.weeks) }, m.key), actual = actualFor(sc, m.key)
     const off = Math.abs(n.value - actual), engineOff = Math.abs(engine - actual)
     return { n, engine, actual, off, engineOff, closer: engineOff - off }
   }).sort((a, b) => b.closer - a.closer)
@@ -101,6 +115,17 @@ export function ResultsPage({ ctx }: { ctx: Ctx }) {
     return { name, count: mine.length, beat: mine.filter(g => g.closer > 0).length, closer: mine.reduce((t, g) => t + g.closer, 0), err: mine.reduce((t, g) => t + g.off, 0) / mine.reduce((t, g) => t + g.actual, 0) }
   }).sort((a, b) => b.closer - a.closer)
   const beat = graded.filter(g => g.closer > 0).length
+  const lastClosed = [...MONTHS].reverse().find(x => x.state === 'closed')
+  if (m.state === 'empty') return <Page title="Results"><NoRunYet month={m} what="Its numbers are graded once the month is over." /></Page>
+  if (m.state === 'current' || !graded.length) return (
+    <Page title="Results">
+      <Card><EmptyState title={m.state === 'current' ? `${m.label} is still open` : `No numbers were entered for ${m.label}`}
+        body={m.state === 'current' ? 'Every number is graded against what sold once its month closes.' : 'Its Run was used as the engine wrote it.'}
+        action={<div className="flex flex-wrap justify-center gap-2">
+          {m.state === 'current' && lastClosed && <a className={buttonClasses({ variant: 'secondary' })} href={address('results', { month: lastClosed.key })} data-testid="last-closed">See {lastClosed.label}</a>}
+        </div>} /></Card>
+    </Page>
+  )
   const cols: DataColumn<Graded>[] = [
     { key: 'for', header: 'Scope', phone: 'title', cell: g => <span className="whitespace-nowrap font-medium">{g.n.scope_name} · {g.n.store}</span> },
     { key: 'by', header: 'Number By', phone: 'meta', cell: g => <div className="w-52"><Who name={g.n.entered_by} /></div> },
@@ -112,7 +137,7 @@ export function ResultsPage({ ctx }: { ctx: Ctx }) {
   ]
   return (
     <Page title="Results">
-      <Headline label="October 2026 · every number graded against what sold" tone={beat * 2 >= graded.length ? 'positive' : 'caution'}
+      <Headline label={`${m.label} · every number graded against what sold`} tone={beat * 2 >= graded.length ? 'positive' : 'caution'}
         conclusion={`${beat} of ${graded.length} numbers were closer than the engine`}
         detail="Applied and reference numbers are both graded, at their own scope, from the day each was entered." />
       <Card title="Views Against Actual Sales">
@@ -131,7 +156,7 @@ export function ResultsPage({ ctx }: { ctx: Ctx }) {
           ]} />
         </div>
       </Card>
-      <Card title="Every Graded Number"><div className="px-4 pb-4"><DataList caption="Graded numbers" rows={graded} columns={cols} rowKey={g => g.n.row_id} layout="table" empty={{ title: 'Nothing graded', body: 'October has no numbers.' }} /></div></Card>
+      <Card title="Every Graded Number"><div className="px-4 pb-4"><DataList caption="Graded numbers" rows={graded} columns={cols} rowKey={g => g.n.row_id} layout="table" empty={{ title: 'Nothing graded', body: `${m.name} has no numbers.` }} /></div></Card>
     </Page>
   )
 }
@@ -162,7 +187,8 @@ function ViewsBars({ g }: { g: Graded[] }) {
 
 const OUTCOME_TONE: Record<string, StatusTone> = { Open: 'caution', 'Being worked on': 'opportunity', 'Forecast changed': 'positive', 'No change': 'neutral', 'Waiting on the asker': 'caution', Parked: 'missing' }
 export function ReviewPage({ ctx }: { ctx: Ctx }) {
-  const all = [...ctx.data.questions].sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }))
+  const m = ctx.month
+  const all = ctx.data.questions.filter(x => x.month === m.key).sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }))
   const [filter, setFilter] = useState('All')
   const [selRef, setSel] = useState(all[0]?.ref)
   const [asking, setAsking] = useState(false)
@@ -171,13 +197,13 @@ export function ReviewPage({ ctx }: { ctx: Ctx }) {
   const sel = all.find(x => x.ref === selRef) ?? shown[0]
   const counts = Object.keys(OUTCOME_TONE).map(o => [o, all.filter(x => x.outcome === o).length] as const).filter(([, n]) => n)
   const ask = async () => {
-    const ref = `Q${all.length + 1}`
-    await ctx.save('forecasting.review_question', { ref, month: '2026-11', ...q, asked_by: ctx.viewer.name, asked_on: new Date().toISOString().slice(0, 10), outcome: 'Open' })
+    const ref = `Q${ctx.data.questions.length + 1}`
+    await ctx.save('forecasting.review_question', { ref, month: m.key, ...q, asked_by: ctx.viewer.name, asked_on: new Date().toISOString().slice(0, 10), outcome: 'Open' })
     setQ({ scope: '', question: '', detail: '' }); setAsking(false); setSel(ref); await ctx.reload()
   }
   return (
     <Page title="Review" actions={<Button variant="primary" onClick={() => setAsking(!asking)}>Ask a question</Button>}>
-      <p className="-mt-2 text-sm text-ink-muted">Each question on a month's forecast is one record: who asked, about what, the answer, and what happened to the forecast. November 2026, filled from the month's questions, so December's do not go back into email.</p>
+      <p className="-mt-2 text-sm text-ink-muted">Each question on a month's forecast is one record: who asked, about what, the answer, and what happened to the forecast. {all.length ? `${m.label}, filled from the month's questions, so the next month's do not go back into email.` : `${m.label}: no question has been asked on its forecast yet.`}</p>
       {asking && (
         <Card><div className="grid gap-2 p-4 md:grid-cols-2">
           <Field label="About (store, category, the whole month…)"><TextInput value={q.scope} onChange={e => setQ({ ...q, scope: e.target.value })} /></Field>
@@ -186,7 +212,7 @@ export function ReviewPage({ ctx }: { ctx: Ctx }) {
           <div><Button variant="primary" disabled={!q.question.trim()} onClick={() => void ask()}>Ask</Button></div>
         </div></Card>
       )}
-      <Card>
+      {!all.length ? <Card><EmptyState title={`No questions on ${m.label}`} body="Ask one with the button above; it is kept against this month." /></Card> : <Card>
         <div className="flex flex-wrap gap-1.5 px-4 pt-3" role="group" aria-label="Filter by outcome">
           {[['All', all.length] as const, ...counts].map(([o, n]) => (
             <button key={o} type="button" aria-pressed={filter === o} onClick={() => setFilter(o)}
@@ -203,7 +229,7 @@ export function ReviewPage({ ctx }: { ctx: Ctx }) {
           </div>
           {sel && <Question key={sel.row_id} ctx={ctx} x={sel} />}
         </div>
-      </Card>
+      </Card>}
     </Page>
   )
 }
