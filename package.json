@@ -6,7 +6,7 @@
     "start": "bun start.ts"
   },
   "devDependencies": {
-    "playwright": "1.63.0"
+    "playwright": "1.65.1"
   },
   "dependencies": {
     "@elysiajs/html": "1.4.2",
