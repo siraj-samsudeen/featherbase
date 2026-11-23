@@ -8,7 +8,7 @@ import { dateOf, monthOf, weekOfDay, weekdayOf, type Month } from './months'
 
 export interface DayEvent { month: string; day: number; kind: 'festival' | 'holiday'; name: string; note: string }
 export const EVENTS: DayEvent[] = [
-  { month: '2026-11', day: 5, kind: 'festival', name: 'Harvest Festival', note: 'planned by the engine (its festival lift)' },
+  { month: '2026-11', day: 5, kind: 'festival', name: 'Harvest Festival', note: 'planned by the engine' },
   { month: '2026-11', day: 19, kind: 'holiday', name: 'Civic holiday', note: 'announced after the Run, so the engine did not plan for it' },
 ]
 /** A store-day whose sales are only partly loaded, and the share of the day that is in so far. */

@@ -4,7 +4,7 @@
 
 export type Code = 'B1' | 'B2' | 'B3' | 'B4' | 'B5' | 'B6'
 export const BASES: { code: Code; name: string }[] = [
-  { code: 'B6', name: "Festival lift: last 28 days × past years' month ratio" },
+  { code: 'B6', name: 'Seasonal step: last 28 days × month-to-month index from past years' },
   { code: 'B1', name: 'Same date last year, × growth' },
   { code: 'B2', name: 'Same festival position last year, × growth' },
   { code: 'B3', name: "Last 28 days' run rate" },
@@ -123,7 +123,7 @@ const oct = SUBS.reduce((n, s) => n + s.octEngine, 0)
 const sep = SUBS.reduce((n, s) => n + s.sepEngine, 0)
 export const RUNS: Run[] = [
   { id: 'demo_2026_11_official', month: 'Nov 2026', purpose: 'official', origin: '30-Oct-2026', written: '02-Nov-2026', note: 'Engine on sales to 30-Oct, with a flat 6% uplift (a judgement call, not a model output)', wape: null, total: nov },
-  { id: 'demo_2026_11_trial_no_festival', month: 'Nov 2026', purpose: 'trial', origin: '30-Oct-2026', written: '01-Nov-2026', note: 'Same, with the festival lift (B6) switched off for small cells', wape: null, total: nov * 0.97 },
+  { id: 'demo_2026_11_trial_no_festival', month: 'Nov 2026', purpose: 'trial', origin: '30-Oct-2026', written: '01-Nov-2026', note: 'Same, with the seasonal step (B6) switched off for small cells', wape: null, total: nov * 0.97 },
   { id: 'demo_2026_11_naive_weekly', month: 'Nov 2026', purpose: 'baseline', origin: '30-Oct-2026', written: '02-Nov-2026', note: 'Same weekday, last four weeks', wape: null, total: nov * 0.88 },
   { id: 'demo_2026_10_official', month: 'Oct 2026', purpose: 'official', origin: '30-Sep-2026', written: '01-Oct-2026', note: 'Engine on sales to 30-Sep, festival-aligned', wape: 0.184, total: oct },
   { id: 'demo_2026_10_naive_weekly', month: 'Oct 2026', purpose: 'baseline', origin: '30-Sep-2026', written: '01-Oct-2026', note: 'Same weekday, last four weeks', wape: 0.271, total: oct * 0.91 },
