@@ -84,9 +84,9 @@ pre.ok::before{content:"● Passing";color:#6fd3a0}
 /* Questions you open */
 details{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:0 0 10px;transition:border-color .15s}
 details:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
-summary{cursor:pointer;padding:14px 16px;font-weight:600;list-style:none;display:grid;grid-template-columns:20px 1fr;gap:10px;align-items:baseline}
+summary{cursor:pointer;position:relative;display:block;padding:14px 16px 14px 46px;font-weight:600;list-style:none}
 summary::-webkit-details-marker{display:none}
-summary::before{content:"+";font:500 17px/1 var(--mono);color:var(--accent)}
+summary::before{content:"+";position:absolute;left:18px;top:17px;font:500 17px/1 var(--mono);color:var(--accent)}
 details[open] summary::before{content:"−"}
 details .in{padding:0 18px 16px 46px}
 details .in>:last-child{margin-bottom:0}
