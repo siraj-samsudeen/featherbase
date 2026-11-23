@@ -1,4 +1,4 @@
-// The Forecasting app: one frame (the shared sidebar beside the page) and six pages, chosen by ?view=.
+// The Forecasting app: one frame (the shared sidebar beside the page) and seven pages, chosen by ?view=.
 // Baseline on made-up data (#4870 in the warehouse repo): Runs, bases and sales come from madeUp.ts and
 // sales.ts; numbers, their history, Review questions and ideas are Featherbase rows. The month comes
 // from the shared top bar's Month picker (?month=, filled by the app's `months` read), as in Dash.
@@ -7,6 +7,7 @@ import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '
 import { listAll, saveRow } from './api'
 import { PEOPLE, person, type Person } from './madeUp'
 import { monthOf, type Month } from './months'
+import { ChartsPage } from './ChartsPage'
 import { WorkspacePage } from './WorkspacePage'
 import { IdeasPage, NumbersPage, ResultsPage, ReviewPage, RunsPage } from './pages'
 
@@ -29,6 +30,7 @@ const VIEWS = [
   { key: 'numbers', label: 'Ledger', group: 'Forecasts', icon: 'M20 6 9 17l-5-5' },
   { key: 'runs', label: 'Runs & Targets', group: 'Forecasts', icon: 'M4 6h16M4 12h16M4 18h10' },
   { key: 'results', label: 'Results', group: 'Learning', icon: 'M3 3v18h18M7 14v3m5-8v8m5-12v12' },
+  { key: 'charts', label: 'Charts', group: 'Learning', icon: 'M3 3v18h18M7 16l4-5 4 3 5-7' },
   { key: 'review', label: 'Review', group: 'Learning', icon: 'M8 10h8M8 14h5M21 12a9 9 0 1 1-4-7.5L21 3v6h-6' },
   { key: 'ideas', label: 'Idea Register', group: 'Learning', icon: 'M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2' },
 ] as const
@@ -37,10 +39,13 @@ type View = typeof VIEWS[number]['key']
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
   q.set('view', view)
-  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q']) q.delete(k)
+  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', ...CHART_KEYS]) q.delete(k)
   for (const [k, v] of Object.entries(extra)) q.set(k, v)
   return `?${q}`
 }
+
+/** The Charts page's own choices in the address; another page drops them. */
+export const CHART_KEYS = ['chart', 'region', 'stores', 'subs', 'pick', 'top', 'within', 'bars']
 
 /** The month the bar's Month picker keeps in the address (?month=); none or an unknown one: the current month. */
 const monthInAddress = () => monthOf(new URLSearchParams(window.location.search).get('month')).key
@@ -153,6 +158,7 @@ export function ForecastingApp() {
               : view === 'numbers' ? <NumbersPage ctx={ctx} />
                 : view === 'runs' ? <RunsPage ctx={ctx} />
                   : view === 'results' ? <ResultsPage ctx={ctx} />
+                  : view === 'charts' ? <ChartsPage key={month.key} ctx={ctx} />
                     : view === 'review' ? <ReviewPage ctx={ctx} />
                       : <IdeasPage ctx={ctx} />}
       </main>

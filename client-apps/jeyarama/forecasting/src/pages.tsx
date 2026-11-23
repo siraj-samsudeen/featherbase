@@ -120,8 +120,9 @@ export function ResultsPage({ ctx }: { ctx: Ctx }) {
   if (m.state === 'current' || !graded.length) return (
     <Page title="Results">
       <Card><EmptyState title={m.state === 'current' ? `${m.label} is still open` : `No numbers were entered for ${m.label}`}
-        body={m.state === 'current' ? 'Every number is graded against what sold once its month closes.' : 'Its Run was used as the engine wrote it.'}
+        body={m.state === 'current' ? 'Every number is graded against what sold once its month closes. Sales so far, against the engine, are on Charts.' : 'Its Run was used as the engine wrote it; how the Run did is on Charts.'}
         action={<div className="flex flex-wrap justify-center gap-2">
+          <a className={buttonClasses({ variant: 'secondary' })} href={address('charts')}>Open Charts</a>
           {m.state === 'current' && lastClosed && <a className={buttonClasses({ variant: 'secondary' })} href={address('results', { month: lastClosed.key })} data-testid="last-closed">See {lastClosed.label}</a>}
         </div>} /></Card>
     </Page>
