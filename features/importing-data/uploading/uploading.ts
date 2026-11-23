@@ -1,3 +1,4 @@
+import { button } from "../../../parts.ts";
 import { bar, homeCrumb } from "../../../page.ts";
 
 export const sampleAddress = "/import/sample";
@@ -20,7 +21,7 @@ export const importDataView = {
             <label class="btn primary">Choose a file
               <input type="file" name="file" accept=".csv,text/csv" hidden onchange="this.form.submit()">
             </label>
-            <button type="submit" class="btn" formaction="${sampleAddress}">Try the sample: ${sampleName}</button>
+            ${button(`Try the sample: ${sampleName}`, "", `type="submit" formaction="${sampleAddress}"`)}
           </div>
         </form>
         <ol class="steps">

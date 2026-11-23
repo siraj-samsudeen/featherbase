@@ -4,6 +4,7 @@ import { type Row, type StoredTable, type Upload, addressNameOf, openStore } fro
 import { proposalView, tableProposedFrom, withChoices } from "./features/importing-data/proposing/proposing.ts";
 import { type Layout, type OpenRecord, listView } from "./features/managing-data/browsing/browsing.ts";
 import { aNewRecordFor, cellsTypedInto, nameOf, recordForm, refusalsOf } from "./features/managing-data/changing/changing.ts";
+import { partsView } from "./parts.ts";
 import { type View, bar, page, stylesheetAddress, stylesheetFile } from "./page.ts";
 import { homeView } from "./features/foundations/home/home.ts";
 import { importDataView, sampleAddress, sampleFile, sampleName } from "./features/importing-data/uploading/uploading.ts";
@@ -76,6 +77,7 @@ export async function createFeatherbase(databaseAddress: string) {
     .get(stylesheetAddress, () => Bun.file(stylesheetFile))
     .get("/", async () => show(homeView(await frame())))
     .get("/import", () => show(importDataView))
+    .get("/parts", () => show(partsView))
     .post("/import", async ({ body, redirect }) => {
       const { file } = body as { file: File };
       return redirect(await keptAt(file.name, file));

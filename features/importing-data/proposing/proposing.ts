@@ -1,4 +1,5 @@
 import { asText, bar, homeCrumb, importDataCrumb } from "../../../page.ts";
+import { button, linkButton, tag } from "../../../parts.ts";
 import type { Column } from "../../foundations/database/store.ts";
 import { tableOf } from "../../managing-data/browsing/browsing.ts";
 import { whatFeatherbaseSawIn } from "./what-featherbase-saw.ts";
@@ -65,7 +66,7 @@ export function proposalView(proposed: Proposal, uploadId: string, nameRefusal =
                 ${nameRefusal ? 'aria-invalid="true"' : ""}>
               ${nameRefusal ? `<p class="err">${asText(nameRefusal)}</p>` : ""}
             </div>
-            <span class="tag">main</span>
+            ${tag("main")}
           </div>
           <section class="sect" aria-labelledby="columns">
             <h2 id="columns">Columns</h2>
@@ -83,8 +84,8 @@ export function proposalView(proposed: Proposal, uploadId: string, nameRefusal =
         </div>
         <div class="footbar">
           <input type="hidden" name="upload" value="${uploadId}">
-          <button type="submit" class="btn primary">Create Table</button>
-          <a class="btn" href="${importDataCrumb.address}">Cancel</a>
+          ${button("Create Table", " primary")}
+          ${linkButton("Cancel", importDataCrumb.address)}
           <span class="hint">Nothing is created until you press Create.</span>
         </div>
       </form>`,
