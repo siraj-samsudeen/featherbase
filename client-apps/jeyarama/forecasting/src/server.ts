@@ -29,12 +29,16 @@ function prepareNumber(ctx: Context) {
     const total = Object.values(weights).reduce((n, w) => n + Number(w || 0), 0)
     if (Math.round(total) !== 100) ctx.reject(`The weights must add up to 100%. They add up to ${total}%.`, { weights_json: 'Must total 100' })
   }
+  if ((row.kind === 'Change by a percent' || row.kind === 'Closure or event') && !(Number.isFinite(Number(row.percent)) && row.percent !== null && Number(row.percent) >= -100 && Number(row.percent) <= 500))
+    ctx.reject('A percent change keeps its percent, from -100 (a closure) up', { percent: 'Required' })
   if (row.entered_by_role === 'Engine') return
   if (ctx.isNew) return inArea(ctx, row.entered_by, row.store, row.scope_level, row.scope_name)
-  const acted = ['status', 'value', 'waiting_on', 'reason', 'kind'].some(k => String(row[k] ?? '') !== String(old?.[k] ?? ''))
+  // Amounts compare as numbers (a Currency column reads back as "750000.00").
+  const differs = (k: string) => (k === 'value' || k === 'percent' ? Number(row[k] ?? 0) !== Number(old?.[k] ?? 0) : String(row[k] ?? '') !== String(old?.[k] ?? ''))
+  const acted = ['status', 'value', 'percent', 'waiting_on', 'reason', 'kind'].some(differs)
   if (acted) inArea(ctx, row.changed_by, row.store, row.scope_level, row.scope_name)
   // A number is withdrawn or changed only by the person who entered it, while it waits.
-  const edited = ['value', 'reason', 'kind'].some(k => String(row[k] ?? '') !== String(old?.[k] ?? ''))
+  const edited = ['value', 'percent', 'reason', 'kind'].some(differs)
   if ((row.status === 'Withdrawn' && old?.status !== 'Withdrawn') || edited) {
     if (row.changed_by !== row.entered_by) ctx.reject('Only the person who entered a number withdraws or changes it')
     if (old?.status !== 'Waiting') ctx.reject('A number is withdrawn or changed only while it waits for approval')

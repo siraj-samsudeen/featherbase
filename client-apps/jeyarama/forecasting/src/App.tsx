@@ -18,6 +18,8 @@ export interface NumberRow {
   reason: string; status: 'Waiting' | 'Applied' | 'Reference' | 'Not approved' | 'Withdrawn'; waiting_on: string | null
   /** Who last changed it: the server checks their area. */
   changed_by: string | null
+  /** A percent number's percent (−100 for a closure), kept as a percent; its rupees are worked out when shown. */
+  percent: number | null
 }
 export interface DecisionRow { row_id: string; number: string | null; month: string; store: string; scope_level: string | null; scope_name: string; weeks: string | null
   decision: string; decided_by: string; note: string | null; decided_on: string }
@@ -150,14 +152,14 @@ export function ForecastingApp() {
   const reload = useCallback(async () => {
     try {
       const [numbers, decisions, questions, ideas, ideaHistory, reviewNotes] = await Promise.all([
-        listAll<NumberRow>('forecasting.number', ['month', 'run', 'store', 'section', 'scope_level', 'scope_name', 'weeks', 'kind', 'value', 'weights_json', 'entered_by', 'entered_by_role', 'entered_on', 'reason', 'status', 'waiting_on', 'changed_by']),
+        listAll<NumberRow>('forecasting.number', ['month', 'run', 'store', 'section', 'scope_level', 'scope_name', 'weeks', 'kind', 'value', 'weights_json', 'entered_by', 'entered_by_role', 'entered_on', 'reason', 'status', 'waiting_on', 'changed_by', 'percent']),
         listAll<DecisionRow>('forecasting.decision', ['number', 'month', 'store', 'scope_level', 'scope_name', 'weeks', 'decision', 'decided_by', 'decided_by_role', 'note', 'decided_on']),
         listAll<QuestionRow>('forecasting.review_question', ['ref', 'month', 'scope', 'question', 'detail', 'asked_by', 'asked_on', 'answer', 'answered_by', 'answered_on', 'outcome', 'impact', 'follow_up', 'idea_ref', 'follow_up_on']),
         listAll<IdeaRow>('forecasting.idea', ['ref', 'label', 'title', 'kind', 'raised_by', 'raised_on', 'why', 'tried', 'found', 'verdict', 'outcome', 'status_note', 'decided_on', 'revisit', 'areas', 'evidence', 'decided_by', 'reason', 'revisit_on', 'related', 'question_ref']),
         listAll<IdeaChange>('forecasting.idea_history', ['idea', 'changed_by', 'changed_on', 'change']),
         listAll<ReviewNote>('forecasting.review_note', ['question', 'kind', 'by', 'on', 'text', 'from_outcome', 'to_outcome'])])
       // A Currency column comes back as text ("750000.00"); the pages add and compare it.
-      setData({ numbers: numbers.map(n => ({ ...n, value: Number(n.value) })), decisions, questions, ideas, ideaHistory, reviewNotes }); setFailed(false)
+      setData({ numbers: numbers.map(n => ({ ...n, value: Number(n.value), percent: n.percent == null ? null : Number(n.percent) })), decisions, questions, ideas, ideaHistory, reviewNotes }); setFailed(false)
     } catch (e) {
       if ((e as { status?: number }).status === 401) window.location.href = `/featherbase/login?next=${encodeURIComponent(location.pathname + location.search)}`
       setFailed(true)

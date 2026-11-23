@@ -17,6 +17,7 @@ import { actualFor, completeTo, daysFor, engineFor, finalWeeks, totalsTo } from 
 import { dateOf, monthOf, nowIST, weeksOf, type Month } from './months'
 import { areaText, covers } from './areas'
 import { OwnActions } from './MyNumbersPage'
+import { combine, figureOf, isPercent, percentText } from './combine'
 import { NoRunYet, Page, address, type Ctx, type DecisionRow, type NumberRow } from './App'
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : 0)
@@ -59,24 +60,6 @@ export function moversOf(numbers: NumberRow[], month: string, sc: Scope) {
 export const commentsOf = (decisions: DecisionRow[], month: string, sc: Scope) => decisions.filter(d => !d.number && d.month === month && d.store === sc.store
   && d.scope_name === (sc.level === 'Store' ? sc.store : sc.name) && (d.scope_level ? d.scope_level === sc.level && (d.weeks ?? '') === weeksKey(sc.weeks) : weeksKey(sc.weeks) === ''))
 
-/** Every subcategory-week after the Applied numbers: the most specific wins, each spread by the engine's shape. */
-function adjusted(numbers: NumberRow[], store: string, m: Month) {
-  const subs = SUBS.filter(s => s.store === store)
-  const adj = new Map(subs.map(s => [s.name, ALL_WEEKS.map(w => finalWeeks(s, m, [w]))]))
-  const held = new Set<string>()
-  const applied = numbers.filter(n => n.month === m.key && n.store === store && n.status === 'Applied')
-    .sort((a, b) => RANK[b.scope_level] * 10 - parseWeeks(b.weeks).length - (RANK[a.scope_level] * 10 - parseWeeks(a.weeks).length))
-  for (const n of applied) {
-    const cells = subs.filter(s => inScope(s, { store, level: n.scope_level, name: n.scope_name })).flatMap(s => parseWeeks(n.weeks).map(w => [s.name, w - 1] as const))
-    const free = cells.filter(([s, w]) => !held.has(`${s}:${w}`))
-    const heldSum = cells.filter(([s, w]) => held.has(`${s}:${w}`)).reduce((t, [s, w]) => t + adj.get(s)![w], 0)
-    const freeSum = free.reduce((t, [s, w]) => t + adj.get(s)![w], 0)
-    const f = freeSum > 0 ? Math.max(0, (n.value - heldSum) / freeSum) : 0
-    free.forEach(([s, w]) => { adj.get(s)![w] *= f })
-    cells.forEach(([s, w]) => held.add(`${s}:${w}`))
-  }
-  return adj
-}
 
 interface Row { level: Scope['level']; name: string; depth: number; parent?: string; subs: Sub[] }
 function rowsFor(store: string, open: Set<string>): Row[] {
@@ -117,7 +100,8 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
   const [chosenMode, setMode] = useState<'views' | 'why' | 'comments'>((params.get('pane') as 'views') ?? 'views')
   const hasWhy = sel?.level === 'Subcategory' && m.key === BASES_MONTH
   const mode = chosenMode === 'why' && !hasWhy ? 'views' : chosenMode
-  const adj = useMemo(() => adjusted(ctx.data.numbers, store, m), [ctx.data.numbers, store, m])
+  // One shared rule for how Applied numbers combine (combine.ts): totals spread, percents kept as percents.
+  const adj = useMemo(() => combine(ctx.data.numbers, store, m).adj, [ctx.data.numbers, store, m])
   if (m.state === 'empty') return <Page title="Workspace"><NoRunYet month={m} what="The grid opens then, and numbers can be added to it." /></Page>
   const rows = rowsFor(store, open)
   const sum = (subs: Sub[], weeks: number[], engine = false) => subs.reduce((t, s) => t + weeks.reduce((u, w) => u + (engine ? finalWeeks(s, m, [w]) : adj.get(s.name)![w - 1]), 0), 0)
@@ -299,7 +283,7 @@ function Movers({ ctx, sc }: { ctx: Ctx; sc: Scope }) {
           <li key={n.row_id} className="flex flex-wrap items-baseline gap-x-2">
             <b>{n.entered_by}</b><span className="text-[13px] text-ink-muted">{n.entered_by_role} · {above(n) ? 'above' : 'below'}</span>
             <a href={address('forecasts', { store: n.store, level: n.scope_level, name: n.scope_name, ...(n.weeks ? { weeks: n.weeks } : {}), pane: 'views' })}>{scopeText(n)}</a>
-            <span className="text-[13px]">{howText(n)} · <b className="tabular-nums">{fmtINR(n.value)}</b></span>
+            <span className="text-[13px]">{howText(n)} · <b className="tabular-nums">{fmtINR(figureOf(n, ctx.data.numbers))}</b></span>
           </li>))}
       </ul>
       <p className="text-[13px] text-ink-muted">The most specific Applied number wins; a total set higher up is spread across the cells below by the engine's own shape.</p>
@@ -312,7 +296,7 @@ const howText = (n: NumberRow) => {
     const w = JSON.parse(n.weights_json) as Record<string, number>
     return `Changed the weights: ${Object.entries(w).filter(([, v]) => v).map(([k, v]) => `${k} ${v}%`).join(', ')}`
   }
-  return n.kind
+  return isPercent(n) ? `${n.kind}: ${percentText(n.percent)}` : n.kind
 }
 
 function NumberCard({ ctx, n, engine, sold, siblings }: { ctx: Ctx; n: NumberRow; engine: number; sold: number | null; siblings: NumberRow[] }) {
@@ -320,6 +304,8 @@ function NumberCard({ ctx, n, engine, sold, siblings }: { ctx: Ctx; n: NumberRow
   // Acting on a number (approving, promoting) is for people whose area its scope is; anyone may look.
   const open = ctx.month.state === 'current' && covers(ctx.viewer, { store: n.store, level: n.scope_level, name: n.scope_name })
   const waitsForMe = open && n.status === 'Waiting' && n.waiting_on === ctx.viewer.name
+  // A percent is worked out now, from what sits underneath (combine.ts); a total is as entered.
+  const figure = figureOf(n, ctx.data.numbers)
   const [note, setNote] = useState('')
   const up = nextUp(ctx.viewer)
   const log = (row: NumberRow, decision: string, text: string) => ctx.save('forecasting.decision', logRow(ctx, row, decision, text))
@@ -338,17 +324,17 @@ function NumberCard({ ctx, n, engine, sold, siblings }: { ctx: Ctx; n: NumberRow
     <li className={`flex flex-col gap-2 rounded-card p-3 ${n.status === 'Applied' ? 'bg-positive-tint' : 'bg-subtle'}`} data-testid="number-card">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1"><Who name={n.entered_by} /></div>
-        <span className="text-lg font-semibold tabular-nums">{fmtINR(n.value)}</span>
+        <span className="text-lg font-semibold tabular-nums">{fmtINR(figure)}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill tone={STATUS_TONE[n.status]}>{n.status === 'Waiting' ? `Waiting for ${n.waiting_on}` : n.status}</StatusPill>
-        <span className="text-[13px] text-ink-muted">{howText(n)} · {signed(pct(n.value, engine))} on the engine · {when(n.entered_on)}</span>
+        <span className="text-[13px] text-ink-muted">{howText(n)} · {signed(pct(figure, engine))} on the engine · {when(n.entered_on)}</span>
       </div>
       <p className="text-sm">{n.reason}</p>
       {sold != null && (
         <div className="flex flex-wrap items-center gap-2 text-[13px]" data-testid="against-sold">
-          <span>{signed(pct(n.value, sold))} on what sold ({fmtINR(sold)}); the engine {signed(pct(engine, sold))}</span>
-          <StatusPill tone={Math.abs(n.value - sold) < Math.abs(engine - sold) ? 'positive' : 'negative'}>{Math.abs(n.value - sold) < Math.abs(engine - sold) ? 'Closer than the engine' : 'Further than the engine'}</StatusPill>
+          <span>{signed(pct(figure, sold))} on what sold ({fmtINR(sold)}); the engine {signed(pct(engine, sold))}</span>
+          <StatusPill tone={Math.abs(figure - sold) < Math.abs(engine - sold) ? 'positive' : 'negative'}>{Math.abs(figure - sold) < Math.abs(engine - sold) ? 'Closer than the engine' : 'Further than the engine'}</StatusPill>
         </div>
       )}
       {history.length > 0 && (
@@ -391,9 +377,12 @@ function AddNumber({ ctx, sc, engine, onDone }: { ctx: Ctx; sc: Scope; engine: n
   const [figure, setFigure] = useState(''), [percent, setPercent] = useState(''), [reason, setReason] = useState('')
   const [w, setW] = useState<Partial<Record<Code, number>>>(() => sub ? Object.fromEntries(BASES.map(b => [b.code, Math.round(weightOf(sub, b.code) * 100)])) : {})
   const sumW = BASES.reduce((n, b) => n + (Number(w[b.code]) || 0), 0)
+  const pc = Number(percent.replace(/[^0-9.-]/g, '')) || 0
+  // A percent is saved as a percent; what it makes the scope is worked out from what sits underneath.
+  const draft = { row_id: 'new', month: ctx.month.key, store: sc.store, scope_level: sc.level, scope_name: sc.name, weeks: weeksKey(sc.weeks), kind, value: 0, percent: pc, status: 'Waiting' } as NumberRow
   const next = kind === 'Set a total' ? Number(figure.replace(/[^0-9.]/g, '')) || 0
     : kind === 'Change the weights' && sub ? Math.round(fromWeights(sub, w))
-      : Math.round(engine * (1 + (Number(percent.replace(/[^0-9.-]/g, '')) || 0) / 100))
+      : Math.round(figureOf(draft, ctx.data.numbers))
   const ready = reason.trim() && next >= 0 && (kind !== 'Set a total' || figure.trim()) && (kind !== 'Change the weights' || sumW === 100) && (kind === 'Set a total' || kind === 'Change the weights' || percent.trim())
   const up = nextUp(ctx.viewer)
   const kinds: Kind[] = ['Set a total', 'Change by a percent', 'Closure or event', ...(sub ? ['Change the weights' as Kind] : [])]
@@ -402,7 +391,7 @@ function AddNumber({ ctx, sc, engine, onDone }: { ctx: Ctx; sc: Scope; engine: n
     const status = mode === 'reference' ? 'Reference' : direct ? 'Applied' : 'Waiting'
     const saved = await ctx.save('forecasting.number', {
       month: ctx.month.key, run: ctx.month.run, store: sc.store, section: sub?.section ?? '', scope_level: sc.level, scope_name: sc.name, weeks: weeksKey(sc.weeks),
-      kind, value: next, weights_json: kind === 'Change the weights' ? JSON.stringify(w) : null,
+      kind, value: next, percent: isPercent({ kind }) ? pc : null, weights_json: kind === 'Change the weights' ? JSON.stringify(w) : null,
       entered_by: ctx.viewer.name, entered_by_role: ctx.viewer.role, entered_on: stamp(), reason, status, waiting_on: status === 'Waiting' ? up!.name : null, changed_by: ctx.viewer.name })
     await ctx.save('forecasting.decision', logRow(ctx, saved as unknown as NumberRow,
       status === 'Reference' ? 'Kept as reference' : status === 'Applied' ? 'Approved and applied' : 'Sent for approval',

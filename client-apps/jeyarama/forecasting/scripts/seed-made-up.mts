@@ -61,8 +61,9 @@ for (const n of records.numbers as Seed[]) {
   const sub = SUBS.find(s => s.store === n.store && s.name === n.scope_name)
   // A weights or percent number's figure is worked out the way the page works it out.
   const figure = n.weights && sub ? Math.round(fromWeights(sub, n.weights)) : n.percent != null ? Math.round(base * (1 + n.percent / 100)) : n.value
-  const { key: _key, history, weights, percent: _percent, ...row } = n
-  const id = await save('forecasting.number', { ...row, value: figure, weights_json: weights ? JSON.stringify(weights) : null })
+  const { key: _key, history, weights, percent, ...row } = n
+  // A percent is kept as a percent; its figure here is only what it made the scope on the day.
+  const id = await save('forecasting.number', { ...row, value: figure, percent: percent ?? null, weights_json: weights ? JSON.stringify(weights) : null })
   for (const [decision, by, on, note] of history)
     await save('forecasting.decision', { number: id, month: n.month, store: n.store, scope_level: n.scope_level, scope_name: n.scope_name, weeks: n.weeks, decision, decided_by: by, decided_on: on, note })
 }

@@ -8,6 +8,7 @@ import { Page, address, type Ctx, type Data, type DecisionRow, type NumberRow } 
 import { STATUS_TONE, logRow, scopeText, when } from './WorkspacePage'
 import { covers } from './areas'
 import { monthOf } from './months'
+import { figureOf } from './combine'
 import type { Person } from './madeUp'
 
 /** What others did to a person's numbers that the person is told about. */
@@ -37,7 +38,7 @@ export function MyNumbersPage({ ctx, onSeen }: { ctx: Ctx; onSeen: () => void })
   const columns: DataColumn<NumberRow>[] = [
     { key: 'month', header: 'Month', phone: 'meta', cell: n => monthOf(n.month).short },
     { key: 'for', header: 'Scope', phone: 'title', cell: n => <a href={cellLink(n)} className="font-medium">{scopeText(n)}</a> },
-    { key: 'value', header: 'Figure', align: 'end', phone: 'value', cell: n => <span className="font-semibold whitespace-nowrap">{fmtINR(n.value)}</span> },
+    { key: 'value', header: 'Figure', align: 'end', phone: 'value', cell: n => <span className="font-semibold whitespace-nowrap">{fmtINR(figureOf(n, ctx.data.numbers))}</span> },
     { key: 'status', header: 'Status Now', phone: 'status', cell: n => <StatusPill tone={STATUS_TONE[n.status] ?? 'neutral'}>{n.status === 'Waiting' ? `Waiting for ${n.waiting_on}` : n.status}</StatusPill> },
     { key: 'last', header: 'Last Step', phone: 'meta', cell: n => { const d = last(n); return d ? <span className="text-sm">{when(d.decided_on)} · <b>{d.decided_by}</b>: {d.decision}</span> : null } },
     { key: 'act', header: '', phone: 'hidden', cell: n => <OwnActions ctx={ctx} n={n} /> },

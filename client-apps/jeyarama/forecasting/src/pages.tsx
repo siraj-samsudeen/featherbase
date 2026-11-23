@@ -4,7 +4,8 @@
 // but the Idea Register, whose ideas span months.
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Card, DataList, EmptyState, Field, Headline, SearchInput, Segmented, Select, StatusPill, TextInput, buttonClasses, fmtINR, type DataColumn, type StatusTone } from '@featherbase/shop-floor'
-import { ALL_WEEKS, RUNS, SUBS, TARGETS, parseWeeks, type Run, type TargetVersion } from './madeUp'
+import { ALL_WEEKS, RUNS, STORES, SUBS, TARGETS, parseWeeks, type Run, type TargetVersion } from './madeUp'
+import { figureOf, isPercent, percentText, proposedTotal } from './combine'
 import { actualFor, engineFor, finalWeeks } from './sales'
 import { MONTHS, nowIST, todayIST, type Month } from './months'
 import { NoRunYet, Page, address, waitingFor, type Ctx, type IdeaRow, type NumberRow, type QuestionRow } from './App'
@@ -26,8 +27,9 @@ export function NumbersPage({ ctx }: { ctx: Ctx }) {
     { key: 'on', header: 'Entered', phone: 'meta', cell: n => <span className="whitespace-nowrap">{when(n.entered_on)}</span> },
     { key: 'by', header: 'Who', phone: 'meta', cell: n => <div className="w-52"><Who name={n.entered_by} /></div> },
     { key: 'for', header: 'Scope', phone: 'title', cell: n => <a href={link(n)} className="font-medium">{scopeText(n)}</a> },
-    { key: 'how', header: 'Change', phone: 'hidden', cell: n => <span className="whitespace-nowrap">{n.kind} · {signed(Math.round((n.value / engineOf(n) - 1) * 100))}</span> },
-    { key: 'value', header: 'Figure', align: 'end', phone: 'value', cell: n => <span className="font-semibold">{fmtINR(n.value)}</span> },
+    { key: 'how', header: 'Change', phone: 'hidden', cell: n => { const f = figureOf(n, ctx.data.numbers); return <span className="whitespace-nowrap">{isPercent(n)
+      ? <>{n.kind} · {percentText(n.percent)} <span className="text-ink-muted">({f >= engineOf(n) ? '+' : '−'}{fmtINR(Math.abs(f - engineOf(n)))})</span></> : <>{n.kind} · {signed(Math.round((f / engineOf(n) - 1) * 100))}</>}</span> } },
+    { key: 'value', header: 'Figure', align: 'end', phone: 'value', cell: n => <span className="font-semibold whitespace-nowrap">{fmtINR(figureOf(n, ctx.data.numbers))}</span> },
     { key: 'status', header: 'Status Now', phone: 'status', cell: n => <StatusPill tone={STATUS_TONE[n.status]}>{n.status === 'Waiting' ? `Waiting for ${n.waiting_on}` : n.status}</StatusPill> },
     { key: 'why', header: 'Reason', phone: 'hidden', cell: n => <span className="text-sm text-ink-muted">{n.reason}</span> },
   ]
@@ -74,9 +76,10 @@ export function RunsPage({ ctx }: { ctx: Ctx }) {
   ]
   // A target is the official Run; a proposed one adds the numbers applied in its month since.
   const official = SUBS.reduce((n, s) => n + finalWeeks(s, m, ALL_WEEKS), 0)
-  const applied = ctx.data.numbers.filter(n => n.month === m.key && n.status === 'Applied').reduce((t, n) => t + n.value - engineOf(n), 0)
+  // The proposed version: the official Run with every Applied number combined (combine.ts), nested ones counted once.
+  const proposed = proposedTotal(ctx.data.numbers, STORES, m)
   const runs = RUNS.filter(r => r.month === runMonth(m))
-  const targets = TARGETS.filter(t => t.month === runMonth(m)).map(t => ({ ...t, total: t.loaded === 'next build' ? official + applied : official }))
+  const targets = TARGETS.filter(t => t.month === runMonth(m)).map(t => ({ ...t, total: t.loaded === 'next build' ? proposed : official }))
   const tCols: DataColumn<TargetVersion & { total: number }>[] = [
     { key: 'month', header: 'Month', phone: 'title', cell: t => <span className="font-medium">{t.month}</span> },
     { key: 'rev', header: 'Version', phone: 'status', cell: t => <StatusPill tone={t.loaded === 'next build' ? 'caution' : t.revision === 5 ? 'positive' : 'neutral'}>{`revision ${t.revision}${t.loaded === 'next build' ? ' · proposed' : t.revision === 5 ? ' · current' : ''}`}</StatusPill> },
@@ -109,14 +112,14 @@ export function RunsPage({ ctx }: { ctx: Ctx }) {
   )
 }
 
-interface Graded { n: NumberRow; engine: number; actual: number; off: number; engineOff: number; closer: number }
+interface Graded { n: NumberRow; value: number; engine: number; actual: number; off: number; engineOff: number; closer: number }
 export function ResultsPage({ ctx }: { ctx: Ctx }) {
   const m = ctx.month
   const graded: Graded[] = ctx.data.numbers.filter(n => n.month === m.key && m.state === 'closed' && n.status !== 'Withdrawn').map(n => {
     const sc = { store: n.store, level: n.scope_level, name: n.scope_name }
     const engine = engineFor({ ...sc, weeks: parseWeeks(n.weeks) }, m.key), actual = actualFor(sc, m.key)
-    const off = Math.abs(n.value - actual), engineOff = Math.abs(engine - actual)
-    return { n, engine, actual, off, engineOff, closer: engineOff - off }
+    const value = figureOf(n, ctx.data.numbers), off = Math.abs(value - actual), engineOff = Math.abs(engine - actual)
+    return { n, value, engine, actual, off, engineOff, closer: engineOff - off }
   }).sort((a, b) => b.closer - a.closer)
   const scopes = [...new Map(graded.map(g => [`${g.n.store}|${g.n.scope_name}`, g])).values()]
   const people = [...new Set(graded.map(g => g.n.entered_by))].map(name => {
@@ -144,7 +147,7 @@ export function ResultsPage({ ctx }: { ctx: Ctx }) {
       href={address('forecasts', { store: g.n.store, level: g.n.scope_level, name: g.n.scope_name, ...(g.n.weeks ? { weeks: g.n.weeks } : {}), pane: 'views', month: g.n.month })}>{g.n.scope_name} · {g.n.store}</a> },
     { key: 'by', header: 'Number By', phone: 'meta', cell: g => <div className="w-52"><Who name={g.n.entered_by} /></div> },
     { key: 'status', header: 'Was', phone: 'hidden', cell: g => <StatusPill tone={STATUS_TONE[g.n.status]}>{g.n.status}</StatusPill> },
-    { key: 'value', header: 'Their Number', align: 'end', phone: 'meta', cell: g => fmtINR(g.n.value) },
+    { key: 'value', header: 'Their Number', align: 'end', phone: 'meta', cell: g => fmtINR(g.value) },
     { key: 'engine', header: 'Engine', align: 'end', phone: 'meta', cell: g => fmtINR(g.engine) },
     { key: 'actual', header: 'Sold', align: 'end', phone: 'meta', cell: g => <span className="font-medium">{fmtINR(g.actual)}</span> },
     { key: 'closer', header: 'Closer Than The Engine By', align: 'end', phone: 'value', cell: g => <StatusPill tone={g.closer > 0 ? 'positive' : 'negative'}>{g.closer > 0 ? `+${fmtINR(g.closer)}` : `−${fmtINR(-g.closer)}`}</StatusPill> },
@@ -180,7 +183,7 @@ export function ResultsPage({ ctx }: { ctx: Ctx }) {
 /** One scope's numbers as bars, with a tick at what sold: who was closest is plain to see. */
 function ViewsBars({ g }: { g: Graded[] }) {
   const { actual, engine } = g[0]
-  const rows = [{ who: 'Engine', kind: 'Model', v: engine }, ...g.map(x => ({ who: x.n.entered_by, kind: x.n.status, v: x.n.value }))]
+  const rows = [{ who: 'Engine', kind: 'Model', v: engine }, ...g.map(x => ({ who: x.n.entered_by, kind: x.n.status, v: x.value }))]
   const max = Math.max(actual, ...rows.map(r => r.v)) * 1.08
   const best = rows.reduce((a, b) => (Math.abs(b.v - actual) < Math.abs(a.v - actual) ? b : a))
   return (
