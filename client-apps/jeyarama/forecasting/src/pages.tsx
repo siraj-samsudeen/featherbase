@@ -114,6 +114,9 @@ export function ResultsPage({ ctx }: { ctx: Ctx }) {
     const mine = graded.filter(g => g.n.entered_by === name)
     return { name, count: mine.length, beat: mine.filter(g => g.closer > 0).length, closer: mine.reduce((t, g) => t + g.closer, 0), err: mine.reduce((t, g) => t + g.off, 0) / mine.reduce((t, g) => t + g.actual, 0) }
   }).sort((a, b) => b.closer - a.closer)
+  // The engine itself, on the same numbers' scopes: what each person is measured against.
+  const model = { name: 'Engine (the model)', count: graded.length, beat: 0, closer: 0, err: graded.reduce((t, g) => t + g.engineOff, 0) / (graded.reduce((t, g) => t + g.actual, 0) || 1), model: true }
+  const scorecard = [model, ...people.map(p => ({ ...p, model: false }))]
   const beat = graded.filter(g => g.closer > 0).length
   const lastClosed = [...MONTHS].reverse().find(x => x.state === 'closed')
   if (m.state === 'empty') return <Page title="Results"><NoRunYet month={m} what="Its numbers are graded once the month is over." /></Page>
@@ -128,7 +131,8 @@ export function ResultsPage({ ctx }: { ctx: Ctx }) {
     </Page>
   )
   const cols: DataColumn<Graded>[] = [
-    { key: 'for', header: 'Scope', phone: 'title', cell: g => <span className="whitespace-nowrap font-medium">{g.n.scope_name} · {g.n.store}</span> },
+    { key: 'for', header: 'Scope', phone: 'title', cell: g => <a className="whitespace-nowrap font-medium" data-testid="graded-link"
+      href={address('forecasts', { store: g.n.store, level: g.n.scope_level, name: g.n.scope_name, ...(g.n.weeks ? { weeks: g.n.weeks } : {}), pane: 'views', month: g.n.month })}>{g.n.scope_name} · {g.n.store}</a> },
     { key: 'by', header: 'Number By', phone: 'meta', cell: g => <div className="w-52"><Who name={g.n.entered_by} /></div> },
     { key: 'status', header: 'Was', phone: 'hidden', cell: g => <StatusPill tone={STATUS_TONE[g.n.status]}>{g.n.status}</StatusPill> },
     { key: 'value', header: 'Their Number', align: 'end', phone: 'meta', cell: g => fmtINR(g.n.value) },
@@ -148,12 +152,14 @@ export function ResultsPage({ ctx }: { ctx: Ctx }) {
       </Card>
       <Card title="Forecaster Scorecard">
         <div className="px-4 pb-4">
-          <DataList caption="Scorecard" rows={people} rowKey={p => p.name} layout="table" empty={{ title: 'No graded numbers', body: 'Numbers are graded once their month is over.' }} columns={[
-            { key: 'who', header: 'Person', phone: 'title', cell: p => <div className="w-56"><Who name={p.name} /></div> },
+          <p className="pb-2 text-[13px] text-ink-muted">The engine's row is the bar to clear: its error on the same scopes as the people's numbers. Error is how far off, in total, as a share of what sold.</p>
+          <DataList caption="Scorecard" rows={scorecard} rowKey={p => p.name} layout="table" empty={{ title: 'No graded numbers', body: 'Numbers are graded once their month is over.' }} columns={[
+            { key: 'who', header: 'Who', phone: 'title', cell: p => p.model ? <div className="w-56 font-semibold" data-testid="model-row">Engine <span className="font-normal text-ink-muted">(the model)</span></div> : <div className="w-56"><Who name={p.name} /></div> },
             { key: 'count', header: 'Numbers', align: 'end', phone: 'meta', cell: p => p.count },
             { key: 'err', header: 'Error', align: 'end', phone: 'meta', cell: p => `${(p.err * 100).toFixed(1)}%` },
-            { key: 'beat', header: 'Beat The Engine', align: 'end', phone: 'meta', cell: p => `${p.beat} of ${p.count}` },
-            { key: 'closer', header: '₹ Closer In Total', align: 'end', phone: 'value', cell: p => <StatusPill tone={p.closer > 0 ? 'positive' : 'negative'}>{p.closer > 0 ? `+${fmtINR(p.closer)}` : `−${fmtINR(-p.closer)}`}</StatusPill> },
+            { key: 'beat', header: 'Beat The Engine', align: 'end', phone: 'meta', cell: p => (p.model ? '—' : `${p.beat} of ${p.count}`) },
+            { key: 'closer', header: '₹ Closer In Total', align: 'end', phone: 'value', cell: p => p.model ? <span className="text-ink-muted">the baseline</span>
+              : <StatusPill tone={p.closer > 0 ? 'positive' : 'negative'}>{p.closer > 0 ? `+${fmtINR(p.closer)}` : `−${fmtINR(-p.closer)}`}</StatusPill> },
           ]} />
         </div>
       </Card>
