@@ -1,0 +1,13 @@
+@import '@featherbase/shop-floor/styles.css';
+@source './';
+
+/* Ask colours itself only through Shop Floor's tokens (var(--color-…)), so the
+   theme the top bar paints, dark mode included, reaches every part of it. */
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--color-canvas); color: var(--color-ink); font: var(--text-control)/1.5 var(--font-sans); }
+
+/* The frame: the platform's sidebar beside the page, under the shared top bar. */
+.ask-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); height: calc(100vh - var(--featherbase-bar-height, 48px)); }
+featherbase-sidebar.ask-sidebar { overflow: auto; background: var(--color-surface); }
+.ask-page { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
