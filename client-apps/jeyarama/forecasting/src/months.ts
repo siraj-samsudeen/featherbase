@@ -1,6 +1,6 @@
-// The months the app knows, for the shared top bar's Month picker (server.ts) and every page. MADE-UP:
+// The months the app knows, for the Month picker beside "Viewing as" and every page. MADE-UP:
 // September and October 2026 are closed, November is the current month (sales loaded to the 22nd),
-// December waits for its Run. No dependency here: the server bundle imports this file alone.
+// December waits for its Run.
 
 export type MonthState = 'closed' | 'current' | 'empty'
 export interface Month {
@@ -48,7 +48,7 @@ export const CURRENT_MONTH = '2026-11'
 /** The month an address names; anything else is the current month. */
 export const monthOf = (key: string | null | undefined): Month => MONTHS.find(m => m.key === key) ?? MONTHS.find(m => m.key === CURRENT_MONTH)!
 
-/** The bar's options. It opens on the first, so the current month leads; then the closed ones, newest first; then the next. */
+/** The picker's options: the current month first, then the closed ones, newest first, then the next. */
 export const MONTH_OPTIONS = [...MONTHS].sort((a, b) => rank(a) - rank(b) || b.key.localeCompare(a.key))
   .map(m => ({ value: m.key, label: `${m.short} · ${m.state === 'current' ? 'current' : m.state === 'closed' ? 'closed' : 'no Run yet'}` }))
 function rank(m: Month) { return m.state === 'current' ? 0 : m.state === 'closed' ? 1 : 2 }

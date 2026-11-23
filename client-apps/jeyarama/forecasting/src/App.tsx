@@ -1,12 +1,12 @@
 // The Forecasting app: one frame (the shared sidebar beside the page) and seven pages, chosen by ?view=.
 // Baseline on made-up data (#4870 in the warehouse repo): Runs, bases and sales come from madeUp.ts and
-// sales.ts; numbers, their history, Review questions and ideas are Featherbase rows. The month comes
-// from the shared top bar's Month picker (?month=, filled by the app's `months` read), as in Dash.
+// sales.ts; numbers, their history, Review questions and ideas are Featherbase rows. The month is
+// picked beside "Viewing as" and kept in the address (?month=), as Dash's top-bar Month picker keeps it.
 import { createElement, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '@featherbase/shop-floor'
 import { listAll, saveRow } from './api'
 import { PEOPLE, person, type Person } from './madeUp'
-import { monthOf, type Month } from './months'
+import { MONTH_OPTIONS, monthOf, type Month } from './months'
 import { ChartsPage } from './ChartsPage'
 import { WorkspacePage } from './WorkspacePage'
 import { IdeasPage, NumbersPage, ResultsPage, ReviewPage, RunsPage } from './pages'
@@ -47,23 +47,29 @@ export const address = (view: View, extra: Record<string, string> = {}) => {
 /** The Charts page's own choices in the address; another page drops them. */
 export const CHART_KEYS = ['chart', 'region', 'stores', 'subs', 'pick', 'top', 'within', 'bars']
 
-/** The month the bar's Month picker keeps in the address (?month=); none or an unknown one: the current month. */
+/** The month kept in the address (?month=); none or an unknown one: the current month. */
 const monthInAddress = () => monthOf(new URLSearchParams(window.location.search).get('month')).key
 
-/** The bar's month choices, announced as `featherbase:bar-change`, and Back/Forward. */
-function useBarMonth() {
+/**
+ * The page's month, as Dash's top-bar Month picker keeps it: in the address, so it carries to every
+ * page (address() keeps it) and survives a reload. An address with no valid month gets the current
+ * one written in place (no Back step); a choice is a new history entry, and Back/Forward follow it.
+ */
+function useMonth() {
   const [key, setKey] = useState(monthInAddress)
+  const write = (next: string, replace: boolean) => {
+    const q = new URLSearchParams(window.location.search)
+    q.set('month', next)
+    history[replace ? 'replaceState' : 'pushState'](null, '', `?${q}`)
+  }
   useEffect(() => {
-    const fromBar = (event: Event) => {
-      const { key: changed, value } = (event as CustomEvent<{ key: string; value: string }>).detail ?? {}
-      if (changed === 'month' && value) setKey(monthOf(value).key)
-    }
+    if (new URLSearchParams(window.location.search).get('month') !== monthInAddress()) write(monthInAddress(), true)
     const fromHistory = () => setKey(monthInAddress())
-    window.addEventListener('featherbase:bar-change', fromBar)
     window.addEventListener('popstate', fromHistory)
-    return () => { window.removeEventListener('featherbase:bar-change', fromBar); window.removeEventListener('popstate', fromHistory) }
+    return () => window.removeEventListener('popstate', fromHistory)
   }, [])
-  return monthOf(key)
+  const choose = (next: string) => { if (next === key) return; write(next, false); setKey(next) }
+  return [monthOf(key), choose] as const
 }
 
 /** Waiting for this person: numbers whose next step is theirs. */
@@ -82,8 +88,8 @@ function Sidebar({ current, waiting }: { current: View; waiting: number }) {
     ]))
 }
 
-/** Made-up people only: the baseline shows each one's view without separate sign-ins. */
-function ViewingAs({ viewer, onChange }: { viewer: Person; onChange: (id: string) => void }) {
+/** Made-up people only: the baseline shows each one's view without separate sign-ins. The month sits beside it. */
+function ViewingAs({ viewer, onChange, month, onMonth }: { viewer: Person; onChange: (id: string) => void; month: Month; onMonth: (key: string) => void }) {
   return (
     <div className="flex flex-wrap items-end gap-3">
       <div className="w-72"><PersonLabel rowId={viewer.code} name={viewer.name} label={{ code: viewer.code, role: viewer.role, place: viewer.place }} canOpen={false} className="w-full" /></div>
@@ -91,6 +97,13 @@ function ViewingAs({ viewer, onChange }: { viewer: Person; onChange: (id: string
         <Field label="Viewing as (made-up people)">
           <Select value={viewer.id} onChange={e => onChange(e.target.value)} data-testid="viewing-as">
             {PEOPLE.map(p => <option key={p.id} value={p.id}>{p.name} · {p.role}</option>)}
+          </Select>
+        </Field>
+      </div>
+      <div className="w-52">
+        <Field label="Month">
+          <Select value={month.key} onChange={e => onMonth(e.target.value)} data-testid="month">
+            {MONTH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </Select>
         </Field>
       </div>
@@ -122,7 +135,7 @@ export function ForecastingApp() {
   const [data, setData] = useState<Data | null>(null)
   const [failed, setFailed] = useState(false)
   const viewer = person(PEOPLE.some(p => p.id === viewerId) ? viewerId : 'asha')
-  const month = useBarMonth()
+  const [month, chooseMonth] = useMonth()
 
   const reload = useCallback(async () => {
     try {
@@ -151,7 +164,7 @@ export function ForecastingApp() {
     <div className="fc-shell">
       <Sidebar current={view} waiting={data ? waitingFor(data, viewer).length : 0} />
       <main className="fc-page" data-testid={`page-${view}`}>
-        <ViewingAs viewer={viewer} onChange={pick} />
+        <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} />
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
             : view === 'forecasts' ? <WorkspacePage ctx={ctx} />

@@ -1,5 +1,5 @@
 // Charts: what sold against the engine, day by day, for the whole business, a region, some stores or
-// some subcategories, in the month the shared top bar has chosen. A closed month shows the whole
+// some subcategories, in the month picked beside "Viewing as". A closed month shows the whole
 // month; the current month shows actuals to its last day loaded in full, and a partly loaded day as
 // such, never as a drop. Every figure is a sum of the same made-up days (sales.ts), so the tiles, the
 // lines, the bars and the table always agree.

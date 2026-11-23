@@ -2,7 +2,7 @@
 // engine. Click a cell to see every number held for that scope and add your own. An Applied number
 // changes the forecast the business runs on (after approval up the reporting line; the Chief
 // Executive's at once); a Reference number is kept as a view. Every number is graded at month end.
-// The month is the shared top bar's: a closed month can be seen but not changed, and its cell panel
+// The month is the one picked beside "Viewing as": a closed month can be seen but not changed, and its cell panel
 // shows each number against what sold; a month with no Run yet has no grid.
 import { useMemo, useState } from 'react'
 import {

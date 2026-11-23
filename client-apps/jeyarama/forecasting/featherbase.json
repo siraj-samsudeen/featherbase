@@ -9,28 +9,9 @@
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "forecasting.number",
-  "reads": {
-    "version": 1,
-    "tables": [
-      "forecasting.number"
-    ],
-    "operations": {
-      "months": {
-        "policy": {
-          "kind": "table"
-        },
-        "authorization": {
-          "kind": "generic"
-        }
-      }
-    }
-  },
-  "bar": [
-    {
-      "picker": "Month",
-      "options": "months",
-      "sets": "month"
-    }
+  "migrations": [
+    { "id": "month_picker_and_daily_sales", "fromVersion": "0.1.0", "toVersion": "0.2.0", "operations": [] },
+    { "id": "month_picker_beside_viewing_as", "fromVersion": "0.2.0", "toVersion": "0.3.0", "operations": [] }
   ],
   "tables": [
     {

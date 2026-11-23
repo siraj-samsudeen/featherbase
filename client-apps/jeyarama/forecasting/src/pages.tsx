@@ -1,6 +1,6 @@
 // Ledger (approvals and every number), Runs & Targets, Results (each scope's views against what sold,
 // and the scorecard), Review (each month's questions and answers) and the Idea Register (every idea
-// for making the forecast better, and what became of it). Each follows the shared top bar's month,
+// for making the forecast better, and what became of it). Each follows the month picked beside "Viewing as",
 // but the Idea Register, whose ideas span months.
 import { useMemo, useState } from 'react'
 import { Button, Card, DataList, EmptyState, Field, Headline, SearchInput, Segmented, Select, StatusPill, TextInput, buttonClasses, fmtINR, type DataColumn, type StatusTone } from '@featherbase/shop-floor'
