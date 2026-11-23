@@ -36,7 +36,7 @@ export const FEATHERBASE_ADMIN_DESTINATION = {
 // pages; an app that declares none gets none. An installed app declares them
 // in its manifest (`tabs`, its own extension-point version). The icons are a fixed set, named, so an app never
 // ships its own artwork into the bar.
-export const APP_TAB_ICONS = ['home', 'report', 'target', 'list', 'checklist', 'calendar', 'inbox', 'person'] as const
+export const APP_TAB_ICONS = ['home', 'report', 'target', 'list', 'checklist', 'calendar', 'inbox', 'person', 'message_question'] as const
 export type AppTabIcon = (typeof APP_TAB_ICONS)[number]
 /** One tab as an app declares it: `path` is under the app's own root, '' for the root itself. */
 export interface AppTab { label: string; icon: AppTabIcon; path: string }

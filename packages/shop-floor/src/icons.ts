@@ -44,6 +44,7 @@ export {
   Lock,
   LogIn,
   Menu,
+  MessageCircleQuestion,
   Monitor,
   Moon,
   PanelLeft,
