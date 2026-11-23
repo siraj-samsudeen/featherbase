@@ -13,7 +13,7 @@ const chapters = [
       { file: "lesson-6.html", title: "Asking what the tool already does", kind: "refactor" },
       { file: "lesson-7.html", title: "Letting the tests see the code", kind: "refactor" },
       { file: "lesson-8.html", title: "A gate that says no", kind: "chore" },
-      { file: "lesson-9.html", title: "Proving the front door", kind: "test" },
+      { file: "lesson-9.html", title: "A sturdier front-door test", kind: "test" },
       { file: "lesson-10.html", title: "A machine that never forgets", kind: "chore" },
     ],
   },
