@@ -22,14 +22,16 @@ export interface NumberRow {
 export interface DecisionRow { row_id: string; number: string | null; month: string; store: string; scope_level: string | null; scope_name: string; weeks: string | null
   decision: string; decided_by: string; note: string | null; decided_on: string }
 export interface QuestionRow { row_id: string; ref: string; month: string; scope: string; question: string; detail: string | null; asked_by: string; asked_on: string
-  answer: string | null; answered_by: string | null; answered_on: string | null; outcome: string; impact: string | null; follow_up: string | null; idea_ref: string | null }
+  answer: string | null; answered_by: string | null; answered_on: string | null; outcome: string; impact: string | null; follow_up: string | null; idea_ref: string | null; follow_up_on: string | null }
+/** One entry in a Review question's thread: a reply, the answer, an outcome change, a follow-up. */
+export interface ReviewNote { row_id: string; question: string; kind: string; by: string; on: string; text: string | null; from_outcome: string | null; to_outcome: string | null }
 export interface IdeaRow { row_id: string; ref: string; label: string; title: string; kind: string; raised_by: string; raised_on: string; why: string; tried: string; found: string
   verdict: string; outcome: string; status_note: string; decided_on: string; revisit: string | null; areas: string | null; evidence: string | null
   decided_by: string | null; reason: string | null; revisit_on: string | null; related: string | null; question_ref: string | null }
 /** One change to an idea, kept in its history. */
 export interface IdeaChange { row_id: string; idea: string; changed_by: string; changed_on: string; change: string }
 
-export interface Data { numbers: NumberRow[]; decisions: DecisionRow[]; questions: QuestionRow[]; ideas: IdeaRow[]; ideaHistory: IdeaChange[] }
+export interface Data { numbers: NumberRow[]; decisions: DecisionRow[]; questions: QuestionRow[]; ideas: IdeaRow[]; ideaHistory: IdeaChange[]; reviewNotes: ReviewNote[] }
 export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => Promise<void>; save: typeof saveRow }
 
 const VIEWS = [
@@ -147,14 +149,15 @@ export function ForecastingApp() {
 
   const reload = useCallback(async () => {
     try {
-      const [numbers, decisions, questions, ideas, ideaHistory] = await Promise.all([
+      const [numbers, decisions, questions, ideas, ideaHistory, reviewNotes] = await Promise.all([
         listAll<NumberRow>('forecasting.number', ['month', 'run', 'store', 'section', 'scope_level', 'scope_name', 'weeks', 'kind', 'value', 'weights_json', 'entered_by', 'entered_by_role', 'entered_on', 'reason', 'status', 'waiting_on', 'changed_by']),
         listAll<DecisionRow>('forecasting.decision', ['number', 'month', 'store', 'scope_level', 'scope_name', 'weeks', 'decision', 'decided_by', 'decided_by_role', 'note', 'decided_on']),
-        listAll<QuestionRow>('forecasting.review_question', ['ref', 'month', 'scope', 'question', 'detail', 'asked_by', 'asked_on', 'answer', 'answered_by', 'answered_on', 'outcome', 'impact', 'follow_up', 'idea_ref']),
+        listAll<QuestionRow>('forecasting.review_question', ['ref', 'month', 'scope', 'question', 'detail', 'asked_by', 'asked_on', 'answer', 'answered_by', 'answered_on', 'outcome', 'impact', 'follow_up', 'idea_ref', 'follow_up_on']),
         listAll<IdeaRow>('forecasting.idea', ['ref', 'label', 'title', 'kind', 'raised_by', 'raised_on', 'why', 'tried', 'found', 'verdict', 'outcome', 'status_note', 'decided_on', 'revisit', 'areas', 'evidence', 'decided_by', 'reason', 'revisit_on', 'related', 'question_ref']),
-        listAll<IdeaChange>('forecasting.idea_history', ['idea', 'changed_by', 'changed_on', 'change'])])
+        listAll<IdeaChange>('forecasting.idea_history', ['idea', 'changed_by', 'changed_on', 'change']),
+        listAll<ReviewNote>('forecasting.review_note', ['question', 'kind', 'by', 'on', 'text', 'from_outcome', 'to_outcome'])])
       // A Currency column comes back as text ("750000.00"); the pages add and compare it.
-      setData({ numbers: numbers.map(n => ({ ...n, value: Number(n.value) })), decisions, questions, ideas, ideaHistory }); setFailed(false)
+      setData({ numbers: numbers.map(n => ({ ...n, value: Number(n.value) })), decisions, questions, ideas, ideaHistory, reviewNotes }); setFailed(false)
     } catch (e) {
       if ((e as { status?: number }).status === 401) window.location.href = `/featherbase/login?next=${encodeURIComponent(location.pathname + location.search)}`
       setFailed(true)

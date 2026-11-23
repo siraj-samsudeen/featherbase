@@ -67,3 +67,15 @@ export const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 export const nowIST = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 16).replace('T', ' ')
 /** Today in IST, YYYY-MM-DD. */
 export const todayIST = () => nowIST().slice(0, 10)
+
+const MON3 = NAMES.map(n => n.slice(0, 3).toLowerCase())
+/** "21-Nov-2026" (any case, also 21 Nov 2026) as 2026-11-21; anything else is null. */
+export function parseDate(s: string): string | null {
+  const m = /^\s*(\d{1,2})[-\s]([A-Za-z]{3})[-\s](\d{4})\s*$/.exec(s)
+  if (!m) return null
+  const month = MON3.indexOf(m[2].toLowerCase()), day = Number(m[1]), year = Number(m[3])
+  if (month < 0 || day < 1 || day > new Date(Date.UTC(year, month + 1, 0)).getUTCDate()) return null
+  return `${year}-${pad(month + 1)}-${pad(day)}`
+}
+/** 2026-11-21 as 21-Nov-2026. */
+export const showDate = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return `${pad(d)}-${NAMES[m - 1].slice(0, 3)}-${y}` }

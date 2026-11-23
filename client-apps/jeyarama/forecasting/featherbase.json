@@ -201,6 +201,74 @@
           }
         }
       ]
+    },
+    {
+      "id": "review_threads_and_outcomes",
+      "fromVersion": "0.7.0",
+      "toVersion": "0.8.0",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "forecasting.review_question",
+          "column": {
+            "column_name": "follow_up_on",
+            "label": "Follow up on",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.review_note",
+            "label": "Review thread",
+            "module": "Forecasting",
+            "id_pattern": "FR-.######",
+            "columns": [
+              {
+                "column_name": "question",
+                "label": "Question",
+                "column_type": "Reference",
+                "reference_table": "forecasting.review_question",
+                "in_list_view": true
+              },
+              {
+                "column_name": "kind",
+                "label": "What",
+                "column_type": "Choice",
+                "choices": "Reply\nAnswer\nOutcome changed\nFollow-up",
+                "in_list_view": true
+              },
+              {
+                "column_name": "by",
+                "label": "By",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "on",
+                "label": "On",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "text",
+                "label": "Text",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "from_outcome",
+                "label": "Outcome before",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "to_outcome",
+                "label": "Outcome after",
+                "column_type": "Data"
+              }
+            ]
+          }
+        }
+      ]
     }
   ],
   "tables": [
@@ -478,6 +546,11 @@
           "column_name": "idea_ref",
           "label": "Idea",
           "column_type": "Data"
+        },
+        {
+          "column_name": "follow_up_on",
+          "label": "Follow up on",
+          "column_type": "Data"
         }
       ]
     },
@@ -636,6 +709,55 @@
           "in_list_view": true
         }
       ]
+    },
+    {
+      "name": "forecasting.review_note",
+      "label": "Review thread",
+      "module": "Forecasting",
+      "id_pattern": "FR-.######",
+      "columns": [
+        {
+          "column_name": "question",
+          "label": "Question",
+          "column_type": "Reference",
+          "reference_table": "forecasting.review_question",
+          "in_list_view": true
+        },
+        {
+          "column_name": "kind",
+          "label": "What",
+          "column_type": "Choice",
+          "choices": "Reply\nAnswer\nOutcome changed\nFollow-up",
+          "in_list_view": true
+        },
+        {
+          "column_name": "by",
+          "label": "By",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "on",
+          "label": "On",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "text",
+          "label": "Text",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "from_outcome",
+          "label": "Outcome before",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "to_outcome",
+          "label": "Outcome after",
+          "column_type": "Data"
+        }
+      ]
     }
   ],
   "permissions": [
@@ -668,6 +790,13 @@
     },
     {
       "table": "forecasting.idea_history",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.review_note",
       "role": "All",
       "can_read": true,
       "can_write": true,

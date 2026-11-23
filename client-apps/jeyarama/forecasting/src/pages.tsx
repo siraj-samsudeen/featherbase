@@ -9,6 +9,7 @@ import { actualFor, engineFor, finalWeeks } from './sales'
 import { MONTHS, nowIST, todayIST, type Month } from './months'
 import { NoRunYet, Page, address, waitingFor, type Ctx, type IdeaRow, type NumberRow, type QuestionRow } from './App'
 import { STATUS_TONE, Who, scopeText, when } from './WorkspacePage'
+import { DateInput } from './pickers'
 
 const link = (n: NumberRow) => address('forecasts', { store: n.store, level: n.scope_level, name: n.scope_name, ...(n.weeks ? { weeks: n.weeks } : {}), pane: 'views' })
 const engineOf = (n: NumberRow) => engineFor({ store: n.store, level: n.scope_level, name: n.scope_name, weeks: parseWeeks(n.weeks) }, n.month)
@@ -201,6 +202,12 @@ function ViewsBars({ g }: { g: Graded[] }) {
 }
 
 const OUTCOME_TONE: Record<string, StatusTone> = { Open: 'caution', 'Being worked on': 'opportunity', 'Forecast changed': 'positive', 'No change': 'neutral', 'Waiting on the asker': 'caution', Parked: 'missing' }
+/** A question is closed by one of these outcomes, and only with a reason. */
+const CLOSED = ['Forecast changed', 'No change', 'Parked']
+/** Who a question waits on: the Forecast Lead to answer it, the asker when it waits on them, the answerer while worked on. */
+const waitsOn = (x: QuestionRow) => !x.answer ? 'Farah' : x.outcome === 'Waiting on the asker' ? x.asked_by : x.outcome === 'Being worked on' ? x.answered_by ?? 'Farah' : null
+const isDueQ = (x: QuestionRow) => !!x.follow_up_on && x.follow_up_on <= todayIST() && !CLOSED.includes(x.outcome)
+const area = 'w-full rounded-control border border-border-control bg-surface px-3 py-2 text-control text-ink'
 export function ReviewPage({ ctx }: { ctx: Ctx }) {
   const m = ctx.month
   const all = ctx.data.questions.filter(x => x.month === m.key).sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }))
@@ -208,39 +215,46 @@ export function ReviewPage({ ctx }: { ctx: Ctx }) {
   const [selRef, setSel] = useState(new URLSearchParams(window.location.search).get('question') ?? all[0]?.ref)
   const [asking, setAsking] = useState(false)
   const [q, setQ] = useState({ scope: '', question: '', detail: '' })
-  const shown = all.filter(x => filter === 'All' || x.outcome === filter)
+  const lists: Record<string, (x: QuestionRow) => boolean> = { All: () => true, Open: x => !CLOSED.includes(x.outcome), 'Waiting on me': x => waitsOn(x) === ctx.viewer.name, Due: isDueQ }
+  const shown = all.filter(x => (lists[filter] ?? (y => y.outcome === filter))(x))
   const sel = all.find(x => x.ref === selRef) ?? shown[0]
   const counts = Object.keys(OUTCOME_TONE).map(o => [o, all.filter(x => x.outcome === o).length] as const).filter(([, n]) => n)
   const ask = async () => {
-    const ref = `Q${ctx.data.questions.length + 1}`
+    // A new reference: one past the highest Q number across every month, never a count.
+    const top = Math.max(0, ...ctx.data.questions.map(x => Number(/^Q(\d+)$/.exec(x.ref)?.[1] ?? 0)))
+    const ref = `Q${top + 1}`
     await ctx.save('forecasting.review_question', { ref, month: m.key, ...q, asked_by: ctx.viewer.name, asked_on: todayIST(), outcome: 'Open' })
     setQ({ scope: '', question: '', detail: '' }); setAsking(false); setSel(ref); await ctx.reload()
   }
+  const pill = (o: string, n: number, testId?: string) => (
+    <button key={o} type="button" aria-pressed={filter === o} onClick={() => setFilter(o)} data-testid={testId}
+      className={`rounded-full px-2.5 py-1 text-[13px] font-semibold ${filter === o ? 'bg-ink text-surface' : 'bg-subtle text-ink-muted'}`}>{o} · {n}</button>)
   return (
     <Page title="Review" actions={<Button variant="primary" onClick={() => setAsking(!asking)}>Ask a question</Button>}>
-      <p className="-mt-2 text-sm text-ink-muted">Each question on a month's forecast is one record: who asked, about what, the answer, and what happened to the forecast. {all.length ? `${m.label}, filled from the month's questions, so the next month's do not go back into email.` : `${m.label}: no question has been asked on its forecast yet.`}</p>
+      <p className="-mt-2 text-sm text-ink-muted">Each question on a month's forecast is one record: who asked, about what, the answer, the replies, and what happened to the forecast. {all.length ? `${m.label}, filled from the month's questions, so the next month's do not go back into email.` : `${m.label}: no question has been asked on its forecast yet.`}</p>
       {asking && (
         <Card><div className="grid gap-2 p-4 md:grid-cols-2">
           <Field label="About (store, category, the whole month…)"><TextInput value={q.scope} onChange={e => setQ({ ...q, scope: e.target.value })} /></Field>
-          <Field label="Question"><TextInput value={q.question} onChange={e => setQ({ ...q, question: e.target.value })} /></Field>
-          <div className="md:col-span-2"><Field label="What you saw"><textarea rows={2} value={q.detail} onChange={e => setQ({ ...q, detail: e.target.value })} className="w-full rounded-control border border-border-control bg-surface px-3 py-2 text-control text-ink" /></Field></div>
+          <Field label="Question"><TextInput value={q.question} onChange={e => setQ({ ...q, question: e.target.value })} data-testid="ask-question" /></Field>
+          <div className="md:col-span-2"><Field label="What you saw"><textarea rows={2} value={q.detail} onChange={e => setQ({ ...q, detail: e.target.value })} className={area} /></Field></div>
           <div><Button variant="primary" disabled={!q.question.trim()} onClick={() => void ask()}>Ask</Button></div>
         </div></Card>
       )}
       {!all.length ? <Card><EmptyState title={`No questions on ${m.label}`} body="Ask one with the button above; it is kept against this month." /></Card> : <Card>
-        <div className="flex flex-wrap gap-1.5 px-4 pt-3" role="group" aria-label="Filter by outcome">
-          {[['All', all.length] as const, ...counts].map(([o, n]) => (
-            <button key={o} type="button" aria-pressed={filter === o} onClick={() => setFilter(o)}
-              className={`rounded-full px-2.5 py-1 text-[13px] font-semibold ${filter === o ? 'bg-ink text-surface' : 'bg-subtle text-ink-muted'}`}>{o} · {n}</button>))}
+        <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3" role="group" aria-label="Lists and outcomes">
+          {pill('All', all.length)}{pill('Open', all.filter(lists.Open).length, 'list-open')}{pill('Waiting on me', all.filter(lists['Waiting on me']).length, 'list-mine')}{pill('Due', all.filter(isDueQ).length, 'list-due')}
+          <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
+          {counts.map(([o, n]) => pill(o, n))}
         </div>
         <div className="grid min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
           <div className="flex flex-col" data-testid="questions">
             {shown.map(x => (
               <button key={x.row_id} type="button" onClick={() => setSel(x.ref)} aria-current={sel?.ref === x.ref}
                 className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 border-t border-border px-4 py-2.5 text-start hover:bg-subtle ${sel?.ref === x.ref ? 'bg-action-tint' : ''}`}>
-                <span className="text-sm font-semibold">{x.question}</span><StatusPill tone={OUTCOME_TONE[x.outcome] ?? 'neutral'}>{x.outcome}</StatusPill>
-                <span className="col-span-2 text-[13px] text-ink-muted">{x.ref} · {x.scope} · asked {when(x.asked_on)}</span>
+                <span className="text-sm font-semibold">{x.question}</span><span className="flex gap-1"><StatusPill tone={OUTCOME_TONE[x.outcome] ?? 'neutral'}>{x.outcome}</StatusPill>{isDueQ(x) && <StatusPill tone="caution">Due</StatusPill>}</span>
+                <span className="col-span-2 text-[13px] text-ink-muted">{x.ref} · {x.scope} · asked {when(x.asked_on)}{waitsOn(x) ? ` · waits on ${waitsOn(x)}` : ''}</span>
               </button>))}
+            {!shown.length && <p className="border-t border-border px-4 py-6 text-sm text-ink-muted">No question in this list.</p>}
           </div>
           {sel && <Question key={sel.row_id} ctx={ctx} x={sel} />}
         </div>
@@ -251,13 +265,37 @@ export function ReviewPage({ ctx }: { ctx: Ctx }) {
 
 function Question({ ctx, x }: { ctx: Ctx; x: QuestionRow }) {
   const [answer, setAnswer] = useState('')
-  const [outcome, setOutcome] = useState('No change')
-  const save = async () => { await ctx.save('forecasting.review_question', { ...x, answer, answered_by: ctx.viewer.name, answered_on: todayIST(), outcome }); await ctx.reload() }
+  // No outcome is chosen for the person answering: they pick one.
+  const [outcome, setOutcome] = useState('')
+  const [reply, setReply] = useState('')
+  const [next, setNext] = useState(''), [why, setWhy] = useState('')
+  const [follow, setFollow] = useState({ impact: x.impact ?? '', follow_up: x.follow_up ?? '', follow_up_on: x.follow_up_on ?? '' })
+  const thread = ctx.data.reviewNotes.filter(n => n.question === x.row_id).sort((a, b) => a.on.localeCompare(b.on) || a.row_id.localeCompare(b.row_id))
+  const note = (kind: string, text: string, from?: string, to?: string) => ctx.save('forecasting.review_note', { question: x.row_id, kind, by: ctx.viewer.name, on: nowIST(), text, from_outcome: from ?? null, to_outcome: to ?? null })
+  const answerIt = async () => {
+    await ctx.save('forecasting.review_question', { ...x, answer, answered_by: ctx.viewer.name, answered_on: todayIST(), outcome, ...follow, follow_up_on: follow.follow_up_on || null })
+    await note('Answer', answer, x.outcome, outcome); await ctx.reload()
+  }
+  const changeOutcome = async () => {
+    await ctx.save('forecasting.review_question', { ...x, outcome: next }); await note('Outcome changed', why, x.outcome, next)
+    setNext(''); setWhy(''); await ctx.reload()
+  }
+  const saveFollow = async () => {
+    await ctx.save('forecasting.review_question', { ...x, ...follow, follow_up_on: follow.follow_up_on || null })
+    await note('Follow-up', [follow.impact && `Effect: ${follow.impact}`, follow.follow_up && `Follow-up: ${follow.follow_up}`, follow.follow_up_on && `by ${when(follow.follow_up_on)}`].filter(Boolean).join(' · ')); await ctx.reload()
+  }
+  const closes = CLOSED.includes(next)
+  const Follow = (
+    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_10rem]">
+      <Field label="Effect on the forecast"><TextInput value={follow.impact} onChange={e => setFollow({ ...follow, impact: e.target.value })} data-testid="q-impact" /></Field>
+      <Field label="Follow-up"><TextInput value={follow.follow_up} onChange={e => setFollow({ ...follow, follow_up: e.target.value })} data-testid="q-follow" /></Field>
+      <Field label="Follow up on" hint="Due from that day"><DateInput value={follow.follow_up_on} onChange={iso => setFollow({ ...follow, follow_up_on: iso })} testId="q-follow-on" /></Field>
+    </div>)
   return (
     <div className="flex min-w-0 flex-col gap-4 bg-canvas p-5" data-testid="question-pane">
       <div className="flex flex-col gap-1.5">
         <h2 className="text-lg font-semibold">{x.question}</h2>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-muted"><span>{x.ref}</span><span>About <b className="text-ink">{x.scope}</b></span><span>Asked {when(x.asked_on)}</span></div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-muted"><span>{x.ref}</span><span>About <b className="text-ink">{x.scope}</b></span><span>Asked {when(x.asked_on)}</span>{waitsOn(x) && <span>Waits on <b className="text-ink">{waitsOn(x)}</b></span>}</div>
       </div>
       <div className="flex flex-col gap-1.5 rounded-card bg-surface p-3"><div className="w-64"><Who name={x.asked_by} /></div>{x.detail && <p className="text-sm">{x.detail}</p>}</div>
       {x.answer ? (
@@ -266,20 +304,45 @@ function Question({ ctx, x }: { ctx: Ctx; x: QuestionRow }) {
           <p className="text-sm">{x.answer}</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-2 rounded-card bg-surface p-3">
-          <textarea rows={3} value={answer} onChange={e => setAnswer(e.target.value)} placeholder="Answer" className="w-full rounded-control border border-border-control bg-surface px-3 py-2 text-control text-ink" />
+        <div className="flex flex-col gap-2 rounded-card bg-surface p-3" data-testid="answer-form">
+          <textarea rows={3} value={answer} onChange={e => setAnswer(e.target.value)} placeholder="Answer" className={area} data-testid="q-answer" />
+          {Follow}
           <div className="flex flex-wrap items-end gap-2">
-            <div className="w-56"><Field label="Outcome"><Select value={outcome} onChange={e => setOutcome(e.target.value)}>{Object.keys(OUTCOME_TONE).filter(o => o !== 'Open').map(o => <option key={o}>{o}</option>)}</Select></Field></div>
-            <Button variant="primary" disabled={!answer.trim()} onClick={() => void save()}>Answer</Button>
+            <div className="w-56"><Field label="Outcome"><Select value={outcome} onChange={e => setOutcome(e.target.value)} data-testid="q-outcome"><option value="" disabled>Choose an outcome</option>{Object.keys(OUTCOME_TONE).filter(o => o !== 'Open').map(o => <option key={o}>{o}</option>)}</Select></Field></div>
+            <Button variant="primary" disabled={!answer.trim() || !outcome} onClick={() => void answerIt()}>Answer</Button>
           </div>
+        </div>
+      )}
+      {thread.length > 0 && (
+        <ol className="flex flex-col gap-2" data-testid="thread">
+          {thread.map(n => (
+            <li key={n.row_id} className="flex flex-col gap-1 rounded-card bg-surface p-3 text-sm">
+              <div className="flex flex-wrap items-baseline justify-between gap-2"><span><b>{n.by}</b> <span className="text-ink-muted">· {n.kind === 'Outcome changed' ? `outcome ${n.from_outcome} → ${n.to_outcome}` : n.kind.toLowerCase()}</span></span><span className="text-[13px] text-ink-muted">{when(n.on)}</span></div>
+              {n.text && <p>{n.text}</p>}
+            </li>))}
+        </ol>
+      )}
+      <div className="flex flex-col gap-2 rounded-card bg-surface p-3">
+        <textarea rows={2} value={reply} onChange={e => setReply(e.target.value)} placeholder="Reply on this question" className={area} data-testid="q-reply" />
+        <div><Button variant="secondary" disabled={!reply.trim()} onClick={() => void (async () => { await note('Reply', reply); setReply(''); await ctx.reload() })()}>Reply</Button></div>
+      </div>
+      {x.answer && (
+        <div className="flex flex-col gap-2 rounded-card bg-surface p-3" data-testid="outcome-form">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-56"><Field label="Change the outcome"><Select value={next} onChange={e => setNext(e.target.value)} data-testid="q-next"><option value="" disabled>Choose an outcome</option>{Object.keys(OUTCOME_TONE).filter(o => o !== x.outcome).map(o => <option key={o}>{o}</option>)}</Select></Field></div>
+            <div className="min-w-64 flex-1"><Field label={closes ? 'Why it closes (required)' : 'Why (optional)'}><TextInput value={why} onChange={e => setWhy(e.target.value)} data-testid="q-why" /></Field></div>
+            <Button variant="secondary" disabled={!next || (closes && !why.trim())} onClick={() => void changeOutcome()}>Change it</Button>
+          </div>
+          {Follow}
+          <div><Button variant="secondary" onClick={() => void saveFollow()} data-testid="q-save-follow">Save effect and follow-up</Button></div>
         </div>
       )}
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-card bg-surface p-3"><div className="text-[12px] font-semibold text-ink-muted">Outcome</div><StatusPill tone={OUTCOME_TONE[x.outcome] ?? 'neutral'}>{x.outcome}</StatusPill></div>
         <div className="rounded-card bg-surface p-3"><div className="text-[12px] font-semibold text-ink-muted">Effect on the forecast</div><p className="text-sm">{x.impact || '—'}</p></div>
-        <div className="rounded-card bg-surface p-3"><div className="text-[12px] font-semibold text-ink-muted">Follow-up</div><p className="text-sm">{x.follow_up || '—'}</p></div>
+        <div className="rounded-card bg-surface p-3"><div className="text-[12px] font-semibold text-ink-muted">Follow-up</div><p className="text-sm">{x.follow_up || '—'}{x.follow_up_on ? ` · by ${when(x.follow_up_on)}` : ''}</p></div>
         <div className="rounded-card bg-surface p-3"><div className="text-[12px] font-semibold text-ink-muted">Idea</div>
-          {x.idea_ref ? <a className="text-sm font-semibold" href={address('ideas', { q: x.idea_ref })}>{x.idea_ref} in the Idea Register</a> : <p className="text-sm">—</p>}</div>
+          {x.idea_ref ? <a className="text-sm font-semibold" href={address('ideas', { idea: x.idea_ref })} data-testid="q-idea">{x.idea_ref} in the Idea Register</a> : <p className="text-sm">—</p>}</div>
       </div>
     </div>
   )
@@ -408,7 +471,7 @@ function IdeaEditor({ ctx, i, onDone }: { ctx: Ctx; i: IdeaRow; onDone: () => vo
   return (
     <div className="grid gap-3 px-4 pt-1 pb-4 md:grid-cols-2" data-testid="idea-editor">
       <Field label="Status"><Select value={f.verdict} onChange={set('verdict')} data-testid="idea-status">{Object.keys(VERDICT_TONE).map(v => <option key={v}>{v}</option>)}</Select></Field>
-      <Field label="Look again on" hint="Back on the list as due from that day."><TextInput type="date" value={f.revisit_on} onChange={set('revisit_on')} data-testid="idea-revisit" /></Field>
+      <Field label="Look again on" hint="Back on the list as due from that day."><DateInput value={f.revisit_on} onChange={iso => setF({ ...f, revisit_on: iso })} testId="idea-revisit" /></Field>
       <Field label="What we tried"><textarea rows={2} className={area} value={f.tried} onChange={set('tried')} /></Field>
       <Field label="What we found"><textarea rows={2} className={area} value={f.found} onChange={set('found')} data-testid="idea-found" /></Field>
       <Field label="Evidence"><textarea rows={2} className={area} value={f.evidence} onChange={set('evidence')} /></Field>

@@ -2,7 +2,8 @@
 // multi-select, so this is built from its own parts, as the platform builds its menus: a trigger that looks
 // like its Select, its menu surface and rows, lifted above the page with useTopLayer. No other dependency.
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
-import { Check, ChevronDown, Field, MENU_HEADING_CLASSES, cx, inputClasses, menuClasses, menuItemClasses, useTopLayer } from '@featherbase/shop-floor'
+import { Check, ChevronDown, Field, MENU_HEADING_CLASSES, TextInput, cx, inputClasses, menuClasses, menuItemClasses, useTopLayer } from '@featherbase/shop-floor'
+import { parseDate, showDate } from './months'
 
 /** A labelled trigger showing what is chosen; its panel opens below it, and closes on Escape or a click away. */
 export function Dropdown({ label, summary, testId, className, children }: { label: string; summary: string; testId: string; className?: string; children: ReactNode }) {
@@ -54,3 +55,11 @@ export function ChoiceRow({ on, onClick, children, testId }: { on: boolean; onCl
 }
 
 export const Heading = ({ children }: { children: ReactNode }) => <div className={MENU_HEADING_CLASSES}>{children}</div>
+
+/** A date typed as DD-Mon-YYYY (never a slash form), kept as YYYY-MM-DD; empty clears it. */
+export function DateInput({ value, onChange, testId, ...rest }: { value: string; onChange: (iso: string) => void; testId?: string; id?: string; 'aria-describedby'?: string }) {
+  const [text, setText] = useState(value ? showDate(value) : '')
+  const bad = text.trim() !== '' && !parseDate(text)
+  return <TextInput {...rest} value={text} placeholder="DD-Mon-YYYY" aria-invalid={bad || undefined} data-testid={testId}
+    onChange={e => { setText(e.target.value); const iso = parseDate(e.target.value); if (iso || !e.target.value.trim()) onChange(iso ?? '') }} />
+}
