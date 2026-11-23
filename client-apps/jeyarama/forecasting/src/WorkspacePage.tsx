@@ -17,7 +17,7 @@ import { actualFor, completeTo, daysFor, engineFor, finalWeeks, totalsTo } from 
 import { dateOf, monthOf, nowIST, weeksOf, type Month } from './months'
 import { areaText, covers } from './areas'
 import { OwnActions } from './MyNumbersPage'
-import { NoRunYet, Page, type Ctx, type DecisionRow, type NumberRow } from './App'
+import { NoRunYet, Page, address, type Ctx, type DecisionRow, type NumberRow } from './App'
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : 0)
 const signed = (p: number) => `${p >= 0 ? '+' : ''}${p}%`
@@ -41,6 +41,17 @@ export function Who({ name, className = 'w-full' }: { name: string; className?: 
 const weeksKey = (weeks: number[]) => (weeks.length === 5 ? '' : weeks.join(','))
 const sameScope = (n: NumberRow, sc: Scope) => n.store === sc.store && n.scope_level === sc.level && n.scope_name === sc.name && (n.weeks ?? '') === weeksKey(sc.weeks)
 const RANK = { Store: 0, Division: 1, Category: 2, Subcategory: 3 }
+/** A scope's grid cells: subcategory × week. */
+const cellsOf = (sc: Scope) => new Set(SUBS.filter(s => inScope(s, sc)).flatMap(s => sc.weeks.map(w => `${s.name}:${w}`)))
+/** The Applied numbers above, below or across a cell (sharing some of its cells), not its own: what moves it. */
+export function moversOf(numbers: NumberRow[], month: string, sc: Scope) {
+  const mine = cellsOf(sc)
+  return numbers.filter(n => n.month === month && n.store === sc.store && n.status === 'Applied' && !sameScope(n, sc)
+    && [...cellsOf({ store: n.store, level: n.scope_level, name: n.scope_name, weeks: parseWeeks(n.weeks) })].some(c => mine.has(c)))
+}
+/** A cell's comments: its store, level, name and weeks exactly. One kept before cells had a level and weeks is the whole month's. */
+export const commentsOf = (decisions: DecisionRow[], month: string, sc: Scope) => decisions.filter(d => !d.number && d.month === month && d.store === sc.store
+  && d.scope_name === (sc.level === 'Store' ? sc.store : sc.name) && (d.scope_level ? d.scope_level === sc.level && (d.weeks ?? '') === weeksKey(sc.weeks) : weeksKey(sc.weeks) === ''))
 
 /** Every subcategory-week after the Applied numbers: the most specific wins, each spread by the engine's shape. */
 function adjusted(numbers: NumberRow[], store: string, m: Month) {
@@ -112,6 +123,7 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
     const sc: Scope = { store, level: r.level, name: r.name, weeks }
     const now = sum(r.subs, weeks), was = sum(r.subs, weeks, true)
     const views = mine(sc)
+    const talk = commentsOf(ctx.data.decisions, m.key, sc).length
     const on = sel && sel.store === store && sel.level === r.level && sel.name === r.name && weeksKey(sel.weeks) === weeksKey(weeks)
     const changed = Math.abs(now - was) > 0.5
     return (
@@ -120,8 +132,10 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
           className={`flex min-h-11 w-full flex-col items-end justify-center px-2.5 py-1.5 whitespace-nowrap tabular-nums hover:bg-subtle ${on ? 'bg-action-tint ring-2 ring-action ring-inset' : ''}`}>
           {changed && <span className="text-[11px] text-ink-muted line-through">{fmtINR(was)}</span>}
           <span className={changed ? 'font-semibold text-action' : ''}>{fmtINR(now)}</span>
-          {views.length > 0 && <span className="mt-0.5 flex gap-1">{views.map(v => <span key={v.row_id} title={`${v.entered_by}: ${v.status}`}
-            className={`size-1.5 rounded-full ${v.status === 'Applied' ? 'bg-positive' : v.status === 'Waiting' ? 'bg-caution' : v.status === 'Reference' ? 'bg-opportunity' : v.status === 'Withdrawn' ? 'bg-border-control' : 'bg-negative'}`} />)}</span>}
+          {(views.length > 0 || talk > 0) && <span className="mt-0.5 flex items-center gap-1">{views.map(v => <span key={v.row_id} title={`${v.entered_by}: ${v.status}`}
+            className={`size-1.5 rounded-full ${v.status === 'Applied' ? 'bg-positive' : v.status === 'Waiting' ? 'bg-caution' : v.status === 'Reference' ? 'bg-opportunity' : v.status === 'Withdrawn' ? 'bg-border-control' : 'bg-negative'}`} />)}
+            {talk > 0 && <span className="flex items-center gap-0.5 text-[11px] text-ink-muted" title={`${talk} comment${talk > 1 ? 's' : ''}`} data-testid="comment-count">
+              <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>{talk}</span>}</span>}
         </button>
       </td>
     )
@@ -180,7 +194,7 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
               actions={<Segmented label="Pane" value={mode} onChange={setMode} options={[
                 { value: 'views', label: `Views (${mine(sel).length + 1})` },
                 ...(hasWhy ? [{ value: 'why' as const, label: 'Why' }] : []),
-                { value: 'comments', label: 'Comments' }]} />}>
+                { value: 'comments', label: `Comments (${commentsOf(ctx.data.decisions, m.key, sel).length})` }]} />}>
               {mode === 'views' && <Views key={`${m.key}${JSON.stringify(sel)}`} ctx={ctx} sc={sel} now={sum(SUBS.filter(s => inScope(s, sel)), sel.weeks)} numbers={mine(sel)} />}
               {mode === 'why' && hasWhy && <Why s={SUBS.find(s => s.store === store && s.name === sel.name)!} />}
               {mode === 'comments' && <Comments ctx={ctx} sc={sel} />}
@@ -250,11 +264,32 @@ function Views({ ctx, sc, now, numbers }: { ctx: Ctx; sc: Scope; now: number; nu
         </li>
         {sorted.map(n => <NumberCard key={n.row_id} ctx={ctx} n={n} engine={engine} sold={sold} siblings={sorted} />)}
       </ol>
-      {now !== engine && !anyApplied && <Notice>This scope moved because an Applied number above or below it was spread here.</Notice>}
+      <Movers ctx={ctx} sc={sc} />
       {closed ? <p className="text-[13px] text-ink-muted" data-testid="closed-no-add">{m.label} is closed: no number can be added or approved.</p>
         : !mine ? null : adding ? <AddNumber ctx={ctx} sc={sc} engine={engine} onDone={() => setAdding(false)} />
           : <div><Button variant="primary" onClick={() => setAdding(true)} data-testid="add-number">Add your number</Button></div>}
     </>
+  )
+}
+
+/** Which Applied numbers above or below this cell move it: who, their scope, the kind, the figure, and a way to their cell. */
+function Movers({ ctx, sc }: { ctx: Ctx; sc: Scope }) {
+  const movers = moversOf(ctx.data.numbers, ctx.month.key, sc)
+  if (!movers.length) return null
+  const above = (n: NumberRow) => RANK[n.scope_level] < RANK[sc.level] || parseWeeks(n.weeks).length > sc.weeks.length
+  return (
+    <section className="flex flex-col gap-1.5 rounded-card bg-subtle p-3 text-sm" data-testid="movers">
+      <h3 className="text-[13px] font-semibold text-ink-muted">Applied numbers above or below that move this cell</h3>
+      <ul className="flex flex-col gap-1.5">
+        {movers.map(n => (
+          <li key={n.row_id} className="flex flex-wrap items-baseline gap-x-2">
+            <b>{n.entered_by}</b><span className="text-[13px] text-ink-muted">{n.entered_by_role} · {above(n) ? 'above' : 'below'}</span>
+            <a href={address('forecasts', { store: n.store, level: n.scope_level, name: n.scope_name, ...(n.weeks ? { weeks: n.weeks } : {}), pane: 'views' })}>{scopeText(n)}</a>
+            <span className="text-[13px]">{howText(n)} · <b className="tabular-nums">{fmtINR(n.value)}</b></span>
+          </li>))}
+      </ul>
+      <p className="text-[13px] text-ink-muted">The most specific Applied number wins; a total set higher up is spread across the cells below by the engine's own shape.</p>
+    </section>
   )
 }
 
@@ -400,11 +435,11 @@ function AddNumber({ ctx, sc, engine, onDone }: { ctx: Ctx; sc: Scope; engine: n
 }
 
 function Comments({ ctx, sc }: { ctx: Ctx; sc: Scope }) {
-  const notes: DecisionRow[] = ctx.data.decisions.filter(d => !d.number && d.month === ctx.month.key && d.store === sc.store && d.scope_name === (sc.level === 'Store' ? sc.store : sc.name))
+  const notes: DecisionRow[] = commentsOf(ctx.data.decisions, ctx.month.key, sc)
   const [kind, setKind] = useState<'Comment' | 'This is wrong'>('Comment')
   const [text, setText] = useState('')
   const post = async () => {
-    await ctx.save('forecasting.decision', { month: ctx.month.key, store: sc.store, scope_name: sc.level === 'Store' ? sc.store : sc.name, decision: kind, decided_by: ctx.viewer.name, decided_by_role: ctx.viewer.role, decided_on: stamp(), note: text })
+    await ctx.save('forecasting.decision', { month: ctx.month.key, store: sc.store, scope_level: sc.level, scope_name: sc.level === 'Store' ? sc.store : sc.name, weeks: weeksKey(sc.weeks), decision: kind, decided_by: ctx.viewer.name, decided_by_role: ctx.viewer.role, decided_on: stamp(), note: text })
     setText(''); await ctx.reload()
   }
   return (
