@@ -89,6 +89,14 @@ export function RunsPage({ ctx }: { ctx: Ctx }) {
   return (
     <Page title="Runs & Targets">
       <Card title={`Engine Runs, ${m.label}`}><div className="px-4 pb-4"><DataList caption="Engine Runs" rows={runs} columns={runCols} rowKey={r => r.id} layout="table" empty={{ title: 'No Runs', body: 'The engine has not written a Run yet.' }} /></div></Card>
+      <Card title="What WAPE Means">
+        <div className="flex flex-col gap-2 px-4 pb-4 text-sm" data-testid="wape-explained">
+          <p><b>WAPE</b> (weighted absolute percentage error) says, in one figure for the month, how far a Run's forecast was from what sold. <b>Lower is better</b>: 0% would be a perfect forecast.</p>
+          <p>How it is worked out: for every store, subcategory and day, take the gap between the forecast and what sold, whether it was over or under; add up the gaps; divide by everything that sold. Large cells count for more than small ones, so a miss on a small subcategory does not swamp the figure.</p>
+          <p>A made-up example with two cells: forecast ₹1,000 and sold ₹800, off by ₹200; forecast ₹500 and sold ₹600, off by ₹100. WAPE = (₹200 + ₹100) ÷ (₹800 + ₹600) = ₹300 ÷ ₹1,400 = 21.4%.</p>
+          <p className="text-[13px] text-ink-muted">A month's WAPE is known once the month is over, so the current month's Runs show none yet.</p>
+        </div>
+      </Card>
       <Card title={`Target Versions, ${m.label}`}>
         <div className="flex flex-col gap-2 px-4 pb-4">
           <p className="text-sm text-ink-muted">The final forecast is the target. Each version is the official Run with the numbers applied when it was built; reports read the highest version.</p>
