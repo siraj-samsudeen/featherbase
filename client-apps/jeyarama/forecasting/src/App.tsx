@@ -20,7 +20,7 @@ export interface DecisionRow { row_id: string; number: string | null; month: str
 export interface QuestionRow { row_id: string; ref: string; month: string; scope: string; question: string; detail: string | null; asked_by: string; asked_on: string
   answer: string | null; answered_by: string | null; answered_on: string | null; outcome: string; impact: string | null; follow_up: string | null; idea_ref: string | null }
 export interface IdeaRow { row_id: string; ref: string; label: string; title: string; kind: string; raised_by: string; raised_on: string; why: string; tried: string; found: string
-  verdict: string; outcome: string; status_note: string; decided_on: string; revisit: string | null; areas: string; evidence: string | null }
+  verdict: string; outcome: string; status_note: string; decided_on: string; revisit: string | null; areas: string | null; evidence: string | null }
 
 export interface Data { numbers: NumberRow[]; decisions: DecisionRow[]; questions: QuestionRow[]; ideas: IdeaRow[] }
 export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => Promise<void>; save: typeof saveRow }

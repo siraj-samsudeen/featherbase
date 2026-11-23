@@ -272,6 +272,8 @@ function Question({ ctx, x }: { ctx: Ctx; x: QuestionRow }) {
 }
 
 const VERDICT_TONE: Record<string, StatusTone> = { Waiting: 'caution', Kept: 'positive', Rejected: 'negative', 'Already in the model': 'neutral', 'Not tested': 'missing' }
+/** An idea's areas. A new idea may have none: the column then comes back empty (null), never a list. */
+export const areasOf = (i: Pick<IdeaRow, 'areas'>) => (i.areas ?? '').split(', ').filter(Boolean)
 export function IdeasPage({ ctx }: { ctx: Ctx }) {
   const [q, setQ] = useState(new URLSearchParams(window.location.search).get('q') ?? '')
   const [verdict, setVerdict] = useState(''), [kind, setKind] = useState(''), [area, setArea] = useState('')
@@ -279,12 +281,12 @@ export function IdeasPage({ ctx }: { ctx: Ctx }) {
   const [idea, setIdea] = useState({ title: '', why: '' })
   const ideas = ctx.data.ideas
   const areas = useMemo(() => {
-    const c = new Map<string, number>(); ideas.forEach(i => i.areas.split(', ').filter(Boolean).forEach(a => c.set(a, (c.get(a) ?? 0) + 1)))
+    const c = new Map<string, number>(); ideas.forEach(i => areasOf(i).forEach(a => c.set(a, (c.get(a) ?? 0) + 1)))
     return [...c.entries()].sort((a, b) => b[1] - a[1]).map(([a]) => a)
   }, [ideas])
   const words = q.toLowerCase().split(/\s+/).filter(Boolean)
-  const shown = ideas.filter(i => (!verdict || i.verdict === verdict) && (!kind || i.kind === kind) && (!area || i.areas.split(', ').includes(area))
-    && words.every(w => [i.ref, i.label, i.title, i.why, i.tried, i.found, i.status_note, i.areas].join(' ').toLowerCase().includes(w)))
+  const shown = ideas.filter(i => (!verdict || i.verdict === verdict) && (!kind || i.kind === kind) && (!area || areasOf(i).includes(area))
+    && words.every(w => [i.ref, i.label, i.title, i.why, i.tried, i.found, i.status_note, ...areasOf(i)].join(' ').toLowerCase().includes(w)))
   const add = async () => {
     await ctx.save('forecasting.idea', { ref: `ID-${ideas.length + 1}`, label: '', title: idea.title, why: idea.why, kind: 'Business suggestion', raised_by: ctx.viewer.name, raised_on: new Date().toISOString().slice(0, 10), verdict: 'Not tested', areas: '' })
     setIdea({ title: '', why: '' }); setAdding(false); await ctx.reload()
@@ -341,8 +343,8 @@ function Idea({ i, open, onArea }: { i: IdeaRow; open: boolean; onArea: (a: stri
         <F k="What we tried" v={i.tried} wide /><F k="What we found" v={i.found} wide />
         <F k="Where it stands" v={i.status_note} /><F k="Look again when" v={i.revisit} />
         <F k="Evidence" v={i.evidence} />
-        {i.areas && <div><div className="text-[11.5px] font-semibold tracking-wide text-ink-muted uppercase">Areas</div>
-          <div className="mt-1 flex flex-wrap gap-1.5">{i.areas.split(', ').map(a => <button key={a} type="button" onClick={() => onArea(a)} className="rounded-control bg-subtle px-2 py-0.5 text-[13px]">{a}</button>)}</div></div>}
+        {areasOf(i).length > 0 && <div><div className="text-[11.5px] font-semibold tracking-wide text-ink-muted uppercase">Areas</div>
+          <div className="mt-1 flex flex-wrap gap-1.5">{areasOf(i).map(a => <button key={a} type="button" onClick={() => onArea(a)} className="rounded-control bg-subtle px-2 py-0.5 text-[13px]">{a}</button>)}</div></div>}
       </div>
     </details>
   )
