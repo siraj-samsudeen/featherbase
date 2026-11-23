@@ -14,17 +14,18 @@ import {
   value, weightOf, type Code, type Person, type Scope, type Sub,
 } from './madeUp'
 import { actualFor, completeTo, daysFor, engineFor, finalWeeks, totalsTo } from './sales'
-import { dateOf, monthOf, weeksOf, type Month } from './months'
+import { dateOf, monthOf, nowIST, weeksOf, type Month } from './months'
 import { NoRunYet, Page, type Ctx, type DecisionRow, type NumberRow } from './App'
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : 0)
 const signed = (p: number) => `${p >= 0 ? '+' : ''}${p}%`
 export const STATUS_TONE: Record<string, StatusTone> = { Applied: 'positive', Waiting: 'caution', Reference: 'opportunity', 'Not approved': 'negative' }
+/** 20-Nov-2026, or 20-Nov-2026 16:05 IST when the stamp has a time (every stamp is IST). */
 export const when = (s: string) => {
   const [d, t] = s.split(' ')
   const [y, m, day] = d.split('-').map(Number)
   const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1]
-  return `${String(day).padStart(2, '0')}-${mon}-${y}${t ? ` ${t}` : ''}`
+  return `${String(day).padStart(2, '0')}-${mon}-${y}${t ? ` ${t} IST` : ''}`
 }
 export const weeksText = (w: string | null | undefined, m: Month) => (!w ? 'the month' : parseWeeks(w).map(n => weeksOf(m)[n - 1]).join(', '))
 export const scopeText = (n: Pick<NumberRow, 'month' | 'store' | 'scope_level' | 'scope_name' | 'weeks'>) =>
@@ -214,7 +215,8 @@ function Why({ s }: { s: Sub }) {
 }
 
 const nextUp = (p: Person) => (p.reportsTo ? person(p.reportsTo) : null)
-const stamp = () => new Date().toISOString().slice(0, 16).replace('T', ' ')
+/** Every time written by the page is IST (months.ts). */
+const stamp = nowIST
 
 function Views({ ctx, sc, now, numbers }: { ctx: Ctx; sc: Scope; now: number; numbers: NumberRow[] }) {
   const m = ctx.month, closed = m.state === 'closed'
@@ -332,7 +334,7 @@ function AddNumber({ ctx, sc, engine, onDone }: { ctx: Ctx; sc: Scope; engine: n
     const saved = await ctx.save('forecasting.number', {
       month: ctx.month.key, run: ctx.month.run, store: sc.store, section: sub?.section ?? '', scope_level: sc.level, scope_name: sc.name, weeks: weeksKey(sc.weeks),
       kind, value: next, weights_json: kind === 'Change the weights' ? JSON.stringify(w) : null,
-      entered_by: ctx.viewer.name, entered_by_role: ctx.viewer.role, entered_on: stamp().slice(0, 10), reason, status, waiting_on: status === 'Waiting' ? up!.name : null })
+      entered_by: ctx.viewer.name, entered_by_role: ctx.viewer.role, entered_on: stamp(), reason, status, waiting_on: status === 'Waiting' ? up!.name : null })
     await ctx.save('forecasting.decision', { number: saved.row_id, month: ctx.month.key, store: sc.store, scope_name: sc.name, decided_by: ctx.viewer.name, decided_by_role: ctx.viewer.role, decided_on: stamp(),
       decision: status === 'Reference' ? 'Kept as reference' : status === 'Applied' ? 'Approved and applied' : 'Sent for approval',
       note: status === 'Waiting' ? `To ${up!.name}` : status === 'Applied' ? "The Chief Executive's number applies without approval." : 'Held as a view.' })

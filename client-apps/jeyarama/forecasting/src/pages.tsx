@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react'
 import { Button, Card, DataList, EmptyState, Field, Headline, SearchInput, Segmented, Select, StatusPill, TextInput, buttonClasses, fmtINR, type DataColumn, type StatusTone } from '@featherbase/shop-floor'
 import { ALL_WEEKS, RUNS, SUBS, TARGETS, parseWeeks, type Run, type TargetVersion } from './madeUp'
 import { actualFor, engineFor, finalWeeks } from './sales'
-import { MONTHS, type Month } from './months'
+import { MONTHS, todayIST, type Month } from './months'
 import { NoRunYet, Page, address, waitingFor, type Ctx, type IdeaRow, type NumberRow, type QuestionRow } from './App'
 import { STATUS_TONE, Who, scopeText, when } from './WorkspacePage'
 
@@ -199,7 +199,7 @@ export function ReviewPage({ ctx }: { ctx: Ctx }) {
   const counts = Object.keys(OUTCOME_TONE).map(o => [o, all.filter(x => x.outcome === o).length] as const).filter(([, n]) => n)
   const ask = async () => {
     const ref = `Q${ctx.data.questions.length + 1}`
-    await ctx.save('forecasting.review_question', { ref, month: m.key, ...q, asked_by: ctx.viewer.name, asked_on: new Date().toISOString().slice(0, 10), outcome: 'Open' })
+    await ctx.save('forecasting.review_question', { ref, month: m.key, ...q, asked_by: ctx.viewer.name, asked_on: todayIST(), outcome: 'Open' })
     setQ({ scope: '', question: '', detail: '' }); setAsking(false); setSel(ref); await ctx.reload()
   }
   return (
@@ -238,7 +238,7 @@ export function ReviewPage({ ctx }: { ctx: Ctx }) {
 function Question({ ctx, x }: { ctx: Ctx; x: QuestionRow }) {
   const [answer, setAnswer] = useState('')
   const [outcome, setOutcome] = useState('No change')
-  const save = async () => { await ctx.save('forecasting.review_question', { ...x, answer, answered_by: ctx.viewer.name, answered_on: new Date().toISOString().slice(0, 10), outcome }); await ctx.reload() }
+  const save = async () => { await ctx.save('forecasting.review_question', { ...x, answer, answered_by: ctx.viewer.name, answered_on: todayIST(), outcome }); await ctx.reload() }
   return (
     <div className="flex min-w-0 flex-col gap-4 bg-canvas p-5" data-testid="question-pane">
       <div className="flex flex-col gap-1.5">
@@ -288,7 +288,7 @@ export function IdeasPage({ ctx }: { ctx: Ctx }) {
   const shown = ideas.filter(i => (!verdict || i.verdict === verdict) && (!kind || i.kind === kind) && (!area || areasOf(i).includes(area))
     && words.every(w => [i.ref, i.label, i.title, i.why, i.tried, i.found, i.status_note, ...areasOf(i)].join(' ').toLowerCase().includes(w)))
   const add = async () => {
-    await ctx.save('forecasting.idea', { ref: `ID-${ideas.length + 1}`, label: '', title: idea.title, why: idea.why, kind: 'Business suggestion', raised_by: ctx.viewer.name, raised_on: new Date().toISOString().slice(0, 10), verdict: 'Not tested', areas: '' })
+    await ctx.save('forecasting.idea', { ref: `ID-${ideas.length + 1}`, label: '', title: idea.title, why: idea.why, kind: 'Business suggestion', raised_by: ctx.viewer.name, raised_on: todayIST(), verdict: 'Not tested', areas: '' })
     setIdea({ title: '', why: '' }); setAdding(false); await ctx.reload()
   }
   return (

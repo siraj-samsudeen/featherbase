@@ -62,3 +62,8 @@ export const dateOf = (m: Month, day: number) => `${pad(day)}-${m.mon}-${m.year}
 /** 0 for Sunday. */
 export const weekdayOf = (m: Month, day: number) => new Date(Date.UTC(m.year, m.index, day)).getUTCDay()
 export const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/** Now in IST (Asia/Kolkata: UTC+05:30, no daylight saving), as YYYY-MM-DD HH:MM; every time the app writes. */
+export const nowIST = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 16).replace('T', ' ')
+/** Today in IST, YYYY-MM-DD. */
+export const todayIST = () => nowIST().slice(0, 10)
