@@ -15,7 +15,7 @@
   <p class="lead">We want a page that says "Welcome to Featherbase". In this lesson we write no page at all. We write the proof that the page is missing, and we save that failure on purpose.</p>
   <div class="meta">
     <span class="chip red">Commit: red</span>
-    <span class="chip">About 12 minutes</span>
+    <span class="chip">About 20 minutes</span>
   </div>
 
   <div class="box stop">
@@ -103,9 +103,30 @@ test('Opening Featherbase shows "Welcome to Featherbase".', async () => {
   </ul>
   <p>Notice the test's name. It is the acceptance criterion, word for word.</p>
 
-  <details>
-    <summary>Show me how each step is done</summary>
-    <div class="in">
+  <h2><span class="q">Question 4</span>Who is talking to whom?</h2>
+  <p>This short test runs four separate programs at once. Once you can see who is who, every line makes sense.</p>
+<pre><code> bun test            (1) the test runner: finds *.test.ts files and runs them
+   │
+   ├─ Bun.spawn ──►  (2) Featherbase: bun start, listening at localhost:3210
+   │                        ▲                  ▲
+   ├─ fetch ── "are you up?"┘                  │
+   │                                           │
+   └─ Playwright ──► (4) a real Chromium, with no window, opening the page
+      (3) a library inside the test that drives the browser</code></pre>
+  <ul>
+    <li><strong>(1) <code>bun test</code></strong> gives us <code>test</code>, <code>expect</code>, <code>beforeAll</code> and <code>afterAll</code>.</li>
+    <li><strong>(2) Featherbase</strong> is started the way a person would start it. The test never looks at its code. The only thing the two share is an address. That is what lets us change everything inside later without touching this test.</li>
+    <li><strong>(3) Playwright</strong> is the one package we install. It sends a browser instructions: open a tab, go to this address, read the text.</li>
+    <li><strong>(4) Chromium</strong> is the browser it drives. It is "headless": it draws pages exactly as Chrome does, but shows no window.</li>
+  </ul>
+  <p>The order of events:</p>
+<pre><code>beforeAll  start Featherbase ─► wait until it answers ─► open the browser
+test       open a new tab at the address ─► read its text ─► expect the words
+afterAll   close the browser ─► stop Featherbase</code></pre>
+  <p><code>beforeAll</code> and <code>afterAll</code> run <em>once for the whole file</em>, not once per test. Starting a program and a browser is slow, so later files with many tests share one of each.</p>
+
+  <h2><span class="q">Question 5</span>How does each step work?</h2>
+  <p>Here is the rest of the file, the helpers below the three blocks.</p>
 <pre><code>function startFeatherbase() {
   featherbase = Bun.spawn(["bun", "start"], { env: { ...process.env, PORT: "3210" } });
 }
@@ -146,16 +167,31 @@ async function closeBrowser() {
 function stopFeatherbase() {
   featherbase.kill();
 }</code></pre>
-      <p><code>Bun.spawn(["bun", "start"])</code> runs the command <code>bun start</code> as a separate program, exactly as you would type it in a terminal. A program needs a moment to start, so the next function asks the address every 100 milliseconds and gives up after 3 seconds with a clear message.</p>
-    </div>
-  </details>
+  <p><strong>Starting.</strong> <code>Bun.spawn(["bun", "start"])</code> runs <code>bun start</code> as a separate program, exactly as you would type it in a terminal. <code>env: { ...process.env, PORT: "3210" }</code> copies every setting the test already has and adds one more, the port. So the test knows where to knock.</p>
+  <p><strong>Waiting.</strong> <code>Bun.spawn</code> returns the moment the program <em>exists</em>, not when it is <em>ready</em>. A server needs a moment before it listens. If the test went straight on, it would sometimes knock too early and fail at random. So <code>waitUntilFeatherbaseAnswers</code> knocks every 100 milliseconds (<code>Bun.sleep(100)</code>), and after 3 seconds it gives up with a message that says what went wrong.</p>
+  <p><strong>Knocking.</strong> <code>featherbaseAnswers</code> asks one yes-or-no question:</p>
+<pre><code>fetch(address)        send a request to the address
+  .then(              when it finishes, run ONE of these two:
+    () => true,       it got a reply        → true
+    () => false,      nobody was listening  → false
+  )</code></pre>
+  <ul>
+    <li><code>fetch</code> does not hand back the reply at once. It hands back a <em>promise</em>, an IOU for a result that arrives later. A promise ends in one of two ways: it succeeds or it fails.</li>
+    <li><code>.then(first, second)</code> runs <code>first</code> on success and <code>second</code> on failure. <code>() => true</code> is a tiny function with no inputs that gives back <code>true</code>.</li>
+    <li>Without the second function, "nobody listening" would be an error and would stop the loop at the first knock. With it, "not started yet" is an ordinary <code>false</code>, and the loop knocks again.</li>
+    <li>Any reply counts as <code>true</code>, even "404 Not Found": the server answered. Whether the page is <em>right</em> is the test's job, not this function's.</li>
+  </ul>
+  <p>Think of a doorbell. If someone answers, whatever they say, the answer is yes. If nobody comes, you ring again in a moment. You don't call the police.</p>
+  <p><strong><code>await</code></strong> means "wait here for that IOU to be paid". It appears on almost every line because each line asks another program something and needs its answer before going on.</p>
+  <p><strong>Reading.</strong> <code>page.innerText("body")</code> reads the text a person would see, not the HTML underneath. If the welcome words were hidden by styling, the test would fail, and it should. <code>toContain</code> asks "are the words on the page somewhere?" rather than "is the page exactly this?", so adding a sidebar later will not break this test.</p>
+  <p><strong>Cleaning up.</strong> <code>browser?.close()</code>: the <code>?.</code> means "only if there is a browser". If starting failed, <code>beforeAll</code> stopped before the browser opened, and cleanup must not crash on top of that.</p>
 
   <div class="box key">
     <span class="tag">The habit to take away</span>
     <p>There is not one comment in that file. Each small function has a name that says what it does, even when its body is a single line. If you feel the need to write a comment, try naming a function instead.</p>
   </div>
 
-  <h2><span class="q">Question 4</span>What do we install?</h2>
+  <h2><span class="q">Question 6</span>What do we install?</h2>
   <p>Only what the test needs in order to run. The test imports one outside tool, Playwright, which drives a real browser. So one package goes in:</p>
   <p class="file">package.json</p>
 <pre><code>{
@@ -168,7 +204,7 @@ function stopFeatherbase() {
 }</code></pre>
   <p>There is no web framework, no database and no settings file. Nothing has asked for them yet. Each tool enters the project in the lesson where a test first needs it.</p>
 
-  <h2><span class="q">Question 5</span>What happens when we run it?</h2>
+  <h2><span class="q">Question 7</span>What happens when we run it?</h2>
   <div class="box stop">
     <span class="tag">Predict before you look</span>
     <p>We have a test, and no app at all. We run <code>bun test</code>. Will it pass, fail, or refuse to run? And what will the message say?</p>
@@ -193,7 +229,7 @@ error: Featherbase did not start at http://localhost:3210
     </div>
   </details>
 
-  <h2><span class="q">Question 6</span>Why would anyone save a failing test?</h2>
+  <h2><span class="q">Question 8</span>Why would anyone save a failing test?</h2>
   <p>We commit now, while the test is failing. The commit message starts with the word <code>red:</code>.</p>
   <ul>
     <li><strong>A test that has never failed proves nothing.</strong> It might pass for the wrong reason. Seeing it fail first shows that it can tell "missing" from "present".</li>
@@ -213,6 +249,8 @@ bun test</code></pre>
   <h2><span class="q">Check yourself</span>Answer, then open each one</h2>
   <details><summary>What is an acceptance criterion?</summary><div class="in"><p>One plain sentence saying what must be true for the work to be accepted. Here: opening Featherbase shows "Welcome to Featherbase".</p></div></details>
   <details><summary>Name two of the three simpler ways to test the page, and how each one bites later.</summary><div class="in"><p>Calling the page's code directly tests the inside and proves nothing about starting. Asking the app with no browser cannot see what a browser does. Fetching from the started program is still blind to the browser.</p></div></details>
+  <details><summary>Why does the test knock on the address in a loop instead of opening the page straight away?</summary><div class="in"><p>Starting a program returns before the program is ready to answer. Knocking every 100 milliseconds waits exactly as long as needed, and gives up with a clear message after 3 seconds.</p></div></details>
+  <details><summary>What does <code>fetch(address).then(() =&gt; true, () =&gt; false)</code> give back when nothing is listening?</summary><div class="in"><p><code>false</code>. The failure is turned into an ordinary answer, so the waiting loop can simply try again.</p></div></details>
   <details><summary>Why did we install only Playwright?</summary><div class="in"><p>It is the only outside tool the test imports. A tool enters when a test needs it, not before.</p></div></details>
   <details><summary>Why commit while the test is failing?</summary><div class="in"><p>To prove the test can fail, to let the failure say what to build next, and so anyone can replay it from the history.</p></div></details>
   <details><summary>In your own words: why are there no comments in the test file?</summary><div class="in"><p>Small functions with clear names say what each step does, so the top of the file reads like a table of contents.</p></div></details>
