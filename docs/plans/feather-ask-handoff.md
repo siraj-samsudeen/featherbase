@@ -1,6 +1,6 @@
 # Feather Ask: Handoff For A Fresh Session
 
-**Last updated:** 20-Nov-2026, 04:50 UTC. To be refreshed before the account switch on 21-Nov-2026.
+**Last updated:** 23-Nov-2026 (Mohammad's decisions on scope, provider and real models).
 
 A living document so a new Claude project (on another account) can pick the work up cold; the
 earlier project could not be moved. Read this first, then the documents it points to. When
@@ -21,6 +21,8 @@ ones.
   Its own commits are the prototype, the #1371 proposal and design, the decisions record, and this
   file.
 - **Nothing on the branch is the #1377 build yet.** The prototype is a mockup of the screens.
+- **23-Nov-2026:** `main` merged into the branch. Scope widened to every app
+  and the target is a workable agent by the end of the week; see the Decisions Log.
 
 ## Read These, In This Order
 
@@ -93,6 +95,21 @@ Decisions taken after #1377 was written. The ones before it are in #1377 and
   provider" question that #1377 and the decisions record list as open, for GLM.
 - **20-Nov-2026, Siraj: a Gemini adapter on Siraj's own API key, for testing,** as another model
   behind plug 1.
+- **22-Nov-2026, Mohammad: Gemini gets real data too, and real models are tried from the first
+  build.** The stand-in stays for the tests, but the pipeline is also checked against real models
+  in the first build, not only later (this changes #1377 point 9). GLM is the model planned for use.
+- **23-Nov-2026, Mohammad: Ask is the agent for the whole of Featherbase and all its apps, from the
+  first build** (Dash, Tasker, Tickets and the rest), not one askable Table. This widens #1377
+  point 20 and pulls in part of #1372. Target: a workable agent by the end of the week of
+  23-Nov-2026.
+- **23-Nov-2026, Mohammad: OpenRouter is the provider,** and it is what keeps the cost of each
+  model known, so a choice of model per question is not ruled out on cost.
+- **23-Nov-2026, Mohammad: one provider key.** `OPENROUTER_API_KEY`, a deployment secret set per
+  environment by whoever deploys, never stored in the database or shown in the UI; the admin page
+  shows only "set / not set".
+- **23-Nov-2026, Mohammad: Feather Ask goes through PRs,** not the direct-push-to-main trial. Design
+  changes are pushed to the `issue-1377-feather-ask` branch; the widened scope needs no separate
+  sign-off.
 
 ## Learnings
 
@@ -109,12 +126,19 @@ Dated facts found while building or testing. Add new ones at the end.
 
 ## Still Open (ask the owner, one at a time)
 
-1. Does Gemini get real data, or only made-up test data?
-2. A fixed set of example questions with the answer each should give, run against the stand-in now
+Answered on 22/23-Nov-2026 (see the Decisions Log): Gemini gets real data; the provider is
+OpenRouter with one key; Ask covers every app from the first build; work goes through PRs.
+Still open:
+
+1. A fixed set of example questions with the answer each should give, run against the stand-in now
    and against each real model when it is plugged in (proposed in #1377, not agreed).
-3. Is the model fixed per environment, or switchable (by an admin, or per question)?
-4. Where the provider keys live (instance secrets, per environment, who may set them).
-5. Which Table becomes askable after sales versus target.
+2. Who may pick a model for one question: Ask Admins only (proposed), or everyone from an admin's
+   list. An admin sets the default per environment (GLM).
+3. Permissions across apps (proposed): every Ask read runs through the server's existing read path
+   as the person, the same check as the Admin list view, plus the askable list. Not yet checked in
+   the code for every app.
+4. Which Tables of which apps are askable on day one, and who keeps the list.
+5. Whether the prototype's listing in `client-apps/jeyarama/instances/dash/instance.json` stays.
 
 ## Next Steps
 
