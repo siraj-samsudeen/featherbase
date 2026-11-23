@@ -1,6 +1,6 @@
 import { build } from 'esbuild'
 
 await build({
-  entryPoints: ['src/server.ts'], bundle: true, format: 'esm', platform: 'node',
+  entryPoints: ['src/server/index.ts'], bundle: true, format: 'esm', platform: 'node',
   sourcemap: true, outfile: 'dist/server.mjs',
 })
