@@ -6,7 +6,7 @@
 // shows each number against what sold; a month with no Run yet has no grid.
 import { useMemo, useState } from 'react'
 import {
-  Button, Card, DrillPane, Field, Headline, Notice, PaneSection, PersonLabel, Segmented, StatusPill, TextInput,
+  Button, Card, DrillPane, Field, Headline, Notice, PaneSection, PersonLabel, Segmented, Select, StatusPill, TextInput,
   fmtINR, type StatusTone,
 } from '@featherbase/shop-floor'
 import {
@@ -41,6 +41,12 @@ export function Who({ name, className = 'w-full' }: { name: string; className?: 
 const weeksKey = (weeks: number[]) => (weeks.length === 5 ? '' : weeks.join(','))
 const sameScope = (n: NumberRow, sc: Scope) => n.store === sc.store && n.scope_level === sc.level && n.scope_name === sc.name && (n.weeks ?? '') === weeksKey(sc.weeks)
 const RANK = { Store: 0, Division: 1, Category: 2, Subcategory: 3 }
+/** What the grid shows. The engine's final carries a flat uplift: base = final ÷ (1 + uplift), uplift = final − base. */
+type Show = 'final' | 'base' | 'uplift'
+const SHOWS: { value: Show; label: string; word: string }[] = [
+  { value: 'final', label: 'Final (with the flat uplift)', word: 'final' }, { value: 'base', label: 'Base (before the flat uplift)', word: 'base' },
+  { value: 'uplift', label: 'Uplift only', word: 'uplift' }]
+const SHARE: Record<Show, number> = { final: 1, base: 1 / (1 + UPLIFT), uplift: UPLIFT / (1 + UPLIFT) }
 /** A scope's grid cells: subcategory × week. */
 const cellsOf = (sc: Scope) => new Set(SUBS.filter(s => inScope(s, sc)).flatMap(s => sc.weeks.map(w => `${s.name}:${w}`)))
 /** The Applied numbers above, below or across a cell (sharing some of its cells), not its own: what moves it. */
@@ -102,6 +108,10 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
     history.replaceState(null, '', `?${q}`)
   }
   const [open, setOpen] = useState(new Set(['Fashion', 'Women Ethnic Wear', 'Girls Bottom']))
+  // Which figure the grid shows: the final (with the flat uplift), the base before it, or the uplift alone. The
+  // engine's figure and the one after people's numbers are both shown the same way, so the struck-through logic holds.
+  const [show, setShow] = useState<Show>(SHOWS.some(o => o.value === params.get('show')) ? params.get('show') as Show : 'final')
+  const chooseShow = (v: Show) => { setShow(v); const q = new URLSearchParams(window.location.search); if (v === 'final') q.delete('show'); else q.set('show', v); history.replaceState(null, '', `?${q}`) }
   const [sel, setSel] = useState<Scope | null>(() => ({ store: params.get('store') ?? 'Lakeside', level: (params.get('level') as Scope['level']) ?? 'Category',
     name: params.get('name') ?? 'Women Ethnic Wear', weeks: params.get('weeks') ? parseWeeks(params.get('weeks')) : ALL_WEEKS }))
   const [chosenMode, setMode] = useState<'views' | 'why' | 'comments'>((params.get('pane') as 'views') ?? 'views')
@@ -121,7 +131,7 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
 
   const Cell = ({ r, weeks }: { r: Row; weeks: number[] }) => {
     const sc: Scope = { store, level: r.level, name: r.name, weeks }
-    const now = sum(r.subs, weeks), was = sum(r.subs, weeks, true)
+    const now = sum(r.subs, weeks) * SHARE[show], was = sum(r.subs, weeks, true) * SHARE[show]
     const views = mine(sc)
     const talk = commentsOf(ctx.data.decisions, m.key, sc).length
     const on = sel && sel.store === store && sel.level === r.level && sel.name === r.name && weeksKey(sel.weeks) === weeksKey(weeks)
@@ -150,7 +160,9 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
         detail={<>Applied for the month {fmtINR(total)} · engine {fmtINR(engine)}{Math.abs(total - engine) > 1 ? ` · people's numbers change it by ${total > engine ? '+' : '−'}${fmtINR(Math.abs(total - engine))}` : ' · no number applied yet'}</>}
         progress={{ value: Math.round((act / total) * 1000) / 10, marker: Math.round((fc / total) * 1000) / 10, label: closed ? 'Sold against the applied month figure' : 'Sold so far against the applied month figure' }} />
       <div className="flex flex-wrap items-center gap-3 text-[13px] text-ink-muted">
-        <span>A struck-through figure is the engine's; the one below it is after the Applied numbers.</span>
+        <div className="w-60"><Select value={show} onChange={e => chooseShow(e.target.value as Show)} aria-label="Show in the grid" data-testid="show">
+          {SHOWS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</Select></div>
+        <span>A struck-through figure is the engine's {SHOWS.find(o => o.value === show)!.word}; the one below it is after the Applied numbers.</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-positive" />Applied</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-caution" />Waiting</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-opportunity" />Reference</span>
@@ -249,9 +261,11 @@ function Views({ ctx, sc, now, numbers }: { ctx: Ctx; sc: Scope; now: number; nu
   return (
     <>
       {!mine && <Notice><span data-testid="read-only">Read only for you: this cell is outside your area ({areaText(ctx.viewer)}). You can see every number here; adding, applying, approving, promoting and withdrawing are for the people whose area it is.</span></Notice>}
-      <div className={`grid gap-2 rounded-card bg-subtle p-3 text-sm ${sold != null ? 'grid-cols-3' : 'grid-cols-2'}`}>
-        <div><div className="text-[13px] text-ink-muted">Engine</div><div className="text-lg font-semibold tabular-nums">{fmtINR(engine)}</div></div>
-        <div><div className="text-[13px] text-ink-muted">After Applied numbers</div><div className="text-lg font-semibold tabular-nums">{fmtINR(now)} <span className="text-sm font-normal text-ink-muted">{Math.abs(now - engine) > 1 ? signed(pct(now, engine)) : ''}</span></div></div>
+      <div className="grid grid-cols-2 gap-2 rounded-card bg-subtle p-3 text-sm" data-testid="three-figures">
+        <div><div className="text-[13px] text-ink-muted">Base, before the uplift</div><div className="text-lg font-semibold tabular-nums">{fmtINR(engine * SHARE.base)}</div></div>
+        <div><div className="text-[13px] text-ink-muted">Flat uplift, {Math.round(UPLIFT * 100)}%</div><div className="text-lg font-semibold tabular-nums">+{fmtINR(engine * SHARE.uplift)}</div></div>
+        <div><div className="text-[13px] text-ink-muted">Final, the engine's</div><div className="text-lg font-semibold tabular-nums">{fmtINR(engine)}</div></div>
+        <div><div className="text-[13px] text-ink-muted">After people's numbers</div><div className="text-lg font-semibold tabular-nums">{fmtINR(now)} <span className="text-sm font-normal text-ink-muted">{Math.abs(now - engine) > 1 ? signed(pct(now, engine)) : ''}</span></div></div>
         {sold != null && <div data-testid="sold"><div className="text-[13px] text-ink-muted">What sold</div><div className="text-lg font-semibold tabular-nums">{fmtINR(sold)}</div></div>}
       </div>
       <ol className="flex flex-col gap-3" data-testid="views-list">

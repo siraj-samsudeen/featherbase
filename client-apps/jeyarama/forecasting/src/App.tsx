@@ -49,7 +49,7 @@ type View = typeof VIEWS[number]['key']
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
   q.set('view', view)
-  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', ...CHART_KEYS]) q.delete(k)
+  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', ...CHART_KEYS]) q.delete(k)
   for (const [k, v] of Object.entries(extra)) q.set(k, v)
   return `?${q}`
 }
