@@ -10,8 +10,52 @@
   "client": "dist/client",
   "entryTable": "forecasting.number",
   "migrations": [
-    { "id": "month_picker_and_daily_sales", "fromVersion": "0.1.0", "toVersion": "0.2.0", "operations": [] },
-    { "id": "month_picker_beside_viewing_as", "fromVersion": "0.2.0", "toVersion": "0.3.0", "operations": [] }
+    {
+      "id": "month_picker_and_daily_sales",
+      "fromVersion": "0.1.0",
+      "toVersion": "0.2.0",
+      "operations": []
+    },
+    {
+      "id": "month_picker_beside_viewing_as",
+      "fromVersion": "0.2.0",
+      "toVersion": "0.3.0",
+      "operations": []
+    },
+    {
+      "id": "own_area",
+      "fromVersion": "0.3.0",
+      "toVersion": "0.4.0",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "forecasting.number",
+          "column": {
+            "column_name": "changed_by",
+            "label": "Last changed by",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.decision",
+          "column": {
+            "column_name": "scope_level",
+            "label": "Level",
+            "column_type": "Data"
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.decision",
+          "column": {
+            "column_name": "weeks",
+            "label": "Weeks (blank = the whole month)",
+            "column_type": "Data"
+          }
+        }
+      ]
+    }
   ],
   "tables": [
     {
@@ -119,6 +163,11 @@
           "column_name": "waiting_on",
           "label": "Waiting on",
           "column_type": "Data"
+        },
+        {
+          "column_name": "changed_by",
+          "label": "Last changed by",
+          "column_type": "Data"
         }
       ]
     },
@@ -185,6 +234,16 @@
           "label": "On",
           "column_type": "Data",
           "in_list_view": true
+        },
+        {
+          "column_name": "scope_level",
+          "label": "Level",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "weeks",
+          "label": "Weeks (blank = the whole month)",
+          "column_type": "Data"
         }
       ]
     },

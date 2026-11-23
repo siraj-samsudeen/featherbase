@@ -15,6 +15,7 @@ import {
 } from './madeUp'
 import { actualFor, completeTo, daysFor, engineFor, finalWeeks, totalsTo } from './sales'
 import { dateOf, monthOf, nowIST, weeksOf, type Month } from './months'
+import { areaText, covers } from './areas'
 import { NoRunYet, Page, type Ctx, type DecisionRow, type NumberRow } from './App'
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : 0)
@@ -217,6 +218,9 @@ function Why({ s }: { s: Sub }) {
 const nextUp = (p: Person) => (p.reportsTo ? person(p.reportsTo) : null)
 /** Every time written by the page is IST (months.ts). */
 const stamp = nowIST
+/** One step in a number's history, naming the number's exact scope (the server checks the decider's area). */
+export const logRow = (ctx: Ctx, n: NumberRow, decision: string, note: string) => ({ number: n.row_id, month: n.month, store: n.store, scope_level: n.scope_level,
+  scope_name: n.scope_name, weeks: n.weeks ?? '', decision, decided_by: ctx.viewer.name, decided_by_role: ctx.viewer.role, decided_on: stamp(), note })
 
 function Views({ ctx, sc, now, numbers }: { ctx: Ctx; sc: Scope; now: number; numbers: NumberRow[] }) {
   const m = ctx.month, closed = m.state === 'closed'
@@ -226,8 +230,10 @@ function Views({ ctx, sc, now, numbers }: { ctx: Ctx; sc: Scope; now: number; nu
   const sorted = [...numbers].sort((a, b) => a.entered_on.localeCompare(b.entered_on))
   const anyApplied = sorted.some(n => n.status === 'Applied')
   const [adding, setAdding] = useState(false)
+  const mine = covers(ctx.viewer, sc)
   return (
     <>
+      {!mine && <Notice><span data-testid="read-only">Read only for you: this cell is outside your area ({areaText(ctx.viewer)}). You can see every number here; adding, applying, approving, promoting and withdrawing are for the people whose area it is.</span></Notice>}
       <div className={`grid gap-2 rounded-card bg-subtle p-3 text-sm ${sold != null ? 'grid-cols-3' : 'grid-cols-2'}`}>
         <div><div className="text-[13px] text-ink-muted">Engine</div><div className="text-lg font-semibold tabular-nums">{fmtINR(engine)}</div></div>
         <div><div className="text-[13px] text-ink-muted">After Applied numbers</div><div className="text-lg font-semibold tabular-nums">{fmtINR(now)} <span className="text-sm font-normal text-ink-muted">{Math.abs(now - engine) > 1 ? signed(pct(now, engine)) : ''}</span></div></div>
@@ -245,7 +251,7 @@ function Views({ ctx, sc, now, numbers }: { ctx: Ctx; sc: Scope; now: number; nu
       </ol>
       {now !== engine && !anyApplied && <Notice>This scope moved because an Applied number above or below it was spread here.</Notice>}
       {closed ? <p className="text-[13px] text-ink-muted" data-testid="closed-no-add">{m.label} is closed: no number can be added or approved.</p>
-        : adding ? <AddNumber ctx={ctx} sc={sc} engine={engine} onDone={() => setAdding(false)} />
+        : !mine ? null : adding ? <AddNumber ctx={ctx} sc={sc} engine={engine} onDone={() => setAdding(false)} />
           : <div><Button variant="primary" onClick={() => setAdding(true)} data-testid="add-number">Add your number</Button></div>}
     </>
   )
@@ -261,16 +267,16 @@ const howText = (n: NumberRow) => {
 
 function NumberCard({ ctx, n, engine, sold, siblings }: { ctx: Ctx; n: NumberRow; engine: number; sold: number | null; siblings: NumberRow[] }) {
   const history = ctx.data.decisions.filter(d => d.number === n.row_id).sort((a, b) => a.decided_on.localeCompare(b.decided_on))
-  const open = ctx.month.state === 'current'
+  // Acting on a number (approving, promoting) is for people whose area its scope is; anyone may look.
+  const open = ctx.month.state === 'current' && covers(ctx.viewer, { store: n.store, level: n.scope_level, name: n.scope_name })
   const waitsForMe = open && n.status === 'Waiting' && n.waiting_on === ctx.viewer.name
   const [note, setNote] = useState('')
   const up = nextUp(ctx.viewer)
-  const log = (row: NumberRow, decision: string, text: string) => ctx.save('forecasting.decision', { number: row.row_id, month: row.month, store: row.store, scope_name: row.scope_name,
-    decision, decided_by: ctx.viewer.name, decided_by_role: ctx.viewer.role, decided_on: stamp(), note: text })
+  const log = (row: NumberRow, decision: string, text: string) => ctx.save('forecasting.decision', logRow(ctx, row, decision, text))
   const settle = siblings.filter(o => o.row_id !== n.row_id && (o.status === 'Applied' || (o.status === 'Waiting' && o.waiting_on === ctx.viewer.name)))
   const decide = async (decision: string, change: Partial<NumberRow>, others: NumberRow[] = []) => {
-    await ctx.save('forecasting.number', { ...n, ...change }); await log(n, decision, note)
-    for (const o of others) { await ctx.save('forecasting.number', { ...o, status: 'Reference', waiting_on: null }); await log(o, 'Kept as reference', `${n.entered_by}'s number was applied instead.`) }
+    await ctx.save('forecasting.number', { ...n, ...change, changed_by: ctx.viewer.name }); await log(n, decision, note)
+    for (const o of others) { await ctx.save('forecasting.number', { ...o, status: 'Reference', waiting_on: null, changed_by: ctx.viewer.name }); await log(o, 'Kept as reference', `${n.entered_by}'s number was applied instead.`) }
     await ctx.reload()
   }
   // Anyone senior can make a Reference number the applied one; the applied one it replaces becomes Reference.
@@ -334,11 +340,11 @@ function AddNumber({ ctx, sc, engine, onDone }: { ctx: Ctx; sc: Scope; engine: n
     const saved = await ctx.save('forecasting.number', {
       month: ctx.month.key, run: ctx.month.run, store: sc.store, section: sub?.section ?? '', scope_level: sc.level, scope_name: sc.name, weeks: weeksKey(sc.weeks),
       kind, value: next, weights_json: kind === 'Change the weights' ? JSON.stringify(w) : null,
-      entered_by: ctx.viewer.name, entered_by_role: ctx.viewer.role, entered_on: stamp(), reason, status, waiting_on: status === 'Waiting' ? up!.name : null })
-    await ctx.save('forecasting.decision', { number: saved.row_id, month: ctx.month.key, store: sc.store, scope_name: sc.name, decided_by: ctx.viewer.name, decided_by_role: ctx.viewer.role, decided_on: stamp(),
-      decision: status === 'Reference' ? 'Kept as reference' : status === 'Applied' ? 'Approved and applied' : 'Sent for approval',
-      note: status === 'Waiting' ? `To ${up!.name}` : status === 'Applied' ? "The Chief Executive's number applies without approval." : 'Held as a view.' })
-    if (status === 'Applied') for (const o of ctx.data.numbers.filter(o => o.month === ctx.month.key && sameScope(o, sc) && o.status === 'Applied')) await ctx.save('forecasting.number', { ...o, status: 'Reference' })
+      entered_by: ctx.viewer.name, entered_by_role: ctx.viewer.role, entered_on: stamp(), reason, status, waiting_on: status === 'Waiting' ? up!.name : null, changed_by: ctx.viewer.name })
+    await ctx.save('forecasting.decision', logRow(ctx, saved as unknown as NumberRow,
+      status === 'Reference' ? 'Kept as reference' : status === 'Applied' ? 'Approved and applied' : 'Sent for approval',
+      status === 'Waiting' ? `To ${up!.name}` : status === 'Applied' ? "The Chief Executive's number applies without approval." : 'Held as a view.'))
+    if (status === 'Applied') for (const o of ctx.data.numbers.filter(o => o.month === ctx.month.key && sameScope(o, sc) && o.status === 'Applied')) await ctx.save('forecasting.number', { ...o, status: 'Reference', changed_by: ctx.viewer.name })
     await ctx.reload(); onDone()
   }
   return (

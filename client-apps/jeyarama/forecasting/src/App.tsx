@@ -15,8 +15,11 @@ export interface NumberRow {
   row_id: string; month: string; run: string; store: string; section: string; scope_level: 'Store' | 'Division' | 'Category' | 'Subcategory'; scope_name: string; weeks: string | null
   kind: string; value: number; weights_json: string | null; entered_by: string; entered_by_role: string; entered_on: string
   reason: string; status: 'Waiting' | 'Applied' | 'Reference' | 'Not approved'; waiting_on: string | null
+  /** Who last changed it: the server checks their area. */
+  changed_by: string | null
 }
-export interface DecisionRow { row_id: string; number: string | null; month: string; store: string; scope_name: string; decision: string; decided_by: string; note: string | null; decided_on: string }
+export interface DecisionRow { row_id: string; number: string | null; month: string; store: string; scope_level: string | null; scope_name: string; weeks: string | null
+  decision: string; decided_by: string; note: string | null; decided_on: string }
 export interface QuestionRow { row_id: string; ref: string; month: string; scope: string; question: string; detail: string | null; asked_by: string; asked_on: string
   answer: string | null; answered_by: string | null; answered_on: string | null; outcome: string; impact: string | null; follow_up: string | null; idea_ref: string | null }
 export interface IdeaRow { row_id: string; ref: string; label: string; title: string; kind: string; raised_by: string; raised_on: string; why: string; tried: string; found: string
@@ -140,8 +143,8 @@ export function ForecastingApp() {
   const reload = useCallback(async () => {
     try {
       const [numbers, decisions, questions, ideas] = await Promise.all([
-        listAll<NumberRow>('forecasting.number', ['month', 'run', 'store', 'section', 'scope_level', 'scope_name', 'weeks', 'kind', 'value', 'weights_json', 'entered_by', 'entered_by_role', 'entered_on', 'reason', 'status', 'waiting_on']),
-        listAll<DecisionRow>('forecasting.decision', ['number', 'month', 'store', 'scope_name', 'decision', 'decided_by', 'decided_by_role', 'note', 'decided_on']),
+        listAll<NumberRow>('forecasting.number', ['month', 'run', 'store', 'section', 'scope_level', 'scope_name', 'weeks', 'kind', 'value', 'weights_json', 'entered_by', 'entered_by_role', 'entered_on', 'reason', 'status', 'waiting_on', 'changed_by']),
+        listAll<DecisionRow>('forecasting.decision', ['number', 'month', 'store', 'scope_level', 'scope_name', 'weeks', 'decision', 'decided_by', 'decided_by_role', 'note', 'decided_on']),
         listAll<QuestionRow>('forecasting.review_question', ['ref', 'month', 'scope', 'question', 'detail', 'asked_by', 'asked_on', 'answer', 'answered_by', 'answered_on', 'outcome', 'impact', 'follow_up', 'idea_ref']),
         listAll<IdeaRow>('forecasting.idea', ['ref', 'label', 'title', 'kind', 'raised_by', 'raised_on', 'why', 'tried', 'found', 'verdict', 'outcome', 'status_note', 'decided_on', 'revisit', 'areas', 'evidence'])])
       // A Currency column comes back as text ("750000.00"); the pages add and compare it.

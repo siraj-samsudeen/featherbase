@@ -64,7 +64,7 @@ for (const n of records.numbers as Seed[]) {
   const { key: _key, history, weights, percent: _percent, ...row } = n
   const id = await save('forecasting.number', { ...row, value: figure, weights_json: weights ? JSON.stringify(weights) : null })
   for (const [decision, by, on, note] of history)
-    await save('forecasting.decision', { number: id, month: n.month, store: n.store, scope_name: n.scope_name, decision, decided_by: by, decided_on: on, note })
+    await save('forecasting.decision', { number: id, month: n.month, store: n.store, scope_level: n.scope_level, scope_name: n.scope_name, weeks: n.weeks, decision, decided_by: by, decided_on: on, note })
 }
 for (const c of records.comments) await save('forecasting.decision', c)
 
