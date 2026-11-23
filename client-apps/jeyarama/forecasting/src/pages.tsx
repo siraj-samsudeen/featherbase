@@ -40,7 +40,7 @@ export function NumbersPage({ ctx }: { ctx: Ctx }) {
         </div>
       </Card>
       <Card title={`Every Number, ${m.label}`} actions={<Segmented label="Status" value={status} onChange={setStatus}
-        options={(['All', 'Waiting', 'Applied', 'Reference', 'Not approved'] as const).map(v => ({ value: v, label: v }))} />}>
+        options={(['All', 'Waiting', 'Applied', 'Reference', 'Not approved', 'Withdrawn'] as const).map(v => ({ value: v, label: v }))} />}>
         <div className="px-4 pb-4"><DataList caption="Every number" rows={rows} columns={columns} rowKey={n => n.row_id} layout="table"
           empty={{ title: 'No numbers', body: m.state === 'empty' ? `${m.label} has no Run yet, so no number can be entered.` : status === 'All' ? `No number was entered for ${m.label}.` : 'No number has this status.' }} /></div>
       </Card>
@@ -103,7 +103,7 @@ export function RunsPage({ ctx }: { ctx: Ctx }) {
 interface Graded { n: NumberRow; engine: number; actual: number; off: number; engineOff: number; closer: number }
 export function ResultsPage({ ctx }: { ctx: Ctx }) {
   const m = ctx.month
-  const graded: Graded[] = ctx.data.numbers.filter(n => n.month === m.key && m.state === 'closed').map(n => {
+  const graded: Graded[] = ctx.data.numbers.filter(n => n.month === m.key && m.state === 'closed' && n.status !== 'Withdrawn').map(n => {
     const sc = { store: n.store, level: n.scope_level, name: n.scope_name }
     const engine = engineFor({ ...sc, weeks: parseWeeks(n.weeks) }, m.key), actual = actualFor(sc, m.key)
     const off = Math.abs(n.value - actual), engineOff = Math.abs(engine - actual)

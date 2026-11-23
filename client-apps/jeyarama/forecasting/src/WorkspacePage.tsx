@@ -16,11 +16,12 @@ import {
 import { actualFor, completeTo, daysFor, engineFor, finalWeeks, totalsTo } from './sales'
 import { dateOf, monthOf, nowIST, weeksOf, type Month } from './months'
 import { areaText, covers } from './areas'
+import { OwnActions } from './MyNumbersPage'
 import { NoRunYet, Page, type Ctx, type DecisionRow, type NumberRow } from './App'
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b - 1) * 100) : 0)
 const signed = (p: number) => `${p >= 0 ? '+' : ''}${p}%`
-export const STATUS_TONE: Record<string, StatusTone> = { Applied: 'positive', Waiting: 'caution', Reference: 'opportunity', 'Not approved': 'negative' }
+export const STATUS_TONE: Record<string, StatusTone> = { Applied: 'positive', Waiting: 'caution', Reference: 'opportunity', 'Not approved': 'negative', Withdrawn: 'neutral' }
 /** 20-Nov-2026, or 20-Nov-2026 16:05 IST when the stamp has a time (every stamp is IST). */
 export const when = (s: string) => {
   const [d, t] = s.split(' ')
@@ -120,7 +121,7 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
           {changed && <span className="text-[11px] text-ink-muted line-through">{fmtINR(was)}</span>}
           <span className={changed ? 'font-semibold text-action' : ''}>{fmtINR(now)}</span>
           {views.length > 0 && <span className="mt-0.5 flex gap-1">{views.map(v => <span key={v.row_id} title={`${v.entered_by}: ${v.status}`}
-            className={`size-1.5 rounded-full ${v.status === 'Applied' ? 'bg-positive' : v.status === 'Waiting' ? 'bg-caution' : v.status === 'Reference' ? 'bg-opportunity' : 'bg-negative'}`} />)}</span>}
+            className={`size-1.5 rounded-full ${v.status === 'Applied' ? 'bg-positive' : v.status === 'Waiting' ? 'bg-caution' : v.status === 'Reference' ? 'bg-opportunity' : v.status === 'Withdrawn' ? 'bg-border-control' : 'bg-negative'}`} />)}</span>}
         </button>
       </td>
     )
@@ -328,6 +329,7 @@ function NumberCard({ ctx, n, engine, sold, siblings }: { ctx: Ctx; n: NumberRow
             for (const o of siblings.filter(o => o.row_id !== n.row_id && o.status === 'Applied')) { await ctx.save('forecasting.number', { ...o, status: 'Reference', changed_by: ctx.viewer.name }); await log(o, 'Kept as reference', `${n.entered_by}'s number was made the applied one instead.`) }
             await ctx.reload() })() }}>Make this the applied number</Button></div>
         </div>)}
+      <OwnActions ctx={ctx} n={n} />
     </li>
   )
 }

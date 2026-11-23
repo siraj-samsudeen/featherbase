@@ -33,6 +33,12 @@ function prepareNumber(ctx: Context) {
   if (ctx.isNew) return inArea(ctx, row.entered_by, row.store, row.scope_level, row.scope_name)
   const acted = ['status', 'value', 'waiting_on', 'reason', 'kind'].some(k => String(row[k] ?? '') !== String(old?.[k] ?? ''))
   if (acted) inArea(ctx, row.changed_by, row.store, row.scope_level, row.scope_name)
+  // A number is withdrawn or changed only by the person who entered it, while it waits.
+  const edited = ['value', 'reason', 'kind'].some(k => String(row[k] ?? '') !== String(old?.[k] ?? ''))
+  if ((row.status === 'Withdrawn' && old?.status !== 'Withdrawn') || edited) {
+    if (row.changed_by !== row.entered_by) ctx.reject('Only the person who entered a number withdraws or changes it')
+    if (old?.status !== 'Waiting') ctx.reject('A number is withdrawn or changed only while it waits for approval')
+  }
   // The Chief Executive's applied number is replaced by the Chief Executive alone.
   if (old?.status === 'Applied' && row.status !== 'Applied' && old.entered_by_role === 'Chief Executive' && personNamed(row.changed_by)?.role !== 'Chief Executive')
     ctx.reject("Only the Chief Executive can replace the Chief Executive's applied number")

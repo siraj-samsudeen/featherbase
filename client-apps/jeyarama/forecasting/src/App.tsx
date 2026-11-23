@@ -8,13 +8,14 @@ import { listAll, saveRow } from './api'
 import { PEOPLE, person, type Person } from './madeUp'
 import { MONTH_OPTIONS, monthOf, type Month } from './months'
 import { ChartsPage } from './ChartsPage'
+import { MyNumbersPage, unseenFor } from './MyNumbersPage'
 import { WorkspacePage } from './WorkspacePage'
 import { IdeasPage, NumbersPage, ResultsPage, ReviewPage, RunsPage } from './pages'
 
 export interface NumberRow {
   row_id: string; month: string; run: string; store: string; section: string; scope_level: 'Store' | 'Division' | 'Category' | 'Subcategory'; scope_name: string; weeks: string | null
   kind: string; value: number; weights_json: string | null; entered_by: string; entered_by_role: string; entered_on: string
-  reason: string; status: 'Waiting' | 'Applied' | 'Reference' | 'Not approved'; waiting_on: string | null
+  reason: string; status: 'Waiting' | 'Applied' | 'Reference' | 'Not approved' | 'Withdrawn'; waiting_on: string | null
   /** Who last changed it: the server checks their area. */
   changed_by: string | null
 }
@@ -31,6 +32,7 @@ export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => P
 const VIEWS = [
   { key: 'forecasts', label: 'Workspace', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 3v18' },
   { key: 'numbers', label: 'Ledger', group: 'Forecasts', icon: 'M20 6 9 17l-5-5' },
+  { key: 'mine', label: 'My Numbers', group: 'Forecasts', icon: 'M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10' },
   { key: 'runs', label: 'Runs & Targets', group: 'Forecasts', icon: 'M4 6h16M4 12h16M4 18h10' },
   { key: 'results', label: 'Results', group: 'Learning', icon: 'M3 3v18h18M7 14v3m5-8v8m5-12v12' },
   { key: 'charts', label: 'Charts', group: 'Learning', icon: 'M3 3v18h18M7 16l4-5 4 3 5-7' },
@@ -78,7 +80,7 @@ function useMonth() {
 /** Waiting for this person: numbers whose next step is theirs. */
 export const waitingFor = (data: Data, viewer: Person) => data.numbers.filter(n => n.status === 'Waiting' && n.waiting_on === viewer.name)
 
-function Sidebar({ current, waiting }: { current: View; waiting: number }) {
+function Sidebar({ current, waiting, news }: { current: View; waiting: number; news: number }) {
   const groups = ['Forecasts', 'Learning']
   return createElement('featherbase-sidebar', { 'aria-label': 'Forecasting navigation' },
     ...groups.flatMap(group => [
@@ -86,7 +88,7 @@ function Sidebar({ current, waiting }: { current: View; waiting: number }) {
       ...VIEWS.filter(v => v.group === group).map(v => (
         <a key={v.key} href={address(v.key)} {...(current === v.key ? { 'aria-current': 'page' as const } : {})}>
           <svg className="max-sm:hidden" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d={v.icon} /></svg>
-          <span>{v.label}{v.key === 'numbers' && waiting ? ` (${waiting})` : ''}</span>
+          <span data-testid={`nav-${v.key}`}>{v.label}{v.key === 'numbers' && waiting ? ` (${waiting})` : ''}{v.key === 'mine' && news ? ` (${news} new)` : ''}</span>
         </a>)),
     ]))
 }
@@ -163,15 +165,18 @@ export function ForecastingApp() {
   }
 
   const ctx: Ctx | null = data ? { data, viewer, month, reload, save: saveRow } : null
+  // My Numbers' count of updates not yet seen; opening the page marks them seen and redraws the sidebar.
+  const [, setSeen] = useState(0)
   return (
     <div className="fc-shell">
-      <Sidebar current={view} waiting={data ? waitingFor(data, viewer).length : 0} />
+      <Sidebar current={view} waiting={data ? waitingFor(data, viewer).length : 0} news={data ? unseenFor(data, viewer).length : 0} />
       <main className="fc-page" data-testid={`page-${view}`}>
         <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} />
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
             : view === 'forecasts' ? <WorkspacePage ctx={ctx} />
               : view === 'numbers' ? <NumbersPage ctx={ctx} />
+              : view === 'mine' ? <MyNumbersPage key={viewer.id} ctx={ctx} onSeen={() => setSeen(t => t + 1)} />
                 : view === 'runs' ? <RunsPage ctx={ctx} />
                   : view === 'results' ? <ResultsPage ctx={ctx} />
                   : view === 'charts' ? <ChartsPage key={month.key} ctx={ctx} />

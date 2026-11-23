@@ -73,6 +73,35 @@
           }
         }
       ]
+    },
+    {
+      "id": "my_numbers_withdraw_and_change",
+      "fromVersion": "0.5.0",
+      "toVersion": "0.6.0",
+      "operations": [
+        {
+          "kind": "alterColumn",
+          "table": "forecasting.number",
+          "column": "status",
+          "from": {
+            "choices": "Waiting\nApplied\nReference\nNot approved"
+          },
+          "to": {
+            "choices": "Waiting\nApplied\nReference\nNot approved\nWithdrawn"
+          }
+        },
+        {
+          "kind": "alterColumn",
+          "table": "forecasting.decision",
+          "column": "decision",
+          "from": {
+            "choices": "Sent for approval\nSent up\nApproved and applied\nMade the applied number\nKept as reference\nNot approved\nComment\nThis is wrong"
+          },
+          "to": {
+            "choices": "Sent for approval\nSent up\nApproved and applied\nMade the applied number\nKept as reference\nNot approved\nWithdrawn\nEdited\nComment\nThis is wrong"
+          }
+        }
+      ]
     }
   ],
   "tables": [
@@ -173,7 +202,7 @@
           "column_name": "status",
           "label": "Status",
           "column_type": "Choice",
-          "choices": "Waiting\nApplied\nReference\nNot approved",
+          "choices": "Waiting\nApplied\nReference\nNot approved\nWithdrawn",
           "reqd": true,
           "in_list_view": true
         },
@@ -226,7 +255,7 @@
           "column_name": "decision",
           "label": "What happened",
           "column_type": "Choice",
-          "choices": "Sent for approval\nSent up\nApproved and applied\nMade the applied number\nKept as reference\nNot approved\nComment\nThis is wrong",
+          "choices": "Sent for approval\nSent up\nApproved and applied\nMade the applied number\nKept as reference\nNot approved\nWithdrawn\nEdited\nComment\nThis is wrong",
           "reqd": true,
           "in_list_view": true
         },
