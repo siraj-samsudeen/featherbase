@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lesson 9: A sturdier front-door test</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="tutorial.css">
+<script src="tutorial.js" defer></script>
+</head>
+<body>
+<main>
+<div class="top"><a href="index.html">All lessons</a><span class="eyebrow" style="margin:0">Lesson 9 of 10</span></div><h1>A sturdier front-door test</h1><p class="lead">Lesson 7 moved the <code>bun start</code> check into a test of its own, unchanged. This lesson makes it sturdier: a free port, a real look at the page, and a quiet run. Then it makes the clean-up safe even when the test fails.</p><div class="meta"><span class="chip ">Commit: test</span><span class="chip blue">Commit: refactor</span><span class="chip ">About 12 minutes</span></div><h2><span class="q">From the last lesson</span>Answer, then open each one</h2><details><summary>Which check catches a typo in <code>start.ts</code>?</summary><div class="in"><p>The starting test from lesson 7. The coverage gate cannot see <code>start.ts</code>, because it runs in a second program.</p></div></details><details><summary>What should you do before trusting a safety check?</summary><div class="in"><p>See it fail. Break something on purpose and watch the check catch it.</p></div></details><h2><span class="q">Question 1</span>What is weak about the moved test?</h2><p>It is lesson 1's code, moved as it was. That kept the proof alive, but it carried lesson 1's shortcuts along:</p><ul><li><b>A fixed port.</b> It always uses 3210. If anything else on the machine is using 3210, such as another test run or another app, the test fails for no reason, or worse, talks to that other program and passes.</li><li><b>"The port it is given" is barely checked.</b> The port is always the same, so a <code>start.ts</code> that ignored <code>PORT</code> and always used 3210 would still pass.</li><li><b>Two questions where one would do.</b> The knock loop asks "is anyone there?", then the test asks again for the page.</li><li><b>A noisy run.</b> <code>bun start</code> prints into the test output on every run, including the SIGTERM line from lesson 2.</li></ul><h2><span class="q">Question 2</span>What are the options?</h2><div class="opt"><h3>A. Leave it</h3><p>It works today.</p><p class="bites"><b>Bites later:</b> the day two runs overlap, or something else takes port 3210, it fails in ways that are hard to explain.</p></div><div class="opt chosen"><h3>B. A free port, one request that reads the page, and a quiet run <span class="pick">We chose this</span></h3><p>Still no browser: start the program, wait until it answers, check the welcome words.</p><p class="bites"><b>Costs:</b> a quiet run also hides <code>bun start</code>'s own error message when it fails. You learn <em>that</em> it broke, not <em>why</em>.</p></div><div class="opt"><h3>C. Open the page in a browser</h3><p>The way the Home tests do.</p><p class="bites"><b>Why not:</b> heavier, and it proves nothing more here. The Home tests already prove what a browser shows.</p></div><p>The criterion stays as lesson 7 wrote it. Only now are its last words, "on the port it is given", really checked, because the port is different on every run.</p><h2><span class="q">Question 3</span>What does the test look like now?</h2><p class="file">features/foundations/starting/starting.test.ts</p>
+<pre><code>import { afterAll, expect, test } from &quot;bun:test&quot;;
+
+let featherbase: ReturnType&lt;typeof Bun.spawn&gt; | undefined;
+
+afterAll(() =&gt; {
+  stopFeatherbase();
+});
+
+test(&quot;Running `bun start` opens Featherbase on the port it is given.&quot;, async () =&gt; {
+  const port = aFreePort();
+  runBunStartOn(port);
+  const page = await pageOnceItAnswers(`http://localhost:${port}`);
+  expect(page).toContain(&quot;Welcome to Featherbase&quot;);
+});</code></pre><p>Four lines tell the story: get a free port, run <code>bun start</code> on it, fetch the page once it answers, expect the welcome words.</p><details><summary>Show me the helpers</summary><div class="in"><pre><code>function aFreePort() {
+  const probe = Bun.serve({ port: 0, fetch: () =&gt; new Response() });
+  const port = probe.port;
+  probe.stop(true);
+  return port;
+}
+
+function runBunStartOn(port: number | undefined) {
+  featherbase = Bun.spawn([&quot;bun&quot;, &quot;start&quot;], {
+    env: { ...process.env, PORT: String(port) },
+    stdout: &quot;ignore&quot;,
+    stderr: &quot;ignore&quot;,
+  });
+}
+
+async function pageOnceItAnswers(address: string) {
+  const giveUpAt = Date.now() + 3000;
+  while (true) {
+    const page = await fetch(address).then(
+      (response) =&gt; response.text(),
+      () =&gt; undefined,
+    );
+    if (page !== undefined) return page;
+    if (Date.now() &gt; giveUpAt) throw new Error(`bun start did not open Featherbase at ${address}`);
+    await Bun.sleep(50);
+  }
+}
+
+function stopFeatherbase() {
+  featherbase?.kill();
+}</code></pre><p><code>aFreePort</code> opens a throwaway server on "any port", notes which port the computer chose, and closes it.</p></div></details><details><summary>Why is there no <code>beforeAll</code> here, when the other test file has one?</summary><div class="in"><p>In the Home tests, starting Featherbase is preparation that two tests share, and neither test is about starting. Here, starting is the very thing being tested. Hidden in <code>beforeAll</code>, the test body would have nothing left to say.</p></div></details><h2><span class="q">Question 4</span>We changed a test. Does it still fail when it should?</h2><p>A changed test has to earn trust again, so we break the code on purpose.</p><p>A typo in <code>start.ts</code>, <code>lisen</code> for <code>listen</code>:</p><pre class="out"><code>error: bun start did not open Featherbase at http://localhost:39035
+ 2 pass
+ 1 fail</code></pre><p>A typo in the <code>start</code> line of <code>package.json</code> gives the same failure. With both restored, all three tests pass. Notice what the message does not say: the real cause, <code>TypeError: createFeatherbase().lisen is not a function</code>, was printed by <code>bun start</code> and thrown away with its output. That is the cost we chose in Question 2, and it also takes 3 seconds to fail, because the knock loop has to give up.</p><p>The commit starts with <code>test:</code>, meaning a change to a test, not to what Featherbase does.</p><details><summary>Could we keep the quiet run and still see why it failed?</summary><div class="in"><p>Yes: collect <code>bun start</code>'s output instead of throwing it away, and print it only when the test fails. Green runs stay quiet; red runs say why. It is a few more lines, worth adding the first time this test fails for real.</p></div></details><h2><span class="q">Question 5</span>Why not stop the program right at the end of the test?</h2><p>It is a natural question. The test starts the program, so why does a separate <code>afterAll</code> stop it? Because of what happens on failure. If these were the last two lines:</p><pre><code>  expect(page).toContain(&quot;Welcome to Featherbase&quot;);
+  stopFeatherbase();</code></pre><p>and the <code>expect</code> fails, the test ends at that line. The stop never runs, and a stray Featherbase keeps running on the machine. <code>afterAll</code> runs whether the test passed or failed.</p><p>But there is a way to keep start and stop together and still be safe:</p><pre><code>test(&quot;Running `bun start` opens Featherbase on the port it is given.&quot;, async () =&gt; {
+  const port = aFreePort();
+  const featherbase = runBunStartOn(port);
+  try {
+    const page = await pageOnceItAnswers(`http://localhost:${port}`);
+    expect(page).toContain(&quot;Welcome to Featherbase&quot;);
+  } finally {
+    featherbase.kill();
+  }
+});</code></pre><p><code>try ... finally</code> means: do this part, and whatever happens, pass or fail, do the <code>finally</code> part afterwards. For this, <code>runBunStartOn</code> hands back the program it started, by saying <code>return Bun.spawn(...)</code>. The variable at the top of the file, the <code>afterAll</code> block and <code>stopFeatherbase</code> all disappear. This became a small <code>refactor:</code> commit.</p><p>Which is better? It depends on who owns the thing being cleaned up. One test owns this program, so the clean-up sits inside that test. In the Home tests, two tests share one browser, so <code>beforeAll</code> and <code>afterAll</code> still fit there.</p><div class="box key"><span class="tag">The habit to take away</span><p>Whatever a test starts, it must stop, even when it fails. Put the clean-up where failure cannot skip it, and as close to the start as sharing allows.</p></div><div class="box pro"><span class="tag">A step further</span><p>The honest gap that remains: the default port, 3000, is untested, because it may be busy on any machine that runs the suite. Name such gaps in writing. An acknowledged gap is a decision. An unnoticed one is a bug waiting.</p></div><h3>Try it yourself</h3><pre><code>git checkout f430e0f &amp;&amp; bun install &amp;&amp; bun test      # 3 pass
+sed -i &#x27;s/listen/lisen/&#x27; start.ts &amp;&amp; bun test       # the starting test fails
+git checkout start.ts &amp;&amp; bun test                    # 3 pass again</code></pre><p>Pass, fail, pass.</p><hr><h2><span class="q">Check yourself</span>Answer, then open each one</h2><details><summary>What could a fixed port like 3210 get wrong?</summary><div class="in"><p>Another program on that port makes the test fail for no reason, or answers in Featherbase's place.</p></div></details><details><summary>What does keeping <code>bun start</code> quiet cost?</summary><div class="in"><p>When it fails, its own error message is thrown away, so the test says that it broke, not why.</p></div></details><details><summary>What do you do after changing a test?</summary><div class="in"><p>Break the code on purpose and confirm the test still fails, then restore it.</p></div></details><details><summary>What does a <code>test:</code> commit tell the reader?</summary><div class="in"><p>The change is to a test, not to what Featherbase does, and the changed test was seen to fail when the code is broken.</p></div></details><details><summary>Why is stopping the program on the line after <code>expect</code> unsafe?</summary><div class="in"><p>If the <code>expect</code> fails, the test ends there and the stop never runs.</p></div></details><details><summary>When is <code>try ... finally</code> the better fit, and when <code>afterAll</code>?</summary><div class="in"><p><code>try ... finally</code> when one test owns what it started. <code>afterAll</code> when several tests share it.</p></div></details><div class="next"><b>Next: Lesson 10, a machine that never forgets</b>Carry this question with you: all of this runs on one machine, when someone remembers to run it. What if they forget?</div><div class="pager"><a href="lesson-8.html">Back: lesson 8</a><a href="lesson-10.html">Lesson 10</a></div>
+</main>
+</body>
+</html>

@@ -2,15 +2,12 @@
 
 The scene: a person opens Featherbase.
 
-## Sentences
+## Acceptance criteria
 
-Not yet agreed with the owner. The first build, `journeys/1-featherbase-opens.md`, needs these two; write
-them with the owner before the tests:
-
-1. On a fresh install, Home says there is nothing here yet and offers "Import data".
-2. Home lists your Tables, each with how many rows it has.
-
-## Decided
-
-Home shows only what exists. A feature adds its own entry under "Start" when it is built; nothing is shown
-greyed out as coming later. The page reads its list of Tables from the database.
+1. Opening Featherbase shows "Welcome To Featherbase".
+2. Opening an address Featherbase does not have shows "Page not found".
+3. Home has a link "Import Data" that opens the Import Data page.
+4. Home lists each Table with its Columns, its key and its number of rows: "2 Columns, keyed by Code", "3 rows".
+   Its name opens the list.
+5. Home says when each Table last changed: "changed today". (Proposed by Claude. Not yet agreed by Siraj.)
+6. Once there is a Table, the welcome gives way to the lists. (Proposed by Claude. Not yet agreed by Siraj.)

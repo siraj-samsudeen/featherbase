@@ -1,12 +1,21 @@
 # Browsing
 
-The scene: a Table exists and a person opens it.
+The scene: a Table exists and a person opens its list.
 
-## Sentences
+## Acceptance criteria
 
-One sentence per rule, in everyday words. Each sentence has exactly one test, named with the sentence word
-for word. Where a sentence has a table, the test runs the table's rows as written here. See `TESTING.md`.
+Proposed by Claude while building the journey `journeys/importing-a-spreadsheet.md`. Not yet agreed by Siraj.
 
-1. The list shows the rows in key order, 10 at a time, and says how many there are in all.
-2. Opening a row shows all its values and where it came from.
-3. Dates are shown as 01-Jan-2015.
+1. The list shows every row in the file's order and says how many there are: "24 rows".
+2. Each value is shown the way its type reads best. A blank cell is shown as a dash.
+
+   | Cells in the Column | Shown as |
+   |---|---|
+   | `2015-01-01`, `2024-12-31`, blank | 01-Jan-2015, 31-Dec-2024, — |
+   | `true`, `false`, blank | Yes, No, — |
+   | `48`, `37.5`, blank | 48, 37.5, — |
+   | `Sales`, `Billing`, `Sales`, `Billing`, blank | Sales, Billing, Sales, Billing, — |
+   | `Asha`, `Bala`, blank | Asha, Bala, — |
+
+3. Text is shown exactly as it was written in the file, even when it looks like HTML.
+4. Opening a Table Featherbase does not have shows "Page not found".

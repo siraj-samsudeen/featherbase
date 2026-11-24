@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Building Featherbase test-first</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="tutorial.css">
+<script src="tutorial.js" defer></script>
+</head>
+<body>
+<main>
+<p class="eyebrow">A tutorial in 10 short lessons</p>
+<h1>Building Featherbase test-first</h1>
+<p class="lead">How a real project begins: one sentence, one failing test, the least code that passes.</p>
+<h2><span class="q">Before you start</span>What you need</h2>
+<p>A computer with <a href="https://bun.sh">Bun</a> and git installed, and a copy of the Featherbase repository on the branch <code>first-build-welcome-page</code>.</p>
+<h2><span class="q">The lessons</span>Each one follows one small step in the history</h2>
+<ul class="toc"><li><a href="lesson-1.html"><small>Lesson 1</small><b>The first failing test</b><span>We write no page at all. We write the proof that the page is missing, and save that failure on purpose.</span></a></li><li><a href="lesson-2.html"><small>Lesson 2</small><b>The least code that passes</b><span>The test is failing because nothing starts. In this lesson we write the smallest program that makes it pass, and we resist writing anything more.</span></a></li><li><a href="lesson-3.html"><small>Lesson 3</small><b>A second behaviour: page not found</b><span>We found a flaw: every address shows the welcome page. Before fixing it, we write down what should happen instead, and a test that fails until it does.</span></a></li><li><a href="lesson-4.html"><small>Lesson 4</small><b>The least fix for page not found</b><span>The program learns to look at the address, and we look closely at what an address is made of.</span></a></li><li><a href="lesson-5.html"><small>Lesson 5</small><b>Changing the tool without changing the behaviour</b><span>We hand-wrote address matching. Frameworks exist to do that. This lesson swaps the tool underneath while the tests stand guard, and that is what the word refactor means.</span></a></li><li><a href="lesson-6.html"><small>Lesson 6</small><b>Asking what the tool already does</b><span>We still label every page ourselves. We ask what the tool can already do, remove our helper, and count what the change really cost.</span></a></li><li><a href="lesson-7.html"><small>Lesson 7</small><b>Letting the tests see the code</b><span>We want to know which lines no test proves. The tests start Featherbase themselves so coverage can see it, and the proof of <code>bun start</code> moves to a test of its own instead of being dropped.</span></a></li><li><a href="lesson-8.html"><small>Lesson 8</small><b>A gate that says no</b><span>Measuring is not enforcing. This lesson makes the test run fail whenever any line is unproven, and shows how to prove that a setting works when there is nothing to write a test about.</span></a></li><li><a href="lesson-9.html"><small>Lesson 9</small><b>A sturdier front-door test</b><span>The test that runs the real <code>bun start</code> gets a free port, a real look at the page and a quiet run, and its clean-up becomes safe even when it fails.</span></a></li><li><a href="lesson-10.html"><small>Lesson 10</small><b>A machine that never forgets</b><span>Every check so far runs only when a person runs it. This last lesson hands the job to GitHub, so that every push is tested on a clean machine without anyone remembering.</span></a></li></ul>
+</main>
+</body>
+</html>
