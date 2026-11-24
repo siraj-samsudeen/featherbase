@@ -57,7 +57,9 @@ export function checkBudget(cells: string[][], known: { plants: PlantName[]; lin
     const bad = (problem: string) => ({ cells: row, problem, values: [] })
     const plant = plantOf(known.plants, row[0] ?? '')
     if (!plant) return bad(`No store is called ${row[0] || '(blank)'}`)
-    const line = known.lines.find(l => same(l.line_name, row[1] ?? '') || same(l.row_id, row[1] ?? ''))
+    // A working line can be named like the published line it rolls into (Interest): a budget means the published one.
+    const named = known.lines.filter(l => same(l.line_name, row[1] ?? '') || same(l.row_id, row[1] ?? ''))
+    const line = named.find(l => l.level === 'Published' && l.line_kind !== 'Subtotal') ?? named[0]
     if (!line) return bad(`No P&L line is called ${row[1] || '(blank)'}`)
     if (line.line_kind === 'Subtotal') return bad(`${line.line_name} is a subtotal: it is worked out, not budgeted`)
     if (line.level !== 'Published') return bad(`${line.line_name} is a working line: a budget is held on published lines`)

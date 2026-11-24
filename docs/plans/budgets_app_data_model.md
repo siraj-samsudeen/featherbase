@@ -271,7 +271,7 @@ One manual line of a close. Key: series `ADJ-.#####`.
 | `pl_line` | Reference → P&L Line | Starts as the account's line; changed for a regrouping |
 | `amount` | Currency | Positive adds to the line, negative takes away |
 | `adjustment_type` | Choice | Provision, Reallocation, Capitalise, Defer, Recover |
-| `reason` | Data | The same words on every line of one entry, so the list groups by it |
+| `reason` | Text | The same words on every line of one entry, so the list groups by it. As long as the controller wrote it. |
 | `owner` | Data | The person's ID: who will see it through |
 | `cost_centre`, `profit_centre` | Reference | Optional, as in the trial balance |
 | `corrects_sap_document` | Data | The SAP document this line corrects |
