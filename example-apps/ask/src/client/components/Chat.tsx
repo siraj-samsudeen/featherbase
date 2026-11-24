@@ -26,18 +26,31 @@ export function Chat() {
     box.current?.focus()
   }
 
-  // Every question is sent from the box: show it, ask the server, then show the answer or what went wrong.
-  async function ask(question: string) {
-    if (busy) return
-    const id = crypto.randomUUID()
+  // Ask the server, then put the answer, or what went wrong, in place of "Thinking…".
+  async function fetchAnswer(id: string, question: string) {
     const settle = (done: AnswerStatus) =>
       setAnswers((all) => all.map((answer) => (answer.id === id ? done : answer)))
-    setAnswers((all) => [...all, { id, question, status: 'thinking' }])
     try {
       settle({ id, question, status: 'answered', reply: await askQuestion(question) })
     } catch (error) {
       settle({ id, question, status: 'failed', error: error instanceof Error ? error.message : 'Ask could not answer. Please try again.' })
     }
+  }
+
+  // Every new question is sent from the box: it goes at the end, thinking.
+  function ask(question: string) {
+    if (busy) return
+    const id = crypto.randomUUID()
+    setAnswers((all) => [...all, { id, question, status: 'thinking' }])
+    fetchAnswer(id, question)
+  }
+
+  // Try again: the failed question thinks again where it is, and is asked again.
+  function retry(failed: AnswerStatus) {
+    if (busy) return
+    const { id, question } = failed
+    setAnswers((all) => all.map((answer) => (answer.id === id ? { id, question, status: 'thinking' } : answer)))
+    fetchAnswer(id, question)
   }
 
   const questionBox = <QuestionBox ref={box} text={text} onTextChange={setText} onAsk={ask} busy={busy} />
@@ -57,7 +70,7 @@ export function Chat() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <ol aria-label="Conversation" className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
           {answers.map((answer) => (
-            <QuestionAnswer key={answer.id} answer={answer} />
+            <QuestionAnswer key={answer.id} answer={answer} onRetry={() => retry(answer)} busy={busy} />
           ))}
         </ol>
         <div ref={end} />

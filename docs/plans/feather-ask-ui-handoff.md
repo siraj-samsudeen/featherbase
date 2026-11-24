@@ -93,6 +93,10 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
    is asked, keeps the newest in view and passes `busy` to `QuestionBox`, which sends nothing
    while an answer is on its way. The server's read returns `{ answer }`, like Tickets'.
    17 checks pass headless.
+7. 3e: a failed question shows Shop Floor's red `Notice` with **Try again** (the platform's
+   word, as in `DataList`). Try again asks the same question again in the same place
+   (`Chat.tsx`: `fetchAnswer`, shared by `ask` and `retry`) and waits, like the box, while
+   another answer is on its way. 24 checks pass headless.
 
 Learned on the way: in local development the platform's sidebar shows its raw rows for about
 half a second when switching apps (Tickets too), because `bar.js` loads as many modules; a
@@ -100,14 +104,12 @@ production build (staging) doesn't show it. PowerShell may block `npm.ps1`; use 
 
 ## Next step
 
-**3e.** The error state with Retry: a failed question shows what went wrong and a Retry
-button that asks it again.
+**Piece 4.** `apps/server/test/ask-app.test.ts` (install Ask, call the read over HTTP:
+answer, empty refused, too long refused, signed out refused), add Ask to
+`tools/prepare-apps.mjs`, a README section like Tickets'.
 
 ## Then
 
-- **Piece 4:** `apps/server/test/ask-app.test.ts` (install Ask, call the read over HTTP:
-  answer, empty refused, too long refused, signed out refused), add Ask to
-  `tools/prepare-apps.mjs`, a README section like Tickets'.
 - Then the independent headless verifier at desktop width against the Step 1 checklist
   (it includes: "Every record shown (person, store, section, department, ticket, and so on)
   is a link that opens it, or plain text only where the viewer may not open it."), then remove
