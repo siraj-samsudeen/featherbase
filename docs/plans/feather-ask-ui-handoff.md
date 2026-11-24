@@ -87,6 +87,12 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
    sends both through one `ask()`, empty until 3d. `style.css` adds `@source` lines for Shop
    Floor's source, without which `Button` and `inputClasses` draw unstyled. 14 checks pass
    headless.
+6. 3d: `src/client/api.ts` (POST the question with the version header; a 401 goes to the login
+   page) and `components/QuestionAnswer.tsx` (type `AnswerStatus`: thinking, answered, failed;
+   component `QuestionAnswer`). `Chat.tsx` shows each question with its answer once a question
+   is asked, keeps the newest in view and passes `busy` to `QuestionBox`, which sends nothing
+   while an answer is on its way. The server's read returns `{ answer }`, like Tickets'.
+   17 checks pass headless.
 
 Learned on the way: in local development the platform's sidebar shows its raw rows for about
 half a second when switching apps (Tickets too), because `bar.js` loads as many modules; a
@@ -94,16 +100,11 @@ production build (staging) doesn't show it. PowerShell may block `npm.ps1`; use 
 
 ## Next step
 
-**3d.** `src/client/api.ts` (POST `/api/app_reads/ask/ask` with `{ payload: { question } }`,
-header `X-Featherbase-App-Version: ask@<version>`, 401 goes to the login page) and the turns in
-`Chat.tsx`: the question, "Thinking…", the answer; the empty page gives way once a question is
-asked. The scroll-into-view effect must use braces so it returns nothing: `scrollIntoView`
-returns a Promise in Chromium and React would call it as a cleanup (this crashed the page in a
-trial).
+**3e.** The error state with Retry: a failed question shows what went wrong and a Retry
+button that asks it again.
 
 ## Then
 
-- **3e:** the error state with Retry.
 - **Piece 4:** `apps/server/test/ask-app.test.ts` (install Ask, call the read over HTTP:
   answer, empty refused, too long refused, signed out refused), add Ask to
   `tools/prepare-apps.mjs`, a README section like Tickets'.

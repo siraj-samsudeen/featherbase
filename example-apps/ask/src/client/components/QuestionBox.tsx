@@ -4,17 +4,19 @@ import type { KeyboardEvent, Ref, SubmitEvent } from 'react'
 import { ArrowUp } from '@featherbase/shop-floor'
 import { MAX_QUESTION_LENGTH } from '../../shared/reply'
 
-export function QuestionBox({ ref, text, onTextChange, onAsk }: {
+export function QuestionBox({ ref, text, onTextChange, onAsk, busy = false }: {
   ref?: Ref<HTMLTextAreaElement>
   text: string
   onTextChange: (text: string) => void
   onAsk: (question: string) => void
+  // An answer is on its way: the person may keep typing, but sends nothing until it arrives.
+  busy?: boolean
 }) {
   // Spaces and empty lines alone are not a question.
   const question = text.trim()
 
   function send() {
-    if (!question) return
+    if (!question || busy) return
     onAsk(question)
     onTextChange('')
   }
@@ -57,7 +59,7 @@ export function QuestionBox({ ref, text, onTextChange, onAsk }: {
         type="submit"
         aria-label="Ask"
         title="Ask"
-        disabled={!question}
+        disabled={!question || busy}
         className="grid size-9 shrink-0 place-items-center rounded-full bg-action text-action-ink hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-40"
       >
         <ArrowUp aria-hidden="true" size={18} />
