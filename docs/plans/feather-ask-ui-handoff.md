@@ -70,6 +70,11 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
   `App.tsx` renders `components/HomePage.tsx`, which places `components/Sidebar.tsx` then
   `components/Chat.tsx` (Chat must come right after the sidebar: the platform styles that
   element as the page panel). `api.ts` will sit at `src/client/api.ts`.
+- No verifier and no PR until the UI is complete (Mohammad, 24-Nov-2026): Step 2 is built on
+  this branch before the PR.
+- Ask stays at version 0.1.0 until its first release on `main`: it is installed nowhere else,
+  so a manifest change needs no migration; recreate the local `fb_ask_ui` database instead
+  (Mohammad, 24-Nov-2026).
 
 ## Done
 
@@ -101,6 +106,11 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
    placeholder; empty, over 2000 characters and signed out are refused), Ask in
    `tools/prepare-apps.mjs`, and a README section "Explicit opt-in: Feather Ask". The tests
    use their own `featherbase_test` database; create it once on a new machine.
+9. 2a: each question is saved with its answer. New Table `ask.question` (chat, question,
+   answer, answer kind); `ask` is now an action (`/api/app_actions/ask/ask`, with an
+   `idempotencyKey`), which starts a chat titled by the first question (one line, 140
+   characters) or joins the one the page names, in one transaction. Own rows only: nobody
+   reads or adds to someone else's chat. 6 server checks, 24 page checks and 7 save checks pass.
 
 Learned on the way: in local development the platform's sidebar shows its raw rows for about
 half a second when switching apps (Tickets too), because `bar.js` loads as many modules; a
@@ -108,11 +118,13 @@ production build (staging) doesn't show it. PowerShell may block `npm.ps1`; use 
 
 ## Next step
 
-**The verifier.** An independent headless verifier at desktop width against the Step 1
-checklist (it includes: "Every record shown (person, store, section, department, ticket, and
-so on) is a link that opens it, or plain text only where the viewer may not open it.").
+**2b.** The sidebar gets two rows: **New chat** (an empty chat) and **My Questions**.
 
 ## Then
 
-- Remove this note and open the draft PR.
-- Step 2 (Chats) and Step 3 (panel on every page) follow, each its own PR.
+- 2c: My Questions lists the person's own chats, newest first.
+- 2d: opening a chat shows its questions and answers, and asking carries on in it.
+- Step 3 (the panel on every page).
+- Then the independent headless verifier at desktop width (its checklist includes: "Every
+  record shown (person, store, section, department, ticket, and so on) is a link that opens
+  it, or plain text only where the viewer may not open it."), remove this note, open the PR.

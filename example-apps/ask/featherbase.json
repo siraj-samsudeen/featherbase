@@ -8,15 +8,22 @@
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "ask.chat",
-  "reads": {"version": 1, "tables": ["ask.chat"], "operations": {
+  "actions": {"version": 2, "tables": ["ask.chat", "ask.question"], "operations": {
     "ask": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
   }},
   "tables": [
     {"name": "ask.chat", "label": "Chat", "module": "Ask", "title_column": "title", "columns": [
       {"column_name": "title", "label": "Title", "column_type": "Data", "reqd": true, "in_list_view": true}
+    ]},
+    {"name": "ask.question", "label": "Question", "module": "Ask", "columns": [
+      {"column_name": "chat", "label": "Chat", "column_type": "Reference", "reference_table": "ask.chat", "reqd": true, "in_list_view": true},
+      {"column_name": "question", "label": "Question", "column_type": "Text", "reqd": true, "in_list_view": true},
+      {"column_name": "answer", "label": "Answer", "column_type": "Text"},
+      {"column_name": "answer_kind", "label": "Answer kind", "column_type": "Data"}
     ]}
   ],
   "permissions": [
-    {"table": "ask.chat", "role": "All", "own_rows_only": true, "can_read": true}
+    {"table": "ask.chat", "role": "All", "own_rows_only": true, "can_read": true, "can_create": true},
+    {"table": "ask.question", "role": "All", "own_rows_only": true, "can_read": true, "can_create": true}
   ]
 }

@@ -11,6 +11,8 @@ export function Chat() {
   const [text, setText] = useState('')
   const box = useRef<HTMLTextAreaElement>(null)
   const [answers, setAnswers] = useState<AnswerStatus[]>([])
+  // The saved chat these questions belong to: none until the first answer arrives.
+  const [chat, setChat] = useState<string>()
   const end = useRef<HTMLDivElement>(null)
   const busy = answers.some((answer) => answer.status === 'thinking')
 
@@ -31,7 +33,9 @@ export function Chat() {
     const settle = (done: AnswerStatus) =>
       setAnswers((all) => all.map((answer) => (answer.id === id ? done : answer)))
     try {
-      settle({ id, question, status: 'answered', reply: await askQuestion(question) })
+      const asked = await askQuestion(question,chat)
+      setChat(asked.chat)
+      settle({ id, question, status: 'answered', reply: asked.answer })
     } catch (error) {
       settle({ id, question, status: 'failed', error: error instanceof Error ? error.message : 'Ask could not answer. Please try again.' })
     }
