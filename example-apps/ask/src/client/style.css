@@ -1,5 +1,7 @@
 @import '@featherbase/shop-floor/styles.css';
 @source './';
+@source '../../../../packages/shop-floor/src';
+@source not '../../../../packages/shop-floor/src/**/*.stories.tsx';
 
 /* Ask colours itself only through Shop Floor's tokens (var(--color-…)), so the
    theme the top bar paints, dark mode included, reaches every part of it. */

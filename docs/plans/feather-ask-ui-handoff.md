@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 23-Nov-2026. A working note for moving between machines. It is removed
+**Last updated:** 24-Nov-2026. A working note for moving between machines. It is removed
 (or folded into the PR body) before the Step 1 PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -73,59 +73,42 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
 
 ## Done
 
-1. Manifest and package files (`example-apps/ask/`), and the app icon (now `bot`).
+1. Manifest and package files (`example-apps/ask/`), and the app icon (now `bot`, Lucide's Bot).
 2. The server's `ask` read, `src/server/index.ts` and `src/server/reply.ts` (placeholder).
 3. 3a: Featherbase runs locally with Ask installed; the read answers over HTTP (200), refuses
    an empty question (417) and a signed-out caller (401).
-4. 3b, mostly: `App.tsx`, `HomePage.tsx`, `Sidebar.tsx`, `Chat.tsx`, `style.css` are written.
+4. 3b: `App.tsx`, `HomePage.tsx`, `Sidebar.tsx`, `Chat.tsx`, `style.css`, and `main.tsx` imports
+   the styles and follows the top bar's theme. Checked headless: Ask highlighted in the sidebar,
+   white panel on the grey canvas, Collapse leaves the icon, dark and back, the app switcher
+   returns to Featherbase, no console errors.
+5. 3c: the empty page. `components/EmptyChat.tsx` (heading "What do you want to know?", three
+   example questions), `components/QuestionBox.tsx` (Ask disabled until text, Enter sends,
+   Shift+Enter is a new line, 2000-character limit from `shared/reply.ts`), and `Chat.tsx`
+   sends both through one `ask()`, empty until 3d. `style.css` adds `@source` lines for Shop
+   Floor's source, without which `Button` and `inputClasses` draw unstyled. 14 checks pass
+   headless.
+
+Learned on the way: in local development the platform's sidebar shows its raw rows for about
+half a second when switching apps (Tickets too), because `bar.js` loads as many modules; a
+production build (staging) doesn't show it. PowerShell may block `npm.ps1`; use `npm.cmd`.
 
 ## Next step
 
-**Finish 3b.** `src/client/main.tsx` still renders `App` without `import './style.css'` and
-without following the top bar's theme, so the page has no styles and dark mode does nothing
-(measured: `--color-canvas` empty, body transparent, no CSS file in `dist/client/assets`). It
-should read:
-
-```tsx
-/// <reference types="vite/client" />
-// The page's entry: paints the theme the shared top bar chose, then draws the app.
-import { createRoot } from 'react-dom/client'
-import { THEME_CHANGE_EVENT, paintTheme } from '@featherbase/shop-floor/theme'
-import { App } from './App'
-import './style.css'
-
-// The top bar tells the page which theme it painted: on <html> once, and with an event on each change.
-const painted = document.documentElement.getAttribute('data-featherbase-theme')
-paintTheme(painted === 'light' || painted === 'dark' ? painted : 'device')
-window.addEventListener(THEME_CHANGE_EVENT, (event) => {
-  const theme = (event as CustomEvent<{ theme: 'light' | 'dark' }>).detail?.theme
-  if (theme === 'light' || theme === 'dark') paintTheme(theme)
-})
-
-createRoot(document.getElementById('root')!).render(<App />)
-```
-
-3b checks at `/ask/`: the sidebar with **Ask** highlighted (and the platform's search and the
-person's name); a white panel beside it on the grey canvas; Collapse leaves the icon; the top
-bar's theme switch turns the page dark and back; the app switcher returns to the frame; no
-console errors.
+**3d.** `src/client/api.ts` (POST `/api/app_reads/ask/ask` with `{ payload: { question } }`,
+header `X-Featherbase-App-Version: ask@<version>`, 401 goes to the login page) and the turns in
+`Chat.tsx`: the question, "Thinking…", the answer; the empty page gives way once a question is
+asked. The scroll-into-view effect must use braces so it returns nothing: `scrollIntoView`
+returns a Promise in Chromium and React would call it as a cleanup (this crashed the page in a
+trial).
 
 ## Then
 
-- **3c:** the empty page in `Chat.tsx`: heading "What do you want to know?", three example
-  questions (clicking one asks it), and the question box (Ask disabled until text; Enter
-  sends, Shift+Enter is a new line).
-- **3d:** `src/client/api.ts` (POST `/api/app_reads/ask/ask` with `{ payload: { question } }`,
-  header `X-Featherbase-App-Version: ask@<version>`, 401 goes to the login page) and the
-  turns: the question, "Thinking…", the answer. The scroll-into-view effect must use braces
-  so it returns nothing: `scrollIntoView` returns a Promise in Chromium and React would call
-  it as a cleanup (this crashed the page in a trial).
 - **3e:** the error state with Retry.
 - **Piece 4:** `apps/server/test/ask-app.test.ts` (install Ask, call the read over HTTP:
   answer, empty refused, too long refused, signed out refused), add Ask to
   `tools/prepare-apps.mjs`, a README section like Tickets'.
 - Then the independent headless verifier at desktop width against the Step 1 checklist
   (it includes: "Every record shown (person, store, section, department, ticket, and so on)
-  is a link that opens it, or plain text only where the viewer may not open it."), then the
-  draft PR.
+  is a link that opens it, or plain text only where the viewer may not open it."), then remove
+  this note and open the draft PR.
 - Step 2 (Chats) and Step 3 (panel on every page) follow, each its own PR.
