@@ -6,7 +6,7 @@ import { api } from '../lib/api'
 import { useWhoAmI } from '../lib/session'
 import { APP_ICON } from '../lib/app-icons'
 import { Logo } from './Logo'
-import { Check, ChevronDown, MENU_GROUP_CLASSES, cx, iconButtonClasses, menuItemClasses, raisedClasses } from '@featherbase/shop-floor'
+import { Check, ChevronDown, MENU_GROUP_CLASSES, cx, iconButtonClasses, menuItemClasses, raisedClasses , useTopLayer } from '@featherbase/shop-floor'
 import { APP_ACCENT_ATTRIBUTE } from '@featherbase/shop-floor/theme'
 
 /** Keep the server's cross-address sign-in handoff when leaving an app. */
@@ -78,6 +78,9 @@ export function AppSwitcher({ app, compact = false, place = 'bar' }: {
   const wrapper = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
   const menuId = useId()
+  // Above the page, an app's panels and iframes included (useTopLayer).
+  const menu = useRef<HTMLDivElement>(null)
+  useTopLayer(open, menu, wrapper, 'below-start')
 
   // The catalog's address first (it may be another address's); else where the
   // page says the app lives (an interim page, a disabled app, the neutral name).
@@ -165,6 +168,7 @@ export function AppSwitcher({ app, compact = false, place = 'bar' }: {
       </button>
       {open && (
         <div
+          ref={menu}
           id={menuId}
           role="menu"
           aria-label="Applications"

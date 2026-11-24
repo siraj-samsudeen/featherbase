@@ -72,7 +72,7 @@ export const withoutBusinessRoles = <T,>(list: T[]) =>
   list.filter(entry => {
     const change = entry as { create?: string; grant?: { table?: string; role?: string }; withdraw?: { table?: string; role?: string } }
     // #1282's grid change log is part of business roles too.
-    return ![...SHADOW_TABLES, 'dash.access_source', 'dash.switch_over_log', 'dash.permission_change'].includes(change.grant?.table ?? '')
+    return ![...SHADOW_TABLES, 'dash.access_source', 'dash.switch_over_log', 'dash.permission_change', 'dash.setup_run', 'dash.access_decision'].includes(change.grant?.table ?? '')
   })
 /** #1277's switch and its log, which 0.13.30 brings. */
 export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
@@ -80,16 +80,49 @@ export const LIVE_TABLES = ['dash.access_source', 'dash.switch_over_log']
 export const GRID_LOG = 'dash.permission_change'
 type Revertable = { migrations: { id: string }[]; tables?: { name: string; decides_scope?: boolean; columns?: { column_name: string }[] }[]; permissions?: { table: string }[];
   baseTables?: { read: Record<string, string[]> }; actions?: { tables: string[] }; scopeProvider?: { tables: string[]; unmarkedTables?: string[]; optionalTables?: string[]; optionalColumns?: Record<string, string[]> } }
+/** #1340's 0.13.40 taken out of a manifest: the four Tables back under Dash, Report grant back to Report access, the
+ *  role's two columns back on its list, and no setup runs or access decisions. It comes off before all the others. */
+export const RUN_TABLES = ['dash.setup_run', 'dash.access_decision']
+export function revertRolesInFeatherbase(manifest: Revertable) {
+  // #1391's 0.13.46 (which report and Dive failed, and a lost connection told apart) changes no Table and comes off first.
+  expect(manifest.migrations.pop()).toMatchObject({ id: 'dive_failure_detail', fromVersion: '0.13.45', operations: [] })
+  const step = manifest.migrations.pop() as unknown as { operations: { kind: string; table: string; column?: string; from?: { label?: string } }[] }
+  expect(step).toMatchObject({ id: 'business_roles_in_featherbase', fromVersion: '0.13.44', toVersion: '0.13.45' })
+  // Each column the step relabelled reads as it did before it.
+  const relabelled = new Map(step.operations.filter(o => o.kind === 'alterColumn' && o.from?.label).map(o => [`${o.table}/${o.column}`, o.from!.label!]))
+  if (manifest.tables) manifest.tables = manifest.tables.filter(t => !RUN_TABLES.includes(t.name)).map(t => {
+    const table = { ...t } as typeof t & { module?: string; label?: string; columns?: { column_name: string; in_list_view?: boolean; label?: string }[] }
+    if (table.module === 'People') table.module = 'Dash'
+    const label = ({ 'dash.business_role': 'Business role', 'dash.title_map': 'Title map', 'dash.role_assignment': 'Role assignment', 'dash.report_access': 'Report access',
+      'dash.switch_over_log': 'Business roles log', 'dash.business_role_permission': 'Business role permission', 'dash.permission_change': 'Permission change',
+      'dash.access_source': 'Dash access source' } as Record<string, string>)[table.name]
+    if (label) table.label = label
+    if (table.name === 'dash.switch_over_log') table.columns = table.columns!.filter(c => c.column_name !== 'setup_run')
+    if (table.name === 'dash.business_role') table.columns = table.columns!.map(c => (['description', 'by_hand_only'].includes(c.column_name) ? { ...c, in_list_view: true }
+      : c))
+    if (table.columns) table.columns = table.columns.map(c => (relabelled.has(`${table.name}/${c.column_name}`) ? { ...c, label: relabelled.get(`${table.name}/${c.column_name}`) } : c))
+    return table
+  })
+  if (manifest.permissions) manifest.permissions = manifest.permissions.filter(p => !RUN_TABLES.includes(p.table))
+  if (manifest.actions) manifest.actions.tables = manifest.actions.tables.filter(t => !RUN_TABLES.includes(t))
+  const read = manifest.baseTables?.read
+  if (read) {
+    delete read['dash.access_decision']
+    if (read['dash.switch_over_log']) read['dash.switch_over_log'] = read['dash.switch_over_log'].filter(c => c !== 'setup_run')
+  }
+  delete (manifest as { records?: unknown }).records
+}
 /** #1280's 0.13.33 taken out of a manifest: Dash reads no Site kind or status. #1277's 0.13.34 changes no Table and comes off first. */
 export function revertSiteKind(manifest: Revertable) {
-  // #1366's 0.13.44 (no sales copies) only re-describes quick_view; it comes off first, and the description goes back.
+  revertRolesInFeatherbase(manifest)
+  // #1366's 0.13.44 (no sales copies) only re-describes quick_view; it comes off next, and the description goes back.
   const noCopies = manifest.migrations.pop() as unknown as { id: string; operations: { kind: string; column: string; from: { description: string } }[] }
   expect(noCopies).toMatchObject({ id: 'no_sales_copies', fromVersion: '0.13.43', operations: [{ kind: 'alterColumn', table: 'dash.report', column: 'quick_view' }] })
   if (manifest.tables) manifest.tables = manifest.tables.map(t => (t.name === 'dash.report'
     ? { ...t, columns: t.columns!.map(c => (c.column_name === 'quick_view' ? { ...c, description: noCopies.operations[0].from.description } : c)) } : t))
   // #1282's 0.13.43 (the worked-out sections declared as people.sections) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'people_sections', fromVersion: '0.13.42', operations: [] })
-  // #1345's 0.13.42 (each job's business role and a leaver's leaving day, for the Person Label) changes no Table and comes off next.
+  // #1345's 0.13.42 (each job's business role and a leaver's leaving day, for the Person Label) changes no Table and comes off after it.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'person_label', fromVersion: '0.13.41', operations: [] })
   // The 0.13.41 hotfix (every report read through Dash's own documents) changes no Table and comes off next.
   expect(manifest.migrations.pop()).toMatchObject({ id: 'every_report_own_read', fromVersion: '0.13.40', operations: [] })

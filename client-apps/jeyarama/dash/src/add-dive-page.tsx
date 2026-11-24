@@ -69,7 +69,7 @@ function ReachPill({ dive, onRetry }: { dive: DiveChoice; onRetry?: () => void }
     <span className="flex flex-col items-start gap-0.5">
       <span className="inline-flex items-center gap-1">
         <StatusPill tone="missing">Couldn't read it</StatusPill>
-        {onRetry && <Button variant="quiet" className="min-h-0 py-0" onClick={event => { event.stopPropagation(); onRetry() }} data-testid="dive-retry">Try again</Button>}
+        {onRetry && <Button variant="quiet" className="min-h-0 py-0" onClick={event => { event.stopPropagation(); onRetry() }} data-testid="dive-retry">Try Again</Button>}
       </span>
       <span className="text-xs text-ink-muted" data-testid="dive-unread-reason">Dash couldn't read this Dive just now, so it can't tell what each person would see.</span>
     </span>
@@ -96,7 +96,7 @@ function DiveTable({ dives, failed, unreachable, onRetry, search, onSearch, onCh
         {(failed || unreachable) && (
           <div className="flex flex-wrap items-center gap-3" data-testid="dives-unreachable">
             <Notice tone="negative">{failed ?? "Dash couldn't reach MotherDuck to list the Dives."}</Notice>
-            <Button onClick={onRetry}>Try again</Button>
+            <Button onClick={onRetry}>Try Again</Button>
           </div>
         )}
         {dives && (

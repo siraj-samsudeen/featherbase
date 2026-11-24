@@ -38,7 +38,7 @@ test('a System Manager sees codes with their periods and the address; a roster v
 test('a person adds their own phone and sees it is not yet verified', async ({ admin, createUser }) => {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Store Reader' } })
   const me = await createUser({ email: 'own.ids@example.com', roles: ['Store Reader'] })
-  // Their own page: Sign-in methods (account menu), not the Admin Person form.
+  // Their own page: Sign-In Methods (account menu), not the Admin Person form.
   await renderApp('/featherbase/account/sign-in-methods', me)
   const panel = await openIdentifierHistory()
   await userEvent.click(await within(panel).findByRole('button', { name: 'Add an identifier' }))

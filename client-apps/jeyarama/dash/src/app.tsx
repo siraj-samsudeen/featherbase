@@ -138,7 +138,8 @@ export function Dash() {
   // Only a state of the store now chosen is drawn, whatever reached it (round 8).
   const shown = visibleState(state, store?.value, month)
   const { report } = shown
-  const view = checkFailed && !store ? { kind: 'failed' as const } : pageView(shown)
+  // #1391: a store check that ran out of time got no answer: the connection.
+  const view = checkFailed && !store ? { kind: 'offline' as const } : pageView(shown)
   const frameAttempt = loader.current()
   const frameSrc = liveFrame(shown)
   useEffect(() => setDiveFilters(undefined), [frameSrc])
@@ -169,7 +170,7 @@ export function Dash() {
       {view.kind === 'opening' && <p className="fd-opening">Opening your report…</p>}
       {/* #1143: one place for the frame, on show or out of sight behind "couldn't open", so the Dive
           that says it is ready after the deadline takes over in the same frame, never reloaded. */}
-      {frameSrc && (view.kind === 'dive' || view.kind === 'failed') && (
+      {frameSrc && (view.kind === 'dive' || view.kind === 'failed' || view.kind === 'offline') && (
         <div className={view.kind === 'dive' ? 'fd-frame-box' : 'fd-frame-box fd-frame-behind'}
           aria-hidden={view.kind === 'dive' ? undefined : true} inert={view.kind !== 'dive'}>
           {view.kind === 'dive' && !shown.diveReady && <p className="fd-opening fd-opening-over">Opening your report…</p>}
@@ -196,7 +197,14 @@ export function Dash() {
       {view.kind === 'failed' && (
         <Notice testid="failed">
           <span>This report couldn't open.</span>
-          <button type="button" className="fd-button" onClick={tryAgain}>Try again</button>
+          <button type="button" className="fd-button" onClick={tryAgain}>Try Again</button>
+        </Notice>
+      )}
+      {/* #1391: no answer at all is the reader's connection, not the report. */}
+      {view.kind === 'offline' && (
+        <Notice testid="offline">
+          <span>Couldn't reach Dash. Check your connection, then Try Again.</span>
+          <button type="button" className="fd-button" onClick={tryAgain}>Try Again</button>
         </Notice>
       )}
       {/* #1269: trying again can't help; whoever runs Dash can, and the log says how large it was. */}

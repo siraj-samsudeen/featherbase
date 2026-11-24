@@ -22,7 +22,7 @@ const day = (iso: string) => fmtDate(timelineDayKey(new Date(iso)))
 
 export function ConnectedApps() {
   const { t } = useI18n()
-  usePageTitle('Connected apps')
+  usePageTitle('Connected Apps')
   const qc = useQueryClient()
   const { data, error } = useQuery({
     queryKey: ['agent-connections'],
@@ -40,7 +40,7 @@ export function ConnectedApps() {
 
   return (
     <div className="space-y-4" data-testid="connected-apps">
-      <h1 className="pb-2 text-2xl font-semibold text-ink">{t('Connected apps')}</h1>
+      <h1 className="pb-2 text-2xl font-semibold text-ink">{t('Connected Apps')}</h1>
       {error && <Notice tone="negative">{error.message}</Notice>}
       {disconnect.error && <Notice tone="negative">{disconnect.error.message}</Notice>}
       {data && (

@@ -67,7 +67,7 @@ function By({ who, name, when, verb }: { who: string; name?: string | null; when
 }
 
 export function AccessExplanation({ person: asked }: { person: string }) {
-  usePageTitle('What you can see')
+  usePageTitle('What You Can See')
   // #1222: while viewing as someone, the tester's own page (an old link, a bookmark) is theirs.
   const viewed = viewedPerson()
   const person = viewed && asked === getSignedInUser()?.row_id ? viewed.row_id : asked
@@ -102,7 +102,7 @@ export function AccessExplanation({ person: asked }: { person: string }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-ink" data-testid="access-explanation-heading">
-            {self ? 'What you can see' : refused ? 'Someone else\'s access' : <>What {data?.person_name
+            {self ? 'What You Can See' : refused ? 'Someone else\'s access' : <>What {data?.person_name
               ? <OpensContext.Provider value={opensFrom(data)}><Rec table="Person" id={person} name={data.person_name} /></OpensContext.Provider>
               : <ShownName id={person} />} can see</>}
           </h1>

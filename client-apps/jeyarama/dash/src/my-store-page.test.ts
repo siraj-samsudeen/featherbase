@@ -120,7 +120,8 @@ describe('record links follow what the viewer may open (#1223, Codex)', () => {
     expect(dashPageFor('Department', 'LKS-Kids')).toBe('?view=coverage&department=LKS-Kids')
     // #1218 verifier: Dash's own records open on the Dash page that shows them.
     expect(dashPageFor('dash.report', 'sales')).toBe('?report=sales')
-    expect(dashPageFor('dash.business_role', 'r 1')).toBe('?view=roles&role=r%201')
+    // #1340: a business role opens on its Featherbase record page.
+    expect(dashPageFor('dash.business_role', 'r 1')).toBeUndefined()
     expect(dashPageFor('dash.report_bundle', 'b1')).toBe('?view=access&section=bundles&bundle=b1')
     expect(dashPageFor('Section', 'LKS-S1')).toBe('?view=coverage&section=LKS-S1')
     expect(dashPageFor('Site', 'LKS')).toBeUndefined()

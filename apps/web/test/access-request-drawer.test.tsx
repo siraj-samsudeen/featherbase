@@ -101,8 +101,9 @@ test('declining needs a reason, then the request moves to the Declined view with
   expect(await screen.findByTestId('waiting-empty')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Declined' }))
   const page = screen.getByTestId('waiting-for-access')
-  await waitFor(() => expect(page).toHaveTextContent('Kiran Made-up'))
-  expect(page).toHaveTextContent('Not in head office')
+  // The declined row with its reason (the Click To Narrow panel names the person before the rows load).
+  await waitFor(() => expect(page).toHaveTextContent('Not in head office'))
+  expect(page).toHaveTextContent('Kiran Made-up')
   expect((app.router.state as { location: { search: { view?: string } } }).location.search.view).toBe('declined')
   const again = await openDrawer('Kiran Made-up')
   expect(within(again).getByTestId('request-declined')).toHaveTextContent('Not in head office')

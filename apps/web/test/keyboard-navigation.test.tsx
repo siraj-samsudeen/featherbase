@@ -42,8 +42,9 @@ test('from a Table list, Tab reaches a row and Enter opens its form', async ({ a
   const user = userEvent.setup()
   await renderApp(`/featherbase/admin/table/${encodeURIComponent(tableSlug(DT))}`, admin)
   await screen.findByText('Kbn shelf label', {}, { timeout: 8000 })
-  const list = screen.getByTestId('list-view')
-  await tabTo(user, (el) => list.contains(el) && el.matches(`a[href$="/${rowId}"]`), 'the row link')
+  // The table's row (#1289: the Click To Narrow panel before it names the row too, as a pick).
+  const table = screen.getByTestId('list-table-scroll')
+  await tabTo(user, (el) => table.contains(el) && el.matches(`a[href$="/${rowId}"]`), 'the row link')
   await user.keyboard('{Enter}')
   expect(await screen.findByTestId('form-view')).toBeInTheDocument()
   await waitFor(() => expect(document.querySelector('[data-field=title]')).toHaveValue('Kbn shelf label'))

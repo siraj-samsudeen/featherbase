@@ -97,7 +97,7 @@ test("on an app's address the account page's tab title is the app's name", async
   await installDashApp(admin)
   onAddressThatOpens('dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
-  await waitFor(() => expect(document.title).toBe('Sign-in methods · Dash stand-in'))
+  await waitFor(() => expect(document.title).toBe('Sign-In Methods · Dash stand-in'))
 })
 
 // #758: the platform destination has one name, Featherbase.
@@ -119,7 +119,7 @@ test('on the Admin address the account page tab title is Featherbase for someone
   onAddressThatOpens('admin')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Sign-in methods · Featherbase'))
+  await waitFor(() => expect(document.title).toBe('Sign-In Methods · Featherbase'))
 })
 
 // #501 item 3: on the Admin address the account page is named for where the
@@ -131,7 +131,7 @@ test("on the Admin address the account page's tab title names the app a person w
   const reader = await createUser({ email: 'viewer.account.tab@example.com' })
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Sign-in methods · Dash stand-in'))
+  await waitFor(() => expect(document.title).toBe('Sign-In Methods · Dash stand-in'))
 })
 
 test('on the Admin address the account page is named Featherbase for someone who can open nothing', async ({ createUser }) => {
@@ -148,7 +148,7 @@ test("on the Admin address the account page's tab title is Featherbase for someo
   const nobody = await createUser({ email: 'nobody.account.tab@example.com' })
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, nobody)
   await settledBar()
-  await waitFor(() => expect(document.title).toBe('Sign-in methods · Featherbase'))
+  await waitFor(() => expect(document.title).toBe('Sign-In Methods · Featherbase'))
 })
 
 test("on an app's address the account page stays named for the app for someone who cannot use Admin", async ({ admin, createUser }) => {
@@ -224,8 +224,10 @@ test("on an app's address the account page has the bar and no Admin menus, even 
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await settledBar()
   expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
-  for (const id of ['awesomebar', 'admin-sidebar', 'notif-bell'])
-    expect(screen.queryByTestId(id)).not.toBeInTheDocument()
+  expect(screen.queryByTestId('admin-sidebar')).not.toBeInTheDocument()
+  // #1385: Search or Command is the platform's, on every page with a sidebar; so is the bell (slice 2).
+  expect(await screen.findByTestId('command-field')).toBeInTheDocument()
+  expect(await screen.findByTestId('notif-bell')).toBeInTheDocument()
   // #1235 item 7: the shared sidebar is not the Admin's: only the Account group.
   expect(screen.getByTestId('account-sidebar')).toBeInTheDocument()
 })
@@ -296,26 +298,26 @@ test('the right side reads Open Admin, the theme toggle, then the Account menu',
 
 // ---- 5. the Account menu --------------------------------------------------------
 
-test('the Account menu holds the name, + Add another account (#1255), Sign-in methods, Connected apps (#1207), What you can see (#628), then Log out', async ({ admin }) => {
+test('the Account menu holds the name, + Add Another Account (#1255), Sign-In Methods, Connected Apps (#1207), What You Can See (#628), then Log Out', async ({ admin }) => {
   await renderApp(PORTAL, admin)
   const menu = await openAccountMenu()
   const order = [...menu.querySelectorAll('[data-testid="account-identity"], [role="menuitem"]')].map((el) => el.getAttribute('data-testid'))
   expect(order).toEqual(['account-identity', 'add-account', 'account-sign-in-methods', 'account-connected-apps', 'account-access-explanation', 'logout'])
 })
 
-test("the Account menu's Sign-in methods opens the account page", async ({ admin }) => {
+test("the Account menu's Sign-In Methods opens the account page", async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
   await openAccountMenu()
   expect(screen.getByTestId('account-sign-in-methods')).toHaveAttribute('href', ACCOUNT_SIGN_IN_METHODS_PATH)
 })
 
-test("the Account menu's Connected apps opens the account page and closes the menu", async ({ admin }) => {
+test("the Account menu's Connected Apps opens the account page and closes the menu", async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
   await openAccountMenu()
   const link = screen.getByTestId('account-connected-apps')
   expect(link).toHaveAttribute('href', ACCOUNT_CONNECTED_APPS_PATH)
   await userEvent.click(link)
-  expect(await screen.findByRole('heading', { name: 'Connected apps' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Connected Apps' })).toBeInTheDocument()
   expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument()
 })
 
@@ -345,24 +347,24 @@ test("for someone who may not open Person records, the name in the Account menu 
   expect(within(identity).queryByRole('link')).toBeNull()
 })
 
-// ---- 6. no loose Sign-in methods or Log out --------------------------------------
+// ---- 6. no loose Sign-In Methods or Log Out --------------------------------------
 
 test.for([
   ['the Portal', '/featherbase/portal/person'],
   ['the Admin screens', '/featherbase/admin'],
-] as const)('%s has no Sign-in methods or Log out outside the Account menu', async ([, path], { admin }) => {
+] as const)('%s has no Sign-In Methods or Log Out outside the Account menu', async ([, path], { admin }) => {
   await renderApp(path, admin)
   await settledBar()
-  expect(screen.queryByText('Log out')).toBeNull()
-  expect(screen.queryByText('Sign-in methods')).toBeNull()
+  expect(screen.queryByText('Log Out')).toBeNull()
+  expect(screen.queryByText('Sign-In Methods')).toBeNull()
 })
 
-test('the no-access page has no Log out outside the Account menu', async ({ createUser }) => {
+test('the no-access page has no Log Out outside the Account menu', async ({ createUser }) => {
   const nobody = await createUser({ email: 'nobody.bar@example.com' })
   await renderApp('/featherbase/admin', nobody)
   await screen.findByTestId('no-access')
   await settledBar()
-  expect(screen.queryByText('Log out')).toBeNull()
+  expect(screen.queryByText('Log Out')).toBeNull()
 })
 
 test('the no-access Admin address names the platform in the bar and tab, retaining Account actions', async ({ createUser }) => {
@@ -375,8 +377,8 @@ test('the no-access Admin address names the platform in the bar and tab, retaini
   await waitFor(async () => expect(await barName()).toHaveTextContent(/^Featherbase$/))
   expect(document.title).toBe('Featherbase')
   const menu = await openAccountMenu()
-  expect(within(menu).getByRole('menuitem', { name: 'Sign-in methods' })).toBeInTheDocument()
-  expect(within(menu).getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument()
+  expect(within(menu).getByRole('menuitem', { name: 'Sign-In Methods' })).toBeInTheDocument()
+  expect(within(menu).getByRole('menuitem', { name: 'Log Out' })).toBeInTheDocument()
 })
 
 // ---- 9. phone width --------------------------------------------------------------
@@ -388,7 +390,7 @@ function phoneWidth() {
   }) as MediaQueryList)
 }
 
-test('at phone width Open Admin and the theme toggle move into the Account menu, above Sign-in methods', async ({ admin }) => {
+test('at phone width Open Admin and the theme toggle move into the Account menu, above Sign-In Methods', async ({ admin }) => {
   phoneWidth()
   await installDashApp(admin)
   onAddressThatOpens('dash')

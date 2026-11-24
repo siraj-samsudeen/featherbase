@@ -495,20 +495,31 @@ export function FilterBar({
 /** #1289: the list's active filters as big chips, each with a round ✕, then Clear All Filters when more than one
  *  is on. They sit in the list's one filter row; filters come back on the next visit (#1228), so one control takes
  *  them all off. */
-export function FilterChips({ meta, filters, onChange, held, className }: {
+export function FilterChips({ meta, filters, onChange, held, picked, onSaveView, onClearAll, flow, className }: {
   meta: import('../lib/meta').TableMeta
   filters: Filter[]
   onChange: (filters: Filter[]) => void
   /** #1289: the filters a visible box already shows (heldByBoxes): they get no chip. */
   held?: Set<number>
+  /** #1289 option C: the filters Click To Narrow picked, by index: one green chip per picked value. */
+  picked?: Map<number, { key: string; name: string; words: import('react').ReactNode; onRemove: () => void }[]>
+  /** #1289 option C: Save As View beside the chips. */
+  onSaveView?: () => void
+  /** #1289 option C: Clear All Filters in place of `onChange([])` (panel picks clear without a step of the walk). */
+  onClearAll?: () => void
+  /** The chips keep together as one line beside the filters: the box never shrinks
+   *  below its chips, so it moves down whole rather than splitting (board A). */
+  flow?: boolean
   className?: string
 }) {
   const { t } = useI18n()
   if (!filters.length) return null
   const nameOf = ([column]: Filter) => (column === 'row_id' ? 'Row ID' : t(meta.columns.find((c) => c.column_name === column)?.label ?? String(column)))
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${className ?? ''}`} data-testid="filter-chips">
-      {filters.map((f, i) => held?.has(i) ? null : (
+    <div className={`flex flex-wrap items-center gap-2 ${flow ? 'max-w-full flex-[1_0_auto]' : ''} ${className ?? ''}`} data-testid="filter-chips">
+      {filters.map((f, i) => held?.has(i) ? null : picked?.has(i) ? picked.get(i)!.map((chip) => (
+        <FilterChip key={`${i}\u0000${chip.key}`} name={chip.name} onRemove={chip.onRemove} tone="picked">{chip.words}</FilterChip>
+      )) : (
         <FilterChip key={i} name={nameOf(f)} onRemove={() => onChange(filters.filter((_, j) => j !== i))}>
           <FilterWords meta={meta} filter={f} asLink />
         </FilterChip>
@@ -516,11 +527,21 @@ export function FilterChips({ meta, filters, onChange, held, className }: {
       {filters.length > 1 && (
         <button
           type="button"
-          onClick={() => onChange([])}
+          onClick={() => (onClearAll ? onClearAll() : onChange([]))}
           data-testid="filter-clear-all"
           className="min-h-control text-sm font-medium text-action underline-offset-2 hover:underline"
         >
           Clear All Filters
+        </button>
+      )}
+      {onSaveView && (
+        <button
+          type="button"
+          onClick={onSaveView}
+          data-testid="filter-save-view"
+          className="min-h-control text-sm font-medium text-action underline-offset-2 hover:underline"
+        >
+          Save As View
         </button>
       )}
     </div>

@@ -43,4 +43,7 @@ export { PasteRows, type PasteCheck, type PasteChecked, type PastedRow } from '.
 export { pastedCells } from './pasted'
 export { FoldToggle } from './FoldToggle'
 export { FigureMatrix, type FigureColumn, type FigureRow } from './FigureMatrix'
+export { LinkLine, LinkSection, TickMark, ToneChip, type ChipTone } from './LinkLine'
+export { FindingCard, type FindingTone } from './FindingCard'
 export { cellClasses, headCellClasses, RowDensityContext, TABLE_CLASSES, useRowDensity, type RowDensity } from './TableLook'
+export { placeCard, useTopLayer, type TopLayerPlace } from './TopLayer'

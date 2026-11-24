@@ -200,26 +200,26 @@ describe('#1255: the Account menu switches between them', () => {
     expect(getToken()).toBe(rbToken)
   })
 
-  test('with one account the menu offers only + Add another account, which opens the sign-in form', async ({ admin }) => {
+  test('with one account the menu offers only + Add Another Account, which opens the sign-in form', async ({ admin }) => {
     jar.set('sid', { value: admin.token!, path: '/' })
     const load = vi.spyOn(pageLoad, 'assign').mockImplementation(() => {})
     await renderApp('/featherbase/admin', admin)
     await userEvent.click(await screen.findByTestId('session-user'))
     const section = await screen.findByTestId('account-switcher')
     expect(section).not.toHaveTextContent('Switch to')
-    expect(section).not.toHaveTextContent('Sign out of all accounts')
-    await userEvent.click(within(section).getByRole('menuitem', { name: '+ Add another account' }))
+    expect(section).not.toHaveTextContent('Sign Out of All Accounts')
+    await userEvent.click(within(section).getByRole('menuitem', { name: '+ Add Another Account' }))
     expect(load).toHaveBeenCalledWith(expect.stringMatching(/^\/featherbase\/login\?add=1&next=/))
   })
 
-  test('Sign out of all accounts ends every session and lands on the plain sign-in page', async ({ admin, db }) => {
+  test('Sign Out of All Accounts ends every session and lands on the plain sign-in page', async ({ admin, db }) => {
     const rbToken = await signInHere(await person(db as Sql, 'RB Made-up', 'rb.made-up@example.test'))
     jar.set('sid', { value: admin.token!, path: '/' })
     await fetch('/api/accounts', { method: 'POST' })
     const load = vi.spyOn(pageLoad, 'assign').mockImplementation(() => {})
     await renderApp('/featherbase/admin', admin)
     await userEvent.click(await screen.findByTestId('session-user'))
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Sign out of all accounts (2)' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Sign Out of All Accounts (2)' }))
     await waitFor(() => expect(load).toHaveBeenCalledWith('/featherbase/login'))
     expect(getToken()).toBeNull()
     expect((await bridged('/api/whoami', { headers: { authorization: `Bearer ${rbToken}` } })).status).toBe(401)
@@ -315,7 +315,7 @@ describe('#1255: what the page says when something fails', () => {
     await fetch('/api/accounts', { method: 'POST' })
     await renderApp('/featherbase/admin', admin)
     await userEvent.click(await screen.findByTestId('session-user'))
-    const all = await screen.findByRole('menuitem', { name: 'Sign out of all accounts (2)' })
+    const all = await screen.findByRole('menuitem', { name: 'Sign Out of All Accounts (2)' })
     await refuseSignOuts(db as Sql)
     await userEvent.click(all)
     expect(await screen.findByRole('alert')).toHaveTextContent('Sign-out did not complete. Check your connection and try again.')

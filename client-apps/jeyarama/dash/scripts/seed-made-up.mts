@@ -247,7 +247,8 @@ for (const [store, managers] of Object.entries(Object.groupBy(org.prefills as { 
 await save('dash.report_access', { report_bundle: bundle, job: 'Store Manager' }).catch(() => {})
 await post('/api/app_actions/dash/add_starting_roles', { idempotencyKey: randomUUID(), payload: {} })
 
-// The proof it worked: a made-up Store Manager opens Lakeside's report and gets figures.
+// The proof it worked: a made-up Store Manager opens Lakeside's report. Its figures are the Dive's own since #1366
+// (no sales copies), so the read answers ready, headed by the store, with no rows of its own.
 const signIn = await fetch(`${api}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ usr: 'reader-sm@example.test', pwd: PASSWORD }) })
 if (!signIn.ok) throw new Error(`Signing in as a made-up reader failed: HTTP ${signIn.status}`)
@@ -255,8 +256,9 @@ const version = JSON.parse(await readFile(resolve(appDir, 'package.json'), 'utf8
 const opened = await fetch(`${api}/api/app_reads/dash/report`, { method: 'POST', headers: { 'content-type': 'application/json',
   authorization: `Bearer ${((await signIn.json()) as { token: string }).token}`, 'X-Featherbase-App-Version': `dash@${version}` },
   body: JSON.stringify({ payload: { report: 'sales', store: '9901' } }) })
-const answer = await opened.json() as { result?: { state?: string; rows?: unknown[] } }
-if (!opened.ok || !answer.result?.rows?.length) throw new Error(`A made-up reader's report has no figures: HTTP ${opened.status} ${JSON.stringify(answer).slice(0, 300)}`)
+const answer = await opened.json() as { result?: { state?: string; heading?: { name?: string | null } } }
+if (!opened.ok || answer.result?.state !== 'ready' || answer.result.heading?.name !== 'Lakeside')
+  throw new Error(`A made-up reader's report does not open at Lakeside: HTTP ${opened.status} ${JSON.stringify(answer).slice(0, 300)}`)
 
 const says = (people: { key: string; says: string }[], prefix: string) =>
   people.map(p => `  ${`${prefix}-${p.key}@example.test`.padEnd(36)} ${p.says}`).join('\n')

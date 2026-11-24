@@ -1,5 +1,5 @@
 // #72: the navbar avatar opens an account menu (user identity, Sign-in
-// methods, Log out — #489). Change password moved to the Sign-in methods page,
+// methods, Log Out — #489). Change password moved to the Sign-In Methods page,
 // the account page every address serves; its modal posts { password } to
 // /api/set_password — through the fetch bridge these are real requests into
 // the in-process server, inside the test's rolled-back transaction, so the
@@ -108,7 +108,7 @@ test('a mismatched confirmation blocks the submit', async ({ admin }) => {
 const pathOf = (r: { router: unknown }) =>
   (r.router as { state: { location: { pathname: string } } }).state.location.pathname
 
-test('Log out from the account menu lands on the sign-in page', async ({ admin }) => {
+test('Log Out from the account menu lands on the sign-in page', async ({ admin }) => {
   const r = await renderApp('/featherbase/admin', admin)
   await userEvent.click(await screen.findByTestId('session-user', {}, { timeout: 8000 }))
   await userEvent.click(screen.getByTestId('logout'))

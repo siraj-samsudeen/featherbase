@@ -39,6 +39,22 @@ describe('the page', () => {
     expect(pageView({ embed: { ok: true, value: { unreachable: true } }, report: { ok: false, status: 500 } })).toEqual({ kind: 'failed' })
   })
 
+  // #1391: no answer at all (the request failed on the way, or ran out of time) is the connection,
+  // not the report; an answer that refuses, or a MotherDuck error, is the report.
+  it.each([
+    ['the session request failed on the way', { embed: { ok: false as const }, report: report('ready') }],
+    ['the report read failed on the way', { embed: { ok: true as const, value: { unreachable: true } }, report: { ok: false as const } }],
+    ['the session request ran out of time', { embed: undefined, report: report('ready'), timedOut: true }],
+  ])("says Dash couldn't be reached when %s", (_why, input) => {
+    expect(pageView(input)).toEqual({ kind: 'offline' })
+  })
+
+  it("says the report couldn't open, not the connection, when the server answered", () => {
+    expect([pageView({ embed: { ok: false, status: 500 }, report: report('ready') }),
+      pageView({ embed: { ok: true, value: { unreachable: true } }, report: report('ready'), timedOut: true })])
+      .toEqual([{ kind: 'failed' }, { kind: 'failed' }])
+  })
+
   // #1269: MotherDuck refused the reader's reach as too large.
   it('says the reach is too large where it would say only "couldn\'t open"', () => {
     const tooLarge = { ok: true as const, value: { too_large: true } }
@@ -78,7 +94,7 @@ describe('opening the report (the deadline covers the session request and the fr
   const READY = { state: 'ready' }
   const FRAME = { frame: 'https://embed-motherduck.com/sandbox/#session=s' }
 
-  it("says the report couldn't open when the session request never answers", async () => {
+  it("says Dash couldn't be reached when the session request never answers", async () => {
     vi.useFakeTimers()
     const { pending, read } = reads()
     let view = pageView({ embed: undefined, report: undefined })
@@ -86,7 +102,7 @@ describe('opening the report (the deadline covers the session request and the fr
     loader.open('9901')
     pending.report[0].resolve(READY)
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
-    expect(view).toEqual({ kind: 'failed' })
+    expect(view).toEqual({ kind: 'offline' })
   })
 
   it('ignores a session that answers after the deadline', async () => {
@@ -99,7 +115,7 @@ describe('opening the report (the deadline covers the session request and the fr
     await vi.advanceTimersByTimeAsync(DIVE_READY_TIMEOUT_MS)
     pending.embed_session[0].resolve(FRAME)
     await flush()
-    expect(view).toEqual({ kind: 'failed' })
+    expect(view).toEqual({ kind: 'offline' })
   })
 
   it("ignores the previous store's session after the reader switches stores", async () => {
@@ -280,12 +296,12 @@ describe('the report read has a deadline too', () => {
     return { pending, loader, view: () => view }
   }
 
-  it("shows couldn't-load with Try again when the report never answers and the Dive is unreachable", async () => {
+  it("says Dash couldn't be reached, with Try again, when the report never answers and the Dive is unreachable", async () => {
     const { pending, loader, view } = harness()
     loader.open('9901')
     pending.embed_session[0]({ unreachable: true })
     await vi.advanceTimersByTimeAsync(REPORT_TIMEOUT_MS)
-    expect(view()).toEqual({ kind: 'failed' })
+    expect(view()).toEqual({ kind: 'offline' })
   })
 
   it('recovers on Try again, which asks for both again', async () => {
@@ -318,7 +334,7 @@ describe('the report read has a deadline too', () => {
     await vi.advanceTimersByTimeAsync(REPORT_TIMEOUT_MS)
     pending.report[0]({ state: 'ready' })
     await vi.advanceTimersByTimeAsync(0)
-    expect(view()).toEqual({ kind: 'failed' })
+    expect(view()).toEqual({ kind: 'offline' })
   })
 })
 

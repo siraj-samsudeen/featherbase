@@ -12,7 +12,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 vi.mock('../../../../packages/shop-floor/node_modules/lucide-react', async importOriginal =>
   Object.fromEntries(Object.keys(await importOriginal<object>()).map(name => [name, () => null])))
 
-type Deferred = { resolve: (body: unknown) => void }
+type Deferred = { resolve: (body: unknown) => void; fail: (error: Error) => void }
 const calls: { name: string; store?: string; payload: Record<string, unknown>; answer: Deferred }[] = []
 let teardown: () => void = () => {}
 const SALES = { key: 'sales', name: 'Sales versus target', takes_store: true, takes_month: true }
@@ -43,8 +43,8 @@ beforeAll(() => {
     const name = decodeURIComponent(String(url).split('/').at(-1)!)
     const payload = JSON.parse(String(init.body)).payload ?? {}
     const store = payload.store
-    return new Promise(resolveCall => {
-      const answer: Deferred = { resolve: body => resolveCall(new Response(JSON.stringify({ result: body }), { status: 200 })) }
+    return new Promise((resolveCall, rejectCall) => {
+      const answer: Deferred = { resolve: body => resolveCall(new Response(JSON.stringify({ result: body }), { status: 200 })), fail: rejectCall }
       calls.push({ name, store, payload, answer })
       if (name === 'stores') answer.resolve([{ value: '9901', label: 'Lakeside · 9901' }, { value: '9902', label: 'Hillview · 9902' }])
       if (name === 'reports') answer.resolve(reportsAnswer)
@@ -443,7 +443,23 @@ describe('a report on the rendered page', () => {
     const { answer, container, unmount } = await open('?report=whole')
     await answer('report', plain)
     await answer('embed_session', { unreachable: true })
-    expect(container.querySelector('[data-testid=failed]')?.textContent).toBe("This report couldn't open.Try again")
+    expect(container.querySelector('[data-testid=failed]')?.textContent).toBe("This report couldn't open.Try Again")
+    await unmount()
+  })
+
+  // #1391: a request that never reached the server is the reader's connection, not the report.
+  it("says Dash couldn't be reached, with Try Again, when the request fails on the way, and Try Again opens the report", async () => {
+    const { answer, container, view, unmount } = await open('?report=whole')
+    const { act } = await import('react')
+    await answer('report', plain)
+    await act(async () => { for (const c of calls.filter(c => c.name === 'embed_session')) c.answer.fail(new TypeError('Failed to fetch')); await settle() })
+    expect([view(), container.querySelector('[data-testid=offline]')?.textContent, container.querySelector('[data-testid=failed]')])
+      .toEqual(['offline', "Couldn't reach Dash. Check your connection, then Try Again.Try Again", null])
+    calls.length = 0
+    await act(async () => { container.querySelector<HTMLButtonElement>('[data-testid=offline] button')!.click(); await settle() })
+    await answer('report', plain)
+    await answer('embed_session', frame)
+    expect(view()).toBe('dive')
     await unmount()
   })
 

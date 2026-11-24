@@ -37,6 +37,7 @@ import { ReportView } from './components/ReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
 import { TableNaming } from './components/TableNaming'
+import { ActionPreview } from './components/ActionPreview'
 import { DashboardView } from './components/DashboardView'
 import { HomePageView } from './components/HomePageView'
 import { useHomePages } from './lib/home-pages'
@@ -44,7 +45,7 @@ import { Jobs } from './pages/Jobs'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { AccessExplanation } from './pages/AccessExplanation'
-import { AccountLayout } from './pages/AccountLayout'
+import { AccountLayout, PersonFrame } from './pages/AccountLayout'
 import { AgentConnectPage } from './pages/AgentConnect'
 import { ConnectedApps } from './pages/ConnectedApps'
 import { FindPerson } from './pages/FindPerson'
@@ -227,12 +228,14 @@ const oauthCallbackRoute = createRoute({
   path: '/featherbase/oauth-callback',
   validateSearch: (search: Record<string, unknown>) => ({
     code: searchString(search.code),
+    // #1385: the Admin page chosen on an app's address, carried through the hand-off.
+    next: searchString(search.next),
   }),
   component: OAuthCallbackRouteComponent,
 })
 function OAuthCallbackRouteComponent() {
-  const { code } = oauthCallbackRoute.useSearch()
-  return <OAuthCallbackPage code={code} />
+  const { code, next } = oauthCallbackRoute.useSearch()
+  return <OAuthCallbackPage code={code} next={next} />
 }
 
 // WEB-003: customer portal — a logged-in website user sees only their own
@@ -334,8 +337,18 @@ function PageNotFound() {
 
 // #1328 (audit F09): where the server sends an address it cannot open as an app.
 // The address is read as text only (askedAddress), never followed.
-const unavailableRoute = createRoute({
+// Signed in, the page sits in the person's own frame (the sidebar, the white panel), as the account pages do;
+// signed out there is no frame, only the page.
+const personFrameRoute = createRoute({
   getParentRoute: () => rootRoute,
+  id: 'person-frame',
+  component: function PersonFrameLayout() {
+    return getToken() ? <ThemeChoiceProvider><PersonFrame /></ThemeChoiceProvider> : <Outlet />
+  },
+})
+
+const unavailableRoute = createRoute({
+  getParentRoute: () => personFrameRoute,
   path: UNAVAILABLE_PATH,
   validateSearch: (search: Record<string, unknown>) => ({ address: typeof search.address === 'string' ? search.address : undefined }),
   component: function Unavailable() {
@@ -566,9 +579,12 @@ function NavigatedList({ table, filters, path, layout: asked }: { table: string;
             key={table}
             table={table}
             filters={nav.step.filters ?? []}
-            onFiltersChange={(next) => {
+            onFiltersChange={(next, how) => {
               const { filters: _, ...step } = nav.step
-              nav.push(next.length ? { ...step, filters: next } : step)
+              const at = next.length ? { ...step, filters: next } : step
+              // #1289 option C: a Click To Narrow tick narrows in place, not a step of the walk per click.
+              if (how?.replace) nav.replace(at)
+              else nav.push(at)
               rememberFilters(table, next)
             }}
             layout={views.layout}
@@ -1020,6 +1036,25 @@ function NamingPage() {
   )
 }
 
+// #1340: an app's action previewed before it runs, as an ordinary page under its Table (static first segment).
+const actionPreviewRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'table/$table/run/$action',
+  ...tableAddress,
+  params: { stringify: stringifyTableParams<{ table: string; action: string }> },
+  component: tablePage(ActionPreviewPage),
+})
+
+function ActionPreviewPage() {
+  const { table } = useTableAddress()
+  const { action } = actionPreviewRoute.useParams()
+  return (
+    <div data-testid="table-page">
+      <ActionPreview key={`${table}/${action}`} table={table} action={action} />
+    </div>
+  )
+}
+
 // SET-003: role & permission manager for a Table (static first segment).
 const permissionsRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -1160,7 +1195,7 @@ const exploreRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
-  unavailableRoute,
+  personFrameRoute.addChildren([unavailableRoute]),
   featherbaseIndexRoute,
   loginRoute,
   agentConnectRoute,
@@ -1172,5 +1207,5 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, actionPreviewRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

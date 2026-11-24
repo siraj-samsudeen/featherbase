@@ -79,9 +79,9 @@ test('an early Enter is dropped when the search is changed before its results ar
   expect(pathOf(app)).toBe('/featherbase/admin/all-tables')
 })
 
-test('"What you can see" opens your own access page', async ({ admin }) => {
+test('"What You Can See" opens your own access page', async ({ admin }) => {
   const { app, bar } = await openBar(admin)
-  fireEvent.change(bar, { target: { value: 'What you can see' } })
+  fireEvent.change(bar, { target: { value: 'What You Can See' } })
   await screen.findByTestId('awesomebar-page', {}, T)
   fireEvent.submit(screen.getByTestId('awesomebar'))
   await waitFor(() => expect(pathOf(app)).toBe('/featherbase/account/access/Administrator'))
@@ -96,9 +96,9 @@ test('"Service accounts" opens Access tokens on its Service accounts tab', async
   expect(await screen.findByRole('tab', { name: 'Service accounts', selected: true }, T)).toBeInTheDocument()
 })
 
-test('"Log out" is a command that signs out', async ({ admin }) => {
+test('"Log Out" is a command that signs out', async ({ admin }) => {
   const { app, bar } = await openBar(admin)
-  fireEvent.change(bar, { target: { value: 'Log out' } })
+  fireEvent.change(bar, { target: { value: 'Log Out' } })
   fireEvent.click(await screen.findByTestId('awesomebar-cmd-logout', {}, T))
   await waitFor(() => expect(pathOf(app)).toBe('/featherbase/login'), T)
 })

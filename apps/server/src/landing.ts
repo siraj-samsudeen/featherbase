@@ -46,8 +46,8 @@ export async function canOpenApp(person: string, app: string): Promise<boolean> 
   return (await appCatalog(person)).some((entry) => entry.name === app)
 }
 
-function handTo(session: SignedInSession, here: InstanceAddress, target: InstanceAddress): Landing {
-  const ticket = mintHandoffTicket(session.token, here.host, target.host)
+function handTo(session: SignedInSession, here: InstanceAddress, target: InstanceAddress, next?: string): Landing {
+  const ticket = mintHandoffTicket(session.token, here.host, target.host, next)
   return { handoff: `${target.address}/api/handoff/start?ticket=${encodeURIComponent(ticket)}` }
 }
 
@@ -108,10 +108,20 @@ const ADMIN_ROOT = '/featherbase/admin'
  *  its sid cookie on this address can complete it. Where this host is itself
  *  the Admin (the Admin address, an unlisted host, or no list at all), the
  *  Admin's own path. Null for a person who cannot use Admin. */
-export async function openAdminFor(session: SignedInSession, host: string): Promise<Landing | null> {
+export async function openAdminFor(session: SignedInSession, host: string, next?: unknown): Promise<Landing | null> {
   if (!(await canUseAdmin(session.user.row_id))) return null
   const list = config.instanceAddresses
   const here = matchAddress(list, host)
-  if (list && here && here.opens !== ADMIN) return handTo(session, here, adminAddress(list))
-  return { landing: ADMIN_ROOT }
+  const at = adminPath(next)
+  if (list && here && here.opens !== ADMIN) return handTo(session, here, adminAddress(list), at)
+  return { landing: at ?? ADMIN_ROOT }
+}
+
+/** #1385: a page of Featherbase's own to open once in the Admin (from the command bar on an app's address):
+ *  a plain path under /featherbase/, never another origin, a protocol-relative or backslash path, or one
+ *  with control characters. Anything else is dropped, and the Admin's home opens. */
+export function adminPath(next: unknown): string | undefined {
+  if (typeof next !== 'string' || next.length > 2000 || !next.startsWith('/featherbase/')) return undefined
+  if (next.includes('\\') || next.includes('//') || /[\u0000-\u001f\u007f]/.test(next)) return undefined
+  return next
 }
