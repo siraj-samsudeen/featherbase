@@ -61,7 +61,7 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
 
 - Ask is open to everyone signed in: `ask.chat` is its entry Table, `role: All`, `can_read`,
   `own_rows_only` (each person sees only their own chats, ready for Step 2).
-- New platform icon `message_question` (lucide `MessageCircleQuestion`) for the app.
+- New platform icon `bot` (lucide `Bot`) for the app (changed from `message_question` on 23-Nov-2026, Mohammad).
 - No word rules on the server: the placeholder answers every question. The reply type keeps
   `kind: 'cannot'` so the page has a "can't answer" state for the model (Phase 2). The server
   refuses an empty question and one over 2000 characters.
@@ -73,7 +73,7 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
 
 ## Done
 
-1. Manifest and package files (`example-apps/ask/`), and the `message_question` icon.
+1. Manifest and package files (`example-apps/ask/`), and the app icon (now `bot`).
 2. The server's `ask` read, `src/server/index.ts` and `src/server/reply.ts` (placeholder).
 3. 3a: Featherbase runs locally with Ask installed; the read answers over HTTP (200), refuses
    an empty question (417) and a signed-out caller (401).

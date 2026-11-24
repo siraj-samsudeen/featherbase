@@ -4,7 +4,7 @@
   "name": "ask",
   "title": "Ask",
   "summary": "Ask about your data, your Tables and Featherbase",
-  "icon": "message_question",
+  "icon": "bot",
   "server": "dist/server.mjs",
   "client": "dist/client",
   "entryTable": "ask.chat",
