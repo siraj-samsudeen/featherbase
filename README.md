@@ -329,6 +329,17 @@ containing real requests. It never connects to StyleHR, email, MotherDuck or
 GitHub. Stage one records manual verification, decisions, fulfillment and
 investigation; live integrations are a separate stage.
 
+### Explicit opt-in: Feather Ask
+
+Ask is the app in `example-apps/ask` where anyone signed in asks about their
+figures, their Tables or Featherbase (#1377). For now it gives a placeholder
+answer to every question; real answers come in a later step. Build it with
+`npm ci --prefix example-apps/ask` followed by
+`npm run build --prefix example-apps/ask`. Add that folder's absolute path to
+the JSON array `FEATHERBASE_APP_PATHS` in your untracked `.env.local`, restart
+the server, then choose Ask in app administration (or run
+`featherbase advanced apps install-app ask`). Open it at `/ask/`.
+
 ### Boot and smoke-test for contributors
 
 `./init.sh` installs checkout dependencies, bootstraps local Postgres where

@@ -97,6 +97,10 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
    word, as in `DataList`). Try again asks the same question again in the same place
    (`Chat.tsx`: `fetchAnswer`, shared by `ask` and `retry`) and waits, like the box, while
    another answer is on its way. 24 checks pass headless.
+8. Piece 4: `apps/server/test/ask-app.test.ts` (installs Ask; anyone signed in gets the
+   placeholder; empty, over 2000 characters and signed out are refused), Ask in
+   `tools/prepare-apps.mjs`, and a README section "Explicit opt-in: Feather Ask". The tests
+   use their own `featherbase_test` database; create it once on a new machine.
 
 Learned on the way: in local development the platform's sidebar shows its raw rows for about
 half a second when switching apps (Tickets too), because `bar.js` loads as many modules; a
@@ -104,14 +108,11 @@ production build (staging) doesn't show it. PowerShell may block `npm.ps1`; use 
 
 ## Next step
 
-**Piece 4.** `apps/server/test/ask-app.test.ts` (install Ask, call the read over HTTP:
-answer, empty refused, too long refused, signed out refused), add Ask to
-`tools/prepare-apps.mjs`, a README section like Tickets'.
+**The verifier.** An independent headless verifier at desktop width against the Step 1
+checklist (it includes: "Every record shown (person, store, section, department, ticket, and
+so on) is a link that opens it, or plain text only where the viewer may not open it.").
 
 ## Then
 
-- Then the independent headless verifier at desktop width against the Step 1 checklist
-  (it includes: "Every record shown (person, store, section, department, ticket, and so on)
-  is a link that opens it, or plain text only where the viewer may not open it."), then remove
-  this note and open the draft PR.
+- Remove this note and open the draft PR.
 - Step 2 (Chats) and Step 3 (panel on every page) follow, each its own PR.
