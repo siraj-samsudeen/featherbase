@@ -86,6 +86,14 @@ test('an adjustment takes its line from its account and starts with all of it re
     .rejects.toThrow('Not Classified Yet has no P&L line yet: classify it first')
 })
 
+test('an adjustment keeps a reason as long as the controller wrote it', async ({ createUser }) => {
+  const { made, save } = await setup(createUser)
+  const reason = 'Provision for the half-yearly audit fee, apportioned to stores on net sales as agreed with the auditors in the September review meeting, to be trued up when the invoice arrives in the following quarter'
+  expect(reason.length).toBeGreaterThan(200)
+  const line = await save('monthly_close_adjustment', { monthly_close: made.close.row_id, plant: '9003', gl_account: '49990001', amount: 5, adjustment_type: 'Provision', reason })
+  expect(line.reason).toBe(reason)
+})
+
 test('pasted adjustments become lines of the close; a viewer cannot paste', async ({ createUser }) => {
   const { made, act, rows, editor, viewer } = await setup(createUser)
   const values = [

@@ -52,6 +52,14 @@ describe('a pasted budget block', () => {
     expect(checkBudget([['Store', 'Line', "Sep'26"], ['9003', 'Manpower Cost', '1']], { plants, lines, months }).problem).toBe("Sep'26 is outside the months this version covers")
     expect(checkBudget([['Store', 'Line', "Oct'26"]], { plants, lines, months }).problem).toBe('Nothing to save: paste at least one row under the headings')
   })
+  it('takes the published line when a working line has the same name', () => {
+    const twins = [...lines, { row_id: 'interest', line_name: 'Interest', level: 'Published', line_kind: 'Posted' }, { row_id: 'interest_posted', line_name: 'Interest', level: 'Working', line_kind: 'Posted' }]
+    for (const cell of ['Interest', 'interest']) {
+      const checked = checkBudget([['Store', 'Line', "Oct'26"], ['9003', cell, '5']], { plants, lines: [...twins].reverse(), months })
+      expect(checked.rows[0].problem, cell).toBeUndefined()
+      expect(checked.rows[0].values[0].pl_line).toBe('interest')
+    }
+  })
   it('names a store, line and month that appear twice', () => {
     const checked = checkBudget([['Store', 'Line', "Oct'26"], ['9003', 'Manpower Cost', '1'], ['Hilltop', 'Manpower Cost', '2']], { plants, lines, months })
     expect(checked.rows[1].problem).toBe('Hilltop and Manpower Cost are already on row 1')
