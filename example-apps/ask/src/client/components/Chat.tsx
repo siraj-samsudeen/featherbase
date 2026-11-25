@@ -6,7 +6,8 @@ import { EmptyChat } from './EmptyChat'
 import { QuestionAnswer, type AnswerStatus } from './QuestionAnswer'
 import { QuestionBox } from './QuestionBox'
 
-export function Chat() {
+// onNewChat: told once, when this chat is first saved, so the sidebar can list it.
+export function Chat({ onNewChat }: { onNewChat?: () => void }) {
   // The box's text lives here, so an example can put a question into it.
   const [text, setText] = useState('')
   const box = useRef<HTMLTextAreaElement>(null)
@@ -33,7 +34,9 @@ export function Chat() {
     const settle = (done: AnswerStatus) =>
       setAnswers((all) => all.map((answer) => (answer.id === id ? done : answer)))
     try {
-      const asked = await askQuestion(question,chat)
+      const asked = await askQuestion(question, chat)
+      // The first answer saved a new chat: the sidebar shows it at the top.
+      if (!chat) onNewChat?.()
       setChat(asked.chat)
       settle({ id, question, status: 'answered', reply: asked.answer })
     } catch (error) {

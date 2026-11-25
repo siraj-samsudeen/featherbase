@@ -131,21 +131,31 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
     (`myChats(skip, count)` sends `limit_start` and `limit_page_length` and returns the
     `total`) and goes when every chat shows. A chat shown twice after a new one is dropped.
     12 checks pass; with 150 test chats it runs 50, 100, 150.
+13. 2c-3: the chats in the sidebar, as ChatGPT's (Mohammad's design, 25-Nov-2026). Under
+    New chat, the heading row "Recent Chats … ↗ ⌄": the words and ⌄ open and close the list,
+    ↗ ("See all chats") opens the Recent Chats page. Then the newest 20 chats as plain
+    one-line rows, no icons, a long title cut with "…", how long ago on the right (now, 5m,
+    3h, 2d), then Load older conversations (20 more). A new chat appears at the top as its
+    first answer arrives (`Chat`'s `onNewChat`, `HomePage`'s `saved`). On the Recent Chats
+    page the list is left out. Collapsed to icons: only New chat and one Recent Chats icon
+    that opens the page (no list, no menu). Shop Floor's icons gain `ArrowUpRight`.
+    The plain clock below in the rail is the platform's Recently Opened, shown only to
+    people who can use the Admin (#1385). 18 list, 7 rail and 10 heading checks pass.
 
 Learned on the way: in local development the platform's sidebar shows its raw rows for about
 half a second when switching apps (Tickets too), because `bar.js` loads as many modules; a
 production build (staging) doesn't show it. PowerShell may block `npm.ps1`; use `npm.cmd`.
+The platform's rule that hides `data-depth="1"` rows in the collapsed rail sits in the page's
+stylesheet, so the sidebar's own `display:flex !important` wins and such rows still show
+(Tickets' Types group too); Ask no longer uses that pattern. Worth an issue for #1385.
 
 ## Next step
 
-**2c-3.** The chats in the sidebar under a "Recent Chats" heading: the newest 20, Load
-older conversations, See all; collapsed, the heading is one button whose menu lists them;
-on the Recent Chats page the sidebar shows just the heading; a new chat appears at the top
-at once.
+**2d.** Opening a chat, from the sidebar or the Recent Chats page, shows its questions and
+answers in Ask (`/ask/?chat=14`), and asking carries on in it.
 
 ## Then
 
-- 2d: opening a chat shows its questions and answers, and asking carries on in it.
 - 2e: a "⋯" menu on each chat with Rename and Delete (asks first; deletes the chat and its
   questions together). A manifest change: recreate the local database.
 - Later: group the lists by Today, Yesterday, Previous 7 days, Previous 30 days.

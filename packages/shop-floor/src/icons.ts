@@ -4,6 +4,7 @@
 export {
   ArrowDown,
   ArrowUp,
+  ArrowUpRight,
   Bell,
   BookOpen,
   Bookmark,
