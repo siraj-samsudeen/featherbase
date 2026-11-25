@@ -111,6 +111,14 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
    `idempotencyKey`), which starts a chat titled by the first question (one line, 140
    characters) or joins the one the page names, in one transaction. Own rows only: nobody
    reads or adds to someone else's chat. 6 server checks, 24 page checks and 7 save checks pass.
+10. 2b: the sidebar has **New chat** (`/ask/`) and **My Questions** (`/ask/?view=questions`),
+    as react-router 8.5.0 `Link`s (Mohammad chose links over buttons): no reload, Back and
+    Forward step between them, Ctrl+click opens a new tab. `App.tsx` wraps the app in
+    `BrowserRouter basename="/ask"`; `HomePage.tsx` reads `?view=` with `useSearchParams` and
+    gives `Chat` the visit's `location.key`, so New chat clears an open chat.
+    `components/MyQuestions.tsx` is the page's heading until 2c. The router writes `/ask`
+    without the slash; the platform redirects it to `/ask/` on a reload. 13 sidebar checks
+    and the 24 page checks pass.
 
 Learned on the way: in local development the platform's sidebar shows its raw rows for about
 half a second when switching apps (Tickets too), because `bar.js` loads as many modules; a
@@ -118,11 +126,10 @@ production build (staging) doesn't show it. PowerShell may block `npm.ps1`; use 
 
 ## Next step
 
-**2b.** The sidebar gets two rows: **New chat** (an empty chat) and **My Questions**.
+**2c.** My Questions lists the person's own chats, newest first.
 
 ## Then
 
-- 2c: My Questions lists the person's own chats, newest first.
 - 2d: opening a chat shows its questions and answers, and asking carries on in it.
 - Step 3 (the panel on every page).
 - Then the independent headless verifier at desktop width (its checklist includes: "Every
