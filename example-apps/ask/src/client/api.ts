@@ -1,4 +1,4 @@
-// The page's one call to Ask's server: send a question, get the reply.
+// The page's calls to the server: ask a question, and list the person's own chats.
 import { version } from '../../package.json'
 import type { Reply } from '../shared/reply'
 
@@ -35,4 +35,25 @@ export async function askQuestion(question: string, chat?: string): Promise<Aske
     throw new ApiError(data?.error?.message ?? `Ask could not answer (${response.status}). Please try again.`, response.status)
   // The server's action returns { chat, answer }, and the platform wraps it in { result }.
   return data.result as Asked
+}
+/** One of the person's chats, as Recent Chats lists it. */
+export type ChatRow = { row_id: string; title: string; created_at: string }
+
+// The platform's own list of a Table's rows. Ask's permissions give each person only
+// the chats they started, so this is "my chats". Newest first; the 200 latest.
+export async function myChats(): Promise<ChatRow[]> {
+  const query = new URLSearchParams({
+    fields: JSON.stringify(['row_id', 'title', 'created_at']),
+    order_by: 'created_at desc',
+    limit_page_length: '200',
+  })
+  const response = await fetch(`/api/table/ask.chat?${query}`, { credentials: 'same-origin' })
+  if (response.status === 401) {
+    window.location.assign('/featherbase/login?next=%2Fask%2F%3Fview%3Dchats')
+    throw new ApiError('Sign in to continue.', 401)
+  }
+  const data = await response.json().catch(() => null)
+  if (!response.ok)
+    throw new ApiError(data?.error?.message ?? `Your chats could not load (${response.status}).`, response.status)
+  return data.data as ChatRow[]
 }

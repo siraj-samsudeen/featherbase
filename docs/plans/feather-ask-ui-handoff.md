@@ -122,6 +122,11 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
     `components/RecentChats.tsx` is the page's heading until 2c. The router writes `/ask`
     without the slash; the platform redirects it to `/ask/` on a reload. 13 sidebar checks
     and the 24 page checks pass.
+11. 2c: the Recent Chats page lists the person's own chats, newest first: `myChats()` in
+    `api.ts` reads the platform's list (`GET /api/table/ask.chat`; own rows only, so an
+    administrator sees everyone's), and `RecentChats.tsx` draws it with Shop Floor's
+    `DataList` (loading, error with Try again, "No chats yet"). Each chat is a `RecordLink`,
+    opening its Featherbase record until 2d; Started says how long ago. 10 list checks pass.
 
 Learned on the way: in local development the platform's sidebar shows its raw rows for about
 half a second when switching apps (Tickets too), because `bar.js` loads as many modules; a
@@ -129,11 +134,18 @@ production build (staging) doesn't show it. PowerShell may block `npm.ps1`; use 
 
 ## Next step
 
-**2c.** Recent Chats lists the person's own chats, newest first.
+**2c-2.** Load more on the Recent Chats page: the newest 50, then 50 more per click
+(Mohammad chose this over time windows, 25-Nov-2026).
 
 ## Then
 
+- 2c-3: the chats in the sidebar under a "Recent Chats" heading: the newest 20, Load more,
+  See all; collapsed, the heading is one button whose menu lists them; on the Recent Chats
+  page the sidebar shows just the heading; a new chat appears at the top at once.
 - 2d: opening a chat shows its questions and answers, and asking carries on in it.
+- 2e: a "⋯" menu on each chat with Rename and Delete (asks first; deletes the chat and its
+  questions together). A manifest change: recreate the local database.
+- Later: group the lists by Today, Yesterday, Previous 7 days, Previous 30 days.
 - Step 3 (the panel on every page).
 - Then the independent headless verifier at desktop width (its checklist includes: "Every
   record shown (person, store, section, department, ticket, and so on) is a link that opens
