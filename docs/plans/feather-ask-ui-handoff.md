@@ -1,10 +1,14 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 24-Nov-2026. A working note for moving between machines. It is removed
-(or folded into the PR body) before the Step 1 PR is opened.
+**Last updated:** 25-Nov-2026. A working note for moving between machines and sessions. It is
+removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
 "Read `docs/plans/feather-ask-ui-handoff.md` and continue from Next step."
+
+On this machine, in a new session: open the worktree
+`C:\Users\DELL\Documents\work\featherbase-1377-ask-ui` and say the same. The dev setup below
+is already done there (database `fb_ask_ui`, Ask and Tickets installed, `.env.local`).
 
 ## Set up on a new machine
 
@@ -55,7 +59,22 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
 - Run every check yourself first (HTTP or headless browser) before handing it over. Nothing is
   done on anyone's word.
 - Ask design questions one at a time, with options and a recommendation.
-- PRs are drafts until CI is green. Feather Ask goes through PRs, not pushes to `main`.
+- **No PR and no push, of anything, until Mohammad says so** (25-Nov-2026): commit locally
+  on `issue-1377-ask-ui` only. Don't start or propose sessions whose process would push.
+- After drafting and checking a step, take the draft back out and give the walkthrough; when
+  Mohammad says "make this change" (or "commit it"), Claude puts it in or commits instead.
+- Mohammad likes the ChatGPT, Claude and Gemini way of doing things; check a layout against
+  them, and prefer the simplest code that does the job.
+- Before checking, make sure the dev server is up (`curl http://localhost:8077/api/ping`).
+  When run from a Claude session it can stop with the session; an orphaned web half then
+  holds port 5177 (`Port 5177 is already in use`): stop that process, then
+  `pnpm featherbase start` again.
+- Headless check scripts from earlier steps are kept outside the repo in
+  `C:\Users\DELL\Documents\work\ask-handover\checks\` (run with `node <file>`; they sign in
+  as Administrator). Some test behaviour later steps changed on purpose (for example
+  `check2c-recent.cjs` expects chats to open their Featherbase record, which 2d changes).
+- The server tests use their own database `featherbase_test` (already created here):
+  `pnpm --filter server test test/ask-app.test.ts`.
 
 ## Decisions so far
 
@@ -151,8 +170,26 @@ stylesheet, so the sidebar's own `display:flex !important` wins and such rows st
 
 ## Next step
 
-**2d.** Opening a chat, from the sidebar or the Recent Chats page, shows its questions and
-answers in Ask (`/ask/?chat=14`), and asking carries on in it.
+**2d, in progress: Mohammad is typing it.** Opening a chat, from the sidebar or the Recent
+Chats page, shows its questions and answers in Ask (`/ask/?chat=14`), with no reload, and
+asking carries on in it. The open chat is highlighted in the sidebar; a missing or someone
+else's chat shows "This chat could not be found…" with Try again and Start a new chat.
+
+- Claude's checked draft (14 checks passed, `check2d.cjs`) is in
+  `C:\Users\DELL\Documents\work\ask-handover\2d-draft\` (`2d.diff` is the whole change).
+- Seven files, typed in this order: the address helper (`chatPath`), `App.tsx`
+  (`RecordPagesProvider`: an `ask.chat` record opens at `/ask/?chat=<id>`), `api.ts`
+  (`openChat()`), `HomePage.tsx` (reads `?chat=`), `Chat.tsx` (`opened`: loads the chat,
+  "Opening the chat…", the not-found box), `Sidebar.tsx` (rows open in place via
+  `navigate`, the open chat highlighted), `RecentChats.tsx` (a `ChatLink` with `onNavigate`).
+- Where Mohammad was when this note was written (not committed): `App.tsx`, `api.ts` and
+  `HomePage.tsx` changed; the address helper is his `src/client/route.ts` (the draft calls it
+  `pages.ts`, same content). Still to do: `Chat.tsx`, `Sidebar.tsx`, `RecentChats.tsx`, and
+  import `chatPath` from `./route` / `../route`. Until those are done the build fails.
+- Then: build, run `check2d.cjs` and the manual checks, compare with the draft, commit.
+- Not in 2d, for later: a chat added to does not move to the top (the list is ordered by
+  when a chat started; ChatGPT orders by last use, which needs a "last asked" time on the
+  chat); a brand-new chat's address stays `/ask/` after its first answer.
 
 ## Then
 
