@@ -39,13 +39,18 @@ export async function askQuestion(question: string, chat?: string): Promise<Aske
 /** One of the person's chats, as Recent Chats lists it. */
 export type ChatRow = { row_id: string; title: string; created_at: string }
 
+/** One page of the person's chats, and how many they have in all. */
+export type ChatPage = { chats: ChatRow[]; total: number }
+
 // The platform's own list of a Table's rows. Ask's permissions give each person only
-// the chats they started, so this is "my chats". Newest first; the 200 latest.
-export async function myChats(): Promise<ChatRow[]> {
+// the chats they started, so this is "my chats". Newest first: `count` chats, after
+// skipping the first `skip` (the ones already shown).
+export async function myChats(skip: number, count: number): Promise<ChatPage> {
   const query = new URLSearchParams({
     fields: JSON.stringify(['row_id', 'title', 'created_at']),
     order_by: 'created_at desc',
-    limit_page_length: '200',
+    limit_start: String(skip),
+    limit_page_length: String(count),
   })
   const response = await fetch(`/api/table/ask.chat?${query}`, { credentials: 'same-origin' })
   if (response.status === 401) {
@@ -55,5 +60,5 @@ export async function myChats(): Promise<ChatRow[]> {
   const data = await response.json().catch(() => null)
   if (!response.ok)
     throw new ApiError(data?.error?.message ?? `Your chats could not load (${response.status}).`, response.status)
-  return data.data as ChatRow[]
+  return { chats: data.data as ChatRow[], total: data.total as number }
 }

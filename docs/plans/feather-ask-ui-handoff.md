@@ -127,6 +127,10 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
     administrator sees everyone's), and `RecentChats.tsx` draws it with Shop Floor's
     `DataList` (loading, error with Try again, "No chats yet"). Each chat is a `RecordLink`,
     opening its Featherbase record until 2d; Started says how long ago. 10 list checks pass.
+12. 2c-2: Recent Chats loads 50 at a time; **Load older conversations** adds the next 50
+    (`myChats(skip, count)` sends `limit_start` and `limit_page_length` and returns the
+    `total`) and goes when every chat shows. A chat shown twice after a new one is dropped.
+    12 checks pass; with 150 test chats it runs 50, 100, 150.
 
 Learned on the way: in local development the platform's sidebar shows its raw rows for about
 half a second when switching apps (Tickets too), because `bar.js` loads as many modules; a
@@ -134,14 +138,13 @@ production build (staging) doesn't show it. PowerShell may block `npm.ps1`; use 
 
 ## Next step
 
-**2c-2.** Load more on the Recent Chats page: the newest 50, then 50 more per click
-(Mohammad chose this over time windows, 25-Nov-2026).
+**2c-3.** The chats in the sidebar under a "Recent Chats" heading: the newest 20, Load
+older conversations, See all; collapsed, the heading is one button whose menu lists them;
+on the Recent Chats page the sidebar shows just the heading; a new chat appears at the top
+at once.
 
 ## Then
 
-- 2c-3: the chats in the sidebar under a "Recent Chats" heading: the newest 20, Load more,
-  See all; collapsed, the heading is one button whose menu lists them; on the Recent Chats
-  page the sidebar shows just the heading; a new chat appears at the top at once.
 - 2d: opening a chat shows its questions and answers, and asking carries on in it.
 - 2e: a "⋯" menu on each chat with Rename and Delete (asks first; deletes the chat and its
   questions together). A manifest change: recreate the local database.

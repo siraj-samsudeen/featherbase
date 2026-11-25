@@ -1,28 +1,60 @@
-// Recent Chats: the person's own chats, newest first. Each chat is a record, so it is a
-// RecordLink; for now it opens the chat's Featherbase record, and 2d opens it in Ask.
+// Recent Chats: the person's own chats, newest first, 50 at a time with Load older conversations.
+// Each chat is a record, so it is a RecordLink; for now it opens the chat's Featherbase
+// record, and 2d opens it in Ask.
 import { useEffect, useState } from 'react'
-import { DataList, fmtAgo, PageHeader, RecordLink, type DataColumn } from '@featherbase/shop-floor'
+import { Button, DataList, fmtAgo, PageHeader, RecordLink, type DataColumn } from '@featherbase/shop-floor'
 import { myChats, type ChatRow } from '../api'
 
+// How many chats each load brings.
+const PAGE = 50
+
 const RecentChatColumn: DataColumn<ChatRow>[] = [
-  { key: 'title', header: 'Chat', phone: 'title', 
+  { key: 'title', header: 'Chat', phone: 'title',
     cell: (chat) => <RecordLink table="ask.chat" rowId={chat.row_id} name={chat.title} /> },
   // "just now", "2 hours ago".
-  { key: 'started', 
-    header: 'Started', 
-    phone: 'status', 
+  { key: 'started',
+    header: 'Started',
+    phone: 'status',
     cell: (chat) => <span>{fmtAgo(chat.created_at)}</span> },
 ]
 
 export function RecentChats() {
-  // null while loading; the error's words when the list could not load.
+  // null while the first page loads; the error's words when it could not load.
   const [chats, setChats] = useState<ChatRow[] | null>(null)
   const [error, setError] = useState<string>()
+  // How many chats the person has in all, so the button shows only while some are left.
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [moreError, setMoreError] = useState<string>()
 
   function load() {
     setChats(null)
     setError(undefined)
-    myChats().then((answer) => setChats(answer), (failure: Error) => setError(failure.message))
+    myChats(0, PAGE).then(
+      (page) => {
+        setChats(page.chats)
+        setTotal(page.total)
+      },
+      (failure: Error) => setError(failure.message),
+    )
+  }
+
+  // The next 50, after the ones already shown. A chat started since the first load moves
+  // the rest down by one, so one may come again: it is shown once.
+  function loadMore() {
+    const shown = chats ?? []
+    setLoadingMore(true)
+    setMoreError(undefined)
+    myChats(shown.length, PAGE)
+      .then(
+        (page) => {
+          const known = new Set(shown.map((chat) => chat.row_id))
+          setChats([...shown, ...page.chats.filter((chat) => !known.has(chat.row_id))])
+          setTotal(page.total)
+        },
+        (failure: Error) => setMoreError(failure.message),
+      )
+      .finally(() => setLoadingMore(false))
   }
 
   useEffect(load, [])
@@ -41,6 +73,14 @@ export function RecentChats() {
           columns={RecentChatColumn}
           empty={{ title: 'No chats yet', body: 'The chats you have with Ask show here.' }}
         />
+        {chats && chats.length < total && (
+          <div className="flex flex-col items-center gap-2">
+            {moreError && <p role="alert" className="text-negative">{moreError}</p>}
+            <Button onClick={loadMore} loading={loadingMore}>
+              Load older conversations
+            </Button>
+          </div>
+        )}
       </div>
     </main>
   )
