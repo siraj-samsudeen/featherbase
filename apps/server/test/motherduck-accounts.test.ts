@@ -204,3 +204,37 @@ describe('#1346: the MotherDuck account sync', () => {
     }
   })
 })
+
+describe('#1396: linking accounts to people from one screen', () => {
+  test('lists each account with its person and the people its username reads as, and queues the sync, for System Managers only', async ({ admin, createUser }) => {
+    const priya = await makePerson({ full_name: 'Priya Raman' })
+    await makePerson({ full_name: 'Priyanka S' })
+    const linked = await makePerson({ full_name: 'Linked Already', email: 'linked@elsewhere.example' })
+    overrideVariable('MOTHERDUCK_TOKEN', 'md-read-token')
+    motherduck([[
+      { id: 'md-priya', username: 'priya', email: 'priya@elsewhere.example', first_name: 'Priya', last_name: 'R' },
+      { id: 'md-linked', username: 'linked_one', email: 'linked@elsewhere.example' },
+      { id: 'md-bot', username: 'loader_bot', is_service_account: true },
+    ]])
+    await syncMotherDuckAccounts()
+
+    const { accounts } = await admin.get<{ accounts: Record<string, unknown>[] }>('/api/motherduck_accounts/linking')
+    const by = Object.fromEntries(accounts.map((a) => [a.username, a]))
+    expect(Object.keys(by).sort()).toEqual(['linked_one', 'loader_bot', 'priya'])
+    expect(by.priya).toMatchObject({
+      row_id: 'md-priya', full_name: 'Priya R', email: 'priya@elsewhere.example', account_status: 'Active', service_account: false, person: null,
+    })
+    expect(typeof by.priya.updated_at).toBe('string')
+    expect((by.priya.suggestions as { person: string; name: string }[]).map((s) => s.name)).toEqual(['Priya Raman', 'Priyanka S'])
+    expect((by.priya.suggestions as { person: string }[])[0].person).toBe(priya)
+    expect(by.linked_one.person).toEqual({ id: linked, name: 'Linked Already' })
+    expect(by.loader_bot).toMatchObject({ service_account: true, suggestions: [] })
+
+    expect((await admin.fetch('/api/motherduck_accounts/sync', { method: 'POST' })).status).toBe(202)
+    expect(await sql`select 1 from background_job where method = 'sync_motherduck_accounts' and job_status = 'queued'`).not.toHaveLength(0)
+
+    const plain = await createUser({ email: 'plain.1396@example.test' })
+    expect((await plain.fetch('/api/motherduck_accounts/linking')).status).toBe(403)
+    expect((await plain.fetch('/api/motherduck_accounts/sync', { method: 'POST' })).status).toBe(403)
+  })
+})
