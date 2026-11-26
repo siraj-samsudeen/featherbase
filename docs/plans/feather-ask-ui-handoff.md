@@ -253,8 +253,8 @@ later (Mohammad: everything but MotherDuck already goes through Featherbase):
    import becomes `import type { FeatherbaseMcpTool, FeatherbaseMcpTools } from 'shared'`).
    1a, the shared types (`FeatherbaseMcpTool`, `FeatherbaseMcpToolCallResult`,
    `FeatherbaseMcpTools`, and `featherbaseMcp?` on `RuntimeReadContext`, exported from
-   `shared`'s `index.ts`): Mohammad is typing it (26-Nov-2026); the checked draft, with the
-   old names, is `ask-handover\S1-draft\1a-types\1a-types.diff`. Next: 1b, the flag.
+   `shared`'s `index.ts`): done (commit 87f4552ea, 26-Nov-2026; both
+   typechecks pass). Next: 1b, the flag.
    Permissions: propose an adversarial review in one line before it lands.
 2. **The agent loop in Ask**, with the stand-in model: a `think` outbound read (declares
    `featherbaseMcp`) runs the loop; the `ask` action saves chat, question and answer; the
