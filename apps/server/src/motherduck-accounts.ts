@@ -183,6 +183,32 @@ export async function suggestedPeople(usernames: string[]): Promise<Map<string, 
   return new Map(usernames.map((u) => [u, byKey.get(nameKey(u)) ?? []]))
 }
 
+/** #1396: one account as the Link to people screen shows it. */
+export interface LinkingAccount {
+  row_id: string; username: string; full_name: string | null; email: string | null
+  account_status: string; service_account: boolean; review_ticket: string | null; updated_at: string
+  person: { id: string; name: string } | null
+  /** Only for an account a person uses and that has no Person yet. */
+  suggestions: { person: string; name: string; code: string | null; jobs: Standing['jobs'] }[]
+}
+
+/** Every account, with its person and, for one still to link, the people its username reads as. */
+export async function linkingAccounts(): Promise<LinkingAccount[]> {
+  const rows = await sql`select a.row_id, a.username, a.full_name, a.email, a.account_status, a.service_account, a.review_ticket,
+    a.updated_at, a.person, p.full_name as person_name
+    from motherduck_account a left join person p on p.row_id = a.person order by lower(a.username), a.row_id`
+  const open = rows.filter((r) => !r.person && !r.service_account).map((r) => String(r.username))
+  const suggested = await suggestedPeople(open)
+  return rows.map((r) => ({
+    row_id: String(r.row_id), username: String(r.username), full_name: r.full_name ?? null, email: r.email ?? null,
+    account_status: String(r.account_status), service_account: Boolean(r.service_account),
+    review_ticket: r.review_ticket ?? null, updated_at: iso(r.updated_at),
+    person: r.person ? { id: String(r.person), name: String(r.person_name ?? r.person) } : null,
+    suggestions: (suggested.get(String(r.username)) ?? [])
+      .map((s) => ({ person: s.person, name: s.name, code: s.standing?.code ?? null, jobs: s.standing?.jobs ?? [] })),
+  }))
+}
+
 async function candidates(username: string): Promise<string[]> {
   return ((await suggestedPeople([username])).get(username) ?? []).map((p) => candidateLine(p.name, p.person, p.standing))
 }
