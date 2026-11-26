@@ -25,7 +25,8 @@ interface Account {
   review_ticket: string | null
   updated_at: string
   person: { id: string; name: string } | null
-  suggestions: { person: string; name: string; code: string | null; jobs: { job: string; site?: { name: string } }[] }[]
+  /** The people the username reads as; the label is name · code · job at place. */
+  suggestions: { person: string; name: string; label: string }[]
 }
 
 type View = 'open' | 'linked' | 'service'
@@ -33,8 +34,6 @@ const KEY = ['motherduck-linking'] as const
 const STATUS_TONE: Record<Account['account_status'], StatusTone> = { Active: 'neutral', Deprovisioned: 'caution', Removed: 'missing' }
 
 const viewOf = (a: Account): View => (a.service_account ? 'service' : a.person ? 'linked' : 'open')
-const suggestionWords = (s: Account['suggestions'][number]) =>
-  [s.name, s.code, s.jobs.map((j) => [j.job, j.site?.name].filter(Boolean).join(' at ')).join('; ')].filter(Boolean).join(' · ')
 const typing = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
 
@@ -68,7 +67,10 @@ export function LinkMotherDuckAccounts() {
     },
     onMutate: () => setError(null),
     onSuccess: (_d, { account, person }) => {
-      setLinkedNow((ids) => (person && view === 'open' ? [...ids.filter((id) => id !== account.row_id), account.row_id] : ids.filter((id) => id !== account.row_id)))
+      setLinkedNow((ids) => {
+        const others = ids.filter((id) => id !== account.row_id)
+        return person && view === 'open' ? [...others, account.row_id] : others
+      })
       setUnlinkedNow(({ [account.row_id]: was, ...rest }) => (!person && view === 'linked' && account.person ? { ...rest, [account.row_id]: account.person } : rest))
       void qc.invalidateQueries({ queryKey: KEY })
     },
@@ -173,7 +175,7 @@ export function LinkMotherDuckAccounts() {
                           {a.suggestions.map((s, i) => (
                             <Button key={s.person} variant="secondary" data-testid="md-suggestion" disabled={save.isPending}
                               onClick={(e) => { e.stopPropagation(); link(a, s.person) }}>
-                              {i < 3 && <span className="mr-1 text-ink-subtle">{i + 1}</span>}{suggestionWords(s)}
+                              {i < 3 && <span className="mr-1 text-ink-subtle">{i + 1}</span>}{s.label}
                             </Button>
                           ))}
                         </div>

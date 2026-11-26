@@ -5,7 +5,7 @@ import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { overrideVariable } from '../src/env'
-import { _setMotherDuckUsersFetch, candidateLine, listMotherDuckUsers, motherDuckSyncAccount, MotherDuckSyncStop, syncMotherDuckAccounts, type MotherDuckUser } from '../src/motherduck-accounts'
+import { _setMotherDuckUsersFetch, candidateLine, personWords, listMotherDuckUsers, motherDuckSyncAccount, MotherDuckSyncStop, syncMotherDuckAccounts, type MotherDuckUser } from '../src/motherduck-accounts'
 import { makePerson, patchDoc, searchLines } from './fixtures'
 import { resolve } from 'node:path'
 import { discoverPackages } from '../src/runtime-packages'
@@ -184,6 +184,8 @@ describe('#1346: the MotherDuck account sync', () => {
     expect(candidateLine('Asha R', 'psn_a', { status: 'current', code: 'E-1', jobs: [{ job: 'Buyer', site: { table: 'Site', id: 's1', name: 'Main Store' } }, { job: 'Trainer' }] }))
       .toBe('- Asha R (psn_a) · E-1 · Buyer at Main Store; Trainer')
     expect(candidateLine('Asha R', 'psn_a', undefined)).toBe('- Asha R (psn_a)')
+    // #1396: the screen's suggestion reads the same, without the id.
+    expect(personWords('Asha R', { status: 'current', code: 'E-1', jobs: [{ job: 'Buyer', site: { table: 'Site', id: 's1', name: 'Main Store' } }] })).toBe('Asha R · E-1 · Buyer at Main Store')
   })
 
   test('a reappearing account is listed again, Active, with no removal date', async () => {
@@ -225,7 +227,7 @@ describe('#1396: linking accounts to people from one screen', () => {
       row_id: 'md-priya', full_name: 'Priya R', email: 'priya@elsewhere.example', account_status: 'Active', service_account: false, person: null,
     })
     expect(typeof by.priya.updated_at).toBe('string')
-    expect((by.priya.suggestions as { person: string; name: string }[]).map((s) => s.name)).toEqual(['Priya Raman', 'Priyanka S'])
+    expect((by.priya.suggestions as { label: string }[]).map((s) => s.label)).toEqual(['Priya Raman', 'Priyanka S'])
     expect((by.priya.suggestions as { person: string }[])[0].person).toBe(priya)
     expect(by.linked_one.person).toEqual({ id: linked, name: 'Linked Already' })
     expect(by.loader_bot).toMatchObject({ service_account: true, suggestions: [] })

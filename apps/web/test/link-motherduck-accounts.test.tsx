@@ -109,3 +109,27 @@ test('verifier fixes: Unlink on the Linked tab; Esc leaves the search so the key
   await userEvent.keyboard('{ArrowDown}1')
   await waitFor(async () => expect((await sql`select person from motherduck_account where row_id = 'md-priya'`)[0].person).toBe(priya))
 })
+
+test('the Person picker links anyone else; a click or ↑ moves the highlight; a save that fails says so', async ({ admin }) => {
+  const { done } = await accounts()
+  await renderApp(PAGE, admin)
+  const page = await screen.findByTestId('link-motherduck-accounts')
+  const rows = await within(page).findAllByTestId('md-account')
+  // A click on a row makes it the highlighted one; ↑ moves back.
+  await userEvent.click(within(rows[1]).getByText('zed_nobody'))
+  expect(rows[1]).toHaveAttribute('data-current', 'true')
+  await userEvent.keyboard('{ArrowUp}')
+  expect(rows[0]).toHaveAttribute('data-current', 'true')
+
+  const picker = await within(rows[1]).findByRole('combobox', { name: 'Someone else for zed_nobody' })
+  await userEvent.click(picker)
+  await userEvent.type(picker, 'Done')
+  await userEvent.click(await waitFor(() => screen.getAllByTestId('link-option').find((o) => o.textContent?.includes('Done Person'))!))
+  await waitFor(async () => expect((await sql`select person from motherduck_account where row_id = 'md-zed'`)[0].person).toBe(done))
+
+  // The account is gone before its save: the page names it and keeps it to link.
+  await sql`delete from motherduck_account where row_id = 'md-priya'`
+  const priya = within(page).getAllByTestId('md-account').find((r) => r.getAttribute('data-username') === 'priya')!
+  await userEvent.click(within(priya).getAllByTestId('md-suggestion')[0])
+  expect(await within(page).findByText(/^priya: /)).toBeInTheDocument()
+})

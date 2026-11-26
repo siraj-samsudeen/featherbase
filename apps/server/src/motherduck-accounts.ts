@@ -156,9 +156,15 @@ async function linkByEmail(actor: string): Promise<number> {
 }
 
 /** One candidate as the reviewer reads it: name (id) · code · job at place. */
-export function candidateLine(name: string, person: string, s: Standing | undefined): string {
+/** Who a person is to the organisation, as a reviewer reads it: name · code · job at place. */
+export function personWords(name: string, s: Standing | undefined): string {
   const jobs = (s?.jobs ?? []).map((j) => [j.job, j.site?.name].filter(Boolean).join(' at ')).join('; ')
-  return [`- ${name} (${person})`, s?.code, jobs].filter(Boolean).join(' · ')
+  return [name, s?.code, jobs].filter(Boolean).join(' · ')
+}
+
+/** One candidate as the reviewer reads it in a ticket: name (id) · code · job at place. */
+export function candidateLine(name: string, person: string, s: Standing | undefined): string {
+  return `- ${personWords(`${name} (${person})`, s)}`
 }
 
 /** A person whose name a username reads as, with who they are to the organisation. */
@@ -189,7 +195,7 @@ export interface LinkingAccount {
   account_status: string; service_account: boolean; review_ticket: string | null; updated_at: string
   person: { id: string; name: string } | null
   /** Only for an account a person uses and that has no Person yet. */
-  suggestions: { person: string; name: string; code: string | null; jobs: Standing['jobs'] }[]
+  suggestions: { person: string; name: string; label: string }[]
 }
 
 /** Every account, with its person and, for one still to link, the people its username reads as. */
@@ -205,7 +211,7 @@ export async function linkingAccounts(): Promise<LinkingAccount[]> {
     review_ticket: r.review_ticket ?? null, updated_at: iso(r.updated_at),
     person: r.person ? { id: String(r.person), name: String(r.person_name ?? r.person) } : null,
     suggestions: (suggested.get(String(r.username)) ?? [])
-      .map((s) => ({ person: s.person, name: s.name, code: s.standing?.code ?? null, jobs: s.standing?.jobs ?? [] })),
+      .map((s) => ({ person: s.person, name: s.name, label: personWords(s.name, s.standing) })),
   }))
 }
 
