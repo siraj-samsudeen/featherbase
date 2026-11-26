@@ -20,6 +20,7 @@ import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup, type Rea
 import { callerMail, readsRow } from './runtime-mail'
 import { appDatasets, recordPlaceDrops, type DatasetDeclaration, type DropProvenance, type DropVersions, type PlaceDrop } from './app-datasets'
 import { baseTablesReader, proposalsReader, proposalsWriter, type BaseTablesDeclaration } from './change-proposals'
+import { featherbaseMcp } from './mcp-app-reads'
 
 const NO_SETUP: AppSetup = { title: '', settings: Object.freeze({}), secrets: Object.freeze({}), missing: { settings: [], secrets: [] }, optionalSecrets: [] }
 
@@ -348,7 +349,11 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
   // only if the app is still enabled and serving the version it ran under.
   const { handler, contribution, frozen, identity } = decided.outbound
   const views: (() => Promise<void>)[] = []
-  const { answer, drops } = await runRead(app, name, user, handler, contribution, frozen, CLOSED_DOCUMENTS, async () => {}, (write) => views.push(write))
+  // #1377: a read that declares featherbaseMcp gets Featherbase's read-only MCP tools, as the
+  // person, under a pass named by the app; closed when the handler ends.
+  const mcp = contribution.operations.get(name)?.declaration.featherbaseMcp ? featherbaseMcp(user, frozen.setup.title || app) : undefined
+  const { answer, drops } = await runRead(app, name, user, handler, contribution, frozen, CLOSED_DOCUMENTS,
+    async () => { await mcp?.close() }, (write) => views.push(write), undefined, undefined, mcp)
   // One shared lifecycle lock for the final check and the view records, so
   // the app cannot be disabled or upgraded between them.
   await assertStillServing(app, identity, async () => { for (const write of views) await write() })
@@ -389,13 +394,14 @@ async function dropVersions(app: string, scopeProvider: (() => Promise<{ app: st
 async function runRead(app: string, name: string, user: string, handler: RuntimeReadHandler, contribution: DeclaredOperations<RuntimeReadHandler>,
   { authorization, payload, setup, provenance, prepared }: Frozen,
   documents: RuntimeReadContext['documents'], close: () => Promise<void>, deferWrite?: (write: () => Promise<void>) => void,
-  baseTables: RuntimeReadContext['baseTables'] = CLOSED_BASE_TABLES, changeProposals: RuntimeReadContext['changeProposals'] = CLOSED_PROPOSALS) {
+  baseTables: RuntimeReadContext['baseTables'] = CLOSED_BASE_TABLES, changeProposals: RuntimeReadContext['changeProposals'] = CLOSED_PROPOSALS,
+  featherbaseMcp?: RuntimeReadContext['featherbaseMcp']) {
   const { title, settings, secrets, kept } = setup
   const { datasets, recordView, drops } = appDatasets({ app, operation: name, user, title, declarations: contribution.datasets ?? [],
     places: authorization.places, outbound: !inAppTransaction(), deferWrite, provenance })
   const json = await withSecretsKept(kept, async () => {
     try {
-      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app, settings), payload, prepared, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView })))
+      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app, settings), payload, prepared, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView, featherbaseMcp })))
     } finally { await close() }
   })
   assertNoSecret(kept, JSON.parse(json))
