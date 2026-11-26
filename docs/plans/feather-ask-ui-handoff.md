@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 26-Nov-2026 (backend 1a and 1b committed; next: 1c). A working note for moving between machines and sessions. It is
+**Last updated:** 26-Nov-2026 (backend 1a and 1b committed; OpenSpec changes written; next: 1c). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -57,6 +57,14 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
   proposal in one go, and keep the token use low. Explain in plain words, as to someone new
   to Featherbase.
 - Go step by step: each step ends with a manual check (browser or HTTP), then a commit.
+- **Keep OpenSpec current** (Mohammad, 26-Nov-2026): the changes `feather-ask-ui` (the page,
+  built) and `feather-ask-agent` (the backend) in `openspec/changes/` are the record for whoever
+  picks this up. With each step's commit, tick its task in that change's `tasks.md`; a new
+  decision goes into its `design.md` (with the rejected alternative), a new promise into its
+  specs. Specs files commit on their own, never with code (`tasks.md` may go with either).
+- 1c's code goes in its own file `apps/server/src/mcp-app-reads.ts`; `mcp.ts` only exports
+  `buildServer`, `Refusal` and `Envelope` (Mohammad, 26-Nov-2026). Draft and its check results
+  in `ask-handover\1c-draft\`.
 - Run every check yourself first (HTTP or headless browser) before handing it over. Nothing is
   done on anyone's word.
 - Ask design questions one at a time, with options and a recommendation.
