@@ -836,8 +836,14 @@ const leaversRoute = createRoute({
 const linkMotherDuckRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'link-motherduck-accounts',
-  component: () => <ManageOnly><LinkMotherDuckAccounts /></ManageOnly>,
+  validateSearch: (search: Record<string, unknown>) => ({ account: searchString(search.account) }),
+  component: LinkMotherDuckPage,
 })
+
+function LinkMotherDuckPage() {
+  const { account } = linkMotherDuckRoute.useSearch()
+  return <ManageOnly><LinkMotherDuckAccounts account={account} /></ManageOnly>
+}
 
 function LeaversPage() {
   const { filters } = leaversRoute.useSearch()

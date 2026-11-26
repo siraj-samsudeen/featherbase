@@ -151,3 +151,11 @@ test('?account= of a linked account opens the Linked tab on it', async ({ admin 
   expect(await within(page).findByRole('button', { name: /Linked · 1/ })).toHaveAttribute('aria-pressed', 'true')
   expect((await within(page).findAllByTestId('md-account'))[0]).toHaveAttribute('data-current', 'true')
 })
+
+test('?account= naming no account opens the screen as usual', async ({ admin }) => {
+  await accounts()
+  await renderApp(`${PAGE}?account=md-unknown`, admin)
+  const page = await screen.findByTestId('link-motherduck-accounts')
+  expect(await within(page).findByRole('button', { name: /To link · 2/ })).toHaveAttribute('aria-pressed', 'true')
+  expect((await within(page).findAllByTestId('md-account'))[0]).toHaveAttribute('data-current', 'true')
+})
