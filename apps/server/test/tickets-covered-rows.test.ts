@@ -119,8 +119,8 @@ describe('Tickets declares Data Quality Row as a base Table (#1230)', () => {
     const step = manifest.migrations.find((m: any) => m.id === 'covered_rows')
     expect(step).toMatchObject({ fromVersion: '0.2.9', toVersion: '0.2.10', operations: [] })
     const later = manifest.migrations.slice(manifest.migrations.indexOf(step))
-    // Later steps add no Table and no grant: at most they relabel one (#1256).
-    expect(later.flatMap((m: any) => m.operations).map((op: any) => op.kind)).toEqual(['relabelTable'])
+    // Later steps add no Table and no grant: they relabel one (#1256) and add the parent column (#1397).
+    expect(later.flatMap((m: any) => m.operations).map((op: any) => op.kind)).toEqual(['relabelTable', 'addColumn'])
     const prior = await mkdtemp(resolve('test/.upgrade-tickets-1230-'))
     try {
       await cp(TICKETS_DIRECTORY, prior, { recursive: true, filter: source => !source.includes('node_modules') })
@@ -135,7 +135,7 @@ describe('Tickets declares Data Quality Row as a base Table (#1230)', () => {
       await discoverPackages([prior, TICKETS_DIRECTORY])
       await loadInstalledApps()
       const plan = await admin.post<any>('/api/preview_app_upgrade', { name: 'tickets', version: TICKETS_VERSION })
-      expect(plan).toMatchObject({ currentVersion: '0.2.9', targetVersion: TICKETS_VERSION, destructive: false, tables: ['tickets.member'], permissions: [] })
+      expect(plan).toMatchObject({ currentVersion: '0.2.9', targetVersion: TICKETS_VERSION, destructive: false, tables: ['tickets.member', 'tickets.ticket'], permissions: [] })
       await admin.post('/api/upgrade_app', { name: 'tickets', version: TICKETS_VERSION, planId: plan.planId })
       await admin.post('/api/activate_app_upgrade', { name: 'tickets', version: TICKETS_VERSION })
       const [installed] = await sql`select package_version, activation_pending, manifest->'baseTables' as base from installed_app where name = 'tickets'`

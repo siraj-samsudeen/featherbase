@@ -29,7 +29,7 @@ async function world(admin: TestClient, createUser: CreateUserFn) {
   const current = (await admin.get<any>(`/api/table/App%20Setting?filters=${filters}&fields=${encodeURIComponent('["row_id","updated_at"]')}`)).data[0]
   await admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'tickets.support_users', updated_at: current?.updated_at, value: JSON.stringify([support.user]) } })
   const raise = async (title: string, parent?: string, client: TestClient = raiser) =>
-    (await act(client, 'create', { title, original: `${title}, in full`, ...(parent ? { parent } : {}) })).ticket as Ticket
+    (await act(client, 'create', { title, original: `${title}, in full`, ...(parent ? { parent_ticket: parent } : {}) })).ticket as Ticket
   return { raiser, support, raise }
 }
 
@@ -39,8 +39,8 @@ describe('Tickets: sub-tickets (#1397)', () => {
     const manifest = JSON.parse(await readFile(resolve(TICKETS_DIRECTORY, 'featherbase.json'), 'utf8'))
     expect(manifest.migrations.at(-2).id).toBe('no_refused_person_reads')
     expect(manifest.migrations.at(-1)).toEqual({ id: 'sub_tickets', fromVersion: '0.2.22', toVersion: '0.2.23', operations: [
-      { kind: 'addColumn', table: 'tickets.ticket', column: { column_name: 'parent', label: 'Part of', column_type: 'Reference', reference_table: 'tickets.ticket' } }] })
-    expect((await sql`select column_name from information_schema.columns where table_schema = 'tickets' and table_name = 'ticket' and column_name = 'parent'`).length).toBe(1)
+      { kind: 'addColumn', table: 'tickets.ticket', column: { column_name: 'parent_ticket', label: 'Part of', column_type: 'Reference', reference_table: 'tickets.ticket' } }] })
+    expect((await sql`select column_name from information_schema.columns where table_schema = 'tickets' and table_name = 'ticket' and column_name = 'parent_ticket'`).length).toBe(1)
   })
 
   test('the queue shows a parent once, counting its sub-tickets; a search still finds one', async ({ admin, createUser }) => {
@@ -50,7 +50,7 @@ describe('Tickets: sub-tickets (#1397)', () => {
     const second = await w.raise('Link ea_priya', umbrella.row_id)
     const third = await w.raise('Link ea_ravi', umbrella.row_id)
     const loose = await w.raise('Printer is jammed')
-    expect(first.parent).toBe(umbrella.row_id)
+    expect(first.parent_ticket).toBe(umbrella.row_id)
     const done = (await read(w.support, 'detail', { row_id: second.row_id })).ticket
     await act(w.support, 'resolve', { row_id: done.row_id, updated_at: done.updated_at, reason: 'Linked', reference: 'Person set' })
 
@@ -59,9 +59,10 @@ describe('Tickets: sub-tickets (#1397)', () => {
     expect(queue.count).toBe(2)
     expect(queue.tickets.find((t: any) => t.row_id === umbrella.row_id).sub_tickets).toEqual({ count: 3, open: 2 })
     expect(queue.tickets.find((t: any) => t.row_id === loose.row_id).sub_tickets).toBeUndefined()
+    expect(queue.under).toEqual({ [first.row_id]: umbrella.row_id, [second.row_id]: umbrella.row_id, [third.row_id]: umbrella.row_id })
 
     const found = await read(w.support, 'queue', { search: 'ea_priya' })
-    expect(found.tickets.map((t: any) => [t.row_id, t.parent])).toEqual([[second.row_id, umbrella.row_id]])
+    expect(found.tickets.map((t: any) => [t.row_id, t.parent_ticket])).toEqual([[second.row_id, umbrella.row_id]])
 
     const parentPage = await read(w.raiser, 'detail', { row_id: umbrella.row_id })
     // Open ones first, then done ones.
@@ -80,20 +81,20 @@ describe('Tickets: sub-tickets (#1397)', () => {
     await refused(w.raise('Deeper', child.row_id), /sub-ticket cannot have sub-tickets/)
     await refused(w.raise('Nowhere', 'FT-99999'), /No ticket FT-99999/)
     const fresh = (await read(w.support, 'detail', { row_id: umbrella.row_id })).ticket
-    await refused(act(w.support, 'edit', { row_id: fresh.row_id, updated_at: fresh.updated_at, parent: fresh.row_id }), /cannot be its own parent/)
+    await refused(act(w.support, 'edit', { row_id: fresh.row_id, updated_at: fresh.updated_at, parent_ticket: fresh.row_id }), /cannot be its own parent/)
     const other = await w.raise('Another umbrella')
-    await refused(act(w.support, 'edit', { row_id: fresh.row_id, updated_at: fresh.updated_at, parent: other.row_id }), /has sub-tickets, so it cannot be one/)
+    await refused(act(w.support, 'edit', { row_id: fresh.row_id, updated_at: fresh.updated_at, parent_ticket: other.row_id }), /has sub-tickets, so it cannot be one/)
   })
 
   test('support files a ticket under a parent and takes it out again; nobody else may', async ({ admin, createUser }) => {
     const w = await world(admin, createUser)
     const umbrella = await w.raise('Accounts to link')
     const loose = await w.raise('Link ea_kumar')
-    await refused(act(w.raiser, 'edit', { row_id: loose.row_id, updated_at: loose.updated_at, parent: umbrella.row_id }), /Only support may/)
-    const filed = (await act(w.support, 'edit', { row_id: loose.row_id, updated_at: loose.updated_at, parent: umbrella.row_id })).ticket
-    expect(filed.parent).toBe(umbrella.row_id)
+    await refused(act(w.raiser, 'edit', { row_id: loose.row_id, updated_at: loose.updated_at, parent_ticket: umbrella.row_id }), /Only support may/)
+    const filed = (await act(w.support, 'edit', { row_id: loose.row_id, updated_at: loose.updated_at, parent_ticket: umbrella.row_id })).ticket
+    expect(filed.parent_ticket).toBe(umbrella.row_id)
     expect((await read(w.support, 'queue')).tickets.map((t: any) => t.row_id)).toEqual([umbrella.row_id])
-    const out = (await act(w.support, 'edit', { row_id: filed.row_id, updated_at: filed.updated_at, parent: null })).ticket
-    expect(out.parent).toBeNull()
+    const out = (await act(w.support, 'edit', { row_id: filed.row_id, updated_at: filed.updated_at, parent_ticket: null })).ticket
+    expect(out.parent_ticket).toBeNull()
   })
 })
