@@ -712,6 +712,10 @@ jobs:
           NODE_ENV: test
         run: npm run test:coverage:backend:platform --prefix client-apps/jeyarama/dash
 
+      - name: Run Budgets' unit tests
+        if: ${{ needs.changes.outputs.client_apps != 'false' }}
+        run: npm test --prefix client-apps/jeyarama/budgets
+
       - name: Run Tasker's unit tests with coverage
         if: ${{ needs.changes.outputs.tasker_tests == 'true' }}
         run: npm run test:coverage --prefix example-apps/tasker
