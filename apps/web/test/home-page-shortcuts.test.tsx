@@ -39,6 +39,17 @@ test('a report shortcut opens that report, and an address shortcut opens its add
   await waitFor(() => expect(pathOf(back)).toBe('/featherbase/admin/all-tables'))
 })
 
+test("an address shortcut to an app's own pages is a plain link, so the app's page loads", async ({ admin }) => {
+  await admin.post('/api/save_row', {
+    table: 'Home Page',
+    row: { row_id: 'hps-app', label: 'An app', shortcuts: JSON.stringify([{ label: 'Open the app', type: 'url', link_to: '/someapp/' }]) },
+  })
+  await renderApp('/featherbase/admin/home/hps-app', admin)
+  const shortcut = await screen.findByTestId('shortcut-Open the app', {}, { timeout: 8000 })
+  expect(shortcut.tagName).toBe('A')
+  expect(shortcut).toHaveAttribute('href', '/someapp/')
+})
+
 test('a Home Page address that names no Home Page says so', async ({ admin }) => {
   await renderApp('/featherbase/admin/home/hps-no-such-page', admin)
   expect(await screen.findByTestId('home-page-error', {}, { timeout: 8000 })).toHaveTextContent('Home Page not found')

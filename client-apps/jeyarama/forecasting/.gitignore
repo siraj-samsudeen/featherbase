@@ -1,0 +1,2 @@
+# Real Runs and org charts are loaded from outside the repository (scripts/load-run.mts): the repo is public.
+*.local.*
