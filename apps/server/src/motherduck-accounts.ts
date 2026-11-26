@@ -174,7 +174,7 @@ export async function suggestedPeople(usernames: string[]): Promise<Map<string, 
   const rows = keys.length ? await sql`select k.key, p.row_id, p.full_name from unnest(${keys}::text[]) as k(key)
     cross join lateral (select row_id, full_name from person where replaced_by is null and full_name is not null
       and length(k.key) >= 3 and regexp_replace(lower(full_name), '[^a-z]', '', 'g') like k.key || '%'
-      order by full_name, row_id limit 6) p order by k.key, p.full_name, p.row_id` : []
+      order by lower(full_name) collate "C", row_id limit 6) p order by k.key, lower(p.full_name) collate "C", p.row_id` : []
   const standing = await describePeople(rows.map((r) => String(r.row_id)))
   const byKey = new Map<string, SuggestedPerson[]>()
   for (const r of rows)
