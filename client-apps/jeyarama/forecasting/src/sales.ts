@@ -3,7 +3,7 @@
 // (with the uplift) and what sold. Every day is whole rupees, and each month's days add up to the
 // Run's month figure for the subcategory (madeUp.ts), and a closed month's actuals to what sold, so the
 // Workspace, Results and Charts agree, and subcategories add up to stores, regions and the business.
-import { ALL_WEEKS, CHART_SUBS, UPLIFT, inScope, wobble, type Scope, type Sub } from './madeUp'
+import { ALL_WEEKS, BASES_MONTH, CHART_SUBS, UPLIFT, inScope, wobble, type Scope, type Sub } from './madeUp'
 import { dateOf, monthOf, weekOfDay, weekdayOf, type Month } from './months'
 
 export interface DayEvent { month: string; day: number; kind: 'festival' | 'holiday'; name: string; note: string }
@@ -19,6 +19,8 @@ export const eventsOf = (m: Month) => EVENTS.filter(e => e.month === m.key)
 
 /** The month's figures the days must add up to: the Run's, and what sold once the month is closed. */
 function monthFigures(s: Sub, m: Month): { final: number; actual: number | null; lean: number } | null {
+  if (s.days && m.key === BASES_MONTH) return { final: s.engine, actual: null, lean: 0 }
+  if (s.days) return null
   if (m.key === '2026-11') return { final: s.engine, actual: null, lean: s.novLean }
   if (m.key === '2026-10') return { final: s.octEngine, actual: s.octActual, lean: 0 }
   if (m.key === '2026-09') return { final: s.sepEngine, actual: s.sepActual, lean: 0 }
@@ -75,7 +77,8 @@ function seriesOf(m: Month): Map<Sub, Series> {
     const days = Array.from({ length: m.days }, (_, i) => i + 1)
     const shapes = days.map(d => shape(m, d, s))
     // November keeps the Run's own weekly shape (the Workspace grid); a closed month takes its days' shape.
-    const weights = m.key === '2026-11'
+    // A review set brings the engine's own days; the made-up months make theirs.
+    const weights = s.days ? s.days.map(d => Math.max(d, 0) + 1e-9) : m.key === '2026-11'
       ? days.map((d, i) => s.weekShare[weekOfDay(d) - 1] * shapes[i] / days.filter(x => weekOfDay(x) === weekOfDay(d)).reduce((t, x) => t + shapes[x - 1], 0))
       : days.map((d, i) => shapes[i] * (1 + 0.04 * wobble(s.seed * 31 + m.index * 7 + d)))
     const final = apportion(figures.final, weights)

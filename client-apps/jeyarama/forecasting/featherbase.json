@@ -285,6 +285,265 @@
           }
         }
       ]
+    },
+    {
+      "id": "forecaster_members",
+      "fromVersion": "0.9.0",
+      "toVersion": "0.10.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecaster",
+            "label": "Forecaster",
+            "module": "Forecasting",
+            "access_policy": {
+              "version": 1,
+              "roles": [
+                "Forecasting Member"
+              ]
+            },
+            "columns": [
+              {
+                "column_name": "note",
+                "label": "Note",
+                "column_type": "Data"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "review_month_tables",
+      "fromVersion": "0.10.0",
+      "toVersion": "0.11.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.run_line",
+            "label": "Run line",
+            "module": "Forecasting",
+            "description": "One store × subcategory of a month's engine Run under review: the forecast, the AOP, its days and what each basis adds. Loaded in bulk (psql COPY) from the engine's output; people only read it.",
+            "title_column": "subcategory",
+            "columns": [
+              {
+                "column_name": "run",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "month",
+                "label": "Month",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "region",
+                "label": "Region",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "division",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision",
+                "label": "Sub-division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category",
+                "label": "Category",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "section",
+                "label": "Section",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subcategory",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "code",
+                "label": "SAP subcategory code",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "forecast",
+                "label": "Forecast, after GST (₹)",
+                "column_type": "Float",
+                "in_list_view": true
+              },
+              {
+                "column_name": "aop",
+                "label": "AOP, after GST (₹)",
+                "column_type": "Float",
+                "in_list_view": true
+              },
+              {
+                "column_name": "band",
+                "label": "Band against the AOP",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "days_json",
+                "label": "The forecast for each day (₹, JSON list)",
+                "column_type": "Long Text"
+              },
+              {
+                "column_name": "parts_json",
+                "label": "Each basis: its share and value (JSON)",
+                "column_type": "Long Text"
+              },
+              {
+                "column_name": "other",
+                "label": "Other steps (₹)",
+                "column_type": "Float"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.reach",
+            "label": "Reach",
+            "module": "Forecasting",
+            "description": "Who reviews what: each person's job, manager and the stores and subcategories they cover, worked out from the org chart and merchandise assignments as Dash's reach is. Loaded in bulk; people only read it.",
+            "title_column": "full_name",
+            "columns": [
+              {
+                "column_name": "full_name",
+                "label": "Name",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "code",
+                "label": "Employee code",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "role",
+                "label": "Job",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "place",
+                "label": "Place",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "reports_to",
+                "label": "Reports to",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "places_json",
+                "label": "Stores and subcategories covered (JSON)",
+                "column_type": "Long Text"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.explanation",
+            "label": "Explanation",
+            "module": "Forecasting",
+            "id_pattern": "FX-.######",
+            "description": "Why a day sold more or less than its forecast: the causes picked and a note, for a store (or every store) and a level of the hierarchy.",
+            "title_column": "scope_name",
+            "columns": [
+              {
+                "column_name": "month",
+                "label": "Month",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "scope_level",
+                "label": "Level",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "scope_name",
+                "label": "For",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "day",
+                "label": "Day of the month",
+                "column_type": "Int",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "causes",
+                "label": "Causes (one a line, Cause › Detail)",
+                "column_type": "Text",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "note",
+                "label": "Note",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "explained_by",
+                "label": "By",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "explained_by_role",
+                "label": "Their job",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "explained_on",
+                "label": "On",
+                "column_type": "Data"
+              }
+            ]
+          }
+        }
+      ]
     }
   ],
   "tables": [
@@ -779,6 +1038,239 @@
           "column_type": "Data"
         }
       ]
+    },
+    {
+      "name": "forecasting.forecaster",
+      "label": "Forecaster",
+      "module": "Forecasting",
+      "access_policy": {
+        "version": 1,
+        "roles": [
+          "Forecasting Member"
+        ]
+      },
+      "columns": [
+        {
+          "column_name": "note",
+          "label": "Note",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.run_line",
+      "label": "Run line",
+      "module": "Forecasting",
+      "description": "One store × subcategory of a month's engine Run under review: the forecast, the AOP, its days and what each basis adds. Loaded in bulk (psql COPY) from the engine's output; people only read it.",
+      "title_column": "subcategory",
+      "columns": [
+        {
+          "column_name": "run",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "month",
+          "label": "Month",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "region",
+          "label": "Region",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "division",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision",
+          "label": "Sub-division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category",
+          "label": "Category",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "section",
+          "label": "Section",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subcategory",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "code",
+          "label": "SAP subcategory code",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "forecast",
+          "label": "Forecast, after GST (₹)",
+          "column_type": "Float",
+          "in_list_view": true
+        },
+        {
+          "column_name": "aop",
+          "label": "AOP, after GST (₹)",
+          "column_type": "Float",
+          "in_list_view": true
+        },
+        {
+          "column_name": "band",
+          "label": "Band against the AOP",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "days_json",
+          "label": "The forecast for each day (₹, JSON list)",
+          "column_type": "Long Text"
+        },
+        {
+          "column_name": "parts_json",
+          "label": "Each basis: its share and value (JSON)",
+          "column_type": "Long Text"
+        },
+        {
+          "column_name": "other",
+          "label": "Other steps (₹)",
+          "column_type": "Float"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.reach",
+      "label": "Reach",
+      "module": "Forecasting",
+      "description": "Who reviews what: each person's job, manager and the stores and subcategories they cover, worked out from the org chart and merchandise assignments as Dash's reach is. Loaded in bulk; people only read it.",
+      "title_column": "full_name",
+      "columns": [
+        {
+          "column_name": "full_name",
+          "label": "Name",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "code",
+          "label": "Employee code",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "role",
+          "label": "Job",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "place",
+          "label": "Place",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "reports_to",
+          "label": "Reports to",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "places_json",
+          "label": "Stores and subcategories covered (JSON)",
+          "column_type": "Long Text"
+        }
+      ]
+    },
+    {
+      "name": "forecasting.explanation",
+      "label": "Explanation",
+      "module": "Forecasting",
+      "id_pattern": "FX-.######",
+      "description": "Why a day sold more or less than its forecast: the causes picked and a note, for a store (or every store) and a level of the hierarchy.",
+      "title_column": "scope_name",
+      "columns": [
+        {
+          "column_name": "month",
+          "label": "Month",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "store",
+          "label": "Store",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "scope_level",
+          "label": "Level",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "scope_name",
+          "label": "For",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "day",
+          "label": "Day of the month",
+          "column_type": "Int",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "causes",
+          "label": "Causes (one a line, Cause › Detail)",
+          "column_type": "Text",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "note",
+          "label": "Note",
+          "column_type": "Text"
+        },
+        {
+          "column_name": "explained_by",
+          "label": "By",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "explained_by_role",
+          "label": "Their job",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "explained_on",
+          "label": "On",
+          "column_type": "Data"
+        }
+      ]
     }
   ],
   "permissions": [
@@ -822,6 +1314,31 @@
       "can_read": true,
       "can_write": true,
       "can_create": true
+    },
+    {
+      "table": "forecasting.forecaster",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.run_line",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.reach",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.explanation",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
     }
+  ],
+  "roles": [
+    "Forecasting Member"
   ]
 }

@@ -1,6 +1,8 @@
 // MADE-UP DATA. No real store, person, code or figure. It stands in for what the warehouse will serve
 // the app (the engine's Runs, each basis's value, actual sales), so every state of the pages can be
 // seen on a local instance. Subcategory codes are MS-1nn, a scheme no real code uses.
+// A local review set (dataset.ts) replaces all of it: then every export below is built from that set.
+import { DATASET } from './dataset'
 
 export type Code = 'B1' | 'B2' | 'B3' | 'B4' | 'B5' | 'B6'
 export const BASES: { code: Code; name: string }[] = [
@@ -11,12 +13,18 @@ export const BASES: { code: Code; name: string }[] = [
   { code: 'B4', name: 'Last four same weekdays' },
   { code: 'B5', name: 'Same date last month' },
 ]
-export const UPLIFT = 0.06
+/** The engine's flat uplift on the made-up Runs; a review set's figures already carry whatever the engine applied. */
+export const UPLIFT = DATASET ? 0 : 0.06
 /** The Run whose bases (B1–B6) are kept here: the current month's. A closed month keeps only its figures. */
-export const BASES_MONTH = '2026-11'
+export const BASES_MONTH = DATASET?.month ?? '2026-11'
 
-export interface Person { id: string; name: string; code: string; role: string; place: string; reportsTo?: string }
-export const PEOPLE: Person[] = [
+export interface Person {
+  id: string; name: string; code: string; role: string; place: string; reportsTo?: string
+  /** A loaded Run's reach (dataset.ts): the stores and subcategories covered, none for every store. The made-up
+   *  people's comes from their role and place (areas.ts). */
+  places?: { store: string; codes: string[] | null }[]
+}
+const MADE_UP_PEOPLE: Person[] = [
   { id: 'asha', name: 'Asha', code: 'MU-1042', role: 'Team Leader', place: 'Lakeside · Girls Bottoms', reportsTo: 'mani' },
   { id: 'ravi', name: 'Ravi', code: 'MU-1077', role: 'Team Leader', place: 'Lakeside · Men Top', reportsTo: 'mani' },
   { id: 'meena', name: 'Meena', code: 'MU-2015', role: 'Team Leader', place: 'Hillview · Girls Bottoms', reportsTo: 'gopal' },
@@ -29,6 +37,7 @@ export const PEOPLE: Person[] = [
   { id: 'devan', name: 'Devan', code: 'MU-0102', role: 'Operations Head', place: 'Head Office', reportsTo: 'kumar' },
   { id: 'kumar', name: 'Kumar', code: 'MU-0001', role: 'Chief Executive', place: 'Head Office' },
 ]
+export const PEOPLE: Person[] = DATASET ? DATASET.people.map(p => ({ ...p, reportsTo: p.reportsTo ?? undefined })) : MADE_UP_PEOPLE
 export const person = (id: string) => PEOPLE.find(p => p.id === id)!
 export const personByName = (name: string) => PEOPLE.find(p => p.name === name)
 
@@ -42,6 +51,8 @@ export interface Sub {
   novLean: number
   /** October and September, both closed: the engine's figure and what sold. */
   octEngine: number; octActual: number; sepEngine: number; sepActual: number
+  /** A loaded Run's month: the sub-division, the AOP, its band against the forecast, and the engine's own days. */
+  subdivision?: string; aop?: number; band?: string; days?: number[]
 }
 
 // [division, category, section, subcategory, code, rough month size, weights B6/B1/B2/B3/B4/B5, how it runs to the 20th, October error]
@@ -83,7 +94,17 @@ const STORE_SEEDS: StoreSeed[] = [
   ['Stonereach', 'Ridge', 0.7, 200, [-0.5, 0.03], [0.3, -0.04], -0.05],
   ['Oakhollow', 'Ridge', 0.5, 240, [0.8, -0.08], [-0.6, 0.01], 0.02],
 ]
-export const REGIONS = [...new Set(STORE_SEEDS.map(s => s[1]))].map(name => ({ name, stores: STORE_SEEDS.filter(s => s[1] === name).map(s => s[0]) }))
+function fromDataset(): Sub[] {
+  return (DATASET?.subs ?? []).map((d, i) => {
+    const week = [0, 1, 2, 3, 4].map(w => d.days.slice(w * 7, w * 7 + 7).reduce((a, b) => a + b, 0))
+    const t = week.reduce((a, b) => a + b, 0)
+    return { store: d.store, region: d.region, division: d.division, subdivision: d.subdivision, category: d.category, section: d.section, name: d.name, code: d.code,
+      seed: i, engine: d.engine, parts: d.parts, other: d.other, weekShare: week.map(x => (t ? x / t : 0.2)), novLean: 0,
+      octEngine: 0, octActual: 0, sepEngine: 0, sepActual: 0, aop: d.aop, band: d.band, days: d.days }
+  })
+}
+const SEEDS_IN_USE = DATASET ? [...new Set(DATASET.subs.map(s => `${s.region}|${s.store}`))].map(k => k.split('|')) : STORE_SEEDS.map(s => [s[1], s[0]])
+export const REGIONS = [...new Set(SEEDS_IN_USE.map(s => s[0]))].map(name => ({ name, stores: SEEDS_IN_USE.filter(s => s[0] === name).map(s => s[1]) }))
 export const ALL_STORES = REGIONS.flatMap(r => r.stores)
 
 function makeSub([store, region, scale, offset, nov, oct, sep]: StoreSeed, s: Seed, n: number): Sub {
@@ -101,10 +122,10 @@ function makeSub([store, region, scale, offset, nov, oct, sep]: StoreSeed, s: Se
     sepEngine, sepActual: Math.round(sepEngine * (1 + 0.12 * wobble(i * 5 + 3) + sep)) }
 }
 /** Every made-up store × subcategory, for Charts. */
-export const CHART_SUBS: Sub[] = STORE_SEEDS.flatMap(store => TREE.map((s, n) => makeSub(store, s, n)))
-/** The Workspace's two stores. */
-export const STORES = ['Lakeside', 'Hillview']
-export const SUBS: Sub[] = CHART_SUBS.filter(s => STORES.includes(s.store))
+export const CHART_SUBS: Sub[] = DATASET ? fromDataset() : STORE_SEEDS.flatMap(store => TREE.map((s, n) => makeSub(store, s, n)))
+/** The Workspace's stores: every made-up store, as Charts has. */
+export const STORES = ALL_STORES
+export const SUBS: Sub[] = CHART_SUBS
 export const subKey = (s: Pick<Sub, 'store' | 'name'>) => `${s.store}|${s.name}`
 
 export const value = (s: Sub, c: Code) => s.parts[c]?.[1] ?? null
@@ -114,14 +135,14 @@ export const fromWeights = (s: Sub, percent: Partial<Record<Code, number>>) =>
   BASES.reduce((n, b) => n + ((percent[b.code] ?? 0) / 100) * (value(s, b.code) ?? 0), 0) * (1 + UPLIFT) + s.other
 
 // The engine's figure IS its parts, so the "why" always adds up to it.
-CHART_SUBS.forEach(s => { s.engine = Math.round(fromWeights(s, Object.fromEntries(BASES.map(b => [b.code, weightOf(s, b.code) * 100])))) })
+if (!DATASET) CHART_SUBS.forEach(s => { s.engine = Math.round(fromWeights(s, Object.fromEntries(BASES.map(b => [b.code, weightOf(s, b.code) * 100])))) })
 
 /** Engine Runs and target versions: what Runs & Targets lists. */
 export interface Run { id: string; month: string; purpose: 'official' | 'trial' | 'baseline'; origin: string; written: string; note: string; wape: number | null; total: number }
 const nov = SUBS.reduce((n, s) => n + s.engine, 0)
 const oct = SUBS.reduce((n, s) => n + s.octEngine, 0)
 const sep = SUBS.reduce((n, s) => n + s.sepEngine, 0)
-export const RUNS: Run[] = [
+const MADE_UP_RUNS: Run[] = [
   { id: 'demo_2026_11_official', month: 'Nov 2026', purpose: 'official', origin: '30-Oct-2026', written: '02-Nov-2026', note: 'Engine on sales to 30-Oct, with a flat 6% uplift (a judgement call, not a model output)', wape: null, total: nov },
   { id: 'demo_2026_11_trial_no_festival', month: 'Nov 2026', purpose: 'trial', origin: '30-Oct-2026', written: '01-Nov-2026', note: 'Same, with the seasonal step (B6) switched off for small cells', wape: null, total: nov * 0.97 },
   { id: 'demo_2026_11_naive_weekly', month: 'Nov 2026', purpose: 'baseline', origin: '30-Oct-2026', written: '02-Nov-2026', note: 'Same weekday, last four weeks', wape: null, total: nov * 0.88 },
@@ -131,8 +152,12 @@ export const RUNS: Run[] = [
   { id: 'demo_2026_09_naive_weekly', month: 'Sep 2026', purpose: 'baseline', origin: '30-Aug-2026', written: '01-Sep-2026', note: 'Same weekday, last four weeks', wape: 0.244, total: sep * 0.93 },
 ]
 
+export const RUNS: Run[] = DATASET
+  ? [{ id: DATASET.run, month: DATASET.month, purpose: 'trial', origin: '—', written: '—', note: 'The Run loaded for review', wape: null, total: SUBS.reduce((n, s) => n + s.engine, 0) }]
+  : MADE_UP_RUNS
+
 export interface TargetVersion { month: string; revision: number; fromRun: string; loaded: string; note: string }
-export const TARGETS: TargetVersion[] = [
+export const TARGETS: TargetVersion[] = DATASET ? [] : [
   { month: 'Nov 2026', revision: 6, fromRun: 'demo_2026_11_official', loaded: 'next build', note: 'The official Run with every number applied so far' },
   { month: 'Nov 2026', revision: 5, fromRun: 'demo_2026_11_official', loaded: '02-Nov-2026', note: 'The official Run as the target' },
   { month: 'Oct 2026', revision: 4, fromRun: 'demo_2026_10_official', loaded: '01-Oct-2026', note: 'The official Run as the target' },

@@ -9,7 +9,7 @@ import { figureOf, isPercent, percentEffect, percentText, proposedTotal } from '
 import { actualFor, engineFor, finalWeeks } from './sales'
 import { MONTHS, nowIST, todayIST, type Month } from './months'
 import { NoRunYet, Page, address, waitingFor, type Ctx, type IdeaRow, type NumberRow, type QuestionRow } from './App'
-import { STATUS_TONE, Who, scopeText, when } from './WorkspacePage'
+import { STATUS_TONE, Who, logRow, scopeText, when } from './WorkspacePage'
 import { DateInput } from './pickers'
 
 const link = (n: NumberRow) => address('forecasts', { store: n.store, level: n.scope_level, name: n.scope_name, ...(n.weeks ? { weeks: n.weeks } : {}), pane: 'views' })
@@ -38,7 +38,7 @@ export function NumbersPage({ ctx }: { ctx: Ctx }) {
       <p className="-mt-2 text-sm text-ink-muted">Who said what, and what happened to it. Nothing is overwritten or deleted: each row is one person's number for one scope, and every step is kept in its history.</p>
       <Card title={`Waiting For You${mine.length ? ` (${mine.length})` : ''}`}>
         <div className="px-4 pb-4">
-          <DataList caption="Numbers waiting for you" rows={mine} columns={columns} rowKey={n => n.row_id} layout="table"
+          <DataList caption="Numbers waiting for you" rows={mine} columns={[...columns, { key: 'decide', header: '', phone: 'hidden', cell: n => <Decide ctx={ctx} n={n} /> }]} rowKey={n => n.row_id} layout="table"
             empty={{ title: 'Nothing waits for you', body: `No number waits for ${ctx.viewer.name}. Switch "Viewing as" to Mani or Kumar to see an approver's queue.` }} />
         </div>
       </Card>
@@ -484,5 +484,32 @@ function IdeaEditor({ ctx, i, onDone }: { ctx: Ctx; i: IdeaRow; onDone: () => vo
         {[...ctx.data.questions].sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true })).map(x => <option key={x.row_id} value={x.ref}>{x.ref} · {x.question.slice(0, 60)}</option>)}</Select></Field>
       <div className="flex gap-2 md:col-span-2"><Button variant="primary" onClick={() => void save()} data-testid="idea-save">Save</Button><Button variant="secondary" onClick={onDone}>Cancel</Button></div>
     </div>
+  )
+}
+
+/** Approve or turn down a waiting number from the Ledger row itself. Approving keeps the others waiting on you for
+ *  the same scope as reference, as the Workspace panel does; turning one down needs a note. */
+function Decide({ ctx, n }: { ctx: Ctx; n: NumberRow }) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const same = (o: NumberRow) => o.row_id !== n.row_id && o.month === n.month && o.store === n.store && o.scope_level === n.scope_level && o.scope_name === n.scope_name && (o.weeks ?? '') === (n.weeks ?? '')
+  const act = async (approve: boolean) => {
+    setBusy(true)
+    try {
+      await ctx.save('forecasting.number', { ...n, status: approve ? 'Applied' : 'Not approved', waiting_on: null, changed_by: ctx.viewer.name })
+      await ctx.save('forecasting.decision', logRow(ctx, n, approve ? 'Approved and applied' : 'Not approved', note))
+      if (approve) for (const o of ctx.data.numbers.filter(o => same(o) && (o.status === 'Applied' || (o.status === 'Waiting' && o.waiting_on === ctx.viewer.name)))) {
+        await ctx.save('forecasting.number', { ...o, status: 'Reference', waiting_on: null, changed_by: ctx.viewer.name })
+        await ctx.save('forecasting.decision', logRow(ctx, o, 'Kept as reference', `${n.entered_by}'s number was applied instead.`))
+      }
+      await ctx.reload()
+    } finally { setBusy(false) }
+  }
+  return (
+    <span className="flex items-center gap-1.5">
+      <TextInput aria-label="A note (needed to say no)" placeholder="Note" value={note} onChange={e => setNote(e.target.value)} className="w-28" />
+      <Button variant="primary" disabled={busy} onClick={() => void act(true)}>Approve</Button>
+      <Button variant="secondary" disabled={busy || !note.trim()} onClick={() => void act(false)}>Not approved</Button>
+    </span>
   )
 }

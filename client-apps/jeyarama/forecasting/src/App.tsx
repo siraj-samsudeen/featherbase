@@ -6,10 +6,12 @@ import { createElement, useCallback, useEffect, useState, type ReactNode } from 
 import { Button, Card, EmptyState, Field, PersonLabel, Select, Skeleton } from '@featherbase/shop-floor'
 import { listAll, saveRow } from './api'
 import { PEOPLE, person, type Person } from './madeUp'
+import { DATASET } from './dataset'
 import { MONTH_OPTIONS, monthOf, type Month } from './months'
 import { ChartsPage } from './ChartsPage'
 import { MyNumbersPage, unseenFor } from './MyNumbersPage'
 import { WorkspacePage } from './WorkspacePage'
+import { ReviewMonthPage } from './ReviewMonthPage'
 import { IdeasPage, NumbersPage, ResultsPage, ReviewPage, RunsPage } from './pages'
 
 export interface NumberRow {
@@ -33,7 +35,10 @@ export interface IdeaRow { row_id: string; ref: string; label: string; title: st
 /** One change to an idea, kept in its history. */
 export interface IdeaChange { row_id: string; idea: string; changed_by: string; changed_on: string; change: string }
 
-export interface Data { numbers: NumberRow[]; decisions: DecisionRow[]; questions: QuestionRow[]; ideas: IdeaRow[]; ideaHistory: IdeaChange[]; reviewNotes: ReviewNote[] }
+/** Why a day sold more or less than its forecast (ReviewMonthPage): the causes, one a line, and a note. */
+export interface ExplanationRow { row_id: string; month: string; store: string; scope_level: string; scope_name: string; day: number; causes: string; note: string | null
+  explained_by: string; explained_by_role: string | null; explained_on: string }
+export interface Data { explanations: ExplanationRow[]; numbers: NumberRow[]; decisions: DecisionRow[]; questions: QuestionRow[]; ideas: IdeaRow[]; ideaHistory: IdeaChange[]; reviewNotes: ReviewNote[] }
 export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => Promise<void>; save: typeof saveRow }
 
 const VIEWS = [
@@ -51,7 +56,7 @@ type View = typeof VIEWS[number]['key']
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
   q.set('view', view)
-  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', ...CHART_KEYS]) q.delete(k)
+  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice', ...CHART_KEYS]) q.delete(k)
   for (const [k, v] of Object.entries(extra)) q.set(k, v)
   return `?${q}`
 }
@@ -101,17 +106,17 @@ function Sidebar({ current, waiting, news }: { current: View; waiting: number; n
 }
 
 /** Made-up people only: the baseline shows each one's view without separate sign-ins. The month sits beside it. */
-function ViewingAs({ viewer, onChange, month, onMonth }: { viewer: Person; onChange: (id: string) => void; month: Month; onMonth: (key: string) => void }) {
+function ViewingAs({ viewer, onChange, month, onMonth, signedIn }: { viewer: Person; onChange: (id: string) => void; month: Month; onMonth: (key: string) => void; signedIn: boolean }) {
   return (
     <div className="flex flex-wrap items-end gap-3">
       <div className="w-72"><PersonLabel rowId={viewer.code} name={viewer.name} label={{ code: viewer.code, role: viewer.role, place: viewer.place }} canOpen={false} className="w-full" /></div>
-      <div className="w-56">
-        <Field label="Viewing as (made-up people)">
+      {!signedIn && <div className="w-56">
+        <Field label={DATASET ? 'Viewing as' : 'Viewing as (made-up people)'}>
           <Select value={viewer.id} onChange={e => onChange(e.target.value)} data-testid="viewing-as">
             {PEOPLE.map(p => <option key={p.id} value={p.id}>{p.name} · {p.role}</option>)}
           </Select>
         </Field>
-      </div>
+      </div>}
       <div className="w-52">
         <Field label="Month">
           <Select value={month.key} onChange={e => onMonth(e.target.value)} data-testid="month">
@@ -143,23 +148,33 @@ export function NoRunYet({ month, what }: { month: Month; what: string }) {
 export function ForecastingApp() {
   const params = new URLSearchParams(window.location.search)
   const view = (VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : 'forecasts') as View
-  const [viewerId, setViewerId] = useState(() => params.get('as') ?? localStorage.getItem('fc_viewer') ?? 'asha')
+  const [viewerId, setViewerId] = useState(() => params.get('as') ?? localStorage.getItem('fc_viewer') ?? PEOPLE[0].id)
   const [data, setData] = useState<Data | null>(null)
   const [failed, setFailed] = useState(false)
-  const viewer = person(PEOPLE.some(p => p.id === viewerId) ? viewerId : 'asha')
+  // Signed in as a made-up forecaster: the page is theirs, and the server checks the same person. The
+  // Administrator keeps "Viewing as", to see any made-up person's view.
+  const [me, setMe] = useState<Person | null>(null)
+  useEffect(() => {
+    fetch('/api/whoami', { credentials: 'same-origin' }).then(r => r.json()).then((u: { row_id?: string; full_name?: string; roles?: string[] }) => {
+      const admin = u.row_id === 'Administrator' || (u.roles ?? []).includes('System Manager')
+      if (!admin) setMe(PEOPLE.find(p => p.name === u.full_name) ?? null)
+    }, () => {})
+  }, [])
+  const viewer = me ?? person(PEOPLE.some(p => p.id === viewerId) ? viewerId : PEOPLE[0].id)
   const [month, chooseMonth] = useMonth()
 
   const reload = useCallback(async () => {
     try {
-      const [numbers, decisions, questions, ideas, ideaHistory, reviewNotes] = await Promise.all([
+      const [numbers, decisions, questions, ideas, ideaHistory, reviewNotes, explanations] = await Promise.all([
         listAll<NumberRow>('forecasting.number', ['month', 'run', 'store', 'section', 'scope_level', 'scope_name', 'weeks', 'kind', 'value', 'weights_json', 'entered_by', 'entered_by_role', 'entered_on', 'reason', 'status', 'waiting_on', 'changed_by', 'percent']),
         listAll<DecisionRow>('forecasting.decision', ['number', 'month', 'store', 'scope_level', 'scope_name', 'weeks', 'decision', 'decided_by', 'decided_by_role', 'note', 'decided_on']),
         listAll<QuestionRow>('forecasting.review_question', ['ref', 'month', 'scope', 'question', 'detail', 'asked_by', 'asked_on', 'answer', 'answered_by', 'answered_on', 'outcome', 'impact', 'follow_up', 'idea_ref', 'follow_up_on']),
         listAll<IdeaRow>('forecasting.idea', ['ref', 'label', 'title', 'kind', 'raised_by', 'raised_on', 'why', 'tried', 'found', 'verdict', 'outcome', 'status_note', 'decided_on', 'revisit', 'areas', 'evidence', 'decided_by', 'reason', 'revisit_on', 'related', 'question_ref']),
         listAll<IdeaChange>('forecasting.idea_history', ['idea', 'changed_by', 'changed_on', 'change']),
-        listAll<ReviewNote>('forecasting.review_note', ['question', 'kind', 'by', 'on', 'text', 'from_outcome', 'to_outcome'])])
+        listAll<ReviewNote>('forecasting.review_note', ['question', 'kind', 'by', 'on', 'text', 'from_outcome', 'to_outcome']),
+        listAll<ExplanationRow>('forecasting.explanation', ['month', 'store', 'scope_level', 'scope_name', 'day', 'causes', 'note', 'explained_by', 'explained_by_role', 'explained_on'])])
       // A Currency column comes back as text ("750000.00"); the pages add and compare it.
-      setData({ numbers: numbers.map(n => ({ ...n, value: Number(n.value), percent: n.percent == null ? null : Number(n.percent) })), decisions, questions, ideas, ideaHistory, reviewNotes }); setFailed(false)
+      setData({ numbers: numbers.map(n => ({ ...n, value: Number(n.value), percent: n.percent == null ? null : Number(n.percent) })), decisions, questions, ideas, ideaHistory, reviewNotes, explanations }); setFailed(false)
     } catch (e) {
       if ((e as { status?: number }).status === 401) window.location.href = `/featherbase/login?next=${encodeURIComponent(location.pathname + location.search)}`
       setFailed(true)
@@ -180,10 +195,10 @@ export function ForecastingApp() {
     <div className="fc-shell">
       <Sidebar current={view} waiting={data ? waitingFor(data, viewer).length : 0} news={data ? unseenFor(data, viewer).length : 0} />
       <main className="fc-page" data-testid={`page-${view}`}>
-        <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} />
+        <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
-            : view === 'forecasts' ? <WorkspacePage ctx={ctx} />
+            : view === 'forecasts' ? (DATASET ? <ReviewMonthPage ctx={ctx} /> : <WorkspacePage ctx={ctx} />)
               : view === 'numbers' ? <NumbersPage ctx={ctx} />
               : view === 'mine' ? <MyNumbersPage key={viewer.id} ctx={ctx} onSeen={() => setSeen(t => t + 1)} />
                 : view === 'runs' ? <RunsPage ctx={ctx} />

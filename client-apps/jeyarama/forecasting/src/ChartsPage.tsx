@@ -26,7 +26,7 @@ function fromAddress(): Choice {
   const chart = VIEWS.some(v => v.value === q.get('chart')) ? q.get('chart') as View : 'all'
   const stores = list('stores').filter(s => ALL_STORES.includes(s)), subs = list('subs').filter(s => NAMES.includes(s))
   return { chart, region: REGIONS.some(r => r.name === q.get('region')) ? q.get('region')! : REGIONS[0].name,
-    stores: q.has('stores') ? stores : ['Lakeside', 'Hillview'], subs: q.has('subs') ? subs : ['Girls Jean', 'Men Formal Shirt'],
+    stores: q.has('stores') ? stores : ALL_STORES.slice(0, 2), subs: q.has('subs') ? subs : NAMES.slice(0, 2),
     pick: q.get('pick') === 'chosen' ? 'chosen' : 'largest', top: TOPS.includes(Number(q.get('top'))) ? Number(q.get('top')) : 5,
     within: q.get('within') ?? '', bars: q.get('bars') === 'store' || q.get('bars') === 'subcategory' ? q.get('bars') as Choice['bars'] : '' }
 }

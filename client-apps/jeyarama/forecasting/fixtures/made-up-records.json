@@ -132,7 +132,7 @@
    "entered_by": "Bina",
    "entered_by_role": "Category Head",
    "entered_on": "2026-11-21",
-   "reason": "A price drop on leggings starts on the 24th across the East. Expect a pickup in the last week.",
+   "reason": "A price drop on leggings starts on the 24th across Meadow. Expect a pickup in the last week.",
    "status": "Waiting",
    "waiting_on": "Kumar",
    "history": [
@@ -273,7 +273,7 @@
    "scope_level": "Subcategory",
    "scope_name": "Men Formal Shirt",
    "kind": "Set a total",
-   "value": 6450000,
+   "value": 410000,
    "entered_by": "Ravi",
    "entered_by_role": "Team Leader",
    "entered_on": "2026-10-02",
@@ -335,7 +335,7 @@
    "scope_level": "Subcategory",
    "scope_name": "Men Casual Shirt",
    "kind": "Set a total",
-   "value": 4400000,
+   "value": 285000,
    "entered_by": "Mani",
    "entered_by_role": "Department Manager",
    "entered_on": "2026-10-04",
@@ -370,7 +370,7 @@
    "entered_by": "Bina",
    "entered_by_role": "Category Head",
    "entered_on": "2026-10-06",
-   "reason": "Leggings were the hit of September in the East.",
+   "reason": "Leggings were the hit of September in Meadow.",
    "status": "Reference",
    "history": [
     [

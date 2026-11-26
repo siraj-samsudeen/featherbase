@@ -39,9 +39,24 @@ export function Who({ name, className = 'w-full' }: { name: string; className?: 
   return <PersonLabel rowId={p?.code ?? name} name={name} label={p ? { code: p.code, role: p.role, place: p.place } : undefined} canOpen={false} className={className} />
 }
 
+/** A subcategory's section, whichever of its cells (a week or the month) the number is on; blank above a subcategory. */
+const sectionOf = (sc: Scope) => (sc.level === 'Subcategory' ? SUBS.find(s => s.store === sc.store && s.name === sc.name)?.section ?? '' : '')
 const weeksKey = (weeks: number[]) => (weeks.length === 5 ? '' : weeks.join(','))
 const sameScope = (n: NumberRow, sc: Scope) => n.store === sc.store && n.scope_level === sc.level && n.scope_name === sc.name && (n.weeks ?? '') === weeksKey(sc.weeks)
 const RANK = { Store: 0, Division: 1, Category: 2, Subcategory: 3 }
+/** A review set carries the AOP (dataset.ts): then the month is reviewed against it before it starts. */
+const REVIEW = SUBS.some(s => s.aop != null)
+const aopOf = (subs: Sub[]) => subs.reduce((t, s) => t + (s.aop ?? 0), 0)
+const engineOf = (subs: Sub[]) => subs.reduce((t, s) => t + s.engine, 0)
+/** The forecast against the AOP in the run's own bands: within 10% green, 10–20% orange, 20% or more red, grey when both are under ₹1 lakh. */
+function aopTone(fc: number, aop: number): 'positive' | 'caution' | 'negative' | 'missing' {
+  if (fc < 1e5 && aop < 1e5) return 'missing'
+  if (!aop) return 'negative'
+  const off = Math.abs(fc / aop - 1)
+  return off < 0.1 ? 'positive' : off < 0.2 ? 'caution' : 'negative'
+}
+/** Biggest shortfall against the AOP first, so the review starts where the gap is. */
+const byGap = <T,>(keys: T[], subsOf: (k: T) => Sub[]) => (REVIEW ? [...keys].sort((a, b) => (engineOf(subsOf(a)) - aopOf(subsOf(a))) - (engineOf(subsOf(b)) - aopOf(subsOf(b)))) : keys)
 /** What the grid shows. The engine's final carries a flat uplift: base = final ÷ (1 + uplift), uplift = final − base. */
 type Show = 'final' | 'base' | 'uplift'
 const SHOWS: { value: Show; label: string; word: string }[] = [
@@ -53,8 +68,12 @@ const cellsOf = (sc: Scope) => new Set(SUBS.filter(s => inScope(s, sc)).flatMap(
 /** The Applied numbers above, below or across a cell (sharing some of its cells), not its own: what moves it. */
 export function moversOf(numbers: NumberRow[], month: string, sc: Scope) {
   const mine = cellsOf(sc)
-  return numbers.filter(n => n.month === month && n.store === sc.store && n.status === 'Applied' && !sameScope(n, sc)
-    && [...cellsOf({ store: n.store, level: n.scope_level, name: n.scope_name, weeks: parseWeeks(n.weeks) })].some(c => mine.has(c)))
+  const applied = numbers.filter(n => n.month === month && n.store === sc.store && n.status === 'Applied')
+  const cellsOfN = (n: NumberRow) => cellsOf({ store: n.store, level: n.scope_level, name: n.scope_name, weeks: parseWeeks(n.weeks) })
+  const spec = (n: NumberRow) => RANK[n.scope_level] * 10 - parseWeeks(n.weeks).length
+  // A number moves this cell only where no more specific Applied number holds the cell first.
+  const reaches = (n: NumberRow) => [...cellsOfN(n)].some(c => mine.has(c) && !applied.some(o => o !== n && spec(o) > spec(n) && cellsOfN(o).has(c)))
+  return applied.filter(n => !sameScope(n, sc) && reaches(n))
 }
 /** A cell's comments: its store, level, name and weeks exactly. One kept before cells had a level and weeks is the whole month's. */
 export const commentsOf = (decisions: DecisionRow[], month: string, sc: Scope) => decisions.filter(d => !d.number && d.month === month && d.store === sc.store
@@ -65,14 +84,14 @@ interface Row { level: Scope['level']; name: string; depth: number; parent?: str
 function rowsFor(store: string, open: Set<string>): Row[] {
   const subs = SUBS.filter(s => s.store === store)
   const rows: Row[] = [{ level: 'Store', name: store, depth: 0, subs }]
-  for (const d of [...new Set(subs.map(s => s.division))]) {
+  for (const d of byGap([...new Set(subs.map(s => s.division))], d => subs.filter(s => s.division === d))) {
     const ds = subs.filter(s => s.division === d)
     rows.push({ level: 'Division', name: d, depth: 1, subs: ds })
     if (!open.has(d)) continue
-    for (const c of [...new Set(ds.map(s => s.category))]) {
+    for (const c of byGap([...new Set(ds.map(s => s.category))], c => ds.filter(s => s.category === c))) {
       const cs = ds.filter(s => s.category === c)
       rows.push({ level: 'Category', name: c, depth: 2, parent: d, subs: cs })
-      if (open.has(c)) cs.forEach(s => rows.push({ level: 'Subcategory', name: s.name, depth: 3, parent: c, subs: [s] }))
+      if (open.has(c)) byGap(cs, s => [s]).forEach(s => rows.push({ level: 'Subcategory', name: s.name, depth: 3, parent: c, subs: [s] }))
     }
   }
   return rows
@@ -81,7 +100,9 @@ function rowsFor(store: string, open: Set<string>): Row[] {
 export function WorkspacePage({ ctx }: { ctx: Ctx }) {
   const m = ctx.month, closed = m.state === 'closed'
   const params = new URLSearchParams(window.location.search)
-  const [store, setStore] = useState(STORES.includes(params.get('store') ?? '') ? params.get('store')! : 'Lakeside')
+  // Opens on the viewer's own store when they have one (a Team Leader's, a manager's), else the first.
+  const home = STORES.find(st => ctx.viewer.place === st || ctx.viewer.place.startsWith(`${st} · `))
+  const [store, setStore] = useState(STORES.includes(params.get('store') ?? '') ? params.get('store')! : home ?? STORES[0])
   /** The store is kept in the address (?store=), so a reload or a shared link opens the same store. */
   const chooseStore = (v: string) => {
     setStore(v); setSel(null)
@@ -95,7 +116,7 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
   // engine's figure and the one after people's numbers are both shown the same way, so the struck-through logic holds.
   const [show, setShow] = useState<Show>(SHOWS.some(o => o.value === params.get('show')) ? params.get('show') as Show : 'final')
   const chooseShow = (v: Show) => { setShow(v); const q = new URLSearchParams(window.location.search); if (v === 'final') q.delete('show'); else q.set('show', v); history.replaceState(null, '', `?${q}`) }
-  const [sel, setSel] = useState<Scope | null>(() => ({ store: params.get('store') ?? 'Lakeside', level: (params.get('level') as Scope['level']) ?? 'Category',
+  const [sel, setSel] = useState<Scope | null>(() => ({ store: params.get('store') ?? store, level: (params.get('level') as Scope['level']) ?? 'Category',
     name: params.get('name') ?? 'Women Ethnic Wear', weeks: params.get('weeks') ? parseWeeks(params.get('weeks')) : ALL_WEEKS }))
   const [chosenMode, setMode] = useState<'views' | 'why' | 'comments'>((params.get('pane') as 'views') ?? 'views')
   const hasWhy = sel?.level === 'Subcategory' && m.key === BASES_MONTH
@@ -115,7 +136,8 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
 
   const Cell = ({ r, weeks }: { r: Row; weeks: number[] }) => {
     const sc: Scope = { store, level: r.level, name: r.name, weeks }
-    const now = sum(r.subs, weeks) * SHARE[show], was = sum(r.subs, weeks, true) * SHARE[show]
+    // Base and Uplift split the engine's figure only: a total a person typed holds no uplift, so it is not split.
+    const was = sum(r.subs, weeks, true) * SHARE[show], now = show === 'final' ? sum(r.subs, weeks) : was
     const views = mine(sc)
     const talk = commentsOf(ctx.data.decisions, m.key, sc).length
     const on = sel && sel.store === store && sel.level === r.level && sel.name === r.name && weeksKey(sel.weeks) === weeksKey(weeks)
@@ -136,17 +158,22 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
   }
 
   return (
-    <Page title="Workspace" actions={<Segmented label="Store" value={store} onChange={chooseStore} options={STORES.map(v => ({ value: v, label: v }))} />}>
-      <p className="-mt-2 text-sm text-ink-muted">{m.label}{closed ? ' · closed' : ''} · engine Run of {m.origin} ({m.run}) · ₹ before tax · weeks shown here, days on Charts</p>
+    <Page title="Workspace" actions={<div className="w-56"><Field label="Store"><Select value={store} onChange={e => chooseStore(e.target.value)} data-testid="store">{STORES.map(v => <option key={v} value={v}>{v}</option>)}</Select></Field></div>}>
+      <p className="-mt-2 text-sm text-ink-muted">{m.label}{closed ? ' · closed' : ''} · engine Run of {m.origin} ({m.run}) · {REVIEW ? '₹ after GST, as the AOP is' : '₹ before tax'} · weeks shown here, days on Charts</p>
       {closed && <Notice><span data-testid="closed-month">{m.label} is closed. Its numbers and the grid can be seen, but nothing new can be added or approved. Open a cell to see each number against what sold.</span></Notice>}
+      {REVIEW && to === 0 ? (() => { const aop = aopOf(storeSubs), gap = total - aop; return (
+      <Headline label={`${m.label} · ${store} · before the month starts`} tone={aopTone(total, aop) === 'positive' ? 'positive' : 'caution'}
+        conclusion={`${fmtINR(total)} forecast, ${fmtINR(Math.abs(gap))} (${Math.abs(pct(total, aop))}%) ${gap < 0 ? 'below' : 'above'} the AOP of ${fmtINR(aop)}`}
+        detail={<>Engine {fmtINR(engine)}{Math.abs(total - engine) > 1 ? ` · people's numbers change it by ${total > engine ? '+' : '−'}${fmtINR(Math.abs(total - engine))}` : ' · no number applied yet'} · {storeSubs.filter(s => aopTone(s.engine, s.aop ?? 0) === 'negative' && s.engine + (s.aop ?? 0) >= 2e5).length} red lines, {storeSubs.filter(s => aopTone(s.engine, s.aop ?? 0) === 'caution').length} orange</>}
+        progress={{ value: Math.round((total / aop) * 1000) / 10, marker: 100, label: 'Forecast against the AOP' }} />) })() :
       <Headline label={`${m.label} · ${store}`} tone={act >= fc ? 'positive' : 'caution'}
         conclusion={`${fmtINR(act)} sold ${closed ? `in ${m.name}` : `to ${dateOf(m, to)}`}, ${Math.abs(pct(act, fc))}% ${act >= fc ? 'ahead of' : 'behind'} the forecast`}
         detail={<>Applied for the month {fmtINR(total)} · engine {fmtINR(engine)}{Math.abs(total - engine) > 1 ? ` · people's numbers change it by ${total > engine ? '+' : '−'}${fmtINR(Math.abs(total - engine))}` : ' · no number applied yet'}</>}
-        progress={{ value: Math.round((act / total) * 1000) / 10, marker: Math.round((fc / total) * 1000) / 10, label: closed ? 'Sold against the applied month figure' : 'Sold so far against the applied month figure' }} />
+        progress={{ value: Math.round((act / total) * 1000) / 10, marker: Math.round((fc / total) * 1000) / 10, label: closed ? 'Sold against the applied month figure' : 'Sold so far against the applied month figure' }} />}
       <div className="flex flex-wrap items-center gap-3 text-[13px] text-ink-muted">
-        <div className="w-60"><Select value={show} onChange={e => chooseShow(e.target.value as Show)} aria-label="Show in the grid" data-testid="show">
-          {SHOWS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</Select></div>
-        <span>A struck-through figure is the engine's {SHOWS.find(o => o.value === show)!.word}; the one below it is after the Applied numbers.</span>
+        {UPLIFT > 0 && <div className="w-60"><Select value={show} onChange={e => chooseShow(e.target.value as Show)} aria-label="Show in the grid" data-testid="show">
+          {SHOWS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</Select></div>}
+        <span>{show === 'final' ? "A struck-through figure is the engine's final; the one below it is after the Applied numbers." : `The engine's own ${SHOWS.find(o => o.value === show)!.word}, before people's numbers: a total someone typed holds no uplift to split.`}</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-positive" />Applied</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-caution" />Waiting</span>
         <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-opportunity" />Reference</span>
@@ -161,7 +188,8 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
                 <th className="px-2.5 py-2 text-start font-semibold">{store}</th>
                 {weeksOf(m).map(w => <th key={w} className="px-2.5 py-2 text-end font-semibold whitespace-nowrap">{w}</th>)}
                 <th className="px-2.5 py-2 text-end font-semibold">{m.name}</th>
-                <th className="px-2.5 py-2 text-end font-semibold whitespace-nowrap">{closed ? 'Month end' : 'Running'}</th>
+                {REVIEW ? <><th className="px-2.5 py-2 text-end font-semibold">AOP</th><th className="px-2.5 py-2 text-end font-semibold whitespace-nowrap">vs AOP</th></>
+                  : <th className="px-2.5 py-2 text-end font-semibold whitespace-nowrap">{closed ? 'Month end' : 'Running'}</th>}
               </tr></thead>
               <tbody>
                 {rows.map(r => {
@@ -176,7 +204,10 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
                       </td>
                       {ALL_WEEKS.map(w => <Cell key={w} r={r} weeks={[w]} />)}
                       <Cell r={r} weeks={ALL_WEEKS} />
-                      <td className="px-2.5 text-end"><StatusPill tone={a >= f ? 'positive' : 'caution'}>{signed(pct(a, f))}</StatusPill></td>
+                      {REVIEW ? (() => { const aop = aopOf(r.subs), now = sum(r.subs, ALL_WEEKS); return <>
+                        <td className="px-2.5 text-end tabular-nums whitespace-nowrap text-ink-muted">{fmtINR(aop)}</td>
+                        <td className="px-2.5 text-end"><StatusPill tone={aopTone(now, aop)}>{aop ? signed(pct(now, aop)) : 'no AOP'}</StatusPill></td></> })()
+                        : <td className="px-2.5 text-end"><StatusPill tone={a >= f ? 'positive' : 'caution'}>{signed(pct(a, f))}</StatusPill></td>}
                     </tr>
                   )
                 })}
@@ -192,7 +223,7 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
                 ...(hasWhy ? [{ value: 'why' as const, label: 'Why' }] : []),
                 { value: 'comments', label: `Comments (${commentsOf(ctx.data.decisions, m.key, sel).length})` }]} />}>
               {mode === 'views' && <Views key={`${m.key}${JSON.stringify(sel)}`} ctx={ctx} sc={sel} now={sum(SUBS.filter(s => inScope(s, sel)), sel.weeks)} numbers={mine(sel)} />}
-              {mode === 'why' && hasWhy && <Why s={SUBS.find(s => s.store === store && s.name === sel.name)!} />}
+              {mode === 'why' && hasWhy && <Why month={m.name} s={SUBS.find(s => s.store === store && s.name === sel.name)!} />}
               {mode === 'comments' && <Comments ctx={ctx} sc={sel} />}
             </DrillPane>
           </div>
@@ -202,7 +233,8 @@ export function WorkspacePage({ ctx }: { ctx: Ctx }) {
   )
 }
 
-function Why({ s }: { s: Sub }) {
+function Why({ s, month }: { s: Sub; month: string }) {
+  if (s.aop != null) return <WhyShares s={s} month={month} />
   const blend = BASES.reduce((n, b) => n + weightOf(s, b.code) * (value(s, b.code) ?? 0), 0)
   return (
     <PaneSection title={`Why the engine says ${fmtINR(s.engine)} for November`}>
@@ -226,6 +258,30 @@ function Why({ s }: { s: Sub }) {
   )
 }
 
+/** A review set's run gives each basis's part of the forecast, not the basis's own value: so this shows what each adds. */
+function WhyShares({ s, month }: { s: Sub; month: string }) {
+  const rows = BASES.map(b => ({ ...b, share: weightOf(s, b.code), adds: weightOf(s, b.code) * (value(s, b.code) ?? 0) })).sort((a, b) => b.adds - a.adds)
+  return (
+    <PaneSection title={`How the engine reached ${fmtINR(s.engine)} for ${month}`}>
+      <table className="w-full text-sm">
+        <thead><tr className="text-[13px] text-ink-muted"><th className="py-1 text-start font-medium">What it reads</th><th className="text-end font-medium">Share</th><th className="text-end font-medium">₹ it adds</th></tr></thead>
+        <tbody>
+          {rows.map(b => (
+            <tr key={b.code} className={b.share ? '' : 'text-ink-muted'}>
+              <td className="py-1.5 text-[13px]">{b.name}</td>
+              <td className="text-end tabular-nums">{b.share ? `${Math.round(b.share * 100)}%` : '—'}</td>
+              <td className="text-end tabular-nums whitespace-nowrap">{b.share ? fmtINR(b.adds) : '—'}</td>
+            </tr>))}
+          {Math.abs(s.other) >= 1 && <tr><td className="py-1.5 text-[13px]">December-only fix, rounding and other steps</td><td /><td className="text-end tabular-nums">{s.other > 0 ? '+' : '−'} {fmtINR(Math.abs(s.other))}</td></tr>}
+          <tr className="border-t border-border font-semibold"><td className="py-1.5">The engine's {month} figure</td><td /><td className="text-end tabular-nums">{fmtINR(s.engine)}</td></tr>
+          <tr className="text-ink-muted"><td className="py-1.5">AOP</td><td /><td className="text-end tabular-nums">{fmtINR(s.aop ?? 0)}</td></tr>
+        </tbody>
+      </table>
+      <p className="text-[13px] text-ink-muted">This run gives each basis's part of the forecast, not the basis's own value, so changing the weights cannot recompute it here.</p>
+    </PaneSection>
+  )
+}
+
 const nextUp = (p: Person) => (p.reportsTo ? person(p.reportsTo) : null)
 /** Every time written by the page is IST (months.ts). */
 const stamp = nowIST
@@ -239,15 +295,18 @@ function Views({ ctx, sc, now, numbers }: { ctx: Ctx; sc: Scope; now: number; nu
   // A closed month's numbers are each set against what sold, for the same scope and weeks.
   const sold = closed ? actualFor(sc, m.key) : null
   const sorted = [...numbers].sort((a, b) => a.entered_on.localeCompare(b.entered_on))
-  const anyApplied = sorted.some(n => n.status === 'Applied')
+  // The engine's figure is the applied one only when no number here applies and nothing above or below moved the cell.
+  const anyApplied = sorted.some(n => n.status === 'Applied') || Math.abs(now - engine) > 0.5
   const [adding, setAdding] = useState(false)
   const mine = covers(ctx.viewer, sc)
   return (
     <>
       {!mine && <Notice><span data-testid="read-only">Read only for you: this cell is outside your area ({areaText(ctx.viewer)}). You can see every number here; adding, applying, approving, promoting and withdrawing are for the people whose area it is.</span></Notice>}
       <div className="grid grid-cols-2 gap-2 rounded-card bg-subtle p-3 text-sm" data-testid="three-figures">
+        {UPLIFT > 0 ? <>
         <div><div className="text-[13px] text-ink-muted">Base, before the uplift</div><div className="text-lg font-semibold tabular-nums">{fmtINR(engine * SHARE.base)}</div></div>
-        <div><div className="text-[13px] text-ink-muted">Flat uplift, {Math.round(UPLIFT * 100)}%</div><div className="text-lg font-semibold tabular-nums">+{fmtINR(engine * SHARE.uplift)}</div></div>
+        <div><div className="text-[13px] text-ink-muted">Flat uplift, {Math.round(UPLIFT * 100)}%</div><div className="text-lg font-semibold tabular-nums">+{fmtINR(engine * SHARE.uplift)}</div></div></>
+          : (() => { const aop = aopOf(SUBS.filter(s => inScope(s, sc))); return <div className="col-span-2"><div className="text-[13px] text-ink-muted">AOP</div><div className="text-lg font-semibold tabular-nums">{fmtINR(aop)} <span className="text-sm font-normal text-ink-muted">{aop ? `forecast ${signed(pct(engine, aop))} on it` : ''}</span></div></div> })()}
         <div><div className="text-[13px] text-ink-muted">Final, the engine's</div><div className="text-lg font-semibold tabular-nums">{fmtINR(engine)}</div></div>
         <div><div className="text-[13px] text-ink-muted">After people's numbers</div><div className="text-lg font-semibold tabular-nums">{fmtINR(now)} <span className="text-sm font-normal text-ink-muted">{Math.abs(now - engine) > 1 ? signed(pct(now, engine)) : ''}</span></div></div>
         {sold != null && <div data-testid="sold"><div className="text-[13px] text-ink-muted">What sold</div><div className="text-lg font-semibold tabular-nums">{fmtINR(sold)}</div></div>}
@@ -390,7 +449,7 @@ function AddNumber({ ctx, sc, engine, onDone }: { ctx: Ctx; sc: Scope; engine: n
     const direct = mode === 'reference' || !up
     const status = mode === 'reference' ? 'Reference' : direct ? 'Applied' : 'Waiting'
     const saved = await ctx.save('forecasting.number', {
-      month: ctx.month.key, run: ctx.month.run, store: sc.store, section: sub?.section ?? '', scope_level: sc.level, scope_name: sc.name, weeks: weeksKey(sc.weeks),
+      month: ctx.month.key, run: ctx.month.run, store: sc.store, section: sectionOf(sc), scope_level: sc.level, scope_name: sc.name, weeks: weeksKey(sc.weeks),
       kind, value: next, percent: isPercent({ kind }) ? pc : null, weights_json: kind === 'Change the weights' ? JSON.stringify(w) : null,
       entered_by: ctx.viewer.name, entered_by_role: ctx.viewer.role, entered_on: stamp(), reason, status, waiting_on: status === 'Waiting' ? up!.name : null, changed_by: ctx.viewer.name })
     await ctx.save('forecasting.decision', logRow(ctx, saved as unknown as NumberRow,
@@ -424,6 +483,8 @@ function AddNumber({ ctx, sc, engine, onDone }: { ctx: Ctx; sc: Scope; engine: n
         <div><div className="text-[13px] text-ink-muted">Yours</div><div className="font-semibold tabular-nums">{ready || next ? fmtINR(next) : '—'}</div></div>
         <div><div className="text-[13px] text-ink-muted">Change</div><div className="font-semibold tabular-nums">{signed(pct(next, engine))}</div></div>
       </div>
+      {next > 0 && kind !== 'Closure or event' && Math.abs(pct(next, engine)) > 50 && (
+        <Notice tone="caution">This is {signed(pct(next, engine))} on the engine. Check it before sending: the figure is for {weeksText(weeksKey(sc.weeks), ctx.month)}, before tax.</Notice>)}
       <Segmented label="What it does" value={mode} onChange={setMode} options={[{ value: 'apply', label: 'Apply it' }, { value: 'reference', label: 'Reference only' }]} />
       <Field label="Why (required)"><textarea data-testid="reason" rows={3} value={reason} onChange={e => setReason(e.target.value)} placeholder="What do you know that the engine doesn't?" className="w-full rounded-control border border-border-control bg-surface px-3 py-2 text-control text-ink" /></Field>
       {mode === 'reference' ? <Notice>Kept beside the engine as your view. It changes nothing, and it is graded at month end like every number.</Notice>

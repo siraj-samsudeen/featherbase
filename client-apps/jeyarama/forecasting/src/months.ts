@@ -2,6 +2,8 @@
 // September and October 2026 are closed, November is the current month (sales loaded to the 22nd),
 // December waits for its Run.
 
+import { DATASET } from './dataset'
+
 export type MonthState = 'closed' | 'current' | 'empty'
 export interface Month {
   /** The address value and the month on every row: 2026-11. */
@@ -38,13 +40,14 @@ function month(key: string, state: MonthState, run: string | null, origin: strin
     days: new Date(Date.UTC(year, index + 1, 0)).getUTCDate(), state, run, origin, loadedTo }
 }
 
-export const MONTHS: Month[] = [
+// A review set (dataset.ts) holds one month, under review before it starts: its Run, no sales yet.
+export const MONTHS: Month[] = DATASET ? [month(DATASET.month, 'current', DATASET.run, null, 0)] : [
   month('2026-09', 'closed', 'demo_2026_09_official', '30-Aug-2026', 30),
   month('2026-10', 'closed', 'demo_2026_10_official', '30-Sep-2026', 31),
   month('2026-11', 'current', 'demo_2026_11_official', '30-Oct-2026', 22),
   month('2026-12', 'empty', null, null, 0),
 ]
-export const CURRENT_MONTH = '2026-11'
+export const CURRENT_MONTH = DATASET?.month ?? '2026-11'
 /** The month an address names; anything else is the current month. */
 export const monthOf = (key: string | null | undefined): Month => MONTHS.find(m => m.key === key) ?? MONTHS.find(m => m.key === CURRENT_MONTH)!
 
