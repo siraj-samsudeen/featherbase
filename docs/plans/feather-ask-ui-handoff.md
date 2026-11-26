@@ -133,6 +133,11 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
   locks). The agent runs in an **outbound read** (its handler runs after the transaction has
   closed, as Dash's MotherDuck reads); then a short action saves the chat, question and
   answer in one transaction. The page still shows one "Thinking…".
+- **"Mcp" in every name of backend step 1** (Mohammad, 26-Nov-2026): "Featherbase" alone is
+  too generic for platform code. The manifest flag is `"featherbaseMcp": true`, the helper
+  `ctx.featherbaseMcp`, the types `FeatherbaseMcpTool`, `FeatherbaseMcpToolCallResult` and
+  `FeatherbaseMcpTools`. The drafts in `ask-handover\` still use the old names
+  (`featherbaseTools`, `ctx.featherbase`, `FeatherbaseTool…`).
 
 ## Done
 
@@ -230,7 +235,7 @@ Steps, one small feature at a time. Featherbase's MCP first; other apps' own con
 later (Mohammad: everything but MotherDuck already goes through Featherbase):
 
 1. **Featherbase's MCP tools for an app's outbound read** (start here). The platform hands a
-   read that declares `"featherbaseTools": true` (and `"outbound": true`) `ctx.featherbase`:
+   read that declares `"featherbaseMcp": true` (and `"outbound": true`) `ctx.featherbaseMcp`:
    `tools()` and `call(name, args)` → `{ ok: true, result } | { ok: false, reason }`.
    Built as in Decisions: the MCP tool server in memory, the 5-minute pass, `runAsAgent`,
    read-only tools only. Needed because an app's own `documents` can't read another app's
@@ -244,10 +249,15 @@ later (Mohammad: everything but MotherDuck already goes through Featherbase):
    `test-apps/action-proof` (offered only the read-only tools; reads as the person, Selvi
    sees her row and Ravi none; `create_row` doesn't exist for it; a read without the flag
    isn't handed them; the pass is reused, renewed and expires). Mohammad has already added
-   the `Client`, `InMemoryTransport` and type imports to `mcp.ts` (uncommitted).
+   the `Client`, `InMemoryTransport` and type imports to `mcp.ts` (uncommitted; the type
+   import becomes `import type { FeatherbaseMcpTool, FeatherbaseMcpTools } from 'shared'`).
+   1a, the shared types (`FeatherbaseMcpTool`, `FeatherbaseMcpToolCallResult`,
+   `FeatherbaseMcpTools`, and `featherbaseMcp?` on `RuntimeReadContext`, exported from
+   `shared`'s `index.ts`): Mohammad is typing it (26-Nov-2026); the checked draft, with the
+   old names, is `ask-handover\S1-draft\1a-types\1a-types.diff`. Next: 1b, the flag.
    Permissions: propose an adversarial review in one line before it lands.
 2. **The agent loop in Ask**, with the stand-in model: a `think` outbound read (declares
-   `featherbaseTools`) runs the loop; the `ask` action saves chat, question and answer; the
+   `featherbaseMcp`) runs the loop; the `ask` action saves chat, question and answer; the
    page calls think, then ask, under one "Thinking…". Open question for then: the page sends
    the answer to save, so it could save a made-up answer in its own chat; sign it in think
    and check it in ask (the old prototype did, HMAC), or accept it (only the person's own
