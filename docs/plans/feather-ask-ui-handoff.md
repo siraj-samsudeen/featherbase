@@ -176,24 +176,56 @@ The platform's rule that hides `data-depth="1"` rows in the collapsed rail sits 
 stylesheet, so the sidebar's own `display:flex !important` wins and such rows still show
 (Tickets' Types group too); Ask no longer uses that pattern. Worth an issue for #1385.
 
-## Next step
+## Next step: the backend (Mohammad, 26-Nov-2026)
 
-**2e:** a "⋯" menu on each chat with Rename and Delete (asks first; deletes the chat and its
-questions together). A manifest change: recreate the local database.
+The frontend is paused after 2d. The next sessions build the backend: the pipeline that
+answers a question, and the calls to a real model. The frontend features below come after.
 
-- Optional tidy-ups Mohammad left in 2d's files (comments, import grouping, spacing):
-  `RecentChats.tsx` lines 2–3 still say chats open their Featherbase record "for now", and
-  its `ChatLink` comment sits above `useEffect(load, [])`; `Chat.tsx` and `Sidebar.tsx`
-  add imports on separate lines and lost some comments. The draft in
-  `ask-handover\2d-draft\` has the tidy versions.
-- Not done yet, for later: a chat added to does not move to the top (the list is ordered by
-  when a chat started; ChatGPT orders by last use, which needs a "last asked" time on the
-  chat); a brand-new chat's address stays `/ask/` after its first answer.
+The design is #1377's "Agreed design" (points 1 to 13 and 17 to 19); read it first. Where
+the backend starts today: `src/server/reply.ts`'s `reply(question)` returns a fixed
+placeholder, and `src/server/index.ts`'s `ask` action saves the question with that answer.
+`Reply` (`src/shared/reply.ts`) already has `kind: 'cannot'` for a question the model can't
+answer.
 
-## Then
+Pieces, roughly in this order (each an overview, a walkthrough, the code, checks, a commit):
 
-- Later: group the lists by Today, Yesterday, Previous 7 days, Previous 30 days.
-- Step 3 (the panel on every page).
+1. **The pipeline in Ask** (point 1): check limits, ask the model what to read, check and
+   run that request as the person, ask the model to write the answer, save it. Plug 1 (the
+   model) and plug 2 (the data) behind their own interfaces, so either can be swapped.
+2. **The stand-in model** (point 9): fixed word rules that return the same tool calls a
+   real model would. Plus the misbehaving test stand-in (point 10).
+3. **The core step in Featherbase** (points 2, 6, 7, 12): run a read-only tool call (read
+   with filters, count, sum, prepared query by name) as the person, limited to their reach
+   and the Tables they may ask about; a refused request goes back to the model with the
+   reason, a fixed number of retries. Permissions: propose an adversarial review.
+4. **The askable Tables list** an admin keeps (point 12); first build: sales versus target.
+5. **The real model** (point 9): #1377 says OpenCode Zen, with OpenRouter also working.
+   Mohammad wants OpenRouter: first design question for the next session (which model, where
+   the API key lives, `.env.example` and `docs/DEPLOY.md`, how a provider error is shown
+   only to an admin, point 19).
+6. **Limits, budget and the log** (points 17, 18): per person, role and model; everything kept.
+
+Open design questions, to ask one at a time: OpenRouter vs OpenCode Zen; which model; where
+the key and the per-model costs live; the retry count; what the page shows while the
+pipeline runs (one "Thinking…", or steps). This is a behaviour change, so it goes through
+OpenSpec (`pnpm exec openspec`).
+
+## Frontend, later (after the backend)
+
+- 2e: a "⋯" menu on each chat with Rename and Delete (asks first; deletes the chat and its
+  questions together). A manifest change: recreate the local database.
+- A chat added to moves to the top (needs a "last asked" time on the chat; ChatGPT orders
+  by last use), and a brand-new chat's address becomes `/ask/?chat=<id>` after its first
+  answer (today it stays `/ask/`).
+- Group the lists by Today, Yesterday, Previous 7 days, Previous 30 days.
+- Each figures answer shows what it covers, how recent, the request that ran, and a link to
+  the matching report (#1377 point 15). The limit shown under the box (point 14).
+- Step 3: the panel on every page.
+- Optional tidy-ups Mohammad left in 2d's files: `RecentChats.tsx` lines 2–3 still say
+  chats open their Featherbase record "for now", and its `ChatLink` comment sits above
+  `useEffect(load, [])`; `Chat.tsx` and `Sidebar.tsx` add imports on separate lines and lost
+  some comments. `ask-handover\2d-draft\` has the tidy versions.
 - Then the independent headless verifier at desktop width (its checklist includes: "Every
   record shown (person, store, section, department, ticket, and so on) is a link that opens
-  it, or plain text only where the viewer may not open it."), remove this note, open the PR.
+  it, or plain text only where the viewer may not open it."), remove this note, and the PR
+  only when Mohammad says so.
