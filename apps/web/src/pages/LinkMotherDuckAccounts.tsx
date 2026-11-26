@@ -37,7 +37,8 @@ const viewOf = (a: Account): View => (a.service_account ? 'service' : a.person ?
 const typing = (t: EventTarget | null) =>
   t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
 
-export function LinkMotherDuckAccounts() {
+/** `account`: open on this account (a review ticket's "Link in Featherbase" passes it). */
+export function LinkMotherDuckAccounts({ account }: { account?: string } = {}) {
   const qc = useQueryClient()
   const list = useQuery({ queryKey: KEY, queryFn: () => api.get<{ accounts: Account[] }>('/api/motherduck_accounts/linking') })
   const meta = useMeta(TABLE)
@@ -48,6 +49,9 @@ export function LinkMotherDuckAccounts() {
   // Unlinked from the Linked tab on this page, with who they were: Relink puts it back.
   const [unlinkedNow, setUnlinkedNow] = useState<Record<string, { id: string; name: string }>>({})
   const [current, setCurrent] = useState(0)
+  // Outside To link, the account the address asked for is the highlighted one.
+  const [asked, setAsked] = useState<string | undefined>(undefined)
+  const opened = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const pickers = useRef(new Map<string, HTMLDivElement>())
 
@@ -57,7 +61,7 @@ export function LinkMotherDuckAccounts() {
   const shown = all.filter((a) => (view === 'open' ? viewOf(a) === 'open' || linkedNow.includes(a.row_id)
     : view === 'linked' ? viewOf(a) === 'linked' || Boolean(unlinkedNow[a.row_id]) : viewOf(a) === view))
   const open = useMemo(() => shown.filter((a) => viewOf(a) === 'open'), [shown])
-  const currentId = view === 'open' ? open[Math.min(current, open.length - 1)]?.row_id : undefined
+  const currentId = view === 'open' ? open[Math.min(current, open.length - 1)]?.row_id : asked
 
   const save = useMutation({
     mutationFn: async ({ account, person }: { account: Account; person: string | null }) => {
@@ -77,6 +81,19 @@ export function LinkMotherDuckAccounts() {
     onError: (e, { account }) => setError(`${account.username}: ${e instanceof ApiError ? e.message : 'the link was not saved'}`),
   })
   const link = (account: Account, person: string) => save.mutate({ account, person })
+
+  // Once, when the list arrives: go to the asked-for account, on its own tab.
+  useEffect(() => {
+    if (opened.current || !list.data || !account) return
+    opened.current = true
+    const found = list.data.accounts.find((a) => a.row_id === account)
+    if (!found) return
+    const where = viewOf(found)
+    setView(where)
+    if (where === 'open') setCurrent(list.data.accounts.filter((a) => viewOf(a) === 'open').indexOf(found))
+    else setAsked(found.row_id)
+    requestAnimationFrame(() => document.querySelector(`[data-account="${CSS.escape(found.row_id)}"]`)?.scrollIntoView?.({ block: 'center' }))
+  }, [list.data, account])
 
   const sync = useMutation({ mutationFn: () => api.post('/api/motherduck_accounts/sync', {}) })
 
@@ -117,7 +134,7 @@ export function LinkMotherDuckAccounts() {
       />
       <div className="flex flex-wrap items-center gap-3">
         <span data-testid="md-filters">
-          <Segmented label="Accounts" value={view} onChange={(v) => { setView(v); setCurrent(0) }} options={[
+          <Segmented label="Accounts" value={view} onChange={(v) => { setView(v); setCurrent(0); setAsked(undefined) }} options={[
             { value: 'open', label: `To link · ${fmtCount(counts.open)}` },
             { value: 'linked', label: `Linked · ${fmtCount(counts.linked)}` },
             { value: 'service', label: `Service accounts · ${fmtCount(counts.service)}` },
@@ -143,7 +160,7 @@ export function LinkMotherDuckAccounts() {
           }
           const isCurrent = a.row_id === currentId
           return (
-            <li key={a.row_id} data-testid="md-account" data-username={a.username} data-current={isCurrent ? 'true' : undefined}
+            <li key={a.row_id} data-testid="md-account" data-account={a.row_id} data-username={a.username} data-current={isCurrent ? 'true' : undefined}
               onClick={() => view === 'open' && setCurrent(open.findIndex((o) => o.row_id === a.row_id))}
               className={`flex flex-col gap-2 px-4 py-3 ${isCurrent ? 'border-l-[3px] border-l-action' : 'border-l-[3px] border-l-transparent'}`}>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
