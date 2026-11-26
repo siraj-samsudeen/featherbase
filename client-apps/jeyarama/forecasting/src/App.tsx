@@ -148,19 +148,25 @@ export function NoRunYet({ month, what }: { month: Month; what: string }) {
 export function ForecastingApp() {
   const params = new URLSearchParams(window.location.search)
   const view = (VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : 'forecasts') as View
-  const [viewerId, setViewerId] = useState(() => params.get('as') ?? localStorage.getItem('fc_viewer') ?? PEOPLE[0].id)
+  // Whoever looks after the app opens as the top of the chain (the Chief Executive), not the first name in the list.
+  const top = (PEOPLE.find(p => p.role === 'Chief Executive') ?? PEOPLE[0]).id
+  const [viewerId, setViewerId] = useState(() => params.get('as') ?? localStorage.getItem('fc_viewer') ?? top)
   const [data, setData] = useState<Data | null>(null)
   const [failed, setFailed] = useState(false)
   // Signed in as a made-up forecaster: the page is theirs, and the server checks the same person. The
   // Administrator keeps "Viewing as", to see any made-up person's view.
   const [me, setMe] = useState<Person | null>(null)
+  // Someone signed in who is neither on the chart nor looks after the app sees nobody's view.
+  const [offChart, setOffChart] = useState('')
   useEffect(() => {
     fetch('/api/whoami', { credentials: 'same-origin' }).then(r => r.json()).then((u: { row_id?: string; full_name?: string; roles?: string[] }) => {
       const admin = u.row_id === 'Administrator' || (u.roles ?? []).includes('System Manager')
-      if (!admin) setMe(PEOPLE.find(p => p.name === u.full_name) ?? null)
+      if (admin) return
+      const mine = PEOPLE.find(p => p.name === u.full_name)
+      if (mine) setMe(mine); else setOffChart(u.full_name || 'You')
     }, () => {})
   }, [])
-  const viewer = me ?? person(PEOPLE.some(p => p.id === viewerId) ? viewerId : PEOPLE[0].id)
+  const viewer = me ?? person(PEOPLE.some(p => p.id === viewerId) ? viewerId : top)
   const [month, chooseMonth] = useMonth()
 
   const reload = useCallback(async () => {
@@ -195,6 +201,7 @@ export function ForecastingApp() {
     <div className="fc-shell">
       <Sidebar current={view} waiting={data ? waitingFor(data, viewer).length : 0} news={data ? unseenFor(data, viewer).length : 0} />
       <main className="fc-page" data-testid={`page-${view}`}>
+        {offChart ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
         <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
@@ -205,7 +212,7 @@ export function ForecastingApp() {
                   : view === 'results' ? <ResultsPage ctx={ctx} />
                   : view === 'charts' ? <ChartsPage key={month.key} ctx={ctx} />
                     : view === 'review' ? <ReviewPage ctx={ctx} />
-                      : <IdeasPage ctx={ctx} />}
+                      : <IdeasPage ctx={ctx} />}</>}
       </main>
     </div>
   )
