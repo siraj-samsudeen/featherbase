@@ -46,6 +46,8 @@ export function LinkMotherDuckAccounts() {
   const [view, setView] = useState<View>('open')
   // Linked on this page, by account: they stay in place, green, with Undo.
   const [linkedNow, setLinkedNow] = useState<string[]>([])
+  // Unlinked from the Linked tab on this page, with who they were: Relink puts it back.
+  const [unlinkedNow, setUnlinkedNow] = useState<Record<string, { id: string; name: string }>>({})
   const [current, setCurrent] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const pickers = useRef(new Map<string, HTMLDivElement>())
@@ -53,7 +55,8 @@ export function LinkMotherDuckAccounts() {
   const all = list.data?.accounts ?? []
   const counts = { open: 0, linked: 0, service: 0 }
   for (const a of all) counts[viewOf(a)]++
-  const shown = all.filter((a) => (view === 'open' ? viewOf(a) === 'open' || linkedNow.includes(a.row_id) : viewOf(a) === view))
+  const shown = all.filter((a) => (view === 'open' ? viewOf(a) === 'open' || linkedNow.includes(a.row_id)
+    : view === 'linked' ? viewOf(a) === 'linked' || Boolean(unlinkedNow[a.row_id]) : viewOf(a) === view))
   const open = useMemo(() => shown.filter((a) => viewOf(a) === 'open'), [shown])
   const currentId = view === 'open' ? open[Math.min(current, open.length - 1)]?.row_id : undefined
 
@@ -65,7 +68,8 @@ export function LinkMotherDuckAccounts() {
     },
     onMutate: () => setError(null),
     onSuccess: (_d, { account, person }) => {
-      setLinkedNow((ids) => (person ? [...ids.filter((id) => id !== account.row_id), account.row_id] : ids.filter((id) => id !== account.row_id)))
+      setLinkedNow((ids) => (person && view === 'open' ? [...ids.filter((id) => id !== account.row_id), account.row_id] : ids.filter((id) => id !== account.row_id)))
+      setUnlinkedNow(({ [account.row_id]: was, ...rest }) => (!person && view === 'linked' && account.person ? { ...rest, [account.row_id]: account.person } : rest))
       void qc.invalidateQueries({ queryKey: KEY })
     },
     onError: (e, { account }) => setError(`${account.username}: ${e instanceof ApiError ? e.message : 'the link was not saved'}`),
@@ -151,8 +155,14 @@ export function LinkMotherDuckAccounts() {
                   {a.review_ticket && <RecordLink table="tickets.ticket" rowId={a.review_ticket} name={a.review_ticket} />}
                 </div>
               </div>
+              {view === 'linked' && unlinkedNow[a.row_id] && !a.person && (
+                <div data-testid="md-unlinked-now" className="flex items-center justify-between gap-3 text-sm text-ink-muted">
+                  <span>Unlinked from {unlinkedNow[a.row_id].name}</span>
+                  <Button variant="secondary" disabled={save.isPending} onClick={() => link(a, unlinkedNow[a.row_id].id)}>Relink</Button>
+                </div>
+              )}
               {viewOf(a) === 'linked' && a.person && (
-                <div className="flex items-center gap-3 text-sm">Person: <RecordLink table="Person" rowId={a.person.id} name={a.person.name} />
+                <div className="flex items-center justify-between gap-3 text-sm"><span>Person: <RecordLink table="Person" rowId={a.person.id} name={a.person.name} /></span>
                   <Button variant="quiet" disabled={save.isPending} onClick={() => save.mutate({ account: a, person: null })}>Unlink</Button></div>
               )}
               {viewOf(a) === 'open' && (
@@ -173,7 +183,8 @@ export function LinkMotherDuckAccounts() {
                     <div className="max-w-md" ref={(el) => { if (el) pickers.current.set(a.row_id, el); else pickers.current.delete(a.row_id) }}
                       onClick={(e) => e.stopPropagation()}
                       // Esc hands the keys back to the list: 1–3 and ↑ ↓ work again.
-                      onKeyDown={(e) => { if (e.key === 'Escape') (e.target as HTMLElement).blur() }}>
+                      // Capture: the picker's own Esc only closes its list, which would take two presses.
+                      onKeyDownCapture={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); (e.target as HTMLElement).blur() } }}>
                       <LinkControl field={personColumn} value="" pickOnly floating className="w-full"
                         common={{ 'aria-label': `Someone else for ${a.username}`, placeholder: 'Someone else: search by name or email' }}
                         onChange={(v) => { if (typeof v === 'string' && v) link(a, v) }} />
