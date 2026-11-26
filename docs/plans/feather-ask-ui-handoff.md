@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 26-Nov-2026 (backend 1a and 1b committed; OpenSpec changes written; next: 1c). A working note for moving between machines and sessions. It is
+**Last updated:** 26-Nov-2026 (backend 1a to 1c committed; next: 1d). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -265,8 +265,12 @@ later (Mohammad: everything but MotherDuck already goes through Featherbase):
    typechecks pass). 1b, the flag (`featherbaseMcp?: true` on `AppOperationDeclaration`;
    in `operationSchema`'s table policy, refused without `outbound`, so actions refuse it
    too): done (commit b27055fbe, 26-Nov-2026; both typechecks pass, five manifest cases
-   checked with `readDeclaration`/`actionDeclaration`). Next: 1c, the helper in `mcp.ts`
-   (`ctx.featherbaseMcp`: the in-memory client, read-only tools only) with the pass.
+   checked with `readDeclaration`/`actionDeclaration`). 1c, `featherbaseMcp(person, label)`
+   and the pass in `mcp-app-reads.ts`: done (commit 4900bc34a; typecheck, six checks against
+   `fb_ask_ui`, the 59 `/mcp` tests pass). Next: 1d, hand `ctx.featherbaseMcp` to an outbound
+   read that declares the flag (`runtime-actions.ts` `executeRuntimeRead`, label "Feather Ask"
+   from the app, `close()` when the read ends). Progress is ticked in
+   `openspec/changes/feather-ask-agent/tasks.md`.
    Permissions: propose an adversarial review in one line before it lands.
 2. **The agent loop in Ask**, with the stand-in model: a `think` outbound read (declares
    `featherbaseMcp`) runs the loop; the `ask` action saves chat, question and answer; the

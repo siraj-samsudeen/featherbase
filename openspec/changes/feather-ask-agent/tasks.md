@@ -7,7 +7,7 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
       `FeatherbaseMcpTools`, `featherbaseMcp?` on the read's context (commit 87f4552ea).
 - [x] 1b The manifest flag `featherbaseMcp`, refused without `outbound` (commit b27055fbe).
 - [x] 1c `mcp-app-reads.ts`: the in-memory client over `mcp.ts`'s tool server, read-only tools
-      only, the 5-minute pass; `serveFeatherbaseMcp(app)` in `index.ts` (commit: see git log).
+      only, the 5-minute pass; `serveFeatherbaseMcp(app)` in `index.ts` (commit 4900bc34a).
 - [ ] 1d Hand `ctx.featherbaseMcp` to an outbound read that declares the flag
       (`runtime-actions.ts`, `executeRuntimeRead`), closed when the read ends.
 - [ ] 1e A sweep that deletes expired access tokens.
