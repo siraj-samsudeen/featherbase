@@ -42,7 +42,7 @@ const ENVIRONMENTS: Record<string, {
     drainingSeconds: 30,
     watchPatterns: [
       'apps/**', 'packages/**', 'pnpm-lock.yaml', 'tools/dev.mjs', 'tools/build-instance-apps.mjs',
-      'client-apps/jeyarama/instances/dash/**', 'client-apps/jeyarama/dash/**', 'client-apps/jeyarama/equipment/**',
+      'client-apps/jeyarama/instances/dash/**', 'client-apps/jeyarama/dash/**', 'client-apps/jeyarama/equipment/**', 'client-apps/jeyarama/forecasting/**',
       'example-apps/tasker/**',
       'example-apps/tickets/**',
     ],
