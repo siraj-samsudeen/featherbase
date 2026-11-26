@@ -204,10 +204,27 @@ export interface DatasetAnswer {
   readonly rows: DatasetRow[]
 }
 
+/** #1377: one of Featherbase's MCP tools, as an app's read is offered it. */
+export interface FeatherbaseMcpTool {
+  readonly name: string
+  readonly description: string
+  readonly inputSchema: Readonly<Record<string, unknown>>
+}
+/** #1377: a tool's answer, or the platform's refusal in its own words. */
+export type FeatherbaseMcpToolCallResult = { ok: true; result: unknown } | { ok: false; reason: string }
+/** #1377: Featherbase's read-only MCP tools (list_tables, query_rows, ...), run as the
+ *  person: each call sees exactly what they may read, in every app. */
+export interface FeatherbaseMcpTools {
+  tools(): Promise<FeatherbaseMcpTool[]>
+  call(name: string, args: Record<string, unknown>): Promise<FeatherbaseMcpToolCallResult>
+}
+
 export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents' | 'mail' | 'changeProposals'> {
   readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'count' | 'activity' | 'isReader'>
   /** #967: what this outbound read's `prepare` answered; undefined everywhere else. */
   readonly prepared?: unknown
+  /** #1377: only in an outbound read that declares `featherbaseMcp`. */
+  readonly featherbaseMcp?: FeatherbaseMcpTools
   /** #975: a read can list proposals, never make or decide one. */
   readonly changeProposals: ChangeProposalsReader
   /** #625 (E3): the app's declared datasets, limited to the reader's places. */
