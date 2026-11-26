@@ -33,7 +33,7 @@ queries, which cover one app at a time and need upkeep for every new Table.
 
 The same MCP tool server as `/mcp`, connected with an in-memory transport. Each tool's inner
 `/api` request carries a **pass**: an access token the platform issues for the person, labelled
-by the app ("Feather Ask"), lasting 5 minutes, kept only in server memory, reused for that
+by the app's title ("Ask", so history reads "via Ask"), lasting 5 minutes, kept only in server memory, reused for that
 person's next questions and renewed when under 2 minutes remain. Calls run under `runAsAgent`, as
 `/mcp`'s do, so every app speaks its installed version and history reads "via Feather Ask".
 Rejected: forwarding the browser session (breaks ADR 0021, and the MCP spec forbids passing other
