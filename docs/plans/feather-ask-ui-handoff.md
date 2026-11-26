@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 26-Nov-2026 (backend design settled; next: backend step 1). A working note for moving between machines and sessions. It is
+**Last updated:** 26-Nov-2026 (backend 1a and 1b committed; next: 1c). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -254,7 +254,11 @@ later (Mohammad: everything but MotherDuck already goes through Featherbase):
    1a, the shared types (`FeatherbaseMcpTool`, `FeatherbaseMcpToolCallResult`,
    `FeatherbaseMcpTools`, and `featherbaseMcp?` on `RuntimeReadContext`, exported from
    `shared`'s `index.ts`): done (commit 87f4552ea, 26-Nov-2026; both
-   typechecks pass). Next: 1b, the flag.
+   typechecks pass). 1b, the flag (`featherbaseMcp?: true` on `AppOperationDeclaration`;
+   in `operationSchema`'s table policy, refused without `outbound`, so actions refuse it
+   too): done (commit b27055fbe, 26-Nov-2026; both typechecks pass, five manifest cases
+   checked with `readDeclaration`/`actionDeclaration`). Next: 1c, the helper in `mcp.ts`
+   (`ctx.featherbaseMcp`: the in-memory client, read-only tools only) with the pass.
    Permissions: propose an adversarial review in one line before it lands.
 2. **The agent loop in Ask**, with the stand-in model: a `think` outbound read (declares
    `featherbaseMcp`) runs the loop; the `ask` action saves chat, question and answer; the
