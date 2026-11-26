@@ -41,7 +41,7 @@ test('lists the accounts to link with their suggestions; the filters count and s
   expect(rows[0]).toHaveTextContent('FT-1396A')
   const picks = within(rows[0]).getAllByTestId('md-suggestion')
   expect(picks.map((p) => p.textContent)).toEqual([expect.stringContaining('Priya Raman'), expect.stringContaining('Priyanka S')])
-  expect(rows[1]).toHaveTextContent("No one's name reads as this username")
+  expect(rows[1]).toHaveTextContent('No suggestions: no one’s name starts like this username')
 
   await userEvent.click(within(filters).getByRole('button', { name: /Linked · 1/ }))
   const linked = await within(page).findAllByTestId('md-account')
@@ -80,4 +80,22 @@ test('keys: 1 picks the first suggestion of the row in focus; Close their ticket
   await userEvent.click(within(page).getByRole('button', { name: 'Close their tickets now' }))
   await waitFor(async () => expect(await sql`select 1 from background_job where method = 'sync_motherduck_accounts' and job_status = 'queued'`).not.toHaveLength(0))
   expect(await within(page).findByTestId('md-sync-queued')).toHaveTextContent(/queued/i)
+})
+
+test('verifier fixes: Unlink on the Linked tab; Esc leaves the search so the keys work again', async ({ admin }) => {
+  const { priya } = await accounts()
+  await renderApp(PAGE, admin)
+  const page = await screen.findByTestId('link-motherduck-accounts')
+  await userEvent.click(await within(page).findByRole('button', { name: /Linked · 1/ }))
+  const linked = (await within(page).findAllByTestId('md-account'))[0]
+  await userEvent.click(within(linked).getByRole('button', { name: 'Unlink' }))
+  await waitFor(async () => expect((await sql`select person from motherduck_account where row_id = 'md-done'`)[0].person).toBeNull())
+
+  await userEvent.click(within(page).getByRole('button', { name: /To link/ }))
+  await within(page).findAllByTestId('md-account')
+  await userEvent.keyboard('/')
+  expect(within(page).getByRole('combobox', { name: 'Someone else for done_one' })).toHaveFocus()
+  await userEvent.keyboard('{Escape}')
+  await userEvent.keyboard('{ArrowDown}1')
+  await waitFor(async () => expect((await sql`select person from motherduck_account where row_id = 'md-priya'`)[0].person).toBe(priya))
 })
