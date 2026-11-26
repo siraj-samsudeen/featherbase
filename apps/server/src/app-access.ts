@@ -38,9 +38,13 @@ const personScopePolicy = z.object({ kind: z.literal('person_scope'),
 const outbound = z.literal(true).optional()
 // #666: the app's optional secrets this operation uses, by name. The load
 // checks each is a secret the manifest declares.
+// #1377: an outbound read handed Featherbase's read-only MCP tools, as the
+// person. Only an outbound read: a model call is too slow for the transaction.
+const featherbaseMcp = z.literal(true).optional()
 const needs = z.array(secretName).refine(distinct, 'An operation names each secret it needs once').optional()
 const operationSchema = z.union([
-  z.object({ policy: z.object({ kind: z.literal('table') }).strict(), authorization: product, outbound, needs }).strict(),
+  z.object({ policy: z.object({ kind: z.literal('table') }).strict(), authorization: product, outbound, needs, featherbaseMcp }).strict()
+    .refine(o => !o.featherbaseMcp || o.outbound, 'featherbaseMcp needs outbound'),
   z.object({ policy: storePolicy, scope, authorization: product, discoverStoreAccess: z.literal(true).optional(), outbound, needs }).strict(),
   z.object({ policy: personScopePolicy, authorization: z.object({ kind: z.literal('generic') }).strict(), outbound, needs }).strict(),
 ])
