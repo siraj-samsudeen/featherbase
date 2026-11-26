@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 26-Nov-2026. A working note for moving between machines and sessions. It is
+**Last updated:** 26-Nov-2026 (backend design settled; next: backend step 1). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -51,11 +51,12 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
 - The intern (Mohammad) writes the code; this is their evaluation project. Claude explains,
   reviews what was written, runs the checks and verifies. Claude does not write the feature
   into the repo for them.
-- For each piece, in this order: (1) an overview of the files to write (one line each) and the
-  pages the person will see; (2) what the piece is for; (3) a walkthrough of how the existing
-  code does it, with file:line links (usually Tickets: `example-apps/tickets`); (4) the code,
-  in full; (5) manual checks, each with the expected result.
-- Go step by step: each step ends with a manual check in the browser, then a commit.
+- One small feature at a time (Mohammad, 26-Nov-2026): "we are adding X" in a paragraph, the
+  code in full, a short note; a tiny diagram only where it is confusing; then the manual
+  checks with expected results. No line-by-line walkthrough, no whole plan or full OpenSpec
+  proposal in one go, and keep the token use low. Explain in plain words, as to someone new
+  to Featherbase.
+- Go step by step: each step ends with a manual check (browser or HTTP), then a commit.
 - Run every check yourself first (HTTP or headless browser) before handing it over. Nothing is
   done on anyone's word.
 - Ask design questions one at a time, with options and a recommendation.
@@ -81,9 +82,10 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
 - Ask is open to everyone signed in: `ask.chat` is its entry Table, `role: All`, `can_read`,
   `own_rows_only` (each person sees only their own chats, ready for Step 2).
 - New platform icon `bot` (lucide `Bot`) for the app (changed from `message_question` on 23-Nov-2026, Mohammad).
-- No word rules on the server: the placeholder answers every question. The reply type keeps
-  `kind: 'cannot'` so the page has a "can't answer" state for the model (Phase 2). The server
-  refuses an empty question and one over 2000 characters.
+- The committed server still answers every question with a placeholder (`src/server/reply.ts`);
+  backend step 2 replaces it with the agent and its stand-in model. The reply type keeps
+  `kind: 'cannot'` for a question the model can't answer. The server refuses an empty
+  question and one over 2000 characters.
 - Source layout: `src/server/` (runs on the server; `index.ts` is the entry), `src/shared/`
   (types both sides use), `src/client/` (the page). Client: `main.tsx` renders `App`,
   `App.tsx` renders `components/HomePage.tsx`, which places `components/Sidebar.tsx` then
@@ -97,6 +99,40 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
 - The list of a person's chats is **Recent Chats** (`/ask/?view=chats`), not #1377's "My
   Questions": it lists whole chats, and ChatGPT, Claude and Gemini use that wording
   (Mohammad, 25-Nov-2026). Tell Siraj, since #1377 names it My Questions.
+- The real model, for now: Gemini and Groq, with Mohammad's own keys, for personal testing
+  while the rest of the backend is built. OpenRouter (no account yet) comes after, together
+  with billing and choosing a model on the page (Mohammad, 26-Nov-2026). Not OpenCode Zen,
+  which #1377 names: tell Siraj. Gemini, Groq and OpenRouter all take OpenAI-style chat
+  calls, so one adapter set by address, key and model covers all three (Mohammad, 26-Nov-2026);
+  moving to OpenRouter is a settings change. Keys go in the app's declared `secrets`
+  (`ctx.secrets` in an action, as Dash's `featherbase.json`).
+- Ask is an agent over every app the person can use, through the platform's MCP tools, not
+  #1377's design (see Next step). A refused tool call is a result the model reads; at most 8
+  steps a question, and if they run out after a refusal the person is told its reason
+  (Mohammad, 26-Nov-2026; replaces "2 retries").
+- While the agent works, the page keeps its one "Thinking…", no streamed steps (Mohammad,
+  26-Nov-2026).
+- **How Ask reaches the tools** (Mohammad, 26-Nov-2026, after research; ADR 0021 kept):
+  in-process, no network: the same MCP tool server built in memory (`InMemoryTransport`),
+  each tool's inner `/api` call made with `app.request` as `/mcp` does. Identity is a
+  **5-minute access token** ("pass") the platform issues for the person, labelled
+  `Feather Ask` (`issueAccessToken` in `auth.ts`), kept only in server memory, reused for
+  that person's next questions and renewed when under 2 minutes remain; it expires on its
+  own. Calls run under `runAsAgent` with the pass's id and label, as `/mcp`'s do, so history
+  reads "via Feather Ask" and every app speaks its installed version. Only the read-only
+  tools are offered or run. Add a sweep that deletes expired tokens (ADR 0027 asks for one;
+  only per-connection clean-up exists, `agent-auth.ts:225`). Rejected: forwarding the browser
+  session (breaks ADR 0021 and the MCP spec's "MUST NOT accept or transit any other tokens";
+  no session in background runs), and an in-process identity without a token (a second,
+  credential-free way into `/api`; would need an ADR superseding 0021). Sources: Saltzer &
+  Schroeder 1975 (economy of mechanism, complete mediation), the MCP authorization spec,
+  RFC 8693, NIST SP 800-207. Precedent: agent sign-in already mints 1-hour keys for people
+  (`agent-auth.ts` `mintPair`).
+- **Think first, save at the end** (Mohammad, 26-Nov-2026): a model call takes 5–30 s, so the
+  agent must not run inside a database transaction (it would hold a connection and its
+  locks). The agent runs in an **outbound read** (its handler runs after the transaction has
+  closed, as Dash's MotherDuck reads); then a short action saves the chat, question and
+  answer in one transaction. The page still shows one "Thinking…".
 
 ## Done
 
@@ -178,37 +214,75 @@ stylesheet, so the sidebar's own `display:flex !important` wins and such rows st
 
 ## Next step: the backend (Mohammad, 26-Nov-2026)
 
-The frontend is paused after 2d. The next sessions build the backend: the pipeline that
-answers a question, and the calls to a real model. The frontend features below come after.
+The frontend is paused after 2d. **Ask is an AI agent over every app the person can use**
+(Mohammad, 26-Nov-2026). It does not follow #1377's Agreed design: #1377's own tools
+(point 6), fixed retries (point 7), the admin's askable list (point 12) and prepared queries
+for joins (point 13) are dropped. Tell Siraj.
 
-The design is #1377's "Agreed design" (points 1 to 13 and 17 to 19); read it first. Where
-the backend starts today: `src/server/reply.ts`'s `reply(question)` returns a fixed
-placeholder, and `src/server/index.ts`'s `ask` action saves the question with that answer.
-`Reply` (`src/shared/reply.ts`) already has `kind: 'cannot'` for a question the model can't
-answer.
+How it works: the model gets the question and Featherbase's read-only MCP tools (7 today, in
+`apps/server/src/mcp.ts` and `mcp-table-tools.ts`: `list_tables` lists every Table the
+person can read, across all apps; `describe_table`, `query_rows`, `get_row`, `list_imports`,
+`check_import`, `suggest_table`). It calls tools as often as it needs, as the person, then
+writes the answer. A refusal is a tool result it reads; at most 8 steps a question. Ask never
+lists tools of its own. See Decisions for how Ask reaches the tools and where the agent runs.
 
-Pieces, roughly in this order (each an overview, a walkthrough, the code, checks, a commit):
+Steps, one small feature at a time. Featherbase's MCP first; other apps' own connections
+later (Mohammad: everything but MotherDuck already goes through Featherbase):
 
-1. **The pipeline in Ask** (point 1): check limits, ask the model what to read, check and
-   run that request as the person, ask the model to write the answer, save it. Plug 1 (the
-   model) and plug 2 (the data) behind their own interfaces, so either can be swapped.
-2. **The stand-in model** (point 9): fixed word rules that return the same tool calls a
-   real model would. Plus the misbehaving test stand-in (point 10).
-3. **The core step in Featherbase** (points 2, 6, 7, 12): run a read-only tool call (read
-   with filters, count, sum, prepared query by name) as the person, limited to their reach
-   and the Tables they may ask about; a refused request goes back to the model with the
-   reason, a fixed number of retries. Permissions: propose an adversarial review.
-4. **The askable Tables list** an admin keeps (point 12); first build: sales versus target.
-5. **The real model** (point 9): #1377 says OpenCode Zen, with OpenRouter also working.
-   Mohammad wants OpenRouter: first design question for the next session (which model, where
-   the API key lives, `.env.example` and `docs/DEPLOY.md`, how a provider error is shown
-   only to an admin, point 19).
-6. **Limits, budget and the log** (points 17, 18): per person, role and model; everything kept.
+1. **Featherbase's MCP tools for an app's outbound read** (start here). The platform hands a
+   read that declares `"featherbaseTools": true` (and `"outbound": true`) `ctx.featherbase`:
+   `tools()` and `call(name, args)` → `{ ok: true, result } | { ok: false, reason }`.
+   Built as in Decisions: the MCP tool server in memory, the 5-minute pass, `runAsAgent`,
+   read-only tools only. Needed because an app's own `documents` can't read another app's
+   Tables (`runtime-actions.ts` metaFor: "Actions cannot access another application's owned
+   Tables"). Pieces: the shared types (`packages/shared/src/runtime-actions.ts`), the
+   declaration flag (`packages/shared/src/app-access.ts`, `apps/server/src/app-access.ts`
+   `operationSchema`), the helper in `mcp.ts` plus `serveFeatherbaseTools(app)` in `index.ts`,
+   the pass cache, handing it to the outbound read's context in `runtime-actions.ts`
+   (`executeRuntimeRead`), the expired-token sweep, and a server test
+   `apps/server/test/featherbase-tools.test.ts` with a `tools` outbound read added to
+   `test-apps/action-proof` (offered only the read-only tools; reads as the person, Selvi
+   sees her row and Ravi none; `create_row` doesn't exist for it; a read without the flag
+   isn't handed them; the pass is reused, renewed and expires). Mohammad has already added
+   the `Client`, `InMemoryTransport` and type imports to `mcp.ts` (uncommitted).
+   Permissions: propose an adversarial review in one line before it lands.
+2. **The agent loop in Ask**, with the stand-in model: a `think` outbound read (declares
+   `featherbaseTools`) runs the loop; the `ask` action saves chat, question and answer; the
+   page calls think, then ask, under one "Thinking…". Open question for then: the page sends
+   the answer to save, so it could save a made-up answer in its own chat; sign it in think
+   and check it in ask (the old prototype did, HMAC), or accept it (only the person's own
+   chat).
+3. **Gemini and Groq** through one OpenAI-style adapter, with tool calling (which models: ask then).
+4. **Every app's own reads as MCP tools**, so Ask reaches all the instance's apps. An app marks
+   a read for agents in its manifest with a description and an input schema (today a
+   declared read has only a name and its policy); the platform publishes it as an MCP tool
+   `<app>.<read>`, run through the app's read as the person, under its own policy. Opt-in,
+   because many reads are page helpers (`embed_session`, `view_as_people`). First: Dash's
+   `report` (sales versus target, from MotherDuck). Claude Code over /mcp gets them too.
+5. **Sums and totals**: `query_rows` gives at most 100 rows a page and a count, so a figures
+   question ("total sales") needs a read-only sum/group tool in the MCP. Decide when it's met.
+6. **Limits, budget and the log**; OpenRouter, billing and choosing a model come with these.
+7. Later: writes on request, with the person's confirmation (#1372); a scheduled Ask with
+   nobody signed in would need its own agent identity (as Rovo and Salesforce do).
 
-Open design questions, to ask one at a time: OpenRouter vs OpenCode Zen; which model; where
-the key and the per-model costs live; the retry count; what the page shows while the
-pipeline runs (one "Thinking…", or steps). This is a behaviour change, so it goes through
-OpenSpec (`pnpm exec openspec`).
+Drafts and checks (outside the repo, `C:\Users\DELL\Documents\work\ask-handover\`):
+- `S1-draft\step2-ask\`: Ask's agent loop (`agent.ts`: `Model`, `Data`, `answer()`,
+  `MAX_STEPS = 8`), the stand-in (`stand-in.ts`: "chats" and "tickets" rules over
+  `query_rows`), `data.ts` (the plug over `ctx.featherbase`). Still written as one action;
+  step 2 moves the loop into the `think` read.
+- `S1-draft\step1-platform.diff` and `featherbase-tools.test.ts`: the first step 1 draft.
+  **Stale on identity**: it forwards the browser session (`authCredential(c)` threaded through
+  `app-routes.ts` → `runPackageAction` → `executeRuntimeAction`) and hands the tools to an
+  action. Reuse its shape (types, flag, in-memory client, read-only filter, the test's
+  cases); replace the identity with the pass and the action with an outbound read.
+- `B1-draft\`: an older loop with a hand-made `query_rows`; superseded, ignore.
+- `checks\checkB2-ask.cjs "<question>"` asks through Ask's action as Administrator (sends
+  `X-Featherbase-App-Version: ask@0.1.0`; without it every call is 403 "Application access
+  refused"). `checkB2-ask-b1.cjs` is the same against the throwaway instance.
+- Throwaway instance for checks that change Ask's manifest: database `fb_ask_b1`, ports
+  8078/5178, Ask and Tickets installed (start with `DATABASE_URL`, `API_PORT`, `WEB_PORT`
+  set in the environment; it overrides `.env.local`). Ask's manifest gains a flag in step 2,
+  and at 0.1.0 that means recreating `fb_ask_ui` and losing its test chats: ask Mohammad first.
 
 ## Frontend, later (after the backend)
 
