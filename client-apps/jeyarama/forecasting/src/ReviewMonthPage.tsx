@@ -20,7 +20,7 @@ const LEVELS: { level: Level; key: 'division' | 'subdivision' | 'category' | 'na
   { level: 'Category', key: 'category', param: 'category', all: 'All categories' },
   { level: 'Subcategory', key: 'name', param: 'sub', all: 'All subcategories' },
 ]
-const KEYS = ['store', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice'] as const
+const KEYS = ['region', 'store', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice'] as const
 type State = Partial<Record<typeof KEYS[number], string>>
 
 /** The five causes a gap is filed under (agreed 26-Nov-2026), each with its detail and the evidence that settles it. */
@@ -71,9 +71,14 @@ export function ReviewMonthPage({ ctx }: { ctx: Ctx }) {
     setSt(merged)
   }
   const mine = useMemo(() => SUBS.filter(s => inArea(ctx.viewer, s)), [ctx.viewer])
-  const myStores = useMemo(() => [...new Set(mine.map(s => s.store))].sort(), [mine])
+  // Region above Store, where a person's reach spans both (Kerala, Tamil Nadu).
+  const myRegions = useMemo(() => [...new Set(mine.map(s => s.region))].sort(), [mine])
+  const region = myRegions.length === 1 ? myRegions[0] : myRegions.includes(st.region ?? '') ? st.region! : ''
+  const inRegion = region ? mine.filter(s => s.region === region) : mine
+  const myStores = useMemo(() => [...new Set(inRegion.map(s => s.store))].sort(), [inRegion])
+  const allStores = useMemo(() => [...new Set(mine.map(s => s.store))].sort(), [mine])
   const store = myStores.length === 1 ? myStores[0] : myStores.includes(st.store ?? '') ? st.store! : ''
-  const inStore = store ? mine.filter(s => s.store === store) : mine
+  const inStore = store ? inRegion.filter(s => s.store === store) : inRegion
   const sections = [...new Set(inStore.map(s => s.section))].sort()
   const section = store && sections.includes(st.section ?? '') ? st.section! : ''
   // Each level offers only what the levels above it still allow.
@@ -89,6 +94,7 @@ export function ReviewMonthPage({ ctx }: { ctx: Ctx }) {
   const scoped = pool
   const deepest = [...picks].reverse().find(p => p.value)
   const next = LEVELS.find((_, i) => !picks[i].value)
+  const byRegions = st.rows === 'regions' && !region && myRegions.length > 1
   const byStores = st.rows === 'stores' && !store && myStores.length > 1
   const tab = (st.tab || 'month') as 'month' | 'days' | 'how'
 
@@ -102,7 +108,7 @@ export function ReviewMonthPage({ ctx }: { ctx: Ctx }) {
   const now = (s: Sub) => applied.get(`${s.store}|${s.name}`) ?? s.engine
 
   const scope = { store: store || 'All', level: deepest?.level ?? (section ? 'Section' : 'Store'), name: deepest?.value ?? (section || store || 'All') }
-  const scopeLabel = [store || (myStores.length > 1 ? `All my stores (${myStores.length})` : ''), section && `Section: ${section}`, ...picks.filter(p => p.value).map(p => p.value)].filter(Boolean).join(' › ')
+  const scopeLabel = [region && myRegions.length > 1 && !store ? region : '', store || (myStores.length > 1 ? `All my stores (${myStores.length})` : ''), section && `Section: ${section}`, ...picks.filter(p => p.value).map(p => p.value)].filter(Boolean).join(' › ')
   const clearFrom = (i: number): State => Object.fromEntries(LEVELS.slice(i).map(l => [l.param, '']))
 
   if (!mine.length) return <Page title="Workspace"><Notice tone="caution">Nothing in {m.label}'s Run is in your area ({areaText(ctx.viewer)}). If that is wrong, your section or merchandise assignment needs setting up in Featherbase.</Notice></Page>
@@ -118,14 +124,16 @@ export function ReviewMonthPage({ ctx }: { ctx: Ctx }) {
       <Card>
         <div className="flex flex-col gap-3 p-3">
           <nav aria-label="Where you are" className="flex flex-wrap items-center gap-1.5 text-sm" data-testid="crumbs">
-            <button type="button" className="font-semibold text-action hover:underline" onClick={() => set({ ...clearFrom(0), section: '', store: myStores.length > 1 ? '' : store, line: '' })}>
-              {myStores.length > 1 ? `All my stores (${myStores.length})` : store}</button>
+            <button type="button" className="font-semibold text-action hover:underline" onClick={() => set({ ...clearFrom(0), section: '', region: '', store: allStores.length > 1 ? '' : store, line: '' })}>
+              {allStores.length > 1 ? `All my stores (${allStores.length})` : store}</button>
+            {region && myRegions.length > 1 && <><span className="text-ink-muted">›</span><button type="button" className="font-semibold text-action hover:underline" onClick={() => set({ ...clearFrom(0), section: '', store: '', line: '' })}>{region}</button></>}
             {store && myStores.length > 1 && <><span className="text-ink-muted">›</span><button type="button" className="font-semibold text-action hover:underline" onClick={() => set({ ...clearFrom(0), section: '', line: '' })}>{store}</button></>}
             {section && <><span className="text-ink-muted">›</span><span>Section: {section}</span></>}
             {picks.map((p, i) => p.value && <span key={p.level} className="flex items-center gap-1.5"><span className="text-ink-muted">›</span>
               <button type="button" className="font-semibold text-action hover:underline" onClick={() => set({ ...clearFrom(i + 1), line: '' })}>{p.value}</button></span>)}
           </nav>
           <div className="flex flex-wrap items-end gap-2">
+            {myRegions.length > 1 && <Pick label="Region" value={region} all="Both regions" options={myRegions} onChange={v => set({ region: v, store: '', section: '', ...clearFrom(0), line: '', rows: '' })} />}
             <Pick label="Store" value={store} locked={myStores.length === 1} all={`All my stores (${myStores.length})`} options={myStores} onChange={v => set({ store: v, section: '', ...clearFrom(0), line: '' })} />
             {store && sections.length > 1 && <Pick label="Section" value={section} all="All my sections" options={sections} onChange={v => set({ section: v, ...clearFrom(0), line: '' })} />}
             {picks.map((p, i) => (i === 0 || picks[i - 1].value || p.value) && (
@@ -147,9 +155,10 @@ export function ReviewMonthPage({ ctx }: { ctx: Ctx }) {
           options={[{ value: 'month', label: 'Month' }, { value: 'days', label: 'Days' }, { value: 'how', label: 'How it was built' }]} />
       </div>
 
-      {tab === 'month' && <MonthView ctx={ctx} scoped={scoped} next={next?.level} byStores={byStores} canStores={!store && myStores.length > 1} store={store} now={now}
-        onRows={v => set({ rows: v })} line={st.line ?? ''} onLine={v => set({ line: v })}
-        onDrill={(value, asStore) => asStore ? set({ store: value, rows: '', line: '' }) : next && set({ [LEVELS.find(l => l.level === next.level)!.param]: value, line: '' })} />}
+      {tab === 'month' && <MonthView ctx={ctx} scoped={scoped} next={next?.level} rowsBy={byRegions ? 'regions' : byStores ? 'stores' : 'merch'} canRegions={!region && myRegions.length > 1}
+        canStores={!store && myStores.length > 1} store={store} now={now} onRows={v => set({ rows: v })} line={st.line ?? ''} onLine={v => set({ line: v })}
+        onDrill={(value, by) => by === 'regions' ? set({ region: value, rows: 'stores', line: '' }) : by === 'stores' ? set({ store: value, rows: '', line: '' })
+          : next && set({ [LEVELS.find(l => l.level === next.level)!.param]: value, line: '' })} />}
       {tab === 'days' && <DaysView ctx={ctx} scoped={scoped} scope={scope} scopeLabel={scopeLabel} view={(st.dview || 'all') as 'all' | 'one'} day={Number(st.day) || 1}
         practice={st.practice === '1'} next={next?.level} onSet={set} />}
       {tab === 'how' && <HowBuilt scoped={scoped} scopeLabel={scopeLabel} onDays={() => set({ tab: 'days' })} />}
@@ -171,10 +180,11 @@ function Pick({ label, value, options, all, locked, onChange }: { label: string;
 }
 
 // ---- Month: one figure per row for the whole month, against the AOP; a line's number changed beside it ----
-function MonthView({ ctx, scoped, next, byStores, canStores, store, now, onRows, onDrill, line, onLine }: {
-  ctx: Ctx; scoped: Sub[]; next?: Level; byStores: boolean; canStores: boolean; store: string; now: (s: Sub) => number
-  onRows: (v: string) => void; onDrill: (value: string, asStore: boolean) => void; line: string; onLine: (v: string) => void }) {
-  const key = byStores ? (s: Sub) => s.store : next ? (s: Sub) => String(s[LEVELS.find(l => l.level === next)!.key] ?? '') : (s: Sub) => s.name
+function MonthView({ ctx, scoped, next, rowsBy, canRegions, canStores, store, now, onRows, onDrill, line, onLine }: {
+  ctx: Ctx; scoped: Sub[]; next?: Level; rowsBy: 'merch' | 'stores' | 'regions'; canRegions: boolean; canStores: boolean; store: string; now: (s: Sub) => number
+  onRows: (v: string) => void; onDrill: (value: string, by: 'merch' | 'stores' | 'regions') => void; line: string; onLine: (v: string) => void }) {
+  const byStores = rowsBy !== 'merch'
+  const key = rowsBy === 'regions' ? (s: Sub) => s.region : byStores ? (s: Sub) => s.store : next ? (s: Sub) => String(s[LEVELS.find(l => l.level === next)!.key] ?? '') : (s: Sub) => s.name
   const groups = [...new Set(scoped.map(key))].map(name => {
     const xs = scoped.filter(s => key(s) === name)
     return { name, xs, fc: sum(xs, s => s.engine), now: sum(xs, now), aop: sum(xs, s => s.aop ?? 0) }
@@ -185,14 +195,14 @@ function MonthView({ ctx, scoped, next, byStores, canStores, store, now, onRows,
     <div className={`grid items-start gap-4 ${sel ? 'xl:grid-cols-[minmax(0,1fr)_26rem]' : ''}`}>
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-3">
-          <div className="text-sm font-semibold">{byStores ? 'By store' : `By ${(next ?? 'Subcategory').toLowerCase().replace('subdivision', 'sub-division')}`} · biggest shortfall against the AOP first</div>
-          {canStores && <Segmented label="Rows" value={byStores ? 'stores' : 'merch'} onChange={v => onRows(v === 'stores' ? 'stores' : '')}
-            options={[{ value: 'merch', label: 'Merchandise' }, { value: 'stores', label: 'Stores' }]} />}
+          <div className="text-sm font-semibold">{rowsBy === 'regions' ? 'By region' : byStores ? 'By store' : `By ${(next ?? 'Subcategory').toLowerCase().replace('subdivision', 'sub-division')}`} · biggest shortfall against the AOP first</div>
+          {canStores && <Segmented label="Rows" value={rowsBy} onChange={v => onRows(v === 'merch' ? '' : v)}
+            options={[{ value: 'merch', label: 'Merchandise' }, ...(canRegions ? [{ value: 'regions' as const, label: 'Regions' }] : []), { value: 'stores', label: 'Stores' }]} />}
         </div>
         <div className="overflow-x-auto p-2">
           <table className="w-full min-w-[640px] border-collapse text-sm" data-testid="month-table">
             <thead><tr className="text-[12px] text-ink-muted">
-              <th className="px-2.5 py-2 text-start font-semibold">{byStores ? 'Store' : next ? next.replace('Subdivision', 'Sub-division') : 'Subcategory'}</th>
+              <th className="px-2.5 py-2 text-start font-semibold">{rowsBy === 'regions' ? 'Region' : byStores ? 'Store' : next ? next.replace('Subdivision', 'Sub-division') : 'Subcategory'}</th>
               {lines && store && <th className="px-2.5 py-2 text-start font-semibold">Section</th>}
               <th className="px-2.5 py-2 text-end font-semibold">Forecast</th>
               <th className="px-2.5 py-2 text-end font-semibold">Applied</th>
@@ -207,7 +217,7 @@ function MonthView({ ctx, scoped, next, byStores, canStores, store, now, onRows,
                 return (
                   <tr key={g.name} className={`border-t border-border ${one && one.name === line ? 'bg-action-tint' : ''}`}>
                     <td className="px-2.5 py-1.5">
-                      {canDrill ? <button type="button" className="font-medium text-action hover:underline" onClick={() => onDrill(g.name, byStores)}>{g.name} ›</button>
+                      {canDrill ? <button type="button" className="font-medium text-action hover:underline" onClick={() => onDrill(g.name, rowsBy)}>{g.name} ›</button>
                         : <span className="font-medium">{g.name}</span>}
                       {lines && !store && <span className="ml-1 text-[12px] text-ink-muted">· {g.xs.length} store{g.xs.length > 1 ? 's' : ''}</span>}
                     </td>

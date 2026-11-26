@@ -27,14 +27,15 @@ export interface RunLineRow { run: string; month: string; store: string; region:
   subcategory: string; code: string; forecast: number | string; aop: number | string; band: string; days_json: string; parts_json: string; other: number | string | null }
 export interface ReachRow { full_name: string; code: string; role: string; place: string; reports_to: string | null; places_json: string | null }
 
-/** The newest Run in the rows, and the people who review it; none when the instance has no Run loaded. */
+/** The newest month's Runs (one a region: kl_…, tn_…), and the people who review them; none when no Run is loaded. */
 export function datasetFrom(lines: RunLineRow[], reach: ReachRow[]): Dataset | null {
   if (!lines.length) return null
-  const run = [...new Set(lines.map(l => `${l.month}|${l.run}`))].sort().at(-1)!.split('|')[1]
-  const mine = lines.filter(l => l.run === run)
+  const month = lines.map(l => l.month).sort().at(-1)!
+  const mine = lines.filter(l => l.month === month)
+  const run = [...new Set(mine.map(l => l.run))].sort().join(' + ')
   const idOf = new Map(reach.map(r => [r.full_name, (r.code || r.full_name).toLowerCase().replace(/[^a-z0-9]+/g, '-')]))
   return {
-    month: mine[0].month, run,
+    month, run,
     subs: mine.map(l => ({ store: l.store, region: l.region, division: l.division, subdivision: l.subdivision, category: l.category, section: l.section || 'Not placed in a section',
       name: l.subcategory, code: l.code, engine: Number(l.forecast), aop: Number(l.aop), band: l.band, days: JSON.parse(l.days_json || '[]'),
       parts: JSON.parse(l.parts_json || '{}'), other: Number(l.other ?? 0) })),
