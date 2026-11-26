@@ -27,11 +27,11 @@ export interface ApiApp {
 export const MCP_PAGE_DEFAULT = 20
 export const MCP_PAGE_CAP = 100
 
-type Envelope = { type: string; message: string; fields?: Record<string, string> }
+export type Envelope = { type: string; message: string; fields?: Record<string, string> }
 
 /** The inner request was refused: the API's own error, passed on as it is (D6).
  *  It has the envelope's shape, as an AppError (getMeta's) has. */
-class Refusal extends Error implements Envelope {
+export class Refusal extends Error implements Envelope {
   readonly type: string
   readonly fields?: Record<string, string>
   constructor(envelope: Envelope) {
@@ -71,7 +71,7 @@ const rowPath = (table: string, id: string) => `${tablePath(table)}/${encodeURIC
 const readableColumns = (meta: TableMetaReply) =>
   meta.columns.filter((column) => meta.readable_columns.includes(column.column_name) && !LAYOUT_TYPES.has(column.column_type))
 
-function buildServer(api: Api, tokenId: string): McpServer {
+export function buildServer(api: Api, tokenId: string): McpServer {
   const server = new McpServer({ name: 'featherbase', version: '1.0.0' })
   const tool: RegisterTool = (name, description, inputSchema, annotations, run) => {
     server.registerTool(name, { description, inputSchema, annotations }, (async (args: Parameters<typeof run>[0]) => {

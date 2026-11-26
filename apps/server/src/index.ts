@@ -88,6 +88,7 @@ import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { mcpHandler, mcpMethodNotAllowed } from './mcp'
+import { serveFeatherbaseMcp } from './mcp-app-reads'
 import { agentAuthPublicRoutes, agentAuthRoutes } from './agent-auth-routes'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
@@ -861,6 +862,8 @@ app.use('/api/*', async (c, next) => {
 // or app address ever answers for it.
 app.post('/mcp', mcpHandler(app))
 app.on(['GET', 'DELETE'], '/mcp', mcpMethodNotAllowed)
+// #1377: an app's outbound read that declares featherbaseMcp gets the same tools, in memory.
+serveFeatherbaseMcp(app)
 
 // #401: public (Google's consent screen fetches it anonymously), ahead of the
 // legacy redirect below, which would otherwise answer /privacy with a 308.
