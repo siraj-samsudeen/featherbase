@@ -544,6 +544,33 @@
           }
         }
       ]
+    },
+    {
+      "id": "run_line_quantity",
+      "fromVersion": "0.11.0",
+      "toVersion": "0.12.0",
+      "operations": [
+        {
+          "kind": "addColumn",
+          "table": "forecasting.run_line",
+          "column": {
+            "column_name": "qty",
+            "label": "Forecast quantity (the item's own unit)",
+            "column_type": "Float",
+            "in_list_view": true
+          }
+        },
+        {
+          "kind": "addColumn",
+          "table": "forecasting.run_line",
+          "column": {
+            "column_name": "aop_qty",
+            "label": "AOP quantity (the item's own unit)",
+            "column_type": "Float",
+            "in_list_view": true
+          }
+        }
+      ]
     }
   ],
   "tables": [
@@ -1153,6 +1180,18 @@
           "column_name": "other",
           "label": "Other steps (₹)",
           "column_type": "Float"
+        },
+        {
+          "column_name": "qty",
+          "label": "Forecast quantity (the item's own unit)",
+          "column_type": "Float",
+          "in_list_view": true
+        },
+        {
+          "column_name": "aop_qty",
+          "label": "AOP quantity (the item's own unit)",
+          "column_type": "Float",
+          "in_list_view": true
         }
       ]
     },

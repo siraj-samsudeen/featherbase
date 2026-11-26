@@ -53,6 +53,8 @@ export interface Sub {
   octEngine: number; octActual: number; sepEngine: number; sepActual: number
   /** A loaded Run's month: the sub-division, the AOP, its band against the forecast, and the engine's own days. */
   subdivision?: string; aop?: number; band?: string; days?: number[]
+  /** A loaded Run's quantity, forecast and AOP, in the item's own unit. */
+  qty?: number; aopQty?: number
 }
 
 // [division, category, section, subcategory, code, rough month size, weights B6/B1/B2/B3/B4/B5, how it runs to the 20th, October error]
@@ -100,7 +102,7 @@ function fromDataset(): Sub[] {
     const t = week.reduce((a, b) => a + b, 0)
     return { store: d.store, region: d.region, division: d.division, subdivision: d.subdivision, category: d.category, section: d.section, name: d.name, code: d.code,
       seed: i, engine: d.engine, parts: d.parts, other: d.other, weekShare: week.map(x => (t ? x / t : 0.2)), novLean: 0,
-      octEngine: 0, octActual: 0, sepEngine: 0, sepActual: 0, aop: d.aop, band: d.band, days: d.days }
+      octEngine: 0, octActual: 0, sepEngine: 0, sepActual: 0, aop: d.aop, band: d.band, days: d.days, qty: d.qty, aopQty: d.aopQty }
   })
 }
 const SEEDS_IN_USE = DATASET ? [...new Set(DATASET.subs.map(s => `${s.region}|${s.store}`))].map(k => k.split('|')) : STORE_SEEDS.map(s => [s[1], s[0]])

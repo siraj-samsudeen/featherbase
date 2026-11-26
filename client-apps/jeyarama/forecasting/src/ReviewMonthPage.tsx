@@ -50,6 +50,10 @@ function aopTone(fc: number, aop: number): 'positive' | 'caution' | 'negative' |
 const offTone = (x: number) => (Math.abs(x) > 10 ? (x < 0 ? 'negative' : 'caution') : 'positive')
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((t, x) => t + f(x), 0)
+/** A quantity: whole units, Indian grouping, never ₹ or lakh. Units are each item's own, so a sum across kinds is indicative. */
+const fmtQty = (v: number) => (v ? Math.round(v).toLocaleString('en-IN') : '—')
+/** The price of one unit: exact ₹, Indian grouping, at most 2 decimals, never scaled to lakh (ADR 750, unit-price regime). */
+const fmtRate = (v: number) => (Number.isFinite(v) && v ? `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—')
 
 /** PRACTICE ONLY: made-up sales for the first five days, so the day views and explaining can be tried before the month starts. */
 const PRACTICE_DAYS = 5
@@ -149,6 +153,7 @@ export function ReviewMonthPage({ ctx }: { ctx: Ctx }) {
           <div className="text-[13px] text-ink-muted">{scopeLabel} · {m.label}, before it starts</div>
           <div className={`text-2xl font-extrabold tabular-nums ${aopTone(nowTotal, aop) === 'positive' ? 'text-positive' : 'text-caution'}`}>
             {fmtINR(nowTotal)} forecast, {aop ? `${fmtINR(Math.abs(nowTotal - aop))} (${Math.abs(pct(nowTotal, aop)).toFixed(0)}%) ${nowTotal < aop ? 'below' : 'above'} the AOP of ${fmtINR(aop)}` : 'no AOP'}</div>
+          <div className="text-[13px] text-ink-muted">Quantity {fmtQty(sum(scoped, s => s.qty ?? 0))} against the AOP's {fmtQty(sum(scoped, s => s.aopQty ?? 0))}{sum(scoped, s => s.aopQty ?? 0) ? ` (${signed(pct(sum(scoped, s => s.qty ?? 0), sum(scoped, s => s.aopQty ?? 0)))})` : ''} · units are each item's own</div>
           <div className="text-[13px] text-ink-muted">Engine {fmtINR(fc)}{Math.abs(nowTotal - fc) > 1 ? ` · people's applied numbers move it ${nowTotal > fc ? '+' : '−'}${fmtINR(Math.abs(nowTotal - fc))}` : ' · no number applied yet'} · {scoped.length} lines, {red} red, {orange} orange</div>
         </div>
         <Segmented label="View" value={tab} onChange={v => set({ tab: v === 'month' ? '' : v })}
@@ -187,7 +192,7 @@ function MonthView({ ctx, scoped, next, rowsBy, canRegions, canStores, store, no
   const key = rowsBy === 'regions' ? (s: Sub) => s.region : byStores ? (s: Sub) => s.store : next ? (s: Sub) => String(s[LEVELS.find(l => l.level === next)!.key] ?? '') : (s: Sub) => s.name
   const groups = [...new Set(scoped.map(key))].map(name => {
     const xs = scoped.filter(s => key(s) === name)
-    return { name, xs, fc: sum(xs, s => s.engine), now: sum(xs, now), aop: sum(xs, s => s.aop ?? 0) }
+    return { name, xs, fc: sum(xs, s => s.engine), now: sum(xs, now), aop: sum(xs, s => s.aop ?? 0), qty: sum(xs, s => s.qty ?? 0), aopQty: sum(xs, s => s.aopQty ?? 0) }
   }).sort((a, b) => (a.now - a.aop) - (b.now - b.aop))
   const lines = !byStores && (next === 'Subcategory' || !next)
   const sel = line && store ? scoped.find(s => s.store === store && s.name === line) : undefined
@@ -200,13 +205,16 @@ function MonthView({ ctx, scoped, next, rowsBy, canRegions, canStores, store, no
             options={[{ value: 'merch', label: 'Merchandise' }, ...(canRegions ? [{ value: 'regions' as const, label: 'Regions' }] : []), { value: 'stores', label: 'Stores' }]} />}
         </div>
         <div className="overflow-x-auto p-2">
-          <table className="w-full min-w-[640px] border-collapse text-sm" data-testid="month-table">
+          <table className="w-full min-w-[900px] border-collapse text-sm" data-testid="month-table">
             <thead><tr className="text-[12px] text-ink-muted">
               <th className="px-2.5 py-2 text-start font-semibold">{rowsBy === 'regions' ? 'Region' : byStores ? 'Store' : next ? next.replace('Subdivision', 'Sub-division') : 'Subcategory'}</th>
               {lines && store && <th className="px-2.5 py-2 text-start font-semibold">Section</th>}
               <th className="px-2.5 py-2 text-end font-semibold">Forecast</th>
               <th className="px-2.5 py-2 text-end font-semibold">Applied</th>
               <th className="px-2.5 py-2 text-end font-semibold">AOP</th>
+              <th className="px-2.5 py-2 text-end font-semibold">vs AOP</th>
+              <th className="border-l border-border px-2.5 py-2 text-end font-semibold">Qty</th>
+              <th className="px-2.5 py-2 text-end font-semibold">AOP qty</th>
               <th className="px-2.5 py-2 text-end font-semibold">vs AOP</th>
               <th />
             </tr></thead>
@@ -226,6 +234,9 @@ function MonthView({ ctx, scoped, next, rowsBy, canRegions, canStores, store, no
                     <td className={`px-2.5 text-end tabular-nums whitespace-nowrap ${Math.abs(g.now - g.fc) > 1 ? 'font-semibold text-action' : 'text-ink-muted'}`}>{Math.abs(g.now - g.fc) > 1 ? fmtINR(g.now) : '—'}</td>
                     <td className="px-2.5 text-end tabular-nums whitespace-nowrap text-ink-muted">{fmtINR(g.aop)}</td>
                     <td className="px-2.5 text-end"><StatusPill tone={aopTone(g.now, g.aop)}>{g.aop ? signed(pct(g.now, g.aop)) : 'no AOP'}</StatusPill></td>
+                    <td className="border-l border-border px-2.5 text-end tabular-nums whitespace-nowrap">{fmtQty(g.qty)}</td>
+                    <td className="px-2.5 text-end tabular-nums whitespace-nowrap text-ink-muted">{fmtQty(g.aopQty)}</td>
+                    <td className="px-2.5 text-end">{g.aopQty ? <StatusPill tone={offTone(pct(g.qty, g.aopQty)) === 'positive' ? 'positive' : Math.abs(pct(g.qty, g.aopQty)) >= 20 ? 'negative' : 'caution'}>{signed(pct(g.qty, g.aopQty))}</StatusPill> : <span className="text-[12px] text-ink-muted">—</span>}</td>
                     <td className="px-2.5 text-end">{one && store && <Button variant="secondary" className="min-h-8 px-2.5 text-[12px]" onClick={() => onLine(one.name)}>{inArea(ctx.viewer, one) ? 'Change' : 'Open'}</Button>}</td>
                   </tr>)
               })}
@@ -275,6 +286,8 @@ function LinePanel({ ctx, s, now, onClose }: { ctx: Ctx; s: Sub; now: number; on
       </div>
       <div className="grid grid-cols-3 gap-2 text-sm">
         <Fig label="Forecast" value={fmtINR(s.engine)} /><Fig label="Applied" value={fmtINR(now)} /><Fig label="AOP" value={fmtINR(s.aop ?? 0)} />
+        <Fig label="Forecast qty" value={fmtQty(s.qty ?? 0)} /><Fig label="AOP qty" value={fmtQty(s.aopQty ?? 0)} />
+        <Fig label="Per unit, forecast vs AOP" value={s.qty && s.aopQty ? `${fmtRate(s.engine / s.qty)} · ${fmtRate((s.aop ?? 0) / s.aopQty)}` : '—'} />
       </div>
       {numbers.length > 0 && <div className="flex flex-col gap-1.5" data-testid="line-numbers">
         <div className="text-[12px] font-semibold text-ink-muted">Numbers on this line</div>

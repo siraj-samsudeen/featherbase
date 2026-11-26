@@ -34,9 +34,9 @@ export function parseCsv(text: string): Record<string, string>[] {
   return body.map(r => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ''])))
 }
 
-const RUN_COLUMNS = ['row_id', 'run', 'month', 'store', 'region', 'division', 'subdivision', 'category', 'section', 'subcategory', 'code', 'forecast', 'aop', 'band', 'days_json', 'parts_json', 'other']
+const RUN_COLUMNS = ['row_id', 'run', 'month', 'store', 'region', 'division', 'subdivision', 'category', 'section', 'subcategory', 'code', 'forecast', 'aop', 'band', 'days_json', 'parts_json', 'other', 'qty', 'aop_qty']
 const REACH_COLUMNS = ['row_id', 'full_name', 'code', 'role', 'place', 'reports_to', 'places_json']
-const NUMERIC = new Set(['forecast', 'aop', 'other'])
+const NUMERIC = new Set(['forecast', 'aop', 'other', 'qty', 'aop_qty'])
 
 async function insert(tx: Tx, table: string, columns: string[], rows: Record<string, string>[]) {
   for (let i = 0; i < rows.length; i += 500) {
