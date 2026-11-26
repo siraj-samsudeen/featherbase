@@ -790,6 +790,11 @@ describe('the command line, command by command', () => {
     expect(await cli(['seed-pack', 'apply', 'jeyarama'])).toMatch(/^seed pack jeyarama: added none; kept /)
   })
 
+  test('motherduck:umbrella is a dry run unless --apply (#1397)', async () => {
+    expect(await cli(['motherduck:umbrella'])).toBe('MotherDuck umbrella: none yet (raised on --apply) · 0 open review tickets under no parent\n'
+      + 'not filed: the Tickets app is not installed, so there are no review tickets to file\nmotherduck umbrella: dry run; nothing was changed\n')
+  })
+
   test('leavers:check is a dry run unless --apply, and --accept takes a count', async () => {
     expect(await cli(['leavers:check'])).toMatch(/\nleaver check: dry run; nothing was changed\n$/)
     expect((await failure(['leavers:check', '--accept', '3']))?.stderr).toBe('error: --accept only means something with --apply\n')

@@ -198,6 +198,37 @@ async function attempt(result: MotherDuckSyncResult, account: unknown, step: () 
   }
 }
 
+const UMBRELLA_TITLE = 'MotherDuck accounts to link to people'
+const OPEN = (column: string) => sql`${sql(column)} not in ('Resolved', 'Closed')`
+
+/** #1397: the one umbrella ticket the review tickets sit under, found by the marker in its
+ *  details whatever its state, never by its title. */
+async function findUmbrella(actor: string) {
+  const [found] = await sql`select t.row_id, t.updated_at, t.ticket_state, t.assigned_to from tickets.ticket t join tickets.request r on r.row_id = t.row_id
+    where t.created_by = ${actor} and r.details_json::jsonb ? 'motherduck_umbrella' order by t.created_at, t.row_id limit 1`
+  return found
+}
+
+/** The umbrella, open, for a ticket about to be raised under it: raised once, reopened after. */
+async function openUmbrella(actor: string, assignee: string | null): Promise<string> {
+  let umbrella = await findUmbrella(actor)
+  if (!umbrella) {
+    const original = [
+      'Every MotherDuck user the daily sync could not link to a person by email has a ticket under this one.',
+      'Link each by setting Person on its MotherDuck Account; its ticket then closes itself, and this one closes when none is left.',
+    ].join('\n\n')
+    // A stopped run that raised it is found again above, so the key only guards a replay within a run.
+    await ticketAction(actor, 'create', { title: UMBRELLA_TITLE, original, details: { motherduck_umbrella: 'accounts' }, ...(assignee ? { raiser: assignee } : {}) },
+      `motherduck-umbrella-${today()}`)
+    umbrella = await findUmbrella(actor)
+  } else if (['Resolved', 'Closed'].includes(String(umbrella.ticket_state))) {
+    await ticketAction(actor, 'reopen', { row_id: String(umbrella.row_id), updated_at: iso(umbrella.updated_at), reason: 'A MotherDuck user needs linking to a person again.' },
+      `motherduck-umbrella-reopen-${String(umbrella.row_id)}-${iso(umbrella.updated_at)}`)
+    umbrella = await findUmbrella(actor)
+  }
+  return String(umbrella.row_id)
+}
+
 /** One ticket per account a person uses that has no Person; resolved once it has one. */
 async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promise<void> {
   const [reviewer] = await sql`select value from single_value where table_name = 'System Settings' and field = 'motherduck_reviewer'`
@@ -214,6 +245,8 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
     if (unrecorded.some(needsTicket)) result.ticket_errors.push('the Tickets app is not installed and on, so no ticket was raised')
     return
   }
+  // #1397: every ticket raised sits under the umbrella, opened (or reopened) only when one is raised.
+  let umbrella: string | null = null
   for (const a of unrecorded) {
     const going = await attempt(result, a.username, async () => {
       const title = `Link MotherDuck user ${String(a.username)} to a person`
@@ -235,7 +268,9 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
       ].join('\n\n')
       // Raised for the reviewer: a ticket's request is private to the person it is
       // raised for and Tickets support, and the reviewer must read who it may be.
-      const payload = { title, original, details: { motherduck_account: String(a.row_id) }, ...(assignee ? { raiser: assignee } : {}) }
+      if (!orphan) umbrella ??= await openUmbrella(actor, assignee)
+      const payload = { title, original, details: { motherduck_account: String(a.row_id) }, ...(assignee ? { raiser: assignee } : {}),
+        ...(umbrella ? { parent_ticket: umbrella } : {}) }
       const ticket = orphan ? String(orphan.row_id) : String((await ticketAction<{ ticket: { row_id: string } }>(actor, 'create', payload,
         `motherduck-account-${String(a.row_id)}-${createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16)}`)).ticket.row_id)
       await runAsSystemActor(actor, () => saveDoc(MOTHERDUCK_ACCOUNT_TABLE, { row_id: a.row_id, updated_at: a.updated_at }, actor, 'upsert',
@@ -246,9 +281,12 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
   }
   // Each open review ticket nobody is assigned to goes to the reviewer, this run
   // or a later one; one support has reassigned is left as it is.
+  // #1397: the umbrella too, here and not where it is raised: assigning needs support, raising does not.
   const unassigned = await sql`select a.username, t.row_id, t.updated_at from motherduck_account a
     join tickets.ticket t on t.row_id = a.review_ticket
-    where a.person is null and t.assigned_to is null and t.ticket_state not in ('Resolved', 'Closed')`
+    where a.person is null and t.assigned_to is null and t.ticket_state not in ('Resolved', 'Closed')
+    union all select ${UMBRELLA_TITLE}, t.row_id, t.updated_at from tickets.ticket t join tickets.request r on r.row_id = t.row_id
+    where t.created_by = ${actor} and r.details_json::jsonb ? 'motherduck_umbrella' and t.assigned_to is null and t.ticket_state not in ('Resolved', 'Closed')`
   // Codex round 2: tickets nobody is given are said, not left silent; they are
   // assigned on the first run after a reviewer is set.
   if (unassigned.length && !assignee)
@@ -269,6 +307,51 @@ async function reviewTickets(actor: string, result: MotherDuckSyncResult): Promi
       result.tickets_resolved.push(String(a.review_ticket))
     })
   }
+  // The umbrella closes when none of its tickets is open; the next one raised opens it again.
+  const open = await findUmbrella(actor)
+  if (!open || ['Resolved', 'Closed'].includes(String(open.ticket_state))) return
+  const [left] = await sql`select count(*)::int as n from tickets.ticket where parent_ticket = ${String(open.row_id)} and ${OPEN('ticket_state')}`
+  if (left.n > 0) return
+  await attempt(result, UMBRELLA_TITLE, async () => {
+    await ticketAction(actor, 'resolve', { row_id: String(open.row_id), updated_at: iso(open.updated_at),
+      reason: 'Every MotherDuck user under it is linked to a person.', reference: 'MotherDuck Accounts' },
+      `motherduck-umbrella-resolve-${String(open.row_id)}-${iso(open.updated_at)}`)
+    result.tickets_resolved.push(String(open.row_id))
+  })
+}
+
+/** #1397: review tickets raised before the umbrella (or taken out of it), still open, under no parent.
+ *  A dry run lists them; `apply` files each under the umbrella, opening it if need be. */
+export async function fileReviewTicketsUnderUmbrella(apply: boolean): Promise<{ umbrella: string | null; tickets: string[]; filed: string[]; errors: string[] }> {
+  const [installed] = await sql`select to_regclass('tickets.ticket') is not null as present`
+  if (!installed?.present) return { umbrella: null, tickets: [], filed: [], errors: ['the Tickets app is not installed, so there are no review tickets to file'] }
+  const actor = await motherDuckSyncAccount()
+  const loose = await sql`select t.row_id, t.updated_at from motherduck_account a join tickets.ticket t on t.row_id = a.review_ticket
+    where t.parent_ticket is null and ${OPEN('ticket_state')} order by t.row_id`
+  const tickets = loose.map((t) => String(t.row_id))
+  const known = await findUmbrella(actor)
+  if (!apply || !loose.length) return { umbrella: known ? String(known.row_id) : null, tickets, filed: [], errors: [] }
+  const [reviewer] = await sql`select value from single_value where table_name = 'System Settings' and field = 'motherduck_reviewer'`
+  const filed: string[] = [], errors: string[] = []
+  return runAsSystemActor(actor, async () => {
+    const umbrella = await openUmbrella(actor, reviewer?.value ? String(reviewer.value) : null)
+    for (const t of loose) {
+      try {
+        await ticketAction(actor, 'edit', { row_id: String(t.row_id), updated_at: iso(t.updated_at), parent_ticket: umbrella },
+          `motherduck-umbrella-file-${String(t.row_id)}-${iso(t.updated_at)}`)
+        filed.push(String(t.row_id))
+      } catch (error) { errors.push(`${String(t.row_id)}: ${String(error).slice(0, 200)}`) }
+    }
+    return { umbrella, tickets, filed, errors }
+  })
+}
+
+export function formatUmbrellaFiling(r: Awaited<ReturnType<typeof fileReviewTicketsUnderUmbrella>>, apply: boolean): string {
+  const lines = [`MotherDuck umbrella: ${r.umbrella ?? 'none yet (raised on --apply)'} · ${r.tickets.length} open review tickets under no parent${r.tickets.length ? `: ${r.tickets.join(', ')}` : ''}`]
+  if (apply) lines.push(`filed ${r.filed.length} under ${r.umbrella ?? 'no umbrella'}`)
+  for (const e of r.errors) lines.push(`not filed: ${e}`)
+  lines.push(apply ? 'motherduck umbrella: applied' : 'motherduck umbrella: dry run; nothing was changed')
+  return lines.join('\n')
 }
 
 export function formatMotherDuckSync(r: MotherDuckSyncResult): string {

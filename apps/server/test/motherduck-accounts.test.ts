@@ -2,6 +2,7 @@
 // statuses, never a deleted row, a link by email when it names one person, and
 // one ticket for every other account a person uses, closed once it is linked.
 import { afterEach, describe, expect, vi } from 'vitest'
+import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { overrideVariable } from '../src/env'
@@ -207,7 +208,7 @@ describe('#1346: the MotherDuck account sync', () => {
 
 // #1397: the review tickets sit under one umbrella ticket, which the sync keeps to one.
 describe('#1397: the review tickets under one umbrella', () => {
-  async function ready(admin: Parameters<Parameters<typeof test>[1]>[0]['admin']) {
+  async function ready(admin: TestClient) {
     overrideVariable('MOTHERDUCK_TOKEN', 'md-read-token')
     await discoverPackages([resolve('../..', 'example-apps/tickets')])
     await admin.post('/api/install_app', { name: 'tickets' })
@@ -222,7 +223,7 @@ describe('#1397: the review tickets under one umbrella', () => {
     join tickets.request r on r.row_id = t.row_id where r.details_json::jsonb ? 'motherduck_umbrella'`
   const parents = async () => (await sql`select a.username, t.parent_ticket from motherduck_account a join tickets.ticket t on t.row_id = a.review_ticket order by a.username`)
     .map((r) => [r.username, r.parent_ticket])
-  async function link(admin: Parameters<Parameters<typeof test>[1]>[0]['admin'], id: string, person: string) {
+  async function link(admin: TestClient, id: string, person: string) {
     const row = await admin.get<Record<string, unknown>>(`/api/table/MotherDuck Account/${id}`)
     await patchDoc(admin, `/api/table/MotherDuck Account/${id}`, { updated_at: row.updated_at, person })
   }
