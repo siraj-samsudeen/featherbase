@@ -133,3 +133,21 @@ test('the Person picker links anyone else; a click or ↑ moves the highlight; a
   await userEvent.click(within(priya).getAllByTestId('md-suggestion')[0])
   expect(await within(page).findByText(/^priya: /)).toBeInTheDocument()
 })
+
+// #1396 option A: a review ticket's "Link in Featherbase" opens the screen on its own account.
+test('?account= opens on that account: highlighted under To link, or on the Linked tab once it is linked', async ({ admin }) => {
+  await accounts()
+  await renderApp(`${PAGE}?account=md-zed`, admin)
+  const page = await screen.findByTestId('link-motherduck-accounts')
+  await waitFor(() => expect(within(page).getAllByTestId('md-account').find((r) => r.getAttribute('data-current'))?.getAttribute('data-username')).toBe('zed_nobody'))
+  await userEvent.keyboard('{ArrowUp}')
+  expect(within(page).getAllByTestId('md-account').find((r) => r.getAttribute('data-current'))?.getAttribute('data-username')).toBe('priya')
+})
+
+test('?account= of a linked account opens the Linked tab on it', async ({ admin }) => {
+  await accounts()
+  await renderApp(`${PAGE}?account=md-done`, admin)
+  const page = await screen.findByTestId('link-motherduck-accounts')
+  expect(await within(page).findByRole('button', { name: /Linked · 1/ })).toHaveAttribute('aria-pressed', 'true')
+  expect((await within(page).findAllByTestId('md-account'))[0]).toHaveAttribute('data-current', 'true')
+})
