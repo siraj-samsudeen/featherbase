@@ -99,15 +99,15 @@ export function LinkMotherDuckAccounts() {
   return (
     <div data-testid="link-motherduck-accounts" className="mx-auto flex max-w-5xl flex-col gap-4 p-6">
       <PageHeader
-        breadcrumb={<><Link to="/featherbase/admin" className="hover:text-ink">Home</Link>{' / People and access'}</>}
+        breadcrumb={<><Link to="/featherbase/admin" className="hover:text-ink">Home</Link>{' / '}
+          <Link to="/featherbase/admin/table/$table" params={{ table: TABLE }} search={{ filters: undefined }} className="hover:text-ink">MotherDuck Accounts</Link>{' / Link to people'}</>}
         title={adminPageTitle('link-motherduck-accounts')}
         count={list.data && <span>{fmtCount(counts.open)} to link{linkedNow.length ? ` · ${fmtCount(linkedNow.length)} linked on this page` : ''}</span>}
         actions={
           <Button variant="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>Close their tickets now</Button>
         }
-        status={sync.isSuccess
-          ? <span data-testid="md-sync-queued">The sync is queued: it closes the ticket of every linked account. See Jobs for its run.</span>
-          : 'A link is the account’s Person. The sync closes its ticket on its daily run, or now with Close their tickets now.'}
+        status={<>A link is the account’s Person. The sync closes its ticket on its daily run, or now with Close their tickets now.
+          {sync.isSuccess && <span data-testid="md-sync-queued" className="ml-1 text-positive">The sync is queued; see Jobs for its run.</span>}</>}
       />
       <div className="flex flex-wrap items-center gap-3">
         <span data-testid="md-filters">
@@ -117,14 +117,14 @@ export function LinkMotherDuckAccounts() {
             { value: 'service', label: `Service accounts · ${fmtCount(counts.service)}` },
           ]} />
         </span>
-        {view === 'open' && <span className="text-xs text-ink-subtle">1–3 picks a suggestion · / searches · ↑ ↓ move</span>}
+        {view === 'open' && <span className="text-xs text-ink-subtle">1–3 picks a suggestion · / searches · Esc leaves the search · ↑ ↓ move</span>}
       </div>
       {error && <Notice tone="negative">{error}</Notice>}
       {list.isError && <Notice tone="negative">The accounts could not be read.</Notice>}
       {list.data && shown.length === 0 && (
         <p className="text-sm text-ink-muted">{view === 'open' ? 'Every account a person uses is linked.' : 'None.'}</p>
       )}
-      <ul className="divide-y divide-border overflow-hidden rounded-card border border-border bg-surface">
+      <ul className="divide-y divide-border rounded-card border border-border bg-surface">
         {shown.map((a) => {
           if (view === 'open' && linkedNow.includes(a.row_id) && a.person) {
             return (
@@ -139,7 +139,7 @@ export function LinkMotherDuckAccounts() {
           return (
             <li key={a.row_id} data-testid="md-account" data-username={a.username} data-current={isCurrent ? 'true' : undefined}
               onClick={() => view === 'open' && setCurrent(open.findIndex((o) => o.row_id === a.row_id))}
-              className={`flex flex-col gap-2 px-4 py-3 ${isCurrent ? 'border-l-[3px] border-l-action bg-fill' : ''}`}>
+              className={`flex flex-col gap-2 px-4 py-3 ${isCurrent ? 'border-l-[3px] border-l-action' : 'border-l-[3px] border-l-transparent'}`}>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="min-w-0 text-sm">
                   <b className="font-medium text-ink">{a.username}</b>
@@ -152,7 +152,8 @@ export function LinkMotherDuckAccounts() {
                 </div>
               </div>
               {viewOf(a) === 'linked' && a.person && (
-                <div className="text-sm">Person: <RecordLink table="Person" rowId={a.person.id} name={a.person.name} /></div>
+                <div className="flex items-center gap-3 text-sm">Person: <RecordLink table="Person" rowId={a.person.id} name={a.person.name} />
+                  <Button variant="quiet" disabled={save.isPending} onClick={() => save.mutate({ account: a, person: null })}>Unlink</Button></div>
               )}
               {viewOf(a) === 'open' && (
                 <>
@@ -167,11 +168,13 @@ export function LinkMotherDuckAccounts() {
                           ))}
                         </div>
                       )
-                    : <p className="text-sm text-ink-muted">No one&apos;s name reads as this username. Search for them below.</p>}
+                    : <p className="text-sm text-ink-muted">No suggestions: no one’s name starts like this username. Search by name or email below.</p>}
                   {personColumn && (
                     <div className="max-w-md" ref={(el) => { if (el) pickers.current.set(a.row_id, el); else pickers.current.delete(a.row_id) }}
-                      onClick={(e) => e.stopPropagation()}>
-                      <LinkControl field={personColumn} value="" pickOnly className="w-full"
+                      onClick={(e) => e.stopPropagation()}
+                      // Esc hands the keys back to the list: 1–3 and ↑ ↓ work again.
+                      onKeyDown={(e) => { if (e.key === 'Escape') (e.target as HTMLElement).blur() }}>
+                      <LinkControl field={personColumn} value="" pickOnly floating className="w-full"
                         common={{ 'aria-label': `Someone else for ${a.username}`, placeholder: 'Someone else: search by name or email' }}
                         onChange={(v) => { if (typeof v === 'string' && v) link(a, v) }} />
                     </div>
