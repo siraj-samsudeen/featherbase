@@ -79,7 +79,7 @@ export function ReportAccess() {
             {!company && !(page?.scope === 'team' && prototyping()) && <h1 className="fd-title">Report access</h1>}
             {!page && !failed && <Skeleton label="Opening report access" lines={6} />}
             {failed && !page && (
-              <Card data-testid="access-refused"><EmptyState title="This page couldn't open" body={failed} action={failed.startsWith('Only a Report Access Manager') ? undefined : <Button onClick={() => void load()}>Try again</Button>} /></Card>
+              <Card data-testid="access-refused"><EmptyState title="This page couldn't open" body={failed} action={failed.startsWith('Only a Report Access Manager') ? undefined : <Button onClick={() => void load()}>Try Again</Button>} /></Card>
             )}
             {page && page.scope === 'team' && <TeamAccess page={page} onChanged={load} />}
             {page && company && <CompanyAccess page={page} onChanged={load} />}
@@ -1105,7 +1105,7 @@ function AddDive({ onAdded }: { onAdded: () => Promise<unknown> }) {
         {(failed || (choices && 'unreachable' in choices)) && (
           <div className="flex flex-wrap items-center gap-3" data-testid="dives-unreachable">
             <Notice tone="negative">{failed ?? "Dash couldn't reach MotherDuck to list the Dives."}</Notice>
-            {!failed?.startsWith('Only a Report Access Manager') && <Button onClick={() => void loadDives()}>Try again</Button>}
+            {!failed?.startsWith('Only a Report Access Manager') && <Button onClick={() => void loadDives()}>Try Again</Button>}
           </div>
         )}
         {dives && (

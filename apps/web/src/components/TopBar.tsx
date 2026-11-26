@@ -23,6 +23,8 @@ import { COMMAND_SHORTCUT, SIDEBAR_DRAWER_QUERY, SIDEBAR_SHORTCUT, listenForSide
 import { APP_ICON } from '../lib/app-icons'
 import { useCurrentPageTitle } from '../lib/page-title'
 import { CommandField, CommandPalette } from './CommandPalette'
+import { NotificationBell, SidebarRecall, SidebarSavedViews } from './SidebarDefaults'
+import { SidebarRailContext } from './SidebarRail'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's
@@ -156,7 +158,6 @@ export function TopBar({
   forPerson,
   left,
   children,
-  beforeRight,
 }: {
   /** #650: the bar over an installed app's own page (the bar bundle): the app
    *  the page belongs to, on whatever address it is opened. The app's page
@@ -170,8 +171,6 @@ export function TopBar({
   left?: ReactNode
   /** The Admin menus, between the name and the right side. */
   children?: ReactNode
-  /** Admin-only indicators that lead the right side (the notification bell). */
-  beforeRight?: ReactNode
 }) {
   const address = useBarContext(app ? app.name : home)
   const { brand } = address
@@ -264,17 +263,27 @@ export function TopBar({
           <div className="relative flex justify-end" data-testid="page-pickers"><BarControls app={controlsOf!} /></div>,
           pickerSlot,
         )}
+        {/* #1385: the bell is the platform's, for someone who can use the Admin (its notifications are there). */}
         {createPortal(
           <div className={rail ? 'flex flex-col items-center gap-1 px-2 pb-2 pt-3' : 'flex flex-col gap-2 px-2 pb-2 pt-3'} data-testid="sidebar-top">
             <div className={rail ? 'contents' : 'flex min-w-0 items-center gap-1'}>
               <div className={rail ? 'contents' : 'min-w-0 flex-1'}>{switcher}</div>
               {/* #1222: View as, an action, at the top beside the bell (Ctrl+Shift+K everywhere). */}
               {caps && <ViewAsButton compact place={rail ? 'rail' : 'sidebar'} />}
-              {!rail && caps && beforeRight}
+              {!rail && canUseAdmin && <NotificationBell />}
             </div>
             {caps && <CommandField rail={rail} onOpen={() => setCommandOpen(true)} />}
           </div>,
           slots.top,
+        )}
+        {/* #1385 (slice 2): below an app's own rows, the platform's recall, as in the Admin.
+            They list Admin destinations: only someone who can use the Admin gets them. */}
+        {canUseAdmin && slots.defaults && createPortal(
+          <SidebarRailContext.Provider value={rail}>
+            <SidebarRecall />
+            <SidebarSavedViews />
+          </SidebarRailContext.Provider>,
+          slots.defaults,
         )}
         {caps && createPortal(
           // The foot's menus (Help, Theme) anchor to this row's left edge, so they open upward and stay on screen.
@@ -321,7 +330,6 @@ export function TopBar({
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:gap-2" data-testid="top-bar-right">
           {caps && (
             <>
-              {beforeRight}
               {offerAdmin && !isPhone && <OpenAdminButton />}
               <ViewAsButton compact={isPhone} />
               {!isPhone && <ThemeToggle />}

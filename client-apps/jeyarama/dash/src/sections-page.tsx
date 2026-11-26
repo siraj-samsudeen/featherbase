@@ -266,7 +266,7 @@ export function useAnswer<T>(name: string) {
 
 export const Loading = () => <div className="flex flex-col gap-3" data-testid="loading"><Skeleton label="Opening your sections" lines={6} /></div>
 export const LoadFailed = ({ onRetry }: { onRetry: () => void }) => (
-  <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={onRetry}>Try again</Button>} /></Card>
+  <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={onRetry}>Try Again</Button>} /></Card>
 )
 export const NotSetUp = () => (
   <Card data-testid="not-set-up">
