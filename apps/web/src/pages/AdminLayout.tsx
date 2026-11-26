@@ -22,7 +22,7 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, iconButtonClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { BookOpen, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Plus, Search, Upload, Compass, Eye, History, Key, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { BookOpen, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Plus, Search, Upload, Compass, Eye, History, Key, Link2, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, useShortcut } from '../lib/shortcuts'
 
@@ -319,7 +319,9 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                     ),
                   },
                   // #1271: who has left, or is not an employee, and can still sign in.
-                  { to: '/featherbase/admin/leavers-who-can-sign-in', label: 'Leavers who can still sign in', icon: LogIn, testid: 'leavers-link' }]
+                  { to: '/featherbase/admin/leavers-who-can-sign-in', label: 'Leavers who can still sign in', icon: LogIn, testid: 'leavers-link' },
+                  // #1396: MotherDuck accounts still to link to a person.
+                  { to: '/featherbase/admin/link-motherduck-accounts', label: 'Link MotherDuck accounts', icon: Link2, testid: 'link-motherduck-link' }]
                 : []),
             ]}
           />
