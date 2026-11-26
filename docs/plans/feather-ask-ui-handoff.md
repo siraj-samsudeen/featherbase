@@ -212,8 +212,6 @@ OpenSpec (`pnpm exec openspec`).
 
 ## Frontend, later (after the backend)
 
-- 2e: a "⋯" menu on each chat with Rename and Delete (asks first; deletes the chat and its
-  questions together). A manifest change: recreate the local database.
 - A chat added to moves to the top (needs a "last asked" time on the chat; ChatGPT orders
   by last use), and a brand-new chat's address becomes `/ask/?chat=<id>` after its first
   answer (today it stays `/ask/`).
