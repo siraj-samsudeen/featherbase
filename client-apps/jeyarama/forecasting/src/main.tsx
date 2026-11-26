@@ -12,6 +12,13 @@ window.addEventListener(THEME_CHANGE_EVENT, event => {
   if (theme === 'light' || theme === 'dark') paintTheme(theme)
 })
 
+const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) || location.hostname.endsWith('.localhost')
+const NoRun = () => (
+  <div style={{ padding: 32, font: '15px system-ui', maxWidth: 560 }}>
+    <h1 style={{ fontSize: 20 }}>No Run is loaded yet</h1>
+    <p>The forecast team loads each month's engine Run and who reviews it; the month opens here once it is loaded.</p>
+  </div>)
+
 // The Run under review and who reviews it are read first; the app's modules build from them as they load.
 const root = createRoot(document.getElementById('root')!)
 async function start() {
@@ -20,7 +27,10 @@ async function start() {
     const [lines, reach] = await Promise.all([
       listAll<RunLineRow>('forecasting.run_line', ['run', 'month', 'store', 'region', 'division', 'subdivision', 'category', 'section', 'subcategory', 'code', 'forecast', 'aop', 'band', 'days_json', 'parts_json', 'other']),
       listAll<ReachRow>('forecasting.reach', ['full_name', 'code', 'role', 'place', 'reports_to', 'places_json'])])
-    setDataset(datasetFrom(lines, reach))
+    const dataset = datasetFrom(lines, reach)
+    // The made-up data is for a local instance only: a hosted one with no Run loaded says so instead.
+    if (!dataset && !LOCAL) { root.render(<NoRun />); return }
+    setDataset(dataset)
   } catch (e) {
     if ((e as { status?: number }).status === 401) { window.location.href = `/featherbase/login?next=${encodeURIComponent(location.pathname + location.search)}`; return }
     setDataset(null) // an older instance without the Tables: the made-up data
