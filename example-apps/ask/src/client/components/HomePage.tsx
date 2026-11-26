@@ -13,14 +13,16 @@ export function HomePage() {
   const [params] = useSearchParams()
   const location = useLocation()
   const page: Page = params.get('view') === 'chats' ? 'chats' : 'chat'
+    // The saved chat the address names, if any.
+  const opened = params.get('chat') ?? undefined
   // Counts the chats saved on this page, so the sidebar shows a new one at once.
   const [saved, setSaved] = useState(0)
   return (
     <div className="ask-shell">
-      <Sidebar page={page} saved={saved} />
+      <Sidebar page={page} opened={opened} saved={saved} />
       {/* The page must come right after the sidebar: the platform styles that element as the page panel.
           Every visit has its own key, so New chat starts afresh even from a chat already open. */}
-      {page === 'chats' ? <RecentChats /> : <Chat key={location.key} onNewChat={() => setSaved((n) => n + 1)} />}
+      {page === 'chats' ? <RecentChats /> : <Chat key={location.key} opened = {opened} onNewChat={() => setSaved((n) => n + 1)} />}
     </div>
   )
 }

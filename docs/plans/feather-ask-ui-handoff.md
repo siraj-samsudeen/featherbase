@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 25-Nov-2026. A working note for moving between machines and sessions. It is
+**Last updated:** 26-Nov-2026. A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -160,6 +160,14 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
     that opens the page (no list, no menu). Shop Floor's icons gain `ArrowUpRight`.
     The plain clock below in the rail is the platform's Recently Opened, shown only to
     people who can use the Admin (#1385). 18 list, 7 rail and 10 heading checks pass.
+14. 2d: opening a saved chat. A chat, from the sidebar or the Recent Chats page, opens in
+    Ask at `/ask/?chat=14` with no reload and shows its questions and answers; asking
+    carries on in it. `route.ts` (`chatPath`), `App.tsx` (`RecordPagesProvider`: an
+    `ask.chat` record opens in Ask), `api.ts` (`openChat()`), `HomePage.tsx` (reads
+    `?chat=`), `Chat.tsx` ("Opening the chat…", the not-found box with Try again and Start
+    a new chat), `Sidebar.tsx` (rows open in place, the open chat highlighted),
+    `RecentChats.tsx` (`ChatLink`, RecordLink's `onNavigate`). 14 checks pass
+    (`check2d.cjs`).
 
 Learned on the way: in local development the platform's sidebar shows its raw rows for about
 half a second when switching apps (Tickets too), because `bar.js` loads as many modules; a
@@ -170,31 +178,20 @@ stylesheet, so the sidebar's own `display:flex !important` wins and such rows st
 
 ## Next step
 
-**2d, in progress: Mohammad is typing it.** Opening a chat, from the sidebar or the Recent
-Chats page, shows its questions and answers in Ask (`/ask/?chat=14`), with no reload, and
-asking carries on in it. The open chat is highlighted in the sidebar; a missing or someone
-else's chat shows "This chat could not be found…" with Try again and Start a new chat.
+**2e:** a "⋯" menu on each chat with Rename and Delete (asks first; deletes the chat and its
+questions together). A manifest change: recreate the local database.
 
-- Claude's checked draft (14 checks passed, `check2d.cjs`) is in
-  `C:\Users\DELL\Documents\work\ask-handover\2d-draft\` (`2d.diff` is the whole change).
-- Seven files, typed in this order: the address helper (`chatPath`), `App.tsx`
-  (`RecordPagesProvider`: an `ask.chat` record opens at `/ask/?chat=<id>`), `api.ts`
-  (`openChat()`), `HomePage.tsx` (reads `?chat=`), `Chat.tsx` (`opened`: loads the chat,
-  "Opening the chat…", the not-found box), `Sidebar.tsx` (rows open in place via
-  `navigate`, the open chat highlighted), `RecentChats.tsx` (a `ChatLink` with `onNavigate`).
-- Where Mohammad was when this note was written (not committed): `App.tsx`, `api.ts` and
-  `HomePage.tsx` changed; the address helper is his `src/client/route.ts` (the draft calls it
-  `pages.ts`, same content). Still to do: `Chat.tsx`, `Sidebar.tsx`, `RecentChats.tsx`, and
-  import `chatPath` from `./route` / `../route`. Until those are done the build fails.
-- Then: build, run `check2d.cjs` and the manual checks, compare with the draft, commit.
-- Not in 2d, for later: a chat added to does not move to the top (the list is ordered by
+- Optional tidy-ups Mohammad left in 2d's files (comments, import grouping, spacing):
+  `RecentChats.tsx` lines 2–3 still say chats open their Featherbase record "for now", and
+  its `ChatLink` comment sits above `useEffect(load, [])`; `Chat.tsx` and `Sidebar.tsx`
+  add imports on separate lines and lost some comments. The draft in
+  `ask-handover\2d-draft\` has the tidy versions.
+- Not done yet, for later: a chat added to does not move to the top (the list is ordered by
   when a chat started; ChatGPT orders by last use, which needs a "last asked" time on the
   chat); a brand-new chat's address stays `/ask/` after its first answer.
 
 ## Then
 
-- 2e: a "⋯" menu on each chat with Rename and Delete (asks first; deletes the chat and its
-  questions together). A manifest change: recreate the local database.
 - Later: group the lists by Today, Yesterday, Previous 7 days, Previous 30 days.
 - Step 3 (the panel on every page).
 - Then the independent headless verifier at desktop width (its checklist includes: "Every

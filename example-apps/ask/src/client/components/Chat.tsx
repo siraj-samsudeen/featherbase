@@ -5,17 +5,47 @@ import { askQuestion } from '../api'
 import { EmptyChat } from './EmptyChat'
 import { QuestionAnswer, type AnswerStatus } from './QuestionAnswer'
 import { QuestionBox } from './QuestionBox'
-
+import { openChat } from '../api'
+import { Button,Notice } from '@featherbase/shop-floor'
+import { Link } from 'react-router'
 // onNewChat: told once, when this chat is first saved, so the sidebar can list it.
-export function Chat({ onNewChat }: { onNewChat?: () => void }) {
+export function Chat({ opened,onNewChat}: { opened ?: string,onNewChat?: () => void }) {
   // The box's text lives here, so an example can put a question into it.
   const [text, setText] = useState('')
   const box = useRef<HTMLTextAreaElement>(null)
   const [answers, setAnswers] = useState<AnswerStatus[]>([])
   // The saved chat these questions belong to: none until the first answer arrives.
-  const [chat, setChat] = useState<string>()
+  const [chat, setChat] = useState<string | undefined>(opened)
+  
+  
+  const [loading, setLoading] = useState(!!opened)
+  const [loadError, setLoadError] = useState<string>()
+
   const end = useRef<HTMLDivElement>(null)
   const busy = answers.some((answer) => answer.status === 'thinking')
+  // An opened chat shows its saved questions, each with its answer, oldest first.
+  function load() {
+    if (!opened) return
+    setLoading(true)
+    setLoadError(undefined)
+    openChat(opened)
+      .then(
+        (found) =>
+          setAnswers(
+            found.questions.map((saved) => ({
+              id: saved.row_id,
+              question: saved.question,
+              status: 'answered',
+              reply: { kind: saved.answer_kind, text: saved.answer },
+            })),
+          ),
+        (failure: Error) => setLoadError(failure.message),
+      )
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(load, [opened])
+
 
   // Keep the newest question in view. The braces matter: scrollIntoView returns a
   // Promise in Chromium, and React would call a returned value as a cleanup.
@@ -61,7 +91,29 @@ export function Chat({ onNewChat }: { onNewChat?: () => void }) {
   }
 
   const questionBox = <QuestionBox ref={box} text={text} onTextChange={setText} onAsk={ask} busy={busy} />
+    if (loading)
+  return (
+    <main className="ask-page">
+      <p role="status" className="m-auto text-ink-subtle">Opening the chat…</p>
+    </main>
+  )
 
+// Not found (someone else's, or removed) or failed to load: say so, offer a way on.
+  if (loadError)
+    return (
+      <main className="ask-page">
+        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center p-6">
+          <Notice tone="negative">
+            <p>{loadError}</p>
+            <div className="mt-2 flex gap-2">
+              <Button onClick={load}>Try again</Button>
+              <Link to="/" className="self-center text-action hover:underline">Start a new chat</Link>
+            </div>
+          </Notice>
+        </div>
+      </main>
+    )
+    
   if (answers.length === 0)
     return (
       <main className="ask-page">
@@ -71,6 +123,8 @@ export function Chat({ onNewChat }: { onNewChat?: () => void }) {
         </div>
       </main>
     )
+  
+
 
   return (
     <main className="ask-page">

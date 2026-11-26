@@ -4,13 +4,22 @@
 import { useEffect, useState } from 'react'
 import { Button, DataList, fmtAgo, PageHeader, RecordLink, type DataColumn } from '@featherbase/shop-floor'
 import { myChats, type ChatRow } from '../api'
-
+import { useNavigate } from 'react-router'
+import { chatPath } from '../route'
 // How many chats each load brings.
 const PAGE = 50
 
+  function ChatLink({ chat }: { chat: ChatRow }) {
+    const navigate = useNavigate()
+    return <RecordLink table="ask.chat" 
+            rowId={chat.row_id} 
+            name={chat.title} 
+            onNavigate={() => navigate(chatPath(chat.row_id))} />
+  }
+
 const RecentChatColumn: DataColumn<ChatRow>[] = [
   { key: 'title', header: 'Chat', phone: 'title',
-    cell: (chat) => <RecordLink table="ask.chat" rowId={chat.row_id} name={chat.title} /> },
+    cell: (chat) => <ChatLink chat={chat} /> },
   // "just now", "2 hours ago".
   { key: 'started',
     header: 'Started',
@@ -56,6 +65,7 @@ export function RecentChats() {
       )
       .finally(() => setLoadingMore(false))
   }
+  // A chat's link: its page in Ask, opened in place (no reload); Ctrl+click opens a new tab.
 
   useEffect(load, [])
 

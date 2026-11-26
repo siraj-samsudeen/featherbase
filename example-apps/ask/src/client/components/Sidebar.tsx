@@ -7,7 +7,9 @@ import { createElement, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { ArrowUpRight, ChevronDown, History, Plus, useRecordHref } from '@featherbase/shop-floor'
 import { myChats, type ChatRow } from '../api'
-
+import { MouseEvent } from 'react'
+import { useNavigate } from 'react-router'
+import { chatPath } from '../route'
 export type Page = 'chat' | 'chats'
 
 // How many chats the sidebar loads at a time.
@@ -23,13 +25,24 @@ function shortAgo(iso: string): string {
 }
 
 // One chat as a sidebar row: its title on one line, cut with "…", and on the right how long
-// ago it started. A chat is a record, so the row goes where its record link would: its
-// Featherbase record now, Ask's page in 2d.
-function ChatRowLink({ chat }: { chat: ChatRow }) {
+// ago it started. A chat is a record, so the row goes where its record link goes: the
+// chat's page in Ask. A plain click opens it in place; Ctrl+click is left to the browser.
+function ChatRowLink({ chat, active }: { chat: ChatRow; active: boolean }) {
   const href = useRecordHref('ask.chat', chat.row_id)
+  const navigate = useNavigate()
   const when = shortAgo(chat.created_at)
+  function open(event: MouseEvent<HTMLAnchorElement>) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    navigate(chatPath(chat.row_id))
+  }
   return (
-    <a href={href} title={`${chat.title} · started ${when === 'now' ? 'just now' : `${when} ago`}`}>
+    <a
+      href={href}
+      onClick={open}
+      aria-current={active ? 'page' : undefined}
+      title={`${chat.title} · started ${when === 'now' ? 'just now' : `${when} ago`}`}
+    >
       <span className="min-w-0 flex-1 truncate">{chat.title}</span>
       <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{when}</span>
     </a>
@@ -37,7 +50,7 @@ function ChatRowLink({ chat }: { chat: ChatRow }) {
 }
 
 // `saved` goes up each time a new chat is saved, so the list loads again with it on top.
-export function Sidebar({ page, saved }: { page: Page; saved: number }) {
+export function Sidebar({ page, opened, saved }: { page: Page; opened?: string ;saved: number }) {
   const [chats, setChats] = useState<ChatRow[]>([])
   const [total, setTotal] = useState(0)
   const [failed, setFailed] = useState(false)
@@ -90,7 +103,7 @@ export function Sidebar({ page, saved }: { page: Page; saved: number }) {
   return createElement(
     'featherbase-sidebar',
     { ref: sidebar, className: 'ask-sidebar', 'aria-label': 'Ask' },
-    <Link key="new" to="/" aria-current={page === 'chat' ? 'page' : undefined}>
+    <Link key="new" to="/" aria-current={page === 'chat' && !opened ? 'page' : undefined}>
       <Plus aria-hidden="true" size={18} />
       <span>New chat</span>
     </Link>,
@@ -129,7 +142,7 @@ export function Sidebar({ page, saved }: { page: Page; saved: number }) {
         </button>
       </div>
     ),
-    ...(showChats ? chats.map((chat) => <ChatRowLink key={chat.row_id} chat={chat} />) : []),
+    ...(showChats ? chats.map((chat) => <ChatRowLink key={chat.row_id} chat={chat} active={chat.row_id===opened} />) : []),
     showChats && failed && (
       <button key="retry" type="button" onClick={load}>
         <span>Chats could not load. Try again</span>
