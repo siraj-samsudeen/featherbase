@@ -51,6 +51,7 @@ import { ConnectedApps } from './pages/ConnectedApps'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { LeaversWhoCanSignIn } from './pages/LeaversWhoCanSignIn'
+import { LinkMotherDuckAccounts } from './pages/LinkMotherDuckAccounts'
 import { InstanceHealth } from './pages/InstanceHealth'
 import { Apps } from './pages/Apps'
 import { GlossaryPage } from './pages/Glossary'
@@ -831,6 +832,13 @@ const leaversRoute = createRoute({
   component: LeaversPage,
 })
 
+// #1396: MotherDuck accounts to link to the people who use them (System Manager only).
+const linkMotherDuckRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'link-motherduck-accounts',
+  component: () => <ManageOnly><LinkMotherDuckAccounts /></ManageOnly>,
+})
+
 function LeaversPage() {
   const { filters } = leaversRoute.useSearch()
   const navigate = leaversRoute.useNavigate()
@@ -1207,5 +1215,5 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, actionPreviewRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, actionPreviewRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, linkMotherDuckRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

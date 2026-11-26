@@ -29,7 +29,7 @@ test('lists the accounts to link with their suggestions; the filters count and s
   const page = await screen.findByTestId('link-motherduck-accounts')
   expect(within(page).getByRole('heading', { level: 1 })).toHaveTextContent('Link MotherDuck Accounts to People')
   const filters = within(page).getByTestId('md-filters')
-  expect(within(filters).getByRole('button', { name: /To link · 2/ })).toHaveAttribute('aria-pressed', 'true')
+  expect(await within(filters).findByRole('button', { name: /To link · 2/ })).toHaveAttribute('aria-pressed', 'true')
   expect(within(filters).getByRole('button', { name: /Linked · 1/ })).toBeInTheDocument()
   expect(within(filters).getByRole('button', { name: /Service accounts · 1/ })).toBeInTheDocument()
 
