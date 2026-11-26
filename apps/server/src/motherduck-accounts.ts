@@ -161,14 +161,30 @@ export function candidateLine(name: string, person: string, s: Standing | undefi
   return [`- ${name} (${person})`, s?.code, jobs].filter(Boolean).join(' · ')
 }
 
-/** People whose name the username reads as, for the reviewer to choose from. */
-async function candidates(username: string): Promise<string[]> {
-  const key = username.replace(/^ea_/i, '').toLowerCase().replace(/[^a-z]/g, '')
+/** A person whose name a username reads as, with who they are to the organisation. */
+export interface SuggestedPerson { person: string; name: string; standing: Standing | undefined }
+
+/** The key a username is matched on: its letters, without the `ea_` prefix. */
+const nameKey = (username: string) => username.replace(/^ea_/i, '').toLowerCase().replace(/[^a-z]/g, '')
+
+/** People whose name each username reads as, for the reviewer to choose from. */
+export async function suggestedPeople(usernames: string[]): Promise<Map<string, SuggestedPerson[]>> {
+  const keys = [...new Set(usernames.map(nameKey))]
   // Three letters at least: a shorter key reads as everyone.
-  const rows = await sql`select row_id, full_name from person where replaced_by is null and full_name is not null
-    and length(${key}) >= 3 and regexp_replace(lower(full_name), '[^a-z]', '', 'g') like ${key + '%'} order by full_name, row_id limit 6`
+  const rows = keys.length ? await sql`select k.key, p.row_id, p.full_name from unnest(${keys}::text[]) as k(key)
+    cross join lateral (select row_id, full_name from person where replaced_by is null and full_name is not null
+      and length(k.key) >= 3 and regexp_replace(lower(full_name), '[^a-z]', '', 'g') like k.key || '%'
+      order by full_name, row_id limit 6) p order by k.key, p.full_name, p.row_id` : []
   const standing = await describePeople(rows.map((r) => String(r.row_id)))
-  return rows.map((r) => candidateLine(String(r.full_name), String(r.row_id), standing.get(String(r.row_id))))
+  const byKey = new Map<string, SuggestedPerson[]>()
+  for (const r of rows)
+    byKey.set(String(r.key), [...(byKey.get(String(r.key)) ?? []),
+      { person: String(r.row_id), name: String(r.full_name), standing: standing.get(String(r.row_id)) }])
+  return new Map(usernames.map((u) => [u, byKey.get(nameKey(u)) ?? []]))
+}
+
+async function candidates(username: string): Promise<string[]> {
+  return ((await suggestedPeople([username])).get(username) ?? []).map((p) => candidateLine(p.name, p.person, p.standing))
 }
 
 async function ticketAction<T>(actor: string, operation: string, payload: Record<string, unknown>, key: string): Promise<T> {
