@@ -83,19 +83,29 @@ test('keys: 1 picks the first suggestion of the row in focus; Close their ticket
 })
 
 test('verifier fixes: Unlink on the Linked tab; Esc leaves the search so the keys work again', async ({ admin }) => {
-  const { priya } = await accounts()
+  const { priya, done } = await accounts()
   await renderApp(PAGE, admin)
   const page = await screen.findByTestId('link-motherduck-accounts')
   await userEvent.click(await within(page).findByRole('button', { name: /Linked · 1/ }))
   const linked = (await within(page).findAllByTestId('md-account'))[0]
   await userEvent.click(within(linked).getByRole('button', { name: 'Unlink' }))
   await waitFor(async () => expect((await sql`select person from motherduck_account where row_id = 'md-done'`)[0].person).toBeNull())
+  // Still on the Linked tab, with Relink, until the page is left.
+  const unlinked = await within(page).findByTestId('md-unlinked-now')
+  expect(unlinked).toHaveTextContent('Unlinked from Done Person')
+  await userEvent.click(within(unlinked).getByRole('button', { name: 'Relink' }))
+  await waitFor(async () => expect((await sql`select person from motherduck_account where row_id = 'md-done'`)[0].person).toBe(done))
+  // Relinked: it reads as linked again, once the list is read back.
+  await userEvent.click(await within(page).findByRole('button', { name: 'Unlink' }))
+  await within(page).findByTestId('md-unlinked-now')
 
   await userEvent.click(within(page).getByRole('button', { name: /To link/ }))
   await within(page).findAllByTestId('md-account')
   await userEvent.keyboard('/')
   expect(within(page).getByRole('combobox', { name: 'Someone else for done_one' })).toHaveFocus()
+  await userEvent.keyboard('Pri')
   await userEvent.keyboard('{Escape}')
+  expect(within(page).getByRole('combobox', { name: 'Someone else for done_one' })).not.toHaveFocus()
   await userEvent.keyboard('{ArrowDown}1')
   await waitFor(async () => expect((await sql`select person from motherduck_account where row_id = 'md-priya'`)[0].person).toBe(priya))
 })
