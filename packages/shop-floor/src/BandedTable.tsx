@@ -12,7 +12,14 @@ export interface BandedColumn {
   header: ReactNode
   /** `end` for figures: right-aligned, tabular numerals. */
   align?: 'start' | 'end'
+  /** The column's share of the table's width, in parts: 1 for a figure and 2 for anything else when left out. */
+  width?: number
 }
+
+/** A column's share of the width, in parts. Set from the columns alone, so no row, open group or saved value can move a column. */
+const partsOf = (column: BandedColumn) => column.width ?? (column.align === 'end' ? 1 : 2)
+/** The least room one part is given before the table scrolls sideways in its box. */
+const PART_REM = 5
 
 /** A label over the columns it names, which sit next to each other. */
 export interface BandedBand { label: ReactNode; columns: string[] }
@@ -59,6 +66,7 @@ export function BandedTable<Row>({ caption, columns, bands = [], rows = [], grou
   className?: string
 }) {
   const last = columns.length - 1
+  const parts = columns.reduce((total, column) => total + partsOf(column), 0)
   const banded = bandCells(columns, bands)
   const hasBands = banded.some((each) => each.label !== undefined)
   // Two header rows are one band of fill: the upper row rounds the top corners, the lower the bottom ones.
@@ -77,8 +85,11 @@ export function BandedTable<Row>({ caption, columns, bands = [], rows = [], grou
   return (
     // Focusable and named, so a keyboard can scroll a table wider than its box.
     <div role="region" aria-label={caption} tabIndex={0} className={cx('overflow-x-auto focus-visible:outline-2 focus-visible:outline-focus', className)}>
-      <table className={cx(TABLE_CLASSES, 'text-control')}>
+      <table className={cx(TABLE_CLASSES, 'table-fixed text-control')} style={{ minWidth: `${parts * PART_REM}rem` }}>
         <caption className="sr-only">{caption}</caption>
+        <colgroup>
+          {columns.map((column) => <col key={column.key} style={{ width: `${Number(((partsOf(column) / parts) * 100).toFixed(4))}%` }} />)}
+        </colgroup>
         <thead>
           {hasBands && (
             <tr data-band-row>

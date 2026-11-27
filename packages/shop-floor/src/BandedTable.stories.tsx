@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { expect, userEvent, within } from 'storybook/test'
 import { BandedTable, type BandedBand, type BandedColumn, type BandedGroup } from './BandedTable'
+import { Button } from './Button'
+import { TextInput } from './Field'
 import { fmtCount } from './format'
 
 // Made-up reorder lines for a shop.
@@ -35,9 +37,14 @@ const GROUPS: BandedGroup<Line>[] = ['Stationery', 'Snacks'].map((category) => {
   return { key: category, name: category, rows, totals: Object.fromEntries(FIGURES.map((key) => [key, sum(rows, key)])) }
 })
 
-function Grouped({ bands }: { bands?: BandedBand[] }) {
+/** A row's Planned cell as a page draws it: a box and two buttons, far wider than the group's total above it. */
+const planCell = (line: Line, column: BandedColumn) => column.key === 'planned'
+  ? <span className="flex flex-wrap items-center gap-2"><TextInput aria-label={`Planned for ${line.item}`} className="w-28" defaultValue={line.planned ?? ''} /><Button>Save</Button><Button variant="quiet">Accept Suggested</Button></span>
+  : cell(line, column)
+
+function Grouped({ bands, controls = false }: { bands?: BandedBand[]; controls?: boolean }) {
   const [open, setOpen] = useState<string | null>(null)
-  return <BandedTable caption="Reorder plan" columns={COLUMNS} bands={bands} groups={GROUPS} openGroup={open} onOpenGroup={setOpen} cell={cell} rowKey={lineKey} />
+  return <BandedTable caption="Reorder plan" columns={COLUMNS} bands={bands} groups={GROUPS} openGroup={open} onOpenGroup={setOpen} cell={controls ? planCell : cell} rowKey={lineKey} />
 }
 
 /**
@@ -108,6 +115,24 @@ export const GroupsThatOpen: Story = {
     await userEvent.click(table.getByRole('button', { name: 'Snacks' }))
     await expect(table.queryByText('Notebook A5')).toBeNull()
     await expect(table.getByText('Fruit Bar')).toBeVisible()
+  },
+}
+
+export const ColumnsHoldStill: Story = {
+  name: 'Columns keep their widths when a group opens',
+  render: () => <Grouped bands={BANDS} controls />,
+  play: async ({ canvasElement }) => {
+    const scroller = region(canvasElement)
+    const table = within(scroller)
+    const edges = () => table.getAllByRole('columnheader').map((header) => [header.textContent, Math.round(box(header).left), Math.round(box(header).right)])
+    const closed = edges()
+    await userEvent.click(table.getByRole('button', { name: 'Stationery' }))
+    await expect(table.getByRole('textbox', { name: 'Planned for Notebook A5' })).toBeVisible()
+    // The rows that opened hold wider cells than the group's own row; no column moves for them.
+    await expect(edges()).toEqual(closed)
+    await userEvent.click(table.getByRole('button', { name: 'Stationery' }))
+    await expect(edges()).toEqual(closed)
+    await expect(scroller.scrollWidth).toBeLessThanOrEqual(scroller.clientWidth)
   },
 }
 
