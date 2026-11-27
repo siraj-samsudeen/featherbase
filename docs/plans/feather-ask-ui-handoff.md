@@ -276,7 +276,7 @@ later (Mohammad: everything but MotherDuck already goes through Featherbase):
    `featherbaseMcp`, which sends it as the Bearer header on every tool call inside `runAsAgent`.
    The existing front-door checks apply; no credential, no tools. (A "no token, person on the
    mark" version was drafted on 26 Nov as ADR 0028 and rewound before push; its draft is in
-   `ask-handover\1e-draft\`, not to be used.) View as mixing two people in one answer is left
+   `ask-handover\1e-no-token-rejected\`, not to be used.) View as mixing two people in one answer is left
    for later (task 1f2). Next: draft 1e for forwarding. Progress is ticked in
    `openspec/changes/feather-ask-agent/tasks.md`.
    Permissions: propose an adversarial review in one line before it lands.
