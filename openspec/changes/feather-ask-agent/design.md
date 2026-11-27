@@ -1,7 +1,7 @@
 ## Context
 
 Featherbase already serves its tools to outside agents over `/mcp` (ADR 0021): each call is one
-inner `/api` request made with the person's access token. Ask needs the same tools from inside the
+inner `/api` request made with the caller's access token. Ask needs the same tools from inside the
 server, as the person who asked. An app's own `documents` helper cannot help: it refuses another
 app's Tables. Each decision below was taken by the owner (Mohammad), 26 Nov 2026, after research.
 
@@ -10,7 +10,7 @@ flowchart LR
   page[Ask page] -- "1. think (outbound read)" --> think[Ask's think read<br/>agent loop, up to 8 steps]
   think -- question + tools --> model[(Model<br/>Gemini / Groq)]
   think -- "ctx.featherbaseMcp.call()" --> tools[Featherbase MCP tools<br/>in memory, read-only]
-  tools -- "inner /api request with the person's pass" --> api[Featherbase /api<br/>permissions, every app]
+  tools -- "inner /api request, marked with the person" --> api[Featherbase /api<br/>permissions, every app]
   page -- "2. ask (action): save chat, question, answer" --> save[(ask.chat, ask.question)]
 ```
 
@@ -29,16 +29,17 @@ The model gets the question and the platform's read-only MCP tools and decides w
 Rejected: #1377's design of Ask's own tools, an admin's list of askable Tables and prepared
 queries, which cover one app at a time and need upkeep for every new Table.
 
-### The tools run in memory, as the person, with a 5-minute pass
+### The tools run in memory, as the person, with no token (ADR 0028)
 
 The same MCP tool server as `/mcp`, connected with an in-memory transport. Each tool's inner
-`/api` request carries a **pass**: an access token the platform issues for the person, labelled
-by the app's title ("Ask", so history reads "via Ask"), lasting 5 minutes, kept only in server memory, reused for that
-person's next questions and renewed when under 2 minutes remain. Calls run under `runAsAgent`, as
-`/mcp`'s do, so every app speaks its installed version and history reads "via Feather Ask".
-Rejected: forwarding the browser session (breaks ADR 0021, and the MCP spec forbids passing other
-tokens through; there is no session in a background run); an in-process identity with no token (a
-second, credential-free way into `/api`, needing an ADR that supersedes 0021).
+`/api` request runs under `runAsAgent`, as `/mcp`'s do, with the person and the time the read
+began on the mark. The `/api` front door looks the person up afresh on every call and refuses one
+who is gone, turned off, or signed out everywhere since the read began. Every app speaks its
+installed version, and history reads "via Ask" (the app's title, else its name).
+Rejected (Mohammad, 26-Nov-2026, replacing that day's earlier choice): a 5-minute access-token
+pass (a saved, visible credential needing a cache, renewal, a sweep and a column to hide it); a
+short session-token pass (it carries a sign-in, so it would count as a fresh one); forwarding the
+browser session (breaks ADR 0021; the MCP spec forbids passing other tokens through).
 
 ### Only the read-only tools are offered or run
 
@@ -61,7 +62,7 @@ the tools to every read, since most reads are page helpers that should not reach
 ### The platform code lives beside `/mcp`, not in it
 
 `mcp.ts` stays the `/mcp` endpoint and exports its tool server; `mcp-app-reads.ts` holds the
-in-memory client and the pass. Rejected: adding both to `mcp.ts`, mixing two jobs in one file.
+in-memory client. Rejected: adding both to `mcp.ts`, mixing two jobs in one file.
 
 ### A refusal is a result the model reads; at most 8 steps
 
@@ -76,9 +77,9 @@ by address, key and model covers them; keys are the app's declared secrets. Reje
 
 ## Risks / Trade-offs
 
-- Each pass is a row in the access tokens Table; expired ones pile up until a sweep deletes them
-  (ADR 0027 asks for one).
-- The person's own access tokens list may show the passes.
+- Any server code can set the person on the mark; only `mcp-app-reads.ts` does (ADR 0028).
+- A person whose own session is a test-mode or preview sign-in still gets the tools; they only
+  read, so nothing lasting can be added through them.
 - `query_rows` returns at most 100 rows a page, so totals need a sum tool (step 5).
 
 ## Migration Plan
@@ -90,6 +91,4 @@ Ask's manifest gains the `think` read at 0.1.0: recreate the local database (see
 
 - The page sends the answer to save, so it could save a made-up answer in its own chat: sign it
   in `think` and check it in `ask`, or accept it since it is only the person's own chat.
-- Whether passes should be hidden from the person's access tokens list.
-- Whether the pass deserves its own ADR beside ADR 0021.
 - Which Gemini and Groq models (step 3).

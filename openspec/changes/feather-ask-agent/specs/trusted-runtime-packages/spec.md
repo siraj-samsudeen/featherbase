@@ -18,7 +18,8 @@ declaration SHALL be refused on any other read or action.
 ### Requirement: The app's lookups run as the person
 
 Each lookup through Featherbase's agent tools SHALL run as the person using the app, seeing exactly
-what they may read, in every app.
+what they may read, in every app, and SHALL stop working once that person is turned off or signed
+out everywhere.
 
 #### Scenario: The app's lookup sees only Selvi's rows
 
@@ -26,6 +27,12 @@ what they may read, in every app.
   has a ticket
 - **WHEN** Selvi and then Ravi use the read to find tickets
 - **THEN** Selvi's lookup finds her ticket and Ravi's finds none
+
+#### Scenario: Signing out everywhere stops the lookups
+
+- **GIVEN** Selvi is using the app's read, and its lookups are under way
+- **WHEN** Selvi signs out everywhere
+- **THEN** the read's next lookup is refused
 
 ### Requirement: An app gets only the tools that read
 

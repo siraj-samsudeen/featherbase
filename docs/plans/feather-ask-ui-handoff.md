@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 26-Nov-2026 (backend 1a to 1d committed; next: 1e). A working note for moving between machines and sessions. It is
+**Last updated:** 26-Nov-2026 (backend 1a to 1d committed; ADR 0028; next: 1e, no token). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -271,7 +271,11 @@ later (Mohammad: everything but MotherDuck already goes through Featherbase):
    to an outbound read that declares the flag, closed when the handler ends; the pass is
    labelled by the app's title ("Ask", so history reads "via Ask"), else its name: done
    (commit 2db345742; `checks\check1d.mts`, 8 checks, fails without 1d; 38 existing tests).
-   Next: 1e, the sweep of expired access tokens. Progress is ticked in
+   **No token** (Mohammad, 26-Nov-2026, ADR 0028, replacing the pass and the planned sweep):
+   the inner request carries the person on the `runAsAgent` mark (`who: { person, since }`),
+   and the `/api` front door checks them afresh on every call (`resolveInMemoryCaller` in
+   `auth.ts`). Next: 1e, type it in from `ask-handover\1e-draft\` (`1e.diff`; checked: both
+   typechecks, `checks\check1e.mts` 10/10, 312 tests in 10 files). Progress is ticked in
    `openspec/changes/feather-ask-agent/tasks.md`.
    Permissions: propose an adversarial review in one line before it lands.
 2. **The agent loop in Ask**, with the stand-in model: a `think` outbound read (declares

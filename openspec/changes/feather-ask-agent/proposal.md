@@ -51,7 +51,8 @@ None (adds to `feather-ask`, which `feather-ask-ui` creates).
 ## Impact
 
 - `packages/shared`: types for the tools and the manifest flag.
-- `apps/server`: the flag's check (`app-access.ts`), the in-memory tools and the pass
+- `apps/server`: the flag's check (`app-access.ts`), the in-memory tools
   (`mcp-app-reads.ts`, reusing `mcp.ts`'s tool server), handing them to an outbound read
-  (`runtime-actions.ts`), a sweep of expired tokens.
+  (`runtime-actions.ts`), and the `/api` front door accepting the platform's in-memory caller as the
+  person (ADR 0028).
 - `example-apps/ask`: a `think` read with the agent loop and model adapter; secrets for the keys.

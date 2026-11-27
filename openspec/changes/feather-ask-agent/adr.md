@@ -5,16 +5,17 @@
 
 ## Review Summary
 
-The pass keeps ADR 0021 (only an access token opens the tools); no ADR is superseded. Whether the
-pass gets its own ADR is an open question in `design.md`.
+The in-memory tools act as the person with no token, which ADR 0021 did not cover; ADR 0028
+records it. ADR 0021 still governs everything reaching Featherbase from outside.
 
 ## In-Force ADRs Reviewed
 
-- [ADR 0021](../../../adr/0021-agents-reach-featherbase-through-the-http-api-over-mcp.md): agents reach Featherbase through `/mcp` with an access token. Kept:
-  the in-memory tools use a real access token (the pass).
-- [ADR 0027](../../../adr/0027-agents-connect-by-signing-in-through-the-instance.md): asks for a
-  sweep of expired tokens; this change adds one.
+- [ADR 0021](../../../adr/0021-agents-reach-featherbase-through-the-http-api-over-mcp.md): `/mcp`
+  opens only to an access token. Kept; it does not cover requests the server makes to itself.
+- [ADR 0027](../../../adr/0027-agents-connect-by-signing-in-through-the-instance.md): agent
+  sign-in keys. Unchanged; this change makes no tokens, so it adds no clean-up.
 
 ## New Durable ADRs Created
 
-- None yet.
+- [ADR 0028](../../../adr/0028-the-platforms-in-memory-callers-act-as-a-person-without-a-token.md):
+  the platform's in-memory callers act as a person without a token.
