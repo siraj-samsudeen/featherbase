@@ -1,7 +1,7 @@
 // Questions on a subcategory (TL-33): the thread in an opened subcategory, and My questions in the page header.
 // Answers come from the Forecast Creator and Forecast Reviewer roles, as Comments on the question.
 import { useEffect, useRef, useState } from 'react'
-import { Bell, Button, RecordLink, StatusPill, inputClasses, labelClasses, raisedClasses } from '@featherbase/shop-floor'
+import { Bell, Button, MENU_HEADING_CLASSES, RecordLink, StatusPill, inputClasses, labelClasses, menuClasses, menuItemClasses } from '@featherbase/shop-floor'
 import type { Line } from './model'
 import { when, type Question } from './review'
 
@@ -51,15 +51,17 @@ export function MyQuestions({ questions, lines, hrefFor, onJump }: { questions: 
     <div className="fr-qwrap" ref={box}>
       <Button aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen(o => !o)} icon={<Bell aria-hidden size={16} />} className="relative">
         My questions{waiting && !unread ? <span className="fr-dim" style={{ fontWeight: 400 }}>{waiting} open</span> : null}
-        {unread ? <span className="fr-count" aria-label={`${unread} new ${unread === 1 ? 'answer' : 'answers'}`}>{unread}</span> : null}
+        {/* the platform bell's own count badge (NotificationBell) */}
+        {unread ? <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-negative px-1 text-xs font-semibold text-action-ink"
+          aria-label={`${unread} new ${unread === 1 ? 'answer' : 'answers'}`}>{unread}</span> : null}
       </Button>
       {open && (
-        <div className={raisedClasses('fr-qmenu')} role="menu" aria-label="My questions">
-          <h5>Questions you asked, newest first</h5>
+        <div className={menuClasses('fr-qmenu')} role="menu" aria-label="My questions">
+          <div className={MENU_HEADING_CLASSES}>Questions you asked, newest first</div>
           {questions.length ? [...questions].reverse().map(q => {
             const line = lines.find(l => l.name === q.line)
             return (
-              <a key={q.id} role="menuitem" className="fr-qitem" href={line ? hrefFor(line) : undefined}
+              <a key={q.id} role="menuitem" className={menuItemClasses({ className: 'fr-qitem' })} href={line ? hrefFor(line) : undefined}
                 onClick={e => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); setOpen(false); onJump(q.line) }}>
                 <span className="fr-qtop">
                   {q.answer && !q.seen && <span className="fr-newdot" title="New answer" />}
@@ -68,7 +70,7 @@ export function MyQuestions({ questions, lines, hrefFor, onJump }: { questions: 
                 </span>
                 <span className="fr-qtext">{q.text}</span>
               </a>)
-          }) : <div className="fr-qempty">No questions yet. Open a subcategory and choose <b>Ask about this subcategory</b>.</div>}
+          }) : <div className="px-3 py-2 text-[13px] text-ink-muted">No questions yet. Open a subcategory and choose <b>Ask about this subcategory</b>.</div>}
         </div>)}
     </div>
   )

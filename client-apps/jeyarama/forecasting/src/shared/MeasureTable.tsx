@@ -4,7 +4,7 @@
 // the page's own panel under it, as wide as the visible table. The look is Shop Floor's TableLook, written out
 // in forecasting.css because the column bands and the pinned first column are not in TableLook yet.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { PartsBar } from '@featherbase/shop-floor'
+import { ChevronRight, PartsBar, cx } from '@featherbase/shop-floor'
 import { Hover } from './Hover'
 import { asp, count, inr, pc, shares, type Group, type Line } from './model'
 import type { Header } from './review'
@@ -92,7 +92,7 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
                 data-key={r.key} data-n={r.dataName ?? r.key} aria-selected={isOpen} aria-expanded={r.opens === false ? undefined : isOpen}
                 onClick={e => { if (r.opens === false) return; if ((e.target as HTMLElement).closest('a') && (e.metaKey || e.ctrlKey || e.shiftKey)) return; onToggle(isOpen ? null : r.key) }}>
                 <td style={r.depth ? { paddingLeft: 10 + 26 * r.depth } : undefined}>
-                  <span className="fr-name"><span className="fr-twisty" aria-hidden>{r.opens === false ? '' : isOpen ? '▾' : '▸'}</span>{r.label}{r.after}</span>
+                  <span className="fr-name"><span className="fr-twisty" aria-hidden>{r.opens !== false && <ChevronRight size={14} className={cx('transition-transform motion-reduce:transition-none', isOpen && 'rotate-90')} />}</span>{r.label}{r.after}</span>
                   {r.note && <span className="fr-gwhy">{r.note}</span>}
                 </td>
                 {figures(r.item, true)}

@@ -41,7 +41,7 @@
 @keyframes fr-flash { 0%, 40% { background: var(--color-action-tint); } }
 .fr-fc { font-weight: 600; }
 .fr-dim { color: var(--color-ink-muted); }
-.fr-twisty { display: inline-block; width: 16px; color: var(--color-ink-subtle); font-size: 11px; }
+.fr-twisty { display: inline-flex; width: 16px; color: var(--color-ink-subtle); }
 .fr-name { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
 .fr-name > b, .fr-name > a > span { font-weight: 700; }
 
@@ -103,16 +103,12 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 
 /* My questions (TL-33) */
 .fr-qwrap { position: relative; }
-.fr-count { position: absolute; top: -4px; right: -4px; display: flex; align-items: center; justify-content: center; height: 20px; min-width: 20px; padding: 0 4px; border-radius: 99px; background: var(--color-negative); color: var(--color-action-ink); font-size: 12px; font-weight: 600; line-height: 1; }
-.fr-qmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: 380px; max-width: calc(100vw - 32px); padding: 6px; }
-.fr-qmenu h5 { margin: 4px 10px 6px; font-size: 12px; font-weight: 500; color: var(--color-ink-subtle); }
-.fr-qitem { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 8px 10px; border-radius: 7px; text-align: left; cursor: pointer; color: var(--color-ink); text-decoration: none; }
-.fr-qitem:hover, .fr-qitem:focus-visible { background: var(--color-subtle); }
+.fr-qmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: 380px; }
+.fr-qitem { flex-direction: column; align-items: stretch; gap: 2px; padding-top: 8px; padding-bottom: 8px; white-space: normal; text-decoration: none; }
 .fr-qitem .fr-qtop { display: flex; align-items: center; gap: 8px; width: 100%; font-weight: 700; }
 .fr-qitem .fr-qtop > :nth-child(1):not(.fr-newdot), .fr-qitem .fr-qtop > .fr-newdot + * { flex: 1; }
 .fr-qitem .fr-qtext { font-size: 12.5px; color: var(--color-ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
 .fr-newdot { width: 8px; height: 8px; border-radius: 99px; background: var(--color-negative); flex: none; }
-.fr-qempty { padding: 10px; font-size: 13px; color: var(--color-ink-muted); }
 
 /* Help (TL-35) */
 .fr-help h3 { margin: 24px 0 8px; font-size: 16px; font-weight: 600; }
