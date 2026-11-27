@@ -23,6 +23,17 @@ export function standInHeaderValue(standIns: readonly StandInServed[]): string {
   return encodeURIComponent(JSON.stringify(standIns))
 }
 
+/** The same list again, as one metric of the standard `Server-Timing` header.
+ *  A browser keeps that header with each request it made (Resource Timing), so
+ *  the page shell can also learn of a stand-in from a request that left before
+ *  it could watch the page's `fetch`, such as one made by an earlier script. */
+export const STAND_IN_TIMING = 'featherbase-stand-in'
+
+/** The `Server-Timing` value naming the stand-ins a response's rows came from. */
+export function standInServerTiming(standIns: readonly StandInServed[]): string {
+  return `${STAND_IN_TIMING};desc="${standInHeaderValue(standIns)}"`
+}
+
 const isStandIn = (value: unknown): value is StandInServed => {
   const s = value as StandInServed | null
   return !!s && typeof s.app === 'string' && typeof s.dataset === 'string' && typeof s.loaded_at === 'string'

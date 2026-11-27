@@ -12,7 +12,7 @@ import { assertRowsWritable } from './system-written'
 import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { addressRoutes, servesAppRoot } from './unavailable-address'
-import { STAND_IN_HEADER, standInHeaderValue, unavailableHref } from 'shared'
+import { STAND_IN_HEADER, standInHeaderValue, standInServerTiming, unavailableHref } from 'shared'
 import { runInSession } from './session-context'
 import { VIEW_AS_ENDED, viewAsStillHolds, activeViewAs, endViewAs, endViewAsSession, searchViewAs, sweepExpiredViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
 import { runViewingAs } from './view-as-context'
@@ -803,7 +803,12 @@ app.use('/api/*', rateLimit)
 app.use('/api/*', (c, next) => collectingStandIns(async () => {
   await next()
   const served = standInsServed()
-  if (served.length) c.header(STAND_IN_HEADER, standInHeaderValue(served))
+  if (!served.length) return
+  c.header(STAND_IN_HEADER, standInHeaderValue(served))
+  // The same list as a Server-Timing metric: a browser keeps that header with
+  // every request it made, so the shell also learns of a stand-in from a
+  // request it could not watch (one an earlier script made).
+  c.header('Server-Timing', standInServerTiming(served), { append: true })
 }))
 
 // #1222: View as — the tester's own state, people search, start or switch, and exit.
