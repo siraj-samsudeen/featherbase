@@ -21,17 +21,28 @@ type Context = Record<string, unknown>
 const SAVED = 'Saved'
 const tableUrl = (table: unknown) => `/api/table/${encodeURIComponent(String(table))}`
 
+/**
+ * A save, then the rows read again whether it went through or was refused. A refusal often means the row has
+ * moved on (someone else saved it): the page then shows what is saved now and holds the row's new version, so
+ * saving again is a choice made knowing it, and goes through.
+ */
+async function attempt(save: Promise<unknown>, host: ActionHost): Promise<void> {
+  try {
+    await save
+  } finally {
+    await host.refresh()
+  }
+}
+
 /** Each action of the catalog. An action the catalog gains must be added here. It answers what to tell the person, if anything. */
 const ACTIONS: Record<PageActionName, (context: Context, host: ActionHost) => Promise<string | void> | void> = {
   save_row: async ({ table, row, updated_at, values }, host) => {
-    await api.patch(`${tableUrl(table)}/${encodeURIComponent(String(row))}`, { ...(values as Context), updated_at })
-    await host.refresh()
+    await attempt(api.patch(`${tableUrl(table)}/${encodeURIComponent(String(row))}`, { ...(values as Context), updated_at }), host)
     host.saved(String(table), String(row))
     return SAVED
   },
   create_row: async ({ table, values }, host) => {
-    await api.post(tableUrl(table), values)
-    await host.refresh()
+    await attempt(api.post(tableUrl(table), values), host)
     return SAVED
   },
   open_record: ({ table, row }, host) => host.go(rowHref(String(table), String(row))),

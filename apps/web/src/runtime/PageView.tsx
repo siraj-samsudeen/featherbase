@@ -7,11 +7,11 @@ import { api } from '../lib/api'
 import { CannotShow } from '../components/CannotShow'
 import { searchWithState, stateFromSearch } from './address'
 import { runAction } from './actions'
-import { absolutePath, resolveContext, type PageModel } from './grammar'
+import { absolutePath, resolveContext, type PageModel, type Row } from './grammar'
 import { PartView } from './parts'
-import { PageRuntimeProvider, type PageRuntime } from './runtime'
+import { PageRuntimeProvider, scopeAt, type PageRuntime } from './runtime'
 import { columnsRead, forgetTyped, typeInto, withTyped, type Typed } from './sources'
-import { problemWords, useSources } from './use-sources'
+import { problemLines, useSources } from './use-sources'
 
 // #1410: a runtime page. A page is a screen saved as data (a row of the Page
 // Table); this draws it inside the Admin shell from the shared parts. Its state
@@ -53,25 +53,27 @@ function DrawnPage({ name, definition, search, onSearch }: { name: string; defin
   const [typed, setTyped] = useState<Typed>({})
   const parts = useMemo(() => new Map(definition.components.map((part) => [part.id, part])), [definition])
 
-  const model: PageModel = {
-    state,
-    data: Object.fromEntries(Object.entries(sources).map(([source, read]) => [source, read.status === 'ready' ? withTyped(read.rows, typed[source]) : []])),
-  }
+  // Two readings of the same rows: as the server last answered, and with what was typed laid over them.
+  const rowsOf = (lay: (source: string, rows: Row[]) => Row[]) =>
+    Object.fromEntries(Object.entries(sources).map(([source, read]) => [source, read.status === 'ready' ? lay(source, read.rows) : []]))
+  const model: PageModel = { state, data: rowsOf((_, rows) => rows) }
+  const typedModel: PageModel = { state, data: rowsOf((source, rows) => withTyped(rows, typed[source])) }
   const setState = (values: Search) => onSearch(searchWithState(defaults, search, values))
   const runtime: PageRuntime = {
     definition,
     parts,
     model,
+    typed: typedModel,
     sources,
     write: (path, value, place) => {
-      const at = absolutePath(path, { model, ...place })
+      const at = absolutePath(path, scopeAt(typedModel, place))
       const key = /^\/state\/([^/]+)$/.exec(at)?.[1]
       if (key) setState({ [key]: value })
-      else setTyped((before) => typeInto(before, model.data, at, value))
+      else setTyped((before) => typeInto(before, typedModel.data, at, value))
     },
     fire: async (event, place) => {
       try {
-        const said = await runAction(event.name, resolveContext(event, { model, ...place }), {
+        const said = await runAction(event.name, resolveContext(event, scopeAt(typedModel, place)), {
           refresh,
           saved: (table, row) => setTyped((before) => forgetTyped(before, Object.keys(data).filter((source) => (data[source] as { table?: string }).table === table), row)),
           // The router writes the query string itself, as it does for every other address.
@@ -81,7 +83,7 @@ function DrawnPage({ name, definition, search, onSearch }: { name: string; defin
         if (said) toast({ tone: 'positive', message: said })
       } catch (error) {
         // The server's own words; what was typed stays on the page.
-        toast({ tone: 'negative', message: problemWords(error) })
+        toast({ tone: 'negative', message: problemLines(error).map((line) => <p key={line}>{line}</p>) })
       }
     },
   }

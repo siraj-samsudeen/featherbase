@@ -8,9 +8,10 @@ import type { SourceState } from './runtime'
 // list API as the signed-in person, so they see only the rows they may read;
 // a sample source is the rows as written in the page.
 
-/** Why something could not be done, in the server's own words when it gave any. */
-export function problemWords(error: unknown): string {
-  return error instanceof ApiError ? error.message : 'The server didn’t answer. Try again in a moment.'
+/** Why something could not be done, in the server's own words when it gave any: its message, then what it said about each column, by the column's name. */
+export function problemLines(error: unknown): string[] {
+  if (!(error instanceof ApiError)) return ['The server didn’t answer. Try again in a moment.']
+  return [error.message, ...Object.entries(error.fields ?? {}).map(([column, why]) => `${column}: ${why}`)]
 }
 
 const isTable = (source: PageSource): source is PageTableSource => 'table' in source
@@ -35,7 +36,7 @@ export function useSources(page: string, data: Record<string, PageSource>, state
   tables.forEach(([name], i) => {
     const query = read[i]!
     sources[name] = query.data ? { status: 'ready', rows: query.data.data, total: query.data.total }
-      : query.isError ? { status: 'failed', message: problemWords(query.error) }
+      : query.isError ? { status: 'failed', message: problemLines(query.error).join(' ') }
       : { status: 'loading' }
   })
   return { sources, refresh: () => queryClient.invalidateQueries({ queryKey: ['page-source', page] }) }

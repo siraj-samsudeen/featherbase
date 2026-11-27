@@ -33,6 +33,12 @@ export function asNumber(value: unknown): number | null {
   return null
 }
 
+/** What a box gives the page for the text typed into it: a number box a number, or nothing when it is empty. */
+export function asTyped(text: string, kind: unknown): string | number | null {
+  if (kind !== 'number') return text
+  return text === '' ? null : Number(text)
+}
+
 /** A number with its thousands separated: to `decimals` places when given, else to at most two. */
 export function formatNumber(value: unknown, decimals?: unknown): string {
   const number = asNumber(value)

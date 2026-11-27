@@ -4,8 +4,8 @@ import type { ChildList, PagePart, PagePartName, PageTableBand, PageTableColumn,
 import { BandedTable, Button, cx, Field, fmtCount, Notice, PageHeader, RecordLink, Segmented, Skeleton, TextInput, type BandedColumn } from '@featherbase/shop-floor'
 import { usePageTitle } from '../lib/page-title'
 import { useCanReadTable } from '../lib/session'
-import { readPath, resolveValue, type Row } from './grammar'
-import { TOP, usePageRuntime, type Place, type PageEvent } from './runtime'
+import { asTyped, readPath, resolveValue, type Row } from './grammar'
+import { scopeAt, TOP, usePageRuntime, type Place, type PageEvent } from './runtime'
 import { rowKey, sourcesRead } from './sources'
 import { formatCell, groupRows, sumOf, type PlacedRow } from './table'
 
@@ -14,10 +14,15 @@ import { formatCell, groupRows, sumOf, type PlacedRow } from './table'
 
 interface PartProps { part: PagePart; place: Place }
 
-/** A setting's value where the part is drawn. */
+/** A setting's value where the part is drawn, as last read from the server: what a part shows. */
 function useResolve(place: Place) {
   const { model } = usePageRuntime()
-  return (value: unknown) => resolveValue(value, { model, ...place })
+  return (value: unknown) => resolveValue(value, scopeAt(model, place))
+}
+/** The value a control is bound to, with what was typed laid over what was read: what a box or a toggle holds. */
+function useBound(place: Place) {
+  const { typed } = usePageRuntime()
+  return (value: unknown) => resolveValue(value, scopeAt(typed, place))
 }
 const asText = (value: unknown) => (value === null || value === undefined ? '' : String(value))
 
@@ -26,7 +31,7 @@ function Children({ of, place }: { of: ChildList; place: Place }) {
   const { model } = usePageRuntime()
   if (Array.isArray(of)) return <>{of.map((id) => <PartView key={id} id={id} place={place} />)}</>
   const rows = readPath(of.path, { model }) as Row[]
-  return <>{rows.map((row, index) => <PartView key={rowKey(row, index)} id={of.componentId} place={{ row, at: `${of.path}/${index}` }} />)}</>
+  return <>{rows.map((row, index) => <PartView key={rowKey(row, index)} id={of.componentId} place={{ at: `${of.path}/${index}` }} />)}</>
 }
 
 function PagePartView({ part, place }: PartProps) {
@@ -93,10 +98,15 @@ function TablePart({ part, place }: PartProps) {
   const rows = (resolve(part.rows) as Row[]).map((row, index): PlacedRow => ({ row, index }))
   const shown = (part.columns as PageTableColumn[]).filter((column) => column.visible === undefined || Boolean(resolve(column.visible)))
   const byId = new Map(shown.map((column) => [column.id, column]))
-  const columns: BandedColumn[] = shown.map((column) => ({ key: column.id, header: asText(resolve(column.header)), align: column.align }))
+  const columns: BandedColumn[] = shown.map((column, i) => ({
+    key: column.id, header: asText(resolve(column.header)), align: column.align,
+    // Controls drawn in each row (a box and its buttons) need more room than a figure; the first column names the row.
+    width: column.cell && i > 0 ? 3 : undefined,
+  }))
   /** A row's own place: its values are what a path with no leading slash reads, and where a typed value is written. */
-  const placeOf = ({ row, index }: PlacedRow): Place => ({ row, at: `${from}/${index}` })
-  const valueIn = (placed: PlacedRow, column: PageTableColumn) => resolveValue(column.value, { model, ...placeOf(placed) })
+  const placeOf = ({ index }: PlacedRow): Place => ({ at: `${from}/${index}` })
+  // A column's value, and so a group's total, is the saved one: what is typed into a box changes neither.
+  const valueIn = (placed: PlacedRow, column: PageTableColumn) => resolveValue(column.value, { model, row: placed.row, at: placeOf(placed).at })
   const cell = (placed: PlacedRow, { key }: BandedColumn) => {
     const column = byId.get(key)!
     return column.cell ? <PartView id={column.cell} place={placeOf(placed)} /> : formatCell(valueIn(placed, column), column.format)
@@ -128,30 +138,28 @@ function TablePart({ part, place }: PartProps) {
 
 function TogglePart({ part, place }: PartProps) {
   const { write } = usePageRuntime()
-  const resolve = useResolve(place)
+  const bound = useBound(place)
   return (
     <Segmented label={part.label as string} options={part.options as { value: string; label: string }[]}
-      value={asText(resolve(part.value))} onChange={(value) => write((part.value as PathRef)['@path'], value, place)} />
+      value={asText(bound(part.value))} onChange={(value) => write((part.value as PathRef)['@path'], value, place)} />
   )
 }
 
 function InputPart({ part, place }: PartProps) {
   const { write } = usePageRuntime()
   const resolve = useResolve(place)
+  const bound = useBound(place)
   const number = part.kind === 'number'
   const label = part.label as string
   const box = (
     <TextInput type={number ? 'number' : 'text'} className={number ? 'w-28' : 'w-56'} placeholder={part.placeholder === undefined ? undefined : asText(resolve(part.placeholder))}
       // In a table's row the box is named for assistive tech only: the column's header already says what it is.
-      aria-label={place.row ? label : undefined}
-      value={asText(resolve(part.value))}
-      // Typing changes the page's own copy; nothing reaches the server until a button saves it.
-      onChange={(event) => {
-        const typed = event.target.value
-        write((part.value as PathRef)['@path'], number ? (typed === '' ? null : Number(typed)) : typed, place)
-      }} />
+      aria-label={place.at ? label : undefined}
+      value={asText(bound(part.value))}
+      // Typing changes the box's own copy; nothing else on the page changes, and nothing reaches the server, until a button saves it.
+      onChange={(event) => write((part.value as PathRef)['@path'], asTyped(event.target.value, part.kind), place)} />
   )
-  return place.row ? box : <Field label={label}>{box}</Field>
+  return place.at ? box : <Field label={label}>{box}</Field>
 }
 
 function ButtonPart({ part, place }: PartProps) {
