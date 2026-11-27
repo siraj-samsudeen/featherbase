@@ -1094,10 +1094,7 @@ function PermissionsPage() {
 // an escaped JSON string (#1419); a string, as older links wrote it, still parses.
 function parsePrefill(raw: unknown): Record<string, unknown> | undefined {
   let value = raw
-  if (typeof value === 'string') {
-    if (!value) return undefined
-    try { value = JSON.parse(value) } catch { return undefined }
-  }
+  if (typeof value === 'string') try { value = JSON.parse(value) } catch { return undefined }
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 }
 
