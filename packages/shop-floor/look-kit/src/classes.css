@@ -315,6 +315,7 @@ input:is([type='checkbox'], [type='radio']) { accent-color: var(--color-action);
   font-weight: 500;
 }
 .fb-tabbar > a:hover { color: var(--color-ink); }
+.fb-tabbar > a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 .fb-tabbar > a[aria-current='page'] { border-color: var(--color-action); color: var(--color-action); font-weight: 600; }
 .fb-tabbar > a > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -352,7 +353,10 @@ input:is([type='checkbox'], [type='radio']) { accent-color: var(--color-action);
 .fb-table tbody tr:hover > :is(td, th),
 .fb-table tbody tr[aria-selected='true'] > :is(td, th) { background: var(--color-hover); }
 .fb-table :is(th, td).fb-num { text-align: right; }
-.fb-table--compact tbody :is(td, th) { height: 2rem; font-size: 13px; line-height: 1.5; }
+.fb-table thead th.fb-num { font-variant-numeric: normal; }
+/* Compact Rows is the Admin list's table, whose lines are a little closer than a DataList's. */
+.fb-table--compact { line-height: calc(1.25 / 0.875); }
+.fb-table--compact tbody :is(td, th) { height: 2rem; font-size: 13px; line-height: inherit; }
 .fb-table--compact tbody tr:nth-child(even) > :is(td, th) { background: var(--color-subtle); }
 .fb-table--compact tbody tr:hover > :is(td, th),
 .fb-table--compact tbody tr[aria-selected='true'] > :is(td, th) { background: var(--color-hover); }
@@ -559,7 +563,8 @@ a.fb-record-link:hover { text-decoration: underline; }
 /* ---- Pattern 1: a table with grouped column bands ----
    A first header row names each group of columns. Groups are set apart by a gap of
    the page's own colour, never a line: put fb-band-start on the first cell of each
-   group, in every row. */
+   group, in every row. A column outside every group takes fb-band-none in both
+   header rows (and fb-band-start as well when it follows a group). */
 .fb-table--banded thead tr.fb-bands th {
   height: 1.75rem;
   border-radius: 0.5rem 0.5rem 0 0;
@@ -569,11 +574,11 @@ a.fb-record-link:hover { text-decoration: underline; }
   text-align: center;
 }
 .fb-table--banded thead tr.fb-bands th.fb-band-none { background: transparent; }
+/* Under a band, a column header is square, with the band's two bottom corners rounded. */
 .fb-table--banded thead tr.fb-bands + tr th { border-radius: 0; }
-.fb-table--banded thead tr.fb-bands + tr th:first-child { border-radius: 0.5rem 0 0 0.5rem; }
 .fb-table--banded thead tr.fb-bands + tr th.fb-band-start { border-bottom-left-radius: 0.5rem; }
-.fb-table--banded thead tr.fb-bands + tr th.fb-band-end,
-.fb-table--banded thead tr.fb-bands + tr th:last-child { border-bottom-right-radius: 0.5rem; }
+.fb-table--banded thead tr.fb-bands + tr th:is(:has(+ .fb-band-start), :last-child) { border-bottom-right-radius: 0.5rem; }
+.fb-table--banded thead tr.fb-bands + tr th.fb-band-none { border-radius: 0.5rem; }
 .fb-table--banded thead th.fb-band-start { border-left: 0.75rem solid transparent; background-clip: padding-box; }
 .fb-table--banded tbody :is(td, th).fb-band-start { padding-left: 1.5rem; }
 
@@ -651,7 +656,7 @@ a.fb-record-link:hover { text-decoration: underline; }
 .fb-donut-wrap { position: relative; display: inline-grid; flex-shrink: 0; place-items: center; }
 .fb-donut-wrap > .fb-donut-label { position: absolute; text-align: center; font-size: 0.75rem; line-height: 1rem; color: var(--color-ink-muted); }
 .fb-donut-wrap > .fb-donut-label strong { display: block; font-size: 1rem; line-height: 1.5rem; font-weight: 600; color: var(--color-ink); font-variant-numeric: tabular-nums; }
-.fb-legend { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 0.375rem 0.75rem; font-size: 0.875rem; line-height: 1.25rem; }
+.fb-legend { display: grid; grid-template-columns: auto minmax(0, max-content) auto auto; align-items: center; justify-content: start; gap: 0.375rem 0.75rem; font-size: 0.875rem; line-height: 1.25rem; }
 .fb-legend-swatch { width: 0.625rem; height: 0.625rem; border-radius: 9999px; background: var(--fb-series, var(--color-missing)); }
 .fb-built-from { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; }
 .fb-built-from-detail { display: flex; min-width: 14rem; flex: 1; flex-direction: column; gap: 0.5rem; }

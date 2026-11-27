@@ -129,7 +129,7 @@
             <h2 class="fb-card-title" id="card-1">Checklists</h2>
             <button type="button" class="fb-button fb-button--quiet">See all</button>
           </header>
-          <p class="fb-card-body fb-text">Opening checklist for 1501 Lakeside, due by 10:00.</p>
+          <p class="fb-card-body fb-text">Opening checklist for <a class="fb-record-link" href="#" data-table="Store" data-row="1501"><span class="fb-record-name">1501 Lakeside</span></a>, due by 10:00.</p>
         </section>
       </div>
       <pre class="spec-code"></pre>
@@ -203,7 +203,7 @@
             <button type="button" role="tab" aria-selected="false" aria-controls="tab-notes">Notes</button>
           </div>
         </div>
-        <div class="fb-tabpanel fb-text" role="tabpanel" id="tab-details">1501 Lakeside · opened 05-Feb-2019 · Area Manager: Meena S</div>
+        <div class="fb-tabpanel fb-text" role="tabpanel" id="tab-details"><a class="fb-record-link" href="#" data-table="Store" data-row="1501"><span class="fb-record-name">1501 Lakeside</span></a> · opened 05-Feb-2019 · Area Manager: <a class="fb-record-link" href="#" data-table="Person" data-row="TN-10040"><span class="fb-record-name">Meena Sundar</span> <span class="fb-record-detail">· TN-10040 · Area Manager · South Cluster</span></a></div>
         <div class="fb-tabpanel fb-text" role="tabpanel" id="tab-staff" hidden>18 people on the roster this week.</div>
         <div class="fb-tabpanel fb-text" role="tabpanel" id="tab-notes" hidden>No notes yet.</div>
       </div>
@@ -244,7 +244,7 @@
             </thead>
             <tbody>
               <tr>
-                <th scope="row">Men Casual Shirt</th>
+                <th scope="row"><a class="fb-record-link" href="#" data-table="Subcategory" data-row="SC101"><span class="fb-record-name">Men Casual Shirt</span></a></th>
                 <td class="fb-num"><span class="fb-pill fb-pill--negative">74.7%</span></td>
                 <td class="fb-num">₹1.62 L</td>
                 <td class="fb-num">₹1.21 L</td>
@@ -252,7 +252,7 @@
                 <td class="fb-num">269</td>
               </tr>
               <tr>
-                <th scope="row">Men T Shirt</th>
+                <th scope="row"><a class="fb-record-link" href="#" data-table="Subcategory" data-row="SC102"><span class="fb-record-name">Men T Shirt</span></a></th>
                 <td class="fb-num"><span class="fb-pill fb-pill--negative">62.4%</span></td>
                 <td class="fb-num">₹93,000</td>
                 <td class="fb-num">₹58,000</td>
@@ -260,7 +260,7 @@
                 <td class="fb-num">129</td>
               </tr>
               <tr>
-                <th scope="row">Men Formal Shirt</th>
+                <th scope="row"><a class="fb-record-link" href="#" data-table="Subcategory" data-row="SC103"><span class="fb-record-name">Men Formal Shirt</span></a></th>
                 <td class="fb-num"><span class="fb-pill fb-pill--positive">102.9%</span></td>
                 <td class="fb-num">₹1.38 L</td>
                 <td class="fb-num">₹1.42 L</td>
@@ -507,7 +507,7 @@
     <!-- ============================================================ -->
     <section class="spec" id="banded-table" data-title="Banded Table" data-pattern>
       <h2 class="fb-section-title">Pattern: A Table With Grouped Column Bands <span class="fb-tag">not yet a shared component</span></h2>
-      <p class="fb-text fb-muted">A first header row names each group of columns. Groups are set apart by a gap of the page's own colour, never a line: put <code>fb-band-start</code> on the first cell of each group in every row, and <code>fb-band-end</code> on the last header cell of a group. A column outside every group gets <code>fb-band-none</code> in the first row; when it comes after the groups, give its cells <code>fb-band-start</code> too, so the gap closes the last group.</p>
+      <p class="fb-text fb-muted">A first header row names each group of columns. Groups are set apart by a gap of the page's own colour, never a line: put <code>fb-band-start</code> on the first cell of each group in every row. A column outside every group gets <code>fb-band-none</code> in both header rows; when it comes after the groups, give its cells <code>fb-band-start</code> too, so the gap closes the last group.</p>
       <div class="spec-demo">
         <div class="fb-table-scroll">
           <table class="fb-table fb-table--banded">
@@ -519,13 +519,13 @@
                 <th colspan="2" class="fb-band-start">Last Year</th>
               </tr>
               <tr>
-                <th scope="col">Section</th>
+                <th scope="col" class="fb-band-none">Section</th>
                 <th scope="col" class="fb-num fb-band-start">Value</th>
-                <th scope="col" class="fb-num fb-band-end">Pieces</th>
+                <th scope="col" class="fb-num">Pieces</th>
                 <th scope="col" class="fb-num fb-band-start">Value</th>
-                <th scope="col" class="fb-num fb-band-end">Change</th>
+                <th scope="col" class="fb-num">Change</th>
                 <th scope="col" class="fb-num fb-band-start">Value</th>
-                <th scope="col" class="fb-num fb-band-end">Change</th>
+                <th scope="col" class="fb-num">Change</th>
               </tr>
             </thead>
             <tbody>

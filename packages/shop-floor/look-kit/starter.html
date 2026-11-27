@@ -229,15 +229,15 @@
         <th class="fb-band-none"></th>
         <th colspan="2" class="fb-band-start">Forecast</th>
         ${shown.map((c) => `<th colspan="2" class="fb-band-start">${c.label}</th>`).join('')}
-        <th class="fb-band-none"></th>
+        <th class="fb-band-start fb-band-none"></th>
       </tr>`
     const heads = `
       <tr>
-        <th scope="col">Section</th>
+        <th scope="col" class="fb-band-none">Section</th>
         <th scope="col" class="fb-num fb-band-start">${unit(m)}</th>
-        <th scope="col" class="fb-num fb-band-end">Share</th>
-        ${shown.map(() => `<th scope="col" class="fb-num fb-band-start">${unit(m)}</th><th scope="col" class="fb-num fb-band-end">Change</th>`).join('')}
-        <th scope="col" class="fb-band-start">Answer</th>
+        <th scope="col" class="fb-num">Share</th>
+        ${shown.map(() => `<th scope="col" class="fb-num fb-band-start">${unit(m)}</th><th scope="col" class="fb-num">Change</th>`).join('')}
+        <th scope="col" class="fb-band-start fb-band-none">Answer</th>
       </tr>`
 
     const rows = sections.map((s) => {
