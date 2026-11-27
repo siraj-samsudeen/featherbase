@@ -44,6 +44,7 @@ SEEDS.forEach(([name, category, l28, asp, ly28, ly, aspLy, growth, step, w, adj]
     forecast_value_before_tax: fc, forecast_qty: q1(fc / (asp * 0.97)),
     ...Object.fromEntries(own.map((o, k) => [`own_value_b${k + 1}`, r(o)])),
     ...Object.fromEntries(adds.map((a, k) => [`adds_value_b${k + 1}`, a])),
+    ...Object.fromEntries(w.map((x, k) => [`weight_b${k + 1}`, x])),
     seasonal_factor: step, growth_factor: growth,
     from_recent_selling: r(adds[2] + adds[3] + adds[4] + b6Level), december_step_on_top: r(adds[5] - b6Level),
     from_last_year: adds[0] + adds[1], adjustments: adj,

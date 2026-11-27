@@ -7,8 +7,10 @@ import { fmtCount, fmtINR } from '@featherbase/shop-floor/format'
 export type BasisCode = 'B1' | 'B2' | 'B3' | 'B4' | 'B5' | 'B6'
 export const BASIS_CODES: BasisCode[] = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6']
 
-/** One base of a line's forecast: its own December, the share of it Feather Forecast used, and what it adds. */
-export interface Base { code: BasisCode; own: number | null; w: number | null; adds: number }
+/** One base of a subcategory's forecast: its own month, Feather Forecast's fitted month weight for it (`mw`), the
+ *  share of its own month it actually added (`w`, adds ÷ own; the day's weights differ on Sundays, salary days and
+ *  Christmas), and what it adds. */
+export interface Base { code: BasisCode; own: number | null; w: number | null; mw: number | null; adds: number }
 
 /** One subcategory of the section for the month: Feather Forecast, its parts, and the sales it is read against. */
 export interface Line {
@@ -63,7 +65,8 @@ export function linesFrom({ lines, sales, plans, others }: CopiedRows, store: st
     const bases = BASIS_CODES.map((code, i): Base => {
       const own = row[`own_value_b${i + 1}`], adds = n(row[`adds_value_b${i + 1}`])
       // the weight this base actually carried over the month: what it adds ÷ its own December
-      return { code, own: own == null || own === '' ? null : n(own), w: n(own) ? Math.round(adds / n(own) * 1000) / 1000 : null, adds }
+      const mw = row[`weight_b${i + 1}`]
+      return { code, own: own == null || own === '' ? null : n(own), w: n(own) ? Math.round(adds / n(own) * 1000) / 1000 : null, mw: mw == null || mw === '' ? null : n(mw), adds }
     })
     const l28 = v('last_28_days'), l28q = q('last_28_days')
     return {
@@ -96,7 +99,7 @@ export function combine(members: Line[], index: number, name?: string): Group {
   const sum = Object.fromEntries(SUMMED.map(k => [k, ms.reduce((t, l) => t + l[k], 0)])) as Record<typeof SUMMED[number], number>
   const byCode = new Map<BasisCode, Base>()
   for (const m of ms) for (const b of m.bases) {
-    const o = byCode.get(b.code) ?? { code: b.code, own: 0, w: null, adds: 0 }
+    const o = byCode.get(b.code) ?? { code: b.code, own: 0, w: null, mw: null, adds: 0 }
     o.own = (o.own ?? 0) + (b.own ?? 0); o.adds += b.adds
     byCode.set(b.code, o)
   }
@@ -166,8 +169,12 @@ export const BASE_INFO: Record<BasisCode, string> = {
   B1: 'Same date last year × growth', B2: 'Same festival day last year × growth', B3: 'Last 28 days, per day × 31',
   B4: 'Last four same weekdays', B5: 'Same date last month', B6: 'Last 28 days × December step',
 }
+/** A base's weight as shown: Feather Forecast's fitted month weight, else (a Run without it) adds ÷ own. */
+export const baseWeight = (b: Base) => b.mw ?? b.w
 /** The weight of some bases together; null for a group (its members' weights differ). */
-export const weightOf = (l: Line | Group, codes: BasisCode[]) => ('members' in l ? null : l.bases.filter(b => codes.includes(b.code)).reduce((t, b) => t + (b.w ?? 0), 0))
+export const weightOf = (l: Line | Group, codes: BasisCode[]) => ('members' in l ? null : l.bases.filter(b => codes.includes(b.code)).reduce((t, b) => t + (baseWeight(b) ?? 0), 0))
+/** A part's share of the forecast, signed, so the shares add up to 100% (a negative adjustment shows as −16%). */
+export const signedShare = (v: number, total: number) => { const p = Math.round(v / total * 100); return `${p < 0 ? '−' : ''}${Math.abs(p)}%` }
 
 /** TL-28 December rise: last year's December rate per day against the 28 days before it, and the note when it strays from the store's. */
 export function decemberRise(l: Line | Group, step: number) {

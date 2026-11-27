@@ -893,6 +893,48 @@
                 "column_type": "Text",
                 "description": "The org chart's Section Subcategory row ids already used for this subcategory at the store, one a line, so a new row takes a free one.",
                 "read_only": true
+              },
+              {
+                "column_name": "weight_b1",
+                "label": "Same Date Last Year (B1): Weight",
+                "column_type": "Float",
+                "description": "Feather Forecast's fitted weight for base B1 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+                "read_only": true
+              },
+              {
+                "column_name": "weight_b2",
+                "label": "Same Festival Day Last Year (B2): Weight",
+                "column_type": "Float",
+                "description": "Feather Forecast's fitted weight for base B2 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+                "read_only": true
+              },
+              {
+                "column_name": "weight_b3",
+                "label": "Last 28 Days (B3): Weight",
+                "column_type": "Float",
+                "description": "Feather Forecast's fitted weight for base B3 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+                "read_only": true
+              },
+              {
+                "column_name": "weight_b4",
+                "label": "Last Four Same Weekdays (B4): Weight",
+                "column_type": "Float",
+                "description": "Feather Forecast's fitted weight for base B4 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+                "read_only": true
+              },
+              {
+                "column_name": "weight_b5",
+                "label": "Same Date Last Month (B5): Weight",
+                "column_type": "Float",
+                "description": "Feather Forecast's fitted weight for base B5 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+                "read_only": true
+              },
+              {
+                "column_name": "weight_b6",
+                "label": "Seasonal Step (B6): Weight",
+                "column_type": "Float",
+                "description": "Feather Forecast's fitted weight for base B6 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+                "read_only": true
               }
             ],
             "title_column": "subcategory_name"
@@ -2579,6 +2621,48 @@
           "label": "Section Subcategory Rows",
           "column_type": "Text",
           "description": "The org chart's Section Subcategory row ids already used for this subcategory at the store, one a line, so a new row takes a free one.",
+          "read_only": true
+        },
+        {
+          "column_name": "weight_b1",
+          "label": "Same Date Last Year (B1): Weight",
+          "column_type": "Float",
+          "description": "Feather Forecast's fitted weight for base B1 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+          "read_only": true
+        },
+        {
+          "column_name": "weight_b2",
+          "label": "Same Festival Day Last Year (B2): Weight",
+          "column_type": "Float",
+          "description": "Feather Forecast's fitted weight for base B2 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+          "read_only": true
+        },
+        {
+          "column_name": "weight_b3",
+          "label": "Last 28 Days (B3): Weight",
+          "column_type": "Float",
+          "description": "Feather Forecast's fitted weight for base B3 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+          "read_only": true
+        },
+        {
+          "column_name": "weight_b4",
+          "label": "Last Four Same Weekdays (B4): Weight",
+          "column_type": "Float",
+          "description": "Feather Forecast's fitted weight for base B4 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+          "read_only": true
+        },
+        {
+          "column_name": "weight_b5",
+          "label": "Same Date Last Month (B5): Weight",
+          "column_type": "Float",
+          "description": "Feather Forecast's fitted weight for base B5 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
+          "read_only": true
+        },
+        {
+          "column_name": "weight_b6",
+          "label": "Seasonal Step (B6): Weight",
+          "column_type": "Float",
+          "description": "Feather Forecast's fitted weight for base B6 over the month (forecast_weights.weight_value). The day's weights differ on Sundays, salary days and Christmas.",
           "read_only": true
         }
       ],
