@@ -83,6 +83,15 @@ in-memory client. Rejected: adding both to `mcp.ts`, mixing two jobs in one file
 A refused tool call goes back to the model as its result so it can try another way. If the steps
 run out after a refusal, the person is told its reason. Rejected: #1377's fixed 2 retries.
 
+### The page carries the answer from think to ask, unsigned for now
+
+`think` returns the answer; the page passes it to the `ask` action as `{ kind, text }` beside the
+question, and `ask` saves it after checking its shape (kind `answer` or `cannot`, text not blank,
+at most 20000 characters). It is not signed until 2.4 decides (Open Questions): until then a
+person could save any answer, but only in their own chat, which nobody else reads (Mohammad,
+27-Nov-2026). Rejected: `ask` running the agent itself, which holds the transaction open through
+the model's slow thinking.
+
 ### One OpenAI-style adapter for the model
 
 Gemini, Groq and later OpenRouter all accept OpenAI-style chat calls with tools, so one adapter set
