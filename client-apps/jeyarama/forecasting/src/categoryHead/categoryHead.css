@@ -2,6 +2,8 @@
    no heat map) and the two ranked lists side by side. Everything else comes from forecasting.css and Shop Floor. */
 .ch-queue { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 16px; font-size: 13px; }
 .ch-queue a { font-weight: 500; }
+/* the behind-AOP tile's figure is words ("2 of 5 stores"): it wraps where a narrow tile has no room */
+.fr-kpi-value.ch-kpi-wrap { white-space: normal; text-overflow: clip; }
 .ch-empty { margin-top: 12px; padding: 14px 16px; border-radius: 12px; background: var(--color-subtle); font-size: 13.5px; color: var(--color-ink-muted); }
 
 /* the store map: categories down, stores across, each cell tinted by the gap */

@@ -120,7 +120,7 @@ export function CategoryHeadReview({ hrefFor, openLine, onOpenLine }: ChainPageP
   const behind = behindCounts(lines)
   const tiles = (
     <KpiTiles total={combine(lines, -1)} header={header} approvedDelta={review.approvedDelta(lines)}
-      extra={<Tile name="More than 10% behind AOP" value={`${behind.stores.behind} of ${behind.stores.of} stores`} testId="kpi-behind"
+      extra={<Tile name="More than 10% behind AOP" value={`${behind.stores.behind} of ${behind.stores.of} stores`} testId="kpi-behind" valueClass="ch-kpi-wrap"
         lines={[`${behind.categories.behind} of ${behind.categories.of} categories`, `${behind.subcategories.behind} of ${behind.subcategories.of} subcategories planned at ₹1 L or more`]} />} />
   )
   const toolbar = (
