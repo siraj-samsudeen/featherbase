@@ -4,7 +4,7 @@
 // (madeUpChain.ts) build their Runs the same way. No real store, person or figure.
 
 /** name, category, last 28 days ₹, its ASP, same 28 days last year ₹, last December ₹, last December's ASP,
- *  growth, the line's December step, weights B1..B6, adjustments ₹ */
+ *  growth, the line's December step, weights B1..B6, rebalanced within category ₹ */
 export type Seed = [string, string, number, number, number, number, number, number, number, number[], number]
 
 /** Where a seed sits: the line's key in the warehouse, and the columns copied beside it. */
@@ -20,13 +20,15 @@ export interface Rows {
 const r = (n: number) => Math.round(n)
 const q1 = (n: number) => Math.round(n * 10) / 10
 
-/** Appends one subcategory's rows to `out`. `i` varies the plan and the other models a little from line to line. */
-export function addSeed(out: Rows, [name, category, l28, asp, ly28, ly, aspLy, growth, step, w, adj]: Seed, place: SeedPlace, i: number) {
+/** Appends one subcategory's rows to `out`. `i` varies the plan and the other models a little from line to line;
+ *  `price` is its price and rounding ₹, the second kind of adjustment beside the seed's rebalancing. */
+export function addSeed(out: Rows, [name, category, l28, asp, ly28, ly, aspLy, growth, step, w, rebal]: Seed, place: SeedPlace, i: number, price = 0) {
   const { run, store_code: STORE, store_name, section_name, region_name, floor_name, floor_order, ...merch } = place
   const line = { store_code: STORE, ...merch, category_name: category, subcategory_name: name }
   const b3 = l28 / 28 * 31
   const own = [ly * growth, ly * growth * 1.008, b3, b3 * 0.995, b3 * 0.985, b3 * step]
   const adds = own.map((o, k) => r(o * w[k]))
+  const adj = rebal + price
   const fc = adds.reduce((a, b) => a + b, 0) + adj
   const b6Level = adds[5] / step
   out.lines.push({
@@ -40,6 +42,7 @@ export function addSeed(out: Rows, [name, category, l28, asp, ly28, ly, aspLy, g
     seasonal_factor: step, growth_factor: growth,
     from_recent_selling: r(adds[2] + adds[3] + adds[4] + b6Level), december_step_on_top: r(adds[5] - b6Level),
     from_last_year: adds[0] + adds[1], adjustments: adj,
+    rebalanced_within_category: rebal, price_and_rounding: price,
   })
   const n91 = l28 * 3.05
   const windows: [string, string, string, number, number][] = [

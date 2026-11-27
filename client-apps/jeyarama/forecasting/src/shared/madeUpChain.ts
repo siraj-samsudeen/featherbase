@@ -83,6 +83,8 @@ export function madeUpChain() {
       teamLeader: TEAM_LEADERS[(si + STORES.indexOf(st) * 5) % TEAM_LEADERS.length] }))
     for (const [division, subdivision, category, subs] of MERCH) {
       const sec = SECTIONS.find(s => s.categories.includes(category))!
+      // the category's seeds first: its rebalancing (the seeds' last number) nets to zero across them
+      const seeds: [Seed, number][] = []
       for (const [name, size, asp] of subs) {
         const h = (k: string) => hash(`${st.code}|${name}|${k}`)
         // a store does not stock every small subcategory
@@ -96,11 +98,15 @@ export function madeUpChain() {
         const w6 = 0.45 + h('w6') * 0.3, w1 = (1 - w6) * (0.3 + h('w1') * 0.4)
         const rest = (1 - w6 - w1) / 4
         const weights = [Math.round(w1 * 100) / 100, Math.round(rest * 100) / 100, Math.round(rest * 100) / 100, Math.round(rest * 100) / 100, Math.round(rest * 100) / 100, Math.round(w6 * 100) / 100]
-        const adj = h('adj') < 0.2 ? Math.round(h('adj2') * 2000) : 0
-        const seed: Seed = [name, category, l28, asp, ly28, ly, Math.round(asp * (0.9 + h('asp') * 0.15)), growth, step, weights, adj]
-        addSeed(rows, seed, { run: RUN, store_code: st.code, store_name: st.name, division_name: division, subdivision_name: subdivision,
-          section_name: sec.name, region_name: st.region, floor_name: sec.floor, floor_order: sec.order }, i++)
+        const rebal = h('adj') < 0.35 ? Math.round((h('adj2') - 0.5) * 4000) : 0
+        // price and rounding: a few rupees of whole-rupee rounding
+        const price = Math.round(h('price') * 6) - 3
+        seeds.push([[name, category, l28, asp, ly28, ly, Math.round(asp * (0.9 + h('asp') * 0.15)), growth, step, weights, rebal], price])
       }
+      if (seeds.length > 1) { const last = seeds[seeds.length - 1][0]; last[10] = -seeds.slice(0, -1).reduce((t, [x]) => t + x[10], 0) }
+      else if (seeds.length === 1) seeds[0][0][10] = 0
+      for (const [seed, price] of seeds) addSeed(rows, seed, { run: RUN, store_code: st.code, store_name: st.name, division_name: division, subdivision_name: subdivision,
+        section_name: sec.name, region_name: st.region, floor_name: sec.floor, floor_order: sec.order }, i++, price)
     }
   }
   const copied = rows as unknown as CopiedRows

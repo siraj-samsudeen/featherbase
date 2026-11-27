@@ -85,3 +85,13 @@ describe('search and scope', () => {
     expect(nearest(index, 'bedshet').map(e => e.label)).toContain('Bedsheet')
   })
 })
+
+describe('the made-up chain: the two kinds of adjustment', () => {
+  it('nets rebalancing to zero within each store × category, and keeps price and rounding to a few rupees', () => {
+    const by = new Map<string, number>()
+    for (const l of lines) by.set(`${l.store}|${l.category}`, (by.get(`${l.store}|${l.category}`) ?? 0) + l.rebal)
+    for (const total of by.values()) expect(total).toBe(0)
+    expect(lines.some(l => l.rebal !== 0)).toBe(true)
+    for (const l of lines) { expect(Math.abs(l.price)).toBeLessThanOrEqual(3); expect(l.adj).toBe(l.rebal + l.price) }
+  })
+})

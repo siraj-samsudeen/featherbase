@@ -849,7 +849,21 @@
                 "column_name": "adjustments",
                 "label": "Adjustments",
                 "column_type": "Currency",
-                "description": "Small tidy-up steps after the blend, such as splitting very small subcategories.",
+                "description": "What the steps after the blend add: Rebalanced Within Category plus Price And Rounding.",
+                "read_only": true
+              },
+              {
+                "column_name": "rebalanced_within_category",
+                "label": "Rebalanced Within Category",
+                "column_type": "Currency",
+                "description": "Moved to or from this subcategory so each slower-selling subcategory in its category gets its share of the last 28 days' sales; the category total is unchanged. Includes the December-only lines that follow last December instead.",
+                "read_only": true
+              },
+              {
+                "column_name": "price_and_rounding",
+                "label": "Price And Rounding",
+                "column_type": "Currency",
+                "description": "Re-pricing at the last 28 days' selling price where it changed, rounding every day to whole rupees, and a month below zero set to zero.",
                 "read_only": true
               },
               {
@@ -2578,7 +2592,21 @@
           "column_name": "adjustments",
           "label": "Adjustments",
           "column_type": "Currency",
-          "description": "Small tidy-up steps after the blend, such as splitting very small subcategories.",
+          "description": "What the steps after the blend add: Rebalanced Within Category plus Price And Rounding.",
+          "read_only": true
+        },
+        {
+          "column_name": "rebalanced_within_category",
+          "label": "Rebalanced Within Category",
+          "column_type": "Currency",
+          "description": "Moved to or from this subcategory so each slower-selling subcategory in its category gets its share of the last 28 days' sales; the category total is unchanged. Includes the December-only lines that follow last December instead.",
+          "read_only": true
+        },
+        {
+          "column_name": "price_and_rounding",
+          "label": "Price And Rounding",
+          "column_type": "Currency",
+          "description": "Re-pricing at the last 28 days' selling price where it changed, rounding every day to whole rupees, and a month below zero set to zero.",
           "read_only": true
         },
         {
