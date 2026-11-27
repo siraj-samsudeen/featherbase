@@ -38,9 +38,10 @@ export function assignPrefill(store: string, l: Pick<Line, 'code' | 'suggestedSe
   }
 }
 
-/** The org chart's new-row form, prefilled (#100): /featherbase/admin/table/<table>/new?prefill=<JSON>. */
+/** The org chart's new-row form, prefilled (#100): /featherbase/admin/table/<table>/new?prefill=<JSON>. Spaces are
+ *  written %20, never +, which Featherbase's router would keep as a plus sign. */
 export const assignHref = (store: string, l: Pick<Line, 'code' | 'suggestedSection' | 'sectionRowIds'>) =>
-  `${ORG_CHART}/featherbase/admin/table/section-subcategory/new?${new URLSearchParams({ prefill: JSON.stringify(assignPrefill(store, l)) })}`
+  `${ORG_CHART}/featherbase/admin/table/section-subcategory/new?prefill=${encodeURIComponent(JSON.stringify(assignPrefill(store, l)))}`
 
 export function UnassignedPage({ store, href }: { store: string; href: (line: string) => string }) {
   const [section, setSection] = useState<Section | null | undefined>(undefined)

@@ -15,3 +15,12 @@ describe("Assign section prefills the org chart's new row (#1419)", () => {
     expect(assignPrefill('LKS', { code: 'MS-102' }, '2026-11-27')).not.toHaveProperty('section')
   })
 })
+
+import { assignHref } from './UnassignedPage'
+describe('the Assign section address', () => {
+  it('writes spaces as %20, never +, so a section like "LKS-2F-Casual Shirt" arrives whole', () => {
+    const href = assignHref('LKS', { code: 'MS-101', suggestedSection: 'LKS-2F-Casual Shirt' })
+    expect(href).not.toContain('+')
+    expect(JSON.parse(decodeURIComponent(href.split('?prefill=')[1])).section).toBe('LKS-2F-Casual Shirt')
+  })
+})
