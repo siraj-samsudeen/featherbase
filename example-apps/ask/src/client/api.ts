@@ -16,9 +16,9 @@ export type Asked = { chat: string; answer: Reply }
 export type SavedQuestionAnswer = 
 { row_id: string; question: string; answer: string; answer_kind: Reply['kind'] }
 
-// Without a chat, the server starts a new one and returns its id.
-export async function askQuestion(question: string, chat?: string): Promise<Asked> {
-  const response = await fetch('/api/app_actions/ask/ask', {
+// POST to one of Ask's own reads or actions, and return what it gives.
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(path, {
     method: 'POST',
     credentials: 'same-origin',
     headers: {
@@ -26,8 +26,7 @@ export async function askQuestion(question: string, chat?: string): Promise<Aske
       // The platform refuses a page whose version is not the installed Ask's (403).
       'X-Featherbase-App-Version': `ask@${version}`,
     },
-    // An action names each attempt, so the platform never saves one twice.
-    body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), payload: { question, chat } }),
+    body: JSON.stringify(body),
   })
   // Signed out: go to the login page, and come back to Ask afterwards.
   if (response.status === 401) {
@@ -37,8 +36,14 @@ export async function askQuestion(question: string, chat?: string): Promise<Aske
   const data = await response.json().catch(() => null)
   if (!response.ok)
     throw new ApiError(data?.error?.message ?? `Ask could not answer (${response.status}). Please try again.`, response.status)
-  // The server's action returns { chat, answer }, and the platform wraps it in { result }.
-  return data.result as Asked
+  // The platform wraps what a read or an action returns in { result }.
+  return data.result as T
+}
+
+// Without a chat, the server starts a new one and returns its id.
+export async function askQuestion(question: string, chat?: string): Promise<Asked> {
+  // An action names each attempt, so the platform never saves one twice.
+  return post<Asked>('/api/app_actions/ask/ask', { idempotencyKey: crypto.randomUUID(), payload: { question, chat } })
 }
 /** One of the person's chats, as Recent Chats lists it. */
 export type ChatRow = { row_id: string; title: string; created_at: string }
