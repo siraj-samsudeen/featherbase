@@ -18,26 +18,26 @@ export function HelpTab({ header, lines, storeStep, at, from, onBack }: {
   }, [at, from])
   return (
     <div className="tl-help" ref={root}>
-      {from && <Notice className="mb-4">You came from <b>{from}</b>. <button type="button" className="tl-link" onClick={() => onBack(from)}>Back to the line</button></Notice>}
+      {from && <Notice className="mb-4">You came from <b>{from}</b>. <button type="button" className="tl-link" onClick={() => onBack(from)}>Back to the subcategory</button></Notice>}
       <h3 id="help-how">Feather Forecast: how it builds your {name}</h3>
-      <p><b>Feather Forecast</b> is an explainable forecast: open any line to see exactly how its number was built. For every line and every {name} day, it blends six simple guesses ("bases"). Read together they say three things:</p>
+      <p><b>Feather Forecast</b> is an explainable forecast: open any subcategory to see exactly how its number was built. For every subcategory and every {name} day, it blends six simple guesses ("bases"). Read together they say three things:</p>
       <ul>
-        <li id="help-recent"><b style={{ color: 'var(--color-part-recent)' }}>From recent selling</b>: what the line sold in the last 28 days, as a rate per day, × {days} {name} days.</li>
-        <li id="help-step"><b style={{ color: 'var(--color-part-step)' }}>{name} step on top</b>: {name} usually sells more than late {prevMonth(name)}. Feather Forecast measures each line's own {name} rate against its late-{prevMonth(name)} rate in past years: here it runs from ×{Math.min(...steps).toFixed(2)} to ×{Math.max(...steps).toFixed(2)}, shown on each line. The step adds that extra on part of recent selling.</li>
-        <li id="help-lastyear"><b style={{ color: 'var(--color-part-last-year)' }}>From last year × growth</b>: last {name}'s sales × how much faster or slower the line sells now than last year.</li>
-        <li id="help-adjust"><b className="tl-dim">Adjustments</b>: small tidy-up steps after the blend, such as splitting the number of very small lines. Shown only when they are not zero.</li>
+        <li id="help-recent"><b style={{ color: 'var(--color-part-recent)' }}>From recent selling</b>: what the subcategory sold in the last 28 days, as a rate per day, × {days} {name} days.</li>
+        <li id="help-step"><b style={{ color: 'var(--color-part-step)' }}>{name} step on top</b>: {name} usually sells more than late {prevMonth(name)}. Feather Forecast measures each subcategory's own {name} rate against its late-{prevMonth(name)} rate in past years: here it runs from ×{Math.min(...steps).toFixed(2)} to ×{Math.max(...steps).toFixed(2)}, shown on each subcategory. The step adds that extra on part of recent selling.</li>
+        <li id="help-lastyear"><b style={{ color: 'var(--color-part-last-year)' }}>From last year × growth</b>: last {name}'s sales × how much faster or slower the subcategory sells now than last year.</li>
+        <li id="help-adjust"><b className="tl-dim">Adjustments</b>: small tidy-up steps after the blend, such as splitting the number of very small subcategories. Shown only when they are not zero.</li>
       </ul>
       <h3 id="help-28">Why 28 days</h3>
       <p>Twenty-eight days is exactly four weeks, so every weekday counts four times and no weekday is over-counted. The rate per day is then laid over {name}'s {days} days.</p>
-      <h3 id="help-groups">Groups: lines that moved in opposite directions</h3>
-      <p>Sometimes one line in a category shoots up while a sister line drops. Items may have been re-coded from one line to the other, or customers may have moved between them. Each line's number then looks alarming, but together they are steady.</p>
-      <p>The screen puts lines in a group when, <b>inside one category of your section</b>, at least one line's Feather Forecast growth is <b>×2 or more</b> and at least one is <b>half or less</b>. All such lines in that category join the group. Lines that sold under about ₹1 L last year never qualify: Feather Forecast keeps their growth between about ×0.7 and ×1.3.</p>
-      <p>Judge the group total first, then each line. Tell us what happened (re-coded, price change, real change in demand, not sure).</p>
+      <h3 id="help-groups">Groups: subcategories that moved in opposite directions</h3>
+      <p>Sometimes one subcategory in a category shoots up while a sister subcategory drops. Items may have been re-coded from one subcategory to the other, or customers may have moved between them. Each subcategory's number then looks alarming, but together they are steady.</p>
+      <p>The screen puts subcategories in a group when, <b>inside one category of your section</b>, at least one subcategory's Feather Forecast growth is <b>×2 or more</b> and at least one is <b>half or less</b>. All such subcategories in that category join the group. Subcategories that sold under about ₹1 L last year never qualify: Feather Forecast keeps their growth between about ×0.7 and ×1.3.</p>
+      <p>Judge the group total first, then each subcategory. Tell us what happened (re-coded, price change, real change in demand, not sure).</p>
       <h3 id="help-columns">The columns</h3>
       <table className="tl-helptable"><tbody>
-        <tr><td><b>Feather Forecast</b></td><td>Feather Forecast's {name} for the line.</td></tr>
-        <tr><td><b>Last month</b></td><td>What the line sold in the last 28 days before Feather Forecast ran (to {header.cutOff}), as a rate per day × {name}'s {days} days. Hover the column heading to see this.</td></tr>
-        <tr><td><b>Last year</b></td><td>What the line sold in {name} {year - 1}.</td></tr>
+        <tr><td><b>Feather Forecast</b></td><td>Feather Forecast's {name} for the subcategory.</td></tr>
+        <tr><td><b>Last month</b></td><td>What the subcategory sold in the last 28 days before Feather Forecast ran (to {header.cutOff}), as a rate per day × {name}'s {days} days. Hover the column heading to see this.</td></tr>
+        <tr><td><b>Last year</b></td><td>What the subcategory sold in {name} {year - 1}.</td></tr>
         <tr><td><b>Value vs</b></td><td>Feather Forecast's value against last month and against last year, in %.</td></tr>
         <tr><td><b>Value · Qty · ASP</b></td><td>Rupees before tax, pieces, and average selling price (value ÷ pieces). Use <b>Show</b> for all three, value and quantity, or one at a time. ASP appears only with value and quantity, since it is one divided by the other.</td></tr>
         <tr><td><b>Built from</b></td><td>The share of Feather Forecast's number from each part, as a 100% bar or donut. Hover it for the percentages.</td></tr>
@@ -81,7 +81,7 @@ export function MyQuestions({ questions, lines, hrefFor, onJump }: { questions: 
                 </span>
                 <span className="tl-qtext">{q.text}</span>
               </a>)
-          }) : <div className="tl-qempty">No questions yet. Open a line and choose <b>Ask about this line</b>.</div>}
+          }) : <div className="tl-qempty">No questions yet. Open a subcategory and choose <b>Ask about this subcategory</b>.</div>}
         </div>)}
     </div>
   )

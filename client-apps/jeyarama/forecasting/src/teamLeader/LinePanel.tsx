@@ -31,14 +31,14 @@ function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Header['mont
       <thead><tr><th>Part</th><th>Its own {month.name}</th><th>Weight</th><th>Adds</th><th>Share</th></tr></thead>
       <tbody>
         {part(recent, `Last 28 days ${inr(l.l28)} (${count(l.l28q)} pcs) = ${inr(rate)} a day × ${month.days} ${month.name} days`, `≈ ${inr(own)}`, wRec, l.fromRecent)}
-        {part(step, wStep === 0 ? 'Not used for this line.'
+        {part(step, wStep === 0 ? 'Not used for this subcategory.'
           : `${month.name} usually sells ×${st} the late-${prevMonth(month.name)} rate here: ${Math.round((st - 1) * 100)}% more on the part of recent selling that gets the step${wStep == null ? '' : ` (${pct0(wStep)} of the ${pct0(wRec)})`}`,
           wStep === 0 ? '' : `≈ ${inr(own * (st - 1))}`, null, l.lift)}
-        {part(lastYear, `Last ${month.name} ${inr(l.ly)} (${count(l.lyq)} pcs)${isGroup(l) ? " × each line's growth" : ` × growth ${l.growth}`}`, `≈ ${inr(lyOwn)}`, wLy, l.lyg)}
+        {part(lastYear, `Last ${month.name} ${inr(l.ly)} (${count(l.lyq)} pcs)${isGroup(l) ? " × each subcategory's growth" : ` × growth ${l.growth}`}`, `≈ ${inr(lyOwn)}`, wLy, l.lyg)}
         {l.adj !== 0 && (
           <tr>
             <td className="tl-dim"><span className="tl-part" style={{ fontWeight: 500 }}><span className="tl-swatch" style={{ background: adjust.color }} />{adjust.label}<HelpMark topic="adjust" onHelp={onHelp} /></span>
-              <div className="tl-from">Tidy-up steps, such as splitting very small lines</div></td>
+              <div className="tl-from">Tidy-up steps, such as splitting very small subcategories</div></td>
             <td /><td /><td className="tl-fc tl-dim">{inr(l.adj)}</td><td className="tl-dim">{Math.round(Math.abs(l.adj) / l.fc * 100)}%</td>
           </tr>)}
         {six && (
@@ -69,7 +69,7 @@ function Checks({ l, month, storeStep }: { l: Item; month: Header['month']; stor
     <h4>Checks</h4>
     <ul className="tl-checks">
       <li><b>Selling now:</b> last 28 days {inr(l.l28)} against {inr(l.ly28)} in the same days last year (<b>{times(l.l28, l.ly28)}</b>); pieces {count(l.ly28q)} → {count(l.l28q)}.</li>
-      <li><b>{month.name} rise:</b> Feather Forecast lifts recent selling ×{st}, the usual {month.name} rise here. Last year this line went from {inr(l.ly28)} in the 28 days before {month.name} to {inr(l.ly)} in {month.name}: <b>×{lyStep.toFixed(1)}</b> per day.{note}</li>
+      <li><b>{month.name} rise:</b> Feather Forecast lifts recent selling ×{st}, the usual {month.name} rise here. Last year this subcategory went from {inr(l.ly28)} in the 28 days before {month.name} to {inr(l.ly)} in {month.name}: <b>×{lyStep.toFixed(1)}</b> per day.{note}</li>
     </ul>
   </>
 }
@@ -168,7 +168,7 @@ function Questions({ l, questions, initial, onAsk }: { l: Line; questions: Quest
       : <div style={{ marginTop: questions.length ? 8 : 0 }}>
           <Button variant="quiet" className="-ml-2.5 px-2.5" onClick={e => { e.stopPropagation(); setAsking(true) }}
             icon={<svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>}>
-            {questions.length ? 'Ask another question' : 'Ask about this line'}</Button>
+            {questions.length ? 'Ask another question' : 'Ask about this subcategory'}</Button>
         </div>}
   </>
 }
@@ -186,7 +186,7 @@ export function LinePanel({ item, header, storeStep, aop, answer, questions, onH
         <div className="tl-gnote">
           <Chip hue="violet" compact className="mr-1.5">Moved in opposite directions</Chip>
           {item.members.map((m, i) => <span key={m.rowId}>{i ? ', ' : ''}{m.name} <span className={m.growth > 1 ? 'tl-up' : 'tl-down'}>growth ×{m.growth}</span></span>)}
-          . Together: {inr(item.fc)} against {inr(item.ly)} last year ({pc(item.fc, item.ly)}). Items may have been re-coded between these lines, or demand may have shifted.
+          . Together: {inr(item.fc)} against {inr(item.ly)} last year ({pc(item.fc, item.ly)}). Items may have been re-coded between these subcategories, or demand may have shifted.
           <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span className="tl-dim">What happened here?</span>
             {HAPPENED.map(c => <ChoiceChip key={c} picked={happened === c} onToggle={() => setHappened(h => h === c ? null : c)}>{c}</ChoiceChip>)}
@@ -197,7 +197,7 @@ export function LinePanel({ item, header, storeStep, aop, answer, questions, onH
         <div className={cx('tl-col')}>
           <OtherModels l={item} aop={aop} month={header.month} />
           {isGroup(item)
-            ? <div className="tl-dim" style={{ fontSize: 13, marginTop: 16 }}>Answer each line below; the group total follows.</div>
+            ? <div className="tl-dim" style={{ fontSize: 13, marginTop: 16 }}>Answer each subcategory below; the group total follows.</div>
             : <>
                 <YourAnswer key={`${item.rowId}:${answer?.status ?? ''}`} l={item} answer={answer} month={header.month} onAccept={onAccept} onPropose={onPropose} />
                 <Questions l={item} questions={questions} initial={header.person.slice(0, 1)} onAsk={onAsk} />

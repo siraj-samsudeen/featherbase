@@ -151,7 +151,7 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
     <div className="tl">
       <div className="tl-toolbar">
         {toggle<Measure>('Show', 'Value, quantity and average selling price', measure, setMeasure, [{ value: 'all', label: 'All three' }, { value: 'vq', label: 'Value · Qty' }, { value: 'v', label: 'Value' }, { value: 'q', label: 'Qty' }])}
-        {toggle<GroupView>('Groups', 'Lines that moved in opposite directions: on top with their lines, as one row, or tagged on each line', groupView, setGroupView, [{ value: 'band', label: 'On top' }, { value: 'one', label: 'One row' }, { value: 'off', label: 'Tagged' }])}
+        {toggle<GroupView>('Groups', 'Subcategories that moved in opposite directions: on top with their subcategories, as one row, or tagged on each subcategory', groupView, setGroupView, [{ value: 'band', label: 'On top' }, { value: 'one', label: 'One row' }, { value: 'off', label: 'Tagged' }])}
         {toggle<'bar' | 'donut'>('Built from', 'How Feather Forecast built each number', shape, setShape, [{ value: 'bar', label: 'Bar' }, { value: 'donut', label: 'Donut' }])}
         {toggle<'off' | 'on'>('AOP', 'Show the annual plan', aop ? 'on' : 'off', v => setAop(v === 'on'), [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }])}
       </div>

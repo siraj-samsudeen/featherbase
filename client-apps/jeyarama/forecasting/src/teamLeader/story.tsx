@@ -19,7 +19,7 @@ const header: Header = { store: 'Lakeside', section: 'Girls Bottoms', person: 'A
 /** What a Forecast Creator might answer, drawn from the line's own figures (the prototype's stand-in). */
 function reply(l: Line) {
   const top = shares(l).sort((a, b) => b.share - a.share)[0]
-  const trend = l.l28 >= l.ly28 ? `the line is selling ${times(l.l28, l.ly28)} what it sold in the same 28 days last year` : `the line is selling ${times(l.l28, l.ly28)} less than in the same 28 days last year`
+  const trend = l.l28 >= l.ly28 ? `the subcategory is selling ${times(l.l28, l.ly28)} what it sold in the same 28 days last year` : `the subcategory is selling ${times(l.l28, l.ly28)} less than in the same 28 days last year`
   return `Most of the ${inr(l.fc)} comes from “${top.label}” (${Math.round(top.share)}%). It is ${pc(l.fc, l.ly)} on last ${header.month.name} mainly because ${trend}. If you know of stock or range changes that the sales cannot show yet, propose a change and say why.`
 }
 

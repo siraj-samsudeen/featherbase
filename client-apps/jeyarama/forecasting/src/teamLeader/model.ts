@@ -160,8 +160,8 @@ export const weightOf = (l: Line | Group, codes: BasisCode[]) => ('members' in l
 /** TL-28 December rise: last year's December rate per day against the 28 days before it, and the note when it strays from the store's. */
 export function decemberRise(l: Line | Group, step: number) {
   const lyStep = (l.ly / 31) / (l.ly28 / 28)
-  const note = lyStep > step * 1.5 ? ' This line usually rises more than the store in December.'
-    : lyStep < step / 1.5 ? ' This line usually rises less than the store in December.' : ''
+  const note = lyStep > step * 1.5 ? ' This subcategory usually rises more than the store in December.'
+    : lyStep < step / 1.5 ? ' This subcategory usually rises less than the store in December.' : ''
   return { lyStep, note }
 }
 
