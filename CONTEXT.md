@@ -157,6 +157,18 @@ _Avoid_: front-end, customer site
 A curated module landing page, and the Admin sidebar's unit of navigation.
 _Avoid_: Workspace, dashboard, module page
 
+**Page**:
+A screen saved as data and drawn inside Featherbase, with nothing deployed: a
+list of parts (a heading, a table, a button), the Rows it reads and what its
+buttons do. It reads and saves only as the person looking. A Draft is open to
+people who may build Tables; a Published Page to anyone signed in.
+_Avoid_: runtime page (the design's working name), custom screen, dive, dashboard
+
+**Part**:
+One building block of a Page, named from Featherbase's catalog: a table, a
+toggle, a button. A Page names its parts; it holds no code.
+_Avoid_: component, widget, block
+
 **Command Bar**:
 The Admin's global search and command palette.
 _Avoid_: Awesomebar, omnibox, quick search

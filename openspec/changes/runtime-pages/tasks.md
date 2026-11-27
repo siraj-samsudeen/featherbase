@@ -1,22 +1,22 @@
 ## 1. The checker and the catalog (shared)
 
-- [ ] 1.1 Unit tests, red: a definition's shape; an unknown part; an unknown or misspelled setting; a wrong value; a child that does not exist; no root, or a root that is not a Page; a cycle; an unknown function or action; a path to state or data that is not declared; every mistake reported at once, keyed by where it is
-- [ ] 1.2 The page definition, the ten parts, the named functions and the named actions, with the checker that reports every mistake
-- [ ] 1.3 The catalog as an agent reads it: each part and its settings, the functions, the actions, and the worked example, which the checker itself accepts
-- [ ] 1.4 Which columns of each data source a page reads, so the server can check them against the Table
+- [x] 1.1 Unit tests, red: a definition's shape; an unknown part; an unknown or misspelled setting; a wrong value; a child that does not exist; no root, or a root that is not a Page; a cycle; an unknown function or action; a path to state or data that is not declared; every mistake reported at once, keyed by where it is
+- [x] 1.2 The page definition, the ten parts, the named functions and the named actions, with the checker that reports every mistake
+- [x] 1.3 The catalog as an agent reads it: each part and its settings, the functions, the actions, and the worked example, which the checker itself accepts
+- [x] 1.4 Which columns of each data source a page reads, so the server can check them against the Table
 
 ## 2. Scenario tests, red
 
-- [ ] 2.1 Server scenarios of runtime-pages: who may save, the two refusals, the two agent scenarios
+- [x] 2.1 Server scenarios of runtime-pages: who may save, the two refusals, the two agent scenarios
 - [ ] 2.2 Screen scenarios of runtime-pages: the saved page opens; rows as the viewer; the page without its rows; the choice; the groups; the three saves; sample rows; the draft and the missing page; the group's two lists
 
 ## 3. Server
 
-- [ ] 3.1 The `Page` platform Table: migration, and the migration added to every pinned list of migrations in the tests
-- [ ] 3.2 The save check: the definition is checked in the Table's validate hook; each data source's Table and columns are checked against Table metadata; the name is an address
-- [ ] 3.3 Reading: the pages a person may open, and one page; a Draft answers as not there to someone who may not build
-- [ ] 3.4 A module's Home Page answer lists its pages
-- [ ] 3.5 MCP: `list_parts`, `list_pages`, `get_page`, `save_page`; `create_table` takes `module`
+- [x] 3.1 The `Page` platform Table: migration, and the migration added to every pinned list of migrations in the tests
+- [x] 3.2 The save check: the definition is checked in the Table's validate hook; each data source's Table and columns are checked against Table metadata; the name is an address
+- [x] 3.3 Reading: the pages a person may open, and one page; a Draft answers as not there to someone who may not build
+- [x] 3.4 A module's Home Page answer lists its pages
+- [x] 3.5 MCP: `list_parts`, `list_pages`, `get_page`, `save_page`; `create_table` takes `module`
 
 ## 4. Web
 
@@ -29,7 +29,7 @@
 
 ## 5. Words
 
-- [ ] 5.1 `CONTEXT.md`: the word Page, and the words it retires
+- [x] 5.1 `CONTEXT.md`: the word Page, and the words it retires
 
 ## 6. Checks
 

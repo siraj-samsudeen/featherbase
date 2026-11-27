@@ -360,7 +360,8 @@ and open to change.
 
 Named functions: `eq`, `not`, `and`, `or`, `choose`, `formatNumber`, `formatCurrency`,
 `formatDate`, `formatString`. Where A2UI's basic catalog has a function of the same name, the
-arguments are the same.
+argument names are the same, and fewer of them: Featherbase writes a date one way (DD-Mon-YYYY),
+so `formatDate` takes no `format`.
 
 - A part is added with a story, under a name that makes sense without React.
 - **No arithmetic in a page.** A page formats and chooses. A derived number comes from the data:
