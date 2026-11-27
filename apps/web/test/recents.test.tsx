@@ -321,6 +321,8 @@ describe('actionForLocation', () => {
       sub: 'Report',
     })
     expect(actionForLocation('/featherbase/admin/dashboard/Ops', {})).toMatchObject({ kind: 'page', sub: 'Dashboard' })
+    // #1410: a runtime page is remembered by its name, which is its address.
+    expect(actionForLocation('/featherbase/admin/page/reorder-plan', { open: 'Stationery' })).toEqual({ kind: 'page', key: 'page:page/reorder-plan', label: 'reorder-plan', sub: 'Page', path: '/featherbase/admin/page/reorder-plan' })
   })
 
   it('ignores home pages, builders, and transient new forms', () => {
