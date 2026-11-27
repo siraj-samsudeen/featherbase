@@ -7,15 +7,13 @@
 import { writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { addSeed, type Rows, type Seed } from '../src/shared/madeUpRows.ts'
 
 const RUN = 'made_up_2026_12_official'
 const STORE = 'LKS'
 const KEY = { store_code: STORE, division_name: 'Fashion', subdivision_name: 'Girls' }
 const SECTION = 'Girls Bottoms'
 
-// name, category, last 28 days ₹, its ASP, same 28 days last year ₹, last December ₹, last December's ASP,
-// growth, the line's December step, weights B1..B6, adjustments ₹
-type Seed = [string, string, number, number, number, number, number, number, number, number[], number]
 const SEEDS: Seed[] = [
   ['Girls Jean', 'Girls Bottom', 540000, 520, 210000, 455000, 540, 2.62, 1.29, [0.14, 0.04, 0.01, 0.08, 0.05, 0.68], 0],
   ['Girls Jeggings', 'Girls Bottom', 41000, 270, 120000, 310000, 300, 0.31, 1.33, [0, 0.02, 0.05, 0.1, 0.08, 0.75], 0],
@@ -29,40 +27,9 @@ const SEEDS: Seed[] = [
   ['Girls Track Pant', 'Girls Active Wear', 54000, 225, 66000, 92000, 265, 0.82, 1.24, [0, 0, 0.1, 0.1, 0.1, 0.7], 0],
 ]
 
-const r = (n: number) => Math.round(n)
-const q1 = (n: number) => Math.round(n * 10) / 10
-const lines: Record<string, unknown>[] = [], sales: Record<string, unknown>[] = [], plans: Record<string, unknown>[] = [], others: Record<string, unknown>[] = []
-SEEDS.forEach(([name, category, l28, asp, ly28, ly, aspLy, growth, step, w, adj], i) => {
-  const line = { ...KEY, category_name: category, subcategory_name: name }
-  const b3 = l28 / 28 * 31
-  const own = [ly * growth, ly * growth * 1.008, b3, b3 * 0.995, b3 * 0.985, b3 * step]
-  const adds = own.map((o, k) => r(o * w[k]))
-  const fc = adds.reduce((a, b) => a + b, 0) + adj
-  const b6Level = adds[5] / step
-  lines.push({
-    row_id: `${RUN}:${STORE}:${name}`, run_id: RUN, ...line, store_name: 'Lakeside', section_name: SECTION,
-    forecast_value_before_tax: fc, forecast_qty: q1(fc / (asp * 0.97)),
-    ...Object.fromEntries(own.map((o, k) => [`own_value_b${k + 1}`, r(o)])),
-    ...Object.fromEntries(adds.map((a, k) => [`adds_value_b${k + 1}`, a])),
-    seasonal_factor: step, growth_factor: growth,
-    from_recent_selling: r(adds[2] + adds[3] + adds[4] + b6Level), december_step_on_top: r(adds[5] - b6Level),
-    from_last_year: adds[0] + adds[1], adjustments: adj,
-  })
-  const n91 = l28 * 3.05
-  const windows: [string, string, string, number, number][] = [
-    ['last_28_days', '2026-10-30', '2026-11-26', l28, l28 / asp],
-    ['same_28_days_last_year', '2025-10-30', '2025-11-26', ly28, ly28 / (aspLy * 0.95)],
-    ['last_december', '2025-12-01', '2025-12-31', ly, ly / aspLy],
-    ['last_91_days', '2026-08-28', '2026-11-26', n91, n91 / asp],
-    ['same_91_days_last_year', '2025-08-28', '2025-11-26', n91 / growth, n91 / growth / aspLy],
-  ]
-  for (const [window_name, date_from, date_to, v, qty] of windows)
-    sales.push({ row_id: `${STORE}:${name}:${window_name}`, ...line, window_name, date_from, date_to, sales_value_before_tax: r(v), sales_qty: r(qty) })
-  const aop = ly * (1.04 + (i % 3) * 0.03)
-  plans.push({ row_id: `${STORE}:${name}:2026-12:1`, ...line, calendar_year: 2026, calendar_month: 12, revision_id: 1, plan_value_before_tax: r(aop), plan_qty: q1(aop / aspLy) })
-  for (const [model, f] of [['XGBoost', 0.78 + (i % 4) * 0.06], ['LightGBM', 0.86 + (i % 3) * 0.05]] as const)
-    others.push({ row_id: `${model}:${STORE}:${name}:2026-12`, model, store_code: STORE, subcategory_name: name, month_from: '2026-12-01', forecast_value_before_tax: r(fc * f) })
-})
+const rows: Rows = { lines: [], sales: [], plans: [], others: [] }
+SEEDS.forEach((seed, i) => addSeed(rows, seed, { run: RUN, ...KEY, store_name: 'Lakeside', section_name: SECTION }, i))
+const { lines, sales, plans, others } = rows
 
 const fixture = {
   forecast_run: [{ row_id: RUN, run_id: RUN, model: 'engine_v2', purpose: 'official', status: 'complete', origin_date: '2026-11-26', horizon_from: '2026-12-01', horizon_to: '2026-12-31' }],
