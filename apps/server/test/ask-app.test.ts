@@ -1,6 +1,6 @@
 // Feather Ask (#1377), installed from its folder: anyone signed in saves a question with
-// the answer think gave, in their own chat; the action refuses what the page refuses too,
-// and an answer that isn't one, and saves nothing then.
+// the answer think gave and the steps behind it, in their own chat; the action refuses what
+// the page refuses too, and an answer or steps that aren't, and saves nothing then.
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { describe, expect } from 'vitest'
@@ -31,12 +31,13 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
   const person = (name: string) => createUser({ email: `${name}@ask.example.test`, roles: [] })
   return { selvi: await person('selvi'), ravi: await person('ravi') }
 }
-type Asked = { chat: string; answer: { kind: string; text: string } }
-// The answer think gives; the page passes it on to the action.
+type Asked = { chat: string; answer: { kind: string; text: string }; steps: unknown[] }
+// The answer think gives, and the steps behind it; the page passes both on to the action.
 const THOUGHT = { kind: 'answer', text: 'You have 3 tickets.' }
-// The platform wraps the action's { chat, answer } in { result }.
-const ask = async (client: TestClient, question: unknown, chat?: string, answer: unknown = THOUGHT) =>
-  (await client.post<any>(ACTION, { idempotencyKey: randomUUID(), payload: { question, chat, answer } })).result as Asked
+const STEPS = [{ tool: 'query_rows', args: { table: 'tickets.ticket', limit: 1 }, summary: '3 rows' }]
+// The platform wraps the action's { chat, answer, steps } in { result }.
+const ask = async (client: TestClient, question: unknown, chat?: string, answer: unknown = THOUGHT, steps: unknown = STEPS) =>
+  (await client.post<any>(ACTION, { idempotencyKey: randomUUID(), payload: { question, chat, answer, steps } })).result as Asked
 // What this person may read of one of Ask's Tables.
 const rows = async (client: TestClient, table: string, fields: string[]) =>
   (await client.get<any>(`/api/table/${encodeURIComponent(table)}?fields=${encodeURIComponent(JSON.stringify(fields))}`)).data as Record<string, unknown>[]
@@ -46,9 +47,10 @@ describe('Feather Ask: asking (#1377)', () => {
     const { selvi } = await setup(admin, createUser)
     const asked = await ask(selvi, '  Did I meet my target this month?  ')
     expect(asked.answer).toEqual(THOUGHT)
+    expect(asked.steps).toEqual(STEPS)
     expect(await rows(selvi, 'ask.chat', ['row_id', 'title'])).toEqual([{ row_id: asked.chat, title: 'Did I meet my target this month?' }])
-    expect(await rows(selvi, 'ask.question', ['chat', 'question', 'answer', 'answer_kind'])).toEqual([
-      { chat: asked.chat, question: 'Did I meet my target this month?', answer: asked.answer.text, answer_kind: 'answer' },
+    expect(await rows(selvi, 'ask.question', ['chat', 'question', 'answer', 'answer_kind', 'steps'])).toEqual([
+      { chat: asked.chat, question: 'Did I meet my target this month?', answer: asked.answer.text, answer_kind: 'answer', steps: STEPS },
     ])
   })
 
@@ -97,6 +99,23 @@ describe('Feather Ask: asking (#1377)', () => {
     expect(await rows(selvi, 'ask.chat', ['row_id'])).toEqual([])
     const cannot = { kind: 'cannot', text: "I couldn't answer that." }
     expect((await ask(selvi, 'What is the weather?', undefined, cannot)).answer).toEqual(cannot)
+  })
+
+  test("steps that aren't think's, or are too many, are refused and nothing is saved", async ({ admin, createUser }) => {
+    const { selvi } = await setup(admin, createUser)
+    const refused = (steps: unknown) => expectRefused(ask(selvi, 'Did I meet my target?', undefined, THOUGHT, steps), 417, 'no steps to save')
+    await refused(null)
+    await refused({ tool: 'query_rows' })
+    await refused([null])
+    await refused([{ tool: 'query_rows', args: [], summary: '3 rows' }])
+    await refused([{ tool: 'query_rows', args: {}, summary: 'x'.repeat(201) }])
+    await refused(Array.from({ length: 9 }, () => STEPS[0]))
+    await expectRefused(ask(selvi, 'Did I meet my target?', undefined, THOUGHT, [{ ...STEPS[0], args: { filter: 'x'.repeat(20000) } }]), 417, 'too long to save')
+    expect(await rows(selvi, 'ask.chat', ['row_id'])).toEqual([])
+    // No steps at all is fine (an answer that needed no tool), and a refused step keeps its mark.
+    expect((await ask(selvi, 'Hello?', undefined, THOUGHT, [])).steps).toEqual([])
+    const refusedStep = { tool: 'query_rows', args: { table: 'tickets.ticket' }, summary: 'refused: no', refused: true, extra: 'dropped' }
+    expect((await ask(selvi, 'Tickets?', undefined, THOUGHT, [refusedStep])).steps).toEqual([{ tool: 'query_rows', args: { table: 'tickets.ticket' }, summary: 'refused: no', refused: true }])
   })
 
   test('a signed-out caller is refused', async ({ admin, createUser }) => {

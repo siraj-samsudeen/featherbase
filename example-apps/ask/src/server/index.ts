@@ -1,7 +1,7 @@
 // Feather Ask's server entry. The platform loads this file (built to dist/server.mjs)
 // and calls actions.ask for POST /api/app_actions/ask/ask, reads.think for POST /api/app_reads/ask/think.
-import { MAX_ANSWER_LENGTH, MAX_QUESTION_LENGTH, type Reply } from '../shared/reply'
-import { answer, type McpTools } from './agent'
+import { MAX_ANSWER_LENGTH, MAX_QUESTION_LENGTH, MAX_STEPS_LENGTH, type Reply, type Step, type Thought } from '../shared/reply'
+import { answer, MAX_STEPS, SUMMARY_LENGTH, type McpTools } from './agent'
 import { standIn } from './stand-in'
 
 type Row = Record<string, unknown>
@@ -55,6 +55,21 @@ function answerFrom(ctx: Asked): Reply {
   return { kind: given.kind, text: given.text }
 }
 
+/** The steps behind the answer, which the page passes on from think: at most MAX_STEPS, each a
+ *  tool, its arguments and a short summary. Unsigned, like the answer. */
+function stepsFrom(ctx: Asked): Step[] {
+  const steps = (ctx.payload as { steps?: unknown } | null)?.steps
+  if (!Array.isArray(steps) || steps.length > MAX_STEPS) ctx.reject('Ask has no steps to save')
+  if (JSON.stringify(steps).length > MAX_STEPS_LENGTH) ctx.reject('The steps behind this answer are too long to save')
+  return steps.map((given: Partial<Step> | null) => {
+    const { tool, args, summary, refused } = given ?? {}
+    const isArgs = typeof args === 'object' && args !== null && !Array.isArray(args)
+    if (typeof tool !== 'string' || !isArgs || typeof summary !== 'string' || summary.length > SUMMARY_LENGTH)
+      ctx.reject('Ask has no steps to save')
+    return refused === true ? { tool, args, summary, refused } : { tool, args, summary }
+  })
+}
+
 /** The chat this question goes in: the one the page names, or a new one titled by the question. */
 async function chatFor(ctx: ActionContext, question: string): Promise<string> {
   const chat = (ctx.payload as { chat?: unknown }).chat
@@ -68,30 +83,31 @@ async function chatFor(ctx: ActionContext, question: string): Promise<string> {
   return chat
 }
 
-/** Save the question with its answer, in its chat. */
-async function storeChat(ctx: ActionContext, chat: string, question: string, answer: Reply) {
-  await ctx.documents.create('ask.question', { chat, question, answer: answer.text, answer_kind: answer.kind })
+/** Save the question with its answer and the steps behind it, in its chat. */
+async function storeChat(ctx: ActionContext, chat: string, question: string, { answer, steps }: Thought) {
+  await ctx.documents.create('ask.question', { chat, question, answer: answer.text, answer_kind: answer.kind, steps })
 }
 
 export const actions = {
-  // Saves the question with the answer think gave. The platform runs an action in one
-  // transaction: the chat, the question and its answer are saved together, or not at all.
-  // So every save is awaited before returning.
+  // Saves the question with the answer think gave and the steps behind it. The platform runs
+  // an action in one transaction: the chat, the question and its answer are saved together,
+  // or not at all. So every save is awaited before returning.
   async ask(ctx: ActionContext) {
     const question = questionFrom(ctx)
-    const answer = answerFrom(ctx)
+    const thought = { answer: answerFrom(ctx), steps: stepsFrom(ctx) }
     const chat = await chatFor(ctx, question)
-    await storeChat(ctx, chat, question, answer)
-    return { chat, answer }
+    await storeChat(ctx, chat, question, thought)
+    return { chat, ...thought }
   },
 }
 
 export const reads = {
   // Outbound: the platform runs it after its transaction has closed, so the model's slow
-  // thinking holds no database connection. It saves nothing: the page passes its answer to the ask action.
-  async think(ctx: ReadContext): Promise<Reply> {
+  // thinking holds no database connection. It saves nothing: the page passes its answer and
+  // steps to the ask action.
+  async think(ctx: ReadContext): Promise<Thought> {
     const question = questionFrom(ctx)
-    if (!ctx.featherbaseMcp) return { kind: 'cannot', text: "Ask can't look at your data from here." }
+    if (!ctx.featherbaseMcp) return { answer: { kind: 'cannot', text: "Ask can't look at your data from here." }, steps: [] }
     return answer(question, standIn, ctx.featherbaseMcp)
   },
 }

@@ -22,7 +22,8 @@
       {"column_name": "chat", "label": "Chat", "column_type": "Reference", "reference_table": "ask.chat", "reqd": true, "in_list_view": true},
       {"column_name": "question", "label": "Question", "column_type": "Text", "reqd": true, "in_list_view": true},
       {"column_name": "answer", "label": "Answer", "column_type": "Text"},
-      {"column_name": "answer_kind", "label": "Answer kind", "column_type": "Data"}
+      {"column_name": "answer_kind", "label": "Answer kind", "column_type": "Data"},
+      {"column_name": "steps", "label": "Steps", "column_type": "JSON"}
     ]}
   ],
   "permissions": [
