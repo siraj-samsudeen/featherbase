@@ -8,7 +8,7 @@
 ## 2. Scenario tests, red
 
 - [x] 2.1 Server scenarios of runtime-pages: who may save, the two refusals, the two agent scenarios
-- [ ] 2.2 Screen scenarios of runtime-pages: the saved page opens; rows as the viewer; the page without its rows; the choice; the groups; the three saves; sample rows; the draft and the missing page; the group's two lists
+- [x] 2.2 Screen scenarios of runtime-pages: the saved page opens; rows as the viewer; the page without its rows; the choice; the groups; the three saves; sample rows; the draft and the missing page; the group's two lists
 
 ## 3. Server
 
@@ -20,12 +20,12 @@
 
 ## 4. Web
 
-- [ ] 4.1 Unit tests, red: reading a path from the top and from a row; a repeated child; each named function; writing a value back; an action's context
-- [ ] 4.2 The runtime: state kept in the address, data sources read through the list API, the page's own copy of rows, the actions
-- [ ] 4.3 A table with column bands and groups that open, as a shared component with its story, in the list view's look
-- [ ] 4.4 The ten parts over the shared components; every record a RecordLink
-- [ ] 4.5 The page's route inside the shell; loading, refused and not-there states; the sample-data line
-- [ ] 4.6 A Home Page's "Pages" card
+- [x] 4.1 Unit tests, red: reading a path from the top and from a row; a repeated child; each named function; writing a value back; an action's context
+- [x] 4.2 The runtime: state kept in the address, data sources read through the list API, the page's own copy of rows, the actions
+- [x] 4.3 A table with column bands and groups that open, as a shared component with its story, in the list view's look
+- [x] 4.4 The ten parts over the shared components; every record a RecordLink
+- [x] 4.5 The page's route inside the shell; loading, refused and not-there states; the sample-data line
+- [x] 4.6 A Home Page's "Pages" card
 
 ## 5. Words
 
@@ -34,6 +34,6 @@
 ## 6. Checks
 
 - [ ] 6.1 Both typechecks; the shared, server and web suites with coverage; `pnpm check:scenarios`, `pnpm check:specs`, `pnpm check:vocabulary`, `pnpm check:sensitive`, `pnpm check:platform-imports`
-- [ ] 6.2 Through the running server: an agent's tool calls make a Table, load rows, save the worked example's page and read it back
+- [x] 6.2 Through the running server: an agent's tool calls make a Table, load rows, save the worked example's page and read it back
 - [ ] 6.3 Independent verifier at 1280 px against #1410's points 10 to 26 and the worked example's mock-up
-- [ ] 6.4 `openspec validate runtime-pages --type change --strict`
+- [x] 6.4 `openspec validate runtime-pages --type change --strict`
