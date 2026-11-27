@@ -7,6 +7,12 @@ example uses made-up data (a shop that plans next month's reorder).
 where the owner was away and had said to take the recommendation after five minutes. The first
 slice (section 9) is built under issue #1410; nothing else here is built.
 
+**The choice of page model was reopened the same day.** After decision 2 the owner asked for a
+third candidate to be weighed seriously, plain HTML with htmx as the page, and for the same
+made-up screen to be proven three ways. Section 11 holds the three proofs, the comparison, the
+answer to his question about the redesign, and a recommendation that is **not yet agreed**.
+Sections 5 to 9 describe the JSON model, which is proof (b).
+
 ## 1. What the owner asked for
 
 In a meeting with users, through the Featherbase MCP:
@@ -128,7 +134,9 @@ and `planned_qty`.
 
 ## 5. Decision 2: the form a page is saved in
 
-**Agreed (owner, 27-Nov-2026): both rungs, the JSON rung first.**
+**Agreed (owner, 27-Nov-2026): both rungs, the JSON rung first. Reopened by the owner the same
+day** (section 11): the table below was written before anything was built, it compares JSON only
+with React code, and its view of "free HTML" was wrong in one respect that section 11 corrects.
 
 The three ways the worked example could be saved:
 
@@ -537,3 +545,164 @@ Not in the first slice: everything under "slice 2" above; `run_action`; declared
   about a year.
 - How the generic list view's styles carry a banded table at 1280 pixels with real, wide data is
   for the build's verifier to show. Made-up data is narrower than real data.
+
+## 11. Three proofs of the same screen
+
+The owner asked for the worked example of section 4 to be built three ways, clickable inside a
+local Featherbase on made-up data, and compared. All three run today in the real shell, each saved
+through the MCP with nothing deployed.
+
+| | (a) An HTML page | (b) JSON over the catalog | (c) A TSX code page |
+|---|---|---|---|
+| What it is | HTML in the look kit's classes, Liquid where data goes, htmx for the interactions. The server draws it. | The model of sections 5 to 9. The web app draws it from parts. | React source against the shared components. The server compiles it; the web app runs it. |
+| State of the code | Throwaway proof, no tests, a local branch | The first slice: tested, on the pull request | Throwaway proof, no tests, a local branch |
+
+Proofs (a) and (c) were built by separate agents in worktrees of their own. Each wrote a report
+of what it ran; the figures below are from those reports, and the session that wrote this
+document checked each proof's running server and screenshots as well. The reports are in the session's shared notes
+(`proof-a-html-page.md`, `proof-c-tsx-page.md`).
+
+### What each took
+
+| | (a) HTML page | (b) JSON page | (c) TSX page |
+|---|---|---|---|
+| What the agent sends | One text: 97 lines, 6,106 characters. 53 Liquid tags and 22 htmx attributes in it. | One definition: 8 parts, 2,426 characters | One file: 175 lines, 9,695 characters |
+| How the agent learns what it may write | A seven-line tool description. The look kit's gallery (696 lines) is not served to it. | `list_parts`: every part, setting, function and action, with a page that works | Nothing in the MCP says what the shared components are or take |
+| Code `main` gained | About 700 lines | About 1,600 lines (checker and catalog 633, server 164, runtime and table 823) | About 390 lines |
+| New dependencies | `liquidjs` on the server; `htmx.org` in the browser (17 kB compressed) | None | `esbuild` on the server (already installed through `tsx`) |
+| A one-word change through the MCP shows on reload | Yes | Yes | Yes, in 1.3 seconds |
+
+The line counts are not like for like: (b) is checked, tested code and includes the catalog an
+agent reads; (a) and (c) are proofs.
+
+### What is checked before a page shows
+
+| | (a) HTML page | (b) JSON page | (c) TSX page |
+|---|---|---|---|
+| Syntax | Yes, with line and column | Yes | Yes, with line and column |
+| Only what the platform offers | Elements, attributes and classes from allowed lists; requests only to the page's own two addresses | Every part, setting, function and action | Imports from three names |
+| Tables and columns exist | Only those named where the page says which rows it reads. A column misspelt in a part the opening state does not draw is not caught: the cell shows a dash. | Every column the page reads or writes, in every state | No. They are text inside code. |
+| Every record is a link | Cannot be checked: a template prints text | By construction: a record is shown with the `RecordLink` part | Cannot be checked |
+| Types, and what it does once running | Not applicable: no code | Not applicable: no code | No. The proof's own first version had a type error and ran. |
+
+### What a page can do that it should not
+
+- **(b) JSON:** nothing beyond its viewer's own grants. It holds no markup and no code, so there
+  is nothing to clean.
+- **(a) HTML:** the page's markup is put into the shell's own document, beside the viewer's
+  session token. One cleaner in the shell stands between a saved page and that session: it removes
+  scripts, `on*` attributes, `style`, frames, and any htmx request that is not to the page itself.
+  In the proof that cleaner is 15 hand-written lines, tested against ten things and not against a
+  list of known attacks. A page may still save rows of any Table it reads, as the viewer, on a
+  click, so it could mislabel a button.
+- **(c) TSX:** everything the viewer can do. Run in the browser: a saved page read the session
+  token, called the access-token API as the viewer, read the shell's sidebar, and loaded more code
+  from an address the compiler never saw. The server sends nothing that would stop it posting what
+  it reads elsewhere. A sealed frame would fix this at an estimated one to two weeks of work, and
+  its message bridge would then have to decide what a page may ask for.
+
+### Where each was awkward
+
+- **(a) HTML.** All the screen's logic is Liquid in the page: grouping, the three totals, which
+  columns the toggle picks, which group is open. State is carried by hand in four places; leave
+  one out and that click forgets it. Every click reads all the rows again and draws the whole
+  page. The look kit lacked four things this screen needed (an indented child row, a narrow input,
+  a "saved" mark beside a control, column widths), and since a page may carry no `style`, none can
+  be closed from inside a page: each needs a change to the kit. So an HTML page has a catalog too,
+  the kit's 160 classes, at a finer grain than parts.
+- **(b) JSON.** Small wording and conditions have no home: "Not planned" where a group has no
+  plan, "3 items" beside a group, a message that names the item saved. Each needs a setting on a
+  part, which is a platform change and a deploy.
+- **(c) TSX.** A Tailwind class used only in a stored page has no CSS, because the stylesheet is
+  built from source files and a stored page is not one. The page fell back to about 15 inline
+  styles; hover and focus rules cannot be written that way. A saved page can also break at a later
+  deploy, when a shared component's settings change, and CI never sees it.
+
+### What "convert to code" becomes
+
+In all three it is a file move, and nothing is redrawn:
+
+- **(a)** the same text goes into the app's folder as a `.liquid.html` file, drawn by the same
+  renderer.
+- **(b)** the same JSON goes into the app's folder (decision 8).
+- **(c)** the same `.tsx` file typechecks unchanged in the app's source. It then gains what code
+  has: types, review and CI.
+
+This corrects section 5. That table said an HTML page would have to be redrawn in React to become
+code. It need not be: if `main` can host an HTML page, the file in Git is the same HTML.
+
+### One property only (a) has, and its limit
+
+The markup of a prototype drawn with the look kit can become the page itself: the same elements
+and the same classes. That is the strongest answer to the first pain in section 1.
+
+Its limit: a look-kit prototype draws itself with a script from sample rows in the page. A
+runtime HTML page may carry no script, so that part is rewritten as Liquid. The picture carries
+over; the way data reaches it does not. The redraw is smaller than to React, not zero, unless the
+"prototype" is made as a runtime page from its first round, which is what all three models offer.
+
+### The owner's question: could HTML pages inside `main` be how the redesign's page model reaches production?
+
+**Partly, and it is worth doing for that reason, but it is not the redesign arriving.**
+
+What proof (a) shows can reach production through `main`, step by step:
+
+- **The look.** The look kit's stylesheet worked inside today's shell at once, light and dark,
+  because it uses the shell's own colour tokens.
+- **Server-drawn HTML with htmx.** It ran inside the React shell with less trouble than expected.
+- **A first "part" in HTML:** the record link, as a template filter the platform owns.
+
+What it does not bring:
+
+- **The redesign's pages are code, not stored pages.** Read on its branch: a page there is a
+  TypeScript function that returns HTML (`page.ts`, `showing.ts`). A page saved in a meeting needs
+  something the redesign does not have either: stored HTML that says where its data goes. Proof
+  (a) had to choose a template language for that. So this piece is new work in both Featherbases,
+  and doing it on `main` first would serve the redesign later.
+- **The shell.** Today's shell is React. The proof puts HTML inside it; it does not replace it.
+- **The redesign's other decisions:** its data model, its stack, its way of testing. None of
+  those travel with a page.
+
+And one cost to weigh: `main` would then have three ways to draw a screen for a long time (React
+apps, JSON pages, HTML pages), unless one of them is chosen as the way new screens are made.
+
+### Recommendation (not yet agreed)
+
+1. **Finish and use the JSON page, proof (b), as the first runtime page.** It is the only one of
+   the three that needs no trust beyond "nobody reviews a page before it is published": it cannot
+   reach past its viewer, and every part, setting and column is checked before it shows. It is
+   built and tested.
+2. **Do not build the TSX code page.** Its one clear advantage, that the file moves into Git
+   unchanged, the other two have as well. What it adds is the power of the person looking at it,
+   with nothing checked.
+3. **Build the HTML page next, properly, as the answer to "the catalog cannot draw this"**, in
+   place of the earlier plan for an app's own React parts as the second rung. It is the redesign's
+   direction, it needs no second renderer when production moves, and it gives a meeting the
+   layout freedom ten parts cannot. Before real use it needs: its check inside the Table's own
+   save, a maintained cleaner in place of the hand-written one, helpers that carry state and write
+   a save form so a page does not do it by hand, and the look kit merged (#1412).
+4. **Let two or three real meeting screens decide what comes after**: whether HTML pages take over
+   from JSON pages, or the two meet, with a JSON part usable inside an HTML page so that a table's
+   grouping and totals are the platform's tested code and the layout around it is free.
+
+The reasoning in one line: the three proofs are three points on one scale, from most checked and
+least free (JSON) to most free and least checked (TSX), and the HTML page sits between them. The
+first version should start at the checked end, because that costs nothing more now, and move
+toward freedom where real screens ask for it.
+
+Where this recommendation is weakest: it is the owner's meetings that will show how often a screen
+needs a layout the parts cannot give. If that is most screens, the HTML page should come first,
+and proof (a) is ready to be made real.
+
+### Questions for the owner, in order
+
+1. **Which model first?** JSON now and HTML next (recommended), HTML first, or both before any
+   real use.
+2. **May an HTML page carry its own CSS?** The proof says no, so the look kit's gaps can only be
+   closed in the kit. Allowing a `style` block scoped to the page gives freedom and takes away the
+   guarantee that every page looks like Featherbase.
+3. **Decisions 3 to 10** were taken while the owner was away. Each stands unless he changes it.
+4. **ADR 0028** is Proposed. Accepting it is his.
+5. **A code review of the server side** is proposed, one round by a different model, because one
+   route decides who may open a page.
+6. **The pull request** is a draft. Merging it is his.
