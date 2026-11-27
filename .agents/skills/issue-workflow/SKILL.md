@@ -27,7 +27,7 @@ Rating: **red** (blocker). Part of #<n>. Blocked by #<n>. Blocks #<n>. Related: 
 
 Not in this issue: <what was split off, with its issue number>.
 
-Review route: <UI, so an independent verifier at <width> against this checklist | code review>.
+Review route: <UI, so an independent verifier at <width> against this checklist and the agreed mockup at <path> | code review>.
 ```
 
 The first line carries the rating and the links, so a reader sees at once how urgent the issue
@@ -100,13 +100,19 @@ A change a person can see goes this way instead of a code review:
    with the real screen and real data), with a short description, pros and cons and one
    recommendation. Never text alone.
 2. **Checklist.** The agreed design goes into the issue as a numbered checklist (§ The issue
-   body).
+   body). The agreed mockup is kept as a file, at a path the issue names, with a screenshot of
+   each state the checklist names, taken at `ui_verifier_width` pixels. Words alone lose layout
+   and look, so the mockup stays the reference beside the checklist. A change the owner agrees
+   later is made in the mockup first, then in the build.
 3. **Build** it.
-4. **Verifier.** A separate verifier subagent, given the checklist and the running app but not
-   the builder's view, drives the real UI in a headless browser at `ui_verifier_width` pixels
-   and returns a "spec vs built" table: each checklist point, what it saw, pass or fail, with a
-   screenshot. With `desktop_first: true`, UI is built and verified at that desktop width only;
-   phone widths are added only when the piece of work asks for them.
+4. **Verifier.** A separate verifier subagent, given the checklist, the agreed mockup with its
+   screenshots, and the running app, but not the builder's view, drives the real UI in a
+   headless browser at `ui_verifier_width` pixels. It returns two things. A "spec vs built"
+   table: each checklist point, what it saw, pass or fail, with a screenshot. And, for each
+   state, the built screen beside the mockup at the same width, with every visible difference
+   listed as measured (size, weight, colour, spacing, order, wording). A difference the
+   checklist does not allow is a fail. With `desktop_first: true`, UI is built and verified at
+   that desktop width only; phone widths are added only when the piece of work asks for them.
 5. **Fix the differences** before the owner sees the screenshots, the code or a PR.
 
 Put the verifier's screenshots in the PR body only when `screenshots_in_prs` is true; otherwise
