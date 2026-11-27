@@ -39,6 +39,7 @@ import { PermissionManager } from './components/PermissionManager'
 import { TableNaming } from './components/TableNaming'
 import { ActionPreview } from './components/ActionPreview'
 import { DashboardView } from './components/DashboardView'
+import { PageView } from './runtime/PageView'
 import { HomePageView } from './components/HomePageView'
 import { useHomePages } from './lib/home-pages'
 import { Jobs } from './pages/Jobs'
@@ -1033,6 +1034,26 @@ function DashboardPage() {
   )
 }
 
+// #1410: a runtime page, a screen saved as data and drawn from the shared parts (static segment).
+// Its state lives in the address, so the query string is the page's own.
+const pageRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'page/$name',
+  validateSearch: (search: Record<string, unknown>) => search,
+  component: RuntimePage,
+})
+
+function RuntimePage() {
+  const { name } = pageRoute.useParams()
+  const search = pageRoute.useSearch()
+  const navigate = pageRoute.useNavigate()
+  return (
+    <div data-testid="table-page">
+      <PageView key={name} name={name} search={search} onSearch={(next) => void navigate({ search: next, replace: true })} />
+    </div>
+  )
+}
+
 // NAM-001: id-pattern editor for an existing Table (static first segment).
 const namingRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -1221,5 +1242,5 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, actionPreviewRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, linkMotherDuckRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, actionPreviewRoute, dashboardRoute, pageRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, linkMotherDuckRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

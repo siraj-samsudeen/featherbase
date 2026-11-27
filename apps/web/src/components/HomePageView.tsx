@@ -3,7 +3,7 @@ import { rowHref, tableHref } from 'shared'
 import { useHomePages, type HomePageShortcut } from '../lib/home-pages'
 import { ActivityFeed } from './ActivityFeed'
 import { ResumeStrip, RoutineCard } from './HomeRecall'
-import { cardClasses, touchRowClasses } from '@featherbase/shop-floor'
+import { cardClasses, Chip, touchRowClasses } from '@featherbase/shop-floor'
 
 // UI-027 / #80: a Home Page renders its grouped link cards (curated in the
 // `links` sub-table through the generic FormView — no dedicated editor) plus
@@ -59,14 +59,35 @@ export function HomePageView({ name }: { name: string }) {
       <ResumeStrip />
       <RoutineCard />
 
-      {page.cards.length === 0 && page.shortcuts.length === 0 && (
+      {page.cards.length === 0 && page.shortcuts.length === 0 && page.pages.length === 0 && (
         <p className="text-sm text-ink-subtle" data-testid="home-page-empty">
           Nothing here yet. Links are curated on the Home Page document itself.
         </p>
       )}
 
-      {page.cards.length > 0 && (
+      {(page.cards.length > 0 || page.pages.length > 0) && (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3" data-testid="home-page-cards">
+          {/* #1410: the group's runtime pages, beside its Tables. A Draft is listed only for someone who may build. */}
+          {page.pages.length > 0 && (
+            <div className={cardClasses('p-4')} data-testid="home-card-pages">
+              <div className="mb-2 text-xs font-semibold text-ink-subtle" data-testid="home-card-heading">Pages</div>
+              <ul className="space-y-0.5">
+                {page.pages.map((each) => (
+                  <li key={each.name} className="flex items-center gap-2">
+                    <Link
+                      to="/featherbase/admin/page/$name"
+                      params={{ name: each.name }}
+                      data-testid={`home-page-link-${each.name}`}
+                      className={touchRowClasses('flex min-w-0 items-center rounded px-1.5 py-1 text-sm text-ink hover:bg-action-tint hover:text-action')}
+                    >
+                      {each.title}
+                    </Link>
+                    {each.status === 'Draft' && <Chip hue="amber" compact>Draft</Chip>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {page.cards.map((card, i) => (
             <div key={card.label ?? i} className={cardClasses('p-4')} data-testid={`home-card-${card.label ?? 'links'}`}>
               {/* Links curated before the first card break form a card with no

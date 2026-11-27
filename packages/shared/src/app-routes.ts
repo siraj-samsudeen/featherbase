@@ -100,6 +100,8 @@ export const ADMIN_UNRECORDED_ROOTS = [
 export const ADMIN_NAMED_PAGE_KINDS: Record<string, string> = {
   'script-report': 'Report',
   dashboard: 'Dashboard',
+  // #1410: a runtime page (`/page/reorder-plan`).
+  page: 'Page',
 }
 
 /** The title of a static admin page, or undefined for any other slug. */

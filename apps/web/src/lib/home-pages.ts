@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import type { PageStatus } from 'shared'
 import { api } from './api'
 
 // #80: the caller's visible Home Pages, straight from GET /api/home_pages.
@@ -24,6 +25,8 @@ interface HomePage {
   module: string | null
   cards: HomePageCard[]
   shortcuts: HomePageShortcut[]
+  /** #1410: the module's runtime pages this person may open; a Draft only for someone who may build. */
+  pages: { name: string; title: string; status: PageStatus }[]
 }
 
 export function useHomePages() {
