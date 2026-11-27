@@ -9,6 +9,7 @@ import { appCatalog, closedApps, appBar, packageFailures, runPackageAction, runP
 import { appLibraryCatalog, prepareAndInstallApp } from './app-library'
 import { activeRuntimeVersions, appOperation } from './app-lifecycle'
 import { who, type Env } from './route-context'
+import { callerCredential } from './caller-credential'
 import { explainRecord, whyOffer } from './why'
 import { describeRows, previewAction } from './record-facts'
 import { workedOutFor } from './worked-out'
@@ -51,7 +52,8 @@ appRoutes.post('/api/app_actions/:app/:action', async (c) =>
   c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
 appRoutes.post('/api/app_reads/:app/:read', async (c) => {
   c.header('Cache-Control', 'no-store')
-  return c.json(await runPublicPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
+  // #1377 (ADR 0028): the caller's own credential, for a read that declares featherbaseMcp.
+  return c.json(await runPublicPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c), false, callerCredential(c)))
 })
 // #1282 C10–C11: the record panel's worked-out sections, an installed app's answer about one record.
 appRoutes.get('/api/worked-out/:table/:row', async (c) => c.json(await workedOutFor(c.req.param('table'), c.req.param('row'), who(c))))

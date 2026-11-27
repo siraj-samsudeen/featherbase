@@ -21,6 +21,7 @@ import { callerMail, readsRow } from './runtime-mail'
 import { appDatasets, recordPlaceDrops, type DatasetDeclaration, type DropProvenance, type DropVersions, type PlaceDrop } from './app-datasets'
 import { baseTablesReader, proposalsReader, proposalsWriter, type BaseTablesDeclaration } from './change-proposals'
 import { featherbaseMcp } from './mcp-app-reads'
+import type { Credential } from './caller-credential'
 
 const NO_SETUP: AppSetup = { title: '', settings: Object.freeze({}), secrets: Object.freeze({}), missing: { settings: [], secrets: [] }, optionalSecrets: [] }
 
@@ -298,7 +299,9 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
 }
 
 export async function executeRuntimeRead(app: string, name: string, input: unknown, user: string,
-  declaration: () => DeclaredOperations<RuntimeReadHandler> | undefined, discovery = false) {
+  declaration: () => DeclaredOperations<RuntimeReadHandler> | undefined, discovery = false,
+  /** #1377 (ADR 0028): the caller's own credential, which a featherbaseMcp read's tool calls carry. */
+  credential?: Credential) {
   const decided = await appOperation(async () => {
     const parsed = requestSchema.omit({ idempotencyKey: true }).safeParse(input)
     if (!discovery && !parsed.success) reject('Expected { payload }')
@@ -349,9 +352,10 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
   // only if the app is still enabled and serving the version it ran under.
   const { handler, contribution, frozen, identity } = decided.outbound
   const views: (() => Promise<void>)[] = []
-  // #1377: a read that declares featherbaseMcp gets Featherbase's read-only MCP tools, as the
-  // person, under a pass named by the app; closed when the handler ends.
-  const mcp = contribution.operations.get(name)?.declaration.featherbaseMcp ? featherbaseMcp(user, frozen.setup.title || app) : undefined
+  // #1377 (ADR 0028): a read that declares featherbaseMcp gets Featherbase's read-only MCP tools,
+  // with the caller's own credential, labelled by the app; closed when the handler ends. No caller
+  // credential (a read the server starts itself), no tools.
+  const mcp = credential && contribution.operations.get(name)?.declaration.featherbaseMcp ? featherbaseMcp(credential, frozen.setup.title || app) : undefined
   const { answer, drops } = await runRead(app, name, user, handler, contribution, frozen, CLOSED_DOCUMENTS,
     async () => { await mcp?.close() }, (write) => views.push(write), undefined, undefined, mcp)
   // One shared lifecycle lock for the final check and the view records, so

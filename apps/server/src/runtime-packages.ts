@@ -24,6 +24,7 @@ import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossa
 import { sql, withTransaction, usingTransaction } from './db'
 import { logActivity } from './audit'
 import { getMeta, invalidateMeta } from './meta'
+import type { Credential } from './caller-credential'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, countLosses, describeLoss, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
 
 // Public v1 hook contract is structural: packages never import core classes.
@@ -739,19 +740,19 @@ export function runPackageAction(app: string, action: string, input: unknown, us
   return executeRuntimeAction(app, action, input, user, () => packages.get(app)?.actions)
 }
 
-export function runPackageRead(app: string, read: string, input: unknown, user: string, discovery = false) {
-  return executeRuntimeRead(app, read, input, user, () => packages.get(app)?.reads, discovery)
+export function runPackageRead(app: string, read: string, input: unknown, user: string, discovery = false, credential?: Credential) {
+  return executeRuntimeRead(app, read, input, user, () => packages.get(app)?.reads, discovery, credential)
 }
 
 /** POST /api/app_reads/:app/:read, called by people and pages. A read the app declares for its worked-out sections
  *  (#1282, Codex adversarial round 2) answers only through GET /api/worked-out, which checks the record and scrubs the
  *  answer for the viewer; called here it would skip both. */
-export function runPublicPackageRead(app: string, read: string, input: unknown, user: string, discovery = false) {
+export function runPublicPackageRead(app: string, read: string, input: unknown, user: string, discovery = false, credential?: Credential) {
   if (packages.get(app)?.manifest.people?.sections === read)
     throw new AppError('PermissionError', "This read answers only through the record panel's worked-out sections")
   // #1340: a record describer or preview answers only through /api/records, which checks and scrubs it.
   if (isRecordsRead(app, read)) throw new AppError('PermissionError', "This read answers only through Featherbase's record pages")
-  return runPackageRead(app, read, input, user, discovery)
+  return runPackageRead(app, read, input, user, discovery, credential)
 }
 
 export function declaredPackageActions() {

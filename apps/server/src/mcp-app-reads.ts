@@ -1,13 +1,13 @@
 // #1377: Featherbase's MCP tools for an app's outbound read that declares
 // featherbaseMcp. The same tool server an agent reaches at /mcp (mcp.ts), built
-// in memory, no network. Each call runs as the person, with a pass: a 5-minute
-// access token the platform issues for them (ADR 0021: only an access token
-// opens the tools). Only the read-only tools are offered or run.
+// in memory, no network. Each call is an inner /api request carrying the
+// caller's own credential (ADR 0028), so every front-door check applies on every
+// call. Only the read-only tools are offered or run.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import type { FeatherbaseMcpTool, FeatherbaseMcpTools } from 'shared'
-import { issueAccessToken } from './auth'
 import { runAsAgent } from './agent-context'
+import type { Credential } from './caller-credential'
 import { buildServer, Refusal, type ApiApp, type Envelope } from './mcp'
 import type { Api, Json } from './mcp-common'
 
@@ -17,34 +17,16 @@ export function serveFeatherbaseMcp(app: ApiApp) {
   mcpApp = app
 }
 
-// A pass is kept only here, in memory, reused for the person's next questions,
-// and renewed when under 2 minutes remain. It expires on its own.
-const PASS_MS = 5 * 60_000
-const RENEW_UNDER_MS = 2 * 60_000
-type Pass = { token: string; id: string; label: string; expiresAt: number }
-const passes = new Map<string, Promise<Pass>>()
-
-async function passFor(person: string, label: string): Promise<Pass> {
-  const key = `${person}\n${label}`
-  const held = await passes.get(key)?.catch(() => undefined)
-  if (held && held.expiresAt - Date.now() > RENEW_UNDER_MS) return held
-  const issued = issueAccessToken(person, label, new Date(Date.now() + PASS_MS))
-    .then(({ token, id, label, expires_at }) => ({ token, id, label, expiresAt: Date.parse(expires_at!) }))
-  passes.set(key, issued)
-  // A refused pass (a disabled person) is not kept.
-  issued.catch(() => { if (passes.get(key) === issued) passes.delete(key) })
-  return issued
-}
-
-/** The tools for one read, as the person: each call reads exactly what they may read,
- *  in every app. label names the pass, as history shows it ("via Feather Ask"). */
-export function featherbaseMcp(person: string, label: string): FeatherbaseMcpTools & { close(): Promise<void> } {
+/** The tools for one read, with the caller's credential (a session or an access token): each
+ *  call reads exactly what they may read, in every app. The credential stays in this closure,
+ *  never in a result or a refusal. label names the caller in history ("via Ask"). */
+export function featherbaseMcp(credential: Credential, label: string): FeatherbaseMcpTools & { close(): Promise<void> } {
+  // Marked as an agent's call, as /mcp's are: history, and the installed version of every app.
+  const mark = { token_id: 'in-memory', token_label: label }
   const api: Api = async (method, path, body) => {
-    const pass = await passFor(person, label)
-    // Marked as an agent's call, as /mcp's are: it speaks the installed version of every app.
-    const res = await runAsAgent({ token_id: pass.id, token_label: pass.label }, () => mcpApp!.request(path, {
+    const res = await runAsAgent(mark, () => mcpApp!.request(path, {
       method,
-      headers: { authorization: `Bearer ${pass.token}`, 'content-type': 'application/json' },
+      headers: { authorization: credential.header(), 'content-type': 'application/json' },
       ...(body ? { body: JSON.stringify(body) } : {}),
     }))
     const json = (await res.json()) as Json
