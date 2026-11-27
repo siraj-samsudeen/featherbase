@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; next: 1f, the server test). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; next: 1f2, View as). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -253,17 +253,20 @@ Done on the backend (step 1, the platform piece):
   pass that 1e removes), 1d `executeRuntimeRead` hands `ctx.featherbaseMcp` to a read that
   declares the flag (`2db345742`), 1e the tools carry the caller's own credential in a
   `Credential` that never prints itself (`caller-credential.ts`, `def132bfd`; checked: both
-  typechecks, `checks\check1e.mts` 14/14, 496 tests in 13 files, platform imports).
+  typechecks, `checks\check1e.mts` 14/14, 496 tests in 13 files, platform imports), 1f the
+  server test `featherbase-mcp.test.ts`: 12 tests over HTTP with `action-proof`'s `tools` and
+  `untooled` reads (`dffb84cc1`).
 
-## Next step: 1f, the server test for the tools
+## Next step: 1f2, View as for Ask's tools
 
-1e2 is deferred (see Decisions). Next is `apps/server/test/featherbase-mcp.test.ts`, with a
-`tools` outbound read in `test-apps/action-proof` (details in `feather-ask-agent/tasks.md`, 1f).
-Mohammad types it in from **`ask-handover\1f-draft\WALKTHROUGH.md`** (four files; `1f.diff`
-applies on `9e8906baf`). Checked by Claude on 27-Nov-2026: 12/12, the six `action-proof`
-suites, server typecheck, platform imports, scenarios. `runtime-actions.test.ts` changes two
-lines because the fixture now has reads. Running the test: never stop vitest from outside on
-Windows; its workers live on and hold `featherbase_test` (the pause tests release in `finally`).
+A decision first, then a small build. While viewing as someone, the GET tools answer as the
+person viewed but the POST dry runs (`check_import`, `suggest_table`) as the tester, so one answer
+can mix two people (design, Open Questions, with an example). Options: A, pin the View as for the
+whole question (recommended in the design); B, no tools while viewing as someone. Ask Mohammad
+which, then draft it in `ask-handover\1f2-draft\`, check it, and give the walkthrough.
+
+Running server tests: never stop vitest from outside on Windows; its workers live on and hold
+`featherbase_test`. Let a run end by itself (the pause tests release in `finally`).
 
 ## The road to done
 
@@ -272,11 +275,11 @@ ending in a manual check and a commit; the details are in `feather-ask-agent/tas
 
 1. **Finish the platform piece (step 1).**
    - 1e2: deferred (the Access Log entry per tool call; 2.2b's saved steps cover it for now).
-   - 1f (**next**): the server test `apps/server/test/featherbase-mcp.test.ts`, with a `tools` outbound
+   - 1f (done, `dffb84cc1`): the server test `apps/server/test/featherbase-mcp.test.ts`, with a `tools` outbound
      read in `test-apps/action-proof`: read-only tools only, Selvi sees her row and Ravi none,
      no token made, turned off / signed out everywhere / signed out of that session refused,
      an access-token caller works, no caller gets no tools, the credential never leaks.
-   - 1f2: decide View as (pin it for the whole question, or no tools while viewing as).
+   - 1f2 (**next**): decide View as (pin it for the whole question, or no tools while viewing as).
    - 1g: propose an adversarial review (permissions) in one line; run it only on a yes.
 2. **The agent loop in Ask, with a stand-in model (step 2).** A `think` outbound read runs the
    loop; the `ask` action saves chat, question, answer and the steps behind it (2.2b); the page
@@ -305,7 +308,7 @@ Later, outside this issue: writes on request with the person's confirmation (#13
 scheduled Ask with nobody signed in, which needs its own agent identity.
 
 Drafts and checks (outside the repo, `C:\Users\DELL\Documents\work\ask-handover\`):
-- `1e-draft\`: 1e, now committed (`def132bfd`).
+- `1e-draft\`: 1e, now committed (`def132bfd`). `1f-draft\`: 1f, now committed (`dffb84cc1`).
 - `checks\check1e.mts`: 1e's check (14 checks). `checks\check1d.mts` tests 1d as committed
   (with the pass); it fails once 1e is in, since the pass and its rows are gone.
 - `1e-no-token-rejected\`: the rejected "person on the mark" draft and its check. Do not use.

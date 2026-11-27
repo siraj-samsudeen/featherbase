@@ -24,12 +24,13 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
       entry (`logAccess`: the person, operation `agent_read`, the tool as method, the Table, scope
       "via <app>"); no rows, no question text, never the credential. `featherbaseMcp` takes the
       person for it. Admins see it in the Access Log; View as is recorded as the tester's.
-- [ ] 1f Server test `apps/server/test/featherbase-mcp.test.ts` with a `tools` outbound read in
+- [x] 1f Server test `apps/server/test/featherbase-mcp.test.ts` with a `tools` outbound read in
       `test-apps/action-proof`, bound to the `trusted-runtime-packages` scenarios: only read-only
       tools, Selvi sees her row and Ravi none, no `create_row`, a read without the flag gets none,
       no access token is made; turned off, signed out everywhere, and signed out of that session
       mid-read are refused; a read opened with an access token works; a read with no caller gets
-      no tools; the credential never appears in a refusal, a result or the read's context.
+      no tools; the credential never appears in a refusal, a result or the read's context
+      (commit dffb84cc1; binding to the scenarios is step 8, as they are still prose).
 - [ ] 1f2 Decide and build View as for Ask's tools (design, Open Questions): pin the View as for
       the whole question (recommended), or no tools while viewing as someone.
 - [ ] 1g Propose an adversarial review (permissions) to the owner before 1 lands.
