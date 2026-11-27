@@ -12,8 +12,9 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
 - [x] 1d Hand `ctx.featherbaseMcp` to an outbound read that declares the flag
       (`runtime-actions.ts`, `executeRuntimeRead`), closed when the read ends; labelled by the
       app's title, else its name (commit 2db345742).
-- [ ] 1e The caller's own credential (ADR 0028): `authCredential(c)` passed from `app-routes.ts`
-      through `runPublicPackageRead` → `runPackageRead` → `executeRuntimeRead` to
+- [ ] 1e The caller's own credential (ADR 0028): `callerCredential(c)` wraps it in a
+      `Credential` that never prints itself (`caller-credential.ts`), passed from
+      `app-routes.ts` through `runPublicPackageRead` → `runPackageRead` → `executeRuntimeRead` to
       `featherbaseMcp`, sent as the Bearer header on every tool call inside `runAsAgent`; no
       credential, no tools; `mcp-app-reads.ts` drops the pass. Replaces the planned sweep.
 - [ ] 1e2 The platform's log of what an app's agent read: each tool call writes one Access Log

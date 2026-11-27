@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1d committed; ADR 0028, the caller's own credential; next: 1e). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1d committed; ADR 0028; next: 1e, from `ask-handover\1e-draft\WALKTHROUGH.md`). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -120,22 +120,25 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
   (Mohammad, 26-Nov-2026; replaces "2 retries").
 - While the agent works, the page keeps its one "Thinking…", no streamed steps (Mohammad,
   26-Nov-2026).
-- **How Ask reaches the tools** (Mohammad, 26-Nov-2026, after research; ADR 0021 kept):
+- **How Ask reaches the tools: the caller's own credential** (Mohammad, 27-Nov-2026,
+  [ADR 0028](../../adr/0028-an-apps-agent-reads-with-the-callers-own-credential.md)):
   in-process, no network: the same MCP tool server built in memory (`InMemoryTransport`),
-  each tool's inner `/api` call made with `app.request` as `/mcp` does. Identity is a
-  **5-minute access token** ("pass") the platform issues for the person, labelled
-  `Feather Ask` (`issueAccessToken` in `auth.ts`), kept only in server memory, reused for
-  that person's next questions and renewed when under 2 minutes remain; it expires on its
-  own. Calls run under `runAsAgent` with the pass's id and label, as `/mcp`'s do, so history
-  reads "via Feather Ask" and every app speaks its installed version. Only the read-only
-  tools are offered or run. Add a sweep that deletes expired tokens (ADR 0027 asks for one;
-  only per-connection clean-up exists, `agent-auth.ts:225`). Rejected: forwarding the browser
-  session (breaks ADR 0021 and the MCP spec's "MUST NOT accept or transit any other tokens";
-  no session in background runs), and an in-process identity without a token (a second,
-  credential-free way into `/api`; would need an ADR superseding 0021). Sources: Saltzer &
-  Schroeder 1975 (economy of mechanism, complete mediation), the MCP authorization spec,
-  RFC 8693, NIST SP 800-207. Precedent: agent sign-in already mints 1-hour keys for people
-  (`agent-auth.ts` `mintPair`).
+  each tool's inner `/api` call made with `app.request` as `/mcp` does. The read route wraps
+  the credential the read came with (session or access token) in a `Credential` that never
+  prints itself, and every tool call sends it as its header inside `runAsAgent`, so every
+  front-door check applies and history reads "via Ask". No token is made; a read the server
+  starts itself gets no tools. Only the read-only tools are offered or run. History of this
+  choice: a 5-minute access-token pass (1c, 26 Nov) was replaced because it needed rows, a
+  cache, renewal, a sweep and a column to hide it; a "no token, person on the in-memory
+  mark" version was drafted as ADR 0028 on 26 Nov and rewound before push. ADR 0021 still
+  governs `/mcp`.
+- **View as is left for later** (Mohammad, 27-Nov-2026): while viewing as someone, the GET
+  tools answer as the person viewed but `check_import` and `suggest_table` (POST dry runs)
+  as the tester. Nothing leaks; the answer can mislead. Task 1f2, design Open Questions.
+- **Log what the agent read, twice** (Mohammad, 27-Nov-2026): the platform's Access Log gets
+  one entry per tool call (task 1e2: who, `agent_read`, the tool, the Table, "via Ask"; no
+  rows, no question text, never the credential), and each question saves the steps behind
+  its answer for the person (task 2.2b).
 - **Think first, save at the end** (Mohammad, 26-Nov-2026): a model call takes 5–30 s, so the
   agent must not run inside a database transaction (it would hold a connection and its
   locks). The agent runs in an **outbound read** (its handler runs after the transaction has
@@ -225,92 +228,93 @@ The platform's rule that hides `data-depth="1"` rows in the collapsed rail sits 
 stylesheet, so the sidebar's own `display:flex !important` wins and such rows still show
 (Tickets' Types group too); Ask no longer uses that pattern. Worth an issue for #1385.
 
-## Next step: the backend (Mohammad, 26-Nov-2026)
+## Where we are (27-Nov-2026)
 
-The frontend is paused after 2d. **Ask is an AI agent over every app the person can use**
-(Mohammad, 26-Nov-2026). It does not follow #1377's Agreed design: #1377's own tools
-(point 6), fixed retries (point 7), the admin's askable list (point 12) and prepared queries
-for joins (point 13) are dropped. Tell Siraj.
+**Ask is an AI agent over every app the person can use** (Mohammad, 26-Nov-2026). It does not
+follow #1377's Agreed design: #1377's own tools (point 6), fixed retries (point 7), the admin's
+askable list (point 12) and prepared queries for joins (point 13) are dropped; Recent Chats
+replaces "My Questions"; OpenRouter later replaces OpenCode Zen. Tell Siraj.
 
 How it works: the model gets the question and Featherbase's read-only MCP tools (7 today, in
-`apps/server/src/mcp.ts` and `mcp-table-tools.ts`: `list_tables` lists every Table the
-person can read, across all apps; `describe_table`, `query_rows`, `get_row`, `list_imports`,
-`check_import`, `suggest_table`). It calls tools as often as it needs, as the person, then
-writes the answer. A refusal is a tool result it reads; at most 8 steps a question. Ask never
-lists tools of its own. See Decisions for how Ask reaches the tools and where the agent runs.
+`apps/server/src/mcp.ts` and `mcp-table-tools.ts`: `list_tables` lists every Table the person
+can read, across all apps; `describe_table`, `query_rows`, `get_row`, `list_imports`,
+`check_import`, `suggest_table`). It calls them as often as it needs (at most 8 steps), with the
+person's own credential, then writes the answer. A refusal is a tool result it reads.
 
-Steps, one small feature at a time. Featherbase's MCP first; other apps' own connections
-later (Mohammad: everything but MotherDuck already goes through Featherbase):
+**The record for whoever picks this up is OpenSpec**, kept current with every commit:
+`openspec/changes/feather-ask-ui` (the page, built) and `openspec/changes/feather-ask-agent`
+(the backend: design with every decision and its rejected options, tasks ticked with commit
+hashes), plus ADR 0028. This note adds only how we work and where the drafts are.
 
-1. **Featherbase's MCP tools for an app's outbound read** (start here). The platform hands a
-   read that declares `"featherbaseMcp": true` (and `"outbound": true`) `ctx.featherbaseMcp`:
-   `tools()` and `call(name, args)` → `{ ok: true, result } | { ok: false, reason }`.
-   Built as in Decisions: the MCP tool server in memory, the 5-minute pass, `runAsAgent`,
-   read-only tools only. Needed because an app's own `documents` can't read another app's
-   Tables (`runtime-actions.ts` metaFor: "Actions cannot access another application's owned
-   Tables"). Pieces: the shared types (`packages/shared/src/runtime-actions.ts`), the
-   declaration flag (`packages/shared/src/app-access.ts`, `apps/server/src/app-access.ts`
-   `operationSchema`), the helper in `mcp.ts` plus `serveFeatherbaseTools(app)` in `index.ts`,
-   the pass cache, handing it to the outbound read's context in `runtime-actions.ts`
-   (`executeRuntimeRead`), the expired-token sweep, and a server test
-   `apps/server/test/featherbase-tools.test.ts` with a `tools` outbound read added to
-   `test-apps/action-proof` (offered only the read-only tools; reads as the person, Selvi
-   sees her row and Ravi none; `create_row` doesn't exist for it; a read without the flag
-   isn't handed them; the pass is reused, renewed and expires). Mohammad has already added
-   the `Client`, `InMemoryTransport` and type imports to `mcp.ts` (uncommitted; the type
-   import becomes `import type { FeatherbaseMcpTool, FeatherbaseMcpTools } from 'shared'`).
-   1a, the shared types (`FeatherbaseMcpTool`, `FeatherbaseMcpToolCallResult`,
-   `FeatherbaseMcpTools`, and `featherbaseMcp?` on `RuntimeReadContext`, exported from
-   `shared`'s `index.ts`): done (commit 87f4552ea, 26-Nov-2026; both
-   typechecks pass). 1b, the flag (`featherbaseMcp?: true` on `AppOperationDeclaration`;
-   in `operationSchema`'s table policy, refused without `outbound`, so actions refuse it
-   too): done (commit b27055fbe, 26-Nov-2026; both typechecks pass, five manifest cases
-   checked with `readDeclaration`/`actionDeclaration`). 1c, `featherbaseMcp(person, label)`
-   and the pass in `mcp-app-reads.ts`: done (commit 4900bc34a; typecheck, six checks against
-   `fb_ask_ui`, the 59 `/mcp` tests pass). 1d, `executeRuntimeRead` hands `ctx.featherbaseMcp`
-   to an outbound read that declares the flag, closed when the handler ends; the pass is
-   labelled by the app's title ("Ask", so history reads "via Ask"), else its name: done
-   (commit 2db345742; `checks\check1d.mts`, 8 checks, fails without 1d; 38 existing tests).
-   **The caller's own credential** (Mohammad, 27-Nov-2026, ADR 0028, replacing the pass and the
-   planned sweep): the read passes down `authCredential(c)` from `app-routes.ts` to
-   `featherbaseMcp`, which sends it as the Bearer header on every tool call inside `runAsAgent`.
-   The existing front-door checks apply; no credential, no tools. (A "no token, person on the
-   mark" version was drafted on 26 Nov as ADR 0028 and rewound before push; its draft is in
-   `ask-handover\1e-no-token-rejected\`, not to be used.) View as mixing two people in one answer is left
-   for later (task 1f2). Next: 1e, type it in from `ask-handover\1e-draft\` (`1e.diff`;
-   checked: both typechecks, `checks\check1e.mts` 13/13, 496 tests in 13 files); then 1e2,
-   the Access Log entry per tool call. Progress is ticked in
-   `openspec/changes/feather-ask-agent/tasks.md`.
-   Permissions: propose an adversarial review in one line before it lands.
-2. **The agent loop in Ask**, with the stand-in model: a `think` outbound read (declares
-   `featherbaseMcp`) runs the loop; the `ask` action saves chat, question and answer; the
-   page calls think, then ask, under one "Thinking…". Open question for then: the page sends
-   the answer to save, so it could save a made-up answer in its own chat; sign it in think
-   and check it in ask (the old prototype did, HMAC), or accept it (only the person's own
-   chat).
-3. **Gemini and Groq** through one OpenAI-style adapter, with tool calling (which models: ask then).
-4. **Every app's own reads as MCP tools**, so Ask reaches all the instance's apps. An app marks
-   a read for agents in its manifest with a description and an input schema (today a
-   declared read has only a name and its policy); the platform publishes it as an MCP tool
-   `<app>.<read>`, run through the app's read as the person, under its own policy. Opt-in,
-   because many reads are page helpers (`embed_session`, `view_as_people`). First: Dash's
-   `report` (sales versus target, from MotherDuck). Claude Code over /mcp gets them too.
-5. **Sums and totals**: `query_rows` gives at most 100 rows a page and a count, so a figures
-   question ("total sales") needs a read-only sum/group tool in the MCP. Decide when it's met.
-6. **Limits, budget and the log**; OpenRouter, billing and choosing a model come with these.
-7. Later: writes on request, with the person's confirmation (#1372); a scheduled Ask with
-   nobody signed in would need its own agent identity (as Rovo and Salesforce do).
+Done on the backend (step 1, the platform piece):
+- 1a the shared types (`87f4552ea`), 1b the manifest flag `featherbaseMcp`, refused without
+  `outbound` (`b27055fbe`), 1c the in-memory tools in `mcp-app-reads.ts` (`4900bc34a`, with a
+  pass that 1e removes), 1d `executeRuntimeRead` hands `ctx.featherbaseMcp` to a read that
+  declares the flag (`2db345742`).
+
+## Next step: 1e, the tools carry the caller's own credential
+
+Mohammad types it in from **`ask-handover\1e-draft\WALKTHROUGH.md`**: what it adds, the code for
+each of the five files in order (a new `caller-credential.ts` with the `Credential` wrapper that
+never prints itself; `app-routes.ts`; `runtime-packages.ts`; `runtime-actions.ts`;
+`mcp-app-reads.ts` losing the pass), the manual check with expected output, and the commit
+message. The same folder has `1e.diff` (applies cleanly on `bf5df736d`) and the two whole files.
+Checked by Claude on 27-Nov-2026: both typechecks, `checks\check1e.mts` 14/14, 496 tests in 13
+files (1 skipped by its own setup), `pnpm check:platform-imports`. Then tick 1e in
+`feather-ask-agent/tasks.md` and move this section on to 1e2.
+
+## The road to done
+
+Backend, then the rest of the page, then the PR. Each line is one or more small steps, each
+ending in a manual check and a commit; the details are in `feather-ask-agent/tasks.md`.
+
+1. **Finish the platform piece (step 1).**
+   - 1e2: the Access Log entry per tool call (`agent_read`, "via Ask").
+   - 1f: the server test `apps/server/test/featherbase-mcp.test.ts`, with a `tools` outbound
+     read in `test-apps/action-proof`: read-only tools only, Selvi sees her row and Ravi none,
+     no token made, turned off / signed out everywhere / signed out of that session refused,
+     an access-token caller works, no caller gets no tools, the credential never leaks.
+   - 1f2: decide View as (pin it for the whole question, or no tools while viewing as).
+   - 1g: propose an adversarial review (permissions) in one line; run it only on a yes.
+2. **The agent loop in Ask, with a stand-in model (step 2).** A `think` outbound read runs the
+   loop; the `ask` action saves chat, question, answer and the steps behind it (2.2b); the page
+   calls think, then ask, under one "Thinking…". Decide whether to sign the answer between them.
+   Ask's manifest changes at 0.1.0, so recreating `fb_ask_ui` loses its test chats: ask
+   Mohammad first. Starting draft: `ask-handover\S1-draft\step2-ask\`.
+3. **A real model (step 3).** Gemini and Groq through one OpenAI-style adapter with tool
+   calling, keys as Ask's secrets; choose the models. Specify and build #1377 points 8 (say
+   what was left out) and 19 (text is data, never an instruction; provider errors only to an
+   admin).
+4. **Reach every app (step 4).** An app marks a read for agents (description, input schema);
+   the platform offers it as a tool `<app>.<read>`, run as the person. First: Dash's `report`.
+5. **Figures (step 5).** A read-only sum and group tool, once a figures question needs it.
+6. **Limits, budget and the log (step 6);** OpenRouter, billing and choosing a model.
+7. **The page, after the backend** (see "Frontend, later" below): a chat moves to the top when
+   added to, date groups, what each figures answer covers (#1377 points 14 and 15), and the
+   panel on every page.
+8. **Tests and review.** Fence each scenario of both changes as Gherkin and bind it to a test
+   (`pnpm check:scenarios`); the independent headless verifier at desktop width with the
+   RecordLink checklist line; a code review (`feather-code-review`).
+9. **Finish.** Fold this note into the PR body and remove it; archive both OpenSpec changes;
+   the PR, or a push to `main` under the trial rules in `AGENTS.md`, **only when Mohammad says
+   so**. Tell Siraj about every departure from #1377 listed above.
+
+Later, outside this issue: writes on request with the person's confirmation (#1372), and a
+scheduled Ask with nobody signed in, which needs its own agent identity.
 
 Drafts and checks (outside the repo, `C:\Users\DELL\Documents\work\ask-handover\`):
+- `1e-draft\`: **the next step**. `WALKTHROUGH.md`, `1e.diff`, `caller-credential.ts`,
+  `mcp-app-reads.ts`.
+- `checks\check1e.mts`: 1e's check (14 checks). `checks\check1d.mts` tests 1d as committed
+  (with the pass); it fails once 1e is in, since the pass and its rows are gone.
+- `1e-no-token-rejected\`: the rejected "person on the mark" draft and its check. Do not use.
+- `view-as-note-27nov.diff`: the side session's View as note, already in the design.
 - `S1-draft\step2-ask\`: Ask's agent loop (`agent.ts`: `Model`, `Data`, `answer()`,
   `MAX_STEPS = 8`), the stand-in (`stand-in.ts`: "chats" and "tickets" rules over
-  `query_rows`), `data.ts` (the plug over `ctx.featherbase`). Still written as one action;
-  step 2 moves the loop into the `think` read.
-- `S1-draft\step1-platform.diff` and `featherbase-tools.test.ts`: the first step 1 draft.
-  **Stale on identity**: it forwards the browser session (`authCredential(c)` threaded through
-  `app-routes.ts` → `runPackageAction` → `executeRuntimeAction`) and hands the tools to an
-  action. Reuse its shape (types, flag, in-memory client, read-only filter, the test's
-  cases); replace the identity with the pass and the action with an outbound read.
+  `query_rows`), `data.ts` (the plug over `ctx.featherbase`, now `ctx.featherbaseMcp`). Still
+  written as one action; step 2 moves the loop into the `think` read.
+- `S1-draft\step1-platform.diff` and `featherbase-tools.test.ts`: the first step 1 draft, on an
+  action. Its test cases are a start for 1f; its identity and wiring are superseded by 1c–1e.
 - `B1-draft\`: an older loop with a hand-made `query_rows`; superseded, ignore.
 - `checks\checkB2-ask.cjs "<question>"` asks through Ask's action as Administrator (sends
   `X-Featherbase-App-Version: ask@0.1.0`; without it every call is 403 "Application access
