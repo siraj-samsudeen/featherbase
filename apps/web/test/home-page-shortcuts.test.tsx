@@ -50,6 +50,21 @@ test("an address shortcut to an app's own pages is a plain link, so the app's pa
   expect(shortcut).toHaveAttribute('href', '/someapp/')
 })
 
+test("a shortcut says what it opens in words: its own description, else the kind of place, never its raw type", async ({ admin }) => {
+  await admin.post('/api/save_row', {
+    table: 'Home Page',
+    row: { row_id: 'hps-notes', label: 'Notes', shortcuts: JSON.stringify([
+      { label: 'Open the app', type: 'url', link_to: '/someapp/', description: 'Review the month by section' },
+      { label: 'All tables', type: 'url', link_to: '/featherbase/admin/all-tables' },
+      { label: 'People', link_to: 'Person' },
+    ]) },
+  })
+  await renderApp('/featherbase/admin/home/hps-notes', admin)
+  expect(await screen.findByTestId('shortcut-Open the app', {}, { timeout: 8000 })).toHaveTextContent('Review the month by section')
+  expect(screen.getByTestId('shortcut-All tables')).toHaveTextContent(/^All tablesPage$/)
+  expect(screen.getByTestId('shortcut-People')).toHaveTextContent(/^PeopleTable$/)
+})
+
 test('a Home Page address that names no Home Page says so', async ({ admin }) => {
   await renderApp('/featherbase/admin/home/hps-no-such-page', admin)
   expect(await screen.findByTestId('home-page-error', {}, { timeout: 8000 })).toHaveTextContent('Home Page not found')
