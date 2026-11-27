@@ -313,7 +313,7 @@ describe('real package extensions retain transactional helper boundaries', () =>
         manifest.actions.operations.forget_failed_write = policy
         manifest.actions.tables.push('Shared Action Note')
         manifest.permissions.push({ table: 'Shared Action Note', role: 'All', operations: { read: '*', delete: true } })
-        manifest.reads = { version: 1, operations: { preview: policy }, tables: ['actionproof.work'] }
+        manifest.reads.operations.preview = policy
         await writeFile(manifestPath, JSON.stringify(manifest))
         const serverPath = resolve(root, 'server.mjs')
         await writeFile(serverPath, `${await readFile(serverPath, 'utf8')}
@@ -328,9 +328,7 @@ actions.forget_failed_write = async ({ payload, documents }) => {
   void documents.create('actionproof.destination', {}).catch(() => {})
   return { accepted: true }
 }
-export const reads = {
-  async preview({ payload, documents }) { return documents.get('actionproof.work', payload.source) },
-}
+reads.preview = async ({ payload, documents }) => documents.get('actionproof.work', payload.source)
 `)
         await use(root)
       } finally { await rm(root, { recursive: true, force: true }) }

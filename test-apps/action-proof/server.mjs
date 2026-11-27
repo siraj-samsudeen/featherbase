@@ -1,5 +1,26 @@
 export const platformVersion = '2026-10'
 export let escapedDocuments
+
+// #1377: a read that declares featherbaseMcp (tools) and one that does not (untooled).
+// payload.call runs one tool; payload.pause runs it, waits for the test to release it, then
+// runs it again; payload.context returns the read's own context as JSON; otherwise the tool names.
+// The test sets the pause on a global: the platform loads this module under its own address.
+const PAUSE = Symbol.for('actionproof.pause')
+async function tools({ payload, featherbaseMcp, ...context }) {
+  if (payload.context) return JSON.stringify({ ...context, payload, featherbaseMcp }, (_k, v) => typeof v === 'function' ? undefined : v)
+  if (!featherbaseMcp) return { given: false }
+  const call = () => featherbaseMcp.call(payload.call, payload.args ?? {})
+  if (payload.pause) {
+    const before = await call()
+    const paused = globalThis[PAUSE]
+    paused.reached()
+    await paused.release
+    return { before, after: await call() }
+  }
+  if (payload.call) return call()
+  return (await featherbaseMcp.tools()).map(tool => tool.name)
+}
+export const reads = { tools, untooled: tools }
 export const actions = {
   async transform({ payload, documents, reject }) {
     if (!payload || typeof payload !== 'object' || typeof payload.source !== 'string' || typeof payload.updatedAt !== 'string')
