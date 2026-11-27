@@ -560,7 +560,7 @@ describe('#465: cli settings:export and settings:apply', () => {
     const out = await cli(['settings:export', '--dir', dir])
     expect(out).toContain('instance-settings.json')
     const file = JSON.parse(readFileSync(join(dir, 'instance-settings.json'), 'utf8'))
-    expect(Object.keys(file.settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting', 'Data Source', 'Approval Type', 'Metadata Override'])
+    expect(Object.keys(file.settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting', 'Data Source', 'Approval Type', 'Metadata Override', 'Dataset Binding'])
     const applied = await cli(['settings:apply', '--file', join(dir, 'instance-settings.json'), '--revision', 'cli-test'])
     expect(applied).toContain('settings:apply: nothing changed')
   }, 60_000)
@@ -853,7 +853,7 @@ describe('the command line, command by command', () => {
     await sql`update sign_in_method set service_url = 'https://bot:hunter2@hr.example.com/login' where row_id = 'google'`
     const r = await runMain(main, ['settings:export'])
     expect(r.code).toBe(0)
-    expect(Object.keys(JSON.parse(r.stdout).settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting', 'Data Source', 'Approval Type', 'Metadata Override'])
+    expect(Object.keys(JSON.parse(r.stdout).settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting', 'Data Source', 'Approval Type', 'Metadata Override', 'Dataset Binding'])
     expect(r.stderr).toBe('settings:export: left out Sign In Method.google.service_url: a web address with credentials in it\n')
     await sql`insert into single_value (table_name, field, value) values ('System Settings', 'privacy_notice', '# Notice\n')
       on conflict (table_name, field) do update set value = excluded.value`

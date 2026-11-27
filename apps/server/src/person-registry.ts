@@ -116,6 +116,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   // #667: which filter keys a dataset could not apply; no person, label or value.
   dataset_place_drop: { '*': code },
   dataset_snapshot: { dataset: code, state: code, definition_version: code, triggered_by: id, error: text },
+  // #1409: where a dataset is served from; a note is words, never a person.
+  dataset_binding: { app: code, dataset: code, served_from: code, note: text },
   email_account: { '*': code },
   email_queue: {
     sender: code, recipient: code, subject: text, body: text, send_status: code, error: text, ref_table: code,

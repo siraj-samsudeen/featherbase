@@ -12,6 +12,7 @@ import { who, type Env } from './route-context'
 import { explainRecord, whyOffer } from './why'
 import { describeRows, previewAction } from './record-facts'
 import { workedOutFor } from './worked-out'
+import { checkStandInFile, listDatasets, loadStandIn, switchToWarehouse } from './dataset-stand-in'
 
 export const appRoutes = new Hono<Env>()
 
@@ -120,4 +121,34 @@ appRoutes.post('/api/uninstall_app', async (c) => {
       throw new AppError('ValidationError', 'Use disable. Removing applications and deleting their data are separate, unsupported operations')
     return c.json(await uninstallApp(name))
   }, true)
+})
+
+// #1409: stand-in datasets (System Manager only). Every installed app's
+// datasets and where each is served from; checking and loading a CSV as a
+// dataset's stand-in; and switching a dataset to the warehouse.
+appRoutes.get('/api/datasets', async (c) => {
+  await assertSystemManager(who(c))
+  c.header('Cache-Control', 'no-store')
+  return c.json(await listDatasets())
+})
+const DELIMITERS = [',', '\t', ';']
+const optionalText = (value: unknown) => value === undefined || value === null || typeof value === 'string'
+/** A stand-in file from a request body: the CSV text, and how its cells are separated. */
+async function standInFile(request: { json(): Promise<unknown> }) {
+  const body = (await request.json().catch(() => null)) as { csv?: unknown; delimiter?: unknown; note?: unknown; expected_by?: unknown } | null
+  if (!body || typeof body.csv !== 'string' || (body.delimiter !== undefined && !DELIMITERS.includes(body.delimiter as string)) || !optionalText(body.note) || !optionalText(body.expected_by))
+    throw new AppError('ValidationError', 'Expected { csv } holding the file as CSV text, with an optional delimiter (",", a tab or ";"), note and expected_by (YYYY-MM-DD)')
+  return body as { csv: string; delimiter?: ',' | '\t' | ';'; note?: string | null; expected_by?: string | null }
+}
+appRoutes.post('/api/datasets/:app/:dataset/check_stand_in', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await checkStandInFile(c.req.param('app'), c.req.param('dataset'), await standInFile(c.req)))
+})
+appRoutes.post('/api/datasets/:app/:dataset/load_stand_in', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await loadStandIn(c.req.param('app'), c.req.param('dataset'), await standInFile(c.req), who(c)), 201)
+})
+appRoutes.post('/api/datasets/:app/:dataset/switch_to_warehouse', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await switchToWarehouse(c.req.param('app'), c.req.param('dataset'), who(c)))
 })

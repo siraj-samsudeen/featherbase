@@ -27,6 +27,10 @@ interface DatasetDefinition<Row = unknown[]> {
   name: string
   /** Bump when the SQL changes: it is part of snapshot identity, so a redefinition never silently reuses old rows. */
   version: string
+  /** #1409 (D4): the identity of a stand-in for this dataset: its columns,
+   *  keys and scope mapping, without the query, so a corrected query keeps the
+   *  stand-in and a changed column retires it. */
+  shapeVersion: string
   /** Pull the superset from the source. `sourceAsOf` is the warehouse's own as-of, never the build time. */
   fetch: () => Promise<{ rows: Row[]; sourceAsOf: string | null }>
   /** Write the fetched rows under this snapshot id. Returns the row count written. */
@@ -52,6 +56,10 @@ export interface SnapshotRecord {
   fetch_ms: number | null
   load_ms: number | null
   triggered_by: string | null
+  /** #1409: these rows were loaded from a file, not read from the source. */
+  stand_in: boolean
+  /** Who loaded a stand-in; the platform's own name on a refresh. */
+  created_by: string
 }
 
 const registry = new Map<string, DatasetDefinition<never>>()
@@ -92,12 +100,15 @@ function isoDay(v: Date | null): string | null {
  */
 export async function activeSnapshot(dataset: string): Promise<SnapshotRecord | null> {
   // A dataset with no registered definition has no current version, so no
-  // snapshot qualifies (`= null` matches nothing).
+  // snapshot qualifies (`= null` matches nothing). #1409 (D4): a stand-in is
+  // held to the dataset's shape, a refreshed copy to its whole definition.
+  const def = registry.get(dataset)
   const [row] = await sql`
     select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, state,
-           bytes, fetch_ms, load_ms, triggered_by
+           bytes, fetch_ms, load_ms, triggered_by, stand_in, created_by
     from dataset_snapshot
-    where dataset = ${dataset} and state = 'active' and definition_version = ${registry.get(dataset)?.version ?? null}`
+    where dataset = ${dataset} and state = 'active'
+      and definition_version = case when stand_in then ${def?.shapeVersion ?? null} else ${def?.version ?? null} end`
   if (!row) return null
   return {
     ...(row as unknown as SnapshotRecord),
@@ -168,8 +179,12 @@ interface BuildOutcome {
 }
 
 interface BuildOpts {
-  /** What caused this build: the job's trigger, or 'script' for a build run by hand. */
-  trigger?: JobTrigger | 'script'
+  /** What caused this build: the job's trigger, 'script' for a build run by
+   *  hand, or (#1409) a stand-in being loaded or switched to the warehouse. */
+  trigger?: JobTrigger | 'script' | 'stand-in' | 'switch'
+  /** #1409 (D1): the candidate is these rows, already checked and shaped,
+   *  loaded by this person, instead of what the source returns. */
+  standIn?: { rows: unknown[]; by: string }
 }
 
 /**
@@ -181,6 +196,11 @@ interface BuildOpts {
  * (fetch and load time, bytes) and what caused it. A failed build's timings are
  * as much a fact as a successful one's: "the source took 40 s to refuse us" is
  * something an operator wants to see.
+ *
+ * #1409: a stand-in goes through the same steps with its rows given (D1). It
+ * is not validated here: its loader checked that it fits, and a guard written
+ * for the real data would refuse a small sample (D3). Nor is it ever a
+ * baseline: a refresh that replaces one is validated against nothing.
  */
 export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Promise<BuildOutcome> {
   const def = registry.get(dataset)
@@ -202,9 +222,11 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
     const previous = await activeSnapshot(dataset)
     const snapshotId = randomUUID()
     const triggeredBy = opts.trigger ?? null
+    const { standIn } = opts
     await sql`
-      insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, triggered_by)
-      values (${snapshotId}, ${dataset}, ${def.version}, 'building', now(), ${triggeredBy})`
+      insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, triggered_by, stand_in, created_by, updated_by)
+      values (${snapshotId}, ${dataset}, ${standIn ? def.shapeVersion : def.version}, 'building', now(), ${triggeredBy},
+        ${!!standIn}, ${standIn?.by ?? 'Administrator'}, ${standIn?.by ?? 'Administrator'})`
 
     let rowCount: number
     let sourceAsOf: string | null
@@ -212,7 +234,7 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
     let loadMs = 0
     try {
       const t0 = Date.now()
-      const fetched = await def.fetch()
+      const fetched = standIn ? { rows: standIn.rows as never[], sourceAsOf: null } : await def.fetch()
       fetchMs = Date.now() - t0
       sourceAsOf = fetched.sourceAsOf
       const t1 = Date.now()
@@ -228,7 +250,7 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
     }
 
     const bytes = def.sizeOf ? await def.sizeOf(snapshotId) : null
-    const refusal = (await def.validate?.(rowCount, previous, snapshotId)) ?? null
+    const refusal = standIn ? null : ((await def.validate?.(rowCount, previous?.stand_in ? null : previous, snapshotId)) ?? null)
     if (refusal) {
       // A refused candidate is never activated and never deleted: the row is the
       // record of why the refresh did not take, which a silent no-op would lose.

@@ -32,6 +32,7 @@ const sampleRows = () => Array.from({ length: 8 }, (_, i) => [`row-${i}`, i])
 registerDataset<unknown[]>({
   name: PROBE,
   version: '1',
+  shapeVersion: 'shape-1',
   fetch: () => source(),
   async load(snapshotId, rows) {
     for (const row of rows)
@@ -308,6 +309,7 @@ it('#8 buildSnapshot serializes overlapping refreshes of one dataset: the second
   registerDataset({
     name: dataset,
     version: '1',
+    shapeVersion: 'shape-1',
     fetch: async () => {
       calls += 1
       const n = calls

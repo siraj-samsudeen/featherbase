@@ -54,6 +54,10 @@ const SCOPE = [
   // it survives a wipe. Only the properties in FILE_OVERRIDE_PROPERTIES; a row is the override of its
   // Table, column and property, whatever row_id the file gives it (an administrator's own is replaced).
   { table: 'Metadata Override', shape: 'rows', fields: ['table_name', 'column_name', 'property', 'value'], createRows: true },
+  // #1409: where each dataset of an installed app is served from, so an
+  // environment keeps a stand-in until its warehouse has the data. Never
+  // Allowed on production: that is a System Manager's own act (design D8).
+  { table: 'Dataset Binding', shape: 'rows', fields: ['served_from', 'note', 'expected_by'], createRows: true },
 ] as const
 
 /** #1345: the Metadata Override properties a settings file may set: how an instance's Tables are found

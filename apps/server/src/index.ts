@@ -1,3 +1,4 @@
+import { collectingStandIns, standInsServed } from './stand-in-served'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { SHUTDOWN_DEADLINE_MS, drainServer, exitOnShutdownSignal } from './graceful-shutdown'
@@ -11,7 +12,7 @@ import { assertRowsWritable } from './system-written'
 import { assertNotView, storedTable } from './views'
 import { AppError, errorResponse } from './errors'
 import { addressRoutes, servesAppRoot } from './unavailable-address'
-import { unavailableHref } from 'shared'
+import { STAND_IN_HEADER, standInHeaderValue, unavailableHref } from 'shared'
 import { runInSession } from './session-context'
 import { VIEW_AS_ENDED, viewAsStillHolds, activeViewAs, endViewAs, endViewAsSession, searchViewAs, sweepExpiredViewAs, startViewAs, viewAsRoute, viewAsState } from './view-as'
 import { runViewingAs } from './view-as-context'
@@ -796,6 +797,14 @@ app.use('/api/*', async (c, next) => {
 })
 
 app.use('/api/*', rateLimit)
+
+// #1409 (design D6): an answer that carried stand-in rows names them in one
+// header, whichever route served them, so the page shell can say so.
+app.use('/api/*', (c, next) => collectingStandIns(async () => {
+  await next()
+  const served = standInsServed()
+  if (served.length) c.header(STAND_IN_HEADER, standInHeaderValue(served))
+}))
 
 // #1222: View as — the tester's own state, people search, start or switch, and exit.
 app.get('/api/view_as', async (c) => {

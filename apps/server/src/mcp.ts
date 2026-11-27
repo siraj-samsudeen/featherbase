@@ -16,6 +16,7 @@ import { AppError } from './errors'
 import { getMeta } from './meta'
 import { LIST_OPERATORS } from './query'
 import { registerTableTools } from './mcp-table-tools'
+import { registerDatasetTools } from './mcp-dataset-tools'
 import { ADDS, ALTERS, LAYOUT_TYPES, NESTED, READS, describeColumn, tablePath, type Api, type ColumnMeta, type Json, type RegisterTool } from './mcp-common'
 
 /** The app whose /api routes serve the tools (index.ts passes itself). */
@@ -166,6 +167,7 @@ function buildServer(api: Api, tokenId: string): McpServer {
     })
 
   registerTableTools(tool, api, tokenId)
+  registerDatasetTools(tool, api, tokenId)
   return server
 }
 
