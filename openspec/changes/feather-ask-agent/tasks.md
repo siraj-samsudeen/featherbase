@@ -45,11 +45,12 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
 - [x] 2.2 The `ask` action saves chat, question and the answer `think` gave, passed by the page
       as `{ kind, text }` and checked for shape and length; unsigned until 2.4; the placeholder
       `reply.ts` removed (commit e91e33bf5).
-- [ ] 2.2b The steps behind each answer: `think` returns the steps it took with the answer (each
-      tool, its Table and filters, and its result in short, e.g. "query_rows on Ticket, status =
-      Open: 3 rows"); `ask` saves them in a new column on `ask.question`, so the person sees how
-      an answer was found. No rows copied in full.
+- [x] 2.2b The steps behind each answer: `think` returns them with the answer as
+      `{ tool, args, summary, refused? }` (summary "2 rows", "refused: …"; no rows); `ask` checks
+      and saves them in the JSON column `steps` on `ask.question` (commit 68d920951).
 - [ ] 2.3 The page calls think, then ask, under one "Thinking…".
+- [ ] 2.3b The page shows the steps behind an answer only when asked: Ctrl+O, or a small link
+      under the answer (Mohammad, 27-Nov-2026), as ChatGPT's and Claude's collapsed steps.
 - [ ] 2.4 Decide the open question on signing the answer.
 
 ## 3. Gemini and Groq
