@@ -408,7 +408,8 @@
         ]
        }
       ],
-      "shortcuts": []
+      "shortcuts": [],
+      "pages": []
      },
      {
       "row_id": "system",
@@ -667,7 +668,8 @@
         ]
        }
       ],
-      "shortcuts": []
+      "shortcuts": [],
+      "pages": []
      }
     ]
    }
@@ -722,7 +724,8 @@
         ]
        }
       ],
-      "shortcuts": []
+      "shortcuts": [],
+      "pages": []
      },
      {
       "row_id": "system",
@@ -981,7 +984,8 @@
         ]
        }
       ],
-      "shortcuts": []
+      "shortcuts": [],
+      "pages": []
      }
     ]
    }

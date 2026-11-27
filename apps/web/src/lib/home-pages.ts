@@ -46,3 +46,13 @@ export function useModuleHomePage(meta: { name: string; module?: string | null }
   return (pages.find((p) => p.cards.some((card) => card.links.some((link) => link.link_to === meta.name)))
     ?? pages.find((p) => p.module && p.module === meta.module))?.row_id
 }
+
+/**
+ * #1410: a runtime page's title, by its name. The home pages list every page this person may open, each under
+ * its module, and the sidebar has already asked for them. Undefined while they load, and for a page that is not
+ * among them (deleted, or a Draft this person may not open).
+ */
+export function useSavedPageTitle(name: string | undefined): string | undefined {
+  const pages = useHomePages().data?.pages ?? []
+  return name === undefined ? undefined : pages.flatMap((home) => home.pages).find((page) => page.name === name)?.title
+}
