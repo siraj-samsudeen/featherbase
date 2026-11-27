@@ -14,6 +14,11 @@ import { WorkspacePage } from './WorkspacePage'
 import { ReviewMonthPage } from './ReviewMonthPage'
 import { IdeasPage, NumbersPage, ResultsPage, ReviewPage, RunsPage } from './pages'
 import { SectionPage } from './teamLeader/SectionPage'
+import { StoreManagerReview } from './storeManager/StoreManagerReview'
+import { CategoryHeadReview } from './categoryHead/CategoryHeadReview'
+import { RbReview } from './rb/RbReview'
+import type { ChainPageProps } from './shared/chainPage'
+import { RecordPagesProvider } from '@featherbase/shop-floor'
 
 export interface NumberRow {
   row_id: string; month: string; run: string; store: string; section: string; scope_level: 'Store' | 'Division' | 'Category' | 'Subcategory'; scope_name: string; weeks: string | null
@@ -44,6 +49,9 @@ export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => P
 
 const VIEWS = [
   { key: 'section', label: 'My Section', group: 'Forecasts', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z' },
+  { key: 'store-review', label: 'Store Manager Review', group: 'Forecasts', icon: 'M3 10 12 3l9 7v11H3zM9 21v-7h6v7' },
+  { key: 'category-review', label: 'Category Review', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 9v12' },
+  { key: 'rb-review', label: 'RB Review', group: 'Forecasts', icon: 'M3 3v18h18M8 17v-4m5 4V9m5 8V6' },
   { key: 'forecasts', label: 'Workspace', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 3v18' },
   { key: 'numbers', label: 'Ledger', group: 'Forecasts', icon: 'M20 6 9 17l-5-5' },
   { key: 'mine', label: 'My Numbers', group: 'Forecasts', icon: 'M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10' },
@@ -58,7 +66,7 @@ type View = typeof VIEWS[number]['key']
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
   q.set('view', view)
-  for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice', ...CHART_KEYS]) q.delete(k)
+  for (const k of ['layout', 'store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice', ...CHART_KEYS]) q.delete(k)
   for (const [k, v] of Object.entries(extra)) q.set(k, v)
   return `?${q}`
 }
@@ -175,6 +183,30 @@ function useInAppNavigation() {
   return moves
 }
 
+/** The managers' review pages (#1419), on the made-up chain until the copied Run is in the app's tables: the screen
+ *  as agreed, with no picker bar above it. A subcategory is kept in the address (?line=<rowId>) and its record opens
+ *  here. */
+const CHAIN_PAGES = { 'store-review': StoreManagerReview, 'category-review': CategoryHeadReview, 'rb-review': RbReview } as const
+type ChainView = keyof typeof CHAIN_PAGES
+function ChainPage({ view }: { view: ChainView }) {
+  const Page = CHAIN_PAGES[view]
+  const line = new URLSearchParams(window.location.search).get('line')
+  const props: ChainPageProps = {
+    hrefFor: l => address(view, { line: l.rowId }),
+    openLine: line,
+    onOpenLine: rowId => {
+      const q = new URLSearchParams(window.location.search)
+      if (rowId) q.set('line', rowId); else q.delete('line')
+      history.replaceState(null, '', `?${q}`)
+    },
+  }
+  return (
+    <RecordPagesProvider pageFor={(table, rowId) => (table === 'forecasting.forecast_line_month' ? address(view, { line: rowId }) : undefined)}>
+      <Page {...props} />
+    </RecordPagesProvider>
+  )
+}
+
 export function ForecastingApp() {
   const moves = useInAppNavigation()
   const params = new URLSearchParams(window.location.search)
@@ -235,9 +267,10 @@ export function ForecastingApp() {
       <main key={moves} className="fc-page" data-testid={`page-${view}`}>
         {offChart ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
         {/* My Section is the screen as agreed (#1419): no picker bar above it for the person it belongs to. */}
-        {!(view === 'section' && me) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
+        {!(view === 'section' && me) && !CHAIN_PAGES[view as ChainView] && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
+            : CHAIN_PAGES[view as ChainView] ? <ChainPage view={view as ChainView} />
             : view === 'section' ? <SectionPage key={viewer.id} viewer={viewer} href={line => address('section', { line })} />
             : view === 'forecasts' ? (DATASET ? <ReviewMonthPage ctx={ctx} /> : <WorkspacePage ctx={ctx} />)
               : view === 'numbers' ? <NumbersPage ctx={ctx} />
