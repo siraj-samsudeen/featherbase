@@ -126,6 +126,16 @@ Ask's manifest gains the `think` read at 0.1.0: recreate the local database (see
 - The page sends the answer to save, so it could save a made-up answer in its own chat: sign it
   in `think` and check it in `ask`, or accept it since it is only the person's own chat.
 - Which Gemini and Groq models (step 3).
+- **What history the agent gets** (raised 27-Nov-2026 by Mohammad; decided after the real model
+  works, task 3.3). `think` sees only the question; the chat goes only to `ask`, to save in. The
+  shape holds: the page also sends `chat` to `think`, which reads that chat's earlier questions
+  and answers before the loop and passes them to `Model.next`. Options: (A, recommended) the whole
+  chat up to a limit (the last turns, or a character budget), read by `think` on the server with
+  `query_rows` on `ask.question` as the person (own rows only, so nobody borrows another's
+  history), as ChatGPT and Claude send the earlier conversation while it fits; (B) a running
+  summary, shorter but a model call each time and it can drop details; (C) the page sends the
+  history it shows, no server read, but a person could send a history that never happened (only
+  in their own chat) and the payload grows. A summary may join A later for long chats.
 - **View as can mix two people in one answer** (raised 27-Nov-2026, to decide later). When the
   tool calls carry the asker's own session and the asker is viewing as someone, the front door
   answers GET tools as the person viewed but the POST dry runs (`check_import`, `suggest_table`)
