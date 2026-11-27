@@ -4,11 +4,11 @@
 // the app's tables. Its words, columns and toggles are the prototype's; only the look comes from Shop Floor.
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Chip, ContentTabs, PageHeader, PartsBar, PeekCard, RecordLink, Segmented, StatusPill } from '@featherbase/shop-floor'
-import { PARTS, asp, byGapToLastYear, combine, count, groupsOf, inr, pc, shares, type Group, type HelpTopic, type Line } from './model'
-import type { Header, ReviewActions, ReviewState } from './review'
-import { LinePanel } from './LinePanel'
-import { HelpTab, MyQuestions } from './HelpAndQuestions'
-import './teamLeader.css'
+import { PARTS, asp, byGapToLastYear, combine, count, groupsOf, inr, pc, shares, type Group, type HelpTopic, type Line } from '../shared/model'
+import type { Header, ReviewActions, ReviewState } from '../shared/review'
+import { LinePanel } from '../shared/LinePanel'
+import { HelpTab, MyQuestions } from '../shared/HelpAndQuestions'
+import '../shared/forecasting.css'
 
 type Measure = 'all' | 'vq' | 'v' | 'q'
 type GroupView = 'band' | 'one' | 'off'

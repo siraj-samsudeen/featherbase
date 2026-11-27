@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Card, EmptyState, RecordPagesProvider, Skeleton } from '@featherbase/shop-floor'
 import { liveActions, loadSection, loadState, type Section, type Viewer } from './live'
-import { storeStepOf } from './model'
+import { storeStepOf } from '../shared/model'
 import { TeamLeaderReview } from './TeamLeaderReview'
 
 export function SectionPage({ viewer, href }: { viewer: Viewer; href: (line: string) => string }) {

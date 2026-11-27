@@ -3,8 +3,8 @@
 // forecast_change, forecast_line_review and forecast_question through the server, which checks every row
 // (server.ts). The answer to a question is the newest Comment on it.
 import { getRow, listWhere, saveRow } from '../api'
-import { day, linesFrom, monthOfRun, type LineMonthRow, type OtherModelRow, type PlanRow, type RunRow, type SalesRow, type Line } from './model'
-import type { Answer, Header, Proposal, Question, ReviewActions, ReviewState } from './review'
+import { day, linesFrom, monthOfRun, type LineMonthRow, type OtherModelRow, type PlanRow, type RunRow, type SalesRow, type Line } from '../shared/model'
+import type { Answer, Header, Proposal, Question, ReviewActions, ReviewState } from '../shared/review'
 
 export interface Viewer { name: string; role: string; place: string }
 export interface Section { run: RunRow; storeCode: string; header: Header; lines: Line[]; state: ReviewState }
