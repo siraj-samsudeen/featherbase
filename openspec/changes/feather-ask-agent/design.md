@@ -102,6 +102,32 @@ them only when asked, by Ctrl+O or a small link under the answer (Mohammad, 27-N
 step after 2.3). Rejected: plain text lines (the page could not draw them its own way); each
 tool's full result, for a Claude Code-style full view (copies rows into Ask).
 
+### Groq first, its model fixed in the code, then a setting
+
+Step 3 connects Groq first: fast replies keep an agent that makes several tool calls quick to
+test, and its OpenAI-style tool calling is well tested. The model name is written in the adapter
+first, and becomes an Ask setting (with the address) right after it works, so switching model or
+moving to Gemini is a settings change (Mohammad, 27-Nov-2026). Rejected: Gemini first (its
+OpenAI-compatible layer has more quirks); a setting from the start (Mohammad wanted it working
+first).
+
+### The model gets the last 10 turns with their short steps, and fetches numbers fresh
+
+A model remembers nothing between calls: ChatGPT, Claude and Gemini re-send the conversation
+each time, with some trace of earlier tool use, and trim or summarise long chats; Groq is only an
+API, so Ask decides. The page also sends `chat` to `think`, which reads that chat's last 10
+earlier questions on the server (`query_rows` on `ask.question` as the person: own rows only, so
+nobody borrows another's history) and gives them to `Model.next`, oldest first, each as its
+question, answer and saved step lines; never rows. The model's instructions say earlier answers
+may be out of date and every number is fetched again with the tools. Ask deals in numbers, so
+accuracy decides: the steps tell a follow-up ("which ones?") where the answer came from instead of
+leaving it to guess, fresh fetches stop sums on stale figures, and a short history is used more
+accurately than a long one; it also starts the habit of keeping what the agent did, which the
+agent across every app will need (Mohammad, 27-Nov-2026). Rejected: questions and answers only (a
+follow-up guesses the Table); the whole chat (bigger, slower calls, can hit the model's or the free
+tier's limits); a running summary (a model call each time, can drop details); the page sending
+the history (a person could send one that never happened, and the payload grows).
+
 ### One OpenAI-style adapter for the model
 
 Gemini, Groq and later OpenRouter all accept OpenAI-style chat calls with tools, so one adapter set
@@ -125,17 +151,6 @@ Ask's manifest gains the `think` read at 0.1.0: recreate the local database (see
 
 - The page sends the answer to save, so it could save a made-up answer in its own chat: sign it
   in `think` and check it in `ask`, or accept it since it is only the person's own chat.
-- Which Gemini and Groq models (step 3).
-- **What history the agent gets** (raised 27-Nov-2026 by Mohammad; decided after the real model
-  works, task 3.3). `think` sees only the question; the chat goes only to `ask`, to save in. The
-  shape holds: the page also sends `chat` to `think`, which reads that chat's earlier questions
-  and answers before the loop and passes them to `Model.next`. Options: (A, recommended) the whole
-  chat up to a limit (the last turns, or a character budget), read by `think` on the server with
-  `query_rows` on `ask.question` as the person (own rows only, so nobody borrows another's
-  history), as ChatGPT and Claude send the earlier conversation while it fits; (B) a running
-  summary, shorter but a model call each time and it can drop details; (C) the page sends the
-  history it shows, no server read, but a person could send a history that never happened (only
-  in their own chat) and the payload grows. A summary may join A later for long chats.
 - **View as can mix two people in one answer** (raised 27-Nov-2026, to decide later). When the
   tool calls carry the asker's own session and the asker is viewing as someone, the front door
   answers GET tools as the person viewed but the POST dry runs (`check_import`, `suggest_table`)
