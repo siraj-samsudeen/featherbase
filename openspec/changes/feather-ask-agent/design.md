@@ -50,6 +50,17 @@ The tools are filtered by their read-only hint; any other name answers "There is
 …". Rejected: offering all tools and relying on the model, since a write must need the person's
 confirmation (#1372).
 
+### What the agent read is kept with the answer, not in the Access Log (for now)
+
+Each question saves the steps behind its answer (task 2.2b): each tool, its Table and filters,
+and its result in short. The person sees how the answer was found, and an administrator, who
+reads every Ask row, can answer "what did Ask read for this person". No Access Log entry per
+tool call. Deferred (Mohammad, 27 Nov 2026): one Access Log entry per tool call (`agent_read`,
+"via <app>"). The platform logs no ordinary reads, the agent reads only what the person may
+open, and Ask is the only app with an agent, so the saved steps cover it. Revisit when a second
+app declares `featherbaseMcp`, or when the real model (step 3) sends rows outside and an
+admin-wide record of what left is needed, as exports and prints are logged.
+
 ### Think in a slow read, save in a short action
 
 A model call takes 5–30 s, so the loop must not run inside a transaction. A `think` outbound read

@@ -18,7 +18,9 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
       `featherbaseMcp`, sent as the Bearer header on every tool call inside `runAsAgent`; no
       credential, no tools; `mcp-app-reads.ts` drops the pass. Replaces the planned sweep
       (commit def132bfd).
-- [ ] 1e2 The platform's log of what an app's agent read: each tool call writes one Access Log
+- [ ] 1e2 Deferred (Mohammad, 27-Nov-2026; design "What the agent read is kept with the
+      answer"): 2.2b's saved steps cover it until a second app declares `featherbaseMcp` or step 3
+      sends rows outside. If revived: the platform's log of what an app's agent read: each tool call writes one Access Log
       entry (`logAccess`: the person, operation `agent_read`, the tool as method, the Table, scope
       "via <app>"); no rows, no question text, never the credential. `featherbaseMcp` takes the
       person for it. Admins see it in the Access Log; View as is recorded as the tester's.

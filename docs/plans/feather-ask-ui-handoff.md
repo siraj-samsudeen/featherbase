@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; next: 1e2, the Access Log entry per tool call). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; next: 1f, the server test). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -135,10 +135,11 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
 - **View as is left for later** (Mohammad, 27-Nov-2026): while viewing as someone, the GET
   tools answer as the person viewed but `check_import` and `suggest_table` (POST dry runs)
   as the tester. Nothing leaks; the answer can mislead. Task 1f2, design Open Questions.
-- **Log what the agent read, twice** (Mohammad, 27-Nov-2026): the platform's Access Log gets
-  one entry per tool call (task 1e2: who, `agent_read`, the tool, the Table, "via Ask"; no
-  rows, no question text, never the credential), and each question saves the steps behind
-  its answer for the person (task 2.2b).
+- **What the agent read is kept with the answer** (Mohammad, 27-Nov-2026): each question
+  saves the steps behind its answer (task 2.2b), which the person and an administrator can
+  see. The Access Log entry per tool call (1e2) is **deferred**: ordinary reads aren't logged,
+  the agent reads only what the person may open, and Ask is the only agent. Revisit when a
+  second app declares `featherbaseMcp` or step 3 sends rows to an outside model.
 - **Think first, save at the end** (Mohammad, 26-Nov-2026): a model call takes 5–30 s, so the
   agent must not run inside a database transaction (it would hold a connection and its
   locks). The agent runs in an **outbound read** (its handler runs after the transaction has
@@ -254,13 +255,13 @@ Done on the backend (step 1, the platform piece):
   `Credential` that never prints itself (`caller-credential.ts`, `def132bfd`; checked: both
   typechecks, `checks\check1e.mts` 14/14, 496 tests in 13 files, platform imports).
 
-## Next step: 1e2, the Access Log entry per tool call
+## Next step: 1f, the server test for the tools
 
-Each tool call of `featherbaseMcp` writes one Access Log entry (`logAccess`): the person,
-operation `agent_read`, the tool as method, the Table, scope "via <app>"; no rows, no question
-text, never the credential. `featherbaseMcp` takes the person for it. Details in
-`feather-ask-agent/tasks.md` (1e2). Not drafted yet: Claude drafts it in
-`ask-handover\1e2-draft\`, checks it, then gives the walkthrough.
+1e2 is deferred (see Decisions). Next is `apps/server/test/featherbase-mcp.test.ts`, with a
+`tools` outbound read in `test-apps/action-proof` (details in `feather-ask-agent/tasks.md`, 1f).
+`ask-handover\S1-draft\featherbase-tools.test.ts` has test cases to start from; its wiring is
+superseded by 1c–1e. Not drafted yet: Claude drafts it in `ask-handover\1f-draft\`, checks it,
+then gives the walkthrough.
 
 ## The road to done
 
@@ -268,8 +269,8 @@ Backend, then the rest of the page, then the PR. Each line is one or more small 
 ending in a manual check and a commit; the details are in `feather-ask-agent/tasks.md`.
 
 1. **Finish the platform piece (step 1).**
-   - 1e2: the Access Log entry per tool call (`agent_read`, "via Ask").
-   - 1f: the server test `apps/server/test/featherbase-mcp.test.ts`, with a `tools` outbound
+   - 1e2: deferred (the Access Log entry per tool call; 2.2b's saved steps cover it for now).
+   - 1f (**next**): the server test `apps/server/test/featherbase-mcp.test.ts`, with a `tools` outbound
      read in `test-apps/action-proof`: read-only tools only, Selvi sees her row and Ravi none,
      no token made, turned off / signed out everywhere / signed out of that session refused,
      an access-token caller works, no caller gets no tools, the credential never leaks.
