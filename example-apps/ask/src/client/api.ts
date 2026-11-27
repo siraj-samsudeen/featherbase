@@ -1,6 +1,6 @@
-// The page's calls to the server: ask a question, and list the person's own chats.
+// The page's calls to the server: ask a question (think, then save), and list the person's own chats.
 import { version } from '../../package.json'
-import type { Reply } from '../shared/reply'
+import type { Reply, Thought } from '../shared/reply'
 
 /** A call that failed, with the message to show and the HTTP status. */
 export class ApiError extends Error {
@@ -9,11 +9,11 @@ export class ApiError extends Error {
   }
 }
 
-/** What asking returns: the chat the question was saved in, and its answer. */
-export type Asked = { chat: string; answer: Reply }
+/** What asking returns: the chat the question was saved in, its answer and the steps behind it. */
+export type Asked = Thought & { chat: string }
 
 /** One saved question of a chat, with its answer. */
-export type SavedQuestionAnswer = 
+export type SavedQuestionAnswer =
 { row_id: string; question: string; answer: string; answer_kind: Reply['kind'] }
 
 // POST to one of Ask's own reads or actions, and return what it gives.
@@ -40,10 +40,12 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return data.result as T
 }
 
-// Without a chat, the server starts a new one and returns its id.
+// Two calls under the one "Thinking…": think works out the answer (slow, saves nothing), then
+// the ask action saves it with its steps. Without a chat, ask starts a new one and returns its id.
 export async function askQuestion(question: string, chat?: string): Promise<Asked> {
+  const thought = await post<Thought>('/api/app_reads/ask/think', { payload: { question } })
   // An action names each attempt, so the platform never saves one twice.
-  return post<Asked>('/api/app_actions/ask/ask', { idempotencyKey: crypto.randomUUID(), payload: { question, chat } })
+  return post<Asked>('/api/app_actions/ask/ask', { idempotencyKey: crypto.randomUUID(), payload: { question, chat, ...thought } })
 }
 /** One of the person's chats, as Recent Chats lists it. */
 export type ChatRow = { row_id: string; title: string; created_at: string }
