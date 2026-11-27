@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; 2.1, 2.2 and 2.2b committed; next: 2.3). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; 2.1, 2.2, 2.2b and 2.3 committed; next: 2.3b). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -258,7 +258,7 @@ Done on the backend (step 1, the platform piece):
   server test `featherbase-mcp.test.ts`: 12 tests over HTTP with `action-proof`'s `tools` and
   `untooled` reads (`dffb84cc1`).
 
-## Next step: step 2, the agent loop in Ask (2.1, 2.2, 2.2b done; next 2.3)
+## Next step: step 2, the agent loop in Ask (2.1 to 2.3 done; next 2.3b)
 
 Step 1 (the platform piece) is finished: 1a–1f committed, 1e2 deferred, 1f2 (View as) moved to
 the final step, 1g's adversarial review offered and skipped (Mohammad, 27-Nov-2026).
@@ -290,12 +290,28 @@ Mohammad's choices: recreate `fb_ask_ui`; JSON objects, as ChatGPT and Claude ke
 the steps only when asked, by Ctrl+O or a small link under the answer (task 2.3b). Ctrl+O is the
 browser's "Open file": the page can take it while focused; settle it in 2.3b.
 
-**Next: 2.3**, the page calls think, then ask, under the one "Thinking…": `src/client/api.ts`
-(a `think()` call to `/api/app_reads/ask/think`, then `askQuestion` passes `answer` and
-`steps`) and `components/Chat.tsx` (`fetchAnswer`). After it the page saves questions again.
-No manifest change. Then **2.3b** (show the steps) and **2.4** (decide signing). Ask Mohammad
-any design question first, one at a time, with a recommendation; draft in
-`ask-handover\2.3-draft\`; check headless (reuse `checks\check2a-ui.cjs` and `check2d.cjs`).
+**2.3 is done** (`66bfaf3f8` tidy: `post()` taken out of `askQuestion`; `cf1e5b846` the think
+call; put in by Claude at Mohammad's "implement the 2.3"): `askQuestion` in `src/client/api.ts`
+calls think, then passes `{ answer, steps }` to ask; `Chat.tsx` unchanged. Try again asks both
+again (Mohammad chose this over keeping the answer and only saving again). The page saves
+questions again. Checks: `checks\check2.3-page.cjs` 16 (headless: one Thinking… over both calls,
+saved with steps, reopen, Try again after a failed think and after a failed save),
+`checks\check2d-after2.3.cjs` 14 (2d's check, waiting for the stand-in's answer instead of the
+placeholder). Older checks that wait for "placeholder answer" (`check2a-ui.cjs`, `check2d.cjs`)
+now fail on purpose.
+
+Raised by Mohammad during 2.3: the agent sees only the question, not the chat's earlier turns.
+Noted for step 3 as task 3.3 (design, Open Questions: whole chat up to a limit recommended);
+nothing to build before the real model.
+
+**Next: 2.3b**, the page shows the steps behind an answer only when asked: a small link under
+the answer and Ctrl+O (Mohammad, 27-Nov-2026), as ChatGPT's and Claude's collapsed steps.
+`openChat()` must also read `steps` so a reopened chat shows them; `Asked` already carries them.
+Questions for Mohammad first, one at a time, with a recommendation: what Ctrl+O toggles (every
+answer's steps at once, as Claude Code, or only the last); the link's words (e.g. "1 step" /
+"How I found this"); taking Ctrl+O from the browser's "Open file" while Ask is focused. No
+manifest change. Draft in `ask-handover\2.3b-draft\`; check headless. Then **2.4** (decide
+signing).
 
 **What step 2 builds** (tasks 2.1–2.4 in `feather-ask-agent/tasks.md`): Ask stops answering
 with the placeholder (`src/server/reply.ts`) and answers with an agent loop over the platform's

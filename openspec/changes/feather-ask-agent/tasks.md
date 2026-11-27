@@ -48,7 +48,8 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
 - [x] 2.2b The steps behind each answer: `think` returns them with the answer as
       `{ tool, args, summary, refused? }` (summary "2 rows", "refused: …"; no rows); `ask` checks
       and saves them in the JSON column `steps` on `ask.question` (commit 68d920951).
-- [ ] 2.3 The page calls think, then ask, under one "Thinking…".
+- [x] 2.3 The page calls think, then ask, under one "Thinking…": `askQuestion` in `api.ts`
+      through one `post()` helper; Try again asks both again (commits 66bfaf3f8, cf1e5b846).
 - [ ] 2.3b The page shows the steps behind an answer only when asked: Ctrl+O, or a small link
       under the answer (Mohammad, 27-Nov-2026), as ChatGPT's and Claude's collapsed steps.
 - [ ] 2.4 Decide the open question on signing the answer.
