@@ -54,6 +54,10 @@ absolute guards (minimum rows, not all zero) and the empty-candidate refusal
 still judge the real data. A stand-in is checked for fit only: sample data is
 small, and a `min_rows` written for the real data would refuse it.
 
+When a stand-in was loaded over real rows, the last real copy is kept while
+stand-ins serve and is the baseline for the next real refresh, so a drop guard
+is not blind once. With no earlier real copy there is nothing to compare with.
+
 Rejected: clearing the stand-in before the first real refresh. The screen
 would be empty if that refresh was refused.
 
@@ -64,6 +68,11 @@ guard, so a changed query never serves rows cut to the old one. A stand-in's
 identity is a hash of the columns, keys and scope mapping only. The query is
 often corrected while the stand-in serves (that is the point of one), and that
 must not blank the screen; a changed column must.
+
+A dataset whose stand-in was retired this way is still bound to a stand-in, so
+nothing refreshes it and the app shows nothing for it. Instance health names
+it (one check per app with such a binding), as it names one that was bound
+before any file was loaded.
 
 Rejected: one identity for both. Every query fix during the gap would need the
 stand-in loaded again.
@@ -85,6 +94,18 @@ set by the server from what the dataset engine served in that request. The
 shared bar every app page loads already wraps the page's `fetch` (#1260); it
 reads the header and draws one line under the top bar. An app cannot forget
 the mark because it never draws it.
+
+The mark must not depend on how or when the page asks. The shell watches
+`fetch` and `XMLHttpRequest`, and the server repeats the list as a
+`Server-Timing` metric, which a browser keeps with every request it made: from
+that the shell learns of a stand-in served to a request that left before it
+could watch, such as one made by a script that ran before the bar loaded.
+Requests made in a worker or a frame are not seen.
+
+What a page was told is remembered by its path, not its query string. Two
+views of one page then share the line, which errs toward marking: keyed by the
+query too, a view that changes its query and keeps showing rows it already had
+would lose the line.
 
 Rejected: a shared component each app places on its pages. It marks only the
 pages whose author remembered it.
