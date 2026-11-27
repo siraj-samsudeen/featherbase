@@ -5,7 +5,6 @@
 // Composed from src/shared; runs on the made-up chain (store LKS) until the copied Run is in the app's tables.
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { ChipButton, RecordLink, StatusPill, TABLE_CLASSES, cellClasses, cx, headCellClasses } from '@featherbase/shop-floor'
-import { madeUpChain } from '../shared/madeUpChain'
 import { combine, inr, pc, storeStepOf, type HelpTopic, type Line } from '../shared/model'
 import { MERCHANDISE, STORE_LAYOUT, LEVEL, pathTo, type Level, type TreeNode } from '../shared/levels'
 import { KpiTiles, Tile } from '../shared/KpiTiles'
@@ -22,13 +21,25 @@ import { Questions } from '../shared/Questions'
 import { HelpTab } from '../shared/Help'
 import { aopText, aopTone } from '../shared/Aop'
 import { REASONS } from '../shared/review'
-import { chainHeader, type ChainPageProps } from '../shared/chainPage'
+import { chainHeader, personIn, type ChainPageProps } from '../shared/chainPage'
+import type { Chain } from '../shared/chainData'
 import type { SortKey } from '../shared/MeasureTable'
 import { boardOrder, focusOpen, fullyAnswered, meterWidth, sectionLine, sectionsOf, type SectionSummary } from './sections'
 import '../shared/forecasting.css'
 import './storeManager.css'
 
-const STORE = 'LKS'
+/** The store the page reviews: ?store= (its code or name), else the Store Manager's (?as= picks one), else the store
+ *  with the most subcategories. */
+function storeOf(chain: Chain): string {
+  const asked = new URLSearchParams(window.location.search).get('store')
+  const found = asked && chain.lines.find(l => l.store === asked || l.storeName === asked)
+  if (found) return found.store
+  const mgr = personIn(chain, 'Store Manager', p => p.places.length === 1)
+  if (mgr && chain.lines.some(l => l.store === mgr.places[0].store)) return mgr.places[0].store
+  const n = new Map<string, number>()
+  for (const l of chain.lines) n.set(l.store, (n.get(l.store) ?? 0) + 1)
+  return [...n.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+}
 /** One row of views, Help last (the prototype's views()): The Store, Approvals, the Section Board. */
 const SCREENS = ['store', 'approvals', 'board', 'help']
 /** One store: a floor, section or merchandise, never another store. */
@@ -37,12 +48,13 @@ type Pivot = 'layout' | 'merch'
 const reasonLabel = (c: string) => REASONS.find(r => r.code === c)?.label ?? c
 const toggle = (s: Set<string>, id: string) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n }
 
-export function StoreManagerReview({ hrefFor, openLine, onOpenLine }: ChainPageProps) {
-  const chain = madeUpChain()
-  const all = useMemo(() => chain.lines.filter(l => l.store === STORE), [chain.lines])
-  const info = useMemo(() => chain.sections.filter(s => s.store === STORE), [chain.sections])
+export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProps) {
+  const STORE = useMemo(() => storeOf(chain), [chain])
+  const all = useMemo(() => chain.lines.filter(l => l.store === STORE), [chain.lines, STORE])
+  const info = useMemo(() => chain.sections.filter(s => s.store === STORE), [chain.sections, STORE])
   const ids = useMemo(() => new Set(all.map(l => l.rowId)), [all])
-  const header = chainHeader('Selvi', 'Store Manager', STORE)
+  const manager = personIn(chain, 'Store Manager', p => p.places.some(x => x.store === STORE))
+  const header = chainHeader(chain, manager?.name ?? 'Store Manager', 'Store Manager', STORE)
   const review = useChainReview(chain.proposals.filter(p => ids.has(p.line)))
   const storeStep = useMemo(() => storeStepOf(all), [all])
   const arriving = openLine ? all.find(l => l.rowId === openLine) : undefined
@@ -76,7 +88,7 @@ export function StoreManagerReview({ hrefFor, openLine, onOpenLine }: ChainPageP
     setOpenNodes(focusOpen(lines, levelsOf(p), next.length > 0))
   })
   const lines = scope.lines
-  const secs = useMemo(() => sectionsOf(lines, info), [lines, info])
+  const secs = useMemo(() => sectionsOf(lines, info, !chain.real), [lines, info, chain.real])
   const secOf = (name: string) => secs.find(s => s.name === name)
 
   const setOpen = (k: string | null) => { setOpenState(k); onOpenLine(k && ids.has(k) ? k : null) }

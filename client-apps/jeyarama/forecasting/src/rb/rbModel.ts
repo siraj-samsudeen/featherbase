@@ -63,14 +63,16 @@ export interface StoreProgress {
   /** Questions open (made up). */
   questions: number
 }
-export function storeProgress(lines: Line[], waitingIn: (lines: Line[]) => number): StoreProgress[] {
+/** Each store's review progress. On the made-up chain answered, oldest and questions are steady samples; on a real
+ *  Run they are what the app holds, none yet (#1418). */
+export function storeProgress(lines: Line[], waitingIn: (lines: Line[]) => number, madeUp = true): StoreProgress[] {
   const stores = [...new Set(lines.map(l => l.store))]
   return stores.map(store => {
     const mine = lines.filter(l => l.store === store), l = mine[0]
     return {
       store, storeName: l.storeName, region: l.region, lines: mine.reduce((t, x) => t + x.n, 0),
-      answered: Math.round((0.25 + hash(`${store}p`) * 0.7) * 100), waiting: waitingIn(mine),
-      oldest: 1 + Math.round(hash(`${store}o`) * 3), questions: Math.round(hash(`${store}q`) * 2.4),
+      answered: madeUp ? Math.round((0.25 + hash(`${store}p`) * 0.7) * 100) : 0, waiting: waitingIn(mine),
+      oldest: madeUp ? 1 + Math.round(hash(`${store}o`) * 3) : 0, questions: madeUp ? Math.round(hash(`${store}q`) * 2.4) : 0,
     }
   }).sort((a, b) => b.waiting - a.waiting || a.store.localeCompare(b.store))
 }

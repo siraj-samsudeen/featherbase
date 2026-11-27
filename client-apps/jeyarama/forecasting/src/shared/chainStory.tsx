@@ -10,6 +10,7 @@ import { StoreManagerReview } from '../storeManager/StoreManagerReview'
 import { CategoryHeadReview } from '../categoryHead/CategoryHeadReview'
 import { RbReview } from '../rb/RbReview'
 import type { ChainPageProps } from './chainPage'
+import { madeUpChain } from './madeUpChain'
 import '../style.css'
 
 paintTheme('light')
@@ -19,6 +20,7 @@ const key = (q.get('page') ?? 'rb-review') as keyof typeof PAGES
 const Page = PAGES[key] ?? RbReview
 const href = (rowId: string) => { const x = new URLSearchParams(location.search); x.set('line', rowId); return `?${x}` }
 const props: ChainPageProps = {
+  chain: madeUpChain(),
   hrefFor: l => href(l.rowId), openLine: q.get('line'),
   onOpenLine: rowId => { const x = new URLSearchParams(location.search); if (rowId) x.set('line', rowId); else x.delete('line'); history.replaceState(null, '', `?${x}`) },
 }

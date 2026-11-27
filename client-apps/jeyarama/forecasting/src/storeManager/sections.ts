@@ -5,10 +5,12 @@ import { combine, type Group, type Line } from '../shared/model'
 import { SORTERS, type SortKey } from '../shared/MeasureTable'
 import { pathTo, type Level } from '../shared/levels'
 
-/** MADE-UP until the app records answers: how many of a section's n subcategories its Team Leader has answered,
- *  steady per section (the prototype's `answered`); null when the section has no Team Leader. */
-export function answeredIn(section: string, n: number, teamLeader: string | undefined): number | null {
+/** How many of a section's n subcategories its Team Leader has answered; null when the section has no Team Leader.
+ *  On the made-up chain a steady sample (the prototype's `answered`); on a real Run what the app holds, none yet,
+ *  until the review reads forecast_line_review (#1418). */
+export function answeredIn(section: string, n: number, teamLeader: string | undefined, madeUp = true): number | null {
   if (!teamLeader) return null
+  if (!madeUp) return 0
   const f = hash(section)
   return f < 0.3 ? n : f < 0.45 ? 0 : Math.max(1, Math.round(n * f))
 }
@@ -20,12 +22,12 @@ export interface SectionSummary {
 }
 
 /** The sections the lines fall in, each summed, with its Team Leader and progress. */
-export function sectionsOf(lines: Line[], info: SectionInfo[]): SectionSummary[] {
+export function sectionsOf(lines: Line[], info: SectionInfo[], madeUp = true): SectionSummary[] {
   const names = [...new Set(lines.map(l => l.section))]
   return names.map(name => {
     const mine = lines.filter(l => l.section === name)
     const teamLeader = info.find(s => s.section === name)?.teamLeader
-    return { name, teamLeader, lines: mine, item: combine(mine, -1, name), answered: answeredIn(name, mine.length, teamLeader) }
+    return { name, teamLeader, lines: mine, item: combine(mine, -1, name), answered: answeredIn(name, mine.length, teamLeader, madeUp) }
   })
 }
 

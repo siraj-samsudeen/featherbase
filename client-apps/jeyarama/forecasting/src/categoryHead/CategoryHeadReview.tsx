@@ -6,7 +6,6 @@
 // own view for approval. Composed from src/shared; runs on the made-up chain (Bina: Women and Girls in Kerala).
 import { useMemo, useState, type ReactNode } from 'react'
 import { RecordLink, chipClasses } from '@featherbase/shop-floor'
-import { madeUpChain } from '../shared/madeUpChain'
 import { combine, count, inr, storeStepOf, type HelpTopic, type Line } from '../shared/model'
 import { LEVEL, headingOf, pathTo, type Level } from '../shared/levels'
 import { KpiTiles, Tile } from '../shared/KpiTiles'
@@ -20,7 +19,8 @@ import { ChangeForm } from '../shared/ChangeForm'
 import { Questions } from '../shared/Questions'
 import { LinePanel } from '../shared/LinePanel'
 import { HelpTab } from '../shared/Help'
-import { chainHeader, type ChainPageProps } from '../shared/chainPage'
+import { chainHeader, personIn, type ChainPageProps } from '../shared/chainPage'
+import { linesOf } from '../shared/chainData'
 import type { SortKey } from '../shared/MeasureTable'
 import { behindCounts, cellLines, commonPath, storesBySize, type Metric, type RankBy } from './heads'
 import { StoreMap, type CellPick } from './StoreMap'
@@ -30,7 +30,6 @@ import './categoryHead.css'
 
 /** One row of views, Help last (the prototype's views()): Your Categories, Approvals, the Store Map, Furthest From Plan. */
 const SCREENS = ['categories', 'approvals', 'map', 'furthest', 'help']
-const PERSON = 'Bina', REGION = 'Kerala', SUBDIVISIONS = ['Women', 'Girls']
 
 type Pivot = 'cat-store' | 'store-cat' | 'sub-store'
 const PIVOTS: Record<Pivot, Level[]> = {
@@ -43,11 +42,14 @@ const PIVOT_OPTIONS: { value: Pivot; label: string }[] = [
 ]
 const LEGEND_HINT = 'Click a row to open it; click a subcategory for how Feather Forecast built it.'
 
-export function CategoryHeadReview({ hrefFor, openLine, onOpenLine }: ChainPageProps) {
-  const chain = madeUpChain()
-  const all = useMemo(() => chain.lines.filter(l => l.region === REGION && SUBDIVISIONS.includes(l.subdivision)), [chain.lines])
+export function CategoryHeadReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProps) {
+  // the category head (?as= picks one) and their merchandise: the subcategory codes at the stores their assignment names
+  const head = personIn(chain, 'Category Head')
+  const all = useMemo(() => (head ? linesOf(head, chain.lines) : []), [head, chain.lines])
+  const REGION = [...new Set(all.map(l => l.region))].filter(Boolean).join(' and ')
+  const SUBDIVISIONS = [...new Set(all.map(l => l.subdivision))]
   const byId = useMemo(() => new Map(all.map(l => [l.rowId, l])), [all])
-  const header = chainHeader(PERSON, 'Category Head')
+  const header = chainHeader(chain, head?.name ?? 'Category Head', 'Category Head')
   const review = useChainReview(chain.proposals)
   const mine = review.proposals.filter(p => byId.has(p.line))
   const waiting = mine.filter(p => p.state === 'waiting')
@@ -103,7 +105,7 @@ export function CategoryHeadReview({ hrefFor, openLine, onOpenLine }: ChainPageP
       {p?.state !== 'waiting' && <ChangeForm key={`${l.rowId}:${own?.status ?? ''}`} l={l} answer={own} month={header.month} canAccept={false}
         modes={['month_value', 'month_percent', 'days']} aop title="Your view" sendLabel="Send for approval" doneWords="You proposed" doneTail=""
         onPropose={x => void review.actions.propose(l, x)} />}
-      <Questions l={l} questions={review.state.questions.filter(q => q.line === l.rowId)} initial={PERSON.slice(0, 1)} onAsk={text => void review.actions.ask(l, text)} />
+      <Questions l={l} questions={review.state.questions.filter(q => q.line === l.rowId)} initial={header.person.slice(0, 1)} onAsk={text => void review.actions.ask(l, text)} />
     </>
   }
   const onHelp = (topic: HelpTopic, from: string) => { setTab('help'); setHelp({ at: topic, from: byId.has(from) ? from : null }) }

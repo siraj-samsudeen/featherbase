@@ -704,6 +704,13 @@
                 "read_only": true
               },
               {
+                "column_name": "region_name",
+                "label": "Region",
+                "column_type": "Data",
+                "in_list_view": false,
+                "read_only": true
+              },
+              {
                 "column_name": "section_name",
                 "label": "Section",
                 "column_type": "Data",
@@ -2444,6 +2451,13 @@
           "label": "Store",
           "column_type": "Data",
           "in_list_view": true,
+          "read_only": true
+        },
+        {
+          "column_name": "region_name",
+          "label": "Region",
+          "column_type": "Data",
+          "in_list_view": false,
           "read_only": true
         },
         {

@@ -55,3 +55,10 @@ describe('opening the tree for a scope', () => {
     expect(merch.has('Fashion › Girls')).toBe(true)
   })
 })
+
+describe('on a real Run', () => {
+  it('claims no answers the app does not hold', () => {
+    expect(answeredIn('Sarees', 5, 'Asha', false)).toBe(0)
+    expect(answeredIn('Sarees', 5, undefined, false)).toBeNull()
+  })
+})

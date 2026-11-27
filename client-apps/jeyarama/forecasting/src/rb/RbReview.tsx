@@ -5,7 +5,7 @@
 // title and store count, the search, every layout, and Approvals (or Pending), which shows how far each store has got,
 // the proposals waiting with Store Managers and the questions RB can answer. RB sees proposals but does not decide them; RB sets a number of its own. Made-up chain.
 import { useMemo, useRef, useState } from 'react'
-import { madeUpChain, SMALL_UNDER } from '../shared/madeUpChain'
+import { SMALL_UNDER } from '../shared/madeUpChain'
 import { combine, foldSmall, inr, storeStepOf, type HelpTopic, type Line } from '../shared/model'
 import { pathTo, type Level } from '../shared/levels'
 import { KpiTiles } from '../shared/KpiTiles'
@@ -19,7 +19,7 @@ import { nodeWaiting, ProposalCard } from '../shared/Proposals'
 import { ChangeForm } from '../shared/ChangeForm'
 import { Questions } from '../shared/Questions'
 import { HelpTab } from '../shared/Help'
-import { chainHeader, type ChainPageProps } from '../shared/chainPage'
+import { chainHeader, personIn, type ChainPageProps } from '../shared/chainPage'
 import type { SortKey } from '../shared/MeasureTable'
 import { answerFacts, crumbHint, crumbSteps, focusScope, gapNodes, idsOf, linesAt, rbLevels, storeProgress, type InsideStore } from './rbModel'
 import { AnswerBlock, Crumbs, GapBars, PendingTab, type RbQuestion } from './RbParts'
@@ -32,15 +32,14 @@ type Region = 'Kerala' | 'Tamil Nadu' | 'Both'
 const QUESTION_TEXTS = ['Why is this so much higher than last December?', 'Does the forecast know the offer ends on 30-Nov?',
   'Is the December step right for a subcategory that sells the same all year?']
 
-export function RbReview({ hrefFor, openLine, onOpenLine }: ChainPageProps) {
-  const chain = madeUpChain()
+export function RbReview({ chain, hrefFor, openLine, onOpenLine }: ChainPageProps) {
   const everyLine = useMemo(() => foldSmall(chain.lines, SMALL_UNDER), [chain.lines])
   const byRow = useMemo(() => new Map(everyLine.map(l => [l.rowId, l])), [everyLine])
   // Kerala first; a link to a Tamil Nadu subcategory opens on Tamil Nadu
   const [region, setRegion] = useState<Region>(() => (openLine && byRow.get(openLine)?.region === 'Tamil Nadu' ? 'Tamil Nadu' : 'Kerala'))
   /** Everything the page shows: the lines of the region picked. */
   const all = useMemo(() => (region === 'Both' ? everyLine : everyLine.filter(l => l.region === region)), [everyLine, region])
-  const header = chainHeader('Kumar', 'Chief Executive')
+  const header = chainHeader(chain, personIn(chain, 'Chief Executive')?.name ?? 'RB', 'Chief Executive')
   const review = useChainReview(chain.proposals)
   const [screen, setScreen] = useView(SCREENS)
   // each view is a layout and what it opens on
@@ -105,7 +104,7 @@ export function RbReview({ hrefFor, openLine, onOpenLine }: ChainPageProps) {
   /** A region's bar picks that region. */
   const goRegion = (r: string) => { setRegion(r as Region); setCrumb([]); setOpenNodes(new Set()); setOpen(null); later() }
 
-  const progressAll = storeProgress(all, review.waitingIn), progress = storeProgress(lines, review.waitingIn)
+  const progressAll = storeProgress(all, review.waitingIn, !chain.real), progress = storeProgress(lines, review.waitingIn, !chain.real)
   const regionQuestions = questions.filter(q => region === 'Both' || q.line.region === region)
   const openQuestions = regionQuestions.filter(q => !q.answer).length
   const pendingN = progressAll.reduce((t, x) => t + x.waiting, 0) + openQuestions
@@ -152,7 +151,7 @@ export function RbReview({ hrefFor, openLine, onOpenLine }: ChainPageProps) {
     const f = answerFacts(lines, header.month.name, progress, openQuestions)
     return <>
       <KpiTiles total={combine(lines, -1)} header={header} approvedDelta={review.approvedDelta(lines)} />
-      <AnswerBlock f={f} onPending={() => setTab('pending')} />
+      <AnswerBlock f={f} onPending={() => setTab('pending')} madeUp={!chain.real} />
       <div className="rb-two">
         <div><h2 className="fr-sec">Gap to AOP by store <span className="fr-dim">furthest behind first; click to open</span></h2>
           <GapBars testId="rb-bars-store" nodes={gapNodes(lines, l => l.store)} onPick={g => goStore(g.name)}
@@ -166,13 +165,16 @@ export function RbReview({ hrefFor, openLine, onOpenLine }: ChainPageProps) {
       {drill(crumb.length > 0)}
     </>
   }
+  // only the regions the Run has (a local instance may load Kerala alone); Both when there are two
+  const present = [...new Set(everyLine.map(l => l.region))].filter(Boolean).sort() as Region[]
+  const regionOptions = [...present.map(r => ({ value: r, label: r as string })), ...(present.length > 1 ? [{ value: 'Both' as Region, label: 'Both' }] : [])]
   const regionToggle = <div className="fr-toolbar" data-testid="rb-region" style={{ margin: 0 }}>
     <ToolbarChoice label="Region" hover="Kerala first; switch to Tamil Nadu or both regions" value={region} onChange={pickRegion}
-      options={[{ value: 'Kerala', label: 'Kerala' }, { value: 'Tamil Nadu', label: 'Tamil Nadu' }, { value: 'Both', label: 'Both' }]} /></div>
+      options={regionOptions} /></div>
   const reviewContent = layout === 'drill' ? drill(true) : layout === 'answer-first' ? answerFirst()
     : wholeTree(scope.scope.length ? 'In scope' : regionName)
 
-  const pending = <PendingTab progress={progress} proposals={review.proposals.filter(p => { const l = byRow.get(p.line); return l && lines.includes(l) })}
+  const pending = <PendingTab madeUp={!chain.real} progress={progress} proposals={review.proposals.filter(p => { const l = byRow.get(p.line); return l && lines.includes(l) })}
     lineOf={id => byRow.get(id)} questions={regionQuestions} hrefFor={hrefFor} onStore={goStore} onLine={reveal}
     onAnswer={(id, text) => setQuestions(qs => qs.map(q => (q.id === id ? { ...q, answer: text } : q)))} />
   const helpTab = <HelpTab header={header} lines={lines} storeStep={storeStepOf(lines)} at={help.at} from={help.from} onBack={reveal} managers

@@ -35,7 +35,7 @@ export function GapBars({ nodes, label, onPick, testId }: { nodes: Group[]; labe
 }
 
 /** The answer block: the month in one sentence, then four numbered points. */
-export function AnswerBlock({ f, onPending }: { f: AnswerFacts; onPending: () => void }) {
+export function AnswerBlock({ f, onPending, madeUp = true }: { f: AnswerFacts; onPending: () => void; madeUp?: boolean }) {
   const { stores, divisions: d } = f
   return (
     <div className="rb-answer" data-testid="rb-answer">
@@ -45,7 +45,7 @@ export function AnswerBlock({ f, onPending }: { f: AnswerFacts; onPending: () =>
         <li>{stores.top.length === 5 ? 'Five' : stores.top.length} stores carry <b>{stores.carry}</b> of the gap ({stores.share}%): {stores.top.map(s => `${s.store} ${s.gap}`).join(', ')}. {stores.onPlan}</li>
         <li>By merchandise, <b>{d.first.name}</b> is {d.first.gap} short{d.second && <> and <b>{d.second.name}</b> {d.second.gap}</>}: together {d.share}% of the gap.</li>
         <li>Up the chain: Team Leaders have answered about <b>{f.answered}%</b> of subcategories; <b>{f.waiting}</b> proposed change{f.waiting === 1 ? '' : 's'} wait with Store Managers and <b>{f.questions}</b> question{f.questions === 1 ? '' : 's'} wait for an answer.{' '}
-          <Sample text="Review progress, proposals and questions are made up until the app records them" />{' '}
+          {madeUp && <Sample text="Review progress, proposals and questions are made up until the app records them" />}{' '}
           <button type="button" className="fr-link" onClick={onPending}>See what is pending</button></li>
       </ol>
     </div>
@@ -73,7 +73,9 @@ export function Crumbs({ steps, hint, onStep }: { steps: CrumbStep[]; hint: stri
 export interface RbQuestion { id: number; line: Line; by: string; text: string; answer: string | null }
 
 /** Approvals (Two Tabs) or Pending: how far each store has got, the proposals waiting, the questions. */
-export function PendingTab({ progress, proposals, lineOf, questions, hrefFor, onStore, onLine, onAnswer }: {
+export function PendingTab({ progress, proposals, lineOf, questions, hrefFor, onStore, onLine, onAnswer, madeUp = true }: {
+  /** The made-up chain marks its sample figures; a real Run shows what the app holds. */
+  madeUp?: boolean
   progress: StoreProgress[]; proposals: ProposalItem[]; lineOf: (rowId: string) => Line | undefined; questions: RbQuestion[]
   hrefFor: (l: Line) => string; onStore: (store: string) => void; onLine: (rowId: string) => void; onAnswer: (id: number, text: string) => void
 }) {
@@ -82,7 +84,7 @@ export function PendingTab({ progress, proposals, lineOf, questions, hrefFor, on
   const waiting = proposals.filter(p => p.state === 'waiting').length
   return (
     <div data-testid="rb-pending">
-      <h2 className="fr-sec">By store <Sample text="Review progress, oldest waiting and questions are made up until the app records them" /><span className="fr-dim">click a store to open it</span></h2>
+      <h2 className="fr-sec">By store {madeUp && <Sample text="Review progress, oldest waiting and questions are made up until the app records them" />}<span className="fr-dim">click a store to open it</span></h2>
       <div className="fr-scroll">
         <table className={TABLE_CLASSES} data-testid="rb-by-store">
           <thead><tr>{heads.map((h, i) => <th key={h} className={headCellClasses({ first: i === 0, last: i === heads.length - 1, className: num(i) ? 'text-right' : '' })}>{h}</th>)}</tr></thead>

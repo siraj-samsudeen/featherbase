@@ -18,6 +18,8 @@ import { StoreManagerReview } from './storeManager/StoreManagerReview'
 import { CategoryHeadReview } from './categoryHead/CategoryHeadReview'
 import { RbReview } from './rb/RbReview'
 import type { ChainPageProps } from './shared/chainPage'
+import { loadRealChain, type Chain } from './shared/chainData'
+import { madeUpChain } from './shared/madeUpChain'
 import { RecordPagesProvider } from '@featherbase/shop-floor'
 import { UnassignedPage } from './unassigned/UnassignedPage'
 import { StorePage } from './teamLeader/StorePage'
@@ -194,15 +196,23 @@ function useInAppNavigation() {
   return moves
 }
 
-/** The managers' review pages (#1419), on the made-up chain until the copied Run is in the app's tables: the screen
- *  as agreed, with no picker bar above it. A subcategory is kept in the address (?line=<rowId>) and its record opens
- *  here. */
+/** The managers' review pages (#1419): the newest real official Run in the app's tables (a local instance loads one
+ *  outside the repository), else the made-up chain; the screen as agreed, with no picker bar above it. A subcategory is
+ *  kept in the address (?line=<rowId>) and its record opens here. The Run is read once and kept while the app is open. */
 const CHAIN_PAGES = { 'store-review': StoreManagerReview, 'category-review': CategoryHeadReview, 'rb-review': RbReview } as const
 type ChainView = keyof typeof CHAIN_PAGES
+let chainLoad: Promise<Chain> | null = null
+const loadChain = () => (chainLoad ??= loadRealChain().then(real => real ?? madeUpChain(), e => { chainLoad = null; throw e }))
 function ChainPage({ view }: { view: ChainView }) {
   const Page = CHAIN_PAGES[view]
+  const [chain, setChain] = useState<Chain | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => { loadChain().then(setChain, () => setFailed(true)) }, [])
   const line = new URLSearchParams(window.location.search).get('line')
+  if (failed) return <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => { setFailed(false); loadChain().then(setChain, () => setFailed(true)) }}>Try again</Button>} /></Card>
+  if (!chain) return <Skeleton label="Opening the review" lines={8} />
   const props: ChainPageProps = {
+    chain,
     hrefFor: l => address(view, { line: l.rowId }),
     openLine: line,
     onOpenLine: rowId => {

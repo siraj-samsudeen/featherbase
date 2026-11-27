@@ -11,6 +11,8 @@ export type Seed = [string, string, number, number, number, number, number, numb
 export interface SeedPlace {
   run: string; store_code: string; store_name: string; division_name: string; subdivision_name: string; section_name: string
   region_name?: string; floor_name?: string; floor_order?: number
+  /** The subcategory's code (a made-up one), when the Run carries it. */
+  material_group_code?: string
 }
 
 export interface Rows {
@@ -23,7 +25,7 @@ const q1 = (n: number) => Math.round(n * 10) / 10
 /** Appends one subcategory's rows to `out`. `i` varies the plan and the other models a little from line to line;
  *  `price` is its price and rounding ₹, the second kind of adjustment beside the seed's rebalancing. */
 export function addSeed(out: Rows, [name, category, l28, asp, ly28, ly, aspLy, growth, step, w, rebal]: Seed, place: SeedPlace, i: number, price = 0) {
-  const { run, store_code: STORE, store_name, section_name, region_name, floor_name, floor_order, ...merch } = place
+  const { run, store_code: STORE, store_name, section_name, region_name, floor_name, floor_order, material_group_code, ...merch } = place
   const line = { store_code: STORE, ...merch, category_name: category, subcategory_name: name }
   const b3 = l28 / 28 * 31
   const own = [ly * growth, ly * growth * 1.008, b3, b3 * 0.995, b3 * 0.985, b3 * step]
@@ -33,7 +35,7 @@ export function addSeed(out: Rows, [name, category, l28, asp, ly28, ly, aspLy, g
   const b6Level = adds[5] / step
   out.lines.push({
     row_id: `${run}:${STORE}:${name}`, run_id: run, ...line, store_name, section_name,
-    ...(region_name == null ? {} : { region_name }), ...(floor_name == null ? {} : { floor_name, floor_order }),
+    ...(region_name == null ? {} : { region_name }), ...(floor_name == null ? {} : { floor_name, floor_order }), ...(material_group_code == null ? {} : { material_group_code }),
     forecast_value_before_tax: fc, forecast_qty: q1(fc / (asp * 0.97)),
     ...Object.fromEntries(own.map((o, k) => [`own_value_b${k + 1}`, r(o)])),
     ...Object.fromEntries(adds.map((a, k) => [`adds_value_b${k + 1}`, a])),

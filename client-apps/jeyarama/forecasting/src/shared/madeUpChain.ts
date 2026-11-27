@@ -5,6 +5,7 @@
 // figure: every name and number is invented, shaped like a real chain's.
 import { addSeed, type Rows, type Seed } from './madeUpRows'
 import { linesFrom, type CopiedRows, type Line } from './model'
+import type { Chain, ChainPerson, SectionInfo } from './chainData'
 import { monthAfter, type ChangeSpec, type ProposalItem } from './review'
 
 export const RUN = 'made_up_2026_12_official'
@@ -68,12 +69,16 @@ export function hash(s: string): number {
   return (h % 1000) / 1000
 }
 
-export interface SectionInfo { store: string; section: string; floor: string; floorOrder: number; teamLeader: string }
+export type { SectionInfo } from './chainData'
 
-let cache: { rows: CopiedRows; lines: Line[]; sections: SectionInfo[]; proposals: ProposalItem[] } | null = null
+/** A made-up subcategory code (MU-0001 …), one per subcategory name, in the merchandise's order. */
+const CODE = new Map(MERCH.flatMap(([, , , subs]) => subs.map(([name]) => name)).map((name, i) => [name, `MU-${String(i + 1).padStart(4, '0')}`]))
 
-/** The made-up chain: its copied rows, every store's lines, the sections with their Team Leaders, and the proposals. */
-export function madeUpChain() {
+let cache: (Chain & { rows: CopiedRows }) | null = null
+
+/** The made-up chain: its copied rows, every store's lines, the sections with their Team Leaders, the people, and the
+ *  proposals. */
+export function madeUpChain(): Chain & { rows: CopiedRows } {
   if (cache) return cache
   const rows: Rows = { lines: [], sales: [], plans: [], others: [] }
   const sections: SectionInfo[] = []
@@ -106,12 +111,19 @@ export function madeUpChain() {
       if (seeds.length > 1) { const last = seeds[seeds.length - 1][0]; last[10] = -seeds.slice(0, -1).reduce((t, [x]) => t + x[10], 0) }
       else if (seeds.length === 1) seeds[0][0][10] = 0
       for (const [seed, price] of seeds) addSeed(rows, seed, { run: RUN, store_code: st.code, store_name: st.name, division_name: division, subdivision_name: subdivision,
-        section_name: sec.name, region_name: st.region, floor_name: sec.floor, floor_order: sec.order }, i++, price)
+        section_name: sec.name, region_name: st.region, floor_name: sec.floor, floor_order: sec.order, material_group_code: CODE.get(seed[0]) }, i++, price)
     }
   }
   const copied = rows as unknown as CopiedRows
   const lines = linesFrom(copied)
-  cache = { rows: copied, lines, sections, proposals: proposalsFor(lines, sections) }
+  const kerala = STORES.filter(s => s.region === 'Kerala').map(s => s.code)
+  const people: ChainPerson[] = [
+    { name: 'Selvi', role: 'Store Manager', place: 'Lakeside', places: [{ store: 'LKS', codes: null }] },
+    // a category head's merchandise: these subcategory codes at these stores (as a Merchandise Assignment gives them)
+    { name: 'Bina', role: 'Category Head', place: 'Women, Girls', places: kerala.map(store => ({ store, codes: MERCH.filter(([, sub]) => sub === 'Women' || sub === 'Girls').flatMap(([, , , subs]) => subs.map(([n]) => CODE.get(n)!)) })) },
+    { name: 'Kumar', role: 'Chief Executive', place: 'Head Office', places: STORES.map(s => ({ store: s.code, codes: null })) },
+  ]
+  cache = { real: false, rows: copied, lines, sections, people, proposals: proposalsFor(lines, sections), cutOff: CUT_OFF, horizon: HORIZON }
   return cache
 }
 
