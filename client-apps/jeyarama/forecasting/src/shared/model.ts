@@ -17,6 +17,8 @@ export interface Line {
   path: string
   /** Its SAP subcategory code (material group), when known. */
   code?: string
+  /** For a subcategory in no section: where it most likely belongs, why, and the org chart's row ids already taken. */
+  suggestedSection?: string; suggestedSectionNote?: string; sectionRowIds?: string[]
   fc: number; fq: number; growth: number; step: number
   fromRecent: number; lift: number; lyg: number; adj: number; bases: Base[]
   l28: number; l28q: number; ly28: number; ly28q: number; ly: number; lyq: number; n91: number; y91: number
@@ -34,6 +36,8 @@ export interface LineMonthRow {
   row_id: string; run_id: string; store_code: string; store_name: string; division_name?: string; subdivision_name?: string; category_name: string; subcategory_name: string; section_name: string
   /** The subcategory's SAP code, when the copy carries it (0.14.0). */
   material_group_code?: string | null
+  /** For a subcategory in no section: a suggested section (Section row id), why, and the row ids already taken. */
+  suggested_section?: string | null; suggested_section_note?: string | null; section_row_ids?: string | null
   forecast_value_before_tax: Num; forecast_qty: Num; seasonal_factor: Num; growth_factor: Num
   from_recent_selling: Num; december_step_on_top: Num; from_last_year: Num; adjustments: Num
   own_value_b1: Num; own_value_b2: Num; own_value_b3: Num; own_value_b4: Num; own_value_b5: Num; own_value_b6: Num
@@ -64,6 +68,8 @@ export function linesFrom({ lines, sales, plans, others }: CopiedRows, store: st
     const l28 = v('last_28_days'), l28q = q('last_28_days')
     return {
       rowId: l.row_id, name: sub, category: l.category_name, path: [l.division_name, l.subdivision_name, l.category_name].filter(Boolean).join(' › '), code: l.material_group_code || undefined,
+      suggestedSection: l.suggested_section || undefined, suggestedSectionNote: l.suggested_section_note || undefined,
+      sectionRowIds: l.section_row_ids ? l.section_row_ids.split('\n').filter(Boolean) : undefined,
       fc: n(l.forecast_value_before_tax), fq: n(l.forecast_qty), growth: Math.round(n(l.growth_factor) * 100) / 100, step: Math.round(n(l.seasonal_factor) * 100) / 100,
       fromRecent: n(l.from_recent_selling), lift: n(l.december_step_on_top), lyg: n(l.from_last_year), adj: n(l.adjustments), bases,
       l28, l28q, ly28: v('same_28_days_last_year'), ly28q: q('same_28_days_last_year'), ly: v('last_december'), lyq: q('last_december'),

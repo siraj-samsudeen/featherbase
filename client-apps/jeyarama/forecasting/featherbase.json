@@ -872,6 +872,27 @@
                 "column_type": "Int",
                 "description": "Where the floor comes in the building, bottom first.",
                 "read_only": true
+              },
+              {
+                "column_name": "suggested_section",
+                "label": "Suggested Section",
+                "column_type": "Data",
+                "description": "For a subcategory in no section: the section it most likely belongs to, from its history on the org chart (a Section row id).",
+                "read_only": true
+              },
+              {
+                "column_name": "suggested_section_note",
+                "label": "Why That Section",
+                "column_type": "Text",
+                "description": "Why that section is suggested, in words.",
+                "read_only": true
+              },
+              {
+                "column_name": "section_row_ids",
+                "label": "Section Subcategory Rows",
+                "column_type": "Text",
+                "description": "The org chart's Section Subcategory row ids already used for this subcategory at the store, one a line, so a new row takes a free one.",
+                "read_only": true
               }
             ],
             "title_column": "subcategory_name"
@@ -2537,6 +2558,27 @@
           "label": "Floor Order",
           "column_type": "Int",
           "description": "Where the floor comes in the building, bottom first.",
+          "read_only": true
+        },
+        {
+          "column_name": "suggested_section",
+          "label": "Suggested Section",
+          "column_type": "Data",
+          "description": "For a subcategory in no section: the section it most likely belongs to, from its history on the org chart (a Section row id).",
+          "read_only": true
+        },
+        {
+          "column_name": "suggested_section_note",
+          "label": "Why That Section",
+          "column_type": "Text",
+          "description": "Why that section is suggested, in words.",
+          "read_only": true
+        },
+        {
+          "column_name": "section_row_ids",
+          "label": "Section Subcategory Rows",
+          "column_type": "Text",
+          "description": "The org chart's Section Subcategory row ids already used for this subcategory at the store, one a line, so a new row takes a free one.",
           "read_only": true
         }
       ],

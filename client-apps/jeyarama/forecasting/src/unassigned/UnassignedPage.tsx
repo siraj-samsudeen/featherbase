@@ -17,9 +17,30 @@ const ORG_CHART = 'https://dash.jeyarama.com'
 
 /** Today's date in India, YYYY-MM-DD. */
 const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
-/** The org chart's new Section Subcategory row for this store and subcategory, starting today (#100 prefill). */
-export const assignHref = (store: string, code?: string) =>
-  `${ORG_CHART}/featherbase/admin/table/section-subcategory/new?${new URLSearchParams({ prefill: JSON.stringify({ store, ...(code ? { subcategory: code } : {}), starts_on: todayIST() }) })}`
+
+/** The org chart's id for a re-placed row, `<store>-<code>-<starts on>`, with -2, -3 … when that one is taken. */
+export function newRowId(store: string, code: string, startsOn: string, taken: string[] = []) {
+  const base = `${store}-${code}-${startsOn}`
+  if (!taken.includes(base)) return base
+  for (let n = 2; ; n++) if (!taken.includes(`${base}-${n}`)) return `${base}-${n}`
+}
+
+/** What the org chart's new Section Subcategory row starts with: store, subcategory, its id, the suggested section
+ *  (blank when nothing suggests one), today, and where the row came from. */
+export function assignPrefill(store: string, l: Pick<Line, 'code' | 'suggestedSection' | 'sectionRowIds'>, today = todayIST()) {
+  const [y, m, d] = today.split('-')
+  return {
+    store,
+    ...(l.code ? { subcategory: l.code, section_subcategory_id: newRowId(store, l.code, today, l.sectionRowIds) } : {}),
+    ...(l.suggestedSection ? { section: l.suggestedSection } : {}),
+    starts_on: today,
+    source_key: `Forecasting No Section page, ${d}-${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m) - 1]}-${y}`,
+  }
+}
+
+/** The org chart's new-row form, prefilled (#100): /featherbase/admin/table/<table>/new?prefill=<JSON>. */
+export const assignHref = (store: string, l: Pick<Line, 'code' | 'suggestedSection' | 'sectionRowIds'>) =>
+  `${ORG_CHART}/featherbase/admin/table/section-subcategory/new?${new URLSearchParams({ prefill: JSON.stringify(assignPrefill(store, l)) })}`
 
 export function UnassignedPage({ store, href }: { store: string; href: (line: string) => string }) {
   const [section, setSection] = useState<Section | null | undefined>(undefined)
@@ -39,9 +60,9 @@ export function UnassignedPage({ store, href }: { store: string; href: (line: st
     if (name) q.set('line', name); else q.delete('line')
     history.replaceState(null, '', `?${q}`)
   }
-  // the subcategory is prefilled when the copy carries its SAP code; until then the person picks it on the form
-  const assign = (l: Line) => <a className="fr-link ml-2" href={assignHref(section.header.store, l.code)} target="_blank" rel="noopener"
-    title={l.code ? undefined : `Opens a new Section Subcategory row for ${section.header.store}; pick ${l.name} there`} onClick={e => e.stopPropagation()}>Assign section</a>
+  // the hover says which section is suggested and why, or that the form leaves Section for the person to pick
+  const assign = (l: Line) => <a className="fr-link ml-2" href={assignHref(section.header.store, l)} target="_blank" rel="noopener"
+    title={l.suggestedSectionNote ?? `Nothing on the org chart suggests a section for ${l.name}: pick one on the form.`} onClick={e => e.stopPropagation()}>Assign section</a>
   return (
     <RecordPagesProvider pageFor={(table, rowId) => (table === 'forecasting.forecast_line_month' && byRow.has(rowId) ? href(byRow.get(rowId)!) : undefined)}>
       <div className="fr flex flex-col gap-4" data-testid="unassigned-subcategories">
