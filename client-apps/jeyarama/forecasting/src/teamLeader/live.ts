@@ -10,7 +10,7 @@ export interface Viewer { name: string; role: string; place: string }
 export interface Section { run: RunRow; storeCode: string; header: Header; lines: Line[]; state: ReviewState }
 
 const LINE_FIELDS = ['run_id', 'store_code', 'store_name', 'material_group_code', 'suggested_section', 'suggested_section_note', 'section_row_ids', 'division_name', 'subdivision_name', 'category_name', 'subcategory_name', 'section_name',
-  'forecast_value_before_tax', 'forecast_qty', 'seasonal_factor', 'growth_factor', 'from_recent_selling', 'december_step_on_top', 'from_last_year', 'adjustments',
+  'forecast_value_before_tax', 'forecast_qty', 'seasonal_factor', 'growth_factor', 'from_recent_selling', 'december_step_on_top', 'from_last_year', 'adjustments', 'rebalanced_within_category', 'price_and_rounding',
   ...[1, 2, 3, 4, 5, 6].flatMap(i => [`own_value_b${i}`, `adds_value_b${i}`, `weight_b${i}`])]
 
 interface ReviewRow { row_id: string; subcategory_name: string; answer: Answer['status']; forecast_change: string | null }
