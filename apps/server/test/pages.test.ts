@@ -5,7 +5,7 @@ import { describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { PAGE_EXAMPLE, type PagePart } from 'shared'
 import { test } from './pg-test'
-import { expectRefused, makeTable, patchDoc } from './fixtures'
+import { expectRefused, grantRole, makeTable, patchDoc } from './fixtures'
 import { connectAgent, issueToken } from './agent-driver'
 
 const PAGE = '/api/table/Page'
@@ -94,6 +94,22 @@ describe('#1410 a module\'s home page lists its pages', () => {
     const homes = (await admin.get<Home>('/api/home_pages')).pages
     expect(homes.filter((p) => p.module === 'Reorder')).toHaveLength(1)
     expect(homes.some((p) => p.label === 'undefined')).toBe(false)
+  })
+})
+
+describe('#1410 the command bar finds a page by its title', () => {
+  test('a Published page for anyone who uses the Admin, a Draft only for someone who may build', async ({ admin, createUser }) => {
+    await reorderLine(admin)
+    await grantRole(admin, { role: 'Reorder Reader', table: 'Reorder Line', can_read: true })
+    await admin.post(PAGE, page('reorder-plan', { status: 'Published' }))
+    await admin.post(PAGE, page('reorder-draft', { title: 'Reorder Draft' }))
+    const found = async (client: TestClient) =>
+      (await client.get<{ pages: { label: string; href: string; kind: string }[] }>('/api/command_destinations')).pages.filter((p) => p.href.startsWith('/featherbase/admin/page/'))
+    expect(await found(admin)).toEqual([
+      { label: 'Reorder Draft', href: '/featherbase/admin/page/reorder-draft', kind: 'Page' },
+      { label: 'Reorder Plan', href: '/featherbase/admin/page/reorder-plan', kind: 'Page' },
+    ])
+    expect(await found(await createUser({ roles: ['Reorder Reader'] }))).toEqual([{ label: 'Reorder Plan', href: '/featherbase/admin/page/reorder-plan', kind: 'Page' }])
   })
 })
 
