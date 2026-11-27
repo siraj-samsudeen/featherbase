@@ -271,12 +271,22 @@ nothing), the read in `featherbase.json`. `fb_ask_ui` was recreated for the mani
 `2.1-draft\check-agent.mts` (4, the loop with fake tools), `ask-app.test.ts` (6).
 **Next: 2.2**, the `ask` action saves the answer `think` gave instead of the placeholder.
 
-**Already begun, uncommitted (found 27-Nov-2026, not written by the step 1 session):** the
-worktree holds 2.1 work: Ask's manifest gains the `think` read (`outbound`, `featherbaseMcp`),
-`src/server/index.ts` changed, `src/server/agent.ts` and `src/server/stand-in.ts` are new. Ask
-Mohammad whether it is theirs and where it stands before drafting 2.1 again. With that manifest
-change, the dev server marks Ask 0.1.0 unavailable on `fb_ask_ui` until the database is
-recreated (ask first: it loses the test chats) or the check runs on `fb_ask_b1`.
+**2.2, for the next session** (Mohammad, 27-Nov-2026): the `ask` action saves the answer
+`think` gave instead of calling `reply()`. Until 2.3 (the page calls think, then ask), check
+it over HTTP: call think, then pass its answer to ask. Ask Mohammad before drafting, one
+question at a time, with a recommendation:
+- How the answer reaches `ask`: in the payload next to the question (`payload.answer =
+  { kind, text }`), checked for shape and length. This ties into 2.4 (sign the answer, or
+  accept that a person could save any answer to their own chat): decide 2.4 now, or keep 2.2
+  unsigned and decide 2.4 after.
+- Whether `reply.ts` (the placeholder) goes away in 2.2.
+
+2.2 changes no manifest (2.2b adds a column, which does), so `fb_ask_ui` needs no recreating.
+Draft in `ask-handover\2.2-draft\`; check it yourself (Ask build, server typecheck,
+`ask-app.test.ts`, HTTP on 5177), take it back out, and give the walkthrough ending with the
+manual checks as DevTools console lines (as 2.1's: sign in, `fetch` with the
+`X-Featherbase-App-Version: ask@0.1.0` header). Mohammad types it in; no commit until "commit it".
+Reuse `checks\check2.1-think-ui.cjs` (HTTP on 5177, signs in as Administrator).
 
 **What step 2 builds** (tasks 2.1–2.4 in `feather-ask-agent/tasks.md`): Ask stops answering
 with the placeholder (`src/server/reply.ts`) and answers with an agent loop over the platform's
@@ -315,7 +325,7 @@ call (1e, `caller-credential.ts`, `mcp-app-reads.ts`), the server test (1f,
 `apps/server/test/featherbase-mcp.test.ts`).
 
 **How to go** (see How we work): one small piece at a time. Claude drafts it outside the repo
-(`ask-handover\2.1-draft\` and so on), checks it (server typecheck, `pnpm --filter server test
+(`ask-handover\2.2-draft\` and so on), checks it (server typecheck, `pnpm --filter server test
 test/ask-app.test.ts`, HTTP or headless browser), then gives Mohammad the walkthrough;
 Mohammad types it in or says "make this change"; commit; tick the task; move this section on.
 No push, no PR.
