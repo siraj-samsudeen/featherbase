@@ -42,7 +42,7 @@ export const WAREHOUSE_TARGET_ROWS = [
   { store: 'N1', month: '2026-11-01', target: 60000, units: 150, confirmed: true },
   { store: 'S1', month: '2026-11-01', target: 40000, units: 90, confirmed: true },
 ]
-const SALES = [['N1', '2026-11-26', '18250.75', 41], ['S1', '2026-11-26', '9120', 23]] as const
+const SALES: readonly (readonly unknown[])[] = [['N1', '2026-11-26', '18250.75', 41], ['S1', '2026-11-26', '9120', 23]]
 export const SALES_ROWS = [
   { store: 'N1', business_day: '2026-11-26', amount: 18250.75, units: 41 },
   { store: 'S1', business_day: '2026-11-26', amount: 9120, units: 23 },
