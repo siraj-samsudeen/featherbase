@@ -135,9 +135,7 @@ export function StoreManagerReview({ hrefFor, openLine, onOpenLine }: ChainPageP
     <h2 className="fr-sec">Waiting for your approval <span className="fr-dim">{waiting.length ? `${waiting.length} ${waiting.length === 1 ? 'proposal' : 'proposals'} from Team Leaders` : 'nothing waiting'} · the other {quiet} sections have nothing waiting; every section is in the table below</span></h2>
     {ordered.length
       ? <div className="fr-pcards" data-testid="proposal-cards">{ordered.map(p => (
-        <div key={p.id} className="sm-cardwrap" onClick={e => { if ((e.target as HTMLElement).closest('.fr-ptitle a')) jumpTo(p.line) }}>
-          <ProposalCard p={p} line={lineOf(p.line)} actions={review.proposalActions} hrefFor={hrefFor} />
-        </div>))}</div>
+        <ProposalCard key={p.id} p={p} line={lineOf(p.line)} actions={review.proposalActions} hrefFor={hrefFor} onOpen={() => jumpTo(p.line)} />))}</div>
       : <p className="fr-dim">No proposals yet.</p>}
   </>
   const head = (text: string, i: number, last: boolean, num = true) => <th key={text} className={headCellClasses({ first: i === 0, last, className: num ? 'text-right' : '' })}>{text}</th>
