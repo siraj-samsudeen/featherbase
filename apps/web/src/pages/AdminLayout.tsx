@@ -11,6 +11,8 @@ import { useCapabilities, useShellKind } from '../lib/session'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { ActionDisclosure } from '../components/ActionDisclosure'
 import { TopBar } from '../components/TopBar'
+import { AdminStandInLine } from '../components/StandInLine'
+import { DATASETS_PATH } from '../lib/stand-in-mark'
 import { SidebarRecall, SidebarSavedViews } from '../components/SidebarDefaults'
 import { metaQuery, type TableMeta } from '../lib/meta'
 import { useI18n } from '../lib/i18n'
@@ -22,7 +24,7 @@ import { HealthBanner, INSTANCE_HEALTH_PATH, SETUP_PERSON_LABEL, SETUP_PERSON_PA
 import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { StatusPill, buttonClasses, iconButtonClasses, touchRowClasses, useMediaQuery } from '@featherbase/shop-floor'
-import { BookOpen, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Plus, Search, Upload, Compass, Eye, History, Key, Link2, ListChecks, LogIn, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
+import { BookOpen, Cable, CalendarClock, ChevronsLeft, ChevronsRight, Plus, Search, Upload, Compass, Eye, History, Key, Link2, ListChecks, LogIn, Rows3, Table, UserRoundSearch, type LucideIcon } from '@featherbase/shop-floor'
 import { fmtCount } from '@featherbase/shop-floor'
 import { ADMIN_HOME_SHORTCUT_DEF, NEW_ROW_SHORTCUT_DEF, noteShortcutUse, useShortcut } from '../lib/shortcuts'
 
@@ -220,6 +222,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
           the sidebar, and the account at its foot; a phone keeps a slim
           header with the menu button. */}
       <TopBar home="admin" />
+      {/* #1409: under the bar, when the page open now received stand-in rows. */}
+      <AdminStandInLine />
       <div className="relative flex min-h-0 flex-1">
         <SidebarAside testid="admin-sidebar" user={user?.row_id}>
           {/* #1235 item 7: on the account pages, the Account group leads the sidebar. */}
@@ -335,6 +339,8 @@ export function AdminShell({ fillHeight, account = false }: { fillHeight: boolea
                   ...(setupNeeded ? [{ to: SETUP_PERSON_PATH, label: SETUP_PERSON_LABEL, icon: ListChecks, testid: 'setup-administrators-link' }] : []),
                   { to: '/featherbase/admin/apps', label: 'Apps', icon: Compass, testid: 'apps-link' },
                   { to: JOBS_PATH, label: 'Jobs', icon: CalendarClock, testid: 'jobs-link' },
+                  // #1409: every app's datasets and where each is served from.
+                  { to: DATASETS_PATH, label: 'Datasets', icon: Rows3, testid: 'datasets-link' },
                   { to: INSTANCE_HEALTH_PATH, label: 'Instance Health', icon: ListChecks, testid: 'instance-health-link' },
                 ]
               : []}

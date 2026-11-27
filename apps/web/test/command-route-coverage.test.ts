@@ -39,6 +39,7 @@ const COVERAGE: Record<string, string> = {
   '/featherbase/admin/table/$table/view/checklist': 'alternative view of a selected Table',
   '/featherbase/admin/script-report/$name': 'readable registered script reports',
   '/featherbase/admin/jobs': 'manager page catalogue',
+  '/featherbase/admin/datasets': 'manager page catalogue',
   '/featherbase/admin/leavers-who-can-sign-in': 'manager page catalogue',
   '/featherbase/admin/link-motherduck-accounts': 'manager page catalogue',
   '/featherbase/admin/access-tokens': 'page catalogue',

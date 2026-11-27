@@ -60,6 +60,7 @@ test('every static admin page has a unique slug and a title', () => {
 
 test('only the System Manager pages need manage (#465, #476 recents rule)', () => {
   expect(adminPageNeedsManage('instance-health')).toBe(true)
+  expect(adminPageNeedsManage('datasets')).toBe(true)
   expect(adminPageNeedsManage('waiting-for-access')).toBe(true)
   expect(adminPageNeedsManage('imports')).toBe(true)
   expect(adminPageNeedsManage('access-tokens')).toBe(false)
