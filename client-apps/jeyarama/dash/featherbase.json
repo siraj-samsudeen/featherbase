@@ -3627,6 +3627,12 @@
       "fromVersion": "0.13.45",
       "toVersion": "0.13.46",
       "operations": []
+    },
+    {
+      "id": "report_refusals_explained",
+      "fromVersion": "0.13.46",
+      "toVersion": "0.13.47",
+      "operations": []
     }
   ],
   "baseTables": {

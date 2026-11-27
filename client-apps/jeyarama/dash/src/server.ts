@@ -259,6 +259,20 @@ async function everySubcategoryCode(ctx: ScopedContext): Promise<string[] | unde
   }
 }
 
+/**
+ * #1423: a refused report, for whoever runs the instance: the person's opaque id, the report key
+ * (the one asked for when it isn't theirs) and why. Nothing else, so never a secret.
+ */
+function logRefusal(ctx: ScopedContext, report: string | null, reason: string) {
+  console.warn(JSON.stringify({ event: 'dash_report_refused', person: ctx.user, report, reason }))
+}
+
+/** The report key the read names, for the refusal log; null when it names none. */
+const namedReport = (ctx: ScopedContext) => {
+  const named = (ctx.payload as { report?: unknown } | undefined)?.report
+  return typeof named === 'string' && named ? named : null
+}
+
 /** #1391: how much of MotherDuck's answer to a refused session the log keeps. */
 export const LOGGED_ANSWER_CHARS = 500
 
@@ -274,7 +288,7 @@ function loggedAnswer(text: string, secrets: Readonly<Record<string, string>>): 
 const TOO_LARGE = 413
 
 async function openDive(ctx: ScopedContext, report: ReportRecord | null, everyCode?: readonly string[]) {
-  if (!report) return { refused: 'no_access' }
+  if (!report) { logRefusal(ctx, namedReport(ctx), 'no_access'); return { refused: 'no_access' } }
   const { embed_service_account: account } = ctx.settings
   // #1139: its own token. The warehouse token (MOTHERDUCK_TOKEN) is a read-only account's, which
   // can't create embed sessions; the platform hands this one only to the two reads opening a Dive.
@@ -285,7 +299,7 @@ async function openDive(ctx: ScopedContext, report: ReportRecord | null, everyCo
   const period = periodOf(istToday(), month)
   const origin = appOrigin((ctx.payload as { app_origin?: unknown } | undefined)?.app_origin)
   const filters = diveFilters(report, placesOf(ctx), { store, month, periodEnd: period.period_end, appOrigin: origin, everyCode })
-  if ('refused' in filters) return { refused: filters.refused }
+  if ('refused' in filters) { logRefusal(ctx, report.report_key, filters.refused); return { refused: filters.refused } }
   const body = JSON.stringify({ username: account, initial_state: filters.state })
   // #1269: the request's size, for whoever runs the instance: the reach is what grows.
   const bytes = Buffer.byteLength(body)
@@ -510,12 +524,16 @@ export const reads = {
   async report(context: ReadContext) {
     const ctx = context as ScopedContext
     const report = await chosenReport(ctx)
-    if (!report) return { state: 'no_access' }
+    if (!report) { logRefusal(ctx, namedReport(ctx), 'no_access'); return { state: 'no_access' } }
     const store = await storeOfPage(ctx, report)
     const month = chosenMonth(ctx)
     const period = periodOf(istToday(), month)
     const filters = diveFilters(report, placesOf(ctx), { store, month, periodEnd: period.period_end, appOrigin: null })
-    if ('refused' in filters) return { state: filters.refused === 'not_your_store' ? 'no_access' : filters.refused }
+    if ('refused' in filters) {
+      logRefusal(ctx, report.report_key, filters.refused)
+      // A store that isn't theirs gets the page's no-access answer; #1423: each other refusal says why.
+      return { state: filters.refused === 'not_your_store' ? 'no_access' : filters.refused }
+    }
     // #1159: the page draws no heading over a Dive with its own pickers.
     const marked = report.pickers_in_dive ? { pickers_in_dive: true } : {}
     const names = await storeNames(ctx, store ? [store] : [])
@@ -548,13 +566,18 @@ export const reads = {
    */
   async report_open(context: ReadContext) {
     const report = await chosenReport(context as ScopedContext)
-    if (report?.filter_shape !== 'No filter') return { state: 'no_access' }
+    if (report?.filter_shape !== 'No filter') {
+      logRefusal(context as ScopedContext, report?.report_key ?? namedReport(context as ScopedContext), 'no_access')
+      return { state: 'no_access' }
+    }
     return { state: 'ready', heading: { name: null, sections: [], reasons: [] } } satisfies Plain
   },
 
   embed_open: Object.assign(async (context: ReadContext) => {
     const report = (context as ScopedContext).prepared as ReportRecord | null
-    return report?.filter_shape === 'No filter' ? openDive(context as ScopedContext, report) : { refused: 'no_access' }
+    if (report?.filter_shape === 'No filter') return openDive(context as ScopedContext, report)
+    logRefusal(context as ScopedContext, report?.report_key ?? namedReport(context as ScopedContext), 'no_access')
+    return { refused: 'no_access' }
   }, {
     prepare: async (context: ReadContext) => (await chosenReport(context as ScopedContext)) ?? null,
   }),
