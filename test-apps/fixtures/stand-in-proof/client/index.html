@@ -27,7 +27,8 @@
   // where the rows came from: the line under the top bar is the platform's.
   const only = new URLSearchParams(location.search).get('only')
   const response = await fetch(`/api/app_reads/storesales/${only === 'sales' ? 'sales' : 'overview'}`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ payload: {} }),
+    // An app page names the version it was built as, so a stale page is told to reload.
+    method: 'POST', headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': 'storesales@1.0.0' }, body: JSON.stringify({ payload: {} }),
   })
   const { result } = await response.json()
   const figures = new Set(['amount', 'units', 'target'])
