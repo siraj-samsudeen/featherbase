@@ -28,7 +28,9 @@ const controller: TableController = {
         row.app = old?.app
         row.dataset = old?.dataset
       }
-      if (row.served_from === STAND_IN && !standInAllowedHere({ allowed_on_production: row.allowed_on_production === true }))
+      // The rule guards the move to a stand-in. Unticking the box later is
+      // always possible, and then stops the stand-in being served (app-datasets.ts).
+      if (row.served_from === STAND_IN && old?.served_from !== STAND_IN && !standInAllowedHere({ allowed_on_production: row.allowed_on_production === true }))
         throw new AppError('ValidationError',
           `A stand-in on production must be allowed for its dataset first: tick Allowed on production on the Dataset Binding ${String(row.row_id)}, then load it`,
           { allowed_on_production: 'tick this to allow a stand-in on production' })

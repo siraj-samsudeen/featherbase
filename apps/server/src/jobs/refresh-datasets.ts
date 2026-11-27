@@ -54,7 +54,8 @@ registerJob('refresh_datasets', async (_payload, ctx) => {
       (outcome.rowCount != null ? ` (${outcome.rowCount} rows)` : '') +
       (outcome.fetchMs != null ? ` fetch ${outcome.fetchMs} ms, load ${outcome.loadMs} ms` : ''))
     if (outcome.status === 'activated') await pruneSnapshots(dataset)
-    else failures.push(`${dataset}: ${outcome.status}${outcome.reason ? ` — ${outcome.reason}` : ''}`)
+    // #1409: a dataset bound to a stand-in since the list was made is left alone, which is no failure.
+    else if (outcome.status !== 'skipped') failures.push(`${dataset}: ${outcome.status}${outcome.reason ? ` — ${outcome.reason}` : ''}`)
   }
   if (failures.length) throw new Error(`dataset refresh did not activate: ${failures.join('; ')}`)
 })

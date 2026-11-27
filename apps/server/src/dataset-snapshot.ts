@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { sql } from './db'
 import { enqueue, type JobTrigger } from './jobs'
 import { errorMessage } from './errors'
+import { boundToStandIn } from './dataset-bindings'
 
 // Query-grained analytical dataset snapshots — the read side of
 // openspec/changes/query-grained-dataset-snapshots (data-warehouse), against the
@@ -168,7 +169,8 @@ export async function pendingMisses(): Promise<string[]> {
 }
 
 interface BuildOutcome {
-  status: 'activated' | 'refused' | 'failed'
+  /** #1409: `skipped` when a refresh found the dataset bound to a stand-in. */
+  status: 'activated' | 'refused' | 'failed' | 'skipped'
   snapshotId?: string
   rowCount?: number
   sourceAsOf?: string | null
@@ -200,7 +202,9 @@ interface BuildOpts {
  * #1409: a stand-in goes through the same steps with its rows given (D1). It
  * is not validated here: its loader checked that it fits, and a guard written
  * for the real data would refuse a small sample (D3). Nor is it ever a
- * baseline: a refresh that replaces one is validated against nothing.
+ * baseline: a refresh that replaces one is validated against nothing. A
+ * dataset bound to a stand-in is never built from its source: such a build is
+ * `skipped`.
  */
 export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Promise<BuildOutcome> {
   const def = registry.get(dataset)
@@ -218,6 +222,11 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
   // the pool exactly as it did before this lock existed.
   return sql.begin(async (tx) => {
     await tx`select pg_advisory_xact_lock(hashtext('dataset-snapshot:' || ${dataset}))`
+    // #1409 (review): decided here, inside the lock, not only when the job
+    // listed what was due: a stand-in loaded while an earlier dataset was
+    // being fetched must not be replaced by the refresh that was already queued.
+    if (!opts.standIn && (await boundToStandIn(dataset)))
+      return { status: 'skipped' as const, reason: 'the dataset is bound to a stand-in' }
 
     const previous = await activeSnapshot(dataset)
     const snapshotId = randomUUID()

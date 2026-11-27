@@ -12,7 +12,7 @@ import { parseCsv, type CsvDelimiter } from './csv'
 import { saveDoc } from './document'
 import { datasetKey, exactColumns, shapeValue, storedRowJson, type DatasetDeclaration } from './app-datasets'
 import { activeSnapshot, buildSnapshot, pruneSnapshots } from './dataset-snapshot'
-import { STAND_IN, WAREHOUSE, datasetBinding, type DatasetBinding } from './dataset-bindings'
+import { STAND_IN, WAREHOUSE, datasetBinding, standInAllowedHere, type DatasetBinding } from './dataset-bindings'
 import { installedAppDatasets, packageTitle } from './runtime-packages'
 
 const BINDING_TABLE = 'Dataset Binding'
@@ -81,6 +81,9 @@ export function checkStandIn(dataset: DatasetDeclaration, csv: string, delimiter
       }
       try {
         shapeValue(type, cell, name, exact.has(name))
+        // The shaping takes a date's first ten characters, as a warehouse's
+        // timestamp needs; a typed file must hold a real day and nothing else.
+        if (type === 'date' && new Date(`${cell}T00:00:00Z`).toISOString().slice(0, 10) !== cell) throw new Error('not a day')
       } catch {
         problems.push({ row: index + 2, column: name, message: `Row ${index + 2}: "${name}" holds "${text}", which is not ${KIND[type]}` })
       }
@@ -146,7 +149,12 @@ export async function loadStandIn(app: string, name: string, file: StandInFile &
     ...(file.expected_by === undefined ? {} : { expected_by: file.expected_by }),
   }, user)
   const outcome = await buildSnapshot(key, { trigger: 'stand-in', standIn: { rows: storedRowJson(dataset, check.rows), by: user } })
-  if (outcome.status !== 'activated') throw new AppError('ValidationError', `The stand-in for ${name} could not be loaded: ${outcome.reason}`)
+  if (outcome.status !== 'activated') {
+    // The binding goes back to what it was: left on Stand-in with no stand-in
+    // loaded, the dataset would never be refreshed again.
+    await bind(key, await datasetBinding(key), { served_from: binding?.served_from ?? WAREHOUSE, note: binding?.note ?? null, expected_by: binding?.expected_by ?? null }, user)
+    throw new AppError('ValidationError', `The stand-in for ${name} could not be loaded: ${outcome.reason}`)
+  }
   await pruneSnapshots(key)
   const loaded = (await activeSnapshot(key))!
   return { app, dataset: name, rows: check.rows.length, loaded_at: new Date(loaded.activated_at!).toISOString() }
@@ -175,7 +183,9 @@ export async function switchToWarehouse(app: string, name: string, user: string)
     await pruneSnapshots(key)
     return { app, dataset: name, switched: true, rows: outcome.rowCount!, message: `${name} now reads the warehouse: ${rowsWord(outcome.rowCount!)}.` }
   }
-  if (bound) await bind(key, await datasetBinding(key), { served_from: STAND_IN }, user)
+  // Back to the stand-in, unless production no longer allows one: then the
+  // dataset stays bound to the warehouse and the next refresh tries again.
+  if (bound && standInAllowedHere(binding)) await bind(key, await datasetBinding(key), { served_from: STAND_IN }, user)
   const why = outcome.status === 'refused' ? 'was refused' : 'failed'
   return { app, dataset: name, switched: false, message: `${name} stays on its stand-in. The warehouse refresh ${why}: ${outcome.reason}.` }
 }

@@ -656,9 +656,12 @@ export function appDatasets({ app, operation, user, title, declarations, places,
       noteDrops(dataset)
       // #1409 (D5): a stand-in exists because the warehouse cannot answer, so
       // a live read of one answers the stand-in, marked as `active` marks it.
+      // A dataset bound to a stand-in has no warehouse to ask either: it
+      // answers what it holds, as `active` does.
       const snapshot = await servable(name, binding)
-      if (snapshot?.stand_in) return stored(dataset, binding, snapshot, where)
-      if (binding?.served_from === STAND_IN) {
+      const bound = binding?.served_from === STAND_IN
+      if (snapshot && (snapshot.stand_in || bound)) return stored(dataset, binding, snapshot, where)
+      if (bound) {
         console.warn(`[apps] ${app} is not set up yet; its dataset ${dataset.name} is bound to a stand-in that has not been loaded`)
         throw new AppError('NotSetUpError', `${title} is not set up yet. An administrator needs to finish setting it up.`)
       }
