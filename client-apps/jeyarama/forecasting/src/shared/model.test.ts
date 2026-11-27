@@ -41,3 +41,17 @@ describe('the Team Leader model (#1419)', () => {
     expect(monthOfRun('2026-12-01')).toEqual({ name: 'December', year: 2026, label: 'December 2026', days: 31 })
   })
 })
+
+import { treeOf, visibleRows } from './levels'
+describe('levels: a hierarchy over subcategories', () => {
+  const tree = treeOf(lines, [{ name: 'Category', key: l => l.category }])
+  it('sums each node from its subcategories, largest first', () => {
+    expect(tree.map(n => n.label)).toEqual(['Girls Bottom', 'Girls Inner Wear', 'Girls Active Wear'])
+    expect(tree[0].item.fc).toBe(lines.filter(l => l.category === 'Girls Bottom').reduce((t, l) => t + l.fc, 0))
+  })
+  it('shows an open node’s subcategories under it, and nothing under a closed one', () => {
+    expect(visibleRows(tree, new Set())).toHaveLength(3)
+    const rows = visibleRows(tree, new Set(['Girls Inner Wear']))
+    expect(rows.map(r => r.node?.label ?? r.line?.name)).toEqual(['Girls Bottom', 'Girls Inner Wear', 'Girls Panties', 'Girls Active Wear'])
+  })
+})
