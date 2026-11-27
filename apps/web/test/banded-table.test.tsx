@@ -127,3 +127,22 @@ describe('groups', () => {
     expect(onOpenGroup).toHaveBeenCalledWith(null)
   })
 })
+
+describe('column widths', () => {
+  const widths = () => [...document.querySelectorAll('col')].map((col) => col.style.width)
+
+  test('each column has a set share of the width: a figure one part, anything else two, unless the column says', () => {
+    render(<BandedTable caption="Reorder plan" columns={[...COLUMNS.slice(0, 2), { key: 'plan', header: 'Plan', width: 3 }]} rows={LINES} cell={cell} rowKey={lineKey} />)
+    expect(widths()).toEqual(['33.3333%', '16.6667%', '50%'])
+    expect(screen.getByRole('table').className.split(' ')).toContain('table-fixed')
+  })
+
+  test('the shares are the same whether or not there are rows, so opening a group moves no column', () => {
+    const groups: BandedGroup<Line>[] = [{ key: 'Stationery', name: 'Stationery', rows: LINES }]
+    const { rerender } = render(<BandedTable caption="Reorder plan" columns={COLUMNS} groups={groups} openGroup={null} cell={cell} rowKey={lineKey} />)
+    const closed = widths()
+    rerender(<BandedTable caption="Reorder plan" columns={COLUMNS} groups={groups} openGroup="Stationery" cell={cell} rowKey={lineKey} />)
+    expect(widths()).toEqual(closed)
+    expect(closed).toEqual(['40%', '20%', '20%', '20%'])
+  })
+})

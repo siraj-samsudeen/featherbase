@@ -2,7 +2,7 @@
 // functions, writing back and an action's context. Pure functions: no server,
 // no database. Made-up data: a shop's reorder lines.
 import { describe, expect, test } from 'vitest'
-import { absolutePath, formatNumber, readPath, resolveContext, resolveValue, writePath, type PageModel } from '../src/runtime/grammar'
+import { absolutePath, asTyped, formatNumber, readPath, resolveContext, resolveValue, writePath, type PageModel } from '../src/runtime/grammar'
 
 const NOTEBOOK = { row_id: 'RL-1', item: 'Notebook A5', category: 'Stationery', sold_qty: 820, sold_value: 16400, suggested_qty: 760, planned_qty: null, updated_at: '2026-11-27T10:00:00.000Z' }
 const GEL_PEN = { row_id: 'RL-2', item: 'Gel Pen', category: 'Stationery', sold_qty: 690, sold_value: 6900, suggested_qty: 640, planned_qty: 600, updated_at: '2026-11-27T10:00:00.000Z' }
@@ -183,5 +183,15 @@ describe('an action\'s context', () => {
 
   test('a key the action was not given is left out', () => {
     expect(resolveContext({ name: 'open_page', context: { page: 'reorder-plan' } }, TOP)).toEqual({ page: 'reorder-plan' })
+  })
+})
+
+describe('what a box gives the page', () => {
+  test.each([['12', 12], ['1.5', 1.5], ['', null]])('a number box holding %j gives %j', (typed, given) => {
+    expect(asTyped(typed, 'number')).toBe(given)
+  })
+
+  test.each([['12', '12'], ['', '']])('a text box holding %j gives the text as typed', (typed, given) => {
+    expect(asTyped(typed, undefined)).toBe(given)
   })
 })

@@ -9,6 +9,7 @@ import { pageHref, rowHref, type PageDefinition, type PagePart } from 'shared'
 import { sql } from 'server/src/db'
 import { tableName } from 'server/src/platform-schema'
 import { grantRole, makeTable, tableRef } from 'server/test/fixtures'
+import { recordAction } from '../src/lib/recents'
 import { holdResponses } from './held-requests'
 import { test, expect, renderApp } from './pg-test'
 
@@ -125,6 +126,11 @@ describe('the Table part', () => {
     await waitFor(() => expect([headers(), screen.getByRole('columnheader', { name: 'Last Month' }).getAttribute('colspan')]).toEqual([['Last Month', 'Item', 'Sold', 'Price'], '2']))
   })
 
+  test('a later column that draws a part in each row is given more room than a figure, and the shares are set before any row is drawn', async ({ admin }) => {
+    await show(admin, definition(['plan'], [table({ columns: [{ id: 'item', header: 'Item', cell: 'name' }, SOLD, { id: 'plan', header: 'Plan', cell: 'name' }], group_by: 'category' }), says('name', '${item}')], { data: SAMPLE }))
+    expect([...document.querySelectorAll('col')].map((col) => col.style.width)).toEqual(['33.3333%', '16.6667%', '50%'])
+  })
+
   test('a figure reads as its column\'s format says', async ({ admin }) => {
     await show(admin, definition(['plan'], [table({ columns: [ITEM, SOLD, PRICE, { id: 'listed', header: 'Listed', format: 'date', value: { '@path': 'listed_on' } }] })], { data: SAMPLE }))
     expect(within(line('Notebook A5')).getAllByRole('cell').map((td) => td.textContent)).toEqual(['820', '₹20.00', '01-Dec-2026'])
@@ -224,27 +230,33 @@ describe('the Input part', () => {
     await waitFor(() => expect([address(app), screen.getByLabelText<HTMLInputElement>('Find').value]).toEqual([`${pageHref(NAME)}?find=pen`, 'pen']))
   })
 
-  test('a number Input gives the page a number', async ({ admin }) => {
+  test('what is typed shows in its box and nowhere else: the row\'s own cells and its group\'s total keep the saved values', async ({ admin }) => {
     const input: PagePart = { id: 'qty', component: 'Input', label: 'Planned quantity', kind: 'number', value: { '@path': 'planned_qty' } }
-    await show(admin, cells([input, says('same', { '@call': 'eq', args: { a: { '@path': 'planned_qty' }, b: 12 } })], [{ item: 'Notebook A5', planned_qty: null }]))
-    expect(line('Notebook A5')).toHaveTextContent('false')
-    fireEvent.change(screen.getByLabelText('Planned quantity'), { target: { value: '12' } })
-    expect(line('Notebook A5')).toHaveTextContent('true')
+    const planned = { id: 'planned', header: 'Planned', align: 'end', format: 'number', total: 'sum', value: { '@path': 'planned_qty' } }
+    await show(admin, definition(['plan'], [
+      table({ columns: [ITEM, planned, { id: 'box', header: 'Change', cell: 'cell' }], group_by: 'category', open: { '@path': '/state/open' } }),
+      { id: 'cell', component: 'Row', children: ['qty', 'now'] }, input, says('now', 'now ${planned_qty}'),
+    ], { state: { open: '' }, data: { lines: { sample: [{ item: 'Notebook A5', category: 'Stationery', planned_qty: 600 }, { item: 'Gel Pen', category: 'Stationery', planned_qty: 400 }] } } }), '?open=Stationery')
+    fireEvent.change(within(line('Notebook A5')).getByLabelText('Planned quantity'), { target: { value: '1.5' } })
+    expect(within(line('Notebook A5')).getByLabelText<HTMLInputElement>('Planned quantity').value).toBe('1.5')
+    expect(within(line('Notebook A5')).getAllByRole('cell').map((td) => td.textContent)).toEqual(['600', 'now 600'])
+    expect(within(line('Stationery')).getAllByRole('cell')[0]).toHaveTextContent(/^1,000$/)
   })
 
-  test('a number Input that is emptied gives the page nothing', async ({ admin }) => {
+  test('a box that is emptied stays empty, and the row still shows what is saved', async ({ admin }) => {
     const input: PagePart = { id: 'qty', component: 'Input', label: 'Planned quantity', kind: 'number', value: { '@path': 'planned_qty' } }
     await show(admin, cells([input, says('shown', { '@call': 'formatNumber', args: { value: { '@path': 'planned_qty' } } })], [{ item: 'Notebook A5', planned_qty: 600 }]))
     expect(screen.getByLabelText<HTMLInputElement>('Planned quantity').value).toBe('600')
     fireEvent.change(screen.getByLabelText('Planned quantity'), { target: { value: '' } })
-    expect(line('Notebook A5')).toHaveTextContent('—')
+    expect([screen.getByLabelText<HTMLInputElement>('Planned quantity').value, within(line('Notebook A5')).getAllByRole('cell')[0]!.textContent]).toEqual(['', '600'])
   })
 
-  test('a text Input gives the page the text as typed', async ({ admin }) => {
-    const input: PagePart = { id: 'note', component: 'Input', label: 'Note', value: { '@path': 'note' } }
-    await show(admin, cells([input, says('same', { '@call': 'eq', args: { a: { '@path': 'note' }, b: '12' } })], [{ item: 'Notebook A5', note: '' }]))
-    fireEvent.change(screen.getByLabelText('Note'), { target: { value: '12' } })
-    expect(line('Notebook A5')).toHaveTextContent('true')
+  test('a number Input is a number box, and a text Input a text box', async ({ admin }) => {
+    await show(admin, cells([
+      { id: 'qty', component: 'Input', label: 'Planned quantity', kind: 'number', value: { '@path': 'planned_qty' } },
+      { id: 'note', component: 'Input', label: 'Note', value: { '@path': 'note' } },
+    ], [{ item: 'Notebook A5', planned_qty: 600, note: 'reorder early' }]))
+    expect([screen.getByLabelText('Planned quantity').getAttribute('type'), screen.getByLabelText<HTMLInputElement>('Note').type, screen.getByLabelText<HTMLInputElement>('Note').value]).toEqual(['number', 'text', 'reorder early'])
   })
 
   test('what is typed into one row stays in that row', async ({ admin }) => {
@@ -347,6 +359,36 @@ describe('actions', () => {
     await typeAndSave('Notebook A5', '720')
     await waitFor(async () => expect((await admin.get<{ planned_qty: number | null }>(ITEMS.rowUrl(ids['Notebook A5']!))).planned_qty).toBe(720), WAIT)
     await waitFor(() => expect(screen.getAllByText('Saved')).toHaveLength(2), WAIT)
+  })
+
+  const PLAN_SHOWN = definition(['plan'], [
+    table({ columns: [ITEM, { id: 'planned', header: 'Planned', align: 'end', format: 'number', value: { '@path': 'planned_qty' } }, { id: 'plan', header: 'Plan', cell: 'cell' }] }),
+    { id: 'cell', component: 'Row', children: ['qty', 'save'] }, PLAN_INPUT, PLAN_SAVE,
+  ], { data: ITEM_ROWS })
+  const savedCell = (item: string) => within(line(item)).getAllByRole('cell')[0]!.textContent
+
+  test('a save refused because someone else changed the row shows their value, keeps what was typed, and goes through when made again', async ({ admin }) => {
+    const ids = await shopItems(admin)
+    await show(admin, PLAN_SHOWN)
+    await screen.findByRole('row', { name: /Notebook A5/ }, WAIT)
+    // Someone else plans 500 after this page read the row.
+    const theirs = await admin.get<{ updated_at: string }>(ITEMS.rowUrl(ids['Notebook A5']!))
+    await admin.fetch(ITEMS.rowUrl(ids['Notebook A5']!), { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ planned_qty: 500, updated_at: theirs.updated_at }) })
+    await typeAndSave('Notebook A5', '700')
+    expect(await screen.findByRole('alert', {}, WAIT)).toHaveTextContent('has been modified after you loaded it')
+    await waitFor(() => expect([savedCell('Notebook A5'), boxes()[0]]).toEqual(['500', '700']), WAIT)
+    fireEvent.click(within(line('Notebook A5')).getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('Saved', {}, WAIT)).toBeInTheDocument()
+    expect((await admin.get<{ planned_qty: number | null }>(ITEMS.rowUrl(ids['Notebook A5']!))).planned_qty).toBe(700)
+    await waitFor(() => expect([savedCell('Notebook A5'), boxes()[0]]).toEqual(['700', '700']), WAIT)
+  })
+
+  test('a refusal that names columns says the server\'s message and then each column\'s', async ({ admin }) => {
+    await shopItems(admin)
+    await show(admin, PLAN_SHOWN)
+    await typeAndSave('Notebook A5', '1.5')
+    const refusal = await screen.findByRole('alert', {}, WAIT)
+    expect([...refusal.querySelectorAll('p')].map((each) => each.textContent)).toEqual(['Invalid values for Shop Item', 'planned_qty: Expected integer, received float'])
   })
 
   test('while a save is on its way the button says it is busy', async ({ admin }) => {
@@ -504,5 +546,38 @@ describe('a group\'s Home page', () => {
     await savePage(admin, 'Draft')
     await home(admin, 'Shop')
     expect(within(screen.getByTestId('home-card-pages')).getByText('Draft')).toHaveAttribute('data-chip', 'amber')
+  })
+})
+
+describe('a remembered page reads as its title, not its address', () => {
+  // What the browser remembers of a visit to the page: its name, which is its address.
+  const VISIT = { kind: 'page' as const, key: `page:page/${NAME}`, label: NAME, sub: 'Page', path: pageHref(NAME) }
+  const savePage = (admin: TestClient) =>
+    admin.post('/api/table/Page', { row_id: NAME, title: 'Shop Page', module: 'Shop', status: 'Published', definition: definition(['intro'], [text('intro')]) })
+
+  test('in the sidebar\'s Recently Opened and on Home\'s Last view', async ({ admin }) => {
+    await savePage(admin)
+    recordAction('Administrator', VISIT, Date.now() - 1000)
+    await renderApp('/featherbase/admin', admin)
+    const tile = await screen.findByTestId('resume-tile-view')
+    await waitFor(() => expect(within(tile).getByTestId('resume-tile-title')).toHaveTextContent(/^Shop Page$/), WAIT)
+    const recent = await screen.findByTestId('sidebar-recent', {}, { timeout: 15_000 })
+    await waitFor(() => expect(recent).toHaveTextContent('Shop Page'))
+    expect([recent.textContent!.includes(NAME), recent.getAttribute('title')]).toEqual([false, expect.stringMatching(/^Shop Page · Page · opened /)])
+  })
+
+  test('in the activity trail', async ({ admin }) => {
+    await savePage(admin)
+    await admin.post('/api/events', { events: [{ ...VISIT, at: Date.now() - 2000 }] })
+    await renderApp('/featherbase/admin', admin)
+    const feed = await screen.findByTestId('activity-feed')
+    expect(await within(feed).findByRole('button', { name: 'Shop Page' }, WAIT)).toBeInTheDocument()
+    expect(feed).not.toHaveTextContent(NAME)
+  })
+
+  test('a page that is no longer there keeps the name it was remembered by', async ({ admin }) => {
+    recordAction('Administrator', VISIT, Date.now() - 1000)
+    await renderApp('/featherbase/admin', admin)
+    expect(within(await screen.findByTestId('resume-tile-view')).getByTestId('resume-tile-title')).toHaveTextContent(NAME)
   })
 })
