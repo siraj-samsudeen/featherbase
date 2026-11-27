@@ -73,7 +73,9 @@ export function Checks({ l, month, storeStep }: { l: Item; month: Header['month'
 }
 
 export function OtherModels({ l, aop, month }: { l: Item; aop: boolean; month: Header['month'] }) {
-  const rows: [string, string, number][] = [['Feather Forecast', 'var(--color-ink)', l.fc], ['XGBoost', '#0f9d8a', l.xgb], ['LightGBM', '#e0821e', l.lgbm], ...(aop ? [['AOP', '#c58b1e', l.aop] as [string, string, number]] : [])]
+  // a model with no figure for this subcategory (not run for it yet) is left out, never shown as ₹0 / −100%
+  const rows = ([['Feather Forecast', 'var(--color-ink)', l.fc], ['XGBoost', '#0f9d8a', l.xgb], ['LightGBM', '#e0821e', l.lgbm], ...(aop ? [['AOP', '#c58b1e', l.aop]] : [])] as [string, string, number][])
+    .filter(([name, , v]) => name === 'Feather Forecast' || v)
   return <>
     <h4>Other models</h4>
     <table className="fr-mini">

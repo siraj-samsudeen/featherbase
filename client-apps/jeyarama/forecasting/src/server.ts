@@ -214,6 +214,9 @@ function reviews(p: Who, line: Row) {
   return false
 }
 async function reviewer(ctx: Context, named: unknown, line: Row): Promise<Who> {
+  // An administrator acts for a section's Team Leader by name (the app's "view a section as its Team Leader"),
+  // whether or not that person is on the forecasting org chart.
+  if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: 'Team Leader', reportsTo: null, area: `${String(line.store_name)} · ${String(line.section_name)}` }
   const p = await actor(ctx, await orgOf(ctx), named)
   if (!isAdmin(ctx) && !reviews(p, line)) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_name)} · ${String(line.subcategory_name)} is outside it`)
   return p
