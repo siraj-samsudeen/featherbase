@@ -443,6 +443,7 @@ input:is([type='checkbox'], [type='radio']) { accent-color: var(--color-action);
 /* ---- PageHeader ---- */
 .fb-page-header { display: flex; flex-direction: column; gap: 0.75rem; }
 .fb-breadcrumb { font-size: 13px; color: var(--color-ink-subtle); }
+.fb-breadcrumb a:hover { color: var(--color-ink); }
 .fb-page-header-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
 .fb-page-header-lead { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
 .fb-title { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; color: var(--color-ink); }

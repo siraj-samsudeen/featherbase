@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Featherbase Look Kit</title>
+<link rel="stylesheet" href="featherbase-look.css">
+<style>
+  /* The gallery's own layout: where each specimen and its markup sit. No look of its own. */
+  .spec { display: flex; flex-direction: column; gap: 0.5rem; padding-top: 2rem; scroll-margin-top: 1rem; }
+  .spec-demo { padding-block: 0.75rem; }
+  .spec-code {
+    overflow-x: auto;
+    border-radius: var(--radius-control);
+    background: var(--color-subtle);
+    padding: 0.75rem 1rem;
+    color: var(--color-ink-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    white-space: pre;
+    tab-size: 2;
+  }
+  .spec-shell { height: 17rem; border-radius: var(--radius-card); }
+  .spec-phone { width: 24rem; max-width: 100%; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-card); }
+  .spec-narrow { max-width: 24rem; }
+  .spec-index { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+  /* ?only=<name> shows one specimen alone on the canvas, to set it beside its story. */
+  .spec-only { padding: 1rem; }
+</style>
+</head>
+<body>
+<div class="fb-shell">
+  <aside class="fb-shell-placeholder" aria-label="Featherbase shell">
+    <strong>Featherbase shell</strong>
+    <span>The platform draws the sidebar here. A prototype never draws its own.</span>
+  </aside>
+
+  <main class="fb-page">
+    <header class="fb-page-header">
+      <div class="fb-page-header-row">
+        <div class="fb-page-header-lead">
+          <h1 class="fb-title">Featherbase Look Kit</h1>
+          <div class="fb-count"><span id="spec-count"></span></div>
+        </div>
+        <div class="fb-actions">
+          <div class="fb-segmented" role="group" aria-label="Theme" id="theme-switch">
+            <button type="button" aria-pressed="true" data-value="light">Light</button>
+            <button type="button" aria-pressed="false" data-value="dark">Dark</button>
+          </div>
+        </div>
+      </div>
+      <div class="fb-status">Each control below is plain HTML drawn by featherbase-look.css. Copy the markup under it. How to start a prototype: README.md beside this file.</div>
+    </header>
+
+    <nav class="spec-index" aria-label="Controls" style="margin-top: 1rem" id="spec-index"></nav>
+
+    <!-- ============================================================ -->
+    <section class="spec" id="shell" data-title="Shell And Page">
+      <h2 class="fb-section-title">Shell And Page</h2>
+      <p class="fb-text fb-muted">Every page is one white panel on the grey canvas. The sidebar is the platform's: show the placeholder, never a sidebar of your own. The panel fills the space after it, with no width cap.</p>
+      <div class="spec-demo">
+        <div class="fb-shell spec-shell">
+          <aside class="fb-shell-placeholder" aria-label="Featherbase shell">
+            <strong>Featherbase shell</strong>
+            <span>The platform draws the sidebar here.</span>
+          </aside>
+          <main class="fb-page">
+            <header class="fb-page-header">
+              <div class="fb-page-header-row">
+                <div class="fb-page-header-lead">
+                  <h1 class="fb-title">Review The Month</h1>
+                </div>
+              </div>
+            </header>
+          </main>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="page-header" data-title="Page Header">
+      <h2 class="fb-section-title">Page Header</h2>
+      <p class="fb-text fb-muted">The top of every page: an optional breadcrumb, a Title Case title with its count beside it, the page's actions on the title's row (at most one primary button, before More), and at most one muted status line. No rule under it; spacing alone sets it apart.</p>
+      <div class="spec-demo">
+        <header class="fb-page-header">
+          <div class="fb-breadcrumb"><a href="#home">Home</a> / People and access</div>
+          <div class="fb-page-header-row">
+            <div class="fb-page-header-lead">
+              <h1 class="fb-title">Leavers Who Can Still Sign In</h1>
+              <div class="fb-count"><span>5 can still sign in</span></div>
+            </div>
+            <div class="fb-actions">
+              <button type="button" class="fb-button">Refresh Now</button>
+              <button type="button" class="fb-button">More</button>
+            </div>
+          </div>
+          <div class="fb-status">Leaver job: Off · last run never · Checked 18-Nov-2026 13:05</div>
+        </header>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="headline" data-title="Headline">
+      <h2 class="fb-section-title">Headline</h2>
+      <p class="fb-text fb-muted">The answer-first block that leads a report page: the period, the conclusion in words, the supporting figures, and optionally progress toward a target. One per page. Tones: <code>--negative</code>, <code>--caution</code>, <code>--positive</code>, <code>--missing</code>; none is neutral.</p>
+      <div class="spec-demo">
+        <section class="fb-headline fb-headline--negative" aria-labelledby="headline-1">
+          <p class="fb-headline-label">Month to date · 01-Oct-2026 to 21-Oct-2026</p>
+          <h2 class="fb-headline-conclusion" id="headline-1">₹72,000 behind</h2>
+          <p class="fb-headline-detail">81.7% of target: ₹3.21 L sold of ₹3.93 L</p>
+          <div class="fb-meter" role="meter" aria-label="Achievement" aria-valuemin="0" aria-valuemax="100" aria-valuenow="81.7">
+            <div class="fb-meter-fill" style="width: 81.7%"></div>
+            <div class="fb-meter-marker" style="left: 90%"></div>
+          </div>
+          <p class="fb-meter-note">Line marks 90%</p>
+        </section>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="card" data-title="Card">
+      <h2 class="fb-section-title">Card</h2>
+      <p class="fb-text fb-muted">One group of related content inside the page: a quiet grey block, told apart by its fill, never a line or a shadow. Do not put a whole list or table screen in a card. <code>fb-raised</code> is the other surface: something that floats over the page (a menu, a popover).</p>
+      <div class="spec-demo">
+        <section class="fb-card" aria-labelledby="card-1">
+          <header class="fb-card-header">
+            <h2 class="fb-card-title" id="card-1">Checklists</h2>
+            <button type="button" class="fb-button fb-button--quiet">See all</button>
+          </header>
+          <p class="fb-card-body fb-text">Opening checklist for 1501 Lakeside, due by 10:00.</p>
+        </section>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="button" data-title="Button">
+      <h2 class="fb-section-title">Button</h2>
+      <p class="fb-text fb-muted">A button is a fill, never a box. <code>--primary</code> for the one main action of a page or form, plain for the others, <code>--quiet</code> for low-weight actions inside cards, <code>--danger</code> for deleting or discarding. A button whose menu is open carries <code>aria-expanded="true"</code>. A link that must read as a button takes the same classes.</p>
+      <div class="spec-demo">
+        <div class="fb-row">
+          <button type="button" class="fb-button fb-button--primary"><span class="fb-icon fb-icon--plus" aria-hidden="true"></span>Start a checklist</button>
+          <button type="button" class="fb-button">Secondary</button>
+          <button type="button" class="fb-button fb-button--quiet">Quiet</button>
+          <button type="button" class="fb-button fb-button--danger">Delete</button>
+          <button type="button" class="fb-button" disabled>Disabled</button>
+          <button type="button" class="fb-button" aria-expanded="true" aria-haspopup="menu">More actions <span class="fb-icon fb-icon--16 fb-icon--chevron-down" aria-hidden="true"></span></button>
+          <a href="#full-report" class="fb-button"><span class="fb-icon fb-icon--external-link" aria-hidden="true"></span>Open the full report</a>
+          <button type="button" class="fb-icon-button" aria-label="Close"><span class="fb-icon fb-icon--x" aria-hidden="true"></span></button>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="segmented" data-title="Segmented">
+      <h2 class="fb-section-title">Segmented</h2>
+      <p class="fb-text fb-muted">Two to five choices that change the view in place (a toggle row). The chosen one carries <code>aria-pressed="true"</code>. With featherbase-look.js on the page a click moves the choice and the group fires <code>fb:change</code>. For sections of a page use Content Tabs; for more choices, a select.</p>
+      <div class="spec-demo">
+        <div class="fb-segmented" role="group" aria-label="Period">
+          <button type="button" aria-pressed="false" data-value="day">Today</button>
+          <button type="button" aria-pressed="false" data-value="week">This week</button>
+          <button type="button" aria-pressed="true" data-value="month">Month to date</button>
+          <button type="button" aria-pressed="false" data-value="year">Year to date</button>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="content-tabs" data-title="Content Tabs">
+      <h2 class="fb-section-title">Content Tabs</h2>
+      <p class="fb-text fb-muted">Sections of one page as tabs: a quiet track, the open tab a blue tint, no underline rule. The open tab carries <code>aria-selected="true"</code> and names its panel with <code>aria-controls</code>; the other panels are <code>hidden</code>.</p>
+      <div class="spec-demo">
+        <div class="fb-tabs-row">
+          <div class="fb-tabs" role="tablist" aria-label="Store">
+            <button type="button" role="tab" aria-selected="true" aria-controls="tab-details">Details</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="tab-staff">Staff</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="tab-notes">Notes</button>
+          </div>
+        </div>
+        <div class="fb-tabpanel fb-text" role="tabpanel" id="tab-details">1501 Lakeside · opened 05-Feb-2019 · Area Manager: Meena S</div>
+        <div class="fb-tabpanel fb-text" role="tabpanel" id="tab-staff" hidden>18 people on the roster this week.</div>
+        <div class="fb-tabpanel fb-text" role="tabpanel" id="tab-notes" hidden>No notes yet.</div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="tab-bar" data-title="Tab Bar">
+      <h2 class="fb-section-title">Tab Bar</h2>
+      <p class="fb-text fb-muted">Phone only: an app's main pages at the bottom of a phone screen. Featherbase is built desktop first, so a prototype draws this only when the piece of work asks for a phone. The current page carries <code>aria-current="page"</code>.</p>
+      <div class="spec-demo">
+        <div class="spec-phone">
+          <nav class="fb-tabbar" aria-label="Example app">
+            <a href="#today"><span class="fb-icon fb-icon--20 fb-icon--house" aria-hidden="true"></span><span>Today</span></a>
+            <a href="#targets" aria-current="page"><span class="fb-icon fb-icon--20 fb-icon--chart-column" aria-hidden="true"></span><span>Targets</span></a>
+            <a href="#checklists"><span class="fb-icon fb-icon--20 fb-icon--list-checks" aria-hidden="true"></span><span>Checklists</span></a>
+            <a href="#me"><span class="fb-icon fb-icon--20 fb-icon--user-round" aria-hidden="true"></span><span>Me</span></a>
+          </nav>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="table" data-title="Table">
+      <h2 class="fb-section-title">Table: Comfortable Rows</h2>
+      <p class="fb-text fb-muted">Every table's look. The header is a quiet grey band with rounded ends; rows are told apart by space and the tint under the pointer, never a line. The first cell names its row (<code>&lt;th scope="row"&gt;</code>). Numbers take <code>fb-num</code>: right-aligned, figures of one width. A selected row carries <code>aria-selected="true"</code>.</p>
+      <div class="spec-demo">
+        <div class="fb-table-scroll" role="region" aria-label="Where the gap is" tabindex="0">
+          <table class="fb-table">
+            <thead>
+              <tr>
+                <th scope="col">Subcategory</th>
+                <th scope="col" class="fb-num">Achievement</th>
+                <th scope="col" class="fb-num">Target</th>
+                <th scope="col" class="fb-num">Sales</th>
+                <th scope="col" class="fb-num">Gap</th>
+                <th scope="col" class="fb-num">Pieces</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Men Casual Shirt</th>
+                <td class="fb-num"><span class="fb-pill fb-pill--negative">74.7%</span></td>
+                <td class="fb-num">₹1.62 L</td>
+                <td class="fb-num">₹1.21 L</td>
+                <td class="fb-num">-₹41,000</td>
+                <td class="fb-num">269</td>
+              </tr>
+              <tr>
+                <th scope="row">Men T Shirt</th>
+                <td class="fb-num"><span class="fb-pill fb-pill--negative">62.4%</span></td>
+                <td class="fb-num">₹93,000</td>
+                <td class="fb-num">₹58,000</td>
+                <td class="fb-num">-₹35,000</td>
+                <td class="fb-num">129</td>
+              </tr>
+              <tr>
+                <th scope="row">Men Formal Shirt</th>
+                <td class="fb-num"><span class="fb-pill fb-pill--positive">102.9%</span></td>
+                <td class="fb-num">₹1.38 L</td>
+                <td class="fb-num">₹1.42 L</td>
+                <td class="fb-num">+₹4,000</td>
+                <td class="fb-num">316</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="table-compact" data-title="Table, Compact">
+      <h2 class="fb-section-title">Table: Compact Rows</h2>
+      <p class="fb-text fb-muted">The same table with <code>fb-table--compact</code>: 32 px rows, 13 px text, a faint zebra, and chips without dots (<code>fb-chip--compact</code>). For long lists a person scans. Every record in a row is a link.</p>
+      <div class="spec-demo">
+        <div class="fb-table-scroll">
+          <table class="fb-table fb-table--compact">
+            <thead>
+              <tr>
+                <th scope="col">Store</th>
+                <th scope="col">Status</th>
+                <th scope="col">Format</th>
+                <th scope="col">Store Manager</th>
+                <th scope="col" class="fb-num">Sales</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row"><a class="fb-record-link" href="#" data-table="Store" data-row="1501"><span class="fb-record-name">1501 Lakeside</span></a></th>
+                <td><span class="fb-chip fb-chip--compact fb-chip--green">Open</span></td>
+                <td><span class="fb-chip fb-chip--compact fb-chip--blue">Family Store</span></td>
+                <td><span class="fb-person"><a class="fb-record-link" href="#" data-table="Person" data-row="TN-10001"><span class="fb-record-name">Arun Prakash</span> <span class="fb-record-detail">· TN-10001 · Store Manager · Lakeside</span></a></span></td>
+                <td class="fb-num">₹3.21 L</td>
+              </tr>
+              <tr>
+                <th scope="row"><a class="fb-record-link" href="#" data-table="Store" data-row="1502"><span class="fb-record-name">1502 Hill Road</span></a></th>
+                <td><span class="fb-chip fb-chip--compact fb-chip--amber">Planned</span></td>
+                <td><span class="fb-chip fb-chip--compact fb-chip--teal">Express</span></td>
+                <td><span class="fb-person"><a class="fb-record-link" href="#" data-table="Person" data-row="TN-10014"><span class="fb-record-name">Meena Raman</span> <span class="fb-record-detail">· TN-10014 · Store Manager · Hill Road</span></a></span></td>
+                <td class="fb-num">—</td>
+              </tr>
+              <tr>
+                <th scope="row"><a class="fb-record-link" href="#" data-table="Store" data-row="1503"><span class="fb-record-name">1503 Market Street</span></a></th>
+                <td><span class="fb-chip fb-chip--compact fb-chip--green">Open</span></td>
+                <td><span class="fb-chip fb-chip--compact fb-chip--blue">Family Store</span></td>
+                <td><span class="fb-person"><a class="fb-record-link" href="#" data-table="Person" data-row="TN-10022"><span class="fb-record-name">Kavya Iyer</span> <span class="fb-record-detail">· TN-10022 · Store Manager · Market Street</span></a></span></td>
+                <td class="fb-num">₹2.48 L</td>
+              </tr>
+              <tr>
+                <th scope="row"><a class="fb-record-link" href="#" data-table="Store" data-row="1504"><span class="fb-record-name">1504 Riverside</span></a></th>
+                <td><span class="fb-chip fb-chip--compact fb-chip--grey">Closed</span></td>
+                <td><span class="fb-chip fb-chip--compact fb-chip--teal">Express</span></td>
+                <td><span class="fb-record-link fb-record-link--text" data-table="Person" data-row="TN-10031"><span class="fb-record-name">Ravi Menon</span> <span class="fb-record-detail">· TN-10031 · Store Manager · Riverside</span></span></td>
+                <td class="fb-num">₹99,999</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="status-pill" data-title="Status Pill">
+      <h2 class="fb-section-title">Status Pill</h2>
+      <p class="fb-text fb-muted">A short status in words; the colour only repeats what the words say. Tones: <code>--negative</code> (below target, errors), <code>--caution</code> (near target), <code>--positive</code> (met), <code>--opportunity</code>, <code>--missing</code> (no data); none is the neutral blue. It never wraps, so keep the words short.</p>
+      <div class="spec-demo">
+        <div class="fb-row">
+          <span class="fb-pill fb-pill--negative">Overdue</span>
+          <span class="fb-pill fb-pill--caution">Near target</span>
+          <span class="fb-pill fb-pill--positive">Done</span>
+          <span class="fb-pill fb-pill--opportunity">Opportunity</span>
+          <span class="fb-pill fb-pill--missing">No target set</span>
+          <span class="fb-pill">In progress</span>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="chip" data-title="Chip">
+      <h2 class="fb-section-title">Chip And Tag</h2>
+      <p class="fb-text fb-muted">A chip is a tinted pill with a meaning. A status is green when live, amber when not yet and grey when finished, with a dot. A category takes one of eight tints (blue, teal, violet, pink, orange, lime, cyan, yellow) and keeps it on every page. Red is kept for a data problem. A tag (<code>fb-tag</code>) is the neutral one, for a source, a reach or a level.</p>
+      <div class="spec-demo">
+        <div class="fb-stack fb-stack--tight">
+          <div class="fb-row">
+            <span class="fb-chip fb-chip--green"><span class="fb-chip-dot" aria-hidden="true"></span>Open</span>
+            <span class="fb-chip fb-chip--amber"><span class="fb-chip-dot" aria-hidden="true"></span>Planned</span>
+            <span class="fb-chip fb-chip--grey"><span class="fb-chip-dot" aria-hidden="true"></span>Closed</span>
+            <span class="fb-chip fb-chip--red">Missing store code</span>
+          </div>
+          <div class="fb-row">
+            <span class="fb-chip fb-chip--blue">Family Store</span>
+            <span class="fb-chip fb-chip--teal">Express</span>
+            <span class="fb-chip fb-chip--violet">Wedding</span>
+            <span class="fb-chip fb-chip--pink">Kids</span>
+            <span class="fb-chip fb-chip--orange">Festive</span>
+            <span class="fb-chip fb-chip--lime">Outlet</span>
+            <span class="fb-chip fb-chip--cyan">Online</span>
+            <span class="fb-chip fb-chip--yellow">Seasonal</span>
+          </div>
+          <div class="fb-row">
+            <span class="fb-chip fb-chip--compact fb-chip--green">Open</span>
+            <span class="fb-chip fb-chip--compact fb-chip--blue">Family Store</span>
+            <span class="fb-tag">from HR</span>
+            <span class="fb-tag">Team</span>
+          </div>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="notice" data-title="Notice">
+      <h2 class="fb-section-title">Notice</h2>
+      <p class="fb-text fb-muted">A lasting message about the screen it sits on, in words. Plain for guidance, <code>--caution</code> for a mode or a risk, <code>--positive</code> for a finished action, <code>--negative</code> for a failure (give that one <code>role="alert"</code>). The icon is drawn by the class.</p>
+      <div class="spec-demo">
+        <div class="fb-stack fb-stack--tight">
+          <div class="fb-notice" role="status"><div>Forgot your password? Reset it in StyleHR, or ask your Store Manager.</div></div>
+          <div class="fb-notice fb-notice--caution" role="status"><div>Sample data: these figures are made up until the real month is loaded.</div></div>
+          <div class="fb-notice fb-notice--positive" role="status"><div>Your password has been updated.</div></div>
+          <div class="fb-notice fb-notice--negative" role="alert"><div>The report couldn't load right now. Try again in a few minutes.</div></div>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="empty-state" data-title="Empty State">
+      <h2 class="fb-section-title">Empty State</h2>
+      <p class="fb-text fb-muted">What an empty list or screen says instead of a blank space: what is empty, why, and the way forward. A title alone is not enough: give a body, an action, or both.</p>
+      <div class="spec-demo">
+        <div class="fb-empty">
+          <span class="fb-icon fb-icon--inbox" aria-hidden="true"></span>
+          <h3 class="fb-empty-title">No checklists yet</h3>
+          <p class="fb-empty-body">Runs you start appear here, newest first.</p>
+          <div class="fb-empty-action"><button type="button" class="fb-button fb-button--primary">Start a checklist</button></div>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="field" data-title="Field">
+      <h2 class="fb-section-title">Field And Inputs</h2>
+      <p class="fb-text fb-muted">A labelled control with an optional hint and error. An input is a grey fill, never a box; focus is its only outline, and an error draws a red edge (<code>aria-invalid="true"</code>). A select is a real <code>&lt;select&gt;</code> inside <code>fb-select</code>; a search box sits inside <code>fb-search</code>.</p>
+      <div class="spec-demo">
+        <div class="fb-grid fb-grid--2">
+          <div>
+            <label class="fb-label" for="f-code">Employee code</label>
+            <input class="fb-input" id="f-code" type="text" placeholder="RR-0107" aria-describedby="f-code-hint">
+            <p class="fb-hint" id="f-code-hint">As printed on your ID card</p>
+          </div>
+          <div>
+            <label class="fb-label" for="f-store">Store</label>
+            <div class="fb-select">
+              <select class="fb-input" id="f-store">
+                <option>1501 Lakeside</option>
+                <option>1502 Hill Road</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="fb-label" for="f-qty">Quantity</label>
+            <input class="fb-input" id="f-qty" type="text" inputmode="numeric" value="0" aria-invalid="true" aria-describedby="f-qty-error">
+            <p class="fb-error" id="f-qty-error">Enter a number of 1 or more</p>
+          </div>
+          <div>
+            <label class="fb-label" for="f-search">Search checklists</label>
+            <div class="fb-search"><input class="fb-input" id="f-search" type="search" placeholder="Search checklists"></div>
+          </div>
+          <div>
+            <label class="fb-label" for="f-locked">Region</label>
+            <input class="fb-input" id="f-locked" type="text" value="South" disabled>
+          </div>
+          <div>
+            <label class="fb-label" for="f-note">Note</label>
+            <textarea class="fb-input" id="f-note" placeholder="Why the figure should change"></textarea>
+          </div>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="record-link" data-title="Record Link">
+      <h2 class="fb-section-title">Record Link</h2>
+      <p class="fb-text fb-muted">Every Featherbase record shown on any screen (a person, a store, a section, a department, a ticket) is a link that opens it: its readable name, then who or what it is. Name the record with <code>data-table</code> and <code>data-row</code> so the builder knows where the link goes. The one plain form, <code>fb-record-link--text</code>, is for a record the viewer may not open.</p>
+      <div class="spec-demo">
+        <div class="fb-stack fb-stack--tight fb-text">
+          <div><a class="fb-record-link" href="#" data-table="Employee" data-row="E1001"><span class="fb-record-name">Kumar</span> <span class="fb-record-detail">· E1001 · Team Leader · Lakeside</span></a></div>
+          <div><a class="fb-record-link fb-record-link--two-lines" href="#" data-table="Employee" data-row="E1001"><span class="fb-record-name">Kumar</span><span class="fb-record-detail">E1001 · Team Leader · Lakeside</span></a></div>
+          <div><span class="fb-record-link fb-record-link--text" data-table="Employee" data-row="E1001"><span class="fb-record-name">Kumar</span> <span class="fb-record-detail">· E1001 · Team Leader · Lakeside</span></span></div>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="person-label" data-title="Person Label">
+      <h2 class="fb-section-title">Person Label</h2>
+      <p class="fb-text fb-muted">A person is always named so they can be told apart: the name as a link to the Person, then employee code · role · place. Stacked (the words on a second line) for headers, pickers and search; inline for table cells and activity lines. A person with more than one current code shows the main one and a "+1 code" mark.</p>
+      <div class="spec-demo">
+        <div class="fb-stack fb-text">
+          <div><span class="fb-person"><a class="fb-record-link fb-record-link--two-lines" href="#" data-table="Person" data-row="TN-10001"><span class="fb-record-name">Arun Prakash</span><span class="fb-record-detail">TN-10001 · Store Manager · Lakeside</span></a></span></div>
+          <div><span class="fb-person"><a class="fb-record-link" href="#" data-table="Person" data-row="TN-10001"><span class="fb-record-name">Arun Prakash</span> <span class="fb-record-detail">· TN-10001 · Store Manager · Lakeside</span></a></span></div>
+          <div><span class="fb-person"><a class="fb-record-link fb-record-link--two-lines" href="#" data-table="Person" data-row="TN-10002"><span class="fb-record-name">Arun Prakash</span><span class="fb-record-detail">TN-10002 · Cashier · Hill Road</span></a><span class="fb-person-more">+1 code</span></span></div>
+          <div><span class="fb-person"><span class="fb-record-link fb-record-link--two-lines fb-record-link--text" data-table="Person" data-row="TN-10001"><span class="fb-record-name">Arun Prakash</span><span class="fb-record-detail">TN-10001 · Store Manager · Lakeside</span></span></span></div>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="icons" data-title="Icons">
+      <h2 class="fb-section-title">Icons</h2>
+      <p class="fb-text fb-muted">The icons the components use, drawn by a class: <code>fb-icon fb-icon--&lt;name&gt;</code>. An icon takes the colour of its text and is 18 px; <code>fb-icon--14</code>, <code>--16</code>, <code>--20</code> and <code>--28</code> size it. Do not draw or paste another icon.</p>
+      <div class="spec-demo">
+        <div class="fb-row fb-row--loose fb-text" id="icon-list"></div>
+      </div>
+      <pre class="spec-code">&lt;span class="fb-icon fb-icon--info" aria-hidden="true"&gt;&lt;/span&gt;</pre>
+    </section>
+
+    <!-- ============================================================ -->
+    <section class="spec" id="banded-table" data-title="Banded Table" data-pattern>
+      <h2 class="fb-section-title">Pattern: A Table With Grouped Column Bands <span class="fb-tag">not yet a shared component</span></h2>
+      <p class="fb-text fb-muted">A first header row names each group of columns. Groups are set apart by a gap of the page's own colour, never a line: put <code>fb-band-start</code> on the first cell of each group in every row, and <code>fb-band-end</code> on the last header cell of a group. A column outside every group gets <code>fb-band-none</code> in the first row.</p>
+      <div class="spec-demo">
+        <div class="fb-table-scroll">
+          <table class="fb-table fb-table--banded">
+            <thead>
+              <tr class="fb-bands">
+                <th class="fb-band-none"></th>
+                <th colspan="2" class="fb-band-start">Forecast</th>
+                <th colspan="2" class="fb-band-start">Last Month</th>
+                <th colspan="2" class="fb-band-start">Last Year</th>
+              </tr>
+              <tr>
+                <th scope="col">Section</th>
+                <th scope="col" class="fb-num fb-band-start">Value</th>
+                <th scope="col" class="fb-num fb-band-end">Pieces</th>
+                <th scope="col" class="fb-num fb-band-start">Value</th>
+                <th scope="col" class="fb-num fb-band-end">Change</th>
+                <th scope="col" class="fb-num fb-band-start">Value</th>
+                <th scope="col" class="fb-num fb-band-end">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row"><a class="fb-record-link" href="#" data-table="Section" data-row="S01"><span class="fb-record-name">Sarees</span></a></th>
+                <td class="fb-num fb-band-start fb-strong">₹4.20 L</td>
+                <td class="fb-num">312</td>
+                <td class="fb-num fb-band-start">₹3.85 L</td>
+                <td class="fb-num fb-positive">+9.1%</td>
+                <td class="fb-num fb-band-start">₹3.60 L</td>
+                <td class="fb-num fb-positive">+16.7%</td>
+              </tr>
+              <tr>
+                <th scope="row"><a class="fb-record-link" href="#" data-table="Section" data-row="S02"><span class="fb-record-name">Kurtis</span></a></th>
+                <td class="fb-num fb-band-start fb-strong">₹1.95 L</td>
+                <td class="fb-num">428</td>
+                <td class="fb-num fb-band-start">₹2.10 L</td>
+                <td class="fb-num fb-negative">-7.1%</td>
+                <td class="fb-num fb-band-start">₹1.72 L</td>
+                <td class="fb-num fb-positive">+13.4%</td>
+              </tr>
+              <tr>
+                <th scope="row"><a class="fb-record-link" href="#" data-table="Section" data-row="S03"><span class="fb-record-name">Kids Wear</span></a></th>
+                <td class="fb-num fb-band-start fb-strong">₹88,500</td>
+                <td class="fb-num">265</td>
+                <td class="fb-num fb-band-start">₹86,200</td>
+                <td class="fb-num fb-positive">+2.7%</td>
+                <td class="fb-num fb-band-start">₹91,000</td>
+                <td class="fb-num fb-negative">-2.7%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="open-row" data-title="Row That Opens" data-pattern>
+      <h2 class="fb-section-title">Pattern: A Table Row That Opens In Place <span class="fb-tag">not yet a shared component</span></h2>
+      <p class="fb-text fb-muted">The row's first cell holds a small button (<code>fb-row-toggle</code>, with <code>aria-expanded</code>). The next row is <code>&lt;tr class="fb-row-detail"&gt;</code> with one cell that spans the table and holds <code>fb-row-detail-body</code>: a quiet block in two columns (<code>--one</code> for a single column). With featherbase-look.js on the page the button opens and closes it.</p>
+      <div class="spec-demo">
+        <div class="fb-table-scroll">
+          <table class="fb-table">
+            <thead>
+              <tr>
+                <th scope="col">Section</th>
+                <th scope="col" class="fb-num">Forecast</th>
+                <th scope="col" class="fb-num">Last Month</th>
+                <th scope="col">Answer</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr aria-selected="true">
+                <th scope="row"><button type="button" class="fb-row-toggle" aria-expanded="true" aria-label="Show how Sarees was built"></button><a class="fb-record-link" href="#" data-table="Section" data-row="S01"><span class="fb-record-name">Sarees</span></a></th>
+                <td class="fb-num">₹4.20 L</td>
+                <td class="fb-num">₹3.85 L</td>
+                <td><span class="fb-pill fb-pill--missing">Not answered</span></td>
+              </tr>
+              <tr class="fb-row-detail">
+                <td colspan="4">
+                  <div class="fb-row-detail-body">
+                    <div class="fb-stack fb-stack--tight">
+                      <h3 class="fb-section-title">How This Figure Was Built</h3>
+                      <p class="fb-text">Last year's December, lifted by this year's growth, with the wedding season added.</p>
+                    </div>
+                    <div class="fb-stack fb-stack--tight">
+                      <h3 class="fb-section-title">Your Answer</h3>
+                      <div class="fb-row">
+                        <button type="button" class="fb-button fb-button--primary">Accept ₹4.20 L</button>
+                        <button type="button" class="fb-button">Change It</button>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><button type="button" class="fb-row-toggle" aria-expanded="false" aria-label="Show how Kurtis was built"></button><a class="fb-record-link" href="#" data-table="Section" data-row="S02"><span class="fb-record-name">Kurtis</span></a></th>
+                <td class="fb-num">₹1.95 L</td>
+                <td class="fb-num">₹2.10 L</td>
+                <td><span class="fb-pill fb-pill--positive">Accepted</span></td>
+              </tr>
+              <tr class="fb-row-detail" hidden>
+                <td colspan="4">
+                  <div class="fb-row-detail-body fb-row-detail-body--one">
+                    <p class="fb-text">Accepted as forecast on 27-Nov-2026.</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="built-from" data-title="Built From" data-pattern>
+      <h2 class="fb-section-title">Pattern: "Built From": A Share Bar And A Donut <span class="fb-tag">not yet a shared component</span></h2>
+      <p class="fb-text fb-muted">What a figure is made of. Each part takes a series colour (<code>fb-series-1</code> to <code>fb-series-5</code>; these never mean good or bad) and its share as <code>--share</code>. The bar is for a table cell or a narrow space; the donut for a block with room. The donut's ring is the <code>--fb-donut</code> value that <code>fbLook.donut([46, 31, 23])</code> returns. Always give the legend: colour alone is never the only signal.</p>
+      <div class="spec-demo">
+        <div class="fb-built-from">
+          <div class="fb-donut-wrap">
+            <div class="fb-donut" role="img" aria-label="Built from: last year 46%, growth 31%, season 23%" style="--fb-donut: conic-gradient(var(--color-series-1) 0% 46%, var(--color-series-2) 46% 77%, var(--color-series-3) 77% 100%)"></div>
+            <div class="fb-donut-label"><strong>₹4.20 L</strong>Forecast</div>
+          </div>
+          <div class="fb-stack fb-stack--tight" style="flex: 1; min-width: 18rem">
+            <div class="fb-sharebar" role="img" aria-label="Built from: last year 46%, growth 31%, season 23%">
+              <span class="fb-series-1" style="--share: 46"></span>
+              <span class="fb-series-2" style="--share: 31"></span>
+              <span class="fb-series-3" style="--share: 23"></span>
+            </div>
+            <div class="fb-legend">
+              <span class="fb-legend-swatch fb-series-1"></span><span>Last year's December</span><span class="fb-num fb-muted">46%</span><span class="fb-num">₹1.93 L</span>
+              <span class="fb-legend-swatch fb-series-2"></span><span>This year's growth</span><span class="fb-num fb-muted">31%</span><span class="fb-num">₹1.30 L</span>
+              <span class="fb-legend-swatch fb-series-3"></span><span>Wedding season</span><span class="fb-num fb-muted">23%</span><span class="fb-num">₹96,600</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+  </main>
+</div>
+
+<script src="featherbase-look.js"></script>
+<script>
+  // The gallery's own behaviour: show each specimen's markup under it, list the
+  // controls and the icons, switch the theme, and show one specimen alone.
+  const ICONS = ['arrow-down', 'arrow-up', 'calendar-days', 'chart-column', 'check', 'chevron-down', 'chevron-left', 'chevron-right', 'circle-check', 'circle-x', 'clock', 'external-link', 'house', 'inbox', 'info', 'list-checks', 'pencil', 'plus', 'search', 'target', 'triangle-alert', 'user-round', 'x']
+  document.getElementById('icon-list').innerHTML = ICONS
+    .map((name) => `<span class="fb-row fb-muted"><span class="fb-icon fb-icon--${name}" aria-hidden="true"></span>${name}</span>`).join('')
+
+  /** A specimen's markup as written, without the indentation it has inside this page. */
+  function markupOf(demo) {
+    const lines = demo.innerHTML.replace(/^\n+|\s+$/g, '').split('\n')
+    const indent = Math.min(...lines.filter((line) => line.trim()).map((line) => line.match(/^ */)[0].length))
+    return lines.map((line) => line.slice(indent)).join('\n')
+  }
+  const index = document.getElementById('spec-index')
+  for (const spec of document.querySelectorAll('section.spec')) {
+    const code = spec.querySelector('.spec-code')
+    if (code && !code.textContent) code.textContent = markupOf(spec.querySelector('.spec-demo'))
+    const link = document.createElement('a')
+    link.className = 'fb-tag'
+    link.href = '#' + spec.id
+    link.textContent = spec.dataset.title
+    index.append(link)
+  }
+
+  const patterns = document.querySelectorAll('section.spec[data-pattern]').length
+  document.getElementById('spec-count').textContent = `${index.children.length - patterns} controls · ${patterns} patterns`
+
+  document.getElementById('theme-switch').addEventListener('fb:change', (event) => fbLook.theme(event.detail.value))
+  if (document.documentElement.dataset.theme === 'dark') {
+    for (const button of document.getElementById('theme-switch').children) button.setAttribute('aria-pressed', String(button.dataset.value === 'dark'))
+  }
+
+  // index.html?only=button shows that one specimen on the canvas, as a story is shown.
+  const only = new URLSearchParams(location.search).get('only')
+  const spec = only && document.getElementById(only)
+  if (spec) {
+    const alone = document.createElement('div')
+    alone.className = 'spec-only'
+    alone.append(spec.querySelector('.spec-demo'))
+    document.body.replaceChildren(alone)
+  }
+</script>
+</body>
+</html>
