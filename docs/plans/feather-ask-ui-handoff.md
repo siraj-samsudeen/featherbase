@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; 2.1 committed; next: 2.2). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; 2.1 and 2.2 committed; next: 2.2b). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -258,7 +258,7 @@ Done on the backend (step 1, the platform piece):
   server test `featherbase-mcp.test.ts`: 12 tests over HTTP with `action-proof`'s `tools` and
   `untooled` reads (`dffb84cc1`).
 
-## Next step: step 2, the agent loop in Ask (2.1 done; next 2.2)
+## Next step: step 2, the agent loop in Ask (2.1 and 2.2 done; next 2.2b)
 
 Step 1 (the platform piece) is finished: 1a–1f committed, 1e2 deferred, 1f2 (View as) moved to
 the final step, 1g's adversarial review offered and skipped (Mohammad, 27-Nov-2026).
@@ -269,24 +269,27 @@ rules over `query_rows`), `reads.think` in `index.ts` (outbound, `featherbaseMcp
 nothing), the read in `featherbase.json`. `fb_ask_ui` was recreated for the manifest change
 (27-Nov-2026), with two test tickets. Checks: `checks\check2.1-think-ui.cjs` (8, HTTP on 5177),
 `2.1-draft\check-agent.mts` (4, the loop with fake tools), `ask-app.test.ts` (6).
-**Next: 2.2**, the `ask` action saves the answer `think` gave instead of the placeholder.
 
-**2.2, for the next session** (Mohammad, 27-Nov-2026): the `ask` action saves the answer
-`think` gave instead of calling `reply()`. Until 2.3 (the page calls think, then ask), check
-it over HTTP: call think, then pass its answer to ask. Ask Mohammad before drafting, one
-question at a time, with a recommendation:
-- How the answer reaches `ask`: in the payload next to the question (`payload.answer =
-  { kind, text }`), checked for shape and length. This ties into 2.4 (sign the answer, or
-  accept that a person could save any answer to their own chat): decide 2.4 now, or keep 2.2
-  unsigned and decide 2.4 after.
-- Whether `reply.ts` (the placeholder) goes away in 2.2.
+**2.2 is done** (`e91e33bf5`, put in by Claude at Mohammad's "implement it"): the page passes
+think's answer to the `ask` action as `payload.answer = { kind, text }`; `answerFrom()` in
+`index.ts` checks it (kind `answer` or `cannot`, text not blank, at most `MAX_ANSWER_LENGTH` =
+20000 from `shared/reply.ts`) before anything is saved; refused with 417 "Ask has no answer to
+save". Unsigned until 2.4 (Mohammad chose "unsigned now, 2.4 later"; design `a21522a03`).
+`reply.ts` removed. **Until 2.3 the Ask page can't save a question** (it sends no answer).
+Checks: `ask-app.test.ts` 7, `checks\check2.2-save.cjs` 7 (HTTP on 5177). Draft in
+`ask-handover\2.2-draft\`. `check2.1-think-ui.cjs`'s last check (placeholder) now fails on purpose.
 
-2.2 changes no manifest (2.2b adds a column, which does), so `fb_ask_ui` needs no recreating.
-Draft in `ask-handover\2.2-draft\`; check it yourself (Ask build, server typecheck,
-`ask-app.test.ts`, HTTP on 5177), take it back out, and give the walkthrough ending with the
-manual checks as DevTools console lines (as 2.1's: sign in, `fetch` with the
-`X-Featherbase-App-Version: ask@0.1.0` header). Mohammad types it in; no commit until "commit it".
-Reuse `checks\check2.1-think-ui.cjs` (HTTP on 5177, signs in as Administrator).
+**Known, not from 2.2:** the server's test typecheck (`tsc -p tsconfig.test.json`) fails at
+`apps/server/test/featherbase-mcp.test.ts:81` (`Object is of type 'unknown'`, from 1f's
+`dffb84cc1`). Fix it before any push.
+
+**Next: 2.2b**, the steps behind each answer: `think` returns the steps it took with its answer
+(tool, Table, filters, short result, e.g. "query_rows on Ticket, status = Open: 3 rows"), the
+page passes them on, and `ask` saves them in a new column on `ask.question`. It **changes Ask's
+manifest** at 0.1.0: ask Mohammad first whether to recreate `fb_ask_ui` (losing its test chats)
+or check on the throwaway `fb_ask_b1`. Questions for Mohammad, one at a time, with a
+recommendation: the steps' shape and the column type (JSON or Text); whether the page shows
+them now or later. Draft in `ask-handover\2.2b-draft\`, same way of going as 2.2.
 
 **What step 2 builds** (tasks 2.1–2.4 in `feather-ask-agent/tasks.md`): Ask stops answering
 with the placeholder (`src/server/reply.ts`) and answers with an agent loop over the platform's
