@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; 2.1 and 2.2 committed; next: 2.2b). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; 2.1, 2.2 and 2.2b committed; next: 2.3). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -258,7 +258,7 @@ Done on the backend (step 1, the platform piece):
   server test `featherbase-mcp.test.ts`: 12 tests over HTTP with `action-proof`'s `tools` and
   `untooled` reads (`dffb84cc1`).
 
-## Next step: step 2, the agent loop in Ask (2.1 and 2.2 done; next 2.2b)
+## Next step: step 2, the agent loop in Ask (2.1, 2.2, 2.2b done; next 2.3)
 
 Step 1 (the platform piece) is finished: 1a–1f committed, 1e2 deferred, 1f2 (View as) moved to
 the final step, 1g's adversarial review offered and skipped (Mohammad, 27-Nov-2026).
@@ -279,13 +279,23 @@ save". Unsigned until 2.4 (Mohammad chose "unsigned now, 2.4 later"; design `a21
 Checks: `ask-app.test.ts` 7, `checks\check2.2-save.cjs` 7 (HTTP on 5177). Draft in
 `ask-handover\2.2-draft\`. `check2.1-think-ui.cjs`'s last check (placeholder) now fails on purpose.
 
-**Next: 2.2b**, the steps behind each answer: `think` returns the steps it took with its answer
-(tool, Table, filters, short result, e.g. "query_rows on Ticket, status = Open: 3 rows"), the
-page passes them on, and `ask` saves them in a new column on `ask.question`. It **changes Ask's
-manifest** at 0.1.0: ask Mohammad first whether to recreate `fb_ask_ui` (losing its test chats)
-or check on the throwaway `fb_ask_b1`. Questions for Mohammad, one at a time, with a
-recommendation: the steps' shape and the column type (JSON or Text); whether the page shows
-them now or later. Draft in `ask-handover\2.2b-draft\`, same way of going as 2.2.
+**2.2b is done** (`68d920951`, put in by Claude at Mohammad's "make this change"; design
+`c2f83359f`): `think` returns `{ answer, steps }` (type `Thought` in `shared/reply.ts`), each
+step `{ tool, args, summary, refused? }` with a short summary ("2 rows", "refused: …"), no rows;
+`ask` checks the steps (`stepsFrom()`: at most 8, shape, summary ≤ 200, all ≤ `MAX_STEPS_LENGTH`
+= 20000) and saves them in the JSON column `steps`. `fb_ask_ui` was recreated (27-Nov-2026) with
+Ask and Tickets and the two test tickets (`checks\add-two-tickets-5177.cjs`). Checks:
+`ask-app.test.ts` 8, `2.2b-draft\check-agent.mts` 8, `checks\check2.2b-steps.cjs` 11 (HTTP).
+Mohammad's choices: recreate `fb_ask_ui`; JSON objects, as ChatGPT and Claude keep steps; show
+the steps only when asked, by Ctrl+O or a small link under the answer (task 2.3b). Ctrl+O is the
+browser's "Open file": the page can take it while focused; settle it in 2.3b.
+
+**Next: 2.3**, the page calls think, then ask, under the one "Thinking…": `src/client/api.ts`
+(a `think()` call to `/api/app_reads/ask/think`, then `askQuestion` passes `answer` and
+`steps`) and `components/Chat.tsx` (`fetchAnswer`). After it the page saves questions again.
+No manifest change. Then **2.3b** (show the steps) and **2.4** (decide signing). Ask Mohammad
+any design question first, one at a time, with a recommendation; draft in
+`ask-handover\2.3-draft\`; check headless (reuse `checks\check2a-ui.cjs` and `check2d.cjs`).
 
 **What step 2 builds** (tasks 2.1–2.4 in `feather-ask-agent/tasks.md`): Ask stops answering
 with the placeholder (`src/server/reply.ts`) and answers with an agent loop over the platform's
