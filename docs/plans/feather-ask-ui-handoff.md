@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; next: 1f2, View as). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; next: 1g, then step 2). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -134,7 +134,8 @@ only) and open http://localhost:5177/ask/. After each change to Ask, `npm run bu
   governs `/mcp`.
 - **View as is left for later** (Mohammad, 27-Nov-2026): while viewing as someone, the GET
   tools answer as the person viewed but `check_import` and `suggest_table` (POST dry runs)
-  as the tester. Nothing leaks; the answer can mislead. Task 1f2, design Open Questions.
+  as the tester. Nothing leaks; the answer can mislead. Task 1f2, design Open Questions;
+  decided at the final step, after all the implementation (road to done, step 8).
 - **What the agent read is kept with the answer** (Mohammad, 27-Nov-2026): each question
   saves the steps behind its answer (task 2.2b), which the person and an administrator can
   see. The Access Log entry per tool call (1e2) is **deferred**: ordinary reads aren't logged,
@@ -257,13 +258,12 @@ Done on the backend (step 1, the platform piece):
   server test `featherbase-mcp.test.ts`: 12 tests over HTTP with `action-proof`'s `tools` and
   `untooled` reads (`dffb84cc1`).
 
-## Next step: 1f2, View as for Ask's tools
+## Next step: 1g, then step 2
 
-A decision first, then a small build. While viewing as someone, the GET tools answer as the
-person viewed but the POST dry runs (`check_import`, `suggest_table`) as the tester, so one answer
-can mix two people (design, Open Questions, with an example). Options: A, pin the View as for the
-whole question (recommended in the design); B, no tools while viewing as someone. Ask Mohammad
-which, then draft it in `ask-handover\1f2-draft\`, check it, and give the walkthrough.
+1f2 (View as) is moved to the final step, after all the implementation (Mohammad, 27-Nov-2026;
+road to done, step 8). Next is 1g: propose an adversarial review of step 1 (permissions: the
+tools forward the caller's credential) to Mohammad in one line; run it only on a yes. Then
+step 2, the agent loop in Ask (2.1, a `think` outbound read).
 
 Running server tests: never stop vitest from outside on Windows; its workers live on and hold
 `featherbase_test`. Let a run end by itself (the pause tests release in `finally`).
@@ -279,8 +279,8 @@ ending in a manual check and a commit; the details are in `feather-ask-agent/tas
      read in `test-apps/action-proof`: read-only tools only, Selvi sees her row and Ravi none,
      no token made, turned off / signed out everywhere / signed out of that session refused,
      an access-token caller works, no caller gets no tools, the credential never leaks.
-   - 1f2 (**next**): decide View as (pin it for the whole question, or no tools while viewing as).
-   - 1g: propose an adversarial review (permissions) in one line; run it only on a yes.
+   - 1f2: moved to step 8 (View as), after all the implementation.
+   - 1g (**next**): propose an adversarial review (permissions) in one line; run it only on a yes.
 2. **The agent loop in Ask, with a stand-in model (step 2).** A `think` outbound read runs the
    loop; the `ask` action saves chat, question, answer and the steps behind it (2.2b); the page
    calls think, then ask, under one "Thinking…". Decide whether to sign the answer between them.
@@ -297,7 +297,9 @@ ending in a manual check and a commit; the details are in `feather-ask-agent/tas
 7. **The page, after the backend** (see "Frontend, later" below): a chat moves to the top when
    added to, date groups, what each figures answer covers (#1377 points 14 and 15), and the
    panel on every page.
-8. **Tests and review.** Fence each scenario of both changes as Gherkin and bind it to a test
+8. **View as, then tests and review.** First 1f2: decide and build View as for Ask's tools
+   (A, pin the View as for the whole question, recommended; B, no tools while viewing as
+   someone; design, Open Questions), moved here by Mohammad on 27-Nov-2026. Then fence each scenario of both changes as Gherkin and bind it to a test
    (`pnpm check:scenarios`); the independent headless verifier at desktop width with the
    RecordLink checklist line; a code review (`feather-code-review`).
 9. **Finish.** Fold this note into the PR body and remove it; archive both OpenSpec changes;

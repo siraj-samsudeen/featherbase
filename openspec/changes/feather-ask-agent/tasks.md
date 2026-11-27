@@ -31,7 +31,8 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
       mid-read are refused; a read opened with an access token works; a read with no caller gets
       no tools; the credential never appears in a refusal, a result or the read's context
       (commit dffb84cc1; binding to the scenarios is step 8, as they are still prose).
-- [ ] 1f2 Decide and build View as for Ask's tools (design, Open Questions): pin the View as for
+- [ ] 1f2 Moved to the final step, after all the implementation (Mohammad, 27-Nov-2026).
+      Decide and build View as for Ask's tools (design, Open Questions): pin the View as for
       the whole question (recommended), or no tools while viewing as someone.
 - [ ] 1g Propose an adversarial review (permissions) to the owner before 1 lands.
 

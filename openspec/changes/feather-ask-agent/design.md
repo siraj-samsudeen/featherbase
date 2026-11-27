@@ -116,4 +116,5 @@ Ask's manifest gains the `think` read at 0.1.0: recreate the local database (see
   Nothing leaks (the asker may read both); the answer misleads. Rule: one question, one person.
   Recommended fix A: pin the View as for the whole question (every tool call answered as the
   person viewed, refused once that View as no longer holds). Fallback B: no tools while viewing
-  as someone. Decided later (Mohammad, 27-Nov-2026): task 1f2.
+  as someone. Decided later (Mohammad, 27-Nov-2026): task 1f2, at the final step after all the
+  implementation.
