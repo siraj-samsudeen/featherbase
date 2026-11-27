@@ -1,0 +1,59 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "storesales",
+  "title": "Store Sales",
+  "entryTable": "storesales.note",
+  "server": "server.mjs",
+  "client": "client",
+  "tables": [
+    {
+      "name": "storesales.note",
+      "label": "note",
+      "id_pattern": "prompt",
+      "columns": [{ "column_name": "body", "column_type": "Data" }]
+    }
+  ],
+  "roles": ["Store Sales Reader"],
+  "permissions": [{ "table": "storesales.note", "role": "Store Sales Reader", "can_read": true }],
+  "datasets": [
+    {
+      "name": "sales",
+      "source": "storesales-warehouse",
+      "query": "select store, business_day, amount, units from standin_proof.sales",
+      "columns": [
+        { "name": "store", "type": "text" },
+        { "name": "business_day", "type": "date" },
+        { "name": "amount", "type": "money" },
+        { "name": "units", "type": "integer" }
+      ],
+      "keys": ["store", "business_day"],
+      "unscoped": true
+    },
+    {
+      "name": "targets",
+      "source": "storesales-warehouse",
+      "query": "select store, month, target, units, confirmed from standin_proof.targets",
+      "columns": [
+        { "name": "store", "type": "text" },
+        { "name": "month", "type": "date" },
+        { "name": "target", "type": "money" },
+        { "name": "units", "type": "integer" },
+        { "name": "confirmed", "type": "boolean" }
+      ],
+      "keys": ["store", "month"],
+      "unscoped": true,
+      "guard": [{ "kind": "max_sum_drop_pct", "column": "target", "value": 10 }]
+    }
+  ],
+  "reads": {
+    "version": 1,
+    "tables": ["storesales.note"],
+    "operations": {
+      "overview": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "sales": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "ask": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "ask_outbound": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "outbound": true }
+    }
+  }
+}
