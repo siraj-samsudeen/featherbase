@@ -13,6 +13,7 @@ import { MyNumbersPage, unseenFor } from './MyNumbersPage'
 import { WorkspacePage } from './WorkspacePage'
 import { ReviewMonthPage } from './ReviewMonthPage'
 import { IdeasPage, NumbersPage, ResultsPage, ReviewPage, RunsPage } from './pages'
+import { SectionPage } from './teamLeader/SectionPage'
 
 export interface NumberRow {
   row_id: string; month: string; run: string; store: string; section: string; scope_level: 'Store' | 'Division' | 'Category' | 'Subcategory'; scope_name: string; weeks: string | null
@@ -42,6 +43,7 @@ export interface Data { explanations: ExplanationRow[]; numbers: NumberRow[]; de
 export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => Promise<void>; save: typeof saveRow }
 
 const VIEWS = [
+  { key: 'section', label: 'My Section', group: 'Forecasts', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z' },
   { key: 'forecasts', label: 'Workspace', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 3v18' },
   { key: 'numbers', label: 'Ledger', group: 'Forecasts', icon: 'M20 6 9 17l-5-5' },
   { key: 'mine', label: 'My Numbers', group: 'Forecasts', icon: 'M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10' },
@@ -147,7 +149,6 @@ export function NoRunYet({ month, what }: { month: Month; what: string }) {
 
 export function ForecastingApp() {
   const params = new URLSearchParams(window.location.search)
-  const view = (VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : 'forecasts') as View
   // Whoever looks after the app opens as the top of the chain (the Chief Executive), not the first name in the list.
   const top = (PEOPLE.find(p => p.role === 'Chief Executive') ?? PEOPLE[0]).id
   const [viewerId, setViewerId] = useState(() => params.get('as') ?? localStorage.getItem('fc_viewer') ?? top)
@@ -167,6 +168,8 @@ export function ForecastingApp() {
     }, () => {})
   }, [])
   const viewer = me ?? person(PEOPLE.some(p => p.id === viewerId) ? viewerId : top)
+  // A Team Leader opens on their own section's review (#1419); everyone else on the Workspace.
+  const view = (VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : viewer.role === 'Team Leader' ? 'section' : 'forecasts') as View
   const [month, chooseMonth] = useMonth()
 
   const reload = useCallback(async () => {
@@ -202,9 +205,11 @@ export function ForecastingApp() {
       <Sidebar current={view} waiting={data ? waitingFor(data, viewer).length : 0} news={data ? unseenFor(data, viewer).length : 0} />
       <main className="fc-page" data-testid={`page-${view}`}>
         {offChart ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
-        <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />
+        {/* My Section is the screen as agreed (#1419): no picker bar above it for the person it belongs to. */}
+        {!(view === 'section' && me) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
+            : view === 'section' ? <SectionPage key={viewer.id} viewer={viewer} href={line => address('section', { line })} />
             : view === 'forecasts' ? (DATASET ? <ReviewMonthPage ctx={ctx} /> : <WorkspacePage ctx={ctx} />)
               : view === 'numbers' ? <NumbersPage ctx={ctx} />
               : view === 'mine' ? <MyNumbersPage key={viewer.id} ctx={ctx} onSeen={() => setSeen(t => t + 1)} />

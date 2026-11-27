@@ -192,7 +192,117 @@ async function prepareExplanation(ctx: Context) {
   await inArea(ctx, org, p, row.store, row.scope_level, row.scope_name)
 }
 
+// ---- the Team Leader review (#1419): forecast_change, forecast_line_review, forecast_question -------------
+// A row names its line by the warehouse's own key (run, store, subcategory); the server reads that line from
+// forecasting.forecast_line_month and decides from it: who may act on it (a Team Leader for their own store ·
+// section, a Store Manager for their store), and what Feather Forecast said, so the engine figure stored with a
+// change is the Run's, never the page's.
+const LINE_KEY = ['run_id', 'store_code', 'division_name', 'subdivision_name', 'category_name', 'subcategory_name']
+async function lineOf(ctx: Context): Promise<Row> {
+  const { row } = ctx
+  const [line] = await ctx.documents.list!('forecasting.forecast_line_month', {
+    fields: ['row_id', ...LINE_KEY, 'store_name', 'section_name', 'forecast_value_before_tax', 'forecast_qty'],
+    filters: [['run_id', '=', row.run_id], ['store_code', '=', row.store_code], ['subcategory_name', '=', row.subcategory_name]], limit_page_length: 1 })
+  if (!line) ctx.reject(`${String(row.subcategory_name || 'That line')} is not in Run ${String(row.run_id || '')}`)
+  for (const k of LINE_KEY) row[k] = line[k] // the key is the Run's, whatever the page sent
+  return line
+}
+/** Whether a person reviews this line: a Team Leader their store · section, a Store or Department Manager their store. */
+function reviews(p: Who, line: Row) {
+  if (p.role === 'Team Leader') return p.area === `${String(line.store_name)} · ${String(line.section_name)}`
+  if (p.role === 'Store Manager' || p.role === 'Department Manager') return p.area === String(line.store_name)
+  return false
+}
+async function reviewer(ctx: Context, named: unknown, line: Row): Promise<Who> {
+  const p = await actor(ctx, await orgOf(ctx), named)
+  if (!isAdmin(ctx) && !reviews(p, line)) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_name)} · ${String(line.subcategory_name)} is outside it`)
+  return p
+}
+/** The columns a save moved, other than `keep` and the platform's own stamps. */
+const norm = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v))
+const same = (a: unknown, b: unknown) => norm(a) === norm(b) || (norm(a) !== '' && norm(b) !== '' && Number(norm(a)) === Number(norm(b)))
+function unchanged(ctx: Context, keep: string[]) {
+  return Object.keys(ctx.row).filter(k => !keep.includes(k) && !['updated_at', 'updated_by'].includes(k) && !same(ctx.row[k], ctx.old?.[k]))
+}
+
+/** A change asked for on a line's month: the engine figure and the result are worked out here; once sent it is
+ *  never edited, only replaced by a new one or withdrawn by the person who sent it. */
+async function prepareChange(ctx: Context) {
+  const { row, old } = ctx
+  if (!ctx.isNew) {
+    if (isAdmin(ctx)) return
+    const p = await actor(ctx, await orgOf(ctx), old?.proposed_by)
+    const moved = unchanged(ctx, ['change_status', 'reasons'])
+    if (moved.length || p.name !== old?.proposed_by || old?.change_status !== 'sent' || !['replaced', 'withdrawn'].includes(String(row.change_status)))
+      ctx.reject('A sent change is not edited: send a new one that replaces it, or withdraw it')
+    return
+  }
+  const line = await lineOf(ctx)
+  const p = await reviewer(ctx, row.proposed_by, line)
+  row.proposed_by_role = p.role
+  if (!String(row.explanation ?? '').trim()) ctx.reject('Explain your proposed change', { explanation: 'Required' })
+  if (row.change_scope !== 'month') ctx.reject('A change covers the whole month for now', { change_scope: 'month' })
+  const engine = Number(line.forecast_value_before_tax), qty = Number(line.forecast_qty)
+  let changed: number
+  if (row.change_method === 'percent') {
+    const pct = Number(row.change_percent)
+    if (row.change_percent == null || !Number.isFinite(pct) || pct < -100) ctx.reject('A percent from -100 up', { change_percent: 'Required' })
+    changed = engine * (1 + pct / 100)
+    row.set_value_before_tax = null
+  } else {
+    const v = Number(row.set_value_before_tax)
+    if (row.set_value_before_tax == null || !Number.isFinite(v) || v < 0) ctx.reject('A value of 0 or more, in rupees before tax', { set_value_before_tax: 'Required' })
+    changed = v
+    row.change_percent = null
+  }
+  // quantity moves with value, so the selling price stays the engine's (data model, "From changes to days")
+  Object.assign(row, { engine_value_before_tax: Math.round(engine), engine_qty: Math.round(qty * 10) / 10,
+    changed_value_before_tax: Math.round(changed), changed_qty: engine ? Math.round(qty * changed / engine * 10) / 10 : 0 })
+  if (isAdmin(ctx)) return
+  // Team Leaders send for approval; a Store Manager's own change is final (data model, settled 27-Nov-2026)
+  row.change_status = p.role === 'Team Leader' ? 'sent' : 'approved'
+  Object.assign(row, { decided_by: null, decided_at: null, decision_note: null })
+}
+
+/** One person's answer on a line: theirs alone, inside their own section; a proposed change names its change. */
+async function prepareLineReview(ctx: Context) {
+  const { row, old } = ctx
+  if (!ctx.isNew && String(old?.reviewer) !== String(row.reviewer) && !isAdmin(ctx)) ctx.reject("An answer is the reviewer's own")
+  const line = await lineOf(ctx)
+  const p = await reviewer(ctx, row.reviewer, line)
+  row.reviewer_role = p.role
+  if (row.answer === 'accepted') { row.forecast_change = null; return }
+  if (row.answer !== 'change_proposed') ctx.reject('Accepted or change proposed', { answer: 'Required' })
+  // The hook API cannot read forecast_change back (a Table with a sub-table, its reasons), so the link is required
+  // here and its line and proposer are not re-checked: a crafted request could only mislabel its own answer.
+  if (!row.forecast_change) ctx.reject('A proposed change names the change you sent on this line', { forecast_change: 'Required' })
+}
+
+const ANSWERS = ['Forecast Creator', 'Forecast Reviewer']
+/** A question on a line: asked by its reviewer; answered (status, who, when) by the Forecast Creator or Reviewer
+ *  roles, whose answer is a Comment on it; the asker only marks the answer seen. */
+async function prepareQuestion(ctx: Context) {
+  const { row, old } = ctx
+  if (ctx.isNew) {
+    const line = await lineOf(ctx)
+    await reviewer(ctx, row.asked_by, line)
+    if (!String(row.question_text ?? '').trim()) ctx.reject('Write your question', { question_text: 'Required' })
+    Object.assign(row, { question_status: 'open', answered_by: null, answered_by_role: null, answered_at: null, answer_seen_at: null, about: row.about || 'line' })
+    return
+  }
+  if (isAdmin(ctx)) return
+  if (ctx.roles.some(r => ANSWERS.includes(r))) {
+    const moved = unchanged(ctx, ['question_status', 'answered_by', 'answered_by_role', 'answered_at'])
+    if (moved.length) ctx.reject(`An answer changes the status and who answered, not ${moved.join(', ')}`)
+    return
+  }
+  await actor(ctx, await orgOf(ctx), old?.asked_by)
+  const moved = unchanged(ctx, ['answer_seen_at'])
+  if (moved.length) ctx.reject('The asker only marks the answer seen')
+}
+
 export const platformVersion = '2026-10'
-export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation }
+export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation,
+  'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion }
 export const actions = {}
 export const jobs = {}

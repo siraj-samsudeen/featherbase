@@ -571,6 +571,803 @@
           }
         }
       ]
+    },
+    {
+      "id": "team_leader_review",
+      "fromVersion": "0.12.0",
+      "toVersion": "0.13.0",
+      "operations": [
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecast_run",
+            "label": "Forecast Run",
+            "module": "Forecasting",
+            "description": "One run of Feather Forecast for a month and region; the screens read the official one. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "model",
+                "label": "Model",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "purpose",
+                "label": "Purpose",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "status",
+                "label": "Status",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "origin_date",
+                "label": "Origin date",
+                "column_type": "Date",
+                "in_list_view": true
+              },
+              {
+                "column_name": "horizon_from",
+                "label": "Horizon from",
+                "column_type": "Date",
+                "reqd": true
+              },
+              {
+                "column_name": "horizon_to",
+                "label": "Horizon to",
+                "column_type": "Date",
+                "reqd": true
+              }
+            ],
+            "title_column": "run_id"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecast_line_month",
+            "label": "Forecast Line Month",
+            "module": "Forecasting",
+            "description": "One line (run × store × subcategory) for the month: Feather Forecast, its six bases and four parts, the growth and the seasonal step. The one table the review screens list from; built by the copy job from the daily forecast and its explanation. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "store_name",
+                "label": "Store",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "section_name",
+                "label": "Section",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "forecast_value_before_tax",
+                "label": "Feather Forecast (before tax)",
+                "column_type": "Currency",
+                "in_list_view": true
+              },
+              {
+                "column_name": "forecast_qty",
+                "label": "Feather Forecast quantity",
+                "column_type": "Float"
+              },
+              {
+                "column_name": "own_value_b1",
+                "label": "B1 own value",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "own_value_b2",
+                "label": "B2 own value",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "own_value_b3",
+                "label": "B3 own value",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "own_value_b4",
+                "label": "B4 own value",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "own_value_b5",
+                "label": "B5 own value",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "own_value_b6",
+                "label": "B6 own value",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "adds_value_b1",
+                "label": "B1 adds",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "adds_value_b2",
+                "label": "B2 adds",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "adds_value_b3",
+                "label": "B3 adds",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "adds_value_b4",
+                "label": "B4 adds",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "adds_value_b5",
+                "label": "B5 adds",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "adds_value_b6",
+                "label": "B6 adds",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "seasonal_factor",
+                "label": "Seasonal step",
+                "column_type": "Float"
+              },
+              {
+                "column_name": "growth_factor",
+                "label": "Growth",
+                "column_type": "Float"
+              },
+              {
+                "column_name": "from_recent_selling",
+                "label": "From recent selling",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "december_step_on_top",
+                "label": "Step on top",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "from_last_year",
+                "label": "From last year × growth",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "adjustments",
+                "label": "Adjustments",
+                "column_type": "Currency"
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.sales_reference",
+            "label": "Sales Reference",
+            "module": "Forecasting",
+            "description": "What a line sold in the windows the screens compare with (last 28 days, the same days last year, last December, last 91 days and the same days last year), before tax. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "columns": [
+              {
+                "column_name": "store_code",
+                "label": "Store code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "window_name",
+                "label": "Window",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "date_from",
+                "label": "From",
+                "column_type": "Date"
+              },
+              {
+                "column_name": "date_to",
+                "label": "To",
+                "column_type": "Date"
+              },
+              {
+                "column_name": "sales_value_before_tax",
+                "label": "Sales (before tax)",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "sales_qty",
+                "label": "Quantity",
+                "column_type": "Float"
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.annual_plan_line",
+            "label": "Annual Plan Line",
+            "module": "Forecasting",
+            "description": "The annual plan (AOP, revision 1) for a line's month, before tax. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "columns": [
+              {
+                "column_name": "store_code",
+                "label": "Store code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "calendar_year",
+                "label": "Year",
+                "column_type": "Int"
+              },
+              {
+                "column_name": "calendar_month",
+                "label": "Month",
+                "column_type": "Int"
+              },
+              {
+                "column_name": "revision_id",
+                "label": "Revision",
+                "column_type": "Int"
+              },
+              {
+                "column_name": "plan_value_before_tax",
+                "label": "Plan (before tax)",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "plan_qty",
+                "label": "Plan quantity",
+                "column_type": "Float"
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.other_model_line",
+            "label": "Other Model Line",
+            "module": "Forecasting",
+            "description": "Another model's forecast for a line's month (XGBoost, LightGBM), read beside Feather Forecast. A stand-in until those models land as Runs. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+            "columns": [
+              {
+                "column_name": "model",
+                "label": "Model",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store code",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "month_from",
+                "label": "Month",
+                "column_type": "Date"
+              },
+              {
+                "column_name": "forecast_value_before_tax",
+                "label": "Forecast (before tax)",
+                "column_type": "Currency"
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.change_reason",
+            "label": "Change Reason",
+            "module": "Forecasting",
+            "description": "Why a forecast change is asked for: the closed list a Team Leader or Store Manager picks from.",
+            "columns": [
+              {
+                "column_name": "reason_code",
+                "label": "Code",
+                "column_type": "Data",
+                "reqd": true,
+                "unique": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "label",
+                "label": "Reason",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "applies_to",
+                "label": "Applies to",
+                "column_type": "Choice",
+                "choices": "both\nmonth\nday"
+              },
+              {
+                "column_name": "sort_order",
+                "label": "Order",
+                "column_type": "Int"
+              }
+            ],
+            "title_column": "label"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecast_change_reason",
+            "label": "Forecast Change Reason",
+            "module": "Forecasting",
+            "description": "One reason given for a forecast change.",
+            "columns": [
+              {
+                "column_name": "reason_code",
+                "label": "Reason",
+                "column_type": "Reference",
+                "reference_table": "forecasting.change_reason",
+                "reqd": true,
+                "in_list_view": true
+              }
+            ],
+            "kind": "sub_table"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecast_change",
+            "label": "Forecast Change",
+            "module": "Forecasting",
+            "description": "A change someone asked for on a line's forecast: the whole month or one day, by a percent or to a value, with why. Immutable once sent; a revision is a new row that replaces it.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "change_scope",
+                "label": "Scope",
+                "column_type": "Choice",
+                "choices": "month\nday",
+                "reqd": true
+              },
+              {
+                "column_name": "forecast_date",
+                "label": "Day",
+                "column_type": "Date"
+              },
+              {
+                "column_name": "change_method",
+                "label": "Method",
+                "column_type": "Choice",
+                "choices": "percent\nset_value",
+                "reqd": true
+              },
+              {
+                "column_name": "change_percent",
+                "label": "Percent",
+                "column_type": "Float"
+              },
+              {
+                "column_name": "set_value_before_tax",
+                "label": "Value asked for (before tax)",
+                "column_type": "Currency"
+              },
+              {
+                "column_name": "engine_value_before_tax",
+                "label": "Feather Forecast (before tax)",
+                "column_type": "Currency",
+                "read_only": true
+              },
+              {
+                "column_name": "engine_qty",
+                "label": "Feather Forecast quantity",
+                "column_type": "Float",
+                "read_only": true
+              },
+              {
+                "column_name": "changed_value_before_tax",
+                "label": "Changed value (before tax)",
+                "column_type": "Currency",
+                "read_only": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "changed_qty",
+                "label": "Changed quantity",
+                "column_type": "Float",
+                "read_only": true
+              },
+              {
+                "column_name": "explanation",
+                "label": "Explanation",
+                "column_type": "Text",
+                "reqd": true
+              },
+              {
+                "column_name": "reasons",
+                "label": "Reasons",
+                "column_type": "Sub-table",
+                "row_table": "forecasting.forecast_change_reason"
+              },
+              {
+                "column_name": "replaces_change",
+                "label": "Replaces",
+                "column_type": "Reference",
+                "reference_table": "forecasting.forecast_change"
+              },
+              {
+                "column_name": "change_batch",
+                "label": "Batch",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "change_status",
+                "label": "Status",
+                "column_type": "Choice",
+                "choices": "draft\nsent\napproved\nrejected\nreplaced\nwithdrawn",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "proposed_by",
+                "label": "Proposed by",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "proposed_by_role",
+                "label": "Proposed as",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "decided_by",
+                "label": "Decided by",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "decided_at",
+                "label": "Decided at",
+                "column_type": "Datetime"
+              },
+              {
+                "column_name": "decision_note",
+                "label": "Decision note",
+                "column_type": "Text"
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecast_line_review",
+            "label": "Forecast Line Review",
+            "module": "Forecasting",
+            "description": "One person's answer on one line of a Run: accepted, or a change proposed. A later answer replaces the earlier one.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "reviewer",
+                "label": "Reviewer",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "reviewer_role",
+                "label": "Reviewer role",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "answer",
+                "label": "Answer",
+                "column_type": "Choice",
+                "choices": "accepted\nchange_proposed",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "forecast_change",
+                "label": "Change",
+                "column_type": "Reference",
+                "reference_table": "forecasting.forecast_change"
+              }
+            ],
+            "title_column": "subcategory_name"
+          }
+        },
+        {
+          "kind": "addTable",
+          "table": {
+            "name": "forecasting.forecast_question",
+            "label": "Forecast Question",
+            "module": "Forecasting",
+            "description": "A question asked on a line, pinned to its place. Anyone in the Forecast Creator or Forecast Reviewer role answers it in a Comment; the asker is told on the screen.",
+            "columns": [
+              {
+                "column_name": "run_id",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "store_code",
+                "label": "Store code",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "division_name",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision_name",
+                "label": "Subdivision",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category_name",
+                "label": "Category",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "subcategory_name",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "forecast_date",
+                "label": "Day",
+                "column_type": "Date"
+              },
+              {
+                "column_name": "about",
+                "label": "About",
+                "column_type": "Choice",
+                "choices": "line\nfrom_recent_selling\ndecember_step\nfrom_last_year\nadjustments\nchecks\nother_models"
+              },
+              {
+                "column_name": "question_text",
+                "label": "Question",
+                "column_type": "Text",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "asked_by",
+                "label": "Asked by",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "question_status",
+                "label": "Status",
+                "column_type": "Choice",
+                "choices": "open\nanswered\nclosed",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "answered_by",
+                "label": "Answered by",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "answered_by_role",
+                "label": "Answered as",
+                "column_type": "Choice",
+                "choices": "Forecast Creator\nForecast Reviewer"
+              },
+              {
+                "column_name": "answered_at",
+                "label": "Answered at",
+                "column_type": "Datetime"
+              },
+              {
+                "column_name": "answer_seen_at",
+                "label": "Asker saw the answer at",
+                "column_type": "Datetime"
+              }
+            ],
+            "title_column": "question_text"
+          }
+        }
+      ]
     }
   ],
   "tables": [
@@ -1310,6 +2107,766 @@
           "column_type": "Data"
         }
       ]
+    },
+    {
+      "name": "forecasting.forecast_run",
+      "label": "Forecast Run",
+      "module": "Forecasting",
+      "description": "One run of Feather Forecast for a month and region; the screens read the official one. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "model",
+          "label": "Model",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "purpose",
+          "label": "Purpose",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "status",
+          "label": "Status",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "origin_date",
+          "label": "Origin date",
+          "column_type": "Date",
+          "in_list_view": true
+        },
+        {
+          "column_name": "horizon_from",
+          "label": "Horizon from",
+          "column_type": "Date",
+          "reqd": true
+        },
+        {
+          "column_name": "horizon_to",
+          "label": "Horizon to",
+          "column_type": "Date",
+          "reqd": true
+        }
+      ],
+      "title_column": "run_id"
+    },
+    {
+      "name": "forecasting.forecast_line_month",
+      "label": "Forecast Line Month",
+      "module": "Forecasting",
+      "description": "One line (run × store × subcategory) for the month: Feather Forecast, its six bases and four parts, the growth and the seasonal step. The one table the review screens list from; built by the copy job from the daily forecast and its explanation. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store_name",
+          "label": "Store",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "section_name",
+          "label": "Section",
+          "column_type": "Data",
+          "in_list_view": true
+        },
+        {
+          "column_name": "forecast_value_before_tax",
+          "label": "Feather Forecast (before tax)",
+          "column_type": "Currency",
+          "in_list_view": true
+        },
+        {
+          "column_name": "forecast_qty",
+          "label": "Feather Forecast quantity",
+          "column_type": "Float"
+        },
+        {
+          "column_name": "own_value_b1",
+          "label": "B1 own value",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "own_value_b2",
+          "label": "B2 own value",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "own_value_b3",
+          "label": "B3 own value",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "own_value_b4",
+          "label": "B4 own value",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "own_value_b5",
+          "label": "B5 own value",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "own_value_b6",
+          "label": "B6 own value",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "adds_value_b1",
+          "label": "B1 adds",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "adds_value_b2",
+          "label": "B2 adds",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "adds_value_b3",
+          "label": "B3 adds",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "adds_value_b4",
+          "label": "B4 adds",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "adds_value_b5",
+          "label": "B5 adds",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "adds_value_b6",
+          "label": "B6 adds",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "seasonal_factor",
+          "label": "Seasonal step",
+          "column_type": "Float"
+        },
+        {
+          "column_name": "growth_factor",
+          "label": "Growth",
+          "column_type": "Float"
+        },
+        {
+          "column_name": "from_recent_selling",
+          "label": "From recent selling",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "december_step_on_top",
+          "label": "Step on top",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "from_last_year",
+          "label": "From last year × growth",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "adjustments",
+          "label": "Adjustments",
+          "column_type": "Currency"
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.sales_reference",
+      "label": "Sales Reference",
+      "module": "Forecasting",
+      "description": "What a line sold in the windows the screens compare with (last 28 days, the same days last year, last December, last 91 days and the same days last year), before tax. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "columns": [
+        {
+          "column_name": "store_code",
+          "label": "Store code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "window_name",
+          "label": "Window",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "date_from",
+          "label": "From",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "date_to",
+          "label": "To",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "sales_value_before_tax",
+          "label": "Sales (before tax)",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "sales_qty",
+          "label": "Quantity",
+          "column_type": "Float"
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.annual_plan_line",
+      "label": "Annual Plan Line",
+      "module": "Forecasting",
+      "description": "The annual plan (AOP, revision 1) for a line's month, before tax. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "columns": [
+        {
+          "column_name": "store_code",
+          "label": "Store code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "calendar_year",
+          "label": "Year",
+          "column_type": "Int"
+        },
+        {
+          "column_name": "calendar_month",
+          "label": "Month",
+          "column_type": "Int"
+        },
+        {
+          "column_name": "revision_id",
+          "label": "Revision",
+          "column_type": "Int"
+        },
+        {
+          "column_name": "plan_value_before_tax",
+          "label": "Plan (before tax)",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "plan_qty",
+          "label": "Plan quantity",
+          "column_type": "Float"
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.other_model_line",
+      "label": "Other Model Line",
+      "module": "Forecasting",
+      "description": "Another model's forecast for a line's month (XGBoost, LightGBM), read beside Feather Forecast. A stand-in until those models land as Runs. Copied from the warehouse as-is (same table and column names); people only read it. Until the warehouse copy table lands (#1418) it is filled by the forecast team or, locally, from made-up fixtures.",
+      "columns": [
+        {
+          "column_name": "model",
+          "label": "Model",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store code",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "month_from",
+          "label": "Month",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "forecast_value_before_tax",
+          "label": "Forecast (before tax)",
+          "column_type": "Currency"
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.change_reason",
+      "label": "Change Reason",
+      "module": "Forecasting",
+      "description": "Why a forecast change is asked for: the closed list a Team Leader or Store Manager picks from.",
+      "columns": [
+        {
+          "column_name": "reason_code",
+          "label": "Code",
+          "column_type": "Data",
+          "reqd": true,
+          "unique": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "label",
+          "label": "Reason",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "applies_to",
+          "label": "Applies to",
+          "column_type": "Choice",
+          "choices": "both\nmonth\nday"
+        },
+        {
+          "column_name": "sort_order",
+          "label": "Order",
+          "column_type": "Int"
+        }
+      ],
+      "title_column": "label"
+    },
+    {
+      "name": "forecasting.forecast_change_reason",
+      "label": "Forecast Change Reason",
+      "module": "Forecasting",
+      "description": "One reason given for a forecast change.",
+      "columns": [
+        {
+          "column_name": "reason_code",
+          "label": "Reason",
+          "column_type": "Reference",
+          "reference_table": "forecasting.change_reason",
+          "reqd": true,
+          "in_list_view": true
+        }
+      ],
+      "kind": "sub_table"
+    },
+    {
+      "name": "forecasting.forecast_change",
+      "label": "Forecast Change",
+      "module": "Forecasting",
+      "description": "A change someone asked for on a line's forecast: the whole month or one day, by a percent or to a value, with why. Immutable once sent; a revision is a new row that replaces it.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "change_scope",
+          "label": "Scope",
+          "column_type": "Choice",
+          "choices": "month\nday",
+          "reqd": true
+        },
+        {
+          "column_name": "forecast_date",
+          "label": "Day",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "change_method",
+          "label": "Method",
+          "column_type": "Choice",
+          "choices": "percent\nset_value",
+          "reqd": true
+        },
+        {
+          "column_name": "change_percent",
+          "label": "Percent",
+          "column_type": "Float"
+        },
+        {
+          "column_name": "set_value_before_tax",
+          "label": "Value asked for (before tax)",
+          "column_type": "Currency"
+        },
+        {
+          "column_name": "engine_value_before_tax",
+          "label": "Feather Forecast (before tax)",
+          "column_type": "Currency",
+          "read_only": true
+        },
+        {
+          "column_name": "engine_qty",
+          "label": "Feather Forecast quantity",
+          "column_type": "Float",
+          "read_only": true
+        },
+        {
+          "column_name": "changed_value_before_tax",
+          "label": "Changed value (before tax)",
+          "column_type": "Currency",
+          "read_only": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "changed_qty",
+          "label": "Changed quantity",
+          "column_type": "Float",
+          "read_only": true
+        },
+        {
+          "column_name": "explanation",
+          "label": "Explanation",
+          "column_type": "Text",
+          "reqd": true
+        },
+        {
+          "column_name": "reasons",
+          "label": "Reasons",
+          "column_type": "Sub-table",
+          "row_table": "forecasting.forecast_change_reason"
+        },
+        {
+          "column_name": "replaces_change",
+          "label": "Replaces",
+          "column_type": "Reference",
+          "reference_table": "forecasting.forecast_change"
+        },
+        {
+          "column_name": "change_batch",
+          "label": "Batch",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "change_status",
+          "label": "Status",
+          "column_type": "Choice",
+          "choices": "draft\nsent\napproved\nrejected\nreplaced\nwithdrawn",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "proposed_by",
+          "label": "Proposed by",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "proposed_by_role",
+          "label": "Proposed as",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "decided_by",
+          "label": "Decided by",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "decided_at",
+          "label": "Decided at",
+          "column_type": "Datetime"
+        },
+        {
+          "column_name": "decision_note",
+          "label": "Decision note",
+          "column_type": "Text"
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.forecast_line_review",
+      "label": "Forecast Line Review",
+      "module": "Forecasting",
+      "description": "One person's answer on one line of a Run: accepted, or a change proposed. A later answer replaces the earlier one.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "reviewer",
+          "label": "Reviewer",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "reviewer_role",
+          "label": "Reviewer role",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "answer",
+          "label": "Answer",
+          "column_type": "Choice",
+          "choices": "accepted\nchange_proposed",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "forecast_change",
+          "label": "Change",
+          "column_type": "Reference",
+          "reference_table": "forecasting.forecast_change"
+        }
+      ],
+      "title_column": "subcategory_name"
+    },
+    {
+      "name": "forecasting.forecast_question",
+      "label": "Forecast Question",
+      "module": "Forecasting",
+      "description": "A question asked on a line, pinned to its place. Anyone in the Forecast Creator or Forecast Reviewer role answers it in a Comment; the asker is told on the screen.",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "label": "Run",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "store_code",
+          "label": "Store code",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "division_name",
+          "label": "Division",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "subdivision_name",
+          "label": "Subdivision",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "category_name",
+          "label": "Category",
+          "column_type": "Data",
+          "reqd": true
+        },
+        {
+          "column_name": "subcategory_name",
+          "label": "Subcategory",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "forecast_date",
+          "label": "Day",
+          "column_type": "Date"
+        },
+        {
+          "column_name": "about",
+          "label": "About",
+          "column_type": "Choice",
+          "choices": "line\nfrom_recent_selling\ndecember_step\nfrom_last_year\nadjustments\nchecks\nother_models"
+        },
+        {
+          "column_name": "question_text",
+          "label": "Question",
+          "column_type": "Text",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "asked_by",
+          "label": "Asked by",
+          "column_type": "Data",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "question_status",
+          "label": "Status",
+          "column_type": "Choice",
+          "choices": "open\nanswered\nclosed",
+          "reqd": true,
+          "in_list_view": true
+        },
+        {
+          "column_name": "answered_by",
+          "label": "Answered by",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "answered_by_role",
+          "label": "Answered as",
+          "column_type": "Choice",
+          "choices": "Forecast Creator\nForecast Reviewer"
+        },
+        {
+          "column_name": "answered_at",
+          "label": "Answered at",
+          "column_type": "Datetime"
+        },
+        {
+          "column_name": "answer_seen_at",
+          "label": "Asker saw the answer at",
+          "column_type": "Datetime"
+        }
+      ],
+      "title_column": "question_text"
     }
   ],
   "permissions": [
@@ -1375,9 +2932,75 @@
       "can_read": true,
       "can_write": true,
       "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_run",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.forecast_line_month",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.sales_reference",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.annual_plan_line",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.other_model_line",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.change_reason",
+      "role": "All",
+      "can_read": true
+    },
+    {
+      "table": "forecasting.forecast_change",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_line_review",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_question",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "forecasting.forecast_change_reason",
+      "role": "All",
+      "can_read": true,
+      "can_write": true,
+      "can_create": true
+    },
+    {
+      "table": "Comment",
+      "role": "All",
+      "can_read": true,
+      "can_create": true
     }
   ],
   "roles": [
-    "Forecasting Member"
+    "Forecasting Member",
+    "Forecast Creator",
+    "Forecast Reviewer"
   ]
 }
