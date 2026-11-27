@@ -277,7 +277,9 @@ later (Mohammad: everything but MotherDuck already goes through Featherbase):
    The existing front-door checks apply; no credential, no tools. (A "no token, person on the
    mark" version was drafted on 26 Nov as ADR 0028 and rewound before push; its draft is in
    `ask-handover\1e-no-token-rejected\`, not to be used.) View as mixing two people in one answer is left
-   for later (task 1f2). Next: draft 1e for forwarding. Progress is ticked in
+   for later (task 1f2). Next: 1e, type it in from `ask-handover\1e-draft\` (`1e.diff`;
+   checked: both typechecks, `checks\check1e.mts` 13/13, 496 tests in 13 files); then 1e2,
+   the Access Log entry per tool call. Progress is ticked in
    `openspec/changes/feather-ask-agent/tasks.md`.
    Permissions: propose an adversarial review in one line before it lands.
 2. **The agent loop in Ask**, with the stand-in model: a `think` outbound read (declares
