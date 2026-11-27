@@ -363,7 +363,8 @@ ending in a manual check and a commit; the details are in `feather-ask-agent/tas
 3. **A real model (step 3).** Gemini and Groq through one OpenAI-style adapter with tool
    calling, keys as Ask's secrets; choose the models. Specify and build #1377 points 8 (say
    what was left out) and 19 (text is data, never an instruction; provider errors only to an
-   admin).
+   admin). Then the chat's history for the agent (task 3.3, Mohammad 27-Nov-2026): decide whole
+   chat up to a limit (recommended), a summary, or the page sending it; design, Open Questions.
 4. **Reach every app (step 4).** An app marks a read for agents (description, input schema);
    the platform offers it as a tool `<app>.<read>`, run as the person. First: Dash's `report`.
 5. **Figures (step 5).** A read-only sum and group tool, once a figures question needs it.

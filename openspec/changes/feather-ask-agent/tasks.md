@@ -58,6 +58,9 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
 - [ ] 3.1 One OpenAI-style adapter with tool calling; keys as the app's secrets; choose models.
 - [ ] 3.2 Specify and build #1377 points 8 (say what was left out) and 19 (text is data, never an
       instruction; provider errors only to an admin) as requirements in `specs/feather-ask`.
+- [ ] 3.3 The chat's history reaches the agent: today `think` sees only the question, so a
+      follow-up ("And last month?") has no context. Decide its kind first (design, Open
+      Questions), once the real model works (Mohammad, 27-Nov-2026).
 
 ## 4. Every app's own reads as tools
 
