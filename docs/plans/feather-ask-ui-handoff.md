@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; next: step 2, the agent loop). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; 2.1 committed; next: 2.2). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -258,11 +258,18 @@ Done on the backend (step 1, the platform piece):
   server test `featherbase-mcp.test.ts`: 12 tests over HTTP with `action-proof`'s `tools` and
   `untooled` reads (`dffb84cc1`).
 
-## Next step: step 2, the agent loop in Ask (start with 2.1)
+## Next step: step 2, the agent loop in Ask (2.1 done; next 2.2)
 
 Step 1 (the platform piece) is finished: 1a–1f committed, 1e2 deferred, 1f2 (View as) moved to
-the final step, 1g's adversarial review offered and skipped (Mohammad, 27-Nov-2026). A new
-session starts here.
+the final step, 1g's adversarial review offered and skipped (Mohammad, 27-Nov-2026).
+
+**2.1 is done** (`e71a8d9ab`, typed by Mohammad): `example-apps/ask/src/server/agent.ts` (the
+loop: `Model`, `McpTools`, `answer()`, `MAX_STEPS = 8`), `stand-in.ts` ("chats" and "tickets"
+rules over `query_rows`), `reads.think` in `index.ts` (outbound, `featherbaseMcp`; saves
+nothing), the read in `featherbase.json`. `fb_ask_ui` was recreated for the manifest change
+(27-Nov-2026), with two test tickets. Checks: `checks\check2.1-think-ui.cjs` (8, HTTP on 5177),
+`2.1-draft\check-agent.mts` (4, the loop with fake tools), `ask-app.test.ts` (6).
+**Next: 2.2**, the `ask` action saves the answer `think` gave instead of the placeholder.
 
 **Already begun, uncommitted (found 27-Nov-2026, not written by the step 1 session):** the
 worktree holds 2.1 work: Ask's manifest gains the `think` read (`outbound`, `featherbaseMcp`),
@@ -298,12 +305,9 @@ page ─▶ think (outbound read, featherbaseMcp) ─▶ loop: model picks a too
 
 **Before changing Ask's manifest, ask Mohammad:** Ask stays at 0.1.0, so a manifest change means
 recreating `fb_ask_ui` and losing its test chats (or use the throwaway `fb_ask_b1`, below).
+2.2b adds a column to `ask.question`, so it is such a change.
 
-**Starting draft:** `ask-handover\S1-draft\step2-ask\`: `agent.ts` (`Model`, `Data`, `answer()`,
-`MAX_STEPS = 8`), `stand-in.ts` ("chats" and "tickets" rules over `query_rows`), `data.ts`,
-`index.ts`, `featherbase.json`. It was written as one action and with the old names: move the
-loop into the `think` read and rename `ctx.featherbase` → `ctx.featherbaseMcp`,
-`FeatherbaseTool…` → `FeatherbaseMcpTool…`. Types are in `packages/shared` (1a).
+Drafts for step 2 go in `ask-handover\2.2-draft\` and so on; 2.1's is `ask-handover\2.1-draft\`.
 
 **Platform pieces step 2 relies on** (all committed): the manifest flag (1b, refused without
 `outbound`), `ctx.featherbaseMcp` on such a read (1d), the caller's own credential on every tool
@@ -378,8 +382,10 @@ Drafts and checks (outside the repo, `C:\Users\DELL\Documents\work\ask-handover\
   refused"). `checkB2-ask-b1.cjs` is the same against the throwaway instance.
 - Throwaway instance for checks that change Ask's manifest: database `fb_ask_b1`, ports
   8078/5178, Ask and Tickets installed (start with `DATABASE_URL`, `API_PORT`, `WEB_PORT`
-  set in the environment; it overrides `.env.local`). Ask's manifest gains a flag in step 2,
-  and at 0.1.0 that means recreating `fb_ask_ui` and losing its test chats: ask Mohammad first.
+  and `FEATHERBASE_APP_PATHS` set in the environment; it overrides `.env.local`). The platform
+  also loads the checkout's own Ask for an installed app, so a drafted Ask with the same
+  version clashes ("Duplicate different artifacts"): give the check copy (`2.1-check\ask`)
+  another version, 0.1.1, and send `ask@0.1.1`.
 
 ## Frontend, later (after the backend)
 
