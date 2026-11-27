@@ -531,8 +531,8 @@ export const reads = {
     const filters = diveFilters(report, placesOf(ctx), { store, month, periodEnd: period.period_end, appOrigin: null })
     if ('refused' in filters) {
       logRefusal(ctx, report.report_key, filters.refused)
-      // A store that isn't theirs gets the page's no-access answer; #1423: each other refusal says why.
-      return { state: filters.refused === 'not_your_store' ? 'no_access' : filters.refused }
+      // #1423: the refusal as it is; the page shows a store that isn't theirs its no-access answer.
+      return { state: filters.refused }
     }
     // #1159: the page draws no heading over a Dive with its own pickers.
     const marked = report.pickers_in_dive ? { pickers_in_dive: true } : {}

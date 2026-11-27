@@ -702,6 +702,17 @@ describe('the embed_session read', () => {
       expect(warn.mock.calls.map(c => JSON.parse(String(c[0])).reason)).toEqual([(refusal as { refused: string }).refused])
     })
 
+    it('logs the report asked for when it does not exist, through report_open and embed_open (#1423)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { ctx } = context({ payload: { report: 'nope' } })
+      expect(await reads.report_open(ctx)).toEqual({ state: 'no_access' })
+      const prepared = await reads.embed_open.prepare(ctx)
+      expect(await reads.embed_open({ ...ctx, prepared })).toEqual({ refused: 'no_access' })
+      expect(warn.mock.calls.map(c => JSON.parse(String(c[0])))).toEqual([
+        { event: 'dash_report_refused', person: 'psn_103', report: 'nope', reason: 'no_access' },
+        { event: 'dash_report_refused', person: 'psn_103', report: 'nope', reason: 'no_access' }])
+    })
+
     it('logs a refused report taking no filter, opened through embed_open (#1423)', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const { ctx } = context({ payload: { report: 'sales', store: '9901' } })
