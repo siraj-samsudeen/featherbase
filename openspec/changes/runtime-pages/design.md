@@ -41,11 +41,11 @@ Rejected: **one server call that returns the page with its data.** It is one rou
 
 Rejected: **granting read on `Page` to everyone.** A grant cannot say "published rows only" without a row-level rule, and a draft's definition would then be readable through the generic API by anyone who guessed its name.
 
-### D5. Edits live in the page's own copy of the rows until an action saves them
+### D5. What a person types is kept apart from the rows the page read
 
-An `Input` bound to a row's value changes the page's copy of that row, as A2UI's two-way binding does. A button's `save_row` then sends the values it names. After a save the source is read again.
+Everything a page shows (a column's value, a group's total, a link's label) reads the rows as the server last gave them. What a person types into an `Input` is held in an overlay of its own, which only a bound setting and an action's context read. A button's `save_row` sends the values it names; after any save attempt, refused or not, the sources are read again and a saved row's typed value is cleared.
 
-Rejected: **one draft value per control, kept in page state.** Every row of a table would share one draft, or the page would need a state key per row.
+Rejected: **one copy of the rows that inputs write into**, which is A2UI's two-way binding read literally and what was first built. The UI verifier showed its cost: a typed or refused value fed the group's total, and a row could not be saved again after a refusal because the page still held the old version. **One draft value per control in page state**: every row of a table would share one draft.
 
 ## Risks / Trade-offs
 

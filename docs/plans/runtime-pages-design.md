@@ -299,7 +299,7 @@ Published) and `description`. One more column, `definition`, holds the JSON belo
         { "id": "suggested", "header": "Suggested", "align": "end", "format": "number", "total": "sum",
           "value": { "@call": "choose", "args": { "key": { "@path": "/state/measure" },
             "from": { "value": { "@path": "suggested_value" }, "quantity": { "@path": "suggested_qty" } } } } },
-        { "id": "planned", "header": "Planned", "format": "number", "total": "sum",
+        { "id": "planned", "header": "Planned Qty", "format": "number", "total": "sum",
           "value": { "@path": "planned_qty" }, "cell": "plan_cell" }
       ] },
 
@@ -329,8 +329,10 @@ How to read it:
   read from the top; one that does not (`"sold_qty"`) is read from the row being drawn.
 - **The toggle writes** to `/state/measure`, and every part that reads it follows. State also
   lives in the address (`?measure=value`), so a link opens the page the way it was left.
-- **The input writes** to the row's own copy of `planned_qty` on the page. Nothing reaches the
-  server until a button fires `save_row`.
+- **The input writes** only to what the person has typed, which the page keeps apart from the
+  rows it read. Everything a page shows (a column's value, a group's total) reads the rows as the
+  server last gave them; only a box, a toggle and an action read what was typed. Nothing reaches
+  the server until a button fires `save_row`, and after any save attempt the rows are read again.
 - **`choose`** is a named function: it picks one of `from` by `key`. There is no arithmetic. The
   group rows' totals are added up by the `Table` part (`"total": "sum"`).
 
@@ -444,6 +446,10 @@ one transaction); read-only pages first (the screen that drifted was an accept-o
   built on the grouping Featherbase already has (a Table's module and its Home page).
 - **Draft and Published**, on the page as a whole. A draft is seen only by people who may build.
   A published page is seen by anyone signed in. Data stays protected by each Table's grants.
+  Found while building: the Admin shell itself opens only for someone with a grant of their own
+  on some Table, so a person with no grant at all cannot reach a published page, although the
+  server would answer it. Whether a page should count as a reason to enter the Admin is a
+  question for the owner (section 11).
 - **Who may save and publish:** people who may build Tables today (System Managers).
 
 Why not the full app first: an app with its own address runs through the most guarded code in
@@ -703,6 +709,10 @@ and proof (a) is ready to be made real.
    guarantee that every page looks like Featherbase.
 3. **Decisions 3 to 10** were taken while the owner was away. Each stands unless he changes it.
 4. **ADR 0028** is Proposed. Accepting it is his.
-5. **A code review of the server side** is proposed, one round by a different model, because one
+5. **Who may reach a published page?** Today, anyone who can use the Admin, which means anyone
+   with a grant of their own on some Table. A person with no grant at all is stopped by the shell
+   before the page. Leaving it so is the cautious choice; letting a published page open the Admin
+   changes who can get in, so it is his call.
+6. **A code review of the server side** is proposed, one round by a different model, because one
    route decides who may open a page.
-6. **The pull request** is a draft. Merging it is his.
+7. **The pull request** is a draft. Merging it is his.

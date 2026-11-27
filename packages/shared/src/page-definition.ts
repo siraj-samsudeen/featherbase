@@ -583,7 +583,8 @@ export const PAGE_EXAMPLE: PageDefinition = {
         { id: 'sold', header: 'Sold', align: 'end', format: 'number', total: 'sum', value: { '@call': 'choose', args: { key: { '@path': '/state/measure' }, from: { value: { '@path': 'sold_value' }, quantity: { '@path': 'sold_qty' } } } } },
         { id: 'returned', header: 'Returned', align: 'end', format: 'number', total: 'sum', value: { '@call': 'choose', args: { key: { '@path': '/state/measure' }, from: { value: { '@path': 'returned_value' }, quantity: { '@path': 'returned_qty' } } } } },
         { id: 'suggested', header: 'Suggested', align: 'end', format: 'number', total: 'sum', value: { '@call': 'choose', args: { key: { '@path': '/state/measure' }, from: { value: { '@path': 'suggested_value' }, quantity: { '@path': 'suggested_qty' } } } } },
-        { id: 'planned', header: 'Planned', format: 'number', total: 'sum', value: { '@path': 'planned_qty' }, cell: 'plan_cell' },
+        // Planned is always a quantity, whatever the toggle says, so its heading says so.
+        { id: 'planned', header: 'Planned Qty', format: 'number', total: 'sum', value: { '@path': 'planned_qty' }, cell: 'plan_cell' },
       ],
     },
     { id: 'item_link', component: 'RecordLink', table: 'Reorder Line', row: { '@path': 'row_id' }, label: { '@path': 'item' } },

@@ -33,7 +33,8 @@
 
 ## 6. Checks
 
-- [ ] 6.1 Both typechecks; the shared, server and web suites with coverage; `pnpm check:scenarios`, `pnpm check:specs`, `pnpm check:vocabulary`, `pnpm check:sensitive`, `pnpm check:platform-imports`
+- [x] 6.1 Both typechecks; the shared, server and web suites with coverage; `pnpm check:scenarios`, `pnpm check:specs`, `pnpm check:vocabulary`, `pnpm check:sensitive`, `pnpm check:platform-imports`
 - [x] 6.2 Through the running server: an agent's tool calls make a Table, load rows, save the worked example's page and read it back
-- [ ] 6.3 Independent verifier at 1280 px against #1410's points 10 to 26 and the worked example's mock-up
+- [x] 6.3 Independent verifier at 1280 px against #1410's points 10 to 26 and the worked example's mock-up
 - [x] 6.4 `openspec validate runtime-pages --type change --strict`
+- [ ] 6.5 The owner has looked at the running page and settled the open decisions; then sync the spec and archive this change, as the branch's last commit before it merges
