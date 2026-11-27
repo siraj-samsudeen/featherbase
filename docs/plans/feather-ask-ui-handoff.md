@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 26-Nov-2026 (backend 1a to 1d committed; ADR 0028; next: 1e, no token). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1d committed; ADR 0028, the caller's own credential; next: 1e). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -271,11 +271,13 @@ later (Mohammad: everything but MotherDuck already goes through Featherbase):
    to an outbound read that declares the flag, closed when the handler ends; the pass is
    labelled by the app's title ("Ask", so history reads "via Ask"), else its name: done
    (commit 2db345742; `checks\check1d.mts`, 8 checks, fails without 1d; 38 existing tests).
-   **No token** (Mohammad, 26-Nov-2026, ADR 0028, replacing the pass and the planned sweep):
-   the inner request carries the person on the `runAsAgent` mark (`who: { person, since }`),
-   and the `/api` front door checks them afresh on every call (`resolveInMemoryCaller` in
-   `auth.ts`). Next: 1e, type it in from `ask-handover\1e-draft\` (`1e.diff`; checked: both
-   typechecks, `checks\check1e.mts` 10/10, 312 tests in 10 files). Progress is ticked in
+   **The caller's own credential** (Mohammad, 27-Nov-2026, ADR 0028, replacing the pass and the
+   planned sweep): the read passes down `authCredential(c)` from `app-routes.ts` to
+   `featherbaseMcp`, which sends it as the Bearer header on every tool call inside `runAsAgent`.
+   The existing front-door checks apply; no credential, no tools. (A "no token, person on the
+   mark" version was drafted on 26 Nov as ADR 0028 and rewound before push; its draft is in
+   `ask-handover\1e-draft\`, not to be used.) View as mixing two people in one answer is left
+   for later (task 1f2). Next: draft 1e for forwarding. Progress is ticked in
    `openspec/changes/feather-ask-agent/tasks.md`.
    Permissions: propose an adversarial review in one line before it lands.
 2. **The agent loop in Ask**, with the stand-in model: a `think` outbound read (declares
