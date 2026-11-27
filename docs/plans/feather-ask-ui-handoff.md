@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1d committed; ADR 0028; next: 1e, from `ask-handover\1e-draft\WALKTHROUGH.md`). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; next: 1e2, the Access Log entry per tool call). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -250,18 +250,17 @@ Done on the backend (step 1, the platform piece):
 - 1a the shared types (`87f4552ea`), 1b the manifest flag `featherbaseMcp`, refused without
   `outbound` (`b27055fbe`), 1c the in-memory tools in `mcp-app-reads.ts` (`4900bc34a`, with a
   pass that 1e removes), 1d `executeRuntimeRead` hands `ctx.featherbaseMcp` to a read that
-  declares the flag (`2db345742`).
+  declares the flag (`2db345742`), 1e the tools carry the caller's own credential in a
+  `Credential` that never prints itself (`caller-credential.ts`, `def132bfd`; checked: both
+  typechecks, `checks\check1e.mts` 14/14, 496 tests in 13 files, platform imports).
 
-## Next step: 1e, the tools carry the caller's own credential
+## Next step: 1e2, the Access Log entry per tool call
 
-Mohammad types it in from **`ask-handover\1e-draft\WALKTHROUGH.md`**: what it adds, the code for
-each of the five files in order (a new `caller-credential.ts` with the `Credential` wrapper that
-never prints itself; `app-routes.ts`; `runtime-packages.ts`; `runtime-actions.ts`;
-`mcp-app-reads.ts` losing the pass), the manual check with expected output, and the commit
-message. The same folder has `1e.diff` (applies cleanly on `bf5df736d`) and the two whole files.
-Checked by Claude on 27-Nov-2026: both typechecks, `checks\check1e.mts` 14/14, 496 tests in 13
-files (1 skipped by its own setup), `pnpm check:platform-imports`. Then tick 1e in
-`feather-ask-agent/tasks.md` and move this section on to 1e2.
+Each tool call of `featherbaseMcp` writes one Access Log entry (`logAccess`): the person,
+operation `agent_read`, the tool as method, the Table, scope "via <app>"; no rows, no question
+text, never the credential. `featherbaseMcp` takes the person for it. Details in
+`feather-ask-agent/tasks.md` (1e2). Not drafted yet: Claude drafts it in
+`ask-handover\1e2-draft\`, checks it, then gives the walkthrough.
 
 ## The road to done
 
@@ -303,8 +302,7 @@ Later, outside this issue: writes on request with the person's confirmation (#13
 scheduled Ask with nobody signed in, which needs its own agent identity.
 
 Drafts and checks (outside the repo, `C:\Users\DELL\Documents\work\ask-handover\`):
-- `1e-draft\`: **the next step**. `WALKTHROUGH.md`, `1e.diff`, `caller-credential.ts`,
-  `mcp-app-reads.ts`.
+- `1e-draft\`: 1e, now committed (`def132bfd`).
 - `checks\check1e.mts`: 1e's check (14 checks). `checks\check1d.mts` tests 1d as committed
   (with the pass); it fails once 1e is in, since the pass and its rows are gone.
 - `1e-no-token-rejected\`: the rejected "person on the mark" draft and its check. Do not use.
