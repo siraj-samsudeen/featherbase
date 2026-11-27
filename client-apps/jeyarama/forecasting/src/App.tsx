@@ -19,6 +19,7 @@ import { CategoryHeadReview } from './categoryHead/CategoryHeadReview'
 import { RbReview } from './rb/RbReview'
 import type { ChainPageProps } from './shared/chainPage'
 import { RecordPagesProvider } from '@featherbase/shop-floor'
+import { UnassignedPage } from './unassigned/UnassignedPage'
 
 export interface NumberRow {
   row_id: string; month: string; run: string; store: string; section: string; scope_level: 'Store' | 'Division' | 'Category' | 'Subcategory'; scope_name: string; weeks: string | null
@@ -49,6 +50,7 @@ export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => P
 
 const VIEWS = [
   { key: 'section', label: 'My Section', group: 'Forecasts', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z' },
+  { key: 'unassigned', label: 'No Section', group: 'Forecasts', icon: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z' },
   { key: 'store-review', label: 'Store Manager Review', group: 'Forecasts', icon: 'M3 10 12 3l9 7v11H3zM9 21v-7h6v7' },
   { key: 'category-review', label: 'Category Review', group: 'Forecasts', icon: 'M3 3h18v18H3zM3 9h18M9 9v12' },
   { key: 'rb-review', label: 'RB Review', group: 'Forecasts', icon: 'M3 3v18h18M8 17v-4m5 4V9m5 8V6' },
@@ -66,7 +68,7 @@ type View = typeof VIEWS[number]['key']
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
   q.set('view', view)
-  for (const k of ['layout', 'store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice', ...CHART_KEYS]) q.delete(k)
+  for (const k of ['layout', 'store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice', 'tl', ...CHART_KEYS]) q.delete(k)
   for (const [k, v] of Object.entries(extra)) q.set(k, v)
   return `?${q}`
 }
@@ -229,6 +231,10 @@ export function ForecastingApp() {
     }, () => {})
   }, [])
   const viewer = me ?? person(PEOPLE.some(p => p.id === viewerId) ? viewerId : top)
+  // Whoever looks after the app opens any store's section as its Team Leader would see it:
+  // ?view=section&store=<store>&section=<section>&tl=<name> (a loaded Run's sections are not on the made-up chart).
+  const asSection = !me && params.get('section') && params.get('store')
+    ? { name: params.get('tl') || 'Team Leader', role: 'Team Leader', place: `${params.get('store')} · ${params.get('section')}` } : null
   // A Team Leader opens on their own section's review (#1419); everyone else on the Workspace.
   const view = (VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : viewer.role === 'Team Leader' ? 'section' : 'forecasts') as View
   const [month, chooseMonth] = useMonth()
@@ -267,11 +273,13 @@ export function ForecastingApp() {
       <main key={moves} className="fc-page" data-testid={`page-${view}`}>
         {offChart ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
         {/* My Section is the screen as agreed (#1419): no picker bar above it for the person it belongs to. */}
-        {!(view === 'section' && me) && !CHAIN_PAGES[view as ChainView] && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
+        {!((view === 'section' && (me || asSection)) || view === 'unassigned' || CHAIN_PAGES[view as ChainView]) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
             : CHAIN_PAGES[view as ChainView] ? <ChainPage view={view as ChainView} />
-            : view === 'section' ? <SectionPage key={viewer.id} viewer={viewer} href={line => address('section', { line })} />
+            : view === 'unassigned' ? <UnassignedPage store={params.get('store') || viewer.place.split(' · ')[0]} href={line => address('unassigned', { line, ...(params.get('store') ? { store: params.get('store')! } : {}) })} />
+            : view === 'section' ? <SectionPage key={asSection ? asSection.place : viewer.id} viewer={asSection ?? viewer}
+              href={line => address('section', { line, ...(asSection ? { store: params.get('store')!, section: params.get('section')!, ...(params.get('tl') ? { tl: params.get('tl')! } : {}) } : {}) })} />
             : view === 'forecasts' ? (DATASET ? <ReviewMonthPage ctx={ctx} /> : <WorkspacePage ctx={ctx} />)
               : view === 'numbers' ? <NumbersPage ctx={ctx} />
               : view === 'mine' ? <MyNumbersPage key={viewer.id} ctx={ctx} onSeen={() => setSeen(t => t + 1)} />

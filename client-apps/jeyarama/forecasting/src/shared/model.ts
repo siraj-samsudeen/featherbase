@@ -19,6 +19,10 @@ export interface Line {
   division: string; subdivision: string
   /** How many subcategories the row stands for: 1, or more for "Smaller subcategories" (foldSmall). */
   n: number
+  /** Where it sits in the merchandise hierarchy: "Fashion › Girls › Girls Bottom". */
+  path: string
+  /** Its SAP subcategory code (material group), when known. */
+  code?: string
   fc: number; fq: number; growth: number; step: number
   fromRecent: number; lift: number; lyg: number; adj: number; bases: Base[]
   l28: number; l28q: number; ly28: number; ly28q: number; ly: number; lyq: number; n91: number; y91: number
@@ -37,6 +41,8 @@ export interface LineMonthRow {
   division_name?: string; subdivision_name?: string
   /** The store's region and the section's floor (building order), copied beside section_name for the managers' levels. */
   region_name?: string; floor_name?: string; floor_order?: Num
+  /** The subcategory's SAP code, when the copy carries it (0.14.0). */
+  material_group_code?: string | null
   forecast_value_before_tax: Num; forecast_qty: Num; seasonal_factor: Num; growth_factor: Num
   from_recent_selling: Num; december_step_on_top: Num; from_last_year: Num; adjustments: Num
   own_value_b1: Num; own_value_b2: Num; own_value_b3: Num; own_value_b4: Num; own_value_b5: Num; own_value_b6: Num
@@ -74,7 +80,7 @@ export function linesFrom({ lines, sales, plans, others }: CopiedRows, store?: s
     })
     const l28 = v('last_28_days'), l28q = q('last_28_days')
     return {
-      rowId: l.row_id, name: sub, category: l.category_name,
+      rowId: l.row_id, name: sub, category: l.category_name, path: [l.division_name, l.subdivision_name, l.category_name].filter(Boolean).join(' › '), code: l.material_group_code || undefined,
       store: l.store_code, storeName: l.store_name, region: l.region_name ?? '', floor: l.floor_name ?? '', floorOrder: n(l.floor_order), section: l.section_name,
       division: l.division_name ?? '', subdivision: l.subdivision_name ?? '', n: 1,
       fc: n(l.forecast_value_before_tax), fq: n(l.forecast_qty), growth: Math.round(n(l.growth_factor) * 100) / 100, step: Math.round(n(l.seasonal_factor) * 100) / 100,
@@ -110,7 +116,7 @@ export function combine(members: Line[], index: number, name?: string): Group {
   }
   // the place the members share; where they differ (a region's total over many stores) the first member's
   const place = Object.fromEntries(PLACE.map(k => [k, ms[0]?.[k] ?? ''])) as Pick<Line, typeof PLACE[number]>
-  return { ...sum, ...place, index, members: ms, name: name ?? shortNames(ms.map(m => m.name)).join(' + '), category: ms[0]?.category ?? '',
+  return { ...sum, ...place, index, members: ms, name: name ?? shortNames(ms.map(m => m.name)).join(' + '), category: ms[0]?.category ?? '', path: ms[0]?.path ?? '',
     growth: Math.round(sum.n91 / sum.y91 * 100) / 100, step: null, bases: [...byCode.values()] }
 }
 

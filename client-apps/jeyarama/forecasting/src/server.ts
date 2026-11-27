@@ -214,6 +214,9 @@ function reviews(p: Who, line: Row) {
   return false
 }
 async function reviewer(ctx: Context, named: unknown, line: Row): Promise<Who> {
+  // An administrator acts for a section's Team Leader by name (the app's "view a section as its Team Leader"),
+  // whether or not that person is on the forecasting org chart.
+  if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: 'Team Leader', reportsTo: null, area: `${String(line.store_name)} · ${String(line.section_name)}` }
   const p = await actor(ctx, await orgOf(ctx), named)
   if (!isAdmin(ctx) && !reviews(p, line)) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_name)} · ${String(line.subcategory_name)} is outside it`)
   return p
@@ -301,8 +304,18 @@ async function prepareQuestion(ctx: Context) {
   if (moved.length) ctx.reject('The asker only marks the answer seen')
 }
 
+/** The read-only copy of the warehouse's Run (data model: people never change it; a change is a forecast_change).
+ *  Rows come in only by the copy (an administrator's load; the bulk load writes the table directly), and are never
+ *  edited, by anyone. #1418 makes the Admin itself hide New, Save and Delete for such a table. */
+function copiedFromWarehouse(ctx: Context) {
+  if (!ctx.isNew) ctx.reject('This is a copy of the official Run from the warehouse; it is read only. Ask for a change with a forecast change instead.')
+  if (!isAdmin(ctx)) ctx.reject('Only the copy of the official Run adds rows here')
+}
+const COPIES = ['forecast_run', 'forecast_line_month', 'sales_reference', 'annual_plan_line', 'other_model_line']
+
 export const platformVersion = '2026-10'
 export const validators = { 'forecasting.number': prepareNumber, 'forecasting.decision': prepareDecision, 'forecasting.explanation': prepareExplanation,
-  'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion }
+  'forecasting.forecast_change': prepareChange, 'forecasting.forecast_line_review': prepareLineReview, 'forecasting.forecast_question': prepareQuestion,
+  ...Object.fromEntries(COPIES.map(t => [`forecasting.${t}`, copiedFromWarehouse])) }
 export const actions = {}
 export const jobs = {}
