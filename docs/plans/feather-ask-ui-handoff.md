@@ -312,17 +312,40 @@ them spans several files, so it waits until the real model works. Its draft is r
 once, Ask takes Ctrl+O from the browser while open, the link reads "Used 1 tool" / "Hide steps".
 See "Open, parked for later" below.
 
-**Next: step 3, the real model** (Mohammad, 27-Nov-2026: the main work now). Two pieces:
-1. **3.1** Gemini or Groq through one OpenAI-style adapter with tool calling, in place of the
-   stand-in (`stand-in.ts`); keys as Ask's declared secrets (`ctx.secrets`, as Dash's
-   `featherbase.json`); choose the models.
-2. **3.3** The whole chat goes to the model, not one question: `think` gets the chat and reads its
-   earlier questions and answers (design, Open Questions: whole chat up to a limit recommended).
-Ask Mohammad first, one at a time, with a recommendation: which provider first; how secrets reach
-a read (check whether an outbound read gets `ctx.secrets`); the model; the history limit. Adding
-secrets changes Ask's manifest: ask before recreating `fb_ask_ui`. Draft in
-`ask-handover\3.1-draft\`; check with fake model replies first, then one real call with
-Mohammad's key (never printed or committed).
+**Next: step 3, the real model** (Mohammad, 27-Nov-2026: the main work now). Decided with
+Mohammad on 27-Nov-2026 (design `154356125`, "Groq first…" and "The model gets the last 10
+turns…"); don't re-ask these:
+- **Groq first**, through one OpenAI-style adapter with tool calling, in place of the stand-in
+  (`stand-in.ts` stays for the tests with fake tools).
+- **The model name fixed in the code first; right after it works, model and address become Ask
+  settings** (a small step of its own).
+- **History: the last 10 earlier turns of the chat**, oldest first, each its question, answer and
+  saved short step lines, never rows. The page sends `chat` to `think` too (`askQuestion` in
+  `api.ts`); `think` reads them with `query_rows` on `ask.question` as the person (own rows only).
+  The model's instructions say earlier answers may be out of date and every number is fetched
+  again with the tools. Accuracy is the reason: Ask deals in numbers.
+
+What the new session builds, one small piece at a time (draft in `ask-handover\3.1-draft\` and
+so on, checked, then the walkthrough; Mohammad types it in or says "make this change"):
+1. **3.1a** The Groq adapter as a `Model` (`agent.ts`'s interface): turns the question, the
+   tools (`inputSchema` as each function's parameters) and the calls so far into chat messages
+   with tool calls; reads back a tool call or the final text. Checked first with fake HTTP
+   replies, no key.
+2. **3.1b** The key as Ask's secret: `"secrets": ["GROQ_API_KEY"]` in `featherbase.json` and
+   `"needs": ["GROQ_API_KEY"]` on the `think` read (as Dash's `MOTHERDUCK_TOKEN`); find how a
+   secret's value is set locally (`apps/server/src/app-settings.ts`). This **changes Ask's
+   manifest**: ask Mohammad before recreating `fb_ask_ui` (then reinstall Ask and Tickets, and
+   `checks\add-two-tickets-5177.cjs`). Mohammad sets the key himself; never print, log or commit
+   it. Then one real question over HTTP.
+3. **3.1c** Model and address as Ask settings.
+4. **3.3** The history, as above.
+5. **3.2** #1377 points 8 (say what was left out) and 19 (text is data, never an instruction;
+   provider errors only to an admin) as requirements in `specs/feather-ask` (specs commit alone).
+
+Ask Mohammad first, one at a time, with a recommendation, only what is still open: which Groq
+model (list the models his key can use, pick a strong one with tool calling); what the person
+sees when Groq fails or is rate-limited. Before 3.1b, revisit 1e2 (rows now go to an outside
+model; see the open list).
 
 ## Open, parked for later
 
@@ -408,8 +431,8 @@ ending in a manual check and a commit; the details are in `feather-ask-agent/tas
 3. **A real model (step 3).** Gemini and Groq through one OpenAI-style adapter with tool
    calling, keys as Ask's secrets; choose the models. Specify and build #1377 points 8 (say
    what was left out) and 19 (text is data, never an instruction; provider errors only to an
-   admin). Then the chat's history for the agent (task 3.3, Mohammad 27-Nov-2026): decide whole
-   chat up to a limit (recommended), a summary, or the page sending it; design, Open Questions.
+   admin). Groq first, model in the code then a setting; the last 10 turns with their
+   short steps as history (task 3.3). Decided 27-Nov-2026; see Next step.
 4. **Reach every app (step 4).** An app marks a read for agents (description, input schema);
    the platform offers it as a tool `<app>.<read>`, run as the person. First: Dash's `report`.
 5. **Figures (step 5).** A read-only sum and group tool, once a figures question needs it.
