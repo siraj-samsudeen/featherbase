@@ -1,0 +1,30 @@
+/* The Store Manager review's own look (#1419), on Shop Floor's tokens, measured from the agreed prototype: the
+   approvals table (TableLook's cells; numbers right-aligned), the Section Board's queue, tiles and meter. */
+.sm-approvals > * > tr > td, .sm-approvals > * > tr > th { white-space: nowrap; }
+.sm-approvals > * > tr > .sm-num { text-align: right; font-variant-numeric: tabular-nums; }
+.sm-approvals > tbody > tr > .sm-wrap { white-space: normal; min-width: 200px; }
+.sm-approvals > tbody > tr > td:first-child { min-width: 250px; }
+.sm-name { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sm-name > a { font-weight: 600; }
+.sm-panelcell { padding: 0; }
+.sm-hint { font-size: 12.5px; color: var(--color-ink-subtle); margin: 0 0 8px; }
+.sm-cardwrap { display: contents; }
+
+.sm-queue { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 16px; font-size: 13px; }
+.sm-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin: 0 0 16px; }
+.sm-tile { border: 0; text-align: left; cursor: pointer; background: var(--color-subtle); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; min-width: 0; font: inherit; color: inherit; }
+.sm-tile:hover { background: var(--color-hover); }
+.sm-tile[aria-pressed='true'] { background: var(--color-action-tint); box-shadow: inset 0 0 0 1.5px var(--color-action); }
+.sm-tile:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.sm-tn { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sm-tt { font-size: 12px; color: var(--color-ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sm-tv { display: flex; justify-content: space-between; align-items: baseline; font-variant-numeric: tabular-nums; font-size: 13px; }
+.sm-tv b { font-size: 15px; }
+.sm-meter { position: relative; height: 6px; border-radius: 3px; background: var(--color-fill-hover); margin: 2px 0; }
+.sm-meter i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--color-ink-muted); }
+.sm-meter i[data-tone='positive'] { background: var(--color-positive); }
+.sm-meter i[data-tone='caution'] { background: var(--color-caution); }
+.sm-meter i[data-tone='negative'] { background: var(--color-negative); }
+.sm-meter::after { content: ''; position: absolute; left: 80%; top: -3px; bottom: -3px; width: 2px; background: var(--color-ink); }
+.sm-tp { display: flex; gap: 4px; flex-wrap: wrap; min-height: 20px; }
+.sm-empty { padding: 24px; text-align: center; color: var(--color-ink-muted); font-size: 13.5px; }
