@@ -113,7 +113,7 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
           const isOpen = r.onClick ? Boolean(r.expanded) : open === r.key, look = r.look ?? []
           return (
             <Fragment key={r.key}>
-              <tr className={['fr-row', look.includes('band') && 'fr-band', look.includes('head') && 'fr-ghead', look.includes('member') && 'fr-member'].filter(Boolean).join(' ')}
+              <tr className={['fr-row', look.includes('band') && 'fr-band', look.includes('head') && 'fr-ghead', look.includes('member') && 'fr-member', r.sub && 'fr-tall'].filter(Boolean).join(' ')}
                 data-key={r.key} data-n={r.dataName ?? r.key} aria-selected={isOpen && !r.onClick} aria-expanded={r.opens === false ? undefined : isOpen}
                 onClick={e => { if (r.opens === false) return; if ((e.target as HTMLElement).closest('a') && (e.metaKey || e.ctrlKey || e.shiftKey)) return; if (r.onClick) r.onClick(); else onToggle(isOpen ? null : r.key) }}>
                 <td style={r.depth ? { paddingLeft: 10 + (vsAop ? 16 : 26) * r.depth } : undefined}>

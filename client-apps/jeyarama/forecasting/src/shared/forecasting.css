@@ -195,3 +195,4 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-table-mgr .fr-sub { max-width: 186px; }
 /* six tiles or more (the Store Manager's progress tile) wrap four to a row on a narrow screen, as the prototype does */
 @media (max-width: 1200px) { .fr-kpis:has(> :nth-child(6)) { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.fr-table > tbody > tr.fr-tall > td { height: 54px; }
