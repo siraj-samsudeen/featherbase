@@ -205,6 +205,13 @@ jobs:
       - name: Platform source imports no app code
         run: pnpm check:platform-imports
 
+      # #1408: the look kit (packages/shop-floor/look-kit) draws an HTML
+      # prototype in Featherbase's look. Its stylesheet is built from the
+      # components' tokens, icons and font; this fails when the committed file
+      # is stale, naming each token that differs from the source.
+      - name: The look kit matches the components' tokens
+        run: pnpm check:look-kit
+
       - name: The dev command's rules
         run: pnpm check:dev
 
