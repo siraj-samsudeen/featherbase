@@ -16,6 +16,10 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
       through `runPublicPackageRead` → `runPackageRead` → `executeRuntimeRead` to
       `featherbaseMcp`, sent as the Bearer header on every tool call inside `runAsAgent`; no
       credential, no tools; `mcp-app-reads.ts` drops the pass. Replaces the planned sweep.
+- [ ] 1e2 The platform's log of what an app's agent read: each tool call writes one Access Log
+      entry (`logAccess`: the person, operation `agent_read`, the tool as method, the Table, scope
+      "via <app>"); no rows, no question text, never the credential. `featherbaseMcp` takes the
+      person for it. Admins see it in the Access Log; View as is recorded as the tester's.
 - [ ] 1f Server test `apps/server/test/featherbase-mcp.test.ts` with a `tools` outbound read in
       `test-apps/action-proof`, bound to the `trusted-runtime-packages` scenarios: only read-only
       tools, Selvi sees her row and Ravi none, no `create_row`, a read without the flag gets none,
@@ -30,6 +34,10 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
 
 - [ ] 2.1 A `think` outbound read declaring `featherbaseMcp`, running the loop (at most 8 steps).
 - [ ] 2.2 The `ask` action saves chat, question and the answer `think` gave.
+- [ ] 2.2b The steps behind each answer: `think` returns the steps it took with the answer (each
+      tool, its Table and filters, and its result in short, e.g. "query_rows on Ticket, status =
+      Open: 3 rows"); `ask` saves them in a new column on `ask.question`, so the person sees how
+      an answer was found. No rows copied in full.
 - [ ] 2.3 The page calls think, then ask, under one "Thinking…".
 - [ ] 2.4 Decide the open question on signing the answer.
 
