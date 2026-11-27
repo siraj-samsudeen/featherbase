@@ -1,8 +1,9 @@
 // The RB (Chief Executive) review, faithful to the agreed prototype (rb_review.template.html): both regions, every
 // store, any level, in four layouts. Two Tabs (the default) and One Tree Table show the whole tree; Drill One Level
 // at a Time walks it with a breadcrumb; Answer First opens with where the gap to AOP is and what waits up the chain.
-// Approvals (or Pending) shows how far each store has got, the proposals waiting with Store Managers and the
-// questions RB can answer. RB sees proposals but does not decide them; RB sets a number of its own. Made-up chain.
+// The Region toggle (Kerala first, as RB reads it; Tamil Nadu; Both) narrows every review layout before the search
+// scope does; Approvals (or Pending) is not narrowed by it, and shows how far each store has got, the proposals
+// waiting with Store Managers and the questions RB can answer. RB sees proposals but does not decide them; RB sets a number of its own. Made-up chain.
 import { useMemo, useRef, useState } from 'react'
 import { madeUpChain, SMALL_UNDER } from '../shared/madeUpChain'
 import { combine, foldSmall, inr, storeStepOf, type HelpTopic, type Line } from '../shared/model'
@@ -31,6 +32,7 @@ const LAYOUTS = [
   { id: 'tree', label: 'One Tree Table' },
   { id: 'answer-first', label: 'Answer First' },
 ]
+type Region = 'Kerala' | 'Tamil Nadu' | 'Both'
 const QUESTION_TEXTS = ['Why is this so much higher than last December?', 'Does the forecast know the offer ends on 30-Nov?',
   'Is the December step right for a subcategory that sells the same all year?']
 
@@ -48,9 +50,12 @@ export function RbReview({ hrefFor, openLine, onOpenLine }: ChainPageProps) {
   const levels = useMemo(() => rbLevels(by, chain.sections), [by, chain.sections])
   // a subcategory opened by a link: the tree and the breadcrumb open down to it
   const first = openLine ? byRow.get(openLine) : undefined
-  const [openNodes, setOpenNodes] = useState(() => new Set(first ? pathTo(first, levels) : []))
+  // one region picked: its stores show at once, as the prototype opens it
+  const [openNodes, setOpenNodes] = useState(() => new Set(first ? pathTo(first, levels) : ['Kerala']))
   const [crumb, setCrumb] = useState<string[]>(() => (first ? levels.map(lv => lv.key(first)) : []))
   const [open, setOpenState] = useState<string | null>(first ? openLine : null)
+  // Kerala first; a link to a Tamil Nadu subcategory opens on Tamil Nadu
+  const [region, setRegion] = useState<Region>(() => (first?.region === 'Tamil Nadu' ? 'Tamil Nadu' : 'Kerala'))
   const [flash, setFlash] = useState<{ key: string; n: number } | null>(first ? { key: openLine!, n: 0 } : null)
   const [help, setHelp] = useState<{ at: HelpTopic | null; from: string | null }>({ at: null, from: null })
   const [questions, setQuestions] = useState<RbQuestion[]>(() => chain.proposals.slice(0, 3).flatMap((p, i) => {
@@ -70,8 +75,15 @@ export function RbReview({ hrefFor, openLine, onOpenLine }: ChainPageProps) {
     setBy(next)
     const f = focusScope(ls, rbLevels(next, chain.sections), sc.length > 0)
     setOpenNodes(f.open); setCrumb(f.crumb); setOpen(null); setTab('review')
+    // a scope that sits wholly in the other region turns the toggle to it, rather than showing nothing
+    const rs = new Set(ls.map(l => l.region))
+    if (rs.size === 1 && region !== 'Both' && !rs.has(region)) setRegion([...rs][0] as Region)
   })
   const lines = scope.lines
+  /** What the review layouts show: the scope, inside the region picked. */
+  const shown = useMemo(() => (region === 'Both' ? lines : lines.filter(l => l.region === region)), [lines, region])
+  const regionName = region === 'Both' ? 'Both regions' : region
+  const pickRegion = (r: Region) => { setRegion(r); setCrumb([]); setOpenNodes(new Set(r === 'Both' ? [] : [r])); setOpen(null) }
 
   const setLayout = (id: string) => { setLayoutState(id); setOpen(null) }
   const toggleNode = (id: string) => setOpenNodes(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
@@ -122,46 +134,49 @@ export function RbReview({ hrefFor, openLine, onOpenLine }: ChainPageProps) {
   )
   const hint = 'Click a row to open it; click a subcategory for how Feather Forecast built it.'
   const wholeTree = (totalLabel: string) => <div ref={where}>
-    <KpiTiles total={combine(lines, -1)} header={header} approvedDelta={review.approvedDelta(lines)} />
+    <KpiTiles total={combine(shown, -1)} header={header} approvedDelta={review.approvedDelta(shown)} />
     {tools}<PartsLegend hint={hint} />
-    {tree(lines, levels, totalLabel)}
+    {tree(shown, levels, totalLabel)}
   </div>
   const drill = (withTotals: boolean) => {
-    const c = crumb.slice(0, levels.length), here = linesAt(lines, levels, c), next = levels.slice(c.length, c.length + 1)
+    const c = crumb.slice(0, levels.length), here = linesAt(shown, levels, c), next = levels.slice(c.length, c.length + 1)
     return <div ref={where} data-testid="rb-drill">
       <Crumbs steps={crumbSteps(c, code => all.find(l => l.store === code)?.storeName)} hint={crumbHint(c, levels)}
         onStep={at => { setCrumb(c.slice(0, at)); setOpen(null) }} />
       {withTotals && <KpiTiles total={combine(here, -1)} header={header} approvedDelta={review.approvedDelta(here)} />}
       {tools}<PartsLegend hint="" />
-      {tree(here, next, c.length ? c[c.length - 1] : 'Both regions', { heading: next[0]?.name ?? 'Subcategory', onDrill: key => { setCrumb([...c, key]); setOpen(null) } })}
+      {tree(here, next, c.length ? c[c.length - 1] : regionName, { heading: next[0]?.name ?? 'Subcategory', onDrill: key => { setCrumb([...c, key]); setOpen(null) } })}
     </div>
   }
   const answerFirst = () => {
-    const f = answerFacts(lines, header.month.name, progress, openQuestions)
+    const f = answerFacts(shown, header.month.name, progress, openQuestions)
     return <>
-      <KpiTiles total={combine(lines, -1)} header={header} approvedDelta={review.approvedDelta(lines)} />
+      <KpiTiles total={combine(shown, -1)} header={header} approvedDelta={review.approvedDelta(shown)} />
       <AnswerBlock f={f} onPending={() => setTab('pending')} />
       <div className="rb-two">
         <div><h2 className="fr-sec">Gap to AOP by store <span className="fr-dim">furthest behind first; click to open</span></h2>
-          <GapBars testId="rb-bars-store" nodes={gapNodes(lines, l => l.store)} onPick={g => goStore(g.name)}
+          <GapBars testId="rb-bars-store" nodes={gapNodes(shown, l => l.store)} onPick={g => goStore(g.name)}
             label={g => <><b>{g.name}</b> <span className="fr-dim" style={{ fontWeight: 400 }}>{g.storeName}</span></>} /></div>
-        <div><h2 className="fr-sec">Gap to AOP by division <span className="fr-dim">{scope.scope.length ? 'in scope' : 'both regions'}</span></h2>
-          <GapBars testId="rb-bars-division" nodes={gapNodes(lines, l => l.division)} label={g => g.name} />
+        <div><h2 className="fr-sec">Gap to AOP by division <span className="fr-dim">{scope.scope.length ? 'in scope' : region === 'Both' ? 'both regions' : region}</span></h2>
+          <GapBars testId="rb-bars-division" nodes={gapNodes(shown, l => l.division)} label={g => g.name} />
           <h2 className="fr-sec">Gap to AOP by region</h2>
-          <GapBars testId="rb-bars-region" nodes={gapNodes(lines, l => l.region)} onPick={g => goRegion(g.name)} label={g => g.name} /></div>
+          <GapBars testId="rb-bars-region" nodes={gapNodes(shown, l => l.region)} onPick={g => goRegion(g.name)} label={g => g.name} /></div>
       </div>
       <h2 className="fr-sec">Any level <span className="fr-dim">region › store › {by === 'section' ? 'section' : 'division › category'} › subcategory</span></h2>
       {drill(crumb.length > 0)}
     </>
   }
-  const reviewContent = layout === 'drill' ? drill(true) : layout === 'answer-first' ? answerFirst()
-    : wholeTree(layout === 'two-tabs' && scope.scope.length ? 'In scope' : 'Both regions')
+  const regionToggle = <div className="fr-toolbar" data-testid="rb-region">
+    <ToolbarChoice label="Region" hover="Kerala first; switch to Tamil Nadu or both regions" value={region} onChange={pickRegion}
+      options={[{ value: 'Kerala', label: 'Kerala' }, { value: 'Tamil Nadu', label: 'Tamil Nadu' }, { value: 'Both', label: 'Both' }]} /></div>
+  const reviewContent = <>{regionToggle}{layout === 'drill' ? drill(true) : layout === 'answer-first' ? answerFirst()
+    : wholeTree(layout === 'two-tabs' && scope.scope.length ? 'In scope' : regionName)}</>
 
   const pending = <PendingTab progress={progress} proposals={review.proposals.filter(p => { const l = byRow.get(p.line); return l && lines.includes(l) })}
     lineOf={id => byRow.get(id)} questions={questions} hrefFor={hrefFor} onStore={goStore} onLine={reveal}
     onAnswer={(id, text) => setQuestions(qs => qs.map(q => (q.id === id ? { ...q, answer: text } : q)))} />
-  const helpTab = <HelpTab header={header} lines={lines} storeStep={storeStepOf(lines)} at={help.at} from={help.from} onBack={reveal} managers
-    intro={<><h3>Both regions, {header.month.name}</h3><p>You see every store in Kerala and Tamil Nadu, at any level: region, store, division and category or Team Leader section, down to the subcategory. The page opens with where the gap to AOP is and what is still waiting up the chain. Subcategories under {inr(SMALL_UNDER)} are folded into one "Smaller subcategories" row per category.</p></>} />
+  const helpTab = <HelpTab header={header} lines={shown} storeStep={storeStepOf(shown)} at={help.at} from={help.from} onBack={reveal} managers
+    intro={<><h3>Forecast, {header.month.name}</h3><p>You see every store in Kerala and Tamil Nadu, at any level: region, store, division and category or Team Leader section, down to the subcategory. The page opens with where the gap to AOP is and what is still waiting up the chain. Subcategories under {inr(SMALL_UNDER)} are folded into one "Smaller subcategories" row per category.</p></>} />
 
   const two = layout === 'two-tabs'
   const regions = [...new Set(all.map(l => l.region))]
@@ -171,7 +186,7 @@ export function RbReview({ hrefFor, openLine, onOpenLine }: ChainPageProps) {
       all={all} scope={scope} layouts={LAYOUTS} layout={layout} onLayout={setLayout} tab={tab}
       onTab={t => { setTab(t); if (t !== 'help') setHelp({ at: null, from: null }) }}
       tabs={[
-        { id: 'review', label: two ? 'Both Regions' : 'Review', content: reviewContent },
+        { id: 'review', label: two ? 'Forecast' : 'Review', content: reviewContent },
         { id: 'pending', label: `${two ? 'Approvals' : 'Pending'} (${pendingN})`, content: pending },
         { id: 'help', label: 'Help', content: helpTab },
       ]} />
