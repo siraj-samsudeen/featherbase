@@ -26,22 +26,22 @@ export function NumbersPage({ ctx }: { ctx: Ctx }) {
   const columns: DataColumn<NumberRow>[] = [
     { key: 'on', header: 'Entered', phone: 'meta', cell: n => <span className="whitespace-nowrap">{when(n.entered_on)}</span> },
     // Who: the name, and the code · role · place line under it in grey (PersonLabel), never wider than it needs
-    { key: 'by', header: 'Who', phone: 'meta', cell: n => <div className="min-w-[150px] max-w-[200px]"><Who name={n.entered_by} /></div> },
+    { key: 'by', header: 'Who', phone: 'meta', cell: n => <div className="min-w-[130px] max-w-[170px]"><Who name={n.entered_by} /></div> },
     // Scope: one line; the whole of it on hover
-    { key: 'for', header: 'Scope', phone: 'title', cell: n => <a href={link(n)} title={scopeText(n)} className="block max-w-[240px] truncate font-medium">{scopeText(n)}</a> },
-    { key: 'how', header: 'Change', phone: 'hidden', cell: n => { const f = figureOf(n, ctx.data.numbers); return <span className="whitespace-nowrap">{isPercent(n)
+    { key: 'for', header: 'Scope', phone: 'title', cell: n => <a href={link(n)} title={scopeText(n)} className="block max-w-[180px] truncate font-medium">{scopeText(n)}</a> },
+    { key: 'how', header: 'Change', phone: 'hidden', cell: n => { const f = figureOf(n, ctx.data.numbers); return <span className="line-clamp-2 min-w-[140px] max-w-[190px]">{isPercent(n)
       ? (e => <>{n.kind} · {percentText(n.percent)} <span className="text-ink-muted">({e >= 0 ? '+' : '−'}{fmtINR(Math.abs(e))})</span></>)(percentEffect(n, ctx.data.numbers)) :<>{n.kind} · {signed(Math.round((f / engineOf(n) - 1) * 100))}</>}</span> } },
     { key: 'value', header: 'Figure', align: 'end', phone: 'value', cell: n => <span className="font-semibold whitespace-nowrap">{fmtINR(figureOf(n, ctx.data.numbers))}</span> },
     { key: 'status', header: 'Status Now', phone: 'status', cell: n => <StatusPill tone={STATUS_TONE[n.status]} className="whitespace-nowrap">{n.status === 'Waiting' ? `Waiting for ${n.waiting_on}` : n.status}</StatusPill> },
     // Reason: the widest column, at most two lines; the whole of it on hover
-    { key: 'why', header: 'Reason', phone: 'hidden', cell: n => <span title={n.reason} className="line-clamp-2 min-w-[260px] text-sm text-ink-muted">{n.reason}</span> },
+    { key: 'why', header: 'Reason', phone: 'hidden', cell: n => <span title={n.reason} className="line-clamp-2 min-w-[160px] text-sm text-ink-muted">{n.reason}</span> },
   ]
   return (
     <Page title="Ledger">
       <p className="-mt-2 text-sm text-ink-muted">Who said what, and what happened to it. Nothing is overwritten or deleted: each row is one person's number for one scope, and every step is kept in its history.</p>
       <Card title={`Waiting For You${mine.length ? ` (${mine.length})` : ''}`}>
         <div className="px-4 pb-4">
-          <DataList caption="Numbers waiting for you" rows={mine} columns={[...columns, { key: 'decide', header: '', phone: 'hidden', cell: n => <Decide ctx={ctx} n={n} /> }]} rowKey={n => n.row_id} layout="table"
+          <DataList caption="Numbers waiting for you" rows={mine} columns={[...columns.filter(c => c.key !== 'status'), { key: 'decide', header: '', phone: 'hidden', cell: n => <Decide ctx={ctx} n={n} /> }]} rowKey={n => n.row_id} layout="table"
             empty={{ title: 'Nothing waits for you', body: `No number waits for ${ctx.viewer.name}. Switch "Viewing as" to Mani or Kumar to see an approver's queue.` }} />
         </div>
       </Card>
@@ -508,11 +508,19 @@ function Decide({ ctx, n }: { ctx: Ctx; n: NumberRow }) {
       await ctx.reload()
     } finally { setBusy(false) }
   }
+  // Two buttons; sending back asks for its note only then, so the row stays narrow.
+  const [sending, setSending] = useState(false)
+  if (sending) return (
+    <span className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+      <TextInput aria-label="Why it goes back" placeholder="Why it goes back" autoFocus value={note} onChange={e => setNote(e.target.value)} className="w-36" />
+      <Button variant="primary" disabled={busy || !note.trim()} onClick={() => void act(false)}>Send Back</Button>
+      <Button variant="quiet" disabled={busy} onClick={() => { setSending(false); setNote('') }}>Cancel</Button>
+    </span>
+  )
   return (
     <span className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-      <TextInput aria-label="A note (needed to say no)" placeholder="Note" value={note} onChange={e => setNote(e.target.value)} className="w-24" />
       <Button variant="primary" disabled={busy} onClick={() => void act(true)}>Approve</Button>
-      <Button variant="secondary" disabled={busy || !note.trim()} onClick={() => void act(false)} title="Needs a note">Send Back</Button>
+      <Button variant="secondary" disabled={busy} onClick={() => setSending(true)}>Send Back</Button>
     </span>
   )
 }
