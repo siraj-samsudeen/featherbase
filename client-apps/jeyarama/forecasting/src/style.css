@@ -1,0 +1,40 @@
+/* Shop Floor's tokens, imported, never copied (as Dash does), so the shared top bar's theme reaches
+   every part of the page. */
+@import '@featherbase/shop-floor/styles.css' source(none);
+@source './';
+@source '../index.html';
+@source '../../../../packages/shop-floor/src';
+@source not '../../../../packages/shop-floor/src/**/*.stories.tsx';
+
+#root { height: auto; }
+* { box-sizing: border-box; }
+html, body { max-width: 100%; overflow-x: hidden; }
+body { margin: 0; background: var(--color-canvas); color: var(--color-ink); font: var(--text-control)/1.45 var(--font-sans); }
+@layer base { a { color: var(--color-action); } }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+/* The shared sidebar beside the page, together filling the window under the shared top bar. */
+.fc-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); min-height: calc(100vh - var(--featherbase-bar-height, 48px)); }
+.fc-page { width: 100%; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.fc-title { margin: 0; font-size: 20px; line-height: 1.2; font-weight: 700; }
+.fc-sidebar-group { display: block; padding: 12px 12px 4px; font-size: 12px; font-weight: 600; color: var(--color-ink-muted); }
+@media (max-width: 640px) { .fc-shell { display: block; } .fc-page { padding: 8px; } }
+
+/* Charts (charts.tsx): blue raw base, orange final, green actual, as in the weekly pack, stepped so the
+   three stay apart for colour-blind readers in both themes; an orange wash for a festival day, a
+   yellow one for a holiday, grey hatching for a partly loaded day. */
+.fc-chart {
+  --chart-base: #2a78d6; --chart-final: #eb6834; --chart-actual: #1baf7a;
+  --chart-festival: rgb(235 104 52 / 0.16); --chart-holiday: rgb(237 161 0 / 0.22);
+  --chart-partial: rgb(107 114 128 / 0.45); --chart-partial-wash: rgb(107 114 128 / 0.08);
+  --chart-grid: var(--color-border); --chart-axis: #b8bec8; --chart-gap: #64748b;
+}
+@media screen {
+  [data-theme='dark'] .fc-chart {
+    --chart-base: #3987e5; --chart-final: #d95926; --chart-actual: #199e70;
+    --chart-festival: rgb(217 89 38 / 0.24); --chart-holiday: rgb(201 133 0 / 0.26);
+    --chart-partial: rgb(168 179 196 / 0.45); --chart-partial-wash: rgb(168 179 196 / 0.08);
+    --chart-axis: #3a4a66; --chart-gap: #94a3b8;
+  }
+}
+.fc-hatch { background: repeating-linear-gradient(45deg, var(--chart-partial) 0 2px, var(--chart-partial-wash) 2px 5px); }

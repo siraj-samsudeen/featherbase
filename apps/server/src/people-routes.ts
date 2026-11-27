@@ -17,6 +17,7 @@ import { requestHost } from './instance-addresses'
 import { getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { standingFor } from './person-standing'
 import { LEAVER_SIGN_IN_JOB, leaverSignInStatus } from './leaver-sign-in'
+import { MOTHERDUCK_ACCOUNT_JOB, linkingAccounts } from './motherduck-accounts'
 import { enqueue } from './jobs'
 import { assertSystemManager, getRoles } from './permissions'
 import { mailTransport } from './email'
@@ -67,6 +68,19 @@ peopleRoutes.get('/api/leaver_sign_in/status', async (c) => {
 peopleRoutes.post('/api/leaver_sign_in/refresh', async (c) => {
   await assertSystemManager(who(c))
   await enqueue(LEAVER_SIGN_IN_JOB, {}, { maxAttempts: 1 })
+  return c.json({ queued: true }, 202)
+})
+
+// #1396: MotherDuck Accounts › Link to people. The list the screen works from
+// (a link itself is the account's Person, saved like any row), and Close their
+// tickets now, which queues the sync that closes a linked account's ticket.
+peopleRoutes.get('/api/motherduck_accounts/linking', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json({ accounts: await linkingAccounts() })
+})
+peopleRoutes.post('/api/motherduck_accounts/sync', async (c) => {
+  await assertSystemManager(who(c))
+  await enqueue(MOTHERDUCK_ACCOUNT_JOB, {}, { maxAttempts: 1 })
   return c.json({ queued: true }, 202)
 })
 

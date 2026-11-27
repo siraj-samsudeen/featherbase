@@ -381,6 +381,7 @@ describe('#432: every write entry point is covered', () => {
     'DELETE /api/agent-connections/:id': 'credentials',
     'POST /api/service_accounts': 'service accounts',
     'POST /api/instance-settings/apply': 'saveDoc on the managed settings Tables (#465), none system-written',
+    'POST /api/motherduck_accounts/sync': 'queues the MotherDuck sync job (#1396); the job writes MotherDuck Account and resolves tickets through the Tickets app\'s actions',
     'POST /api/leaver_sign_in/refresh': 'queues the rebuild job (#1271); the job writes Leaver Sign In, which is system-written',
     'POST /api/instance-settings/variables': 'read-only: the variable report for the environment comparison (#465 D10); POST only to carry the key in the body',
     'POST /api/setup/system-managers': 'first-run setup (#465 D9) — saveDoc on Person, then the Google invitation flow; none system-written',

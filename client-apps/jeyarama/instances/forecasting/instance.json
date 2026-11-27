@@ -1,0 +1,6 @@
+{
+  "apps": [
+    "client-apps/jeyarama/forecasting"
+  ],
+  "madeUpData": "client-apps/jeyarama/forecasting/scripts/seed-made-up.mts"
+}
