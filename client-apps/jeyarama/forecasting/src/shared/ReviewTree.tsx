@@ -1,5 +1,5 @@
 // The managers' review table: any chain of levels (levels.ts) down to the subcategories, the same columns at every
-// level (MeasureTable with AOP, Value vs AOP and Gap to AOP), sorted by the heading the reader picked. A node opens
+// level (MeasureTable with AOP and Value vs AOP), sorted by the heading the reader picked. A node opens
 // its children; a subcategory opens its panel (how Feather Forecast built it, other models with AOP, and the page's
 // own `answer`); a folded "Smaller subcategories" row opens nothing. When the subcategories shown under a node are one
 // store's, they form groups (TL-20) the way the Team Leader's table does, in the Groups view picked.

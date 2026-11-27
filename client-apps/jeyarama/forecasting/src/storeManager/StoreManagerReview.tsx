@@ -9,7 +9,7 @@ import { madeUpChain } from '../shared/madeUpChain'
 import { combine, inr, pc, storeStepOf, type HelpTopic, type Line } from '../shared/model'
 import { MERCHANDISE, STORE_LAYOUT, LEVEL, pathTo, type Level, type TreeNode } from '../shared/levels'
 import { KpiTiles, Tile } from '../shared/KpiTiles'
-import { ReviewFrame, useLayout } from '../shared/ReviewFrame'
+import { ReviewFrame, useView } from '../shared/ReviewFrame'
 import { LINE_TABLE, ReviewTree } from '../shared/ReviewTree'
 import { MANAGER_VIEW, PartsLegend, ReviewToolbar, ToolbarChoice } from '../shared/ReviewToolbar'
 import { useScope } from '../shared/ScopeSearch'
@@ -29,7 +29,8 @@ import '../shared/forecasting.css'
 import './storeManager.css'
 
 const STORE = 'LKS'
-const LAYOUTS = [{ id: 'two-tabs', label: 'Two Tabs' }, { id: 'approvals-on-top', label: 'Approvals on Top' }, { id: 'section-board', label: 'Section Board' }]
+/** One row of views, Help last (the prototype's views()): The Store, Approvals, the Section Board. */
+const SCREENS = ['store', 'approvals', 'board', 'help']
 /** One store: a floor, section or merchandise, never another store. */
 const KINDS_HERE: Kind[] = ['floor', 'section', 'division', 'subdivision', 'category', 'subcategory']
 type Pivot = 'layout' | 'merch'
@@ -46,8 +47,12 @@ export function StoreManagerReview({ hrefFor, openLine, onOpenLine }: ChainPageP
   const storeStep = useMemo(() => storeStepOf(all), [all])
   const arriving = openLine ? all.find(l => l.rowId === openLine) : undefined
 
-  const [layout, setLayoutState] = useLayout(LAYOUTS)
-  const [tab, setTab] = useState('review')
+  const [screen, setScreen] = useView(SCREENS)
+  // each view is a layout and what it opens on
+  const layout = screen === 'board' ? 'section-board' : 'store'
+  const tab = screen === 'approvals' || screen === 'help' ? screen : 'review'
+  /** Back to a layout's review (from Approvals or Help: The Store), or to Approvals or Help. */
+  const setTab = (t: 'review' | 'approvals' | 'help') => setScreen(t !== 'review' ? t : tab === 'review' ? screen : 'store')
   const [view, setView] = useState(MANAGER_VIEW)
   const [pivot, setPivot] = useState<Pivot>('layout')
   const [sort, setSort] = useState<SortKey>('aop')
@@ -75,7 +80,6 @@ export function StoreManagerReview({ hrefFor, openLine, onOpenLine }: ChainPageP
   const secOf = (name: string) => secs.find(s => s.name === name)
 
   const setOpen = (k: string | null) => { setOpenState(k); onOpenLine(k && ids.has(k) ? k : null) }
-  const setLayout = (id: string) => { setLayoutState(id); if (tab === 'approvals') setTab('review'); setOpen(null) }
   const setPivotOpen = (p: Pivot) => { setPivot(p); setOpenNodes(focusOpen(lines, levelsOf(p), scope.scope.length > 0)) }
   /** Open the way down to a subcategory and flash it (a queue chip, a proposal's name, Help's way back). */
   const jumpTo = (rowId: string) => {
@@ -125,19 +129,11 @@ export function StoreManagerReview({ hrefFor, openLine, onOpenLine }: ChainPageP
     <div data-testid="store-table">{tree(lines, levels, 'Store')}</div>
   </>
 
-  // ---- proposals: cards (Approvals on Top) and the approvals table (Two Tabs) ----
+  // ---- proposals: the approvals table ----
   const mine = review.proposals.filter(p => lines.some(l => l.rowId === p.line))
   const lineOf = (rowId: string) => all.find(l => l.rowId === rowId)!
   const waiting = mine.filter(p => p.state === 'waiting')
   const ordered = [...waiting, ...mine.filter(p => p.state !== 'waiting')]
-  const quiet = secs.length - new Set(waiting.map(p => p.section)).size
-  const cards = <>
-    <h2 className="fr-sec">Waiting for your approval <span className="fr-dim">{waiting.length ? `${waiting.length} ${waiting.length === 1 ? 'proposal' : 'proposals'} from Team Leaders` : 'nothing waiting'} · the other {quiet} sections have nothing waiting; every section is in the table below</span></h2>
-    {ordered.length
-      ? <div className="fr-pcards" data-testid="proposal-cards">{ordered.map(p => (
-        <ProposalCard key={p.id} p={p} line={lineOf(p.line)} actions={review.proposalActions} hrefFor={hrefFor} onOpen={() => jumpTo(p.line)} />))}</div>
-      : <p className="fr-dim">No proposals yet.</p>}
-  </>
   const head = (text: string, i: number, last: boolean, num = true) => <th key={text} className={headCellClasses({ first: i === 0, last, className: num ? 'text-right' : '' })}>{text}</th>
   const HEADINGS: [string, boolean][] = [['Subcategory', false], ['Section · Team Leader', false], ['Feather Forecast', true], ['Proposed', true], ['Change', true], ['Last month', true], ['Last year', true], ['AOP', true], ['Reasons', false]]
   const approvalsTable = <>
@@ -173,7 +169,7 @@ export function StoreManagerReview({ hrefFor, openLine, onOpenLine }: ChainPageP
 
   // ---- the Section Board: the queue, a tile per section, the chosen section's subcategories ----
   const sortChoice = <ToolbarChoice label="Sort" hover="The order of the sections: furthest behind AOP, biggest change on last year, or biggest first"
-    value={boardSort} onChange={setBoardSort} options={[{ value: 'aop', label: 'Gap to AOP' }, { value: 'ly', label: 'Gap to last year' }, { value: 'size', label: 'Size' }]} />
+    value={boardSort} onChange={setBoardSort} options={[{ value: 'aop', label: 'Behind AOP' }, { value: 'ly', label: 'Gap to last year' }, { value: 'size', label: 'Size' }]} />
   const sectionTile = (s: SectionSummary) => {
     const w = review.waitingIn(s.lines), o = s.item, tone = aopTone(o), n = s.lines.length
     return (
@@ -210,18 +206,17 @@ export function StoreManagerReview({ hrefFor, openLine, onOpenLine }: ChainPageP
     onBack={name => { const l = all.find(x => x.name === name); if (l) jumpTo(l.rowId) }}
     intro={<><h3>Your store, {header.month.name}</h3><p>You see every section of {STORE}. Each section is a Team Leader's area. Team Leaders accept Feather Forecast subcategory by subcategory, or propose a change with reasons; their proposals wait here for you. Approve one, edit its number and approve, or send it back with a reason. The store total is always shown against AOP, the plan you have to catch up to.</p></>} />
 
-  const storeHeading = <h2 className="fr-sec">{pivot === 'layout' ? 'The Store by Floor and Section' : 'The Store by Merchandise'}</h2>
-  const tabs = layout === 'two-tabs'
-    ? [{ id: 'review', label: 'The Store', content: <>{tiles}{storeTable}</> },
-      { id: 'approvals', label: `Approvals (${review.waiting.length})`, content: <>{tiles}{approvalsTable}</> },
-      { id: 'help', label: 'Help', content: helpTab }]
-    : [{ id: 'review', label: 'Review', content: layout === 'approvals-on-top' ? <>{tiles}{cards}{storeHeading}{storeTable}</> : <>{tiles}{sectionBoard}</> },
-      { id: 'help', label: 'Help', content: helpTab }]
+  const views = [
+    { id: 'store', label: 'The Store', content: screen === 'store' && <>{tiles}{storeTable}</> },
+    { id: 'approvals', label: `Approvals (${review.waiting.length})`, content: screen === 'approvals' && <>{tiles}{approvalsTable}</> },
+    { id: 'board', label: 'Section Board', content: screen === 'board' && <>{tiles}{sectionBoard}</> },
+    { id: 'help', label: 'Help', content: helpTab },
+  ]
 
   return (
     <ReviewFrame testId="store-manager-review" title={`${STORE} · ${all[0]?.storeName ?? ''} · ${header.month.label}`}
       status={`${header.person} · ${header.role} · sales to ${header.cutOff} · before tax`}
-      all={all} scope={scope} kinds={KINDS_HERE} layouts={LAYOUTS} layout={layout} onLayout={setLayout}
-      tab={tab} onTab={t => { setTab(t); if (t !== 'help') setHelp({ at: null, from: null }) }} tabs={tabs} />
+      all={all} scope={scope} kinds={KINDS_HERE} views={views} view={screen}
+      onView={v => { setScreen(v); setOpen(null); if (v !== 'help') setHelp({ at: null, from: null }) }} />
   )
 }

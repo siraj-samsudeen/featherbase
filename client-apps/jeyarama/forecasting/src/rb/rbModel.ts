@@ -10,9 +10,10 @@ export type InsideStore = 'category' | 'section'
 
 /** Region › Store › (Division › Category | Section); the subcategories are the leaves. A section shows its Team Leader. */
 export function rbLevels(by: InsideStore, sections: SectionInfo[]): Level[] {
-  if (by === 'category') return [LEVEL.region, LEVEL.store, LEVEL.division, LEVEL.category]
+  // no Region level: the page's Region toggle picks the region (owner, 27-Nov-2026), so the tree starts at the store
+  if (by === 'category') return [LEVEL.store, LEVEL.division, LEVEL.category]
   const leader = new Map(sections.map(s => [`${s.store}|${s.section}`, s.teamLeader]))
-  return [LEVEL.region, LEVEL.store, { ...LEVEL.section, subLabel: n => leader.get(`${n.lines[0]?.store}|${n.label}`) }]
+  return [LEVEL.store, { ...LEVEL.section, subLabel: n => leader.get(`${n.lines[0]?.store}|${n.label}`) }]
 }
 
 /** The lines under a breadcrumb (the keys walked down, top first). */
@@ -20,9 +21,10 @@ export const linesAt = (lines: Line[], levels: Level[], crumb: string[]) =>
   lines.filter(l => crumb.every((k, i) => !levels[i] || levels[i].key(l) === k))
 
 export interface CrumbStep { label: string; at: number; current: boolean }
-/** "All regions › Kerala › LKS Lakeside": each step and how many keys it keeps when clicked; the last is where you are. */
-export function crumbSteps(crumb: string[], storeName: (code: string) => string | undefined): CrumbStep[] {
-  const words = ['All regions', ...crumb.map((k, i) => (i === 1 ? [k, storeName(k)].filter(Boolean).join(' ') : k))]
+/** "Kerala › LKS Lakeside › Fashion": the region picked, then each step; how many keys each keeps when clicked; the
+ *  last is where you are. */
+export function crumbSteps(crumb: string[], storeName: (code: string) => string | undefined, root: string): CrumbStep[] {
+  const words = [root, ...crumb.map((k, i) => (i === 0 ? [k, storeName(k)].filter(Boolean).join(' ') : k))]
   return words.map((label, at) => ({ label, at, current: at === words.length - 1 }))
 }
 

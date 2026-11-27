@@ -1,6 +1,6 @@
 // The managers' review pages as a story (#1419): each page on the made-up chain beside a grey block where the
 // Featherbase shell goes, as the agreed prototypes draw it. Open with the app's Vite dev server at
-// /chain-story.html?page=store-review | category-review | rb-review (and &layout=…). No server, no sign-in; the
+// /chain-story.html?page=store-review | category-review | rb-review (and &tab=…). No server, no sign-in; the
 // real pages sit in the shell at /forecasting/?view=<page>.
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'

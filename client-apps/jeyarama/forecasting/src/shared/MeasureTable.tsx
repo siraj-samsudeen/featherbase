@@ -7,7 +7,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode 
 import { ChevronRight, PartsBar, cx } from '@featherbase/shop-floor'
 import { Hover } from './Hover'
 import { asp, count, inr, pc, shares, type Group, type Line } from './model'
-import { GapToAop, VsAop } from './Aop'
+import { VsAop } from './Aop'
 import type { Header } from './review'
 import type { ViewChoices } from './ReviewToolbar'
 
@@ -32,7 +32,7 @@ export interface TableRow {
   expanded?: boolean
 }
 /** What the managers' tables sort by, from three headings: Feather Forecast (biggest first), Last year under
- *  Value vs (biggest change in rupees first), Gap to AOP (furthest behind first). */
+ *  Value vs (biggest change in rupees first), AOP under Value vs (furthest behind the plan first). */
 export type SortKey = 'size' | 'ly' | 'aop'
 export const SORTERS: Record<SortKey, (a: { fc: number; ly: number; aop: number }, b: { fc: number; ly: number; aop: number }) => number> = {
   size: (a, b) => b.fc - a.fc,
@@ -43,7 +43,8 @@ type Block = [string, string, string, string]
 
 export function MeasureTable({ header, view, rows, total, totalLabel = 'Section', firstHeading = 'Subcategory', open, onToggle, panel, flash, vsAop = false, sort, onSort }: {
   header: Header; view: ViewChoices; rows: TableRow[]; total: Item; totalLabel?: string; firstHeading?: string
-  /** The managers' columns: AOP always shown, Feather Forecast against it under Value vs, and a Gap to AOP column. */
+  /** The managers' columns: AOP always shown, and Feather Forecast against it under Value vs (no Gap to AOP column:
+   *  the KPI tile carries the gap, owner 27-Nov-2026). */
   vsAop?: boolean
   /** The heading the rows are sorted by (marked ↓); with onSort the three headings sort when clicked. */
   sort?: SortKey; onSort?: (k: SortKey) => void
@@ -82,7 +83,7 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
       onClick={() => onSort(k)}>{text}{sort === k && <span aria-hidden> ↓</span>}</button>
     : text
   const measures = ({ all: ['v', 'q', 'a'], vq: ['v', 'q'], v: ['v'], q: ['q'] } as const)[view.measure]
-  const columns = 1 + blocks.length * measures.length + 3 + (vsAop ? 2 : 0)
+  const columns = 1 + blocks.length * measures.length + 3 + (vsAop ? 1 : 0)
   const cell = (l: Item, [k, q]: Block, m: 'v' | 'q' | 'a', first: boolean, cls: string) => {
     const v = (l as unknown as Record<string, number>)[k], qty = (l as unknown as Record<string, number>)[q]
     return <td key={`${k}${m}`} className={`${first ? 'fr-b0 ' : ''}${cls}`}>{m === 'v' ? inr(v) : m === 'q' ? count(qty) : asp(v, qty)}</td>
@@ -90,7 +91,7 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
   const figures = (l: Item, strong: boolean) => <>
     {blocks.map((b, bi) => measures.map((m, mi) => cell(l, b, m, mi === 0, strong && bi === 0 ? 'fr-fc' : strong ? 'fr-dim' : '')))}
     <td className="fr-b0">{pc(l.fc, l.r31)}</td><td>{pc(l.fc, l.ly)}</td>
-    {vsAop && <><td><VsAop o={l} /></td><td className="fr-b0"><GapToAop o={l} /></td></>}
+    {vsAop && <td><VsAop o={l} /></td>}
     <td className="fr-b0"><PartsBar parts={shares(l)} shape={view.shape} /></td>
   </>
 
@@ -101,13 +102,12 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
           <tr className="fr-blocks"><th />
             {blocks.map((b, i) => <th key={b[2]} colSpan={measures.length} className="fr-b0">{i === 0 && onSort ? sortable('size', b[2], `${b[3]}, biggest first`) : <Hover text={b[3]}>{b[2]}</Hover>}</th>)}
             <th colSpan={vsAop ? 3 : 2} className="fr-b0"><Hover text={`Feather Forecast's value against last month${vsAop ? ', last year and the annual plan' : ' and last year'}`}>Value vs</Hover></th>
-            {vsAop && <th className="fr-b0">{sortable('aop', 'Gap to AOP', 'Feather Forecast minus the annual plan, furthest behind first')}</th>}
             <th className="fr-b0">Built from</th></tr>
           <tr><th><span className="fr-first" title={firstHeading}>{firstHeading}</span></th>
             {blocks.map(b => measures.map((m, i) => <th key={b[2] + m} className={i === 0 ? 'fr-b0' : ''}>{{ v: 'Value', q: 'Qty', a: 'ASP' }[m]}</th>))}
             <th className="fr-b0"><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>{vsAop ? <>Last<br />month</> : 'Last month'}</Hover></th>
             <th>{onSort ? sortable('ly', vsAop ? <>Last<br />year</> : 'Last year', `${month.name} ${month.year - 1}, biggest change in rupees first`) : <Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover>}</th>
-            {vsAop && <><th><Hover text="The annual plan">AOP</Hover></th><th className="fr-b0" /></>}<th className="fr-b0" /></tr>
+            {vsAop && <th>{onSort ? sortable('aop', 'AOP', 'Feather Forecast against the annual plan, furthest behind first') : <Hover text="The annual plan">AOP</Hover>}</th>}<th className="fr-b0" /></tr>
         </thead>
         <tbody>{rows.map(r => {
           const isOpen = r.onClick ? Boolean(r.expanded) : open === r.key, look = r.look ?? []

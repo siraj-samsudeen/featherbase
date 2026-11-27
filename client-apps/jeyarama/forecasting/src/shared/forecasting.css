@@ -161,9 +161,8 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-scope-sum { color: var(--color-ink-muted); }
 .fr-scope-sum b { color: var(--color-ink); }
 
-/* the Layout strip (ReviewFrame): one underlined row under the search; the layout's own tabs sit below it */
+/* the views row (ReviewFrame): one underlined row of tabs under the search, Help last */
 .fr-layouts { display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid var(--color-border); overflow-x: auto; }
-.fr-layouts-label { font-size: 12.5px; color: var(--color-ink-subtle); padding: 0 12px 10px 0; }
 .fr-layouts button { border: 0; background: none; padding: 8px 12px 10px; font-size: 14px; font-weight: 500; color: var(--color-ink-muted); cursor: pointer; white-space: nowrap; box-shadow: inset 0 -2px 0 transparent; }
 .fr-layouts button:hover { color: var(--color-ink); }
 .fr-layouts button[aria-selected='true'] { color: var(--color-action); box-shadow: inset 0 -2px 0 var(--color-action); }
@@ -188,11 +187,7 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
    keep Value · Qty inside 1440 px, as the prototypes draw it; a long name or heading ends in an ellipsis */
 .fr-table-mgr > tbody > tr > td, .fr-table-mgr > tfoot > tr > td { font-size: 12.5px; padding: 0 4px; }
 .fr-table-mgr > thead > tr > th { padding: 0 4px; line-height: 1.2; }
-.fr-table-mgr > * > tr > :first-child { width: 200px; min-width: 200px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 .fr-table-mgr > tbody > tr > .fr-b0, .fr-table-mgr > tfoot > tr > .fr-b0 { padding-left: 10px; }
-.fr-table-mgr .fr-name { display: flex; min-width: 0; }
-.fr-table-mgr .fr-name > b, .fr-table-mgr .fr-name > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.fr-table-mgr .fr-sub { max-width: 186px; }
 /* six tiles or more (the Store Manager's progress tile) wrap four to a row on a narrow screen, as the prototype does */
 @media (max-width: 1200px) { .fr-kpis:has(> :nth-child(6)) { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .fr-table > tbody > tr.fr-tall > td { height: 54px; }
@@ -201,3 +196,12 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-table-mgr .fr-sub .fr-pill { margin-bottom: 2px; }
 /* the legend's hint has no swatch (so a wrapped hint starts at the edge) */
 .fr-legend span:not([style])::before { display: none; }
+
+/* the managers' name column (owner, 27-Nov-2026: "we lost the most important thing, the full subcategory name"): never
+   cut a name off. The column is wide enough for most names on one line, and a longer one wraps to a second. */
+.fr-table-mgr > * > tr > :first-child { width: 300px; min-width: 260px; font-size: 13px; white-space: normal; }
+.fr-table-mgr .fr-name { align-items: flex-start; flex-wrap: nowrap; }
+.fr-table-mgr .fr-name > b, .fr-table-mgr .fr-name a { white-space: normal; overflow-wrap: anywhere; }
+.fr-table-mgr .fr-first { white-space: normal; }
+.fr-table-mgr .fr-sub { max-width: none; }
+.fr-viewpanel { padding-top: 20px; min-width: 0; }

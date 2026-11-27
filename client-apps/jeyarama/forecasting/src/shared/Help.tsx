@@ -9,7 +9,7 @@ export function HelpTab({ header, lines, storeStep, at, from, onBack, intro, man
   header: Header; lines: Line[]; storeStep: number; at: HelpTopic | null; from: string | null; onBack: (line: string) => void
   /** A page's own first section ("Your store, December"), before how Feather Forecast builds the month. */
   intro?: ReactNode
-  /** The managers' pages: AOP and Gap to AOP among the columns, and how changes are approved. */
+  /** The managers' pages: AOP among the columns and under Value vs, and how changes are approved. */
   managers?: boolean
 }) {
   const steps = lines.map(l => l.step || storeStep), { name, days, year } = header.month
@@ -45,8 +45,7 @@ export function HelpTab({ header, lines, storeStep, at, from, onBack, intro, man
         <tr><td><b>Last month</b></td><td>What the subcategory sold in the last 28 days before Feather Forecast ran (to {header.cutOff}), as a rate per day × {name}'s {days} days. Hover the column heading to see this.</td></tr>
         <tr><td><b>Last year</b></td><td>What the subcategory sold in {name} {year - 1}.</td></tr>
         {managers && <tr><td><b>AOP</b></td><td>The annual plan for {header.month.label}, before tax. It is also one more opinion beside XGBoost and LightGBM in an opened subcategory.</td></tr>}
-        <tr><td><b>Value vs</b></td><td>Feather Forecast's value against last month{managers ? ', last year and AOP' : ' and against last year'}, in %.</td></tr>
-        {managers && <tr><td><b>Gap to AOP</b></td><td>Feather Forecast minus AOP, in rupees: on or above the plan, within 10% of it, or more than 10% behind.</td></tr>}
+        <tr><td><b>Value vs</b></td><td>Feather Forecast's value against last month{managers ? ', last year and AOP' : ' and against last year'}, in %.{managers ? ' Against AOP it is coloured: on or above the plan, within 10% of it, or more than 10% behind. Click AOP (or Feather Forecast, or Last year) to sort by it.' : ''}</td></tr>
         <tr><td><b>Value · Qty · ASP</b></td><td>Rupees before tax, pieces, and average selling price (value ÷ pieces). Use <b>Show</b> for all three, value and quantity, or one at a time. ASP appears only with value and quantity, since it is one divided by the other.</td></tr>
         <tr><td><b>Built from</b></td><td>The share of Feather Forecast's number from each part, as a 100% bar or donut. Hover it for the percentages.</td></tr>
       </tbody></table>

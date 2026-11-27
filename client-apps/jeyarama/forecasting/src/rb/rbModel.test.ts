@@ -10,31 +10,31 @@ const byCategory = rbLevels('category', sections), bySection = rbLevels('section
 
 describe('levels', () => {
   it('goes Region › Store › Division › Category, or Region › Store › Section with the Team Leader under it', () => {
-    expect(byCategory.map(l => l.name)).toEqual(['Region', 'Store', 'Division', 'Category'])
-    expect(bySection.map(l => l.name)).toEqual(['Region', 'Store', 'Section'])
+    expect(byCategory.map(l => l.name)).toEqual(['Store', 'Division', 'Category'])
+    expect(bySection.map(l => l.name)).toEqual(['Store', 'Section'])
     const l = lines.find(x => x.store === 'LKS')!
-    const node = { lines: [l], label: l.section } as Parameters<NonNullable<typeof bySection[2]['subLabel']>>[0]
-    expect(bySection[2].subLabel!(node)).toBe(sections.find(s => s.store === 'LKS' && s.section === l.section)!.teamLeader)
+    const node = { lines: [l], label: l.section } as Parameters<NonNullable<typeof bySection[1]['subLabel']>>[0]
+    expect(bySection[1].subLabel!(node)).toBe(sections.find(s => s.store === 'LKS' && s.section === l.section)!.teamLeader)
   })
 })
 
 describe('the breadcrumb', () => {
   it('names each step, the store with its name, and the last is where you are', () => {
-    const steps = crumbSteps(['Kerala', 'LKS', 'Fashion'], c => (c === 'LKS' ? 'Lakeside' : undefined))
-    expect(steps.map(s => s.label)).toEqual(['All regions', 'Kerala', 'LKS Lakeside', 'Fashion'])
-    expect(steps.map(s => s.at)).toEqual([0, 1, 2, 3])
+    const steps = crumbSteps(['LKS', 'Fashion'], c => (c === 'LKS' ? 'Lakeside' : undefined), 'Kerala')
+    expect(steps.map(s => s.label)).toEqual(['Kerala', 'LKS Lakeside', 'Fashion'])
+    expect(steps.map(s => s.at)).toEqual([0, 1, 2])
     expect(steps.filter(s => s.current).map(s => s.label)).toEqual(['Fashion'])
   })
   it('says what a click does next', () => {
-    expect(crumbHint([], byCategory)).toBe('click a row to go down to region')
-    expect(crumbHint(['Kerala', 'LKS'], byCategory)).toBe('click a row to go down to division')
-    expect(crumbHint(['Kerala', 'LKS', 'Fashion', 'Women'], byCategory)).toBe('click a subcategory for how Feather Forecast built it')
+    expect(crumbHint([], byCategory)).toBe('click a row to go down to store')
+    expect(crumbHint(['LKS'], byCategory)).toBe('click a row to go down to division')
+    expect(crumbHint(['LKS', 'Fashion', 'Women'], byCategory)).toBe('click a subcategory for how Feather Forecast built it')
   })
   it('keeps the lines under it', () => {
-    const at = linesAt(lines, byCategory, ['Kerala', 'LKS'])
+    const at = linesAt(lines, byCategory, ['LKS'])
     expect(at.length).toBeGreaterThan(0)
     expect(at.every(l => l.store === 'LKS')).toBe(true)
-    expect(idsOf(['Kerala', 'LKS'])).toEqual(['Kerala', 'Kerala › LKS'])
+    expect(idsOf(['LKS', 'Fashion'])).toEqual(['LKS', 'LKS › Fashion'])
   })
 })
 
@@ -42,11 +42,11 @@ describe('opening the tree to a scope', () => {
   it('opens every level the scoped lines share, and every path when 40 or fewer remain', () => {
     const lks = lines.filter(l => l.store === 'LKS')
     const f = focusScope(lks, byCategory, true)
-    expect(f.crumb).toEqual(['Kerala', 'LKS'])
-    expect(f.open.has('Kerala › LKS')).toBe(true)
-    if (lks.length > 40) expect(f.open.size).toBe(2)
+    expect(f.crumb).toEqual(['LKS'])
+    expect(f.open.has('LKS')).toBe(true)
+    if (lks.length > 40) expect(f.open.size).toBe(1)
     const one = lks.filter(l => l.category === lks[0].category)
-    expect(focusScope(one, byCategory, true).open.has(`Kerala › LKS › ${one[0].division} › ${one[0].category}`)).toBe(true)
+    expect(focusScope(one, byCategory, true).open.has(`LKS › ${one[0].division} › ${one[0].category}`)).toBe(true)
   })
   it('opens nothing without a scope', () => {
     const f = focusScope(lines, byCategory, false)

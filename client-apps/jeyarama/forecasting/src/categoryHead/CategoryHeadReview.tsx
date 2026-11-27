@@ -10,7 +10,7 @@ import { madeUpChain } from '../shared/madeUpChain'
 import { combine, count, inr, storeStepOf, type HelpTopic, type Line } from '../shared/model'
 import { LEVEL, headingOf, pathTo, type Level } from '../shared/levels'
 import { KpiTiles, Tile } from '../shared/KpiTiles'
-import { ReviewFrame, useLayout } from '../shared/ReviewFrame'
+import { ReviewFrame, useView } from '../shared/ReviewFrame'
 import { LINE_TABLE, ReviewTree } from '../shared/ReviewTree'
 import { MANAGER_VIEW, PartsLegend, ReviewToolbar, ToolbarChoice, type ViewChoices } from '../shared/ReviewToolbar'
 import { useScope } from '../shared/ScopeSearch'
@@ -28,7 +28,8 @@ import { Furthest, type Side } from './Furthest'
 import '../shared/forecasting.css'
 import './categoryHead.css'
 
-const LAYOUTS = [{ id: 'two-tabs', label: 'Two Tabs' }, { id: 'drill-table', label: 'Drill Table' }, { id: 'store-map', label: 'Store Map' }, { id: 'furthest', label: 'Furthest From Plan' }]
+/** One row of views, Help last (the prototype's views()): Your Categories, Approvals, the Store Map, Furthest From Plan. */
+const SCREENS = ['categories', 'approvals', 'map', 'furthest', 'help']
 const PERSON = 'Bina', REGION = 'Kerala', SUBDIVISIONS = ['Women', 'Girls']
 
 type Pivot = 'cat-store' | 'store-cat' | 'sub-store'
@@ -52,8 +53,13 @@ export function CategoryHeadReview({ hrefFor, openLine, onOpenLine }: ChainPageP
   const waiting = mine.filter(p => p.state === 'waiting')
   const steps = useMemo(() => new Map([...new Set(all.map(l => l.store))].map(s => [s, storeStepOf(all.filter(l => l.store === s))])), [all])
 
-  const [layout, setLayoutState] = useLayout(LAYOUTS)
-  const [tab, setTab] = useState('review')
+  const [screen, setScreen] = useView(SCREENS)
+  // each view is a layout and what it opens on
+  const layout = screen === 'map' ? 'store-map' : screen === 'furthest' ? 'furthest' : 'categories'
+  const tab = screen === 'approvals' || screen === 'help' ? screen : 'review'
+  const setLayoutState = (l: 'categories' | 'store-map' | 'furthest') => setScreen(l === 'store-map' ? 'map' : l)
+  /** Back to a layout's review (from Approvals or Help: Your Categories), or to Approvals or Help. */
+  const setTab = (t: 'review' | 'approvals' | 'help') => setScreen(t !== 'review' ? t : tab === 'review' ? screen : 'categories')
   const [pivot, setPivotState] = useState<Pivot>('cat-store')
   const [view, setView] = useState<ViewChoices>(MANAGER_VIEW)
   const [sort, setSort] = useState<SortKey>('aop')
@@ -69,10 +75,6 @@ export function CategoryHeadReview({ hrefFor, openLine, onOpenLine }: ChainPageP
   const [rankOpen, setRankOpen] = useState<{ key: string; side: Side } | null>(null)
 
   const setOpen = (key: string | null) => { setOpenState(key); onOpenLine(key && byId.has(key) ? key : null) }
-  const setLayout = (id: string) => {
-    if (id !== 'two-tabs' && tab === 'approvals') setTab('review')
-    setLayoutState(id); setOpen(null); setRankOpen(null)
-  }
   const setPivot = (p: Pivot) => { setPivotState(p); setOpenNodes(new Set()); setOpen(null) }
   const toggleNode = (id: string) => setOpenNodes(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   // a new scope reads best in its own view: a store by its categories, a subcategory across the stores; the
@@ -81,15 +83,14 @@ export function CategoryHeadReview({ hrefFor, openLine, onOpenLine }: ChainPageP
     const kind = s[s.length - 1]?.kind
     const next: Pivot = kind === 'store' ? 'store-cat' : kind === 'subcategory' ? 'sub-store' : 'cat-store'
     setPivotState(next); setOpenNodes(new Set(s.length ? commonPath(ls, PIVOTS[next]) : [])); setOpen(null); setCell(null); setRankOpen(null)
-    if (layout === 'store-map' || layout === 'furthest') setLayoutState('two-tabs')
+    if (layout === 'store-map' || layout === 'furthest') setLayoutState('categories')
   })
   const lines = scope.lines
-  /** Open a subcategory in Drill Table's (or Two Tabs') table, by store, and flash it (a proposal chip). */
+  /** Open a subcategory in Your Categories' table, by store, and flash it (a proposal chip). */
   const jump = (rowId: string) => {
     const l = byId.get(rowId)
     if (!l) return
-    if (layout !== 'two-tabs') setLayoutState('drill-table')
-    setTab('review'); setHelp({ at: null, from: null })
+    setLayoutState('categories'); setHelp({ at: null, from: null })
     setPivotState('store-cat'); setOpenNodes(new Set(pathTo(l, PIVOTS['store-cat']))); setOpen(rowId)
     setFlash(f => ({ key: rowId, n: (f?.n ?? 0) + 1 }))
   }
@@ -167,12 +168,12 @@ export function CategoryHeadReview({ hrefFor, openLine, onOpenLine }: ChainPageP
     if (c) setTimeout(() => document.getElementById('ch-cell')?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
   }
 
-  // ---- Furthest From Plan: a subcategory's panel, and a category at a store opens Drill Table there ----
+  // ---- Furthest From Plan: a subcategory's panel, and a category at a store opens Your Categories there ----
   const rankPanel = (l: Line) => (
     <LinePanel item={l} header={header} storeStep={steps.get(l.store) ?? 1} aop onHelp={t => onHelp(t, l.rowId)} answer={answer(l)} />
   )
   const toCategory = (store: string, category: string) => {
-    setLayoutState('drill-table'); setPivotState('store-cat'); setOpenNodes(new Set([store, `${store} › ${category}`])); setOpen(null); setRankOpen(null)
+    setLayoutState('categories'); setPivotState('store-cat'); setOpenNodes(new Set([store, `${store} › ${category}`])); setOpen(null); setRankOpen(null)
     setFlash(f => ({ key: `node:${store} › ${category}`, n: (f?.n ?? 0) + 1 }))
   }
 
@@ -182,7 +183,6 @@ export function CategoryHeadReview({ hrefFor, openLine, onOpenLine }: ChainPageP
     cell={cell} onCell={pickCell} below={below} /></>
   else if (layout === 'furthest') content = <>{tiles}{queue}<Furthest lines={lines} rank={rank} onRank={r => { setRankState(r); setRankOpen(null) }}
     open={rankOpen} onOpen={setRankOpen} onCategory={toCategory} hrefFor={hrefFor} pills={l => <span className="ch-pills">{linePills(l)}</span>} panel={rankPanel} /></>
-  else if (layout === 'drill-table') content = <>{tiles}{queue}{table}</>
   else content = <>{tiles}{table}</>
 
   const approvals = <>
@@ -205,13 +205,17 @@ export function CategoryHeadReview({ hrefFor, openLine, onOpenLine }: ChainPageP
   )
 
   const categories = new Set(all.map(l => l.category)).size, storeCount = new Set(all.map(l => l.store)).size
-  const tabs = layout === 'two-tabs'
-    ? [{ id: 'review', label: 'Your Categories', content }, { id: 'approvals', label: `Approvals (${waiting.length})`, content: approvals }, { id: 'help', label: 'Help', content: helpTab }]
-    : [{ id: 'review', label: 'Review', content }, { id: 'help', label: 'Help', content: helpTab }]
+  const views = [
+    { id: 'categories', label: 'Your Categories', content: screen === 'categories' && content },
+    { id: 'approvals', label: `Approvals (${waiting.length})`, content: screen === 'approvals' && approvals },
+    { id: 'map', label: 'Store Map', content: screen === 'map' && content },
+    { id: 'furthest', label: 'Furthest From Plan', content: screen === 'furthest' && content },
+    { id: 'help', label: 'Help', content: helpTab },
+  ]
   return (
     <ReviewFrame testId="category-head-review" title={`${SUBDIVISIONS.join(', ')} · ${REGION} · ${header.month.label}`}
       status={`${header.person} · ${header.role} · ${categories} categories at ${storeCount} stores · sales to ${header.cutOff} · before tax`}
-      all={all} scope={scope} layouts={LAYOUTS} layout={layout} onLayout={setLayout} tab={tab}
-      onTab={t => { setTab(t); if (t !== 'help') setHelp({ at: null, from: null }) }} tabs={tabs} />
+      all={all} scope={scope} views={views} view={screen}
+      onView={v => { setScreen(v); setOpen(null); setRankOpen(null); if (v !== 'help') setHelp({ at: null, from: null }) }} />
   )
 }

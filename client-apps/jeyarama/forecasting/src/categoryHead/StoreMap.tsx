@@ -10,7 +10,7 @@ import { SORTERS, type SortKey } from '../shared/MeasureTable'
 import { ToolbarChoice } from '../shared/ReviewToolbar'
 import { matrix, METRICS, type Cell, type Metric, type MatrixRow } from './heads'
 
-export const SORT_OPTIONS: { value: SortKey; label: string }[] = [{ value: 'aop', label: 'Gap to AOP' }, { value: 'ly', label: 'Gap to last year' }, { value: 'size', label: 'Size' }]
+export const SORT_OPTIONS: { value: SortKey; label: string }[] = [{ value: 'aop', label: 'Behind AOP' }, { value: 'ly', label: 'Gap to last year' }, { value: 'size', label: 'Size' }]
 const TONE = { below: ['--color-negative', 46], above: ['--color-positive', 46], size: ['--color-action', 40] } as const
 
 const cellStyle = (c: Cell): CSSProperties | undefined => {
