@@ -147,7 +147,36 @@ export function NoRunYet({ month, what }: { month: Month; what: string }) {
   return <Card><EmptyState title={`${month.label} has no Run yet`} body={`The engine writes ${month.name}'s official Run at the end of ${month.before}. ${what}`} /></Card>
 }
 
+/**
+ * Moving between pages stays inside the app (TL-3, #1419): a click on a link that only changes this page's query
+ * (the sidebar, a link from one page to another) and Back/Forward redraw the page instead of reloading the
+ * document, so the shell stays put and the loaded data is kept. Each move gives the page a fresh mount, so a page
+ * still starts from its address as it did after a reload. Opening a new tab or window stays the browser's.
+ */
+function useInAppNavigation() {
+  const [moves, setMoves] = useState(0)
+  useEffect(() => {
+    const moved = () => setMoves(n => n + 1)
+    const click = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+      const a = (e.target as Element).closest?.('a[href]') as HTMLAnchorElement | null
+      if (!a || (a.target && a.target !== '_self')) return
+      const to = new URL(a.href, location.href)
+      if (to.origin !== location.origin || to.pathname !== location.pathname) return
+      e.preventDefault()
+      if (to.search !== location.search) history.pushState(null, '', to.search || '?')
+      moved()
+      window.scrollTo(0, 0)
+    }
+    document.addEventListener('click', click)
+    window.addEventListener('popstate', moved)
+    return () => { document.removeEventListener('click', click); window.removeEventListener('popstate', moved) }
+  }, [])
+  return moves
+}
+
 export function ForecastingApp() {
+  const moves = useInAppNavigation()
   const params = new URLSearchParams(window.location.search)
   // Whoever looks after the app opens as the top of the chain (the Chief Executive), not the first name in the list.
   const top = (PEOPLE.find(p => p.role === 'Chief Executive') ?? PEOPLE[0]).id
@@ -203,7 +232,7 @@ export function ForecastingApp() {
   return (
     <div className="fc-shell">
       <Sidebar current={view} waiting={data ? waitingFor(data, viewer).length : 0} news={data ? unseenFor(data, viewer).length : 0} />
-      <main className="fc-page" data-testid={`page-${view}`}>
+      <main key={moves} className="fc-page" data-testid={`page-${view}`}>
         {offChart ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
         {/* My Section is the screen as agreed (#1419): no picker bar above it for the person it belongs to. */}
         {!(view === 'section' && me) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
