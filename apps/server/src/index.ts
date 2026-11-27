@@ -112,6 +112,7 @@ import { OAUTH_STATE_COOKIE, OAUTH_VERIFIER_COOKIE, authCredential, clearLoginCh
 import { mimeEssence, serveFile } from './file-serving'
 import { peopleRoutes } from './people-routes'
 import { tableDefRoutes } from './table-def-routes'
+import { pageRoutes } from './page-routes'
 import { appRoutes } from './app-routes'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -1410,6 +1411,7 @@ app.route('/', addressRoutes)
 app.route('/', agentAuthRoutes)
 
 app.route('/', tableDefRoutes)
+app.route('/', pageRoutes)
 
 app.post('/api/save_row', async (c) => {
   const body = (await c.req.json()) as { table?: string; row?: Record<string, unknown> }
