@@ -392,7 +392,7 @@ export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] 
       // the app declared, counted the same way in the candidate and the
       // active snapshot, from their stored rows.
       async validate(rowCount, previous, snapshotId) {
-        if (rowCount === 0) return 'candidate is empty: the query returned no rows'
+        if (rowCount === 0) return 'the query returned no rows'
         if (!dataset.guard?.length) return null
         return guardRefusal(dataset.name, dataset.guard, await guardCounts(snapshotId, dataset.guard),
           previous ? await guardCounts(previous.row_id, dataset.guard) : null)

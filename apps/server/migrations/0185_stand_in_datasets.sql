@@ -37,7 +37,7 @@ do $$ begin
 end $$;
 
 insert into featherbase.table_def ("name", "module", "kind", "is_submittable", "id_pattern", "title_column", "sort_column", "sort_order", "track_changes", "description", "custom", "system", "created_by", "updated_by", "submission_status", "position", "label", "system_written", "decides_scope")
-values ('Dataset Binding', 'Core', 'table', false, 'prompt', null, 'updated_at', 'desc', true,
+values ('Dataset Binding', 'Core', 'table', false, 'prompt', 'dataset', 'updated_at', 'desc', true,
         'Where one dataset of an installed app is served from in this instance: the warehouse, or a stand-in loaded from a file until the warehouse has the data. Named <app>.<dataset>.',
         false, true, 'Administrator', 'Administrator', 'draft', 0, 'Dataset Bindings', false, false)
 on conflict ("name") do nothing;

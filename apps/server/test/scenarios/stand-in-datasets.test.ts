@@ -136,7 +136,7 @@ describe('stand-in-datasets', () => {
       switched = await admin.post<Switched>(`${TARGETS}switch_to_warehouse`, {})
     })
     await step('the System Manager is told the refresh was refused and why', () => {
-      expect(switched).toMatchObject({ switched: false, message: 'targets stays on its stand-in. The warehouse refresh was refused: candidate is empty: the query returned no rows.' })
+      expect(switched).toMatchObject({ switched: false, message: 'targets stays on its stand-in. The warehouse refresh was refused: the query returned no rows.' })
     })
     await step('the app\'s read of "targets" still answers the stand-in\'s rows, marked as a stand-in', async () => {
       expect(await ask(reader, 'targets')).toMatchObject({ served: 'stand-in', rows: TARGET_ROWS })
