@@ -55,3 +55,17 @@ describe('levels: a hierarchy over subcategories', () => {
     expect(rows.map(r => r.node?.label ?? r.line?.name)).toEqual(['Girls Bottom', 'Girls Inner Wear', 'Girls Panties', 'Girls Active Wear'])
   })
 })
+
+import { baseWeight, signedShare } from './model'
+describe('the build-up (#1419, corrected 27-Nov-2026)', () => {
+  it('shows signed shares, so a negative adjustment takes its share away and the parts add to 100%', () => {
+    expect(signedShare(-17375, 108166)).toBe('−16%')
+    expect(signedShare(74000, 108166)).toBe('68%')
+  })
+  it("shows Feather Forecast's fitted month weight, not adds ÷ own, when the Run carries it", () => {
+    expect(baseWeight({ code: 'B6', own: 100, w: 0.81, mw: 0.85, adds: 81 })).toBe(0.85)
+    expect(baseWeight({ code: 'B6', own: 100, w: 0.81, mw: null, adds: 81 })).toBe(0.81)
+    const first = fixture.forecast_line_month[0] as unknown as Record<string, number>
+    expect(lines[0].bases.map(b => b.mw)).toEqual([1, 2, 3, 4, 5, 6].map(i => first[`weight_b${i}`]))
+  })
+})

@@ -20,6 +20,7 @@ import { RbReview } from './rb/RbReview'
 import type { ChainPageProps } from './shared/chainPage'
 import { RecordPagesProvider } from '@featherbase/shop-floor'
 import { UnassignedPage } from './unassigned/UnassignedPage'
+import { StorePage } from './teamLeader/StorePage'
 
 export interface NumberRow {
   row_id: string; month: string; run: string; store: string; section: string; scope_level: 'Store' | 'Division' | 'Category' | 'Subcategory'; scope_name: string; weeks: string | null
@@ -49,6 +50,7 @@ export interface Data { explanations: ExplanationRow[]; numbers: NumberRow[]; de
 export interface Ctx { data: Data; viewer: Person; month: Month; reload: () => Promise<void>; save: typeof saveRow }
 
 const VIEWS = [
+  { key: 'sections', label: 'Sections', group: 'Forecasts', icon: 'M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1' },
   { key: 'section', label: 'My Section', group: 'Forecasts', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z' },
   { key: 'unassigned', label: 'No Section', group: 'Forecasts', icon: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z' },
   { key: 'store-review', label: 'Store Manager Review', group: 'Forecasts', icon: 'M3 10 12 3l9 7v11H3zM9 21v-7h6v7' },
@@ -65,9 +67,13 @@ const VIEWS = [
 ] as const
 type View = typeof VIEWS[number]['key']
 
+/** The pages of the review, which follow the newest official Run, not the month picked for the older pages. */
+const RUN_VIEWS: string[] = ['sections', 'section', 'unassigned']
+
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
   q.set('view', view)
+  if (RUN_VIEWS.includes(view)) q.delete('month')
   for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice', 'tl', ...CHART_KEYS]) q.delete(k)
   for (const [k, v] of Object.entries(extra)) q.set(k, v)
   return `?${q}`
@@ -92,7 +98,10 @@ function useMonth() {
     history[replace ? 'replaceState' : 'pushState'](null, '', `?${q}`)
   }
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('month') !== monthInAddress()) write(monthInAddress(), true)
+    // the review's own pages (and the default page, Sections) carry no month: they follow the newest official Run
+    const here = new URLSearchParams(window.location.search).get('view')
+    const runPage = !here || RUN_VIEWS.includes(here)
+    if (!runPage && new URLSearchParams(window.location.search).get('month') !== monthInAddress()) write(monthInAddress(), true)
     const fromHistory = () => setKey(monthInAddress())
     window.addEventListener('popstate', fromHistory)
     return () => window.removeEventListener('popstate', fromHistory)
@@ -236,7 +245,7 @@ export function ForecastingApp() {
   const asSection = !me && params.get('section') && params.get('store')
     ? { name: params.get('tl') || 'Team Leader', role: 'Team Leader', place: `${params.get('store')} · ${params.get('section')}` } : null
   // A Team Leader opens on their own section's review (#1419); everyone else on the Workspace.
-  const view = (VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : viewer.role === 'Team Leader' ? 'section' : 'forecasts') as View
+  const view = (VIEWS.some(v => v.key === params.get('view')) ? params.get('view') : viewer.role === 'Team Leader' && me ? 'section' : 'sections') as View
   const [month, chooseMonth] = useMonth()
 
   const reload = useCallback(async () => {
@@ -273,12 +282,17 @@ export function ForecastingApp() {
       <main key={moves} className="fc-page" data-testid={`page-${view}`}>
         {offChart ? <Card><EmptyState title="You are not on the forecasting org chart" body={`${offChart} has no store, section or merchandise to review in this month's Run. If that is wrong, your job or merchandise assignment needs setting up in Featherbase.`} /></Card> : <>
         {/* My Section is the screen as agreed (#1419): no picker bar above it for the person it belongs to. */}
-        {!((view === 'section' && (me || asSection)) || view === 'unassigned' || CHAIN_PAGES[view as ChainView]) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
+        {!(view === 'section' || view === 'unassigned' || view === 'sections' || CHAIN_PAGES[view as ChainView]) && <ViewingAs viewer={viewer} onChange={pick} month={month} onMonth={chooseMonth} signedIn={!!me} />}
         {failed ? <Card><EmptyState title="This page couldn't load" body="Check your connection and try again." action={<Button onClick={() => void reload()}>Try again</Button>} /></Card>
           : !ctx ? <Skeleton label="Opening Forecasting" lines={6} />
             : CHAIN_PAGES[view as ChainView] ? <ChainPage view={view as ChainView} />
             : view === 'unassigned' ? <UnassignedPage store={params.get('store') || viewer.place.split(' · ')[0]} href={line => address('unassigned', { line, ...(params.get('store') ? { store: params.get('store')! } : {}) })} />
+            : view === 'sections' || (view === 'section' && !me && !asSection) ? <StorePage store={params.get('store')}
+              sectionHref={(store, s) => address('section', { store, section: s.section, ...(s.teamLeaders[0] ? { tl: s.teamLeaders[0] } : {}) })}
+              noSectionHref={store => address('unassigned', { store })} onStore={store => { history.pushState(null, '', address('sections', { store })); window.dispatchEvent(new PopStateEvent('popstate')) }} />
             : view === 'section' ? <SectionPage key={asSection ? asSection.place : viewer.id} viewer={asSection ?? viewer}
+              sectionHref={asSection ? (store, s) => address('section', { store, section: s.section, ...(s.teamLeaders[0] ? { tl: s.teamLeaders[0] } : {}) }) : undefined}
+              storeHref={store => address('sections', { store })}
               href={line => address('section', { line, ...(asSection ? { store: params.get('store')!, section: params.get('section')!, ...(params.get('tl') ? { tl: params.get('tl')! } : {}) } : {}) })} />
             : view === 'forecasts' ? (DATASET ? <ReviewMonthPage ctx={ctx} /> : <WorkspacePage ctx={ctx} />)
               : view === 'numbers' ? <NumbersPage ctx={ctx} />

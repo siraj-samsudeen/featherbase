@@ -69,7 +69,7 @@ for (const p of real?.people ?? PEOPLE) {
 const signIn = `${`http://localhost:${process.env.WEB_PORT ?? ''}`}/featherbase/login?next=%2Fforecasting%2F`
 const page = await fetch(`${api}/api/table/${encodeURIComponent('Home Page')}/forecasting`, { headers: { authorization: `Bearer ${login.token}` } })
 if (page.status === 404) await save('Home Page', { row_id: 'forecasting', label: 'Forecasting', module: 'Forecasting', sequence: 10,
-  shortcuts: JSON.stringify([{ label: 'Open Forecasting', type: 'url', link_to: '/forecasting/' }]) })
+  shortcuts: JSON.stringify([{ label: 'Open Forecasting', type: 'url', link_to: '/forecasting/', description: "Review the month's forecast, section by section" }]) })
 
 // The Team Leader review (#1419) reads the copied warehouse tables. Until the warehouse copy table exists
 // (#1418), a local instance on made-up data fills them from fixtures/team-leader-december.json (Lakeside ·
@@ -78,9 +78,17 @@ if (!real) {
   const [loaded] = await sql`select 1 from forecasting.forecast_run limit 1`
   if (!loaded) {
     const tl = JSON.parse(await readFile(resolve(appDir, 'fixtures/team-leader-december.json'), 'utf8')) as Record<string, Record<string, unknown>[]>
-    // rows keep their own ids (the warehouse's key), so they are created, not saved over
+    // The copies are read only to everyone, so they are written straight to their tables, as the copy job and the
+    // bulk load write them (a save through the API never writes a read-only column).
+    await sql.begin(async (tx: { unsafe(query: string, values?: unknown[]): Promise<unknown> }) => {
+      for (const [table, rows] of Object.entries(tl)) for (const row of rows) {
+        const cols = Object.keys(row)
+        const params = cols.map((_, i) => '$' + (i + 1)).join(', ')
+        await tx.unsafe(`insert into forecasting.${table} (${cols.map(c => `"${c}"`).join(', ')}, submission_status) values (${params}, 'submitted')`, cols.map(c => row[c]))
+      }
+    })
+    // the reasons people pick from are ordinary rows; they keep their codes as ids, so they are created, not saved over
     const add = (table: string, row: Record<string, unknown>) => call(`/api/table/${encodeURIComponent(table)}`, { method: 'POST', body: JSON.stringify(row) })
-    for (const [table, rows] of Object.entries(tl)) for (const row of rows) await add(`forecasting.${table}`, row)
     const reasons: [string, string, string][] = [['stock_short', 'Stock out or short', 'both'], ['stock_arriving', 'Stock arriving', 'both'],
       ['price_changed', 'Price changed', 'both'], ['display_space', 'Display space', 'both'], ['last_month_one_off', 'Last month was a one-off', 'month'],
       ['event_or_festival', 'Event or festival', 'both'], ['may_not_happen', 'May not happen', 'day'], ['store_hours', 'Store shut or short hours', 'day'],

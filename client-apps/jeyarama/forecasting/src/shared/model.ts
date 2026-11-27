@@ -7,8 +7,10 @@ import { fmtCount, fmtINR } from '@featherbase/shop-floor/format'
 export type BasisCode = 'B1' | 'B2' | 'B3' | 'B4' | 'B5' | 'B6'
 export const BASIS_CODES: BasisCode[] = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6']
 
-/** One base of a line's forecast: its own December, the share of it Feather Forecast used, and what it adds. */
-export interface Base { code: BasisCode; own: number | null; w: number | null; adds: number }
+/** One base of a subcategory's forecast: its own month, Feather Forecast's fitted month weight for it (`mw`), the
+ *  share of its own month it actually added (`w`, adds ÷ own; the day's weights differ on Sundays, salary days and
+ *  Christmas), and what it adds. */
+export interface Base { code: BasisCode; own: number | null; w: number | null; mw: number | null; adds: number }
 
 /** One subcategory of the section for the month: Feather Forecast, its parts, and the sales it is read against. */
 export interface Line {
@@ -23,6 +25,8 @@ export interface Line {
   path: string
   /** Its SAP subcategory code (material group), when known. */
   code?: string
+  /** For a subcategory in no section: where it most likely belongs, why, and the org chart's row ids already taken. */
+  suggestedSection?: string; suggestedSectionNote?: string; sectionRowIds?: string[]
   fc: number; fq: number; growth: number; step: number
   fromRecent: number; lift: number; lyg: number; adj: number; bases: Base[]
   l28: number; l28q: number; ly28: number; ly28q: number; ly: number; lyq: number; n91: number; y91: number
@@ -43,6 +47,8 @@ export interface LineMonthRow {
   region_name?: string; floor_name?: string; floor_order?: Num
   /** The subcategory's SAP code, when the copy carries it (0.14.0). */
   material_group_code?: string | null
+  /** For a subcategory in no section: a suggested section (Section row id), why, and the row ids already taken. */
+  suggested_section?: string | null; suggested_section_note?: string | null; section_row_ids?: string | null
   forecast_value_before_tax: Num; forecast_qty: Num; seasonal_factor: Num; growth_factor: Num
   from_recent_selling: Num; december_step_on_top: Num; from_last_year: Num; adjustments: Num
   own_value_b1: Num; own_value_b2: Num; own_value_b3: Num; own_value_b4: Num; own_value_b5: Num; own_value_b6: Num
@@ -76,13 +82,16 @@ export function linesFrom({ lines, sales, plans, others }: CopiedRows, store?: s
     const bases = BASIS_CODES.map((code, i): Base => {
       const own = row[`own_value_b${i + 1}`], adds = n(row[`adds_value_b${i + 1}`])
       // the weight this base actually carried over the month: what it adds ÷ its own December
-      return { code, own: own == null || own === '' ? null : n(own), w: n(own) ? Math.round(adds / n(own) * 1000) / 1000 : null, adds }
+      const mw = row[`weight_b${i + 1}`]
+      return { code, own: own == null || own === '' ? null : n(own), w: n(own) ? Math.round(adds / n(own) * 1000) / 1000 : null, mw: mw == null || mw === '' ? null : n(mw), adds }
     })
     const l28 = v('last_28_days'), l28q = q('last_28_days')
     return {
       rowId: l.row_id, name: sub, category: l.category_name, path: [l.division_name, l.subdivision_name, l.category_name].filter(Boolean).join(' › '), code: l.material_group_code || undefined,
       store: l.store_code, storeName: l.store_name, region: l.region_name ?? '', floor: l.floor_name ?? '', floorOrder: n(l.floor_order), section: l.section_name,
       division: l.division_name ?? '', subdivision: l.subdivision_name ?? '', n: 1,
+      suggestedSection: l.suggested_section || undefined, suggestedSectionNote: l.suggested_section_note || undefined,
+      sectionRowIds: l.section_row_ids ? l.section_row_ids.split('\n').filter(Boolean) : undefined,
       fc: n(l.forecast_value_before_tax), fq: n(l.forecast_qty), growth: Math.round(n(l.growth_factor) * 100) / 100, step: Math.round(n(l.seasonal_factor) * 100) / 100,
       fromRecent: n(l.from_recent_selling), lift: n(l.december_step_on_top), lyg: n(l.from_last_year), adj: n(l.adjustments), bases,
       l28, l28q, ly28: v('same_28_days_last_year'), ly28q: q('same_28_days_last_year'), ly: v('last_december'), lyq: q('last_december'),
@@ -110,7 +119,7 @@ export function combine(members: Line[], index: number, name?: string): Group {
   const sum = Object.fromEntries(SUMMED.map(k => [k, ms.reduce((t, l) => t + l[k], 0)])) as Record<typeof SUMMED[number], number>
   const byCode = new Map<BasisCode, Base>()
   for (const m of ms) for (const b of m.bases) {
-    const o = byCode.get(b.code) ?? { code: b.code, own: 0, w: null, adds: 0 }
+    const o = byCode.get(b.code) ?? { code: b.code, own: 0, w: null, mw: null, adds: 0 }
     o.own = (o.own ?? 0) + (b.own ?? 0); o.adds += b.adds
     byCode.set(b.code, o)
   }
@@ -203,8 +212,12 @@ export const BASE_INFO: Record<BasisCode, string> = {
   B1: 'Same date last year × growth', B2: 'Same festival day last year × growth', B3: 'Last 28 days, per day × 31',
   B4: 'Last four same weekdays', B5: 'Same date last month', B6: 'Last 28 days × December step',
 }
+/** A base's weight as shown: Feather Forecast's fitted month weight, else (a Run without it) adds ÷ own. */
+export const baseWeight = (b: Base) => b.mw ?? b.w
 /** The weight of some bases together; null for a group (its members' weights differ). */
-export const weightOf = (l: Line | Group, codes: BasisCode[]) => ('members' in l ? null : l.bases.filter(b => codes.includes(b.code)).reduce((t, b) => t + (b.w ?? 0), 0))
+export const weightOf = (l: Line | Group, codes: BasisCode[]) => ('members' in l ? null : l.bases.filter(b => codes.includes(b.code)).reduce((t, b) => t + (baseWeight(b) ?? 0), 0))
+/** A part's share of the forecast, signed, so the shares add up to 100% (a negative adjustment shows as −16%). */
+export const signedShare = (v: number, total: number) => { const p = Math.round(v / total * 100); return `${p < 0 ? '−' : ''}${Math.abs(p)}%` }
 
 /** TL-28 December rise: last year's December rate per day against the 28 days before it, and the note when it strays from the store's. */
 export function decemberRise(l: Line | Group, step: number) {
@@ -224,3 +237,18 @@ export const storeStepOf = (lines: Line[]) => {
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 /** The month before a month's name (December → November). */
 export const prevMonth = (name: string) => MONTHS[(MONTHS.indexOf(name) + 11) % 12]
+
+// ---- search (the prototype's "Search your subcategories") ------------------------------------------------
+const words = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean)
+/** Whether a subcategory matches what is typed: every word in its name or its category. */
+export const matches = (l: Pick<Line, 'name' | 'category'>, q: string) => {
+  const ws = words(q), text = `${l.name} ${l.category}`.toLowerCase()
+  return ws.every(w => text.includes(w))
+}
+/** The names nearest to something that matches none, by shared three-letter runs (at most `n`). */
+export function nearest<T extends Pick<Line, 'name'>>(lines: T[], q: string, n = 3): T[] {
+  const tri = (s: string) => { const t = new Set<string>(), x = `  ${s.toLowerCase()} `; for (let i = 0; i < x.length - 2; i++) t.add(x.slice(i, i + 3)); return t }
+  const a = tri(q)
+  return lines.map(l => { const b = tri(l.name); let both = 0; a.forEach(x => { if (b.has(x)) both++ }); return [l, both / (a.size + b.size - both)] as const })
+    .sort((x, y) => y[1] - x[1]).slice(0, n).map(([l]) => l)
+}

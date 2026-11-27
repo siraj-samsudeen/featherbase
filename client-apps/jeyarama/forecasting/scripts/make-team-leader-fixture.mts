@@ -28,11 +28,11 @@ const SEEDS: Seed[] = [
 ]
 
 const rows: Rows = { lines: [], sales: [], plans: [], others: [] }
-SEEDS.forEach((seed, i) => addSeed(rows, seed, { run: RUN, ...KEY, store_name: 'Lakeside', section_name: SECTION }, i))
+SEEDS.forEach((seed, i) => addSeed(rows, seed, { run: RUN, ...KEY, store_name: 'Lakeside', section_name: SECTION, floor_name: 'First Floor', floor_order: 2 }, i))
 const { lines, sales, plans, others } = rows
 
 const fixture = {
-  forecast_run: [{ row_id: RUN, run_id: RUN, model: 'engine_v2', purpose: 'official', status: 'complete', origin_date: '2026-11-26', horizon_from: '2026-12-01', horizon_to: '2026-12-31' }],
+  forecast_run: [{ row_id: RUN, run_id: RUN, model: 'made_up', purpose: 'official', status: 'complete', origin_date: '2026-11-26', horizon_from: '2026-12-01', horizon_to: '2026-12-31' }],
   forecast_line_month: lines,
   sales_reference: sales,
   annual_plan_line: plans,

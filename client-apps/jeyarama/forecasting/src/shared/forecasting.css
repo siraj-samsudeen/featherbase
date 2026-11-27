@@ -9,7 +9,7 @@
 .fr-toolbar > span { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .fr-toolbar-label { font-size: 13px; color: var(--color-ink-subtle); }
 .fr-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--color-ink-subtle); margin: 0 0 8px; }
-.fr-legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+.fr-legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 9999px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
 .fr-scroll { overflow-x: auto; }
 
 /* the review table: TableLook's band and rows; numbers right-aligned; blocks set apart by space, never rules */
@@ -83,7 +83,7 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-from { font-size: 12px; color: var(--color-ink-muted); font-weight: 400; margin-top: 2px; }
 .fr-six { margin: 4px 0 8px 16px; width: calc(100% - 16px); }
 .fr-link { color: var(--color-action); cursor: pointer; font-size: 13px; font-weight: 500; background: none; border: 0; padding: 0; }
-.fr-checks { margin: 0; padding-left: 18px; font-size: 13px; list-style: disc; }
+.fr-checks { margin: 0; padding-left: 15px; font-size: 13px; list-style: none; }
 .fr-checks li { margin: 4px 0; }
 .fr-choices { display: flex; flex-wrap: wrap; gap: 6px; }
 .fr-numrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -161,13 +161,6 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-scope-sum { color: var(--color-ink-muted); }
 .fr-scope-sum b { color: var(--color-ink); }
 
-/* the views row (ReviewFrame): one underlined row of tabs under the search, Help last */
-.fr-layouts { display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid var(--color-border); overflow-x: auto; }
-.fr-layouts button { border: 0; background: none; padding: 8px 12px 10px; font-size: 14px; font-weight: 500; color: var(--color-ink-muted); cursor: pointer; white-space: nowrap; box-shadow: inset 0 -2px 0 transparent; }
-.fr-layouts button:hover { color: var(--color-ink); }
-.fr-layouts button[aria-selected='true'] { color: var(--color-action); box-shadow: inset 0 -2px 0 var(--color-action); }
-.fr-layouts button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
-
 /* proposals (Proposals.tsx): cards in a grid that fills the width */
 .fr-pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; margin: 0 0 20px; }
 .fr-pcard { display: flex; flex-direction: column; gap: 8px; background: var(--color-subtle); border-radius: 12px; padding: 14px 16px; font-size: 13.5px; min-width: 0; }
@@ -204,4 +197,22 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-table-mgr .fr-name > b, .fr-table-mgr .fr-name a { white-space: normal; overflow-wrap: anywhere; }
 .fr-table-mgr .fr-first { white-space: normal; }
 .fr-table-mgr .fr-sub { max-width: none; }
-.fr-viewpanel { padding-top: 20px; min-width: 0; }
+
+/* search (the prototype's "Search your subcategories"): Shop Floor's SearchInput, a "/" key hint, a note under it */
+.fr-search { max-width: 48rem; }
+.fr-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px;
+  background: var(--color-fill); color: var(--color-ink-subtle); font: 600 11.5px/1 var(--font-sans); }
+.fr-search-note { font-size: 13px; color: var(--color-ink-subtle); margin: 8px 2px 0; }
+
+/* one underlined tab row (the prototype's layout tabs; the look kit has no underlined tabs but the phone TabBar) */
+.fr-tabs { display: flex; align-items: flex-end; gap: 0.25rem; box-shadow: inset 0 -1px 0 var(--color-border); overflow-x: auto; }
+.fr-tabs > [role='tab'] { appearance: none; background: none; border: 0; border-bottom: 2px solid transparent; margin: 0; padding: 0.5rem 0.75rem 0.625rem;
+  font: inherit; font-size: var(--text-control); font-weight: 500; color: var(--color-ink-muted); white-space: nowrap; cursor: pointer; }
+.fr-tabs > [role='tab']:hover { color: var(--color-ink); }
+.fr-tabs > [role='tab']:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; border-radius: 6px; }
+.fr-tabs > [role='tab'][aria-selected='true'] { color: var(--color-action); border-bottom-color: var(--color-action); font-weight: 600; }
+.fr-tabpanel { padding-top: 1.75rem; }
+
+/* full subcategory names: they wrap, never cut */
+.fr-table > tbody > tr > td:first-child { white-space: normal; }
+.fr-name { flex-wrap: wrap; }

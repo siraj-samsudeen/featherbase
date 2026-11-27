@@ -2,17 +2,25 @@
 // is kept in the address (?line=), so a link to a line, or a Comment's "take me to the place", opens it here.
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Card, EmptyState, RecordPagesProvider, Skeleton } from '@featherbase/shop-floor'
-import { liveActions, loadSection, loadState, type Section, type Viewer } from './live'
+import { liveActions, loadSection, loadState, loadStore, type Section, type SectionSummary, type StoreSummary, type Viewer } from './live'
+import { SectionSwitcher } from './SectionSwitcher'
 import { storeStepOf } from '../shared/model'
 import { TeamLeaderReview } from './TeamLeaderReview'
 
-export function SectionPage({ viewer, href }: { viewer: Viewer; href: (line: string) => string }) {
+export function SectionPage({ viewer, href, sectionHref, storeHref }: {
+  viewer: Viewer; href: (line: string) => string
+  /** Where another section of the store opens, for the switcher; none for a Team Leader on their own section. */
+  sectionHref?: (store: string, s: SectionSummary) => string
+  storeHref?: (store: string) => string
+}) {
   const [section, setSection] = useState<Section | null | undefined>(undefined)
   const [failed, setFailed] = useState(false)
   const load = useCallback(async () => {
     try { setSection(await loadSection(viewer)); setFailed(false) } catch { setFailed(true) }
   }, [viewer.name, viewer.place, viewer.role])
   useEffect(() => { setSection(undefined); void load() }, [load])
+  const [store, setStore] = useState<StoreSummary | null>(null)
+  useEffect(() => { if (sectionHref) loadStore(viewer.place.split(' · ')[0]).then(setStore, () => setStore(null)) }, [viewer.place, sectionHref])
   const refresh = useCallback(async () => {
     if (!section) return
     const state = await loadState(section.run.run_id, section.storeCode, viewer.name)
@@ -30,6 +38,8 @@ export function SectionPage({ viewer, href }: { viewer: Viewer; href: (line: str
     <RecordPagesProvider pageFor={(table, rowId) => (table === 'forecasting.forecast_line_month' && byRow.has(rowId) ? href(byRow.get(rowId)!) : undefined)}>
       <TeamLeaderReview header={section.header} lines={section.lines} storeStep={storeStepOf(section.lines)} state={section.state}
         actions={liveActions(section, viewer.name, () => void refresh())} hrefFor={l => href(l.name)}
+        switcher={store && sectionHref && storeHref ? <SectionSwitcher store={store.store} current={section.header.section} sections={store.sections}
+          href={s => sectionHref(store.store, s)} storeHref={storeHref(store.store)} /> : undefined}
         openLine={line && section.lines.some(l => l.name === line) ? line : null}
         onOpenLine={name => {
           const q = new URLSearchParams(window.location.search)

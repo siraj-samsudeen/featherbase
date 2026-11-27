@@ -3,8 +3,9 @@
 // what it shows besides the Run (answers, questions) and what it asks to be done come in as `state` and
 // `actions`, so the same screen runs on a story's memory or on the app's tables.
 import { useMemo, useState, type ReactNode } from 'react'
-import { Chip, ContentTabs, PageHeader, RecordLink, StatusPill } from '@featherbase/shop-floor'
-import { byGapToLastYear, combine, groupsOf, type Group, type HelpTopic, type Line } from '../shared/model'
+import { Chip, PageHeader, RecordLink, StatusPill } from '@featherbase/shop-floor'
+import { byGapToLastYear, combine, groupsOf, matches, type Group, type HelpTopic, type Line } from '../shared/model'
+import { SubcategorySearch } from '../shared/SubcategorySearch'
 import type { Header, ReviewActions, ReviewState } from '../shared/review'
 import { DEFAULT_VIEW, PartsLegend, ReviewToolbar, type ViewChoices } from '../shared/ReviewToolbar'
 import { MeasureTable, type TableRow } from '../shared/MeasureTable'
@@ -17,7 +18,7 @@ import '../shared/forecasting.css'
 
 const groupKey = (g: Group) => `group:${g.index}`
 
-export function TeamLeaderReview({ header, lines, storeStep, state, actions, hrefFor, openLine: initialLine, onOpenLine }: {
+export function TeamLeaderReview({ header, lines, storeStep, state, actions, hrefFor, openLine: initialLine, onOpenLine, switcher }: {
   header: Header
   lines: Line[]
   /** The store's usual December rise, for a group's sentences (a subcategory has its own). */
@@ -29,9 +30,12 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
   /** A subcategory to open on arrival (a link to it, or a jump from My questions). */
   openLine?: string | null
   onOpenLine?: (line: string | null) => void
+  /** A way to another section, in the header (the app's SectionSwitcher); none in the story. */
+  switcher?: ReactNode
 }) {
   const [view, setView] = useState<ViewChoices>(DEFAULT_VIEW)
   const [tab, setTab] = useState('review')
+  const [query, setQuery] = useState('')
   const [open, setOpenState] = useState<string | null>(initialLine ?? null)
   const [help, setHelp] = useState<{ at: HelpTopic | null; from: string | null }>({ at: null, from: null })
   const [flash, setFlash] = useState<{ key: string; n: number } | null>(initialLine ? { key: initialLine, n: 0 } : null)
@@ -72,17 +76,22 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
     note: look?.includes('head') ? 'Moved in opposite directions' : undefined,
   })
 
+  // the search narrows the table: a subcategory shows when it matches; a group when any of its members does
+  const searching = query.trim() !== ''
+  const hit = (l: Line) => matches(l, query)
+  const shown = (g: Group) => g.members.some(hit)
   const rows: TableRow[] = []
-  const loose = lines.filter(l => view.groups === 'off' || !groupOf(l.name))
+  const loose = lines.filter(l => (view.groups === 'off' || !groupOf(l.name)) && hit(l))
   if (view.groups === 'band') {
-    for (const g of groups) { rows.push(groupRow(g, ['band', 'head'])); g.members.forEach(m => rows.push(lineRow(m, ['band', 'member']))) }
+    for (const g of groups.filter(shown)) { rows.push(groupRow(g, ['band', 'head'])); g.members.forEach(m => rows.push(lineRow(m, ['band', 'member']))) }
     byGapToLastYear(loose).forEach(l => rows.push(lineRow(l)))
   } else if (view.groups === 'one') {
-    for (const it of byGapToLastYear<Line | Group>([...groups, ...loose])) {
+    for (const it of byGapToLastYear<Line | Group>([...groups.filter(shown), ...loose])) {
       if (!('members' in it)) { rows.push(lineRow(it)); continue }
       rows.push(groupRow(it, ['band']))
-      // the group stays open while one of its subcategories is open
-      if (open === groupKey(it) || it.members.some(m => m.name === open)) it.members.forEach(m => rows.push(lineRow(m, ['band', 'member'])))
+      // the group stays open while one of its subcategories is open, and opens to show the ones a search matches
+      if (open === groupKey(it) || it.members.some(m => m.name === open) || searching)
+        it.members.filter(m => !searching || hit(m) || open === groupKey(it)).forEach(m => rows.push(lineRow(m, ['band', 'member'])))
     }
   } else byGapToLastYear(loose).forEach(l => rows.push(lineRow(l)))
 
@@ -112,13 +121,18 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
     <div className="fr flex flex-col" data-testid="team-leader-review">
       <PageHeader title={`${header.store} · ${header.section} · ${header.month.label}`}
         status={`${header.person} · ${header.role} · sales to ${header.cutOff} · before tax`}
-        actions={<MyQuestions questions={state.questions} lines={lines} hrefFor={hrefFor} onJump={jumpTo} />} />
-      <ContentTabs className="mt-4" label="Review sections" value={tab}
-        onChange={t => { setTab(t); if (t === 'review') setHelp({ at: null, from: null }) }}
-        tabs={[
-          { id: 'review', label: 'Review', content: review },
-          { id: 'help', label: 'Help', content: <HelpTab header={header} lines={lines} storeStep={storeStep} at={help.at} from={help.from} onBack={jumpTo} /> },
-        ]} />
+        actions={<>{switcher}<MyQuestions questions={state.questions} lines={lines} hrefFor={hrefFor} onJump={jumpTo} /></>} />
+      <div className="mt-4"><SubcategorySearch lines={lines} query={query} onOpen={jumpTo}
+        onQuery={q => { setQuery(q); if (q) { setTab('review'); setHelp({ at: null, from: null }) } }} /></div>
+      {/* one underlined tab row, Help last (the prototype's; the same on every forecasting page) */}
+      <div className="fr-tabs mt-4" role="tablist" aria-label="Review sections">
+        {[['review', 'Review'], ['help', 'Help']].map(([id, label]) => (
+          <button key={id} type="button" role="tab" id={`fr-tab-${id}`} aria-controls={`fr-panel-${id}`} aria-selected={tab === id}
+            onClick={() => { setTab(id); if (id === 'review') setHelp({ at: null, from: null }) }}>{label}</button>))}
+      </div>
+      <div className="fr-tabpanel" role="tabpanel" id="fr-panel-review" aria-labelledby="fr-tab-review" hidden={tab !== 'review'}>{review}</div>
+      <div className="fr-tabpanel" role="tabpanel" id="fr-panel-help" aria-labelledby="fr-tab-help" hidden={tab !== 'help'}>
+        <HelpTab header={header} lines={lines} storeStep={storeStep} at={help.at} from={help.from} onBack={jumpTo} /></div>
     </div>
   )
 }

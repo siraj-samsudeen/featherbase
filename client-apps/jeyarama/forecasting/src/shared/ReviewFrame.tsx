@@ -26,12 +26,13 @@ export function useView(ids: string[]) {
   return [view, choose] as const
 }
 
-/** One underlined row of tabs; ← → Home End move along it, as Shop Floor's ContentTabs do. */
+/** One underlined row of tabs (.fr-tabs, the Team Leader page's too); ← → Home End move along it, as Shop Floor's
+ *  ContentTabs do. */
 function ViewTabs({ views, value, onChange }: { views: View[]; value: string; onChange: (id: string) => void }) {
   const id = useId()
   const buttons = useRef<(HTMLButtonElement | null)[]>([])
   return <>
-    <nav className="fr-layouts" role="tablist" aria-label="Views" data-testid="view-tabs">
+    <nav className="fr-tabs" role="tablist" aria-label="Views" data-testid="view-tabs">
       {views.map((v, i) => (
         <button key={v.id} ref={el => { buttons.current[i] = el }} type="button" role="tab" id={`${id}-tab-${v.id}`} aria-controls={`${id}-panel-${v.id}`}
           aria-selected={value === v.id} tabIndex={value === v.id ? 0 : -1} onClick={() => onChange(v.id)}
@@ -43,7 +44,7 @@ function ViewTabs({ views, value, onChange }: { views: View[]; value: string; on
           }}>{v.label}</button>))}
     </nav>
     {views.map(v => (
-      <div key={v.id} id={`${id}-panel-${v.id}`} role="tabpanel" aria-labelledby={`${id}-tab-${v.id}`} hidden={value !== v.id} className="fr-viewpanel">{v.content}</div>))}
+      <div key={v.id} id={`${id}-panel-${v.id}`} role="tabpanel" aria-labelledby={`${id}-tab-${v.id}`} hidden={value !== v.id} className="fr-tabpanel min-w-0">{v.content}</div>))}
   </>
 }
 
