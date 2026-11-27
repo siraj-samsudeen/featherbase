@@ -19,7 +19,7 @@ export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Heade
   // recent selling as Feather Forecast counts it: the engine's own B3 base (the last 28 days per day × the month's
   // days); a Run without it falls back to the sales of the last 28 days, marked ≈
   const b3 = l.bases.find(b => b.code === 'B3'), exactRecent = b3?.own != null
-  const st = l.step ?? storeStep, own = exactRecent ? b3!.own! : l.l28 / 28 * month.days, rate = own / month.days
+  const st = l.step ?? storeStep, own = exactRecent ? b3!.own! : l.l28 / 28 * month.days
   const lyOwn = l.bases.find(b => b.code === 'B1')?.own ?? 0
   const wRec = weightOf(l, ['B3', 'B4', 'B5', 'B6']), wStep = weightOf(l, ['B6']), wLy = weightOf(l, ['B1', 'B2'])
   const share = (v: number) => signedShare(v, l.fc)
@@ -34,7 +34,7 @@ export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Heade
     <table className="fr-mini fr-build">
       <thead><tr><th>Part</th><th>Its own {month.name}</th><th>Weight</th><th>Adds</th><th>Share</th></tr></thead>
       <tbody>
-        {part(recent, `Last 28 days as Feather Forecast counts them: ${inr(rate)} a day × ${month.days} ${month.name} days`, `${exactRecent ? '' : '≈ '}${inr(own)}`, wRec, l.fromRecent)}
+        {part(recent, `Last 28 days ${inr(l.l28)} (${count(l.l28q)} pcs) = ${inr(l.l28 / 28)} a day; carried into ${month.name} at ${month.name}'s day pattern${exactRecent ? `: ${inr(own)}` : ''}`, `${exactRecent ? '' : '≈ '}${inr(own)}`, wRec, l.fromRecent)}
         {part(step, wStep === 0 ? 'Not used for this subcategory.'
           : `${month.name} usually sells ×${st} the late-${prevMonth(month.name)} rate here: ${Math.round((st - 1) * 100)}% more on the part of recent selling that gets the step${wStep == null ? '' : ` (${pct0(wStep)} of the ${pct0(wRec)})`}`,
           wStep === 0 ? '' : `≈ ${inr(own * (st - 1))}`, null, l.lift)}
