@@ -1,10 +1,11 @@
 import { storedTable } from './views'
-import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_ROOT, ACCOUNT_SIGN_IN_METHODS_PATH, ADMIN_PAGES, type CommandDestinations, type CommandPageDestination } from 'shared'
+import { ACCOUNT_CONNECTED_APPS_PATH, ACCOUNT_ROOT, ACCOUNT_SIGN_IN_METHODS_PATH, ADMIN_PAGES, pageHref, type CommandDestinations, type CommandPageDestination } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta } from './meta'
 import { getRoles, permissionScope, tableAccessFor } from './permissions'
 import { getVisibleHomePages } from './home-pages'
+import { pagesFor } from './pages'
 import { appCatalog } from './runtime-packages'
 import { getList } from './query'
 import { scriptReportMeta } from './script-report'
@@ -84,6 +85,8 @@ export async function commandDestinations(user: string): Promise<CommandDestinat
   if (manage) add('Service accounts', '/featherbase/admin/access-tokens?tab=accounts', 'Page')
   for (const page of await getVisibleHomePages(user))
     add(page.label || page.row_id, `/featherbase/admin/home/${encodeURIComponent(page.row_id)}`, 'Home Page')
+  // #1410: a page saved as data is found by its title; a Draft only by someone who may build.
+  for (const page of await pagesFor(user)) add(page.title, pageHref(page.name), 'Page')
   for (const app of await appCatalog(user)) appPages(app, add)
 
   // Named resources use the normal list read: own rows, Data Scopes and
