@@ -20,6 +20,7 @@ import { invalidateSources } from '../src/sources/registry'
 import { activeSnapshot, buildSnapshot, pendingMisses } from '../src/dataset-snapshot'
 import { datasetBinding } from '../src/dataset-bindings'
 import { datasetsDue } from '../src/jobs/refresh-datasets'
+import { runHealthChecks } from '../src/instance-health'
 import { STAND_IN_PROBLEMS_SHOWN, checkStandIn } from '../src/dataset-stand-in'
 import { registerAppDatasets, type DatasetDeclaration } from '../src/app-datasets'
 import {
@@ -240,6 +241,9 @@ describe('a read of a stand-in', () => {
     const both = await post(reader, `${READ}overview`, { payload: {} })
     expect(readStandInHeader(both.headers.get(STAND_IN_HEADER)))
       .toEqual([{ app: 'storesales', dataset: 'targets', loaded_at: loaded.loaded_at, note: 'Workbook – திட்டம்', expected_by: '2026-12-15' }])
+    // And once more as a Server-Timing metric, which a browser keeps with every request it made.
+    const [, timed] = /^featherbase-stand-in;desc="([^"]*)"$/.exec(both.headers.get('Server-Timing') ?? '') ?? []
+    expect(readStandInHeader(timed)).toEqual(readStandInHeader(both.headers.get(STAND_IN_HEADER)))
     const { result } = await both.json() as { result: { sales: { served: string; rows: unknown[] }; targets: { served: string } } }
     expect(result.sales).toMatchObject({ served: 'cached', rows: SALES_ROWS })
     expect(result.sales).not.toHaveProperty('standIn')
@@ -247,6 +251,7 @@ describe('a read of a stand-in', () => {
     const salesOnly = await post(reader, `${READ}sales`, { payload: {} })
     await expectStatus(salesOnly, 200)
     expect(salesOnly.headers.get(STAND_IN_HEADER)).toBeNull()
+    expect(salesOnly.headers.get('Server-Timing')).toBeNull()
   })
 
   test('a filter on a declared key narrows a stand-in as it narrows the warehouse\'s rows', async ({ admin, createUser }) => {
@@ -299,6 +304,20 @@ describe('a read of a stand-in', () => {
       await admin.post('/api/save_row', { table: 'Dataset Binding', row: { row_id: 'storesales.targets', updated_at, allowed_on_production: true } })
       expect(await ask(reader, 'targets')).toMatchObject({ served: 'stand-in', rows: TARGET_ROWS })
     })
+  })
+
+  test('Instance health names the datasets bound to a stand-in that have none loaded', async ({ admin, createUser }) => {
+    await storeSales(admin, createUser)
+    await buildSnapshot('storesales.sales')
+    await admin.post(BINDING, { row_id: 'storesales.sales', served_from: 'Stand-in' })
+    await admin.post(BINDING, { row_id: 'storesales.targets', served_from: 'Stand-in' })
+    const check = async () => (await runHealthChecks()).find(({ key }) => key === 'stand-ins-loaded:storesales')
+    // sales still holds warehouse rows that are no longer refreshed; targets holds nothing.
+    expect((await check())?.message).toBe('sales, targets are bound to a stand-in, but no stand-in is loaded that fits what Store Sales reads now.')
+    await loadTargets(admin)
+    expect((await check())?.message).toBe('sales is bound to a stand-in, but no stand-in is loaded that fits what Store Sales reads now.')
+    // On production a stand-in that is not allowed there is not served, so it counts as missing too.
+    await onProduction(async () => expect((await check())?.message).toContain('sales, targets are bound'))
   })
 
   test('a dataset bound to a stand-in does not keep its app waiting for a data source', async ({ admin, createUser }) => {
@@ -381,6 +400,26 @@ describe('switching to the warehouse', () => {
     expect(await buildSnapshot('storesales.targets')).toMatchObject({ status: 'refused', reason: expect.stringContaining('target total dropped 40%') })
   })
 
+  test('a stand-in loaded over real rows: the first real refresh is still compared with the last real rows', async ({ admin, createUser }) => {
+    const { reader } = await storeSales(admin, createUser)
+    await warehouseTargets(WAREHOUSE_TARGETS)
+    expect(await buildSnapshot('storesales.targets')).toMatchObject({ status: 'activated', rowCount: 2 })
+    // Loaded twice, so pruning has an older stand-in to drop and the real copy to keep.
+    await loadTargets(admin)
+    await loadTargets(admin)
+    expect(await sql`select stand_in, state from dataset_snapshot where dataset = 'storesales.targets' order by stand_in, state`)
+      .toEqual([{ stand_in: false, state: 'superseded' }, { stand_in: true, state: 'active' }, { stand_in: true, state: 'superseded' }])
+    // The warehouse now has 60,000 where it had 1,00,000: the 10% drop guard must still see that.
+    await warehouseTargets(WAREHOUSE_TARGETS.slice(0, 1))
+    const refused = await admin.post<Switched>(`${TARGETS}switch_to_warehouse`, {})
+    expect(refused.switched).toBe(false)
+    expect(refused.message).toContain('The warehouse refresh was refused: targets: target total dropped 40%')
+    expect(await ask(reader, 'targets')).toMatchObject({ served: 'stand-in', rows: TARGET_ROWS })
+    await warehouseTargets(WAREHOUSE_TARGETS)
+    expect(await admin.post<Switched>(`${TARGETS}switch_to_warehouse`, {})).toMatchObject({ switched: true, rows: 2 })
+    expect(await ask(reader, 'targets')).toMatchObject({ served: 'cached', rows: WAREHOUSE_TARGET_ROWS })
+  })
+
   test('the same, switched at once instead of waiting for the refresh', async ({ admin, createUser }) => {
     await storeSales(admin, createUser)
     await loadTargets(admin)
@@ -451,6 +490,20 @@ describe('the Dataset Binding Table', () => {
     })
   })
 
+  test('on production the settings file cannot bind a dataset to a stand-in that is not allowed there', async ({ admin, createUser }) => {
+    await storeSales(admin, createUser)
+    const file = { settings: { 'Dataset Binding': [{ row_id: 'storesales.targets', served_from: 'Stand-in', note: 'Until the targets model lands' }] } }
+    await onProduction(async () => {
+      const refused = await expectRefused(admin.post('/api/instance-settings/apply', { file }), 417, 'The settings file was not applied')
+      expect(JSON.stringify(refused)).toContain('A stand-in on production must be allowed for its dataset first')
+      expect(await datasetBinding('storesales.targets')).toBeNull()
+      // Once a System Manager has allowed one on that binding, the same file applies.
+      await admin.post(BINDING, { row_id: 'storesales.targets', allowed_on_production: true })
+      await admin.post('/api/instance-settings/apply', { file })
+      expect(await datasetBinding('storesales.targets')).toMatchObject({ served_from: 'Stand-in', note: 'Until the targets model lands', allowed_on_production: true })
+    })
+  })
+
   test('the settings file cannot allow a stand-in on production', async ({ admin, createUser }) => {
     await storeSales(admin, createUser)
     const file = { settings: { 'Dataset Binding': [{ row_id: 'storesales.targets', served_from: 'Stand-in', allowed_on_production: true }] } }
@@ -492,9 +545,14 @@ describe('a stand-in when the app\'s declaration changes (D4)', () => {
     ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': `storesales@${version}` },
   }) }, client.token, client.user)
 
+  const standInCheck = async () => (await runHealthChecks()).find((check) => check.key === 'stand-ins-loaded:storesales')
+
   test('a corrected query keeps the stand-in serving', async ({ admin, createUser }) => {
     const { reader } = await storeSales(admin, createUser)
+    // An app with no dataset bound to a stand-in has no such check.
+    expect(await standInCheck()).toBeUndefined()
     await loadTargets(admin)
+    expect(await standInCheck()).toMatchObject({ ok: true, message: 'Every dataset of Store Sales that is bound to a stand-in has one loaded.', fix: null })
     await upgradeTargets(admin, '1.1.0', targets => ({ ...targets, query: 'select store, month, target, units, confirmed from standin_proof.targets where target > 0' }))
     expect(await ask(reading(reader, '1.1.0'), 'targets')).toMatchObject({ served: 'stand-in', rows: TARGET_ROWS })
   })
@@ -504,6 +562,12 @@ describe('a stand-in when the app\'s declaration changes (D4)', () => {
     await loadTargets(admin)
     await upgradeTargets(admin, '1.2.0', targets => ({ ...targets, columns: [...(targets.columns as unknown[]), { name: 'region', type: 'text' }] }))
     expect(await ask(reading(reader, '1.2.0'), 'targets')).toBeNull()
+    // Nothing refreshes a dataset bound to a stand-in, so Instance health says the app now shows nothing for it.
+    expect(await standInCheck()).toMatchObject({
+      ok: false, severity: 'warning',
+      message: 'targets is bound to a stand-in, but no stand-in is loaded that fits what Store Sales reads now.',
+      fix: expect.stringContaining('Load a stand-in for each'),
+    })
     await expectRefused(reading(admin, '1.2.0').post(`${TARGETS}load_stand_in`, { csv: TARGETS_CSV }), 417, 'The file has no column "region", which targets needs')
     invalidateSources()
   })
