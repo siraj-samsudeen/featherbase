@@ -29,7 +29,7 @@ export function UnassignedPage({ store }: { store: string }) {
       <Notice>These subcategories belong to no section on the org chart, so no Team Leader reviews them. Assign them in Section Subcategory.</Notice>
       <MeasureTable header={section.header} view={{ ...DEFAULT_VIEW, measure: 'vq', aop: true }} open={null} onToggle={() => {}} panel={() => null}
         total={combine(lines, -1, 'Total')} totalLabel="Total"
-        rows={lines.map(l => ({ key: l.name, item: l, opens: false, note: l.path,
+        rows={lines.map(l => ({ key: l.name, item: l, opens: false, note: <span style={{ color: 'var(--color-ink-muted)' }}>{l.path}</span>,
           label: <RecordLink table="forecasting.forecast_line_month" rowId={l.rowId} name={l.name} /> }))} />
     </div>
   )
