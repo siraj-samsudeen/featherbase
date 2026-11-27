@@ -15,6 +15,8 @@ export interface Line {
   rowId: string; name: string; category: string
   /** Where it sits in the merchandise hierarchy: "Fashion › Girls › Girls Bottom". */
   path: string
+  /** Its SAP subcategory code (material group), when known. */
+  code?: string
   fc: number; fq: number; growth: number; step: number
   fromRecent: number; lift: number; lyg: number; adj: number; bases: Base[]
   l28: number; l28q: number; ly28: number; ly28q: number; ly: number; lyq: number; n91: number; y91: number
@@ -30,6 +32,8 @@ type Num = number | string | null | undefined
 export interface RunRow { run_id: string; purpose: string; origin_date: string; horizon_from: string; horizon_to: string }
 export interface LineMonthRow {
   row_id: string; run_id: string; store_code: string; store_name: string; division_name?: string; subdivision_name?: string; category_name: string; subcategory_name: string; section_name: string
+  /** The subcategory's SAP code, when the copy carries it (0.14.0). */
+  material_group_code?: string | null
   forecast_value_before_tax: Num; forecast_qty: Num; seasonal_factor: Num; growth_factor: Num
   from_recent_selling: Num; december_step_on_top: Num; from_last_year: Num; adjustments: Num
   own_value_b1: Num; own_value_b2: Num; own_value_b3: Num; own_value_b4: Num; own_value_b5: Num; own_value_b6: Num
@@ -59,7 +63,7 @@ export function linesFrom({ lines, sales, plans, others }: CopiedRows, store: st
     })
     const l28 = v('last_28_days'), l28q = q('last_28_days')
     return {
-      rowId: l.row_id, name: sub, category: l.category_name, path: [l.division_name, l.subdivision_name, l.category_name].filter(Boolean).join(' › '),
+      rowId: l.row_id, name: sub, category: l.category_name, path: [l.division_name, l.subdivision_name, l.category_name].filter(Boolean).join(' › '), code: l.material_group_code || undefined,
       fc: n(l.forecast_value_before_tax), fq: n(l.forecast_qty), growth: Math.round(n(l.growth_factor) * 100) / 100, step: Math.round(n(l.seasonal_factor) * 100) / 100,
       fromRecent: n(l.from_recent_selling), lift: n(l.december_step_on_top), lyg: n(l.from_last_year), adj: n(l.adjustments), bases,
       l28, l28q, ly28: v('same_28_days_last_year'), ly28q: q('same_28_days_last_year'), ly: v('last_december'), lyq: q('last_december'),
