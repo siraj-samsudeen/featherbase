@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; next: 1g, then step 2). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; next: step 2, the agent loop). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -258,12 +258,56 @@ Done on the backend (step 1, the platform piece):
   server test `featherbase-mcp.test.ts`: 12 tests over HTTP with `action-proof`'s `tools` and
   `untooled` reads (`dffb84cc1`).
 
-## Next step: 1g, then step 2
+## Next step: step 2, the agent loop in Ask (start with 2.1)
 
-1f2 (View as) is moved to the final step, after all the implementation (Mohammad, 27-Nov-2026;
-road to done, step 8). Next is 1g: propose an adversarial review of step 1 (permissions: the
-tools forward the caller's credential) to Mohammad in one line; run it only on a yes. Then
-step 2, the agent loop in Ask (2.1, a `think` outbound read).
+Step 1 (the platform piece) is finished: 1a–1f committed, 1e2 deferred, 1f2 (View as) moved to
+the final step, 1g's adversarial review offered and skipped (Mohammad, 27-Nov-2026). A new
+session starts here.
+
+**What step 2 builds** (tasks 2.1–2.4 in `feather-ask-agent/tasks.md`): Ask stops answering
+with the placeholder (`src/server/reply.ts`) and answers with an agent loop over the platform's
+tools, still with a **stand-in model** (rules, no AI service yet; Gemini and Groq come in step 3).
+Think first, save at the end (see Decisions):
+
+```
+page ─▶ think (outbound read, featherbaseMcp) ─▶ loop: model picks a tool ─▶ ctx.featherbaseMcp.call ─▶ … ≤ 8 steps ─▶ answer + steps
+     ─▶ ask (action, one transaction) ─▶ saves chat, question, answer, steps ─▶ page shows the answer
+```
+
+1. **2.1** A `think` read in Ask's manifest (`example-apps/ask/featherbase.json`): `outbound:
+   true`, `featherbaseMcp: true`. Its handler runs the loop with `ctx.featherbaseMcp` (`tools()`,
+   `call(name, args)`), at most 8 steps; a refused call is a result the model reads; out of
+   steps after a refusal, the person is told its reason.
+2. **2.2** The `ask` action (already saves chat, question and answer, step 2a) saves the answer
+   `think` gave instead of calling the placeholder.
+3. **2.2b** `think` also returns the steps it took (tool, Table, filters, short result, e.g.
+   "query_rows on Ticket, status = Open: 3 rows"); `ask` saves them in a new column on
+   `ask.question`. No rows copied in full. This is now the only record of what the agent read
+   (1e2 deferred).
+4. **2.3** The page (`src/client/api.ts`, `components/Chat.tsx`) calls think, then ask, under
+   the one "Thinking…".
+5. **2.4** Decide (ask Mohammad): sign the answer between think and ask, or accept that a
+   person could save any answer to their own chat.
+
+**Before changing Ask's manifest, ask Mohammad:** Ask stays at 0.1.0, so a manifest change means
+recreating `fb_ask_ui` and losing its test chats (or use the throwaway `fb_ask_b1`, below).
+
+**Starting draft:** `ask-handover\S1-draft\step2-ask\`: `agent.ts` (`Model`, `Data`, `answer()`,
+`MAX_STEPS = 8`), `stand-in.ts` ("chats" and "tickets" rules over `query_rows`), `data.ts`,
+`index.ts`, `featherbase.json`. It was written as one action and with the old names: move the
+loop into the `think` read and rename `ctx.featherbase` → `ctx.featherbaseMcp`,
+`FeatherbaseTool…` → `FeatherbaseMcpTool…`. Types are in `packages/shared` (1a).
+
+**Platform pieces step 2 relies on** (all committed): the manifest flag (1b, refused without
+`outbound`), `ctx.featherbaseMcp` on such a read (1d), the caller's own credential on every tool
+call (1e, `caller-credential.ts`, `mcp-app-reads.ts`), the server test (1f,
+`apps/server/test/featherbase-mcp.test.ts`).
+
+**How to go** (see How we work): one small piece at a time. Claude drafts it outside the repo
+(`ask-handover\2.1-draft\` and so on), checks it (server typecheck, `pnpm --filter server test
+test/ask-app.test.ts`, HTTP or headless browser), then gives Mohammad the walkthrough;
+Mohammad types it in or says "make this change"; commit; tick the task; move this section on.
+No push, no PR.
 
 Running server tests: never stop vitest from outside on Windows; its workers live on and hold
 `featherbase_test`. Let a run end by itself (the pause tests release in `finally`).
@@ -280,8 +324,8 @@ ending in a manual check and a commit; the details are in `feather-ask-agent/tas
      no token made, turned off / signed out everywhere / signed out of that session refused,
      an access-token caller works, no caller gets no tools, the credential never leaks.
    - 1f2: moved to step 8 (View as), after all the implementation.
-   - 1g (**next**): propose an adversarial review (permissions) in one line; run it only on a yes.
-2. **The agent loop in Ask, with a stand-in model (step 2).** A `think` outbound read runs the
+   - 1g: adversarial review offered, skipped by Mohammad (27-Nov-2026).
+2. **The agent loop in Ask, with a stand-in model (step 2). Next.** A `think` outbound read runs the
    loop; the `ask` action saves chat, question, answer and the steps behind it (2.2b); the page
    calls think, then ask, under one "Thinking…". Decide whether to sign the answer between them.
    Ask's manifest changes at 0.1.0, so recreating `fb_ask_ui` loses its test chats: ask

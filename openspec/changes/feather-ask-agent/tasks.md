@@ -34,7 +34,8 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
 - [ ] 1f2 Moved to the final step, after all the implementation (Mohammad, 27-Nov-2026).
       Decide and build View as for Ask's tools (design, Open Questions): pin the View as for
       the whole question (recommended), or no tools while viewing as someone.
-- [ ] 1g Propose an adversarial review (permissions) to the owner before 1 lands.
+- [x] 1g Propose an adversarial review (permissions) to the owner before 1 lands. Proposed on
+      27-Nov-2026; Mohammad chose to skip it and go to step 2.
 
 ## 2. The agent loop in Ask, with a stand-in model
 
