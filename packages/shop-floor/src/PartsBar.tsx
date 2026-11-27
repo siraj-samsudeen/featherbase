@@ -24,8 +24,9 @@ export function PartsBar({ parts, shape = 'bar', className }: { parts: Part[]; s
     )
   }
   return (
-    <span role="img" aria-label={text} title={text} data-parts="bar" className={cx('ml-auto flex h-3 w-24 overflow-hidden rounded-[3px]', className)}>
-      {shown.map((p) => <i key={p.label} className="block h-full" style={{ width: `${p.share}%`, background: p.color }} />)}
+    // the look kit's small share bar: rounded, its parts set apart by 2px, each part at least 2px
+    <span role="img" aria-label={text} title={text} data-parts="bar" className={cx('ml-auto flex h-2 w-[78px] gap-[2px] overflow-hidden rounded-full', className)}>
+      {shown.map((p) => <i key={p.label} className="block h-full min-w-[2px]" style={{ flex: `${p.share} 1 0`, background: p.color }} />)}
     </span>
   )
 }
