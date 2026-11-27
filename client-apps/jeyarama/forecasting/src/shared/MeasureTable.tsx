@@ -7,6 +7,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode 
 import { ChevronRight, PartsBar, cx } from '@featherbase/shop-floor'
 import { Hover } from './Hover'
 import { asp, count, inr, pc, shares, type Group, type Line } from './model'
+import { GapToAop, VsAop } from './Aop'
 import type { Header } from './review'
 import type { ViewChoices } from './ReviewToolbar'
 
@@ -24,11 +25,28 @@ export interface TableRow {
   depth?: number
   /** Whether clicking it opens a panel. */
   opens?: boolean
+  /** A muted line under the name (a floor's "10 sections · 36 subcategories", a section's Team Leader). */
+  sub?: ReactNode
+  /** A tree node: clicking runs this instead of opening a panel, and `expanded` turns its chevron. */
+  onClick?: () => void
+  expanded?: boolean
+}
+/** What the managers' tables sort by, from three headings: Feather Forecast (biggest first), Last year under
+ *  Value vs (biggest change in rupees first), Gap to AOP (furthest behind first). */
+export type SortKey = 'size' | 'ly' | 'aop'
+export const SORTERS: Record<SortKey, (a: { fc: number; ly: number; aop: number }, b: { fc: number; ly: number; aop: number }) => number> = {
+  size: (a, b) => b.fc - a.fc,
+  ly: (a, b) => Math.abs(b.fc - b.ly) - Math.abs(a.fc - a.ly),
+  aop: (a, b) => (a.fc - a.aop) - (b.fc - b.aop),
 }
 type Block = [string, string, string, string]
 
-export function MeasureTable({ header, view, rows, total, totalLabel = 'Section', firstHeading = 'Subcategory', open, onToggle, panel, flash }: {
+export function MeasureTable({ header, view, rows, total, totalLabel = 'Section', firstHeading = 'Subcategory', open, onToggle, panel, flash, vsAop = false, sort, onSort }: {
   header: Header; view: ViewChoices; rows: TableRow[]; total: Item; totalLabel?: string; firstHeading?: string
+  /** The managers' columns: AOP always shown, Feather Forecast against it under Value vs, and a Gap to AOP column. */
+  vsAop?: boolean
+  /** The heading the rows are sorted by (marked ↓); with onSort the three headings sort when clicked. */
+  sort?: SortKey; onSort?: (k: SortKey) => void
   open: string | null; onToggle: (key: string | null) => void
   /** The panel an open row shows, given its width (the visible table's). */
   panel: (row: TableRow, width: number | undefined) => ReactNode
@@ -57,10 +75,14 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
     ['fc', 'fq', 'Feather Forecast', `Feather Forecast for ${month.name}`],
     ['r31', 'r31q', 'Last month', `Last 28 days to ${header.cutOff}, as a rate per day × ${month.name}'s ${month.days} days`],
     ['ly', 'lyq', 'Last year', `${month.name} ${month.year - 1}`],
-    ...(view.aop ? [['aop', 'aq', 'AOP', `The annual plan for ${month.label}`] as Block] : []),
+    ...(view.aop || vsAop ? [['aop', 'aq', 'AOP', `The annual plan for ${month.label}`] as Block] : []),
   ]
+  const sortable = (k: SortKey, text: ReactNode, tip: string) => onSort
+    ? <button type="button" className="fr-sort" aria-pressed={sort === k} title={`${tip}. ${sort === k ? 'Rows are sorted by this' : 'Click to sort by this'}`}
+      onClick={() => onSort(k)}>{text}{sort === k && <span aria-hidden> ↓</span>}</button>
+    : text
   const measures = ({ all: ['v', 'q', 'a'], vq: ['v', 'q'], v: ['v'], q: ['q'] } as const)[view.measure]
-  const columns = 1 + blocks.length * measures.length + 3
+  const columns = 1 + blocks.length * measures.length + 3 + (vsAop ? 2 : 0)
   const cell = (l: Item, [k, q]: Block, m: 'v' | 'q' | 'a', first: boolean, cls: string) => {
     const v = (l as unknown as Record<string, number>)[k], qty = (l as unknown as Record<string, number>)[q]
     return <td key={`${k}${m}`} className={`${first ? 'fr-b0 ' : ''}${cls}`}>{m === 'v' ? inr(v) : m === 'q' ? count(qty) : asp(v, qty)}</td>
@@ -68,36 +90,40 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
   const figures = (l: Item, strong: boolean) => <>
     {blocks.map((b, bi) => measures.map((m, mi) => cell(l, b, m, mi === 0, strong && bi === 0 ? 'fr-fc' : strong ? 'fr-dim' : '')))}
     <td className="fr-b0">{pc(l.fc, l.r31)}</td><td>{pc(l.fc, l.ly)}</td>
+    {vsAop && <><td><VsAop o={l} /></td><td className="fr-b0"><GapToAop o={l} /></td></>}
     <td className="fr-b0"><PartsBar parts={shares(l)} shape={view.shape} /></td>
   </>
 
   return (
     <div className="fr-scroll" ref={scroller}>
-      <table className="fr-table">
+      <table className={vsAop ? "fr-table fr-table-mgr" : "fr-table"}>
         <thead>
           <tr className="fr-blocks"><th />
-            {blocks.map(b => <th key={b[2]} colSpan={measures.length} className="fr-b0"><Hover text={b[3]}>{b[2]}</Hover></th>)}
-            <th colSpan={2} className="fr-b0"><Hover text="Feather Forecast's value against last month and last year">Value vs</Hover></th>
+            {blocks.map((b, i) => <th key={b[2]} colSpan={measures.length} className="fr-b0">{i === 0 && onSort ? sortable('size', b[2], `${b[3]}, biggest first`) : <Hover text={b[3]}>{b[2]}</Hover>}</th>)}
+            <th colSpan={vsAop ? 3 : 2} className="fr-b0"><Hover text={`Feather Forecast's value against last month${vsAop ? ', last year and the annual plan' : ' and last year'}`}>Value vs</Hover></th>
+            {vsAop && <th className="fr-b0">{sortable('aop', 'Gap to AOP', 'Feather Forecast minus the annual plan, furthest behind first')}</th>}
             <th className="fr-b0">Built from</th></tr>
-          <tr><th>{firstHeading}</th>
+          <tr><th><span className="fr-first" title={firstHeading}>{firstHeading}</span></th>
             {blocks.map(b => measures.map((m, i) => <th key={b[2] + m} className={i === 0 ? 'fr-b0' : ''}>{{ v: 'Value', q: 'Qty', a: 'ASP' }[m]}</th>))}
-            <th className="fr-b0"><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>Last month</Hover></th>
-            <th><Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover></th><th className="fr-b0" /></tr>
+            <th className="fr-b0"><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>{vsAop ? <>Last<br />month</> : 'Last month'}</Hover></th>
+            <th>{onSort ? sortable('ly', vsAop ? <>Last<br />year</> : 'Last year', `${month.name} ${month.year - 1}, biggest change in rupees first`) : <Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover>}</th>
+            {vsAop && <><th><Hover text="The annual plan">AOP</Hover></th><th className="fr-b0" /></>}<th className="fr-b0" /></tr>
         </thead>
         <tbody>{rows.map(r => {
-          const isOpen = open === r.key, look = r.look ?? []
+          const isOpen = r.onClick ? Boolean(r.expanded) : open === r.key, look = r.look ?? []
           return (
             <Fragment key={r.key}>
               <tr className={['fr-row', look.includes('band') && 'fr-band', look.includes('head') && 'fr-ghead', look.includes('member') && 'fr-member'].filter(Boolean).join(' ')}
-                data-key={r.key} data-n={r.dataName ?? r.key} aria-selected={isOpen} aria-expanded={r.opens === false ? undefined : isOpen}
-                onClick={e => { if (r.opens === false) return; if ((e.target as HTMLElement).closest('a') && (e.metaKey || e.ctrlKey || e.shiftKey)) return; onToggle(isOpen ? null : r.key) }}>
-                <td style={r.depth ? { paddingLeft: 10 + 26 * r.depth } : undefined}>
+                data-key={r.key} data-n={r.dataName ?? r.key} aria-selected={isOpen && !r.onClick} aria-expanded={r.opens === false ? undefined : isOpen}
+                onClick={e => { if (r.opens === false) return; if ((e.target as HTMLElement).closest('a') && (e.metaKey || e.ctrlKey || e.shiftKey)) return; if (r.onClick) r.onClick(); else onToggle(isOpen ? null : r.key) }}>
+                <td style={r.depth ? { paddingLeft: 10 + (vsAop ? 16 : 26) * r.depth } : undefined}>
                   <span className="fr-name"><span className="fr-twisty" aria-hidden>{r.opens !== false && <ChevronRight size={14} className={cx('transition-transform motion-reduce:transition-none', isOpen && 'rotate-90')} />}</span>{r.label}{r.after}</span>
                   {r.note && <span className="fr-gwhy">{r.note}</span>}
+                  {r.sub && <span className="fr-sub" style={r.depth ? { marginLeft: 22 } : undefined}>{r.sub}</span>}
                 </td>
                 {figures(r.item, true)}
               </tr>
-              {isOpen && <tr className="fr-panelrow"><td colSpan={columns}>{panel(r, width)}</td></tr>}
+              {isOpen && !r.onClick && <tr className="fr-panelrow"><td colSpan={columns}>{panel(r, width)}</td></tr>}
             </Fragment>)
         })}</tbody>
         <tfoot><tr><td>{totalLabel}</td>{figures(total, false)}</tr></tfoot>
