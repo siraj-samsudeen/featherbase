@@ -59,9 +59,11 @@ export function FieldControl({
   )
   // SET-004: below Date/Currency/Float inputs, show the value as it renders
   // globally (native inputs can't honor a custom format), so the form
-  // reflects System Settings just like lists do.
+  // reflects System Settings just like lists do. A read-only one shows only
+  // that formatted value, once (#1419): never raw text with an echo under it.
+  const formatted = ['Date', 'Datetime', 'Currency', 'Float'].includes(field.column_type)
   const preview =
-    value != null && value !== '' && ['Date', 'Datetime', 'Currency', 'Float'].includes(field.column_type) ? (
+    !field.read_only && value != null && value !== '' && formatted ? (
       <p className="mt-1 text-xs text-ink-subtle" data-testid={`preview-${field.column_name}`}>
         {formatValue(field.column_type, value, settings)}
       </p>
@@ -125,6 +127,9 @@ export function FieldControl({
       {err}
     </div>
   )
+
+  if (field.read_only && formatted)
+    return wrap(<input type="text" readOnly value={formatValue(field.column_type, value, settings)} className={base} {...common} />)
 
   switch (field.column_type) {
     case 'Check':
