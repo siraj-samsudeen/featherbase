@@ -590,41 +590,54 @@
                 "label": "Run",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The Feather Forecast run this row belongs to: the official run for the month.",
+                "read_only": true
               },
               {
                 "column_name": "model",
                 "label": "Model",
-                "column_type": "Data"
+                "column_type": "Data",
+                "description": "The forecasting model that made the run.",
+                "read_only": true
               },
               {
                 "column_name": "purpose",
                 "label": "Purpose",
                 "column_type": "Data",
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "Official is the run people review; others are trials.",
+                "read_only": true
               },
               {
                 "column_name": "status",
                 "label": "Status",
-                "column_type": "Data"
+                "column_type": "Data",
+                "read_only": true
               },
               {
                 "column_name": "origin_date",
-                "label": "Origin date",
+                "label": "Sales Up To",
                 "column_type": "Date",
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The last day of sales the run knew about.",
+                "read_only": true
               },
               {
                 "column_name": "horizon_from",
-                "label": "Horizon from",
+                "label": "Forecast From",
                 "column_type": "Date",
-                "reqd": true
+                "reqd": true,
+                "description": "The first day the run forecasts.",
+                "read_only": true
               },
               {
                 "column_name": "horizon_to",
-                "label": "Horizon to",
+                "label": "Forecast To",
                 "column_type": "Date",
-                "reqd": true
+                "reqd": true,
+                "description": "The last day the run forecasts.",
+                "read_only": true
               }
             ],
             "title_column": "run_id"
@@ -643,150 +656,208 @@
                 "label": "Run",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The Feather Forecast run this row belongs to: the official run for the month.",
+                "read_only": true
               },
               {
                 "column_name": "store_code",
-                "label": "Store code",
+                "label": "Store Code",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The store, by its SAP code.",
+                "read_only": true
               },
               {
                 "column_name": "division_name",
                 "label": "Division",
-                "column_type": "Data"
+                "column_type": "Data",
+                "read_only": true
               },
               {
                 "column_name": "subdivision_name",
                 "label": "Subdivision",
-                "column_type": "Data"
+                "column_type": "Data",
+                "read_only": true
               },
               {
                 "column_name": "category_name",
                 "label": "Category",
                 "column_type": "Data",
-                "reqd": true
+                "reqd": true,
+                "read_only": true
               },
               {
                 "column_name": "subcategory_name",
                 "label": "Subcategory",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "read_only": true
               },
               {
                 "column_name": "store_name",
                 "label": "Store",
                 "column_type": "Data",
-                "in_list_view": true
+                "in_list_view": true,
+                "read_only": true
               },
               {
                 "column_name": "section_name",
                 "label": "Section",
                 "column_type": "Data",
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The section of the store the org chart places the subcategory in; its Team Leader reviews it.",
+                "read_only": true
               },
               {
                 "column_name": "forecast_value_before_tax",
-                "label": "Feather Forecast (before tax)",
+                "label": "Feather Forecast (Before Tax)",
                 "column_type": "Currency",
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "Feather Forecast for the month, in rupees before tax.",
+                "read_only": true
               },
               {
                 "column_name": "forecast_qty",
-                "label": "Feather Forecast quantity",
-                "column_type": "Float"
+                "label": "Feather Forecast Quantity",
+                "column_type": "Float",
+                "description": "Feather Forecast for the month, in pieces.",
+                "read_only": true
               },
               {
                 "column_name": "own_value_b1",
-                "label": "B1 own value",
-                "column_type": "Currency"
+                "label": "Same Date Last Year (B1): Own Month",
+                "column_type": "Currency",
+                "description": "What base B1 alone says the month will sell: the same date last year, × the growth. Rupees before tax.",
+                "read_only": true
               },
               {
                 "column_name": "own_value_b2",
-                "label": "B2 own value",
-                "column_type": "Currency"
+                "label": "Same Festival Day Last Year (B2): Own Month",
+                "column_type": "Currency",
+                "description": "What base B2 alone says the month will sell: the same festival day last year, × the growth. Rupees before tax.",
+                "read_only": true
               },
               {
                 "column_name": "own_value_b3",
-                "label": "B3 own value",
-                "column_type": "Currency"
+                "label": "Last 28 Days (B3): Own Month",
+                "column_type": "Currency",
+                "description": "What base B3 alone says the month will sell: the last 28 days, as a rate per day × the month's days. Rupees before tax.",
+                "read_only": true
               },
               {
                 "column_name": "own_value_b4",
-                "label": "B4 own value",
-                "column_type": "Currency"
+                "label": "Last Four Same Weekdays (B4): Own Month",
+                "column_type": "Currency",
+                "description": "What base B4 alone says the month will sell: the last four of the same weekday. Rupees before tax.",
+                "read_only": true
               },
               {
                 "column_name": "own_value_b5",
-                "label": "B5 own value",
-                "column_type": "Currency"
+                "label": "Same Date Last Month (B5): Own Month",
+                "column_type": "Currency",
+                "description": "What base B5 alone says the month will sell: the same date last month. Rupees before tax.",
+                "read_only": true
               },
               {
                 "column_name": "own_value_b6",
-                "label": "B6 own value",
-                "column_type": "Currency"
+                "label": "Seasonal Step (B6): Own Month",
+                "column_type": "Currency",
+                "description": "What base B6 alone says the month will sell: the last 28 days × the month's usual seasonal step. Rupees before tax.",
+                "read_only": true
               },
               {
                 "column_name": "adds_value_b1",
-                "label": "B1 adds",
-                "column_type": "Currency"
+                "label": "Same Date Last Year (B1): Adds",
+                "column_type": "Currency",
+                "description": "What base B1 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+                "read_only": true
               },
               {
                 "column_name": "adds_value_b2",
-                "label": "B2 adds",
-                "column_type": "Currency"
+                "label": "Same Festival Day Last Year (B2): Adds",
+                "column_type": "Currency",
+                "description": "What base B2 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+                "read_only": true
               },
               {
                 "column_name": "adds_value_b3",
-                "label": "B3 adds",
-                "column_type": "Currency"
+                "label": "Last 28 Days (B3): Adds",
+                "column_type": "Currency",
+                "description": "What base B3 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+                "read_only": true
               },
               {
                 "column_name": "adds_value_b4",
-                "label": "B4 adds",
-                "column_type": "Currency"
+                "label": "Last Four Same Weekdays (B4): Adds",
+                "column_type": "Currency",
+                "description": "What base B4 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+                "read_only": true
               },
               {
                 "column_name": "adds_value_b5",
-                "label": "B5 adds",
-                "column_type": "Currency"
+                "label": "Same Date Last Month (B5): Adds",
+                "column_type": "Currency",
+                "description": "What base B5 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+                "read_only": true
               },
               {
                 "column_name": "adds_value_b6",
-                "label": "B6 adds",
-                "column_type": "Currency"
+                "label": "Seasonal Step (B6): Adds",
+                "column_type": "Currency",
+                "description": "What base B6 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+                "read_only": true
               },
               {
                 "column_name": "seasonal_factor",
-                "label": "Seasonal step",
-                "column_type": "Float"
+                "label": "Seasonal Step",
+                "column_type": "Float",
+                "description": "How much more this subcategory usually sells in the month than in the four weeks before it (×).",
+                "read_only": true
               },
               {
                 "column_name": "growth_factor",
                 "label": "Growth",
-                "column_type": "Float"
+                "column_type": "Float",
+                "description": "How much faster or slower the subcategory sells now than a year ago (×), applied to last year's sales.",
+                "read_only": true
               },
               {
                 "column_name": "from_recent_selling",
-                "label": "From recent selling",
-                "column_type": "Currency"
+                "label": "From Recent Selling",
+                "column_type": "Currency",
+                "description": "The part of Feather Forecast that comes from what the subcategory sold in the last weeks.",
+                "read_only": true
               },
               {
                 "column_name": "december_step_on_top",
-                "label": "Step on top",
-                "column_type": "Currency"
+                "label": "Step On Top",
+                "column_type": "Currency",
+                "description": "The seasonal step's extra on top of recent selling.",
+                "read_only": true
               },
               {
                 "column_name": "from_last_year",
-                "label": "From last year × growth",
-                "column_type": "Currency"
+                "label": "From Last Year × Growth",
+                "column_type": "Currency",
+                "description": "The part of Feather Forecast that comes from last year's sales of the month, × the growth.",
+                "read_only": true
               },
               {
                 "column_name": "adjustments",
                 "label": "Adjustments",
-                "column_type": "Currency"
+                "column_type": "Currency",
+                "description": "Small tidy-up steps after the blend, such as splitting very small subcategories.",
+                "read_only": true
+              },
+              {
+                "column_name": "material_group_code",
+                "label": "Subcategory Code",
+                "column_type": "Data",
+                "description": "The subcategory's SAP code (material group).",
+                "read_only": true
               }
             ],
             "title_column": "subcategory_name"
@@ -802,60 +873,73 @@
             "columns": [
               {
                 "column_name": "store_code",
-                "label": "Store code",
+                "label": "Store Code",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The store, by its SAP code.",
+                "read_only": true
               },
               {
                 "column_name": "division_name",
                 "label": "Division",
-                "column_type": "Data"
+                "column_type": "Data",
+                "read_only": true
               },
               {
                 "column_name": "subdivision_name",
                 "label": "Subdivision",
-                "column_type": "Data"
+                "column_type": "Data",
+                "read_only": true
               },
               {
                 "column_name": "category_name",
                 "label": "Category",
                 "column_type": "Data",
-                "reqd": true
+                "reqd": true,
+                "read_only": true
               },
               {
                 "column_name": "subcategory_name",
                 "label": "Subcategory",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "read_only": true
               },
               {
                 "column_name": "window_name",
                 "label": "Window",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "Which stretch of sales: last 28 days, the same days last year, last year's month, last 91 days, or the same days last year.",
+                "read_only": true
               },
               {
                 "column_name": "date_from",
                 "label": "From",
-                "column_type": "Date"
+                "column_type": "Date",
+                "read_only": true
               },
               {
                 "column_name": "date_to",
                 "label": "To",
-                "column_type": "Date"
+                "column_type": "Date",
+                "read_only": true
               },
               {
                 "column_name": "sales_value_before_tax",
-                "label": "Sales (before tax)",
-                "column_type": "Currency"
+                "label": "Sales (Before Tax)",
+                "column_type": "Currency",
+                "read_only": true
               },
               {
                 "column_name": "sales_qty",
                 "label": "Quantity",
-                "column_type": "Float"
+                "column_type": "Float",
+                "description": "Pieces sold.",
+                "read_only": true
               }
             ],
             "title_column": "subcategory_name"
@@ -871,58 +955,72 @@
             "columns": [
               {
                 "column_name": "store_code",
-                "label": "Store code",
+                "label": "Store Code",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The store, by its SAP code.",
+                "read_only": true
               },
               {
                 "column_name": "division_name",
                 "label": "Division",
-                "column_type": "Data"
+                "column_type": "Data",
+                "read_only": true
               },
               {
                 "column_name": "subdivision_name",
                 "label": "Subdivision",
-                "column_type": "Data"
+                "column_type": "Data",
+                "read_only": true
               },
               {
                 "column_name": "category_name",
                 "label": "Category",
                 "column_type": "Data",
-                "reqd": true
+                "reqd": true,
+                "read_only": true
               },
               {
                 "column_name": "subcategory_name",
                 "label": "Subcategory",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "read_only": true
               },
               {
                 "column_name": "calendar_year",
                 "label": "Year",
-                "column_type": "Int"
+                "column_type": "Int",
+                "read_only": true
               },
               {
                 "column_name": "calendar_month",
                 "label": "Month",
-                "column_type": "Int"
+                "column_type": "Int",
+                "read_only": true
               },
               {
                 "column_name": "revision_id",
                 "label": "Revision",
-                "column_type": "Int"
+                "column_type": "Int",
+                "description": "The plan's revision; 1 is the approved plan.",
+                "read_only": true
               },
               {
                 "column_name": "plan_value_before_tax",
-                "label": "Plan (before tax)",
-                "column_type": "Currency"
+                "label": "Plan (Before Tax)",
+                "column_type": "Currency",
+                "description": "The annual plan (AOP) for the month, in rupees before tax.",
+                "read_only": true
               },
               {
                 "column_name": "plan_qty",
-                "label": "Plan quantity",
-                "column_type": "Float"
+                "label": "Plan Quantity",
+                "column_type": "Float",
+                "description": "The annual plan for the month, in pieces.",
+                "read_only": true
               }
             ],
             "title_column": "subcategory_name"
@@ -941,30 +1039,39 @@
                 "label": "Model",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "Another model read beside Feather Forecast: XGBoost or LightGBM.",
+                "read_only": true
               },
               {
                 "column_name": "store_code",
-                "label": "Store code",
+                "label": "Store Code",
                 "column_type": "Data",
-                "reqd": true
+                "reqd": true,
+                "description": "The store, by its SAP code.",
+                "read_only": true
               },
               {
                 "column_name": "subcategory_name",
                 "label": "Subcategory",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "read_only": true
               },
               {
                 "column_name": "month_from",
                 "label": "Month",
-                "column_type": "Date"
+                "column_type": "Date",
+                "description": "The first day of the month forecast.",
+                "read_only": true
               },
               {
                 "column_name": "forecast_value_before_tax",
-                "label": "Forecast (before tax)",
-                "column_type": "Currency"
+                "label": "Forecast (Before Tax)",
+                "column_type": "Currency",
+                "description": "That model's forecast for the month, in rupees before tax. A stand-in until the model lands as a run.",
+                "read_only": true
               }
             ],
             "title_column": "subcategory_name"
@@ -995,9 +1102,10 @@
               },
               {
                 "column_name": "applies_to",
-                "label": "Applies to",
+                "label": "Applies To",
                 "column_type": "Choice",
-                "choices": "both\nmonth\nday"
+                "choices": "both\nmonth\nday",
+                "description": "A month change, a day change, or both."
               },
               {
                 "column_name": "sort_order",
@@ -1041,14 +1149,16 @@
                 "label": "Run",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The Feather Forecast run this row belongs to: the official run for the month."
               },
               {
                 "column_name": "store_code",
-                "label": "Store code",
+                "label": "Store Code",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The store, by its SAP code."
               },
               {
                 "column_name": "division_name",
@@ -1078,19 +1188,22 @@
                 "label": "Scope",
                 "column_type": "Choice",
                 "choices": "month\nday",
-                "reqd": true
+                "reqd": true,
+                "description": "The whole month, or one day."
               },
               {
                 "column_name": "forecast_date",
                 "label": "Day",
-                "column_type": "Date"
+                "column_type": "Date",
+                "description": "The day changed, for a day change."
               },
               {
                 "column_name": "change_method",
                 "label": "Method",
                 "column_type": "Choice",
                 "choices": "percent\nset_value",
-                "reqd": true
+                "reqd": true,
+                "description": "By a percent, or to a value."
               },
               {
                 "column_name": "change_percent",
@@ -1099,39 +1212,43 @@
               },
               {
                 "column_name": "set_value_before_tax",
-                "label": "Value asked for (before tax)",
+                "label": "Value Asked For (Before Tax)",
                 "column_type": "Currency"
               },
               {
                 "column_name": "engine_value_before_tax",
-                "label": "Feather Forecast (before tax)",
+                "label": "Feather Forecast (Before Tax)",
                 "column_type": "Currency",
-                "read_only": true
+                "read_only": true,
+                "description": "Feather Forecast for the scope when the change was sent."
               },
               {
                 "column_name": "engine_qty",
-                "label": "Feather Forecast quantity",
+                "label": "Feather Forecast Quantity",
                 "column_type": "Float",
                 "read_only": true
               },
               {
                 "column_name": "changed_value_before_tax",
-                "label": "Changed value (before tax)",
+                "label": "Changed Value (Before Tax)",
                 "column_type": "Currency",
                 "read_only": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "What the scope becomes with this change."
               },
               {
                 "column_name": "changed_qty",
-                "label": "Changed quantity",
+                "label": "Changed Quantity",
                 "column_type": "Float",
-                "read_only": true
+                "read_only": true,
+                "description": "Pieces move with the value, at Feather Forecast's selling price."
               },
               {
                 "column_name": "explanation",
                 "label": "Explanation",
                 "column_type": "Text",
-                "reqd": true
+                "reqd": true,
+                "description": "Why the forecast should change: what Feather Forecast cannot know."
               },
               {
                 "column_name": "reasons",
@@ -1143,12 +1260,14 @@
                 "column_name": "replaces_change",
                 "label": "Replaces",
                 "column_type": "Reference",
-                "reference_table": "forecasting.forecast_change"
+                "reference_table": "forecasting.forecast_change",
+                "description": "The change this one replaces."
               },
               {
                 "column_name": "change_batch",
                 "label": "Batch",
-                "column_type": "Data"
+                "column_type": "Data",
+                "description": "Day changes entered together share a batch and are approved as one."
               },
               {
                 "column_name": "change_status",
@@ -1160,29 +1279,29 @@
               },
               {
                 "column_name": "proposed_by",
-                "label": "Proposed by",
+                "label": "Proposed By",
                 "column_type": "Data",
                 "reqd": true,
                 "in_list_view": true
               },
               {
                 "column_name": "proposed_by_role",
-                "label": "Proposed as",
+                "label": "Proposed As",
                 "column_type": "Data"
               },
               {
                 "column_name": "decided_by",
-                "label": "Decided by",
+                "label": "Decided By",
                 "column_type": "Data"
               },
               {
                 "column_name": "decided_at",
-                "label": "Decided at",
+                "label": "Decided At",
                 "column_type": "Datetime"
               },
               {
                 "column_name": "decision_note",
-                "label": "Decision note",
+                "label": "Decision Note",
                 "column_type": "Text"
               }
             ],
@@ -1202,14 +1321,16 @@
                 "label": "Run",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The Feather Forecast run this row belongs to: the official run for the month."
               },
               {
                 "column_name": "store_code",
-                "label": "Store code",
+                "label": "Store Code",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The store, by its SAP code."
               },
               {
                 "column_name": "division_name",
@@ -1243,7 +1364,7 @@
               },
               {
                 "column_name": "reviewer_role",
-                "label": "Reviewer role",
+                "label": "Reviewer Role",
                 "column_type": "Data"
               },
               {
@@ -1252,13 +1373,15 @@
                 "column_type": "Choice",
                 "choices": "accepted\nchange_proposed",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "Accepted, or a change proposed."
               },
               {
                 "column_name": "forecast_change",
                 "label": "Change",
                 "column_type": "Reference",
-                "reference_table": "forecasting.forecast_change"
+                "reference_table": "forecasting.forecast_change",
+                "description": "The change proposed with this answer."
               }
             ],
             "title_column": "subcategory_name"
@@ -1277,14 +1400,16 @@
                 "label": "Run",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The Feather Forecast run this row belongs to: the official run for the month."
               },
               {
                 "column_name": "store_code",
-                "label": "Store code",
+                "label": "Store Code",
                 "column_type": "Data",
                 "reqd": true,
-                "in_list_view": true
+                "in_list_view": true,
+                "description": "The store, by its SAP code."
               },
               {
                 "column_name": "division_name",
@@ -1318,7 +1443,8 @@
                 "column_name": "about",
                 "label": "About",
                 "column_type": "Choice",
-                "choices": "line\nfrom_recent_selling\ndecember_step\nfrom_last_year\nadjustments\nchecks\nother_models"
+                "choices": "line\nfrom_recent_selling\ndecember_step\nfrom_last_year\nadjustments\nchecks\nother_models",
+                "description": "The part of the forecast the question is about."
               },
               {
                 "column_name": "question_text",
@@ -1329,7 +1455,7 @@
               },
               {
                 "column_name": "asked_by",
-                "label": "Asked by",
+                "label": "Asked By",
                 "column_type": "Data",
                 "reqd": true,
                 "in_list_view": true
@@ -1344,23 +1470,23 @@
               },
               {
                 "column_name": "answered_by",
-                "label": "Answered by",
+                "label": "Answered By",
                 "column_type": "Data"
               },
               {
                 "column_name": "answered_by_role",
-                "label": "Answered as",
+                "label": "Answered As",
                 "column_type": "Choice",
                 "choices": "Forecast Creator\nForecast Reviewer"
               },
               {
                 "column_name": "answered_at",
-                "label": "Answered at",
+                "label": "Answered At",
                 "column_type": "Datetime"
               },
               {
                 "column_name": "answer_seen_at",
-                "label": "Asker saw the answer at",
+                "label": "Asker Saw The Answer At",
                 "column_type": "Datetime"
               }
             ],
@@ -2119,41 +2245,54 @@
           "label": "Run",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The Feather Forecast run this row belongs to: the official run for the month.",
+          "read_only": true
         },
         {
           "column_name": "model",
           "label": "Model",
-          "column_type": "Data"
+          "column_type": "Data",
+          "description": "The forecasting model that made the run.",
+          "read_only": true
         },
         {
           "column_name": "purpose",
           "label": "Purpose",
           "column_type": "Data",
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "Official is the run people review; others are trials.",
+          "read_only": true
         },
         {
           "column_name": "status",
           "label": "Status",
-          "column_type": "Data"
+          "column_type": "Data",
+          "read_only": true
         },
         {
           "column_name": "origin_date",
-          "label": "Origin date",
+          "label": "Sales Up To",
           "column_type": "Date",
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The last day of sales the run knew about.",
+          "read_only": true
         },
         {
           "column_name": "horizon_from",
-          "label": "Horizon from",
+          "label": "Forecast From",
           "column_type": "Date",
-          "reqd": true
+          "reqd": true,
+          "description": "The first day the run forecasts.",
+          "read_only": true
         },
         {
           "column_name": "horizon_to",
-          "label": "Horizon to",
+          "label": "Forecast To",
           "column_type": "Date",
-          "reqd": true
+          "reqd": true,
+          "description": "The last day the run forecasts.",
+          "read_only": true
         }
       ],
       "title_column": "run_id"
@@ -2169,150 +2308,208 @@
           "label": "Run",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The Feather Forecast run this row belongs to: the official run for the month.",
+          "read_only": true
         },
         {
           "column_name": "store_code",
-          "label": "Store code",
+          "label": "Store Code",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The store, by its SAP code.",
+          "read_only": true
         },
         {
           "column_name": "division_name",
           "label": "Division",
-          "column_type": "Data"
+          "column_type": "Data",
+          "read_only": true
         },
         {
           "column_name": "subdivision_name",
           "label": "Subdivision",
-          "column_type": "Data"
+          "column_type": "Data",
+          "read_only": true
         },
         {
           "column_name": "category_name",
           "label": "Category",
           "column_type": "Data",
-          "reqd": true
+          "reqd": true,
+          "read_only": true
         },
         {
           "column_name": "subcategory_name",
           "label": "Subcategory",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "read_only": true
         },
         {
           "column_name": "store_name",
           "label": "Store",
           "column_type": "Data",
-          "in_list_view": true
+          "in_list_view": true,
+          "read_only": true
         },
         {
           "column_name": "section_name",
           "label": "Section",
           "column_type": "Data",
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The section of the store the org chart places the subcategory in; its Team Leader reviews it.",
+          "read_only": true
         },
         {
           "column_name": "forecast_value_before_tax",
-          "label": "Feather Forecast (before tax)",
+          "label": "Feather Forecast (Before Tax)",
           "column_type": "Currency",
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "Feather Forecast for the month, in rupees before tax.",
+          "read_only": true
         },
         {
           "column_name": "forecast_qty",
-          "label": "Feather Forecast quantity",
-          "column_type": "Float"
+          "label": "Feather Forecast Quantity",
+          "column_type": "Float",
+          "description": "Feather Forecast for the month, in pieces.",
+          "read_only": true
         },
         {
           "column_name": "own_value_b1",
-          "label": "B1 own value",
-          "column_type": "Currency"
+          "label": "Same Date Last Year (B1): Own Month",
+          "column_type": "Currency",
+          "description": "What base B1 alone says the month will sell: the same date last year, × the growth. Rupees before tax.",
+          "read_only": true
         },
         {
           "column_name": "own_value_b2",
-          "label": "B2 own value",
-          "column_type": "Currency"
+          "label": "Same Festival Day Last Year (B2): Own Month",
+          "column_type": "Currency",
+          "description": "What base B2 alone says the month will sell: the same festival day last year, × the growth. Rupees before tax.",
+          "read_only": true
         },
         {
           "column_name": "own_value_b3",
-          "label": "B3 own value",
-          "column_type": "Currency"
+          "label": "Last 28 Days (B3): Own Month",
+          "column_type": "Currency",
+          "description": "What base B3 alone says the month will sell: the last 28 days, as a rate per day × the month's days. Rupees before tax.",
+          "read_only": true
         },
         {
           "column_name": "own_value_b4",
-          "label": "B4 own value",
-          "column_type": "Currency"
+          "label": "Last Four Same Weekdays (B4): Own Month",
+          "column_type": "Currency",
+          "description": "What base B4 alone says the month will sell: the last four of the same weekday. Rupees before tax.",
+          "read_only": true
         },
         {
           "column_name": "own_value_b5",
-          "label": "B5 own value",
-          "column_type": "Currency"
+          "label": "Same Date Last Month (B5): Own Month",
+          "column_type": "Currency",
+          "description": "What base B5 alone says the month will sell: the same date last month. Rupees before tax.",
+          "read_only": true
         },
         {
           "column_name": "own_value_b6",
-          "label": "B6 own value",
-          "column_type": "Currency"
+          "label": "Seasonal Step (B6): Own Month",
+          "column_type": "Currency",
+          "description": "What base B6 alone says the month will sell: the last 28 days × the month's usual seasonal step. Rupees before tax.",
+          "read_only": true
         },
         {
           "column_name": "adds_value_b1",
-          "label": "B1 adds",
-          "column_type": "Currency"
+          "label": "Same Date Last Year (B1): Adds",
+          "column_type": "Currency",
+          "description": "What base B1 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+          "read_only": true
         },
         {
           "column_name": "adds_value_b2",
-          "label": "B2 adds",
-          "column_type": "Currency"
+          "label": "Same Festival Day Last Year (B2): Adds",
+          "column_type": "Currency",
+          "description": "What base B2 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+          "read_only": true
         },
         {
           "column_name": "adds_value_b3",
-          "label": "B3 adds",
-          "column_type": "Currency"
+          "label": "Last 28 Days (B3): Adds",
+          "column_type": "Currency",
+          "description": "What base B3 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+          "read_only": true
         },
         {
           "column_name": "adds_value_b4",
-          "label": "B4 adds",
-          "column_type": "Currency"
+          "label": "Last Four Same Weekdays (B4): Adds",
+          "column_type": "Currency",
+          "description": "What base B4 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+          "read_only": true
         },
         {
           "column_name": "adds_value_b5",
-          "label": "B5 adds",
-          "column_type": "Currency"
+          "label": "Same Date Last Month (B5): Adds",
+          "column_type": "Currency",
+          "description": "What base B5 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+          "read_only": true
         },
         {
           "column_name": "adds_value_b6",
-          "label": "B6 adds",
-          "column_type": "Currency"
+          "label": "Seasonal Step (B6): Adds",
+          "column_type": "Currency",
+          "description": "What base B6 adds to Feather Forecast: its own month × the weight Feather Forecast gives it.",
+          "read_only": true
         },
         {
           "column_name": "seasonal_factor",
-          "label": "Seasonal step",
-          "column_type": "Float"
+          "label": "Seasonal Step",
+          "column_type": "Float",
+          "description": "How much more this subcategory usually sells in the month than in the four weeks before it (×).",
+          "read_only": true
         },
         {
           "column_name": "growth_factor",
           "label": "Growth",
-          "column_type": "Float"
+          "column_type": "Float",
+          "description": "How much faster or slower the subcategory sells now than a year ago (×), applied to last year's sales.",
+          "read_only": true
         },
         {
           "column_name": "from_recent_selling",
-          "label": "From recent selling",
-          "column_type": "Currency"
+          "label": "From Recent Selling",
+          "column_type": "Currency",
+          "description": "The part of Feather Forecast that comes from what the subcategory sold in the last weeks.",
+          "read_only": true
         },
         {
           "column_name": "december_step_on_top",
-          "label": "Step on top",
-          "column_type": "Currency"
+          "label": "Step On Top",
+          "column_type": "Currency",
+          "description": "The seasonal step's extra on top of recent selling.",
+          "read_only": true
         },
         {
           "column_name": "from_last_year",
-          "label": "From last year × growth",
-          "column_type": "Currency"
+          "label": "From Last Year × Growth",
+          "column_type": "Currency",
+          "description": "The part of Feather Forecast that comes from last year's sales of the month, × the growth.",
+          "read_only": true
         },
         {
           "column_name": "adjustments",
           "label": "Adjustments",
-          "column_type": "Currency"
+          "column_type": "Currency",
+          "description": "Small tidy-up steps after the blend, such as splitting very small subcategories.",
+          "read_only": true
+        },
+        {
+          "column_name": "material_group_code",
+          "label": "Subcategory Code",
+          "column_type": "Data",
+          "description": "The subcategory's SAP code (material group).",
+          "read_only": true
         }
       ],
       "title_column": "subcategory_name"
@@ -2325,60 +2522,73 @@
       "columns": [
         {
           "column_name": "store_code",
-          "label": "Store code",
+          "label": "Store Code",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The store, by its SAP code.",
+          "read_only": true
         },
         {
           "column_name": "division_name",
           "label": "Division",
-          "column_type": "Data"
+          "column_type": "Data",
+          "read_only": true
         },
         {
           "column_name": "subdivision_name",
           "label": "Subdivision",
-          "column_type": "Data"
+          "column_type": "Data",
+          "read_only": true
         },
         {
           "column_name": "category_name",
           "label": "Category",
           "column_type": "Data",
-          "reqd": true
+          "reqd": true,
+          "read_only": true
         },
         {
           "column_name": "subcategory_name",
           "label": "Subcategory",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "read_only": true
         },
         {
           "column_name": "window_name",
           "label": "Window",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "Which stretch of sales: last 28 days, the same days last year, last year's month, last 91 days, or the same days last year.",
+          "read_only": true
         },
         {
           "column_name": "date_from",
           "label": "From",
-          "column_type": "Date"
+          "column_type": "Date",
+          "read_only": true
         },
         {
           "column_name": "date_to",
           "label": "To",
-          "column_type": "Date"
+          "column_type": "Date",
+          "read_only": true
         },
         {
           "column_name": "sales_value_before_tax",
-          "label": "Sales (before tax)",
-          "column_type": "Currency"
+          "label": "Sales (Before Tax)",
+          "column_type": "Currency",
+          "read_only": true
         },
         {
           "column_name": "sales_qty",
           "label": "Quantity",
-          "column_type": "Float"
+          "column_type": "Float",
+          "description": "Pieces sold.",
+          "read_only": true
         }
       ],
       "title_column": "subcategory_name"
@@ -2391,58 +2601,72 @@
       "columns": [
         {
           "column_name": "store_code",
-          "label": "Store code",
+          "label": "Store Code",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The store, by its SAP code.",
+          "read_only": true
         },
         {
           "column_name": "division_name",
           "label": "Division",
-          "column_type": "Data"
+          "column_type": "Data",
+          "read_only": true
         },
         {
           "column_name": "subdivision_name",
           "label": "Subdivision",
-          "column_type": "Data"
+          "column_type": "Data",
+          "read_only": true
         },
         {
           "column_name": "category_name",
           "label": "Category",
           "column_type": "Data",
-          "reqd": true
+          "reqd": true,
+          "read_only": true
         },
         {
           "column_name": "subcategory_name",
           "label": "Subcategory",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "read_only": true
         },
         {
           "column_name": "calendar_year",
           "label": "Year",
-          "column_type": "Int"
+          "column_type": "Int",
+          "read_only": true
         },
         {
           "column_name": "calendar_month",
           "label": "Month",
-          "column_type": "Int"
+          "column_type": "Int",
+          "read_only": true
         },
         {
           "column_name": "revision_id",
           "label": "Revision",
-          "column_type": "Int"
+          "column_type": "Int",
+          "description": "The plan's revision; 1 is the approved plan.",
+          "read_only": true
         },
         {
           "column_name": "plan_value_before_tax",
-          "label": "Plan (before tax)",
-          "column_type": "Currency"
+          "label": "Plan (Before Tax)",
+          "column_type": "Currency",
+          "description": "The annual plan (AOP) for the month, in rupees before tax.",
+          "read_only": true
         },
         {
           "column_name": "plan_qty",
-          "label": "Plan quantity",
-          "column_type": "Float"
+          "label": "Plan Quantity",
+          "column_type": "Float",
+          "description": "The annual plan for the month, in pieces.",
+          "read_only": true
         }
       ],
       "title_column": "subcategory_name"
@@ -2458,30 +2682,39 @@
           "label": "Model",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "Another model read beside Feather Forecast: XGBoost or LightGBM.",
+          "read_only": true
         },
         {
           "column_name": "store_code",
-          "label": "Store code",
+          "label": "Store Code",
           "column_type": "Data",
-          "reqd": true
+          "reqd": true,
+          "description": "The store, by its SAP code.",
+          "read_only": true
         },
         {
           "column_name": "subcategory_name",
           "label": "Subcategory",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "read_only": true
         },
         {
           "column_name": "month_from",
           "label": "Month",
-          "column_type": "Date"
+          "column_type": "Date",
+          "description": "The first day of the month forecast.",
+          "read_only": true
         },
         {
           "column_name": "forecast_value_before_tax",
-          "label": "Forecast (before tax)",
-          "column_type": "Currency"
+          "label": "Forecast (Before Tax)",
+          "column_type": "Currency",
+          "description": "That model's forecast for the month, in rupees before tax. A stand-in until the model lands as a run.",
+          "read_only": true
         }
       ],
       "title_column": "subcategory_name"
@@ -2509,9 +2742,10 @@
         },
         {
           "column_name": "applies_to",
-          "label": "Applies to",
+          "label": "Applies To",
           "column_type": "Choice",
-          "choices": "both\nmonth\nday"
+          "choices": "both\nmonth\nday",
+          "description": "A month change, a day change, or both."
         },
         {
           "column_name": "sort_order",
@@ -2549,14 +2783,16 @@
           "label": "Run",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The Feather Forecast run this row belongs to: the official run for the month."
         },
         {
           "column_name": "store_code",
-          "label": "Store code",
+          "label": "Store Code",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The store, by its SAP code."
         },
         {
           "column_name": "division_name",
@@ -2586,19 +2822,22 @@
           "label": "Scope",
           "column_type": "Choice",
           "choices": "month\nday",
-          "reqd": true
+          "reqd": true,
+          "description": "The whole month, or one day."
         },
         {
           "column_name": "forecast_date",
           "label": "Day",
-          "column_type": "Date"
+          "column_type": "Date",
+          "description": "The day changed, for a day change."
         },
         {
           "column_name": "change_method",
           "label": "Method",
           "column_type": "Choice",
           "choices": "percent\nset_value",
-          "reqd": true
+          "reqd": true,
+          "description": "By a percent, or to a value."
         },
         {
           "column_name": "change_percent",
@@ -2607,39 +2846,43 @@
         },
         {
           "column_name": "set_value_before_tax",
-          "label": "Value asked for (before tax)",
+          "label": "Value Asked For (Before Tax)",
           "column_type": "Currency"
         },
         {
           "column_name": "engine_value_before_tax",
-          "label": "Feather Forecast (before tax)",
+          "label": "Feather Forecast (Before Tax)",
           "column_type": "Currency",
-          "read_only": true
+          "read_only": true,
+          "description": "Feather Forecast for the scope when the change was sent."
         },
         {
           "column_name": "engine_qty",
-          "label": "Feather Forecast quantity",
+          "label": "Feather Forecast Quantity",
           "column_type": "Float",
           "read_only": true
         },
         {
           "column_name": "changed_value_before_tax",
-          "label": "Changed value (before tax)",
+          "label": "Changed Value (Before Tax)",
           "column_type": "Currency",
           "read_only": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "What the scope becomes with this change."
         },
         {
           "column_name": "changed_qty",
-          "label": "Changed quantity",
+          "label": "Changed Quantity",
           "column_type": "Float",
-          "read_only": true
+          "read_only": true,
+          "description": "Pieces move with the value, at Feather Forecast's selling price."
         },
         {
           "column_name": "explanation",
           "label": "Explanation",
           "column_type": "Text",
-          "reqd": true
+          "reqd": true,
+          "description": "Why the forecast should change: what Feather Forecast cannot know."
         },
         {
           "column_name": "reasons",
@@ -2651,12 +2894,14 @@
           "column_name": "replaces_change",
           "label": "Replaces",
           "column_type": "Reference",
-          "reference_table": "forecasting.forecast_change"
+          "reference_table": "forecasting.forecast_change",
+          "description": "The change this one replaces."
         },
         {
           "column_name": "change_batch",
           "label": "Batch",
-          "column_type": "Data"
+          "column_type": "Data",
+          "description": "Day changes entered together share a batch and are approved as one."
         },
         {
           "column_name": "change_status",
@@ -2668,29 +2913,29 @@
         },
         {
           "column_name": "proposed_by",
-          "label": "Proposed by",
+          "label": "Proposed By",
           "column_type": "Data",
           "reqd": true,
           "in_list_view": true
         },
         {
           "column_name": "proposed_by_role",
-          "label": "Proposed as",
+          "label": "Proposed As",
           "column_type": "Data"
         },
         {
           "column_name": "decided_by",
-          "label": "Decided by",
+          "label": "Decided By",
           "column_type": "Data"
         },
         {
           "column_name": "decided_at",
-          "label": "Decided at",
+          "label": "Decided At",
           "column_type": "Datetime"
         },
         {
           "column_name": "decision_note",
-          "label": "Decision note",
+          "label": "Decision Note",
           "column_type": "Text"
         }
       ],
@@ -2707,14 +2952,16 @@
           "label": "Run",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The Feather Forecast run this row belongs to: the official run for the month."
         },
         {
           "column_name": "store_code",
-          "label": "Store code",
+          "label": "Store Code",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The store, by its SAP code."
         },
         {
           "column_name": "division_name",
@@ -2748,7 +2995,7 @@
         },
         {
           "column_name": "reviewer_role",
-          "label": "Reviewer role",
+          "label": "Reviewer Role",
           "column_type": "Data"
         },
         {
@@ -2757,13 +3004,15 @@
           "column_type": "Choice",
           "choices": "accepted\nchange_proposed",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "Accepted, or a change proposed."
         },
         {
           "column_name": "forecast_change",
           "label": "Change",
           "column_type": "Reference",
-          "reference_table": "forecasting.forecast_change"
+          "reference_table": "forecasting.forecast_change",
+          "description": "The change proposed with this answer."
         }
       ],
       "title_column": "subcategory_name"
@@ -2779,14 +3028,16 @@
           "label": "Run",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The Feather Forecast run this row belongs to: the official run for the month."
         },
         {
           "column_name": "store_code",
-          "label": "Store code",
+          "label": "Store Code",
           "column_type": "Data",
           "reqd": true,
-          "in_list_view": true
+          "in_list_view": true,
+          "description": "The store, by its SAP code."
         },
         {
           "column_name": "division_name",
@@ -2820,7 +3071,8 @@
           "column_name": "about",
           "label": "About",
           "column_type": "Choice",
-          "choices": "line\nfrom_recent_selling\ndecember_step\nfrom_last_year\nadjustments\nchecks\nother_models"
+          "choices": "line\nfrom_recent_selling\ndecember_step\nfrom_last_year\nadjustments\nchecks\nother_models",
+          "description": "The part of the forecast the question is about."
         },
         {
           "column_name": "question_text",
@@ -2831,7 +3083,7 @@
         },
         {
           "column_name": "asked_by",
-          "label": "Asked by",
+          "label": "Asked By",
           "column_type": "Data",
           "reqd": true,
           "in_list_view": true
@@ -2846,23 +3098,23 @@
         },
         {
           "column_name": "answered_by",
-          "label": "Answered by",
+          "label": "Answered By",
           "column_type": "Data"
         },
         {
           "column_name": "answered_by_role",
-          "label": "Answered as",
+          "label": "Answered As",
           "column_type": "Choice",
           "choices": "Forecast Creator\nForecast Reviewer"
         },
         {
           "column_name": "answered_at",
-          "label": "Answered at",
+          "label": "Answered At",
           "column_type": "Datetime"
         },
         {
           "column_name": "answer_seen_at",
-          "label": "Asker saw the answer at",
+          "label": "Asker Saw The Answer At",
           "column_type": "Datetime"
         }
       ],
