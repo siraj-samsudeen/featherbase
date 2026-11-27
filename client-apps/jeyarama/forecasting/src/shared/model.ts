@@ -171,3 +171,7 @@ export const storeStepOf = (lines: Line[]) => {
   const total = lines.reduce((t, l) => t + l.fc, 0)
   return total ? Math.round(lines.reduce((t, l) => t + l.step * l.fc, 0) / total * 100) / 100 : 1
 }
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+/** The month before a month's name (December → November). */
+export const prevMonth = (name: string) => MONTHS[(MONTHS.indexOf(name) + 11) % 12]
