@@ -472,7 +472,7 @@ describe('Dash against the real platform', () => {
   installed("tells a Team Leader a whole-stores report isn't available for their job", async ({ dash: _dash }) => {
     history.replaceState(null, '', '/dash/?report=store_target')
     await open()
-    await waitForText("This report covers whole stores, so it isn't available for your job.")
+    await waitForText("This report covers whole stores only.")
     expect(document.body.textContent).not.toMatch(/9901|010101001/)
   })
 
@@ -500,7 +500,7 @@ describe('Dash against the real platform', () => {
     history.replaceState(null, '', '/dash/?report=nope')
     await open()
     // #967 point 7: the reader has other reports, so the page says this one isn't theirs.
-    await waitForText("You can't open this report. Choose one of your reports from the list.")
+    await waitForText("You don't have this report. Choose one of your reports from the list.")
   })
 
   installed('tells Staff with no section why, with a link to Your sections', async ({ dash, createUser }) => {

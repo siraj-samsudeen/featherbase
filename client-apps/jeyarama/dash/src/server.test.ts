@@ -492,6 +492,24 @@ describe('the report read', () => {
     expect(asked).toEqual([])
   })
 
+  // #1423: every refusal is one log line: who, which report, why. Never a secret.
+  it.each<[string, Options, Record<string, unknown>]>([
+    ['a report that does not exist', { payload: { report: 'nope', store: '9901' } }, { report: 'nope', reason: 'no_access' }],
+    ['a whole-stores report for a section reader', { reports: [WHOLE] }, { report: 'whole', reason: 'whole_stores_only' }],
+    ['a report row missing its keys', { reports: [{ ...WHOLE, store_key: null }], places: [place('9901', '9901')] }, { report: 'whole', reason: 'report_not_set_up' }],
+  ])('logs one refusal line for %s', async (_what, options, logged) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await reads.report(context(options).ctx)
+    expect(warn.mock.calls.map(c => JSON.parse(String(c[0])))).toEqual([{ event: 'dash_report_refused', person: 'psn_103', ...logged }])
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('token-made-up')
+  })
+
+  it('logs nothing when the report opens', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await reads.report(context({ payload: { store: '9901' } }).ctx)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
   it('says a report whose row lacks its keys is not set up', async () => {
     const { ctx } = context({ reports: [{ ...WHOLE, store_key: null }], places: [place('9901', '9901')] })
     expect(await reads.report(ctx)).toEqual({ state: 'report_not_set_up' })
@@ -678,7 +696,18 @@ describe('the embed_session read', () => {
       ['a report whose row lacks its keys', { reports: [{ ...SALES, whole_store_key: null }], payload: { store: '9901' } }, { refused: 'report_not_set_up' }],
     ])('%s', async (_what, options, refusal) => {
       const calls = upstream(ok)
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       expect([await embedSession(context(options).ctx), calls.length]).toEqual([refusal, 0])
+      // #1423: and says so in the log, once.
+      expect(warn.mock.calls.map(c => JSON.parse(String(c[0])).reason)).toEqual([(refusal as { refused: string }).refused])
+    })
+
+    it('logs a refused report taking no filter, opened through embed_open (#1423)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { ctx } = context({ payload: { report: 'sales', store: '9901' } })
+      const prepared = await reads.embed_open.prepare(ctx)
+      expect(await reads.embed_open({ ...ctx, prepared })).toEqual({ refused: 'no_access' })
+      expect(warn.mock.calls.map(c => JSON.parse(String(c[0])))).toEqual([{ event: 'dash_report_refused', person: 'psn_103', report: 'sales', reason: 'no_access' }])
     })
   })
 
@@ -1017,10 +1046,13 @@ describe('the report read at its edges', () => {
     expect(await reads.report(ctx)).toMatchObject({ state: 'ready', pickers_in_dive: true, heading: { name: 'Hillview' } })
   })
 
-  it('answers no_access for a Dive with its own pickers when the reader reaches no store', async () => {
+  // #1423: nothing set up yet is its own answer, so the page can say so; the refusal is logged.
+  it('answers no_reach, and logs it, for a Dive with its own pickers when the reader reaches no store', async () => {
     const { ctx } = context({ places: [], reports: [{ ...SALES, pickers_in_dive: 1 }], core: jobOf({ job: 'Head office staff' }) })
     ctx.roles = ['All', 'Dash Reader', 'Dash All-Stores Reader']
-    expect(await reads.report(ctx)).toEqual({ state: 'no_access' })
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(await reads.report(ctx)).toEqual({ state: 'no_reach' })
+    expect(logged.mock.calls.map(c => JSON.parse(String(c[0])))).toEqual([{ event: 'dash_report_refused', person: 'psn_103', report: 'sales', reason: 'no_reach' }])
   })
 
   it('names a store whose site the core Tables lack not at all, never by its code', async () => {
