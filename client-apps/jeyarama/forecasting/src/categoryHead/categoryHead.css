@@ -1,0 +1,39 @@
+/* The category head review's own look, on Shop Floor's tokens: the proposal queue, the store map (Shop Floor has
+   no heat map) and the two ranked lists side by side. Everything else comes from forecasting.css and Shop Floor. */
+.ch-queue { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 16px; font-size: 13px; }
+.ch-queue a { font-weight: 500; }
+.ch-empty { margin-top: 12px; padding: 14px 16px; border-radius: 12px; background: var(--color-subtle); font-size: 13.5px; color: var(--color-ink-muted); }
+
+/* the store map: categories down, stores across, each cell tinted by the gap */
+.ch-map { border-collapse: separate; border-spacing: 2px; width: 100%; }
+.ch-map th, .ch-map td { font-size: 12.5px; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; height: 34px; padding: 0 4px; border-radius: 6px; }
+.ch-map thead th { font-weight: 500; color: var(--color-ink-subtle); background: var(--color-subtle); }
+.ch-map th.ch-rn { position: sticky; left: 0; z-index: 1; text-align: left; background: var(--color-surface); font-weight: 400; color: var(--color-ink); width: 240px; min-width: 210px; padding: 0 8px; cursor: pointer; font-size: 13.5px; }
+.ch-map thead th.ch-rn { cursor: default; color: var(--color-ink-subtle); font-size: 12.5px; }
+.ch-map th.ch-rn b { font-weight: 600; }
+.ch-map th.ch-rn .fr-twisty { vertical-align: -2px; margin-right: 4px; }
+.ch-map th.ch-rn-sub { padding-left: 30px; cursor: default; font-size: 13px; }
+.ch-map td { cursor: pointer; min-width: 50px; }
+.ch-map td:hover { box-shadow: inset 0 0 0 1.5px var(--color-ink-subtle); }
+.ch-map td[aria-selected='true'] { box-shadow: inset 0 0 0 2px var(--color-ink); }
+.ch-map td:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.ch-map .ch-all, .ch-map tfoot td, .ch-map tfoot th { font-weight: 600; }
+.ch-map td.ch-none { color: var(--color-ink-subtle); cursor: default; box-shadow: none; }
+.ch-scale-steps { display: inline-flex; align-items: center; gap: 6px; }
+.ch-scale.fr-legend span::before { display: none; }
+.ch-scale i { display: inline-block; width: 18px; height: 10px; border-radius: 2px; }
+
+/* furthest from plan: two compact ranked tables side by side, one above the other when narrow */
+.ch-ranks { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.ch-rank { min-width: 0; }
+.ch-rank .fr-sec { margin-top: 4px; }
+.ch-rk { table-layout: fixed; }
+.ch-rk col.ch-num { width: 96px; }
+.ch-rk col.ch-pct { width: 60px; }
+.ch-rk > * > tr > td, .ch-rk > * > tr > th { white-space: nowrap; }
+.ch-rk > tbody > tr > td.ch-name { overflow: hidden; text-overflow: ellipsis; }
+.ch-rk .ch-pills .fr-pill { margin-left: 6px; }
+.ch-rk > tbody > tr.ch-panelrow > td { padding: 0; white-space: normal; }
+.ch-rk tr.ch-panelrow .fr-panel { position: static; overflow-x: auto; }
+.ch-rk tr.ch-panelrow .fr-cols { grid-template-columns: 1fr; gap: 16px; }
+@media (max-width: 1100px) { .ch-ranks { grid-template-columns: 1fr; } }
