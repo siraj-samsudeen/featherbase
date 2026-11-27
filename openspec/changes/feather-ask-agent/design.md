@@ -10,7 +10,7 @@ flowchart LR
   page[Ask page] -- "1. think (outbound read)" --> think[Ask's think read<br/>agent loop, up to 8 steps]
   think -- question + tools --> model[(Model<br/>Gemini / Groq)]
   think -- "ctx.featherbaseMcp.call()" --> tools[Featherbase MCP tools<br/>in memory, read-only]
-  tools -- "inner /api request, marked with the person" --> api[Featherbase /api<br/>permissions, every app]
+  tools -- "inner /api request, with the caller's own credential" --> api[Featherbase /api<br/>permissions, every app]
   page -- "2. ask (action): save chat, question, answer" --> save[(ask.chat, ask.question)]
 ```
 
@@ -29,17 +29,20 @@ The model gets the question and the platform's read-only MCP tools and decides w
 Rejected: #1377's design of Ask's own tools, an admin's list of askable Tables and prepared
 queries, which cover one app at a time and need upkeep for every new Table.
 
-### The tools run in memory, as the person, with no token (ADR 0028)
+### The tools run in memory, with the caller's own credential (ADR 0028)
 
-The same MCP tool server as `/mcp`, connected with an in-memory transport. Each tool's inner
-`/api` request runs under `runAsAgent`, as `/mcp`'s do, with the person and the time the read
-began on the mark. The `/api` front door looks the person up afresh on every call and refuses one
-who is gone, turned off, or signed out everywhere since the read began. Every app speaks its
-installed version, and history reads "via Ask" (the app's title, else its name).
-Rejected (Mohammad, 26-Nov-2026, replacing that day's earlier choice): a 5-minute access-token
-pass (a saved, visible credential needing a cache, renewal, a sweep and a column to hide it); a
-short session-token pass (it carries a sign-in, so it would count as a fresh one); forwarding the
-browser session (breaks ADR 0021; the MCP spec forbids passing other tokens through).
+The same MCP tool server as `/mcp`, connected with an in-memory transport. The read takes the
+credential its request was authorized with (session or access token; header first, then the
+`sid` cookie) and each tool's inner `/api` request carries it, under `runAsAgent` as `/mcp`'s
+do. So every existing front-door check applies on every call (that session signed out or expired,
+signed out everywhere, turned off, sign-in method removed, test-mode limits), every app speaks
+its installed version, and history reads "via Ask" (the app's title, else its name). A read the
+server starts itself has no credential and gets no tools. The credential stays inside the tool
+helper: never in errors, logs, tool results or the model's context.
+Rejected (Mohammad, 26 and 27 Nov 2026): a 5-minute access-token pass (rows, cache, renewal, a
+sweep, shown on the Access Tokens page, survives signing out everywhere); a minted session token
+(passes for a fresh sign-in, or needs a new format and key); no token with the person on the
+in-memory mark (a new front-door branch, and its own session-id check to match).
 
 ### Only the read-only tools are offered or run
 
@@ -77,7 +80,8 @@ by address, key and model covers them; keys are the app's declared secrets. Reje
 
 ## Risks / Trade-offs
 
-- Any server code can set the person on the mark; only `mcp-app-reads.ts` does (ADR 0028).
+- A question whose session ends mid-way gets refused lookups for the rest of it; the answer says
+  it could not answer.
 - A person whose own session is a test-mode or preview sign-in still gets the tools; they only
   read, so nothing lasting can be added through them.
 - `query_rows` returns at most 100 rows a page, so totals need a sum tool (step 5).
@@ -92,3 +96,13 @@ Ask's manifest gains the `think` read at 0.1.0: recreate the local database (see
 - The page sends the answer to save, so it could save a made-up answer in its own chat: sign it
   in `think` and check it in `ask`, or accept it since it is only the person's own chat.
 - Which Gemini and Groq models (step 3).
+- **View as can mix two people in one answer** (raised 27-Nov-2026, to decide later). When the
+  tool calls carry the asker's own session and the asker is viewing as someone, the front door
+  answers GET tools as the person viewed but the POST dry runs (`check_import`, `suggest_table`)
+  as the asker, since `viewAsRoute` treats that POST as the asker's. Exiting View as mid-question
+  switches the remaining calls too. Example: Selvi, viewing as Ravi, asks "How many tickets can I
+  see, and can I import this CSV?" and gets Ravi's 3 tickets but Selvi's "yes, you may import".
+  Nothing leaks (the asker may read both); the answer misleads. Rule: one question, one person.
+  Recommended fix A: pin the View as for the whole question (every tool call answered as the
+  person viewed, refused once that View as no longer holds). Fallback B: no tools while viewing
+  as someone. Decided later (Mohammad, 27-Nov-2026): task 1f2.

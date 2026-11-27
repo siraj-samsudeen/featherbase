@@ -12,13 +12,18 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
 - [x] 1d Hand `ctx.featherbaseMcp` to an outbound read that declares the flag
       (`runtime-actions.ts`, `executeRuntimeRead`), closed when the read ends; labelled by the
       app's title, else its name (commit 2db345742).
-- [ ] 1e No token (ADR 0028): the inner request carries the person on the `runAsAgent` mark
-      (`agent-context.ts`), the `/api` front door checks them afresh (`resolveInMemoryCaller` in
-      `auth.ts`, `index.ts`), and `mcp-app-reads.ts` drops the pass. Replaces the planned sweep.
+- [ ] 1e The caller's own credential (ADR 0028): `authCredential(c)` passed from `app-routes.ts`
+      through `runPublicPackageRead` → `runPackageRead` → `executeRuntimeRead` to
+      `featherbaseMcp`, sent as the Bearer header on every tool call inside `runAsAgent`; no
+      credential, no tools; `mcp-app-reads.ts` drops the pass. Replaces the planned sweep.
 - [ ] 1f Server test `apps/server/test/featherbase-mcp.test.ts` with a `tools` outbound read in
       `test-apps/action-proof`, bound to the `trusted-runtime-packages` scenarios: only read-only
       tools, Selvi sees her row and Ravi none, no `create_row`, a read without the flag gets none,
-      no access token is made, and a person turned off or signed out everywhere is refused.
+      no access token is made; turned off, signed out everywhere, and signed out of that session
+      mid-read are refused; a read opened with an access token works; a read with no caller gets
+      no tools; the credential never appears in a refusal, a result or the read's context.
+- [ ] 1f2 Decide and build View as for Ask's tools (design, Open Questions): pin the View as for
+      the whole question (recommended), or no tools while viewing as someone.
 - [ ] 1g Propose an adversarial review (permissions) to the owner before 1 lands.
 
 ## 2. The agent loop in Ask, with a stand-in model
