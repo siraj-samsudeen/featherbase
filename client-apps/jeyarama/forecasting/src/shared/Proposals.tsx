@@ -12,12 +12,14 @@ const reasonLabel = (c: string) => REASONS.find(r => r.code === c)?.label ?? c
 const signed = (a: number, b: number) => <span className={a >= b ? 'text-positive' : 'text-negative'}>{pc(a, b)}</span>
 
 /** One proposal. `actions` null: the viewer only sees it (it waits for the Store Manager at `store`). */
-export function ProposalCard({ p, line, actions, hrefFor, title = true }: {
+export function ProposalCard({ p, line, actions, hrefFor, title = true, onOpen }: {
   p: ProposalItem; line: Line; actions: ProposalActions | null
   /** Where its subcategory opens (the card's title is its RecordLink). */
   hrefFor: (l: Line) => string
   /** Show the subcategory as the card's title (off inside the subcategory's own panel). */
   title?: boolean
+  /** Clicking the title opens the subcategory on this page (its tree row); without it the link goes to `hrefFor`. */
+  onOpen?: () => void
 }) {
   const [ui, setUi] = useState<null | 'edit' | 'back'>(null)
   const [edit, setEdit] = useState(''), [back, setBack] = useState('')
@@ -42,7 +44,7 @@ export function ProposalCard({ p, line, actions, hrefFor, title = true }: {
     <Button onClick={stop(() => { setBack(''); setUi('back') })}>Send back</Button></div>
   return (
     <div className="fr-pcard" data-testid="proposal-card" data-state={p.state}>
-      {title && <div className="fr-ptitle"><RecordLink table={LINE_TABLE} rowId={l.rowId} name={l.name} href={hrefFor(l)} onNavigate={() => {}} />
+      {title && <div className="fr-ptitle"><RecordLink table={LINE_TABLE} rowId={l.rowId} name={l.name} href={hrefFor(l)} onNavigate={onOpen ? () => onOpen() : undefined} />
         <span className="fr-dim">{l.storeName} · {p.section}</span></div>}
       <div className="fr-pwho"><span className="fr-avatar">{p.by.slice(0, 1)}</span><span><b>{p.by}</b> · {p.role} · {p.section} · {day(p.sentOn)}</span></div>
       <div className="fr-pnums"><span className="fr-dim">Feather Forecast</span> <b>{inr(p.forecast)}</b> <span className="fr-dim">→ proposes</span> <b>{inr(p.proposed)}</b> {signed(p.proposed, p.forecast)}
