@@ -1007,8 +1007,12 @@ async function writeDoc(
       select 1 from ${sql(await tableRelation(table))}
       where ${sql(meta.row_key)} = ${String(values[ROW_KEY])}`
     if (exists) {
-      if (mode === 'insert')
+      if (mode === 'insert') {
+        // #1410: someone who may not add rows is told that, never that the id is
+        // taken: "already exists" would tell them a row they cannot read is there.
+        if (!opts.skipPermissions) await assertPermission(user, table, 'create')
         throw new AppError('ConflictError', `${table} ${values[ROW_KEY]} already exists`)
+      }
       return updateDoc(meta, String(values[ROW_KEY]), values, user, Boolean(opts.skipPermissions), opts.managedValues)
     }
     // In upsert mode an unknown name on a generated-id Table is almost
