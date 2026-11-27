@@ -23,6 +23,9 @@ export interface Line {
   suggestedSection?: string; suggestedSectionNote?: string; sectionRowIds?: string[]
   fc: number; fq: number; growth: number; step: number
   fromRecent: number; lift: number; lyg: number; adj: number; bases: Base[]
+  /** The two kinds of step after the blend (adj = rebal + price): rebalancing among a category's slower-selling
+   *  subcategories, which nets to zero in the category; and price, whole-rupee rounding and negative-to-zero. */
+  rebal: number; price: number
   l28: number; l28q: number; ly28: number; ly28q: number; ly: number; lyq: number; n91: number; y91: number
   aop: number; aq: number; xgb: number; lgbm: number
   /** Last month as December: the last 28 days' rate per day × 31 (and its pieces). */
@@ -42,6 +45,7 @@ export interface LineMonthRow {
   suggested_section?: string | null; suggested_section_note?: string | null; section_row_ids?: string | null
   forecast_value_before_tax: Num; forecast_qty: Num; seasonal_factor: Num; growth_factor: Num
   from_recent_selling: Num; december_step_on_top: Num; from_last_year: Num; adjustments: Num
+  rebalanced_within_category?: Num; price_and_rounding?: Num
   own_value_b1: Num; own_value_b2: Num; own_value_b3: Num; own_value_b4: Num; own_value_b5: Num; own_value_b6: Num
   adds_value_b1: Num; adds_value_b2: Num; adds_value_b3: Num; adds_value_b4: Num; adds_value_b5: Num; adds_value_b6: Num
 }
@@ -75,6 +79,8 @@ export function linesFrom({ lines, sales, plans, others }: CopiedRows, store: st
       sectionRowIds: l.section_row_ids ? l.section_row_ids.split('\n').filter(Boolean) : undefined,
       fc: n(l.forecast_value_before_tax), fq: n(l.forecast_qty), growth: Math.round(n(l.growth_factor) * 100) / 100, step: Math.round(n(l.seasonal_factor) * 100) / 100,
       fromRecent: n(l.from_recent_selling), lift: n(l.december_step_on_top), lyg: n(l.from_last_year), adj: n(l.adjustments), bases,
+      // a Run without the two kinds counts all of its adjustment as rebalancing
+      rebal: l.rebalanced_within_category == null || l.rebalanced_within_category === '' ? n(l.adjustments) : n(l.rebalanced_within_category), price: n(l.price_and_rounding),
       l28, l28q, ly28: v('same_28_days_last_year'), ly28q: q('same_28_days_last_year'), ly: v('last_december'), lyq: q('last_december'),
       n91: v('last_91_days'), y91: v('same_91_days_last_year'),
       aop: n(plan?.plan_value_before_tax), aq: n(plan?.plan_qty), xgb: model('XGBoost'), lgbm: model('LightGBM'),
@@ -83,7 +89,7 @@ export function linesFrom({ lines, sales, plans, others }: CopiedRows, store: st
   })
 }
 
-const SUMMED = ['fc', 'fq', 'fromRecent', 'lift', 'lyg', 'adj', 'l28', 'l28q', 'ly28', 'ly28q', 'ly', 'lyq', 'n91', 'y91', 'aop', 'aq', 'xgb', 'lgbm', 'r31', 'r31q'] as const
+const SUMMED = ['fc', 'fq', 'fromRecent', 'lift', 'lyg', 'adj', 'rebal', 'price', 'l28', 'l28q', 'ly28', 'ly28q', 'ly', 'lyq', 'n91', 'y91', 'aop', 'aq', 'xgb', 'lgbm', 'r31', 'r31q'] as const
 
 /** The words every member's name shares at the front ("Girls"), dropped from a group's name. */
 function shortNames(names: string[]): string[] {
@@ -122,12 +128,12 @@ export const byGapToLastYear = <T extends { fc: number; ly: number }>(rows: T[])
 
 // ---- the parts and their fixed colours (TL-12) --------------------------------------------------------
 export type PartKey = 'fromRecent' | 'lift' | 'lyg' | 'adj'
-export type HelpTopic = 'recent' | 'step' | 'lastyear' | 'adjust'
+export type HelpTopic = 'recent' | 'step' | 'lastyear' | 'adjust' | 'adjust-price'
 export const PARTS: { key: PartKey; label: string; color: string; topic: HelpTopic }[] = [
   { key: 'fromRecent', label: 'From recent selling', color: 'var(--color-part-recent)', topic: 'recent' },
   { key: 'lift', label: 'December step on top', color: 'var(--color-part-step)', topic: 'step' },
   { key: 'lyg', label: 'From last year × growth', color: 'var(--color-part-last-year)', topic: 'lastyear' },
-  { key: 'adj', label: 'Adjustments', color: 'var(--color-part-adjust)', topic: 'adjust' },
+  { key: 'adj', label: 'Rebalanced, price and rounding', color: 'var(--color-part-adjust)', topic: 'adjust' },
 ]
 /** Each part's share of the forecast, in %, never below zero. */
 export const shares = (l: Pick<Line, PartKey | 'fc'>) => PARTS.map(p => ({ ...p, share: l.fc ? Math.max(0, l[p.key]) / l.fc * 100 : 0 }))

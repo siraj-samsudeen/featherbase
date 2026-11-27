@@ -29,6 +29,13 @@ export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Heade
       <td><span className="fr-part"><span className="fr-swatch" style={{ background: p.color }} />{p.label}<HelpMark topic={p.topic} onHelp={onHelp} /></span><div className="fr-from">{from}</div></td>
       <td>{ownText}</td><td>{pct0(w)}</td><td className="fr-fc">{inr(adds)}</td><td>{share(adds)}</td>
     </tr>)
+  // the steps after the blend, each only when it is not zero; a share under 0.5% reads 0%, never −0%
+  const after = (v: number, name: string, topic: HelpTopic, from: string) => v !== 0 && (
+    <tr key={topic}>
+      <td className="fr-dim"><span className="fr-part" style={{ fontWeight: 500 }}><span className="fr-swatch" style={{ background: adjust.color }} />{name}<HelpMark topic={topic} onHelp={onHelp} /></span>
+        <div className="fr-from">{from}</div></td>
+      <td /><td /><td className="fr-fc fr-dim">{inr(v)}</td><td className="fr-dim">{share(v)}</td>
+    </tr>)
   return <>
     <h4>How Feather Forecast got {inr(l.fc)}</h4>
     <table className="fr-mini fr-build">
@@ -39,12 +46,9 @@ export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Heade
           : `${month.name} usually sells ×${st} the late-${prevMonth(month.name)} rate here: ${Math.round((st - 1) * 100)}% more on the part of recent selling that gets the step${wStep == null ? '' : ` (${pct0(wStep)} of the ${pct0(wRec)})`}`,
           wStep === 0 ? '' : `≈ ${inr(own * (st - 1))}`, null, l.lift)}
         {part(lastYear, `Last ${month.name} ${inr(l.ly)} (${count(l.lyq)} pcs)${isGroup(l) ? " × each subcategory's growth" : ` × growth ${l.growth}`}`, inr(lyOwn), wLy, l.lyg)}
-        {l.adj !== 0 && (
-          <tr>
-            <td className="fr-dim"><span className="fr-part" style={{ fontWeight: 500 }}><span className="fr-swatch" style={{ background: adjust.color }} />{adjust.label}<HelpMark topic="adjust" onHelp={onHelp} /></span>
-              <div className="fr-from">Tidy-up steps, such as splitting very small subcategories</div></td>
-            <td /><td /><td className="fr-fc fr-dim">{inr(l.adj)}</td><td className="fr-dim">{signedShare(l.adj, l.fc)}</td>
-          </tr>)}
+        {after(l.rebal, 'Rebalanced within category', 'adjust',
+          `Moved ${l.rebal < 0 ? 'from' : 'to'} this subcategory so each slower-selling subcategory in ${isGroup(l) ? 'the category' : l.category} gets its share of the last 28 days' sales; the category total is unchanged`)}
+        {after(l.price, 'Price and rounding', 'adjust-price', 'Recent selling price where it changed, and rounding to whole rupees')}
         {six && (
           <tr><td colSpan={5} style={{ padding: 0, background: 'transparent' }}>
             <table className="fr-mini fr-six">

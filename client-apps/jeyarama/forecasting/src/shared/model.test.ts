@@ -69,3 +69,18 @@ describe('the build-up (#1419, corrected 27-Nov-2026)', () => {
     expect(lines[0].bases.map(b => b.mw)).toEqual([1, 2, 3, 4, 5, 6].map(i => first[`weight_b${i}`]))
   })
 })
+
+describe('the steps after the blend, in two kinds (#1419, 27-Nov-2026)', () => {
+  it("splits each line's adjustment into rebalancing and price and rounding, and the category's rebalancing nets to zero", () => {
+    for (const l of lines) expect(l.rebal + l.price).toBe(l.adj)
+    expect(lines.filter(l => l.category === 'Girls Bottom').reduce((t, l) => t + l.rebal, 0)).toBe(0)
+  })
+  it('counts the whole adjustment as rebalancing when a Run does not carry the two kinds', () => {
+    const rows = fixture.forecast_line_month.map(r => ({ ...r, rebalanced_within_category: null, price_and_rounding: null }))
+    const [l] = linesFrom({ lines: rows, sales: [], plans: [], others: [] } as unknown as CopiedRows, 'LKS')
+    expect([l.rebal, l.price]).toEqual([l.adj, 0])
+  })
+  it('shows a share under half a percent as 0%, never −0%', () => {
+    expect(signedShare(-1, 108166)).toBe('0%')
+  })
+})

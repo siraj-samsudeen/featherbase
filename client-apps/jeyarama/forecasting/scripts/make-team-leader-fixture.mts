@@ -14,29 +14,33 @@ const KEY = { store_code: STORE, division_name: 'Fashion', subdivision_name: 'Gi
 const SECTION = 'Girls Bottoms'
 
 // name, category, last 28 days ₹, its ASP, same 28 days last year ₹, last December ₹, last December's ASP,
-// growth, the line's December step, weights B1..B6, adjustments ₹
+// growth, the line's December step, weights B1..B6, rebalanced within category ₹ (Girls Bottom's add up to zero,
+// as the real step's do in a category)
 type Seed = [string, string, number, number, number, number, number, number, number, number[], number]
 const SEEDS: Seed[] = [
   ['Girls Jean', 'Girls Bottom', 540000, 520, 210000, 455000, 540, 2.62, 1.29, [0.14, 0.04, 0.01, 0.08, 0.05, 0.68], 0],
   ['Girls Jeggings', 'Girls Bottom', 41000, 270, 120000, 310000, 300, 0.31, 1.33, [0, 0.02, 0.05, 0.1, 0.08, 0.75], 0],
-  ['Girls Pant', 'Girls Bottom', 10500, 240, 70000, 205000, 560, 0.07, 1.19, [0.02, 0, 0.4, 0.3, 0.28, 0], 300],
-  ['Girls Short', 'Girls Bottom', 245000, 150, 170000, 190000, 140, 1.31, 1.26, [0.2, 0.1, 0.05, 0.1, 0.05, 0.5], 1200],
+  ['Girls Pant', 'Girls Bottom', 10500, 240, 70000, 205000, 560, 0.07, 1.19, [0.02, 0, 0.4, 0.3, 0.28, 0], 2100],
+  ['Girls Short', 'Girls Bottom', 245000, 150, 170000, 190000, 140, 1.31, 1.26, [0.2, 0.1, 0.05, 0.1, 0.05, 0.5], -1400],
   ['Girls Skirt', 'Girls Bottom', 140000, 420, 160000, 255000, 330, 0.86, 1.15, [0.3, 0.05, 0.05, 0.05, 0.05, 0.5], 0],
   ['Girls Palazzo', 'Girls Bottom', 125000, 175, 130000, 218000, 150, 0.93, 1.13, [0.22, 0.08, 0.05, 0.05, 0.05, 0.55], 900],
   ['Girls Capri', 'Girls Bottom', 76000, 160, 105000, 262000, 70, 0.72, 1.31, [0.1, 0.15, 0.05, 0.1, 0.05, 0.55], 0],
-  ['Girls Leggings', 'Girls Bottom', 73000, 140, 80000, 109000, 160, 0.95, 1.16, [0.12, 0.05, 0.08, 0.1, 0.05, 0.6], 650],
+  ['Girls Leggings', 'Girls Bottom', 73000, 140, 80000, 109000, 160, 0.95, 1.16, [0.12, 0.05, 0.08, 0.1, 0.05, 0.6], -1600],
   ['Girls Panties', 'Girls Inner Wear', 172000, 41, 170000, 171000, 40, 1.0, 1.15, [0.25, 0.1, 0.05, 0.05, 0.05, 0.5], 0],
   ['Girls Track Pant', 'Girls Active Wear', 54000, 225, 66000, 92000, 265, 0.82, 1.24, [0, 0, 0.1, 0.1, 0.1, 0.7], 0],
 ]
 
+// price and rounding ₹: a few rupees of whole-rupee rounding each
+const PRICE = [2, -1, 0, 3, -2, 1, -1, 0, 2, -1]
 const r = (n: number) => Math.round(n)
 const q1 = (n: number) => Math.round(n * 10) / 10
 const lines: Record<string, unknown>[] = [], sales: Record<string, unknown>[] = [], plans: Record<string, unknown>[] = [], others: Record<string, unknown>[] = []
-SEEDS.forEach(([name, category, l28, asp, ly28, ly, aspLy, growth, step, w, adj], i) => {
+SEEDS.forEach(([name, category, l28, asp, ly28, ly, aspLy, growth, step, w, rebal], i) => {
   const line = { ...KEY, category_name: category, subcategory_name: name }
   const b3 = l28 / 28 * 31
   const own = [ly * growth, ly * growth * 1.008, b3, b3 * 0.995, b3 * 0.985, b3 * step]
   const adds = own.map((o, k) => r(o * w[k]))
+  const adj = rebal + PRICE[i]
   const fc = adds.reduce((a, b) => a + b, 0) + adj
   const b6Level = adds[5] / step
   lines.push({
@@ -48,6 +52,7 @@ SEEDS.forEach(([name, category, l28, asp, ly28, ly, aspLy, growth, step, w, adj]
     seasonal_factor: step, growth_factor: growth,
     from_recent_selling: r(adds[2] + adds[3] + adds[4] + b6Level), december_step_on_top: r(adds[5] - b6Level),
     from_last_year: adds[0] + adds[1], adjustments: adj,
+    rebalanced_within_category: rebal, price_and_rounding: PRICE[i],
   })
   const n91 = l28 * 3.05
   const windows: [string, string, string, number, number][] = [
