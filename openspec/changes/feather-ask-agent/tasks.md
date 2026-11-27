@@ -52,6 +52,7 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
       through one `post()` helper; Try again asks both again (commits 66bfaf3f8, cf1e5b846).
 - [ ] 2.3b The page shows the steps behind an answer only when asked: Ctrl+O, or a small link
       under the answer (Mohammad, 27-Nov-2026), as ChatGPT's and Claude's collapsed steps.
+      Parked until step 3 works (Mohammad, 27-Nov-2026); draft and check ready outside the repo.
 - [ ] 2.4 Decide the open question on signing the answer.
 
 ## 3. Gemini and Groq

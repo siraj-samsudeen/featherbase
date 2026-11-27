@@ -1,6 +1,6 @@
 # Feather Ask UI (#1377, Phase 1): hand-over
 
-**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; 2.1, 2.2, 2.2b and 2.3 committed; next: 2.3b). A working note for moving between machines and sessions. It is
+**Last updated:** 27-Nov-2026 (backend 1a to 1e committed; ADR 0028; 1e2 deferred; 1f committed; 1f2 moved to the final step; 1g skipped; step 1 done; 2.1 to 2.3 committed; 2.3b parked; next: step 3, the real model). A working note for moving between machines and sessions. It is
 removed (or folded into the PR body) before the PR is opened.
 
 On a new machine: pull this branch, follow **Set up**, then tell Claude Code:
@@ -258,7 +258,7 @@ Done on the backend (step 1, the platform piece):
   server test `featherbase-mcp.test.ts`: 12 tests over HTTP with `action-proof`'s `tools` and
   `untooled` reads (`dffb84cc1`).
 
-## Next step: step 2, the agent loop in Ask (2.1 to 2.3 done; next 2.3b)
+## Next step: step 3, the real model (step 2: 2.1 to 2.3 done, 2.3b parked)
 
 Step 1 (the platform piece) is finished: 1a–1f committed, 1e2 deferred, 1f2 (View as) moved to
 the final step, 1g's adversarial review offered and skipped (Mohammad, 27-Nov-2026).
@@ -304,14 +304,43 @@ Raised by Mohammad during 2.3: the agent sees only the question, not the chat's 
 Noted for step 3 as task 3.3 (design, Open Questions: whole chat up to a limit recommended);
 nothing to build before the real model.
 
-**Next: 2.3b**, the page shows the steps behind an answer only when asked: a small link under
-the answer and Ctrl+O (Mohammad, 27-Nov-2026), as ChatGPT's and Claude's collapsed steps.
-`openChat()` must also read `steps` so a reopened chat shows them; `Asked` already carries them.
-Questions for Mohammad first, one at a time, with a recommendation: what Ctrl+O toggles (every
-answer's steps at once, as Claude Code, or only the last); the link's words (e.g. "1 step" /
-"How I found this"); taking Ctrl+O from the browser's "Open file" while Ask is focused. No
-manifest change. Draft in `ask-handover\2.3b-draft\`; check headless. Then **2.4** (decide
-signing).
+**2.3b is parked** (Mohammad, 27-Nov-2026): the steps are saved (2.2b) but not shown yet; showing
+them spans several files, so it waits until the real model works. Its draft is ready and checked:
+`ask-handover\2.3b-draft\` (`Steps.tsx` new; `QuestionAnswer.tsx`, `Chat.tsx`, `api.ts`;
+`2.3b.diff`), check `checks\check2.3b-steps.cjs` (15 headless), screenshot
+`checks\2.3b-steps.png`. Choices already made: Ctrl+O opens or closes every answer's steps at
+once, Ask takes Ctrl+O from the browser while open, the link reads "Used 1 tool" / "Hide steps".
+See "Open, parked for later" below.
+
+**Next: step 3, the real model** (Mohammad, 27-Nov-2026: the main work now). Two pieces:
+1. **3.1** Gemini or Groq through one OpenAI-style adapter with tool calling, in place of the
+   stand-in (`stand-in.ts`); keys as Ask's declared secrets (`ctx.secrets`, as Dash's
+   `featherbase.json`); choose the models.
+2. **3.3** The whole chat goes to the model, not one question: `think` gets the chat and reads its
+   earlier questions and answers (design, Open Questions: whole chat up to a limit recommended).
+Ask Mohammad first, one at a time, with a recommendation: which provider first; how secrets reach
+a read (check whether an outbound read gets `ctx.secrets`); the model; the history limit. Adding
+secrets changes Ask's manifest: ask before recreating `fb_ask_ui`. Draft in
+`ask-handover\3.1-draft\`; check with fake model replies first, then one real call with
+Mohammad's key (never printed or committed).
+
+## Open, parked for later
+
+Everything left open on purpose, in one place, to take up together later:
+
+- **2.3b Show the steps** (after step 3): draft and check ready, above.
+- **2.4 Sign the answer** between think and ask, or accept that a person could save any answer
+  (and steps) to their own chat. Unsigned for now; design, Open Questions.
+- **1f2 View as** (road to done, step 8): the GET tools answer as the person viewed, the POST dry
+  runs as the tester. Design, Open Questions.
+- **1e2 Access Log per tool call**: deferred until a second app declares `featherbaseMcp` or rows
+  go to an outside model (step 3 sends rows to Gemini or Groq: revisit then).
+- **Frontend, later** (section at the end): a chat moves to the top when added to, date groups,
+  what each figures answer covers, the panel on every page, the tidy-ups in 2d's files.
+- **RecordLink check for steps**: 2.3b shows a step's arguments as raw code
+  (`"table":"tickets.ticket"`); the verifier may want the Table as a link.
+- **Tell Siraj** every departure from #1377 (Decisions): Recent Chats, OpenRouter for OpenCode
+  Zen, the agent over every app instead of #1377's own tools, retries and askable list.
 
 **What step 2 builds** (tasks 2.1–2.4 in `feather-ask-agent/tasks.md`): Ask stops answering
 with the placeholder (`src/server/reply.ts`) and answers with an agent loop over the platform's
