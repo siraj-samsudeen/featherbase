@@ -259,9 +259,11 @@ Done on the backend (step 1, the platform piece):
 
 1e2 is deferred (see Decisions). Next is `apps/server/test/featherbase-mcp.test.ts`, with a
 `tools` outbound read in `test-apps/action-proof` (details in `feather-ask-agent/tasks.md`, 1f).
-`ask-handover\S1-draft\featherbase-tools.test.ts` has test cases to start from; its wiring is
-superseded by 1c–1e. Not drafted yet: Claude drafts it in `ask-handover\1f-draft\`, checks it,
-then gives the walkthrough.
+Mohammad types it in from **`ask-handover\1f-draft\WALKTHROUGH.md`** (four files; `1f.diff`
+applies on `9e8906baf`). Checked by Claude on 27-Nov-2026: 12/12, the six `action-proof`
+suites, server typecheck, platform imports, scenarios. `runtime-actions.test.ts` changes two
+lines because the fixture now has reads. Running the test: never stop vitest from outside on
+Windows; its workers live on and hold `featherbase_test` (the pause tests release in `finally`).
 
 ## The road to done
 
