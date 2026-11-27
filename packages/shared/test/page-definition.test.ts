@@ -151,6 +151,11 @@ describe('parts', () => {
     })
   })
 
+  test('a part that is wrong is named once, where it is, and not again where it is used', () => {
+    const input = { version: '1.0', components: [{ id: 'root', component: 'Page', title: 'Plan', children: ['spark'] }, { id: 'spark', component: 'Sparkline' }] }
+    expect(Object.keys(fields(input))).toEqual(['components.spark.component'])
+  })
+
   test('an unknown setting, a missing one and a wrong value are named on the same part', () => {
     expect(fields(page([{ id: 'hello', component: 'Text', colour: 'red', variant: 'huge' }]))).toEqual({
       'components.hello.colour': 'Text has no setting "colour". Its settings: text, variant',

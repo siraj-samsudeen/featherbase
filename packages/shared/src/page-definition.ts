@@ -360,6 +360,8 @@ export function checkPage(input: unknown): PageCheck {
 
   // --- components: the parts, in a flat list.
   const parts = new Map<string, PagePart>()
+  /** Ids a part goes by whose part is itself wrong: named once, where the part is, never again where it is used. */
+  const wrong = new Set<string>()
   if (!Array.isArray(input.components) || input.components.length === 0) {
     say('components', 'components is the list of the page\'s parts, one of them with the id "root"')
     return done()
@@ -369,16 +371,18 @@ export function checkPage(input: unknown): PageCheck {
     if (!isObject(part)) say(at, 'A part is an object with an id and a component')
     else if (typeof part.id !== 'string' || !NAME.test(part.id)) say(`${at}.id`, 'A part\'s id is letters, digits and _, starting with a letter')
     else if (parts.has(part.id)) say(`components.${part.id}.id`, `Two parts have the id "${part.id}"`)
-    else if (!(String(part.component) in PAGE_PARTS)) say(`components.${part.id}.component`, `There is no part "${String(part.component)}". The parts are: ${list(Object.keys(PAGE_PARTS))}`)
-    else parts.set(part.id, part as PagePart)
+    else if (!(String(part.component) in PAGE_PARTS)) {
+      wrong.add(part.id)
+      say(`components.${part.id}.component`, `There is no part "${String(part.component)}". The parts are: ${list(Object.keys(PAGE_PARTS))}`)
+    } else parts.set(part.id, part as PagePart)
   }
 
   /** Which part draws which: `source` set when the child is drawn once per row of that source. */
   const edges: { from: string; to: string; source: string | null; at: string }[] = []
   const writes: PageCheck['writes'] = []
   const child = (from: string, to: unknown, at: string, source: string | null) => {
-    if (typeof to !== 'string' || !parts.has(to)) say(at, `There is no part with the id "${String(to)}"`)
-    else edges.push({ from, to, source, at })
+    if (typeof to === 'string' && parts.has(to)) edges.push({ from, to, source, at })
+    else if (!wrong.has(to as string)) say(at, `There is no part with the id "${String(to)}"`)
   }
   /** The source a {"@path": "/data/<source>"} names, when it is exactly that. */
   const sourceOf = (value: unknown): string | null => {
