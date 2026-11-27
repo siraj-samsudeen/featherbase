@@ -1,0 +1,39 @@
+## 1. The checker and the catalog (shared)
+
+- [ ] 1.1 Unit tests, red: a definition's shape; an unknown part; an unknown or misspelled setting; a wrong value; a child that does not exist; no root, or a root that is not a Page; a cycle; an unknown function or action; a path to state or data that is not declared; every mistake reported at once, keyed by where it is
+- [ ] 1.2 The page definition, the ten parts, the named functions and the named actions, with the checker that reports every mistake
+- [ ] 1.3 The catalog as an agent reads it: each part and its settings, the functions, the actions, and the worked example, which the checker itself accepts
+- [ ] 1.4 Which columns of each data source a page reads, so the server can check them against the Table
+
+## 2. Scenario tests, red
+
+- [ ] 2.1 Server scenarios of runtime-pages: the two refusals, the three agent scenarios
+- [ ] 2.2 Screen scenarios of runtime-pages: the saved page opens; rows as the viewer (two); the choice; the groups; the two saves; sample rows; the draft; the group's list
+
+## 3. Server
+
+- [ ] 3.1 The `Page` platform Table: migration, and the migration added to every pinned list of migrations in the tests
+- [ ] 3.2 The save check: the definition is checked in the Table's validate hook; each data source's Table and columns are checked against Table metadata; the name is an address
+- [ ] 3.3 Reading: the pages a person may open, and one page; a Draft answers as not there to someone who may not build
+- [ ] 3.4 A module's Home Page answer lists its pages
+- [ ] 3.5 MCP: `list_parts`, `list_pages`, `get_page`, `save_page`; `create_table` takes `module`
+
+## 4. Web
+
+- [ ] 4.1 Unit tests, red: reading a path from the top and from a row; a repeated child; each named function; writing a value back; an action's context
+- [ ] 4.2 The runtime: state kept in the address, data sources read through the list API, the page's own copy of rows, the actions
+- [ ] 4.3 A table with column bands and groups that open, as a shared component with its story, in the list view's look
+- [ ] 4.4 The ten parts over the shared components; every record a RecordLink
+- [ ] 4.5 The page's route inside the shell; loading, refused and not-there states; the sample-data line
+- [ ] 4.6 A Home Page's "Pages" card
+
+## 5. Words
+
+- [ ] 5.1 `CONTEXT.md`: the word Page, and the words it retires
+
+## 6. Checks
+
+- [ ] 6.1 Both typechecks; the shared, server and web suites with coverage; `pnpm check:scenarios`, `pnpm check:specs`, `pnpm check:vocabulary`, `pnpm check:sensitive`, `pnpm check:platform-imports`
+- [ ] 6.2 Through the running server: an agent's tool calls make a Table, load rows, save the worked example's page and read it back
+- [ ] 6.3 Independent verifier at 1280 px against #1410's points 10 to 26 and the worked example's mock-up
+- [ ] 6.4 `openspec validate runtime-pages --type change --strict`
