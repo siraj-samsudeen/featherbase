@@ -122,6 +122,21 @@ export async function activeSnapshot(dataset: string): Promise<SnapshotRecord | 
 }
 
 /**
+ * #1409: the copy a dataset last had from its source under `version`, kept
+ * aside while a stand-in serves (pruneSnapshots), or null when it never had
+ * one. It is what the first refresh after a stand-in is compared with.
+ */
+async function lastRealSnapshot(dataset: string, version: string): Promise<SnapshotRecord | null> {
+  const [row] = await sql`
+    select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, state,
+           bytes, fetch_ms, load_ms, triggered_by, stand_in, created_by
+    from dataset_snapshot
+    where dataset = ${dataset} and state = 'superseded' and not stand_in and definition_version = ${version}
+    order by activated_at desc limit 1`
+  return (row as unknown as SnapshotRecord | undefined) ?? null
+}
+
+/**
  * Publish-before-cache: a report whose dataset has not built yet serves live and
  * records the ask here. The worker materialises what was actually asked for, so
  * nothing stands between authoring a report and serving it — no registry line,
@@ -259,7 +274,11 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
     }
 
     const bytes = def.sizeOf ? await def.sizeOf(snapshotId) : null
-    const refusal = standIn ? null : ((await def.validate?.(rowCount, previous?.stand_in ? null : previous, snapshotId)) ?? null)
+    // #1409 (D3): a stand-in is never the baseline. The last real copy is,
+    // when the stand-in was loaded over one, so a guard is not blind for the
+    // first refresh after it.
+    const baseline = previous?.stand_in ? await lastRealSnapshot(dataset, def.version) : previous
+    const refusal = standIn ? null : ((await def.validate?.(rowCount, baseline, snapshotId)) ?? null)
     if (refusal) {
       // A refused candidate is never activated and never deleted: the row is the
       // record of why the refresh did not take, which a silent no-op would lose.
@@ -299,9 +318,16 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
  * floor, not an arbitrary number.
  */
 export async function pruneSnapshots(dataset: string, keep = 1): Promise<number> {
+  // #1409: while a stand-in serves, the last real copy is kept as well, however
+  // many stand-ins are loaded after it: it is the baseline for the first real
+  // refresh (lastRealSnapshot).
   const rows = await sql`
-    select row_id from dataset_snapshot
+    select row_id from dataset_snapshot s
     where dataset = ${dataset} and state = 'superseded'
+      and not (not stand_in
+        and exists (select 1 from dataset_snapshot a where a.dataset = s.dataset and a.state = 'active' and a.stand_in)
+        and row_id = (select r.row_id from dataset_snapshot r where r.dataset = s.dataset and r.state = 'superseded' and not r.stand_in
+          order by r.activated_at desc limit 1))
     order by built_at desc
     offset ${keep}`
   if (!rows.length) return 0
