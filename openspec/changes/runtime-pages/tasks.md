@@ -7,8 +7,8 @@
 
 ## 2. Scenario tests, red
 
-- [ ] 2.1 Server scenarios of runtime-pages: the two refusals, the three agent scenarios
-- [ ] 2.2 Screen scenarios of runtime-pages: the saved page opens; rows as the viewer (two); the choice; the groups; the two saves; sample rows; the draft; the group's list
+- [ ] 2.1 Server scenarios of runtime-pages: who may save, the two refusals, the two agent scenarios
+- [ ] 2.2 Screen scenarios of runtime-pages: the saved page opens; rows as the viewer; the page without its rows; the choice; the groups; the three saves; sample rows; the draft and the missing page; the group's two lists
 
 ## 3. Server
 
