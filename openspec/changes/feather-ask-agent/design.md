@@ -111,7 +111,7 @@ moving to Gemini is a settings change (Mohammad, 27-Nov-2026). Rejected: Gemini 
 OpenAI-compatible layer has more quirks); a setting from the start (Mohammad wanted it working
 first).
 
-### The model gets the last 10 turns with their short steps, and fetches numbers fresh
+### History in three stages: the last 10 turns first, then the whole chat, then hybrid memory
 
 A model remembers nothing between calls: ChatGPT, Claude and Gemini re-send the conversation
 each time, with some trace of earlier tool use, and trim or summarise long chats; Groq is only an
@@ -123,7 +123,11 @@ may be out of date and every number is fetched again with the tools. Ask deals i
 accuracy decides: the steps tell a follow-up ("which ones?") where the answer came from instead of
 leaving it to guess, fresh fetches stop sums on stale figures, and a short history is used more
 accurately than a long one; it also starts the habit of keeping what the agent did, which the
-agent across every app will need (Mohammad, 27-Nov-2026). Rejected: questions and answers only (a
+agent across every app will need. This is the **first of three stages** (Mohammad, 27-Nov-2026):
+(1) the last 10 turns with their steps; (2) the whole chat, every question and answer with its
+steps, as ChatGPT and Claude keep a conversation while it fits; (3) a hybrid memory (recent turns
+in full, older ones summarised). Which is most accurate for an agent dealing in numbers is still
+to be researched; each stage is built after the one before works. Rejected for now: questions and answers only (a
 follow-up guesses the Table); the whole chat (bigger, slower calls, can hit the model's or the free
 tier's limits); a running summary (a model call each time, can drop details); the page sending
 the history (a person could send one that never happened, and the payload grows).
