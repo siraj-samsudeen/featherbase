@@ -279,10 +279,6 @@ save". Unsigned until 2.4 (Mohammad chose "unsigned now, 2.4 later"; design `a21
 Checks: `ask-app.test.ts` 7, `checks\check2.2-save.cjs` 7 (HTTP on 5177). Draft in
 `ask-handover\2.2-draft\`. `check2.1-think-ui.cjs`'s last check (placeholder) now fails on purpose.
 
-**Known, not from 2.2:** the server's test typecheck (`tsc -p tsconfig.test.json`) fails at
-`apps/server/test/featherbase-mcp.test.ts:81` (`Object is of type 'unknown'`, from 1f's
-`dffb84cc1`). Fix it before any push.
-
 **Next: 2.2b**, the steps behind each answer: `think` returns the steps it took with its answer
 (tool, Table, filters, short result, e.g. "query_rows on Ticket, status = Open: 3 rows"), the
 page passes them on, and `ask` saves them in a new column on `ask.question`. It **changes Ask's

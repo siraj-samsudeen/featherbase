@@ -78,7 +78,7 @@ describe('Featherbase MCP tools for an app read (#1377)', () => {
 
   test('a read the server starts itself, with no caller credential, gets no tools', async ({ admin }) => {
     const { selvi } = await setup(admin)
-    expect((await runPackageRead('actionproof', 'tools', { payload: {} }, selvi.id)).result).toEqual({ given: false })
+    expect((await runPackageRead('actionproof', 'tools', { payload: {} }, selvi.id) as { result: unknown }).result).toEqual({ given: false })
   })
 
   test('no access token is made', async ({ admin, api }) => {
