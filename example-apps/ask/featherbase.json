@@ -11,6 +11,9 @@
   "actions": {"version": 2, "tables": ["ask.chat", "ask.question"], "operations": {
     "ask": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
   }},
+  "reads": {"version": 1, "tables": ["ask.chat"], "operations": {
+    "think": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}, "outbound": true, "featherbaseMcp": true}
+  }},
   "tables": [
     {"name": "ask.chat", "label": "Chat", "module": "Ask", "title_column": "title", "columns": [
       {"column_name": "title", "label": "Title", "column_type": "Data", "reqd": true, "in_list_view": true}
