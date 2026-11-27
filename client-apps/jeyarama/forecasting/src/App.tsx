@@ -59,9 +59,13 @@ const VIEWS = [
 ] as const
 type View = typeof VIEWS[number]['key']
 
+/** The pages of the review, which follow the newest official Run, not the month picked for the older pages. */
+const RUN_VIEWS: string[] = ['sections', 'section', 'unassigned']
+
 export const address = (view: View, extra: Record<string, string> = {}) => {
   const q = new URLSearchParams(window.location.search)
   q.set('view', view)
+  if (RUN_VIEWS.includes(view)) q.delete('month')
   for (const k of ['store', 'level', 'name', 'weeks', 'pane', 'q', 'idea', 'question', 'show', 'division', 'subdivision', 'category', 'sub', 'section', 'tab', 'dview', 'day', 'rows', 'line', 'practice', 'tl', ...CHART_KEYS]) q.delete(k)
   for (const [k, v] of Object.entries(extra)) q.set(k, v)
   return `?${q}`
@@ -86,7 +90,10 @@ function useMonth() {
     history[replace ? 'replaceState' : 'pushState'](null, '', `?${q}`)
   }
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('month') !== monthInAddress()) write(monthInAddress(), true)
+    // the review's own pages (and the default page, Sections) carry no month: they follow the newest official Run
+    const here = new URLSearchParams(window.location.search).get('view')
+    const runPage = !here || RUN_VIEWS.includes(here)
+    if (!runPage && new URLSearchParams(window.location.search).get('month') !== monthInAddress()) write(monthInAddress(), true)
     const fromHistory = () => setKey(monthInAddress())
     window.addEventListener('popstate', fromHistory)
     return () => window.removeEventListener('popstate', fromHistory)

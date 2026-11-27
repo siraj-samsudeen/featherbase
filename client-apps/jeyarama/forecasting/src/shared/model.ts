@@ -187,3 +187,18 @@ export const storeStepOf = (lines: Line[]) => {
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 /** The month before a month's name (December → November). */
 export const prevMonth = (name: string) => MONTHS[(MONTHS.indexOf(name) + 11) % 12]
+
+// ---- search (the prototype's "Search your subcategories") ------------------------------------------------
+const words = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean)
+/** Whether a subcategory matches what is typed: every word in its name or its category. */
+export const matches = (l: Pick<Line, 'name' | 'category'>, q: string) => {
+  const ws = words(q), text = `${l.name} ${l.category}`.toLowerCase()
+  return ws.every(w => text.includes(w))
+}
+/** The names nearest to something that matches none, by shared three-letter runs (at most `n`). */
+export function nearest<T extends Pick<Line, 'name'>>(lines: T[], q: string, n = 3): T[] {
+  const tri = (s: string) => { const t = new Set<string>(), x = `  ${s.toLowerCase()} `; for (let i = 0; i < x.length - 2; i++) t.add(x.slice(i, i + 3)); return t }
+  const a = tri(q)
+  return lines.map(l => { const b = tri(l.name); let both = 0; a.forEach(x => { if (b.has(x)) both++ }); return [l, both / (a.size + b.size - both)] as const })
+    .sort((x, y) => y[1] - x[1]).slice(0, n).map(([l]) => l)
+}
