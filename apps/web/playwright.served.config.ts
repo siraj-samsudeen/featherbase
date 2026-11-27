@@ -21,6 +21,15 @@ function servedDatabaseUrl(): string {
   return url.toString()
 }
 
+/** #1409: the made-up warehouse the Store Sales fixture's datasets read, a
+ *  sibling of the served database (a Data Source never reads the platform's
+ *  own). e2e-served/stand-in-datasets.spec.ts makes it and fills it. */
+export function servedWarehouseUrl(): string {
+  const url = new URL(servedDatabaseUrl())
+  url.pathname = `${url.pathname}_wh`
+  return url.toString()
+}
+
 const chromiumPath = process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH) ? process.env.CHROMIUM_PATH : undefined
 
 export default defineConfig({
@@ -53,7 +62,10 @@ export default defineConfig({
       FEATHERBASE_APP_PATHS: JSON.stringify([
         fileURLToPath(new URL('../../test-apps/fixtures/bar-proof', import.meta.url)),
         fileURLToPath(new URL('../../test-apps/fixtures/place-roster', import.meta.url)),
+        // #1409: an app whose page shows a stand-in dataset (e2e-served/stand-in-datasets.spec.ts).
+        fileURLToPath(new URL('../../test-apps/fixtures/stand-in-proof', import.meta.url)),
       ]),
+      STAND_IN_PROOF_WAREHOUSE_URL: servedWarehouseUrl(),
       ALLOW_MOCK_OAUTH: '1',
       PREAUTH_LOGIN_MAX: '10000',
       JOB_POLL_MS: '3600000',
