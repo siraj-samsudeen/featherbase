@@ -496,7 +496,7 @@ describe('#401: cli settings:set', () => {
   it('refuses a Table the settings file does not manage, and a row Table without --row', async () => {
     const outside = await failure(['settings:set', 'full_name', '--stdin', '--table', 'Person', '--row', 'x'], 'x')
     expect(outside?.status).toBe(1)
-    expect(outside?.stderr).toContain('settings:set writes System Settings, Sign In Method, Scheduled Job, App Setting, Data Source or Approval Type, not Person')
+    expect(outside?.stderr).toContain('settings:set writes System Settings, Sign In Method, Scheduled Job, App Setting, Data Source, Approval Type or Dataset Binding, not Person')
     // #1345: overrides come from the settings file's allowlist alone; break glass would skip it.
     const override = await failure(['settings:set', 'value', '--stdin', '--table', 'Metadata Override', '--row', 'x'], 'x')
     expect(override?.status).toBe(1)

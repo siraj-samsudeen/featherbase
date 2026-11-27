@@ -66,6 +66,8 @@ describe('the managed scope (D2)', () => {
       ['Approval Type', 'rows', ['mode']],
       // #1345: how an instance's own Tables are found and read, from an allowlist of properties.
       ['Metadata Override', 'rows', ['table_name', 'column_name', 'property', 'value']],
+      // #1409: where each dataset is served from; never Allowed on production.
+      ['Dataset Binding', 'rows', ['served_from', 'note', 'expected_by']],
     ])
     // The privacy notice may be kept in its own file next to the settings file.
     expect(scope[0].fileFields).toContain('privacy_notice')
@@ -198,7 +200,7 @@ describe('apply (D4)', () => {
       'System Settings.date_format': expect.stringContaining('not-a-format'),
       'Scheduled Job.no_such_job': 'Scheduled Job has no row no_such_job',
       'Scheduled Job.check_sla.description': 'Scheduled Job.description is not managed by the settings file (it manages: cadence, enabled)',
-      Person: 'Person is not managed by the settings file (it manages: System Settings, Sign In Method, Scheduled Job, App Setting, Data Source, Approval Type, Metadata Override)',
+      Person: 'Person is not managed by the settings file (it manages: System Settings, Sign In Method, Scheduled Job, App Setting, Data Source, Approval Type, Metadata Override, Dataset Binding)',
     })
     expect(await snapshot()).toEqual(before)
   })
