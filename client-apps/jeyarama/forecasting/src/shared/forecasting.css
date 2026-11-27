@@ -196,3 +196,8 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 /* six tiles or more (the Store Manager's progress tile) wrap four to a row on a narrow screen, as the prototype does */
 @media (max-width: 1200px) { .fr-kpis:has(> :nth-child(6)) { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .fr-table > tbody > tr.fr-tall > td { height: 54px; }
+/* the managers' rows: a pill or a long Team Leader name wraps under the name instead of being cut off */
+.fr-table-mgr .fr-sub { white-space: normal; overflow: visible; }
+.fr-table-mgr .fr-sub .fr-pill { margin-bottom: 2px; }
+/* the legend's hint has no swatch (so a wrapped hint starts at the edge) */
+.fr-legend span:not([style])::before { display: none; }
