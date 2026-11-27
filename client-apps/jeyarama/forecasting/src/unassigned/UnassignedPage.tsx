@@ -21,7 +21,7 @@ const ORG_CHART = 'https://dash.jeyarama.com'
 const todayIST = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
 /** The org chart's new Section Subcategory row for this store and subcategory, starting today (#100 prefill). */
 export const assignHref = (store: string, code?: string) =>
-  `${ORG_CHART}/featherbase/admin/table/section-subcategory/row/new?${new URLSearchParams({ prefill: JSON.stringify({ store, ...(code ? { subcategory: code } : {}), starts_on: todayIST() }) })}`
+  `${ORG_CHART}/featherbase/admin/table/section-subcategory/new?${new URLSearchParams({ prefill: JSON.stringify({ store, ...(code ? { subcategory: code } : {}), starts_on: todayIST() }) })}`
 
 export function UnassignedPage({ store, href }: { store: string; href: (line: string) => string }) {
   const [section, setSection] = useState<Section | null | undefined>(undefined)
