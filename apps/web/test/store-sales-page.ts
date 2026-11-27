@@ -1,9 +1,11 @@
 // #1409: the Store Sales fixture app's own page (test-apps/fixtures/
 // stand-in-proof/client/index.html), opened in jsdom the way the server serves
 // it: the shared bar's host first in the body, then the page's own markup, and
-// the page's own script run unchanged. The script is the fixture's, read from
-// its file, so these tests show what the platform draws around a page that
-// knows nothing about stand-ins.
+// the page's own scripts run unchanged (its plain script, which says how it
+// asks, then its module, which draws the answer). The scripts are the
+// fixture's, read from its file, so these tests show what the platform draws
+// around a page that knows nothing about stand-ins. The page's other ways of
+// asking (`?how=early`, `?how=xhr`) need a real browser: e2e-served.
 import { readFileSync } from 'node:fs'
 import { act, within } from '@testing-library/react'
 import { afterEach, beforeAll } from 'vitest'
@@ -15,8 +17,9 @@ import { forgetStandIns, installStandInMark } from '../src/lib/stand-in-mark'
 
 const PAGE = new DOMParser().parseFromString(readFileSync(`${FIXTURE}/client/index.html`, 'utf8'), 'text/html')
 const MARKUP = PAGE.querySelector('main')!.outerHTML
-const SCRIPT = PAGE.querySelector('script[type="module"]')!.textContent!
-const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (...args: string[]) => (fetch: typeof globalThis.fetch) => Promise<void>
+const ASKS = PAGE.querySelector('script:not([type])')!.textContent!
+const DRAWS = PAGE.querySelector('script[type="module"]')!.textContent!
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (...args: string[]) => () => Promise<void>
 
 let mounted: { unmount: () => void } | undefined
 
@@ -34,12 +37,16 @@ export function useStandInMark() {
   })
 }
 
-/** Run the page's own script, as `as`. A browser sends the person's session
- *  cookie with the page's requests; here their token stands in for it. */
+/** Run the page's own scripts, as `as`, in the order a browser runs them. A
+ *  browser sends the person's session cookie with the page's requests; here
+ *  their token stands in for it. */
 export async function loadStoreSales(as: TestClient) {
   const signedIn: typeof globalThis.fetch = (input, init) =>
     fetch(input, { ...init, headers: { ...(init?.headers as Record<string, string>), authorization: `Bearer ${as.token}` } })
-  await act(() => new AsyncFunction('fetch', SCRIPT)(signedIn))
+  await act(async () => {
+    new Function('fetch', ASKS)(signedIn)
+    await new AsyncFunction(DRAWS)()
+  })
 }
 
 /** Open the Store Sales page at `path` as `as`: the bar mounted on its host,

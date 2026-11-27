@@ -22,15 +22,35 @@
   <section id="sales"><h2>Sales</h2><div class="rows"></div></section>
   <section id="targets"><h2>Targets</h2><div class="rows"></div></section>
 </main>
+<script>
+  // How the page asks for its rows. An app may ask in more than one way, and
+  // the platform's line must not depend on which: `?how=early` asks here, in a
+  // plain script that runs before the platform's bar has loaded, as an app
+  // with an older bundle would; `?how=xhr` asks through XMLHttpRequest;
+  // otherwise the page's module asks with fetch.
+  const params = new URLSearchParams(location.search)
+  const address = `/api/app_reads/storesales/${params.get('only') === 'sales' ? 'sales' : 'overview'}`
+  // An app page names the version it was built as, so a stale page is told to reload.
+  const headers = { 'content-type': 'application/json', 'X-Featherbase-App-Version': 'storesales@1.0.0' }
+  const body = JSON.stringify({ payload: {} })
+  const ask = {
+    fetch: () => fetch(address, { method: 'POST', headers, body }).then((response) => response.json()),
+    xhr: () => new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest()
+      request.open('POST', address)
+      for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value)
+      request.onload = () => resolve(JSON.parse(request.responseText))
+      request.onerror = reject
+      request.send(body)
+    }),
+  }
+  const how = params.get('how')
+  window.storeSalesAnswer = how === 'early' ? ask.fetch() : () => (how === 'xhr' ? ask.xhr() : ask.fetch())
+</script>
 <script type="module">
-  // The app asks for its datasets and draws what it gets. It never looks at
-  // where the rows came from: the line under the top bar is the platform's.
-  const only = new URLSearchParams(location.search).get('only')
-  const response = await fetch(`/api/app_reads/storesales/${only === 'sales' ? 'sales' : 'overview'}`, {
-    // An app page names the version it was built as, so a stale page is told to reload.
-    method: 'POST', headers: { 'content-type': 'application/json', 'X-Featherbase-App-Version': 'storesales@1.0.0' }, body: JSON.stringify({ payload: {} }),
-  })
-  const { result } = await response.json()
+  // The app draws what it was answered. It never looks at where the rows
+  // came from: the line under the top bar is the platform's.
+  const { result } = await (typeof window.storeSalesAnswer === 'function' ? window.storeSalesAnswer() : window.storeSalesAnswer)
   const figures = new Set(['amount', 'units', 'target'])
   const amount = new Intl.NumberFormat('en-IN')
   const day = (value) => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value)).replaceAll(' ', '-')

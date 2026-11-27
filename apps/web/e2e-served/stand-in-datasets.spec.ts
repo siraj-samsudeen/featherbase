@@ -1,7 +1,9 @@
 // #1409: a stand-in dataset, end to end, on the served stack: the Store Sales
 // fixture app's own page (plain HTML that knows nothing about stand-ins) under
 // the built bar bundle. Its `sales` comes from the warehouse and its `targets`
-// is a stand-in loaded from a file, so the bar draws the sample-data line; a
+// is a stand-in loaded from a file, so the bar draws the sample-data line,
+// however and whenever the page asked for its rows (fetch, a plain script that
+// runs before the bar, XMLHttpRequest); a
 // page that shows only sales has none; and after Switch To Warehouse on the
 // Datasets page the same page shows the warehouse's targets and no line.
 // playwright.served.config.ts lists the fixture app and names its warehouse,
@@ -71,6 +73,13 @@ async function openStoreSales(page: Page, address = '/storesales/') {
   await expect(page.getByRole('button', { name: 'Switch application: Store Sales' })).toBeVisible()
 }
 const rowsOf = (page: Page, section: 'sales' | 'targets') => page.locator(`#${section} tbody tr`)
+/** The requests the page's mark remembers stand-ins for, by the names it keeps them under (lib/stand-in-mark.ts). */
+const rememberedAs = (page: Page) => page.evaluate(() => {
+  const remembered = (window as unknown as Record<symbol, { pages: Map<string, Map<string, unknown>> }>)[Symbol.for('featherbase.stand-ins')]
+  return [...(remembered.pages.get(window.location.pathname)?.keys() ?? [])]
+})
+/** The whole line while `targets` is the page's one stand-in. */
+const MARKED = /^Sample data: targets is a stand-in, loaded \d{2}-[A-Z][a-z]{2}-\d{4}\. Real data expected by 15-Dec-2026\. From the planning workbook$/
 
 test('a page that shows a stand-in says so under the bar, until the dataset is switched to the warehouse', async ({ page }) => {
   await page.goto('/featherbase/login')
@@ -86,7 +95,7 @@ test('a page that shows a stand-in says so under the bar, until the dataset is s
     await expect(rowsOf(page, 'targets')).toHaveCount(2)
     await expect(page.locator('#targets')).toContainText('50,00,000')
     await expect(line).toHaveCount(1)
-    await expect(line).toHaveText(/^Sample data: targets is a stand-in, loaded \d{2}-[A-Z][a-z]{2}-\d{4}\. Real data expected by 15-Dec-2026\. From the planning workbook$/)
+    await expect(line).toHaveText(MARKED)
     await expect(line).not.toContainText('sales')
     // The line is the platform's, in the bar's own shadow root: across the
     // page, directly under the bar and above the app's content.
@@ -102,6 +111,32 @@ test('a page that shows a stand-in says so under the bar, until the dataset is s
     await openStoreSales(page, '/storesales/?only=sales')
     await expect(rowsOf(page, 'sales')).toHaveCount(2)
     await expect(page.locator('#targets')).toBeHidden()
+    await expect(line).toHaveCount(0)
+  })
+
+  // The line must not depend on how or when the page asked. The fixture page
+  // can ask from a plain script, which runs before the bar's module exists
+  // (`?how=early`), or through XMLHttpRequest (`?how=xhr`).
+  await test.step('a page that asked before the bar loaded is marked the same', async () => {
+    await openStoreSales(page, '/storesales/?how=early')
+    await expect(rowsOf(page, 'targets')).toHaveCount(2)
+    await expect(line).toHaveText(MARKED)
+    // It did ask first: neither wrapper saw the read, so it is remembered as the browser kept it.
+    expect(await rememberedAs(page)).toEqual([expect.stringMatching(/^early \/api\/app_reads\/storesales\/overview [\d.]+$/)])
+    await openStoreSales(page, '/storesales/?only=sales&how=early')
+    await expect(rowsOf(page, 'sales')).toHaveCount(2)
+    await expect(line).toHaveCount(0)
+  })
+
+  await test.step('a page that asks through XMLHttpRequest is marked the same', async () => {
+    await openStoreSales(page, '/storesales/?how=xhr')
+    await expect(rowsOf(page, 'targets')).toHaveCount(2)
+    await expect(line).toHaveText(MARKED)
+    // It did go through XMLHttpRequest, and was read as a request with its body.
+    expect(await page.evaluate(() => (performance.getEntriesByType('resource') as PerformanceResourceTiming[]).find((each) => each.name.endsWith('/api/app_reads/storesales/overview'))!.initiatorType)).toBe('xmlhttprequest')
+    expect(await rememberedAs(page)).toEqual(['POST /api/app_reads/storesales/overview {"payload":{}}'])
+    await openStoreSales(page, '/storesales/?only=sales&how=xhr')
+    await expect(rowsOf(page, 'sales')).toHaveCount(2)
     await expect(line).toHaveCount(0)
   })
 
