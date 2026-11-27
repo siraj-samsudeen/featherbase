@@ -92,6 +92,16 @@ person could save any answer, but only in their own chat, which nobody else read
 27-Nov-2026). Rejected: `ask` running the agent itself, which holds the transaction open through
 the model's slow thinking.
 
+### The steps behind an answer are saved with it, in short
+
+`think` returns each tool call it made as `{ tool, args, summary, refused? }`; the summary is one
+short line ("2 rows", "12 tables", "refused: …"), never the rows. The page passes them to `ask`,
+which checks their shape and saves them in a JSON column on `ask.question`. This is how ChatGPT,
+Claude and Gemini keep an agent's steps: structured, drawn as one line per step. The page shows
+them only when asked, by Ctrl+O or a small link under the answer (Mohammad, 27-Nov-2026; a page
+step after 2.3). Rejected: plain text lines (the page could not draw them its own way); each
+tool's full result, for a Claude Code-style full view (copies rows into Ask).
+
 ### One OpenAI-style adapter for the model
 
 Gemini, Groq and later OpenRouter all accept OpenAI-style chat calls with tools, so one adapter set
