@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { pathToFileURL } from 'node:url'
-import { BUILT, CLASSES, SOURCE, build, declaredTokens, ruleBody, staleness, tokenDifferences, tokenGroups } from './look-kit.mjs'
+import { BUILT, CLASSES, ICONS, SOURCE, build, declaredTokens, iconSvg, ruleBody, staleness, tokenDifferences, tokenGroups } from './look-kit.mjs'
 
 const KIT = dirname(BUILT)
 
@@ -103,6 +103,12 @@ test('a source that has lost a token group fails by name', () => {
 })
 
 // --- The real files ---
+
+test('an icon keeps every shape, whether lucide writes it on one line or several', () => {
+  // The warning triangle's outline is written over several lines; its two marks on one each.
+  assert.equal((iconSvg('triangle-alert').match(/<path /g) ?? []).length, 3)
+  for (const name of ICONS) assert.match(iconSvg(name), /<(path|circle|rect|line|polyline|polygon|ellipse) /, name)
+})
 
 test("the committed kit's tokens are the components' tokens, light and dark", () => {
   assert.deepEqual(tokenDifferences(readFileSync(SOURCE, 'utf8'), readFileSync(BUILT, 'utf8')), [])

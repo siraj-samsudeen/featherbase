@@ -68,7 +68,7 @@ input:is([type='checkbox'], [type='radio']) { accent-color: var(--color-action);
   margin: 0.5rem;
   border-radius: var(--radius-card);
   padding: 1rem;
-  background: repeating-linear-gradient(135deg, var(--color-tag) 0 6px, transparent 6px 12px);
+  background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--color-tag) 55%, transparent) 0 6px, transparent 6px 12px);
   color: var(--color-ink-subtle);
   font-size: 12.5px;
   text-align: center;
@@ -91,6 +91,12 @@ input:is([type='checkbox'], [type='radio']) { accent-color: var(--color-action);
 }
 /* The page with no shell beside it (a fragment, a gallery). */
 .fb-page--alone { margin: 0.5rem; }
+/* The blocks of a page sit one under the other with the same space between them. */
+.fb-page > * + * { margin-top: 1.25rem; }
+/* In the app the panel scrolls and the sidebar stays. ?full on the address lets the
+   page grow instead, so a full-page screenshot shows all of it. */
+[data-fb-full] .fb-shell { height: auto; min-height: 100vh; }
+[data-fb-full] .fb-page { overflow: visible; }
 
 /* ---- Layout helpers: spacing only, no look of their own ---- */
 .fb-stack { display: flex; flex-direction: column; gap: 1rem; }
@@ -102,6 +108,9 @@ input:is([type='checkbox'], [type='radio']) { accent-color: var(--color-action);
 .fb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
 .fb-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .fb-push { margin-left: auto; }
+/* A row of controls above a table or a chart: each toggle with its label beside it. */
+.fb-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.5rem; }
+.fb-toolbar-item { display: inline-flex; align-items: center; gap: 0.5rem; }
 
 /* ---- Text ---- */
 .fb-section-title { font-size: 1rem; line-height: 1.5rem; font-weight: 600; color: var(--color-ink); }
@@ -347,6 +356,13 @@ input:is([type='checkbox'], [type='radio']) { accent-color: var(--color-action);
 .fb-table--compact tbody tr:nth-child(even) > :is(td, th) { background: var(--color-subtle); }
 .fb-table--compact tbody tr:hover > :is(td, th),
 .fb-table--compact tbody tr[aria-selected='true'] > :is(td, th) { background: var(--color-hover); }
+/* A cell's own weight or meaning colour wins over the table's. */
+.fb-table tbody :is(td, th).fb-strong { font-weight: 600; }
+.fb-table tbody :is(td, th).fb-muted { color: var(--color-ink-muted); }
+.fb-table tbody :is(td, th).fb-subtle { color: var(--color-ink-subtle); }
+.fb-table tbody :is(td, th).fb-positive { color: var(--color-positive); }
+.fb-table tbody :is(td, th).fb-caution { color: var(--color-caution); }
+.fb-table tbody :is(td, th).fb-negative { color: var(--color-negative); }
 
 /* ---- StatusPill: a status in words; the colour only repeats them ---- */
 .fb-pill {
@@ -563,7 +579,10 @@ a.fb-record-link:hover { text-decoration: underline; }
 
 /* ---- Pattern 2: a table row that opens in place ----
    The row's first cell holds a button with aria-expanded; the next row is
-   <tr class="fb-row-detail"> with one cell spanning the table. */
+   <tr class="fb-row-detail"> with one cell spanning the table. The open row is
+   tinted like the row under the pointer. */
+.fb-table tbody tr:has(> :first-child > .fb-row-toggle[aria-expanded='true']) > :is(td, th) { background: var(--color-hover); }
+.fb-table tbody :is(td, th):has(> .fb-row-toggle) { white-space: nowrap; }
 .fb-row-toggle {
   display: inline-flex;
   width: 1.5rem;
@@ -635,3 +654,4 @@ a.fb-record-link:hover { text-decoration: underline; }
 .fb-legend { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 0.375rem 0.75rem; font-size: 0.875rem; line-height: 1.25rem; }
 .fb-legend-swatch { width: 0.625rem; height: 0.625rem; border-radius: 9999px; background: var(--fb-series, var(--color-missing)); }
 .fb-built-from { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; }
+.fb-built-from-detail { display: flex; min-width: 14rem; flex: 1; flex-direction: column; gap: 0.5rem; }

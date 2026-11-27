@@ -2,13 +2,19 @@
 // the stylesheet. No build step and no dependency: <script src="featherbase-look.js">.
 //
 //   fbLook.data()            the page's rows, read from its one data slot
-//   fbLook.inr / exact / count / pct / date
+//   fbLook.inr / exact / count / pct / date / month
 //                            amounts, counts and dates as Featherbase writes them
 //   fbLook.donut(shares)     the ring of a "built from" donut
 //   fbLook.theme('dark')     paint the page light or dark
 //
+// On the address: ?theme=dark paints dark; ?full lets the page grow instead of
+// scrolling inside its panel, for a full-page screenshot.
+//
 // It also makes the kit's three toggling controls work by themselves: a Segmented,
-// ContentTabs, and a table row that opens in place.
+// ContentTabs, and a table row that opens in place. A page that redraws itself
+// from its own state listens for their events (fb:change, fb:toggle), keeps the
+// choice in that state, and draws aria-pressed, aria-selected and aria-expanded
+// from it, because a redraw replaces what a click changed.
 //
 // The formats restate packages/shop-floor/src/format.ts; tools/look-kit.test.mjs
 // runs both on the same values and fails when they differ.
@@ -16,6 +22,7 @@
   'use strict'
 
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
   const absent = (x) => x == null || Number.isNaN(x) || !Number.isFinite(x)
 
   /** Readable rupees: Indian grouping under a lakh, then "₹2.48 L" and "₹1.74 Cr". `signed` shows + as well as -. */
@@ -49,10 +56,11 @@
     return rounded.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: places })
   }
 
-  /** A percentage to one decimal. */
-  function pct(x) {
+  /** A percentage to one decimal. `signed` shows + as well as -, for a change ("+9.1%"); the components have no such form yet. */
+  function pct(x, options) {
     if (absent(x)) return '—'
-    return x.toLocaleString('en-IN', { maximumFractionDigits: 1 }) + '%'
+    const plus = options && options.signed && x > 0 ? '+' : ''
+    return plus + x.toLocaleString('en-IN', { maximumFractionDigits: 1 }) + '%'
   }
 
   /** "2026-12-01" as 01-Dec-2026. The data slot holds days as YYYY-MM-DD text. */
@@ -61,6 +69,14 @@
     const parts = String(iso).slice(0, 10).split('-')
     const month = MONTHS[Number(parts[1]) - 1]
     return month ? parts[2] + '-' + month + '-' + parts[0] : String(iso)
+  }
+
+  /** "2026-12-01" as December 2026: a month named in a heading. */
+  function month(iso) {
+    if (!iso) return '—'
+    const parts = String(iso).slice(0, 10).split('-')
+    const name = MONTHS_LONG[Number(parts[1]) - 1]
+    return name ? name + ' ' + parts[0] : String(iso)
   }
 
   /**
@@ -99,13 +115,16 @@
     return String(text == null ? '' : text).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch])
   }
 
-  const api = { inr, exact, count, pct, date, data, donut, theme, escape }
+  const api = { inr, exact, count, pct, date, month, data, donut, theme, escape }
   root.fbLook = api
   if (typeof document === 'undefined') return
 
   // ?theme=dark on the address paints dark, so a page can be looked at both ways.
-  const asked = new URLSearchParams(root.location ? root.location.search : '').get('theme')
+  const address = new URLSearchParams(root.location ? root.location.search : '')
+  const asked = address.get('theme')
   if (asked === 'dark' || asked === 'light') theme(asked)
+  // ?full lets the page grow instead of scrolling inside its panel, for a full-page screenshot.
+  if (address.has('full')) document.documentElement.setAttribute('data-fb-full', '')
 
   // The toggling controls. Each announces its change as an event on itself, so
   // a page listens instead of wiring clicks:
@@ -113,6 +132,10 @@
   document.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : null
     if (!target) return
+
+    // A prototype's record links go nowhere yet; a click must not jump to the top of the page.
+    const nowhere = target.closest('a[href="#"]')
+    if (nowhere) event.preventDefault()
 
     const choice = target.closest('.fb-segmented > button')
     if (choice) {
@@ -141,7 +164,6 @@
       if (!detail || !detail.classList.contains('fb-row-detail')) return
       const open = toggle.getAttribute('aria-expanded') !== 'true'
       toggle.setAttribute('aria-expanded', String(open))
-      row.setAttribute('aria-selected', String(open))
       detail.hidden = !open
       row.dispatchEvent(new CustomEvent('fb:toggle', { bubbles: true, detail: { open } }))
     }

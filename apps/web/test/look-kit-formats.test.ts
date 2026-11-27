@@ -3,7 +3,7 @@
 // JavaScript, because a prototype opened from disk has no build step; this
 // test runs both on the same values, so the two cannot drift apart.
 import { describe, expect, it } from 'vitest'
-import { fmtCount, fmtDate, fmtExact, fmtINR, fmtPct } from '@featherbase/shop-floor/format'
+import { fmtCount, fmtDate, fmtExact, fmtINR, fmtMonthYear, fmtPct } from '@featherbase/shop-floor/format'
 // A plain browser script: loading it sets `fbLook` on the global object.
 import '../../../packages/shop-floor/look-kit/featherbase-look.js'
 
@@ -11,7 +11,8 @@ interface KitFormats {
   inr(x: number | null | undefined, options?: { signed?: boolean }): string
   exact(x: number | null | undefined): string
   count(x: number | null | undefined, decimals?: number): string
-  pct(x: number | null | undefined): string
+  pct(x: number | null | undefined, options?: { signed?: boolean }): string
+  month(iso: string | null | undefined): string
   date(iso: string | null | undefined): string
   donut(shares: number[]): string
 }
@@ -31,6 +32,17 @@ describe('the look kit’s formats are the components’ formats', () => {
 
   it.each(['2026-12-01', '2026-01-31', '2026-13-01', '', null, undefined])('the day %s', (day) => {
     expect(fbLook.date(day)).toBe(fmtDate(day))
+  })
+
+  it.each([[2026, 12], [2026, 1], [2027, 6]])('the month %i-%i', (year, month) => {
+    const iso = `${year}-${String(month).padStart(2, '0')}-01`
+    expect(fbLook.month(iso)).toBe(fmtMonthYear(new Date(year, month - 1, 1)))
+  })
+
+  it('signs a change, which the components do not write yet', () => {
+    expect(fbLook.pct(9.14, { signed: true })).toBe('+9.1%')
+    expect(fbLook.pct(-7.1, { signed: true })).toBe('-7.1%')
+    expect(fbLook.pct(0, { signed: true })).toBe('0%')
   })
 
   it('reads an amount the way the house rules ask', () => {

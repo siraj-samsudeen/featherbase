@@ -17,7 +17,8 @@ built in Featherbase are the same picture. Plain files, no build step: they work
 2. Open `index.html` in a browser. Find each control your screen needs and copy its markup. The classes all
    start with `fb-`.
 3. Put your made-up rows in the data slot (below) and draw the screen from them.
-4. Look at it light and dark: add `?theme=dark` to the address.
+4. Look at it light and dark: add `?theme=dark` to the address. In the app the page scrolls inside its panel;
+   add `?full` when you need a screenshot of the whole page.
 
 The smallest page:
 
@@ -99,10 +100,15 @@ markup. The same file can then be fed real rows later by filling that block, wit
 - **One list per dataset, flat rows, plain column names** (`section_id`, `forecast`), as a table in the
   warehouse would hold them. Not a tree shaped like the screen.
 - **Raw values**: numbers as numbers (`420000`, not `"₹4.20 L"`), days as `YYYY-MM-DD`. The page formats them.
-- **One `render()` function** draws the screen from the data and from the state of the toggles. A toggle
-  changes the state and calls `render()` again.
-- A choice the person makes on the page (an accepted figure, a note) is kept in a variable beside the data,
-  never written back into it.
+- **Single values of the page** (the month, the store, who is looking) are top-level keys beside the lists.
+- **One `render()` function** draws the screen from the data and from the page's state: which toggle is
+  chosen, which rows are open. The kit's script flips a toggle or opens a row when it is clicked and fires
+  `fb:change` or `fb:toggle`; listen for those, keep the choice in your state, and draw `aria-pressed` and
+  `aria-expanded` from it. A redraw replaces the markup, so anything not in the state is lost.
+- **What the person does on the page** (an accepted figure, a note) is kept in a variable beside the data,
+  never written back into it. Answers that already exist are a list in the slot; copy them into that variable
+  when the page loads.
+- A record link's `href="#"` is fine in a prototype: `data-table` and `data-row` say where it will go.
 
 ## What not to do
 
@@ -113,7 +119,9 @@ markup. The same file can then be fed real rows later by filling that block, wit
   use its markup unchanged.
 - **No other font, no icon library, no CSS or JavaScript framework, nothing loaded from the web.**
 - **No new radius or shadow.** Use `var(--radius-card)`, `var(--radius-control)` and the `--shadow-*` tokens.
-- Your own CSS is for **layout only**: grid, flex, gap, width, and spacing between the kit's controls.
+- Your own CSS is for **layout only**: grid, flex, gap, width, and spacing between the kit's controls. Look
+  first at the kit's own layout classes ("Layout And Text Helpers" and "Toggle Row" in the gallery); most
+  screens need only a rule or two beyond them.
 
 ## When the kit does not have what you need
 

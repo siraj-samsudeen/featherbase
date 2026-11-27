@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="featherbase-look.css">
 <style>
   /* The gallery's own layout: where each specimen and its markup sit. No look of its own. */
-  .spec { display: flex; flex-direction: column; gap: 0.5rem; padding-top: 2rem; scroll-margin-top: 1rem; }
+  .spec { display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.75rem; scroll-margin-top: 1rem; }
   .spec-demo { padding-block: 0.75rem; }
   .spec-code {
     overflow-x: auto;
@@ -54,12 +54,12 @@
       <div class="fb-status">Each control below is plain HTML drawn by featherbase-look.css. Copy the markup under it. How to start a prototype: README.md beside this file.</div>
     </header>
 
-    <nav class="spec-index" aria-label="Controls" style="margin-top: 1rem" id="spec-index"></nav>
+    <nav class="spec-index" aria-label="Controls" id="spec-index"></nav>
 
     <!-- ============================================================ -->
     <section class="spec" id="shell" data-title="Shell And Page">
       <h2 class="fb-section-title">Shell And Page</h2>
-      <p class="fb-text fb-muted">Every page is one white panel on the grey canvas. The sidebar is the platform's: show the placeholder, never a sidebar of your own. The panel fills the space after it, with no width cap.</p>
+      <p class="fb-text fb-muted">Every page is one white panel on the grey canvas. The sidebar is the platform's: show the placeholder, never a sidebar of your own. The panel fills the space after it, with no width cap, and spaces the blocks inside it evenly. In the app the panel scrolls and the sidebar stays; add <code>?full</code> to the address when you need a screenshot of the whole page.</p>
       <div class="spec-demo">
         <div class="fb-shell spec-shell">
           <aside class="fb-shell-placeholder" aria-label="Featherbase shell">
@@ -104,7 +104,7 @@
 
     <section class="spec" id="headline" data-title="Headline">
       <h2 class="fb-section-title">Headline</h2>
-      <p class="fb-text fb-muted">The answer-first block that leads a report page: the period, the conclusion in words, the supporting figures, and optionally progress toward a target. One per page. Tones: <code>--negative</code>, <code>--caution</code>, <code>--positive</code>, <code>--missing</code>; none is neutral.</p>
+      <p class="fb-text fb-muted">The answer-first block that leads a report page: the period, the conclusion in words, the supporting figures, and optionally progress toward a target. One per page. Tones: <code>--negative</code>, <code>--caution</code>, <code>--positive</code>, <code>--missing</code>; with no tone class it is neutral. For a figure against a target: below 90% is negative, 90% up to 100% caution, 100% and over positive, and no target is missing. The meter's scale is 0 to 100, or to the figure when it is over 100; the line marks a level on that scale.</p>
       <div class="spec-demo">
         <section class="fb-headline fb-headline--negative" aria-labelledby="headline-1">
           <p class="fb-headline-label">Month to date · 01-Oct-2026 to 21-Oct-2026</p>
@@ -155,13 +155,38 @@
 
     <section class="spec" id="segmented" data-title="Segmented">
       <h2 class="fb-section-title">Segmented</h2>
-      <p class="fb-text fb-muted">Two to five choices that change the view in place (a toggle row). The chosen one carries <code>aria-pressed="true"</code>. With featherbase-look.js on the page a click moves the choice and the group fires <code>fb:change</code>. For sections of a page use Content Tabs; for more choices, a select.</p>
+      <p class="fb-text fb-muted">Two to five choices that change the view in place (a toggle row). The chosen one carries <code>aria-pressed="true"</code>. With featherbase-look.js on the page a click moves the choice and the group fires <code>fb:change</code>. For sections of a page use Content Tabs; for more choices, a select. Toggle Row, below, shows two of them with their labels.</p>
       <div class="spec-demo">
         <div class="fb-segmented" role="group" aria-label="Period">
           <button type="button" aria-pressed="false" data-value="day">Today</button>
           <button type="button" aria-pressed="false" data-value="week">This week</button>
           <button type="button" aria-pressed="true" data-value="month">Month to date</button>
           <button type="button" aria-pressed="false" data-value="year">Year to date</button>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="toggle-row" data-title="Toggle Row">
+      <h2 class="fb-section-title">Toggle Row</h2>
+      <p class="fb-text fb-muted">The controls above a table or a chart, in one row: each Segmented with its label beside it. <code>fb-toolbar</code> lays the row out and <code>fb-toolbar-item</code> keeps a label with its control. Name each group with <code>aria-labelledby</code>.</p>
+      <div class="spec-demo">
+        <div class="fb-toolbar">
+          <div class="fb-toolbar-item">
+            <span class="fb-label-text" id="tr-show">Show</span>
+            <div class="fb-segmented" role="group" aria-labelledby="tr-show">
+              <button type="button" aria-pressed="true" data-value="value">Value</button>
+              <button type="button" aria-pressed="false" data-value="pieces">Pieces</button>
+            </div>
+          </div>
+          <div class="fb-toolbar-item">
+            <span class="fb-label-text" id="tr-compare">Compare With</span>
+            <div class="fb-segmented" role="group" aria-labelledby="tr-compare">
+              <button type="button" aria-pressed="true" data-value="last_month">Last Month</button>
+              <button type="button" aria-pressed="false" data-value="last_year">Last Year</button>
+              <button type="button" aria-pressed="false" data-value="target">Target</button>
+            </div>
+          </div>
         </div>
       </div>
       <pre class="spec-code"></pre>
@@ -302,7 +327,7 @@
 
     <section class="spec" id="status-pill" data-title="Status Pill">
       <h2 class="fb-section-title">Status Pill</h2>
-      <p class="fb-text fb-muted">A short status in words; the colour only repeats what the words say. Tones: <code>--negative</code> (below target, errors), <code>--caution</code> (near target), <code>--positive</code> (met), <code>--opportunity</code>, <code>--missing</code> (no data); none is the neutral blue. It never wraps, so keep the words short.</p>
+      <p class="fb-text fb-muted">A short status in words; the colour only repeats what the words say. Tones: <code>--negative</code> (below target, errors), <code>--caution</code> (near target), <code>--positive</code> (met), <code>--opportunity</code>, <code>--missing</code> (no data). With no tone class it is the neutral blue, for a state that is neither good nor bad ("In progress", "Changed"). It never wraps, so keep the words short.</p>
       <div class="spec-demo">
         <div class="fb-row">
           <span class="fb-pill fb-pill--negative">Overdue</span>
@@ -432,13 +457,39 @@
 
     <section class="spec" id="person-label" data-title="Person Label">
       <h2 class="fb-section-title">Person Label</h2>
-      <p class="fb-text fb-muted">A person is always named so they can be told apart: the name as a link to the Person, then employee code · role · place. Stacked (the words on a second line) for headers, pickers and search; inline for table cells and activity lines. A person with more than one current code shows the main one and a "+1 code" mark.</p>
+      <p class="fb-text fb-muted">A person is always named so they can be told apart: the name as a link to the Person, then employee code · role · place. Stacked (the words on a second line) for headers, pickers and search; inline for table cells and activity lines. A person with more than one current code shows the main one and a "+1 code" mark. Inside a sentence use the inline link without the <code>fb-person</code> wrapper, so it wraps like the words around it.</p>
       <div class="spec-demo">
         <div class="fb-stack fb-text">
           <div><span class="fb-person"><a class="fb-record-link fb-record-link--two-lines" href="#" data-table="Person" data-row="TN-10001"><span class="fb-record-name">Arun Prakash</span><span class="fb-record-detail">TN-10001 · Store Manager · Lakeside</span></a></span></div>
           <div><span class="fb-person"><a class="fb-record-link" href="#" data-table="Person" data-row="TN-10001"><span class="fb-record-name">Arun Prakash</span> <span class="fb-record-detail">· TN-10001 · Store Manager · Lakeside</span></a></span></div>
           <div><span class="fb-person"><a class="fb-record-link fb-record-link--two-lines" href="#" data-table="Person" data-row="TN-10002"><span class="fb-record-name">Arun Prakash</span><span class="fb-record-detail">TN-10002 · Cashier · Hill Road</span></a><span class="fb-person-more">+1 code</span></span></div>
           <div><span class="fb-person"><span class="fb-record-link fb-record-link--two-lines fb-record-link--text" data-table="Person" data-row="TN-10001"><span class="fb-record-name">Arun Prakash</span><span class="fb-record-detail">TN-10001 · Store Manager · Lakeside</span></span></span></div>
+        </div>
+      </div>
+      <pre class="spec-code"></pre>
+    </section>
+
+    <section class="spec" id="helpers" data-title="Layout And Text">
+      <h2 class="fb-section-title">Layout And Text Helpers</h2>
+      <p class="fb-text fb-muted">Spacing and text classes, so a prototype needs little CSS of its own. Layout: <code>fb-stack</code> (one under the other, 16 px apart; <code>--tight</code> 8, <code>--loose</code> 24), <code>fb-row</code> (side by side, 8 px apart, wrapping; <code>--loose</code> 16, <code>--between</code> pushes the ends apart), <code>fb-grid</code> (equal columns that wrap; <code>--2</code> for exactly two), <code>fb-push</code> (to the right end of a row). Text: <code>fb-section-title</code>, <code>fb-text</code> (14 px body), <code>fb-small</code> (12 px), <code>fb-label-text</code> (a 13 px label), <code>fb-muted</code> and <code>fb-subtle</code> (quieter), <code>fb-strong</code>, <code>fb-num</code> (a number: right-aligned, figures of one width), and the meaning colours <code>fb-positive</code>, <code>fb-caution</code>, <code>fb-negative</code>. <code>fb-link</code> is a plain link that is not a record.</p>
+      <div class="spec-demo">
+        <div class="fb-stack">
+          <div class="fb-row fb-row--between">
+            <h3 class="fb-section-title">Section Title</h3>
+            <a class="fb-link fb-text" href="#">A plain link</a>
+          </div>
+          <div class="fb-grid fb-grid--2">
+            <div class="fb-stack fb-stack--tight">
+              <p class="fb-text">Body text, 14 px. <span class="fb-strong">Strong</span>, <span class="fb-muted">muted</span>, <span class="fb-subtle">subtle</span>.</p>
+              <p class="fb-small fb-muted">Small text, 12 px.</p>
+              <p class="fb-label-text">A label</p>
+            </div>
+            <div class="fb-row fb-row--loose fb-text">
+              <span class="fb-positive">+9.1% above</span>
+              <span class="fb-caution">96.4% near</span>
+              <span class="fb-negative">-7.1% below</span>
+            </div>
+          </div>
         </div>
       </div>
       <pre class="spec-code"></pre>
@@ -456,7 +507,7 @@
     <!-- ============================================================ -->
     <section class="spec" id="banded-table" data-title="Banded Table" data-pattern>
       <h2 class="fb-section-title">Pattern: A Table With Grouped Column Bands <span class="fb-tag">not yet a shared component</span></h2>
-      <p class="fb-text fb-muted">A first header row names each group of columns. Groups are set apart by a gap of the page's own colour, never a line: put <code>fb-band-start</code> on the first cell of each group in every row, and <code>fb-band-end</code> on the last header cell of a group. A column outside every group gets <code>fb-band-none</code> in the first row.</p>
+      <p class="fb-text fb-muted">A first header row names each group of columns. Groups are set apart by a gap of the page's own colour, never a line: put <code>fb-band-start</code> on the first cell of each group in every row, and <code>fb-band-end</code> on the last header cell of a group. A column outside every group gets <code>fb-band-none</code> in the first row; when it comes after the groups, give its cells <code>fb-band-start</code> too, so the gap closes the last group.</p>
       <div class="spec-demo">
         <div class="fb-table-scroll">
           <table class="fb-table fb-table--banded">
@@ -514,7 +565,7 @@
 
     <section class="spec" id="open-row" data-title="Row That Opens" data-pattern>
       <h2 class="fb-section-title">Pattern: A Table Row That Opens In Place <span class="fb-tag">not yet a shared component</span></h2>
-      <p class="fb-text fb-muted">The row's first cell holds a small button (<code>fb-row-toggle</code>, with <code>aria-expanded</code>). The next row is <code>&lt;tr class="fb-row-detail"&gt;</code> with one cell that spans the table and holds <code>fb-row-detail-body</code>: a quiet block in two columns (<code>--one</code> for a single column). With featherbase-look.js on the page the button opens and closes it.</p>
+      <p class="fb-text fb-muted">The row's first cell holds a small button (<code>fb-row-toggle</code>, with <code>aria-expanded</code>). The next row is <code>&lt;tr class="fb-row-detail"&gt;</code> with one cell that spans the table and holds <code>fb-row-detail-body</code>: a quiet block in two columns (<code>--one</code> for a single column). The open row is tinted by the kit. With featherbase-look.js on the page the button opens and closes it and the row fires <code>fb:toggle</code>. starter.html shows a form inside the opened row.</p>
       <div class="spec-demo">
         <div class="fb-table-scroll">
           <table class="fb-table">
@@ -527,7 +578,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr aria-selected="true">
+              <tr>
                 <th scope="row"><button type="button" class="fb-row-toggle" aria-expanded="true" aria-label="Show how Sarees was built"></button><a class="fb-record-link" href="#" data-table="Section" data-row="S01"><span class="fb-record-name">Sarees</span></a></th>
                 <td class="fb-num">₹4.20 L</td>
                 <td class="fb-num">₹3.85 L</td>
@@ -579,7 +630,7 @@
             <div class="fb-donut" role="img" aria-label="Built from: last year 46%, growth 31%, season 23%" style="--fb-donut: conic-gradient(var(--color-series-1) 0% 46%, var(--color-series-2) 46% 77%, var(--color-series-3) 77% 100%)"></div>
             <div class="fb-donut-label"><strong>₹4.20 L</strong>Forecast</div>
           </div>
-          <div class="fb-stack fb-stack--tight" style="flex: 1; min-width: 18rem">
+          <div class="fb-built-from-detail">
             <div class="fb-sharebar" role="img" aria-label="Built from: last year 46%, growth 31%, season 23%">
               <span class="fb-series-1" style="--share: 46"></span>
               <span class="fb-series-2" style="--share: 31"></span>

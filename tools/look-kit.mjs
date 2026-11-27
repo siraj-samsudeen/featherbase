@@ -181,15 +181,19 @@ function tokenCss(sourceCss) {
 const pascal = (kebab) => kebab.replace(/(^|-)([a-z0-9])/g, (_, __, ch) => ch.toUpperCase())
 
 /** A lucide icon's shapes as SVG text, read from the package the components import. */
-function iconSvg(name) {
+export function iconSvg(name) {
   const file = join(SHOP_FLOOR, 'node_modules/lucide-react/dist/esm/icons', `${name}.mjs`)
   if (!existsSync(file)) throw new Error(`No lucide icon named ${name} (looked for ${relative(ROOT, file)}; run pnpm install)`)
   const node = /node:\s*(\[[\s\S]*?\])\s*\n\};/.exec(readFileSync(file, 'utf8'))
   if (!node) throw new Error(`Cannot read the shapes of the lucide icon ${name}`)
-  const shapes = [...node[1].matchAll(/\["(\w+)",\s*\{([^}]*)\}\]/g)].map(([, tag, attrs]) => {
+  // A shape is ["path", { d: "...", key: "..." }], on one line or spread over several.
+  const shapes = [...node[1].matchAll(/\[\s*"(\w+)",\s*\{([^}]*)\}\s*\]/g)].map(([, tag, attrs]) => {
     const pairs = [...attrs.matchAll(/(\w+):\s*"([^"]*)"/g)].filter(([, key]) => key !== 'key')
     return `<${tag} ${pairs.map(([, key, value]) => `${key}='${value}'`).join(' ')}/>`
   })
+  // Every shape carries one `key`; a shape this reader missed would otherwise be drawn as nothing.
+  const expected = (node[1].match(/\bkey:/g) ?? []).length
+  if (shapes.length !== expected) throw new Error(`Read ${shapes.length} of the ${expected} shapes of the lucide icon ${name}`)
   if (!shapes.length) throw new Error(`The lucide icon ${name} has no shapes`)
   return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>${shapes.join('')}</svg>`
 }
