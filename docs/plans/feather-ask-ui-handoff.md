@@ -264,6 +264,13 @@ Step 1 (the platform piece) is finished: 1a–1f committed, 1e2 deferred, 1f2 (V
 the final step, 1g's adversarial review offered and skipped (Mohammad, 27-Nov-2026). A new
 session starts here.
 
+**Already begun, uncommitted (found 27-Nov-2026, not written by the step 1 session):** the
+worktree holds 2.1 work: Ask's manifest gains the `think` read (`outbound`, `featherbaseMcp`),
+`src/server/index.ts` changed, `src/server/agent.ts` and `src/server/stand-in.ts` are new. Ask
+Mohammad whether it is theirs and where it stands before drafting 2.1 again. With that manifest
+change, the dev server marks Ask 0.1.0 unavailable on `fb_ask_ui` until the database is
+recreated (ask first: it loses the test chats) or the check runs on `fb_ask_b1`.
+
 **What step 2 builds** (tasks 2.1–2.4 in `feather-ask-agent/tasks.md`): Ask stops answering
 with the placeholder (`src/server/reply.ts`) and answers with an agent loop over the platform's
 tools, still with a **stand-in model** (rules, no AI service yet; Gemini and Groq come in step 3).
