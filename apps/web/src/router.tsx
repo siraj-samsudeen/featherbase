@@ -42,6 +42,7 @@ import { DashboardView } from './components/DashboardView'
 import { HomePageView } from './components/HomePageView'
 import { useHomePages } from './lib/home-pages'
 import { Jobs } from './pages/Jobs'
+import { Datasets } from './pages/Datasets'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { AccessExplanation } from './pages/AccessExplanation'
@@ -759,6 +760,16 @@ const jobsRoute = createRoute({
   ),
 })
 
+// #1409: the Datasets page (System Manager only): every app's datasets and
+// where each is served from.
+const datasetsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'datasets',
+  component: () => (
+    <ManageOnly><Datasets /></ManageOnly>
+  ),
+})
+
 // #131: access tokens + service accounts (static segment).
 const accessTokensRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -1221,5 +1232,5 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   accountRoute.addChildren([signInMethodsRoute, connectedAppsRoute, accessExplanationRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, actionPreviewRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, linkMotherDuckRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, actionPreviewRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, copySetupRoute, jobsRoute, datasetsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, leaversRoute, linkMotherDuckRoute, instanceHealthRoute, appsRoute, glossaryRoute, setupRoute, setupPersonRoute, setupPeopleRoute, tableRoute, docRoute, newRowRoute]),
 ])

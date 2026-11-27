@@ -13,10 +13,15 @@ import './index.css'
 // the device. No module paints as it loads (lib/theme.ts says why).
 import { paintSavedTheme } from './lib/theme'
 import { installDeployWait } from './lib/deploy-wait'
+import { installStandInMark } from './lib/stand-in-mark'
 
 // #1260: a deploy's few seconds without a server are waited out, with a
 // notice, instead of failing whatever the page was asking for.
 installDeployWait(window, document)
+// #1409: an answer that carried stand-in rows is remembered, so the shell can
+// say the page shows sample data. After the deploy wait, so it reads the
+// answer the page finally gets.
+installStandInMark(window)
 
 // Client errors (401/403/404/417) are definitive — retrying them just
 // leaves views stuck in loading states.

@@ -3,10 +3,14 @@
 import { mountBar } from './mount'
 import { FeatherbaseSidebar } from './sidebar'
 import { installDeployWait } from '../lib/deploy-wait'
+import { installStandInMark } from '../lib/stand-in-mark'
 
 // #1260: every app page loads this bundle, so an app's own requests wait
 // out a deploy too, without the app changing.
 installDeployWait(window, document)
+// #1409: and an app's own reads that carried stand-in rows are remembered, so
+// the bar says the page shows sample data, without the app changing.
+installStandInMark(window)
 
 class FeatherbaseBar extends HTMLElement {
   connectedCallback() {

@@ -1,6 +1,7 @@
 import { registerJob } from '../jobs'
 import { buildSnapshot, forgetMisses, pendingMisses, pruneSnapshots, registeredDatasets, activeSnapshot } from '../dataset-snapshot'
 import { appDatasetServing } from '../app-datasets'
+import { boundToStandIn } from '../dataset-bindings'
 
 // Refresh every dataset that has been asked for. Recurring: its cadence is the
 // `refresh_datasets` Scheduled Job row (seeded four-hourly by migration 0086,
@@ -11,7 +12,8 @@ import { appDatasetServing } from '../app-datasets'
  * A dataset is refreshed when it has an outstanding miss (a reader asked for it
  * and it had not built) or when it already has an active snapshot to move
  * forward. A registered dataset nobody has ever opened is left alone — the cache
- * follows demand rather than a list someone maintained.
+ * follows demand rather than a list someone maintained. A dataset bound to a
+ * stand-in (#1409) is never due: Switch To Warehouse is what refreshes it.
  */
 export async function datasetsDue(): Promise<string[]> {
   const registered = new Set(registeredDatasets())
@@ -26,8 +28,9 @@ export async function datasetsDue(): Promise<string[]> {
   const serving: string[] = []
   for (const name of due) {
     // #625: an app that is disabled or mid-upgrade is not refreshed, and its
-    // asks are closed; a reader of the enabled app asks again.
-    if (await appDatasetServing(name)) serving.push(name)
+    // asks are closed; a reader of the enabled app asks again. #1409: nor is
+    // a dataset bound to a stand-in, whose rows the warehouse must not replace.
+    if ((await appDatasetServing(name)) && !(await boundToStandIn(name))) serving.push(name)
     else await forgetMisses(name)
   }
   return serving
@@ -51,7 +54,8 @@ registerJob('refresh_datasets', async (_payload, ctx) => {
       (outcome.rowCount != null ? ` (${outcome.rowCount} rows)` : '') +
       (outcome.fetchMs != null ? ` fetch ${outcome.fetchMs} ms, load ${outcome.loadMs} ms` : ''))
     if (outcome.status === 'activated') await pruneSnapshots(dataset)
-    else failures.push(`${dataset}: ${outcome.status}${outcome.reason ? ` — ${outcome.reason}` : ''}`)
+    // #1409: a dataset bound to a stand-in since the list was made is left alone, which is no failure.
+    else if (outcome.status !== 'skipped') failures.push(`${dataset}: ${outcome.status}${outcome.reason ? ` — ${outcome.reason}` : ''}`)
   }
   if (failures.length) throw new Error(`dataset refresh did not activate: ${failures.join('; ')}`)
 })

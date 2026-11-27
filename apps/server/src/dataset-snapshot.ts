@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { sql } from './db'
 import { enqueue, type JobTrigger } from './jobs'
 import { errorMessage } from './errors'
+import { boundToStandIn } from './dataset-bindings'
 
 // Query-grained analytical dataset snapshots — the read side of
 // openspec/changes/query-grained-dataset-snapshots (data-warehouse), against the
@@ -27,6 +28,10 @@ interface DatasetDefinition<Row = unknown[]> {
   name: string
   /** Bump when the SQL changes: it is part of snapshot identity, so a redefinition never silently reuses old rows. */
   version: string
+  /** #1409 (D4): the identity of a stand-in for this dataset: its columns,
+   *  keys and scope mapping, without the query, so a corrected query keeps the
+   *  stand-in and a changed column retires it. */
+  shapeVersion: string
   /** Pull the superset from the source. `sourceAsOf` is the warehouse's own as-of, never the build time. */
   fetch: () => Promise<{ rows: Row[]; sourceAsOf: string | null }>
   /** Write the fetched rows under this snapshot id. Returns the row count written. */
@@ -52,6 +57,10 @@ export interface SnapshotRecord {
   fetch_ms: number | null
   load_ms: number | null
   triggered_by: string | null
+  /** #1409: these rows were loaded from a file, not read from the source. */
+  stand_in: boolean
+  /** Who loaded a stand-in; the platform's own name on a refresh. */
+  created_by: string
 }
 
 const registry = new Map<string, DatasetDefinition<never>>()
@@ -92,12 +101,15 @@ function isoDay(v: Date | null): string | null {
  */
 export async function activeSnapshot(dataset: string): Promise<SnapshotRecord | null> {
   // A dataset with no registered definition has no current version, so no
-  // snapshot qualifies (`= null` matches nothing).
+  // snapshot qualifies (`= null` matches nothing). #1409 (D4): a stand-in is
+  // held to the dataset's shape, a refreshed copy to its whole definition.
+  const def = registry.get(dataset)
   const [row] = await sql`
     select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, state,
-           bytes, fetch_ms, load_ms, triggered_by
+           bytes, fetch_ms, load_ms, triggered_by, stand_in, created_by
     from dataset_snapshot
-    where dataset = ${dataset} and state = 'active' and definition_version = ${registry.get(dataset)?.version ?? null}`
+    where dataset = ${dataset} and state = 'active'
+      and definition_version = case when stand_in then ${def?.shapeVersion ?? null} else ${def?.version ?? null} end`
   if (!row) return null
   return {
     ...(row as unknown as SnapshotRecord),
@@ -107,6 +119,21 @@ export async function activeSnapshot(dataset: string): Promise<SnapshotRecord | 
     fetch_ms: row.fetch_ms == null ? null : Number(row.fetch_ms),
     load_ms: row.load_ms == null ? null : Number(row.load_ms),
   }
+}
+
+/**
+ * #1409: the copy a dataset last had from its source under `version`, kept
+ * aside while a stand-in serves (pruneSnapshots), or null when it never had
+ * one. It is what the first refresh after a stand-in is compared with.
+ */
+async function lastRealSnapshot(dataset: string, version: string): Promise<SnapshotRecord | null> {
+  const [row] = await sql`
+    select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, state,
+           bytes, fetch_ms, load_ms, triggered_by, stand_in, created_by
+    from dataset_snapshot
+    where dataset = ${dataset} and state = 'superseded' and not stand_in and definition_version = ${version}
+    order by activated_at desc limit 1`
+  return (row as unknown as SnapshotRecord | undefined) ?? null
 }
 
 /**
@@ -157,7 +184,8 @@ export async function pendingMisses(): Promise<string[]> {
 }
 
 interface BuildOutcome {
-  status: 'activated' | 'refused' | 'failed'
+  /** #1409: `skipped` when a refresh found the dataset bound to a stand-in. */
+  status: 'activated' | 'refused' | 'failed' | 'skipped'
   snapshotId?: string
   rowCount?: number
   sourceAsOf?: string | null
@@ -168,8 +196,12 @@ interface BuildOutcome {
 }
 
 interface BuildOpts {
-  /** What caused this build: the job's trigger, or 'script' for a build run by hand. */
-  trigger?: JobTrigger | 'script'
+  /** What caused this build: the job's trigger, 'script' for a build run by
+   *  hand, or (#1409) a stand-in being loaded or switched to the warehouse. */
+  trigger?: JobTrigger | 'script' | 'stand-in' | 'switch'
+  /** #1409 (D1): the candidate is these rows, already checked and shaped,
+   *  loaded by this person, instead of what the source returns. */
+  standIn?: { rows: unknown[]; by: string }
 }
 
 /**
@@ -181,6 +213,13 @@ interface BuildOpts {
  * (fetch and load time, bytes) and what caused it. A failed build's timings are
  * as much a fact as a successful one's: "the source took 40 s to refuse us" is
  * something an operator wants to see.
+ *
+ * #1409: a stand-in goes through the same steps with its rows given (D1). It
+ * is not validated here: its loader checked that it fits, and a guard written
+ * for the real data would refuse a small sample (D3). Nor is it ever a
+ * baseline: a refresh that replaces one is validated against nothing. A
+ * dataset bound to a stand-in is never built from its source: such a build is
+ * `skipped`.
  */
 export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Promise<BuildOutcome> {
   const def = registry.get(dataset)
@@ -198,13 +237,20 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
   // the pool exactly as it did before this lock existed.
   return sql.begin(async (tx) => {
     await tx`select pg_advisory_xact_lock(hashtext('dataset-snapshot:' || ${dataset}))`
+    // #1409 (review): decided here, inside the lock, not only when the job
+    // listed what was due: a stand-in loaded while an earlier dataset was
+    // being fetched must not be replaced by the refresh that was already queued.
+    if (!opts.standIn && (await boundToStandIn(dataset)))
+      return { status: 'skipped' as const, reason: 'the dataset is bound to a stand-in' }
 
     const previous = await activeSnapshot(dataset)
     const snapshotId = randomUUID()
     const triggeredBy = opts.trigger ?? null
+    const { standIn } = opts
     await sql`
-      insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, triggered_by)
-      values (${snapshotId}, ${dataset}, ${def.version}, 'building', now(), ${triggeredBy})`
+      insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, triggered_by, stand_in, created_by, updated_by)
+      values (${snapshotId}, ${dataset}, ${standIn ? def.shapeVersion : def.version}, 'building', now(), ${triggeredBy},
+        ${!!standIn}, ${standIn?.by ?? 'Administrator'}, ${standIn?.by ?? 'Administrator'})`
 
     let rowCount: number
     let sourceAsOf: string | null
@@ -212,7 +258,7 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
     let loadMs = 0
     try {
       const t0 = Date.now()
-      const fetched = await def.fetch()
+      const fetched = standIn ? { rows: standIn.rows as never[], sourceAsOf: null } : await def.fetch()
       fetchMs = Date.now() - t0
       sourceAsOf = fetched.sourceAsOf
       const t1 = Date.now()
@@ -228,7 +274,11 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
     }
 
     const bytes = def.sizeOf ? await def.sizeOf(snapshotId) : null
-    const refusal = (await def.validate?.(rowCount, previous, snapshotId)) ?? null
+    // #1409 (D3): a stand-in is never the baseline. The last real copy is,
+    // when the stand-in was loaded over one, so a guard is not blind for the
+    // first refresh after it.
+    const baseline = previous?.stand_in ? await lastRealSnapshot(dataset, def.version) : previous
+    const refusal = standIn ? null : ((await def.validate?.(rowCount, baseline, snapshotId)) ?? null)
     if (refusal) {
       // A refused candidate is never activated and never deleted: the row is the
       // record of why the refresh did not take, which a silent no-op would lose.
@@ -268,9 +318,16 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
  * floor, not an arbitrary number.
  */
 export async function pruneSnapshots(dataset: string, keep = 1): Promise<number> {
+  // #1409: while a stand-in serves, the last real copy is kept as well, however
+  // many stand-ins are loaded after it: it is the baseline for the first real
+  // refresh (lastRealSnapshot).
   const rows = await sql`
-    select row_id from dataset_snapshot
+    select row_id from dataset_snapshot s
     where dataset = ${dataset} and state = 'superseded'
+      and not (not stand_in
+        and exists (select 1 from dataset_snapshot a where a.dataset = s.dataset and a.state = 'active' and a.stand_in)
+        and row_id = (select r.row_id from dataset_snapshot r where r.dataset = s.dataset and r.state = 'superseded' and not r.stand_in
+          order by r.activated_at desc limit 1))
     order by built_at desc
     offset ${keep}`
   if (!rows.length) return 0

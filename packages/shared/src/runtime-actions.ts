@@ -198,9 +198,13 @@ export type DatasetRow = Record<string, string | number | boolean | null>
 export type DatasetFilters = Record<string, string | number | (string | number)[]>
 export interface DatasetAnswer {
   readonly dataset: string
-  readonly served: 'cached' | 'live'
-  /** When the snapshot was activated, or when the live rows were fetched (ISO). */
+  /** #1409: `stand-in` when the rows were loaded from a file to stand in for
+   *  the warehouse. The platform marks the page; the app need do nothing. */
+  readonly served: 'cached' | 'live' | 'stand-in'
+  /** When the snapshot was activated or the stand-in loaded, or when the live rows were fetched (ISO). */
   readonly at: string
+  /** #1409: a stand-in's note and the day its real data is expected (YYYY-MM-DD). */
+  readonly standIn?: { readonly note: string | null; readonly expectedBy: string | null }
   readonly rows: DatasetRow[]
 }
 
@@ -215,7 +219,8 @@ export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'document
     /** The active snapshot's rows, or null when none has built yet (the ask is recorded). */
     active(name: string, filters?: DatasetFilters): Promise<DatasetAnswer | null>
     /** The same query run on the source now, limited to the same rows and
-     *  shaped the same way. Only in a read declared `outbound` (E5). */
+     *  shaped the same way. Only in a read declared `outbound` (E5). #1409: a
+     *  dataset on a stand-in answers its stand-in rows, as `active` does. */
     live(name: string, filters?: DatasetFilters): Promise<DatasetAnswer>
   }
   /** #625 (E5): write one Access Log row for the viewing person. The platform

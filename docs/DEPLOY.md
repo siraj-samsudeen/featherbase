@@ -727,7 +727,13 @@ settings as `App Setting` rows (`row_id` `<app>.<setting>`, `value` only), and
 (`url_env`) and never the connection itself; a MotherDuck row names the databases
 it reads instead. A reflected Table comes back by
 reflecting from the restored source (the source's `reflect` action); the row does
-not create it.
+not create it. It also manages `Dataset Binding` rows (`row_id` `<app>.<dataset>`):
+`served_from` (`Warehouse` or `Stand-in`), `note` and `expected_by`, so an
+environment can keep a dataset on a stand-in until its warehouse has the data
+(#1409). The stand-in's rows are not in the file: a System Manager loads them, and
+on production must first tick Allowed on production on that binding, which the
+file cannot set. Changing `served_from` to `Warehouse` in the file switches the
+dataset at the next scheduled refresh.
 Values that differ by environment go in that environment's section; when the
 file has sections, every apply must name one. Secrets never go in it: an app's
 declared secrets are deployment variables, set like any other.

@@ -260,3 +260,21 @@ _Avoid_: Script Report
 **PDF Template**:
 A per-Table layout used to render a Row as a PDF.
 _Avoid_: Print Format, print template
+
+## Datasets
+
+**Dataset**:
+A named set of rows an app declares and reads: one query on one Data Source,
+copied into the instance on a schedule and read through the reader's places.
+
+**Stand-in**:
+A Dataset's rows loaded from a file, with the same columns, while the warehouse
+does not have them yet. Every page that shows them says they are sample data,
+and switching the Dataset to the warehouse replaces them with no change to the
+app.
+_Avoid_: mock data, dummy data, placeholder data
+
+**Dataset Binding**:
+Where one Dataset is served from in one instance: the warehouse, or a Stand-in.
+A Dataset with no binding is served from the warehouse.
+

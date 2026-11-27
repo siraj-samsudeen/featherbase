@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Store Sales</title>
+<style>
+  /* The platform's own tokens (the bar paints the theme), so the page reads as part of Featherbase. */
+  body { margin: 0; font: 14px/1.5 var(--font-sans, system-ui, sans-serif); color: var(--color-ink, #1c1c1c); background: var(--color-canvas, #fafafa); }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  h2 { font-size: 16px; font-weight: 600; margin: 28px 0 8px; }
+  p.lead { margin: 0; color: var(--color-ink-muted, #666); }
+  nav a { margin-right: 16px; color: var(--color-action, #2456d6); }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--color-border, #e5e5e5); }
+  th { font-weight: 500; color: var(--color-ink-muted, #666); }
+  td.figure, th.figure { text-align: right; font-variant-numeric: tabular-nums; }
+  .empty { color: var(--color-ink-muted, #666); }
+</style>
+<body>
+<main id="store-sales-page">
+  <h1>Store Sales</h1>
+  <p class="lead">Each store's sales against its target for the month.</p>
+  <nav><a href="?" id="show-both">Sales And Targets</a><a href="?only=sales" id="show-sales">Sales Only</a></nav>
+  <section id="sales"><h2>Sales</h2><div class="rows"></div></section>
+  <section id="targets"><h2>Targets</h2><div class="rows"></div></section>
+</main>
+<script>
+  // How the page asks for its rows. An app may ask in more than one way, and
+  // the platform's line must not depend on which: `?how=early` asks here, in a
+  // plain script that runs before the platform's bar has loaded, as an app
+  // with an older bundle would; `?how=xhr` asks through XMLHttpRequest;
+  // otherwise the page's module asks with fetch.
+  const params = new URLSearchParams(location.search)
+  const address = `/api/app_reads/storesales/${params.get('only') === 'sales' ? 'sales' : 'overview'}`
+  // An app page names the version it was built as, so a stale page is told to reload.
+  const headers = { 'content-type': 'application/json', 'X-Featherbase-App-Version': 'storesales@1.0.0' }
+  const body = JSON.stringify({ payload: {} })
+  const ask = {
+    fetch: () => fetch(address, { method: 'POST', headers, body }).then((response) => response.json()),
+    xhr: () => new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest()
+      request.open('POST', address)
+      for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value)
+      request.onload = () => resolve(JSON.parse(request.responseText))
+      request.onerror = reject
+      request.send(body)
+    }),
+  }
+  const how = params.get('how')
+  window.storeSalesAnswer = how === 'early' ? ask.fetch() : () => (how === 'xhr' ? ask.xhr() : ask.fetch())
+</script>
+<script type="module">
+  // The app draws what it was answered. It never looks at where the rows
+  // came from: the line under the top bar is the platform's.
+  const { result } = await (typeof window.storeSalesAnswer === 'function' ? window.storeSalesAnswer() : window.storeSalesAnswer)
+  const figures = new Set(['amount', 'units', 'target'])
+  const amount = new Intl.NumberFormat('en-IN')
+  const day = (value) => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value)).replaceAll(' ', '-')
+  const cell = (column, value) => (value === null ? '' : figures.has(column) ? amount.format(value) : typeof value === 'boolean' ? (value ? 'Yes' : 'No')
+    : /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? day(value) : String(value))
+  // The columns in the order the page shows them (a stored row's keys carry no order).
+  const shown = { sales: ['store', 'business_day', 'amount', 'units'], targets: ['store', 'month', 'target', 'units', 'confirmed'] }
+  const title = (column) => column.split('_').map((word) => word[0].toUpperCase() + word.slice(1)).join(' ')
+  for (const name of ['sales', 'targets']) {
+    const section = document.getElementById(name)
+    if (!(name in (result ?? {}))) { section.hidden = true; continue }
+    const rows = result[name]?.rows ?? []
+    const host = section.querySelector('.rows')
+    if (!rows.length) { host.innerHTML = '<p class="empty">No data yet.</p>'; continue }
+    const columns = shown[name]
+    const table = document.createElement('table')
+    table.innerHTML = `<thead><tr>${columns.map((c) => `<th class="${figures.has(c) ? 'figure' : ''}">${title(c)}</th>`).join('')}</tr></thead>`
+    const body = table.createTBody()
+    for (const row of rows) {
+      const tr = body.insertRow()
+      for (const column of columns) {
+        const td = tr.insertCell()
+        td.textContent = cell(column, row[column])
+        if (figures.has(column)) td.className = 'figure'
+      }
+    }
+    host.replaceChildren(table)
+  }
+  document.body.dataset.loaded = 'true'
+</script>
+</body></html>

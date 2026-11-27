@@ -74,6 +74,8 @@ export const ADMIN_PAGES: readonly { slug: string; title: string; manage?: true;
   { slug: 'link-motherduck-accounts', title: 'Link MotherDuck Accounts to People', manage: true },
   { slug: 'apps', title: 'Apps', manage: true },
   { slug: 'instance-health', title: 'Instance Health', manage: true },
+  // #1409: every app's datasets and where each is served from.
+  { slug: 'datasets', title: 'Datasets', manage: true },
   { slug: 'jobs', title: 'Jobs', manage: true, unrecorded: true },
   { slug: 'all-tables', title: 'All tables', unrecorded: true },
   { slug: 'import', title: 'Import Data', manage: true, unrecorded: true },

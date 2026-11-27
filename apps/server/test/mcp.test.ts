@@ -51,12 +51,13 @@ describe('#1083 /mcp: the mount (D1)', () => {
     expect(body.result.capabilities).toHaveProperty('tools')
   })
 
-  test('the seventeen tools are listed: rows, then a Table\'s structure and imports (#1105)', async ({ admin }) => {
+  test('the twenty-one tools are listed: rows, a Table\'s structure and imports (#1105), and datasets (#1409)', async ({ admin }) => {
     const agent = await connectAgent(await issueToken(admin))
     expect((await agent.client.listTools()).tools.map((t) => t.name).sort())
       .toEqual([
-        'add_column', 'change_column', 'check_import', 'create_row', 'create_table', 'delete_row', 'describe_table', 'get_row',
-        'list_imports', 'list_tables', 'query_rows', 'remove_column', 'rename_column', 'run_import', 'suggest_table', 'undo_import', 'update_row',
+        'add_column', 'change_column', 'check_import', 'check_stand_in', 'create_row', 'create_table', 'delete_row', 'describe_table', 'get_row',
+        'list_datasets', 'list_imports', 'list_tables', 'load_stand_in', 'query_rows', 'remove_column', 'rename_column', 'run_import', 'suggest_table',
+        'switch_to_warehouse', 'undo_import', 'update_row',
       ])
   })
 

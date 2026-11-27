@@ -16,6 +16,7 @@ export type { CommandDestinations, CommandTableDestination, CommandPageDestinati
 export { rowDisplayTitle, type TitleMeta, type TitleColumn } from './row-title'
 export { MAX_RELATED_DEPTH, parseFilters, RELATED_OPS, type ListFilter } from './filters'
 export type { WebFormColumn, WebFormConfig } from './webform'
+export { STAND_IN_HEADER, STAND_IN_TIMING, readStandInHeader, standInHeaderValue, standInServerTiming, type StandInServed } from './stand-in'
 export { INSTANCE_SETTINGS_TABLES, INSTANCE_SETTINGS_FILE, MANAGED_FIELD_HINT, SETUP_MAX_PEOPLE } from './instance-settings'
 export { SIGN_IN_METHOD_KINDS, NEW_PERSON_RULES, SYSTEM_ACTOR_LABELS, signInActor, type SignInMethodKind, type NewPersonRule } from './sign-in'
 export type { ApprovalMode, ApproverRequest, BaseTablesHelper, ChangeProposal, ChangeProposalsHelper, ChangeProposalsReader, ChangeProposalState, DecisionApproval, DecisionNote, ProposalFilter, ProposalRequest, ReviewConfirmation, ReviewUndo, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler, ActionRow, ActionListArgs, DatasetAnswer, DatasetFilters, DatasetRow, AppJobGrant, AppJobPerson, RuntimeJobContext, RuntimeJobHandler } from './runtime-actions'

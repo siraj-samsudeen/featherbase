@@ -4,6 +4,8 @@
 // run every 15 minutes by the `check_instance_health` scheduled job.
 // health_check_event keeps only changes of state, so a check that stays the
 // same writes nothing and the timeline costs almost nothing to keep.
+import { activeSnapshot } from './dataset-snapshot'
+import { standInAllowedHere } from './dataset-bindings'
 import { fmtInstantIST } from 'shared'
 import { sql, withTransaction } from './db'
 import { serviceAccountName } from './service-account-name'
@@ -329,6 +331,41 @@ async function placeDrops(): Promise<HealthCheck[]> {
   })
 }
 
+/** #1409: one check per enabled app that has a dataset bound to a stand-in.
+ *  Such a dataset is not refreshed from the warehouse, so when no stand-in is
+ *  loaded that fits what the app reads now (none was ever loaded, an upgrade
+ *  changed the dataset's columns, or production no longer allows it), the app
+ *  shows nothing for it, or rows that no longer change. This names it. */
+async function standInsLoaded(): Promise<HealthCheck[]> {
+  const bound = await sql`select b.app, b.dataset, b.allowed_on_production, a.manifest->>'title' as title
+    from dataset_binding b join installed_app a on a.name = b.app and a.runtime_package and a.enabled
+    where b.served_from = 'Stand-in' order by b.app, b.dataset`
+  const checks: HealthCheck[] = []
+  for (const app of new Set(bound.map((row) => String(row.app)))) {
+    const mine = bound.filter((row) => row.app === app)
+    const title = String(mine[0].title ?? app)
+    const missing: string[] = []
+    for (const row of mine) {
+      const snapshot = await activeSnapshot(`${app}.${String(row.dataset)}`)
+      if (!snapshot?.stand_in || !standInAllowedHere({ allowed_on_production: row.allowed_on_production === true })) missing.push(String(row.dataset))
+    }
+    checks.push({
+      key: `stand-ins-loaded:${app}`,
+      title: `Every stand-in has its rows: ${title}`,
+      severity: 'warning',
+      why: 'A dataset bound to a stand-in is not refreshed from the warehouse. Without a stand-in that fits what the app reads now, the app shows nothing for it, or rows that no longer change, and nothing on its page says why.',
+      ok: missing.length === 0,
+      message: missing.length
+        ? `${missing.join(', ')} ${plural(missing.length, 'is', 'are')} bound to a stand-in, but no stand-in is loaded that fits what ${title} reads now.`
+        : `Every dataset of ${title} that is bound to a stand-in has one loaded.`,
+      fix: missing.length
+        ? 'Load a stand-in for each (the Datasets page in Admin shows them; the load_stand_in tool loads one), or switch it to the warehouse there. On production, also tick Allowed on production on its Dataset Binding.'
+        : null,
+    })
+  }
+  return checks
+}
+
 /** rama_dw #4588: the one enabled scope provider reads its Tables on every
  *  person_scope request, and a read of a Table or column the instance lacks
  *  fails, which refuses everyone. This names what is missing first: each Table
@@ -390,6 +427,7 @@ export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<He
     ...(await scheduledJobs(opts.now ?? new Date())),
     ...(await appsSetUp(environment)),
     ...(await placeDrops()),
+    ...(await standInsLoaded()),
     ...(await scopeProviderTables(environment)),
     await administratorPassword(environment),
   ]

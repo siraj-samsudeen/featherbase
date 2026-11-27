@@ -95,7 +95,7 @@ export async function appSetupState(): Promise<{ app: string; title: string; mis
   for (const row of rows) {
     const app = String(row.name)
     // The query above reads only rows whose manifest has one of those keys.
-    const declared = row.manifest as { title?: string; settings?: { name: string; required: boolean }[]; secrets?: unknown; datasets?: { source: string }[]
+    const declared = row.manifest as { title?: string; settings?: { name: string; required: boolean }[]; secrets?: unknown; datasets?: { name: string; source: string }[]
       scopeProvider?: { identifiers?: string[] }; reads?: { operations?: Record<string, { needs?: string[] }> }
       actions?: { operations?: Record<string, { needs?: string[] }> } }
     const unset = secretEntries(declared.secrets).filter(({ name }) => !present(readNamedVariable(name)))
@@ -107,7 +107,9 @@ export async function appSetupState(): Promise<{ app: string; title: string; mis
       ? new Set((await sql`select setting from app_setting where app = ${app} and coalesce(trim(value), '') <> ''`).map(r => String(r.setting)))
       : new Set<string>()
     // #625 (E3): a dataset names a Data Source the instance must declare.
-    const wanted = [...new Set((declared.datasets ?? []).map(d => d.source))]
+    // #1409: not while the dataset is bound to a stand-in, which needs none.
+    const standIns = new Set((await sql`select dataset from dataset_binding where app = ${app} and served_from = 'Stand-in'`).map(r => String(r.dataset)))
+    const wanted = [...new Set((declared.datasets ?? []).filter(d => !standIns.has(d.name)).map(d => d.source))]
     const found = wanted.length
       ? new Map((await sql`select row_id, to_jsonb(d) as source from data_source d where row_id in ${sql(wanted)}`)
         .map(r => [String(r.row_id), r.source as { engine: string }]))

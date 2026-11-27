@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { StandInLine } from '../components/StandInLine'
 import { TopBar } from '../components/TopBar'
 import { ApiError } from '../lib/api'
 import { BarAddressContext, useDocumentAddress } from '../lib/bar-address'
@@ -27,6 +28,8 @@ import { shadowCss } from './style'
 //   app's page for a full platform page;
 // - a bar control keeps its value in the document's own address and announces
 //   each choice (lib/bar-address.ts);
+// - under the bar, one line says so when the page received stand-in rows
+//   (#1409; components/StandInLine.tsx);
 // - the bar's height is published on the app's root as
 //   `--featherbase-bar-height`, for an app that pins something to the top of
 //   the window below the bar.
@@ -103,6 +106,8 @@ function Bar({ app }: { app: { name: string; title: string } }) {
     <BarAddressContext.Provider value={address}>
       <ThemeChoiceProvider>
         <TopBar app={app} />
+        {/* #1409: under the bar, when the app's page received stand-in rows. */}
+        <StandInLine pathname={address.pathname} />
       </ThemeChoiceProvider>
     </BarAddressContext.Provider>
   )

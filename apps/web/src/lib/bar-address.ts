@@ -68,7 +68,7 @@ function watchHistoryWrites() {
 /** The document's own address, followed through the browser's history and
  *  the app's own history writes. A choice is a new history entry in the same
  *  document, never a reload. */
-export function useDocumentAddress(): BarAddress {
+export function useDocumentAddress(): BarAddress & { pathname: string } {
   const [search, setSearch] = useState(window.location.search)
   const [pathname, setPathname] = useState(window.location.pathname)
   useEffect(() => {

@@ -76,9 +76,13 @@ function barBundle(): Plugin {
         // #1260: the deploy wait is installed here, synchronously, before the
         // entry's dynamic import yields: an app's own module runs as soon as
         // this one's synchronous part has (Codex round 5, the verifier's timings).
+        // #1409: the stand-in mark too, for the same reason: the page's first
+        // read must already go through it, or its sample-data line is missed.
         res.end(`import RefreshRuntime from '/@react-refresh'
 import { installDeployWait } from '/src/lib/deploy-wait.ts'
+import { installStandInMark } from '/src/lib/stand-in-mark.ts'
 installDeployWait(window, document)
+installStandInMark(window)
 RefreshRuntime.injectIntoGlobalHook(window)
 window.$RefreshReg$ = () => {}
 window.$RefreshSig$ = () => (type) => type

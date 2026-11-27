@@ -9,7 +9,9 @@ import { z } from 'zod'
 import { sql, type Sql } from './db'
 import { platformRelation } from './platform-schema'
 import type { PersonScope, ScopePlace } from 'shared'
-import { activeSnapshot, recordMiss, registerDataset, unregisterDataset } from './dataset-snapshot'
+import { activeSnapshot, recordMiss, registerDataset, unregisterDataset, type SnapshotRecord } from './dataset-snapshot'
+import { STAND_IN, datasetBinding, standInAllowedHere, type DatasetBinding } from './dataset-bindings'
+import { noteStandInServed } from './stand-in-served'
 import { AppError, errorMessage } from './errors'
 import { logAccess } from './audit'
 import { getDriver, getSource } from './sources/registry'
@@ -219,7 +221,11 @@ export type DatasetDeclaration = z.infer<typeof datasetSchema>
 export type DatasetValue = string | number | boolean | null
 export type DatasetRow = Record<string, DatasetValue>
 
-function shapeValue(type: DatasetDeclaration['columns'][number]['type'], value: unknown, column: string, exact: boolean): DatasetValue {
+/** The columns that decide whose row it is: an integer there keeps its exact
+ *  digits, as text. */
+export const exactColumns = (dataset: DatasetDeclaration) => new Set([...dataset.keys, ...Object.values(dataset.filters)])
+
+export function shapeValue(type: DatasetDeclaration['columns'][number]['type'], value: unknown, column: string, exact: boolean): DatasetValue {
   if (value === null || value === undefined) return null
   // An integer key or scope-mapped column decides whose row it is, so it keeps
   // its exact digits, as text: a JavaScript number rounds ids above 2^53 into
@@ -254,7 +260,7 @@ function shapeValue(type: DatasetDeclaration['columns'][number]['type'], value: 
  * declared order, each held to its declared type.
  */
 export function shapeRows(dataset: DatasetDeclaration, raw: Record<string, unknown>[]): DatasetRow[] {
-  const exact = new Set([...dataset.keys, ...Object.values(dataset.filters)])
+  const exact = exactColumns(dataset)
   return raw.map((source) => {
     const row: DatasetRow = {}
     for (const { name, type } of dataset.columns) {
@@ -365,6 +371,9 @@ export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] 
     registerDataset<string>({
       name: datasetKey(app, dataset.name),
       version: createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16),
+      // #1409 (D4): a stand-in fits the columns, keys and scope mapping; the
+      // query and source are what it stands in for.
+      shapeVersion: `shape-${createHash('sha256').update(JSON.stringify([dataset.columns, dataset.keys, dataset.filters, dataset.unscoped ?? false])).digest('hex').slice(0, 16)}`,
       async fetch() {
         return { rows: storedRowJson(dataset, await runQuery(dataset)), sourceAsOf: null }
       },
@@ -383,7 +392,7 @@ export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] 
       // the app declared, counted the same way in the candidate and the
       // active snapshot, from their stored rows.
       async validate(rowCount, previous, snapshotId) {
-        if (rowCount === 0) return 'candidate is empty: the query returned no rows'
+        if (rowCount === 0) return 'the query returned no rows'
         if (!dataset.guard?.length) return null
         return guardRefusal(dataset.name, dataset.guard, await guardCounts(snapshotId, dataset.guard),
           previous ? await guardCounts(previous.row_id, dataset.guard) : null)
@@ -410,9 +419,13 @@ export function forgetAppDatasets(): void {
 /** What a dataset read answers, cached and live alike. */
 export interface DatasetAnswer {
   dataset: string
-  served: 'cached' | 'live'
-  /** When the snapshot was activated, or when the live rows were fetched. */
+  /** #1409: `stand-in` when the rows were loaded from a file to stand in for
+   *  the warehouse. */
+  served: 'cached' | 'live' | 'stand-in'
+  /** When the snapshot was activated or the stand-in loaded, or when the live rows were fetched. */
   at: string
+  /** #1409: a stand-in's note and the day its real data is expected. */
+  standIn?: { note: string | null; expectedBy: string | null }
   rows: DatasetRow[]
 }
 
@@ -590,37 +603,68 @@ export function appDatasets({ app, operation, user, title, declarations, places,
   // What this read served, per dataset, for the Access Log: the platform
   // says what was served, never the app.
   const served = new Map<string, { served: DatasetAnswer['served']; snapshot?: string }>()
-  async function declared(name: string): Promise<DatasetDeclaration> {
+  async function declared(name: string): Promise<{ dataset: DatasetDeclaration; binding: DatasetBinding | null }> {
     const dataset = declarations.find((d) => d.name === name)
     if (!dataset) throw new AppError('ValidationError', `The app has not declared the dataset ${String(name)}`)
+    // #1409 (D2): a dataset bound to a stand-in does not need its Data Source.
+    const binding = await datasetBinding(datasetKey(app, name))
+    if (binding?.served_from === STAND_IN) return { dataset, binding }
     const source = await getSource(dataset.source).catch(() => null)
     if (!source || !getDriver(source).query || !datasetSourceReadOnly(source)) {
       console.warn(`[apps] ${app} is not set up yet; its dataset ${dataset.name} needs the data source ${dataset.source}`)
       throw new AppError('NotSetUpError', `${title} is not set up yet. An administrator needs to finish setting it up.`)
     }
-    return dataset
+    return { dataset, binding }
+  }
+  /** The stored rows of `snapshot` that `where` reaches, as an answer. #1409:
+   *  a stand-in's rows say so, to the app, the Access Log and the response. */
+  async function stored(dataset: DatasetDeclaration, binding: DatasetBinding | null, snapshot: SnapshotRecord, where: DatasetWhere): Promise<DatasetAnswer> {
+    const rows = await sql`select row from app_dataset_row where snapshot_id = ${snapshot.row_id} and ${storedRowsWhere(where)}`
+    const at = new Date(snapshot.activated_at!).toISOString()
+    const answer = { dataset: dataset.name, at, rows: ordered(dataset, rows.map((r) => r.row as DatasetRow)) }
+    served.set(dataset.name, { served: snapshot.stand_in ? 'stand-in' : 'cached', snapshot: snapshot.row_id })
+    if (!snapshot.stand_in) return { ...answer, served: 'cached' }
+    const standIn = { note: binding?.note ?? null, expectedBy: binding?.expected_by ?? null }
+    noteStandInServed({ app, dataset: dataset.name, loaded_at: at, note: standIn.note, expected_by: standIn.expectedBy })
+    return { ...answer, served: 'stand-in', standIn }
+  }
+  /** The snapshot a read may answer from. #1409 (D8): on production a
+   *  stand-in is one only while a System Manager allows it for this dataset. */
+  async function servable(name: string, binding: DatasetBinding | null): Promise<SnapshotRecord | null> {
+    const snapshot = await activeSnapshot(datasetKey(app, name))
+    return snapshot?.stand_in && !standInAllowedHere(binding) ? null : snapshot
   }
   const datasets = Object.freeze({
     async active(name: string, filters?: unknown): Promise<DatasetAnswer | null> {
-      const dataset = await declared(name)
+      const { dataset, binding } = await declared(name)
       const where = datasetWhere(dataset, places, filters)
       noteDrops(dataset)
-      const snapshot = await activeSnapshot(datasetKey(app, name))
+      const snapshot = await servable(name, binding)
       if (!snapshot) {
-        await recordMiss(datasetKey(app, name))
+        // #1409: nothing refreshes a dataset bound to a stand-in, so there is
+        // no build to ask for; its rows arrive when someone loads them.
+        if (binding?.served_from !== STAND_IN) await recordMiss(datasetKey(app, name))
         return null
       }
-      const stored = await sql`select row from app_dataset_row where snapshot_id = ${snapshot.row_id} and ${storedRowsWhere(where)}`
-      served.set(name, { served: 'cached', snapshot: snapshot.row_id })
-      return { dataset: name, served: 'cached', at: new Date(snapshot.activated_at!).toISOString(),
-        rows: ordered(dataset, stored.map((r) => r.row as DatasetRow)) }
+      return stored(dataset, binding, snapshot, where)
     },
     // The same query, limited to the same rows, shaped by the same function.
     async live(name: string, filters?: unknown): Promise<DatasetAnswer> {
       if (!outbound) throw new AppError('ValidationError', 'A live dataset read calls out to its data source: declare the read outbound')
-      const dataset = await declared(name)
+      const { dataset, binding } = await declared(name)
       const where = datasetWhere(dataset, places, filters)
       noteDrops(dataset)
+      // #1409 (D5): a stand-in exists because the warehouse cannot answer, so
+      // a live read of one answers the stand-in, marked as `active` marks it.
+      // A dataset bound to a stand-in has no warehouse to ask either: it
+      // answers what it holds, as `active` does.
+      const snapshot = await servable(name, binding)
+      const bound = binding?.served_from === STAND_IN
+      if (snapshot && (snapshot.stand_in || bound)) return stored(dataset, binding, snapshot, where)
+      if (bound) {
+        console.warn(`[apps] ${app} is not set up yet; its dataset ${dataset.name} is bound to a stand-in that has not been loaded`)
+        throw new AppError('NotSetUpError', `${title} is not set up yet. An administrator needs to finish setting it up.`)
+      }
       const at = new Date().toISOString()
       const rows = shapeRows(dataset, await runQuery(dataset, where))
       served.set(name, { served: 'live' })
