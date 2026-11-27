@@ -1,8 +1,7 @@
 // Feather Ask's server entry. The platform loads this file (built to dist/server.mjs)
 // and calls actions.ask for POST /api/app_actions/ask/ask, reads.think for POST /api/app_reads/ask/think.
-import { MAX_QUESTION_LENGTH, type Reply } from '../shared/reply'
+import { MAX_ANSWER_LENGTH, MAX_QUESTION_LENGTH, type Reply } from '../shared/reply'
 import { answer, type McpTools } from './agent'
-import { reply } from './reply'
 import { standIn } from './stand-in'
 
 type Row = Record<string, unknown>
@@ -46,6 +45,16 @@ function questionFrom(ctx: Asked): string {
   return question.trim()
 }
 
+/** The answer think gave, which the page passes on as { kind, text }. Not signed (task 2.4
+ *  decides): a person could save any answer, but only to their own chat. */
+function answerFrom(ctx: Asked): Reply {
+  const given = (ctx.payload as { answer?: { kind?: unknown; text?: unknown } } | null)?.answer
+  if (given?.kind !== 'answer' && given?.kind !== 'cannot') ctx.reject('Ask has no answer to save')
+  if (typeof given.text !== 'string' || !given.text.trim()) ctx.reject('Ask has no answer to save')
+  if (given.text.length > MAX_ANSWER_LENGTH) ctx.reject(`Keep the answer under ${MAX_ANSWER_LENGTH} characters`)
+  return { kind: given.kind, text: given.text }
+}
+
 /** The chat this question goes in: the one the page names, or a new one titled by the question. */
 async function chatFor(ctx: ActionContext, question: string): Promise<string> {
   const chat = (ctx.payload as { chat?: unknown }).chat
@@ -65,12 +74,13 @@ async function storeChat(ctx: ActionContext, chat: string, question: string, ans
 }
 
 export const actions = {
-  // The platform runs an action in one transaction: the chat, the question and its
-  // answer are saved together, or not at all. So every save is awaited before returning.
+  // Saves the question with the answer think gave. The platform runs an action in one
+  // transaction: the chat, the question and its answer are saved together, or not at all.
+  // So every save is awaited before returning.
   async ask(ctx: ActionContext) {
     const question = questionFrom(ctx)
+    const answer = answerFrom(ctx)
     const chat = await chatFor(ctx, question)
-    const answer = reply(question)
     await storeChat(ctx, chat, question, answer)
     return { chat, answer }
   },
@@ -78,7 +88,7 @@ export const actions = {
 
 export const reads = {
   // Outbound: the platform runs it after its transaction has closed, so the model's slow
-  // thinking holds no database connection. It saves nothing; the ask action does (step 2.2).
+  // thinking holds no database connection. It saves nothing: the page passes its answer to the ask action.
   async think(ctx: ReadContext): Promise<Reply> {
     const question = questionFrom(ctx)
     if (!ctx.featherbaseMcp) return { kind: 'cannot', text: "Ask can't look at your data from here." }

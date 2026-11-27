@@ -1,6 +1,6 @@
-// Feather Ask (#1377), installed from its folder: anyone signed in asks a question and
-// gets the placeholder answer, saved with the question in their own chat; the action
-// refuses what the page refuses too, and saves nothing then.
+// Feather Ask (#1377), installed from its folder: anyone signed in saves a question with
+// the answer think gave, in their own chat; the action refuses what the page refuses too,
+// and an answer that isn't one, and saves nothing then.
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { describe, expect } from 'vitest'
@@ -9,7 +9,7 @@ import { test as pgTest } from './pg-test'
 import { sandboxRequest } from './pg-test-shared'
 import { expectRefused, expectStatus } from './fixtures'
 import { discoverPackages } from '../src/runtime-packages'
-import { MAX_QUESTION_LENGTH } from '../../../example-apps/ask/src/shared/reply'
+import { MAX_ANSWER_LENGTH, MAX_QUESTION_LENGTH } from '../../../example-apps/ask/src/shared/reply'
 import pkg from '../../../example-apps/ask/package.json'
 
 const directory = resolve('../..', 'example-apps/ask')
@@ -32,18 +32,20 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
   return { selvi: await person('selvi'), ravi: await person('ravi') }
 }
 type Asked = { chat: string; answer: { kind: string; text: string } }
+// The answer think gives; the page passes it on to the action.
+const THOUGHT = { kind: 'answer', text: 'You have 3 tickets.' }
 // The platform wraps the action's { chat, answer } in { result }.
-const ask = async (client: TestClient, question: unknown, chat?: string) =>
-  (await client.post<any>(ACTION, { idempotencyKey: randomUUID(), payload: { question, chat } })).result as Asked
+const ask = async (client: TestClient, question: unknown, chat?: string, answer: unknown = THOUGHT) =>
+  (await client.post<any>(ACTION, { idempotencyKey: randomUUID(), payload: { question, chat, answer } })).result as Asked
 // What this person may read of one of Ask's Tables.
 const rows = async (client: TestClient, table: string, fields: string[]) =>
   (await client.get<any>(`/api/table/${encodeURIComponent(table)}?fields=${encodeURIComponent(JSON.stringify(fields))}`)).data as Record<string, unknown>[]
 
 describe('Feather Ask: asking (#1377)', () => {
-  test('anyone signed in gets the placeholder answer, saved in a new chat titled by the question', async ({ admin, createUser }) => {
+  test('anyone signed in saves the answer think gave, in a new chat titled by the question', async ({ admin, createUser }) => {
     const { selvi } = await setup(admin, createUser)
     const asked = await ask(selvi, '  Did I meet my target this month?  ')
-    expect(asked.answer).toEqual({ kind: 'answer', text: expect.stringContaining('placeholder answer') })
+    expect(asked.answer).toEqual(THOUGHT)
     expect(await rows(selvi, 'ask.chat', ['row_id', 'title'])).toEqual([{ row_id: asked.chat, title: 'Did I meet my target this month?' }])
     expect(await rows(selvi, 'ask.question', ['chat', 'question', 'answer', 'answer_kind'])).toEqual([
       { chat: asked.chat, question: 'Did I meet my target this month?', answer: asked.answer.text, answer_kind: 'answer' },
@@ -84,6 +86,17 @@ describe('Feather Ask: asking (#1377)', () => {
     await expectRefused(ask(selvi, 'x'.repeat(MAX_QUESTION_LENGTH + 1)), 417, `under ${MAX_QUESTION_LENGTH} characters`)
     expect(await rows(selvi, 'ask.chat', ['row_id'])).toEqual([])
     expect((await ask(selvi, 'x'.repeat(MAX_QUESTION_LENGTH))).answer.kind).toBe('answer')
+  })
+
+  test("an answer that isn't one, or is over the limit, is refused and nothing is saved", async ({ admin, createUser }) => {
+    const { selvi } = await setup(admin, createUser)
+    await expectRefused(ask(selvi, 'Did I meet my target?', undefined, null), 417, 'no answer to save')
+    await expectRefused(ask(selvi, 'Did I meet my target?', undefined, { kind: 'shout', text: 'Hi' }), 417, 'no answer to save')
+    await expectRefused(ask(selvi, 'Did I meet my target?', undefined, { kind: 'answer', text: '  ' }), 417, 'no answer to save')
+    await expectRefused(ask(selvi, 'Did I meet my target?', undefined, { kind: 'answer', text: 'x'.repeat(MAX_ANSWER_LENGTH + 1) }), 417, `under ${MAX_ANSWER_LENGTH} characters`)
+    expect(await rows(selvi, 'ask.chat', ['row_id'])).toEqual([])
+    const cannot = { kind: 'cannot', text: "I couldn't answer that." }
+    expect((await ask(selvi, 'What is the weather?', undefined, cannot)).answer).toEqual(cannot)
   })
 
   test('a signed-out caller is refused', async ({ admin, createUser }) => {
