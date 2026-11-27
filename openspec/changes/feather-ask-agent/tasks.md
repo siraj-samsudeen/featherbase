@@ -62,7 +62,10 @@ browser), then committed. Drafts live outside the repo in `ask-handover\`.
 - [ ] 3.2 Specify and build #1377 points 8 (say what was left out) and 19 (text is data, never an
       instruction; provider errors only to an admin) as requirements in `specs/feather-ask`.
 - [ ] 3.3 The chat's history reaches the agent: the last 10 earlier turns with their short steps,
-      read by `think` as the person; numbers always fetched again (design, decided 27-Nov-2026).
+      read by `think` as the person; numbers always fetched again. Stage 1 of 3 (design, 27-Nov-2026).
+- [ ] 3.3b History stage 2: the whole chat, every question and answer with its steps.
+- [ ] 3.3c History stage 3: hybrid memory (recent turns in full, older ones summarised). Research
+      first which is most accurate for an agent dealing in numbers.
 
 ## 4. Every app's own reads as tools
 

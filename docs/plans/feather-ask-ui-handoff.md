@@ -319,11 +319,13 @@ turns…"); don't re-ask these:
   (`stand-in.ts` stays for the tests with fake tools).
 - **The model name fixed in the code first; right after it works, model and address become Ask
   settings** (a small step of its own).
-- **History: the last 10 earlier turns of the chat**, oldest first, each its question, answer and
+- **History, stage 1 of 3: the last 10 earlier turns of the chat**, oldest first, each its question, answer and
   saved short step lines, never rows. The page sends `chat` to `think` too (`askQuestion` in
   `api.ts`); `think` reads them with `query_rows` on `ask.question` as the person (own rows only).
   The model's instructions say earlier answers may be out of date and every number is fetched
-  again with the tools. Accuracy is the reason: Ask deals in numbers.
+  again with the tools. Accuracy is the reason: Ask deals in numbers. Then stage 2, the whole
+  chat with its steps (3.3b), then stage 3, hybrid memory (3.3c), after research on which is most
+  accurate (Mohammad, 27-Nov-2026: three stages, not a final choice of 10).
 
 What the new session builds, one small piece at a time (draft in `ask-handover\3.1-draft\` and
 so on, checked, then the walkthrough; Mohammad types it in or says "make this change"):
@@ -432,7 +434,7 @@ ending in a manual check and a commit; the details are in `feather-ask-agent/tas
    calling, keys as Ask's secrets; choose the models. Specify and build #1377 points 8 (say
    what was left out) and 19 (text is data, never an instruction; provider errors only to an
    admin). Groq first, model in the code then a setting; the last 10 turns with their
-   short steps as history (task 3.3). Decided 27-Nov-2026; see Next step.
+   short steps as history first (3.3), then the whole chat (3.3b), then hybrid memory (3.3c).
 4. **Reach every app (step 4).** An app marks a read for agents (description, input schema);
    the platform offers it as a tool `<app>.<read>`, run as the person. First: Dash's `report`.
 5. **Figures (step 5).** A read-only sum and group tool, once a figures question needs it.
