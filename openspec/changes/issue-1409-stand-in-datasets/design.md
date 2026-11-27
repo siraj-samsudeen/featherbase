@@ -38,6 +38,11 @@ binding. The two can disagree for a moment (the settings file flips a binding
 to Warehouse before the next refresh runs), and then the rows are still a
 stand-in and are still marked.
 
+The build itself reads the binding, inside the lock that serializes builds of
+one dataset, and skips a refresh of a dataset bound to a stand-in. Reading it
+only when the job lists what is due would let a refresh that was already queued
+replace a stand-in loaded a moment later (found in review).
+
 Rejected: marking from the binding alone. A flipped binding would unmark
 sample figures until the refresh ran.
 
@@ -94,7 +99,10 @@ before anything is built.
 
 ### D8. Production needs a tick the settings file cannot set
 
-On production a stand-in is refused unless Allowed On Production is ticked on
-that dataset's binding. The settings file manages the rest of the binding but
-not this field, so it is always a System Manager's own act. Unticking it stops
-the stand-in being served on production.
+On production, binding a dataset to a stand-in is refused unless Allowed On
+Production is ticked on that dataset's binding. The settings file manages the
+rest of the binding but not this field, so it is always a System Manager's own
+act. The save guards only the move to a stand-in; the read guards serving. So
+the tick can always be withdrawn, and withdrawing it stops the stand-in being
+served on production at once (found in review: guarding every save refused the
+untick this decision promises).
