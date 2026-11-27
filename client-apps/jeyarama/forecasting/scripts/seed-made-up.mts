@@ -69,7 +69,7 @@ for (const p of real?.people ?? PEOPLE) {
 const signIn = `${`http://localhost:${process.env.WEB_PORT ?? ''}`}/featherbase/login?next=%2Fforecasting%2F`
 const page = await fetch(`${api}/api/table/${encodeURIComponent('Home Page')}/forecasting`, { headers: { authorization: `Bearer ${login.token}` } })
 if (page.status === 404) await save('Home Page', { row_id: 'forecasting', label: 'Forecasting', module: 'Forecasting', sequence: 10,
-  shortcuts: JSON.stringify([{ label: 'Open Forecasting', type: 'url', link_to: '/forecasting/' }]) })
+  shortcuts: JSON.stringify([{ label: 'Open Forecasting', type: 'url', link_to: '/forecasting/', description: "Review the month's forecast, section by section" }]) })
 
 // The Team Leader review (#1419) reads the copied warehouse tables. Until the warehouse copy table exists
 // (#1418), a local instance on made-up data fills them from fixtures/team-leader-december.json (Lakeside ·

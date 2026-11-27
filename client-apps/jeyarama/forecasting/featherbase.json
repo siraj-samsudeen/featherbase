@@ -858,6 +858,20 @@
                 "column_type": "Data",
                 "description": "The subcategory's SAP code (material group).",
                 "read_only": true
+              },
+              {
+                "column_name": "floor_name",
+                "label": "Floor",
+                "column_type": "Data",
+                "description": "The floor of the store the section is on, from the org chart.",
+                "read_only": true
+              },
+              {
+                "column_name": "floor_order",
+                "label": "Floor Order",
+                "column_type": "Int",
+                "description": "Where the floor comes in the building, bottom first.",
+                "read_only": true
               }
             ],
             "title_column": "subcategory_name"
@@ -2509,6 +2523,20 @@
           "label": "Subcategory Code",
           "column_type": "Data",
           "description": "The subcategory's SAP code (material group).",
+          "read_only": true
+        },
+        {
+          "column_name": "floor_name",
+          "label": "Floor",
+          "column_type": "Data",
+          "description": "The floor of the store the section is on, from the org chart.",
+          "read_only": true
+        },
+        {
+          "column_name": "floor_order",
+          "label": "Floor Order",
+          "column_type": "Int",
+          "description": "Where the floor comes in the building, bottom first.",
           "read_only": true
         }
       ],

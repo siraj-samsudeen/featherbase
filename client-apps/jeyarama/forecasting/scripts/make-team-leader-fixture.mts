@@ -40,7 +40,7 @@ SEEDS.forEach(([name, category, l28, asp, ly28, ly, aspLy, growth, step, w, adj]
   const fc = adds.reduce((a, b) => a + b, 0) + adj
   const b6Level = adds[5] / step
   lines.push({
-    row_id: `${RUN}:${STORE}:${name}`, run_id: RUN, ...line, store_name: 'Lakeside', section_name: SECTION,
+    row_id: `${RUN}:${STORE}:${name}`, run_id: RUN, ...line, store_name: 'Lakeside', section_name: SECTION, floor_name: 'First Floor', floor_order: 2,
     forecast_value_before_tax: fc, forecast_qty: q1(fc / (asp * 0.97)),
     ...Object.fromEntries(own.map((o, k) => [`own_value_b${k + 1}`, r(o)])),
     ...Object.fromEntries(adds.map((a, k) => [`adds_value_b${k + 1}`, a])),
@@ -65,7 +65,7 @@ SEEDS.forEach(([name, category, l28, asp, ly28, ly, aspLy, growth, step, w, adj]
 })
 
 const fixture = {
-  forecast_run: [{ row_id: RUN, run_id: RUN, model: 'engine_v2', purpose: 'official', status: 'complete', origin_date: '2026-11-26', horizon_from: '2026-12-01', horizon_to: '2026-12-31' }],
+  forecast_run: [{ row_id: RUN, run_id: RUN, model: 'made_up', purpose: 'official', status: 'complete', origin_date: '2026-11-26', horizon_from: '2026-12-01', horizon_to: '2026-12-31' }],
   forecast_line_month: lines,
   sales_reference: sales,
   annual_plan_line: plans,

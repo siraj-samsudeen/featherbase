@@ -17,7 +17,7 @@ import '../shared/forecasting.css'
 
 const groupKey = (g: Group) => `group:${g.index}`
 
-export function TeamLeaderReview({ header, lines, storeStep, state, actions, hrefFor, openLine: initialLine, onOpenLine }: {
+export function TeamLeaderReview({ header, lines, storeStep, state, actions, hrefFor, openLine: initialLine, onOpenLine, switcher }: {
   header: Header
   lines: Line[]
   /** The store's usual December rise, for a group's sentences (a subcategory has its own). */
@@ -29,6 +29,8 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
   /** A subcategory to open on arrival (a link to it, or a jump from My questions). */
   openLine?: string | null
   onOpenLine?: (line: string | null) => void
+  /** A way to another section, in the header (the app's SectionSwitcher); none in the story. */
+  switcher?: ReactNode
 }) {
   const [view, setView] = useState<ViewChoices>(DEFAULT_VIEW)
   const [tab, setTab] = useState('review')
@@ -112,7 +114,7 @@ export function TeamLeaderReview({ header, lines, storeStep, state, actions, hre
     <div className="fr flex flex-col" data-testid="team-leader-review">
       <PageHeader title={`${header.store} · ${header.section} · ${header.month.label}`}
         status={`${header.person} · ${header.role} · sales to ${header.cutOff} · before tax`}
-        actions={<MyQuestions questions={state.questions} lines={lines} hrefFor={hrefFor} onJump={jumpTo} />} />
+        actions={<>{switcher}<MyQuestions questions={state.questions} lines={lines} hrefFor={hrefFor} onJump={jumpTo} /></>} />
       <ContentTabs className="mt-4" label="Review sections" value={tab}
         onChange={t => { setTab(t); if (t === 'review') setHelp({ at: null, from: null }) }}
         tabs={[

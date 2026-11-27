@@ -18,12 +18,59 @@ interface ChangeRow { row_id: string; set_value_before_tax: string | number | nu
 interface QuestionRow { row_id: string; subcategory_name: string; question_text: string; created_at: string; answered_by_role: string | null; answer_seen_at: string | null }
 interface CommentRow { ref_name: string; content: string; created_at: string }
 
+/** The official Runs people review, newest month first. Made-up Runs (a local instance's fixture) are left out
+ *  whenever a real one is loaded, so a real store never shares the screen with the made-up one. */
+export async function officialRuns(): Promise<(RunRow & { model?: string })[]> {
+  const runs = (await listWhere<RunRow & { model?: string }>('forecasting.forecast_run', ['run_id', 'model', 'purpose', 'origin_date', 'horizon_from', 'horizon_to'], [['purpose', '=', 'official']]))
+    .sort((a, b) => b.horizon_from.localeCompare(a.horizon_from))
+  const real = runs.filter(r => r.model !== 'made_up')
+  return real.length ? real : runs
+}
+
+/** One section of a store for the landing page: where it is, who reviews it, and how far the review has got. */
+export interface SectionSummary { floor: string; floorOrder: number; section: string; teamLeaders: string[]; subcategories: number; reviewed: number; fc: number }
+export interface StoreSummary { run: RunRow; stores: string[]; store: string; month: ReturnType<typeof monthOfRun>; cutOff: string; sections: SectionSummary[]; noSection: { subcategories: number; fc: number } }
+
+/** Every section of a store in the newest official Run (the store named, else the Run's largest), for the landing page. */
+export async function loadStore(store?: string | null): Promise<StoreSummary | null> {
+  const runs = await officialRuns()
+  const run = runs[0]
+  if (!run) return null
+  const rows = await listWhere<{ store_name: string; section_name: string; floor_name: string | null; floor_order: number | string | null; subcategory_name: string; forecast_value_before_tax: number | string }>(
+    'forecasting.forecast_line_month', ['store_name', 'section_name', 'floor_name', 'floor_order', 'subcategory_name', 'forecast_value_before_tax'], [['run_id', 'in', runs.filter(r => r.horizon_from === run.horizon_from).map(r => r.run_id)]])
+  const count = new Map<string, number>()
+  for (const r of rows) count.set(r.store_name, (count.get(r.store_name) ?? 0) + 1)
+  const stores = [...count.keys()].sort()
+  const chosen = store && count.has(store) ? store : [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+  if (!chosen) return null
+  const mine = rows.filter(r => r.store_name === chosen)
+  const [reviews, reach] = await Promise.all([
+    listWhere<{ subcategory_name: string }>('forecasting.forecast_line_review', ['subcategory_name'], [['run_id', '=', run.run_id]]),
+    listWhere<{ full_name: string; place: string }>('forecasting.reach', ['full_name', 'place'], [['role', '=', 'Team Leader'], ['place', 'like', `${chosen} · %`]]),
+  ])
+  const answered = new Set(reviews.map(r => r.subcategory_name))
+  const bySection = new Map<string, SectionSummary>()
+  let noSection = { subcategories: 0, fc: 0 }
+  for (const r of mine) {
+    const fc = Number(r.forecast_value_before_tax)
+    if (r.section_name === NO_SECTION) { noSection = { subcategories: noSection.subcategories + 1, fc: noSection.fc + fc }; continue }
+    const s = bySection.get(r.section_name) ?? { floor: r.floor_name || 'No floor', floorOrder: Number(r.floor_order ?? 99), section: r.section_name, subcategories: 0, reviewed: 0, fc: 0,
+      teamLeaders: reach.filter(p => p.place === `${chosen} · ${r.section_name}`).map(p => p.full_name) }
+    s.subcategories++; s.fc += fc; if (answered.has(r.subcategory_name)) s.reviewed++
+    bySection.set(r.section_name, s)
+  }
+  const sections = [...bySection.values()].sort((a, b) => a.floorOrder - b.floorOrder || a.floor.localeCompare(b.floor) || b.fc - a.fc)
+  return { run, stores, store: chosen, month: monthOfRun(run.horizon_from), cutOff: day(run.origin_date), sections, noSection }
+}
+
+/** The section name the copy gives a subcategory that the org chart places in no section. */
+export const NO_SECTION = 'Not placed in a section'
+
 /** A Team Leader's section ("Lakeside · Girls Bottoms") in the newest official Run that has it; null when none does. */
 export async function loadSection(viewer: Viewer): Promise<Section | null> {
   const [store, section] = viewer.place.split(' · ')
   if (!section) return null
-  const runs = (await listWhere<RunRow>('forecasting.forecast_run', ['run_id', 'purpose', 'origin_date', 'horizon_from', 'horizon_to'], [['purpose', '=', 'official']]))
-    .sort((a, b) => b.horizon_from.localeCompare(a.horizon_from))
+  const runs = await officialRuns()
   if (!runs.length) return null
   const rows = await listWhere<LineMonthRow & { row_id: string }>('forecasting.forecast_line_month', LINE_FIELDS,
     [['store_name', '=', store], ['section_name', '=', section], ['run_id', 'in', runs.map(r => r.run_id)]])

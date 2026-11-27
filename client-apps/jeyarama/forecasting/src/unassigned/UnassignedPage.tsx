@@ -5,15 +5,13 @@
 // never to the copy of the Run. /forecasting/?view=unassigned&store=<store>
 import { useEffect, useState } from 'react'
 import { Card, EmptyState, Notice, PageHeader, RecordLink, RecordPagesProvider, Skeleton } from '@featherbase/shop-floor'
-import { loadSection, type Section } from '../teamLeader/live'
+import { NO_SECTION, loadSection, type Section } from '../teamLeader/live'
 import { combine, storeStepOf, type Line } from '../shared/model'
 import { MeasureTable } from '../shared/MeasureTable'
 import { LinePanel } from '../shared/LinePanel'
 import { DEFAULT_VIEW } from '../shared/ReviewToolbar'
 import '../shared/forecasting.css'
 
-/** The section name the copy gives a subcategory that the org chart places in no section. */
-export const NO_SECTION = 'Not placed in a section'
 /** Where the org chart is kept: production Featherbase for the JeyaRama instance. */
 const ORG_CHART = 'https://dash.jeyarama.com'
 
