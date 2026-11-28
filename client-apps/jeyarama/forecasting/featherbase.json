@@ -2492,6 +2492,11 @@
       "can_read": true
     },
     {
+      "table": "forecasting.other_model_month",
+      "role": "Forecasting Member",
+      "can_read": true
+    },
+    {
       "table": "forecasting.actuals_day",
       "role": "Forecasting Member",
       "can_read": true
@@ -3129,6 +3134,103 @@
         "store_code",
         "subcategory_name",
         "forecast_date"
+      ],
+      "filters": {
+        "store": "store_code"
+      },
+      "loadRoles": [
+        "Forecast Creator"
+      ],
+      "guard": [
+        {
+          "kind": "min_rows",
+          "value": 1
+        },
+        {
+          "kind": "keeps_values",
+          "column": "store_code"
+        },
+        {
+          "kind": "source_total",
+          "column": "forecast_value_before_tax"
+        }
+      ]
+    },
+    {
+      "name": "other_model_month",
+      "source": "warehouse",
+      "query": "select official_run_id, model_run_id, model, region, store_code, store_short_code, division_name, subdivision_name, category_name, subcategory_name, subcategory_code, forecast_month, forecast_value_before_tax, forecast_qty from marts_forecasting.main.fb_other_models_month",
+      "columns": [
+        {
+          "name": "official_run_id",
+          "type": "text"
+        },
+        {
+          "name": "model_run_id",
+          "type": "text"
+        },
+        {
+          "name": "model",
+          "type": "text"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "store_code",
+          "type": "text"
+        },
+        {
+          "name": "store_short_code",
+          "type": "text"
+        },
+        {
+          "name": "division_name",
+          "type": "text"
+        },
+        {
+          "name": "subdivision_name",
+          "type": "text"
+        },
+        {
+          "name": "category_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_name",
+          "type": "text"
+        },
+        {
+          "name": "subcategory_code",
+          "type": "text"
+        },
+        {
+          "name": "forecast_month",
+          "type": "date"
+        },
+        {
+          "name": "forecast_value_before_tax",
+          "type": "money"
+        },
+        {
+          "name": "forecast_qty",
+          "type": "number"
+        }
+      ],
+      "keys": [
+        "official_run_id",
+        "model",
+        "store_code",
+        "subcategory_name",
+        "forecast_month"
+      ],
+      "rowKey": [
+        "official_run_id",
+        "model",
+        "store_code",
+        "subcategory_name",
+        "forecast_month"
       ],
       "filters": {
         "store": "store_code"

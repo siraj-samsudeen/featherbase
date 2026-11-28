@@ -5,7 +5,7 @@
 import { listWhereAll } from '../api'
 import { officialRuns, orgOf } from '../teamLeader/live'
 import type { OrgChart } from '../orgChart'
-import { linesFrom, type CopiedRows, type LineMonthRow, type Line, type PlanRow, type SalesRow } from './model'
+import { linesFrom, type CopiedRows, type LineMonthRow, type Line, type OtherModelRow, type PlanRow, type SalesRow } from './model'
 import type { ProposalItem } from './review'
 
 /** A section of a store: its floor (building order) and its Team Leader(s). */
@@ -50,14 +50,15 @@ export async function loadRealChain(): Promise<Chain | null> {
   const run = runs[0]
   if (!run) return null
   const month = runs.filter(r => r.horizon_from === run.horizon_from).map(r => r.run_id), first = run.horizon_from.slice(0, 10)
-  const [rows, sales, plans] = await Promise.all([
+  const [rows, sales, plans, others] = await Promise.all([
     listWhereAll<LineMonthRow>('forecasting.forecast_line_month', LINE_FIELDS, [['run_id', 'in', month]]),
     listWhereAll<SalesRow>('forecasting.sales_reference', ['store_code', 'subcategory_name', 'window_name', 'sales_value_before_tax', 'sales_qty'], [['run_id', 'in', month]]),
     listWhereAll<PlanRow>('forecasting.annual_plan_line', ['store_code', 'subcategory_name', 'plan_month', 'plan_value_before_tax', 'plan_qty'], [['run_id', 'in', month], ['plan_month', '=', first]]),
+    // XGBoost and LightGBM by month (other_model_month): a whole region's days (other_model_day, which the Team
+    // Leader's page reads for its one section) are too many to read in a page; the month is the same days summed
+    listWhereAll<OtherModelRow>('forecasting.other_model_month', ['model', 'store_code', 'subcategory_name', 'forecast_value_before_tax'], [['official_run_id', 'in', month], ['forecast_month', '=', first]]),
   ])
-  // XGBoost and LightGBM are copied by day (other_model_day): a whole region's days are too many to read in a page,
-  // so the managers' pages leave them out on a real Run (the Team Leader's page reads them for its one section)
-  const lines = linesFrom({ lines: rows, sales, plans, others: [] } as CopiedRows)
+  const lines = linesFrom({ lines: rows, sales, plans, others } as CopiedRows)
   const stores = [...new Set(lines.map(l => l.store))].sort()
   const orgs = await orgsOf(stores)
 

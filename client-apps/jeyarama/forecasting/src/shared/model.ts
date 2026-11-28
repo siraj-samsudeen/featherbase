@@ -65,7 +65,8 @@ export interface LineMonthRow {
 interface ByLine { store_code: string; subcategory_name: string }
 export interface SalesRow extends ByLine { window_name: string; sales_value_before_tax: Num; sales_qty: Num }
 export interface PlanRow extends ByLine { plan_month: string; plan_value_before_tax: Num; plan_qty: Num }
-/** One day of another model's forecast (fb_other_models), summed per subcategory for the month. */
+/** Another model's forecast, a day (other_model_day, the Team Leader's page) or a month (other_model_month, the
+ *  managers' pages), summed per subcategory for the month. */
 export interface OtherModelRow extends ByLine { model: string; forecast_value_before_tax: Num }
 export interface CopiedRows { lines: LineMonthRow[]; sales: SalesRow[]; plans: PlanRow[]; others: OtherModelRow[]; bands?: BandRows }
 
