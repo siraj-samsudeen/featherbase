@@ -4,7 +4,7 @@
 // How it was built, the tab kept in the address (&tab=how), and the month › the scope above the days.
 // /forecasting/?view=days (an administrator adds &store=<store>&section=<section>&tl=<name>)
 import { useCallback, useEffect, useState } from 'react'
-import { Card, EmptyState, PageHeader, RecordPagesProvider, Segmented, Select, Skeleton, StatusPill } from '@featherbase/shop-floor'
+import { Card, EmptyState, PageHeader, RecordPagesProvider, Select, Skeleton, StatusPill } from '@featherbase/shop-floor'
 import { listWhere, saveRow } from '../api'
 import { officialRuns, type Viewer } from '../teamLeader/live'
 import { BASIS_CODES, PARTS, day as dayText, inr, monthOfRun, pc, type Base, type RunRow } from '../shared/model'
@@ -102,8 +102,11 @@ export function DayReviewPage({ viewer, href, monthHref }: {
       <div className="flex flex-col" data-testid="day-review-page">
         <PageHeader title={`${days.store} · ${days.section} · ${days.month.label}, day by day`}
           status={`${viewer.name} · ${viewer.role} · sales to ${days.salesTo ? dayText(days.salesTo) : '—'} · before tax`} />
-        <div className="mt-4"><Segmented label="View" value={tab} onChange={v => (v === 'month' ? go(monthHref) : setTab(v))}
-          options={[{ value: 'month', label: 'Review the month' }, { value: 'days', label: 'Days' }, { value: 'how', label: 'How it was built' }]} /></div>
+        {/* the underlined tab row the review and the 26-Nov mockup use: one look on every forecasting page */}
+        <div className="fr-tabs mt-4" role="tablist" aria-label="Day review">
+          {([['month', 'Review the month'], ['days', 'Days'], ['how', 'How it was built']] as const).map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => (id === 'month' ? go(monthHref) : setTab(id))}>{label}</button>))}
+        </div>
         <div className="mt-4">{tab === 'days'
           ? <DayReview section={days.section} subs={days.subs} month={days.month} explanations={days.explanations} rowIdOf={name => days.rowIds.get(name)} onSave={save}
             monthLink={{ label: days.month.name, href: monthHref }} initialScope={scope} onScope={setScope} />
