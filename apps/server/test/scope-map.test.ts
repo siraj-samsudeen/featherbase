@@ -16,7 +16,7 @@ import { canSubscribe, eventVisibleTo } from '../src/realtime'
 import { getScopeMap } from '../src/permissions'
 import { invalidateSources } from '../src/sources/registry'
 import { sql } from '../src/db'
-import { expectRefused, grantRole, searchHits } from './fixtures'
+import { expectRefused, grantRole, searchHits, readWhole } from './fixtures'
 
 const STORE = 'Scope Store'
 const ROLE = 'Scope Reader'
@@ -176,6 +176,7 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
       schema: 'scope_fixture', tables: ['till'], prefix: 'Scope',
     })
     const bound = reflected.created[0].name
+    await readWhole(admin, bound)
     await grantRole(admin, { table: bound, role: ROLE, can_read: true })
     await admin.post('/api/save_row', { table: 'Data Scope', row: { service_account: id, allow_table: bound, for_value: 'T-ATK' } })
     const list = await svc.get<{ data: { row_id: string }[] }>(`/api/table/${encodeURIComponent(bound)}`)

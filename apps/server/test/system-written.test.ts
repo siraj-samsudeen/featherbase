@@ -640,7 +640,7 @@ describe('#432: storage decides, not the name', () => {
       ['Activity log', 'sub_table'],
       ['ACTIVITY  LOG', 'settings'],
     ] as const)
-      await expectApiError(admin.post('/api/table_def', { row_rule: { kind: 'all' }, name, kind, columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)
+      await expectApiError(admin.post('/api/table_def', { ...(kind === 'sub_table' ? {} : { row_rule: { kind: 'all' } }), name, kind, columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)
     // An ordinary Table's storage is owned just the same, even by a Settings Table.
     await makeTable(admin, { name: 'Audit Owned', kind: 'settings', columns: ['note'] })
     await expectApiError(admin.post('/api/table_def', { row_rule: { kind: 'all' }, name: 'audit owned', columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)

@@ -169,6 +169,8 @@ const checklists: AppManifest = {
     },
     {
       name: 'Checklist Template',
+      // #1459: every row, to whoever is granted the Table (a grant may still be own rows only)
+      row_rule: { kind: 'all' },
       module: 'Checklists',
       id_pattern: 'CLT-.####',
       title_column: 'template_name',
@@ -195,6 +197,8 @@ const checklists: AppManifest = {
     },
     {
       name: 'Checklist Run',
+      // #1459: every row, to whoever is granted the Table (a grant may still be own rows only)
+      row_rule: { kind: 'all' },
       module: 'Checklists',
       id_pattern: 'CLR-.#####',
       title_column: 'run_title',

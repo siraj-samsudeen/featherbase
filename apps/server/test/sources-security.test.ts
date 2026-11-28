@@ -8,7 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, patchDoc } from './pg-test'
-import { expectApiError, expectRefused, expectStatus, grantRole, searchHits } from './fixtures'
+import { expectApiError, expectRefused, expectStatus, grantRole, searchHits, readWhole } from './fixtures'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
@@ -79,6 +79,7 @@ async function bindAccount(admin: TestClient, access = 'read_write'): Promise<vo
   )
   expect(res.skipped).toEqual([])
   expect(res.created[0].name).toBe(BOUND)
+  await readWhole(admin, BOUND)
 }
 
 // A role granted the given Permission flags, plus a user holding it.

@@ -188,6 +188,12 @@ export async function makeTable(admin: TestClient, def: TableDef): Promise<Table
   return tableRef(def.name)
 }
 
+// #1459: a Table made by connecting, reflecting or copying an outside source has no row rule, so only System
+// Managers read it. A test that reads such a Table as someone else says its rule first: every row.
+export async function readWhole(admin: TestClient, ...tables: string[]): Promise<void> {
+  for (const table of tables) await admin.put(`/api/table_def/${encodeURIComponent(table)}/row_rule`, { row_rule: { kind: 'all' } })
+}
+
 function toColumn(spec: ColumnSpec): Record<string, unknown> {
   if (typeof spec !== 'string') return spec
   const [column_name, column_type = 'Data'] = spec.split(':')

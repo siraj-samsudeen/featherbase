@@ -14,7 +14,7 @@ import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
 import { invalidateMeta } from '../src/meta'
 import type { ReflectionCandidate } from '../src/sources/reflect'
-import { expectStatus, grantRole, makeTable } from './fixtures'
+import { expectStatus, grantRole, makeTable, readWhole } from './fixtures'
 
 const EXT_URL_ENV = 'EXT_FIXTURE_URL'
 process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
@@ -672,6 +672,7 @@ describe('EDS-2: foreign keys reflect as References', () => {
       expect(reflected.skipped).toEqual([])
       expect(reflected.created.map((r) => r.table)).toEqual(['vehicle', 'garage', 'accident'])
       const [vehicle, garage, accident] = reflected.created.map((r) => r.name)
+      await readWhole(admin, vehicle, garage, accident)
       const path = `/api/table/${encodeURIComponent(accident)}`
       const metaPaths = reflected.created.map((r) => `/api/table/${encodeURIComponent(r.name)}:meta`)
       const allMetadata = await Promise.all(metaPaths.map((p) => admin.get<{ columns: Record<string, unknown>[] }>(p)))

@@ -986,8 +986,6 @@ export async function createTable(
   const qualified = def.name.includes('.')
   if (qualified && def.name.split('.')[0] !== ownerApp)
     throw new AppError('ValidationError', 'App-qualified Tables must be created by their owning app')
-  if (ownerApp && def.row_rule)
-    throw new AppError('ValidationError', `${def.name}: an app declares its Tables' row rules in rowRules, not on the Table`)
   if (qualified && (def.data_source || def.kind === 'settings'))
     throw new AppError('ValidationError', 'Runtime app Tables require local collection storage')
   // DOC-008: submittable rows track their cancelled predecessor.

@@ -444,6 +444,8 @@ export async function readPackageDeclaration(directory: string) {
   for (const table of manifest.tables) {
     if (!table.name.startsWith(`${manifest.name}.`) || !table.label || table.system || table.data_source)
       throw new Error('Package Tables require qualified ownership, label and local storage')
+    // #1459: one place says a packaged app's rules: `rowRules`. A rule on the Table would be the instance's own.
+    if ((table as { row_rule?: unknown }).row_rule != null) throw new Error(`${table.name}: an app declares its Tables' row rules in rowRules, not on the Table`)
   }
   return { root, pkg: pkg as { name: string; version: string }, manifest }
 }
