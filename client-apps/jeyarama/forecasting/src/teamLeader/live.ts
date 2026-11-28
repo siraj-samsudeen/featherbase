@@ -30,7 +30,9 @@ export async function officialRuns(): Promise<(RunRow & { model?: string })[]> {
 }
 
 /** One section of a store for the landing page: where it is, who reviews it, and how far the review has got. */
-export interface SectionSummary { floor: string; floorOrder: number; section: string; teamLeaders: string[]; subcategories: number; reviewed: number; fc: number }
+export interface SectionSummary { floor: string; floorOrder: number; section: string; teamLeaders: string[]; subcategories: number; reviewed: number; fc: number
+  /** Its subcategories' names, for the landing's search. */
+  subcategoryNames: string[] }
 export interface StoreSummary { run: RunRow; stores: string[]; store: string; month: ReturnType<typeof monthOfRun>; cutOff: string; sections: SectionSummary[]; noSection: { subcategories: number; fc: number } }
 
 /** Every section of a store in the newest official Run (the store named, else the Run's largest), for the landing page. */
@@ -56,9 +58,9 @@ export async function loadStore(store?: string | null): Promise<StoreSummary | n
   for (const r of mine) {
     const fc = Number(r.forecast_value_before_tax)
     if (r.section_name === NO_SECTION) { noSection = { subcategories: noSection.subcategories + 1, fc: noSection.fc + fc }; continue }
-    const s = bySection.get(r.section_name) ?? { floor: r.floor_name || 'No floor', floorOrder: Number(r.floor_order ?? 99), section: r.section_name, subcategories: 0, reviewed: 0, fc: 0,
+    const s = bySection.get(r.section_name) ?? { floor: r.floor_name || 'No floor', floorOrder: Number(r.floor_order ?? 99), section: r.section_name, subcategories: 0, subcategoryNames: [] as string[], reviewed: 0, fc: 0,
       teamLeaders: reach.filter(p => p.place === `${chosen} · ${r.section_name}`).map(p => p.full_name) }
-    s.subcategories++; s.fc += fc; if (answered.has(r.subcategory_name)) s.reviewed++
+    s.subcategories++; s.subcategoryNames.push(r.subcategory_name); s.fc += fc; if (answered.has(r.subcategory_name)) s.reviewed++
     bySection.set(r.section_name, s)
   }
   const sections = [...bySection.values()].sort((a, b) => a.floorOrder - b.floorOrder || a.floor.localeCompare(b.floor) || b.fc - a.fc)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import fixture from '../../fixtures/team-leader-december.json'
-import { byGapToLastYear, combine, day, groupsOf, inr, linesFrom, monthOfRun, pc, type CopiedRows, type Line } from './model'
+import { byGapToLastYear, combine, day, groupsOf, inr, linesFrom, monthOfRun, pc, sectionMatches, type CopiedRows, type Line } from './model'
 
 const lines = linesFrom({ lines: fixture.forecast_line_month, sales: fixture.sales_reference, plans: fixture.annual_plan_line, others: fixture.other_model_line,
   bands: { mix: fixture.price_band_mix, stock: fixture.stock_band, items: fixture.price_band_top_item } } as unknown as CopiedRows, 'LKS')
@@ -83,5 +83,21 @@ describe('the steps after the blend, in two kinds (#1419, 27-Nov-2026)', () => {
   })
   it('shows a share under half a percent as 0%, never −0%', () => {
     expect(signedShare(-1, 108166)).toBe('0%')
+  })
+})
+
+describe('searching the Sections landing (#1419)', () => {
+  const kurti = { name: 'Kurti', teamLeaders: ['Anitha R'], subcategories: ['Women Kurti', 'Women Kurti Set'] }
+  it('finds a section by its name', () => {
+    expect(sectionMatches(kurti, 'kur')).toBe(true)
+  })
+  it('finds a section by its Team Leader', () => {
+    expect(sectionMatches(kurti, 'anitha')).toBe(true)
+  })
+  it('finds a section by any subcategory in it', () => {
+    expect(sectionMatches(kurti, 'kurti set')).toBe(true)
+  })
+  it('wants every word in one of them', () => {
+    expect(sectionMatches(kurti, 'anitha set')).toBe(false)
   })
 })

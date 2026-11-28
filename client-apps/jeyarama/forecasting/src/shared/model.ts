@@ -212,6 +212,12 @@ export const matches = (l: Pick<Line, 'name' | 'category'>, q: string) => {
   const ws = words(q), text = `${l.name} ${l.category}`.toLowerCase()
   return ws.every(w => text.includes(w))
 }
+/** Whether a section matches what is typed (the Sections landing): every word in its name, in one of its Team
+ *  Leaders' names, or in one of its subcategories. */
+export const sectionMatches = (s: { name: string; teamLeaders: string[]; subcategories: string[] }, q: string) => {
+  const ws = words(q)
+  return [s.name, ...s.teamLeaders, ...s.subcategories].some(t => ws.every(w => t.toLowerCase().includes(w)))
+}
 /** The names nearest to something that matches none, by shared three-letter runs (at most `n`). */
 export function nearest<T extends Pick<Line, 'name'>>(lines: T[], q: string, n = 3): T[] {
   const tri = (s: string) => { const t = new Set<string>(), x = `  ${s.toLowerCase()} `; for (let i = 0; i < x.length - 2; i++) t.add(x.slice(i, i + 3)); return t }
