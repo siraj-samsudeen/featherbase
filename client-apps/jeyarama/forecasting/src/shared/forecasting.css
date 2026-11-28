@@ -168,16 +168,22 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-att-tabs > [role='tab'].fr-att-empty { opacity: 0.55; }
 .fr-att-about { font-size: 13px; color: var(--color-ink-muted); margin: 14px 0 10px; max-width: 1000px; }
 .fr-att-none { font-size: 13.5px; color: var(--color-ink-muted); padding: 12px 0; }
-.fr-att-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.fr-att { background: var(--color-subtle); border-radius: 10px; padding: 10px 14px; border-left: 4px solid var(--color-border); }
-.fr-att-red { border-left-color: var(--color-negative); } .fr-att-purple { border-left-color: var(--fr-group); } .fr-att-grey { border-left-color: var(--color-ink-subtle); }
-.fr-att-top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
-.fr-att-title { font-weight: 600; font-size: 16px; color: var(--color-ink); text-decoration: none; }
-.fr-att-title:hover { text-decoration: underline; }
-.fr-att-amt { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.fr-att-red .fr-att-amt { color: var(--color-negative); } .fr-att-purple .fr-att-amt { color: var(--fr-group); }
-.fr-att-ev { font-size: 12.5px; color: var(--color-ink-muted); margin-top: 3px; }
-.fr-att-act { font-size: 13px; margin-top: 4px; } .fr-att-act b { font-weight: 600; }
+.fr-att-wrap { overflow-x: auto; }
+.fr-att-table thead th { position: sticky; top: 0; z-index: 1; }
+.fr-att-sort { all: unset; cursor: pointer; } .fr-att-sort:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 4px; }
+.fr-att-row { cursor: pointer; } .fr-att-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.fr-att-row > td:first-child { box-shadow: inset 3px 0 0 var(--color-border); }
+.fr-att-row.fr-att-red > td:first-child { box-shadow: inset 3px 0 0 var(--color-negative); }
+.fr-att-row.fr-att-purple > td:first-child { box-shadow: inset 3px 0 0 var(--fr-group); }
+.fr-att-row.fr-att-grey > td:first-child { box-shadow: inset 3px 0 0 var(--color-ink-subtle); }
+.fr-att-name { font-weight: 600; }
+.fr-att-grp { padding: 10px 12px; background: var(--color-subtle); font-size: 13.5px; }
+.fr-att-pane-amt { margin: 0; font-size: 24px; font-weight: 700; }
+.fr-att-small { margin: 2px 0 0; font-size: 12.5px; }
+.fr-att-kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0; font-size: 13.5px; }
+.fr-att-kv dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fr-att-p { margin: 0; font-size: 13.5px; line-height: 1.5; display: flex; flex-direction: column; gap: 2px; }
+.fr-att-mini td:first-child { white-space: normal; }
 .fr-att-group { margin: 16px 0 6px; font-size: 14px; font-weight: 500; } .fr-att-group .fr-dim { font-weight: 400; }
 .fr-att-note { font-size: 12px; margin-top: 12px; }
 .fr-att-help { font-size: 14px; line-height: 1.6; max-width: 960px; padding-left: 18px; list-style: disc; } .fr-att-help li { margin: 6px 0; }

@@ -54,7 +54,16 @@ export interface Finding {
   /** The subcategory, and the band it opens on (none for a finding about the whole subcategory). */
   line: string; band: string | null
   title: string; evidence: string; action: string
+  /** The side pane's numbers (the table's columns too), by name: need, stock, lasts, short, wh, shareSales… */
+  n: Record<string, number | string | null>
+  /** The pane's items: the best sellers (sales), the biggest by stock at selling price (stock), or the items selling
+   *  only elsewhere (elsewhere); and, for a group, the stores that can spare or will run short of its items. */
+  items: PaneItem[]; itemsShow: 'sales' | 'stock' | 'elsewhere'; options: PaneOption[]
+  /** Who to ask: the buyer, or the category head for dead and slow stock. */
+  who: { name: string; role: string }[]
 }
+export interface PaneItem { item: string; code: string; qty: number | null; value: number | null; stock: number; stores?: number }
+export interface PaneOption { item: string; store: string; theirStock: number; theirSold: number; pcs: number }
 
 /** Bands that are not price bands: an item sold but not on the board, or with no band published. */
 const NOT_A_BAND = [NO_BAND, 'No price band published']
@@ -92,8 +101,18 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
     for (const i of its) q7.set(i.price_band, (q7.get(i.price_band) ?? 0) + n(i.sales_qty_7_days))
     const totQ7 = selling.reduce((t, b) => t + (q7.get(b.name) ?? 0), 0)
     const flagged = new Set<string>()
-    const add = (kind: Finding['kind'], colour: Colour, rupees: number, title: string, evidence: string, action: string, band: string | null = null) =>
-      out.push({ kind, colour, rupees: r0(rupees), line: sub, band, title, evidence, action })
+    const add = (kind: Finding['kind'], colour: Colour, rupees: number, title: string, evidence: string, action: string, band: string | null = null,
+      nums: Finding['n'] = {}, pane: Partial<Pick<Finding, 'items' | 'itemsShow' | 'options'>> = {}, ask: 'buyer' | 'head' = 'buyer') =>
+      out.push({ kind, colour, rupees: r0(rupees), line: sub, band, title, evidence, action, n: nums, items: pane.items ?? [], itemsShow: pane.itemsShow ?? 'sales',
+        options: pane.options ?? [], who: [ask === 'head' ? { name: who?.category_head || 'Your category head', role: 'Category head' } : { name: who?.buyer || 'Your buyer', role: 'Buyer' }] })
+    /** The pane's top items: a group's best sellers of the last 28 days, with their stock here. */
+    const topOf = (group: ItemHealthRow[]): PaneItem[] => [...group].sort((a, b) => n(b.sales_value_before_tax) - n(a.sales_value_before_tax) || n(b.stock_qty) - n(a.stock_qty))
+      .slice(0, S.topSellers).map(i => ({ item: name(i), code: i.item_code, qty: r0(n(i.sales_qty)), value: r0(n(i.sales_value_before_tax)), stock: r0(n(i.stock_qty)) }))
+    /** The pane's transfer options for a group: per item, the region's store that can spare it (in) or will run out of it (out). */
+    const optionsOf = (group: ItemHealthRow[], side: 'in' | 'out'): PaneOption[] => [...group]
+      .sort((a, b) => (side === 'in' ? n(b.sales_value_before_tax) - n(a.sales_value_before_tax) : n(b.stock_qty) - n(a.stock_qty))).slice(0, 8)
+      .flatMap(i => { const c = (side === 'in' ? spareAt(i) : shortAt(i))[0]; return c ? [{ item: name(i), store: storeName(c[1]), theirStock: r0(n(c[1].other_stock_qty)), theirSold: r0(n(c[1].other_sales_qty)), pcs: r0(c[0]) }] : [] })
+      .slice(0, 5)
     /** Transfers in: each (item, pieces still needed here) against the region's stores that can spare it. Returns the
      *  best one's words for the parent finding's action. */
     const bringIn = (cands: [ItemHealthRow, number][], why: string, band: string) => {
@@ -106,7 +125,9 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
       for (const { rupees, i, r, take } of found.slice(0, S.transfersPerGroup))
         add('xin', 'red', rupees, `Bring in ${name(i)} from ${r.other_store_short_code}`,
           `${sub} · ${band}: ${why}; ${here(i)}. ${storeName(r)} holds ${pcs(n(r.other_stock_qty))} pcs and sold ${pcs(n(r.other_sales_qty))} in 28 days there`,
-          `Ask ${storeName(r)} for ${pcs(take)} pcs; tell ${buyer}`, band)
+          `Ask ${storeName(r)} for ${pcs(take)} pcs; tell ${buyer}`, band,
+          { item: name(i), store: storeName(r), hereStock: r0(n(i.stock_qty)), hereSold: r0(n(i.sales_qty)), theirStock: r0(n(r.other_stock_qty)), theirSold: r0(n(r.other_sales_qty)), move: r0(take) },
+          { items: topOf([i]) })
       const best = found[0]
       return best ? `; ${storeName(best.r)} holds ${pcs(n(best.r.other_stock_qty))} pcs of ${name(best.i)} and sold only ${pcs(n(best.r.other_sales_qty))} in 28 days there, so ask for a transfer` : ''
     }
@@ -121,7 +142,9 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
       for (const { rupees, i, r, offer } of found.slice(0, S.transfersPerGroup))
         add('xout', 'purple', rupees, `Send ${pcs(offer)} pcs of ${name(i)} to ${r.other_store_short_code}`,
           `${sub} · ${band ?? 'all bands'}: ${why}; ${pcs(n(i.stock_qty))} pcs here, ${pcs(n(i.sales_qty))} sold in 28 days. ${storeName(r)} sold ${pcs(n(r.other_sales_qty))} in 28 days and holds only ${pcs(n(r.other_stock_qty))}`,
-          `Offer them to ${storeName(r)}; tell ${buyer}`, band)
+          `Offer them to ${storeName(r)}; tell ${buyer}`, band,
+          { item: name(i), store: storeName(r), hereStock: r0(n(i.stock_qty)), hereSold: r0(n(i.sales_qty)), theirStock: r0(n(r.other_stock_qty)), theirSold: r0(n(r.other_sales_qty)), move: r0(offer) },
+          { items: topOf([i]) })
       const best = found[0]
       return best ? `; offer ${pcs(best.offer)} pcs of ${name(best.i)} to ${storeName(best.r)}, which sold ${pcs(n(best.r.other_sales_qty))} in 28 days and holds only ${pcs(n(best.r.other_stock_qty))}` : ''
     }
@@ -148,26 +171,35 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
         const gapSum = gaps.reduce((t, [, g]) => t + g, 0) || 1
         if (rest >= S.minTransferPcs) act += bringIn(gaps.map(([i, g]) => [i, g / gapSum * rest]), `this band runs short before ${end}`, b.name)
         add('short', 'red', short * bandPrice, `${sub} · ${b.name} will run short`,
-          `${pcs(b.stock)} pcs last ${r0(lasts)} days at ${M}'s pace; about ${pcs(need)} pcs needed to ${end}. ${shares}${shift}`, act, b.name)
+          `${pcs(b.stock)} pcs last ${r0(lasts)} days at ${M}'s pace; about ${pcs(need)} pcs needed to ${end}. ${shares}${shift}`, act, b.name,
+          { need: r0(need), stock: r0(b.stock), lasts: r0(lasts), short: r0(short), wh: r0(wh), shareSales: shareS, shareStock: shareT },
+          { items: topOf(bandItems), options: optionsOf(bandItems.filter(i => n(i.sales_qty) > 0), 'in') })
         flagged.add(b.name)
       } else if (pace && lasts > S.overstockDays) {
         const extra = b.stock - need
         // real stock at the region's other stores: offer the surplus where it will run out
         const move = sendOut(bandItems.map(i => [i, n(i.stock_qty) - (b.q28 ? n(i.sales_qty) / b.q28 * need : 0)]), `this band has more stock than ${M} needs`, b.name)
         add('over', 'purple', extra * bandPrice, `${sub} · ${b.name} has too much stock`,
-          `${pcs(b.stock)} pcs last ${r0(lasts)} days at ${M}'s pace; about ${pcs(extra)} pcs more than ${M} needs. ${shares}`, `Ask ${buyer} to slow re-orders${move}`, b.name)
+          `${pcs(b.stock)} pcs last ${r0(lasts)} days at ${M}'s pace; about ${pcs(extra)} pcs more than ${M} needs. ${shares}`, `Ask ${buyer} to slow re-orders${move}`, b.name,
+          { stock: r0(b.stock), need: r0(need), lasts: r0(lasts), extra: r0(extra), shareSales: shareS, shareStock: shareT },
+          { items: topOf(bandItems), options: optionsOf(bandItems, 'out') })
         flagged.add(b.name)
       } else if (totStock && Math.abs(shareT - shareS) > S.wellApartPoints) {
         const gap = shareT - shareS, off = Math.abs(gap) / 100 * totStock
+        const fn = { shareSales: shareS, shareStock: shareT, gap, pcsOff: r0(off), stock: r0(b.stock), sold: r0(b.q28), lasts: pace ? r0(lasts) : null }
         if (gap < 0) add('follow', 'red', off * bandPrice, `${sub} · ${b.name}: stock doesn't follow sales`,
-          `${shares}: about ${pcs(off)} pcs less than its sales share${shift}`, `Ask ${buyer} to tilt the next order to this band`, b.name)
+          `${shares}: about ${pcs(off)} pcs less than its sales share${shift}`, `Ask ${buyer} to tilt the next order to this band`, b.name, fn,
+          { items: topOf(bandItems), options: optionsOf(bandItems.filter(i => n(i.sales_qty) > 0), 'in') })
         else add('follow', 'purple', off * bandPrice, `${sub} · ${b.name}: stock doesn't follow sales`,
-          `${shares}: about ${pcs(off)} pcs more than its sales share`, `Ask ${buyer} to slow this band's re-orders`, b.name)
+          `${shares}: about ${pcs(off)} pcs more than its sales share`, `Ask ${buyer} to slow this band's re-orders`, b.name, fn,
+          { items: topOf(bandItems), options: optionsOf(bandItems, 'out') })
         flagged.add(b.name)
       } else if (shift && pace && lasts < left * 1.25) {
         const extra = (share7 - shareS) / 100 * l.fq * left / month.days
         add('mix', 'red', extra * bandPrice, `${sub} · ${b.name}: demand is moving here`,
-          `${shift.slice(2, 3).toUpperCase()}${shift.slice(3)}; stock lasts ${r0(lasts)} days`, `Ask ${buyer} for more in this band`, b.name)
+          `${shift.slice(2, 3).toUpperCase()}${shift.slice(3)}; stock lasts ${r0(lasts)} days`, `Ask ${buyer} for more in this band`, b.name,
+          { need: null, stock: r0(b.stock), lasts: r0(lasts), short: r0(extra), shareSales: shareS, shareStock: shareT, share7 },
+          { items: topOf(bandItems), options: optionsOf(bandItems.filter(i => n(i.sales_qty) > 0), 'in') })
       }
     }
 
@@ -181,7 +213,9 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
       const act = (pullI >= 1 ? `Pull ${pcs(pullI)} pcs from the warehouse today (it holds ${pcs(n(i.warehouse_qty))})` : `Ask ${buyer} to replenish it first`)
         + bringIn([[i, rate * left - n(i.stock_qty)]], 'a top seller nearly out', i.price_band)
       add('topout', 'red', lost, `Top seller out: ${name(i)}`,
-        `${sub} · ${i.price_band}: sold ${pcs(n(i.sales_qty))} pcs in 28 days; ${pcs(n(i.stock_qty))} left`, act, i.price_band)
+        `${sub} · ${i.price_band}: sold ${pcs(n(i.sales_qty))} pcs in 28 days; ${pcs(n(i.stock_qty))} left`, act, i.price_band,
+        { item: name(i), sold: r0(n(i.sales_qty)), stock: r0(n(i.stock_qty)), short: r0(shortI), wh: r0(n(i.warehouse_qty)) },
+        { items: topOf([i]), options: optionsOf([i], 'in') })
     }
 
     // stocked here, not selling here, selling elsewhere: is it on the shelf?
@@ -193,7 +227,11 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
       add('hidden', 'red', exp, `${sub}: ${hidden.length} ${hidden.length === 1 ? 'item' : 'items'} in stock but not selling here`,
         `None sold here in 14 days, yet they sold at other stores; e.g. ${top.item_name ?? top.item_code}: ${pcs(n(top.stock_qty))} pcs here, `
         + `${pcs(n(top.other_stores_qty_14_days))} sold at ${n(top.other_stores_selling)} other stores`,
-        'Check they are on the shelf, in the right sizes and priced right', top.price_band)
+        'Check they are on the shelf, in the right sizes and priced right', top.price_band,
+        { items: hidden.length, stock: r0(hidden.reduce((t, i) => t + n(i.stock_qty), 0)), elsewhere14: r0(hidden.reduce((t, i) => t + n(i.other_stores_qty_14_days), 0)),
+          stores: Math.max(...hidden.map(i => n(i.other_stores_selling))) },
+        { itemsShow: 'elsewhere', items: [...hidden].sort((a, b) => n(b.other_stores_qty_14_days) - n(a.other_stores_qty_14_days)).slice(0, S.topSellers)
+          .map(i => ({ item: name(i), code: i.item_code, qty: r0(n(i.other_stores_qty_14_days)), value: null, stock: r0(n(i.stock_qty)), stores: n(i.other_stores_selling) })) })
     }
 
     // dead and slow stock, at selling price
@@ -208,7 +246,10 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
       add(kind, 'purple', group.reduce((t, i) => t + n(i.stock_qty) * price(i), 0), `${sub}: ${pcs(held)} pcs ${title}`,
         `${group.length} items with no sale in ${days}, ${r0(held / allStock * 100)}% of the subcategory's stock here`,
         `Move them off the best display; ask ${head} about a promotion or a return${move}`,
-        kind === 'dead' && group.some(i => i.price_band.startsWith('Never sold')) ? 'Never sold (90 d)' : null)
+        kind === 'dead' && group.some(i => i.price_band.startsWith('Never sold')) ? 'Never sold (90 d)' : null,
+        { noSale: days, items: group.length, stock: r0(held), shareStock: held / allStock * 100 },
+        { itemsShow: 'stock', items: [...group].sort((a, b) => n(b.stock_qty) * price(b) - n(a.stock_qty) * price(a)).slice(0, S.topSellers)
+          .map(i => ({ item: name(i), code: i.item_code, qty: null, value: r0(n(i.stock_qty) * price(i)), stock: r0(n(i.stock_qty)) })), options: optionsOf(group, 'out') }, 'head')
     }
 
     const noband = its.filter(i => NOT_A_BAND.includes(i.price_band))
@@ -216,7 +257,8 @@ export function needsAttention(lines: Line[], items: ItemHealthRow[], people: Pe
       const sold = noband.reduce((t, i) => t + n(i.sales_value_before_tax), 0), held = noband.reduce((t, i) => t + n(i.stock_qty), 0)
       add('noband', 'grey', sold, `${sub}: ${noband.length} ${noband.length === 1 ? 'item has' : 'items have'} no price band`,
         `They sold ${inr(sold)} in the last 28 days and hold ${pcs(held)} pcs, but no price band is published for them, so the band view leaves them out`,
-        'Ask the forecast team to publish their price bands', noband[0].price_band)
+        'Ask the forecast team to publish their price bands', noband[0].price_band,
+        { items: noband.length, sold: r0(noband.reduce((t, i) => t + n(i.sales_qty), 0)), soldValue: r0(sold), stock: r0(held) }, { items: topOf(noband) })
     }
   }
   const order: Record<Colour, number> = { red: 0, purple: 1, grey: 2 }
