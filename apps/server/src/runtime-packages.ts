@@ -20,6 +20,7 @@ import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
+import { scopedTablesDeclaration, validateScopedTables } from './app-scoped-tables'
 import { appCopyTables, forgetAppCopies, registerAppCopies, syncAppCopies, validateAppCopies } from './read-only-copy'
 import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction, usingTransaction } from './db'
@@ -187,6 +188,8 @@ const manifestSchema = z.object({
   roleDefaults: roleDefaultsDeclaration.optional(),
   // #625 (E3): the cached datasets the app reads, built by the platform.
   datasets: datasetsDeclaration.optional(),
+  // #1454: the app's own Tables its person_scope reads list within the reader's places.
+  scopedTables: scopedTablesDeclaration.optional(),
   // #642 (E4): the outside sites the app's own pages may frame.
   frameOrigins: z.array(frameOrigin).optional(),
   // #642 (E8): the app's controls in the shared top bar.
@@ -559,6 +562,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
   validateAppJobs(manifest.name, manifest, declaredSecrets)
   validateAppCopies(manifest.name, manifest)
+  validateScopedTables(manifest.name, manifest.tables, manifest.scopedTables)
   for (const declaration of [manifest.actions, manifest.reads]) {
     if (!declaration) continue
     if (!manifest.server) throw new Error('Declared operations require a server module')
@@ -584,7 +588,9 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
         throw new Error('Validators must target owned Tables')
       doc_events[table] = { before_validate: (ctx) => usingTransaction(ctx.tx, async () => {
         // #1418: a validator reads the app's read-only copies too (the current load), never writes them.
-        const access = callerDocuments(manifest.name, [...names], ctx.user, appCopyTables(manifest.name))
+        // #1454: as the app, whole: the validator decides who may write, and the people saving may read only
+        // their places of a copy (or none of it).
+        const access = callerDocuments(manifest.name, [...names], ctx.user, appCopyTables(manifest.name), appCopyTables(manifest.name))
         // #1428: the same base Table reads as the app's reads and actions, declared columns only.
         const base = baseTablesReader(manifest.name, manifest.baseTables, linkedTables((await loadAppSetup(manifest.name, manifest)).settings))
         try {
@@ -626,7 +632,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     scopeProvider: provider ? { app: manifest.name, title: manifest.title, version: pkg.version, tables: provider.tables, unmarkedTables: provider.unmarkedTables ?? [], optionalTables: provider.optionalTables ?? [], optionalColumns: provider.optionalColumns ?? {}, identifiers: provider.identifiers ?? [], provide: providers.get(provider.name)! } : undefined,
     // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
     actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup, baseTables: manifest.baseTables } : undefined,
-    reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, baseTables: manifest.baseTables } : undefined }
+    reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets, scopedTables: manifest.scopedTables, baseTables: manifest.baseTables } : undefined }
 }
 
 // The apps on `paths`, by name@version, as boot takes them: each loaded and

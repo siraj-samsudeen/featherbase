@@ -19,6 +19,7 @@ import { countDocs, getList } from './query'
 import { logActivity } from './audit'
 import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup, type ReadySetup } from './app-settings'
 import { callerMail, readsRow } from './runtime-mail'
+import { CLOSED_SCOPED_TABLES, scopedTables, type ScopedTableDeclaration } from './app-scoped-tables'
 import { appDatasets, recordPlaceDrops, type DatasetDeclaration, type DropProvenance, type DropVersions, type PlaceDrop } from './app-datasets'
 import { baseTablesReader, proposalsReader, proposalsWriter, type BaseTablesDeclaration } from './change-proposals'
 
@@ -33,6 +34,8 @@ export interface DeclaredOperations<H = RuntimeActionHandler> {
   setup?: () => Promise<AppSetup>
   /** #625: the app's declared cached datasets. */
   datasets?: readonly DatasetDeclaration[]
+  /** #1454: the app's own Tables a person_scope read lists within the reader's places. */
+  scopedTables?: readonly ScopedTableDeclaration[]
   /** #975: the instance Tables the app reads and proposes on. */
   baseTables?: BaseTablesDeclaration
 }
@@ -99,9 +102,13 @@ export async function callerRoles(user: string): Promise<readonly string[]> {
   return Object.freeze([...new Set(await getRoles(user))].sort())
 }
 
-export function callerDocuments(app: string, allowed: string[], user: string, linked: string[] = []) {
+export function callerDocuments(app: string, allowed: string[], user: string, linked: string[] = [],
+  /** #1454: of `linked`, the Tables read as the app, whole (a validator's own read-only copies). */
+  asApp: string[] = []) {
   let open = true
   const readOnly = (table: string) => !allowed.includes(table) && linked.includes(table)
+  /** Who a linked Table is read as: the app (the platform's own read) for its copies named in `asApp`, else the caller. */
+  const reader = (table: string) => (readOnly(table) && asApp.includes(table) ? 'Administrator' : user)
   let pending: Promise<unknown> | undefined
   let failure: unknown
   async function operation<T>(fn: () => Promise<T>): Promise<T> {
@@ -168,13 +175,13 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
   }
   const documents: RuntimeActionContext['documents'] = Object.freeze({
     // A linked Table is read without a row lock: the app never writes it.
-    get: (table, id) => operation(async () => readOnly(table) ? (await metaFor(table), getDoc(table, id, user)) : locked(table, id)),
+    get: (table, id) => operation(async () => readOnly(table) ? (await metaFor(table), getDoc(table, id, reader(table))) : locked(table, id)),
     members: table => operation(async () => { await metaFor(table); return tableMembers(table, user) }),
     list: (table, args = {}) => operation(async () => {
       await metaFor(table)
       if (args.filters?.some(([, operator]) => operator === 'related' || operator === 'not related')) reject('Action lists do not support cross-table related filters')
       // What the caller may not read of a linked Table reads as nothing.
-      if (readOnly(table)) return getList(table, args, user).then(r => r.data, (error: unknown) =>
+      if (readOnly(table)) return getList(table, args, reader(table)).then(r => r.data, (error: unknown) =>
         error instanceof AppError && error.type === 'PermissionError' ? [] : Promise.reject(error))
       return (await getList(table, args, user)).data
     }),
@@ -187,7 +194,7 @@ export function callerDocuments(app: string, allowed: string[], user: string, li
       if (!readOnly(table)) { await metaFor(table); return countDocs(table, filters, user) }
       const uncountable = (error: unknown) =>
         error instanceof AppError && ['PermissionError', 'ValidationError', 'NotFoundError'].includes(error.type) ? null : Promise.reject(error)
-      return metaFor(table).then(() => countDocs(table, filters, user)).catch(uncountable)
+      return metaFor(table).then(() => countDocs(table, filters, reader(table))).catch(uncountable)
     }),
     create: (table, values) => operation(() => save(table, values, true)),
     update: (table, values) => operation(() => save(table, values, false)),
@@ -395,9 +402,11 @@ async function runRead(app: string, name: string, user: string, handler: Runtime
   const { title, settings, secrets, kept } = setup
   const { datasets, recordView, drops } = appDatasets({ app, operation: name, user, title, declarations: contribution.datasets ?? [],
     places: authorization.places, outbound: !inAppTransaction(), deferWrite, provenance })
+  // #1454: rows of the app's own Tables within the same places; none outside a transaction (an outbound handler).
+  const scoped = inAppTransaction() ? scopedTables(contribution.scopedTables ?? [], authorization.places) : CLOSED_SCOPED_TABLES
   const json = await withSecretsKept(kept, async () => {
     try {
-      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app, settings), payload, prepared, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, recordView })))
+      return canonicalJson(await handler(Object.freeze({ user, userName: await ownDisplayName(user), roles: await callerRoles(user), people: callerPeople(user, app, settings), payload, prepared, authorization, settings, secrets, reject, documents, baseTables, changeProposals, datasets, scopedTables: scoped, recordView })))
     } finally { await close() }
   })
   assertNoSecret(kept, JSON.parse(json))
