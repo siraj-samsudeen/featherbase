@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import { APP_THEME_ATTRIBUTE, THEME_CHANGE_EVENT, paintTheme } from '@featherbase/shop-floor/theme'
 import { listAll } from './api'
-import { datasetFrom, setDataset, type ReachRow, type RunLineRow } from './dataset'
+import { datasetFrom, setCopiesOnly, setDataset, type ReachRow, type RunLineRow } from './dataset'
 import './style.css'
 
 // The page takes the theme the person chose in the shared top bar; before it paints, the device's.
@@ -29,7 +29,12 @@ async function start() {
       listAll<ReachRow>('forecasting.reach', ['full_name', 'code', 'role', 'place', 'reports_to', 'places_json'])])
     const dataset = datasetFrom(lines, reach)
     // The made-up data is for a local instance only: a hosted one with no Run loaded says so instead.
-    if (!dataset && !LOCAL) { root.render(<NoRun />); return }
+    if (!dataset && !LOCAL) {
+      // a hosted instance on the read-only copies (#1418): open the pages built on them once an official Run is loaded
+      const runs = await listAll<{ run_id: string }>('forecasting.forecast_run', ['run_id']).catch(() => [])
+      if (!runs.length) { root.render(<NoRun />); return }
+      setCopiesOnly(true)
+    }
     setDataset(dataset)
   } catch (e) {
     if ((e as { status?: number }).status === 401) { window.location.href = `/featherbase/login?next=${encodeURIComponent(location.pathname + location.search)}`; return }
