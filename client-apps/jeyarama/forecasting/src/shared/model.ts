@@ -225,3 +225,11 @@ export function nearest<T extends Pick<Line, 'name'>>(lines: T[], q: string, n =
   return lines.map(l => { const b = tri(l.name); let both = 0; a.forEach(x => { if (b.has(x)) both++ }); return [l, both / (a.size + b.size - both)] as const })
     .sort((x, y) => y[1] - x[1]).slice(0, n).map(([l]) => l)
 }
+
+/** A row's contribution among its siblings (Siraj, 28-Nov: "contribution across similar items in each screen"): its
+ *  value over the siblings' total, as a whole %, "<1%" for a sliver above none; "—" with nothing to divide by. */
+export function contribution(value: number, siblingsTotal: number): string {
+  if (!siblingsTotal) return '—'
+  const p = value / siblingsTotal * 100
+  return p > 0 && p < 1 ? '<1%' : `${Math.round(p)}%`
+}
