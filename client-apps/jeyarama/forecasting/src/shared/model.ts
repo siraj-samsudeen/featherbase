@@ -187,7 +187,7 @@ export type HelpTopic = 'recent' | 'step' | 'lastyear' | 'adjust' | 'adjust-pric
 export const PARTS: { key: PartKey; label: string; color: string; topic: HelpTopic }[] = [
   { key: 'fromRecent', label: 'From recent selling', color: 'var(--color-part-recent)', topic: 'recent' },
   { key: 'lift', label: 'December step on top', color: 'var(--color-part-step)', topic: 'step' },
-  { key: 'lyg', label: 'From last year × growth', color: 'var(--color-part-last-year)', topic: 'lastyear' },
+  { key: 'lyg', label: 'From last year', color: 'var(--color-part-last-year)', topic: 'lastyear' },
   { key: 'adj', label: 'Rebalanced, price and rounding', color: 'var(--color-part-adjust)', topic: 'adjust' },
 ]
 /** Each part's share of the forecast, in %, never below zero. */
@@ -229,7 +229,7 @@ export function monthOfRun(horizonFrom: string) {
 
 // ---- what the opened line says (TL-26, TL-28) ----------------------------------------------------------
 export const BASE_INFO: Record<BasisCode, string> = {
-  B1: 'Same date last year × growth', B2: 'Same festival day last year × growth', B3: 'Last 28 days, per day × 31',
+  B1: 'Same date last year', B2: 'Same festival day last year', B3: 'Last 28 days, per day × 31',
   B4: 'Last four same weekdays', B5: 'Same date last month', B6: 'Last 28 days × December step',
 }
 /** A base's weight as shown: Feather Forecast's fitted month weight, else (a Run without it) adds ÷ own. */

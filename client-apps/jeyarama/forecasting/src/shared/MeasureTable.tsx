@@ -146,7 +146,7 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
               ? <Hover text={`Each row's part of the rows beside it at the same level (they add up to 100%): ${b[0] === 'fc' ? 'Feather Forecast' : `${month.name} ${month.year - 1}`}`}>Share</Hover>
               : { v: 'Value', q: 'Qty', a: 'ASP' }[m]}</th>))}
             <th className="fr-b0">{onSort ? sortable('ly', vsAop ? <>Last<br />year</> : 'Last year', `${month.name} ${month.year - 1}, biggest change in rupees first`) : <Hover text={`${month.name} ${month.year - 1}`}>Last year</Hover>}</th>
-            <th><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>{vsAop ? <>Last<br />month</> : 'Last month'}</Hover></th>
+            <th><Hover text={`Last 28 days at ${month.name}'s ${month.days} days`}>{vsAop ? <>Last<br />month ({month.days}-day)</> : `Last month (${month.days}-day)`}</Hover></th>
             {showAop && <th>{onSort ? sortable('aop', 'AOP', 'Feather Forecast against the annual plan, furthest behind first') : <Hover text={`The annual plan for ${month.label}`}>AOP</Hover>}</th>}<th className="fr-b0" />{rowEnd && <th />}</tr>
         </thead>
         <tbody>{rows.map(r => {
