@@ -331,3 +331,7 @@ tr.fr-band .fr-pill { background: var(--color-surface); }
 .fr-att-answerbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 14px; }
 .fr-att-answerbar .fr-att-answer { margin: 0; }
 .fr-att-progress { font-size: 13px; }
+/* a region's stores, one row each until opened (#4935) */
+.fr-att-grpbtn { border: 0; background: none; padding: 0 4px 0 0; cursor: pointer; color: inherit; }
+.fr-att-caret { display: inline-block; width: 12px; }
+.fr-att-more { padding: 6px 12px 10px; font-size: 13px; }

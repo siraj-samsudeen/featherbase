@@ -247,6 +247,11 @@ function ChainPage({ view }: { view: ChainView }) {
     chain,
     hrefFor: l => address(view, { line: l.rowId, ...(month ? { month } : {}) }),
     openLine: line,
+    // the Store Manager's and RB's Day Review and Needs Your Attention, as tabs beside the review's own (#4935)
+    pagesFor: view === 'category-review' ? undefined : at => {
+      const reach: Record<string, string> = 'store' in at ? { reach: 'store', store: at.store } : { reach: 'region', region: at.region }
+      return [{ id: 'days', label: 'Days', href: address('days', reach) }, { id: 'attention', label: 'Needs Your Attention', href: address('attention', reach) }]
+    },
     onOpenLine: rowId => {
       const q = new URLSearchParams(window.location.search)
       if (rowId) q.set('line', rowId); else q.delete('line')

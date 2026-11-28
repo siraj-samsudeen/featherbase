@@ -9,6 +9,8 @@ import { ScopeSearch, type ScopeState } from './ScopeSearch'
 import type { Kind } from './scope'
 
 export interface View { id: string; label: string; content: ReactNode }
+/** A tab that opens another page: the store's or the region's Days and Needs Your Attention, before Help. */
+export interface ViewLink { id: string; label: string; href: string }
 
 /** The view in the address (?tab=), or the page's first. */
 export function useView(ids: string[]) {
@@ -28,9 +30,13 @@ export function useView(ids: string[]) {
 
 /** One underlined row of tabs (.fr-tabs, the Team Leader page's too); ← → Home End move along it, as Shop Floor's
  *  ContentTabs do. */
-function ViewTabs({ views, value, onChange }: { views: View[]; value: string; onChange: (id: string) => void }) {
+function ViewTabs({ views, value, onChange, links = [] }: { views: View[]; value: string; onChange: (id: string) => void; links?: ViewLink[] }) {
   const id = useId()
   const buttons = useRef<(HTMLButtonElement | null)[]>([])
+  // tabs that open other pages go before Help (after the last view when there is none)
+  const linkTabs = links.map(l => (
+    <button key={`link-${l.id}`} type="button" role="tab" aria-selected={false} tabIndex={-1} data-href={l.href}
+      onClick={() => { history.pushState(null, '', l.href); window.dispatchEvent(new PopStateEvent('popstate')) }}>{l.label}</button>))
   return <>
     <nav className="fr-tabs" role="tablist" aria-label="Views" data-testid="view-tabs">
       {views.map((v, i) => (
@@ -41,14 +47,14 @@ function ViewTabs({ views, value, onChange }: { views: View[]; value: string; on
               : e.key === 'ArrowLeft' ? (i - 1 + views.length) % views.length : null
             if (next === null) return
             e.preventDefault(); onChange(views[next].id); buttons.current[next]?.focus()
-          }}>{v.label}</button>))}
+          }}>{v.label}</button>)).flatMap((b, i) => (i !== views.length - 1 ? [b] : views[i].id === 'help' ? [...linkTabs, b] : [b, ...linkTabs]))}
     </nav>
     {views.map(v => (
       <div key={v.id} id={`${id}-panel-${v.id}`} role="tabpanel" aria-labelledby={`${id}-tab-${v.id}`} hidden={value !== v.id} className="fr-tabpanel min-w-0">{v.content}</div>))}
   </>
 }
 
-export function ReviewFrame({ title, status, actions, all, scope, kinds, views, view, onView, testId, unsaved = false }: {
+export function ReviewFrame({ title, status, actions, all, scope, kinds, views, view, onView, testId, unsaved = false, links }: {
   title: string; status: string; actions?: ReactNode
   /** On a real Run the managers' approvals, changes and questions are not saved yet (the hook is a stand-in until
    *  they write the tables): say so rather than show "You approved" and lose it on reload. */
@@ -58,13 +64,15 @@ export function ReviewFrame({ title, status, actions, all, scope, kinds, views, 
   /** The page's views in order, Help last; `view` is the one shown. */
   views: View[]; view: string; onView: (id: string) => void
   testId?: string
+  /** Tabs that open other pages, before Help. */
+  links?: ViewLink[]
 }) {
   return (
     <div className="fr flex flex-col" data-testid={testId}>
       <PageHeader title={title} status={status} actions={actions} />
       {unsaved && <Notice tone="caution" className="mb-3">Approvals, changes and questions on this page are not saved yet: they last until you reload. Team Leaders' proposals do not show here yet.</Notice>}
       <ScopeSearch all={all} state={scope} kinds={kinds} />
-      <ViewTabs views={views} value={view} onChange={onView} />
+      <ViewTabs views={views} value={view} onChange={onView} links={links} />
     </div>
   )
 }

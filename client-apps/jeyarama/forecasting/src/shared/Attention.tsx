@@ -164,11 +164,16 @@ function Pane({ f, header, place, index, of, onClose, onMove, href, onOpen, open
   )
 }
 
-function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine, grouping, placed }: { tab: Tab; findings: Finding[]; open: Finding | null; onOpen: (f: Finding) => void; month: Header['month']
+/** A region's page opens each store as one row; a store opens to its top few, then all (design session, 28-Nov). */
+export const TOP_PER_GROUP = 10
+
+function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine, grouping, placed, limits, onLimit }: { tab: Tab; findings: Finding[]; open: Finding | null; onOpen: (f: Finding) => void; month: Header['month']
   /** A subcategory is a record: its link opens the review with it (and its band) open. */
   lineHref: (f: Finding) => string; onLine: (f: Finding) => void
   /** How rows are grouped; and which place a one-list table names in a column ('section' or 'atStore'), if any. */
-  grouping: Grouping; placed: 'section' | 'atStore' | null }) {
+  grouping: Grouping; placed: 'section' | 'atStore' | null
+  /** Collapsed groups (a region's stores): how many rows each group shows (none: 0), and a change to it. */
+  limits?: Record<string, number>; onLimit?: (group: string, rows: number) => void }) {
   const [sort, setSort] = useState<Sort>({ col: COLS[tab.key].includes('amt') ? 'amt' : 'soldValue', dir: -1 })
   const base = open ? KEY_COLS[tab.key] : COLS[tab.key]
   const cols = grouping === 'none' && placed ? [base[0], placed, ...base.slice(1)] : base
@@ -184,8 +189,14 @@ function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine, groupi
           </th>))}</tr></thead>
         <tbody>{groups.filter(([, fs]) => fs.length).map(([g, fs, note, gk]) => (
           <Fragment key={gk}>
-            {g && <tr><td colSpan={cols.length} className="fr-att-grp">{g} <span className="fr-dim">{fs.length} · {inr(total(fs))} {note}</span></td></tr>}
-            {sortBy(fs, sort).map((f, k) => (
+            {g && (onLimit ? (
+              <tr className="fr-att-grprow" data-group={gk}><td colSpan={cols.length} className="fr-att-grp">
+                <button type="button" className="fr-att-grpbtn" aria-expanded={(limits?.[gk] ?? 0) > 0} onClick={() => onLimit(gk, (limits?.[gk] ?? 0) > 0 ? 0 : TOP_PER_GROUP)}>
+                  <span aria-hidden className="fr-att-caret">{(limits?.[gk] ?? 0) > 0 ? '▾' : '▸'}</span></button>
+                {' '}{g} <span className="fr-dim">{fs.length} · </span><b className={fs[0].colour === 'red' ? 'fr-short' : fs[0].colour === 'purple' ? 'fr-over' : undefined}>{inr(total(fs))}</b>
+                <span className="fr-dim"> {note ? `${note} · ` : '· '}worst: {fs[0].title} ({inr(fs[0].rupees)})</span></td></tr>)
+              : <tr><td colSpan={cols.length} className="fr-att-grp">{g} <span className="fr-dim">{fs.length} · {inr(total(fs))} {note}</span></td></tr>)}
+            {sortBy(fs, sort).slice(0, onLimit ? limits?.[gk] ?? 0 : undefined).map((f, k) => (
               <tr key={`${f.kind}:${f.title}:${k}`} className={cx('group fr-att-row', `fr-att-${f.colour}`)} aria-selected={open === f} tabIndex={0}
                 onClick={() => onOpen(f)} onKeyDown={e => { if (e.key === 'Enter') onOpen(f) }}>
                 {cols.map((c, j) => <td key={c} className={cellClasses({ first: j === 0, last: j === cols.length - 1,
@@ -197,6 +208,8 @@ function TabTable({ tab, findings, open, onOpen, month, lineHref, onLine, groupi
                   : c === 'store' && f.n.storeCode ? <span onClick={e => e.stopPropagation()}><StoreLink code={String(f.n.storeCode)} name={show(c, f)} /></span>
                   : show(c, f)}</td>)}
               </tr>))}
+            {onLimit && (limits?.[gk] ?? 0) > 0 && (limits?.[gk] ?? 0) < fs.length && (
+              <tr><td colSpan={cols.length} className="fr-att-more"><button type="button" className="fr-link" onClick={() => onLimit(gk, fs.length)}>Show all {fs.length}</button></td></tr>)}
           </Fragment>))}</tbody>
       </table>
     </div>
@@ -220,18 +233,21 @@ export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTa
   progress?: ReactNode
 }) {
   const [grouping, setGrouping] = useState<Grouping>(over ?? 'none')
+  // a region's stores open closed: one row each, a store's top rows when opened, all on asking
+  const [limits, setLimits] = useState<Record<string, number>>({})
+  const collapsed = over === 'store' && grouping === 'store'
   const m = header.month, asOf = header.stockAsOf ? day(header.stockAsOf) : '—'
   // the first tab with findings opens first
   const tab = chosen === 'help' || ATTENTION_TABS.some(t => t.key === chosen) ? chosen! : (ATTENTION_TABS.find(t => tabFindings(findings, t.key).length) ?? ATTENTION_TABS[0]).key
   const openTab = ATTENTION_TABS.find(t => t.key === tab)
   const fs = openTab ? tabFindings(findings, openTab.key) : []
   const [open, setOpen] = useState<Finding | null>(null)
-  useEffect(() => setOpen(null), [tab])
+  useEffect(() => { setOpen(null); setLimits({}) }, [tab])
   const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth))
   useEffect(() => { const on = () => setWidth(window.innerWidth); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on) }, [])
   const place = resolvePanePlace('auto', width)
   // ↑ ↓ follow the table's own order: by place, and Bring In before Send Out, each by ₹
-  const order = openTab ? groupsOf(openTab, fs, grouping).flatMap(g => g.fs) : fs
+  const order = openTab ? groupsOf(openTab, fs, grouping).flatMap(g => (collapsed ? g.fs.slice(0, limits[g.key] ?? 0) : g.fs)) : fs
   const at = open ? order.indexOf(open) : -1
   const move = (step: 1 | -1) => { const next = order[at + step]; if (next) setOpen(next) }
   return (
@@ -258,7 +274,8 @@ export function NeedsAttention({ findings, header, othersAsOf, tab: chosen, onTa
             <p className="fr-att-about">{openTab.about(m)}</p>
             {!fs.length ? <p className="fr-att-none">Nothing here for {scopeName ?? header.section} today.</p>
               : <TabTable key={openTab.key} tab={openTab} findings={fs} open={open} onOpen={setOpen} month={m} lineHref={href} onLine={onOpen}
-                grouping={grouping} placed={over === 'section' ? 'section' : over === 'store' ? 'atStore' : null} />}
+                grouping={grouping} placed={over === 'section' ? 'section' : over === 'store' ? 'atStore' : null}
+                {...(collapsed ? { limits, onLimit: (g: string, n: number) => setLimits(l => ({ ...l, [g]: n })) } : {})} />}
             <p className="fr-dim fr-att-note">₹ at selling price (never cost), to {endOf(m)} from the stock on {asOf} at {m.name}'s forecast pace.
               {openTab.key === 'transfers' && ` Other stores' stock as of ${othersAsOf ? day(othersAsOf) : '—'}; same region only; at least ${T.minTransferPcs} pcs, and a store must have sold at least ${T.minSellingTherePcs} in 28 days to be offered stock.`}
               {' '}Click a row for its details; sort by any heading.</p>
