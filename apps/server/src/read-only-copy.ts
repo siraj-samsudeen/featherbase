@@ -338,7 +338,7 @@ export async function checkCopy(target: string, opts: LoadOptions = {}): Promise
       await checkShape(dataset, await describeOrRefuse(() => driver.describe!(source, text, values)))
       snapshot = randomUUID()
       await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, triggered_by)
-        values (${snapshot}, ${target}, ${shapeVersion(dataset)}, 'building', now(), ${opts.trigger ?? null})`
+        values (${snapshot}, ${target}, ${shapeVersion(dataset)}, 'building', clock_timestamp(), ${opts.trigger ?? null})`
       const t0 = Date.now()
       const rows = await copyRows(target, dataset, snapshot, driver.stream(source, selectText(dataset, text), values))
       const loadMs = Date.now() - t0
@@ -366,7 +366,7 @@ async function refused(target: string, reason: string, opts: LoadOptions, snapsh
   if (!snapshot) {
     snapshot = randomUUID()
     await sql`insert into dataset_snapshot (row_id, dataset, state, built_at, triggered_by, error)
-      values (${snapshot}, ${target}, 'failed', now(), ${opts.trigger ?? null}, ${reason})`
+      values (${snapshot}, ${target}, 'failed', clock_timestamp(), ${opts.trigger ?? null}, ${reason})`
   }
   return { status: 'refused', snapshot, reason: `${target.split('.')[1]}: ${reason}` }
 }

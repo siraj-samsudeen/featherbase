@@ -207,7 +207,7 @@ async function* stream(cfg: SourceConfig, text: string, values: unknown[]): Asyn
   } finally {
     // Read-only, so ending it either way is the same; a reader that stopped
     // early must not hand the connection back mid-transaction.
-    await reserved?.unsafe('rollback').catch(() => {})
+    try { await reserved?.unsafe('rollback') } catch { /* the connection is gone; release drops it */ }
     reserved?.release()
   }
 }

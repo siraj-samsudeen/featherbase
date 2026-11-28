@@ -587,7 +587,7 @@ describe('an app job row stays the app\'s', () => {
 
 describe('a dataset the job declares', () => {
   test('reaches the platform\'s dataset reads, cached and live, with no refusal', async ({ admin }) => {
-    const datasets = { datasets: [{ name: 'exits', source: 'fbjobs-absent-source', query: 'select code, store from exits',
+    const datasets = { datasets: [{ name: 'exits', store: 'json', source: 'fbjobs-absent-source', query: 'select code, store from exits',
       columns: [{ name: 'code', type: 'text' }, { name: 'store', type: 'text' }], keys: ['code'], filters: { store: 'store' } }] }
     const job: Job = { name: 'read_declared', cadence: 'daily', description: 'Reads its own dataset.', datasets: ['exits'] }
     expect(await discoverPackages([await writeApp({ jobs: [job], extra: datasets })])).toEqual([])
@@ -641,7 +641,7 @@ describe('an upgrade cannot widen what a kept job reads', () => {
     migrations: [{ id: 'jobs_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] })
 
   test('a kept job may not gain a dataset', async ({ admin }) => {
-    const datasets = { datasets: [{ name: 'exits', source: 'fbjobs-warehouse', query: 'select code, store from exits',
+    const datasets = { datasets: [{ name: 'exits', store: 'json', source: 'fbjobs-warehouse', query: 'select code, store from exits',
       columns: [{ name: 'code', type: 'text' }, { name: 'store', type: 'text' }], keys: ['code'], filters: { store: 'store' } }] }
     const v1 = await writeApp({ jobs: [tidy], extra: datasets })
     expect(await discoverPackages([v1])).toEqual([])

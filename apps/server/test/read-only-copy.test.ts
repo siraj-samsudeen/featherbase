@@ -137,6 +137,14 @@ describe('a load', () => {
     expect(await load(LINES)).toMatchObject({ reason: 'forecast_line_day: value is type 1231 in the source, not money. The last good load is kept' })
   })
 
+  test('that the source stops partway fails, so its job retries, and keeps nothing', async ({ admin }) => {
+    await installed(admin, [lines({ query: `select run_id, store_code, subcategory_code, sale_date,
+      case when store_code = 'RVR' then value / 0 else value end as value from ${warehouse.schema}.forecast_line_day where run_id = {run_id}` })], [LKS, RVR])
+    await expect(load(LINES)).rejects.toThrow('division by zero')
+    expect(await rows(LINES)).toEqual([])
+    expect(await parts()).toBe(0)
+  })
+
   test('that cannot reach its relation fails, so its job retries', async ({ admin }) => {
     await installed(admin, [lines({ query: 'select * from nowhere.forecast_line_day where run_id = {run_id}' })])
     await expect(load(LINES)).rejects.toThrow(/relation "nowhere.forecast_line_day" does not exist/)
@@ -244,6 +252,7 @@ describe('the copy’s check', () => {
     await installed(admin)
     const method = await scheduled()
     await expectRefused(admin.post('/api/copy_check_now', {}), 417)
+    expect((await admin.fetch('/api/copy_check_now', { method: 'POST', body: 'not json' })).status).toBe(417)
     await expectRefused(admin.post('/api/copy_check_now', { table: `${APP}.note` }), 404)
     await expectRefused((await createUser({ roles: [] })).post('/api/copy_check_now', { table: LINES }), 403)
     await sql`delete from background_job where method = ${method}`
@@ -329,6 +338,9 @@ describe('a copy from DuckDB', () => {
     await changeStandin(dir, 'sales', ['alter table fb_forecast_line_day rename column value to forecast_value'])
     invalidateSources()
     expect(await load(LINES, { force: true })).toMatchObject({ status: 'refused', reason: expect.stringContaining('the source has no column value (renamed or removed?)') })
+    await changeStandin(dir, 'sales', ['drop table fb_forecast_line_day'])
+    invalidateSources()
+    await expect(load(LINES, { force: true })).rejects.toThrow(/fb_forecast_line_day does not exist/)
   })
 
   test('says what family each DuckDB type is', () => {
