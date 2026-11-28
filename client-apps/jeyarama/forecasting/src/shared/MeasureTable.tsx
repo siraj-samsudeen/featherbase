@@ -6,7 +6,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight, PartsBar, cx } from '@featherbase/shop-floor'
 import { Hover } from './Hover'
-import { asp, contribution, count, inr, pc, shares, type Group, type Line } from './model'
+import { asp, contributions, count, inr, pc, shares, type Group, type Line } from './model'
 import { VsAop } from './Aop'
 import type { Header } from './review'
 import type { ViewChoices } from './ReviewToolbar'
@@ -109,11 +109,15 @@ export function MeasureTable({ header, view, rows, total, totalLabel = 'Section'
   const SHARED = new Set(['fc', 'ly'])
   const colsOf = (b: Block): M[] => [...measures, ...(SHARED.has(b[0]) ? ['s' as const] : [])]
   const parentOf = parentsOf(rows)
-  const siblingsTotal = (key: string, k: string) => rows.filter(x => parentOf.get(x.key) === parentOf.get(key))
-    .reduce((t, x) => t + ((x.item as unknown as Record<string, number>)[k] || 0), 0)
+  // each sibling group's shares, rounded together so they show exactly 100% (largest remainder)
+  const shareOf = new Map<string, string>()
+  for (const k of SHARED) for (const parent of new Set(parentOf.values())) {
+    const sibs = rows.filter(x => parentOf.get(x.key) === parent)
+    contributions(sibs.map(x => (x.item as unknown as Record<string, number>)[k] || 0)).forEach((t, i) => shareOf.set(`${k}|${sibs[i].key}`, t))
+  }
   const share = (key: string | null, l: Item, k: string) => {
     const v = (l as unknown as Record<string, number>)[k] || 0
-    return key == null ? (v ? '100%' : '—') : contribution(v, siblingsTotal(key, k))
+    return key == null ? (v ? '100%' : '—') : shareOf.get(`${k}|${key}`) ?? '—'
   }
   const columns = 1 + blocks.reduce((t, b) => t + colsOf(b).length, 0) + vs + 1 + (rowEnd ? 1 : 0)
   const cell = (l: Item, [k, q]: Block, m: M, first: boolean, cls: string, key: string | null) => {
