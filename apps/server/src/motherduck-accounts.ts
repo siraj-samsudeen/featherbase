@@ -380,17 +380,16 @@ export async function fileReviewTicketsUnderUmbrella(apply: boolean): Promise<{ 
   const known = await findUmbrella(actor)
   if (!apply || !loose.length) return { umbrella: known ? String(known.row_id) : null, tickets, filed: [], errors: [] }
   const [reviewer] = await sql`select value from single_value where table_name = 'System Settings' and field = 'motherduck_reviewer'`
-  const filed: string[] = [], errors: string[] = []
+  const filed: string[] = []
+  // A ticket Tickets refuses stops the run with its reason; those filed stay filed, and a rerun files the rest.
   return runAsSystemActor(actor, async () => {
     const umbrella = await openUmbrella(actor, reviewer?.value ? String(reviewer.value) : null)
     for (const t of loose) {
-      try {
-        await ticketAction(actor, 'edit', { row_id: String(t.row_id), updated_at: iso(t.updated_at), parent_ticket: umbrella },
-          `motherduck-umbrella-file-${String(t.row_id)}-${iso(t.updated_at)}`)
-        filed.push(String(t.row_id))
-      } catch (error) { errors.push(`${String(t.row_id)}: ${String(error).slice(0, 200)}`) }
+      await ticketAction(actor, 'edit', { row_id: String(t.row_id), updated_at: iso(t.updated_at), parent_ticket: umbrella },
+        `motherduck-umbrella-file-${String(t.row_id)}-${iso(t.updated_at)}`)
+      filed.push(String(t.row_id))
     }
-    return { umbrella, tickets, filed, errors }
+    return { umbrella, tickets, filed, errors: [] }
   })
 }
 
