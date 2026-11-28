@@ -277,6 +277,36 @@ describe('a change on the managers\' pages (#1442)', () => {
     })
   })
 
+  describe('who decides, and who only reviews', () => {
+    it('is the Store Manager only: a Department Manager of the store does not decide', async () => {
+      const dm = { full_name: 'Dev', role: 'Department Manager', place: 'North', reports_to: 'Lena', places_json: '[]' }
+      REACH.push(dm); IDS.u_dev = 'Dev'
+      try { await expect(call('forecasting.forecast_change', 'u_dev', { change_status: 'approved', decided_by: 'Dev' }, sent)).rejects.toThrow(/Store Manager decides/) }
+      finally { REACH.pop(); delete IDS.u_dev }
+    })
+    it("keeps line answers and day explanations to Team Leaders and Store Managers: a category head or the Chief Executive changes and asks, nothing more", async () => {
+      const review = { run_id: 'r', store_code: '9001', category_name: 'Kids Bottom', subcategory_name: 'Kids Jean', answer: 'accepted' }
+      const ctxOf = (user: string, table: 'forecasting.forecast_line_review' | 'forecasting.day_explanation', row: Record<string, unknown>) => validators[table]({ user, roles: ['Forecasting Member'], isNew: true, row,
+        documents: { members: async () => Object.entries(IDS).map(([row_id, full_name]) => ({ row_id, full_name })), list }, baseTables, reject(message: string): never { throw new Error(message) } })
+      await expect(ctxOf('u_lena', 'forecasting.forecast_line_review', { ...review, reviewer: 'Lena' })).rejects.toThrow(/does not do this/)
+      await expect(ctxOf('u_priya', 'forecasting.forecast_line_review', { ...review, reviewer: 'Priya' })).rejects.toThrow(/does not do this/)
+      await expect(ctxOf('u_omar', 'forecasting.forecast_line_review', { ...review, reviewer: 'Omar' })).resolves.toBeUndefined()
+      const day = { run_id: 'r', store_code: '9001', section_name: 'Kids', subcategory_name: null, explained_date: '2026-12-03', direction: 'below',
+        causes: 'Weak store execution', tags: 'Weak store execution › Low footfall', explained_by: 'Lena' }
+      await expect(ctxOf('u_lena', 'forecasting.day_explanation', day)).rejects.toThrow(/does not do this/)
+    })
+  })
+
+  describe('an administrator viewing a manager\'s page', () => {
+    it('decides and takes back as the person named, stamped; never edits the numbers, and names who decides', async () => {
+      await expect(call('forecasting.forecast_change', 'Administrator', { change_status: 'approved', decided_by: 'Omar' }, sent)).resolves.toMatchObject({ decided_by: 'Omar', decided_at: expect.any(String) })
+      await expect(call('forecasting.forecast_change', 'Administrator', { change_status: 'approved' }, sent)).rejects.toThrow(/Say who decides/)
+      await expect(call('forecasting.forecast_change', 'Administrator', { change_status: 'approved', decided_by: 'Omar', changed_value_before_tax: 1 }, sent)).rejects.toThrow(/cannot change once it is sent/)
+      const approved = { ...sent, change_status: 'approved', decided_by: 'Omar', decided_at: '2026-12-02T10:00:00Z' }
+      await expect(call('forecasting.forecast_change', 'Administrator', { change_status: 'sent' }, approved)).resolves.toMatchObject({ change_status: 'sent', decided_by: null })
+    })
+  })
+
   describe('a decision taken back (Undo)', () => {
     const approved = { ...sent, change_status: 'approved', decided_by: 'Omar', decided_at: '2026-12-02T10:00:00Z' }
     it('is taken back to sent only by the person who decided it', async () => {
@@ -289,6 +319,17 @@ describe('a change on the managers\' pages (#1442)', () => {
       await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'withdrawn' }, own)).resolves.toMatchObject({ change_status: 'withdrawn' })
       await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'withdrawn' }, approved)).rejects.toThrow(/taken back by the person who approved it/)
       await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'sent' }, own)).rejects.toThrow(/never decided/)
+    })
+    it('refuses a proposer taking back their own replaced change, and moves the chain does not list', async () => {
+      await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'sent' }, { ...sent, change_status: 'replaced' })).rejects.toThrow(/never decided/)
+      const rejected = { ...sent, change_status: 'rejected', decided_by: 'Omar', decision_note: 'no' }
+      await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'withdrawn' }, rejected)).rejects.toThrow(/cannot go from rejected to withdrawn/)
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'approved', decided_by: 'Omar' }, rejected)).rejects.toThrow(/cannot go from rejected to approved/)
+    })
+    it("keeps who proposed it, in what role, and what it replaces; a decision never sends the proposer's reasons", async () => {
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'approved', decided_by: 'Omar', proposed_by_role: 'Store Manager' }, sent)).rejects.toThrow(/proposed_by_role cannot change/)
+      await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'withdrawn', replaces_change: 'CH-9' }, sent)).rejects.toThrow(/replaces_change cannot change/)
+      await expect(call('forecasting.forecast_change', 'u_omar', { change_status: 'approved', decided_by: 'Omar', reasons: [] }, sent)).rejects.toThrow(/reasons are its proposer's/)
     })
     it('never moves a withdrawn change', async () => {
       await expect(call('forecasting.forecast_change', 'u_tara', { change_status: 'sent' }, { ...sent, change_status: 'withdrawn' })).rejects.toThrow(/cannot go from withdrawn to sent/)

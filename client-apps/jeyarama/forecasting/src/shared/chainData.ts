@@ -20,6 +20,8 @@ export interface Chain {
   lines: Line[]; sections: SectionInfo[]; people: ChainPerson[]; proposals: ProposalItem[]
   /** A real Run's month: its Runs (one per region), and the changes the proposals were read from, by row id (#1442). */
   runIds?: string[]; changes?: Map<string, ChangeRow>
+  /** Why the Team Leaders' proposals could not be read; the pages still open on the Run. */
+  problem?: string
   /** The Run's sales cut-off and first day (YYYY-MM-DD). */
   cutOff: string; horizon: string
 }
@@ -95,6 +97,8 @@ export async function loadRealChain(): Promise<Chain | null> {
     place: [...new Set([...at.keys()].map(s => lines.find(l => l.store === s)?.region).filter(Boolean))].join(' and '),
     places: [...at].map(([store, codes]) => ({ store, codes: [...codes].sort() })) })).sort((a, b) => size(b) - size(a))
   // the Team Leaders' changes on these lines, for each manager's Approvals (each page keeps to its own lines)
-  const { proposals, rows: changes } = await loadProposals(month, lines)
-  return { real: true, lines, sections, people: [...people, ...headPeople], proposals, runIds: month, changes, cutOff: run.origin_date.slice(0, 10), horizon: first }
+  const read = await loadProposals(month, lines).catch((e: Error) => e)
+  const { proposals, rows: changes } = read instanceof Error ? { proposals: [], rows: undefined } : read
+  return { real: true, lines, sections, people: [...people, ...headPeople], proposals, runIds: month, changes, cutOff: run.origin_date.slice(0, 10), horizon: first,
+    ...(read instanceof Error ? { problem: `Team Leaders' proposals could not be read, so none show and nothing can be decided: ${read.message}` } : {}) }
 }

@@ -17,7 +17,7 @@ export function useChainReview(initial: ProposalItem[], live?: Live) {
   const real = Boolean(live?.chain.real && live.chain.runIds)
   const [proposals, setProposals] = useState(initial)
   const [state, setState] = useState<ReviewState>({ answers: {}, questions: [] })
-  const [problem, setProblem] = useState<string | null>(null)
+  const [problem, setProblem] = useState<string | null>(live?.chain.problem ?? null)
   const own = useMemo(() => new Map<string, ChangeRow>(), [live?.person])
   const lineAt = useMemo(() => new Map((live?.chain.lines ?? []).map(l => [l.rowId, l])), [live?.chain.lines])
   const writes = useMemo(() => (real && live ? chainWrites(live.person, live.role, live.chain.changes ?? new Map(), own, id => lineAt.get(id)) : null), [real, live?.person, live?.role, live?.chain, own, lineAt])
@@ -54,7 +54,7 @@ export function useChainReview(initial: ProposalItem[], live?: Live) {
   }
   const answer = (l: Line, a: Answer) => setState(s => ({ ...s, answers: { ...s.answers, [l.rowId]: a } }))
   const actions: ReviewActions = {
-    accept: async l => answer(l, { status: 'accepted', value: null, reasons: [], note: '' }),
+    accept: l => saved(() => writes!.accept(l), () => answer(l, { status: 'accepted', value: null, reasons: [], note: '' })),
     propose: (l, p) => saved(() => writes!.propose(l, p), () => answer(l, { status: 'change_proposed', value: p.value, reasons: p.reasons, note: p.note, change: p.change })),
     ask: async (l, text) => {
       let id = ''

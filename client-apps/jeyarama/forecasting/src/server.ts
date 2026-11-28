@@ -242,12 +242,16 @@ async function reviews(ctx: Context, p: Who, line: Row): Promise<boolean> {
 }
 /** The roles a manager's page acts in; an administrator viewing one acts in the role it names (#1442). */
 const PAGE_ROLES = ['Team Leader', 'Store Manager', 'Category Head', 'Chief Executive']
-async function reviewer(ctx: Context, named: unknown, line: Row, claimedRole?: unknown): Promise<Who> {
+/** Who answers a line or explains a day: a Team Leader for their section, a Store Manager for their store. The
+ *  category head and the Chief Executive also change a line and ask about it (#1442), and nothing more. */
+const LINE_ROLES = ['Team Leader', 'Store Manager', 'Department Manager']
+async function reviewer(ctx: Context, named: unknown, line: Row, claimedRole?: unknown, roles: string[] = LINE_ROLES): Promise<Who> {
   // An administrator acts for a person by name (the app's "view a section as its Team Leader", a manager's page
   // "viewing as"), whether or not that person is on the forecasting org chart: as a Team Leader unless the row names
   // one of the managers' roles.
-  if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: PAGE_ROLES.includes(String(claimedRole)) ? String(claimedRole) : 'Team Leader', reportsTo: null, area: `${String(line.store_short_code)} · ${String(ctx.row.section_name ?? '')}` }
+  if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: PAGE_ROLES.includes(String(claimedRole)) && roles.includes(String(claimedRole)) ? String(claimedRole) : 'Team Leader', reportsTo: null, area: `${String(line.store_short_code)} · ${String(ctx.row.section_name ?? '')}` }
   const p = await actor(ctx, await orgOf(ctx), named)
+  if (!roles.includes(p.role)) ctx.reject(`A ${p.role} does not do this on a line`)
   if (!(await reviews(ctx, p, line))) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_short_code)} · ${String(line.subcategory_name)} is outside it`)
   return p
 }
@@ -264,7 +268,7 @@ async function prepareChange(ctx: Context) {
   const { row } = ctx
   if (!ctx.isNew) return moveChange(ctx)
   const line = await lineOf(ctx)
-  const p = await reviewer(ctx, row.proposed_by, line, row.proposed_by_role)
+  const p = await reviewer(ctx, row.proposed_by, line, row.proposed_by_role, PAGE_ROLES)
   row.proposed_by_role = p.role
   if (!String(row.explanation ?? '').trim()) ctx.reject('Explain your proposed change', { explanation: 'Required' })
   if (row.change_scope !== 'month') ctx.reject('A change covers the whole month for now', { change_scope: 'month' })
@@ -303,7 +307,8 @@ const CHANGE_MOVES: Record<string, Record<string, Mover[]>> = {
   rejected: { sent: ['who decided'] },
   replaced: { sent: ['who decided'] },
 }
-const DECIDERS = ['Store Manager', 'Department Manager']
+/** The settled rule (27-Nov-2026): the Store Manager of the line's store decides; nobody above them does. */
+const DECIDERS = ['Store Manager']
 async function moveChange(ctx: Context) {
   const { row, old } = ctx
   const from = String(old?.change_status), to = String(row.change_status)
@@ -313,6 +318,9 @@ async function moveChange(ctx: Context) {
   if (moved.length) ctx.reject(`A change's ${moved.join(', ')} cannot change once it is sent: send a new one that replaces it`)
   // a decision is the person's who makes it; a proposer's own move leaves the decision columns alone
   const deciding = to === 'approved' || to === 'rejected' || (to === 'replaced' && Boolean(row.decided_by))
+  if (deciding && !String(row.decided_by ?? '').trim()) ctx.reject('Say who decides', { decided_by: 'Required' })
+  // the reasons are the proposer's: a decision, or taking one back, never sends them (a sub-table is in the row only when sent)
+  if ((deciding || to === 'sent') && Array.isArray(row.reasons)) ctx.reject("A change's reasons are its proposer's")
   const undoing = to === 'sent'
   const stamp = () => {
     if (undoing) Object.assign(row, { decided_by: null, decided_at: null, decision_note: null })
@@ -392,7 +400,7 @@ async function prepareQuestion(ctx: Context) {
   const { row, old } = ctx
   if (ctx.isNew) {
     const line = await lineOf(ctx)
-    await reviewer(ctx, row.asked_by, line)
+    await reviewer(ctx, row.asked_by, line, undefined, PAGE_ROLES)
     if (!String(row.question_text ?? '').trim()) ctx.reject('Write your question', { question_text: 'Required' })
     Object.assign(row, { question_status: 'open', answered_by: null, answered_by_role: null, answered_at: null, answer_seen_at: null, about: row.about || 'line' })
     return

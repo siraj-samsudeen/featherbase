@@ -44,7 +44,11 @@ export async function loadProposals(runIds: string[], lines: Line[]): Promise<{ 
   const byId = new Map(rows.map(r => [r.row_id, r]))
   const lineAt = new Map(lines.map(l => [keyOf(l.runId, l.storeCode, l.name), l]))
   // the Store Manager's own number that replaced a change, by the change it replaced
-  const replacement = new Map(rows.filter(r => r.change_status === 'approved' && r.replaces_change).map(r => [r.replaces_change!, r]))
+  // (only when the one who decided that change made it, on the same line: replaces_change itself is not checked on entry)
+  const replacement = new Map(rows.filter(r => {
+    const of = r.replaces_change ? byId.get(r.replaces_change) : undefined
+    return r.change_status === 'approved' && of && of.decided_by === r.proposed_by && keyOf(of.run_id, of.store_code, of.subcategory_name) === keyOf(r.run_id, r.store_code, r.subcategory_name)
+  }).map(r => [r.replaces_change!, r]))
   const sent = rows.filter(r => r.proposed_by_role === 'Team Leader' && (r.change_status !== 'replaced' || r.decided_by))
   const reasons = await reasonsOf(sent.map(r => r.row_id))
   const proposals: ProposalItem[] = []
@@ -121,37 +125,59 @@ export function chainWrites(person: string, role: string, rows: Map<string, Chan
     rows.set(r.row_id, r)
     return r
   }
-  /** The Store Manager's number that replaced a proposal, by the proposal. */
+  /** The newest copy of a row this page holds (every save refreshes it; the server refuses a stale one). */
+  const fresh = (r: ChangeRow) => rows.get(r.row_id) ?? r
+  /** The Store Manager's number that stands in place of a proposal, by the proposal. */
   const replacedBy = new Map<string, ChangeRow>()
-  for (const r of rows.values()) if (r.change_status === 'approved' && r.replaces_change && r.proposed_by === person) replacedBy.set(r.replaces_change, r)
+  for (const r of rows.values()) if (r.change_status === 'approved' && r.replaces_change && r.proposed_by === person && rows.get(r.replaces_change)?.proposed_by !== person) replacedBy.set(r.replaces_change, r)
+  /** Withdraws the viewer's own final change on a line, if any: one approved number per line (#1442). */
+  const dropOwn = async (line: string, keep?: ChangeRow) => {
+    const before = own.get(line)
+    if (!before || before.row_id === keep?.row_id) return
+    await save(fresh(before), { change_status: 'withdrawn' })
+    own.delete(line)
+    for (const [k, v] of replacedBy) if (v.row_id === before.row_id) replacedBy.delete(k)
+  }
   return {
     async approve(p: ProposalItem, value?: number) {
-      const r = row(p)
-      if (value == null || Math.round(value) === Math.round(p.proposed)) { await save(r, { change_status: 'approved', decided_by: person }); return }
+      const r = fresh(row(p))
+      if (value == null || Math.round(value) === Math.round(p.proposed)) {
+        await save(r, { change_status: 'approved', decided_by: person })
+        // the proposal is the line's number now; the Store Manager's own earlier one goes, or the step is taken back
+        try { await dropOwn(p.line) } catch (e) { await save(fresh(r), { change_status: 'sent' }).catch(() => undefined); throw e }
+        return
+      }
       // Edit the number: the Store Manager's own number replaces the proposal; if marking the proposal fails, the number goes too
       const l = lineOf(p.line)
       if (!l) throw new Error('That subcategory is not on this page')
       const mine = await ownChange(l, value, p.reasons, `In place of ${p.by}'s proposal: ${p.note}`, r.row_id)
-      try { await save(r, { change_status: 'replaced', decided_by: person }) } catch (e) { await save(mine, { change_status: 'withdrawn' }).catch(() => undefined); throw e }
+      try { await save(r, { change_status: 'replaced', decided_by: person }) } catch (e) { await save(fresh(mine), { change_status: 'withdrawn' }).catch(() => undefined); throw e }
+      await dropOwn(p.line, mine).catch(() => undefined) // an older own number left approved is outranked by this newer one
       replacedBy.set(r.row_id, mine)
       own.set(p.line, mine)
     },
-    async sendBack(p: ProposalItem, reason: string) { await save(row(p), { change_status: 'rejected', decided_by: person, decision_note: reason }) },
+    async sendBack(p: ProposalItem, reason: string) { await save(fresh(row(p)), { change_status: 'rejected', decided_by: person, decision_note: reason }) },
     async undo(p: ProposalItem) {
-      const r = row(p), mine = replacedBy.get(r.row_id)
+      const r = fresh(row(p)), mine = replacedBy.get(r.row_id), was = r.change_status
       await save(r, { change_status: 'sent' })
-      if (mine) {
-        await save(mine, { change_status: 'withdrawn' }); replacedBy.delete(r.row_id)
-        if (own.get(p.line)?.row_id === mine.row_id) own.delete(p.line)
-      }
+      if (!mine) return
+      // the Store Manager's number goes with the decision; if it can't, the decision is put back
+      try { await save(fresh(mine), { change_status: 'withdrawn' }) } catch (e) { await save(fresh(r), { change_status: was, decided_by: person }).catch(() => undefined); throw e }
+      replacedBy.delete(r.row_id)
+      if (own.get(p.line)?.row_id === mine.row_id) own.delete(p.line)
     },
-    /** The viewer's own change on a line: final at once; it replaces their earlier one there. */
+    /** The viewer's own change on a line: final at once; it replaces their earlier one there (and, where that one
+     *  stood in place of a proposal, stands in its place now, so Undo still finds it). */
     async propose(l: Line, pr: Proposal) {
       const before = own.get(l.rowId)
-      const mine = await ownChange(l, pr.value, pr.reasons, pr.note, before?.row_id ?? null)
-      if (before) await save(before, { change_status: 'withdrawn' })
+      const proposal = before ? [...replacedBy].find(([, v]) => v.row_id === before.row_id)?.[0] : undefined
+      const mine = await ownChange(l, pr.value, pr.reasons, pr.note, proposal ?? before?.row_id ?? null)
+      if (before) try { await save(fresh(before), { change_status: 'withdrawn' }) } catch (e) { await save(fresh(mine), { change_status: 'withdrawn' }).catch(() => undefined); throw e }
+      if (proposal) replacedBy.set(proposal, mine)
       own.set(l.rowId, mine)
     },
+    /** Feather Forecast stands on the line: the viewer's own change there goes. */
+    async accept(l: Line) { await dropOwn(l.rowId) },
     async ask(l: Line, text: string) {
       const saved = idOf(await saveRow('forecasting.forecast_question', { ...lineKey(l), question_text: text, asked_by: person, question_status: 'open', about: 'line' }))
       return saved.row_id
