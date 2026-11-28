@@ -12,7 +12,7 @@ export const addsOf = (lines: { bases: Base[] }[]): Record<BasisCode, number> =>
 export function evidenceOf(fc: number, adds: Adds, month: string) {
   const add = (codes: BasisCode[]) => codes.reduce((t, c) => t + (adds[c] ?? 0), 0)
   const groups = [
-    { name: `Last year's ${month}`, what: `Same date and same ${month === 'December' ? 'Christmas' : 'festival'} position last year, × this year's growth. Weekday-corrected: a Wednesday is compared with a Wednesday.`, codes: ['B1', 'B2'] as BasisCode[] },
+    { name: `Last year's ${month}`, what: `Same date and same ${month === 'December' ? 'Christmas' : 'festival'} position last year, with this year's growth inside its weight. Weekday-corrected: a Wednesday is compared with a Wednesday.`, codes: ['B1', 'B2'] as BasisCode[] },
     { name: 'The seasonal step', what: `The last 28 days × the usual ${prevMonth(month)}-to-${month} jump from past years.`, codes: ['B6'] as BasisCode[] },
     { name: 'The last few weeks', what: 'The last 28 days, the last four same weekdays, and the same date last month.', codes: ['B3', 'B4', 'B5'] as BasisCode[] },
   ].map(g => ({ ...g, value: add(g.codes) }))
