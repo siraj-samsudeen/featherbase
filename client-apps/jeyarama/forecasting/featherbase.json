@@ -1938,11 +1938,6 @@
           "description": "The subcategory, for one subcategory's day; blank for the section's day."
         },
         {
-          "column_name": "subcategory_code",
-          "label": "Subcategory code",
-          "column_type": "Data"
-        },
-        {
           "column_name": "explained_date",
           "label": "Day",
           "column_type": "Date",
@@ -1991,6 +1986,11 @@
           "label": "Role",
           "column_type": "Data",
           "description": "Their role when they explained it."
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
         }
       ],
       "title_column": "section_name"
@@ -2092,11 +2092,6 @@
           "column_type": "Data",
           "reqd": true,
           "in_list_view": true
-        },
-        {
-          "column_name": "subcategory_code",
-          "label": "Subcategory code",
-          "column_type": "Data"
         },
         {
           "column_name": "change_scope",
@@ -2218,6 +2213,11 @@
           "column_name": "decision_note",
           "label": "Decision Note",
           "column_type": "Text"
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
         }
       ],
       "title_column": "subcategory_name"
@@ -2268,11 +2268,6 @@
           "in_list_view": true
         },
         {
-          "column_name": "subcategory_code",
-          "label": "Subcategory code",
-          "column_type": "Data"
-        },
-        {
           "column_name": "reviewer",
           "label": "Reviewer",
           "column_type": "Data",
@@ -2313,6 +2308,11 @@
           "column_type": "Currency",
           "read_only": true,
           "description": "Feather Forecast for the subcategory when the answer was given. A later Run that moves it by more than 10% asks for the answer again."
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
         }
       ],
       "title_column": "subcategory_name"
@@ -2361,11 +2361,6 @@
           "column_type": "Data",
           "reqd": true,
           "in_list_view": true
-        },
-        {
-          "column_name": "subcategory_code",
-          "label": "Subcategory code",
-          "column_type": "Data"
         },
         {
           "column_name": "forecast_date",
@@ -2421,6 +2416,11 @@
           "column_name": "answer_seen_at",
           "label": "Asker Saw The Answer At",
           "column_type": "Datetime"
+        },
+        {
+          "column_name": "subcategory_code",
+          "label": "Subcategory code",
+          "column_type": "Data"
         }
       ],
       "title_column": "question_text"
