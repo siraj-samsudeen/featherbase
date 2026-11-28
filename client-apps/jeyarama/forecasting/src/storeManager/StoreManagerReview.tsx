@@ -147,7 +147,7 @@ export function StoreManagerReview({ chain, hrefFor, openLine, onOpenLine }: Cha
   const waiting = mine.filter(p => p.state === 'waiting')
   const ordered = [...waiting, ...mine.filter(p => p.state !== 'waiting')]
   const head = (text: string, i: number, last: boolean, num = true) => <th key={text} className={headCellClasses({ first: i === 0, last, className: num ? 'text-right' : '' })}>{text}</th>
-  const HEADINGS: [string, boolean][] = [['Subcategory', false], ['Section · Team Leader', false], ['Feather Forecast', true], ['Proposed', true], ['Change', true], ['Last month', true], ['Last year', true], ['AOP', true], ['Reasons', false]]
+  const HEADINGS: [string, boolean][] = [['Subcategory', false], ['Section · Team Leader', false], ['Feather Forecast', true], ['Proposed', true], ['Change', true], ['Last month (31-day rate)', true], ['Last year', true], ['AOP', true], ['Reasons', false]]
   const approvalsTable = <>
     <p className="sm-hint">Click a proposal to see its subcategory and decide.</p>
     <div className="fr-scroll">
