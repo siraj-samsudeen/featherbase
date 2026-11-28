@@ -30,6 +30,8 @@ export interface Context {
     list?(table: string, args: { fields: string[]; filters?: Filter[]; limit_start?: number; limit_page_length?: number }): Promise<Row[]>
   }
   reject(message: string, fields?: Record<string, string>): never
+  /** The instance's own Tables the app declares reading (#1428): the live org chart. Absent where the instance has none. */
+  baseTables?: Parameters<typeof orgChart>[0] & { available?(table: string, columns?: string[]): Promise<boolean> }
 }
 type Level = 'Store' | 'Division' | 'Subdivision' | 'Category' | 'Subcategory' | 'Section'
 /** Someone on the org chart: their name and job, their manager's name, and what they cover. */
@@ -210,22 +212,27 @@ async function lineOf(ctx: Context): Promise<Row> {
   for (const k of LINE_KEY) row[k] = line[k] // the key is the Run's, whatever the page sent
   return line
 }
-/** Whether a person reviews this line: a Team Leader their store · section, a Store or Department Manager their store. */
-/** Whether a person reviews this line of the Run (a copy row: its store by site code). A Team Leader is held to
- *  their store, not yet their section: the section comes live from the org chart, which a validator cannot read
- *  until #1428 (the page shows each Team Leader only their own section's lines). */
-function reviews(p: Who, line: Row) {
+/** Whether a person reviews this line of the Run (a copy row: its store by site code): a Store or Department Manager
+ *  their store; a Team Leader their own section today, from the live org chart (#1428): the section the line's
+ *  subcategory sits in, or for a section's day the section it names. An instance without the org chart's Tables (the
+ *  made-up one) holds a Team Leader to their store. */
+async function reviews(ctx: Context, p: Who, line: Row): Promise<boolean> {
   const store = String(line.store_short_code)
-  if (p.role === 'Team Leader') return p.area.split(' · ')[0] === store
   if (p.role === 'Store Manager' || p.role === 'Department Manager') return p.area === store
-  return false
+  if (p.role !== 'Team Leader' || p.area.split(' · ')[0] !== store) return false
+  const base = ctx.baseTables
+  if (!base || !(await (base.available?.('Job Assignment') ?? Promise.resolve(true)))) return true
+  const org = await orgChart(base, store, todayIST())
+  const code = ctx.row.subcategory_name ? line.subcategory_code : null
+  const at = code ? org.sections.find(s => s.id === org.subcategories[String(code)]?.section) : org.sections.find(s => s.name === ctx.row.section_name)
+  return !!at && at.teamLeaders.includes(p.name)
 }
 async function reviewer(ctx: Context, named: unknown, line: Row): Promise<Who> {
   // An administrator acts for a section's Team Leader by name (the app's "view a section as its Team Leader"),
   // whether or not that person is on the forecasting org chart.
   if (isAdmin(ctx)) return { name: String(named || 'Team Leader'), role: 'Team Leader', reportsTo: null, area: `${String(line.store_short_code)} · ${String(ctx.row.section_name ?? '')}` }
   const p = await actor(ctx, await orgOf(ctx), named)
-  if (!isAdmin(ctx) && !reviews(p, line)) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_short_code)} · ${String(line.subcategory_name)} is outside it`)
+  if (!(await reviews(ctx, p, line))) ctx.reject(`${p.name} reviews ${p.area}; ${String(line.store_short_code)} · ${String(line.subcategory_name)} is outside it`)
   return p
 }
 /** The columns a save moved, other than `keep` and the platform's own stamps. */
@@ -296,11 +303,11 @@ async function prepareLineReview(ctx: Context) {
 async function prepareDayExplanation(ctx: Context) {
   const { row, old } = ctx
   if (!ctx.isNew && String(old?.explained_by) !== String(row.explained_by) && !isAdmin(ctx)) ctx.reject("An explanation is its writer's own")
-  // the Run's line (a subcategory's day) or any line of the store (a section's day); the section itself is the page's
-  // until a validator can read the org chart (#1428)
+  // the Run's line (a subcategory's day) or any line of the store (a section's day); the section is checked against
+  // the live org chart (reviews)
   const filters: [string, string, unknown][] = [['run_id', '=', row.run_id], ['store_code', '=', row.store_code],
     ...(row.subcategory_name ? [['subcategory_name', '=', row.subcategory_name] as [string, string, unknown]] : [])]
-  const [line] = await ctx.documents.list!('forecasting.forecast_line_month', { fields: ['store_short_code', 'subcategory_name'], filters, limit_page_length: 1 })
+  const [line] = await ctx.documents.list!('forecasting.forecast_line_month', { fields: ['store_short_code', 'subcategory_name', 'subcategory_code'], filters, limit_page_length: 1 })
   if (!line) ctx.reject(`${String(row.subcategory_name || row.section_name || 'That section')} is not in Run ${String(row.run_id || '')}`)
   if (!String(row.section_name ?? '').trim()) ctx.reject('Say which section', { section_name: 'Required' })
   row.store_name = line.store_short_code
@@ -354,20 +361,28 @@ export const actions = {}
  *  this month on an earlier Run are told that Feather Forecast moved by more than 10%, one notice each (notices.ts).
  *  Moves are compared per month, store and subcategory: a new Run has a new run_id, so grouping by Run would make
  *  every subcategory look new. Reads the answers past their privacy (readsAllRows, ruled 28-Nov) and writes nothing:
- *  the review itself asks again (carry.ts). The Store Manager is told once a job can read the org chart (#1428). */
+ *  the review itself asks again (carry.ts). Each store's Store Manager today is told too, from the live org chart
+ *  (baseTables, #1428), where the instance has it. */
 interface JobContext {
   newLoad: { moves(o: { by: string[]; measure: string; threshold?: number }): Promise<{ group: Record<string, string | null>; before: string | null; after: string | null }[]> } | null
   documents: { list(table: string, args?: { filters?: [string, '=' | 'in', unknown][]; limit?: number }): Promise<Record<string, unknown>[]> }
+  baseTables?: Context['baseTables']
   people: { list(): Promise<{ person: string; full_name: string | null }[]>; notify(person: string, message: { subject: string; body: string; email?: boolean; path?: string }): Promise<boolean> }
   setResult(s: string): void
 }
 export const jobs = {
   async carry_changes(ctx: JobContext) {
     if (!ctx.newLoad) return
-    const moves = (await ctx.newLoad.moves({ by: ['forecast_month', 'store_code', 'subcategory_name'], measure: 'forecast_value_before_tax', threshold: 10 }))
+    const moves = (await ctx.newLoad.moves({ by: ['forecast_month', 'store_code', 'store_short_code', 'subcategory_name'], measure: 'forecast_value_before_tax', threshold: 10 }))
       .filter(m => m.before != null && m.after != null)
     if (!moves.length) { ctx.setResult('Nothing moved by more than 10%'); return }
     const people = Object.fromEntries((await ctx.people.list()).filter(p => p.full_name).map(p => [p.full_name!, p.person]))
+    // each store's Store Managers today (the org chart names them; the store's short code is its Site)
+    const managers: Record<string, string[]> = {}
+    const base = ctx.baseTables
+    if (base && (await (base.available?.('Job Assignment') ?? Promise.resolve(true))))
+      for (const [code, short] of new Map(moves.map(m => [String(m.group.store_code), String(m.group.store_short_code)])))
+        managers[code] = (await orgChart(base, short, todayIST())).storeManagers
     let told = 0
     for (const month of [...new Set(moves.map(m => String(m.group.forecast_month).slice(0, 10)))]) {
       const mine = moves.filter(m => String(m.group.forecast_month).slice(0, 10) === month)
@@ -375,7 +390,7 @@ export const jobs = {
       const answers = (await ctx.documents.list('forecasting.forecast_line_review', { filters: [['forecast_month', '=', month],
         ['subcategory_name', 'in', [...new Set(mine.map(m => m.subcategory_name))]]], limit: 50000 }))
         .map(r => ({ store_code: String(r.store_code), subcategory_name: String(r.subcategory_name), reviewer: String(r.reviewer), forecast_month: r.forecast_month == null ? null : String(r.forecast_month).slice(0, 10) }))
-      for (const n of noticesFor(mine, answers, month, people, {})) if (await ctx.people.notify(n.person, { subject: n.subject, body: n.body, email: false, path: n.path })) told++
+      for (const n of noticesFor(mine, answers, month, people, managers)) if (await ctx.people.notify(n.person, { subject: n.subject, body: n.body, email: false, path: n.path })) told++
     }
     ctx.setResult(`${moves.length} subcategories moved by more than 10%; ${told} people told`)
   },

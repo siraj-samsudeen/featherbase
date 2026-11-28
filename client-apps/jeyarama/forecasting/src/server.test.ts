@@ -123,13 +123,24 @@ describe('a day explanation (#1425)', () => {
     { run_id: 'r', store_code: '9001', store_short_code: 'North', subcategory_code: 'C3', subcategory_name: 'Kids Shirt' },
   ]
   const IDS: Record<string, string> = { u_tara: 'Tara', u_omar: 'Omar' }
+  // the live org chart (#1428): Kids Jean (C1) sits in Kids, whose Team Leader is Tara; Kids Shirt (C3) in Tops
+  const ORG: Record<string, Record<string, unknown>[]> = {
+    Site: [{ row_id: 'North', name: 'North', operating_region: 'R' }],
+    Section: [{ row_id: 'N-Kids', name: 'Kids', site: 'North', floor: 'N-1F', status: 'Active' }, { row_id: 'N-Tops', name: 'Tops', site: 'North', floor: 'N-1F', status: 'Active' }],
+    'Store Floor': [{ row_id: 'N-1F', name: 'First Floor', site: 'North', floor_order: 1 }],
+    'Section Subcategory': [{ store: 'North', subcategory: 'C1', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null }, { store: 'North', subcategory: 'C3', section: 'N-Tops', starts_on: '2026-01-01', ends_on: null }],
+    'Job Assignment': [{ employee: 'E1', job: 'Team Leader', site: 'North', section: 'N-Kids', starts_on: '2026-01-01', ends_on: null }],
+    Employee: [{ row_id: 'E1', name: 'Tara' }],
+  }
+  const baseTables = { list: async (table: string, args: { filters?: [string, string, unknown][] }) =>
+    (ORG[table] ?? []).filter(r => (args.filters ?? []).every(([c, op, v]) => (op === 'in' ? (v as unknown[]).includes(r[c]) : r[c] === v))) }
   const list = async (table: string, args: { filters?: [string, string, unknown][] }) => {
     const rows: Record<string, unknown>[] = table === 'forecasting.reach' ? REACH : table === 'forecasting.run_line' ? [{ row_id: 'x' }] : table === 'forecasting.forecast_line_month' ? LINES : []
     return rows.filter(r => (args.filters ?? []).every(([c, , v]) => r[c] === v))
   }
   function call(user: string, row: Record<string, unknown>, old?: Record<string, unknown>) {
     const ctx: Context = { user, roles: user === 'Administrator' ? ['System Manager'] : ['Forecasting Member'], isNew: !old, row, old,
-      documents: { members: async () => Object.entries(IDS).map(([row_id, full_name]) => ({ row_id, full_name })), list },
+      documents: { members: async () => Object.entries(IDS).map(([row_id, full_name]) => ({ row_id, full_name })), list }, baseTables,
       reject(message: string): never { throw new Error(message) } }
     return validators['forecasting.day_explanation'](ctx).then(() => row)
   }
@@ -145,10 +156,9 @@ describe('a day explanation (#1425)', () => {
     await expect(call('u_tara', { ...day, subcategory_name: 'Kids Sock' })).rejects.toThrow(/not in Run r/)
     await expect(call('u_tara', { ...day, section_name: '' })).rejects.toThrow(/which section/)
   })
-  // Known gap (#1428): a validator cannot read the live org chart, so a Team Leader is held to their store, not their
-  // section. This pins the check we want: Tara (Kids) is refused Tops' day.
-  it.fails("refuses another section's day in the same store (#1428)", async () => {
+  it("refuses another section's day, or a subcategory of another section, in the same store: the live org chart (#1428)", async () => {
     await expect(call('u_tara', { ...day, section_name: 'Tops' })).rejects.toThrow(/outside it/)
+    await expect(call('u_tara', { ...day, subcategory_name: 'Kids Shirt' })).rejects.toThrow(/outside it/)
   })
   it('lets an administrator explain as the Team Leader, and keeps an edit to its writer', async () => {
     await expect(call('Administrator', { ...day, explained_by: 'Anisha' })).resolves.toMatchObject({ explained_by_role: 'Team Leader' })
