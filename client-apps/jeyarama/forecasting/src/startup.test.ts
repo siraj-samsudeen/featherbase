@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hostedStart, signedIn } from './startup'
+import { hostedStart, startFailure } from './startup'
 import { NO_PLACES } from './scoped'
 
 const refused = (status: number) => async () => { throw Object.assign(new Error('refused'), { status }) }
@@ -22,17 +22,19 @@ describe('how a hosted instance on the read-only copies opens (#1419)', () => {
   })
 })
 
-describe('who the signed-in person is to the app (28-Nov)', () => {
-  const onChart = (name: string) => name === 'Made Up TL'
-  it('lets someone who looks after the app see anyone', () => {
-    expect(signedIn({ row_id: 'Administrator' }, onChart, true)).toBe('admin')
-    expect(signedIn({ row_id: 'psn_1', roles: ['All', 'System Manager'] }, onChart, false)).toBe('admin')
+describe('when the first reads fail (28-Nov)', () => {
+  const fail = (status: number, message = 'x') => Object.assign(new Error(message), { status })
+  it('signs in again on a lapsed sign-in, here or hosted', () => {
+    expect(startFailure(fail(401), false)).toBe('sign-in')
+    expect(startFailure(fail(401), true)).toBe('sign-in')
   })
-  it('opens the copy views for a real person on the read-only copies, never "not on the org chart"', () => {
-    expect(signedIn({ row_id: 'psn_2', full_name: 'A Real Store Manager', roles: ['All', 'Dash Reader', 'Forecasting Member'] }, onChart, true)).toBe('copies')
+  it('on a hosted instance: a refusal is no access, anything else a retry, never the made-up data', () => {
+    expect(startFailure(fail(403), false)).toBe('no-access')
+    expect(startFailure(fail(417, NO_PLACES), false)).toBe('no-access')
+    expect(startFailure(fail(500), false)).toBe('try-again')
+    expect(startFailure(new TypeError('Failed to fetch'), false)).toBe('try-again')
   })
-  it('keeps the made-up chart on the legacy Run: a person on it is theirs, anyone else is off it', () => {
-    expect(signedIn({ row_id: 'psn_3', full_name: 'Made Up TL' }, onChart, false)).toBe('on-chart')
-    expect(signedIn({ row_id: 'psn_4', full_name: 'Someone Else' }, onChart, false)).toBe('off-chart')
+  it('falls back to the made-up data only on a local instance', () => {
+    expect(startFailure(fail(500), true)).toBe('made-up')
   })
 })

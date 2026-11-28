@@ -15,6 +15,7 @@ describe('canRetire (#859)', () => {
     ['the engine\'s Table', { name: 'Table', kind: 'table' }],
     ['the engine\'s Column', { name: 'Column', kind: 'table' }],
     ['a Permission grant (#1060)', { name: 'Permission', kind: 'table' }],
+    ['an Org Chart Role Rule (#1453)', { name: 'Org Chart Role Rule', kind: 'table' }],
   ])('%s cannot', (_label, meta) => {
     expect(canRetire(meta)).toBe(false)
   })

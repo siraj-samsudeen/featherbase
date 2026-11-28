@@ -3,12 +3,12 @@
   "platformVersion": "2026-10",
   "name": "forecasting",
   "title": "Forecasting",
-  "summary": "Forecasts, the numbers people put on them, and how each did",
+  "summary": "Review each month's forecast, section by section",
   "icon": "report",
   "accent": "blue",
   "server": "dist/server.mjs",
   "client": "dist/client",
-  "entryTable": "forecasting.number",
+  "entryTable": "forecasting.change_reason",
   "migrations": [
     {
       "id": "month_picker_and_daily_sales",
@@ -1161,501 +1161,777 @@
       "fromVersion": "0.14.0",
       "toVersion": "0.15.0",
       "operations": []
+    },
+    {
+      "id": "no_made_up_fallback",
+      "fromVersion": "0.15.0",
+      "toVersion": "0.15.1",
+      "operations": []
+    },
+    {
+      "id": "remove_legacy_prototype_tables",
+      "fromVersion": "0.15.1",
+      "toVersion": "0.16.0",
+      "operations": [
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "forecasting.decision",
+            "label": "Number history",
+            "module": "Forecasting",
+            "id_pattern": "FD-.######",
+            "columns": [
+              {
+                "column_name": "number",
+                "label": "Number",
+                "column_type": "Reference",
+                "reference_table": "forecasting.number",
+                "in_list_view": true
+              },
+              {
+                "column_name": "month",
+                "label": "Month",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "scope_name",
+                "label": "For",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "decision",
+                "label": "What happened",
+                "column_type": "Choice",
+                "choices": "Sent for approval\nSent up\nApproved and applied\nMade the applied number\nKept as reference\nNot approved\nWithdrawn\nEdited\nComment\nThis is wrong",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "decided_by",
+                "label": "By",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "decided_by_role",
+                "label": "Their job",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "note",
+                "label": "Note",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "decided_on",
+                "label": "On",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "scope_level",
+                "label": "Level",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "weeks",
+                "label": "Weeks (blank = the whole month)",
+                "column_type": "Data"
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "forecasting.idea_history",
+            "label": "Idea history",
+            "module": "Forecasting",
+            "id_pattern": "FH-.######",
+            "columns": [
+              {
+                "column_name": "idea",
+                "label": "Idea",
+                "column_type": "Reference",
+                "reference_table": "forecasting.idea",
+                "in_list_view": true
+              },
+              {
+                "column_name": "changed_by",
+                "label": "By",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "changed_on",
+                "label": "On",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "change",
+                "label": "What changed",
+                "column_type": "Text",
+                "in_list_view": true
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "forecasting.review_note",
+            "label": "Review thread",
+            "module": "Forecasting",
+            "id_pattern": "FR-.######",
+            "columns": [
+              {
+                "column_name": "question",
+                "label": "Question",
+                "column_type": "Reference",
+                "reference_table": "forecasting.review_question",
+                "in_list_view": true
+              },
+              {
+                "column_name": "kind",
+                "label": "What",
+                "column_type": "Choice",
+                "choices": "Reply\nAnswer\nOutcome changed\nFollow-up",
+                "in_list_view": true
+              },
+              {
+                "column_name": "by",
+                "label": "By",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "on",
+                "label": "On",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "text",
+                "label": "Text",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "from_outcome",
+                "label": "Outcome before",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "to_outcome",
+                "label": "Outcome after",
+                "column_type": "Data"
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "forecasting.number",
+            "label": "Forecast number",
+            "module": "Forecasting",
+            "id_pattern": "FN-.#####",
+            "title_column": "scope_name",
+            "columns": [
+              {
+                "column_name": "month",
+                "label": "Month",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "run",
+                "label": "Engine Run",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "section",
+                "label": "Section",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "scope_level",
+                "label": "Level",
+                "column_type": "Choice",
+                "choices": "Store\nDivision\nCategory\nSubcategory",
+                "reqd": true
+              },
+              {
+                "column_name": "weeks",
+                "label": "Weeks (1–5; blank = the whole month)",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "scope_name",
+                "label": "For",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "kind",
+                "label": "How",
+                "column_type": "Choice",
+                "choices": "Engine\nSet a total\nChange by a percent\nClosure or event\nChange the weights",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "value",
+                "label": "Figure, before tax",
+                "column_type": "Currency",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "weights_json",
+                "label": "Weights (%, by basis)",
+                "column_type": "Long Text"
+              },
+              {
+                "column_name": "entered_by",
+                "label": "Entered by",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "entered_by_role",
+                "label": "Their job",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "entered_on",
+                "label": "Entered on",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "reason",
+                "label": "Why",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "status",
+                "label": "Status",
+                "column_type": "Choice",
+                "choices": "Waiting\nApplied\nReference\nNot approved\nWithdrawn",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "waiting_on",
+                "label": "Waiting on",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "changed_by",
+                "label": "Last changed by",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "percent",
+                "label": "Percent (a percent change or a closure)",
+                "column_type": "Float"
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "forecasting.review_question",
+            "label": "Review question",
+            "module": "Forecasting",
+            "id_pattern": "FQ-.####",
+            "title_column": "question",
+            "columns": [
+              {
+                "column_name": "ref",
+                "label": "Ref",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "month",
+                "label": "Month reviewed",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "scope",
+                "label": "About",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "question",
+                "label": "Question",
+                "column_type": "Text",
+                "reqd": true
+              },
+              {
+                "column_name": "detail",
+                "label": "What they saw",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "asked_by",
+                "label": "Asked by",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "asked_on",
+                "label": "Asked on",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "answer",
+                "label": "Answer",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "answered_by",
+                "label": "Answered by",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "answered_on",
+                "label": "Answered on",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "outcome",
+                "label": "Outcome",
+                "column_type": "Choice",
+                "choices": "Open\nBeing worked on\nForecast changed\nNo change\nWaiting on the asker\nParked",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "impact",
+                "label": "Effect on the forecast",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "follow_up",
+                "label": "Follow-up",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "idea_ref",
+                "label": "Idea",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "follow_up_on",
+                "label": "Follow up on",
+                "column_type": "Data"
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "forecasting.idea",
+            "label": "Idea",
+            "module": "Forecasting",
+            "id_pattern": "FI-.####",
+            "title_column": "title",
+            "columns": [
+              {
+                "column_name": "ref",
+                "label": "Ref",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "label",
+                "label": "Short name",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "title",
+                "label": "Idea",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "kind",
+                "label": "Came from",
+                "column_type": "Choice",
+                "choices": "Engine trial\nBusiness suggestion\nModel comparison\nMonth check",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "raised_by",
+                "label": "Raised by",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "raised_on",
+                "label": "Raised on",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "why",
+                "label": "Why it came up",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "tried",
+                "label": "What we tried",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "found",
+                "label": "What we found",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "verdict",
+                "label": "Verdict",
+                "column_type": "Choice",
+                "choices": "Raised\nBeing tested\nKept\nRejected\nWaiting\nAlready in the model\nNot tested",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "outcome",
+                "label": "In a few words",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "status_note",
+                "label": "Where it stands",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "decided_on",
+                "label": "Decided on",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "revisit",
+                "label": "Look again when",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "areas",
+                "label": "Areas",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "evidence",
+                "label": "Evidence",
+                "column_type": "Long Text"
+              },
+              {
+                "column_name": "decided_by",
+                "label": "Decided by",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "reason",
+                "label": "Why that verdict",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "revisit_on",
+                "label": "Look again on",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "related",
+                "label": "Related ideas",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "question_ref",
+                "label": "Review question",
+                "column_type": "Data"
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "forecasting.run_line",
+            "label": "Run line",
+            "module": "Forecasting",
+            "description": "One store × subcategory of a month's engine Run under review: the forecast, the AOP, its days and what each basis adds. Loaded in bulk (psql COPY) from the engine's output; people only read it.",
+            "title_column": "subcategory",
+            "columns": [
+              {
+                "column_name": "run",
+                "label": "Run",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "month",
+                "label": "Month",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "region",
+                "label": "Region",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "division",
+                "label": "Division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subdivision",
+                "label": "Sub-division",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "category",
+                "label": "Category",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "section",
+                "label": "Section",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "subcategory",
+                "label": "Subcategory",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "code",
+                "label": "SAP subcategory code",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "forecast",
+                "label": "Forecast, after GST (₹)",
+                "column_type": "Float",
+                "in_list_view": true
+              },
+              {
+                "column_name": "aop",
+                "label": "AOP, after GST (₹)",
+                "column_type": "Float",
+                "in_list_view": true
+              },
+              {
+                "column_name": "band",
+                "label": "Band against the AOP",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "days_json",
+                "label": "The forecast for each day (₹, JSON list)",
+                "column_type": "Long Text"
+              },
+              {
+                "column_name": "parts_json",
+                "label": "Each basis: its share and value (JSON)",
+                "column_type": "Long Text"
+              },
+              {
+                "column_name": "other",
+                "label": "Other steps (₹)",
+                "column_type": "Float"
+              },
+              {
+                "column_name": "qty",
+                "label": "Forecast quantity (the item's own unit)",
+                "column_type": "Float",
+                "in_list_view": true
+              },
+              {
+                "column_name": "aop_qty",
+                "label": "AOP quantity (the item's own unit)",
+                "column_type": "Float",
+                "in_list_view": true
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "forecasting.reach",
+            "label": "Reach",
+            "module": "Forecasting",
+            "description": "Who reviews what: each person's job, manager and the stores and subcategories they cover, worked out from the org chart and merchandise assignments as Dash's reach is. Loaded in bulk; people only read it.",
+            "title_column": "full_name",
+            "columns": [
+              {
+                "column_name": "full_name",
+                "label": "Name",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "code",
+                "label": "Employee code",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "role",
+                "label": "Job",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "place",
+                "label": "Place",
+                "column_type": "Data",
+                "in_list_view": true
+              },
+              {
+                "column_name": "reports_to",
+                "label": "Reports to",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "places_json",
+                "label": "Stores and subcategories covered (JSON)",
+                "column_type": "Long Text"
+              }
+            ]
+          },
+          "destructive": true
+        },
+        {
+          "kind": "dropTable",
+          "table": {
+            "name": "forecasting.explanation",
+            "label": "Explanation",
+            "module": "Forecasting",
+            "id_pattern": "FX-.######",
+            "description": "Why a day sold more or less than its forecast: the causes picked and a note, for a store (or every store) and a level of the hierarchy.",
+            "title_column": "scope_name",
+            "columns": [
+              {
+                "column_name": "month",
+                "label": "Month",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "store",
+                "label": "Store",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "scope_level",
+                "label": "Level",
+                "column_type": "Data",
+                "reqd": true
+              },
+              {
+                "column_name": "scope_name",
+                "label": "For",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "day",
+                "label": "Day of the month",
+                "column_type": "Int",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "causes",
+                "label": "Causes (one a line, Cause › Detail)",
+                "column_type": "Text",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "note",
+                "label": "Note",
+                "column_type": "Text"
+              },
+              {
+                "column_name": "explained_by",
+                "label": "By",
+                "column_type": "Data",
+                "reqd": true,
+                "in_list_view": true
+              },
+              {
+                "column_name": "explained_by_role",
+                "label": "Their job",
+                "column_type": "Data"
+              },
+              {
+                "column_name": "explained_on",
+                "label": "On",
+                "column_type": "Data"
+              }
+            ]
+          },
+          "destructive": true
+        }
+      ]
     }
   ],
   "tables": [
-    {
-      "name": "forecasting.number",
-      "label": "Forecast number",
-      "module": "Forecasting",
-      "id_pattern": "FN-.#####",
-      "title_column": "scope_name",
-      "columns": [
-        {
-          "column_name": "month",
-          "label": "Month",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "run",
-          "label": "Engine Run",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "store",
-          "label": "Store",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "section",
-          "label": "Section",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "scope_level",
-          "label": "Level",
-          "column_type": "Choice",
-          "choices": "Store\nDivision\nCategory\nSubcategory",
-          "reqd": true
-        },
-        {
-          "column_name": "weeks",
-          "label": "Weeks (1–5; blank = the whole month)",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "scope_name",
-          "label": "For",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "kind",
-          "label": "How",
-          "column_type": "Choice",
-          "choices": "Engine\nSet a total\nChange by a percent\nClosure or event\nChange the weights",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "value",
-          "label": "Figure, before tax",
-          "column_type": "Currency",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "weights_json",
-          "label": "Weights (%, by basis)",
-          "column_type": "Long Text"
-        },
-        {
-          "column_name": "entered_by",
-          "label": "Entered by",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "entered_by_role",
-          "label": "Their job",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "entered_on",
-          "label": "Entered on",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "reason",
-          "label": "Why",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "status",
-          "label": "Status",
-          "column_type": "Choice",
-          "choices": "Waiting\nApplied\nReference\nNot approved\nWithdrawn",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "waiting_on",
-          "label": "Waiting on",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "changed_by",
-          "label": "Last changed by",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "percent",
-          "label": "Percent (a percent change or a closure)",
-          "column_type": "Float"
-        }
-      ]
-    },
-    {
-      "name": "forecasting.decision",
-      "label": "Number history",
-      "module": "Forecasting",
-      "id_pattern": "FD-.######",
-      "columns": [
-        {
-          "column_name": "number",
-          "label": "Number",
-          "column_type": "Reference",
-          "reference_table": "forecasting.number",
-          "in_list_view": true
-        },
-        {
-          "column_name": "month",
-          "label": "Month",
-          "column_type": "Data",
-          "reqd": true
-        },
-        {
-          "column_name": "store",
-          "label": "Store",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "scope_name",
-          "label": "For",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "decision",
-          "label": "What happened",
-          "column_type": "Choice",
-          "choices": "Sent for approval\nSent up\nApproved and applied\nMade the applied number\nKept as reference\nNot approved\nWithdrawn\nEdited\nComment\nThis is wrong",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "decided_by",
-          "label": "By",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "decided_by_role",
-          "label": "Their job",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "note",
-          "label": "Note",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "decided_on",
-          "label": "On",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "scope_level",
-          "label": "Level",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "weeks",
-          "label": "Weeks (blank = the whole month)",
-          "column_type": "Data"
-        }
-      ]
-    },
-    {
-      "name": "forecasting.review_question",
-      "label": "Review question",
-      "module": "Forecasting",
-      "id_pattern": "FQ-.####",
-      "title_column": "question",
-      "columns": [
-        {
-          "column_name": "ref",
-          "label": "Ref",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "month",
-          "label": "Month reviewed",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "scope",
-          "label": "About",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "question",
-          "label": "Question",
-          "column_type": "Text",
-          "reqd": true
-        },
-        {
-          "column_name": "detail",
-          "label": "What they saw",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "asked_by",
-          "label": "Asked by",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "asked_on",
-          "label": "Asked on",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "answer",
-          "label": "Answer",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "answered_by",
-          "label": "Answered by",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "answered_on",
-          "label": "Answered on",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "outcome",
-          "label": "Outcome",
-          "column_type": "Choice",
-          "choices": "Open\nBeing worked on\nForecast changed\nNo change\nWaiting on the asker\nParked",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "impact",
-          "label": "Effect on the forecast",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "follow_up",
-          "label": "Follow-up",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "idea_ref",
-          "label": "Idea",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "follow_up_on",
-          "label": "Follow up on",
-          "column_type": "Data"
-        }
-      ]
-    },
-    {
-      "name": "forecasting.idea",
-      "label": "Idea",
-      "module": "Forecasting",
-      "id_pattern": "FI-.####",
-      "title_column": "title",
-      "columns": [
-        {
-          "column_name": "ref",
-          "label": "Ref",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "label",
-          "label": "Short name",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "title",
-          "label": "Idea",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "kind",
-          "label": "Came from",
-          "column_type": "Choice",
-          "choices": "Engine trial\nBusiness suggestion\nModel comparison\nMonth check",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "raised_by",
-          "label": "Raised by",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "raised_on",
-          "label": "Raised on",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "why",
-          "label": "Why it came up",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "tried",
-          "label": "What we tried",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "found",
-          "label": "What we found",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "verdict",
-          "label": "Verdict",
-          "column_type": "Choice",
-          "choices": "Raised\nBeing tested\nKept\nRejected\nWaiting\nAlready in the model\nNot tested",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "outcome",
-          "label": "In a few words",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "status_note",
-          "label": "Where it stands",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "decided_on",
-          "label": "Decided on",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "revisit",
-          "label": "Look again when",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "areas",
-          "label": "Areas",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "evidence",
-          "label": "Evidence",
-          "column_type": "Long Text"
-        },
-        {
-          "column_name": "decided_by",
-          "label": "Decided by",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "reason",
-          "label": "Why that verdict",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "revisit_on",
-          "label": "Look again on",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "related",
-          "label": "Related ideas",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "question_ref",
-          "label": "Review question",
-          "column_type": "Data"
-        }
-      ]
-    },
-    {
-      "name": "forecasting.idea_history",
-      "label": "Idea history",
-      "module": "Forecasting",
-      "id_pattern": "FH-.######",
-      "columns": [
-        {
-          "column_name": "idea",
-          "label": "Idea",
-          "column_type": "Reference",
-          "reference_table": "forecasting.idea",
-          "in_list_view": true
-        },
-        {
-          "column_name": "changed_by",
-          "label": "By",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "changed_on",
-          "label": "On",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "change",
-          "label": "What changed",
-          "column_type": "Text",
-          "in_list_view": true
-        }
-      ]
-    },
-    {
-      "name": "forecasting.review_note",
-      "label": "Review thread",
-      "module": "Forecasting",
-      "id_pattern": "FR-.######",
-      "columns": [
-        {
-          "column_name": "question",
-          "label": "Question",
-          "column_type": "Reference",
-          "reference_table": "forecasting.review_question",
-          "in_list_view": true
-        },
-        {
-          "column_name": "kind",
-          "label": "What",
-          "column_type": "Choice",
-          "choices": "Reply\nAnswer\nOutcome changed\nFollow-up",
-          "in_list_view": true
-        },
-        {
-          "column_name": "by",
-          "label": "By",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "on",
-          "label": "On",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "text",
-          "label": "Text",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "from_outcome",
-          "label": "Outcome before",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "to_outcome",
-          "label": "Outcome after",
-          "column_type": "Data"
-        }
-      ]
-    },
     {
       "name": "forecasting.forecaster",
       "label": "Forecaster",
@@ -1670,233 +1946,6 @@
         {
           "column_name": "note",
           "label": "Note",
-          "column_type": "Data"
-        }
-      ]
-    },
-    {
-      "name": "forecasting.run_line",
-      "label": "Run line",
-      "module": "Forecasting",
-      "description": "One store × subcategory of a month's engine Run under review: the forecast, the AOP, its days and what each basis adds. Loaded in bulk (psql COPY) from the engine's output; people only read it.",
-      "title_column": "subcategory",
-      "columns": [
-        {
-          "column_name": "run",
-          "label": "Run",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "month",
-          "label": "Month",
-          "column_type": "Data",
-          "reqd": true
-        },
-        {
-          "column_name": "store",
-          "label": "Store",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "region",
-          "label": "Region",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "division",
-          "label": "Division",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "subdivision",
-          "label": "Sub-division",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "category",
-          "label": "Category",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "section",
-          "label": "Section",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "subcategory",
-          "label": "Subcategory",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "code",
-          "label": "SAP subcategory code",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "forecast",
-          "label": "Forecast, after GST (₹)",
-          "column_type": "Float",
-          "in_list_view": true
-        },
-        {
-          "column_name": "aop",
-          "label": "AOP, after GST (₹)",
-          "column_type": "Float",
-          "in_list_view": true
-        },
-        {
-          "column_name": "band",
-          "label": "Band against the AOP",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "days_json",
-          "label": "The forecast for each day (₹, JSON list)",
-          "column_type": "Long Text"
-        },
-        {
-          "column_name": "parts_json",
-          "label": "Each basis: its share and value (JSON)",
-          "column_type": "Long Text"
-        },
-        {
-          "column_name": "other",
-          "label": "Other steps (₹)",
-          "column_type": "Float"
-        },
-        {
-          "column_name": "qty",
-          "label": "Forecast quantity (the item's own unit)",
-          "column_type": "Float",
-          "in_list_view": true
-        },
-        {
-          "column_name": "aop_qty",
-          "label": "AOP quantity (the item's own unit)",
-          "column_type": "Float",
-          "in_list_view": true
-        }
-      ]
-    },
-    {
-      "name": "forecasting.reach",
-      "label": "Reach",
-      "module": "Forecasting",
-      "description": "Who reviews what: each person's job, manager and the stores and subcategories they cover, worked out from the org chart and merchandise assignments as Dash's reach is. Loaded in bulk; people only read it.",
-      "title_column": "full_name",
-      "columns": [
-        {
-          "column_name": "full_name",
-          "label": "Name",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "code",
-          "label": "Employee code",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "role",
-          "label": "Job",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "place",
-          "label": "Place",
-          "column_type": "Data",
-          "in_list_view": true
-        },
-        {
-          "column_name": "reports_to",
-          "label": "Reports to",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "places_json",
-          "label": "Stores and subcategories covered (JSON)",
-          "column_type": "Long Text"
-        }
-      ]
-    },
-    {
-      "name": "forecasting.explanation",
-      "label": "Explanation",
-      "module": "Forecasting",
-      "id_pattern": "FX-.######",
-      "description": "Why a day sold more or less than its forecast: the causes picked and a note, for a store (or every store) and a level of the hierarchy.",
-      "title_column": "scope_name",
-      "columns": [
-        {
-          "column_name": "month",
-          "label": "Month",
-          "column_type": "Data",
-          "reqd": true
-        },
-        {
-          "column_name": "store",
-          "label": "Store",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "scope_level",
-          "label": "Level",
-          "column_type": "Data",
-          "reqd": true
-        },
-        {
-          "column_name": "scope_name",
-          "label": "For",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "day",
-          "label": "Day of the month",
-          "column_type": "Int",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "causes",
-          "label": "Causes (one a line, Cause › Detail)",
-          "column_type": "Text",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "note",
-          "label": "Note",
-          "column_type": "Text"
-        },
-        {
-          "column_name": "explained_by",
-          "label": "By",
-          "column_type": "Data",
-          "reqd": true,
-          "in_list_view": true
-        },
-        {
-          "column_name": "explained_by_role",
-          "label": "Their job",
-          "column_type": "Data"
-        },
-        {
-          "column_name": "explained_on",
-          "label": "On",
           "column_type": "Data"
         }
       ]
@@ -2434,67 +2483,9 @@
   ],
   "permissions": [
     {
-      "table": "forecasting.number",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "can_write": true,
-      "can_create": true
-    },
-    {
-      "table": "forecasting.decision",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "can_create": true
-    },
-    {
-      "table": "forecasting.review_question",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "can_write": true,
-      "can_create": true
-    },
-    {
-      "table": "forecasting.idea",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "can_write": true,
-      "can_create": true
-    },
-    {
-      "table": "forecasting.idea_history",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "can_write": true,
-      "can_create": true
-    },
-    {
-      "table": "forecasting.review_note",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "can_write": true,
-      "can_create": true
-    },
-    {
       "table": "forecasting.forecaster",
       "role": "Forecasting Member",
       "can_read": true
-    },
-    {
-      "table": "forecasting.run_line",
-      "role": "Forecasting Member",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.reach",
-      "role": "Forecasting Member",
-      "can_read": true
-    },
-    {
-      "table": "forecasting.explanation",
-      "role": "Forecasting Member",
-      "can_read": true,
-      "can_write": true,
-      "can_create": true
     },
     {
       "table": "forecasting.change_reason",
@@ -4174,7 +4165,11 @@
     "operations": {
       "org_chart": {
         "policy": {
-          "kind": "table"
+          "kind": "person_scope",
+          "readRoles": [
+            "Forecasting Member"
+          ],
+          "actionRoles": []
         },
         "authorization": {
           "kind": "generic"

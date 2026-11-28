@@ -7,4 +7,6 @@ export function canRetire(meta: { name: string; kind?: string | null; data_sourc
     && meta.name !== 'Table' && meta.name !== 'Column'
     // #1060: a grant ends in the permission matrix; retiring never changes who may see what.
     && meta.name !== 'Permission'
+    // #1453: likewise a role from the org chart ends by deleting its rule; the job reads every rule row
+    && meta.name !== 'Org Chart Role Rule'
 }

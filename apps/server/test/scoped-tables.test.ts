@@ -8,6 +8,9 @@ import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { expectRefused } from './fixtures'
 import { eventVisibleTo } from '../src/realtime'
+import { placeScopeOf, rowInPlaces } from '../src/place-scope'
+import { invalidateMeta } from '../src/meta'
+import { sql } from '../src/db'
 import { ANSWER, APP, NORTH_AND_SOUTH_KIDS, REASON, ids, installed, list, notSetUpProvider, removeScopedFolders, withPlaces, writeApp } from './scoped-proof-app'
 
 afterEach(removeScopedFolders)
@@ -106,6 +109,22 @@ describe('a Table about places', () => {
     const reader = await createUser({ roles: ['Answer Reader'] })
     await reader.post('/api/save_row', { table: ANSWER, row: { row_id: 'mine', store: 'N1', section: 'kids', body: 'my own' } })
     expect(ids(await list(reader))).toEqual(['mine'])
+  })
+
+  test('an app’s Table whose app is not loaded here reads as no place (fail closed); an unknown Table is not scoped', async ({ admin, createUser }) => {
+    await installed(admin)
+    // a Table of an app this server has not loaded (its artifact refused, say) cannot say what it maps
+    await sql`update table_def set owner_app = 'notloaded' where name = ${REASON}`
+    invalidateMeta(REASON)
+    try {
+      expect(await placeScopeOf(REASON)).toEqual({})
+      const reader = await createUser({ roles: [] })
+      expect(await rowInPlaces(REASON, reader.user!, { code: 'a1-stockout' })).toBe(false)
+    } finally {
+      await sql`update table_def set owner_app = ${APP} where name = ${REASON}`
+      invalidateMeta(REASON)
+    }
+    expect(await placeScopeOf('No Such Table')).toBeNull()
   })
 
   test('a System Manager is not narrowed, as Data Scope does not narrow them', async ({ admin, createUser }) => {

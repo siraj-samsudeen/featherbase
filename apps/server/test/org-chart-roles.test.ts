@@ -7,7 +7,7 @@ import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { getRoles } from '../src/permissions'
 import { sql } from '../src/db'
-import { syncOrgChartRoles, syncSummary } from '../src/org-chart-roles'
+import { seedOrgChartRules, syncOrgChartRoles, syncSummary } from '../src/org-chart-roles'
 import { APP, installed, notSetUpProvider, position, provider, removeChartFolders, roster, turnOn, writeApp } from './chart-proof-app'
 
 afterEach(removeChartFolders)
@@ -17,6 +17,10 @@ describe('an app role from the org chart', () => {
     const { leader, manager, outsider } = await installed(admin, createUser)
     expect(await sql`select app, app_role from org_chart_role_rule where app = ${APP}`).toEqual([{ app: APP, app_role: 'Chart Reader' }])
     expect((await sql`select 1 from activity_log where operation like ${`app_org_chart_role_added ${APP}%`}`).length).toBe(1)
+    // a System Manager reads the rules as any Table
+    expect((await admin.get<{ data: { app: string; app_role: string }[] }>(`/api/table/${encodeURIComponent('Org Chart Role Rule')}?${new URLSearchParams({ fields: JSON.stringify(['app', 'app_role']) })}`)).data)
+      .toEqual([expect.objectContaining({ app: APP, app_role: 'Chart Reader' })])
+    expect((await admin.get<{ data: unknown[] }>(`/api/table/${encodeURIComponent('Org Chart Role Rule')}`)).data).toHaveLength(1)
     // nobody until the job runs, then everyone with a place
     expect(await getRoles(leader)).not.toContain('Chart Reader')
     await syncOrgChartRoles()
@@ -77,6 +81,25 @@ describe('an app role from the org chart', () => {
     await admin.post('/api/upgrade_app', { name: APP, version: '2.0.0', planId: plan.planId })
     expect((await sql`select app_role from org_chart_role_rule where app = ${APP} order by app_role`).map((r) => r.app_role)).toEqual(['Chart Admin', 'Chart Reader'])
     expect((await sql`select 1 from activity_log where operation = ${`app_org_chart_role_added ${APP}@2.0.0: Chart Admin`}`).length).toBe(1)
+  })
+
+  test('seeding skips a platform role and a rule already there', async ({ admin, createUser }) => {
+    await installed(admin, createUser)
+    expect(await seedOrgChartRules(APP, ['System Manager', 'Chart Reader'], 'Administrator')).toEqual([])
+    expect(await sql`select app_role from org_chart_role_rule where app = ${APP}`).toEqual([{ app_role: 'Chart Reader' }])
+  })
+
+  test('with no app providing people’s scope, the run writes nothing and says so', async ({ admin }) => {
+    expect(await discoverPackages([await writeApp()])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await expect(syncOrgChartRoles()).rejects.toThrow(/No app provides people's scope now.*the last holders stand/)
+  })
+
+  test('a run that started before the one on show publishes nothing', async ({ admin, createUser }) => {
+    await installed(admin, createUser)
+    await sql`insert into app_role_from_org_chart_rebuild (id, started_at, summary) values (1, now() + interval '1 hour', 'a later run')`
+    expect(await syncOrgChartRoles()).toMatchObject({ published: false })
+    expect((await sql`select count(*)::int as n from app_role_from_org_chart`)[0].n).toBe(0)
   })
 
   test('the job’s result line says what the run did', () => {

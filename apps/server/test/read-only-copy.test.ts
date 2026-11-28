@@ -109,6 +109,15 @@ describe('a copy follows its app', () => {
       expect(await reader.get(`/api/table/${encodeURIComponent(LINES)}/${encodeURIComponent('LKS·GJ01·2026-12-01')}`)).toMatchObject({ run_id: 'Dec-1' }))
   })
 
+  test('a reader with no places lists none of a copy (no own rows: nobody writes one)', async ({ admin, createUser }) => {
+    await install(admin, await grantingRead(await writeApp([lines()])))
+    await warehouse.publish('Dec-1', [LKS])
+    await load(LINES)
+    const reader = await createUser({ roles: ['Copy Reader'] })
+    await withRosterPlaces([], async () =>
+      expect((await reader.get<{ data: unknown[] }>(`/api/table/${encodeURIComponent(LINES)}`)).data).toEqual([]))
+  })
+
   test('the app may grant its own roles read on a copy an upgrade adds', async ({ admin, createUser }) => {
     const first = await writeApp([dailySales(warehouse.schema)])
     await install(admin, first)
