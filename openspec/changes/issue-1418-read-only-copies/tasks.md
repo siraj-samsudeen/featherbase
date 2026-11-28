@@ -27,5 +27,5 @@
 
 ## 6. Hand-off
 
-- [ ] 6.1 Gates (both typechecks, touched suites, coverage, `check:scenarios`, `check:specs`), the review, the PR body with the warehouse's part and the renamed-column demo
+- [x] 6.1 Gates (both typechecks, touched suites, coverage, `check:scenarios`, `check:specs`), the review, the PR body with the warehouse's part and the renamed-column demo
 - [ ] 6.2 Siraj ratifies the design decisions; then archive this change
