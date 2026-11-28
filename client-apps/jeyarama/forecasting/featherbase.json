@@ -2051,7 +2051,7 @@
             "name": "forecasting.day_explanation",
             "label": "Day Explanation",
             "module": "Forecasting",
-            "description": "Why a day went more than 10% off Feather Forecast, as the person who reviews it says: for a section's day, or one subcategory's day. A later explanation of the same day replaces the earlier one.",
+            "description": "Why a day went more than 10% below or above Feather Forecast, as the person who reviews it says: for a section's day, or one subcategory's day. A later explanation of the same day replaces the earlier one.",
             "columns": [
               {
                 "column_name": "run_id",
@@ -2098,11 +2098,20 @@
                 "description": "The day explained."
               },
               {
+                "column_name": "direction",
+                "label": "Direction",
+                "column_type": "Choice",
+                "choices": "below\nabove",
+                "reqd": true,
+                "in_list_view": true,
+                "description": "Whether the day went below or above Feather Forecast: each has its own causes, and the warehouse tells them apart by this."
+              },
+              {
                 "column_name": "causes",
                 "label": "Causes",
                 "column_type": "Text",
                 "reqd": true,
-                "description": "One or more of: Target too high or badly phased; Forecast missed the demand; Stock not available; Weak store execution; Sales data incomplete. One a line."
+                "description": "One or more of the causes for the day's direction, one a line (src/causes.ts)."
               },
               {
                 "column_name": "tags",
@@ -4724,7 +4733,7 @@
       "name": "forecasting.day_explanation",
       "label": "Day Explanation",
       "module": "Forecasting",
-      "description": "Why a day went more than 10% off Feather Forecast, as the person who reviews it says: for a section's day, or one subcategory's day. A later explanation of the same day replaces the earlier one.",
+      "description": "Why a day went more than 10% below or above Feather Forecast, as the person who reviews it says: for a section's day, or one subcategory's day. A later explanation of the same day replaces the earlier one.",
       "columns": [
         {
           "column_name": "run_id",
@@ -4771,11 +4780,20 @@
           "description": "The day explained."
         },
         {
+          "column_name": "direction",
+          "label": "Direction",
+          "column_type": "Choice",
+          "choices": "below\nabove",
+          "reqd": true,
+          "in_list_view": true,
+          "description": "Whether the day went below or above Feather Forecast: each has its own causes, and the warehouse tells them apart by this."
+        },
+        {
           "column_name": "causes",
           "label": "Causes",
           "column_type": "Text",
           "reqd": true,
-          "description": "One or more of: Target too high or badly phased; Forecast missed the demand; Stock not available; Weak store execution; Sales data incomplete. One a line."
+          "description": "One or more of the causes for the day's direction, one a line (src/causes.ts)."
         },
         {
           "column_name": "tags",

@@ -132,7 +132,7 @@ describe('a day explanation (#1425)', () => {
       reject(message: string): never { throw new Error(message) } }
     return validators['forecasting.day_explanation'](ctx).then(() => row)
   }
-  const day = { run_id: 'r', store_code: '9001', section_name: 'Kids', subcategory_name: null, explained_date: '2026-11-03',
+  const day = { run_id: 'r', store_code: '9001', section_name: 'Kids', subcategory_name: null, explained_date: '2026-11-03', direction: 'below',
     causes: 'Weak store execution', tags: 'Weak store execution › Low footfall', note: 'Rain all evening', explained_by: 'Tara' }
 
   it("is the section's Team Leader's, for the section's day or one of its subcategories' days, with the store and section taken from the Run", async () => {
@@ -148,8 +148,11 @@ describe('a day explanation (#1425)', () => {
     await expect(call('Administrator', { ...day, explained_by: 'Anisha' })).resolves.toMatchObject({ explained_by_role: 'Team Leader' })
     await expect(call('u_omar', { ...day, explained_by: 'Omar' }, { ...day, row_id: 'DE-1' })).rejects.toThrow(/writer's own/)
   })
-  it('takes causes and tags only from the agreed list', async () => {
+  it('takes causes and tags only from the agreed set for the day\'s direction', async () => {
     await expect(call('u_tara', { ...day, causes: '', tags: '' })).rejects.toThrow(/at least one cause/)
-    await expect(call('u_tara', { ...day, tags: 'Stock not available › Inaccurate stock' })).rejects.toThrow(/which is not picked/)
+    await expect(call('u_tara', { ...day, causes: 'Weak store execution\nStock not available', tags: 'Weak store execution › Low footfall\nStock not available › Inaccurate stock' })).resolves.toBeTruthy()
+    await expect(call('u_tara', { ...day, direction: 'above', causes: 'Festival or event', tags: 'Festival or event › Salary day' })).resolves.toMatchObject({ direction: 'above' })
+    await expect(call('u_tara', { ...day, direction: 'above' })).rejects.toThrow(/not one of the causes for a day above/)
+    await expect(call('u_tara', { ...day, direction: '' })).rejects.toThrow(/below or above/)
   })
 })

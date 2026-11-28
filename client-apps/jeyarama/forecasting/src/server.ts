@@ -283,7 +283,7 @@ async function prepareLineReview(ctx: Context) {
 }
 
 /** Why a day went off (#1425): explained by whoever reviews that section, or that subcategory's section, in the Run;
- *  the causes and tags from the agreed list. The section and store come from the Run, whatever the page sent. */
+ *  the causes and tags from the agreed set for its direction, below or above the forecast. The section and store come from the Run, whatever the page sent. */
 async function prepareDayExplanation(ctx: Context) {
   const { row, old } = ctx
   if (!ctx.isNew && String(old?.explained_by) !== String(row.explained_by) && !isAdmin(ctx)) ctx.reject("An explanation is its writer's own")
@@ -296,7 +296,8 @@ async function prepareDayExplanation(ctx: Context) {
   const p = await reviewer(ctx, row.explained_by, line)
   row.explained_by_role = p.role
   if (!row.explained_date) ctx.reject('Say which day', { explained_date: 'Required' })
-  const problem = causesProblem(linesOf(row.causes), linesOf(row.tags))
+  if (row.direction !== 'below' && row.direction !== 'above') ctx.reject('Say whether the day went below or above the forecast', { direction: 'Required' })
+  const problem = causesProblem(row.direction, linesOf(row.causes), linesOf(row.tags))
   if (problem) ctx.reject(problem, { causes: problem })
 }
 

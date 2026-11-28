@@ -1,7 +1,7 @@
 // The day review's model (#1425; the agreed 26-Nov mockup): a section's month day by day, each day and the month to
 // date against Feather Forecast, and which days went more than 10% off and want a reason. Pure: the page, the story
 // and the tests go through it. Read from two copies of the warehouse feeds, forecast_line_day and actuals_day.
-import { linesOf } from '../causes'
+import { linesOf, type Direction } from '../causes'
 
 type Num = number | string | null | undefined
 const n = (v: Num) => (v == null || v === '' ? 0 : Number(v))
@@ -64,11 +64,11 @@ export const lineIsOff = (d: Pick<DayFigures, 'off' | 'mtdOff'>) => Math.abs(d.o
 export const edgeOf = (off: number | null) => (off == null || Math.abs(off) <= OFF_POINTS ? null : off < 0 ? 'under' : 'over')
 
 /** A saved explanation, as the page reads it. */
-export interface DayExplanation { id: string; updatedAt: string; subcategory: string | null; day: number; causes: string[]; tags: string[]; note: string; by: string }
-export interface DayExplanationRow { row_id: string; updated_at: string; subcategory_name: string | null; explained_date: string; causes: string; tags: string | null; note: string | null; explained_by: string }
-export const DAY_EXPLANATION_FIELDS = ['subcategory_name', 'explained_date', 'causes', 'tags', 'note', 'explained_by']
+export interface DayExplanation { id: string; updatedAt: string; subcategory: string | null; day: number; direction: Direction; causes: string[]; tags: string[]; note: string; by: string }
+export interface DayExplanationRow { row_id: string; updated_at: string; subcategory_name: string | null; explained_date: string; direction: Direction; causes: string; tags: string | null; note: string | null; explained_by: string }
+export const DAY_EXPLANATION_FIELDS = ['subcategory_name', 'explained_date', 'direction', 'causes', 'tags', 'note', 'explained_by']
 export const explanationOf = (r: DayExplanationRow): DayExplanation => ({ id: r.row_id, updatedAt: r.updated_at, subcategory: r.subcategory_name || null,
-  day: Number(r.explained_date.slice(8, 10)), causes: linesOf(r.causes), tags: linesOf(r.tags), note: r.note ?? '', by: r.explained_by })
+  day: Number(r.explained_date.slice(8, 10)), direction: r.direction, causes: linesOf(r.causes), tags: linesOf(r.tags), note: r.note ?? '', by: r.explained_by })
 /** The newest explanation of a day, for the section (subcategory null) or one subcategory. */
 export const explanationFor = (all: DayExplanation[], day: number, subcategory: string | null) =>
   all.filter(e => e.day === day && e.subcategory === subcategory).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]

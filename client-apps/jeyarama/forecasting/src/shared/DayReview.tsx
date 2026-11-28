@@ -5,13 +5,13 @@
 // needs, and a note. Shared, so a Store Manager's or RB's page can show a store's or area's days the same way.
 import { Fragment, useState, type ReactNode } from 'react'
 import { Button, ChipButton, ChoiceChip, RecordLink, Segmented, Select, StatusPill, cx } from '@featherbase/shop-floor'
-import { CAUSES, causeOf, tagOf, TAG_JOIN } from '../causes'
+import { causeOf, causesFor, directionOf, tagOf, TAG_JOIN, type Direction } from '../causes'
 import { inr } from './model'
 import { OFF_POINTS, dayIsOff, daysOf, edgeOf, explanationFor, lineIsOff, type DayExplanation, type DayFigures, type SubDays } from './days'
 
 export interface DayMonth { name: string; days: number; year: number; index: number }
 /** What Explain saves: for the section's day (subcategory null) or one subcategory's. */
-export interface ExplainDraft { subcategory: string | null; day: number; causes: string[]; tags: string[]; note: string }
+export interface ExplainDraft { subcategory: string | null; day: number; direction: Direction; causes: string[]; tags: string[]; note: string }
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const d2 = (d: number) => String(d).padStart(2, '0')
@@ -31,9 +31,10 @@ function Tags({ e }: { e: DayExplanation }) {
     <span key={t} className="fr-day-tag" style={{ boxShadow: `inset 3px 0 0 ${causeOf(t)?.color}` }} title={t}>{t.includes(TAG_JOIN) ? t.split(TAG_JOIN)[1] : t}</span>))}</span>
 }
 
-/** Explain: the five causes, each opening its tags and evidence when picked; nothing disappears when picked. */
-export function ExplainForm({ title, initial, onSave, onCancel }: {
-  title: string; initial?: DayExplanation
+/** Explain: the five causes for the day's direction (below or above the forecast), each opening its tags and evidence
+ *  when picked; nothing disappears when picked. */
+export function ExplainForm({ title, direction, initial, onSave, onCancel }: {
+  title: string; direction: Direction; initial?: DayExplanation
   onSave: (d: Pick<ExplainDraft, 'causes' | 'tags' | 'note'>) => Promise<void> | void; onCancel: () => void
 }) {
   const [causes, setCauses] = useState<string[]>(initial?.causes ?? [])
@@ -47,7 +48,7 @@ export function ExplainForm({ title, initial, onSave, onCancel }: {
   return (
     <div className="fr-explain" data-testid="explain-form" onClick={e => e.stopPropagation()}>
       <p className="fr-explain-title">{title}</p>
-      <div className="fr-explain-causes">{CAUSES.map(c => {
+      <div className="fr-explain-causes">{causesFor(direction).map(c => {
         const on = causes.includes(c.name)
         return (
           <div key={c.name} className="fr-explain-cause" style={{ boxShadow: `inset 3px 0 0 ${c.color}` }}>
@@ -103,11 +104,16 @@ export function DayReview({ section, subs, month, explanations, rowIdOf, onSave 
   const scopeName = scope || section
   const days = daysOf(inScope, month.days)
   const key = (sub: string | null, d: number) => `${sub ?? ''}|${d}`
-  const save = (sub: string | null, d: number) => async (x: Pick<ExplainDraft, 'causes' | 'tags' | 'note'>) => {
-    await onSave({ subcategory: sub, day: d, ...x }, explanationFor(explanations, d, sub)); setEditing(null)
+  const save = (sub: string | null, d: number, direction: Direction) => async (x: Pick<ExplainDraft, 'causes' | 'tags' | 'note'>) => {
+    await onSave({ subcategory: sub, day: d, direction, ...x }, explanationFor(explanations, d, sub)); setEditing(null)
   }
-  const editor = (sub: string | null, d: number, title: string, cols: number) => editing === key(sub, d) && (
-    <tr className="fr-day-editor"><td colSpan={cols}><ExplainForm title={title} initial={explanationFor(explanations, d, sub)} onSave={save(sub, d)} onCancel={() => setEditing(null)} /></td></tr>)
+  // a day above the forecast is explained with its own causes; an edit keeps the direction it was saved with
+  const editor = (sub: string | null, d: number, off: number, title: string, cols: number) => {
+    if (editing !== key(sub, d)) return null
+    const was = explanationFor(explanations, d, sub), direction = was?.direction ?? directionOf(off)
+    return <tr className="fr-day-editor"><td colSpan={cols}><ExplainForm title={title} direction={direction} initial={was?.direction === direction ? was : undefined}
+      onSave={save(sub, d, direction)} onCancel={() => setEditing(null)} /></td></tr>
+  }
   const scopeSub = scope || null
 
   const allDays = (
@@ -122,7 +128,7 @@ export function DayReview({ section, subs, month, explanations, rowIdOf, onSave 
               <Figures f={f} />
               <td className="fr-day-why">{f.sold != null && <ExplainCell e={e} wants={off} onEdit={() => setEditing(key(scopeSub, f.day))} />}</td>
             </tr>
-            {editor(scopeSub, f.day, `Why was ${scopeName} ${signed(f.off ?? 0)} on ${dayLabel(month, f.day)}?`, 8)}
+            {editor(scopeSub, f.day, f.off ?? 0, `Why was ${scopeName} ${signed(f.off ?? 0)} on ${dayLabel(month, f.day)}?`, 8)}
           </Fragment>)
       })}</tbody>
     </table>)
@@ -165,7 +171,7 @@ export function DayReview({ section, subs, month, explanations, rowIdOf, onSave 
                 <Figures f={lf} />
                 <td className="fr-day-why">{lf.sold != null && <ExplainCell e={e} wants={off} onEdit={() => setEditing(key(s.name, day))} />}</td>
               </tr>
-              {editor(s.name, day, `Why was ${s.name} ${signed(lf.off ?? 0)} on ${dayLabel(month, day)}?`, 8)}
+              {editor(s.name, day, Math.abs(lf.off ?? 0) >= Math.abs(lf.mtdOff ?? 0) ? lf.off ?? 0 : lf.mtdOff ?? 0, `Why was ${s.name} ${signed(lf.off ?? 0)} on ${dayLabel(month, day)}?`, 8)}
             </Fragment>)
         })}</tbody>
       </table>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { causesProblem, tagOf } from '../causes'
+import { causesFor, causesProblem, directionOf, tagOf } from '../causes'
 import { dayIsOff, daysOf, edgeOf, explanationFor, explanationOf, lineIsOff, loadedTo, subDaysFrom, type ActualsDayRow, type ForecastDayRow } from './days'
 
 const fc = (sub: string, day: number, v: number): ForecastDayRow => ({ store_code: 'S', subcategory_name: sub, forecast_date: `2026-11-${String(day).padStart(2, '0')}`, forecast_value_before_tax: v })
@@ -36,7 +36,7 @@ describe('the day review (#1425)', () => {
   })
 
   it("keeps the newest explanation of a day, for the section's day apart from a subcategory's", () => {
-    const row = (id: string, at: string, sub: string | null) => explanationOf({ row_id: id, updated_at: at, subcategory_name: sub, explained_date: '2026-11-03',
+    const row = (id: string, at: string, sub: string | null) => explanationOf({ row_id: id, updated_at: at, subcategory_name: sub, explained_date: '2026-11-03', direction: 'below',
       causes: 'Weak store execution', tags: tagOf('Weak store execution', 'Low footfall'), note: 'Rain', explained_by: 'Anisha' })
     const all = [row('1', '2026-11-04T10:00', null), row('2', '2026-11-05T10:00', null), row('3', '2026-11-05T11:00', 'A')]
     expect(explanationFor(all, 3, null)?.id).toBe('2')
@@ -45,10 +45,19 @@ describe('the day review (#1425)', () => {
   })
 
   it('takes one or more of the five causes, each tag only under a picked cause', () => {
-    expect(causesProblem([], [])).toBe('Pick at least one cause')
-    expect(causesProblem(['Weak store execution', 'Stock not available'], [tagOf('Weak store execution', 'Low footfall'), tagOf('Stock not available', 'Size or colour missing')])).toBeNull()
-    expect(causesProblem(['Bad luck'], [])).toBe('Bad luck is not one of the causes')
-    expect(causesProblem(['Weak store execution'], [tagOf('Stock not available', 'Inaccurate stock')])).toBe('Stock not available › Inaccurate stock is under Stock not available, which is not picked')
-    expect(causesProblem(['Weak store execution'], [tagOf('Weak store execution', 'Too hot')])).toBe('Weak store execution › Too hot is not a tag of a cause')
+    expect(causesProblem('below', [], [])).toBe('Pick at least one cause')
+    expect(causesProblem('below', ['Weak store execution', 'Stock not available'], [tagOf('Weak store execution', 'Low footfall'), tagOf('Stock not available', 'Size or colour missing')])).toBeNull()
+    expect(causesProblem('below', ['Bad luck'], [])).toBe('Bad luck is not one of the causes for a day below the forecast')
+    expect(causesProblem('below', ['Weak store execution'], [tagOf('Stock not available', 'Inaccurate stock')])).toBe('Stock not available › Inaccurate stock is under Stock not available, which is not picked')
+    expect(causesProblem('below', ['Weak store execution', 'Stock not available'], [tagOf('Stock not available', 'Inaccurate stock')])).toBeNull()
+    expect(causesProblem('below', ['Weak store execution'], [tagOf('Weak store execution', 'Too hot')])).toBe('Weak store execution › Too hot is not a tag of a cause')
+  })
+
+  it('asks a day above the forecast its own five causes, and keeps the two sets apart (Siraj, 28-Nov)', () => {
+    expect(causesFor('above').map(c => c.name)).toEqual(['Festival or event', 'Promotion or offer', 'New stock arrived', 'Outside reasons', 'Forecast too low'])
+    expect([directionOf(13.5), directionOf(-15.6)]).toEqual(['above', 'below'])
+    expect(causesProblem('above', ['Festival or event', 'Outside reasons'], [tagOf('Festival or event', 'Salary day'), tagOf('Outside reasons', 'Bulk or corporate order')])).toBeNull()
+    expect(causesProblem('above', ['Weak store execution'], [])).toBe('Weak store execution is not one of the causes for a day above the forecast')
+    expect(causesProblem('below', ['Promotion or offer'], [])).toBe('Promotion or offer is not one of the causes for a day below the forecast')
   })
 })

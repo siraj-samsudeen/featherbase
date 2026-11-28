@@ -57,7 +57,7 @@ export function DayReviewPage({ viewer, href }: { viewer: Viewer; href: (line: s
   const save = async (d: ExplainDraft, replacing?: DayExplanation) => {
     const mine = replacing && replacing.by === viewer.name ? { row_id: replacing.id, updated_at: replacing.updatedAt } : {}
     await saveRow('forecasting.day_explanation', { ...mine, run_id: days.run.run_id, store_code: days.storeCode, section_name: days.section, subcategory_name: d.subcategory,
-      explained_date: `${days.run.horizon_from.slice(0, 7)}-${String(d.day).padStart(2, '0')}`, causes: d.causes.join('\n'), tags: d.tags.join('\n'), note: d.note, explained_by: viewer.name })
+      explained_date: `${days.run.horizon_from.slice(0, 7)}-${String(d.day).padStart(2, '0')}`, direction: d.direction, causes: d.causes.join('\n'), tags: d.tags.join('\n'), note: d.note, explained_by: viewer.name })
     await load()
   }
   const byRow = new Map([...days.rowIds].map(([name, id]) => [id, name]))
