@@ -40,7 +40,7 @@ from (values
 ) as c(position, column_name, label, column_type, reference_table, in_list_view, description)
 where not exists (select 1 from featherbase.column_def d where d.parent = 'App Role From Org Chart' and d.column_name = c.column_name);
 
-insert into featherbase.scheduled_job ("row_id", "created_by", "updated_by", "submission_status", "position", "method", "cadence", "enabled", "description", "problem_alert_queued")
-values ('sync_org_chart_roles', 'Administrator', 'Administrator', 'draft', 0, 'sync_org_chart_roles', 'daily', false,
+insert into featherbase.scheduled_job ("row_id", "created_by", "updated_by", "submission_status", "position", "method", "title", "cadence", "enabled", "description", "problem_alert_queued")
+values ('sync_org_chart_roles', 'Administrator', 'Administrator', 'draft', 0, 'sync_org_chart_roles', 'Sync App Roles From The Org Chart', 'daily', false,
         'App roles from the org chart: everyone the org chart gives a place holds the roles each app declares for them. Off until an administrator turns it on; while off, nobody holds a role through it.', false)
 on conflict ("row_id") do nothing;
