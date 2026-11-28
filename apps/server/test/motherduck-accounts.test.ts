@@ -275,6 +275,11 @@ describe('#1397: the review tickets under one umbrella', () => {
     // As production's tickets were raised: with no link.
     await sql`update tickets.request set details_json = (details_json::jsonb - 'open')::text`
     expect((await links()).map((l) => l.open)).toEqual([null, null, null])
+    // No longer Tickets support: the run stops at the first one, saying what to configure, and links none.
+    await sql`update app_setting set value = '[]' where row_id = 'tickets.support_users'`
+    expect((await syncMotherDuckAccounts()).ticket_errors).toEqual([expect.stringMatching(/add it to the Tickets setting support_users/)])
+    expect((await links()).map((l) => l.open)).toEqual([null, null, null])
+    await sql`update app_setting set value = ${JSON.stringify([await motherDuckSyncAccount()])} where row_id = 'tickets.support_users'`
     expect(await syncMotherDuckAccounts()).toMatchObject({ tickets_raised: [], ticket_errors: [] })
     const restored = await links()
     expect(restored.map((l) => (l.open as { href: string }).href).sort()).toEqual([SCREEN, `${SCREEN}?account=md-a`, `${SCREEN}?account=md-b`])
