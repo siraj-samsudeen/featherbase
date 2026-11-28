@@ -19,7 +19,10 @@ export function HelpMark({ topic, onHelp }: { topic: HelpTopic; onHelp: (t: Help
 export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Header['month']; storeStep: number; onHelp: (t: HelpTopic) => void }) {
   // one table that can be checked by hand (Siraj, 28-Nov): its own value × weight used = adds, the adds summing to
   // Feather Forecast exactly and the shares to exactly 100% (explanation.ts)
-  const st = l.step ?? storeStep, e = explain(l.bases, l.rebal, l.price, l.fc)
+  // From last year's own value is last year's figure itself, the same as its line (Siraj, 28-Nov: "make both of them
+  // say the same"); this year's growth is folded into the weight used (adds ÷ own), so Adds and Share are unchanged
+  const lastYear = (b: (typeof l.bases)[number]) => ((b.code === 'B1' || b.code === 'B2') && l.ly ? { ...b, own: l.ly } : b)
+  const st = l.step ?? storeStep, e = explain(l.bases.map(lastYear), l.rebal, l.price, l.fc)
   // summary amounts on the lakh/crore ladder, as everywhere on these screens (ADR 750); the adds still sum to the
   // forecast exactly underneath (explanation.ts), only their display is readable
   const rupees = (v: number) => inr(Math.round(v))
@@ -27,7 +30,7 @@ export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Heade
   const steps = isGroup(l) ? l.members.map(m => m.step).filter(Boolean) : []
   const range = steps.length ? (Math.min(...steps) === Math.max(...steps) ? ` (×${steps[0]})` : ` (×${Math.min(...steps)} to ×${Math.max(...steps)})`) : ''
   const name: Record<BasisCode, string> = { ...BASE_INFO, B3: `Last 28 days, per day × ${month.days}`, B6: `Last 28 days × ${month.name} step${isGroup(l) ? range : ` (×${st})`}`,
-    B1: `Same date last year × growth${isGroup(l) ? '' : ` (×${l.growth})`}` }
+    B1: 'Same date last year', B2: 'Same festival day last year' }
   const weight = (r: ExplainRow) => {
     const w = weightUsed(r)
     if (w == null) return '—'
@@ -43,7 +46,7 @@ export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Heade
   const head = (color: string, label: string, topic: HelpTopic, from: string, rows: ExplainRow[]) => rows.length > 0 && (
     <tr key={label} className="fr-grow">
       <td><span className="fr-part"><span className="fr-swatch" style={{ background: color }} />{label}<HelpMark topic={topic} onHelp={onHelp} /></span><div className="fr-from">{from}</div></td>
-      <td /><td className="fr-dim">≈ {weightText(weightsOf(rows))}</td><td className="fr-fc">{rupees(rows.reduce((t, r) => t + r.adds, 0))}</td>
+      <td /><td className="fr-dim">{label === 'From last year' ? '' : `≈ ${weightText(weightsOf(rows))}`}</td><td className="fr-fc">{rupees(rows.reduce((t, r) => t + r.adds, 0))}</td>
       <td className="fr-fc">{shareText(rows.reduce((t, r) => t + r.share, 0))}</td>
     </tr>)
   const after = (r: ExplainRow) => {
@@ -62,15 +65,15 @@ export function BuildUp({ l, month, storeStep, onHelp }: { l: Item; month: Heade
     <table className="fr-mini fr-build fr-one">
       <thead><tr><th>Part</th><th>Its own value</th><th>Weight used</th><th>Adds</th><th>Share</th></tr></thead>
       <tbody>
-        {head('var(--color-part-last-year)', 'From last year', 'lastyear', `Last ${month.name} ${inr(l.ly)} (${count(l.lyq)} pcs)${isGroup(l) ? " × each subcategory's growth" : ` × growth ${l.growth}`}`, e.lastYear)}
+        {head('var(--color-part-last-year)', 'From last year', 'lastyear', `Last ${month.name} ${inr(l.ly)} (${count(l.lyq)} pcs)${isGroup(l) ? "; each subcategory's growth is inside its weights" : `; growth ×${l.growth} is inside the weights`}`, e.lastYear)}
         {e.lastYear.map(baseRow)}
-        {head('var(--color-part-recent)', 'From last month', 'recent', `Last 28 days ${inr(l.l28)} (${count(l.l28q)} pcs) = ${inr(l.l28 / 28)} a day; carried into ${month.name} at ${month.name}'s day pattern${isGroup(l) ? '' : `; B6 adds the ${month.name} step ×${st}`}`, e.lastMonth)}
+        {head('var(--color-part-recent)', 'From last month', 'recent', `Last 28 days ${inr(l.l28)} (${count(l.l28q)} pcs), ${inr(l.l28 / 28 * month.days)} for ${month.days} days; carried into ${month.name} at ${month.name}'s day pattern${isGroup(l) ? '' : `; B6 adds the ${month.name} step ×${st}`}`, e.lastMonth)}
         {e.lastMonth.map(baseRow)}
         {e.after.map(after)}
       </tbody>
-      <tfoot><tr><td>Feather Forecast</td><td /><td>≈ {weightText(weightsOf([...e.lastYear, ...e.lastMonth]))}</td><td>{rupees(e.total)}</td><td>100%</td></tr></tfoot>
+      <tfoot><tr><td>Feather Forecast</td><td /><td /><td>{rupees(e.total)}</td><td>100%</td></tr></tfoot>
     </table>
-    <p className="fr-dim fr-build-note">Each row: its own value × weight used = adds. Weights come to about 100%, not exactly: the blend shifts slightly on Sundays, salary days and Christmas. Adds and Share add up exactly. Hover a weight for Feather Forecast's fitted weight for the month.</p>
+    <p className="fr-dim fr-build-note">Each row: its own value × weight used = adds. From last year's own value is last year's figure, so its weights also carry this year's growth, and the weights don't total 100%; From last month's come to about 100% (the blend shifts slightly on Sundays, salary days and Christmas). Adds and Share add up exactly. Hover a weight for Feather Forecast's fitted weight for the month.</p>
   </>
 }
 
