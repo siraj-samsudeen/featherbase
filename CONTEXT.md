@@ -72,6 +72,12 @@ _Avoid_: permlevel, permission level, sensitivity
 A Permission flag restricting a grant to Rows the user created.
 _Avoid_: if_owner, owner-only
 
+**Row rule**:
+What a Table says about which of its Rows a person granted the Table may read:
+every Row, their own, their places, through a Reference to a Row they can read,
+or System Managers only. A Table with none is read by System Managers only.
+_Avoid_: row-level security, scoped Table, row filter, row policy
+
 **Data Scope**:
 A per-principal restriction limiting which Rows a person or a service account
 may see, expressed against a Reference Column's value.
