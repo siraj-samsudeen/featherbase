@@ -25,7 +25,7 @@ import { admittedToTable } from './mandatory-access'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { getSystemSettings } from './settings'
-import { NEW_LOAD_PAYLOAD, declaredCopy, loadMoves } from './read-only-copy'
+import { NEW_LOAD_PAYLOAD, copyTarget, declaredCopy, loadMoves } from './read-only-copy'
 
 const distinct = (values: string[]) => new Set(values).size === values.length
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
@@ -302,7 +302,7 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
 async function newLoadFor(app: string, job: string, payload: Record<string, unknown>): Promise<NewLoad | null> {
   const given = payload?.[NEW_LOAD_PAYLOAD] as { dataset?: unknown; previous?: unknown; current?: unknown } | undefined
   if (given === undefined) return null
-  const target = `${app}.${String(given?.dataset)}`
+  const target = copyTarget(app, String(given?.dataset))
   const entry = declaredCopy(target)
   const loads = typeof given?.current === 'string' ? await sql`select row_id from dataset_snapshot
     where dataset = ${target} and state in ('active', 'superseded') and row_id in ${sql([given.current, ...(typeof given.previous === 'string' ? [given.previous] : [])])}` : []

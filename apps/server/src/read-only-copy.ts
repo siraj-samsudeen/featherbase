@@ -17,7 +17,7 @@ import { getDriver, getSource } from './sources/registry'
 import { datasetSourceReadOnly } from './sources/read-only'
 import { assertStillServing, servingIdentity } from './app-lifecycle'
 import { getSystemSettings } from './settings'
-import { guardRefusal, type DatasetDeclaration, type DatasetGuard, type GuardCounts } from './app-datasets'
+import { COPY_GUARD_KINDS, datasetKey, guardRefusal, type DatasetDeclaration, type DatasetGuard, type GuardCounts } from './app-datasets'
 import type { SourceRow, SourceTypeFamily } from './sources/types'
 
 export const COPY_SCHEMA = 'featherbase_copy'
@@ -32,7 +32,6 @@ const ACCEPTS: Record<ColumnType, readonly SourceTypeFamily[]> = {
   text: ['text'], integer: ['integer'], number: ['integer', 'decimal', 'float'], money: ['integer', 'decimal', 'float'],
   date: ['date', 'timestamp'], boolean: ['boolean'],
 }
-const COPY_GUARDS = new Set(['source_total', 'keeps_values'])
 /** A row's id is its key values joined (D3). */
 const KEY_JOIN = '·'
 
@@ -40,7 +39,8 @@ const q = (name: string) => `"${name.replace(/"/g, '""')}"`
 const literal = (text: string) => `'${text.replace(/'/g, "''")}'`
 const words = (name: string) => name.split('_').filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')
 
-export const copyTarget = (app: string, name: string) => `${app}.${name}`
+/** A copy's Table is its dataset's registry name: `<app>.<dataset>`. */
+export const copyTarget = datasetKey
 /** The load table: one partition per load. */
 const loadsRelation = (target: string) => `${q(COPY_SCHEMA)}.${q(target.replace('.', '__'))}`
 const partName = (snapshot: string) => `l_${snapshot.replaceAll('-', '')}`
@@ -134,9 +134,7 @@ const shapeVersion = (dataset: DatasetDeclaration) => createHash('sha256')
 export async function syncAppCopies(app: string, datasets: readonly DatasetDeclaration[] = []): Promise<string[]> {
   const wanted = datasets.filter((d) => d.store === 'table')
   const names = new Set(wanted.map((d) => copyTarget(app, d.name)))
-  const existing = await sql`select c.target_table from featherbase.table_copy c join table_def t on t.name = c.target_table
-    where c.mode = 'read_only' and t.owner_app = ${app}`
-  for (const row of existing) if (!names.has(String(row.target_table))) await removeCopy(String(row.target_table))
+  for (const target of await appCopies(app)) if (!names.has(target)) await removeCopy(target)
   const loadNow: string[] = []
   for (const dataset of wanted) if (await ensureCopy(app, dataset)) loadNow.push(copyTarget(app, dataset.name))
   return loadNow
@@ -187,6 +185,12 @@ async function ensureCopy(app: string, dataset: DatasetDeclaration): Promise<boo
     ${rebuilt ? sql`, last_run_key = null, last_run_id = null, last_copied_at = null` : sql``} where target_table = ${target}`
   invalidateMeta(target)
   return rebuilt
+}
+
+/** The read-only copies an app owns now. */
+export async function appCopies(app: string): Promise<string[]> {
+  return (await sql`select c.target_table from featherbase.table_copy c join table_def t on t.name = c.target_table
+    where c.mode = 'read_only' and t.owner_app = ${app}`).map((row) => String(row.target_table))
 }
 
 /** Remove a read-only copy outright: its loads, its Table, its check. */
@@ -458,7 +462,7 @@ async function checkLoad(target: string, dataset: DatasetDeclaration, snapshot: 
   const [repeat] = await sql.unsafe(`select row_id, count(*)::int as n from ${part} group by row_id having count(*) > 1 order by count(*) desc, row_id limit 1`)
   if (repeat) refuse(`${repeat.n} rows have the key ${String(repeat.row_id)}; each ${dataset.rowKey!.join(' × ')} is one row`)
   const guards = dataset.guard ?? []
-  const plain = guards.filter((g) => !COPY_GUARDS.has(g.kind))
+  const plain = guards.filter((g) => !COPY_GUARD_KINDS.includes(g.kind))
   if (plain.length) {
     const refusal = guardRefusal(dataset.name, plain, await partCounts(snapshot, plain), previous ? await partCounts(previous, plain) : null)
     if (refusal) refuse(refusal.slice(dataset.name.length + 2))

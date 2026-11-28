@@ -14,7 +14,7 @@ import { FinalJobFailure, enqueue, registerJob, syncScheduledJobs } from './jobs
 import { runAsSystemActor } from './system-actor'
 import { queueEmail } from './email'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
-import { checkCopy, copyTarget, syncAppCopies } from './read-only-copy'
+import { appCopies, checkCopy, copyTarget, syncAppCopies } from './read-only-copy'
 import type { DatasetDeclaration } from './app-datasets'
 import { assertPermission } from './permissions'
 
@@ -104,9 +104,7 @@ export async function provisionAppCopies(app: string, datasets: readonly Dataset
 
 /** #1418: an upgrade's copies wait for its activation; then they are checked at once. */
 export async function checkAppCopiesSoon(app: string): Promise<void> {
-  const rows = await sql`select c.target_table from featherbase.table_copy c join table_def t on t.name = c.target_table
-    where c.mode = 'read_only' and t.owner_app = ${app}`
-  for (const row of rows) await runCheckSoon(String(row.target_table))
+  for (const target of await appCopies(app)) await runCheckSoon(target)
 }
 
 function registerCopyRefresh(method: string): void {

@@ -31,7 +31,7 @@ const FILTERABLE: readonly string[] = ['text', 'integer', 'date']
 export const DATASET_GUARD_KINDS = ['min_rows', 'not_all_zero', 'max_drop_pct', 'max_sum_drop_pct', 'source_total', 'keeps_values'] as const
 /** #1418 (design D9): guards only a read-only copy can check, against its
  *  source's own total or the values its current load holds. */
-const COPY_GUARD_KINDS: readonly string[] = ['source_total', 'keeps_values']
+export const COPY_GUARD_KINDS: readonly string[] = ['source_total', 'keeps_values']
 /** A guarded column holds figures, so "zero" and "a drop" mean something. */
 const GUARDABLE: readonly string[] = ['integer', 'number', 'money']
 
