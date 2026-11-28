@@ -34,12 +34,14 @@ const LINE_FIELDS = ['run_id', 'region', 'store_code', 'store_short_code', 'subc
 const REGION: Record<string, string> = { KL: 'Kerala', TN: 'Tamil Nadu' }
 export const NOT_PLACED = 'Not placed in a section'
 
-/** Each store's org chart today, a few at a time; a store whose chart can't be read has none (its lines stay unplaced). */
+/** Each store's org chart today, a few at a time, in store order (so the first person of a role is the same every
+ *  load). A chart that can't be read is asked once more; if it still fails the whole load fails, so the page says it
+ *  couldn't load rather than leave the store silently out of every category head's figures. */
 async function orgsOf(stores: string[]): Promise<Map<string, OrgChart>> {
-  const out = new Map<string, OrgChart>()
+  const got = new Map<string, OrgChart>()
   for (let i = 0; i < stores.length; i += 4)
-    await Promise.all(stores.slice(i, i + 4).map(s => orgOf(s).then(o => { out.set(s, o) }, () => {})))
-  return out
+    await Promise.all(stores.slice(i, i + 4).map(s => orgOf(s).catch(() => orgOf(s)).then(o => { got.set(s, o) })))
+  return new Map(stores.map(s => [s, got.get(s)!]))
 }
 
 /** The newest real official Run, every store loaded; null when only the made-up Run (or none) is there. */
